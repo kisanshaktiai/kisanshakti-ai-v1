@@ -1,0 +1,477 @@
+{
+  "metadata": {
+    "crop_code": "SUGARCANE",
+    "category": "ipm_treatment",
+    "version": "3.0.0",
+    "source": "ICAR-SBI/NIPHM/ICAR-NBAIR",
+    "last_updated": "2025-01-09",
+    "total_rules": 25
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_IPM_ESB_TRICHOGRAMMA_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION", "TILLERING"],
+      "conditions_json": {
+        "observations": {
+          "pest": "early_shoot_borer",
+          "infestation_level": "low_to_moderate"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "esb_detected AND ipm_mode_enabled",
+      "cause": "IPM treatment for Early Shoot Borer using biocontrol",
+      "priority": 90,
+      "confidence_score": 0.92,
+      "etl_threshold": "5-10% dead hearts",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Trichogramma chilonis",
+      "organic_alternative": "Primary biocontrol option",
+      "scientific_source": "ICAR-NBAIR Biocontrol Guidelines",
+      "icar_package_ref": "NBAIR-TC-2023",
+      "response_en": "🌿 IPM for Early Shoot Borer: Release Trichogramma chilonis @ 50,000 eggs/ha starting 30 DAP, repeat at 45 and 60 DAP. Collect egg masses if visible. Install light traps @ 5/ha to monitor moth activity. Earthing up reduces borer damage. Chemical only if >10% dead hearts.",
+      "response_hi": "🌿 ESB के लिए IPM: 30 DAP से ट्राइकोग्रामा चिलोनिस @ 50,000 अंडे/हेक्टेयर छोड़ें, 45 और 60 DAP पर दोहराएं। दिखाई देने पर अंडा समूह इकट्ठा करें। पतंग गतिविधि की निगरानी के लिए 5/हेक्टेयर लाइट ट्रैप लगाएं।",
+      "response_mr": "🌿 ESB साठी IPM: 30 DAP पासून ट्रायकोग्रामा चिलोनिस @ 50,000 अंडी/हेक्टर सोडा, 45 आणि 60 DAP ला पुन्हा करा. दिसल्यास अंड्याचे गट गोळा करा. पतंग निरीक्षणासाठी 5/हेक्टर प्रकाश सापळे लावा.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_ISB_COTESIA_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "pest": "internode_borer",
+          "infestation_level": "moderate"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "isb_detected AND ipm_mode_enabled",
+      "cause": "IPM treatment for Internode Borer using parasitoid",
+      "priority": 88,
+      "confidence_score": 0.88,
+      "etl_threshold": "3-5% bored internodes",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Cotesia flavipes",
+      "organic_alternative": "Primary biocontrol option",
+      "scientific_source": "ICAR-SBI ISB Biocontrol",
+      "icar_package_ref": "SBI-CF-2023",
+      "response_en": "🌿 IPM for Internode Borer: Release Cotesia flavipes @ 2500 cocoons/ha during grand growth (4-5 months crop age). Detrash to expose larvae. Multiple releases at 15-day intervals increase parasitism. Avoid broad-spectrum insecticides that kill parasitoids.",
+      "response_hi": "🌿 ISB के लिए IPM: भव्य वृद्धि (4-5 महीने फसल उम्र) के दौरान कोटेसिया फ्लेविपेस @ 2500 कोकून/हेक्टेयर छोड़ें। लार्वा को उजागर करने के लिए पत्तियां हटाएं। 15 दिनों के अंतराल पर कई रिलीज परजीवीकरण बढ़ाते हैं।",
+      "response_mr": "🌿 ISB साठी IPM: ग्रँड ग्रोथ (4-5 महिने पीक वय) दरम्यान कोटेसिया फ्लेविपेस @ 2500 कोकून/हेक्टर सोडा. अळ्या उघडकीस आणण्यासाठी पाने काढा. 15 दिवसांच्या अंतराने अनेक वेळा सोडणे परजीवीकरण वाढवते.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_PYRILLA_EPIRICANIA_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "pest": "pyrilla",
+          "infestation_level": "moderate"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "pyrilla_detected AND ipm_mode_enabled",
+      "cause": "IPM treatment for Pyrilla using Epiricania parasitoid",
+      "priority": 92,
+      "confidence_score": 0.95,
+      "etl_threshold": "3-5 nymphs/leaf",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Epiricania melanoleuca",
+      "organic_alternative": "Most effective biocontrol for pyrilla",
+      "scientific_source": "VSI Pyrilla Biocontrol",
+      "icar_package_ref": "VSI-EM-2023",
+      "response_en": "🌿 IPM for Pyrilla - BEST BIOCONTROL AVAILABLE: Release Epiricania melanoleuca @ 10,000-12,000 cocoons/ha. Check field corners for natural Epiricania - collect infected nymphs (whitish fuzzy covering) and redistribute. Parasitism reaches 80-90% within 2-3 weeks. Avoid insecticides!",
+      "response_hi": "🌿 पायरिला के लिए IPM - सर्वश्रेष्ठ जैव नियंत्रण: एपिरिकेनिया मेलानोल्यूका @ 10,000-12,000 कोकून/हेक्टेयर छोड़ें। प्राकृतिक एपिरिकेनिया के लिए खेत के कोनों की जांच करें - संक्रमित निम्फ (सफेद रोएंदार आवरण) इकट्ठा करें और पुनर्वितरित करें।",
+      "response_mr": "🌿 पायरिलासाठी IPM - सर्वोत्तम जैविक नियंत्रण: एपिरिकेनिया मेलानोल्यूका @ 10,000-12,000 कोकून/हेक्टर सोडा. नैसर्गिक एपिरिकेनियासाठी शेताचे कोपरे तपासा - संक्रमित निम्फ (पांढरे केसाळ आवरण) गोळा करून पुनर्वितरित करा.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_WOOLLY_APHID_PREDATORS_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "pest": "woolly_aphid",
+          "infestation_level": "low_to_moderate"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "woolly_aphid_detected AND ipm_mode_enabled",
+      "cause": "IPM treatment for Woolly Aphid using predators",
+      "priority": 90,
+      "confidence_score": 0.90,
+      "etl_threshold": "5-10% leaf infestation",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Dipha aphidivora + Micromus igorotus",
+      "organic_alternative": "Primary predator-based control",
+      "scientific_source": "ICAR-SBI Woolly Aphid IPM",
+      "icar_package_ref": "SBI-WA-IPM-2023",
+      "response_en": "🌿 IPM for Woolly Aphid: Search field borders for Dipha aphidivora (caterpillar predator) and Micromus igorotus (lacewing). Collect infested leaves with predators and redistribute to hotspots. Release @ 500-1000 predators/ha if not naturally present. Avoid broad-spectrum sprays.",
+      "response_hi": "🌿 ऊनी मोहा के लिए IPM: डिफा एफिडिवोरा (इल्ली भक्षक) और माइक्रोमस (लेसविंग) के लिए खेत की सीमाओं की खोज करें। भक्षकों के साथ संक्रमित पत्तियां इकट्ठा करें और हॉटस्पॉट पर पुनर्वितरित करें।",
+      "response_mr": "🌿 लोकरी मावासाठी IPM: डिफा एफिडिवोरा (अळी भक्षक) आणि मायक्रोमस (लेसविंग) साठी शेताच्या सीमा शोधा. भक्षकांसह संक्रमित पाने गोळा करा आणि हॉटस्पॉटवर पुनर्वितरित करा.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_TERMITE_NEEM_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION", "TILLERING", "GRAND_GROWTH"],
+      "conditions_json": {
+        "observations": {
+          "pest": "termite",
+          "infestation_level": "preventive"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "termite_prone_area OR termite_history",
+      "cause": "IPM prevention for Termite using neem",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "etl_threshold": "Preventive application",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Neem cake + Beauveria bassiana",
+      "organic_alternative": "Primary organic prevention",
+      "scientific_source": "ICAR-IISR Termite IPM",
+      "icar_package_ref": "IISR-TER-IPM-2022",
+      "response_en": "🌿 IPM for Termite Prevention: Apply Neem cake @ 250 kg/ha at planting in furrows. Spray Beauveria bassiana @ 5 kg/ha in soil. Flood irrigation helps. Destroy termite mounds within 100m. Remove sugarcane trash (food source). Chemical drench only if active damage seen.",
+      "response_hi": "🌿 दीमक रोकथाम के लिए IPM: रोपण के समय नालियों में नीम खली @ 250 kg/हेक्टेयर डालें। मिट्टी में ब्यूवेरिया बेसियाना @ 5 kg/हेक्टेयर छिड़कें। बाढ़ सिंचाई मदद करती है। 100m के भीतर दीमक के टीले नष्ट करें।",
+      "response_mr": "🌿 वाळवी प्रतिबंधासाठी IPM: लागवडीच्या वेळी सरीत निंबोळी पेंड @ 250 kg/हेक्टर टाका. मातीत ब्यूव्हेरिया बॅसियाना @ 5 kg/हेक्टर फवारा. पूर सिंचन मदत करते. 100m आतील वाळवी वारुळे नष्ट करा.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_WHITE_GRUB_METARHIZIUM_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION", "TILLERING"],
+      "conditions_json": {
+        "observations": {
+          "pest": "white_grub",
+          "infestation_level": "preventive_or_active"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "white_grub_prone_area OR grubs_detected",
+      "cause": "IPM treatment for White Grub using entomopathogenic fungi",
+      "priority": 88,
+      "confidence_score": 0.85,
+      "etl_threshold": "Preventive or 1 grub/plant",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Metarhizium anisopliae",
+      "organic_alternative": "Primary biocontrol option",
+      "scientific_source": "ICAR-NBAIR White Grub Biocontrol",
+      "icar_package_ref": "NBAIR-MA-2023",
+      "response_en": "🌿 IPM for White Grub: Apply Metarhizium anisopliae @ 5 kg/ha mixed with FYM in furrows at planting. Install light traps near host trees (May-June) to trap adult beetles before they lay eggs. Deep summer ploughing exposes grubs to predators and sun. Community-wide action essential.",
+      "response_hi": "🌿 व्हाइट ग्रब के लिए IPM: रोपण के समय नालियों में FYM के साथ मेटाराइजियम @ 5 kg/हेक्टेयर मिलाकर डालें। मेजबान पेड़ों के पास (मई-जून) लाइट ट्रैप लगाएं। गहरी गर्मियों की जुताई ग्रब को भक्षकों और धूप के सामने लाती है।",
+      "response_mr": "🌿 पांढऱ्या अळीसाठी IPM: लागवडीच्या वेळी सरीत शेणखतासह मेटाराइझियम @ 5 kg/हेक्टर मिसळून टाका. यजमान झाडांजवळ (मे-जून) प्रकाश सापळे लावा. खोल उन्हाळी नांगरणी अळ्या भक्षकांसमोर आणते.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_RED_ROT_HWT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION"],
+      "conditions_json": {
+        "observations": {
+          "disease": "red_rot",
+          "treatment_type": "sett_treatment"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "planting_new_crop AND red_rot_prone_area",
+      "cause": "IPM prevention for Red Rot using hot water treatment",
+      "priority": 95,
+      "confidence_score": 0.95,
+      "etl_threshold": "Preventive treatment",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Hot water treatment",
+      "organic_alternative": "Primary organic prevention",
+      "scientific_source": "ICAR-SBI HWT Guidelines",
+      "icar_package_ref": "SBI-HWT-2023",
+      "response_en": "🌿 IPM for Red Rot Prevention: Hot Water Treatment is MOST EFFECTIVE. Submerge setts in water at 50°C for 2 hours (or 52°C for 30 min). Kills internal fungal inoculum. Air dry before planting. Alternative: Carbendazim 0.1% sett dip for 30 min. Use only certified disease-free seed.",
+      "response_hi": "🌿 लाल सड़न रोकथाम के लिए IPM: गर्म पानी उपचार सबसे प्रभावी है। पौधों को 50°C पानी में 2 घंटे (या 52°C में 30 मिनट) डुबोएं। आंतरिक कवक को मारता है। रोपण से पहले हवा में सुखाएं।",
+      "response_mr": "🌿 लाल कूज प्रतिबंधासाठी IPM: गरम पाणी उपचार सर्वात प्रभावी आहे. बेणे 50°C पाण्यात 2 तास (किंवा 52°C मध्ये 30 मिनिटे) बुडवा. आतील बुरशी मारते. लागवडीपूर्वी हवेत वाळवा.",
+      "action_type": "prevention",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_SMUT_HAT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION"],
+      "conditions_json": {
+        "observations": {
+          "disease": "smut",
+          "treatment_type": "sett_treatment"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "planting_new_crop AND smut_prone_area",
+      "cause": "IPM prevention for Smut using hot air treatment",
+      "priority": 92,
+      "confidence_score": 0.90,
+      "etl_threshold": "Preventive treatment",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Hot air treatment",
+      "organic_alternative": "Primary organic prevention",
+      "scientific_source": "ICAR-SBI Smut Prevention",
+      "icar_package_ref": "SBI-HAT-2023",
+      "response_en": "🌿 IPM for Smut Prevention: Hot Air Treatment @ 54°C for 8 hours in moist air chamber. More effective than hot water for smut. Alternatively, dip setts in Propiconazole 0.1% for 30 min. CRITICAL: Use only from smut-free nursery. Rogue any whips immediately before spore release.",
+      "response_hi": "🌿 स्मट रोकथाम के लिए IPM: नम वायु कक्ष में 54°C पर 8 घंटे गर्म वायु उपचार। स्मट के लिए गर्म पानी से अधिक प्रभावी। वैकल्पिक रूप से, प्रोपिकोनाज़ोल 0.1% में 30 मिनट डुबोएं।",
+      "response_mr": "🌿 स्मट प्रतिबंधासाठी IPM: ओलसर हवा कक्षात 54°C वर 8 तास गरम हवा उपचार. स्मटसाठी गरम पाण्यापेक्षा अधिक प्रभावी. पर्यायाने, प्रोपिकोनाझोल 0.1% मध्ये 30 मिनिटे बुडवा.",
+      "action_type": "prevention",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_INTEGRATED_CROP_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION", "TILLERING", "GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "management_type": "integrated",
+          "crop_health": "general"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "general_crop_management",
+      "cause": "Integrated crop management practices",
+      "priority": 70,
+      "confidence_score": 0.90,
+      "etl_threshold": "General practice",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Cultural practices",
+      "organic_alternative": "Primary approach",
+      "scientific_source": "ICAR-SBI ICM Guidelines",
+      "icar_package_ref": "SBI-ICM-2023",
+      "response_en": "🌿 Integrated Sugarcane Management: 1) Trash mulching (where termite-free) conserves moisture, 2) Intercropping with cowpea/soybean fixes nitrogen, 3) Detrashing at 5-6 months improves air circulation, 4) Ratoon management - gap filling, off-barring, 5) Balanced NPK based on soil test.",
+      "response_hi": "🌿 एकीकृत गन्ना प्रबंधन: 1) पराली मल्चिंग (जहां दीमक नहीं) नमी बचाती है, 2) लोबिया/सोयाबीन के साथ अंतर-फसल नाइट्रोजन स्थिर करती है, 3) 5-6 महीने में पत्तियां हटाना हवा संचार सुधारता है।",
+      "response_mr": "🌿 एकात्मिक ऊस व्यवस्थापन: 1) पाचट आच्छादन (वाळवी नसलेल्या ठिकाणी) ओलावा टिकवते, 2) चवळी/सोयाबीनसह आंतरपीक नायट्रोजन स्थिर करते, 3) 5-6 महिन्यांनी पाने काढणे हवा खेळती करते.",
+      "action_type": "cultural",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_RAT_BARN_OWL_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "pest": "rat",
+          "infestation_level": "moderate"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "rat_damage_detected",
+      "cause": "IPM treatment for Rats using natural predators",
+      "priority": 82,
+      "confidence_score": 0.85,
+      "etl_threshold": "2-5% cane damage",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Barn owl nest boxes",
+      "organic_alternative": "Primary biological control",
+      "scientific_source": "ICAR Rodent Biocontrol Guidelines",
+      "icar_package_ref": "ICAR-OWL-2022",
+      "response_en": "🌿 IPM for Rats: Install barn owl nest boxes @ 2-3/ha on poles (15ft height). One owl family consumes 1500+ rats/year! Provide perches for raptors. Clean field bunds to reduce harborage. Community-coordinated trapping before maturity. Zinc phosphide baiting in burrows as last resort.",
+      "response_hi": "🌿 चूहों के लिए IPM: खंभों पर (15 फीट ऊंचाई) बार्न आउल घोंसले @ 2-3/हेक्टेयर लगाएं। एक उल्लू परिवार 1500+ चूहे/वर्ष खाता है! शिकारी पक्षियों के लिए पर्च प्रदान करें। आश्रय कम करने के लिए मेड़ साफ करें।",
+      "response_mr": "🌿 उंदरांसाठी IPM: खांबावर (15 फूट उंची) बार्न आउल घरटे @ 2-3/हेक्टर लावा. एक घुबड कुटुंब 1500+ उंदीर/वर्ष खाते! शिकारी पक्ष्यांसाठी बसण्याची जागा द्या. आश्रय कमी करण्यासाठी बांध स्वच्छ करा.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_LIGHT_TRAP_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH"],
+      "conditions_json": {
+        "observations": {
+          "pest": "borers_general",
+          "monitoring_type": "light_trap"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "borer_monitoring_needed",
+      "cause": "IPM monitoring and mass trapping using light traps",
+      "priority": 78,
+      "confidence_score": 0.85,
+      "etl_threshold": "Monitoring tool",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Light traps",
+      "organic_alternative": "Primary monitoring tool",
+      "scientific_source": "NIPHM Light Trap Guidelines",
+      "icar_package_ref": "NIPHM-LT-2022",
+      "response_en": "🌿 IPM Monitoring with Light Traps: Install @ 5/ha during peak moth activity (Feb-Apr, Aug-Oct for borers). Check daily and record catches. Thresh old: >10 moths/trap/night = release biocontrol. Operates 6 PM to 6 AM. Water + kerosene in collection basin. Community coordination multiplies effect.",
+      "response_hi": "🌿 लाइट ट्रैप से IPM निगरानी: शिखर पतंग गतिविधि (बोरर के लिए फरवरी-अप्रैल, अगस्त-अक्टूबर) के दौरान 5/हेक्टेयर लगाएं। दैनिक जांच करें और पकड़ रिकॉर्ड करें। सीमा: >10 पतंग/ट्रैप/रात = जैव नियंत्रण छोड़ें।",
+      "response_mr": "🌿 प्रकाश सापळ्यांसह IPM निरीक्षण: शिखर पतंग क्रियाकलाप (बोररसाठी फेब्रु-एप्रिल, ऑग-ऑक्टो) दरम्यान 5/हेक्टर लावा. दररोज तपासा आणि पकड नोंदवा. उंबरठा: >10 पतंग/सापळा/रात्र = जैविक नियंत्रण सोडा.",
+      "action_type": "monitoring",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_PHEROMONE_TRAP_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH"],
+      "conditions_json": {
+        "observations": {
+          "pest": "borers_general",
+          "monitoring_type": "pheromone"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "specific_borer_monitoring",
+      "cause": "IPM monitoring using pheromone traps",
+      "priority": 75,
+      "confidence_score": 0.82,
+      "etl_threshold": "Monitoring tool",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Pheromone lures",
+      "organic_alternative": "Monitoring tool",
+      "scientific_source": "ICAR-SBI Pheromone Trapping",
+      "icar_package_ref": "SBI-PHER-2022",
+      "response_en": "🌿 IPM with Pheromone Traps: Species-specific lures available for ESB, ISB, TSB. Install @ 5/ha at canopy height. Change lures monthly. Catches indicate moth activity timing for biocontrol release. Mass trapping @ 25/ha can reduce male population and mating success.",
+      "response_hi": "🌿 फेरोमोन ट्रैप से IPM: ESB, ISB, TSB के लिए प्रजाति-विशिष्ट ल्यूर उपलब्ध। कैनोपी ऊंचाई पर 5/हेक्टेयर लगाएं। मासिक ल्यूर बदलें। पकड़ जैव नियंत्रण रिलीज के समय के लिए पतंग गतिविधि इंगित करती है।",
+      "response_mr": "🌿 फेरोमोन सापळ्यांसह IPM: ESB, ISB, TSB साठी प्रजाती-विशिष्ट ल्युअर उपलब्ध. कॅनोपी उंचीवर 5/हेक्टर लावा. मासिक ल्युअर बदला. पकड जैविक नियंत्रण सोडण्याच्या वेळेसाठी पतंग क्रियाकलाप दर्शवते.",
+      "action_type": "monitoring",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_TRICHODERMA_SOIL_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION", "TILLERING"],
+      "conditions_json": {
+        "observations": {
+          "disease": "soil_borne",
+          "treatment_type": "preventive"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "soil_disease_prevention",
+      "cause": "IPM prevention using Trichoderma for soil diseases",
+      "priority": 80,
+      "confidence_score": 0.88,
+      "etl_threshold": "Preventive application",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Trichoderma viride/harzianum",
+      "organic_alternative": "Primary biocontrol for soil diseases",
+      "scientific_source": "ICAR-NBAIR Trichoderma Guidelines",
+      "icar_package_ref": "NBAIR-TV-2023",
+      "response_en": "🌿 IPM with Trichoderma: Apply Trichoderma viride @ 2.5 kg/ha mixed with FYM (100 kg) at planting. Suppresses sett rot, wilt, and root rot fungi. Sett treatment: 5g/L water dip for 30 min. Soil application at earthing up boosts root health. Compatible with most biocontrol agents.",
+      "response_hi": "🌿 ट्राइकोडर्मा से IPM: रोपण के समय FYM (100 kg) के साथ मिश्रित ट्राइकोडर्मा विरिडी @ 2.5 kg/हेक्टेयर डालें। सेट रॉट, विल्ट और जड़ सड़न कवक को दबाता है। पौध उपचार: 5g/L पानी में 30 मिनट डुबोना।",
+      "response_mr": "🌿 ट्रायकोडर्मासह IPM: लागवडीच्या वेळी शेणखत (100 kg) सह मिश्रित ट्रायकोडर्मा विरिडी @ 2.5 kg/हेक्टर टाका. बेणे कूज, विल्ट आणि मूळ कूज बुरशी दाबते. बेणे उपचार: 5g/L पाण्यात 30 मिनिटे बुडवणे.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_PSEUDOMONAS_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION", "TILLERING"],
+      "conditions_json": {
+        "observations": {
+          "disease": "bacterial_diseases",
+          "treatment_type": "preventive"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "bacterial_disease_prevention",
+      "cause": "IPM prevention using Pseudomonas fluorescens",
+      "priority": 78,
+      "confidence_score": 0.85,
+      "etl_threshold": "Preventive application",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Pseudomonas fluorescens",
+      "organic_alternative": "Primary biocontrol for bacterial diseases",
+      "scientific_source": "ICAR-IISR Pseudomonas Guidelines",
+      "icar_package_ref": "IISR-PF-2022",
+      "response_en": "🌿 IPM with Pseudomonas: Apply Pseudomonas fluorescens @ 2.5 kg/ha in soil. Sett treatment: 10g/L water dip. Suppresses bacterial pathogens causing leaf scald, RSD. Promotes plant growth through phosphate solubilization and siderophore production. Apply evening for best survival.",
+      "response_hi": "🌿 स्यूडोमोनास से IPM: मिट्टी में स्यूडोमोनास फ्लोरेसेंस @ 2.5 kg/हेक्टेयर डालें। पौध उपचार: 10g/L पानी में डुबोना। लीफ स्काल्ड, RSD पैदा करने वाले जीवाणु रोगजनकों को दबाता है। फॉस्फेट घुलनशीलता से पौधों की वृद्धि को बढ़ावा देता है।",
+      "response_mr": "🌿 स्यूडोमोनाससह IPM: मातीत स्यूडोमोनास फ्लोरेसेन्स @ 2.5 kg/हेक्टर टाका. बेणे उपचार: 10g/L पाण्यात बुडवणे. लीफ स्काल्ड, RSD कारणीभूत जीवाणू रोगजनक दाबते. फॉस्फेट विरघळण्याद्वारे वनस्पती वाढ वाढवते.",
+      "action_type": "biocontrol",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IPM_AZOSPIRILLUM_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "ipm_treatment",
+      "canonical_group": "treatment",
+      "stage_applicable": ["GERMINATION", "TILLERING"],
+      "conditions_json": {
+        "observations": {
+          "nutrient": "nitrogen_fixation",
+          "treatment_type": "biofertilizer"
+        },
+        "ipm_priority": 1
+      },
+      "condition_code": "nitrogen_enhancement",
+      "cause": "IPM nutrition using Azospirillum biofertilizer",
+      "priority": 72,
+      "confidence_score": 0.85,
+      "etl_threshold": "Standard application",
+      "ipm_level": 1,
+      "bee_toxicity": "none",
+      "active_ingredient": "Azospirillum brasilense",
+      "organic_alternative": "Primary biofertilizer",
+      "scientific_source": "ICAR Biofertilizer Guidelines",
+      "icar_package_ref": "ICAR-AZO-2022",
+      "response_en": "🌿 IPM with Azospirillum: Apply Azospirillum @ 5 kg/ha with FYM at planting. Fixes 20-40 kg N/ha/year. Sett dip treatment: 200g in 40L water for 1000 setts. Reduces chemical N need by 25%. Apply Phosphobacteria together for P mobilization. Best results in good organic matter soils.",
+      "response_hi": "🌿 एज़ोस्पिरिलम से IPM: रोपण के समय FYM के साथ एज़ोस्पिरिलम @ 5 kg/हेक्टेयर डालें। 20-40 kg N/हेक्टेयर/वर्ष स्थिर करता है। पौध डिप उपचार: 1000 पौधों के लिए 40L पानी में 200g। रासायनिक N की आवश्यकता 25% कम करता है।",
+      "response_mr": "🌿 अझोस्पिरिलमसह IPM: लागवडीच्या वेळी शेणखतासह अझोस्पिरिलम @ 5 kg/हेक्टर टाका. 20-40 kg N/हेक्टर/वर्ष स्थिर करते. बेणे बुडवणे उपचार: 1000 बेण्यांसाठी 40L पाण्यात 200g. रासायनिक N गरज 25% कमी करते.",
+      "action_type": "biofertilizer",
+      "is_active": true
+    }
+  ]
+}
