@@ -232,7 +232,11 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
     key: CrossCropSymptomKey.PATCHY_GROWTH,
     patterns: [
       /ठिकठिकाण/i, /जगह.*जगह/i, /patchy/i,
-      /असमान/i, /uneven/i
+      /असमान/i, /uneven/i, /gaps?/i, /गॅप/i, /गैप/i,
+      // PHASE-14: Add germination/stand failure patterns
+      /काही.*ठिकाणी.*मेल/i, /कहीं.*मर/i, /some.*died/i,
+      /उगवण.*कमी/i, /अंकुरण.*कम/i, /poor.*germination/i,
+      /काही.*मेले/i, /कुछ.*मर.*गए/i
     ]
   },
   {
@@ -244,13 +248,29 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
   },
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-14: PLANT DEATH / STAND FAILURE SYMPTOMS
+  // Critical for germination stage diagnosis
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    key: CrossCropSymptomKey.OVERALL_WEAK,
+    patterns: [
+      /मेल/i, /मर/i, /died/i, /dead/i, /death/i,
+      /नाही.*उगवल/i, /उगवला.*नाही/i, /not.*germinating/i,
+      /वाळून.*गेल/i, /सूख.*गय/i, /completely.*dried/i
+    ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // DISTRIBUTION PATTERNS
   // ═══════════════════════════════════════════════════════════════════════════
   {
     key: CrossCropSymptomKey.AFFECTED_PATCHES,
     patterns: [
       /ठिकठिकाण/i, /जगह.*जगह/i, /patches/i, /patchy/i,
-      /काही.*ठिकाणी/i, /कहीं.*कहीं/i
+      /काही.*ठिकाणी/i, /कहीं.*कहीं/i,
+      // PHASE-14: More patterns for patchy distribution
+      /जागोजागी/i, /इधर.*उधर/i, /scattered/i,
+      /काही.*झाड/i, /कुछ.*पौध/i, /some.*plants/i
     ]
   },
   {

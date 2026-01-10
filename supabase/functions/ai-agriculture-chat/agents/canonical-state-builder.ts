@@ -553,6 +553,7 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
     'yellowing': VisualSymptom.GENERAL_YELLOWING,
     'पिवळे': VisualSymptom.GENERAL_YELLOWING,
     'पीला': VisualSymptom.GENERAL_YELLOWING,
+    'पिवळी': VisualSymptom.GENERAL_YELLOWING,
     'interveinal': VisualSymptom.INTERVEINAL_YELLOWING,
     'शिरा_मध्ये_पिवळे': VisualSymptom.INTERVEINAL_YELLOWING,
     
@@ -565,6 +566,8 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
     'curling': VisualSymptom.LEAF_CURLING,
     'rolling': VisualSymptom.LEAF_ROLLING,
     'पान_गुंडाळणे': VisualSymptom.LEAF_CURLING,
+    'वळलेली': VisualSymptom.LEAF_CURLING,
+    'मुडलेली': VisualSymptom.LEAF_CURLING,
     
     // Spots
     'circular_spots': VisualSymptom.SPOTS_CIRCULAR,
@@ -572,26 +575,57 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
     'angular_spots': VisualSymptom.SPOTS_ANGULAR,
     'spots': VisualSymptom.SPOTS_IRREGULAR,
     'डाग': VisualSymptom.SPOTS_IRREGULAR,
+    'ठिपके': VisualSymptom.SPOTS_IRREGULAR,
     
     // Fungal
     'powdery': VisualSymptom.POWDERY_COATING,
     'downy': VisualSymptom.DOWNY_GROWTH,
     'भुरी': VisualSymptom.POWDERY_COATING,
     
-    // Structural
+    // Structural - Wilting/Dying
     'wilting': VisualSymptom.WILTING,
     'मुरझाना': VisualSymptom.WILTING,
     'सुकणे': VisualSymptom.WILTING,
+    'वाळणे': VisualSymptom.WILTING,
+    'वाळले': VisualSymptom.WILTING,
+    'सुकले': VisualSymptom.WILTING,
     'stunted': VisualSymptom.STUNTED_GROWTH,
     'lodging': VisualSymptom.PLANT_LODGING,
+    
+    // PHASE-14: Death/Germination failure patterns
+    'मेला': VisualSymptom.WILTING,
+    'मेले': VisualSymptom.WILTING,
+    'मेली': VisualSymptom.WILTING,
+    'died': VisualSymptom.WILTING,
+    'dead': VisualSymptom.WILTING,
+    'death': VisualSymptom.WILTING,
+    'मर_गय': VisualSymptom.WILTING,
+    'मर_गए': VisualSymptom.WILTING,
+    
+    // PHASE-14: Patchy growth / germination gaps
+    'गॅप': VisualSymptom.STUNTED_GROWTH,
+    'gaps': VisualSymptom.STUNTED_GROWTH,
+    'असमान': VisualSymptom.STUNTED_GROWTH,
+    'patchy': VisualSymptom.STUNTED_GROWTH,
+    'uneven': VisualSymptom.STUNTED_GROWTH,
+    'उगवण_कमी': VisualSymptom.STUNTED_GROWTH,
+    'poor_germination': VisualSymptom.STUNTED_GROWTH,
     
     // Pest damage
     'boring': VisualSymptom.STEM_BORING,
     'dead_heart': VisualSymptom.DEAD_HEART,
+    'सुरळी_वाळली': VisualSymptom.DEAD_HEART,
     'white_ear': VisualSymptom.WHITE_EAR,
     'webbing': VisualSymptom.WEBBING,
     'holes': VisualSymptom.HOLES_IN_LEAVES,
-    'defoliation': VisualSymptom.DEFOLIATION
+    'छिद्र': VisualSymptom.HOLES_IN_LEAVES,
+    'भोक': VisualSymptom.HOLES_IN_LEAVES,
+    'defoliation': VisualSymptom.DEFOLIATION,
+    
+    // Root damage
+    'root_rot': VisualSymptom.ROOT_DAMAGE,
+    'कुजलेले': VisualSymptom.ROOT_DAMAGE,
+    'सडलेले': VisualSymptom.ROOT_DAMAGE
   };
   
   const detected: VisualSymptom[] = [];
@@ -599,7 +633,7 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
   for (const obs of observations) {
     const normalized = obs.toLowerCase().trim();
     for (const [key, symptom] of Object.entries(symptomMap)) {
-      if (normalized.includes(key)) {
+      if (normalized.includes(key.toLowerCase())) {
         if (!detected.includes(symptom)) {
           detected.push(symptom);
         }
