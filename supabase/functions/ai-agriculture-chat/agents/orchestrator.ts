@@ -115,6 +115,22 @@ import {
 // P0 CRITICAL MODULE IMPORTS - PRODUCTION-READY INTEGRATION
 // ═══════════════════════════════════════════════════════════════════════════
 
+// AUTHORITATIVE STATE LOADER - Single source of truth from DB tables
+import { 
+  loadAuthoritativeLandState,
+  calculateDecisionConfidence,
+  generateMissingDataQuestions,
+  type AuthoritativeLandState 
+} from '../decision/authoritative-state-loader.ts';
+
+// EXPLANATION CHAIN BUILDER - Rule traceability
+import {
+  buildExplanationChain,
+  formatExplanationForFarmer,
+  type ExplanationChain,
+  type RuleMatchInfo
+} from '../decision/explanation-chain-builder.ts';
+
 // P0: GDD Phenology Engine - Replaces fixed DAS with thermal unit calculations
 import { 
   calculatePhenologicalStage, 
