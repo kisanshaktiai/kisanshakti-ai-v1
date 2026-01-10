@@ -73,31 +73,28 @@ export default function SplashScreen() {
       console.log('✅ [SplashScreen] Tenant loaded, checking auth...');
       await checkAuth();
       
-      // Fetch version from database
-      try {
-        const versionData = await versionService.fetchVersionFromDatabase();
+      // PERFORMANCE FIX: Use local version immediately, fetch from DB in background (non-blocking)
+      setAppVersion(versionService.getCurrentVersion());
+      
+      // Quick ready state - don't wait for version API
+      setTimeout(() => {
+        setIsReady(true);
+      }, 400); // Reduced from 800ms
+      
+      // Fetch version from database in background (non-blocking)
+      versionService.fetchVersionFromDatabase().then(versionData => {
         if (versionData) {
           setAppVersion(versionData.version);
           
-          // Check for force update
+          // Check for force update (handle in background)
           if (versionData.forceUpdate) {
             console.log('[SplashScreen] Force update required, updating app...');
-            await versionService.forceUpdate();
-            return;
+            versionService.forceUpdate();
           }
-        } else {
-          // Fallback to local version
-          setAppVersion(versionService.getCurrentVersion());
         }
-      } catch (err) {
+      }).catch(err => {
         console.error('[SplashScreen] Error fetching version:', err);
-        setAppVersion(versionService.getCurrentVersion());
-      }
-      
-      // Quick ready state
-      setTimeout(() => {
-        setIsReady(true);
-      }, 800);
+      });
     };
 
     initializeApp();

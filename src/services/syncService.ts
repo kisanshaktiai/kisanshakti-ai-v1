@@ -17,8 +17,23 @@ interface SyncResult {
 class SyncService {
   private syncInterval: NodeJS.Timeout | null = null;
   private syncInProgress: boolean = false;
+  private isInitialized: boolean = false;
 
   constructor() {
+    // PERFORMANCE FIX: Don't initialize listeners in constructor
+    // They will be initialized lazily when first sync is requested
+    console.log('🔄 [Sync] SyncService created (lazy initialization)');
+  }
+
+  /**
+   * Initialize listeners and auto-sync lazily - only when needed
+   * This prevents blocking app startup with unnecessary listeners
+   */
+  private ensureInitialized(): void {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+    
+    console.log('🔄 [Sync] Initializing listeners and auto-sync...');
     this.initializeListeners();
     this.startAutoSync();
   }
@@ -68,6 +83,9 @@ class SyncService {
   }
 
   async performSync(showToast: boolean = false): Promise<SyncResult> {
+    // PERFORMANCE FIX: Initialize lazily on first sync request
+    this.ensureInitialized();
+    
     if (this.syncInProgress) {
       console.log('⚠️ [Sync] Sync already in progress, skipping');
       return { success: false, message: 'Sync already in progress' };
