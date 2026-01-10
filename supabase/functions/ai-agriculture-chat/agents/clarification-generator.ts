@@ -1,17 +1,21 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PHASE-8: CLARIFICATION GENERATOR (REWRITTEN)
+ * PHASE-15: CLARIFICATION GENERATOR (DYNAMIC CONTEXT-AWARE)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
- * Generate clarification responses using Phase-8 ObservationKey-based system.
- * ALL language-specific logic is moved to clarification-renderer.ts.
+ * Generate intelligent, context-aware clarification responses using ALL
+ * agronomic data: crop, DOS, soil, NDVI, weather, and schedule data.
  * 
- * CHANGES FROM PREVIOUS VERSION:
- * - DELETED: SYMPTOM_OPTIONS_DATABASE (diagnosis leakage risk)
- * - DELETED: Language-specific symptom arrays
- * - NOW USES: ObservationKey-based clarification scope resolver
- * - NOW USES: Template-based renderer (no LLM needed for clarification)
+ * PHILOSOPHY:
+ * - NOT a traditional chatbot with static templates
+ * - World-class symbolic decision brain with LLM rendering
+ * - Options are EVIDENCE-BASED from actual field conditions
+ * 
+ * PHASE-15 UPDATE:
+ * - Integrated dynamic-clarification-generator for context-aware options
+ * - Options now use crop stage, soil NPK, NDVI trends, weather forecasts
+ * - Farmer sees RELEVANT choices based on actual conditions
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -45,7 +49,15 @@ import { ObservationKey } from '../decision/observation-ontology.ts';
 // PHASE-8.1: Import CropContextAuthority
 import type { CropContextAuthority } from '../decision/context-authority.ts';
 
-export const CLARIFICATION_GENERATOR_VERSION = '2.1.0'; // Phase-8.1 update
+// PHASE-15: Import Dynamic Clarification Generator
+import {
+  generateDynamicClarification,
+  buildAgronomicContext,
+  type AgronomicContext,
+  type DynamicClarificationOutput
+} from './dynamic-clarification-generator.ts';
+
+export const CLARIFICATION_GENERATOR_VERSION = '3.0.0'; // Phase-15: Dynamic context-aware
 
 // Re-export types for convenience
 export { ClarificationScope };
@@ -75,6 +87,10 @@ export interface ScopedClarificationInput {
   hasCropContext?: boolean;
   /** PHASE-8.1: Crop context for stage-aware framing */
   cropContext?: CropContextAuthority | null;
+  /** PHASE-15: Full land context for dynamic clarification */
+  landContext?: any;
+  /** PHASE-15: Farmer message for LLM context */
+  farmerMessage?: string;
 }
 
 export interface ClarificationOutput {
@@ -101,16 +117,17 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Generate PHASE-8 COMPLIANT clarification response.
- * Uses ObservationKeys for scope resolution and template-based rendering.
+ * Generate PHASE-15 DYNAMIC clarification response.
+ * Uses full agronomic context (crop, DOS, soil, NDVI, weather) for intelligent options.
  */
-export function generateScopedClarification(
+export async function generateScopedClarification(
   input: ScopedClarificationInput
-): ClarificationOutput {
-  const { language, observations, understandingResult, hasLandContext, clarificationState, hasCropContext, cropContext } = input;
+): Promise<ClarificationOutput> {
+  const { language, observations, understandingResult, hasLandContext, clarificationState, hasCropContext, cropContext, landContext, farmerMessage } = input;
   
-  console.log(`📋 [Clarification] Phase-8/8.1 scoped clarification generation...`);
+  console.log(`📋 [Clarification] Phase-15 DYNAMIC clarification generation...`);
   console.log(`   hasCropContext: ${hasCropContext || false}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
+  console.log(`   hasLandContext: ${!!landContext}, DOS: ${landContext?.days_since_sowing || 'N/A'}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: Map observations to ObservationKeys (with cropContext)
@@ -137,6 +154,41 @@ export function generateScopedClarification(
     clarificationState?.previous_scopes || [],
     hasCropContext || false // PHASE-8.1: Skip crop clarification if true
   );
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-15: USE DYNAMIC CLARIFICATION if land context available
+  // This generates context-aware options using crop, DOS, soil, NDVI, weather
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (landContext && landContext.current_crop && clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
+    try {
+      console.log(`   🧠 Using DYNAMIC clarification generator with full context`);
+      
+      const agronomicContext = buildAgronomicContext(landContext);
+      const dynamicResult = await generateDynamicClarification({
+        scope: clarificationPlan.scope,
+        farmer_message: farmerMessage || '',
+        language,
+        agronomic_context: agronomicContext,
+        max_options: 3
+      });
+      
+      console.log(`   ✅ Dynamic options generated: ${dynamicResult.options.length} (${dynamicResult.generated_by})`);
+      
+      // Return dynamic result
+      const acknowledgment = language === 'mr' ? '🌾 समजले.' : language === 'hi' ? '🌾 समझ गया.' : '🌾 Understood.';
+      return {
+        response_text: `${acknowledgment}\n\n${dynamicResult.question}`,
+        options: dynamicResult.options.map(o => o.label),
+        photo_requested: false,
+        clarification_prompt: dynamicResult.question,
+        scope: clarificationPlan.scope,
+        validation_passed: true
+      };
+    } catch (dynamicError) {
+      console.error(`   ⚠️ Dynamic clarification failed, falling back to templates:`, dynamicError);
+      // Fall through to template-based rendering
+    }
+  }
   
   console.log(`   Clarification plan: scope=${clarificationPlan.scope}, reason=${clarificationPlan.reason}`);
   
