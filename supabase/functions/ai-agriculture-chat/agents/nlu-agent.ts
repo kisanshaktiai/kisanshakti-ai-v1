@@ -44,7 +44,15 @@ import {
   validateEntityConsistency 
 } from './entity-normalizer.ts';
 
-const NLU_VERSION = '4.1.0'; // Updated to include centralized entity normalization
+// WORLD-CLASS: Import dialect normalizer for multi-dialect understanding
+import { 
+  normalizeDialect, 
+  quickSymptomMatch,
+  type DialectNormalizationResult,
+  type NormalizedObservation
+} from './dialect-normalizer.ts';
+
+const NLU_VERSION = '5.0.0'; // PHASE-NEW: Integrated multi-dialect normalization
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AI-POWERED SEMANTIC UNDERSTANDING (Gemini/OpenAI)
@@ -825,7 +833,23 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   };
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 0: Try AI-Powered Understanding First (Gemini)
+  // STEP 0A: WORLD-CLASS DIALECT NORMALIZATION (NEW)
+  // Normalize ANY dialect into structured observations BEFORE AI/pattern matching
+  // This catches phrases like "मधली सुरळी वाळली" → DEAD_HEART
+  // ═══════════════════════════════════════════════════════════════════════════
+  let dialectResult: DialectNormalizationResult | null = null;
+  try {
+    dialectResult = normalizeDialect(input.raw_input);
+    if (dialectResult.observations.length > 0) {
+      console.log(`🗣️ [NLU] Dialect normalized: ${dialectResult.observations.map(o => o.canonical_symptom).join(', ')}`);
+      console.log(`   📊 Context: crop=${dialectResult.crop_mentioned}, age=${dialectResult.crop_age_indicator}, pattern=${dialectResult.pattern_indicator}, severity=${dialectResult.severity_indicator}`);
+    }
+  } catch (err) {
+    console.warn('⚠️ [NLU] Dialect normalization error:', err);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 0B: Try AI-Powered Understanding (Gemini)
   // ═══════════════════════════════════════════════════════════════════════════
   let aiResult: AIUnderstandingResult | null = null;
   try {
@@ -902,6 +926,43 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
     }
     if (symptomBasedInference.disease) {
       entityResult.diseases.push(symptomBasedInference.disease);
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE NEW: INTEGRATE DIALECT NORMALIZATION RESULTS
+  // Add symptoms detected by dialect normalizer to entity results
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (dialectResult && dialectResult.observations.length > 0) {
+    // Add dialect-detected symptoms to entity results
+    for (const obs of dialectResult.observations) {
+      // Check if this symptom isn't already in the list
+      const existingSymptom = entityResult.symptoms.find(s => 
+        s.symptom_code === obs.canonical_symptom || s.symptom_code === obs.observation_key
+      );
+      
+      if (!existingSymptom) {
+        entityResult.symptoms.push({
+          symptom_code: obs.observation_key,
+          severity: dialectResult.severity_indicator !== 'UNKNOWN' ? 
+            (dialectResult.severity_indicator === 'DEAD' || dialectResult.severity_indicator === 'DYING' ? 'HIGH' : 'MODERATE') : 
+            'MODERATE',
+          affected_part: 'UNKNOWN',
+          location: dialectResult.pattern_indicator !== 'UNKNOWN' ? dialectResult.pattern_indicator : 'UNKNOWN',
+          confidence: obs.confidence
+        });
+        console.log(`🗣️ [NLU] Dialect symptom added: ${obs.observation_key} (${(obs.confidence * 100).toFixed(0)}%)`);
+      }
+    }
+    
+    // Add crop from dialect if not already detected
+    if (dialectResult.crop_mentioned && entityResult.crops.length === 0) {
+      entityResult.crops.push({
+        canonical: dialectResult.crop_mentioned,
+        localTerm: dialectResult.crop_mentioned,
+        confidence: 0.85
+      });
+      console.log(`🗣️ [NLU] Dialect crop detected: ${dialectResult.crop_mentioned}`);
     }
   }
   
