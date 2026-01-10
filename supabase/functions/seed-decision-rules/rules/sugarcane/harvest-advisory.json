@@ -1,0 +1,233 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "harvest",
+    "canonical_group": "02_growth_stage",
+    "stage": "harvest",
+    "version": "3.1.0",
+    "scientific_sources": ["ICAR-SBI Coimbatore", "IISR Lucknow", "Sugar Mills Guidelines"],
+    "last_updated": "2026-01-10"
+  },
+  "rules": [
+    {
+      "rule_id": "SC_HARVEST_TIMING_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["maturity", "harvest"],
+      "conditions_json": {
+        "observations": ["HARVEST_QUERY", "MATURITY_CHECK", "CRUSHING_SCHEDULE"],
+        "growth_stage": "maturity"
+      },
+      "cause": "harvest_timing_guidance",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-HARTIME-001",
+      "response_en": "Optimal harvest at 10-12 months for early varieties, 14-16 months for mid-late. Check brix >18 at bottom and top internode. Harvest when bottom:top brix ratio is 1:1. Coordinate with mill 7 days prior.",
+      "response_hi": "प्रारंभिक किस्मों के लिए 10-12 महीने, मध्य-देर के लिए 14-16 महीने में इष्टतम कटाई। नीचे और ऊपर इंटरनोड पर ब्रिक्स >18 जांचें। 1:1 अनुपात पर काटें। 7 दिन पहले मिल से समन्वय करें।",
+      "response_mr": "लवकर जातींसाठी 10-12 महिने, मध्य-उशीरासाठी 14-16 महिन्यांत इष्टतम कापणी. तळाशी आणि वरच्या इंटरनोडवर ब्रिक्स >18 तपासा. 1:1 गुणोत्तरावर कापा. 7 दिवस आधी मिलशी समन्वय करा.",
+      "action_type": "harvest_planning",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_METHOD_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["HARVEST_METHOD_QUERY", "MANUAL_VS_MECHANICAL"],
+        "growth_stage": "harvest"
+      },
+      "cause": "harvest_method_selection",
+      "priority": 78,
+      "confidence_score": 0.88,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-HARMET-002",
+      "response_en": "Manual harvest: cut at ground level, remove tops 3-4 nodes above visible dewlap. Mechanical: suitable for >5 ha, adjust cutter bar. Whole stalk preferred over billet for better ratoon. Avoid burning pre-harvest.",
+      "response_hi": "मैनुअल कटाई: जमीन स्तर पर काटें, दृश्य ड्यूलैप से 3-4 नोड ऊपर टॉप हटाएं। मैकेनिकल: >5 हेक्टेयर के लिए उपयुक्त। बेहतर रेटून के लिए बिलेट पर पूरा डंठल पसंदीदा।",
+      "response_mr": "मॅन्युअल कापणी: जमीन पातळीवर कापा, दृश्यमान ड्यूलॅपच्या 3-4 नोड वर टॉप काढा. यांत्रिक: >5 हेक्टरसाठी योग्य. चांगल्या रेटूनसाठी बिलेटपेक्षा संपूर्ण देठ प्राधान्य.",
+      "action_type": "harvest_practice",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_STALE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["HARVEST_TO_CRUSH_DELAY", "STALE_CANE"],
+        "growth_stage": "harvest"
+      },
+      "cause": "stale_cane_prevention",
+      "priority": 90,
+      "confidence_score": 0.93,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-STALE-003",
+      "response_en": "Crush within 24 hours of harvest for best recovery. Sugar loss 0.05% per hour after 24 hours. Keep harvested cane in shade, sprinkle water. Stale cane attracts dockage at mill. Transport at night if possible.",
+      "response_hi": "सर्वोत्तम रिकवरी के लिए कटाई के 24 घंटे के भीतर क्रश करें। 24 घंटे बाद प्रति घंटा 0.05% चीनी हानि। कटे हुए गन्ने को छाया में रखें, पानी छिड़कें। बासी गन्ने पर मिल में डॉकेज।",
+      "response_mr": "सर्वोत्तम रिकव्हरीसाठी कापणीच्या 24 तासांच्या आत क्रश करा. 24 तासांनंतर प्रति तास 0.05% साखर हानी. कापलेला ऊस सावलीत ठेवा, पाणी शिंपडा. शिळ्या उसावर मिलमध्ये डॉकेज.",
+      "action_type": "post_harvest",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_BURNT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["BURNT_CANE", "FIRE_DAMAGE", "ACCIDENTAL_FIRE"],
+        "growth_stage": "harvest"
+      },
+      "cause": "burnt_cane_management",
+      "priority": 95,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-BURNT-004",
+      "response_en": "URGENT! Harvest burnt cane within 24 hours. Sugar inversion starts immediately after burning. 2-3% recovery loss per day. Do not use for jaggery. Notify mill immediately for priority crushing.",
+      "response_hi": "तत्काल! जले हुए गन्ने को 24 घंटे के भीतर काटें। जलने के तुरंत बाद चीनी उलटना शुरू होता है। प्रति दिन 2-3% रिकवरी हानि। गुड़ के लिए उपयोग न करें। प्राथमिकता क्रशिंग के लिए मिल को तुरंत सूचित करें।",
+      "response_mr": "तातडीचे! जळालेला ऊस 24 तासांच्या आत कापा. जळल्यानंतर लगेच साखर उलटणे सुरू होते. दररोज 2-3% रिकव्हरी हानी. गुळासाठी वापरू नका. प्राधान्य क्रशिंगसाठी मिलला तातडीने कळवा.",
+      "action_type": "emergency_harvest",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_TRANSPORT_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["TRANSPORT_QUERY", "LOADING_METHOD"],
+        "growth_stage": "harvest"
+      },
+      "cause": "transport_guidance",
+      "priority": 75,
+      "confidence_score": 0.88,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-TRANS-005",
+      "response_en": "Load cane parallel to vehicle length. Avoid overloading - max 10-12 tonnes per trip. Cover with tarpaulin in summer. Transport during cooler hours. Weigh at mill within 24 hours. Keep loading-unloading records.",
+      "response_hi": "गन्ना वाहन की लंबाई के समानांतर लोड करें। ओवरलोडिंग से बचें - प्रति ट्रिप अधिकतम 10-12 टन। गर्मियों में तिरपाल से ढकें। ठंडे घंटों में परिवहन करें। 24 घंटे के भीतर मिल में तौलें।",
+      "response_mr": "ऊस वाहनाच्या लांबीला समांतर लोड करा. ओव्हरलोडिंग टाळा - प्रति ट्रिप जास्तीत जास्त 10-12 टन. उन्हाळ्यात तिरपालने झाका. थंड तासांत वाहतूक करा. 24 तासांच्या आत मिलमध्ये वजन करा.",
+      "action_type": "post_harvest",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_JAGGERY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["JAGGERY_MAKING", "GUR_PRODUCTION"],
+        "growth_stage": "harvest"
+      },
+      "cause": "jaggery_production_guidance",
+      "priority": 78,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-JAG-006",
+      "response_en": "For jaggery, harvest fully mature cane (brix >20). Crush within 12 hours. Remove green tops completely. Avoid lodged, diseased or burnt cane. Clean crusher thoroughly. Best season: November-March.",
+      "response_hi": "गुड़ के लिए पूर्ण परिपक्व गन्ना (ब्रिक्स >20) काटें। 12 घंटे के भीतर क्रश करें। हरी टॉप पूरी तरह हटाएं। लॉज्ड, रोगग्रस्त या जले गन्ने से बचें। सर्वोत्तम मौसम: नवंबर-मार्च।",
+      "response_mr": "गुळासाठी पूर्ण परिपक्व ऊस (ब्रिक्स >20) कापा. 12 तासांच्या आत क्रश करा. हिरवे टॉप पूर्णपणे काढा. लोड झालेला, रोगग्रस्त किंवा जळालेला ऊस टाळा. सर्वोत्तम हंगाम: नोव्हेंबर-मार्च.",
+      "action_type": "value_addition",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_SEED_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["SEED_CANE_SELECTION", "PLANTING_MATERIAL"],
+        "growth_stage": "harvest"
+      },
+      "cause": "seed_cane_selection",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-SEED-007",
+      "response_en": "Select seed from 8-10 month old crop. Choose disease-free, healthy, thick canes. Top 1/3 portion has best buds. Avoid lodged, flowered or ratoon canes. Hot water treat setts at 50°C for 2 hours for disease-free seed.",
+      "response_hi": "8-10 महीने पुरानी फसल से बीज चुनें। रोग-मुक्त, स्वस्थ, मोटे गन्ने चुनें। ऊपरी 1/3 भाग में सबसे अच्छी कलियां। लॉज्ड, फूले या रेटून गन्नों से बचें। रोग-मुक्त बीज के लिए 50°C पर 2 घंटे गर्म पानी उपचार।",
+      "response_mr": "8-10 महिने जुन्या पिकातून बियाणे निवडा. रोग-मुक्त, निरोगी, जाड ऊस निवडा. वरचा 1/3 भाग सर्वोत्तम कळ्या असतात. लोड झालेला, फुललेला किंवा रेटून ऊस टाळा. रोग-मुक्त बियाण्यासाठी 50°C वर 2 तास गरम पाणी उपचार.",
+      "action_type": "seed_selection",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_TRASH_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["TRASH_MANAGEMENT", "POST_HARVEST_RESIDUE"],
+        "growth_stage": "harvest"
+      },
+      "cause": "post_harvest_trash",
+      "priority": 72,
+      "confidence_score": 0.85,
+      "scientific_source": "IISR Lucknow",
+      "icar_package_ref": "IISR-PKG-2024-TRASH-008",
+      "response_en": "Do not burn trash! Spread as mulch (10-12 t/ha) for ratoon. Retains moisture, controls weeds, adds organic matter. Accelerate decomposition with 100 kg urea + 50 kg SSP. Reduces next crop fertilizer need by 20%.",
+      "response_hi": "कचरा न जलाएं! रेटून के लिए मल्च (10-12 t/ha) के रूप में फैलाएं। नमी बनाए रखता है, खरपतवार नियंत्रित करता है। 100 kg यूरिया + 50 kg SSP से विघटन तेज करें। अगली फसल उर्वरक आवश्यकता 20% कम करता है।",
+      "response_mr": "कचरा जाळू नका! रेटूनसाठी मल्च (10-12 t/ha) म्हणून पसरवा. ओलावा टिकवतो, तण नियंत्रित करतो. 100 kg युरिया + 50 kg SSP ने विघटन वेगवान करा. पुढील पिकाची खत गरज 20% कमी करतो.",
+      "action_type": "residue_management",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_RECOVERY_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["LOW_RECOVERY", "MILL_DOCKAGE", "QUALITY_ISSUE"],
+        "growth_stage": "harvest"
+      },
+      "cause": "low_recovery_causes",
+      "priority": 82,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-RECOV-009",
+      "response_en": "Low recovery causes: immature cane, stale cane >48 hrs, lodged cane, diseased cane, excess trash, green tops attached. Ensure brix >18, crush <24 hrs, clean cane supply. Target 10-12% recovery.",
+      "response_hi": "कम रिकवरी के कारण: अपरिपक्व गन्ना, >48 घंटे बासी गन्ना, लॉज्ड गन्ना, रोगग्रस्त गन्ना, अधिक कचरा, हरी टॉप लगी हुई। ब्रिक्स >18, <24 घंटे क्रश, साफ गन्ना आपूर्ति सुनिश्चित करें।",
+      "response_mr": "कमी रिकव्हरीची कारणे: अपरिपक्व ऊस, >48 तास शिळा ऊस, लोड झालेला ऊस, रोगग्रस्त ऊस, जास्त कचरा, हिरवे टॉप जोडलेले. ब्रिक्स >18, <24 तास क्रश, स्वच्छ ऊस पुरवठा सुनिश्चित करा.",
+      "action_type": "quality_management",
+      "is_active": true
+    },
+    {
+      "rule_id": "SC_HARVEST_RATOON_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "harvest",
+      "canonical_group": "02_growth_stage",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observations": ["RATOON_INIT", "STUBBLE_SHAVING", "POST_HARVEST_CARE"],
+        "growth_stage": "harvest"
+      },
+      "cause": "ratoon_initiation",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Coimbatore",
+      "icar_package_ref": "SBI-PKG-2024-RATINIT-010",
+      "response_en": "Critical: Within 3 days of harvest - shave stubbles, off-bar soil from rows, apply FYM 10 t/ha + full P & K + 25% extra N. Gap fill if >15% missing. First irrigation immediately. Ratoon gives 85-90% of plant crop yield.",
+      "response_hi": "महत्वपूर्ण: कटाई के 3 दिनों के भीतर - ठूंठ काटें, पंक्तियों से मिट्टी हटाएं, FYM 10 t/ha + पूर्ण P & K + 25% अतिरिक्त N लगाएं। >15% गैप होने पर भरें। पहली सिंचाई तुरंत करें।",
+      "response_mr": "महत्वाचे: कापणीच्या 3 दिवसांच्या आत - बुंधे कापा, रांगांमधून माती काढा, FYM 10 t/ha + पूर्ण P & K + 25% अतिरिक्त N द्या. >15% गॅप असल्यास भरा. पहिले सिंचन लगेच करा.",
+      "action_type": "ratoon_management",
+      "is_active": true
+    }
+  ]
+}

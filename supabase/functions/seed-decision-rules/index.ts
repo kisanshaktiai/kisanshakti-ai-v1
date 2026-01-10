@@ -18,10 +18,27 @@ const RULES_VERSION = '3.0.0';
 
 // Rule files to load (embedded for edge function compatibility)
 const RULE_FILES = [
+  // Sugarcane - Complete Rule Universe (17 files, ~239 rules)
+  'sugarcane/crop-identity.json',
+  'sugarcane/germination-problems.json',
+  'sugarcane/tillering-problems.json',
+  'sugarcane/grand-growth-problems.json',
+  'sugarcane/maturity-problems.json',
+  'sugarcane/harvest-advisory.json',
+  'sugarcane/pests.json',
+  'sugarcane/diseases.json',
+  'sugarcane/ipm-treatment.json',
+  'sugarcane/nutrients.json',
+  'sugarcane/irrigation.json',
+  'sugarcane/stress.json',
+  'sugarcane/weather.json',
+  'sugarcane/safety.json',
+  'sugarcane/economics.json',
+  'sugarcane/monitoring.json',
+  'sugarcane/clarification.json',
+  // Universal rules
   'universal/safety-weather.json',
-  'universal/safety-phi.json', 
-  'universal/safety-pollinator.json',
-  'universal/nutrients-macro.json',
+  // Other crops (future expansion)
   'cotton/pests.json',
   'cotton/diseases.json',
 ];
