@@ -111,46 +111,55 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // Wait for TenantProvider to load tenant data
-        if (tenantLoading || !tenant) {
-          console.log('⏳ [AppInit] Waiting for TenantProvider to load tenant...');
+        // PERFORMANCE FIX: Reduced waiting - use cached data faster
+        if (tenantLoading && !tenant) {
+          // Only wait briefly - tenant cache should load quickly
+          const cachedTenant = localStorage.getItem('tenant_config_cache');
+          if (!cachedTenant) {
+            console.log('⏳ [AppInit] Waiting for TenantProvider to load tenant...');
+            return;
+          }
+          // If we have cache, proceed - TenantProvider will catch up
+        }
+
+        // If still no tenant after cache check, wait for TenantProvider
+        if (!tenant) {
+          console.log('⏳ [AppInit] No tenant yet, waiting...');
           return;
         }
 
         const currentDomain = window.location.hostname;
         console.log('🔐 [Security] Starting secure multi-tenant initialization for:', currentDomain);
-        console.log('✅ [Security] Tenant loaded from TenantProvider:', {
-          id: tenant.id,
-          name: tenant.name,
-          domain: currentDomain
-        });
         
-        // Helper function for non-blocking tasks
-        const runInBackground = (fn: () => void) => {
+        // PERFORMANCE FIX: Use requestIdleCallback for ALL non-critical tasks
+        const runInBackground = (fn: () => void, delay: number = 0) => {
           if ('requestIdleCallback' in window) {
-            requestIdleCallback(fn);
+            requestIdleCallback(() => setTimeout(fn, delay));
           } else {
-            setTimeout(fn, 0);
+            setTimeout(fn, delay);
           }
         };
         
         // CRITICAL: Use static manifest.json only - no dynamic API calls
-        // This prevents 429 rate limiting errors and ensures PWA installability
         console.log('📱 [Manifest] Using static /manifest.json (no API calls)');
         
-        // STEP 1: Set tenant isolation context for all services (fast)
+        // STEP 1: Set tenant isolation context (fast, synchronous)
         setCurrentStep('Preparing your workspace...');
         tenantIsolationService.setTenantContext(tenant.id, currentDomain);
         
-        // Cache tenant primary color for initial loader
+        // Cache tenant primary color for initial loader (non-blocking)
         if (branding?.primary_color) {
-          localStorage.setItem('tenant_primary_color', branding.primary_color);
+          runInBackground(() => {
+            localStorage.setItem('tenant_primary_color', branding.primary_color!);
+          });
         }
         
-        // STEP 2: Initialize tenant-scoped local storage (fast)
-        await localDB.initializeWithTenant(tenant.id);
+        // STEP 2: Initialize tenant-scoped local storage (potentially slow - run in background after)
+        runInBackground(async () => {
+          await localDB.initializeWithTenant(tenant.id);
+        }, 100);
         
-        // STEP 3: Check authentication with tenant context validation (potentially slow)
+        // STEP 3: Check authentication (critical path - must be sync)
         setCurrentStep('Verifying credentials...');
         await checkAuth();
         
@@ -162,24 +171,22 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         }
         
         if (session && user?.tenantId !== tenant.id) {
-          console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.', {
-            sessionTenant: user?.tenantId,
-            currentTenant: tenant.id,
-            userId: user?.id
-          });
+          console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.');
           useAuthStore.getState().logout();
           tenantIsolationService.clearContext();
-          await localDB.clearAll();
+          runInBackground(async () => {
+            await localDB.clearAll();
+          });
         }
         
-        // STEP 4: Start location service in background (non-blocking)
+        // STEP 4: Start location service in background (non-blocking, delayed)
         setCurrentStep('Almost ready...');
         runInBackground(() => {
           LocationService.getCurrentLocation(true).catch(() => null);
-        });
+        }, 2000); // Delay by 2 seconds
         
-        // Minimal delay for smooth transition
-        await new Promise(resolve => setTimeout(resolve, 150));
+        // PERFORMANCE FIX: Minimal delay for smooth transition (reduced from 150ms)
+        await new Promise(resolve => setTimeout(resolve, 50));
       } catch (error) {
         console.error('🚨 [Security] App initialization failed:', error);
         toast({

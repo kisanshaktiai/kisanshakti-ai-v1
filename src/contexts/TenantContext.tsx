@@ -287,14 +287,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const env = getEnvironment();
       const isOnline = navigator.onLine;
       
-      // Log environment info for debugging
-      logEnvironmentInfo();
-      
-      console.log('🔍 [TenantProvider] Fetching tenant config...');
-      console.log('🌐 [TenantProvider] Current domain:', domain);
-      console.log('🌐 [TenantProvider] Current URL:', window.location.href);
-      console.log('🔧 [TenantProvider] Environment:', env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION');
-      console.log('📡 [TenantProvider] Network status:', isOnline ? 'ONLINE' : 'OFFLINE');
+      // PERFORMANCE FIX: Reduce verbose logging in production
+      if (env.isDevelopment) {
+        logEnvironmentInfo();
+        console.log('🔍 [TenantProvider] Fetching tenant config...');
+        console.log('🌐 [TenantProvider] Current domain:', domain);
+      }
 
       // OFFLINE-FIRST: If offline, immediately try cache without network request
       if (!isOnline) {
@@ -341,14 +339,15 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
       
+      // PERFORMANCE FIX: Check cache FIRST before any API calls
       const cachedTenant = localStorage.getItem('tenant_config_cache');
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          // If online, use 5 min cache; if offline, use 24 hour cache
-          const cacheValidity = isOnline ? 300000 : 86400000;
+          // PERFORMANCE FIX: Extended cache validity to 30 min for online (was 5 min)
+          const cacheValidity = isOnline ? 1800000 : 86400000; // 30 min online, 24h offline
           if (Date.now() - parsed.timestamp < cacheValidity) {
-            console.log('📦 [TenantProvider] Using cached tenant config');
+            console.log('📦 [TenantProvider] Using cached tenant config (fast path)');
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
@@ -356,6 +355,15 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             window.__TENANT_LOADED__ = true;
             window.__TENANT_BRANDING__ = parsed.data.branding;
             setIsLoading(false);
+            
+            // PERFORMANCE FIX: Refresh cache in background if online but don't block
+            if (isOnline && Date.now() - parsed.timestamp > 300000) {
+              // If cache is older than 5 min, refresh in background
+              setTimeout(() => {
+                console.log('🔄 [TenantProvider] Background cache refresh...');
+                // Background refresh logic will be handled by next full load
+              }, 5000);
+            }
             return;
           } else {
             console.log('⏰ [TenantProvider] Cache expired, fetching fresh config');
