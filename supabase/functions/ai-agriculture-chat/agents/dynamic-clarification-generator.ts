@@ -24,7 +24,7 @@
  */
 
 import { ClarificationScope } from './clarification-renderer.ts';
-import { getStageAdvice, type StageAdvice } from './crop-stage-advisor.ts';
+import { getStageSpecificAdvice, type StageAdvice } from './crop-stage-advisor.ts';
 import { AI_CONFIG, getModel, getAPIKey } from '../../_shared/aiConfig.ts';
 
 export const DYNAMIC_CLARIFICATION_VERSION = '2.0.0'; // World-class probabilistic reasoning
@@ -128,7 +128,7 @@ function getStageProblemIndicators(
   growthStage: string,
   context: AgronomicContext
 ): StageProblemIndicators {
-  const stageAdvice = getStageAdvice(cropCode, growthStage);
+  const stageAdvice = getStageSpecificAdvice(cropCode, growthStage);
   
   const indicators: StageProblemIndicators = {
     likely_pests: stageAdvice?.pest_watch || [],
