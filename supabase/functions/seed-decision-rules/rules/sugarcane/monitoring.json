@@ -2,8 +2,8 @@
   "metadata": {
     "crop": "sugarcane",
     "category": "monitoring",
-    "canonical_group": "06_monitoring",
-    "version": "3.1.0",
+    "canonical_group": "12_monitoring",
+    "version": "3.2.0",
     "scientific_source": "ICAR-SBI, NIPHM",
     "last_updated": "2026-01-10",
     "total_rules": 5
@@ -13,7 +13,7 @@
       "rule_id": "SUGARCANE_ETL_MONITOR_001",
       "crop_code": "sugarcane",
       "category": "monitoring",
-      "canonical_group": "06_monitoring",
+      "canonical_group": "12_monitoring",
       "stage_applicable": ["all"],
       "conditions_json": {"context": "pest_monitoring"},
       "cause": "Economic Threshold Level monitoring",
@@ -30,7 +30,7 @@
       "rule_id": "SUGARCANE_LIGHT_TRAP_001",
       "crop_code": "sugarcane",
       "category": "monitoring",
-      "canonical_group": "06_monitoring",
+      "canonical_group": "12_monitoring",
       "stage_applicable": ["tillering", "grand_growth"],
       "conditions_json": {"context": "trap_monitoring"},
       "cause": "Light trap monitoring",
