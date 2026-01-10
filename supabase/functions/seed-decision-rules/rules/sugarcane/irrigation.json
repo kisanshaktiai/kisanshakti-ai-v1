@@ -1,0 +1,395 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "irrigation",
+    "canonical_group": "10_irrigation",
+    "version": "3.1.0",
+    "scientific_source": "ICAR-SBI Coimbatore, ICAR-IISR Lucknow, WTC Rahuri",
+    "last_updated": "2026-01-10",
+    "total_rules": 18
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_WATER_REQ_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["water_requirement_query", "irrigation_planning"],
+        "context": "general_guidance"
+      },
+      "cause": "General water requirement information",
+      "priority": 85,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR-SBI Water Management",
+      "response_en": "💧 SUGARCANE WATER REQUIREMENT:\n\n📊 Total: 1500-2000 mm (12 month crop)\n📊 Daily: 5-8 mm/day (peak demand)\n\n🌱 Germination: Light, frequent (7-10 days)\n🌿 Tillering: Moderate (10-12 days)\n🌾 Grand Growth: CRITICAL - heavy (7-10 days)\n🍯 Maturity: Reduced (15-20 days)\n\n⚠️ Stop irrigation 15-20 days before harvest for sugar accumulation",
+      "response_hi": "💧 गन्ना जल आवश्यकता:\n\n📊 कुल: 1500-2000 mm\n📊 दैनिक: 5-8 mm/day (अधिकतम मांग)\n\n⚠️ कटाई से 15-20 दिन पहले सिंचाई बंद करें",
+      "response_mr": "💧 ऊस पाणी गरज:\n\n📊 एकूण: 1500-2000 mm\n📊 दैनिक: 5-8 mm/day (कमाल मागणी)\n\n⚠️ कापणीपूर्वी 15-20 दिवस पाणी बंद करा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_GERM_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["germination"],
+      "conditions_json": {
+        "observations": ["germination_stage", "irrigation_schedule"],
+        "crop_stage": "germination"
+      },
+      "cause": "Germination stage irrigation",
+      "priority": 90,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Germination Management",
+      "response_en": "🌱 GERMINATION IRRIGATION (0-35 DAP):\n\n✅ First irrigation: Immediately after planting (light)\n✅ Frequency: Every 7-10 days\n✅ Method: Furrow irrigation, avoid flooding\n✅ Depth: Light irrigation only\n\n⚠️ CRITICAL: Maintain moisture but avoid waterlogging - causes sett rot!\n⚠️ Reduce interval to 5 days in hot/dry weather",
+      "response_hi": "🌱 अंकुरण सिंचाई (0-35 DAP):\n\n✅ पहली सिंचाई: रोपण के तुरंत बाद\n✅ आवृत्ति: हर 7-10 दिन\n\n⚠️ नमी बनाए रखें लेकिन जलभराव से बचें!",
+      "response_mr": "🌱 उगवण सिंचन (0-35 DAP):\n\n✅ पहिले पाणी: लागवडीनंतर लगेच\n✅ वारंवारता: दर 7-10 दिवसांनी\n\n⚠️ ओलावा ठेवा पण पाणी साचू देऊ नका!",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_TILL_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["tillering"],
+      "conditions_json": {
+        "observations": ["tillering_stage", "irrigation_schedule"],
+        "crop_stage": "tillering"
+      },
+      "cause": "Tillering stage irrigation",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Tillering Management",
+      "response_en": "🌿 TILLERING IRRIGATION (35-120 DAP):\n\n✅ Frequency: Every 10-12 days (winter), 7-10 days (summer)\n✅ Method: Full furrow irrigation\n✅ Critical: Maximum tillering at 60-90 DAP needs adequate water\n\n⚠️ Water stress reduces tillers by 20-30%\n⚠️ Earthing up after each irrigation improves tiller survival",
+      "response_hi": "🌿 कल्ला निकलने पर सिंचाई (35-120 DAP):\n\n✅ आवृत्ति: हर 10-12 दिन\n✅ महत्वपूर्ण: 60-90 DAP पर अधिकतम कल्ले\n\n⚠️ पानी की कमी से 20-30% कम कल्ले",
+      "response_mr": "🌿 फुटवा अवस्था सिंचन (35-120 DAP):\n\n✅ वारंवारता: दर 10-12 दिवसांनी\n✅ महत्त्वाचे: 60-90 DAP ला कमाल फुटवे\n\n⚠️ पाण्याचा ताण असल्यास 20-30% कमी फुटवे",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_GG_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["grand_growth"],
+      "conditions_json": {
+        "observations": ["grand_growth_stage", "irrigation_schedule"],
+        "crop_stage": "grand_growth"
+      },
+      "cause": "Grand growth stage irrigation - CRITICAL",
+      "priority": 95,
+      "confidence_score": 0.95,
+      "scientific_source": "ICAR-SBI Grand Growth Management",
+      "response_en": "🌾 GRAND GROWTH IRRIGATION (120-270 DAP) - MOST CRITICAL:\n\n✅ Frequency: Every 7-10 days (MANDATORY)\n✅ Water demand: Maximum (6-8 mm/day)\n✅ This stage determines YIELD - stress causes 40-50% yield loss!\n\n⚠️ NEVER skip irrigation during monsoon break\n⚠️ Heavy irrigation for internode elongation\n⚠️ 70% of total water consumed in this phase",
+      "response_hi": "🌾 भव्य वृद्धि सिंचाई (120-270 DAP) - सबसे महत्वपूर्ण:\n\n✅ आवृत्ति: हर 7-10 दिन (अनिवार्य)\n✅ पानी की मांग: अधिकतम\n\n⚠️ तनाव से 40-50% उपज हानि!",
+      "response_mr": "🌾 ग्रँड ग्रोथ सिंचन (120-270 DAP) - सर्वात महत्त्वाचे:\n\n✅ वारंवारता: दर 7-10 दिवसांनी (अनिवार्य)\n✅ पाण्याची मागणी: कमाल\n\n⚠️ ताणामुळे 40-50% उत्पादन घट!",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MAT_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["maturity_stage", "irrigation_schedule"],
+        "crop_stage": "maturity"
+      },
+      "cause": "Maturity stage irrigation - reduce for sugar",
+      "priority": 85,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Maturity Management",
+      "response_en": "🍯 MATURITY IRRIGATION (270-360 DAP):\n\n✅ Frequency: Every 15-20 days (reduced)\n✅ Gradually reduce irrigation for sugar accumulation\n✅ STOP irrigation 15-20 days before harvest\n\n⚠️ Excess water reduces sucrose by 1-2%\n⚠️ Mild stress increases sugar concentration\n⚠️ Monitor for lodging if over-watered",
+      "response_hi": "🍯 परिपक्वता सिंचाई (270-360 DAP):\n\n✅ आवृत्ति: हर 15-20 दिन (कम करें)\n✅ कटाई से 15-20 दिन पहले सिंचाई बंद\n\n⚠️ अधिक पानी से चीनी 1-2% कम",
+      "response_mr": "🍯 परिपक्वता सिंचन (270-360 DAP):\n\n✅ वारंवारता: दर 15-20 दिवसांनी (कमी)\n✅ कापणीपूर्वी 15-20 दिवस पाणी बंद\n\n⚠️ जास्त पाण्याने साखर 1-2% कमी",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_DRIP_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["drip_irrigation_query", "water_saving"],
+        "context": "micro_irrigation"
+      },
+      "cause": "Drip irrigation recommendation",
+      "priority": 82,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Precision Irrigation",
+      "response_en": "💧 DRIP IRRIGATION FOR SUGARCANE:\n\n✅ Water saving: 40-50%\n✅ Yield increase: 20-30%\n✅ Layout: Surface drip, 16mm lateral, 60cm spacing\n✅ Daily run: 45-60 min (summer), 30-45 min (winter)\n✅ Subsidy: 55-90% under PMKSY\n\n📊 Economics: Payback in 2-3 years\n\n⚠️ Install sand filter + screen filter for clean water",
+      "response_hi": "💧 गन्ने के लिए ड्रिप सिंचाई:\n\n✅ पानी बचत: 40-50%\n✅ उपज वृद्धि: 20-30%\n✅ सब्सिडी: 55-90%",
+      "response_mr": "💧 उसासाठी ठिबक सिंचन:\n\n✅ पाणी बचत: 40-50%\n✅ उत्पादन वाढ: 20-30%\n✅ अनुदान: 55-90%",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_WATER_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["leaf_rolling", "wilting", "yellowing"],
+        "soil_moisture": "low",
+        "context": "water_stress"
+      },
+      "cause": "Water stress symptoms and recovery",
+      "priority": 92,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Stress Management",
+      "response_en": "⚠️ WATER STRESS DETECTED:\n\nSymptoms: Leaf rolling, wilting in afternoon, yellowing lower leaves\n\n✅ IMMEDIATE: Irrigate within 24 hours\n✅ Recovery spray: 2% Urea + 1% KCl after irrigation\n✅ If severe: Reduce N-fertilizer by 25% (plant can't utilize)\n\n📊 Yield loss: 5-7% per day of stress during grand growth\n\n⚠️ Don't apply fertilizer during stress - causes burn",
+      "response_hi": "⚠️ पानी तनाव का पता चला:\n\nलक्षण: पत्ती मुड़ना, दोपहर में मुरझाना\n\n✅ तुरंत: 24 घंटे में सिंचाई करें\n✅ सिंचाई के बाद 2% यूरिया छिड़कें",
+      "response_mr": "⚠️ पाण्याचा ताण आढळला:\n\nलक्षणे: पान गुंडाळणे, दुपारी कोमेजणे\n\n✅ तात्काळ: 24 तासांत पाणी द्या\n✅ पाण्यानंतर 2% युरिया फवारा",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_WATERLOGGING_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["waterlogging", "yellowing", "root_rot"],
+        "soil_moisture": "excess",
+        "context": "excess_water"
+      },
+      "cause": "Waterlogging damage and management",
+      "priority": 90,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Waterlogging Management",
+      "response_en": "🌊 WATERLOGGING DETECTED:\n\nSymptoms: Yellowing, root rot, fungal diseases increase\n\n✅ IMMEDIATE: Drain water using furrow outlet/pump\n✅ After drainage: Spray Carbendazim 1g/L (fungal prevention)\n✅ Apply Potash 20 kg/ha to strengthen plants\n✅ Earthing up to improve aeration\n\n⚠️ Sugarcane tolerates 48-72 hours waterlogging\n⚠️ Beyond 5 days: 30-40% yield loss",
+      "response_hi": "🌊 जलभराव का पता चला:\n\n✅ तुरंत: पानी निकालें\n✅ निकासी के बाद: कार्बेन्डाजिम 1g/L छिड़कें\n\n⚠️ 5 दिनों से अधिक: 30-40% उपज हानि",
+      "response_mr": "🌊 पाणी साचणे आढळले:\n\n✅ तात्काळ: पाणी काढून टाका\n✅ निचऱ्यानंतर: कार्बेन्डाझिम 1g/L फवारा\n\n⚠️ 5 दिवसांपेक्षा जास्त: 30-40% उत्पादन घट",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_FLOOD_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["flood_irrigation", "traditional_method"],
+        "context": "surface_irrigation"
+      },
+      "cause": "Flood irrigation best practices",
+      "priority": 75,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-SBI Surface Irrigation",
+      "response_en": "💧 FLOOD IRRIGATION BEST PRACTICES:\n\n✅ Furrow length: 30-50 m maximum\n✅ Land leveling: Essential for uniform distribution\n✅ Inflow rate: 2-3 LPS per furrow\n✅ Cut-off time: When water reaches 75% of furrow\n\n📊 Water use efficiency: Only 40-50%\n📊 Consider: Alternate furrow irrigation saves 25% water\n\n⚠️ Night irrigation reduces evaporation loss by 20%",
+      "response_hi": "💧 बाढ़ सिंचाई सर्वोत्तम प्रथाएं:\n\n✅ नाली लंबाई: 30-50 m अधिकतम\n✅ भूमि समतलीकरण: आवश्यक\n\n📊 रात्रि सिंचाई से 20% कम वाष्पीकरण",
+      "response_mr": "💧 पूर सिंचन सर्वोत्तम पद्धती:\n\n✅ सरी लांबी: 30-50 m कमाल\n✅ जमीन सपाटीकरण: आवश्यक\n\n📊 रात्री सिंचनाने 20% कमी बाष्पीभवन",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SKIP_FURROW_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["grand_growth", "maturity"],
+      "conditions_json": {
+        "observations": ["water_scarcity", "alternate_furrow"],
+        "context": "water_saving"
+      },
+      "cause": "Alternate/skip furrow irrigation",
+      "priority": 78,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Water Conservation",
+      "response_en": "💧 ALTERNATE FURROW IRRIGATION:\n\n✅ Irrigate alternate furrows only\n✅ Water saving: 25-35%\n✅ Yield reduction: Only 5-10% (acceptable trade-off)\n✅ Best for: Water-scarce areas, grand growth stage\n\n📋 Method: Irrigate furrow 1,3,5 in first irrigation; 2,4,6 in next\n\n⚠️ Not recommended for: Germination, extreme drought",
+      "response_hi": "💧 वैकल्पिक नाली सिंचाई:\n\n✅ केवल वैकल्पिक नालियों में सिंचाई\n✅ पानी बचत: 25-35%\n✅ उपज कमी: केवल 5-10%",
+      "response_mr": "💧 पर्यायी सरी सिंचन:\n\n✅ फक्त पर्यायी सऱ्यांत पाणी\n✅ पाणी बचत: 25-35%\n✅ उत्पादन घट: फक्त 5-10%",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MULCH_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["mulching_query", "water_conservation"],
+        "context": "moisture_retention"
+      },
+      "cause": "Mulching for water conservation",
+      "priority": 75,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Mulching Benefits",
+      "response_en": "🍂 MULCHING FOR WATER CONSERVATION:\n\n✅ Use: Sugarcane trash 10-12 t/ha\n✅ Water saving: 2-3 irrigations (20-25%)\n✅ Additional benefits: Weed control, cool soil, adds nutrients\n\n📋 Apply: After first/second irrigation in inter-row spaces\n\n⚠️ Avoid fresh trash near plant base (attracts termites)\n⚠️ Spray Trichoderma to speed decomposition",
+      "response_hi": "🍂 पानी बचत के लिए मल्चिंग:\n\n✅ उपयोग: गन्ना पराली 10-12 t/ha\n✅ पानी बचत: 2-3 सिंचाई (20-25%)",
+      "response_mr": "🍂 पाणी बचतीसाठी आच्छादन:\n\n✅ वापर: ऊस पाचट 10-12 t/ha\n✅ पाणी बचत: 2-3 पाणी (20-25%)",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MONSOON_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["grand_growth"],
+      "conditions_json": {
+        "observations": ["monsoon_break", "dry_spell"],
+        "weather": "monsoon_gap",
+        "context": "supplementary_irrigation"
+      },
+      "cause": "Supplementary irrigation during monsoon break",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Monsoon Management",
+      "response_en": "🌧️ MONSOON BREAK IRRIGATION:\n\n✅ If no rain for 10-15 days during monsoon: IRRIGATE!\n✅ Grand growth stage: Most vulnerable to dry spells\n✅ One life-saving irrigation can prevent 30% yield loss\n\n📊 Monitor: Soil moisture, leaf rolling, weather forecast\n\n⚠️ Don't assume monsoon means no irrigation needed\n⚠️ July-August dry spells are common and critical",
+      "response_hi": "🌧️ मानसून ब्रेक सिंचाई:\n\n✅ मानसून में 10-15 दिन बारिश नहीं: सिंचाई करें!\n✅ एक सिंचाई 30% उपज हानि रोक सकती है",
+      "response_mr": "🌧️ मान्सून खंडात सिंचन:\n\n✅ मान्सूनमध्ये 10-15 दिवस पाऊस नाही: पाणी द्या!\n✅ एक पाणी 30% उत्पादन घट टाळू शकते",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SOLAR_PUMP_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["electricity_problem", "pump_query"],
+        "context": "solar_irrigation"
+      },
+      "cause": "Solar pump for irrigation",
+      "priority": 70,
+      "confidence_score": 0.85,
+      "scientific_source": "MNRE Solar Pump Guidelines",
+      "response_en": "☀️ SOLAR PUMP FOR SUGARCANE:\n\n✅ Recommended: 5-7.5 HP for drip, 10 HP for flood irrigation\n✅ Subsidy: 60-90% under PM-KUSUM\n✅ Savings: ₹30,000-50,000/year on electricity\n✅ Lifespan: 25 years (panels), 15 years (pump)\n\n📋 Apply through: Agriculture Department or DISCOM\n\n⚠️ Best combined with drip for maximum efficiency",
+      "response_hi": "☀️ गन्ने के लिए सोलर पंप:\n\n✅ अनुशंसित: 5-7.5 HP\n✅ सब्सिडी: 60-90%\n✅ बचत: ₹30,000-50,000/वर्ष",
+      "response_mr": "☀️ उसासाठी सोलर पंप:\n\n✅ शिफारस: 5-7.5 HP\n✅ अनुदान: 60-90%\n✅ बचत: ₹30,000-50,000/वर्ष",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RATOON_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["post_harvest"],
+      "conditions_json": {
+        "observations": ["ratoon_irrigation", "post_harvest"],
+        "context": "ratoon_management"
+      },
+      "cause": "Ratoon crop irrigation",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Ratoon Management",
+      "response_en": "🌱 RATOON IRRIGATION:\n\n✅ First irrigation: Within 7 days of harvest (CRITICAL)\n✅ Second: After stubble shaving + fertilizer (10-15 days)\n✅ Frequency: Same as plant crop but start earlier\n\n📋 Key: Ratoon root system is shallower - needs MORE frequent, LIGHTER irrigation\n\n⚠️ Water stress in first 45 days kills ratoon sprouts\n⚠️ Ratoon needs 10-15% more water than plant crop",
+      "response_hi": "🌱 रैटून सिंचाई:\n\n✅ पहली सिंचाई: कटाई के 7 दिनों के भीतर\n✅ रैटून को पौध फसल से 10-15% अधिक पानी चाहिए",
+      "response_mr": "🌱 खोडवा सिंचन:\n\n✅ पहिले पाणी: कापणीनंतर 7 दिवसांत\n✅ खोडव्याला रोप पिकापेक्षा 10-15% जास्त पाणी लागते",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SALINE_IRRI_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["saline_water", "brackish_water"],
+        "water_quality": "saline",
+        "context": "poor_quality_water"
+      },
+      "cause": "Irrigation with saline/brackish water",
+      "priority": 78,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-CSSRI Saline Water Management",
+      "response_en": "⚠️ SALINE WATER IRRIGATION:\n\n✅ Sugarcane tolerance: EC up to 4 dS/m (moderately tolerant)\n✅ Pre-sowing irrigation: Use good quality water if available\n✅ Leaching: 20-25% extra water to wash salts below root zone\n✅ Frequency: More frequent, lighter irrigation\n\n📋 Apply Gypsum @5 t/ha annually\n📋 Use FYM/organic matter to improve soil structure\n\n⚠️ Avoid saline water during germination (sensitive stage)",
+      "response_hi": "⚠️ खारे पानी से सिंचाई:\n\n✅ गन्ना सहनशीलता: EC 4 dS/m तक\n✅ लीचिंग: 20-25% अतिरिक्त पानी",
+      "response_mr": "⚠️ खारट पाण्याने सिंचन:\n\n✅ ऊस सहनशीलता: EC 4 dS/m पर्यंत\n✅ लीचिंग: 20-25% अधिक पाणी",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SPRINKLER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["germination", "tillering"],
+      "conditions_json": {
+        "observations": ["sprinkler_query"],
+        "context": "sprinkler_irrigation"
+      },
+      "cause": "Sprinkler irrigation (limited use)",
+      "priority": 65,
+      "confidence_score": 0.80,
+      "scientific_source": "ICAR Irrigation Methods",
+      "response_en": "🌧️ SPRINKLER IRRIGATION FOR SUGARCANE:\n\n✅ Useful for: Germination stage, pre-planting irrigation\n✅ Not recommended: After 90 DAP (tall crop, wind drift)\n✅ Water saving: 20-30% vs flood\n\n⚠️ LIMITATION: Disease spread in wet canopy\n⚠️ Wind >15 km/hr reduces efficiency\n⚠️ Drip is better choice for sugarcane",
+      "response_hi": "🌧️ गन्ने के लिए स्प्रिंकलर:\n\n✅ उपयोगी: अंकुरण चरण\n✅ अनुशंसित नहीं: 90 DAP के बाद",
+      "response_mr": "🌧️ उसासाठी स्प्रिंकलर:\n\n✅ उपयुक्त: उगवण अवस्था\n✅ शिफारस नाही: 90 DAP नंतर",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SUBSURFACE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["subsurface_drip_query"],
+        "context": "advanced_irrigation"
+      },
+      "cause": "Subsurface drip irrigation",
+      "priority": 68,
+      "confidence_score": 0.82,
+      "scientific_source": "ICAR-SBI Advanced Irrigation",
+      "response_en": "💧 SUBSURFACE DRIP IRRIGATION (SDI):\n\n✅ Installation: Laterals at 15-20 cm depth\n✅ Water saving: 50-60% vs flood\n✅ Yield increase: 25-35%\n✅ Weed reduction: Surface stays dry\n\n📊 Higher initial cost but lower maintenance\n📊 Lifespan: 8-10 years\n\n⚠️ Requires: Good filtration, experienced installation\n⚠️ Rodent damage possible - use thick-walled laterals",
+      "response_hi": "💧 भूमिगत ड्रिप सिंचाई (SDI):\n\n✅ पानी बचत: 50-60%\n✅ उपज वृद्धि: 25-35%",
+      "response_mr": "💧 भूमिगत ठिबक सिंचन (SDI):\n\n✅ पाणी बचत: 50-60%\n✅ उत्पादन वाढ: 25-35%",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_WATER_BUDGET_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "irrigation",
+      "canonical_group": "10_irrigation",
+      "stage_applicable": ["planting"],
+      "conditions_json": {
+        "observations": ["water_availability", "planning"],
+        "context": "water_budgeting"
+      },
+      "cause": "Water budgeting for sugarcane",
+      "priority": 72,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Water Planning",
+      "response_en": "📊 SUGARCANE WATER BUDGET (per hectare):\n\n💧 Total requirement: 15,000-20,000 m³/ha/year\n💧 Monsoon contribution: 800-1200 mm (varies by region)\n💧 Irrigation need: 600-1000 mm (6,000-10,000 m³)\n\n📋 Well capacity needed: 2-3 inch for 1 ha (with flood)\n📋 With drip: 1-1.5 inch well sufficient\n\n⚠️ Plan water source before planting sugarcane!",
+      "response_hi": "📊 गन्ना पानी बजट (प्रति हेक्टेयर):\n\n💧 कुल आवश्यकता: 15,000-20,000 m³/वर्ष\n💧 सिंचाई आवश्यकता: 6,000-10,000 m³",
+      "response_mr": "📊 ऊस पाणी बजेट (प्रति हेक्टर):\n\n💧 एकूण गरज: 15,000-20,000 m³/वर्ष\n💧 सिंचन गरज: 6,000-10,000 m³",
+      "action_type": "advisory",
+      "is_active": true
+    }
+  ]
+}
