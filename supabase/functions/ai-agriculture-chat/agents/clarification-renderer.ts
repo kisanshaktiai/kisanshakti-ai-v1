@@ -482,27 +482,59 @@ function getContextAwareTemplate(
   cropContext?: CropContextAuthority | null,
   landData?: { soil_n?: string; ndvi_trend?: string } | null
 ): { question: string; options: string[] } {
-  // 1. Try crop-specific template first
-  if (cropContext?.crop_name) {
-    const cropKey = cropContext.crop_name.toUpperCase();
-    const cropTemplates = CROP_SPECIFIC_TEMPLATES[cropKey];
-    
-    if (cropTemplates && cropTemplates[scope]) {
-      const template = cropTemplates[scope]![language];
-      if (template) {
-        console.log(`   📋 Using crop-specific template for ${cropKey} / ${scope}`);
-        return template;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-14 FIX: Use CROP_STAGE_SPECIFIC_TEMPLATES (not the non-existent CROP_SPECIFIC_TEMPLATES)
+  // Priority: Stage-specific > Crop default > Base template > English fallback
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  try {
+    if (cropContext?.crop_name) {
+      const cropKey = cropContext.crop_name.toUpperCase();
+      const cropTemplates = CROP_STAGE_SPECIFIC_TEMPLATES[cropKey];
+      
+      if (cropTemplates) {
+        // 1. Try stage-specific template first (highest priority)
+        if (cropContext.growth_stage && cropTemplates.stages) {
+          const stageKey = cropContext.growth_stage.toUpperCase();
+          const stageTemplates = cropTemplates.stages[stageKey];
+          
+          if (stageTemplates && stageTemplates[scope]) {
+            const template = stageTemplates[scope]![language];
+            if (template) {
+              console.log(`   📋 Using stage-specific template for ${cropKey}/${stageKey}/${scope}`);
+              return template;
+            }
+          }
+        }
+        
+        // 2. Try crop default template
+        if (cropTemplates.default && cropTemplates.default[scope]) {
+          const template = cropTemplates.default[scope]![language];
+          if (template) {
+            console.log(`   📋 Using crop-default template for ${cropKey}/${scope}`);
+            return template;
+          }
+        }
+        
+        // 3. Check if crop has flat structure (WHEAT, COTTON, RICE don't have default wrapper)
+        const flatTemplate = (cropTemplates as any)[scope];
+        if (flatTemplate && flatTemplate[language]) {
+          console.log(`   📋 Using flat crop template for ${cropKey}/${scope}`);
+          return flatTemplate[language];
+        }
       }
     }
+  } catch (templateError) {
+    console.error(`   ⚠️ Template lookup error, falling back to BASE_TEMPLATES:`, templateError);
   }
   
-  // 2. Fall back to base template
+  // 4. Fall back to base template
   const baseTemplate = BASE_TEMPLATES[scope]?.[language];
   if (baseTemplate) {
     return baseTemplate;
   }
   
-  // 3. Final fallback to English
+  // 5. Final fallback to English
   return BASE_TEMPLATES[scope]?.en || {
     question: 'Please provide more details about your crop issue.',
     options: []
