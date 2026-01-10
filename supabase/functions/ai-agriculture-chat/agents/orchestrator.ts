@@ -1061,10 +1061,13 @@ export class AIAgentOrchestrator {
           const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
-          console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}`);
+          console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}, Responses: ${ruleResult.matched_responses?.length || 0}`);
+          
+          // CRITICAL FIX: Check for matched_responses even when prescriptions are empty
+          const hasMatchedResponses = ruleResult.matched_responses && ruleResult.matched_responses.length > 0;
           
           // If we got rule matches, return them for LLM formatting
-          if (ruleResult.rules_matched > 0 && (ruleResult.diagnoses.length > 0 || ruleResult.prescriptions.length > 0)) {
+          if (ruleResult.rules_matched > 0 && (ruleResult.diagnoses.length > 0 || ruleResult.prescriptions.length > 0 || hasMatchedResponses)) {
             // FIX: Build dataAudit for OPTION_SELECTED path to preserve land context
             const dataAuditForOption = this.buildDataAudit(landContextForOptionSelection, null);
             
@@ -1075,23 +1078,45 @@ export class AIAgentOrchestrator {
               days_since_sowing: landContextForOptionSelection?.days_since_sowing
             };
             
+            // CRITICAL: Use matched_responses to build actions when prescriptions are blocked
+            const actionsToReturn = ruleResult.prescriptions.length > 0 
+              ? ruleResult.prescriptions.map(p => ({
+                  action_type: p.action_type,
+                  action_details: p.action_details,
+                  product_reference: p.product_reference,
+                  rule_id: 'RULE_ENGINE'
+                }))
+              : hasMatchedResponses 
+                ? ruleResult.matched_responses.slice(0, 3).map(r => ({
+                    action_type: 'OBSERVATION_ADVICE',
+                    action_details: {
+                      response_mr: r.response_mr,
+                      response_hi: r.response_hi,
+                      response_en: r.response_en
+                    },
+                    product_reference: r.rule_id,
+                    rule_id: r.rule_id
+                  }))
+                : [];
+            
+            // CRITICAL: Get the best response text for status determination
+            const primaryResponse = hasMatchedResponses ? ruleResult.matched_responses[0] : null;
+            const statusToUse = ruleResult.prescriptions.length > 0 ? 'DIAGNOSIS_COMPLETE' : 'OBSERVATION_PROVIDED';
+            
             return {
               type: 'DECISION_PROVIDED',
               session_id: sessionId,
               decision_output: {
                 decision_id: `rule_${Date.now()}`,
                 session_id: sessionId,
-                status: 'DIAGNOSIS_COMPLETE',
+                status: statusToUse,
                 decision_brain_source: true,
                 // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
                 authority_decision: authorityDecision,
-                primary_decision: ruleResult.final_diagnosis?.cause || ruleResult.diagnoses[0]?.cause,
-                actions_returned: ruleResult.prescriptions.map(p => ({
-                  action_type: p.action_type,
-                  action_details: p.action_details,
-                  product_reference: p.product_reference,
-                  rule_id: 'RULE_ENGINE'
-                })),
+                primary_decision: ruleResult.final_diagnosis?.cause || ruleResult.diagnoses[0]?.cause || primaryResponse?.cause,
+                actions_returned: actionsToReturn,
+                // CRITICAL: Include matched_responses for LLM to use
+                matched_responses: ruleResult.matched_responses,
                 warnings: ruleResult.warnings,
                 metadata: {
                   confidence: ruleResult.confidence_in_result,
@@ -1102,6 +1127,8 @@ export class AIAgentOrchestrator {
                   clarification_resolved: true,
                   selected_option: matchResult.matched_option,
                   mapped_observation: mappedObservationKey,
+                  prescription_allowed: ruleResult.prescription_allowed,
+                  prescription_gate_reason: ruleResult.prescription_gate_reason,
                   // FIX: Include locked crop context in metadata
                   lockedCropContext: finalLockedCropContext
                 }

@@ -100,6 +100,8 @@ export interface LayeredRuleResult {
   prescriptions: RuleAssertions[];
   warnings: RuleAssertions[];
   confidence_in_result: number;
+  // CRITICAL: Include matched responses for LLM formatting even when prescriptions are blocked
+  matched_responses: { rule_id: string; cause: string; response_mr?: string; response_hi?: string; response_en?: string }[];
 }
 
 // ==================== STUB: Empty rule arrays ====================
@@ -146,7 +148,8 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
     safety_blocks: [],
     prescriptions: [],
     warnings: [],
-    confidence_in_result: 0.5
+    confidence_in_result: 0.5,
+    matched_responses: [] // CRITICAL: Collect responses from all matched rules
   };
   
   const diagnosisCandidates: Diagnosis[] = [];
@@ -179,6 +182,17 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
           severity: state.severity,
           requires_immediate_action: state.severity === SeverityLevel.CRITICAL
         });
+        
+        // CRITICAL: Collect response text from matched diagnosis rules for LLM formatting
+        if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
+          result.matched_responses.push({
+            rule_id: rule.id,
+            cause: rule.then.possible_cause,
+            response_mr: rule.then.action_details?.response_mr,
+            response_hi: rule.then.action_details?.response_hi,
+            response_en: rule.then.action_details?.response_en
+          });
+        }
       }
     }
   }
@@ -223,6 +237,35 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
         result.rules_matched++;
         result.rules_applied.push(rule.id);
         result.prescriptions.push(rule.then);
+        
+        // CRITICAL: Also collect responses from prescription rules
+        if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
+          result.matched_responses.push({
+            rule_id: rule.id,
+            cause: rule.then.possible_cause || rule.then.action_type || 'TREATMENT',
+            response_mr: rule.then.action_details?.response_mr,
+            response_hi: rule.then.action_details?.response_hi,
+            response_en: rule.then.action_details?.response_en
+          });
+        }
+      }
+    }
+  } else {
+    // CRITICAL: Even when prescriptions are blocked, evaluate prescription rules to collect responses
+    // This ensures we can use IPM treatment responses for observation-only mode
+    for (const rule of rulesByCategory.get(RuleCategory.PRESCRIPTION) || []) {
+      result.rules_evaluated++;
+      if (matchesConditions(rule, state)) {
+        // Don't add to prescriptions (blocked), but collect responses for display
+        if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
+          result.matched_responses.push({
+            rule_id: rule.id,
+            cause: rule.then.possible_cause || rule.then.action_type || 'MONITORING_ADVICE',
+            response_mr: rule.then.action_details?.response_mr,
+            response_hi: rule.then.action_details?.response_hi,
+            response_en: rule.then.action_details?.response_en
+          });
+        }
       }
     }
   }
@@ -319,8 +362,17 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
         response_mr: bundled.response_mr,
         response_hi: bundled.response_hi,
         response_en: bundled.response_en,
-        alternatives: bundled.alternatives
-      }
+        alternatives: bundled.alternatives,
+        // CRITICAL: Include product info for prescription rules
+        active_ingredient: bundled.active_ingredient,
+        phi_days: bundled.phi_days,
+        bee_toxicity: bundled.bee_toxicity,
+        ipm_level: bundled.ipm_level,
+        etl_threshold: bundled.etl_threshold,
+        organic_alternative: bundled.organic_alternative
+      },
+      // CRITICAL: Include rule_id for traceability
+      product_reference: bundled.rule_id
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
     active: true
@@ -329,25 +381,48 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
 
 function mapBundledCategory(category: string): RuleCategory {
   const map: Record<string, RuleCategory> = {
+    // OBSERVATION rules - gather facts
     'observation': RuleCategory.OBSERVATION,
-    'diagnosis': RuleCategory.DIAGNOSIS,
-    'exclusion': RuleCategory.EXCLUSION,
-    'safety': RuleCategory.SAFETY,
-    'prescription': RuleCategory.PRESCRIPTION,
-    'warning': RuleCategory.WARNING,
     'crop_identity': RuleCategory.OBSERVATION,
     'growth_stage': RuleCategory.OBSERVATION,
+    'soil': RuleCategory.OBSERVATION,
+    'cropping_system': RuleCategory.OBSERVATION,
+    'monitoring': RuleCategory.OBSERVATION,
+    'stage_problems': RuleCategory.OBSERVATION,
+    
+    // DIAGNOSIS rules - identify causes
+    'diagnosis': RuleCategory.DIAGNOSIS,
     'pest': RuleCategory.DIAGNOSIS,
     'disease': RuleCategory.DIAGNOSIS,
     'nutrient': RuleCategory.DIAGNOSIS,
+    'nutrition': RuleCategory.DIAGNOSIS,
     'weed': RuleCategory.DIAGNOSIS,
-    'soil': RuleCategory.OBSERVATION,
-    'weather': RuleCategory.WARNING,
+    'stress': RuleCategory.DIAGNOSIS,
+    
+    // EXCLUSION rules - rule out causes
+    'exclusion': RuleCategory.EXCLUSION,
+    
+    // SAFETY rules - block dangerous actions
+    'safety': RuleCategory.SAFETY,
     'weather_safety': RuleCategory.SAFETY,
+    'risk_safety': RuleCategory.SAFETY,
+    
+    // PRESCRIPTION rules - provide treatments
+    'prescription': RuleCategory.PRESCRIPTION,
     'irrigation': RuleCategory.PRESCRIPTION,
     'fertilizer': RuleCategory.PRESCRIPTION,
-    'cropping_system': RuleCategory.OBSERVATION,
-    'risk_safety': RuleCategory.SAFETY
+    'ipm_treatment': RuleCategory.PRESCRIPTION, // CRITICAL: IPM treatments are prescriptions!
+    'treatment': RuleCategory.PRESCRIPTION,
+    'stage_advisory': RuleCategory.PRESCRIPTION,
+    'economics': RuleCategory.PRESCRIPTION,
+    'harvest': RuleCategory.PRESCRIPTION,
+    
+    // WARNING rules - inform about risks
+    'warning': RuleCategory.WARNING,
+    'weather': RuleCategory.WARNING,
+    
+    // CLARIFICATION - special handling
+    'clarification': RuleCategory.OBSERVATION
   };
   return map[category?.toLowerCase()] || RuleCategory.DIAGNOSIS;
 }
