@@ -854,8 +854,8 @@
           }
         }
         
-        // ============= WAIT FOR TENANT DATA =============
-        // Only remove loader when tenant is ready (prevents blank screen)
+        // ============= PRODUCTION-READY LOADER =============
+        // Fast startup with race conditions and graceful fallbacks
         
         let loaderRemoved = false;
         
@@ -863,17 +863,17 @@
           if (loaderRemoved) return;
           loaderRemoved = true;
           
-          console.log('✅ [Loader] Tenant ready! Removing loader with crossfade...');
+          console.log('✅ [Loader] Removing loader with crossfade...');
           const loader = document.getElementById('initial-loader');
           if (loader) {
             // Smooth crossfade transition
             loader.style.opacity = '0';
             loader.style.filter = 'blur(10px)';
-            loader.style.transition = 'opacity 0.5s ease-out, filter 0.5s ease-out';
+            loader.style.transition = 'opacity 0.4s ease-out, filter 0.4s ease-out';
             setTimeout(() => {
               loader.remove();
               console.log('🎉 [Loader] Loader removed successfully!');
-            }, 500);
+            }, 400);
           }
         }
         
@@ -887,6 +887,20 @@
           return false;
         }
         
+        // FAST STARTUP: Check if we have cached tenant data for immediate show
+        const hasCachedTenant = localStorage.getItem('tenant_config_cache');
+        const hasOfflineData = localStorage.getItem('tenantId');
+        
+        // Determine startup strategy based on cache availability
+        const fastStartup = hasCachedTenant || hasOfflineData;
+        const startupTimeout = fastStartup ? 3000 : 5000; // 3s if cached, 5s if fresh
+        
+        console.log('🚀 [Loader] Startup mode:', {
+          hasCachedTenant: !!hasCachedTenant,
+          hasOfflineData: !!hasOfflineData,
+          timeout: startupTimeout + 'ms'
+        });
+        
         // Check immediately
         if (!checkTenantReady()) {
           // Poll every 100ms for tenant ready signal
@@ -896,14 +910,15 @@
             }
           }, 100);
           
-          // Fallback timeout (if something goes wrong, remove after 10 seconds)
+          // PRODUCTION FIX: Smart timeout based on cache state
+          // Never block for more than 5 seconds - show app even if tenant not fully loaded
           setTimeout(() => {
             if (!loaderRemoved) {
-              console.warn('⚠️ [Loader] Timeout reached, forcing loader removal');
+              console.warn('⚠️ [Loader] Timeout reached after ' + startupTimeout + 'ms, forcing loader removal');
               clearInterval(checkInterval);
               removeLoader();
             }
-          }, 10000);
+          }, startupTimeout);
         }
       })();
     </script>
