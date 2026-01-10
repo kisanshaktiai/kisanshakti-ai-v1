@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRealtimeData } from './useRealtimeData';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -11,15 +11,17 @@ import { useAuthStore } from '@/stores/authStore';
  */
 export function useGlobalRealtimeSync() {
   const { user } = useAuthStore();
-  const hasInitialized = useRef(false);
+  // CRITICAL FIX: Use useState instead of useRef so that the component re-renders
+  // when the delay completes. useRef changes don't trigger re-renders.
+  const [isReady, setIsReady] = useState(false);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // PERFORMANCE FIX: Delay real-time subscription by 5 seconds
   // Real-time sync is nice-to-have, not critical for initial load
   useEffect(() => {
-    if (user?.id && !hasInitialized.current) {
+    if (user?.id && !isReady) {
       timeoutRef.current = setTimeout(() => {
-        hasInitialized.current = true;
+        setIsReady(true);
         console.log('🔄 [Global Realtime] Sync initialized for user:', user.id);
       }, 5000);
     }
@@ -29,11 +31,11 @@ export function useGlobalRealtimeSync() {
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [user?.id]);
+  }, [user?.id, isReady]);
 
   // Only enable real-time data after initialization delay
   useRealtimeData({
     tables: ['lands', 'crop_schedules', 'schedule_tasks'],
-    enabled: !!user?.id && hasInitialized.current,
+    enabled: !!user?.id && isReady,
   });
 }

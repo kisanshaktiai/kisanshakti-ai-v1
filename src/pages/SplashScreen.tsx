@@ -131,11 +131,9 @@ export default function SplashScreen() {
     }
   };
 
-  // Show nothing while tenant is loading (only if online)
-  // In offline mode, proceed with cached/fallback data
-  if (navigator.onLine && (isLoading && !tenant)) {
-    return null;
-  }
+  // CRITICAL FIX: Never return null - always show some UI
+  // Previously this returned null which caused a white screen if tenant loading failed
+  // Now we proceed with fallback values and show the splash screen regardless
 
   // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
   const logoUrl = branding?.logo_url;
