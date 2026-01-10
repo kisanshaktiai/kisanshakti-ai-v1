@@ -32,12 +32,24 @@ export default function PinAuth() {
   const tenantId = localStorage.getItem('tenantId');
   const maskedMobile = mobile ? `${mobile.slice(0, 2)}****${mobile.slice(-2)}` : '';
   
-  // Ensure we have all required data
+  // Ensure we have all required data (but allow if cached auth exists for offline)
   useEffect(() => {
-    if (!mobile || !farmerId || !tenantId) {
-      navigate('/auth');
-    }
-  }, [mobile, farmerId, tenantId, navigate]);
+    const checkRequiredData = async () => {
+      if (!mobile || !farmerId) {
+        // Check if we have cached auth for offline
+        const cachedAuth = await offlineAuthService.getCachedAuthData();
+        if (cachedAuth) {
+          // Restore data from cache
+          localStorage.setItem('authMobile', cachedAuth.mobile);
+          localStorage.setItem('farmerId', cachedAuth.farmerId);
+          localStorage.setItem('tenantId', cachedAuth.tenantId);
+        } else {
+          navigate('/auth');
+        }
+      }
+    };
+    checkRequiredData();
+  }, [mobile, farmerId, navigate]);
 
   const handlePinComplete = async (value: string) => {
     if (value.length !== 4) return;
@@ -159,23 +171,27 @@ export default function PinAuth() {
       await waitForHeaders();
       console.log('✅ [PinAuth] Headers ready');
       
-      // VERIFY headers are working before navigating
-      console.log('🔍 [PinAuth] Testing data access...');
-      try {
-        const testQuery = await supabaseWithAuth(farmer.id, farmer.tenant_id)
-          .from('lands')
-          .select('count')
-          .limit(1);
+      // VERIFY headers are working before navigating (SKIP if offline)
+      if (!authResult.isOffline && isOnline) {
+        console.log('🔍 [PinAuth] Testing data access...');
+        try {
+          const testQuery = await supabaseWithAuth(farmer.id, farmer.tenant_id)
+            .from('lands')
+            .select('count')
+            .limit(1);
 
-        if (testQuery.error) {
-          console.error('❌ [PinAuth] Data access test failed:', testQuery.error);
-          throw new Error('Authentication succeeded but data access failed. Please contact support.');
+          if (testQuery.error) {
+            console.error('❌ [PinAuth] Data access test failed:', testQuery.error);
+            // Don't throw - allow offline access with warning
+            console.warn('⚠️ [PinAuth] Continuing despite data access test failure');
+          } else {
+            console.log('✅ [PinAuth] Data access verified');
+          }
+        } catch (testError) {
+          console.warn('⚠️ [PinAuth] Data access verification failed, continuing anyway:', testError);
         }
-
-        console.log('✅ [PinAuth] Data access verified');
-      } catch (testError) {
-        console.error('❌ [PinAuth] Data access verification failed:', testError);
-        throw new Error('Cannot verify data access. Please try again.');
+      } else {
+        console.log('📴 [PinAuth] Skipping data access test - offline mode');
       }
 
       // Clear temp storage but keep session data

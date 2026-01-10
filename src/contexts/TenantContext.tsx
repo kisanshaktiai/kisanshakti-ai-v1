@@ -116,6 +116,51 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return window.location.hostname;
   }, []);
 
+  // Helper function to load tenant config from offline cache
+  const loadOfflineConfig = useCallback(async (domain: string): Promise<TenantConfig | null> => {
+    try {
+      // Try localStorage cache first (faster)
+      const cachedTenant = localStorage.getItem('tenant_config_cache');
+      if (cachedTenant) {
+        const parsed = JSON.parse(cachedTenant);
+        // In offline mode, accept cache up to 24 hours old
+        if (Date.now() - parsed.timestamp < 86400000) {
+          console.log('📦 [TenantProvider] Found offline config in localStorage');
+          return parsed.data;
+        }
+      }
+
+      // Try IndexedDB cache
+      const storedTenantId = localStorage.getItem('tenantId');
+      if (storedTenantId) {
+        const cachedConfig = await localDB.getTenantConfig(storedTenantId);
+        if (cachedConfig?.tenant_data) {
+          console.log('📦 [TenantProvider] Found offline config in IndexedDB');
+          return {
+            id: cachedConfig.tenant_data.id,
+            name: cachedConfig.tenant_data.name,
+            domain: cachedConfig.tenant_data.domain || domain,
+            branding: (cachedConfig.white_label_config?.brand_identity as BrandingConfig) || {
+              company_name: cachedConfig.tenant_data.name,
+            },
+            theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
+            pwa: cachedConfig.white_label_config?.pwa_config as PWAConfig,
+            features: [],
+            settings: {
+              languages: ['en', 'hi'],
+              defaultLanguage: 'hi',
+            },
+          };
+        }
+      }
+
+      return null;
+    } catch (e) {
+      console.error('❌ [TenantProvider] Failed to load offline config:', e);
+      return null;
+    }
+  }, []);
+
   const applyThemeToDOM = useCallback((branding: BrandingConfig, theme?: ThemeConfig) => {
     const root = document.documentElement;
 
@@ -240,6 +285,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       const domain = getCurrentDomain();
       const env = getEnvironment();
+      const isOnline = navigator.onLine;
       
       // Log environment info for debugging
       logEnvironmentInfo();
@@ -248,43 +294,67 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.log('🌐 [TenantProvider] Current domain:', domain);
       console.log('🌐 [TenantProvider] Current URL:', window.location.href);
       console.log('🔧 [TenantProvider] Environment:', env.isDevelopment ? 'DEVELOPMENT' : 'PRODUCTION');
+      console.log('📡 [TenantProvider] Network status:', isOnline ? 'ONLINE' : 'OFFLINE');
 
-      // Check for new deploy using build hash
-      const BUILD_HASH = import.meta.env.VITE_BUILD_HASH || Date.now().toString();
-      const storedHash = localStorage.getItem('build_hash');
-      
-      // Clear cache if build hash changed (new deploy detected)
-      if (storedHash && storedHash !== BUILD_HASH) {
-        console.log('🔄 [TenantProvider] New deploy detected, clearing caches...', {
-          oldHash: storedHash.substring(0, 10),
-          newHash: BUILD_HASH.substring(0, 10)
-        });
-        localStorage.removeItem('tenant_config_cache');
-        localStorage.removeItem('white_label_config');
-        localStorage.removeItem('tenant_primary_color');
-        localStorage.setItem('build_hash', BUILD_HASH);
-        
-        // Signal service worker to clear caches
-        if (navigator.serviceWorker?.controller) {
-          navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHES' });
-          console.log('📡 [TenantProvider] Sent cache clear signal to service worker');
+      // OFFLINE-FIRST: If offline, immediately try cache without network request
+      if (!isOnline) {
+        console.log('📴 [TenantProvider] Device is OFFLINE - using cached config');
+        const offlineConfig = await loadOfflineConfig(domain);
+        if (offlineConfig) {
+          setTenant(offlineConfig);
+          tenantIsolationService.setTenantContext(offlineConfig.id, domain);
+          applyThemeToDOM(offlineConfig.branding, offlineConfig.theme);
+          setLastUpdated(new Date());
+          window.__TENANT_LOADED__ = true;
+          window.__TENANT_BRANDING__ = offlineConfig.branding;
+          console.log('✅ [TenantProvider] Loaded tenant from offline cache:', offlineConfig.name);
+          return;
         }
-      } else if (!storedHash) {
-        // First load - store build hash
-        localStorage.setItem('build_hash', BUILD_HASH);
-        console.log('🔖 [TenantProvider] Baseline build hash stored:', BUILD_HASH.substring(0, 10));
+        console.warn('⚠️ [TenantProvider] No offline cache found, will show fallback');
+      }
+
+      // Check for new deploy using build hash (only when online)
+      if (isOnline) {
+        const BUILD_HASH = import.meta.env.VITE_BUILD_HASH || Date.now().toString();
+        const storedHash = localStorage.getItem('build_hash');
+        
+        // Clear cache if build hash changed (new deploy detected)
+        if (storedHash && storedHash !== BUILD_HASH) {
+          console.log('🔄 [TenantProvider] New deploy detected, clearing caches...', {
+            oldHash: storedHash.substring(0, 10),
+            newHash: BUILD_HASH.substring(0, 10)
+          });
+          localStorage.removeItem('tenant_config_cache');
+          localStorage.removeItem('white_label_config');
+          localStorage.removeItem('tenant_primary_color');
+          localStorage.setItem('build_hash', BUILD_HASH);
+          
+          // Signal service worker to clear caches
+          if (navigator.serviceWorker?.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_CACHES' });
+            console.log('📡 [TenantProvider] Sent cache clear signal to service worker');
+          }
+        } else if (!storedHash) {
+          // First load - store build hash
+          localStorage.setItem('build_hash', BUILD_HASH);
+          console.log('🔖 [TenantProvider] Baseline build hash stored:', BUILD_HASH.substring(0, 10));
+        }
       }
       
       const cachedTenant = localStorage.getItem('tenant_config_cache');
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          if (Date.now() - parsed.timestamp < 300000) { // 5 minutes cache (faster updates)
+          // If online, use 5 min cache; if offline, use 24 hour cache
+          const cacheValidity = isOnline ? 300000 : 86400000;
+          if (Date.now() - parsed.timestamp < cacheValidity) {
             console.log('📦 [TenantProvider] Using cached tenant config');
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
             setLastUpdated(new Date(parsed.timestamp));
+            window.__TENANT_LOADED__ = true;
+            window.__TENANT_BRANDING__ = parsed.data.branding;
             setIsLoading(false);
             return;
           } else {

@@ -37,7 +37,8 @@ export default function MobileAuth() {
       return;
     }
 
-    if (!isReady) {
+    // Allow offline mode even if tenant is still loading
+    if (!isReady && isOnline) {
       setError('Application is still loading. Please wait...');
       return;
     }
@@ -50,21 +51,39 @@ export default function MobileAuth() {
       
       let farmer = null;
       
-      // If offline, check local database first
-      if (!isOnline) {
-        console.log('Offline mode: Checking local database');
-        const cachedAuth = await offlineAuthService.getCachedAuthData();
+      // OFFLINE-FIRST: Always check local database first
+      console.log('🔍 [MobileAuth] Checking local database first (offline-first approach)');
+      const cachedAuth = await offlineAuthService.getCachedAuthData();
+      
+      if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
+        farmer = cachedAuth.farmerData;
+        console.log('✅ [MobileAuth] Found farmer in local cache:', farmer.id);
         
-        if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
-          farmer = cachedAuth.farmerData;
-          console.log('Found farmer in local cache:', farmer.id);
+        // Store needed data for PIN entry
+        localStorage.setItem('authMobile', mobile);
+        localStorage.setItem('farmerId', farmer.id);
+        localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+        navigate('/pin-auth');
+        return;
+      }
+      
+      // If offline and no cached data for this user
+      if (!isOnline) {
+        console.log('📴 [MobileAuth] Offline mode with no cached auth for this number');
+        
+        // Check if ANY cached auth exists (different user)
+        if (cachedAuth) {
+          setError('This mobile number is not available offline. Please use the registered number or connect to internet.');
         } else {
-          setError('Cannot register new users while offline. Please connect to the internet.');
-          setIsLoading(false);
-          return;
+          setError('Cannot register new users while offline. Please connect to the internet first.');
         }
-      } else {
-        // Online mode: Check Supabase
+        setIsLoading(false);
+        return;
+      }
+      
+      // ONLINE: Check Supabase
+      console.log('🌐 [MobileAuth] Online mode - checking Supabase');
+      try {
         let query = supabase
           .from('farmers')
           .select('id, mobile_number, pin, pin_hash, tenant_id')
@@ -83,6 +102,20 @@ export default function MobileAuth() {
         }
         
         farmer = farmerData;
+      } catch (networkError: any) {
+        // Network error during online check - treat as offline
+        console.log('⚠️ [MobileAuth] Network error during Supabase query, treating as offline:', networkError.message);
+        if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
+          farmer = cachedAuth.farmerData;
+          localStorage.setItem('authMobile', mobile);
+          localStorage.setItem('farmerId', farmer.id);
+          localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+          navigate('/pin-auth');
+          return;
+        }
+        setError('Network error. Please check your connection and try again.');
+        setIsLoading(false);
+        return;
       }
 
       if (farmer) {
@@ -90,6 +123,7 @@ export default function MobileAuth() {
         // Farmer exists, navigate to PIN entry
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', farmer.id);
+        localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
         navigate('/pin-auth');
       } else {
         console.log('Creating new farmer with tenant_id:', tenant?.id);
@@ -142,6 +176,7 @@ export default function MobileAuth() {
 
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', newFarmer.id);
+        localStorage.setItem('tenantId', newFarmer.tenant_id || tenant?.id || '');
         navigate('/set-pin');
       }
     } catch (err: any) {
