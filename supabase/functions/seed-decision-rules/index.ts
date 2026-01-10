@@ -118,7 +118,22 @@ Deno.serve(async (req) => {
       }
     }
 
-    console.log(`📦 Total rules to seed: ${allRules.length}`);
+    // De-duplicate by rule_id (keep last occurrence)
+    const ruleMap = new Map<string, RuleFromJSON>();
+    for (const rule of allRules) {
+      ruleMap.set(rule.rule_id, rule);
+    }
+    const uniqueRules = Array.from(ruleMap.values());
+    console.log(`📦 Total rules: ${allRules.length} | Unique: ${uniqueRules.length}`);
+
+    // Normalize bee_toxicity to match DB constraint (HIGH, MODERATE, LOW, SAFE)
+    const normalizeBee = (val?: string): string | null => {
+      if (!val) return null;
+      const upper = val.toUpperCase();
+      if (['HIGH', 'MODERATE', 'LOW', 'SAFE'].includes(upper)) return upper;
+      if (upper === 'NONE') return 'SAFE';
+      return null;
+    };
 
     // Format rules for database
     const formatRule = (rule: RuleFromJSON) => ({
@@ -146,7 +161,7 @@ Deno.serve(async (req) => {
       active_ingredient: rule.active_ingredient || null,
       organic_alternative: rule.organic_alternative || null,
       ipm_level: rule.ipm_level || null,
-      bee_toxicity: rule.bee_toxicity || null,
+      bee_toxicity: normalizeBee(rule.bee_toxicity),
       icar_package_ref: rule.icar_package_ref || null
     });
 
@@ -155,8 +170,8 @@ Deno.serve(async (req) => {
     let totalInserted = 0;
     let totalErrors = 0;
 
-    for (let i = 0; i < allRules.length; i += batchSize) {
-      const batch = allRules.slice(i, i + batchSize);
+    for (let i = 0; i < uniqueRules.length; i += batchSize) {
+      const batch = uniqueRules.slice(i, i + batchSize);
       const formattedRules = batch.map(formatRule);
 
       const { data, error } = await supabase
@@ -174,14 +189,14 @@ Deno.serve(async (req) => {
     }
 
     console.log(`\n🎉 Seeding complete!`);
-    console.log(`   Total: ${allRules.length} | Inserted: ${totalInserted} | Errors: ${totalErrors}`);
+    console.log(`   Total: ${uniqueRules.length} | Inserted: ${totalInserted} | Errors: ${totalErrors}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         message: 'JSON-based rules seeded successfully',
         stats: {
-          total_rules: allRules.length,
+          total_rules: uniqueRules.length,
           inserted: totalInserted,
           errors: totalErrors,
           version: RULES_VERSION,
