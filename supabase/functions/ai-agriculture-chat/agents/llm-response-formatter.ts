@@ -46,6 +46,18 @@ import {
   ResponseMode
 } from '../decision/authority-types.ts';
 
+// WORLD-CLASS: Import delivery validator for recommendation integrity
+import {
+  validateDelivery,
+  generateMustIncludeConstraint,
+  extractRecommendations
+} from './delivery-validator.ts';
+
+// WORLD-CLASS: Import follow-up generator for actionable timelines
+import {
+  generateCompleteFollowUp
+} from './follow-up-generator.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
