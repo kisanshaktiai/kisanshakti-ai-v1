@@ -2210,11 +2210,17 @@ export class AIAgentOrchestrator {
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // PHASE-13: INFINITY LOOP PREVENTION - Keyword fallback when no rules match
-        // If enum-based rules fail, try keyword-based matching on bundled rules
+        // PHASE-14: IMPROVED KEYWORD FALLBACK - Runs when no enum rules match
+        // FIX: Also runs when visual_symptom is NONE but query has strong agri keywords
+        // This prevents infinite clarification loops for germination/stand failure queries
         // ═══════════════════════════════════════════════════════════════════════════
-        if (layeredRuleResult.rules_matched === 0 && canonicalState.visual_symptom !== 'NONE') {
+        const { hasStrongAgriKeywords } = await import('./layered-rule-evaluator.ts');
+        const shouldTryKeywordFallback = layeredRuleResult.rules_matched === 0 && 
+          (canonicalState.visual_symptom !== 'NONE' || hasStrongAgriKeywords(farmerMessage));
+        
+        if (shouldTryKeywordFallback) {
           console.log('   🔄 No enum rules matched, trying keyword-based bundled rules...');
+          console.log(`      (visual_symptom=${canonicalState.visual_symptom}, has_strong_keywords=${hasStrongAgriKeywords(farmerMessage)})`);
           
           const keywordMatches = await evaluateBundledKeywordRules(farmerMessage, canonicalState);
           
@@ -2244,7 +2250,7 @@ export class AIAgentOrchestrator {
           } else {
             console.warn(`
 ⚠️ ════════════════════════════════════════════════════════════════════════════
-   [PHASE-13] ZERO RULE MATCH - KEYWORD FALLBACK ALSO FAILED
+   [PHASE-14] ZERO RULE MATCH - KEYWORD FALLBACK ALSO FAILED
    ════════════════════════════════════════════════════════════════════════════
    Trace ID: ${traceId}
    Crop: ${canonicalState.crop_type}
@@ -3952,19 +3958,21 @@ export class AIAgentOrchestrator {
     error: any
   ): Promise<void> {
     try {
-      await this.supabase.from('system_errors').insert({
-        error_type: 'DECISION_SAVE_FAILED',
-        trace_id: traceId,
-        session_id: sessionId,
-        farmer_id: farmerId,
-        error_message: error?.message || String(error),
-        stack_trace: error?.stack,
-        error_code: error?.code,
-        created_at: new Date().toISOString()
-      });
-      console.log(`   📝 [${traceId}] Error logged to system_errors table`);
+      // PHASE-14: Log to ai_chat_messages.error_details instead of nonexistent system_errors table
+      // This stores error info as metadata on assistant messages for debugging
+      await this.supabase.from('ai_chat_messages').update({
+        error_details: {
+          error_type: 'DECISION_SAVE_FAILED',
+          trace_id: traceId,
+          error_message: error?.message || String(error),
+          error_code: error?.code,
+          timestamp: new Date().toISOString()
+        }
+      }).eq('session_id', sessionId).eq('role', 'assistant').order('created_at', { ascending: false }).limit(1);
+      
+      console.log(`   📝 [${traceId}] Error logged to ai_chat_messages.error_details`);
     } catch (logError) {
-      // Last resort: just log to console
+      // Last resort: just log to console (non-blocking)
       console.error(`   🚨 [${traceId}] CRITICAL: Could not log error to DB:`, logError);
     }
   }
@@ -4321,15 +4329,19 @@ export class AIAgentOrchestrator {
     console.error('❌ Orchestration error:', error.message);
     console.error('   Stack:', error.stack?.substring(0, 500));
     
-    // Log error (non-blocking)
-    this.supabase.from('system_errors').insert({
-      session_id: sessionId,
-      error_type: error.name,
-      error_message: error.message,
-      farmer_input: farmerMessage,
-      stack_trace: error.stack,
-      created_at: new Date().toISOString()
-    }).then(() => {}).catch(() => {});
+    // PHASE-14: Log error to ai_chat_messages instead of nonexistent system_errors table
+    // This ensures errors are visible in audit trail (non-blocking fire-and-forget)
+    this.supabase.from('ai_chat_messages').update({
+      error_details: {
+        error_type: error.name,
+        error_message: error.message,
+        farmer_input_snippet: farmerMessage.substring(0, 200),
+        stack_snippet: error.stack?.substring(0, 500),
+        timestamp: new Date().toISOString()
+      }
+    }).eq('session_id', sessionId).eq('role', 'assistant').order('created_at', { ascending: false }).limit(1)
+      .then(() => console.log(`   📝 Error logged to ai_chat_messages.error_details`))
+      .catch(() => {});
     
     // ═══════════════════════════════════════════════════════════════════════════
     // PRODUCTION FIX: Generate context-aware helpful response even on error

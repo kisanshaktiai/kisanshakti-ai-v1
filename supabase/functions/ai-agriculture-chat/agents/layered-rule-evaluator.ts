@@ -354,6 +354,19 @@ function mapBundledCategory(category: string): RuleCategory {
 
 // ==================== KEYWORD FALLBACK ====================
 
+// PHASE-14: Strong agricultural keywords that trigger keyword fallback even when visual_symptom is NONE
+const STRONG_AGRI_KEYWORDS = [
+  // Marathi
+  'मेला', 'मेले', 'वाळले', 'सुकले', 'उगवले', 'उगवत', 'गॅप', 'किड', 'रोग', 'कीटक',
+  'अळी', 'पिवळे', 'तांबेरा', 'बुरशी', 'उधई', 'वाळवी', 'खोड', 'पाने', 'मूळ',
+  // Hindi  
+  'मर गया', 'मर गए', 'सूख गया', 'उगा नहीं', 'गैप', 'कीड़ा', 'रोग', 'इल्ली',
+  'पीले', 'रतुआ', 'फफूंद', 'दीमक', 'तना', 'पत्ते', 'जड़',
+  // English
+  'died', 'dead', 'dying', 'wilted', 'germination', 'gap', 'pest', 'disease',
+  'borer', 'yellow', 'rust', 'fungus', 'termite', 'stem', 'leaf', 'root'
+];
+
 export async function evaluateBundledKeywordRules(
   userQuery: string,
   state: CanonicalState
@@ -361,6 +374,7 @@ export async function evaluateBundledKeywordRules(
   const allBundled = await loadAllRules();
   const queryLower = userQuery.toLowerCase();
   const stateCropLower = state.crop_type?.toLowerCase() || '';
+  const stateStageLower = state.crop_stage?.toLowerCase() || '';
   const matches: any[] = [];
   
   for (const rule of allBundled) {
@@ -368,11 +382,17 @@ export async function evaluateBundledKeywordRules(
       const ruleCropLower = rule.crop_code?.toLowerCase() || '';
       const cropMatch = ruleCropLower === 'all' || ruleCropLower === '*' || 
                        ruleCropLower === 'universal' || ruleCropLower === stateCropLower;
+      
+      // PHASE-14: Also check stage match for higher relevance
+      const ruleStages = rule.stage_applicable?.map((s: string) => s.toLowerCase()) || [];
+      const stageMatch = ruleStages.length === 0 || ruleStages.includes(stateStageLower);
+      
       if (cropMatch) {
         matches.push({
           ruleId: rule.rule_id,
           cause: rule.cause,
-          confidence: rule.cause_confidence || 0.7,
+          // PHASE-14: Boost confidence if stage also matches
+          confidence: (rule.cause_confidence || 0.7) + (stageMatch ? 0.1 : 0),
           response: { mr: rule.response_mr, hi: rule.response_hi, en: rule.response_en }
         });
       }
@@ -380,6 +400,12 @@ export async function evaluateBundledKeywordRules(
   }
   
   return matches.sort((a, b) => b.confidence - a.confidence).slice(0, 5);
+}
+
+// PHASE-14: Helper to check if query contains strong agricultural keywords
+export function hasStrongAgriKeywords(userQuery: string): boolean {
+  const queryLower = userQuery.toLowerCase();
+  return STRONG_AGRI_KEYWORDS.some(kw => queryLower.includes(kw.toLowerCase()));
 }
 
 export async function evaluateBundledRulesForCrop(cropCode: string, input: any): Promise<any[]> {

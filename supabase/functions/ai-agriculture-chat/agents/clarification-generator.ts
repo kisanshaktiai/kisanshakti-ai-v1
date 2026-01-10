@@ -163,7 +163,8 @@ export function generateScopedClarification(
     scope: clarificationPlan.scope,
     target_observation_keys: clarificationPlan.target_keys,
     language_code: language,
-    max_options: 4,
+    // PHASE-14: Enforce max 3 options per Farmer Interaction Engine rules
+    max_options: 3,
     turn_count: turnCount,
     constraints: {
       no_diagnosis: true,
