@@ -2085,10 +2085,19 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       return response.llm_response || 
              (response.escalation?.message_mr || '') ||
              (response.escalation?.message_en || '');
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Handle SYSTEM_ERROR properly - provide helpful advice
+    // ═══════════════════════════════════════════════════════════════════════════
+    case 'SYSTEM_ERROR':
+      console.log(`   ⚠️ SYSTEM_ERROR response - generating helpful fallback`);
+      const fallbackAdvice = response.error?.fallback_advice || '';
+      return generateHelpfulErrorResponse(lang, fallbackAdvice);
+      
     default:
-      // NEVER silent - even for unknown types
-      console.log(`   ⚠️ Unknown response type: ${response.type}`);
-      return generateGenericAcknowledgment(lang);
+      // NEVER silent - even for unknown types, provide helpful response
+      console.log(`   ⚠️ Unknown response type: ${response.type} - generating helpful fallback`);
+      return generateHelpfulErrorResponse(lang, '');
   }
 }
 
@@ -2308,13 +2317,67 @@ function generateClarificationPrompt(response: OrchestratorResponse, lang: 'mr' 
 
 /**
  * Generic acknowledgment for unknown response types
+ * @deprecated Use generateHelpfulErrorResponse instead
  */
 function generateGenericAcknowledgment(lang: 'mr' | 'hi' | 'en'): string {
+  return generateHelpfulErrorResponse(lang, '');
+}
+
+/**
+ * PRODUCTION FIX: Generate helpful error response with actionable guidance
+ * Instead of "we will respond shortly", provide immediate value
+ */
+function generateHelpfulErrorResponse(lang: 'mr' | 'hi' | 'en', fallbackAdvice: string): string {
   const messages: Record<string, string> = {
-    mr: 'तुमचा संदेश प्राप्त झाला. आम्ही तुम्हाला लवकरच उत्तर देऊ.',
-    hi: 'आपका संदेश प्राप्त हुआ। हम जल्द ही आपको जवाब देंगे।',
-    en: 'Your message has been received. We will respond shortly.'
+    mr: `🙏 नमस्कार शेतकरी मित्र!
+
+${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}तुमच्या प्रश्नाचे उत्तर देण्यासाठी मला थोडी माहिती द्या:
+
+📋 **कृपया सांगा:**
+1️⃣ तुमचे पीक कोणते आहे?
+2️⃣ पिकाचे वय किती दिवस?
+3️⃣ काय समस्या दिसत आहे?
+
+📸 शक्य असल्यास प्रभावित भागाचा फोटो पाठवा - अधिक अचूक सल्ला देता येईल!
+
+💡 **तात्पुरता सल्ला:**
+• पिकाचे नियमित निरीक्षण करा
+• पाणी व्यवस्थापन योग्य ठेवा
+• नवीन कीड/रोग दिसल्यास कळवा`,
+
+    hi: `🙏 नमस्कार किसान मित्र!
+
+${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}आपके प्रश्न का उत्तर देने के लिए थोड़ी जानकारी दें:
+
+📋 **कृपया बताएं:**
+1️⃣ आपकी फसल कौन सी है?
+2️⃣ फसल की उम्र कितने दिन?
+3️⃣ क्या समस्या दिख रही है?
+
+📸 यदि संभव हो तो प्रभावित भाग का फोटो भेजें - अधिक सटीक सलाह दे पाऊंगा!
+
+💡 **तात्कालिक सलाह:**
+• फसल का नियमित निरीक्षण करें
+• पानी प्रबंधन सही रखें
+• नई कीट/रोग दिखने पर बताएं`,
+
+    en: `🙏 Hello Farmer Friend!
+
+${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please provide:
+
+📋 **Tell me:**
+1️⃣ What is your crop?
+2️⃣ How old is the crop (days)?
+3️⃣ What problem are you seeing?
+
+📸 If possible, send a photo of the affected area - I can give more accurate advice!
+
+💡 **Quick tips:**
+• Monitor your crop regularly
+• Maintain proper water management
+• Report any new pest/disease signs`
   };
+  
   return messages[lang];
 }
 
