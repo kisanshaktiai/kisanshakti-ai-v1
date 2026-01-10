@@ -280,6 +280,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       custom: (state: CanonicalState & { user_query?: string; visual_symptoms?: string[] }) => {
         try {
           // Pass ALL CanonicalState properties to rule conditions
+          // CRITICAL: Normalize crop_code to lowercase for case-insensitive matching
           const input = {
             crop_code: state.crop_type?.toLowerCase() || '',
             crop_stage: state.crop_stage?.toLowerCase() || '',
@@ -359,12 +360,14 @@ export async function evaluateBundledKeywordRules(
 ): Promise<{ ruleId: string; cause: string; confidence: number; response: { mr?: string; hi?: string; en?: string } }[]> {
   const allBundled = await loadAllRules();
   const queryLower = userQuery.toLowerCase();
+  const stateCropLower = state.crop_type?.toLowerCase() || '';
   const matches: any[] = [];
   
   for (const rule of allBundled) {
     if (rule.trigger_keywords?.some(kw => queryLower.includes(kw.toLowerCase()))) {
-      const cropMatch = rule.crop_code === 'all' || rule.crop_code === '*' || 
-                       rule.crop_code.toLowerCase() === state.crop_type?.toLowerCase();
+      const ruleCropLower = rule.crop_code?.toLowerCase() || '';
+      const cropMatch = ruleCropLower === 'all' || ruleCropLower === '*' || 
+                       ruleCropLower === 'universal' || ruleCropLower === stateCropLower;
       if (cropMatch) {
         matches.push({
           ruleId: rule.rule_id,

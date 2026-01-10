@@ -160,7 +160,8 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
 }
 
 export function loadCropGroupRules(cropGroup: string): ExecutableRule[] {
-  return cachedRules?.filter(r => r.crop_code === cropGroup) || [];
+  const normalizedGroup = cropGroup?.toLowerCase() || '';
+  return cachedRules?.filter(r => r.crop_code?.toLowerCase() === normalizedGroup) || [];
 }
 
 export function loadSafetyRules(): ExecutableRule[] {
@@ -176,7 +177,11 @@ export function loadIntelligenceRules(): ExecutableRule[] {
 }
 
 export function loadRulesForCrop(cropCode: string): ExecutableRule[] {
-  return cachedRules?.filter(r => r.crop_code === cropCode || r.crop_code === 'all') || [];
+  const normalizedCrop = cropCode?.toLowerCase() || '';
+  return cachedRules?.filter(r => {
+    const ruleCrop = r.crop_code?.toLowerCase() || '';
+    return ruleCrop === normalizedCrop || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
+  }) || [];
 }
 
 export function loadRulesByCategory(category: string): ExecutableRule[] {
