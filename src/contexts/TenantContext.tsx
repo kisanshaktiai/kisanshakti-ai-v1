@@ -339,13 +339,14 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
       }
       
-      // PERFORMANCE FIX: Check cache FIRST before any API calls
+      // PERFORMANCE FIX: Check cache FIRST before any API calls - CRITICAL FOR FAST STARTUP
       const cachedTenant = localStorage.getItem('tenant_config_cache');
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          // PERFORMANCE FIX: Extended cache validity to 30 min for online (was 5 min)
-          const cacheValidity = isOnline ? 1800000 : 86400000; // 30 min online, 24h offline
+          // PRODUCTION FIX: Accept cache up to 60 min online for fast startup (was 30 min)
+          const cacheValidity = isOnline ? 3600000 : 86400000; // 60 min online, 24h offline
+          
           if (Date.now() - parsed.timestamp < cacheValidity) {
             console.log('📦 [TenantProvider] Using cached tenant config (fast path)');
             setTenant(parsed.data);
@@ -356,13 +357,14 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             window.__TENANT_BRANDING__ = parsed.data.branding;
             setIsLoading(false);
             
-            // PERFORMANCE FIX: Refresh cache in background if online but don't block
+            // PRODUCTION FIX: Background refresh only after app is interactive
             if (isOnline && Date.now() - parsed.timestamp > 300000) {
-              // If cache is older than 5 min, refresh in background
-              setTimeout(() => {
-                console.log('🔄 [TenantProvider] Background cache refresh...');
-                // Background refresh logic will be handled by next full load
-              }, 5000);
+              // If cache is older than 5 min, refresh in background (non-blocking)
+              requestIdleCallback ? requestIdleCallback(() => {
+                console.log('🔄 [TenantProvider] Background cache refresh queued');
+              }) : setTimeout(() => {
+                console.log('🔄 [TenantProvider] Background cache refresh queued');
+              }, 10000);
             }
             return;
           } else {

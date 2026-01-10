@@ -111,23 +111,39 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const initializeApp = async () => {
       try {
-        // PERFORMANCE FIX: Reduced waiting - use cached data faster
-        if (tenantLoading && !tenant) {
-          // Only wait briefly - tenant cache should load quickly
-          const cachedTenant = localStorage.getItem('tenant_config_cache');
-          if (!cachedTenant) {
-            console.log('⏳ [AppInit] Waiting for TenantProvider to load tenant...');
-            return;
+        // PRODUCTION FIX: Fast startup - proceed immediately with cached data
+        const cachedTenantRaw = localStorage.getItem('tenant_config_cache');
+        const hasCachedTenant = !!cachedTenantRaw;
+        
+        // If tenant is still loading but we have cache, use cached tenant for fast startup
+        if (tenantLoading && !tenant && hasCachedTenant) {
+          try {
+            const cached = JSON.parse(cachedTenantRaw!);
+            if (cached.data?.id) {
+              console.log('🚀 [AppInit] Using cached tenant for fast startup:', cached.data.name);
+              // Set tenant context immediately from cache
+              tenantIsolationService.setTenantContext(cached.data.id, window.location.hostname);
+              // Continue with init - TenantProvider will sync later
+            }
+          } catch (e) {
+            console.warn('⚠️ [AppInit] Cache parse failed, waiting for TenantProvider');
           }
-          // If we have cache, proceed - TenantProvider will catch up
         }
-
-        // If still no tenant after cache check, wait for TenantProvider
-        if (!tenant) {
-          console.log('⏳ [AppInit] No tenant yet, waiting...');
+        
+        // Only block if no tenant AND no cache (first-time user)
+        if (!tenant && !hasCachedTenant) {
+          console.log('⏳ [AppInit] First-time user, waiting for tenant...');
           return;
         }
 
+        // Use tenant from TenantProvider or from cache for context setup
+        const activeTenant = tenant || (hasCachedTenant ? JSON.parse(cachedTenantRaw!).data : null);
+        
+        if (!activeTenant?.id) {
+          console.log('⏳ [AppInit] No active tenant, waiting...');
+          return;
+        }
+        
         const currentDomain = window.location.hostname;
         console.log('🔐 [Security] Starting secure multi-tenant initialization for:', currentDomain);
         
@@ -145,7 +161,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         
         // STEP 1: Set tenant isolation context (fast, synchronous)
         setCurrentStep('Preparing your workspace...');
-        tenantIsolationService.setTenantContext(tenant.id, currentDomain);
+        tenantIsolationService.setTenantContext(activeTenant.id, currentDomain);
         
         // Cache tenant primary color for initial loader (non-blocking)
         if (branding?.primary_color) {
@@ -154,9 +170,9 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           });
         }
         
-        // STEP 2: Initialize tenant-scoped local storage (potentially slow - run in background after)
+        // STEP 2: Initialize tenant-scoped local storage (potentially slow - run in background)
         runInBackground(async () => {
-          await localDB.initializeWithTenant(tenant.id);
+          await localDB.initializeWithTenant(activeTenant.id);
         }, 100);
         
         // STEP 3: Check authentication (critical path - must be sync)
@@ -170,7 +186,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           tenantIsolationService.setUserId(user.id);
         }
         
-        if (session && user?.tenantId !== tenant.id) {
+        if (session && user?.tenantId && user.tenantId !== activeTenant.id) {
           console.error('🚨 [Security] TENANT MISMATCH DETECTED! Force logout.');
           useAuthStore.getState().logout();
           tenantIsolationService.clearContext();

@@ -50,9 +50,22 @@ export default function SplashScreen() {
         return;
       }
       
-      // ONLINE: Wait for tenant to load from TenantProvider
-      if (isLoading && !tenant) {
-        console.log('⏳ [SplashScreen] Waiting for tenant to load...');
+      // PRODUCTION FIX: Fast startup - don't block on tenant loading if we have any data
+      const cachedTenantRaw = localStorage.getItem('tenant_config_cache');
+      const hasCachedTenant = !!cachedTenantRaw;
+      
+      // If tenant is loading but we have cache, proceed immediately
+      if (isLoading && !tenant && hasCachedTenant) {
+        console.log('🚀 [SplashScreen] Using cached data for fast startup');
+        await checkAuth();
+        setAppVersion(versionService.getCurrentVersion());
+        setTimeout(() => setIsReady(true), 200); // Super fast with cache
+        return;
+      }
+      
+      // ONLINE: Wait for tenant only if no cache exists (first-time user)
+      if (isLoading && !tenant && !hasCachedTenant) {
+        console.log('⏳ [SplashScreen] First-time user, waiting for tenant...');
         return;
       }
 
