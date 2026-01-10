@@ -77,18 +77,30 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       rule_id: row.rule_id,
       category: row.category,
       crop_code: row.crop_code,
+      crop_group: row.crop_group,
+      canonical_group: row.canonical_group,
       stage_applicable: row.stage_applicable || [],
       conditionCode: row.condition_code || '() => true',
+      conditions_json: row.conditions_json,
       cause: row.cause,
       priority: row.priority || 50,
+      confidence_score: row.confidence_score,
       scientific_source: row.scientific_source || '',
       scientific_basis: row.scientific_basis || '',
+      icar_package_ref: row.icar_package_ref,
       trigger_keywords: row.trigger_keywords || [],
       response_mr: row.response_mr,
       response_hi: row.response_hi,
       response_en: row.response_en,
       alternatives: row.alternatives || [],
-      action_type: row.action_type || 'RECOMMEND'
+      action_type: row.action_type || 'advisory',
+      phi_days: row.phi_days,
+      bee_toxicity: row.bee_toxicity,
+      ipm_level: row.ipm_level,
+      etl_threshold: row.etl_threshold,
+      active_ingredient: row.active_ingredient,
+      organic_alternative: row.organic_alternative,
+      is_active: row.is_active
     }));
   } catch (e) {
     console.error('❌ [RuleLoader] Failed to load rules:', e);

@@ -140,27 +140,107 @@ Deno.serve(async (req) => {
       return code?.toLowerCase().replace(/[\s-]+/g, '_') || 'universal';
     };
 
-    // Normalize canonical_group to prefixed format
+    // Normalize stages to lowercase
+    const normalizeStages = (stages: string[]): string[] => {
+      const validStages = [
+        'germination', 'seedling', 'tillering', 'vegetative',
+        'grand_growth', 'squaring', 'boll_development', 'flowering',
+        'panicle', 'maturity', 'harvest', 'post_harvest', 'all'
+      ];
+      return stages?.map(s => {
+        const lower = s.toLowerCase().replace(/[\s-]+/g, '_');
+        return validStages.includes(lower) ? lower : lower;
+      }) || ['all'];
+    };
+
+    // Normalize canonical_group to official 13-group system (per Jan 2026 Audit)
     const normalizeCanonicalGroup = (group: string): string => {
       const mapping: Record<string, string> = {
+        // Direct mappings for short names
         'pest': '03_pest',
         'disease': '04_disease',
         'treatment': '13_treatment',
         'nutrient': '05_nutrition',
+        'nutrition': '05_nutrition',
         'weed': '06_weed',
-        'irrigation': '07_irrigation',
-        'weather': '10_weather_alert'
+        'irrigation': '10_irrigation',
+        'weather': '09_weather',
+        'weather_alert': '09_weather',
+        'economics': '12_monitoring', // Economics maps to monitoring per audit
+        'safety': '11_safety',
+        'monitoring': '12_monitoring',
+        'identity': '01_crop_identity',
+        'crop_identity': '01_crop_identity',
+        'growth_stage': '02_growth_stage',
+        'stage_problems': '02_growth_stage',
+        'stress': '08_stress',
+        'clarification': '07_clarification',
+        // Fix incorrect mappings from audit
+        '06_monitoring': '12_monitoring',
+        '07_irrigation': '10_irrigation',
+        '10_weather_alert': '09_weather',
+        '12_economics': '12_monitoring',
+        '13_ipm_treatment': '13_treatment'
       };
-      return mapping[group?.toLowerCase()] || group;
+      const normalized = group?.toLowerCase();
+      return mapping[normalized] || mapping[group] || group;
     };
 
-    // Format rules for database
+    // Normalize action_type to 8 standard types (per Jan 2026 Audit)
+    const normalizeActionType = (action: string): string => {
+      const mapping: Record<string, string> = {
+        // Standard types (keep as-is)
+        'treatment': 'treatment',
+        'urgent_treatment': 'urgent_treatment',
+        'prevention': 'prevention',
+        'advisory': 'advisory',
+        'safety_gate': 'safety_gate',
+        'monitoring': 'monitoring',
+        'clarification': 'clarification',
+        'diagnosis': 'diagnosis',
+        // Map custom/legacy types to standard
+        'cultural_practice': 'advisory',
+        'biocontrol': 'treatment',
+        'fertilizer_application': 'treatment',
+        'harvest_planning': 'advisory',
+        'block': 'safety_gate',
+        'delay': 'advisory',
+        'caution': 'monitoring',
+        'recommend': 'advisory',
+        'warn': 'advisory',
+        'inform': 'advisory',
+        'monitor': 'monitoring',
+        'emergency_harvest': 'urgent_treatment',
+        'pest_management': 'treatment',
+        'disease_management': 'treatment',
+        'irrigation': 'advisory',
+        'drainage': 'advisory',
+        'frost_protection': 'advisory',
+        'herbicide_application': 'treatment',
+        'biofertilizer': 'treatment',
+        'cultural': 'advisory',
+        'harvest_practice': 'advisory',
+        'post_harvest': 'advisory',
+        'quality_management': 'advisory',
+        'ratoon_management': 'advisory',
+        'residue_management': 'advisory',
+        'ripening_management': 'advisory',
+        'seed_selection': 'advisory',
+        'value_addition': 'advisory',
+        'confirmation': 'clarification',
+        'escalation': 'diagnosis'
+      };
+      const lower = action?.toLowerCase() || 'advisory';
+      return mapping[lower] || 'advisory';
+    };
+
+    // Format rules for database with all normalizations
     const formatRule = (rule: RuleFromJSON) => ({
       rule_id: rule.rule_id,
       crop_group: normalizeCropCode(rule.crop_group || 'universal'),
       crop_code: normalizeCropCode(rule.crop_code),
-      category: rule.category,
-      stage_applicable: rule.stage_applicable,
+      category: rule.category?.toLowerCase() || 'advisory',
+      stage_applicable: normalizeStages(rule.stage_applicable),
       conditions_json: rule.conditions_json,
       condition_code: rule.condition_code || '',
       cause: rule.cause,
@@ -171,7 +251,7 @@ Deno.serve(async (req) => {
       response_mr: rule.response_mr,
       response_hi: rule.response_hi,
       response_en: rule.response_en,
-      action_type: rule.action_type,
+      action_type: normalizeActionType(rule.action_type),
       canonical_group: normalizeCanonicalGroup(rule.canonical_group),
       is_active: rule.is_active !== false,
       version: RULES_VERSION,

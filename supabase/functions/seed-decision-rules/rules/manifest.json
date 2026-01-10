@@ -160,14 +160,14 @@
     "03_pest",
     "04_disease",
     "05_nutrition",
-    "06_monitoring",
+    "06_weed",
     "07_clarification",
     "08_stress",
     "09_weather",
     "10_irrigation",
     "11_safety",
-    "12_economics",
-    "13_ipm_treatment"
+    "12_monitoring",
+    "13_treatment"
   ],
   "sugarcane_rule_summary": {
     "total_files": 17,
