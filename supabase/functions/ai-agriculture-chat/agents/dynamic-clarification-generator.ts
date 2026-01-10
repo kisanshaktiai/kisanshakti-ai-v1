@@ -27,11 +27,24 @@ import { ClarificationScope } from './clarification-renderer.ts';
 import { getStageAdvice, type StageAdvice } from './crop-stage-advisor.ts';
 import { AI_CONFIG, getModel, getAPIKey } from '../../_shared/aiConfig.ts';
 
-export const DYNAMIC_CLARIFICATION_VERSION = '1.0.0';
+export const DYNAMIC_CLARIFICATION_VERSION = '2.0.0'; // World-class probabilistic reasoning
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Probabilistic Cause Hypothesis
+ * Used for intelligent inference based on all available context
+ */
+export interface ProbableCause {
+  cause_id: string;
+  cause_name: string;
+  probability: number;  // 0-1 confidence
+  evidence: string[];   // What data supports this
+  differentiating_test: string;  // How to confirm/rule out
+  observation_key: string;  // Maps to ObservationKey enum
+}
 
 export interface AgronomicContext {
   // Crop Identity
@@ -177,6 +190,220 @@ function getStageProblemIndicators(
   }
   
   return indicators;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WORLD-CLASS: PROBABILISTIC CAUSE RANKING
+// Calculate probability of each cause based on ALL available context
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function calculateProbableCauses(
+  context: AgronomicContext,
+  farmerMessage: string,
+  dialectResult?: any // DialectNormalizationResult from dialect-normalizer
+): ProbableCause[] {
+  const causes: ProbableCause[] = [];
+  const cropCode = context.crop_code?.toUpperCase() || 'UNKNOWN';
+  const stage = context.growth_stage?.toUpperCase() || 'UNKNOWN';
+  const dos = context.days_since_sowing || 0;
+  
+  console.log(`   📊 [ProbableCauses] Calculating for ${cropCode}/${stage} (${dos} DAS)`);
+  
+  // Get stage-specific indicators
+  const indicators = getStageProblemIndicators(cropCode, stage, context);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUGARCANE-SPECIFIC PROBABILISTIC REASONING
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  if (cropCode === 'SUGARCANE') {
+    // Check for patchy death pattern (key indicator for germination issues)
+    const isPatchyDeath = dialectResult?.pattern_indicator === 'PATCHY' ||
+      /काही\s*ठिकाणी|patch|गॅप|gap/i.test(farmerMessage);
+    
+    const isNewPlanting = dialectResult?.crop_age_indicator === 'NEW' || dos < 30;
+    const isPlantDying = dialectResult?.severity_indicator === 'DEAD' || 
+      dialectResult?.severity_indicator === 'DYING';
+    
+    // Weather factors
+    const isNoRain = context.rain_probability !== undefined && context.rain_probability < 20;
+    const isHot = context.temperature !== undefined && context.temperature > 35;
+    
+    // NDVI factors
+    const isLowNDVI = context.ndvi_value !== undefined && context.ndvi_value < 0.35;
+    const isDecliningNDVI = context.ndvi_trend === 'DECLINING' || context.ndvi_trend === 'CRITICAL';
+    
+    // GERMINATION STAGE PROBABILITIES
+    if (stage === 'GERMINATION' || dos < 35) {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // HYPOTHESIS 1: GERMINATION FAILURE
+      // ═══════════════════════════════════════════════════════════════════════════
+      let germFailProb = 0.30; // Base probability
+      const germEvidence: string[] = ['germination_stage'];
+      
+      if (isPatchyDeath) { germFailProb += 0.15; germEvidence.push('patchy_pattern'); }
+      if (isNewPlanting) { germFailProb += 0.10; germEvidence.push('new_planting'); }
+      if (isNoRain) { germFailProb += 0.10; germEvidence.push('no_rain'); }
+      if (isHot) { germFailProb += 0.05; germEvidence.push('high_temp'); }
+      if (isLowNDVI) { germFailProb += 0.10; germEvidence.push('low_ndvi'); }
+      
+      causes.push({
+        cause_id: 'GERMINATION_FAILURE',
+        cause_name: 'Germination Failure',
+        probability: Math.min(germFailProb, 0.85),
+        evidence: germEvidence,
+        differentiating_test: 'Check soil moisture at 10cm depth, pull dead plant - roots absent?',
+        observation_key: 'GAPS_IN_FIELD'
+      });
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // HYPOTHESIS 2: TERMITE ATTACK
+      // ═══════════════════════════════════════════════════════════════════════════
+      let termiteProb = 0.20; // Base for sugarcane
+      const termiteEvidence: string[] = ['sugarcane'];
+      
+      if (isPatchyDeath) { termiteProb += 0.15; termiteEvidence.push('patchy_pattern'); }
+      if (isNoRain) { termiteProb += 0.10; termiteEvidence.push('dry_conditions'); }
+      if (/वाळवी|दीमक|termite|white\s*ant|पांढर/i.test(farmerMessage)) {
+        termiteProb += 0.25; termiteEvidence.push('farmer_suspects_termite');
+      }
+      
+      causes.push({
+        cause_id: 'TERMITE_ATTACK',
+        cause_name: 'Termite Attack',
+        probability: Math.min(termiteProb, 0.80),
+        evidence: termiteEvidence,
+        differentiating_test: 'Dig near dead plant, check for white ants/mud tunnels',
+        observation_key: 'WHITE_SOIL_TERMITE'
+      });
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // HYPOTHESIS 3: POOR SEED QUALITY
+      // ═══════════════════════════════════════════════════════════════════════════
+      let seedQualityProb = 0.15;
+      const seedEvidence: string[] = ['germination_stage'];
+      
+      if (isPatchyDeath && !isNoRain) { seedQualityProb += 0.10; seedEvidence.push('patchy_with_rain'); }
+      if (dialectResult?.pattern_indicator === 'UNIFORM') { 
+        seedQualityProb += 0.15; seedEvidence.push('uniform_pattern'); 
+      }
+      
+      causes.push({
+        cause_id: 'POOR_SEED_QUALITY',
+        cause_name: 'Poor Seed Quality',
+        probability: Math.min(seedQualityProb, 0.50),
+        evidence: seedEvidence,
+        differentiating_test: 'Dead plants pull out easily? Check if roots were ever formed',
+        observation_key: 'EASY_PULLOUT'
+      });
+    }
+    
+    // TILLERING STAGE PROBABILITIES
+    if (stage === 'TILLERING' || (dos >= 35 && dos < 100)) {
+      // DEAD HEART / SHOOT BORER
+      let shootBorerProb = 0.35;
+      const borerEvidence: string[] = ['tillering_stage'];
+      
+      if (/सुरळी|dead\s*heart|गोभ|डेड\s*हार्ट/i.test(farmerMessage)) {
+        shootBorerProb += 0.35; borerEvidence.push('dead_heart_symptom');
+      }
+      if (isDecliningNDVI) { shootBorerProb += 0.10; borerEvidence.push('declining_ndvi'); }
+      
+      causes.push({
+        cause_id: 'SHOOT_BORER',
+        cause_name: 'Early Shoot Borer / Dead Heart',
+        probability: Math.min(shootBorerProb, 0.90),
+        evidence: borerEvidence,
+        differentiating_test: 'Pull dried whorl - is there bore hole at base?',
+        observation_key: 'DEAD_HEART'
+      });
+      
+      // NITROGEN DEFICIENCY
+      let nDefProb = 0.25;
+      const nDefEvidence: string[] = ['tillering_stage'];
+      
+      if (/पिवळ|पील|yellow/i.test(farmerMessage)) {
+        nDefProb += 0.20; nDefEvidence.push('yellowing_symptom');
+      }
+      if (context.soil_n === 'LOW' || (typeof context.soil_n === 'number' && context.soil_n < 200)) {
+        nDefProb += 0.25; nDefEvidence.push('low_soil_n');
+      }
+      
+      causes.push({
+        cause_id: 'NITROGEN_DEFICIENCY',
+        cause_name: 'Nitrogen Deficiency',
+        probability: Math.min(nDefProb, 0.80),
+        evidence: nDefEvidence,
+        differentiating_test: 'Lower leaves yellow first? V-shaped yellowing from tip?',
+        observation_key: 'LOWER_LEAVES_YELLOW'
+      });
+    }
+  }
+  
+  // Sort by probability (highest first)
+  causes.sort((a, b) => b.probability - a.probability);
+  
+  console.log(`   📊 [ProbableCauses] Top causes: ${causes.slice(0, 3).map(c => `${c.cause_id}(${(c.probability * 100).toFixed(0)}%)`).join(', ')}`);
+  
+  return causes;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GENERATE HYPOTHESIS-TESTING OPTIONS
+// Options that help differentiate between probable causes
+// ═══════════════════════════════════════════════════════════════════════════
+
+function generateHypothesisTestingOptions(
+  causes: ProbableCause[],
+  language: 'mr' | 'hi' | 'en',
+  maxOptions: number = 3
+): DynamicClarificationOption[] {
+  const options: DynamicClarificationOption[] = [];
+  
+  const differentiatingLabels: Record<string, Record<string, string>> = {
+    'GAPS_IN_FIELD': {
+      mr: 'माती सुकी आहे का? (कोरडी पांढरी दिसते)',
+      hi: 'मिट्टी सूखी है? (सूखी सफेद दिखती है)',
+      en: 'Is soil dry? (looks dry and white)'
+    },
+    'WHITE_SOIL_TERMITE': {
+      mr: 'मुळांजवळ पांढरे किडे आहेत का? (वाळवी/दीमक)',
+      hi: 'जड़ों के पास सफेद कीड़े हैं? (दीमक)',
+      en: 'White insects near roots? (termites)'
+    },
+    'EASY_PULLOUT': {
+      mr: 'मेलेली उस सहज ओढता येते का? (मुळं नाहीत = उगवण अयशस्वी)',
+      hi: 'मरा गन्ना आसानी से निकलता है? (जड़ें नहीं)',
+      en: 'Does dead plant pull out easily? (no roots)'
+    },
+    'DEAD_HEART': {
+      mr: 'सुरळी ओढली तर खाली छिद्र दिसते का?',
+      hi: 'गोभ खींचने पर नीचे छेद दिखता है?',
+      en: 'Bore hole visible when whorl is pulled?'
+    },
+    'LOWER_LEAVES_YELLOW': {
+      mr: 'खालची पाने आधी पिवळी होत आहेत का?',
+      hi: 'नीचे के पत्ते पहले पीले हो रहे हैं?',
+      en: 'Lower leaves turning yellow first?'
+    }
+  };
+  
+  // Take top causes and create differentiating options
+  for (const cause of causes.slice(0, maxOptions)) {
+    const labelKey = cause.observation_key;
+    const label = differentiatingLabels[labelKey]?.[language] || 
+                  differentiatingLabels[labelKey]?.en || 
+                  cause.differentiating_test;
+    
+    options.push({
+      label,
+      observation_key: labelKey,
+      confidence: cause.probability,
+      evidence: `Tests: ${cause.cause_name} (${(cause.probability * 100).toFixed(0)}%)`
+    });
+  }
+  
+  return options;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -524,11 +751,13 @@ FORBIDDEN:
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN DYNAMIC CLARIFICATION GENERATOR
+// MAIN DYNAMIC CLARIFICATION GENERATOR (WORLD-CLASS)
+// Uses probabilistic cause ranking for intelligent hypothesis-testing
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function generateDynamicClarification(
-  input: DynamicClarificationInput
+  input: DynamicClarificationInput,
+  dialectResult?: any // Optional: DialectNormalizationResult for enhanced context
 ): Promise<DynamicClarificationOutput> {
   const { scope, language, agronomic_context: context, farmer_message } = input;
   
@@ -539,18 +768,39 @@ export async function generateDynamicClarification(
   const contextFrame = generateContextFrame(context, language);
   const evidenceSummary = generateEvidenceSummary(context, language);
   
-  // Try LLM-based generation first, fallback to symbolic
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WORLD-CLASS: Calculate probable causes using ALL available context
+  // This is the intelligent inference layer
+  // ═══════════════════════════════════════════════════════════════════════════
   let options: DynamicClarificationOption[];
   let generatedBy: 'LLM_DYNAMIC' | 'SYMBOLIC_RULES' | 'HYBRID' = 'SYMBOLIC_RULES';
   
   try {
-    // For complex queries, use LLM
-    if (farmer_message && farmer_message.length > 20) {
-      options = await generateLLMOptions(input);
-      generatedBy = 'LLM_DYNAMIC';
+    // Calculate probable causes
+    const probableCauses = calculateProbableCauses(context, farmer_message, dialectResult);
+    
+    // If we have high-probability causes, generate hypothesis-testing options
+    if (probableCauses.length > 0 && probableCauses[0].probability >= 0.4) {
+      console.log(`   🎯 [DynamicClarification] Using probabilistic hypothesis-testing (top cause: ${probableCauses[0].cause_id} @ ${(probableCauses[0].probability * 100).toFixed(0)}%)`);
+      
+      // Generate options that test the top hypotheses
+      options = generateHypothesisTestingOptions(probableCauses, language, input.max_options || 3);
+      generatedBy = 'HYBRID';  // Hybrid = probabilistic + symbolic
+      
+      // If hypothesis testing didn't generate enough options, supplement with LLM/symbolic
+      if (options.length < 2) {
+        const supplementOptions = await generateLLMOptions(input);
+        options = [...options, ...supplementOptions].slice(0, 3);
+      }
     } else {
-      options = generateSymbolicOptions(input);
-      generatedBy = 'SYMBOLIC_RULES';
+      // Fall back to LLM or symbolic generation
+      if (farmer_message && farmer_message.length > 20) {
+        options = await generateLLMOptions(input);
+        generatedBy = 'LLM_DYNAMIC';
+      } else {
+        options = generateSymbolicOptions(input);
+        generatedBy = 'SYMBOLIC_RULES';
+      }
     }
   } catch (error) {
     console.error('   ⚠️ Option generation error, using symbolic fallback:', error);
@@ -558,12 +808,15 @@ export async function generateDynamicClarification(
     generatedBy = 'SYMBOLIC_RULES';
   }
   
-  // Generate question based on scope and context
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WORLD-CLASS: Context-aware question templates
+  // Questions acknowledge farmer's input and guide hypothesis testing
+  // ═══════════════════════════════════════════════════════════════════════════
   const questionTemplates: Record<ClarificationScope, Record<string, string>> = {
     [ClarificationScope.REFINE_OBSERVATION]: {
-      mr: `तुम्ही नेमके काय पाहत आहात?`,
-      hi: `आप ठीक से क्या देख रहे हैं?`,
-      en: `What exactly are you observing?`
+      mr: `खात्री करण्यासाठी, मेलेल्या/प्रभावित भागाजवळ तपासा:`,
+      hi: `पुष्टि के लिए, प्रभावित भाग के पास जाँचें:`,
+      en: `To confirm, please check near the affected area:`
     },
     [ClarificationScope.IDENTIFY_LOCATION]: {
       mr: `कोणत्या भागावर समस्या दिसते?`,
@@ -571,14 +824,14 @@ export async function generateDynamicClarification(
       en: `Which part is affected?`
     },
     [ClarificationScope.IDENTIFY_SEVERITY]: {
-      mr: `समस्या किती गंभीर आहे?`,
-      hi: `समस्या कितनी गंभीर है?`,
-      en: `How severe is the problem?`
+      mr: `किती टक्के पीक प्रभावित आहे?`,
+      hi: `कितने प्रतिशत फसल प्रभावित है?`,
+      en: `What percentage of crop is affected?`
     },
     [ClarificationScope.IDENTIFY_DISTRIBUTION]: {
-      mr: `शेतात कुठे दिसते?`,
-      hi: `खेत में कहाँ दिखता है?`,
-      en: `Where in the field?`
+      mr: `शेतात कुठे दिसते - सर्वत्र की काही ठिकाणी?`,
+      hi: `खेत में कहाँ दिखता है - हर जगह या कहीं-कहीं?`,
+      en: `Where in field - everywhere or in patches?`
     },
     [ClarificationScope.IDENTIFY_TIMING]: {
       mr: `हे कधीपासून दिसते?`,
@@ -606,23 +859,34 @@ export async function generateDynamicClarification(
       en: `What do insects look like?`
     },
     [ClarificationScope.PHOTO_ONLY]: {
-      mr: `कृपया फोटो पाठवा`,
-      hi: `कृपया फोटो भेजें`,
-      en: `Please send a photo`
+      mr: `अचूक निदानासाठी प्रभावित भागाचा फोटो पाठवा`,
+      hi: `सही निदान के लिए प्रभावित भाग की फोटो भेजें`,
+      en: `For accurate diagnosis, please send a photo of the affected area`
     },
     [ClarificationScope.STOP_ESCALATE]: {
-      mr: `सध्या निरीक्षण करा`,
-      hi: `अभी निगरानी करें`,
-      en: `Monitor for now`
+      mr: `सध्या निरीक्षण करा, तज्ञ सल्ला घ्या`,
+      hi: `अभी निगरानी करें, विशेषज्ञ से सलाह लें`,
+      en: `Monitor for now, consult an expert`
     }
   };
   
-  const question = `${contextFrame}\n\n${questionTemplates[scope]?.[language] || questionTemplates[scope]?.en || 'Please select:'}`;
+  // Build the full question with context frame
+  const baseQuestion = questionTemplates[scope]?.[language] || questionTemplates[scope]?.en || 'Please select:';
+  const question = `${contextFrame}\n\n${baseQuestion}`;
+  
+  // Always append photo option reminder
+  const photoReminder: Record<string, string> = {
+    mr: `\n\n📸 **सर्वोत्तम**: फोटो पाठवा - अचूक निदान होईल!`,
+    hi: `\n\n📸 **सबसे अच्छा**: फोटो भेजें - सही निदान होगा!`,
+    en: `\n\n📸 **Best option**: Send a photo for accurate diagnosis!`
+  };
+  
+  const finalQuestion = `${question}${photoReminder[language] || photoReminder.en}`;
   
   console.log(`   ✅ Generated ${options.length} dynamic options (${generatedBy})`);
   
   return {
-    question,
+    question: finalQuestion,
     options,
     context_frame: contextFrame,
     evidence_summary: evidenceSummary,
@@ -672,5 +936,6 @@ export function buildAgronomicContext(landContext: any, scheduleData?: any): Agr
 export default {
   generateDynamicClarification,
   buildAgronomicContext,
+  calculateProbableCauses,
   DYNAMIC_CLARIFICATION_VERSION
 };
