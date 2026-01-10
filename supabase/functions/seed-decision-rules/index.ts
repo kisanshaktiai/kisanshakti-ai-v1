@@ -135,11 +135,30 @@ Deno.serve(async (req) => {
       return null;
     };
 
+    // Normalize crop_code to lowercase for consistent matching
+    const normalizeCropCode = (code: string): string => {
+      return code?.toLowerCase().replace(/[\s-]+/g, '_') || 'universal';
+    };
+
+    // Normalize canonical_group to prefixed format
+    const normalizeCanonicalGroup = (group: string): string => {
+      const mapping: Record<string, string> = {
+        'pest': '03_pest',
+        'disease': '04_disease',
+        'treatment': '13_treatment',
+        'nutrient': '05_nutrition',
+        'weed': '06_weed',
+        'irrigation': '07_irrigation',
+        'weather': '10_weather_alert'
+      };
+      return mapping[group?.toLowerCase()] || group;
+    };
+
     // Format rules for database
     const formatRule = (rule: RuleFromJSON) => ({
       rule_id: rule.rule_id,
-      crop_group: rule.crop_group || 'universal',
-      crop_code: rule.crop_code,
+      crop_group: normalizeCropCode(rule.crop_group || 'universal'),
+      crop_code: normalizeCropCode(rule.crop_code),
       category: rule.category,
       stage_applicable: rule.stage_applicable,
       conditions_json: rule.conditions_json,
@@ -153,7 +172,7 @@ Deno.serve(async (req) => {
       response_hi: rule.response_hi,
       response_en: rule.response_en,
       action_type: rule.action_type,
-      canonical_group: rule.canonical_group,
+      canonical_group: normalizeCanonicalGroup(rule.canonical_group),
       is_active: rule.is_active !== false,
       version: RULES_VERSION,
       etl_threshold: rule.etl_threshold || null,
