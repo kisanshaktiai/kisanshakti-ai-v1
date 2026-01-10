@@ -24,13 +24,34 @@ export default function SplashScreen() {
       hasTenant: !!tenant, 
       hasBranding: !!branding,
       isLoading,
+      isOnline: navigator.onLine,
       logoUrl: branding?.logo_url,
       companyName: branding?.company_name
     });
 
     const initializeApp = async () => {
-      // Wait for tenant to load from TenantProvider
-      if (isLoading || !tenant) {
+      const isOnline = navigator.onLine;
+      
+      // OFFLINE-FIRST: If offline, don't wait for tenant to load from network
+      // Use cached data and proceed faster
+      if (!isOnline) {
+        console.log('📴 [SplashScreen] Device is OFFLINE - using cached data');
+        
+        // Check auth immediately
+        await checkAuth();
+        
+        // Use cached version or fallback
+        setAppVersion(versionService.getCurrentVersion());
+        
+        // Ready faster for offline
+        setTimeout(() => {
+          setIsReady(true);
+        }, 400);
+        return;
+      }
+      
+      // ONLINE: Wait for tenant to load from TenantProvider
+      if (isLoading && !tenant) {
         console.log('⏳ [SplashScreen] Waiting for tenant to load...');
         return;
       }
@@ -80,7 +101,7 @@ export default function SplashScreen() {
     };
 
     initializeApp();
-  }, [tenant, isLoading, checkAuth]);
+  }, [tenant, isLoading, checkAuth, error, branding]);
 
   const handleContinue = () => {
     markSplashCompleted();
@@ -113,8 +134,9 @@ export default function SplashScreen() {
     }
   };
 
-  // Show nothing while tenant is loading - let index.html loader show
-  if (isLoading || !tenant) {
+  // Show nothing while tenant is loading (only if online)
+  // In offline mode, proceed with cached/fallback data
+  if (navigator.onLine && (isLoading && !tenant)) {
     return null;
   }
 

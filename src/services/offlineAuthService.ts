@@ -129,10 +129,15 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
+    // OFFLINE-FIRST: Check cached auth IMMEDIATELY, regardless of network status
+    // This makes the app feel instant for returning users
+    const offlineResult = await this.validateOfflinePin(mobile, pin);
+    
     // Check if we're online
-    if (!navigator.onLine) {
-      console.log('Device is offline, using cached authentication');
-      const offlineResult = await this.validateOfflinePin(mobile, pin);
+    const isOnline = navigator.onLine;
+    
+    if (!isOnline) {
+      console.log('📴 [OfflineAuth] Device is offline, using cached authentication');
       
       if (offlineResult.isValid) {
         return {
@@ -150,10 +155,12 @@ class OfflineAuthService {
       }
     }
 
-    // Try online authentication
+    // ONLINE: Try online authentication with timeout and fallback
+    console.log('🌐 [OfflineAuth] Device is online, attempting online authentication...');
+    
     try {
-      // Set a timeout for the online request
-      const timeoutPromise = new Promise((_, reject) => 
+      // Set a timeout for the online request (10 seconds)
+      const timeoutPromise = new Promise<never>((_, reject) => 
         setTimeout(() => reject(new Error('Request timeout')), 10000)
       );
 
@@ -161,26 +168,27 @@ class OfflineAuthService {
       
       const result = await Promise.race([authPromise, timeoutPromise]);
       
-      // If online auth succeeds, cache the data
-      if ((result as any).success) {
+      // If online auth succeeds, cache the data for future offline use
+      if (result.success) {
+        console.log('✅ [OfflineAuth] Online authentication successful, caching data');
         await this.cacheAuthData(
           farmerId,
           tenantId,
           mobile,
           pin,
-          (result as any).farmerData,
-          (result as any).profileData
+          result.farmerData,
+          result.profileData
         );
       }
       
-      return result as any;
-    } catch (error) {
-      console.log('Online authentication failed, falling back to offline');
+      return result;
+    } catch (error: any) {
+      console.log('⚠️ [OfflineAuth] Online authentication failed:', error.message);
+      console.log('🔄 [OfflineAuth] Falling back to offline validation');
       
-      // Fallback to offline
-      const offlineResult = await this.validateOfflinePin(mobile, pin);
-      
+      // Fallback to offline validation
       if (offlineResult.isValid) {
+        console.log('✅ [OfflineAuth] Offline validation successful');
         return {
           success: true,
           isOffline: true,
@@ -189,10 +197,13 @@ class OfflineAuthService {
         };
       }
       
+      // Both online and offline failed
       return {
         success: false,
-        isOffline: true,
-        error: 'Unable to authenticate. Please check your internet connection.'
+        isOffline: !isOnline,
+        error: error.message === 'Request timeout' 
+          ? 'Connection timed out. Please check your internet connection.'
+          : 'Unable to authenticate. Please try again.'
       };
     }
   }
