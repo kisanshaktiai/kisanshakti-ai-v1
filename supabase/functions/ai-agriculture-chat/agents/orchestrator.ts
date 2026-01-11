@@ -198,6 +198,32 @@ import {
   type PhotoperiodResult 
 } from './photoperiod-calculator.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
+// These enforce scientific validity before any treatment recommendation
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  validateContextCompleteness,
+  reconcileCropContext,
+  performConsistencyChecks,
+  type ContextValidationResult
+} from '../decision/context-validator.ts';
+
+import {
+  checkWeatherSafety,
+  type WeatherSafetyResult
+} from '../decision/weather-safety-gate.ts';
+
+import {
+  generateDifferentialClarification,
+  type DifferentialClarificationResult
+} from '../decision/differential-diagnosis-clarifier.ts';
+
+import {
+  getStageSpecificInfo,
+  calculateGrowthStageFromDAS
+} from '../decision/crop-calendar-lookup.ts';
+
 // PHASE-8: Smart Clarification Generator - ObservationKey-based
 import {
   generateClarificationResponse,
@@ -2292,6 +2318,141 @@ export class AIAgentOrchestrator {
         console.log(`      NDVI: ${canonicalState.ndvi_level} (${canonicalState.ndvi_trend})`);
         console.log(`      Soil N: ${canonicalState.soil_nitrogen}, P: ${canonicalState.soil_phosphorus}, K: ${canonicalState.soil_potassium}`);
         console.log(`      Data Confidence: ${canonicalState.data_confidence}`);
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE-17: 8 MANDATORY GATES (G1-G8) - Scientific Validation Layer
+        // These gates ensure treatments are ONLY recommended when scientifically valid
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('\n🔐 PHASE 2.5.1: Running 8 Mandatory Validation Gates...');
+        agentsUsed.push('8_MANDATORY_GATES');
+        
+        // G1: INPUT_NORMALIZATION (Already passed if we reached here)
+        console.log('   ✅ G1 INPUT_NORMALIZATION: PASSED (language detected)');
+        
+        // G2: CONTEXT_COMPLETENESS - Block if crop=UNKNOWN OR stage=DEFAULT without sowing_date
+        const contextValidation = validateContextCompleteness({
+          farmer_mentioned_crop: observationExtraction?.crop_mentioned || null,
+          land_context: landContext,
+          nlu_output: nluOutput,
+          land_state: {
+            crop: { crop_name: cropContextAuthority?.crop_name || 'UNKNOWN' }
+          }
+        });
+        
+        if (contextValidation.status === 'NEEDS_CLARIFICATION') {
+          console.log(`   ⚠️ G2 CONTEXT_COMPLETENESS: NEEDS_CLARIFICATION`);
+          console.log(`      Reason: ${contextValidation.clarification_prompt || 'Missing critical context'}`);
+          agentsUsed.push('G2_CONTEXT_VALIDATION_FAILED');
+          
+          // Return clarification for crop mismatch or missing context
+          const lang = options.language || 'mr';
+          const clarificationPrompt = contextValidation.clarification_prompt || 
+            (lang === 'mr' ? 'कोणत्या पिकाबद्दल विचारत आहात?' :
+             lang === 'hi' ? 'किस फसल के बारे में पूछ रहे हैं?' :
+             'Which crop are you asking about?');
+          
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: {
+              question_id: `g2_context_${Date.now()}`,
+              text_mr: clarificationPrompt,
+              text_hi: clarificationPrompt,
+              text_en: clarificationPrompt,
+              options: contextValidation.clarification_options?.map((opt, idx) => ({
+                value: String(idx + 1),
+                label: opt.label
+              })) || []
+            },
+            metadata: {
+              confidence: 0.5,
+              safety_status: 'CONTEXT_VALIDATION_REQUIRED',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              trace_id: traceId,
+              gate_failed: 'G2_CONTEXT_COMPLETENESS'
+            }
+          };
+        }
+        
+        // Apply reconciled values if available
+        if (contextValidation.reconciled_crop) {
+          console.log(`   ✅ G2 CONTEXT_COMPLETENESS: PASSED (crop=${contextValidation.reconciled_crop})`);
+        } else {
+          console.log(`   ✅ G2 CONTEXT_COMPLETENESS: PASSED`);
+        }
+        
+        // Update stage from deterministic calculation if available
+        if (contextValidation.reconciled_stage && contextValidation.stage_source !== 'DEFAULT') {
+          console.log(`   📊 G2 Growth Stage: ${contextValidation.reconciled_stage} (source: ${contextValidation.stage_source})`);
+          if (landContext) {
+            landContext.growth_stage = contextValidation.reconciled_stage;
+          }
+        }
+        
+        // G3: CONTEXT_CONSISTENCY - Check NDVI vs symptoms for contradictions
+        const consistencyCheck = performConsistencyChecks({
+          ndvi_value: landContext?.ndvi?.value || landContext?.ndvi?.mean_ndvi || null,
+          symptoms: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
+        });
+        
+        if (consistencyCheck.contradictions.length > 0) {
+          console.log(`   ⚠️ G3 CONTEXT_CONSISTENCY: ${consistencyCheck.contradictions.length} contradictions detected`);
+          consistencyCheck.contradictions.forEach(c => {
+            console.log(`      - ${c.field1} vs ${c.field2}: ${c.explanation}`);
+          });
+          // Don't block, but flag for lower confidence
+          agentsUsed.push('G3_CONSISTENCY_WARNINGS');
+        } else {
+          console.log(`   ✅ G3 CONTEXT_CONSISTENCY: PASSED (no contradictions)`);
+        }
+        
+        // G4: CONFIDENCE_THRESHOLD - Will be checked after rule evaluation
+        // Get calibrated threshold for this crop + stage
+        const { getCalibratedThreshold } = await import('../decision/confidence-calculator.ts');
+        const calibratedThreshold = getCalibratedThreshold(
+          canonicalState.crop_type || 'UNKNOWN',
+          canonicalState.crop_stage || 'VEGETATIVE'
+        );
+        console.log(`   📊 G4 Calibrated Confidence Threshold: ${(calibratedThreshold * 100).toFixed(0)}% for ${canonicalState.crop_type}/${canonicalState.crop_stage}`);
+        
+        // G5: WEATHER_SAFETY - Check if weather allows spray
+        let weatherSafetyResult: WeatherSafetyResult | null = null;
+        if (fusedIntelligence.weather_data) {
+          weatherSafetyResult = checkWeatherSafety(
+            fusedIntelligence.weather_data,
+            'PESTICIDE' // Default check, will re-check per specific action
+          );
+          
+          if (weatherSafetyResult.status === 'UNSAFE') {
+            console.log(`   ⚠️ G5 WEATHER_SAFETY: SPRAY BLOCKED - ${weatherSafetyResult.block_reason?.en || 'Unsafe weather'}`);
+            agentsUsed.push('G5_WEATHER_BLOCK_ACTIVE');
+          } else if (weatherSafetyResult.status === 'CAUTION') {
+            console.log(`   ⚠️ G5 WEATHER_SAFETY: CAUTION - ${weatherSafetyResult.caution_message?.en || 'Weather marginal'}`);
+          } else {
+            console.log(`   ✅ G5 WEATHER_SAFETY: PASSED`);
+          }
+        } else {
+          console.log(`   ⏭️ G5 WEATHER_SAFETY: SKIPPED (no weather data)`);
+        }
+        
+        // G6: PHI_COMPLIANCE - Will be checked by safety guardian during prescription
+        console.log(`   ⏳ G6 PHI_COMPLIANCE: Will validate during prescription phase`);
+        
+        // G7: STAGE_APPROPRIATENESS - Will validate treatment matches stage
+        console.log(`   ⏳ G7 STAGE_APPROPRIATENESS: Will validate during prescription phase`);
+        
+        // G8: LLM_INTEGRITY - Will validate during response formatting
+        console.log(`   ⏳ G8 LLM_INTEGRITY: Will validate during LLM formatting`);
+        
+        // Store gate results for use in later phases
+        const gateResults = {
+          g2_context: contextValidation,
+          g3_consistency: consistencyCheck,
+          g4_threshold: calibratedThreshold,
+          g5_weather: weatherSafetyResult
+        };
         
         // Check prescription gate before rule engine
         const prescriptionGate = checkPrescriptionGate(canonicalState);

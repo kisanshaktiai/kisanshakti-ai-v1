@@ -1343,21 +1343,35 @@ export function EnhancedAIChatInterface() {
       console.log('🤖 [Orchestrator] Sending message to 9-Agent Pipeline');
       console.log('🌾 Land context:', land?.name || 'General Chat');
       
-      // Build land context for orchestrator
+      // Build land context for orchestrator - CRITICAL: Include crop_schedule data for accurate stage calculation
+      // Find active crop schedule for this land
+      const activeSchedule = land?.crop_schedules?.find((s: any) => s.status === 'active') || 
+                             land?.active_schedule || 
+                             null;
+      
       const landContext = land ? {
         land_id: land.id,
         land_name: land.name,
-        crop_name: land.current_crop || land.crop_name,
-        crop_code: land.crop_code,
+        crop_name: land.current_crop || land.crop_name || activeSchedule?.crop_name,
+        crop_code: land.crop_code || activeSchedule?.crop_code,
         previous_crop: land.previous_crop,
         area_hectares: land.area_hectares,
         farming_mode: land.farming_mode,
         irrigation_type: land.irrigation_type,
-        sowing_date: land.sowing_date,
-        soil_data: land.soil_data,
-        ndvi_data: land.ndvi_data,
+        // CRITICAL: sowing_date for accurate growth stage calculation
+        sowing_date: land.sowing_date || activeSchedule?.sowing_date || activeSchedule?.started_at,
+        growth_stage: land.growth_stage || activeSchedule?.current_stage,
+        days_since_sowing: land.days_since_sowing || activeSchedule?.days_since_sowing,
+        expected_harvest_date: land.expected_harvest_date || activeSchedule?.expected_harvest_date,
+        crop_variety: land.crop_variety || activeSchedule?.variety,
+        // Include soil, NDVI, weather data
+        soil_data: land.soil_data || land.soil_health,
+        ndvi_data: land.ndvi_data || land.ndvi,
         weather_data: land.weather_data,
-        location: land.location || { state: land.state, district: land.district }
+        location: land.location || { state: land.state, district: land.district },
+        // Include center coordinates for weather fetching
+        center_lat: land.center_lat,
+        center_lon: land.center_lon
       } : null;
       
       // Get conversation history for context

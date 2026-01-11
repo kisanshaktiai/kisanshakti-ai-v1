@@ -43,13 +43,61 @@ export interface ConfidenceInput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// STAGE-SPECIFIC CONFIDENCE THRESHOLDS (ICAR-aligned)
+// Higher thresholds for young crops where wrong treatment = crop loss
+// ═══════════════════════════════════════════════════════════════════════════
+
+export const STAGE_CONFIDENCE_THRESHOLDS: Record<string, number> = {
+  'GERMINATION': 0.90,      // Critical - wrong treatment kills seedlings
+  'SEEDLING': 0.88,         // Very sensitive stage
+  'TILLERING': 0.80,        // Moderate tolerance
+  'VEGETATIVE': 0.75,       // Can recover from minor mistakes
+  'GRAND_GROWTH': 0.70,     // Most resilient stage
+  'FLOWERING': 0.85,        // Critical for yield - pollinator safety
+  'FRUITING': 0.80,         // PHI concerns become relevant
+  'MATURITY': 0.65,         // Harvest approaching
+  'HARVEST': 0.60,          // Low risk at this stage
+  'SQUARING': 0.85,         // Cotton critical stage
+  'BOLL_FORMATION': 0.80,   // Cotton yield critical
+  'DEFAULT': 0.75           // Fallback
+};
+
+export const CROP_CONFIDENCE_ADJUSTMENTS: Record<string, number> = {
+  // High-value crops need higher confidence
+  'TOMATO': 0.05,
+  'COTTON': 0.05,
+  'GRAPE': 0.08,
+  'POMEGRANATE': 0.08,
+  'ONION': 0.03,
+  // Staple crops have slightly lower threshold
+  'RICE': -0.02,
+  'WHEAT': -0.02,
+  'SUGARCANE': 0,
+  'SOYBEAN': 0,
+  'DEFAULT': 0
+};
+
+/**
+ * Get calibrated confidence threshold for specific crop + stage combination
+ */
+export function getCalibratedThreshold(cropCode: string, growthStage: string): number {
+  const baseThreshold = STAGE_CONFIDENCE_THRESHOLDS[growthStage?.toUpperCase()] || 
+                        STAGE_CONFIDENCE_THRESHOLDS['DEFAULT'];
+  const cropAdjustment = CROP_CONFIDENCE_ADJUSTMENTS[cropCode?.toUpperCase()] || 
+                         CROP_CONFIDENCE_ADJUSTMENTS['DEFAULT'];
+  
+  // Clamp between 0.60 and 0.95
+  return Math.min(0.95, Math.max(0.60, baseThreshold + cropAdjustment));
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CONFIDENCE CALCULATOR CLASS
 // ═══════════════════════════════════════════════════════════════════════════
 
 export class ConfidenceCalculator {
   
   /**
-   * Calculate comprehensive confidence score
+   * Calculate comprehensive confidence score with stage-aware thresholds
    */
   calculateConfidence(input: ConfidenceInput): ConfidenceScore {
     console.log('📊 [ConfidenceCalculator] Calculating multi-factor confidence...');

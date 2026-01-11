@@ -337,7 +337,36 @@ Rule Scopes: ${lock.allowed_rule_scopes.join(', ')}`;
 
 /**
  * Check if intent should trigger clarification (low confidence)
+ * @param confidence - Current confidence score (0-1)
+ * @param cropCode - Optional crop code for calibrated threshold
+ * @param growthStage - Optional growth stage for calibrated threshold
  */
-export function requiresClarification(confidence: number): boolean {
-  return confidence < 0.7;
+export function requiresClarification(
+  confidence: number, 
+  cropCode?: string, 
+  growthStage?: string
+): boolean {
+  // Default threshold
+  let threshold = 0.70;
+  
+  // If crop and stage provided, use calibrated threshold
+  if (cropCode && growthStage) {
+    // Import dynamically to avoid circular dependency
+    // Higher thresholds for critical stages
+    const STAGE_THRESHOLDS: Record<string, number> = {
+      'GERMINATION': 0.90,
+      'SEEDLING': 0.88,
+      'TILLERING': 0.80,
+      'VEGETATIVE': 0.75,
+      'GRAND_GROWTH': 0.70,
+      'FLOWERING': 0.85,
+      'FRUITING': 0.80,
+      'MATURITY': 0.65,
+      'HARVEST': 0.60
+    };
+    
+    threshold = STAGE_THRESHOLDS[growthStage?.toUpperCase()] || 0.75;
+  }
+  
+  return confidence < threshold;
 }
