@@ -1,43 +1,127 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * AI UNDERSTANDING LAYER - Semantic, Flexible, Probabilistic
+ * LLM UNDERSTANDING LAYER - Layer 2 in 5-Layer Symbolic Brain Architecture
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Layer 1 in the 5-Layer Architecture:
+ * PURPOSE: Convert flexible, vernacular farmer input into structured 
+ * observations that can be processed by the Symbolic Decision Brain.
  * 
- * Farmer Language (ANY FORM) → AI Understanding → Structured Meaning → 
- * Symbolic Decision Brain → AI Language Layer
+ * CRITICAL CONSTRAINTS:
+ * - Output MUST contain English observation keys ONLY
+ * - NEVER include pest_code, disease_code, product_name, or dosage
+ * - These are OBSERVATIONS, not DIAGNOSES
+ * - The Symbolic Brain decides diagnoses from observations
  * 
- * This layer converts flexible, vernacular farmer input into structured
- * semantic understanding that can be processed by the decision brain.
+ * FLOW:
+ * Farmer Language (ANY FORM) → [THIS LAYER] → Structured Observations → 
+ * Symbolic Decision Brain → LLM Response Formatter
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SEMANTIC UNDERSTANDING OUTPUT
+// NEW OUTPUT TYPE - UnderstandingOutput (as per spec)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * UnderstandingOutput - The primary output type for the LLM Understanding Layer.
+ * Contains structured observations extracted from farmer input.
+ * CRITICAL: All observation keys MUST be in English.
+ */
+export interface UnderstandingOutput {
+  // Detected language of farmer input
+  language_detected: string;
+  
+  // Intent classification (drives which rules to load)
+  intent: 'DIAGNOSIS' | 'TREATMENT' | 'PREVENTION' | 'INFORMATION' | 'SCHEDULING';
+  
+  // Extracted observations (ENGLISH KEYS ONLY)
+  observations: Array<{
+    key: string;              // English ONLY (e.g., "LEAF_YELLOWING", "PATCHY_DEATH")
+    original_text: string;    // Farmer's exact words
+    category: 'SYMPTOM' | 'LOCATION' | 'TIMING' | 'SEVERITY';
+    confidence: number;
+    metadata?: any;
+  }>;
+  
+  // Crop identification
+  crop: {
+    code: string;            // Canonical crop code (e.g., "SUGARCANE")
+    confidence: number;
+  };
+  
+  // Urgency level
+  urgency: 'LOW' | 'MEDIUM' | 'HIGH' | 'EMERGENCY';
+  
+  // Overall confidence in understanding
+  confidence: number;
+  
+  // What context is still needed for full understanding
+  context_needed: string[];
+  
+  // Raw farmer text (for logging/audit)
+  raw_farmer_text: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OUTPUT VALIDATION - Prevent diagnosis leakage
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validates that the UnderstandingOutput doesn't contain forbidden diagnosis words.
+ * The Understanding Layer should ONLY extract observations, not diagnoses.
+ */
+export function validateUnderstandingOutput(output: any): { valid: boolean; violations: string[] } {
+  const forbiddenWords = [
+    'pest_code', 'disease_code', 'product_name', 'dosage',
+    'treatment_id', 'recommendation_id', 'spray_schedule',
+    'chemical_name', 'fungicide', 'insecticide', 'pesticide_code'
+  ];
+  
+  const violations: string[] = [];
+  const outputStr = JSON.stringify(output).toLowerCase();
+  
+  for (const word of forbiddenWords) {
+    if (outputStr.includes(word.toLowerCase())) {
+      violations.push(`Forbidden diagnosis word found: ${word}`);
+    }
+  }
+  
+  // Validate observations have English keys only
+  if (output.observations && Array.isArray(output.observations)) {
+    for (const obs of output.observations) {
+      if (obs.key) {
+        // Check if key contains Devanagari characters (Hindi/Marathi)
+        if (/[\u0900-\u097F]/.test(obs.key)) {
+          violations.push(`Observation key must be English: ${obs.key}`);
+        }
+        // Check if key is uppercase snake_case
+        if (!/^[A-Z][A-Z0-9_]*$/.test(obs.key)) {
+          violations.push(`Observation key must be UPPERCASE_SNAKE_CASE: ${obs.key}`);
+        }
+      }
+    }
+  }
+  
+  return {
+    valid: violations.length === 0,
+    violations
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY TYPES (Kept for backward compatibility)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface SemanticUnderstanding {
-  // Primary intent classification
   primaryIntent: 'diagnosis' | 'treatment' | 'prevention' | 'general_advice' | 'scheduling' | 'weather' | 'market' | 'greeting' | 'unknown';
-  
-  // Detected symptoms/problems (flexible)
   symptoms: SymptomMention[];
-  
-  // Crop context (if mentioned)
   cropMention?: {
     name: string;
     vernacularName: string;
     cropCode: string;
     confidence: number;
   };
-  
-  // Urgency detected
   urgency: 'immediate' | 'soon' | 'flexible' | 'unknown';
-  
-  // Farming aspect
   aspect: 'pest' | 'disease' | 'nutrition' | 'irrigation' | 'growth' | 'harvest' | 'general';
-  
-  // Raw understanding for logging
   rawAnalysis: {
     inputText: string;
     language: string;
@@ -45,14 +129,12 @@ export interface SemanticUnderstanding {
     hasQuestion: boolean;
     hasEmergencyWords: boolean;
   };
-  
-  // Confidence in understanding
   confidence: number;
 }
 
 export interface SymptomMention {
-  rawText: string;           // Original text from farmer
-  normalizedSymptom: string; // Canonical symptom name
+  rawText: string;
+  normalizedSymptom: string;
   affectedPart: 'leaf' | 'stem' | 'root' | 'fruit' | 'flower' | 'whole_plant' | 'unknown';
   severity?: 'mild' | 'moderate' | 'severe';
   confidence: number;
