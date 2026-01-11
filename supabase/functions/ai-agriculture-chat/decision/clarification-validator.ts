@@ -17,42 +17,59 @@
 // These MUST NEVER appear in clarification options
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * DIAGNOSIS KEYWORDS - STRICTLY DISEASE/PEST NAMES ONLY
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * IMPORTANT: Only include DIAGNOSTIC CONCLUSIONS, not observation descriptions.
+ * 
+ * ✅ BLOCKED (diagnosis names): 'blight', 'borer', 'aphid', 'rust'
+ * ❌ ALLOWED (observations): 'insects visible', 'rotted', 'drying', 'holes'
+ * 
+ * The farmer needs to describe what they SEE (observations), not what they THINK
+ * the problem is (diagnosis). This list blocks diagnosis leakage while allowing
+ * legitimate observation-based template options.
+ */
+
 const DIAGNOSIS_KEYWORDS_EN = [
-  // Diseases
-  'blight', 'deficiency', 'rot', 'wilt', 'mosaic', 'virus', 'bacteria',
-  'fungus', 'disease', 'infection', 'rust', 'smut', 'mildew', 'canker',
-  'anthracnose', 'leaf curl', 'ring spot', 'damping off',
+  // Disease NAMES (specific diagnoses - not generic descriptions)
+  'blight', 'deficiency', 'mosaic', 'virus', 'bacterial wilt',
+  'fungal infection', 'rust disease', 'smut', 'downy mildew', 'powdery mildew', 
+  'canker', 'anthracnose', 'leaf curl disease', 'ring spot', 'damping off',
+  'root rot disease', 'stem rot disease',
   
-  // Pests
-  'pest', 'borer', 'aphid', 'thrips', 'whitefly', 'mealybug', 'mite',
-  'caterpillar', 'grub', 'weevil', 'beetle', 'jassid', 'hopper',
-  'stem fly', 'shoot fly', 'fruit fly', 'army worm', 'cut worm',
-  'termite', 'nematode', 'earhead bug',
+  // Pest NAMES (specific identification - not generic 'insects')
+  'borer attack', 'aphid infestation', 'thrips damage', 'whitefly infestation',
+  'mealybug attack', 'spider mite', 'caterpillar damage', 'grub damage',
+  'weevil attack', 'jassid attack', 'stem fly damage', 'shoot fly attack',
+  'fruit fly damage', 'army worm attack', 'cut worm damage',
+  'termite damage', 'nematode attack', 'earhead bug',
   
-  // Nutrient issues
+  // Nutrient deficiency DIAGNOSES
   'nitrogen deficiency', 'phosphorus deficiency', 'potassium deficiency',
   'iron deficiency', 'zinc deficiency', 'boron deficiency',
   'calcium deficiency', 'magnesium deficiency', 'sulfur deficiency'
 ];
 
 const DIAGNOSIS_KEYWORDS_MR = [
-  // Diseases
-  'करपा', 'कमतरता', 'सडणे', 'मर', 'विषाणू', 'बुरशी', 'रोग', 'संसर्ग',
-  'तांबेरा', 'काणी', 'भुरी', 'मूळकुज',
+  // Disease NAMES only
+  'करपा रोग', 'नायट्रोजन कमतरता', 'मोझॅक रोग', 'विषाणू रोग', 'बुरशी रोग',
+  'तांबेरा रोग', 'काणी रोग', 'भुरी रोग', 'मूळकुज रोग',
   
-  // Pests
-  'किड', 'बोरर', 'माव', 'तुडतुडे', 'पांढरी माशी', 'ढेकूण', 'कोळी',
-  'अळी', 'भुंगा', 'मावा', 'वाळवी', 'सूत्रकृमी'
+  // Pest NAMES only (not generic 'किड' which farmers use to describe any insect)
+  'खोड किड', 'माव किड', 'तुडतुडे किड', 'पांढरी माशी किड',
+  'वाळवी नुकसान', 'सूत्रकृमी', 'बोंड अळी'
 ];
 
 const DIAGNOSIS_KEYWORDS_HI = [
-  // Diseases
-  'झुलसा', 'कमी', 'सड़न', 'विल्ट', 'वायरस', 'फफूंद', 'रोग', 'संक्रमण',
-  'रतुआ', 'कंडुआ', 'फफूंदी', 'जड़ सड़न',
+  // Disease NAMES only  
+  'झुलसा रोग', 'नाइट्रोजन की कमी', 'मोजेक रोग', 'वायरस रोग', 'फफूंद रोग',
+  'रतुआ रोग', 'कंडुआ रोग', 'जड़ सड़न रोग',
   
-  // Pests
-  'कीट', 'बोरर', 'माहू', 'थ्रिप्स', 'सफेद मक्खी', 'मिलीबग', 'माइट',
-  'इल्ली', 'भुंग', 'तना मक्खी', 'दीमक', 'सूत्रकृमि'
+  // Pest NAMES only (not generic 'कीट' or 'कीड़े')
+  'तना छेदक', 'माहू कीट', 'थ्रिप्स कीट', 'सफेद मक्खी कीट',
+  'दीमक नुकसान', 'सूत्रकृमि', 'बॉल वर्म'
 ];
 
 // Combined regex patterns
