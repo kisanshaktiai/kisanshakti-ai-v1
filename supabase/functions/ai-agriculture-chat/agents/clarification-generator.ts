@@ -57,7 +57,13 @@ import {
   type DynamicClarificationOutput
 } from './dynamic-clarification-generator.ts';
 
-export const CLARIFICATION_GENERATOR_VERSION = '3.0.0'; // Phase-15: Dynamic context-aware
+// PHASE-16: Import Clarification Validator to prevent diagnosis leakage
+import {
+  validateClarificationOptions,
+  DIAGNOSIS_KEYWORDS
+} from '../decision/clarification-validator.ts';
+
+export const CLARIFICATION_GENERATOR_VERSION = '3.1.0'; // Phase-16: Added diagnosis leakage prevention
 
 // Re-export types for convenience
 export { ClarificationScope };
@@ -174,11 +180,27 @@ export async function generateScopedClarification(
       
       console.log(`   ✅ Dynamic options generated: ${dynamicResult.options.length} (${dynamicResult.generated_by})`);
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-16: CRITICAL - Validate options for diagnosis leakage
+      // This prevents pest/disease names from appearing in clarification options
+      // ═══════════════════════════════════════════════════════════════════════════
+      const optionLabels = dynamicResult.options.map(o => o.label);
+      const leakageValidation = validateClarificationOptions(optionLabels);
+      
+      if (!leakageValidation.valid) {
+        console.error(`   ❌ DIAGNOSIS LEAKAGE DETECTED in dynamic options:`, leakageValidation.leaked);
+        console.error(`   ⚠️ Falling back to template-based clarification`);
+        // Fall through to template-based rendering which is safer
+        throw new Error('Diagnosis leakage detected - using safe fallback');
+      }
+      
+      console.log(`   ✅ Options validated - no diagnosis leakage`);
+      
       // Return dynamic result
       const acknowledgment = language === 'mr' ? '🌾 समजले.' : language === 'hi' ? '🌾 समझ गया.' : '🌾 Understood.';
       return {
         response_text: `${acknowledgment}\n\n${dynamicResult.question}`,
-        options: dynamicResult.options.map(o => o.label),
+        options: optionLabels,
         photo_requested: false,
         clarification_prompt: dynamicResult.question,
         scope: clarificationPlan.scope,

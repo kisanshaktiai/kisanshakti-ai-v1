@@ -20,6 +20,35 @@ import { CommunicationGenerator } from './communication-generator.ts';
 import { FeedbackLearningEngine } from './feedback-learning.ts';
 import { SafetyGuardian } from './safety-guardian.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-16: NEW SYMBOLIC DECISION BRAIN IMPORTS
+// These provide proper rule evaluation with JSON conditions_json parsing
+// ═══════════════════════════════════════════════════════════════════════════
+import { 
+  SymbolicReasoner,
+  type SymbolicFact,
+  type InferenceResult 
+} from '../decision/symbolic-reasoner.ts';
+
+import { 
+  FactExtractor,
+  type ExtractedFacts 
+} from '../decision/fact-extractor.ts';
+
+import { 
+  ConfidenceCalculator,
+  type ConfidenceScore 
+} from '../decision/confidence-calculator.ts';
+
+import { 
+  validateClarificationOptions,
+  DIAGNOSIS_KEYWORDS 
+} from '../decision/clarification-validator.ts';
+
+import { 
+  ResponseGenerator 
+} from '../decision/response-generator.ts';
+
 // NEW: Import LLM Response Generator for direct answers
 import { 
   canAnswerDirectly, 
@@ -1094,16 +1123,20 @@ export class AIAgentOrchestrator {
               days_since_sowing: landContextForOptionSelection?.days_since_sowing
             };
             
+            // PHASE-16: Safe array handling - prevent .map() crashes
             // CRITICAL: Use matched_responses to build actions when prescriptions are blocked
-            const actionsToReturn = ruleResult.prescriptions.length > 0 
-              ? ruleResult.prescriptions.map(p => ({
-                  action_type: p.action_type,
-                  action_details: p.action_details,
+            const safePrescriptions = Array.isArray(ruleResult.prescriptions) ? ruleResult.prescriptions : [];
+            const safeMatchedResponses = Array.isArray(ruleResult.matched_responses) ? ruleResult.matched_responses : [];
+            
+            const actionsToReturn = safePrescriptions.length > 0 
+              ? safePrescriptions.filter(p => p != null).map(p => ({
+                  action_type: p.action_type || 'RECOMMEND',
+                  action_details: p.action_details || {},
                   product_reference: p.product_reference,
                   rule_id: 'RULE_ENGINE'
                 }))
-              : hasMatchedResponses 
-                ? ruleResult.matched_responses.slice(0, 3).map(r => ({
+              : safeMatchedResponses.length > 0 
+                ? safeMatchedResponses.slice(0, 3).filter(r => r != null).map(r => ({
                     action_type: 'OBSERVATION_ADVICE',
                     action_details: {
                       response_mr: r.response_mr,
@@ -2239,17 +2272,23 @@ export class AIAgentOrchestrator {
         layeredRuleResult = evaluateRulesLayered(allRulesWithBundled, canonicalStateWithQuery as any);
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
         
+        // PHASE-16: Safe array access with null checks
+        const safeRulesApplied = Array.isArray(layeredRuleResult.rules_applied) ? layeredRuleResult.rules_applied : [];
+        const safeObservations = Array.isArray(layeredRuleResult.observations) ? layeredRuleResult.observations : [];
+        const safeDiagnoses = Array.isArray(layeredRuleResult.diagnoses) ? layeredRuleResult.diagnoses : [];
+        const safeSafetyBlocks = Array.isArray(layeredRuleResult.safety_blocks) ? layeredRuleResult.safety_blocks : [];
+        
         console.log(`   ✅ Layered Rule Result:`);
-        console.log(`      Rules Evaluated: ${layeredRuleResult.rules_evaluated}`);
-        console.log(`      Rules Matched: ${layeredRuleResult.rules_matched}`);
-        console.log(`      Rules Applied: ${layeredRuleResult.rules_applied.join(', ') || 'none'}`);
-        console.log(`      Observations: ${layeredRuleResult.observations.join(', ') || 'none'}`);
-        console.log(`      Diagnoses: ${layeredRuleResult.diagnoses.map(d => `${d.cause}(${(d.confidence * 100).toFixed(0)}%)`).join(', ') || 'none'}`);
+        console.log(`      Rules Evaluated: ${layeredRuleResult.rules_evaluated || 0}`);
+        console.log(`      Rules Matched: ${layeredRuleResult.rules_matched || 0}`);
+        console.log(`      Rules Applied: ${safeRulesApplied.join(', ') || 'none'}`);
+        console.log(`      Observations: ${safeObservations.join(', ') || 'none'}`);
+        console.log(`      Diagnoses: ${safeDiagnoses.map(d => `${d?.cause || 'unknown'}(${((d?.confidence || 0) * 100).toFixed(0)}%)`).join(', ') || 'none'}`);
         console.log(`      Final Diagnosis: ${layeredRuleResult.final_diagnosis?.cause || 'none'}`);
         console.log(`      Prescription Allowed: ${layeredRuleResult.prescription_allowed}`);
         
-        if (layeredRuleResult.safety_blocks.length > 0) {
-          console.warn(`   ⚠️ Safety Blocks: ${layeredRuleResult.safety_blocks.map(b => b.message).join(', ')}`);
+        if (safeSafetyBlocks.length > 0) {
+          console.warn(`   ⚠️ Safety Blocks: ${safeSafetyBlocks.map(b => b?.message || 'unknown').join(', ')}`);
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -2305,6 +2344,100 @@ export class AIAgentOrchestrator {
    ACTION: Add rules for this combination or escalate to diagnostic.
    ════════════════════════════════════════════════════════════════════════════
             `);
+          }
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE-16: SYMBOLIC REASONER INTEGRATION (Enhanced JSON Condition Evaluation)
+        // Uses new SymbolicReasoner for proper conditions_json parsing
+        // ═══════════════════════════════════════════════════════════════════════════
+        if (layeredRuleResult && (layeredRuleResult.rules_matched || 0) === 0 && canonicalState) {
+          console.log('\n🧠 PHASE 2.7: Trying Symbolic Reasoner with JSON conditions...');
+          try {
+            const symbolicReasoner = new SymbolicReasoner();
+            const factExtractor = new FactExtractor();
+            
+            // Build authoritative land state for fact extraction
+            const authoritativeLandState = landContext ? {
+              land_id: landContext.land_id,
+              current_crop: landContext.current_crop,
+              days_since_sowing: landContext.days_since_sowing,
+              growth_stage: landContext.growth_stage,
+              ndvi_value: landContext.ndvi?.value,
+              ndvi_trend: landContext.ndvi?.ndvi_trend,
+              soil_health: landContext.soil_health,
+              weather_data: fusedIntelligence.weather_data
+            } : null;
+            
+            // Extract symbolic facts from observations
+            const observations = {
+              symptoms: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+              affected_part: observationExtraction?.affected_part || 'unknown',
+              distribution: observationExtraction?.symptom_distribution || 'unknown',
+              severity: canonicalState.severity || 'UNKNOWN'
+            };
+            
+            const symbolicFacts = factExtractor.extractFacts(
+              observations,
+              cropContextAuthority ? {
+                crop_name: cropContextAuthority.crop_name,
+                days_since_sowing: cropContextAuthority.days_since_sowing,
+                current_stage: cropContextAuthority.growth_stage
+              } : { crop_name: 'UNKNOWN', days_since_sowing: 0, current_stage: 'UNKNOWN' },
+              authoritativeLandState || {}
+            );
+            
+            // Execute symbolic rules
+            const symbolicResult = await symbolicReasoner.executeRules(symbolicFacts, authoritativeLandState);
+            
+            if (symbolicResult.rulesFired > 0) {
+              console.log(`   ✅ Symbolic Reasoner fired ${symbolicResult.rulesFired} rules`);
+              console.log(`   📋 Diagnosis: ${symbolicResult.diagnosis?.cause || 'none'}`);
+              
+              // Merge symbolic results into layered result
+              layeredRuleResult.rules_matched = symbolicResult.rulesFired;
+              layeredRuleResult.rules_applied = symbolicResult.firedRuleIds || [];
+              if (symbolicResult.diagnosis) {
+                layeredRuleResult.final_diagnosis = {
+                  id: symbolicResult.diagnosis.ruleId || 'SYMBOLIC',
+                  category: 3 as any, // DiagnosisCategory
+                  cause: symbolicResult.diagnosis.cause,
+                  confidence: symbolicResult.confidence,
+                  evidence: symbolicResult.reasoning || [],
+                  rule_ids: symbolicResult.firedRuleIds || [],
+                  severity: canonicalState.severity,
+                  requires_immediate_action: false
+                };
+                layeredRuleResult.diagnoses = [layeredRuleResult.final_diagnosis];
+              }
+              
+              // Also merge recommendations if any
+              if (symbolicResult.recommendations && symbolicResult.recommendations.length > 0) {
+                layeredRuleResult.prescriptions = symbolicResult.recommendations.map((r: any) => ({
+                  action_type: r.action || 'RECOMMEND',
+                  action_details: {
+                    response_en: r.description,
+                    product: r.product,
+                    dosage: r.dosage
+                  },
+                  product_reference: r.ruleId || 'SYMBOLIC'
+                }));
+              }
+              
+              // Calculate confidence using new calculator
+              const confidenceCalc = new ConfidenceCalculator();
+              const confidenceScore = confidenceCalc.calculateConfidence(
+                layeredRuleResult.final_diagnosis || null,
+                symbolicFacts,
+                symbolicResult.firedRules || [],
+                authoritativeLandState || {}
+              );
+              layeredRuleResult.confidence_in_result = confidenceScore.overall;
+              
+              agentsUsed.push('SYMBOLIC_REASONER', 'FACT_EXTRACTOR', 'CONFIDENCE_CALCULATOR');
+            }
+          } catch (symbolicError) {
+            console.warn('   ⚠️ Symbolic Reasoner failed (non-blocking):', symbolicError);
           }
         }
         
@@ -2417,13 +2550,14 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n🔒 [${traceId}] P0-E: Applying Intent Lock Filter...`);
       
-      // Collect all actions from decision output
+      // PHASE-16: Safe array handling for actions collection
       const allActions: any[] = [];
-      if (decisionOutput.primary_decision) {
+      if (decisionOutput?.primary_decision) {
         allActions.push(decisionOutput.primary_decision);
       }
-      if (decisionOutput.secondary_actions?.length) {
-        allActions.push(...decisionOutput.secondary_actions);
+      const safeSecondaryActions = Array.isArray(decisionOutput?.secondary_actions) ? decisionOutput.secondary_actions : [];
+      if (safeSecondaryActions.length > 0) {
+        allActions.push(...safeSecondaryActions.filter(a => a != null));
       }
       
       // Apply intent lock filter
