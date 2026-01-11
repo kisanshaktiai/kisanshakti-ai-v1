@@ -141,6 +141,14 @@ import {
 } from './diagnosis-conflict-resolver.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// WORLD-CLASS CLARIFICATION: Multi-Match Detector for Competing Diagnoses
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  performMultiMatchDetection,
+  type MultiMatchResult
+} from './generic-multi-match-detector.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // P0 CRITICAL MODULE IMPORTS - PRODUCTION-READY INTEGRATION
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -2822,6 +2830,70 @@ export class AIAgentOrchestrator {
               layeredRuleResult.confidence_in_result = confidenceScore.overall;
               
               agentsUsed.push('SYMBOLIC_REASONER', 'FACT_EXTRACTOR', 'CONFIDENCE_CALCULATOR');
+              
+              // ═══════════════════════════════════════════════════════════════════════════
+              // WORLD-CLASS CLARIFICATION: Multi-Match Detection for Competing Diagnoses
+              // Prevents wrong pesticide recommendations by asking farmer to clarify when
+              // multiple pests/diseases match with similar confidence.
+              // ═══════════════════════════════════════════════════════════════════════════
+              if (symbolicResult.firedRules && symbolicResult.firedRules.length > 1) {
+                console.log(`\n🔍 [MultiMatch] Checking ${symbolicResult.firedRules.length} fired rules for competition...`);
+                
+                try {
+                  const multiMatchResult = await performMultiMatchDetection(
+                    symbolicResult.firedRules,
+                    this.supabase,
+                    options.language || 'mr',
+                    0.15 // 15% confidence threshold
+                  );
+                  
+                  if (multiMatchResult.has_competition && multiMatchResult.clarification_output) {
+                    console.log(`   🚨 [MultiMatch] COMPETITION DETECTED: ${multiMatchResult.competing_matches.length} similar diagnoses`);
+                    console.log(`   📋 Generating clarification to distinguish between:`);
+                    multiMatchResult.competing_matches.forEach(m => {
+                      console.log(`      - ${m.cause_code} (${(m.confidence * 100).toFixed(0)}%)`);
+                    });
+                    
+                    // Return clarification response BEFORE proceeding to treatment
+                    return {
+                      type: 'CLARIFICATION_QUESTION',
+                      session_id: sessionId,
+                      question: {
+                        question_id: multiMatchResult.clarification_output.question_id,
+                        text_mr: multiMatchResult.clarification_output.question_text.mr,
+                        text_hi: multiMatchResult.clarification_output.question_text.hi,
+                        text_en: multiMatchResult.clarification_output.question_text.en,
+                        options: multiMatchResult.clarification_output.options.map(opt => ({
+                          value: opt.id,
+                          label: opt.label[options.language || 'mr'] || opt.label.mr,
+                          maps_to: opt.maps_to
+                        })),
+                        selection_type: multiMatchResult.clarification_output.selection_type
+                      },
+                      communication: {
+                        main_message: multiMatchResult.clarification_output.question_text,
+                        options: multiMatchResult.clarification_output.options.map(opt => 
+                          opt.label[options.language || 'mr'] || opt.label.mr
+                        )
+                      },
+                      metadata: {
+                        confidence: multiMatchResult.competing_matches[0]?.confidence || 0,
+                        safety_status: 'DIFFERENTIAL_DIAGNOSIS_REQUIRED',
+                        reason: 'MULTIPLE_COMPETING_DIAGNOSES',
+                        competing_rules: multiMatchResult.competing_matches.map(m => m.rule_id),
+                        possible_causes: multiMatchResult.competing_matches.map(m => m.cause_code),
+                        agents_used: agentsUsed,
+                        trace_id: traceId,
+                        processing_time_ms: Date.now() - startTime
+                      }
+                    };
+                  } else {
+                    console.log(`   ✅ [MultiMatch] No competition - single clear diagnosis`);
+                  }
+                } catch (multiMatchError) {
+                  console.warn(`   ⚠️ [MultiMatch] Detection failed (non-blocking):`, multiMatchError);
+                }
+              }
             }
           } catch (symbolicError) {
             console.warn('   ⚠️ Symbolic Reasoner failed (non-blocking):', symbolicError);

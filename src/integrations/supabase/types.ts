@@ -6247,6 +6247,7 @@ export type Database = {
           crop_group: string
           deprecated_at: string | null
           deprecation_reason: string | null
+          differentiating_questions: Json | null
           dosage_per_acre: string | null
           etl_threshold: string | null
           etl_unit: string | null
@@ -6261,6 +6262,7 @@ export type Database = {
           max_wind_speed: number | null
           min_temperature: number | null
           mode_of_action: string | null
+          observable_characteristics: Json | null
           organic_alternative: string | null
           phi_days: number | null
           priority: number
@@ -6285,6 +6287,7 @@ export type Database = {
           validation_trials: number | null
           verification_status: string | null
           version: string | null
+          visual_markers: Json | null
           water_volume_per_acre: string | null
           weather_dependency: Json | null
         }
@@ -6309,6 +6312,7 @@ export type Database = {
           crop_group: string
           deprecated_at?: string | null
           deprecation_reason?: string | null
+          differentiating_questions?: Json | null
           dosage_per_acre?: string | null
           etl_threshold?: string | null
           etl_unit?: string | null
@@ -6323,6 +6327,7 @@ export type Database = {
           max_wind_speed?: number | null
           min_temperature?: number | null
           mode_of_action?: string | null
+          observable_characteristics?: Json | null
           organic_alternative?: string | null
           phi_days?: number | null
           priority: number
@@ -6347,6 +6352,7 @@ export type Database = {
           validation_trials?: number | null
           verification_status?: string | null
           version?: string | null
+          visual_markers?: Json | null
           water_volume_per_acre?: string | null
           weather_dependency?: Json | null
         }
@@ -6371,6 +6377,7 @@ export type Database = {
           crop_group?: string
           deprecated_at?: string | null
           deprecation_reason?: string | null
+          differentiating_questions?: Json | null
           dosage_per_acre?: string | null
           etl_threshold?: string | null
           etl_unit?: string | null
@@ -6385,6 +6392,7 @@ export type Database = {
           max_wind_speed?: number | null
           min_temperature?: number | null
           mode_of_action?: string | null
+          observable_characteristics?: Json | null
           organic_alternative?: string | null
           phi_days?: number | null
           priority?: number
@@ -6409,6 +6417,7 @@ export type Database = {
           validation_trials?: number | null
           verification_status?: string | null
           version?: string | null
+          visual_markers?: Json | null
           water_volume_per_acre?: string | null
           weather_dependency?: Json | null
         }

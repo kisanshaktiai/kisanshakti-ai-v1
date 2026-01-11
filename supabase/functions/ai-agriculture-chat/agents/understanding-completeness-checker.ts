@@ -133,6 +133,64 @@ const CRITICAL_FIELDS: CriticalFieldCheck[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// VAGUE SYMPTOM DETECTION - For Multi-Match Clarification
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VAGUE_PEST_TERMS = [
+  // Marathi
+  'किडे', 'किडा', 'रोग', 'समस्या', 'खराब', 'अळ्या', 'कीड',
+  // Hindi  
+  'कीड़े', 'कीड़ा', 'बीमारी', 'समस्या', 'खराब', 'सूंडी', 'कीट',
+  // English
+  'insects', 'insect', 'bugs', 'bug', 'pests', 'pest',
+  'disease', 'problem', 'issue', 'damage', 'worms', 'worm'
+];
+
+/**
+ * Detects if symptoms are vague and need clarification to distinguish
+ * between multiple possible diagnoses.
+ * 
+ * Returns true if:
+ * 1. A vague pest term is used (e.g., "किडे", "insects")
+ * 2. Fewer than 2 distinguishing features are present (color, size, behavior, location)
+ */
+export function detectSymptomAmbiguity(observations: ObservationExtraction): boolean {
+  const allText = (observations.raw_symptom_text || []).join(' ').toLowerCase();
+  
+  // Check if any vague term is present
+  const hasVagueTerm = VAGUE_PEST_TERMS.some(term => 
+    allText.includes(term.toLowerCase())
+  );
+  
+  if (!hasVagueTerm) {
+    return false; // Specific terms used - not ambiguous
+  }
+  
+  // Vague term found - check for distinguishing features
+  const hasColor = /हिरव|काळ|पांढर|green|black|white|हरे|काले|सफेद|तपकिरी|brown|पीले|yellow/.test(allText);
+  const hasSize = /छोट|मोठ|small|large|बड़े|tiny|लहान/.test(allText);
+  const hasBehavior = /उड|उड्या|flying|jumping|उड़|रेंग|crawl|cluster|गुच्छ/.test(allText);
+  const hasSpecificLocation = observations.affected_part !== 'unknown' && 
+                              observations.affected_part !== 'whole' &&
+                              observations.affected_part !== '';
+  const hasSecondarySymptom = /चिकट|sticky|honeydew|काळी भुकटी|mold|वाळ|wilt|छिद्र|hole/.test(allText);
+  
+  // Count distinguishing features
+  const featureCount = [hasColor, hasSize, hasBehavior, hasSpecificLocation, hasSecondarySymptom]
+    .filter(Boolean).length;
+  
+  // Need at least 2 distinguishing features for vague terms
+  const isAmbiguous = featureCount < 2;
+  
+  if (isAmbiguous) {
+    console.log(`   ⚠️ [AmbiguityDetector] Vague symptoms without distinguishing features`);
+    console.log(`      Features present: ${featureCount}/5 (color:${hasColor}, size:${hasSize}, behavior:${hasBehavior}, location:${hasSpecificLocation}, secondary:${hasSecondarySymptom})`);
+  }
+  
+  return isAmbiguous;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // CONTRADICTION DETECTION
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -294,9 +352,23 @@ export function checkUnderstandingCompleteness(
   const confidenceLevel = calculateConfidenceLevel(completenessScore, unknownCriticalFields.length);
   
   // ADAPTIVE clarification decision
-  const clarificationRequired = 
+  let clarificationRequired = 
     (completenessScore < requiredThreshold && !isUrgent) || // Don't clarify if urgent
     contradictions.length > 0;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Force clarification for vague pest/disease symptoms
+  // This catches cases like "पानावर छोटे किडे दिसत आहेत" which pass the
+  // completeness threshold but need clarification to distinguish between
+  // aphids, whiteflies, thrips, jassids, etc.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (!clarificationRequired && !isUrgent) {
+    const isAmbiguous = detectSymptomAmbiguity(observations);
+    if (isAmbiguous) {
+      console.log(`   🔍 [AmbiguityOverride] Forcing clarification for vague pest/disease symptoms`);
+      clarificationRequired = true;
+    }
+  }
   
   console.log(`   📊 [UnderstandingChecker] Score: ${completenessScore}%, Threshold: ${requiredThreshold}%, ` +
               `Urgent: ${isUrgent}, ClarificationRequired: ${clarificationRequired}`);

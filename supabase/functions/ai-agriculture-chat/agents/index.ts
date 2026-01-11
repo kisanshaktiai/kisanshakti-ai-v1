@@ -48,6 +48,17 @@ export * from './decision-graph-bridge.ts';
 export { evaluateDecisionGraph } from './decision-graph-bridge.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// WORLD-CLASS CLARIFICATION: Multi-Match Detector
+// ═══════════════════════════════════════════════════════════════════════════
+export * from './generic-multi-match-detector.ts';
+export { 
+  performMultiMatchDetection, 
+  detectCompetingMatches,
+  generateDifferentialClarificationFromRules,
+  MULTI_MATCH_DETECTOR_VERSION 
+} from './generic-multi-match-detector.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // P1-1: CANONICAL AUTHORITY TYPES (Single Source of Truth)
 // ═══════════════════════════════════════════════════════════════════════════
 export * from '../decision/authority-types.ts';
