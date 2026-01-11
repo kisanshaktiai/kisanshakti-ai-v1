@@ -1535,13 +1535,39 @@ export class AIAgentOrchestrator {
         const clarificationResponse = generateScopedClarification(scopedClarificationInput);
         agentsUsed.push('SCOPED_CLARIFICATION');
         
-        // VALIDATION: Check for diagnosis leakage
+        // ═══════════════════════════════════════════════════════════════════════════
+        // VALIDATION FIX: Use sanitization instead of all-or-nothing validation
+        // Even if some options leak diagnosis, we sanitize and continue
+        // ═══════════════════════════════════════════════════════════════════════════
         if (!clarificationResponse.validation_passed) {
-          console.error(`   ❌ TURN FAILED: Diagnosis leakage detected in clarification options`);
-          // Log the failed turn (static import at top)
-          const auditLoggerFail = getAuditLogger();
-          auditLoggerFail.startTurn({
-            turn_id: `diagnosis_leakage_${Date.now()}`,
+          console.warn(`   ⚠️ Clarification validation detected issues - using sanitized options`);
+          
+          // Import and use the sanitization function
+          const { validateAndSanitizeClarification } = await import('../decision/clarification-validator.ts');
+          
+          // Convert options to DynamicOption format if needed
+          const originalOptions = (clarificationResponse.options || []).map((opt: string | { label: string }) => 
+            typeof opt === 'string' ? { label: opt, observation_key: 'DYNAMIC', confidence: 0.7 } : opt
+          );
+          
+          const sanitizationResult = validateAndSanitizeClarification(
+            originalOptions,
+            clarificationResponse.scope || 'REFINE_OBSERVATION',
+            normalizedInput.detected_language as 'mr' | 'hi' | 'en'
+          );
+          
+          if (sanitizationResult.usedFallback) {
+            console.log(`   📋 Using safe fallback options due to validation issues`);
+          }
+          
+          // Replace options with sanitized ones - NEVER return empty
+          clarificationResponse.options = sanitizationResult.sanitizedOptions.map(opt => opt.label);
+          clarificationResponse.validation_passed = true; // Mark as passed after sanitization
+          
+          // Log the sanitization
+          const auditLoggerSanitize = getAuditLogger();
+          auditLoggerSanitize.startTurn({
+            turn_id: `sanitized_clarification_${Date.now()}`,
             session_id: sessionId,
             farmer_id: farmerId,
             tenant_id: tenantId,
@@ -1552,52 +1578,13 @@ export class AIAgentOrchestrator {
             raw_text: normalizedInput.original_text,
             normalized_text: normalizedInput.normalized_text
           });
-          auditLoggerFail.logDecision('FAILED_DIAGNOSIS_LEAKAGE', 'CLARIFICATION_SCOPE_VALIDATOR');
-          await auditLoggerFail.completeTurn(Date.now() - startTime);
-          
-          // ✅ CRITICAL FIX: Early return with safe fallback response
-          // Prevents crash at line 1616 when validation fails
-          const fallbackQuestion = normalizedInput.detected_language === 'mr' 
-            ? 'कृपया अधिक माहिती द्या. तुमच्या पिकाबद्दल सांगा.'
-            : normalizedInput.detected_language === 'hi'
-            ? 'कृपया अधिक जानकारी दें। अपनी फसल के बारे में बताएं।'
-            : 'Please provide more information about your crop.';
-          
-          return {
-            type: 'CLARIFICATION_QUESTION',
-            session_id: sessionId,
-            question: {
-              question_id: `fallback_${Date.now()}`,
-              text_mr: fallbackQuestion,
-              text_hi: fallbackQuestion,
-              text_en: fallbackQuestion,
-              options: [] // Safe empty array
-            },
-            communication: {
-              main_message: {
-                mr: fallbackQuestion,
-                hi: fallbackQuestion,
-                en: fallbackQuestion
-              },
-              options: [] // Safe empty array
-            },
-            metadata: {
-              confidence: 0.5,
-              safety_status: 'NEEDS_CLARIFICATION',
-              rules_applied: 0,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: [...agentsUsed, 'SCOPED_CLARIFICATION_FALLBACK'],
-              trace_id: traceId,
-              validation_failed: true,
-              validation_failure_reason: 'DIAGNOSIS_LEAKAGE',
-              pendingClarificationOptions: [],
-              lockedCropContext: cropContextAuthority ? {
-                crop_name: cropContextAuthority.crop_name,
-                growth_stage: cropContextAuthority.growth_stage,
-                days_since_sowing: cropContextAuthority.days_since_sowing
-              } : undefined
-            }
-          };
+          auditLoggerSanitize.logDecision('SANITIZED_OPTIONS', 'CLARIFICATION_VALIDATOR', {
+            original_count: originalOptions.length,
+            sanitized_count: sanitizationResult.sanitizedOptions.length,
+            used_fallback: sanitizationResult.usedFallback,
+            errors: sanitizationResult.errors
+          });
+          await auditLoggerSanitize.completeTurn(Date.now() - startTime);
         }
         
         console.log(`   🎯 Clarification Scope: ${clarificationResponse.scope}`);
