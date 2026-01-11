@@ -553,10 +553,11 @@ export class AIAgentOrchestrator {
   ): string {
     const lang = language as 'mr' | 'hi' | 'en';
     
+    // ✅ FIX: Remove embedded numbers from text - options will be rendered as buttons by UI
     const templates: Record<string, string> = {
-      mr: `🌾 समजले.\n\nतुमच्या ${cropName || 'पिकाच्या'} समस्येबद्दल मला अधिक माहिती हवी आहे.\n\nकृपया खालीलपैकी एक निवडा:\n\n1️⃣ पान पिवळे पडत आहे\n2️⃣ कीड/रोग दिसत आहे\n3️⃣ वाढ थांबली आहे\n\n👉 शक्य असल्यास प्रभावित भागाचा फोटो पाठवा.`,
-      hi: `🌾 समझ गया.\n\nआपकी ${cropName || 'फसल की'} समस्या के बारे में मुझे अधिक जानकारी चाहिए.\n\nकृपया नीचे से एक चुनें:\n\n1️⃣ पत्ते पीले पड़ रहे हैं\n2️⃣ कीट/रोग दिख रहा है\n3️⃣ बढ़वार रुक गई है\n\n👉 यदि संभव हो तो प्रभावित भाग की फोटो भेजें.`,
-      en: `🌾 Understood.\n\nI need more information about your ${cropName || 'crop'} problem.\n\nPlease select one:\n\n1️⃣ Leaves turning yellow\n2️⃣ Pest/disease visible\n3️⃣ Growth stopped\n\n👉 If possible, send a photo of the affected area.`
+      mr: `🌾 समजले.\n\nतुमच्या ${cropName || 'पिकाच्या'} समस्येबद्दल मला अधिक माहिती हवी आहे.\n\n👇 कृपया खालीलपैकी एक निवडा:`,
+      hi: `🌾 समझ गया.\n\nआपकी ${cropName || 'फसल की'} समस्या के बारे में मुझे अधिक जानकारी चाहिए.\n\n👇 कृपया नीचे से एक चुनें:`,
+      en: `🌾 Understood.\n\nI need more information about your ${cropName || 'crop'} problem.\n\n👇 Please select one:`
     };
     
     return templates[lang] || templates['en'];
@@ -572,10 +573,11 @@ export class AIAgentOrchestrator {
   ): { text_mr: string; text_hi: string; text_en: string; options: Array<{ value: string; label: string }> } {
     const cropLabel = cropName || 'पीक';
     
+    // ✅ FIX: Remove embedded numbers - options are rendered as buttons by frontend
     return {
-      text_mr: `🌾 समजले.\n\n${cropLabel} बद्दल अधिक माहिती द्या. तुम्हाला कोणत्या प्रकारची मदत हवी आहे?\n\n1️⃣ रोग/कीड समस्या\n2️⃣ खत/पाणी व्यवस्थापन\n3️⃣ सामान्य सल्ला`,
-      text_hi: `🌾 समझ गया.\n\n${cropLabel} के बारे में अधिक जानकारी दें. आपको किस प्रकार की मदद चाहिए?\n\n1️⃣ रोग/कीट समस्या\n2️⃣ खाद/पानी प्रबंधन\n3️⃣ सामान्य सलाह`,
-      text_en: `🌾 Understood.\n\nPlease tell me more about your ${cropLabel}. What kind of help do you need?\n\n1️⃣ Disease/pest problem\n2️⃣ Fertilizer/water management\n3️⃣ General advice`,
+      text_mr: `🌾 समजले.\n\n${cropLabel} बद्दल अधिक माहिती द्या.\n\n👇 तुम्हाला कोणत्या प्रकारची मदत हवी आहे?`,
+      text_hi: `🌾 समझ गया.\n\n${cropLabel} के बारे में अधिक जानकारी दें.\n\n👇 आपको किस प्रकार की मदद चाहिए?`,
+      text_en: `🌾 Understood.\n\nPlease tell me more about your ${cropLabel}.\n\n👇 What kind of help do you need?`,
       options: [
         { value: '1', label: language === 'mr' ? 'रोग/कीड समस्या' : language === 'hi' ? 'रोग/कीट समस्या' : 'Disease/pest problem' },
         { value: '2', label: language === 'mr' ? 'खत/पाणी व्यवस्थापन' : language === 'hi' ? 'खाद/पानी प्रबंधन' : 'Fertilizer/water management' },
@@ -702,10 +704,11 @@ export class AIAgentOrchestrator {
     daysSinceSowing: number,
     language: 'mr' | 'hi' | 'en'
   ): { message: string; actions: string[]; photoRequested: boolean } {
+    // ✅ FIX: Remove embedded numbers - use clean instructional text
     const messages: Record<string, string> = {
-      mr: `🌾 तुमचे ${cropCode} पीक ${daysSinceSowing} दिवसांचे आहे.\n\n📍 समस्येचे अचूक निदान करण्यासाठी:\n\n1️⃣ प्रभावित भागाचा फोटो पाठवा\n2️⃣ लक्षणे स्पष्ट सांगा\n\n👉 फोटो पाठवल्यास योग्य उपाय सुचवता येईल.`,
-      hi: `🌾 आपकी ${cropCode} फसल ${daysSinceSowing} दिन पुरानी है.\n\n📍 समस्या का सही निदान करने के लिए:\n\n1️⃣ प्रभावित भाग की फोटो भेजें\n2️⃣ लक्षण स्पष्ट बताएं\n\n👉 फोटो भेजने पर सही उपाय बताया जा सकेगा.`,
-      en: `🌾 Your ${cropCode} crop is ${daysSinceSowing} days old.\n\n📍 For accurate diagnosis:\n\n1️⃣ Send photo of affected area\n2️⃣ Describe symptoms clearly\n\n👉 With a photo, I can suggest the right solution.`
+      mr: `🌾 तुमचे ${cropCode} पीक ${daysSinceSowing} दिवसांचे आहे.\n\n📍 समस्येचे अचूक निदान करण्यासाठी:\n\n• प्रभावित भागाचा फोटो पाठवा\n• किंवा लक्षणे स्पष्ट सांगा\n\n📷 फोटो पाठवल्यास योग्य उपाय सुचवता येईल.`,
+      hi: `🌾 आपकी ${cropCode} फसल ${daysSinceSowing} दिन पुरानी है.\n\n📍 समस्या का सही निदान करने के लिए:\n\n• प्रभावित भाग की फोटो भेजें\n• या लक्षण स्पष्ट बताएं\n\n📷 फोटो भेजने पर सही उपाय बताया जा सकेगा.`,
+      en: `🌾 Your ${cropCode} crop is ${daysSinceSowing} days old.\n\n📍 For accurate diagnosis:\n\n• Send photo of affected area\n• Or describe symptoms clearly\n\n📷 With a photo, I can suggest the right solution.`
     };
     
     return {

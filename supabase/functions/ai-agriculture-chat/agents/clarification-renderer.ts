@@ -689,10 +689,11 @@ export function renderClarification(
  * Get monitoring advice for when clarification limit is reached (STOP_ESCALATE).
  */
 export function getMonitoringAdvice(language: 'mr' | 'hi' | 'en'): string {
+  // ✅ FIX: Remove numbered emojis - use bullet points for clear instructions
   const advice: Record<string, string> = {
-    mr: '🌱 सध्या पिकाचे काळजीपूर्वक निरीक्षण करा. जर समस्या वाढली तर:\n\n1️⃣ प्रभावित भागाचा स्पष्ट फोटो काढा\n2️⃣ परत आमच्याशी संपर्क करा\n3️⃣ किंवा जवळच्या कृषी सेवा केंद्राला भेट द्या\n\nतुमच्या पिकाची काळजी घ्या! 🙏',
-    hi: '🌱 अभी फसल की ध्यान से निगरानी करें। अगर समस्या बढ़े तो:\n\n1️⃣ प्रभावित हिस्से की साफ फोटो लें\n2️⃣ फिर से हमसे संपर्क करें\n3️⃣ या नजदीकी कृषि सेवा केंद्र जाएं\n\nअपनी फसल का ख्याल रखें! 🙏',
-    en: '🌱 Please monitor your crop carefully for now. If the problem increases:\n\n1️⃣ Take a clear photo of the affected area\n2️⃣ Contact us again\n3️⃣ Or visit your nearest agriculture service center\n\nTake care of your crop! 🙏'
+    mr: '🌱 सध्या पिकाचे काळजीपूर्वक निरीक्षण करा. जर समस्या वाढली तर:\n\n• प्रभावित भागाचा स्पष्ट फोटो काढा\n• परत आमच्याशी संपर्क करा\n• किंवा जवळच्या कृषी सेवा केंद्राला भेट द्या\n\nतुमच्या पिकाची काळजी घ्या! 🙏',
+    hi: '🌱 अभी फसल की ध्यान से निगरानी करें। अगर समस्या बढ़े तो:\n\n• प्रभावित हिस्से की साफ फोटो लें\n• फिर से हमसे संपर्क करें\n• या नजदीकी कृषि सेवा केंद्र जाएं\n\nअपनी फसल का ख्याल रखें! 🙏',
+    en: '🌱 Please monitor your crop carefully for now. If the problem increases:\n\n• Take a clear photo of the affected area\n• Contact us again\n• Or visit your nearest agriculture service center\n\nTake care of your crop! 🙏'
   };
   
   return advice[language] || advice.en;
