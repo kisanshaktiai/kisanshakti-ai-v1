@@ -335,9 +335,9 @@ export async function formatRecommendationsWithLLM(
   // OUTPUT VALIDATION GATE - Ensure LLM didn't add unauthorized content
   // ═══════════════════════════════════════════════════════════════════════════
   
-  // PHASE-10: Pass crop type for cross-crop biocontrol validation
+  // PHASE-10 + PROMPT-2: Pass crop type and full input for enhanced validation
   const cropType = input.land_context?.current_crop;
-  const outputValidation = validateLLMOutput(formattedResponse, allowedProducts, allowedDosages, cropType);
+  const outputValidation = validateLLMOutput(formattedResponse, allowedProducts, allowedDosages, cropType, input);
   
   if (!outputValidation.valid) {
     console.error(`
@@ -375,40 +375,127 @@ export async function formatRecommendationsWithLLM(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OUTPUT VALIDATION - Ensure LLM didn't add products/dosages
+// OUTPUT VALIDATION - Ensure LLM didn't add products/dosages/internal codes
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Enhanced LLM Output Validation (PROMPT 2 Implementation)
+ * 
+ * Validates that the LLM response:
+ * 1. Contains all products from symbolic decision (stricter check)
+ * 2. Dosage numbers are unchanged (new check)
+ * 3. No internal rule IDs leaked (new check)
+ * 4. No unauthorized products added
+ * 5. Cross-crop biocontrol validation
+ */
+export interface ValidationResult {
+  passed: boolean;
+  errors: string[];
+}
 
 function validateLLMOutput(
   llmOutput: string,
   allowedProducts: string[],
   allowedDosages: string[],
-  cropType?: string
+  cropType?: string,
+  decisionInput?: any
 ): { valid: boolean; violations: string[] } {
-  const violations: string[] = [];
+  const errors: string[] = [];
   const lowerOutput = llmOutput.toLowerCase();
   
-  // Check for percentage claims (forbidden)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 1: All products present (ENHANCED - stricter check)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const primaryProductName = decisionInput?.decision_output?.primary_decision?.product_details?.product_name ||
+                             decisionInput?.decision_output?.primary_decision?.application_details?.product_name;
+  
+  if (primaryProductName && primaryProductName !== 'N/A' && primaryProductName !== 'None') {
+    // Check if product name or any word from it appears in output
+    const productWords = primaryProductName.toLowerCase().split(/[\s+@\/]+/).filter((w: string) => w.length > 2);
+    const productFound = productWords.some((word: string) => lowerOutput.includes(word)) || 
+                         lowerOutput.includes(primaryProductName.toLowerCase());
+    
+    if (!productFound) {
+      errors.push(`Missing product from symbolic decision: ${primaryProductName}`);
+      console.error(`🚫 [VALIDATION] Missing required product: ${primaryProductName}`);
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 2: Dosages unchanged (NEW - extract numbers and verify)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const dosagePerAcre = decisionInput?.decision_output?.primary_decision?.product_details?.dosage_per_acre ||
+                        decisionInput?.decision_output?.primary_decision?.application_details?.dosage ||
+                        decisionInput?.decision_output?.primary_decision?.application_details?.concentration;
+  
+  if (dosagePerAcre && dosagePerAcre !== 'As per label' && dosagePerAcre !== 'N/A') {
+    // Extract all numbers from the dosage string
+    const dosageNumbers = dosagePerAcre.match(/\d+\.?\d*/g);
+    
+    if (dosageNumbers && dosageNumbers.length > 0) {
+      // Check if at least one dosage number appears in output
+      const numbersFound = dosageNumbers.some((n: string) => llmOutput.includes(n));
+      
+      if (!numbersFound) {
+        errors.push(`Dosage numbers mismatch. Expected: ${dosagePerAcre}, numbers: ${dosageNumbers.join(', ')}`);
+        console.warn(`⚠️ [VALIDATION] Dosage numbers not found in output: ${dosageNumbers.join(', ')}`);
+      }
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 3: No rule IDs leaked (NEW - forbidden internal patterns)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const forbiddenPatterns = [
+    { pattern: /SUGARCANE_TERMITE/i, name: 'SUGARCANE_TERMITE' },
+    { pattern: /COTTON_BOLLWORM/i, name: 'COTTON_BOLLWORM' },
+    { pattern: /WHEAT_RUST/i, name: 'WHEAT_RUST' },
+    { pattern: /rule_id/i, name: 'rule_id' },
+    { pattern: /decision_id/i, name: 'decision_id' },
+    { pattern: /action_id/i, name: 'action_id' },
+    { pattern: /pest_code\s*[:=]/i, name: 'pest_code' },
+    { pattern: /disease_code\s*[:=]/i, name: 'disease_code' },
+    { pattern: /RULE_[A-Z0-9_]+/g, name: 'RULE_*' },
+    { pattern: /ipm_level\s*[:=]/i, name: 'ipm_level' },
+    { pattern: /symbolic_decision/i, name: 'symbolic_decision' },
+    { pattern: /decision_brain/i, name: 'decision_brain' }
+  ];
+  
+  for (const { pattern, name } of forbiddenPatterns) {
+    if (pattern.test(llmOutput)) {
+      errors.push(`Leaked internal code: ${name}`);
+      console.error(`🚫 [VALIDATION] Internal code leaked to farmer: ${name}`);
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 4: Unauthorized percentage claims (existing)
+  // ═══════════════════════════════════════════════════════════════════════════
   const percentagePattern = /(\d{1,3})\s*%\s*(effective|control|reduction|success)/gi;
   const percentageMatches = llmOutput.match(percentagePattern);
   if (percentageMatches) {
-    violations.push(`Unauthorized percentage claim: ${percentageMatches[0]}`);
+    errors.push(`Unauthorized percentage claim: ${percentageMatches[0]}`);
   }
   
-  // Common pesticides - if mentioned, must be in allowed list
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 5: Unauthorized products (existing - enhanced)
+  // ═══════════════════════════════════════════════════════════════════════════
   const commonPesticides = [
     'chlorpyrifos', 'monocrotophos', 'cypermethrin', 'imidacloprid',
     'carbofuran', 'phorate', 'thiamethoxam', 'fipronil', 'cartap',
-    'coragen', 'profenofos', 'quinalphos', 'acephate', 'malathion'
+    'coragen', 'profenofos', 'quinalphos', 'acephate', 'malathion',
+    'lambda-cyhalothrin', 'deltamethrin', 'bifenthrin', 'emamectin'
   ];
   
   for (const pesticide of commonPesticides) {
     if (lowerOutput.includes(pesticide) && !allowedProducts.includes(pesticide)) {
-      violations.push(`Unauthorized product: ${pesticide}`);
+      errors.push(`Unauthorized product mentioned: ${pesticide}`);
     }
   }
   
-  // PHASE-10: Cross-crop biocontrol validation
-  // Block sugarcane/cotton biocontrols for wheat
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 6: Cross-crop biocontrol validation (existing)
+  // ═══════════════════════════════════════════════════════════════════════════
   if (cropType && cropType.toLowerCase() === 'wheat') {
     const invalidBiocontrolsForWheat = [
       'trichogramma', 'ट्रायकोग्रामा', 'ट्रायकोग्रामा चिलोनिस',
@@ -418,9 +505,9 @@ function validateLLMOutput(
     
     for (const biocontrol of invalidBiocontrolsForWheat) {
       if (lowerOutput.includes(biocontrol.toLowerCase())) {
-        violations.push(`Invalid biocontrol for wheat: ${biocontrol} (this is for sugarcane/cotton bollworms)`);
+        errors.push(`Invalid biocontrol for wheat: ${biocontrol}`);
         console.warn(`
-⚠️ [PHASE-10] CROSS-CROP BIOCONTROL ERROR DETECTED
+⚠️ [CROSS-CROP] Invalid biocontrol detected
    Crop: Wheat
    Invalid Biocontrol: ${biocontrol}
    Reason: Trichogramma/Cotesia are for Lepidopteran pests (bollworms, stem borers)
@@ -430,22 +517,37 @@ function validateLLMOutput(
     }
   }
   
-  // Check for dosage patterns not in allowed list
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 7: Dosage patterns validation (existing - enhanced)
+  // ═══════════════════════════════════════════════════════════════════════════
   const dosagePattern = /(\d+)\s*(ml|l|g|kg|gm)\s*(per|\/)\s*(acre|hectare|ha|bigha)/gi;
   const dosageMatches = llmOutput.matchAll(dosagePattern);
   
   for (const match of dosageMatches) {
     const fullDosage = match[0].toLowerCase();
-    const isAllowed = allowedDosages.some(d => fullDosage.includes(d) || d.includes(fullDosage));
+    const isAllowed = allowedDosages.some(d => 
+      fullDosage.includes(d) || d.includes(fullDosage) || 
+      // Also check individual numbers
+      d.match(/\d+/)?.[0] === match[1]
+    );
     if (!isAllowed && allowedDosages.length > 0) {
-      // Only flag if we have allowed dosages but this one isn't in them
-      console.warn(`   ⚠️ Dosage check: "${fullDosage}" not in allowed list`);
+      console.warn(`   ⚠️ Dosage in output "${fullDosage}" not in allowed list: [${allowedDosages.join(', ')}]`);
+      // Don't add as error - just warning for now (may be reformatted)
     }
   }
   
+  // Log validation result
+  if (errors.length > 0) {
+    console.error(`
+🚫 [LLM OUTPUT VALIDATION FAILED]
+   Errors: ${errors.length}
+   ${errors.map((e, i) => `   ${i + 1}. ${e}`).join('\n')}
+    `);
+  }
+  
   return {
-    valid: violations.length === 0,
-    violations
+    valid: errors.length === 0,
+    violations: errors
   };
 }
 
