@@ -315,6 +315,148 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
         information_gain: 0.70
       }
     ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SMALL_INSECTS - Generic insect detection (aphids, whiteflies, thrips, jassids)
+  // ═══════════════════════════════════════════════════════════════════════════
+  'SMALL_INSECTS': {
+    primary_symptom: 'SMALL_INSECTS',
+    competing_causes: [
+      {
+        cause_code: 'APHID',
+        cause_name_mr: 'माहू/मावा',
+        cause_name_hi: 'माहूं',
+        cause_name_en: 'Aphids',
+        category: 'PEST',
+        base_probability: 0.30,
+        confirming_factors: ['green_black_color', 'sticky_honeydew', 'clustered', 'under_leaves'],
+        ruling_out_factors: ['flying', 'jumping', 'white_color']
+      },
+      {
+        cause_code: 'WHITEFLY',
+        cause_name_mr: 'पांढरी माशी',
+        cause_name_hi: 'सफेद मक्खी',
+        cause_name_en: 'Whitefly',
+        category: 'PEST',
+        base_probability: 0.25,
+        confirming_factors: ['white_color', 'flying_when_disturbed', 'under_leaves'],
+        ruling_out_factors: ['green_color', 'not_flying', 'sticky_substance']
+      },
+      {
+        cause_code: 'JASSID',
+        cause_name_mr: 'तुडतुडे/फुदके',
+        cause_name_hi: 'फुदके',
+        cause_name_en: 'Jassids/Leafhoppers',
+        category: 'PEST',
+        base_probability: 0.25,
+        confirming_factors: ['green_wedge_shape', 'jumping', 'sideways_movement', 'leaf_curling'],
+        ruling_out_factors: ['black_color', 'not_jumping', 'clustered']
+      },
+      {
+        cause_code: 'THRIPS',
+        cause_name_mr: 'फुलकिडे',
+        cause_name_hi: 'थ्रिप्स',
+        cause_name_en: 'Thrips',
+        category: 'PEST',
+        base_probability: 0.20,
+        confirming_factors: ['black_brown_color', 'elongated_tiny', 'silvery_damage', 'flower_damage'],
+        ruling_out_factors: ['green_color', 'flying', 'round_body']
+      }
+    ],
+    differentiating_questions: [
+      {
+        question_mr: '🔍 हे किडे कोणत्या रंगाचे आहेत?',
+        question_hi: '🔍 ये कीड़े किस रंग के हैं?',
+        question_en: '🔍 What color are these insects?',
+        yes_supports: 'APHID',
+        no_supports: 'WHITEFLY',
+        information_gain: 0.90
+      },
+      {
+        question_mr: 'पानाला हात लावल्यावर उडतात का?',
+        question_hi: 'पत्ती छूने पर उड़ जाते हैं?',
+        question_en: 'Do they fly away when you touch the leaf?',
+        yes_supports: 'WHITEFLY',
+        no_supports: 'APHID',
+        information_gain: 0.85
+      },
+      {
+        question_mr: 'पानांवर चिकट पदार्थ दिसतो का?',
+        question_hi: 'पत्तियों पर चिपचिपा पदार्थ दिख रहा है?',
+        question_en: 'Do you see sticky substance on leaves?',
+        yes_supports: 'APHID',
+        no_supports: 'THRIPS',
+        information_gain: 0.80
+      }
+    ]
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PEST_PROBLEM - Alias for SMALL_INSECTS
+  // ═══════════════════════════════════════════════════════════════════════════
+  'PEST_PROBLEM': {
+    primary_symptom: 'PEST_PROBLEM',
+    competing_causes: [
+      {
+        cause_code: 'APHID',
+        cause_name_mr: 'माहू/मावा',
+        cause_name_hi: 'माहूं',
+        cause_name_en: 'Aphids',
+        category: 'PEST',
+        base_probability: 0.30,
+        confirming_factors: ['green_black_color', 'sticky_honeydew', 'clustered'],
+        ruling_out_factors: ['flying', 'jumping', 'white_color']
+      },
+      {
+        cause_code: 'WHITEFLY',
+        cause_name_mr: 'पांढरी माशी',
+        cause_name_hi: 'सफेद मक्खी',
+        cause_name_en: 'Whitefly',
+        category: 'PEST',
+        base_probability: 0.25,
+        confirming_factors: ['white_color', 'flying_when_disturbed'],
+        ruling_out_factors: ['green_color', 'not_flying']
+      },
+      {
+        cause_code: 'JASSID',
+        cause_name_mr: 'तुडतुडे',
+        cause_name_hi: 'फुदके',
+        cause_name_en: 'Jassids',
+        category: 'PEST',
+        base_probability: 0.25,
+        confirming_factors: ['green_wedge_shape', 'jumping'],
+        ruling_out_factors: ['black_color', 'not_jumping']
+      },
+      {
+        cause_code: 'THRIPS',
+        cause_name_mr: 'फुलकिडे',
+        cause_name_hi: 'थ्रिप्स',
+        cause_name_en: 'Thrips',
+        category: 'PEST',
+        base_probability: 0.20,
+        confirming_factors: ['black_brown_color', 'silvery_damage'],
+        ruling_out_factors: ['green_color', 'flying']
+      }
+    ],
+    differentiating_questions: [
+      {
+        question_mr: '🔍 हे किडे कोणत्या रंगाचे आहेत?',
+        question_hi: '🔍 ये कीड़े किस रंग के हैं?',
+        question_en: '🔍 What color are these insects?',
+        yes_supports: 'APHID',
+        no_supports: 'WHITEFLY',
+        information_gain: 0.90
+      },
+      {
+        question_mr: 'किडे उड्या मारतात का?',
+        question_hi: 'कीड़े उछलते हैं?',
+        question_en: 'Do insects jump when disturbed?',
+        yes_supports: 'JASSID',
+        no_supports: 'APHID',
+        information_gain: 0.85
+      }
+    ]
   }
 };
 
