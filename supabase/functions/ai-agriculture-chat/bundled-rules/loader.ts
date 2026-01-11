@@ -145,10 +145,72 @@ function reconstructCondition(code: string): ((input: DecisionInput) => boolean)
   }
 }
 
+/**
+ * CRITICAL FIX: Evaluate conditions_json from database
+ * Supports compound conditions (all/any) and atomic conditions
+ */
+export function evaluateConditionsJson(
+  conditions: any,
+  input: DecisionInput
+): boolean {
+  if (!conditions || Object.keys(conditions).length === 0) {
+    return true; // No conditions = always match
+  }
+  
+  // Handle 'all' compound condition
+  if (conditions.all && Array.isArray(conditions.all)) {
+    return conditions.all.every((c: any) => evaluateConditionsJson(c, input));
+  }
+  
+  // Handle 'any' compound condition
+  if (conditions.any && Array.isArray(conditions.any)) {
+    return conditions.any.some((c: any) => evaluateConditionsJson(c, input));
+  }
+  
+  // Evaluate atomic condition
+  if (conditions.fact && conditions.operator) {
+    const factValue = input[conditions.fact as keyof DecisionInput];
+    if (factValue === undefined || factValue === null) return false;
+    
+    const op = conditions.operator.toLowerCase();
+    const val = conditions.value;
+    
+    switch (op) {
+      case 'equal':
+      case 'equals':
+        return String(factValue).toLowerCase() === String(val).toLowerCase();
+      case 'contains':
+        return String(factValue).toLowerCase().includes(String(val).toLowerCase());
+      case 'in':
+        return Array.isArray(val) && val.some((v: any) => 
+          String(v).toLowerCase() === String(factValue).toLowerCase()
+        );
+      case 'between':
+        return Array.isArray(val) && val.length === 2 && 
+               Number(factValue) >= val[0] && Number(factValue) <= val[1];
+      case 'lessthan':
+        return Number(factValue) < Number(val);
+      case 'greaterthan':
+        return Number(factValue) > Number(val);
+      default:
+        return false;
+    }
+  }
+  
+  return false;
+}
+
 function makeExecutable(rule: BundledRule): ExecutableRule {
   return {
     ...rule,
-    conditions: reconstructCondition(rule.conditionCode)
+    conditions: (input: DecisionInput) => {
+      // CRITICAL FIX: First try conditions_json, then fallback to conditionCode
+      if (rule.conditions_json && Object.keys(rule.conditions_json).length > 0) {
+        return evaluateConditionsJson(rule.conditions_json, input);
+      }
+      // Fallback to legacy conditionCode
+      return reconstructCondition(rule.conditionCode)(input);
+    }
   };
 }
 
