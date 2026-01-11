@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -61,7 +61,8 @@ interface ModernLandCardProps {
   onRefresh: () => void;
 }
 
-export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
+// PERFORMANCE: Memoize component to prevent unnecessary re-renders
+export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -70,11 +71,12 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   
   // Removed inline map URL generation - now using LandThumbnail component
   
-  const handleEdit = () => {
+  // PERFORMANCE: Memoize callbacks to prevent child re-renders
+  const handleEdit = useCallback(() => {
     navigate(`/app/lands/${land.id}/edit`);
-  };
+  }, [navigate, land.id]);
   
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     setIsDeleting(true);
     try {
       console.log('🗑️ [ModernLandCard] Starting delete for land:', land.id, land.name);
@@ -104,9 +106,9 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
       setIsDeleting(false);
       setDeleteDialogOpen(false);
     }
-  };
+  }, [land.id, land.name, onRefresh, t, toast]);
   
-  const handleShare = () => {
+  const handleShare = useCallback(() => {
     if (navigator.share) {
       navigator.share({
         title: land.name,
@@ -120,15 +122,15 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         description: t('lands.card.toast.link_copied_message'),
       });
     }
-  };
+  }, [land.name, t, toast]);
   
-  const formatArea = () => {
+  const formatArea = useCallback(() => {
     let areaText = `${land.area_acres.toFixed(2)} acres`;
     if (land.area_guntas && land.area_guntas > 0) {
       areaText += ` ${land.area_guntas} guntas`;
     }
     return areaText;
-  };
+  }, [land.area_acres, land.area_guntas]);
   
   return (
     <>
@@ -343,4 +345,4 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
       </AlertDialog>
     </>
   );
-}
+});
