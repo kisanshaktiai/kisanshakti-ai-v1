@@ -76,11 +76,19 @@ const STATIC_DATA_PATTERNS = [
 
 // Pest/Disease treatment (needs Decision Brain)
 const PEST_DISEASE_PATTERNS = [
+  // CRITICAL: Dying/Dead crop patterns (MUST trigger PEST_DISEASE route)
+  /मेला|मेले|मेलेला|मेलेले|मेलेली/i,       // Marathi: "died"
+  /मर\s*गय|मर\s*रह|मरने\s*लग/i,            // Hindi: "dying/died"
+  /dead|dying|died|kill/i,                    // English: death keywords
+  /सुक\s*(गय|रह|ले)|सुखले|सुखलेल/i,         // "dried/drying"
+  /जळालेल|जळून|करपले/i,                    // "burned/scorched"
+  
   // Pest mentions
   /किडी|कीड़|माशी|मावा|इल्ली|अळी|pest|insect|bug|कीट/i,
   /whitefly|aphid|borer|thrips|mealybug|jassid/i,
   /पांढर्या?\s*माशी|मावा|तेला|बोरर/i,
   /shoot\s*borer|stem\s*borer|fruit\s*borer|bollworm/i,
+  /termite|वाळवी|दीमक/i,                     // Termite patterns
   
   // Disease mentions
   /रोग|बीमारी|disease|infection|बुरशी|फफूंद/i,
@@ -88,12 +96,14 @@ const PEST_DISEASE_PATTERNS = [
   /पानावर\s*डाग|पानी\s*पिवळी/i,
   /leaf\s*(spot|curl|blight)/i,
   
-  // Symptom descriptions
+  // Symptom descriptions (CRITICAL: Include weak/dying symptoms)
   /मधली\s*सुरळी|dead\s*heart|सुरळी.*वाळ/i,
   /पाने?\s*(पिवळ|सुक|वाळ|गळ)/i,
   /पौधा?\s*(मुरझ|सूख)/i,
+  /कमकुवत|कमज़ोर|weak/i,                     // "weak" crop patterns
   /holes?\s*in\s*(leaves?|bolls?|fruits?)/i,
   /wilting|yellowing|drying|rotting/i,
+  /खराब|damage|नुकसान/i,                    // "damaged" patterns
   
   // Treatment requests
   /फवारणी|स्प्रे|spray|छिड़काव/i,

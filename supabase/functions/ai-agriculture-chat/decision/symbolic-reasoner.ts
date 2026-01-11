@@ -140,20 +140,32 @@ export class SymbolicReasoner {
   /**
    * CRITICAL: Execute symbolic rules against facts
    * This is the core decision engine - NO LLM involvement
+   * 
+   * PHASE-17 FIX (Issue #4): Added fuzzy/partial matching support
    */
   async executeRules(
     facts: SymbolicFact,
-    landState: AuthoritativeLandState | null
+    landState: AuthoritativeLandState | null,
+    options?: {
+      allowFuzzyMatch?: boolean;
+      minFuzzyScore?: number;
+      urgencyOverride?: boolean;
+    }
   ): Promise<InferenceResult> {
     console.log('🔬 [SymbolicReasoner] Starting rule execution...');
     console.log(`   Crop: ${facts.crop}, Stage: ${facts.growth_stage}, DOS: ${facts.dos}`);
     console.log(`   Symptom: ${facts.primary_symptom}, Severity: ${facts.severity}`);
+    console.log(`   Options: fuzzy=${options?.allowFuzzyMatch}, minScore=${options?.minFuzzyScore}, urgent=${options?.urgencyOverride}`);
     
     const startTime = Date.now();
     const firedRules: FiredRule[] = [];
     const hypotheses = new Map<string, Hypothesis>();
     const matchedResponses: InferenceResult['matched_responses'] = [];
     let rulesEvaluated = 0;
+    
+    // PHASE-17: Default to fuzzy matching if urgency override is set
+    const allowFuzzy = options?.allowFuzzyMatch ?? options?.urgencyOverride ?? false;
+    const minFuzzyScore = options?.minFuzzyScore ?? 0.5;
     
     try {
       // 1. Load relevant rules from decision_rules table
@@ -171,11 +183,22 @@ export class SymbolicReasoner {
         // Also check keyword matching as fallback
         const keywordMatch = this.checkKeywordMatch(rule.trigger_keywords || [], facts.user_query);
         
-        const matches = match.matches || keywordMatch.matches;
-        const matchConfidence = Math.max(match.confidence, keywordMatch.confidence);
+        // PHASE-17 FIX: Try fuzzy matching if exact match fails
+        let partialMatch: { matches: boolean; confidence: number; missing: string[] } | null = null;
+        if (!match.matches && !keywordMatch.matches && allowFuzzy) {
+          partialMatch = this.evaluatePartialMatch(conditionsJson, facts, minFuzzyScore);
+        }
+        
+        const matches = match.matches || keywordMatch.matches || (partialMatch?.matches ?? false);
+        const matchConfidence = Math.max(
+          match.confidence, 
+          keywordMatch.confidence,
+          partialMatch?.confidence ?? 0
+        );
         
         if (matches) {
-          console.log(`   ✅ Rule fired: ${rule.rule_id} (conf: ${(matchConfidence * 100).toFixed(0)}%)`);
+          const matchType = match.matches ? 'EXACT' : keywordMatch.matches ? 'KEYWORD' : 'PARTIAL';
+          console.log(`   ✅ Rule fired: ${rule.rule_id} (conf: ${(matchConfidence * 100).toFixed(0)}%, type: ${matchType})`);
           
           const firedRule: FiredRule = {
             rule_id: rule.rule_id,
@@ -256,6 +279,58 @@ export class SymbolicReasoner {
         matched_responses: []
       };
     }
+  }
+  
+  /**
+   * PHASE-17 FIX (Issue #4): Evaluate partial/fuzzy match
+   * Returns true if enough conditions are met (above minScore threshold)
+   */
+  private evaluatePartialMatch(
+    conditions: RuleCondition,
+    facts: SymbolicFact,
+    minScore: number
+  ): { matches: boolean; confidence: number; missing: string[] } {
+    // Handle empty conditions
+    if (!conditions || Object.keys(conditions).length === 0) {
+      return { matches: false, confidence: 0, missing: [] };
+    }
+    
+    // Handle 'all' compound conditions - count how many match
+    if (conditions.all && Array.isArray(conditions.all)) {
+      let totalConditions = conditions.all.length;
+      let metConditions = 0;
+      const missing: string[] = [];
+      
+      for (const c of conditions.all) {
+        const result = this.evaluateConditionsJson(c, facts);
+        if (result.matches) {
+          metConditions++;
+        } else if (c.fact) {
+          missing.push(c.fact);
+        }
+      }
+      
+      const partialScore = totalConditions > 0 ? metConditions / totalConditions : 0;
+      
+      return {
+        matches: partialScore >= minScore,
+        confidence: partialScore,
+        missing
+      };
+    }
+    
+    // Handle 'any' compound conditions - at least one match is enough
+    if (conditions.any && Array.isArray(conditions.any)) {
+      for (const c of conditions.any) {
+        const result = this.evaluateConditionsJson(c, facts);
+        if (result.matches) {
+          return { matches: true, confidence: result.confidence, missing: [] };
+        }
+      }
+      return { matches: false, confidence: 0, missing: [] };
+    }
+    
+    return { matches: false, confidence: 0, missing: [] };
   }
   
   /**
@@ -732,13 +807,18 @@ export function getSymbolicReasoner(): SymbolicReasoner {
   return reasonerInstance;
 }
 
-// Export convenience function
+// Export convenience function with urgency support
 export async function executeSymbolicReasoning(
   canonicalState: CanonicalState,
   landState: AuthoritativeLandState | null,
-  userQuery: string
+  userQuery: string,
+  options?: {
+    allowFuzzyMatch?: boolean;
+    minFuzzyScore?: number;
+    urgencyOverride?: boolean;
+  }
 ): Promise<InferenceResult> {
   const facts = SymbolicReasoner.mapToSymbolicFact(canonicalState, landState, userQuery);
   const reasoner = getSymbolicReasoner();
-  return reasoner.executeRules(facts, landState);
+  return reasoner.executeRules(facts, landState, options);
 }
