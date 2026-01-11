@@ -281,7 +281,16 @@ import {
   validateUnderstandingOutput
 } from '../llm-understanding-layer.ts';
 
-export const ORCHESTRATOR_VERSION = '2.7.0'; // Phase-18: Clean 3-layer architecture with timing logs
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-19: Photo Analyzer - Vision API Integration for crop photo analysis
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  analyzePhoto,
+  enhanceUnderstandingWithPhoto,
+  type PhotoAnalysisOutput
+} from '../photo/photo-analyzer.ts';
+
+export const ORCHESTRATOR_VERSION = '2.8.0'; // Phase-19: Integrated clarification loop + photo flow
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
@@ -815,6 +824,67 @@ export class AIAgentOrchestrator {
       
       layerTimings.layer1_context = Date.now() - layer1Start;
       console.log(`   ✅ Layer 1 complete (${layerTimings.layer1_context}ms)`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-19: PHOTO ANALYSIS EARLY PATH
+      // If farmer uploaded a photo, analyze it BEFORE other processing
+      // This enhances understanding with visual observations for rule evaluation
+      // ═══════════════════════════════════════════════════════════════════════════
+      let photoAnalysisResult: PhotoAnalysisOutput | null = null;
+      if (options.photoUrl) {
+        console.log('\n📸 [PHASE-19] Photo Analysis Path...');
+        const photoAnalysisStart = Date.now();
+        
+        try {
+          photoAnalysisResult = await analyzePhoto({
+            image_url: options.photoUrl,
+            farmer_message: farmerMessage,
+            crop_context: landContext ? {
+              crop_code: landContext.current_crop,
+              growth_stage: landContext.growth_stage,
+              days_since_sowing: landContext.days_since_sowing
+            } : undefined,
+            language: options.language || 'mr'
+          });
+          
+          agentsUsed.push('PHOTO_ANALYZER');
+          const photoTime = Date.now() - photoAnalysisStart;
+          
+          console.log(`   ✅ Photo analyzed (${photoTime}ms)`);
+          console.log(`   Quality: ${photoAnalysisResult.image_quality.is_usable ? 'USABLE' : 'UNUSABLE'} (${(photoAnalysisResult.image_quality.quality_score * 100).toFixed(0)}%)`);
+          console.log(`   Observations: ${photoAnalysisResult.observations.length}`);
+          console.log(`   Detected Issues: ${photoAnalysisResult.detected_issues.length}`);
+          console.log(`   Severity: ${photoAnalysisResult.severity_assessment.overall_severity}`);
+          console.log(`   Urgency: ${photoAnalysisResult.severity_assessment.urgency}`);
+          
+          // If photo is unusable, request a better one
+          if (!photoAnalysisResult.image_quality.is_usable) {
+            console.log(`   ⚠️ Photo unusable - requesting retake`);
+            return {
+              type: 'PHOTO_REQUEST',
+              session_id: sessionId,
+              photo_instructions: {
+                text_mr: `📷 फोटो स्पष्ट नाही. कृपया पुन्हा फोटो पाठवा.\n\n💡 टिप्स:\n• चांगल्या प्रकाशात\n• प्रभावित भागाचा जवळून\n• निरोगी भाग सोबत`,
+                text_hi: `📷 फोटो स्पष्ट नहीं है। कृपया फिर से फोटो भेजें.\n\n💡 टिप्स:\n• अच्छी रोशनी में\n• प्रभावित क्षेत्र का करीब से\n• स्वस्थ भाग के साथ`,
+                text_en: `📷 Photo is not clear. Please send again.\n\n💡 Tips:\n• In good lighting\n• Close-up of affected area\n• Include healthy part for comparison`,
+                tips: photoAnalysisResult.image_quality.issues
+              },
+              metadata: {
+                confidence: 0,
+                safety_status: 'PHOTO_RETAKE_NEEDED',
+                rules_applied: 0,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed,
+                trace_id: traceId,
+                photo_quality_issues: photoAnalysisResult.image_quality.issues
+              }
+            };
+          }
+        } catch (photoError) {
+          console.error(`   ❌ Photo analysis failed (non-blocking):`, photoError);
+          agentsUsed.push('PHOTO_ANALYZER_FALLBACK');
+        }
+      }
       
       // ========================================
       // PHASE 0.3: UNIFIED QUERY ROUTER (NEW)
@@ -1603,6 +1673,45 @@ export class AIAgentOrchestrator {
       console.log(`      Missing fields: ${understandingResult.unknown_critical_fields.join(', ') || 'none'}`);
       console.log(`      Contradictions: ${understandingResult.contradiction_detected.length}`);
       console.log(`      Clarification required: ${understandingResult.clarification_required}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-19: ENHANCE UNDERSTANDING WITH PHOTO ANALYSIS
+      // If farmer uploaded a photo, merge photo observations into understanding
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (photoAnalysisResult && photoAnalysisResult.success) {
+        console.log(`\n📸 [PHASE-19] Enhancing understanding with photo observations...`);
+        
+        // Add photo observations to observation extraction
+        photoAnalysisResult.observations.forEach(obs => {
+          // Map photo observation to observation extraction format
+          const photoSymptom = {
+            key: obs.key,
+            text: obs.description,
+            confidence: obs.confidence,
+            source: 'PHOTO_ANALYSIS'
+          };
+          
+          // Add to extracted symptoms if not already present
+          if (!observationExtraction.extracted_symptoms?.some(s => s.text?.includes(obs.key))) {
+            observationExtraction.extracted_symptoms = observationExtraction.extracted_symptoms || [];
+            observationExtraction.extracted_symptoms.push({
+              text: obs.description,
+              symptom_code: obs.key,
+              confidence: obs.confidence
+            } as any);
+          }
+        });
+        
+        // Reduce clarification requirement if photo provides good data
+        if (photoAnalysisResult.observations.length >= 2 && photoAnalysisResult.confidence > 0.6) {
+          console.log(`   📈 Photo provides ${photoAnalysisResult.observations.length} observations - reducing clarification need`);
+          understandingResult.clarification_required = false;
+          understandingResult.completeness_score = Math.min(100, understandingResult.completeness_score + 20);
+          understandingResult.understanding_confidence = UnderstandingConfidence.SUFFICIENT;
+        }
+        
+        agentsUsed.push('PHOTO_UNDERSTANDING_ENHANCED');
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 4B: UNDERSTANDING-BASED CLARIFICATION GATE
@@ -2818,6 +2927,76 @@ export class AIAgentOrchestrator {
       
       console.log('   ✅ Decision generated:', decisionOutput.status);
       console.log('   ✅ Rules applied:', decisionOutput.rules_applied?.length || 0);
+      
+      layerTimings.layer3_rules = Date.now() - layer3Start;
+      console.log(`   ✅ Layer 3 complete (${layerTimings.layer3_rules}ms)`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-19: PHOTO REQUEST ON LOW CONFIDENCE + NO RULES
+      // If rule engine returned no recommendations AND confidence is low,
+      // request a photo to help with diagnosis
+      // ═══════════════════════════════════════════════════════════════════════════
+      const rulesAppliedCount = decisionOutput.rules_applied?.length || 0;
+      const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision;
+      const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
+      const hasNoPhoto = !options.photoUrl && !photoAnalysisResult;
+      
+      if (hasNoRecommendations && isLowConfidence && hasNoPhoto) {
+        console.log(`\n📸 [PHASE-19] Low confidence + no rules matched - requesting photo`);
+        console.log(`   Rules applied: ${rulesAppliedCount}, Confidence: ${decisionOutput.confidence_score || 0}`);
+        
+        // Return photo request to help with diagnosis
+        return {
+          type: 'PHOTO_REQUEST',
+          session_id: sessionId,
+          photo_instructions: {
+            text_mr: `📷 अधिक अचूक निदानासाठी, कृपया प्रभावित पानाचा/पिकाचा फोटो पाठवा.\n\n💡 टिप्स:\n• चांगल्या प्रकाशात फोटो काढा\n• प्रभावित भागाचा जवळून फोटो\n• निरोगी पान सोबत ठेवा`,
+            text_hi: `📷 सटीक निदान के लिए, कृपया प्रभावित पत्ती/फसल की फोटो भेजें.\n\n💡 टिप्स:\n• अच्छी रोशनी में फोटो लें\n• प्रभावित क्षेत्र का करीब से फोटो\n• स्वस्थ पत्ती साथ में रखें`,
+            text_en: `📷 For accurate diagnosis, please send a photo of the affected leaf/crop.\n\n💡 Tips:\n• Take photo in good lighting\n• Close-up of affected area\n• Include a healthy leaf for comparison`,
+            tips: [
+              'Good lighting',
+              'Close-up of affected area',
+              'Include healthy part for comparison'
+            ]
+          },
+          metadata: {
+            confidence: decisionOutput.confidence_score || 0,
+            safety_status: 'PHOTO_REQUESTED',
+            rules_applied: rulesAppliedCount,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId,
+            layer_timings: layerTimings,
+            reason: 'LOW_CONFIDENCE_NO_RULES'
+          }
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-19: Enhance decision with photo analysis results if available
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (photoAnalysisResult && photoAnalysisResult.success) {
+        console.log(`\n📸 [PHASE-19] Enhancing decision with photo analysis...`);
+        
+        // Add photo observations to decision output
+        decisionOutput = {
+          ...decisionOutput,
+          photo_analysis: {
+            observations: photoAnalysisResult.observations,
+            detected_issues: photoAnalysisResult.detected_issues,
+            severity: photoAnalysisResult.severity_assessment,
+            confidence_boost: photoAnalysisResult.confidence > 0.7 ? 0.15 : 0.05
+          }
+        };
+        
+        // Boost confidence if photo confirms diagnosis
+        if (photoAnalysisResult.confidence > 0.7) {
+          decisionOutput.confidence_score = Math.min(1, (decisionOutput.confidence_score || 0.5) + 0.15);
+          console.log(`   Confidence boosted to ${(decisionOutput.confidence_score * 100).toFixed(0)}% (photo confirmation)`);
+        }
+        
+        agentsUsed.push('PHOTO_ENHANCED');
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // P0-E: INTENT LOCK ENFORCEMENT - Filter actions by locked intent
