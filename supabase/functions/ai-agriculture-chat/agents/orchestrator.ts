@@ -1568,9 +1568,9 @@ export class AIAgentOrchestrator {
         console.log(`      🔐 Using LOCKED CropContext: ${lockedCropContext.crop_name}`);
         cropContextAuthority = {
           crop_name: lockedCropContext.crop_name,
-          growth_stage: lockedCropContext.growth_stage,
-          days_since_sowing: lockedCropContext.days_since_sowing,
-          crop_data_source: 'locked_session'
+          growth_stage: lockedCropContext.growth_stage || 'UNKNOWN',
+          days_since_sowing: lockedCropContext.days_since_sowing ?? 0,
+          source: 'crop_schedules' // Must match CropContextAuthority interface
         };
       } else if (landContext) {
         // Build fresh from land context (crop_schedules is the authoritative source)

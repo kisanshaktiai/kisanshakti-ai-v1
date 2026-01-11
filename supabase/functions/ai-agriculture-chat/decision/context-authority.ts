@@ -133,10 +133,12 @@ export function buildCropContextFromLandContext(landContext: {
  * Check if crop context authority exists and is valid.
  */
 export function hasCropContextAuthority(authority: CropContextAuthority | null | undefined): authority is CropContextAuthority {
-  return authority !== null && 
-         authority !== undefined && 
-         typeof authority.crop_name === 'string' && 
-         authority.crop_name.length > 0;
+  if (authority === null || authority === undefined) {
+    return false;
+  }
+  // Defensive check - ensure crop_name exists and is a non-empty string
+  const cropName = authority?.crop_name;
+  return typeof cropName === 'string' && cropName.length > 0;
 }
 
 /**
