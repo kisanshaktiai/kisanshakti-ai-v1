@@ -264,7 +264,24 @@ import {
   serializeCrossCropSymptoms 
 } from './cross-crop-symptom-mapper.ts';
 
-export const ORCHESTRATOR_VERSION = '2.6.0'; // Phase-12: Universal observation rules + proper symptom mapping
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-18: Rule Evaluation Layer - Clean wrapper for symbolic reasoning
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  evaluateRules as evaluateRulesLayer,
+  type RuleEvaluationInput,
+  type RuleEvaluationOutput
+} from '../layers/rule-evaluation-layer.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-18: LLM Understanding Layer - Clean wrapper for NLU
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  type UnderstandingOutput,
+  validateUnderstandingOutput
+} from '../llm-understanding-layer.ts';
+
+export const ORCHESTRATOR_VERSION = '2.7.0'; // Phase-18: Clean 3-layer architecture with timing logs
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
@@ -755,7 +772,18 @@ export class AIAgentOrchestrator {
     const agentsUsed: string[] = [];
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     
-    console.log(`\n🚀 [${traceId}] Orchestrator: Starting full diagnostic flow...`);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE-18: Layer timing infrastructure for 3-layer architecture visibility
+    // ═══════════════════════════════════════════════════════════════════════════
+    const layerTimings = {
+      layer1_context: 0,     // Layer 1: Context loading & preprocessing
+      layer2_understanding: 0, // Layer 2: LLM Understanding
+      layer3_rules: 0,       // Layer 3: Rule Evaluation
+      layer4_formatting: 0,  // Layer 4: LLM Response Formatting
+      layer5_validation: 0   // Layer 5: Safety & Validation
+    };
+    
+    console.log(`\n🚀 [${traceId}] Orchestrator v${ORCHESTRATOR_VERSION}: Starting full diagnostic flow...`);
     console.log(`   [${traceId}] Session: ${sessionId}`);
     console.log(`   [${traceId}] Message: ${farmerMessage.substring(0, 50)}...`);
     
@@ -763,6 +791,12 @@ export class AIAgentOrchestrator {
     if (options.sessionState?.hasPreviousRecommendations) {
       console.log(`   [${traceId}] 🔗 Session Context: previousPest=${options.sessionState.previousPest}, previousCrop=${options.sessionState.previousCrop}, turn=${options.sessionState.turnCount}`);
     }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LAYER 1: CONTEXT LOADING (No LLM)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const layer1Start = Date.now();
+    console.log('\n📦 [LAYER 1] Context Loading...');
     
     // Define landContext outside try block so it's accessible in catch
     let landContext: any = null;
@@ -778,6 +812,9 @@ export class AIAgentOrchestrator {
           console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
         }
       }
+      
+      layerTimings.layer1_context = Date.now() - layer1Start;
+      console.log(`   ✅ Layer 1 complete (${layerTimings.layer1_context}ms)`);
       
       // ========================================
       // PHASE 0.3: UNIFIED QUERY ROUTER (NEW)
@@ -1378,7 +1415,11 @@ export class AIAgentOrchestrator {
       // Stage 4: Understanding Completeness Check
       // Stage 5: Diagnosis & Prescription (in Phase 4)
       // ========================================
-      console.log('\n📥 PHASE 1: 5-Stage Understanding Pipeline...');
+      // ═══════════════════════════════════════════════════════════════════════════
+      // LAYER 2: LLM UNDERSTANDING (Semantic Extraction)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const layer2Start = Date.now();
+      console.log('\n🧠 [LAYER 2] LLM Understanding Pipeline...');
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 1: LANGUAGE NORMALIZATION (LLM, FLEXIBLE)
@@ -2754,10 +2795,12 @@ export class AIAgentOrchestrator {
         };
       }
       
-      // ========================================
-      // PHASE 4: RULE ENGINE EXECUTION WITH DECISION GRAPH BRIDGE
-      // ========================================
-      console.log(`\n⚙️ [${traceId}] PHASE 4: Executing Rule Engine with Decision Graph Bridge...`);
+      // ═══════════════════════════════════════════════════════════════════════════
+      // LAYER 3: RULE EVALUATION (Symbolic Brain - No LLM)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const layer3Start = Date.now();
+      console.log('\n⚙️ [LAYER 3] Rule Evaluation...');
+      console.log(`   [${traceId}] PHASE 4: Executing Rule Engine with Decision Graph Bridge...`);
       
       // CRITICAL FIX: Pass landContext directly to buildRuleEngineInput
       // The contextState does NOT contain land_context, so we must pass it separately
@@ -3022,6 +3065,11 @@ export class AIAgentOrchestrator {
       // ========================================
       // PHASE 6: QUESTION CLASSIFICATION + FARMER COMMUNICATION
       // ========================================
+      // ═══════════════════════════════════════════════════════════════════════════
+      // LAYER 4: LLM RESPONSE FORMATTING (Render-only mode)
+      // ═══════════════════════════════════════════════════════════════════════════
+      const layer4Start = Date.now();
+      console.log('\n🎨 [LAYER 4] LLM Response Formatting...');
       console.log('\n📋 PHASE 6A: Classifying Question Type...');
       
       // Classify the question to determine which sections to show
