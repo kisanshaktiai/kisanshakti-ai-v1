@@ -327,16 +327,38 @@ function extractRawSymptomText(text: string): string[] {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN EXTRACTION FUNCTION
+// CRITICAL FIX: Now accepts landContext as PRIMARY crop source
 // ═══════════════════════════════════════════════════════════════════════════
+
+export interface LandContextForExtraction {
+  current_crop?: string;
+  crop_code?: string;
+  growth_stage?: string;
+  days_since_sowing?: number;
+}
 
 export function extractObservations(
   normalizedText: string,
-  detectedLanguage: 'mr' | 'hi' | 'en'
+  detectedLanguage: 'mr' | 'hi' | 'en',
+  landContext?: LandContextForExtraction
 ): ObservationExtraction {
   const rawSymptomText = extractRawSymptomText(normalizedText);
   
+  // CRITICAL FIX (Issue #2): Use land context as PRIMARY source for crop
+  // Only infer from text if land context is not available
+  const cropFromLandContext = landContext?.current_crop || landContext?.crop_code;
+  const cropFromText = extractCropMention(normalizedText);
+  
+  // Priority: LandContext > TextInference
+  const finalCrop = cropFromLandContext || cropFromText;
+  
+  console.log(`   📋 [ObservationExtractor] Crop resolution:
+     - Land context: ${cropFromLandContext || 'NOT_AVAILABLE'}
+     - Text inference: ${cropFromText || 'NOT_FOUND'}
+     - Final crop: ${finalCrop || 'UNKNOWN'}`);
+  
   return {
-    crop_mentioned: extractCropMention(normalizedText),
+    crop_mentioned: finalCrop,
     raw_symptom_text: rawSymptomText,
     affected_part: extractAffectedPart(normalizedText),
     symptom_distribution: extractDistribution(normalizedText),

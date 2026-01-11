@@ -198,7 +198,35 @@ function determineClarificationPriority(unknownFields: string[]): 'crop' | 'symp
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN CHECKER FUNCTION
+// URGENCY DETECTION - Keywords indicating critical/dying crop
+// ═══════════════════════════════════════════════════════════════════════════
+
+const URGENCY_KEYWORDS = [
+  // Marathi - dying/dead
+  'मेला', 'मेले', 'मेलेला', 'मेलेले', 'मेलेली', 'मरतोय', 'मरतय',
+  // Hindi - dying/dead
+  'मर गया', 'मर रहा', 'मरने लगा', 'मर गई', 'मर गए',
+  // English
+  'dead', 'dying', 'died', 'killing', 'emergency', 'urgent', 'critical',
+  // Drying/wilting
+  'सुकतोय', 'सुकतय', 'वाळतोय', 'सूख रहा', 'मुरझा रहा',
+  'wilting', 'drying', 'withering'
+];
+
+function detectUrgency(observations: ObservationExtraction): boolean {
+  const allText = observations.raw_symptom_text.join(' ').toLowerCase();
+  
+  for (const keyword of URGENCY_KEYWORDS) {
+    if (allText.includes(keyword.toLowerCase())) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN CHECKER FUNCTION - WITH ADAPTIVE THRESHOLDS
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function checkUnderstandingCompleteness(
@@ -234,22 +262,50 @@ export function checkUnderstandingCompleteness(
   // Detect contradictions
   const contradictions = detectContradictions(observations);
   
-  // Determine confidence level
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX (Issue #3): ADAPTIVE THRESHOLDS based on urgency & context
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const isUrgent = detectUrgency(observations);
+  const hasCropAndSymptom = (observations.crop_mentioned || landContext?.current_crop) && 
+                            observations.raw_symptom_text.length > 0;
+  const hasDistribution = observations.symptom_distribution !== 'unknown';
+  
+  // Calculate adaptive threshold
+  let requiredThreshold = 70; // Default: 70% confidence required
+  
+  // LOWER threshold for urgent queries (dying crop = need immediate advice)
+  if (isUrgent) {
+    requiredThreshold = 50;
+    console.log('   ⚡ [UnderstandingChecker] URGENCY detected - lowering threshold to 50%');
+  }
+  // LOWER threshold if we have crop + symptom + distribution (enough for diagnosis)
+  else if (hasCropAndSymptom && hasDistribution) {
+    requiredThreshold = 55;
+    console.log('   ✅ [UnderstandingChecker] Sufficient context (crop+symptom+distribution) - lowering threshold to 55%');
+  }
+  // LOWER threshold if we have crop + symptom (minimum for rule matching)
+  else if (hasCropAndSymptom) {
+    requiredThreshold = 60;
+    console.log('   ℹ️ [UnderstandingChecker] Basic context (crop+symptom) - lowering threshold to 60%');
+  }
+  
+  // Determine confidence level using ADAPTIVE threshold
   const confidenceLevel = calculateConfidenceLevel(completenessScore, unknownCriticalFields.length);
   
-  // Determine if clarification is required
-  // Clarify if: VERY_LOW or LOW confidence, or contradictions exist
+  // ADAPTIVE clarification decision
   const clarificationRequired = 
-    confidenceLevel === UnderstandingConfidence.VERY_LOW ||
-    confidenceLevel === UnderstandingConfidence.LOW ||
+    (completenessScore < requiredThreshold && !isUrgent) || // Don't clarify if urgent
     contradictions.length > 0;
+  
+  console.log(`   📊 [UnderstandingChecker] Score: ${completenessScore}%, Threshold: ${requiredThreshold}%, ` +
+              `Urgent: ${isUrgent}, ClarificationRequired: ${clarificationRequired}`);
   
   // Generate clarification reason
   let clarificationReason: string | undefined;
   if (contradictions.length > 0) {
     clarificationReason = `Contradictory information: ${contradictions[0]}`;
   } else if (clarificationRequired) {
-    const priority = determineClarificationPriority(unknownCriticalFields);
     clarificationReason = `Missing critical information: ${missingForDiagnosis.slice(0, 2).join(', ')}`;
   }
   

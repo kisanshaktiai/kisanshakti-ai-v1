@@ -1397,11 +1397,24 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2: OBSERVATION EXTRACTION (LLM, STRICT)
       // Extract ONLY what farmer explicitly states. NO pest, disease, deficiency.
+      // PHASE-17 FIX: Pass landContext so crop is never "unknown" if we have it
       // ═══════════════════════════════════════════════════════════════════════════
       console.log('   👁️ Stage 2: Observation Extraction...');
       
-      // Static import at top of file
-      const observationExtraction = extractObservations(normalizedInput.normalized_text, normalizedInput.detected_language);
+      // PHASE-17 FIX (Issue #2): Build land context for observation extractor
+      const landContextForExtraction = landContext ? {
+        current_crop: landContext.current_crop || landContext.crop,
+        crop_code: landContext.crop_code,
+        growth_stage: landContext.growth_stage || landContext.stage,
+        days_since_sowing: landContext.days_since_sowing
+      } : undefined;
+      
+      // Static import at top of file - NOW WITH LAND CONTEXT
+      const observationExtraction = extractObservations(
+        normalizedInput.normalized_text, 
+        normalizedInput.detected_language,
+        landContextForExtraction
+      );
       
       // Validate that no forbidden fields snuck in
       const observationValidation = validateObservationExtraction(observationExtraction);
@@ -1411,10 +1424,20 @@ export class AIAgentOrchestrator {
       
       agentsUsed.push('OBSERVATION_EXTRACTOR');
       
-      console.log(`      Crop: ${observationExtraction.crop_mentioned || 'unknown'}`);
+      console.log(`      Crop: ${observationExtraction.crop_mentioned || 'unknown'} (source: ${landContextForExtraction?.current_crop ? 'LAND_CONTEXT' : 'INFERRED'})`);
       console.log(`      Symptoms: ${observationExtraction.raw_symptom_text.length} extracted`);
       console.log(`      Affected part: ${observationExtraction.affected_part}, Distribution: ${observationExtraction.symptom_distribution}`);
       console.log(`      Severity words: ${observationExtraction.severity_words.join(', ') || 'none'}`);
+      
+      // PHASE-17 FIX: Detect urgency for adaptive gates
+      const urgencyKeywords = ['मेला', 'मेले', 'मेलेला', 'dead', 'dying', 'died', 'मर गया', 'मर रहा'];
+      const isUrgentQuery = urgencyKeywords.some(kw => 
+        normalizedInput.normalized_text.toLowerCase().includes(kw.toLowerCase())
+      );
+      if (isUrgentQuery) {
+        console.log('      ⚡ URGENCY DETECTED - will use adaptive thresholds');
+        agentsUsed.push('URGENCY_DETECTED');
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2.5: PHASE-8/8.1 OBSERVATION KEY MAPPING (REQUIRED)
