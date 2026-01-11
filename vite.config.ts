@@ -28,11 +28,22 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks: {
+          // Core React bundle
           'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select'],
+          // UI components - split for better caching
+          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select', '@radix-ui/react-tooltip'],
+          'ui-forms': ['@radix-ui/react-checkbox', '@radix-ui/react-radio-group', '@radix-ui/react-switch', '@radix-ui/react-slider'],
+          // PERFORMANCE: Separate heavy libraries into their own chunks
+          'framer-motion': ['framer-motion'],
+          'date-fns': ['date-fns'],
+          'i18next': ['i18next', 'react-i18next'],
+          'lucide': ['lucide-react'],
+          // Map and chart libraries
           'map-vendor': ['@react-google-maps/api', '@turf/turf'],
           'chart-vendor': ['chart.js', 'react-chartjs-2', 'recharts'],
+          // Backend/data
           'supabase': ['@supabase/supabase-js'],
+          'tanstack': ['@tanstack/react-query'],
         },
       },
       // SECURITY: Exclude agricultural rule source files from frontend bundle

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -59,24 +59,21 @@ export default function LandManagement() {
   const { user } = useAuthStore();
   const isOnline = useOfflineStatus();
   
-  // Use the unified lands hook with real-time updates
+  // Use the unified lands hook with real-time updates - use data directly
   const { lands: fetchedLands, isLoading, refetch: refetchLands } = useLands();
-  const [lands, setLands] = useState<Land[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [filterBy, setFilterBy] = useState('all');
   const [sortBy, setSortBy] = useState('name');
   const [showStats, setShowStats] = useState(true);
 
-  // Sync lands from React Query to local state
-  useEffect(() => {
-    if (fetchedLands) {
-      const validLands = (fetchedLands || []).filter(land => land.id) as Land[];
-      setLands(validLands);
-    }
+  // PERFORMANCE: Use React Query data directly instead of duplicate state
+  const lands = useMemo(() => {
+    return (fetchedLands || []).filter(land => land.id) as Land[];
   }, [fetchedLands]);
 
-  const getSoilHealthColor = (ph?: number, organic?: number) => {
+  // PERFORMANCE: Memoize helper functions
+  const getSoilHealthColor = useCallback((ph?: number, organic?: number) => {
     if (!ph && !organic) return 'bg-muted';
     
     const phScore = ph ? (ph >= 6.0 && ph <= 7.5 ? 3 : ph >= 5.5 && ph <= 8.0 ? 2 : 1) : 0;
@@ -86,9 +83,9 @@ export default function LandManagement() {
     if (totalScore >= 2.5) return 'bg-land-health-excellent';
     if (totalScore >= 1.5) return 'bg-land-health-good';
     return 'bg-destructive';
-  };
+  }, []);
 
-  const getCropStageColor = (stage?: string) => {
+  const getCropStageColor = useCallback((stage?: string) => {
     switch (stage) {
       case 'germination': return 'bg-crop-stage-germination';
       case 'vegetative': return 'bg-crop-stage-vegetative';
@@ -97,30 +94,34 @@ export default function LandManagement() {
       case 'harvesting': return 'bg-crop-stage-harvesting';
       default: return 'bg-muted';
     }
-  };
+  }, []);
 
-  const filteredLands = lands
-    .filter(land => {
-      const matchesSearch = land.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           land.village?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           land.survey_number?.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      if (filterBy === 'all') return matchesSearch;
-      if (filterBy === 'withCrop') return matchesSearch && land.current_crop;
-      if (filterBy === 'noCrop') return matchesSearch && !land.current_crop;
-      return matchesSearch;
-    })
-    .sort((a, b) => {
-      switch (sortBy) {
-        case 'name': return a.name.localeCompare(b.name);
-        case 'area': return b.area_acres - a.area_acres;
-        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        default: return 0;
-      }
-    });
+  // PERFORMANCE: Memoize filtered and sorted lands
+  const filteredLands = useMemo(() => {
+    return lands
+      .filter(land => {
+        const matchesSearch = land.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             land.village?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             land.survey_number?.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        if (filterBy === 'all') return matchesSearch;
+        if (filterBy === 'withCrop') return matchesSearch && land.current_crop;
+        if (filterBy === 'noCrop') return matchesSearch && !land.current_crop;
+        return matchesSearch;
+      })
+      .sort((a, b) => {
+        switch (sortBy) {
+          case 'name': return a.name.localeCompare(b.name);
+          case 'area': return b.area_acres - a.area_acres;
+          case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+          default: return 0;
+        }
+      });
+  }, [lands, searchQuery, filterBy, sortBy]);
 
-  const totalArea = lands.reduce((sum, land) => sum + land.area_acres, 0);
-  const cultivatedLands = lands.filter(land => land.current_crop).length;
+  // PERFORMANCE: Memoize computed values
+  const totalArea = useMemo(() => lands.reduce((sum, land) => sum + land.area_acres, 0), [lands]);
+  const cultivatedLands = useMemo(() => lands.filter(land => land.current_crop).length, [lands]);
 
   const exportData = () => {
     const dataStr = JSON.stringify(filteredLands, null, 2);
