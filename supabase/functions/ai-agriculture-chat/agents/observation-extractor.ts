@@ -359,15 +359,15 @@ export function extractObservations(
   
   return {
     crop_mentioned: finalCrop,
-    raw_symptom_text: rawSymptomText,
+    raw_symptom_text: rawSymptomText || [],
     affected_part: extractAffectedPart(normalizedText),
     symptom_distribution: extractDistribution(normalizedText),
-    severity_words: extractSeverityWords(normalizedText, detectedLanguage),
+    severity_words: extractSeverityWords(normalizedText, detectedLanguage) || [],
     time_reference: extractTimeReference(normalizedText),
-    action_taken: extractActionsTaken(normalizedText, detectedLanguage),
-    uncertainty_markers: extractUncertaintyMarkers(normalizedText, detectedLanguage),
+    action_taken: extractActionsTaken(normalizedText, detectedLanguage) || [],
+    uncertainty_markers: extractUncertaintyMarkers(normalizedText, detectedLanguage) || [],
     detected_language: detectedLanguage,
-    observation_count: rawSymptomText.length
+    observation_count: (rawSymptomText || []).length
   };
 }
 

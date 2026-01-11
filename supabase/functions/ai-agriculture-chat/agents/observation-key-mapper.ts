@@ -107,7 +107,7 @@ export function mapToObservationKeys(
   // ═══════════════════════════════════════════════════════════════════════════
   // 4. SEVERITY (from severity_words array)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (observations.severity_words.length > 0) {
+  if (Array.isArray(observations.severity_words) && observations.severity_words.length > 0) {
     // Map severity words to severity level
     const severityKey = mapSeverityWords(observations.severity_words);
     keys.add(severityKey);
@@ -139,7 +139,7 @@ export function mapToObservationKeys(
   // ═══════════════════════════════════════════════════════════════════════════
   // 7. FARMER ACTIONS
   // ═══════════════════════════════════════════════════════════════════════════
-  if (observations.action_taken.length > 0) {
+  if (Array.isArray(observations.action_taken) && observations.action_taken.length > 0) {
     const actionKeys = mapActionsToKeys(observations.action_taken);
     actionKeys.forEach(k => keys.add(k));
   } else {

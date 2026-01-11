@@ -852,8 +852,8 @@ export class AIAgentOrchestrator {
           
           console.log(`   ✅ Photo analyzed (${photoTime}ms)`);
           console.log(`   Quality: ${photoAnalysisResult.image_quality.is_usable ? 'USABLE' : 'UNUSABLE'} (${(photoAnalysisResult.image_quality.quality_score * 100).toFixed(0)}%)`);
-          console.log(`   Observations: ${photoAnalysisResult.observations.length}`);
-          console.log(`   Detected Issues: ${photoAnalysisResult.detected_issues.length}`);
+          console.log(`   Observations: ${photoAnalysisResult?.observations?.length ?? 0}`);
+          console.log(`   Detected Issues: ${photoAnalysisResult?.detected_issues?.length ?? 0}`);
           console.log(`   Severity: ${photoAnalysisResult.severity_assessment.overall_severity}`);
           console.log(`   Urgency: ${photoAnalysisResult.severity_assessment.urgency}`);
           
@@ -1622,7 +1622,7 @@ export class AIAgentOrchestrator {
       
       console.log(`      Keys mapped: ${observationKeyResult.key_count}`);
       console.log(`      Unknown keys: ${observationKeyResult.unknown_count}`);
-      console.log(`      Keys: ${serializeKeys(observationKeys).join(', ')}`);
+      console.log(`      Keys: ${(serializeKeys(observationKeys) || []).join(', ')}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-8/8.1 GUARDRAIL: Prevent CROP_UNKNOWN when CropContextAuthority exists
