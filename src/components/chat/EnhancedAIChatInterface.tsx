@@ -10,7 +10,7 @@ import {
   Send, Mic, MicOff, Loader2, Bot, 
   RefreshCw, Wifi, WifiOff, MessageSquare, Mountain, 
   Paperclip, Camera, Image, ArrowLeft,
-  Search, X, Clock, MessageCircle
+  Search, X, Clock, MessageCircle, Check, AlertCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -21,6 +21,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useTenant } from '@/contexts/TenantContext';
 import { landsApi } from '@/services/landsApi';
 import { localDB } from '@/services/localDB';
+import { chatSyncService } from '@/services/chatSyncService';
 import { LandContextCard } from './LandContextCard';
 import { GeneralChatWelcomeCard } from './GeneralChatWelcomeCard';
 import { ResponseSectionCard } from './ResponseSectionCard';
@@ -37,6 +38,9 @@ import { useLanguageStore } from '@/stores/languageStore';
 import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
 import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
 import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
+
+// Message status type for optimistic updates
+export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
 
 interface Message {
   id: string;
@@ -154,6 +158,10 @@ interface Message {
     options?: Array<{ label: string; value?: string; description?: string }>;
     selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
   };
+  // ⚡ OPTIMISTIC UPDATE: Message status for WhatsApp-like UX
+  status?: MessageStatus;
+  // For retry logic
+  tempId?: string;
 }
 
 export function EnhancedAIChatInterface() {
@@ -358,48 +366,103 @@ export function EnhancedAIChatInterface() {
     return () => observer.disconnect();
   }, []);
 
-  // Load session with LocalDB caching for offline-first experience
-  // CRITICAL FIX: Prioritize Supabase when online, sync to LocalDB for offline
-  const loadLandSession = useCallback(async (landId: string | null) => {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ⚡ CACHE-FIRST LOADING - WhatsApp-like Instant Load
+  // Load from LocalDB INSTANTLY, then background sync from Supabase
+  // ═══════════════════════════════════════════════════════════════════════════
+  const loadLandSession = useCallback(async (landId: string | null): Promise<{ sessionId: string | null; messages: Message[]; fromCache: boolean }> => {
     const sessionKey = landId || 'general';
     
     if (!user?.id || !tenant?.id) {
       console.warn(`[Session] Skipping load - user or tenant not ready`);
-      return { sessionId: null, messages: [] };
+      return { sessionId: null, messages: [], fromCache: false };
     }
     
-    try {
-      // Helper function to map message from DB to Message type
-      const mapMessageFromDB = (msg: any): Message => {
-        const metadata = msg.metadata as Record<string, any> | null;
-        const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
-        const analysisResult = metadata?.analysis_result || undefined;
-        
-        return {
-          id: msg.id,
-          role: msg.role as 'user' | 'assistant',
-          content: msg.content || '', // CRITICAL: Ensure content is never undefined
-          timestamp: new Date(msg.created_at),
-          imageUrl,
-          imageUrls: msg.image_urls || undefined,
-          videoUrl: metadata?.video_url || undefined,
-          messageType: msg.message_type as Message['messageType'] || 'text',
-          analysisResult,
-          orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
-          dataAudit: metadata?.data_audit,
-          traceId: metadata?.trace_id,
-          analytics: msg.response_time_ms ? {
-            responseTime: msg.response_time_ms,
-            queryComplexity: metadata?.source
-          } : undefined,
-          feedback: msg.feedback_rating 
-            ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-            : null
-        };
-      };
+    // Helper function to map message from DB to Message type
+    const mapMessageFromDB = (msg: any): Message => {
+      const metadata = msg.metadata as Record<string, any> | null;
+      const imageUrl = msg.image_urls?.[0] || metadata?.image_analyzed || undefined;
+      const analysisResult = metadata?.analysis_result || undefined;
       
-      // 1. Try to load from Supabase FIRST (source of truth when online)
-      // CRITICAL FIX: Use supabaseWithAuth to pass x-farmer-id and x-tenant-id headers
+      return {
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content || '',
+        timestamp: new Date(msg.created_at),
+        imageUrl,
+        imageUrls: msg.image_urls || undefined,
+        videoUrl: metadata?.video_url || undefined,
+        messageType: msg.message_type as Message['messageType'] || 'text',
+        analysisResult,
+        orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
+        dataAudit: metadata?.data_audit,
+        traceId: metadata?.trace_id,
+        status: 'synced' as MessageStatus, // Cached messages are synced
+        analytics: msg.response_time_ms ? {
+          responseTime: msg.response_time_ms,
+          queryComplexity: metadata?.source
+        } : undefined,
+        feedback: msg.feedback_rating 
+          ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
+          : null
+      };
+    };
+    
+    try {
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE 1: Load from LocalDB INSTANTLY (0ms perceived latency)
+      // ═══════════════════════════════════════════════════════════════════════
+      const cachedMessages = await localDB.getChatMessages(landId, user.id);
+      
+      if (cachedMessages && cachedMessages.length > 0) {
+        console.log(`⚡ [Cache-First] INSTANT load: ${cachedMessages.length} messages for ${sessionKey}`);
+        
+        const sortedMessages = cachedMessages
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+          .map(mapMessageFromDB);
+        
+        // Get session ID from cache if available
+        const sessions = await localDB.getChatSessionsByLand(landId);
+        const cachedSessionId = sessions?.[0]?.id || null;
+        
+        // PHASE 2: Trigger background sync (non-blocking)
+        // This will fetch only NEW messages and merge them
+        chatSyncService.debouncedSync(
+          landId,
+          user.id,
+          tenant.id,
+          (newMessages) => {
+            if (newMessages.length > 0) {
+              console.log(`🔄 [Background Sync] Found ${newMessages.length} new messages for ${sessionKey}`);
+              
+              // Merge new messages into state
+              const mappedNew = newMessages.map(mapMessageFromDB);
+              setMessages(prev => {
+                const existing = prev[sessionKey] || [];
+                const existingIds = new Set(existing.map(m => m.id));
+                const uniqueNew = mappedNew.filter(m => !existingIds.has(m.id));
+                
+                if (uniqueNew.length === 0) return prev;
+                
+                return {
+                  ...prev,
+                  [sessionKey]: [...existing, ...uniqueNew].sort(
+                    (a, b) => a.timestamp.getTime() - b.timestamp.getTime()
+                  )
+                };
+              });
+            }
+          }
+        );
+        
+        return { sessionId: cachedSessionId, messages: sortedMessages, fromCache: true };
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE 2: No cache - Fetch from Supabase (only on first load)
+      // ═══════════════════════════════════════════════════════════════════════
+      console.log(`📡 [Network] No cache, fetching from Supabase for ${sessionKey}`);
+      
       const authClient = supabaseWithAuth(user.id, tenant.id);
       
       // CRITICAL FIX (Phase 2): For General chat, load ALL sessions and their messages
@@ -589,11 +652,11 @@ export function EnhancedAIChatInterface() {
               console.warn('Failed to cache messages to LocalDB:', cacheErr);
             }
             
-            return { sessionId: canonicalSession?.id || allGeneralSessions[0].id, messages: loadedMessages };
+            return { sessionId: canonicalSession?.id || allGeneralSessions[0].id, messages: loadedMessages, fromCache: false };
           }
           
           // Sessions exist but no messages
-          return { sessionId: allGeneralSessions[0].id, messages: [] };
+          return { sessionId: allGeneralSessions[0].id, messages: [], fromCache: false };
         }
       }
       
@@ -755,11 +818,11 @@ export function EnhancedAIChatInterface() {
             console.warn('Failed to cache messages to LocalDB:', cacheErr);
           }
           
-          return { sessionId: existingSession.id, messages: loadedMessages };
+          return { sessionId: existingSession.id, messages: loadedMessages, fromCache: false };
         }
         
         // Session exists but no messages
-        return { sessionId: existingSession.id, messages: [] };
+        return { sessionId: existingSession.id, messages: [], fromCache: false };
       }
 
       // 2. FALLBACK: Load from LocalDB if Supabase failed (offline mode)
@@ -775,16 +838,16 @@ export function EnhancedAIChatInterface() {
             .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
             .map(mapMessageFromDB);
           if (import.meta.env.DEV) console.log(`⚡ [LocalDB] Loaded ${cachedMessages.length} cached messages for ${sessionKey}`);
-          return { sessionId: null, messages: cachedMessages };
+          return { sessionId: null, messages: cachedMessages, fromCache: true };
         }
       } catch (localErr) {
         console.warn('LocalDB read failed:', localErr);
       }
       
-      return { sessionId: null, messages: [] };
+      return { sessionId: null, messages: [], fromCache: false };
     } catch (err) {
       console.error(`Error loading session for ${sessionKey}:`, err);
-      return { sessionId: null, messages: [] };
+      return { sessionId: null, messages: [], fromCache: false };
     }
   }, [user?.id, tenant?.id]);
 
@@ -818,7 +881,10 @@ export function EnhancedAIChatInterface() {
     }
   }, [user?.id, tenant?.id]);
 
-  // Load session when tab changes
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ⚡ CACHE-FIRST SESSION LOADING - WhatsApp-like Instant Experience
+  // Shows cached messages INSTANTLY, then syncs in background
+  // ═══════════════════════════════════════════════════════════════════════════
   useEffect(() => {
     async function loadSession() {
       if (!user?.id || !tenant?.id) return;
@@ -829,10 +895,18 @@ export function EnhancedAIChatInterface() {
       // Skip if already loaded
       if (loadedSessionIds.has(sessionKey)) return;
       
-      setIsLoadingHistory(true);
+      // ⚡ PHASE 1: DON'T show loading for cache-first loads
+      // Only show loading if we have no cached data
+      const cachedMessages = await localDB.getChatMessages(landId, user.id);
+      const hasCache = cachedMessages && cachedMessages.length > 0;
+      
+      if (!hasCache) {
+        // No cache - need to show loading
+        setIsLoadingHistory(true);
+      }
       
       try {
-        const { sessionId, messages: loadedMsgs } = await loadLandSession(landId);
+        const { sessionId, messages: loadedMsgs, fromCache } = await loadLandSession(landId);
         
         if (sessionId) {
           setSessionIds(prev => ({ ...prev, [sessionKey]: sessionId }));
@@ -848,6 +922,11 @@ export function EnhancedAIChatInterface() {
         }
         
         setLoadedSessionIds(prev => new Set([...prev, sessionKey]));
+        
+        // Log cache performance
+        if (fromCache) {
+          console.log(`⚡ [Performance] Instant load from cache for ${sessionKey}`);
+        }
       } catch (error) {
         console.error('Error loading session:', error);
       } finally {
@@ -1209,6 +1288,7 @@ export function EnhancedAIChatInterface() {
 
   // ═══════════════════════════════════════════════════════════════════════
   // 🤖 UNIFIED SEND MESSAGE - ALL queries go to 9-Agent Orchestrator
+  // ⚡ OPTIMISTIC UPDATES - Show message instantly before server confirms
   // ═══════════════════════════════════════════════════════════════════════
   const sendMessage = async (text?: string, quickAction?: string) => {
     const messageText = text || inputValue.trim();
@@ -1224,14 +1304,19 @@ export function EnhancedAIChatInterface() {
     
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
     
+    // ⚡ OPTIMISTIC UPDATE: Generate temp ID and show message INSTANTLY
+    const tempId = `temp_${Date.now()}`;
     const userMessageId = crypto.randomUUID();
     const userMessage: Message = {
       id: userMessageId,
+      tempId, // Track for replacement after server confirms
       role: 'user',
       content: finalMessage || (imageFiles.length > 0 ? `[Analyzing ${imageFiles.length} image(s)]` : ''),
-      timestamp: new Date()
+      timestamp: new Date(),
+      status: 'sending' // ⚡ Show as "sending" initially
     };
     
+    // ⚡ INSTANT: Add message to UI immediately
     setMessages(prev => ({
       ...prev,
       [activeTab]: [...(prev[activeTab] || []), userMessage]
@@ -1371,13 +1456,31 @@ export function EnhancedAIChatInterface() {
         }
       };
       
+      // ⚡ OPTIMISTIC UPDATE: Mark user message as 'sent' on success
+      setMessages(prev => ({
+        ...prev,
+        [activeTab]: prev[activeTab]?.map(m => 
+          m.id === userMessageId ? { ...m, status: 'sent' as MessageStatus } : m
+        ) || []
+      }));
+      
+      // Add AI response
       setMessages(prev => ({
         ...prev,
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // PHASE 5: Server already persists AI response, so we DON'T save here
-      // This eliminates duplicate message persistence - server is single source of truth
+      // Cache message to LocalDB for offline access
+      chatSyncService.batchSaveMessages([{
+        id: userMessageId,
+        session_id: sessionId,
+        tenant_id: tenant?.id,
+        farmer_id: user?.id,
+        role: 'user',
+        content: finalMessage,
+        created_at: new Date().toISOString(),
+        status: 'sent'
+      }]);
       
       // Set quick replies from orchestrator
       if (data.quickReplies && data.quickReplies.length > 0) {
@@ -1395,11 +1498,24 @@ export function EnhancedAIChatInterface() {
         variant: 'destructive'
       });
       
-      // Remove failed user message
+      // ⚡ OPTIMISTIC UPDATE: Mark message as 'failed' instead of removing
       setMessages(prev => ({
         ...prev,
-        [activeTab]: (prev[activeTab] || []).filter(m => m.id !== userMessageId)
+        [activeTab]: prev[activeTab]?.map(m => 
+          m.id === userMessageId ? { ...m, status: 'failed' as MessageStatus } : m
+        ) || []
       }));
+      
+      // Queue for retry
+      chatSyncService.queueForRetry({
+        id: userMessageId,
+        role: 'user',
+        content: finalMessage || '',
+        status: 'failed',
+        timestamp: new Date(),
+        landId: activeTab !== 'general' ? activeTab : null,
+        sessionId: sessionIds[activeTab] || ''
+      });
     } finally {
       setIsLoading(false);
       setLoadingMessage('');
