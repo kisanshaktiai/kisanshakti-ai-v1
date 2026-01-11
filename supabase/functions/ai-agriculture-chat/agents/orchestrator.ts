@@ -2161,7 +2161,9 @@ export class AIAgentOrchestrator {
         
         const clarificationResponse = generateClarificationResponse(clarificationInput);
         
-        console.log(`   📋 Clarification output: has_text=${!!clarificationResponse.response_text}, options=${clarificationResponse.options.length}`);
+        // CRITICAL FIX: Null-safe access to options.length
+        const optionsLength = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options.length : 0;
+        console.log(`   📋 Clarification output: has_text=${!!clarificationResponse?.response_text}, options=${optionsLength}`);
         
         // CRITICAL FIX: Always return clarification when confidence is low, even if response_text is empty
         if (clarificationResponse.response_text || intentConfidence < 0.5) {
@@ -2171,7 +2173,9 @@ export class AIAgentOrchestrator {
             landContext?.current_crop
           );
           
-          console.log(`   📋 Returning clarification with ${clarificationResponse.options.length} options`);
+          // CRITICAL FIX: Null-safe array access
+          const safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
+          console.log(`   📋 Returning clarification with ${safeOptionsForLog.length} options`);
           agentsUsed.push('CLARIFICATION_GENERATOR');
           
           return {
@@ -2182,7 +2186,8 @@ export class AIAgentOrchestrator {
               text_mr: responseText,
               text_hi: responseText,
               text_en: responseText,
-              options: clarificationResponse.options.map((opt, idx) => ({
+              // CRITICAL FIX: Null-safe array mapping
+              options: (Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : []).map((opt, idx) => ({
                 value: String(idx + 1),
                 label: opt
               }))
@@ -2194,8 +2199,8 @@ export class AIAgentOrchestrator {
               processing_time_ms: Date.now() - startTime,
               agents_used: agentsUsed,
               trace_id: traceId,
-              // CRITICAL: Store options for next turn's option selection handler
-              pendingClarificationOptions: clarificationResponse.options
+              // CRITICAL: Store options for next turn's option selection handler (null-safe)
+              pendingClarificationOptions: Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : []
             }
           };
         }
