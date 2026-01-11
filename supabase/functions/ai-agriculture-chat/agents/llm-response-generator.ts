@@ -381,7 +381,7 @@ Please provide a helpful, accurate response in ${input.language === 'mr' ? 'Mara
           },
           signal: controller.signal,
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: 'gpt-4o',  // UPGRADED: Using GPT-4o for better response quality
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt }
@@ -461,7 +461,7 @@ Please provide a helpful, accurate response in ${input.language === 'mr' ? 'Mara
           },
           signal: controller.signal,
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
+            model: 'gpt-4o',  // UPGRADED: Using GPT-4o for Lovable AI fallback
             messages: [
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt }

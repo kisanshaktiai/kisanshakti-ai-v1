@@ -288,8 +288,8 @@ export async function formatRecommendationsWithLLM(
       const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 20000);
       if (result.success) {
         formattedResponse = result.text;
-        aiModelUsed = 'gpt-4o-mini';
-        console.log(`   ✅ OpenAI formatting successful`);
+        aiModelUsed = 'gpt-4o';  // UPGRADED: Using GPT-4o for better formatting
+        console.log(`   ✅ OpenAI formatting successful (gpt-4o)`);
       } else if (result.error === 'RATE_LIMIT') {
         console.warn(`   ⚠️ OpenAI rate limited, waiting 3s before fallback...`);
         await new Promise(r => setTimeout(r, 3000));
@@ -913,7 +913,7 @@ async function callOpenAIWithTimeout(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',  // UPGRADED: Using GPT-4o for better response quality
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
