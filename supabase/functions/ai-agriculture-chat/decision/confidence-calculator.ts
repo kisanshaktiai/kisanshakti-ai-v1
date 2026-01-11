@@ -1,0 +1,348 @@
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CONFIDENCE CALCULATOR - MULTI-FACTOR CONFIDENCE SCORING
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * Calculates systematic confidence scores based on:
+ * - Rule matching quality
+ * - Data completeness
+ * - Data freshness
+ * - Symptom specificity
+ * - Historical success rates
+ * 
+ * VERSION: 1.0.0
+ */
+
+import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
+import type { SymbolicFact, Hypothesis, FiredRule } from './symbolic-reasoner.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPE DEFINITIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface ConfidenceScore {
+  overall: number;  // 0-1
+  breakdown: {
+    rule_matching: number;
+    data_quality: number;
+    data_freshness: number;
+    symptom_specificity: number;
+    historical_success: number;
+  };
+  level: ConfidenceLevel;
+  explanation: string;
+}
+
+export type ConfidenceLevel = 'VERY_HIGH' | 'HIGH' | 'MODERATE' | 'LOW' | 'VERY_LOW';
+
+export interface ConfidenceInput {
+  diagnosis: Hypothesis | null;
+  firedRules: FiredRule[];
+  facts: SymbolicFact;
+  landState: AuthoritativeLandState | null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIDENCE CALCULATOR CLASS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export class ConfidenceCalculator {
+  
+  /**
+   * Calculate comprehensive confidence score
+   */
+  calculateConfidence(input: ConfidenceInput): ConfidenceScore {
+    console.log('📊 [ConfidenceCalculator] Calculating multi-factor confidence...');
+    
+    const { diagnosis, firedRules, facts, landState } = input;
+    
+    // 1. Rule-based confidence
+    const ruleMatching = this.calculateRuleConfidence(firedRules, diagnosis);
+    console.log(`   Rule matching: ${(ruleMatching * 100).toFixed(0)}%`);
+    
+    // 2. Data quality (completeness)
+    const dataQuality = this.calculateDataQuality(facts, landState);
+    console.log(`   Data quality: ${(dataQuality * 100).toFixed(0)}%`);
+    
+    // 3. Data freshness
+    const dataFreshness = this.calculateDataFreshness(landState);
+    console.log(`   Data freshness: ${(dataFreshness * 100).toFixed(0)}%`);
+    
+    // 4. Symptom specificity
+    const symptomSpecificity = this.calculateSymptomSpecificity(facts);
+    console.log(`   Symptom specificity: ${(symptomSpecificity * 100).toFixed(0)}%`);
+    
+    // 5. Historical success (placeholder - would query from feedback table)
+    const historicalSuccess = 0.7; // Default 70% when no historical data
+    
+    // Weighted combination
+    const weights = {
+      rule_matching: 0.35,
+      data_quality: 0.20,
+      data_freshness: 0.15,
+      symptom_specificity: 0.20,
+      historical_success: 0.10
+    };
+    
+    const overall = 
+      ruleMatching * weights.rule_matching +
+      dataQuality * weights.data_quality +
+      dataFreshness * weights.data_freshness +
+      symptomSpecificity * weights.symptom_specificity +
+      historicalSuccess * weights.historical_success;
+    
+    // Cap at 98%
+    const cappedOverall = Math.min(0.98, overall);
+    
+    // Categorize
+    const level = this.categorizeConfidence(cappedOverall);
+    const explanation = this.generateExplanation(level, {
+      ruleMatching,
+      dataQuality,
+      dataFreshness,
+      symptomSpecificity
+    });
+    
+    console.log(`   Overall: ${(cappedOverall * 100).toFixed(0)}% (${level})`);
+    
+    return {
+      overall: cappedOverall,
+      breakdown: {
+        rule_matching: ruleMatching,
+        data_quality: dataQuality,
+        data_freshness: dataFreshness,
+        symptom_specificity: symptomSpecificity,
+        historical_success: historicalSuccess
+      },
+      level,
+      explanation
+    };
+  }
+  
+  /**
+   * Calculate confidence from rule matching
+   */
+  private calculateRuleConfidence(firedRules: FiredRule[], diagnosis: Hypothesis | null): number {
+    if (firedRules.length === 0) {
+      return 0.3; // No rules = low confidence
+    }
+    
+    // Base confidence from number of rules
+    let confidence = Math.min(0.5 + (firedRules.length * 0.05), 0.8);
+    
+    // Boost from diagnosis confidence
+    if (diagnosis) {
+      confidence = Math.max(confidence, diagnosis.confidence);
+    }
+    
+    // Boost from high-priority rules
+    const highPriorityRules = firedRules.filter(r => r.priority >= 80);
+    if (highPriorityRules.length > 0) {
+      confidence += 0.1;
+    }
+    
+    // Boost from multiple rules supporting same cause
+    if (diagnosis && diagnosis.supporting_rules.length > 1) {
+      confidence += 0.05 * (diagnosis.supporting_rules.length - 1);
+    }
+    
+    return Math.min(confidence, 0.95);
+  }
+  
+  /**
+   * Calculate data quality score
+   */
+  private calculateDataQuality(facts: SymbolicFact, landState: AuthoritativeLandState | null): number {
+    let score = 0;
+    let maxScore = 0;
+    
+    // Check each data source
+    // Crop data (essential)
+    maxScore += 20;
+    if (facts.crop !== 'UNKNOWN') score += 20;
+    
+    // Growth stage (essential)
+    maxScore += 15;
+    if (facts.growth_stage !== 'UNKNOWN') score += 15;
+    
+    // Days since sowing
+    maxScore += 10;
+    if (facts.dos > 0) score += 10;
+    
+    // NDVI data
+    maxScore += 15;
+    if (facts.ndvi !== null) score += 15;
+    
+    // Soil data
+    maxScore += 15;
+    if (facts.soil_n !== null) score += 5;
+    if (facts.soil_p !== null) score += 5;
+    if (facts.soil_k !== null) score += 5;
+    
+    // Weather data
+    maxScore += 10;
+    if (facts.temperature !== null) score += 5;
+    if (facts.humidity !== null) score += 5;
+    
+    // Symptom specificity
+    maxScore += 15;
+    if (facts.primary_symptom !== 'UNKNOWN') score += 10;
+    if (facts.severity !== 'unknown') score += 5;
+    
+    return maxScore > 0 ? score / maxScore : 0;
+  }
+  
+  /**
+   * Calculate data freshness score
+   */
+  private calculateDataFreshness(landState: AuthoritativeLandState | null): number {
+    if (!landState) {
+      return 0.5; // No land state = moderate freshness
+    }
+    
+    let freshnessPoints = 0;
+    let totalPoints = 0;
+    
+    // NDVI freshness (should be < 7 days)
+    totalPoints += 30;
+    if (landState.ndvi.data_fresh) {
+      freshnessPoints += 30;
+    } else if (landState.ndvi.age_days !== null && landState.ndvi.age_days < 14) {
+      freshnessPoints += 15;
+    }
+    
+    // Soil data freshness (should be < 90 days)
+    totalPoints += 25;
+    if (landState.soil.data_fresh) {
+      freshnessPoints += 25;
+    } else if (landState.soil.test_age_days !== null && landState.soil.test_age_days < 180) {
+      freshnessPoints += 12;
+    }
+    
+    // Weather data freshness (should be < 6 hours)
+    totalPoints += 25;
+    if (landState.weather.data_fresh) {
+      freshnessPoints += 25;
+    } else if (landState.weather.data_age_hours !== null && landState.weather.data_age_hours < 24) {
+      freshnessPoints += 12;
+    }
+    
+    // Crop schedule presence
+    totalPoints += 20;
+    if (landState.crop.schedule_status === 'active') {
+      freshnessPoints += 20;
+    }
+    
+    return totalPoints > 0 ? freshnessPoints / totalPoints : 0.5;
+  }
+  
+  /**
+   * Calculate symptom specificity score
+   */
+  private calculateSymptomSpecificity(facts: SymbolicFact): number {
+    let score = 0.3; // Base score
+    
+    // Primary symptom specified and not UNKNOWN
+    if (facts.primary_symptom !== 'UNKNOWN' && facts.primary_symptom !== 'NONE') {
+      score += 0.25;
+    }
+    
+    // Severity specified
+    if (facts.severity !== 'unknown') {
+      score += 0.15;
+    }
+    
+    // Distribution specified
+    if (facts.distribution !== 'unknown') {
+      score += 0.15;
+    }
+    
+    // Affected part specified
+    if (facts.affected_part !== 'unknown') {
+      score += 0.10;
+    }
+    
+    // Highly specific symptoms get extra boost
+    const highlySpecificSymptoms = [
+      'DEAD_HEART', 'HONEYDEW', 'WEBBING', 'GALLS', 'TUNNELS_IN_STEM',
+      'TERMITE_SUSPECTED', 'BORER_SUSPECTED'
+    ];
+    if (highlySpecificSymptoms.includes(facts.primary_symptom)) {
+      score += 0.15;
+    }
+    
+    return Math.min(score, 1.0);
+  }
+  
+  /**
+   * Categorize confidence level
+   */
+  categorizeConfidence(score: number): ConfidenceLevel {
+    if (score >= 0.85) return 'VERY_HIGH';
+    if (score >= 0.70) return 'HIGH';
+    if (score >= 0.55) return 'MODERATE';
+    if (score >= 0.40) return 'LOW';
+    return 'VERY_LOW';
+  }
+  
+  /**
+   * Generate human-readable explanation
+   */
+  private generateExplanation(
+    level: ConfidenceLevel,
+    factors: {
+      ruleMatching: number;
+      dataQuality: number;
+      dataFreshness: number;
+      symptomSpecificity: number;
+    }
+  ): string {
+    const parts: string[] = [];
+    
+    if (level === 'VERY_HIGH' || level === 'HIGH') {
+      parts.push('Strong rule matches');
+      if (factors.dataQuality > 0.7) parts.push('complete data');
+      if (factors.symptomSpecificity > 0.7) parts.push('specific symptoms');
+    } else if (level === 'MODERATE') {
+      parts.push('Partial rule matches');
+      if (factors.dataQuality < 0.5) parts.push('some data missing');
+      if (factors.symptomSpecificity < 0.5) parts.push('general symptoms');
+    } else {
+      parts.push('Limited rule matches');
+      if (factors.dataQuality < 0.4) parts.push('significant data gaps');
+      if (factors.symptomSpecificity < 0.4) parts.push('unclear symptoms');
+    }
+    
+    return parts.join(', ');
+  }
+  
+  /**
+   * Get confidence stars for display
+   */
+  getConfidenceStars(score: number): string {
+    if (score >= 0.85) return '⭐⭐⭐⭐⭐';
+    if (score >= 0.70) return '⭐⭐⭐⭐';
+    if (score >= 0.55) return '⭐⭐⭐';
+    if (score >= 0.40) return '⭐⭐';
+    return '⭐';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SINGLETON INSTANCE
+// ═══════════════════════════════════════════════════════════════════════════
+
+let calculatorInstance: ConfidenceCalculator | null = null;
+
+export function getConfidenceCalculator(): ConfidenceCalculator {
+  if (!calculatorInstance) {
+    calculatorInstance = new ConfidenceCalculator();
+  }
+  return calculatorInstance;
+}
+
+// Export convenience function
+export function calculateDecisionConfidenceV2(input: ConfidenceInput): ConfidenceScore {
+  const calculator = getConfidenceCalculator();
+  return calculator.calculateConfidence(input);
+}
