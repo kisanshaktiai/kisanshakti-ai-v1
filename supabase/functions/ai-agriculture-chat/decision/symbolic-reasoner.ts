@@ -571,7 +571,8 @@ export class SymbolicReasoner {
   }
   
   /**
-   * Check keyword match (fallback for rules without conditions_json)
+   * ENHANCED: Check keyword match with multilingual partial matching
+   * Supports Marathi, Hindi, and English with word boundary awareness
    */
   private checkKeywordMatch(
     keywords: string[],
@@ -582,10 +583,39 @@ export class SymbolicReasoner {
     }
     
     const queryLower = userQuery.toLowerCase();
+    const queryWords = queryLower.split(/\s+/);
     
     for (const keyword of keywords) {
-      if (queryLower.includes(keyword.toLowerCase())) {
-        return { matches: true, confidence: 0.7, matched_keyword: keyword };
+      const keywordLower = keyword.toLowerCase();
+      
+      // 1. Direct substring match (highest confidence)
+      if (queryLower.includes(keywordLower)) {
+        return { matches: true, confidence: 0.85, matched_keyword: keyword };
+      }
+      
+      // 2. Word-level match for partial matching (Marathi/Hindi/English)
+      for (const word of queryWords) {
+        // Check if word contains keyword or keyword contains word
+        // This helps with Marathi suffixes like मेला/मेले, वाळले/वाळत, etc.
+        if (word.includes(keywordLower) || keywordLower.includes(word)) {
+          // Require minimum overlap for short words
+          const minLength = Math.min(word.length, keywordLower.length);
+          if (minLength >= 2) {
+            return { matches: true, confidence: 0.7, matched_keyword: keyword };
+          }
+        }
+      }
+      
+      // 3. Devanagari-aware partial matching for common suffixes
+      // Match "मेला" in "मेले" or "मेलेले" etc.
+      const devanagariPattern = keywordLower.replace(/[ेैोौाी]/g, '[ेैोौाीं]?');
+      try {
+        const regex = new RegExp(devanagariPattern, 'i');
+        if (regex.test(queryLower)) {
+          return { matches: true, confidence: 0.65, matched_keyword: keyword };
+        }
+      } catch {
+        // Invalid regex, skip this check
       }
     }
     
