@@ -344,7 +344,7 @@ URGENCY INDICATORS: "dying", "emergency", "मरतंय", "वाचवा", 
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: 'gpt-4o-mini',
+              model: 'gpt-4o',  // UPGRADED: Using GPT-4o for better NLU accuracy
               messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `Analyze this farmer message: "${message}"` }
