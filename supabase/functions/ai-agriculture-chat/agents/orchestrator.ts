@@ -1554,6 +1554,50 @@ export class AIAgentOrchestrator {
           });
           auditLoggerFail.logDecision('FAILED_DIAGNOSIS_LEAKAGE', 'CLARIFICATION_SCOPE_VALIDATOR');
           await auditLoggerFail.completeTurn(Date.now() - startTime);
+          
+          // ✅ CRITICAL FIX: Early return with safe fallback response
+          // Prevents crash at line 1616 when validation fails
+          const fallbackQuestion = normalizedInput.detected_language === 'mr' 
+            ? 'कृपया अधिक माहिती द्या. तुमच्या पिकाबद्दल सांगा.'
+            : normalizedInput.detected_language === 'hi'
+            ? 'कृपया अधिक जानकारी दें। अपनी फसल के बारे में बताएं।'
+            : 'Please provide more information about your crop.';
+          
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: {
+              question_id: `fallback_${Date.now()}`,
+              text_mr: fallbackQuestion,
+              text_hi: fallbackQuestion,
+              text_en: fallbackQuestion,
+              options: [] // Safe empty array
+            },
+            communication: {
+              main_message: {
+                mr: fallbackQuestion,
+                hi: fallbackQuestion,
+                en: fallbackQuestion
+              },
+              options: [] // Safe empty array
+            },
+            metadata: {
+              confidence: 0.5,
+              safety_status: 'NEEDS_CLARIFICATION',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: [...agentsUsed, 'SCOPED_CLARIFICATION_FALLBACK'],
+              trace_id: traceId,
+              validation_failed: true,
+              validation_failure_reason: 'DIAGNOSIS_LEAKAGE',
+              pendingClarificationOptions: [],
+              lockedCropContext: cropContextAuthority ? {
+                crop_name: cropContextAuthority.crop_name,
+                growth_stage: cropContextAuthority.growth_stage,
+                days_since_sowing: cropContextAuthority.days_since_sowing
+              } : undefined
+            }
+          };
         }
         
         console.log(`   🎯 Clarification Scope: ${clarificationResponse.scope}`);
@@ -1605,6 +1649,11 @@ export class AIAgentOrchestrator {
           observationExtraction.crop_mentioned || landContext?.current_crop
         );
         
+        // ✅ CRITICAL FIX: Safe array handling - prevent .map() crash on undefined
+        const safeOptions = Array.isArray(clarificationResponse.options) 
+          ? clarificationResponse.options.filter(opt => opt != null)
+          : [];
+        
         return {
           type: 'CLARIFICATION_QUESTION',
           session_id: sessionId,
@@ -1613,10 +1662,19 @@ export class AIAgentOrchestrator {
             text_mr: responseText,
             text_hi: responseText,
             text_en: responseText,
-            options: clarificationResponse.options.map((opt, idx) => ({
+            options: safeOptions.map((opt, idx) => ({
               value: String(idx + 1),
-              label: opt
+              label: typeof opt === 'string' ? opt : (opt.label || String(opt))
             }))
+          },
+          // ✅ CRITICAL FIX: Always include communication object with safe options
+          communication: {
+            main_message: {
+              mr: responseText,
+              hi: responseText,
+              en: responseText
+            },
+            options: safeOptions
           },
           metadata: {
             confidence: understandingResult.completeness_score / 100,
@@ -1629,7 +1687,7 @@ export class AIAgentOrchestrator {
             clarification_reason: understandingResult.clarification_reason,
             clarification_scope: clarificationResponse.scope,
             scope_validation_passed: clarificationResponse.validation_passed,
-            pendingClarificationOptions: clarificationResponse.options,
+            pendingClarificationOptions: safeOptions,
             // PHASE-9.1 PATCH 3: Lock crop context during clarification
             lockedCropContext: cropContextAuthority ? {
               crop_name: cropContextAuthority.crop_name,

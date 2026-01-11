@@ -60,10 +60,11 @@ import {
 // PHASE-16: Import Clarification Validator to prevent diagnosis leakage
 import {
   validateClarificationOptions,
+  validateAndSanitizeClarification,
   DIAGNOSIS_KEYWORDS
 } from '../decision/clarification-validator.ts';
 
-export const CLARIFICATION_GENERATOR_VERSION = '3.1.0'; // Phase-16: Added diagnosis leakage prevention
+export const CLARIFICATION_GENERATOR_VERSION = '3.2.0'; // Phase-17: Added safe fallback with validateAndSanitizeClarification
 
 // Re-export types for convenience
 export { ClarificationScope };
