@@ -2794,6 +2794,23 @@ function transformOrchestratorResponse(
                        'Please provide more details.';
       }
       
+      // ✅ CRITICAL FIX: Safe extraction of options from multiple possible locations
+      // Priority: question.options > communication.options > empty array
+      const rawOptions = (typeof question === 'object' && Array.isArray(question?.options)) 
+        ? question.options 
+        : (response.communication?.options && Array.isArray(response.communication.options))
+          ? response.communication.options
+          : [];
+      
+      // ✅ CRITICAL FIX: Safe array mapping with null checks
+      const safeQuickReplies = rawOptions
+        .filter((o: any) => o != null)
+        .map((o: any) => {
+          if (typeof o === 'string') return o;
+          if (typeof o === 'object' && o.label) return o.label;
+          return String(o);
+        });
+      
       return {
         response: questionText,
         sessionId: sessionId,
@@ -2801,11 +2818,18 @@ function transformOrchestratorResponse(
         responseTime: responseTime,
         metadata: {
           type: 'clarification',
+          orchestrator_type: 'CLARIFICATION_QUESTION',
           question_id: typeof question === 'string' ? question : question?.question_id,
-          options: typeof question === 'object' ? question?.options : undefined
+          options: rawOptions.map((o: any) => ({
+            label: typeof o === 'string' ? o : (o?.label || String(o)),
+            value: typeof o === 'string' ? o : (o?.value || o?.label || String(o))
+          })),
+          selectionType: response.metadata?.selectionType || 'SINGLE_CHOICE',
+          trace_id: response.metadata?.trace_id,
+          validation_failed: response.metadata?.validation_failed
         },
-        quickReplies: (typeof question === 'object' && question?.options) 
-          ? question.options.map((o: any) => o.label) 
+        quickReplies: safeQuickReplies.length > 0 
+          ? safeQuickReplies 
           : getDefaultQuickReplies(language),
         source: 'orchestrator_v1'
       };

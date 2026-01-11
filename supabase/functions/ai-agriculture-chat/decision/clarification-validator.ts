@@ -323,3 +323,85 @@ export function hasDiagnosisLeakage(options: DynamicOption[]): boolean {
   const validator = getClarificationValidator();
   return !validator.validateDynamicOptions(options);
 }
+
+// Export diagnosis keywords for external validation
+export const DIAGNOSIS_KEYWORDS = [
+  ...DIAGNOSIS_KEYWORDS_EN,
+  ...DIAGNOSIS_KEYWORDS_MR,
+  ...DIAGNOSIS_KEYWORDS_HI
+];
+
+/**
+ * ✅ CRITICAL FIX: Validate AND sanitize clarification options
+ * Instead of just failing, this provides safe fallback options
+ */
+export interface SanitizedClarificationResult {
+  valid: boolean;
+  sanitizedOptions: DynamicOption[];
+  errors: string[];
+  usedFallback: boolean;
+}
+
+export function validateAndSanitizeClarification(
+  options: DynamicOption[],
+  scope: string,
+  language: 'mr' | 'hi' | 'en'
+): SanitizedClarificationResult {
+  const validator = getClarificationValidator();
+  
+  // Handle null/undefined options
+  if (!options || !Array.isArray(options)) {
+    console.warn('⚠️ [ClarificationValidator] Options is null/undefined - using safe fallback');
+    const safeFallback = validator.generateSafeOptions(scope, '', '', language);
+    return {
+      valid: false,
+      sanitizedOptions: safeFallback.slice(0, 3).map(label => ({
+        label,
+        observation_key: 'SAFE_FALLBACK',
+        confidence: 0.6
+      })),
+      errors: ['Options was null or undefined'],
+      usedFallback: true
+    };
+  }
+  
+  const result = validator.validateOptions(options);
+  
+  if (result.valid) {
+    return {
+      valid: true,
+      sanitizedOptions: options,
+      errors: [],
+      usedFallback: false
+    };
+  }
+  
+  console.warn(`⚠️ [ClarificationValidator] ${result.violations.length} leakage violations - sanitizing`);
+  
+  // Sanitize problematic options
+  const sanitized = validator.sanitizeOptions(options, scope, language);
+  
+  // If we have at least 2 safe options, use them
+  if (sanitized.length >= 2) {
+    return {
+      valid: false, // Still mark as invalid for logging
+      sanitizedOptions: sanitized,
+      errors: result.violations.map(v => `Leaked "${v.leaked_keyword}" in "${v.option_text}"`),
+      usedFallback: false
+    };
+  }
+  
+  // Generate safe fallback options
+  const safeFallback = validator.generateSafeOptions(scope, '', '', language);
+  
+  return {
+    valid: false,
+    sanitizedOptions: safeFallback.slice(0, 3).map(label => ({
+      label,
+      observation_key: 'SAFE_FALLBACK',
+      confidence: 0.6
+    })),
+    errors: [...result.violations.map(v => `Leaked "${v.leaked_keyword}"`), 'Generated safe fallback options'],
+    usedFallback: true
+  };
+}
