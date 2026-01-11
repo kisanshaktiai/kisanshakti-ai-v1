@@ -1075,7 +1075,9 @@ export class CommunicationGenerator {
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateWarnings(decision: DecisionOutput, lang: SupportedLanguage): Warnings {
-    const blockedActions = decision.blocked_actions.map(blocked => ({
+    // PHASE-16: Safe array handling to prevent crashes
+    const safeBlockedActions = Array.isArray(decision?.blocked_actions) ? decision.blocked_actions : [];
+    const blockedActions = safeBlockedActions.filter(b => b != null).map(blocked => ({
       icon: '❌' as const,
       action: {
         mr: blocked.action,

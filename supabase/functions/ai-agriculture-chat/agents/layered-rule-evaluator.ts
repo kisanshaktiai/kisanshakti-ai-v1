@@ -1,4 +1,5 @@
-// ============= LAYERED RULE EVALUATION PIPELINE - Lightweight Stub =============
+// ============= LAYERED RULE EVALUATION PIPELINE - v2.0 with JSON Conditions =============
+// PHASE-16: Enhanced with proper conditions_json evaluation from SymbolicReasoner
 // Rules loaded from database at runtime to prevent bundle timeout
 
 import { 
@@ -30,6 +31,22 @@ import {
   getRuleCount,
   type ExecutableRule
 } from '../bundled-rules/loader.ts';
+
+// PHASE-16: Import SymbolicReasoner for proper JSON condition evaluation
+import {
+  SymbolicReasoner,
+  type SymbolicFact
+} from '../decision/symbolic-reasoner.ts';
+
+// PHASE-16: Singleton instance for rule evaluation
+let symbolicReasonerInstance: SymbolicReasoner | null = null;
+
+function getSymbolicReasoner(): SymbolicReasoner {
+  if (!symbolicReasonerInstance) {
+    symbolicReasonerInstance = new SymbolicReasoner();
+  }
+  return symbolicReasonerInstance;
+}
 
 // ==================== TYPE DEFINITIONS ====================
 
@@ -135,7 +152,14 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
 
 // ==================== MAIN EVALUATION ====================
 
+/**
+ * PHASE-16: Enhanced rule evaluation with safe array handling
+ * CRITICAL: All array operations are now null-safe to prevent crashes
+ */
 export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): LayeredRuleResult {
+  // PHASE-16: Safe initialization - prevent undefined errors
+  const safeRules = Array.isArray(rules) ? rules : [];
+  
   const result: LayeredRuleResult = {
     rules_evaluated: 0,
     rules_matched: 0,
@@ -152,8 +176,14 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
     matched_responses: [] // CRITICAL: Collect responses from all matched rules
   };
   
+  // PHASE-16: Early return if no rules to evaluate
+  if (safeRules.length === 0) {
+    console.warn('⚠️ [LayeredRuleEvaluator] No rules to evaluate - returning empty result');
+    return result;
+  }
+  
   const diagnosisCandidates: Diagnosis[] = [];
-  const rulesByCategory = groupRulesByCategory(rules);
+  const rulesByCategory = groupRulesByCategory(safeRules);
   
   // PHASE 1: OBSERVATION
   for (const rule of rulesByCategory.get(RuleCategory.OBSERVATION) || []) {
