@@ -2330,15 +2330,16 @@ function generateGenericAcknowledgment(lang: 'mr' | 'hi' | 'en'): string {
  * Instead of "we will respond shortly", provide immediate value
  */
 function generateHelpfulErrorResponse(lang: 'mr' | 'hi' | 'en', fallbackAdvice: string): string {
+  // ✅ FIX: Remove numbered emojis - use bullet points instead for instructional text
   const messages: Record<string, string> = {
     mr: `🙏 नमस्कार शेतकरी मित्र!
 
 ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}तुमच्या प्रश्नाचे उत्तर देण्यासाठी मला थोडी माहिती द्या:
 
 📋 **कृपया सांगा:**
-1️⃣ तुमचे पीक कोणते आहे?
-2️⃣ पिकाचे वय किती दिवस?
-3️⃣ काय समस्या दिसत आहे?
+• तुमचे पीक कोणते आहे?
+• पिकाचे वय किती दिवस?
+• काय समस्या दिसत आहे?
 
 📸 शक्य असल्यास प्रभावित भागाचा फोटो पाठवा - अधिक अचूक सल्ला देता येईल!
 
@@ -2352,9 +2353,9 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}तुमच्या प्र�
 ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}आपके प्रश्न का उत्तर देने के लिए थोड़ी जानकारी दें:
 
 📋 **कृपया बताएं:**
-1️⃣ आपकी फसल कौन सी है?
-2️⃣ फसल की उम्र कितने दिन?
-3️⃣ क्या समस्या दिख रही है?
+• आपकी फसल कौन सी है?
+• फसल की उम्र कितने दिन?
+• क्या समस्या दिख रही है?
 
 📸 यदि संभव हो तो प्रभावित भाग का फोटो भेजें - अधिक सटीक सलाह दे पाऊंगा!
 
@@ -2368,9 +2369,9 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}आपके प्रश्न 
 ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please provide:
 
 📋 **Tell me:**
-1️⃣ What is your crop?
-2️⃣ How old is the crop (days)?
-3️⃣ What problem are you seeing?
+• What is your crop?
+• How old is the crop (days)?
+• What problem are you seeing?
 
 📸 If possible, send a photo of the affected area - I can give more accurate advice!
 
@@ -2664,6 +2665,14 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
 }
 
 function detectLanguage(text: string, fallback: string): string {
+  // ✅ FIX: Detect number-only inputs (option selections like "1", "2", "३") 
+  // For these, always use the fallback (session language) to maintain conversation continuity
+  const isNumberOnlyInput = /^[१२३४1-4\s]+$/.test(text.trim());
+  if (isNumberOnlyInput) {
+    console.log(`🌐 [detectLanguage] Number-only input detected: "${text}" → using session language: ${fallback}`);
+    return fallback;
+  }
+  
   const hasDevanagari = /[\u0900-\u097F]/.test(text);
   const hasTamil = /[\u0B80-\u0BFF]/.test(text);
   const hasTelugu = /[\u0C00-\u0C7F]/.test(text);
