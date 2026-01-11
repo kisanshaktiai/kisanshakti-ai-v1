@@ -73,35 +73,48 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     }
     
     console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database`);
-    return (data || []).map(row => ({
-      rule_id: row.rule_id,
-      category: row.category,
-      crop_code: row.crop_code,
-      crop_group: row.crop_group,
-      canonical_group: row.canonical_group,
-      stage_applicable: row.stage_applicable || [],
-      conditionCode: row.condition_code || '() => true',
-      conditions_json: row.conditions_json,
-      cause: row.cause,
-      priority: row.priority || 50,
-      confidence_score: row.confidence_score,
-      scientific_source: row.scientific_source || '',
-      scientific_basis: row.scientific_basis || '',
-      icar_package_ref: row.icar_package_ref,
-      trigger_keywords: row.trigger_keywords || [],
-      response_mr: row.response_mr,
-      response_hi: row.response_hi,
-      response_en: row.response_en,
-      alternatives: row.alternatives || [],
-      action_type: row.action_type || 'advisory',
-      phi_days: row.phi_days,
-      bee_toxicity: row.bee_toxicity,
-      ipm_level: row.ipm_level,
-      etl_threshold: row.etl_threshold,
-      active_ingredient: row.active_ingredient,
-      organic_alternative: row.organic_alternative,
-      is_active: row.is_active
-    }));
+    return (data || []).map(row => {
+      // CRITICAL FIX: Extract trigger_keywords from conditions_json if column is empty
+      const conditionsJson = row.conditions_json || {};
+      let triggerKeywords: string[] = [];
+      
+      // Priority: 1) Column value, 2) conditions_json.trigger_keywords
+      if (Array.isArray(row.trigger_keywords) && row.trigger_keywords.length > 0) {
+        triggerKeywords = row.trigger_keywords;
+      } else if (Array.isArray(conditionsJson.trigger_keywords)) {
+        triggerKeywords = conditionsJson.trigger_keywords;
+      }
+      
+      return {
+        rule_id: row.rule_id,
+        category: row.category,
+        crop_code: row.crop_code,
+        crop_group: row.crop_group,
+        canonical_group: row.canonical_group,
+        stage_applicable: row.stage_applicable || [],
+        conditionCode: row.condition_code || '() => true',
+        conditions_json: conditionsJson,
+        cause: row.cause,
+        priority: row.priority || 50,
+        confidence_score: row.confidence_score,
+        scientific_source: row.scientific_source || '',
+        scientific_basis: row.scientific_basis || '',
+        icar_package_ref: row.icar_package_ref,
+        trigger_keywords: triggerKeywords, // FIX: Use extracted keywords
+        response_mr: row.response_mr,
+        response_hi: row.response_hi,
+        response_en: row.response_en,
+        alternatives: row.alternatives || [],
+        action_type: row.action_type || 'advisory',
+        phi_days: row.phi_days,
+        bee_toxicity: row.bee_toxicity,
+        ipm_level: row.ipm_level,
+        etl_threshold: row.etl_threshold,
+        active_ingredient: row.active_ingredient,
+        organic_alternative: row.organic_alternative,
+        is_active: row.is_active
+      };
+    });
   } catch (e) {
     console.error('❌ [RuleLoader] Failed to load rules:', e);
     return [];
@@ -147,7 +160,11 @@ function reconstructCondition(code: string): ((input: DecisionInput) => boolean)
 
 /**
  * CRITICAL FIX: Evaluate conditions_json from database
- * Supports compound conditions (all/any) and atomic conditions
+ * Supports compound conditions (all/any), atomic conditions, AND simple object format
+ * 
+ * DATABASE FORMAT: {crop_stage: [...], observations: [...], trigger_keywords: [...]}
+ * COMPOUND FORMAT: {all: [...], any: [...]}
+ * ATOMIC FORMAT: {fact: 'X', operator: 'Y', value: 'Z'}
  */
 export function evaluateConditionsJson(
   conditions: any,
@@ -167,7 +184,7 @@ export function evaluateConditionsJson(
     return conditions.any.some((c: any) => evaluateConditionsJson(c, input));
   }
   
-  // Evaluate atomic condition
+  // Evaluate atomic condition (fact/operator/value format)
   if (conditions.fact && conditions.operator) {
     const factValue = input[conditions.fact as keyof DecisionInput];
     if (factValue === undefined || factValue === null) return false;
@@ -197,7 +214,86 @@ export function evaluateConditionsJson(
     }
   }
   
-  return false;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Handle SIMPLE OBJECT FORMAT from database
+  // This is the actual format used: {crop_stage: [...], observations: [...], trigger_keywords: [...]}
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  let allMatch = true;
+  let hasAnyCondition = false;
+  
+  // Check crop_stage match
+  if (conditions.crop_stage && Array.isArray(conditions.crop_stage) && conditions.crop_stage.length > 0) {
+    hasAnyCondition = true;
+    const inputStage = input.crop_stage?.toUpperCase() || '';
+    const stageMatch = conditions.crop_stage.some((s: string) => {
+      const normalizedS = s.toUpperCase();
+      return normalizedS === inputStage || 
+             normalizedS === '*' || 
+             normalizedS === 'ALL' ||
+             normalizedS === 'ANY' ||
+             inputStage.includes(normalizedS);
+    });
+    if (!stageMatch && inputStage) {
+      allMatch = false;
+    }
+  }
+  
+  // Check observations match (if input has visual_symptoms)
+  if (conditions.observations && Array.isArray(conditions.observations) && conditions.observations.length > 0) {
+    hasAnyCondition = true;
+    const inputSymptoms = input.visual_symptoms || [];
+    const inputSymptom = input.primary_symptom || '';
+    
+    // Match if ANY observation in conditions matches ANY symptom in input
+    if (inputSymptoms.length > 0 || inputSymptom) {
+      const obsMatch = conditions.observations.some((obs: string) => {
+        const obsLower = obs.toLowerCase();
+        // Check array symptoms
+        if (inputSymptoms.some((sym: string) => 
+          sym.toLowerCase().includes(obsLower) || obsLower.includes(sym.toLowerCase())
+        )) {
+          return true;
+        }
+        // Check primary symptom
+        if (inputSymptom && (
+          inputSymptom.toLowerCase().includes(obsLower) || 
+          obsLower.includes(inputSymptom.toLowerCase())
+        )) {
+          return true;
+        }
+        return false;
+      });
+      if (!obsMatch) {
+        allMatch = false;
+      }
+    }
+  }
+  
+  // Check trigger_keywords in user_query - KEYWORD MATCH OVERRIDES OTHER FAILURES
+  if (conditions.trigger_keywords && Array.isArray(conditions.trigger_keywords) && conditions.trigger_keywords.length > 0) {
+    hasAnyCondition = true;
+    const queryLower = (input.user_query || '').toLowerCase();
+    
+    if (queryLower) {
+      const keywordMatch = conditions.trigger_keywords.some((kw: string) => {
+        const kwLower = kw.toLowerCase();
+        return queryLower.includes(kwLower);
+      });
+      
+      if (keywordMatch) {
+        // CRITICAL: Keyword match overrides other condition failures!
+        return true;
+      }
+    }
+  }
+  
+  // If no specific conditions were defined, match by default
+  if (!hasAnyCondition) {
+    return true;
+  }
+  
+  return allMatch;
 }
 
 function makeExecutable(rule: BundledRule): ExecutableRule {
