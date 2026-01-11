@@ -448,3 +448,70 @@ export function getContextValidator(): ContextValidator {
 export function validateContextCompleteness(input: ContextValidationInput): ContextValidationResult {
   return getContextValidator().validateContext(input);
 }
+
+/**
+ * G3: Perform NDVI-symptom consistency checks
+ * Returns any contradictions found between field data
+ */
+export function performConsistencyChecks(input: {
+  ndviValue?: number | null;
+  symptoms?: string[];
+  soil_status?: string | null;
+}): {
+  contradictions: Array<{
+    type: string;
+    field1: string;
+    field1_value: any;
+    field2: string;
+    field2_value: any;
+    resolution: string;
+  }>;
+  warnings: string[];
+  status: 'CONSISTENT' | 'INCONSISTENT' | 'UNKNOWN';
+} {
+  const result = {
+    contradictions: [] as Array<{
+      type: string;
+      field1: string;
+      field1_value: any;
+      field2: string;
+      field2_value: any;
+      resolution: string;
+    }>,
+    warnings: [] as string[],
+    status: 'CONSISTENT' as 'CONSISTENT' | 'INCONSISTENT' | 'UNKNOWN'
+  };
+  
+  const { ndviValue, symptoms = [] } = input;
+  
+  if (ndviValue === null || ndviValue === undefined) {
+    result.status = 'UNKNOWN';
+    result.warnings.push('NDVI data not available for consistency check');
+    return result;
+  }
+  
+  // Check for NDVI-symptom contradictions
+  for (const pattern of NDVI_SYMPTOM_CONTRADICTIONS) {
+    const hasMatchingSymptom = symptoms.some(s => 
+      pattern.symptom_pattern.some(p => s.toUpperCase().includes(p))
+    );
+    
+    if (hasMatchingSymptom && 
+        ndviValue >= pattern.ndvi_range.min && 
+        ndviValue <= pattern.ndvi_range.max) {
+      result.contradictions.push({
+        type: pattern.contradiction_type,
+        field1: 'symptoms',
+        field1_value: symptoms,
+        field2: 'ndvi',
+        field2_value: ndviValue,
+        resolution: pattern.resolution
+      });
+      
+      result.warnings.push(`NDVI-symptom mismatch: ${pattern.contradiction_type}`);
+      result.status = 'INCONSISTENT';
+    }
+  }
+  
+  return result;
+}
