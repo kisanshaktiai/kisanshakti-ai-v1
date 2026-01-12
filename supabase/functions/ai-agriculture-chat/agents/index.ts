@@ -55,8 +55,20 @@ export {
   performMultiMatchDetection, 
   detectCompetingMatches,
   generateDifferentialClarificationFromRules,
+  generateFallbackClarificationOptions,
   MULTI_MATCH_DETECTOR_VERSION 
 } from './generic-multi-match-detector.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTENT LOCK: Agricultural Symptom Bypass for Symbolic Brain
+// ═══════════════════════════════════════════════════════════════════════════
+export {
+  lockIntent,
+  filterActionsByIntentLock,
+  requiresClarification,
+  shouldBypassClarificationForAgriSymptom,
+  INTENT_LOCK_VERSION
+} from './intent-lock.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // P1-1: CANONICAL AUTHORITY TYPES (Single Source of Truth)
