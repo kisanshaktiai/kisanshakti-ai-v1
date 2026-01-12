@@ -370,3 +370,58 @@ export function requiresClarification(
   
   return confidence < threshold;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AGRICULTURAL SYMPTOM BYPASS - Allows symbolic brain to run even at low confidence
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * CRITICAL FIX: Bypass clarification when farmer mentions agricultural symptoms
+ * This ensures the Symbolic Decision Brain runs even when NLU confidence is low
+ * 
+ * @param farmerMessage - Raw farmer message
+ * @param intentConfidence - NLU confidence score (0-1)
+ * @returns true if clarification should be bypassed and symbolic brain should run
+ */
+export function shouldBypassClarificationForAgriSymptom(
+  farmerMessage: string,
+  intentConfidence: number
+): boolean {
+  // Agricultural symptom keywords in Marathi, Hindi, and English
+  const AGRI_SYMPTOM_KEYWORDS = [
+    // Marathi pest/disease terms
+    'किडे', 'किडा', 'कीड', 'रोग', 'पानावर', 'पानाखाली', 'मरतंय', 'मेला', 'मेले',
+    'वाळत', 'वाळतो', 'सुकत', 'सुकतो', 'पिवळे', 'पिवळी', 'पिवळा', 'छिद्र', 'भोक',
+    'सुरळी', 'पांढरे', 'काळे', 'चिकट', 'माव्या', 'माव', 'थ्रिप्स', 'बोंडअळी',
+    'खोडकिडा', 'तुडतुडे', 'मावा', 'उड्या', 'उडणारे', 'रेंगणारे',
+    // Hindi pest/disease terms  
+    'कीड़े', 'कीड़ा', 'कीट', 'बीमारी', 'पत्ते', 'पत्ती', 'मर', 'मुरझा', 'सूख',
+    'पीला', 'पीली', 'छेद', 'सफेद', 'काला', 'चिपचिपा', 'माहू', 'बोलवर्म',
+    // English pest/disease terms
+    'insects', 'insect', 'pest', 'pests', 'disease', 'disease', 'leaf', 'leaves',
+    'dying', 'wilting', 'yellowing', 'yellow', 'holes', 'white', 'black', 'sticky',
+    'aphid', 'aphids', 'thrips', 'whitefly', 'jassid', 'bollworm', 'borer',
+    'mealybug', 'mites', 'caterpillar', 'worm', 'bug', 'fly',
+    // Symptom patterns
+    'दिसतात', 'दिसतंय', 'दिसत', 'आलेत', 'आहेत', 'लागली', 'लागलं',
+    'problem', 'issue', 'attack', 'infestation'
+  ];
+  
+  const normalizedMessage = farmerMessage.toLowerCase();
+  
+  const hasAgriSymptom = AGRI_SYMPTOM_KEYWORDS.some(kw => 
+    normalizedMessage.includes(kw.toLowerCase())
+  );
+  
+  // If agricultural symptom mentioned, bypass clarification at 30% confidence
+  // This allows symbolic brain to evaluate even vague queries
+  const BYPASS_THRESHOLD = 0.30;
+  
+  if (hasAgriSymptom && intentConfidence >= BYPASS_THRESHOLD) {
+    console.log(`🌾 [AgriBypass] Agricultural symptom detected in: "${farmerMessage.substring(0, 50)}..."`);
+    console.log(`   ✅ Bypassing clarification (${(intentConfidence * 100).toFixed(0)}% >= ${BYPASS_THRESHOLD * 100}% threshold)`);
+    return true;
+  }
+  
+  return false;
+}

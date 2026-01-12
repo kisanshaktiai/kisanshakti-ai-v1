@@ -103,7 +103,7 @@ import { normalizeLanguage } from './language-normalizer.ts';
 import { extractObservations, validateObservationExtraction } from './observation-extractor.ts';
 import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstandingPrescriptionGate, UnderstandingConfidence } from './understanding-completeness-checker.ts';
 import { getAuditLogger } from './audit-logger.ts';
-import { lockIntent, filterActionsByIntentLock, requiresClarification } from './intent-lock.ts';
+import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
 // Import soil/NDVI state calculator for land-specific recommendations
@@ -2147,11 +2147,29 @@ export class AIAgentOrchestrator {
         console.log(`   🚫 BYPASSING clarification - farmer already selected option, proceeding to Decision Brain`);
       }
       
-      // Check if clarification is needed (low confidence) - BUT SKIP IF BYPASS FLAG IS SET
-      if (requiresClarification(intentConfidence) && !bypassClarification) {
-        console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - generating clarification`);
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: AGRICULTURAL SYMPTOM BYPASS
+      // If farmer mentions pests/diseases, ALWAYS run symbolic brain first
+      // Don't stop at low confidence clarification
+      // ═══════════════════════════════════════════════════════════════════════════
+      const agriBypass = shouldBypassClarificationForAgriSymptom(farmerMessage, intentConfidence);
+      
+      if (agriBypass) {
+        console.log(`   🌾 AGRI BYPASS ACTIVE - skipping clarification, running symbolic brain directly`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CLARIFICATION CHECK - DEFERRED UNTIL AFTER SYMBOLIC BRAIN
+      // Store the clarification data but DON'T RETURN YET - let symbolic brain run first
+      // If symbolic brain finds matches, we skip clarification entirely
+      // ═══════════════════════════════════════════════════════════════════════════
+      let pendingClarificationResponse: any = null;
+      
+      // Only prepare clarification if confidence is truly low AND no agri bypass
+      if (requiresClarification(intentConfidence) && !bypassClarification && !agriBypass) {
+        console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - PREPARING clarification (deferred until after symbolic brain)`);
         
-        // Extract NLU clarification hints - CRITICAL FIX: Default to OPTIONS_PLUS_PHOTO for low confidence
+        // Extract NLU clarification hints
         const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS_PLUS_PHOTO';
         const nluClarificationOptions = (nluOutput as any)?.clarification_options || [];
         
@@ -2165,56 +2183,19 @@ export class AIAgentOrchestrator {
           clarification_options: nluClarificationOptions
         };
         
-        console.log(`   📋 Clarification input: type=${nluClarificationType}, crop=${clarificationInput.crop_code}, observations=${clarificationInput.observations.length}`);
+        console.log(`   📋 Clarification input prepared: type=${nluClarificationType}, crop=${clarificationInput.crop_code}`);
         
         const clarificationResponse = generateClarificationResponse(clarificationInput);
         
-        // CRITICAL FIX: Null-safe access to options.length
-        const optionsLength = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options.length : 0;
-        console.log(`   📋 Clarification output: has_text=${!!clarificationResponse?.response_text}, options=${optionsLength}`);
+        // Store for potential use AFTER symbolic brain runs
+        pendingClarificationResponse = {
+          clarificationResponse,
+          intentConfidence
+        };
         
-        // CRITICAL FIX: Always return clarification when confidence is low, even if response_text is empty
-        if (clarificationResponse.response_text || intentConfidence < 0.5) {
-          const responseText = clarificationResponse.response_text || this.generateDefaultClarification(
-            options.language || 'mr',
-            farmerMessage,
-            landContext?.current_crop
-          );
-          
-          // CRITICAL FIX: Null-safe array access
-          const safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
-          console.log(`   📋 Returning clarification with ${safeOptionsForLog.length} options`);
-          agentsUsed.push('CLARIFICATION_GENERATOR');
-          
-          return {
-            type: 'CLARIFICATION_QUESTION',
-            session_id: sessionId,
-            question: {
-              question_id: `clarify_${Date.now()}`,
-              text_mr: responseText,
-              text_hi: responseText,
-              text_en: responseText,
-              // CRITICAL FIX: Null-safe array mapping
-              options: (Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : []).map((opt, idx) => ({
-                value: String(idx + 1),
-                label: opt
-              }))
-            },
-            metadata: {
-              confidence: intentConfidence,
-              safety_status: 'NEEDS_CLARIFICATION',
-              rules_applied: 0,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed,
-              trace_id: traceId,
-              // CRITICAL: Store options for next turn's option selection handler (null-safe)
-              pendingClarificationOptions: Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : []
-            }
-          };
-        }
-      } else if (requiresClarification(intentConfidence) && bypassClarification) {
-        // Log that we skipped clarification due to option selection
-        console.log(`   ✅ Clarification SKIPPED (bypass active) - using matched observation for Decision Brain`);
+        console.log(`   📋 Clarification PREPARED (will use only if symbolic brain finds 0 rules)`);
+      } else if (requiresClarification(intentConfidence) && (bypassClarification || agriBypass)) {
+        console.log(`   ✅ Clarification SKIPPED (bypass active) - proceeding to Symbolic Decision Brain`);
       }
       
       // ========================================
@@ -2746,8 +2727,11 @@ export class AIAgentOrchestrator {
         // PHASE-16: SYMBOLIC REASONER INTEGRATION (Enhanced JSON Condition Evaluation)
         // Uses new SymbolicReasoner for proper conditions_json parsing
         // ═══════════════════════════════════════════════════════════════════════════
-        if (layeredRuleResult && (layeredRuleResult.rules_matched || 0) === 0 && canonicalState) {
-          console.log('\n🧠 PHASE 2.7: Trying Symbolic Reasoner with JSON conditions...');
+        // CRITICAL FIX: Run Symbolic Reasoner ALWAYS, not just when rules_matched === 0
+        // This ensures the primary decision brain runs even when layered rules found some matches
+        if (canonicalState) {
+          console.log('\n🧠 PHASE 2.7: Running Symbolic Reasoner (PRIMARY PATH)...');
+          console.log(`   📊 Current rules_matched: ${layeredRuleResult?.rules_matched || 0}`);
           try {
             const symbolicReasoner = new SymbolicReasoner();
             const factExtractor = new FactExtractor();
@@ -2904,10 +2888,85 @@ export class AIAgentOrchestrator {
         console.error('   ❌ Canonical State Builder failed (non-blocking):', canonicalError);
       }
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // DEFERRED CLARIFICATION: Only return clarification if symbolic brain found 0 rules
+      // This ensures we always try the symbolic brain BEFORE falling back to clarification
+      // ═══════════════════════════════════════════════════════════════════════════
+      const totalRulesMatched = layeredRuleResult?.rules_matched || 0;
+      
+      if (pendingClarificationResponse && totalRulesMatched === 0) {
+        console.log(`\n🔄 DEFERRED CLARIFICATION TRIGGERED`);
+        console.log(`   📊 Symbolic brain found 0 rules - now returning prepared clarification`);
+        
+        const { clarificationResponse, intentConfidence } = pendingClarificationResponse;
+        
+        // CRITICAL FIX: If clarification has 0 options, generate dynamic options from database
+        let safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
+        
+        if (safeOptionsForLog.length === 0) {
+          console.log(`   ⚠️ Clarification has 0 options - generating dynamic fallback from database`);
+          
+          // Try to generate observation-based options from multi-match detector
+          try {
+            const { generateFallbackClarificationOptions } = await import('./generic-multi-match-detector.ts');
+            const dynamicOptions = await generateFallbackClarificationOptions(
+              landContext?.current_crop?.toUpperCase(),
+              this.supabase,
+              options.language || 'mr'
+            );
+            
+            if (dynamicOptions && dynamicOptions.length > 0) {
+              safeOptionsForLog = dynamicOptions;
+              console.log(`   ✅ Generated ${dynamicOptions.length} dynamic options from database`);
+            }
+          } catch (dynamicError) {
+            console.warn(`   ⚠️ Dynamic option generation failed:`, dynamicError);
+          }
+        }
+        
+        const responseText = clarificationResponse?.response_text || this.generateDefaultClarification(
+          options.language || 'mr',
+          farmerMessage,
+          landContext?.current_crop
+        );
+        
+        console.log(`   📋 Returning clarification with ${safeOptionsForLog.length} options`);
+        agentsUsed.push('CLARIFICATION_GENERATOR');
+        
+        return {
+          type: 'CLARIFICATION_QUESTION',
+          session_id: sessionId,
+          question: {
+            question_id: `clarify_${Date.now()}`,
+            text_mr: responseText,
+            text_hi: responseText,
+            text_en: responseText,
+            options: safeOptionsForLog.map((opt: string, idx: number) => ({
+              value: String(idx + 1),
+              label: opt
+            }))
+          },
+          metadata: {
+            confidence: intentConfidence,
+            safety_status: 'NEEDS_CLARIFICATION',
+            rules_applied: 0,
+            symbolic_brain_ran: true,
+            reason: 'ZERO_RULES_AFTER_SYMBOLIC_BRAIN',
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId,
+            pendingClarificationOptions: safeOptionsForLog
+          }
+        };
+      } else if (pendingClarificationResponse && totalRulesMatched > 0) {
+        console.log(`   ✅ Symbolic brain found ${totalRulesMatched} rules - SKIPPING clarification`);
+      }
+      
       // ========================================
       // PHASE 3: DIAGNOSTIC FLOW MANAGEMENT
       // ========================================
       console.log('\n🧠 PHASE 3: Managing Diagnostic Flow...');
+
       
       // Create per-request diagnostic controller with required parameters
       const diagnosticController = this.createDiagnosticController(sessionId, farmerId, options.landId);

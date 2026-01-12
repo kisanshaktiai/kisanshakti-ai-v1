@@ -505,6 +505,123 @@ function extractObservationKeys(chars: ObservableCharacteristics): string[] {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FALLBACK CLARIFICATION: Generate options when no rules matched
+// Used when symbolic brain returns 0 rules but we have low confidence
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function generateFallbackClarificationOptions(
+  cropCode: string | undefined,
+  supabaseClient: any,
+  language: 'mr' | 'hi' | 'en' = 'mr'
+): Promise<string[]> {
+  console.log(`🔄 [FallbackClarification] Generating options for crop: ${cropCode || 'UNKNOWN'}`);
+  
+  try {
+    // Fetch common pests/diseases for this crop from database
+    const query = supabaseClient
+      .from('decision_rules')
+      .select('cause, category, observable_characteristics')
+      .not('observable_characteristics', 'is', null)
+      .limit(5);
+    
+    // Filter by crop if known
+    if (cropCode && cropCode !== 'UNKNOWN') {
+      query.or(`crop_code.eq.${cropCode},crop_code.is.null`);
+    }
+    
+    const { data: rules, error } = await query;
+    
+    if (error || !rules || rules.length === 0) {
+      console.warn(`   ⚠️ [FallbackClarification] No rules found, using default options`);
+      return getDefaultClarificationOptions(language);
+    }
+    
+    // Build options from observable characteristics
+    const options: string[] = [];
+    const t = TEMPLATES[language];
+    
+    for (const rule of rules.slice(0, 3)) {
+      const chars = rule.observable_characteristics as ObservableCharacteristics;
+      if (!chars) continue;
+      
+      const parts: string[] = [];
+      
+      // Add icon if available
+      if (chars.icon) parts.push(chars.icon);
+      
+      // Add color
+      if (chars.color && chars.color.length > 0) {
+        const color = chars.color[0];
+        if (t.color[color]) parts.push(t.color[color]);
+      }
+      
+      // Add size
+      if (chars.size && t.size[chars.size]) {
+        parts.push(t.size[chars.size]);
+      }
+      
+      // Add behavior
+      if (chars.behavior && chars.behavior.length > 0) {
+        const behavior = chars.behavior[0];
+        if (t.behavior[behavior]) parts.push(t.behavior[behavior]);
+      }
+      
+      // Add base noun
+      if (language === 'mr') parts.push('किडे');
+      else if (language === 'hi') parts.push('कीड़े');
+      else parts.push('insects');
+      
+      // Add secondary symptom
+      if (chars.secondary_symptoms && chars.secondary_symptoms.length > 0) {
+        const symptom = chars.secondary_symptoms[0];
+        if (t.secondary[symptom]) parts.push(t.secondary[symptom]);
+      }
+      
+      if (parts.length > 1) {
+        options.push(parts.join(' '));
+      }
+    }
+    
+    // Always add photo option
+    if (language === 'mr') options.push('📷 फोटो पाठवा');
+    else if (language === 'hi') options.push('📷 फोटो भेजें');
+    else options.push('📷 Send photo');
+    
+    console.log(`   ✅ [FallbackClarification] Generated ${options.length} options`);
+    return options.length > 0 ? options : getDefaultClarificationOptions(language);
+    
+  } catch (err) {
+    console.error(`   ❌ [FallbackClarification] Error:`, err);
+    return getDefaultClarificationOptions(language);
+  }
+}
+
+function getDefaultClarificationOptions(language: 'mr' | 'hi' | 'en'): string[] {
+  if (language === 'mr') {
+    return [
+      '🐛 छोटे किडे दिसतात',
+      '🍂 पाने पिवळी/वाळलेली दिसतात',
+      '🦠 डाग/पट्टे दिसतात',
+      '📷 फोटो पाठवा'
+    ];
+  } else if (language === 'hi') {
+    return [
+      '🐛 छोटे कीड़े दिखते हैं',
+      '🍂 पत्ते पीले/सूखे दिखते हैं',
+      '🦠 धब्बे/पट्टियां दिखती हैं',
+      '📷 फोटो भेजें'
+    ];
+  } else {
+    return [
+      '🐛 Small insects visible',
+      '🍂 Yellow/dry leaves',
+      '🦠 Spots/streaks visible',
+      '📷 Send photo'
+    ];
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN EXPORT: COMPLETE MULTI-MATCH DETECTION FLOW
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -554,5 +671,6 @@ export default {
   performMultiMatchDetection,
   detectCompetingMatches,
   generateDifferentialClarificationFromRules,
+  generateFallbackClarificationOptions,
   MULTI_MATCH_DETECTOR_VERSION
 };
