@@ -35,7 +35,134 @@ import {
   type DiagnosticEscalationInput
 } from './diagnostic-escalation-generator.ts';
 
-export const UNIFIED_GATE_VERSION = '1.0.0';
+export const UNIFIED_GATE_VERSION = '1.0.1';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RECOMMENDATION SUPPRESSION GUARD
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface SuppressionGuardResult {
+  should_allow: boolean;
+  reason: string;
+  rules_fired_count: number;
+  has_treatment_actions: boolean;
+  authority_blocking: boolean;
+  clarification_pending: boolean;
+  suppression_prevented: boolean;
+}
+
+/**
+ * validateRecommendationSuppression
+ * 
+ * PRODUCTION BUG FIX: Ensures that if prescription-level rules fire AND 
+ * authority is not blocking AND no clarification is triggered, 
+ * recommendations MUST NOT be dropped silently.
+ * 
+ * Call this AFTER evaluateUnifiedGate to detect potential silent suppression.
+ */
+export function validateRecommendationSuppression(
+  gateResult: UnifiedGateResult,
+  symbolicDecision: {
+    decision_brain_source?: boolean;
+    rules_fired?: string[];
+    actions_returned?: Array<{ action_type?: string; product_name?: string }>;
+    matched_responses?: string[];
+  } | null
+): SuppressionGuardResult {
+  const rulesFiredCount = symbolicDecision?.rules_fired?.length ?? 0;
+  const actionsReturned = symbolicDecision?.actions_returned ?? [];
+  const hasTreatmentActions = actionsReturned.some(a => 
+    a.action_type && TREATMENT_ACTIONS.has(a.action_type)
+  );
+  const hasProducts = actionsReturned.some(a => !!a.product_name);
+  const hasMatchedResponses = (symbolicDecision?.matched_responses?.length ?? 0) > 0;
+  
+  const authorityBlocking = gateResult.authority_decision.authority !== DecisionAuthority.CROP &&
+    gateResult.authority_decision.authority !== DecisionAuthority.NONE &&
+    !gateResult.authority_decision.treatments_allowed;
+  
+  const clarificationPending = gateResult.response_mode === ResponseMode.CLARIFICATION;
+  
+  // SUPPRESSION DETECTION:
+  // If rules fired AND (has treatment actions OR products OR matched_responses)
+  // AND authority NOT blocking AND NO clarification pending
+  // BUT gate returned FAIL or no recommendations → SILENT SUPPRESSION
+  
+  const rulesIndicateTreatment = rulesFiredCount > 0 && (hasTreatmentActions || hasProducts || hasMatchedResponses);
+  const gateDenied = !gateResult.treatments_allowed && 
+    gateResult.response_mode !== ResponseMode.CLARIFICATION &&
+    gateResult.response_mode !== ResponseMode.DIAGNOSTIC_ESCALATION;
+  
+  const isSilentSuppression = rulesIndicateTreatment && !authorityBlocking && !clarificationPending && gateDenied;
+  
+  if (isSilentSuppression) {
+    console.warn(`\n⚠️ [SuppressionGuard] SILENT SUPPRESSION DETECTED!`);
+    console.warn(`   Rules Fired: ${rulesFiredCount}`);
+    console.warn(`   Has Treatment Actions: ${hasTreatmentActions}`);
+    console.warn(`   Has Products: ${hasProducts}`);
+    console.warn(`   Has Matched Responses: ${hasMatchedResponses}`);
+    console.warn(`   Authority Blocking: ${authorityBlocking}`);
+    console.warn(`   Gate Status: ${gateResult.gate_status}`);
+    console.warn(`   Response Mode: ${gateResult.response_mode}`);
+    console.warn(`   → RECOMMENDATION SUPPRESSION PREVENTED`);
+  }
+  
+  return {
+    should_allow: isSilentSuppression ? true : gateResult.treatments_allowed,
+    reason: isSilentSuppression 
+      ? 'Suppression guard overrode gate - rules fired with valid treatments' 
+      : gateResult.reason,
+    rules_fired_count: rulesFiredCount,
+    has_treatment_actions: hasTreatmentActions || hasProducts,
+    authority_blocking: authorityBlocking,
+    clarification_pending: clarificationPending,
+    suppression_prevented: isSilentSuppression
+  };
+}
+
+/**
+ * applySuppressionGuard
+ * 
+ * Applies the suppression guard to a gate result, potentially upgrading
+ * the response mode if silent suppression is detected.
+ */
+export function applySuppressionGuard(
+  gateResult: UnifiedGateResult,
+  symbolicDecision: {
+    decision_brain_source?: boolean;
+    rules_fired?: string[];
+    actions_returned?: Array<{ action_type?: string; product_name?: string }>;
+    matched_responses?: string[];
+  } | null
+): UnifiedGateResult {
+  const guardResult = validateRecommendationSuppression(gateResult, symbolicDecision);
+  
+  if (guardResult.suppression_prevented) {
+    // Upgrade the gate result to allow treatments
+    const products = (symbolicDecision?.actions_returned ?? [])
+      .filter(a => a.product_name)
+      .map(a => a.product_name!.toLowerCase());
+    
+    return {
+      ...gateResult,
+      gate_status: GateStatus.PASS,
+      gate_action: GateAction.ALLOW_TREATMENT,
+      treatments_allowed: true,
+      allowed_products: products.length > 0 ? products : gateResult.allowed_products,
+      response_mode: ResponseMode.TREATMENT,
+      reason: `Suppression guard: ${guardResult.rules_fired_count} rules fired with valid treatments - gate upgraded`,
+      criteria_results: {
+        ...gateResult.criteria_results,
+        symbolic_decision_valid: { 
+          passed: true, 
+          reason: `Suppression guard: ${guardResult.rules_fired_count} rules with treatments` 
+        }
+      }
+    };
+  }
+  
+  return gateResult;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INPUT CONTRACT

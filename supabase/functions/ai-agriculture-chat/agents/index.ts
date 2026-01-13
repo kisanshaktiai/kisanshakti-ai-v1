@@ -123,9 +123,11 @@ export type { AuthorityInput } from '../decision/authority-resolver.ts';
 export * from '../decision/unified-decision-gate.ts';
 export {
   evaluateUnifiedGate,
+  applySuppressionGuard,
+  validateRecommendationSuppression,
   UNIFIED_GATE_VERSION
 } from '../decision/unified-decision-gate.ts';
-export type { UnifiedGateInput } from '../decision/unified-decision-gate.ts';
+export type { UnifiedGateInput, SuppressionGuardResult } from '../decision/unified-decision-gate.ts';
 
 // Prescription Gate Enforcer (Legacy - use UnifiedDecisionGate for new code)
 // NOTE: AuthorityConfirmation enum removed in PHASE-13 - use AuthorityStatus instead
