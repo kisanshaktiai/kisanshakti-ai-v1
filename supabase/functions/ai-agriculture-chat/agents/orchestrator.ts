@@ -2263,20 +2263,31 @@ export class AIAgentOrchestrator {
       
       // ========================================
       // PHASE 1B: LLM-FIRST CHECK - BLOCKED FOR AGRICULTURAL QUERIES WITH LAND CONTEXT
+      // FIX: Routing Flag Determinism - evaluate once, invalidate conflicting flags
       // ========================================
       const canDirectAnswer = canAnswerDirectly(detectedIntent, farmerMessage);
       const needsRules = requiresRuleEngine(detectedIntent, farmerMessage);
       
-      console.log(`   🔀 Routing decision: canDirectAnswer=${canDirectAnswer}, needsRules=${needsRules}`);
-      
-      // CRITICAL: Block LLM-first path if land context exists (agricultural query)
+      // FIX: Routing determinism - if symbolic path is chosen, invalidate direct-answer flag
       const isNonAgricultural = ['GREETING', 'APP_HELP'].includes(queryRoute.route);
-      if (landContext && !isNonAgricultural && canDirectAnswer) {
-        console.log(`   🚫 LLM-first BLOCKED - land context present, forcing symbolic path`);
+      const hasLandContext = !!landContext;
+      const hasSymptoms = inductionResult.symptoms.length > 0;
+      
+      // DETERMINISTIC ROUTING DECISION (evaluated exactly once)
+      // Symbolic path takes priority when: land context exists OR symptoms detected OR rules needed
+      const forceSymbolicPath = hasLandContext || hasSymptoms || needsRules || shouldRunSymbolicBrain;
+      const effectiveCanDirectAnswer = canDirectAnswer && !forceSymbolicPath && isNonAgricultural;
+      
+      console.log(`   🔀 Routing decision: canDirectAnswer=${canDirectAnswer}, needsRules=${needsRules}`);
+      console.log(`   🔀 FIX: forceSymbolicPath=${forceSymbolicPath}, effectiveCanDirectAnswer=${effectiveCanDirectAnswer}`);
+      
+      // CRITICAL: Block LLM-first path if symbolic path is forced
+      if (forceSymbolicPath && canDirectAnswer) {
+        console.log(`   🚫 LLM-first BLOCKED - symbolic path forced (land=${hasLandContext}, symptoms=${hasSymptoms})`);
       }
       
-      // CRITICAL: Only allow LLM-first for NON-agricultural queries
-      if (canDirectAnswer && !needsRules && !options.photoUrl && isNonAgricultural) {
+      // CRITICAL: Only allow LLM-first for NON-agricultural queries (use deterministic flag)
+      if (effectiveCanDirectAnswer && !options.photoUrl) {
         console.log('   ⚡ Using LLM-FIRST path (skipping rule engine)');
         agentsUsed.push('LLM_Direct');
         

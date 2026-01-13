@@ -325,13 +325,19 @@ export class ContextValidator {
   
   /**
    * G3: NDVI-Symptom Consistency Check
+   * 
+   * FIX: Normalize NDVI access - AuthoritativeLandState uses `latest_value`, not `current_ndvi`
+   * Check multiple potential NDVI field locations to prevent undefined access
    */
   private checkNDVISymptomConsistency(input: ContextValidationInput, result: ContextValidationResult): void {
-    const ndviValue = input.land_state?.ndvi.current_ndvi ?? input.facts?.ndvi;
+    // FIX: Normalize NDVI into single canonical value before validation
+    // Priority: latest_value (AuthoritativeLandState) > current_ndvi (legacy) > facts.ndvi
+    const ndviValue = this.normalizeNDVIValue(input);
     const symptoms = input.symptom_keys || [];
     
+    // FIX: Explicit UNKNOWN marking instead of silent undefined
     if (ndviValue === null || ndviValue === undefined) {
-      result.warnings.push('NDVI data not available for consistency check');
+      result.warnings.push('NDVI data: UNKNOWN (not available for consistency check)');
       result.gates_passed.push('G3_NDVI_CONSISTENCY_SKIPPED');
       return;
     }
@@ -381,10 +387,12 @@ export class ContextValidator {
     else if (result.stage_source === 'DEFAULT') score += 5;
     
     // NDVI data (15 points)
-    if (input.land_state?.ndvi.current_ndvi !== null) {
+    // FIX: Use normalized NDVI accessor - AuthoritativeLandState uses latest_value
+    const ndviValue = this.normalizeNDVIValue(input);
+    if (ndviValue !== null && ndviValue !== undefined) {
       score += 15;
       // Bonus for fresh data
-      if (input.land_state?.ndvi.data_fresh) score += 5;
+      if (input.land_state?.ndvi?.data_fresh) score += 5;
     }
     
     // Soil data (15 points)
@@ -429,6 +437,38 @@ export class ContextValidator {
     if (daysSinceSowing <= 70) return 'VEGETATIVE';
     if (daysSinceSowing <= 100) return 'FLOWERING';
     return 'MATURITY';
+  }
+  
+  /**
+   * FIX: Normalize NDVI value access across different data structures
+   * 
+   * AuthoritativeLandState uses `ndvi.latest_value`
+   * Legacy context uses `ndvi.current_ndvi`
+   * SymbolicFact uses `ndvi` directly
+   * 
+   * This method checks all potential sources and returns the first available value.
+   * If all are undefined, returns null (explicitly marking as UNKNOWN).
+   */
+  private normalizeNDVIValue(input: ContextValidationInput): number | null {
+    // Priority 1: AuthoritativeLandState.ndvi.latest_value (AUTHORITATIVE)
+    if (input.land_state?.ndvi?.latest_value !== undefined && 
+        input.land_state?.ndvi?.latest_value !== null) {
+      return input.land_state.ndvi.latest_value;
+    }
+    
+    // Priority 2: Legacy current_ndvi field (backward compatibility)
+    const legacyNdvi = (input.land_state?.ndvi as any)?.current_ndvi;
+    if (legacyNdvi !== undefined && legacyNdvi !== null) {
+      return legacyNdvi;
+    }
+    
+    // Priority 3: SymbolicFact.ndvi (from fact extraction)
+    if (input.facts?.ndvi !== undefined && input.facts?.ndvi !== null) {
+      return input.facts.ndvi;
+    }
+    
+    // No NDVI available - explicitly return null (UNKNOWN state)
+    return null;
   }
 }
 
