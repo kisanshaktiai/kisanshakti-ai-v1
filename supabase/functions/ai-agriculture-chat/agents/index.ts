@@ -337,3 +337,32 @@ export {
   POLLINATOR_DEPENDENT_CROPS,
   POLLINATOR_PROTECTION_VERSION
 } from './pollinator-protection-rules.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-20: Clarification-First Confidence Strategy
+// Treats clarification as primary confidence-building step
+// ═══════════════════════════════════════════════════════════════════════════
+export {
+  lockStageForTurn,
+  getLockedStage,
+  clearLockedStage,
+  isStageLockedForTurn,
+  shouldTriggerClarificationFirst,
+  fetchRuleDrivenClarificationOptions,
+  calculateConfidenceWithTiming,
+  mapClarificationSelectionToSymbols,
+  checkDecisionGateAlignment,
+  logClarificationEvent,
+  getClarificationLogs,
+  CLARIFICATION_STRATEGY_VERSION,
+  type LockedStageContext,
+  type ClarificationTriggerInput,
+  type ClarificationTriggerResult,
+  type RuleDrivenClarificationInput,
+  type RuleDrivenOption,
+  type RuleDrivenClarificationOutput,
+  type ConfidenceTimingResult,
+  type DecisionGateCheckInput,
+  type DecisionGateCheckResult,
+  type ClarificationLogEntry
+} from './clarification-strategy.ts';
