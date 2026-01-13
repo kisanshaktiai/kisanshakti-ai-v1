@@ -35,6 +35,7 @@ import { validateLLMOutputIntegrity } from './agents/decision-representation.ts'
 // PHASE 11: Import Unified Decision Gate (P1-4 fix - single gate)
 import { 
   evaluateUnifiedGate,
+  applySuppressionGuard,
   type UnifiedGateInput
 } from './decision/unified-decision-gate.ts';
 import {
@@ -701,12 +702,24 @@ serve(async (req) => {
           land_id: landId
         };
         
-        const unifiedGateResult = evaluateUnifiedGate(unifiedGateInput);
+        const rawGateResult = evaluateUnifiedGate(unifiedGateInput);
+        
+        // Apply suppression guard to prevent silent recommendation drops
+        const symbolicDecisionForGuard = {
+          decision_brain_source: orchestratorResponse.decision_brain_source,
+          rules_fired: orchestratorResponse.metadata?.rulesFired || [],
+          actions_returned: orchestratorResponse.metadata?.actionsReturned || [],
+          matched_responses: orchestratorResponse.metadata?.matchedResponses || []
+        };
+        const unifiedGateResult = applySuppressionGuard(rawGateResult, symbolicDecisionForGuard);
         
         console.log(`   🚦 [UnifiedGate] ${unifiedGateResult.gate_status === 'PASS' ? '✅ PASS' : unifiedGateResult.gate_status === 'EMERGENCY_BYPASS' ? '🚨 EMERGENCY' : '🚫 ' + unifiedGateResult.gate_status}`);
         console.log(`      Response Mode: ${unifiedGateResult.response_mode}`);
         console.log(`      Action: ${unifiedGateResult.gate_action}`);
         console.log(`      Reason: ${unifiedGateResult.reason}`);
+        if (unifiedGateResult.reason?.includes('Suppression guard')) {
+          console.log(`      ✅ SUPPRESSION GUARD ACTIVATED - recommendations preserved`);
+        }
         
         // If unified gate blocks treatments, use appropriate fallback response
         if (!unifiedGateResult.treatments_allowed) {
