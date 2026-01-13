@@ -339,7 +339,7 @@ export {
 } from './pollinator-protection-rules.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE-20: Clarification-First Confidence Strategy
+// PHASE-20: Clarification-First Confidence Strategy (v2.9.0)
 // Treats clarification as primary confidence-building step
 // ═══════════════════════════════════════════════════════════════════════════
 export {
@@ -366,3 +366,55 @@ export {
   type DecisionGateCheckResult,
   type ClarificationLogEntry
 } from './clarification-strategy.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 1 & 2: Canonical State Invariants
+// Prevent state corruption and non-destructive validation
+// ═══════════════════════════════════════════════════════════════════════════
+export {
+  lockAuthoritativeContext,
+  getAuthoritativeContext,
+  addConfirmedSymptom,
+  clearAuthoritativeContext,
+  validateCanonicalInvariants,
+  enforceInvariantsOrBlock,
+  assessOptionalData,
+  adjustConfidenceForMissingData,
+  lockDiagnosisForSession,
+  getLockedDiagnosis,
+  hasDiagnosisLock,
+  markClarificationAnswered,
+  wasClarificationAnswered,
+  getAnsweredClarifications,
+  getConfidenceFloor,
+  CANONICAL_INVARIANTS_VERSION,
+  type AuthoritativeContext,
+  type InvariantCheckResult,
+  type InvariantViolation,
+  type ConfidenceAdjustment,
+  type OptionalDataStatus
+} from '../decision/canonical-state-invariants.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 5: Symbolic Brain Health Metrics
+// Lightweight observability for audit and scaling
+// ═══════════════════════════════════════════════════════════════════════════
+export {
+  startDecisionTracking,
+  recordContext,
+  recordInitialConfidence,
+  recordClarificationTriggered,
+  recordPreClarificationConfidence,
+  recordPostClarificationConfidence,
+  recordRuleEvaluation,
+  recordInvariantViolation,
+  recordLockedDiagnosisUsed,
+  completeDecisionTracking,
+  getCurrentMetrics,
+  getRecentMetrics,
+  calculateAggregateMetrics,
+  logMetricsSummary,
+  BRAIN_METRICS_VERSION,
+  type DecisionMetrics,
+  type AggregateMetrics
+} from '../decision/symbolic-brain-metrics.ts';

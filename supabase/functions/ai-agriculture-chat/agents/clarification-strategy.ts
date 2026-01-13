@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CLARIFICATION-FIRST CONFIDENCE STRATEGY
+ * CLARIFICATION-FIRST CONFIDENCE STRATEGY (v2.9.0)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
@@ -14,6 +14,7 @@
  * 4. Confidence Timing: Final confidence computed AFTER clarification response
  * 5. Canonical Rebuild: After clarification → map to symbols → re-run brain
  * 6. Decision Gate: Clarification + rule match → MUST return recommendation
+ * 7. STEP 3: Rank options by stage relevance, differentiation, observability
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -22,7 +23,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { ClarificationScope } from './clarification-renderer.ts';
 import { ObservationKey } from '../decision/observation-ontology.ts';
 
-export const CLARIFICATION_STRATEGY_VERSION = '1.0.0';
+export const CLARIFICATION_STRATEGY_VERSION = '2.9.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -83,6 +84,32 @@ export interface ConfidenceTimingResult {
   clarification_boost: number;
   is_final: boolean;
   timing_phase: 'INITIAL' | 'POST_CLARIFICATION';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STEP 3: VISUAL OBSERVABILITY HELPER
+// Determines if a symptom can be observed visually without tools
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VISUAL_OBSERVATION_PATTERNS = [
+  // Colors and appearances
+  'yellow', 'पिवळ', 'पीला', 'brown', 'तपकिरी', 'भूरा', 'white', 'पांढर', 'सफेद',
+  'black', 'काळ', 'काला', 'red', 'लाल', 'green', 'हिरव',
+  // Visible damage
+  'hole', 'छिद्र', 'भोक', 'spot', 'डाग', 'ठिपके', 'curl', 'वळ', 'मुड',
+  'wilt', 'सुक', 'मुरझ', 'dry', 'कोरड', 'सूखा',
+  // Insects
+  'insect', 'किड', 'कीड़', 'flying', 'उड', 'crawling', 'रांग', 'egg', 'अंड',
+  // Physical symptoms
+  'powder', 'भुर', 'sticky', 'चिकट', 'webbing', 'जाळ'
+];
+
+/**
+ * STEP 3: Check if an observation is visually observable by farmer
+ */
+function isVisuallyObservable(optionId: string, label: string): boolean {
+  const combined = `${optionId} ${label}`.toLowerCase();
+  return VISUAL_OBSERVATION_PATTERNS.some(pattern => combined.includes(pattern.toLowerCase()));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -264,62 +291,146 @@ export async function fetchRuleDrivenClarificationOptions(
     
     console.log(`   📦 [RuleDriven] Found ${rules.length} rules with characteristics`);
     
-    // Extract unique observation-based options from rules
-    const optionsMap = new Map<string, RuleDrivenOption>();
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STEP 3: Extract and RANK options by relevance
+    // Priority: Stage relevance > Differentiation ability > Visual observability
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    interface ScoredOption extends RuleDrivenOption {
+      score: number;
+      is_visual: boolean;
+      differentiates_count: number;
+    }
+    
+    const scoredOptions: ScoredOption[] = [];
+    const ruleIdSet = new Set<string>();
     
     for (const rule of rules) {
       const characteristics = rule.observable_characteristics;
       if (!characteristics) continue;
       
+      // Track which rules each option differentiates
+      ruleIdSet.add(rule.rule_id);
+      
       // Handle array of characteristics
       const charArray = Array.isArray(characteristics) ? characteristics : [characteristics];
       
       for (const char of charArray) {
-        const optionId = char.observation_key || char.id || `opt_${optionsMap.size}`;
+        const optionId = char.observation_key || char.id || `opt_${scoredOptions.length}`;
         
         // Skip if already have this symptom
         if (current_symptoms.some(s => s.toLowerCase() === optionId.toLowerCase())) {
           continue;
         }
         
-        if (!optionsMap.has(optionId)) {
-          // Get localized label
-          const label = char[`label_${language}`] || char.label_en || char.label || char.description || optionId;
-          
-          optionsMap.set(optionId, {
-            id: optionId,
-            label: label,
-            observation_key: char.observation_key || optionId,
-            rule_id: rule.rule_id,
-            confidence_boost: 0.15 // Each clarification adds 15% confidence
-          });
+        // Skip if already added
+        if (scoredOptions.some(o => o.id === optionId)) {
+          continue;
         }
+        
+        // Get localized label
+        const label = char[`label_${language}`] || char.label_en || char.label || char.description || optionId;
+        
+        // STEP 3: Calculate ranking score
+        let score = 0;
+        
+        // 1. Stage relevance (check if rule's stage matches current stage)
+        const ruleStages = rule.stage_applicable || [];
+        if (Array.isArray(ruleStages) && ruleStages.some((s: string) => s.toUpperCase() === stage.toUpperCase())) {
+          score += 30; // Strong stage match
+        } else if (ruleStages.length === 0) {
+          score += 15; // Universal rule
+        }
+        
+        // 2. Visual observability (farmer can see without tools)
+        const isVisual = isVisuallyObservable(optionId, label);
+        if (isVisual) {
+          score += 20;
+        }
+        
+        // 3. Differentiation potential (can distinguish between competing rules)
+        // Will be calculated after all options collected
+        
+        // 4. Confidence boost as tiebreaker
+        score += (char.confidence_boost || 0.15) * 10;
+        
+        scoredOptions.push({
+          id: optionId,
+          label: label,
+          observation_key: char.observation_key || optionId,
+          rule_id: rule.rule_id,
+          confidence_boost: char.confidence_boost || 0.15,
+          score,
+          is_visual: isVisual,
+          differentiates_count: 1
+        });
       }
       
-      // Also check differentiating_questions
+      // Also check differentiating_questions (these have inherent high differentiation value)
       const diffQuestions = rule.differentiating_questions;
       if (diffQuestions && Array.isArray(diffQuestions)) {
         for (const q of diffQuestions) {
           if (q.options && Array.isArray(q.options)) {
             for (const opt of q.options) {
-              const optId = opt.maps_to || opt.id || `diff_${optionsMap.size}`;
-              if (!optionsMap.has(optId) && !current_symptoms.includes(optId)) {
-                optionsMap.set(optId, {
-                  id: optId,
-                  label: opt[`label_${language}`] || opt.label || optId,
-                  observation_key: opt.maps_to || optId,
-                  rule_id: rule.rule_id,
-                  confidence_boost: 0.12
-                });
+              const optId = opt.maps_to || opt.id || `diff_${scoredOptions.length}`;
+              
+              if (scoredOptions.some(o => o.id === optId) || current_symptoms.includes(optId)) {
+                continue;
               }
+              
+              const optLabel = opt[`label_${language}`] || opt.label || optId;
+              const isVisual = isVisuallyObservable(optId, optLabel);
+              
+              scoredOptions.push({
+                id: optId,
+                label: optLabel,
+                observation_key: opt.maps_to || optId,
+                rule_id: rule.rule_id,
+                confidence_boost: 0.12,
+                score: 25 + (isVisual ? 20 : 0), // Differentiating questions get base score
+                is_visual: isVisual,
+                differentiates_count: 2 // By definition, differentiating questions help differentiate
+              });
             }
           }
         }
       }
     }
     
-    // Convert to array and limit to 3 options
-    const options = Array.from(optionsMap.values()).slice(0, 3);
+    // STEP 3 continued: Boost score for options that differentiate between multiple rules
+    for (const option of scoredOptions) {
+      // Count how many different rules this observation appears in
+      const rulesWithThisObservation = rules.filter(r => {
+        const chars = r.observable_characteristics;
+        if (!chars) return false;
+        const charArray = Array.isArray(chars) ? chars : [chars];
+        return charArray.some(c => (c.observation_key || c.id) === option.observation_key);
+      });
+      
+      // More differentiation = less value (we want observations that split the possibilities)
+      // Ideal: observation that appears in SOME but not ALL rules
+      if (rulesWithThisObservation.length < rules.length && rulesWithThisObservation.length > 0) {
+        option.score += 15; // Good differentiator
+        option.differentiates_count = rulesWithThisObservation.length;
+      }
+    }
+    
+    // Sort by score (highest first) and take top 3
+    scoredOptions.sort((a, b) => b.score - a.score);
+    
+    console.log(`   📊 [RuleDriven] Ranked ${scoredOptions.length} options by relevance`);
+    scoredOptions.slice(0, 5).forEach((opt, i) => {
+      console.log(`      ${i + 1}. ${opt.id} (score: ${opt.score}, visual: ${opt.is_visual})`);
+    });
+    
+    // Convert to RuleDrivenOption array (drop scoring fields)
+    const options: RuleDrivenOption[] = scoredOptions.slice(0, 3).map(opt => ({
+      id: opt.id,
+      label: opt.label,
+      observation_key: opt.observation_key,
+      rule_id: opt.rule_id,
+      confidence_boost: opt.confidence_boost
+    }));
     
     if (options.length === 0) {
       console.log(`   ⚠️ [RuleDriven] No new options generated (all symptoms already known)`);
