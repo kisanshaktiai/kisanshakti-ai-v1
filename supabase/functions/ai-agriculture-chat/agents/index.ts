@@ -71,6 +71,25 @@ export {
 } from './intent-lock.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// LANGUAGE INDUCTION LAYER: Canonical English Symbol Extraction
+// Runs BEFORE intent/confidence logic for stable symbol output
+// ═══════════════════════════════════════════════════════════════════════════
+export {
+  induceCanonicalSymbols,
+  getSymptomSymbolsForRules,
+  getCropSymbolForRules,
+  hasMinimumCoverage,
+  getInductionSummary,
+  CanonicalSymptomSymbol,
+  CanonicalCropSymbol,
+  CanonicalAffectedPartSymbol,
+  CanonicalSeveritySymbol,
+  CanonicalDistributionSymbol,
+  LANGUAGE_INDUCTION_VERSION
+} from './language-induction-layer.ts';
+export type { InducedSymbol, LanguageInductionResult } from './language-induction-layer.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // P1-1: CANONICAL AUTHORITY TYPES (Single Source of Truth)
 // ═══════════════════════════════════════════════════════════════════════════
 export * from '../decision/authority-types.ts';

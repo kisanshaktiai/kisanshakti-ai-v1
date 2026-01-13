@@ -74,6 +74,20 @@ import type { NLUIntent, ExtractedEntities, SafetyAlerts } from './rule-module-t
 // Import rule resolver for NLU-to-Rules mapping (CRITICAL GAP 1 FIX)
 import { resolveRuleModules, determineContextRequirements, generateRuleRequiredQuestions } from './rule-module-resolver.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LANGUAGE INDUCTION LAYER - Canonical English Symbol Extraction
+// Runs BEFORE any intent or confidence-based logic
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  induceCanonicalSymbols,
+  getSymptomSymbolsForRules,
+  getCropSymbolForRules,
+  hasMinimumCoverage,
+  getInductionSummary,
+  type LanguageInductionResult,
+  LANGUAGE_INDUCTION_VERSION
+} from './language-induction-layer.ts';
+
 // CRITICAL FIX: Import normalization functions from type-mappers for consistent code matching
 import { 
   normalizeCropCode as normalizeTypeCropCode, 
@@ -1514,6 +1528,36 @@ export class AIAgentOrchestrator {
       console.log(`      Language: ${normalizedInput.detected_language}, Removed: ${normalizedInput.removed_elements.length} elements`);
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // STAGE 1.5: LANGUAGE INDUCTION LAYER (CANONICAL SYMBOL EXTRACTION)
+      // Runs BEFORE any intent-confidence logic. Produces stable English symbols.
+      // Symbol coverage and aggregate confidence are INDEPENDENT of intent confidence.
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log(`\n   🔤 Stage 1.5: Language Induction Layer (v${LANGUAGE_INDUCTION_VERSION})...`);
+      
+      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage);
+      agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
+      
+      console.log(`      ${getInductionSummary(inductionResult)}`);
+      console.log(`      Symptoms: [${getSymptomSymbolsForRules(inductionResult).join(', ')}]`);
+      console.log(`      Crop: ${getCropSymbolForRules(inductionResult)}`);
+      console.log(`      Symbol coverage: ${(inductionResult.symbol_coverage * 100).toFixed(0)}%`);
+      console.log(`      Aggregate confidence: ${(inductionResult.aggregated_confidence * 100).toFixed(0)}%`);
+      console.log(`      Total symbols: ${inductionResult.total_symbols_extracted}`);
+      if (inductionResult.unmapped_tokens.length > 0) {
+        console.log(`      Unmapped tokens: ${inductionResult.unmapped_tokens.slice(0, 5).join(', ')}${inductionResult.unmapped_tokens.length > 5 ? '...' : ''}`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // LANGUAGE INDUCTION GATE: Determine if symbolic brain should run
+      // Based on symbol_coverage and aggregated_confidence, NOT intent confidence
+      // ═══════════════════════════════════════════════════════════════════════════
+      const inductionCoverageSufficient = hasMinimumCoverage(inductionResult, 0.25); // 25% coverage or 1+ symbols
+      const inductionConfidenceSufficient = inductionResult.aggregated_confidence >= 0.5 || inductionResult.total_symbols_extracted >= 2;
+      const shouldRunSymbolicBrain = inductionCoverageSufficient || inductionConfidenceSufficient;
+      
+      console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, run_symbolic=${shouldRunSymbolicBrain}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2: OBSERVATION EXTRACTION (LLM, STRICT)
       // Extract ONLY what farmer explicitly states. NO pest, disease, deficiency.
       // PHASE-17 FIX: Pass landContext so crop is never "unknown" if we have it
@@ -2148,26 +2192,43 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL FIX: AGRICULTURAL SYMPTOM BYPASS
-      // If farmer mentions pests/diseases, ALWAYS run symbolic brain first
-      // Don't stop at low confidence clarification
+      // LANGUAGE INDUCTION-BASED CLARIFICATION GATE (Replaces intent-confidence)
+      // Uses symbol_coverage and aggregated_confidence from Language Induction Layer
+      // This is INDEPENDENT of intent confidence logic
       // ═══════════════════════════════════════════════════════════════════════════
-      const agriBypass = shouldBypassClarificationForAgriSymptom(farmerMessage, intentConfidence);
       
-      if (agriBypass) {
-        console.log(`   🌾 AGRI BYPASS ACTIVE - skipping clarification, running symbolic brain directly`);
+      // Determine if we have sufficient symbol coverage to proceed to symbolic brain
+      // If coverage is low AND no agricultural symptoms detected, prepare clarification
+      const inductionBasedBypass = shouldRunSymbolicBrain || inductionResult.symptoms.length > 0;
+      
+      if (inductionBasedBypass) {
+        console.log(`   🌾 INDUCTION BYPASS ACTIVE - symbol coverage (${(inductionResult.symbol_coverage * 100).toFixed(0)}%) or symptoms (${inductionResult.symptoms.length}) sufficient`);
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CLARIFICATION CHECK - DEFERRED UNTIL AFTER SYMBOLIC BRAIN
-      // Store the clarification data but DON'T RETURN YET - let symbolic brain run first
-      // If symbolic brain finds matches, we skip clarification entirely
+      // CLARIFICATION CHECK - NOW BASED ON LANGUAGE INDUCTION RESULTS
+      // Deferred until after symbolic brain runs
+      // Uses symbol_coverage and aggregated_confidence instead of intent_confidence
       // ═══════════════════════════════════════════════════════════════════════════
       let pendingClarificationResponse: any = null;
       
-      // Only prepare clarification if confidence is truly low AND no agri bypass
-      if (requiresClarification(intentConfidence) && !bypassClarification && !agriBypass) {
-        console.log(`   ⚠️ Low confidence (${(intentConfidence * 100).toFixed(0)}%) - PREPARING clarification (deferred until after symbolic brain)`);
+      // Calculate induction-based clarification threshold
+      // Clarification needed if: low symbol coverage AND low aggregated confidence AND no symptoms extracted
+      const inductionNeedsClarification = (
+        inductionResult.symbol_coverage < 0.25 && 
+        inductionResult.aggregated_confidence < 0.5 && 
+        inductionResult.symptoms.length === 0 &&
+        !bypassClarification
+      );
+      
+      // Also consider legacy intent-confidence for backward compatibility
+      const legacyNeedsClarification = requiresClarification(intentConfidence) && !inductionBasedBypass;
+      
+      // Use INDUCTION-BASED check as primary, legacy as fallback
+      const shouldPrepareClarification = inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass);
+      
+      if (shouldPrepareClarification && !bypassClarification) {
+        console.log(`   ⚠️ Low induction coverage (${(inductionResult.symbol_coverage * 100).toFixed(0)}%) & confidence (${(inductionResult.aggregated_confidence * 100).toFixed(0)}%) - PREPARING clarification (deferred)`);
         
         // Extract NLU clarification hints
         const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS_PLUS_PHOTO';
@@ -2178,7 +2239,7 @@ export class AIAgentOrchestrator {
           language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
           farmer_message: farmerMessage,
           observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
-          crop_code: landContext?.current_crop?.toUpperCase(),
+          crop_code: inductionResult.crop?.symbol || landContext?.current_crop?.toUpperCase(),
           clarification_type: nluClarificationType as any,
           clarification_options: nluClarificationOptions
         };
@@ -2190,12 +2251,14 @@ export class AIAgentOrchestrator {
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
           clarificationResponse,
-          intentConfidence
+          intentConfidence,
+          inductionCoverage: inductionResult.symbol_coverage,
+          inductionConfidence: inductionResult.aggregated_confidence
         };
         
         console.log(`   📋 Clarification PREPARED (will use only if symbolic brain finds 0 rules)`);
-      } else if (requiresClarification(intentConfidence) && (bypassClarification || agriBypass)) {
-        console.log(`   ✅ Clarification SKIPPED (bypass active) - proceeding to Symbolic Decision Brain`);
+      } else if (inductionBasedBypass || bypassClarification) {
+        console.log(`   ✅ Clarification SKIPPED (induction bypass: ${inductionBasedBypass}, option bypass: ${bypassClarification}) - proceeding to Symbolic Decision Brain`);
       }
       
       // ========================================
@@ -2467,6 +2530,10 @@ export class AIAgentOrchestrator {
       
       try {
         // Build the canonical state from all available data sources
+        // ENHANCED: Use Language Induction symbols as fallback/enrichment
+        const inductionSymptoms = getSymptomSymbolsForRules(inductionResult);
+        const inductionCrop = getCropSymbolForRules(inductionResult);
+        
         canonicalState = buildCanonicalState({
           landContext,
           soilData: landContext?.soil_health,
@@ -2476,15 +2543,31 @@ export class AIAgentOrchestrator {
             captured_at: landContext.ndvi.captured_at
           } : undefined,
           weatherData: fusedIntelligence.weather_data,
-          farmerObservations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
+          // Use NLU symptoms first, fall back to induction symptoms
+          farmerObservations: (nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []).length > 0
+            ? nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
+            : inductionSymptoms,
           nluOutput: nluOutput
         });
+        
+        // ENHANCEMENT: If canonical state has UNKNOWN crop, try induction crop
+        if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && inductionCrop !== 'UNKNOWN_CROP') {
+          console.log(`   📝 Enriching canonical state crop from induction: ${inductionCrop}`);
+          canonicalState.crop_type = inductionCrop as any;
+        }
+        
+        // ENHANCEMENT: If no visual symptom but induction has symptoms, use first one
+        if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN') && inductionSymptoms.length > 0) {
+          console.log(`   📝 Enriching canonical state symptom from induction: ${inductionSymptoms[0]}`);
+          canonicalState.visual_symptom = inductionSymptoms[0] as any;
+        }
         
         agentsUsed.push('CANONICAL_STATE_BUILDER');
         
         console.log(`   ✅ Canonical State Built:`);
         console.log(`      Crop: ${canonicalState.crop_type}, Stage: ${canonicalState.crop_stage}`);
         console.log(`      Symptom: ${canonicalState.visual_symptom}, Severity: ${canonicalState.severity}`);
+        console.log(`      Induction enrichment: crop=${inductionCrop !== 'UNKNOWN_CROP'}, symptoms=${inductionSymptoms.length}`);
         console.log(`      NDVI: ${canonicalState.ndvi_level} (${canonicalState.ndvi_trend})`);
         console.log(`      Soil N: ${canonicalState.soil_nitrogen}, P: ${canonicalState.soil_phosphorus}, K: ${canonicalState.soil_potassium}`);
         console.log(`      Data Confidence: ${canonicalState.data_confidence}`);
@@ -2898,7 +2981,7 @@ export class AIAgentOrchestrator {
         console.log(`\n🔄 DEFERRED CLARIFICATION TRIGGERED`);
         console.log(`   📊 Symbolic brain found 0 rules - now returning prepared clarification`);
         
-        const { clarificationResponse, intentConfidence } = pendingClarificationResponse;
+        const { clarificationResponse, intentConfidence, inductionCoverage, inductionConfidence } = pendingClarificationResponse;
         
         // CRITICAL FIX: If clarification has 0 options, generate dynamic options from database
         let safeOptionsForLog = Array.isArray(clarificationResponse?.options) ? clarificationResponse.options : [];
@@ -2955,7 +3038,11 @@ export class AIAgentOrchestrator {
             processing_time_ms: Date.now() - startTime,
             agents_used: agentsUsed,
             trace_id: traceId,
-            pendingClarificationOptions: safeOptionsForLog
+            pendingClarificationOptions: safeOptionsForLog,
+            // Language Induction Layer metrics (independent of intent confidence)
+            induction_coverage: inductionCoverage,
+            induction_confidence: inductionConfidence,
+            induction_version: LANGUAGE_INDUCTION_VERSION
           }
         };
       } else if (pendingClarificationResponse && totalRulesMatched > 0) {
