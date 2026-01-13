@@ -1237,13 +1237,15 @@ export class AIAgentOrchestrator {
           const mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
           console.log(`   📋 Mapped to ObservationKey: "${mappedObservationKey || 'UNKNOWN'}"`);
           
-          // PHASE-10 FIX: Build canonical state with the selected observation and run rule engine
-          // Do NOT return a placeholder acknowledgement - run the full symbolic brain
+          // ═══════════════════════════════════════════════════════════════════
+          // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
+          // Log pre-clarification state and rebuild with new symbols
+          // ═══════════════════════════════════════════════════════════════════
+          
+          // Track pre-clarification confidence for logging
+          const preClarificationConfidence = options.sessionState?.confidence || 0.5;
           
           // FIX B (CRITICAL): Get land context for rule evaluation - use pre-fetched landContext
-          // DO NOT use options.landContext as it may be undefined
-          // The landContext variable is already defined in the outer scope from fetchComprehensiveLandContext
-          // We need to access it properly - in this scope, use the landId to re-fetch if needed
           let landContextForOptionSelection = landContext;
           if (!landContextForOptionSelection && options.landId) {
             console.log(`   🔄 [FIX B] Re-fetching landContext for OPTION_SELECTED path`);
@@ -1251,19 +1253,58 @@ export class AIAgentOrchestrator {
           }
           
           // P0-2 FIX: Determine crop and stage with source tracking
-          // Priority: lockedCropContext > landContextForOptionSelection > fallback
-          const cropName = lockedCropContext?.crop_name || landContextForOptionSelection?.current_crop || 'UNKNOWN';
-          const hasAuthorativeStage = !!(lockedCropContext?.growth_stage || landContextForOptionSelection?.growth_stage);
-          const growthStage = lockedCropContext?.growth_stage || landContextForOptionSelection?.growth_stage || 'VEGETATIVE';
-          const stageSource = lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT' : 
+          // CLARIFICATION-FIRST: Use locked stage from clarification-strategy if available
+          const lockedStageFromStrategy = getLockedStage();
+          const cropName = lockedStageFromStrategy?.crop_code || 
+                          lockedCropContext?.crop_name || 
+                          landContextForOptionSelection?.current_crop || 'UNKNOWN';
+          
+          // STAGE-LOCKED: Use locked stage from clarification strategy, else fall back
+          const growthStage = lockedStageFromStrategy?.growth_stage ||
+                              lockedCropContext?.growth_stage || 
+                              landContextForOptionSelection?.growth_stage || 'VEGETATIVE';
+          const hasAuthorativeStage = !!(lockedStageFromStrategy?.growth_stage || 
+                                         lockedCropContext?.growth_stage || 
+                                         landContextForOptionSelection?.growth_stage);
+          const stageSource = lockedStageFromStrategy?.growth_stage ? 'LOCKED_STRATEGY' :
+                              lockedCropContext?.growth_stage ? 'LOCKED_CONTEXT' : 
                               landContextForOptionSelection?.growth_stage ? 'LAND_CONTEXT' : 'DEFAULT';
           
-          // P0-2: Log warning if using default stage (potential incorrect treatment gating)
+          // LOGGING: Track clarification event
+          logClarificationEvent(
+            traceId,
+            'SELECTION_RECEIVED',
+            growthStage,
+            preClarificationConfidence,
+            preClarificationConfidence, // Will be updated after rule eval
+            {
+              selected_option: matchResult.matched_option,
+              mapped_observation: mappedObservationKey,
+              stage_source: stageSource,
+              pending_scope: pendingScope
+            }
+          );
+          
+          // P0-2: Log warning if using default stage
           if (stageSource === 'DEFAULT') {
             console.warn(`   ⚠️ [P0-2] Using DEFAULT stage (VEGETATIVE) - no authoritative source available`);
           } else {
             console.log(`   ✅ [P0-2] Stage source: ${stageSource}, value: ${growthStage}`);
           }
+          
+          // CANONICAL STATE REBUILD: Map selection to symbols
+          const existingSymbols = options.sessionState?.symbols || [];
+          const rebuildResult = mapClarificationSelectionToSymbols(
+            {
+              id: mappedObservationKey || 'unknown',
+              label: matchResult.matched_option,
+              observation_key: mappedObservationKey || 'SYMPTOM_REPORTED',
+              rule_id: 'CLARIFICATION_SELECTION',
+              confidence_boost: 0.15
+            },
+            existingSymbols
+          );
+          console.log(`   📊 [CanonicalRebuild] Symbols: ${existingSymbols.length} → ${rebuildResult.length}`);
           
           // Map the selected option to a visual symptom for the canonical state
           const visualSymptom = mapDistributionToSymptom(matchResult.matched_option, pendingScope);
@@ -1312,6 +1353,39 @@ export class AIAgentOrchestrator {
           
           // CRITICAL FIX: Check for matched_responses even when prescriptions are empty
           const hasMatchedResponses = ruleResult.matched_responses && ruleResult.matched_responses.length > 0;
+          
+          // ═══════════════════════════════════════════════════════════════════
+          // CLARIFICATION-FIRST: DECISION GATE ALIGNMENT
+          // If clarification completed + rules fire → MUST return recommendation
+          // ═══════════════════════════════════════════════════════════════════
+          
+          const decisionGateCheck = checkDecisionGateAlignment({
+            clarification_completed: true, // We just processed a clarification selection
+            rules_fired: ruleResult.rules_matched,
+            has_recommendations: ruleResult.prescriptions.length > 0 || hasMatchedResponses,
+            authority_blocked: !authorityDecision.treatments_allowed
+          });
+          
+          // LOGGING: Post-clarification confidence
+          const postClarificationConfidence = calculateConfidenceWithTiming(
+            ruleResult.confidence_in_result,
+            true, // clarification completed
+            0.15  // boost from clarification
+          );
+          
+          logClarificationEvent(
+            traceId,
+            'DECISION_GATE',
+            growthStage,
+            preClarificationConfidence,
+            postClarificationConfidence.post_clarification_confidence,
+            {
+              rules_fired: ruleResult.rules_matched,
+              must_return_recommendation: decisionGateCheck.must_return_recommendation,
+              allow_empty_response: decisionGateCheck.allow_empty_response,
+              gate_reason: decisionGateCheck.reason
+            }
+          );
           
           // If we got rule matches, return them for LLM formatting
           if (ruleResult.rules_matched > 0 && (ruleResult.diagnoses.length > 0 || ruleResult.prescriptions.length > 0 || hasMatchedResponses)) {
