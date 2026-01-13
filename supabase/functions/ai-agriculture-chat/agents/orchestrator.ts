@@ -312,7 +312,29 @@ import {
   type PhotoAnalysisOutput
 } from '../photo/photo-analyzer.ts';
 
-export const ORCHESTRATOR_VERSION = '2.8.0'; // Phase-19: Integrated clarification loop + photo flow
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-20: CLARIFICATION-FIRST CONFIDENCE STRATEGY
+// Treats clarification as primary confidence-building, not fallback
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  lockStageForTurn,
+  getLockedStage,
+  clearLockedStage,
+  isStageLockedForTurn,
+  shouldTriggerClarificationFirst,
+  fetchRuleDrivenClarificationOptions,
+  calculateConfidenceWithTiming,
+  mapClarificationSelectionToSymbols,
+  checkDecisionGateAlignment,
+  logClarificationEvent,
+  type LockedStageContext,
+  type ClarificationTriggerInput,
+  type RuleDrivenClarificationInput,
+  type DecisionGateCheckInput,
+  CLARIFICATION_STRATEGY_VERSION
+} from './clarification-strategy.ts';
+
+export const ORCHESTRATOR_VERSION = '2.9.0'; // Phase-20: Clarification-first confidence strategy
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
@@ -841,6 +863,28 @@ export class AIAgentOrchestrator {
         console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
         if (landContext) {
           console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
+          
+          // ═══════════════════════════════════════════════════════════════════════════
+          // PHASE-20: STAGE-LOCKED CLARIFICATION
+          // Lock the growth stage for the entire turn to ensure consistent clarification
+          // ═══════════════════════════════════════════════════════════════════════════
+          if (landContext.growth_stage && landContext.current_crop) {
+            const stageSource = landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT';
+            lockStageForTurn(
+              landContext.current_crop,
+              landContext.growth_stage,
+              landContext.days_since_sowing || 0,
+              stageSource
+            );
+            
+            logClarificationEvent(
+              traceId,
+              'STAGE_LOCK',
+              landContext.growth_stage,
+              0, 0, // No confidence yet
+              { crop: landContext.current_crop, dos: landContext.days_since_sowing, source: stageSource }
+            );
+          }
         }
       }
       
@@ -2224,24 +2268,90 @@ export class AIAgentOrchestrator {
       // Also consider legacy intent-confidence for backward compatibility
       const legacyNeedsClarification = requiresClarification(intentConfidence) && !inductionBasedBypass;
       
-      // Use INDUCTION-BASED check as primary, legacy as fallback
-      const shouldPrepareClarification = inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass);
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-20: CLARIFICATION-FIRST TRIGGER CHECK
+      // If crop+stage known but symptoms partial → clarify BEFORE rules
+      // ═══════════════════════════════════════════════════════════════════════════
+      const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
+      const lockedStage = getLockedStage();
+      
+      const clarificationTriggerInput: ClarificationTriggerInput = {
+        crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
+        stage_known: !!(lockedStage?.growth_stage || landContext?.growth_stage),
+        symptom_count: inductionResult.symptoms.length,
+        symptom_coverage: inductionResult.symbol_coverage,
+        is_ambiguous: inductionResult.aggregated_confidence < 0.5 && inductionResult.symptoms.length > 0,
+        has_pending_clarification: pendingOptionsCount > 0,
+        clarification_completed: clarificationCompleted
+      };
+      
+      const clarificationTrigger = shouldTriggerClarificationFirst(clarificationTriggerInput);
+      
+      // Log the trigger decision
+      logClarificationEvent(
+        traceId,
+        'TRIGGER',
+        lockedStage?.growth_stage || landContext?.growth_stage || 'UNKNOWN',
+        inductionResult.aggregated_confidence,
+        inductionResult.aggregated_confidence,
+        { 
+          should_clarify: clarificationTrigger.should_clarify, 
+          reason: clarificationTrigger.reason,
+          symptom_count: inductionResult.symptoms.length,
+          coverage: inductionResult.symbol_coverage
+        }
+      );
+      
+      // Use PHASE-20 trigger as primary, legacy as fallback
+      const shouldPrepareClarification = (clarificationTrigger.should_clarify && !clarificationTrigger.bypass_allowed) || 
+        (inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass));
       
       if (shouldPrepareClarification && !bypassClarification) {
-        console.log(`   ⚠️ Low induction coverage (${(inductionResult.symbol_coverage * 100).toFixed(0)}%) & confidence (${(inductionResult.aggregated_confidence * 100).toFixed(0)}%) - PREPARING clarification (deferred)`);
+        console.log(`   ⚠️ PHASE-20: Clarification triggered (${clarificationTrigger.reason}) - PREPARING clarification (deferred)`);
         
-        // Extract NLU clarification hints
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE-20: TRY RULE-DRIVEN CLARIFICATION FIRST
+        // Generate options from decision_rules.observable_characteristics
+        // ═══════════════════════════════════════════════════════════════════════════
+        let ruleDrivenClarification = null;
+        if (lockedStage && this.supabase) {
+          const ruleDrivenInput: RuleDrivenClarificationInput = {
+            crop_code: lockedStage.crop_code,
+            stage: lockedStage.growth_stage,
+            current_symptoms: inductionResult.symptoms.map(s => s.symbol),
+            language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+            supabaseClient: this.supabase
+          };
+          
+          ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);
+          
+          if (ruleDrivenClarification) {
+            console.log(`   ✅ PHASE-20: Rule-driven clarification generated with ${ruleDrivenClarification.options.length} options`);
+            logClarificationEvent(
+              traceId,
+              'OPTIONS_GENERATED',
+              lockedStage.growth_stage,
+              inductionResult.aggregated_confidence,
+              inductionResult.aggregated_confidence,
+              { source: 'DECISION_RULES', option_count: ruleDrivenClarification.options.length }
+            );
+          }
+        }
+        
+        // Extract NLU clarification hints as fallback
         const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS_PLUS_PHOTO';
         const nluClarificationOptions = (nluOutput as any)?.clarification_options || [];
         
-        // Generate farmer-friendly clarification
+        // Generate farmer-friendly clarification (use rule-driven if available)
         const clarificationInput: ClarificationInput = {
           language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
           farmer_message: farmerMessage,
           observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
           crop_code: inductionResult.crop?.symbol || landContext?.current_crop?.toUpperCase(),
           clarification_type: nluClarificationType as any,
-          clarification_options: nluClarificationOptions
+          clarification_options: ruleDrivenClarification 
+            ? ruleDrivenClarification.options.map(o => o.label)
+            : nluClarificationOptions
         };
         
         console.log(`   📋 Clarification input prepared: type=${nluClarificationType}, crop=${clarificationInput.crop_code}`);
