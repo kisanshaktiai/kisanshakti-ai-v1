@@ -720,31 +720,41 @@ export async function getContextAwareTemplateFromDB(
 ): Promise<{ question: string; options: string[] }> {
   const cropCode = cropContext?.crop_name?.toUpperCase() || '';
   const stage = cropContext?.growth_stage?.toUpperCase() || '';
-  
+
   console.log(`   🔍 [Phase-18] Looking up DB options for ${cropCode}/${stage}/${scope}`);
-  
+
   // Try to get options from decision_rules table for REFINE_OBSERVATION scope
-  if (cropCode && scope === ClarificationScope.REFINE_OBSERVATION) {
+  if (cropCode && stage && scope === ClarificationScope.REFINE_OBSERVATION) {
     try {
-      const dbOptions = await getClarificationOptions(cropCode, stage, scope, language);
-      
-      if (dbOptions.length > 0) {
-        console.log(`   ✅ Found ${dbOptions.length} options from DB for ${cropCode}/${stage}`);
-        
+      const loaded = await loadObservationKeysFromDB(cropCode, stage);
+      const top = (loaded.keys || []).slice(0, 3).map((k) => {
+        const label = language === 'mr' ? k.label_mr : language === 'hi' ? k.label_hi : k.label_en;
+        return { key: k.key, label: label || k.key };
+      });
+
+      if (top.length > 0) {
+        console.log(
+          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage} (source=${loaded.loaded_from})`
+        );
+
         // Get the question from templates but options from DB
         const templateQuestion = getTemplateQuestion(scope, language, cropContext);
-        const optionLabels = dbOptions.map(opt => opt.label);
-        
+        const optionLabels = top.map((opt) => opt.label);
+
         return {
           question: templateQuestion,
           options: optionLabels.slice(0, 3) // Enforce max 3 options
         };
+      } else {
+        console.log(
+          `   ⚠️ No DB options found for ${cropCode}/${stage} (source=${loaded.loaded_from}) - using templates`
+        );
       }
     } catch (dbError) {
       console.error(`   ⚠️ DB lookup failed, falling back to templates:`, dbError);
     }
   }
-  
+
   // Fallback to hardcoded templates
   return getContextAwareTemplate(scope, language, cropContext);
 }

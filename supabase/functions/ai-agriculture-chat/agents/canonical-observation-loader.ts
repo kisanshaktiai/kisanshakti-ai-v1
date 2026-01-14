@@ -407,17 +407,50 @@ export async function loadObservationKeysFromDB(
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
-    // Query decision_rules for observable_characteristics matching crop and stage
-    const { data, error } = await supabase
-      .from('decision_rules')
-      .select('observable_characteristics')
-      .eq('crop_code', cropCode.toLowerCase())
-      .contains('stage_applicable', [stage.toLowerCase()])
-      .eq('is_active', true)
-      .not('observable_characteristics', 'is', null);
-    
-    if (error) {
-      console.error('[CanonicalLoader] DB query error:', error);
+    // Query decision_rules for observable_characteristics matching crop and stage.
+    // NOTE: We support different casing/formatting in DB (TILLERING vs tillering).
+    const crop = cropCode.toLowerCase();
+    const normalizeStage = (s: string) => s.trim().replace(/[\s-]/g, '_');
+    const stageVariants = Array.from(
+      new Set(
+        [
+          stage,
+          stage.toUpperCase(),
+          stage.toLowerCase(),
+          normalizeStage(stage.toUpperCase()),
+          normalizeStage(stage.toLowerCase())
+        ].filter(Boolean)
+      )
+    );
+
+    let data: any[] | null = null;
+    let lastError: any = null;
+
+    for (const st of stageVariants) {
+      const res = await supabase
+        .from('decision_rules')
+        .select('observable_characteristics')
+        .in('crop_code', [crop, 'all'])
+        .contains('stage_applicable', [st])
+        .eq('is_active', true)
+        .not('observable_characteristics', 'is', null);
+
+      if (res.error) {
+        lastError = res.error;
+        continue;
+      }
+
+      data = res.data || [];
+      if (data.length > 0) break;
+    }
+
+    if (lastError) {
+      console.error('[CanonicalLoader] DB query error:', lastError);
+      return getFallbackKeys(cropCode, stage);
+    }
+
+    if (!data || data.length === 0) {
+      console.warn(`[CanonicalLoader] No matching rules for ${cropCode}/${stage} (variants=${stageVariants.join(',')})`);
       return getFallbackKeys(cropCode, stage);
     }
     
