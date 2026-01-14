@@ -65,7 +65,7 @@ import {
   DIAGNOSIS_KEYWORDS
 } from '../decision/clarification-validator.ts';
 
-export const CLARIFICATION_GENERATOR_VERSION = '3.2.0'; // Phase-17: Added safe fallback with validateAndSanitizeClarification
+export const CLARIFICATION_GENERATOR_VERSION = '3.3.0'; // P0: Fixed canonical state inheritance + async/await issues
 
 // Re-export types for convenience
 export { ClarificationScope };
@@ -133,9 +133,26 @@ export async function generateScopedClarification(
 ): Promise<ClarificationOutput> {
   const { language, observations, understandingResult, hasLandContext, clarificationState, hasCropContext, cropContext, landContext, farmerMessage } = input;
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P0 FIX: CANONICAL STATE AUTHORITY AUDIT
+  // Log full context to debug data loss between orchestrator and clarification
+  // ═══════════════════════════════════════════════════════════════════════════
   console.log(`📋 [Clarification] Phase-15 DYNAMIC clarification generation...`);
+  console.log(`   🔍 [ClarificationContextAudit] Building clarification input...`);
+  console.log(`   Canonical state land:`, landContext ? {
+    current_crop: landContext.current_crop,
+    growth_stage: landContext.growth_stage,
+    days_since_sowing: landContext.days_since_sowing,
+    ndvi_value: landContext.ndvi?.latest_value || landContext.ndvi_value,
+    ndvi_trend: landContext.ndvi?.trend || landContext.ndvi_trend
+  } : 'NULL');
+  console.log(`   Has land context? ${!!landContext}`);
+  console.log(`   Crop from canonical: ${landContext?.current_crop || 'MISSING'}`);
+  console.log(`   Stage from canonical: ${landContext?.growth_stage || 'MISSING'}`);
+  console.log(`   DAS from canonical: ${landContext?.days_since_sowing || 'MISSING'}`);
+  console.log(`   NDVI from canonical:`, landContext?.ndvi || landContext?.ndvi_value || 'MISSING');
   console.log(`   hasCropContext: ${hasCropContext || false}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
-  console.log(`   hasLandContext: ${!!landContext}, DOS: ${landContext?.days_since_sowing || 'N/A'}`);
+  console.log(`   hasLandContext (input flag): ${hasLandContext}, hasLandContext (object): ${!!landContext}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: Map observations to ObservationKeys (with cropContext)
@@ -167,11 +184,29 @@ export async function generateScopedClarification(
   // PHASE-15: USE DYNAMIC CLARIFICATION if land context available
   // This generates context-aware options using crop, DOS, soil, NDVI, weather
   // ═══════════════════════════════════════════════════════════════════════════
-  if (landContext && landContext.current_crop && clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
+  
+  // P0-2: FAIL-FAST INVARIANT CHECK
+  // If landContext exists but wasn't passed properly, log and recover
+  const effectiveHasLandContext = !!landContext && !!landContext.current_crop;
+  if (hasLandContext && !effectiveHasLandContext) {
+    console.error(`🚨 [INVARIANT VIOLATION] hasLandContext=${hasLandContext} but landContext object is missing/empty!`);
+    console.error(`   This means land data was lost between orchestrator and clarification generator.`);
+    console.error(`   Received landContext:`, landContext);
+  }
+  
+  if (effectiveHasLandContext && clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
     try {
       console.log(`   🧠 Using DYNAMIC clarification generator with full context`);
       
+      // P0-3: Build agronomic context with explicit NDVI data
       const agronomicContext = buildAgronomicContext(landContext);
+      
+      // Log NDVI passthrough for debugging
+      console.log(`   📊 NDVI data in agronomic context:`, {
+        ndvi_value: agronomicContext.ndvi_value,
+        ndvi_trend: agronomicContext.ndvi_trend
+      });
+      
       const dynamicResult = await generateDynamicClarification({
         scope: clarificationPlan.scope,
         farmer_message: farmerMessage || '',
@@ -181,6 +216,14 @@ export async function generateScopedClarification(
       });
       
       console.log(`   ✅ Dynamic options generated: ${dynamicResult.options.length} (${dynamicResult.generated_by})`);
+      
+      // P0-2: INVARIANT ASSERTION - Options should exist when land context exists
+      if (dynamicResult.options.length > 0 && !effectiveHasLandContext) {
+        console.error(`🚨 FATAL: Rule options exist but hasLandContext=false`);
+        console.error(`   Land data:`, landContext);
+        console.error(`   Dynamic result:`, dynamicResult);
+        throw new Error('INVARIANT VIOLATION: Lost land context in clarification');
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-16: CRITICAL - Validate options for diagnosis leakage
@@ -197,6 +240,13 @@ export async function generateScopedClarification(
       }
       
       console.log(`   ✅ Options validated - no diagnosis leakage`);
+      console.log(`   ✅ Final clarification input:`, {
+        hasCropContext: effectiveHasLandContext,
+        hasLandContext: effectiveHasLandContext,
+        crop: landContext?.current_crop,
+        stage: landContext?.growth_stage,
+        ndvi_level: agronomicContext.ndvi_trend || 'unknown'
+      });
       
       // Return dynamic result
       const acknowledgment = language === 'mr' ? '🌾 समजले.' : language === 'hi' ? '🌾 समझ गया.' : '🌾 Understood.';
@@ -287,8 +337,11 @@ export async function generateScopedClarification(
 /**
  * LEGACY FUNCTION: Generate clarification response (backward compatibility).
  * Routes to Phase-8 system internally.
+ * 
+ * P0 FIX: This function now properly handles async - callers must await it
+ * or handle the promise appropriately.
  */
-export function generateClarificationResponse(input: ClarificationInput): ClarificationOutput {
+export async function generateClarificationResponse(input: ClarificationInput): Promise<ClarificationOutput> {
   const { language, farmer_message, observations, crop_code, clarification_type } = input;
   
   // If no clarification needed, return empty
@@ -315,8 +368,8 @@ export function generateClarificationResponse(input: ClarificationInput): Clarif
     observation_count: observations.length
   };
   
-  // Use Phase-8 scoped clarification
-  return generateScopedClarification({
+  // P0 FIX: Properly await the async function (was causing Promise leak)
+  return await generateScopedClarification({
     language,
     observations: observationExtraction,
     understandingResult: {

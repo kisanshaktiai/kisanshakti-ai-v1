@@ -2076,6 +2076,8 @@ export class AIAgentOrchestrator {
         // USE SCOPE-AWARE CLARIFICATION TO PREVENT DIAGNOSIS LEAKAGE
         // Options are constrained to what is OBSERVED, not suspected
         // ═══════════════════════════════════════════════════════════════════════════
+        // P0 FIX: Pass FULL landContext and farmerMessage for canonical authority
+        // The clarification context MUST inherit from canonical state, not NLU
         const scopedClarificationInput: ScopedClarificationInput = {
           language: normalizedInput.detected_language,
           observations: observationExtraction,
@@ -2083,10 +2085,14 @@ export class AIAgentOrchestrator {
           hasLandContext: !!landContext,
           diagnosisRulesFired: false, // No diagnosis rules have fired yet
           hasCropContext: hasCropContext, // PHASE-8.1: Skip crop clarification
-          cropContext: cropContextAuthority // PHASE-8.1: For stage-aware framing
+          cropContext: cropContextAuthority, // PHASE-8.1: For stage-aware framing
+          // P0 CRITICAL: These were MISSING - causing hasLandContext: false in renderer
+          landContext: landContext, // FULL land context for dynamic clarification
+          farmerMessage: farmerMessage // Farmer message for LLM context
         };
         
-        const clarificationResponse = generateScopedClarification(scopedClarificationInput);
+        // P0 FIX: Properly await the async function (was causing Promise leak)
+        const clarificationResponse = await generateScopedClarification(scopedClarificationInput);
         agentsUsed.push('SCOPED_CLARIFICATION');
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -2612,7 +2618,8 @@ export class AIAgentOrchestrator {
         
         console.log(`   📋 Clarification input prepared: type=${nluClarificationType}, crop=${clarificationInput.crop_code}`);
         
-        const clarificationResponse = generateClarificationResponse(clarificationInput);
+        // P0 FIX: Properly await the async function
+        const clarificationResponse = await generateClarificationResponse(clarificationInput);
         
         // Store for potential use AFTER symbolic brain runs
         pendingClarificationResponse = {
