@@ -34,6 +34,7 @@ import {
 
 import {
   renderClarification,
+  renderClarificationAsync,
   validateClarificationSafety,
   getMonitoringAdvice,
   type ClarificationRenderOutput
@@ -231,10 +232,10 @@ export async function generateScopedClarification(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 4: Render clarification using templates (no LLM)
-  // PHASE-8.1: Pass cropContext for stage-aware framing
+  // STEP 4: Render clarification using ASYNC DB-driven renderer
+  // PHASE-18: Use renderClarificationAsync for DB-driven options
   // ═══════════════════════════════════════════════════════════════════════════
-  const renderResult = renderClarification({
+  const renderResult = await renderClarificationAsync({
     scope: clarificationPlan.scope,
     target_observation_keys: clarificationPlan.target_keys,
     language_code: language,
@@ -249,7 +250,7 @@ export async function generateScopedClarification(
     cropContext: cropContext // PHASE-8.1: For stage-aware framing
   });
   
-  console.log(`   Rendered: validation_passed=${renderResult.validation_passed}`);
+  console.log(`   Rendered: validation_passed=${renderResult.validation_passed}, source=DB+Template`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 5: SAFETY VALIDATION (Hard Gate)

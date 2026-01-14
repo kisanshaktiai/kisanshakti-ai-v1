@@ -22,8 +22,14 @@
 
 import { ObservationKey } from '../decision/observation-ontology.ts';
 import { type CropContextAuthority, formatCropContextFrame } from '../decision/context-authority.ts';
+import { 
+  getClarificationOptions, 
+  loadObservationKeysFromDB,
+  getObservationKeyLabels,
+  type ClarificationOption 
+} from './canonical-observation-loader.ts';
 
-export const CLARIFICATION_RENDERER_VERSION = '2.0.0'; // Phase-11: Insect-first clarification
+export const CLARIFICATION_RENDERER_VERSION = '3.0.0'; // Phase-18: DB-driven canonical observation keys
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION SCOPE ENUM (PHASE-8)
@@ -699,9 +705,144 @@ export function getMonitoringAdvice(language: 'mr' | 'hi' | 'en'): string {
   return advice[language] || advice.en;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-18: DATABASE-DRIVEN CONTEXT-AWARE TEMPLATE RESOLVER
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Get context-aware clarification options from database first, then templates.
+ * This ensures options are sourced from decision_rules.observable_characteristics
+ */
+export async function getContextAwareTemplateFromDB(
+  scope: ClarificationScope,
+  language: 'mr' | 'hi' | 'en',
+  cropContext?: CropContextAuthority | null
+): Promise<{ question: string; options: string[] }> {
+  const cropCode = cropContext?.crop_name?.toUpperCase() || '';
+  const stage = cropContext?.growth_stage?.toUpperCase() || '';
+  
+  console.log(`   🔍 [Phase-18] Looking up DB options for ${cropCode}/${stage}/${scope}`);
+  
+  // Try to get options from decision_rules table for REFINE_OBSERVATION scope
+  if (cropCode && scope === ClarificationScope.REFINE_OBSERVATION) {
+    try {
+      const dbOptions = await getClarificationOptions(cropCode, stage, scope, language);
+      
+      if (dbOptions.length > 0) {
+        console.log(`   ✅ Found ${dbOptions.length} options from DB for ${cropCode}/${stage}`);
+        
+        // Get the question from templates but options from DB
+        const templateQuestion = getTemplateQuestion(scope, language, cropContext);
+        const optionLabels = dbOptions.map(opt => opt.label);
+        
+        return {
+          question: templateQuestion,
+          options: optionLabels.slice(0, 3) // Enforce max 3 options
+        };
+      }
+    } catch (dbError) {
+      console.error(`   ⚠️ DB lookup failed, falling back to templates:`, dbError);
+    }
+  }
+  
+  // Fallback to hardcoded templates
+  return getContextAwareTemplate(scope, language, cropContext);
+}
+
+/**
+ * Get just the question text from templates (for use with DB-sourced options)
+ */
+function getTemplateQuestion(
+  scope: ClarificationScope,
+  language: 'mr' | 'hi' | 'en',
+  cropContext?: CropContextAuthority | null
+): string {
+  try {
+    if (cropContext?.crop_name) {
+      const cropKey = cropContext.crop_name.toUpperCase();
+      const cropTemplates = CROP_STAGE_SPECIFIC_TEMPLATES[cropKey];
+      
+      if (cropTemplates) {
+        // Stage-specific question
+        if (cropContext.growth_stage && cropTemplates.stages) {
+          const stageKey = cropContext.growth_stage.toUpperCase();
+          const stageTemplates = cropTemplates.stages[stageKey];
+          if (stageTemplates?.[scope]?.[language]?.question) {
+            return stageTemplates[scope]![language].question;
+          }
+        }
+        
+        // Crop default question
+        if (cropTemplates.default?.[scope]?.[language]?.question) {
+          return cropTemplates.default[scope]![language].question;
+        }
+        
+        // Flat structure
+        const flatTemplate = (cropTemplates as any)[scope];
+        if (flatTemplate?.[language]?.question) {
+          return flatTemplate[language].question;
+        }
+      }
+    }
+  } catch (e) {
+    // Ignore and fallback
+  }
+  
+  return BASE_TEMPLATES[scope]?.[language]?.question || 
+         BASE_TEMPLATES[scope]?.en?.question || 
+         'Please describe what you observe:';
+}
+
+/**
+ * PHASE-18: Async render clarification with DB lookup first.
+ * Priority: DB rules > Templates > Fallback
+ */
+export async function renderClarificationAsync(
+  input: ClarificationRenderInput
+): Promise<ClarificationRenderOutput> {
+  const { scope, language_code, max_options, cropContext } = input;
+  
+  // Get DB-driven options first, then fall back to templates
+  const template = await getContextAwareTemplateFromDB(scope, language_code, cropContext);
+  
+  console.log(`   🎯 [Renderer Async] Scope: ${scope}, Crop: ${cropContext?.crop_name || 'none'}, Options: ${template.options.length}`);
+  
+  // Limit options to max_options
+  const limitedOptions = template.options.slice(0, max_options);
+  
+  // Stage-Aware Framing
+  let finalQuestion = template.question;
+  let cropFramingApplied = false;
+  
+  if (cropContext && cropContext.crop_name && scope !== ClarificationScope.IDENTIFY_CROP) {
+    const cropFrame = formatCropContextFrame(cropContext, language_code);
+    finalQuestion = `${cropFrame}\n\n${template.question}`;
+    cropFramingApplied = true;
+  }
+  
+  // Safety validation
+  const safetyResult = validateClarificationSafety({
+    question: finalQuestion,
+    options: limitedOptions
+  });
+  
+  return {
+    question: finalQuestion,
+    options: limitedOptions,
+    photo_request: scope === ClarificationScope.PHOTO_ONLY,
+    validation_passed: safetyResult.valid,
+    violations: safetyResult.violations,
+    scope,
+    rendered_by: 'TEMPLATE',
+    crop_framing_applied: cropFramingApplied
+  };
+}
+
 export default {
   ClarificationScope,
   renderClarification,
+  renderClarificationAsync,
+  getContextAwareTemplateFromDB,
   validateClarificationSafety,
   getMonitoringAdvice,
   CLARIFICATION_RENDERER_VERSION
