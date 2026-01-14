@@ -421,10 +421,12 @@ export function EnhancedAIChatInterface() {
       // Ensure localDB is initialized for current tenant
       await localDB.initialize();
       
-      const cachedMessages = await localDB.getChatMessages(landId, user.id);
+      // CRITICAL FIX: Pass tenantId for multi-tenant isolation
+      const cachedMessages = await localDB.getChatMessages(landId, user.id, tenant.id);
       
-      console.log(`📱 [Cache-First] Checking LocalDB for ${sessionKey}:`, {
+      console.log(`📱 [Cache-First] Checking LocalDB for tenant ${tenant.id}, ${sessionKey}:`, {
         cachedCount: cachedMessages?.length || 0,
+        tenantId: tenant.id,
         userId: user.id,
         landId
       });
@@ -436,8 +438,8 @@ export function EnhancedAIChatInterface() {
           .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
           .map(mapMessageFromDB);
         
-        // Get session ID from cache if available
-        const sessions = await localDB.getChatSessionsByLand(landId);
+        // Get session ID from cache if available - CRITICAL: Pass farmer ID for isolation
+        const sessions = await localDB.getChatSessionsByLand(landId, user.id);
         const cachedSessionId = sessions?.[0]?.id || null;
         
         // PHASE 2: Trigger background sync (non-blocking)
@@ -496,10 +498,12 @@ export function EnhancedAIChatInterface() {
           if (import.meta.env.DEV) console.log(`✅ [Supabase] Found ${allSessionIds.length} general sessions`);
           
           // Load messages from ALL general sessions
+          // CRITICAL: Filter by tenant_id AND farmer_id for multi-tenant isolation
           const { data: allMessages, error: messagesError } = await authClient
             .from('ai_chat_messages')
             .select('*')
             .in('session_id', allSessionIds)
+            .eq('tenant_id', tenant.id)  // CRITICAL: Tenant isolation
             .eq('farmer_id', user.id)
             .order('created_at', { ascending: false })
             .limit(200);
@@ -695,10 +699,12 @@ export function EnhancedAIChatInterface() {
         // Load messages for this session from Supabase
         // CRITICAL FIX: Use authClient with proper headers
         // CRITICAL FIX (2026-01): Fetch MOST RECENT messages first so refresh shows latest conversation
+        // CRITICAL: Filter by tenant_id AND farmer_id for multi-tenant isolation
         const { data: previousMessages, error: messagesError } = await authClient
           .from('ai_chat_messages')
           .select('*')
           .eq('session_id', existingSession.id)
+          .eq('tenant_id', tenant.id)  // CRITICAL: Tenant isolation
           .eq('farmer_id', user?.id)
           .order('created_at', { ascending: false })
           .limit(200);
@@ -1714,13 +1720,17 @@ export function EnhancedAIChatInterface() {
       ) || []
     }));
     
-    await supabase
+    // CRITICAL FIX: Use authClient with tenant/farmer isolation for feedback updates
+    const authClient = supabaseWithAuth(user?.id || '', tenant?.id || '');
+    await authClient
       .from('ai_chat_messages')
       .update({ 
         feedback_rating: isLike ? 5 : 1,
         feedback_timestamp: new Date().toISOString()
       })
-      .eq('id', messageId);
+      .eq('id', messageId)
+      .eq('tenant_id', tenant?.id)  // CRITICAL: Tenant isolation
+      .eq('farmer_id', user?.id);   // CRITICAL: Farmer isolation
   };
 
   const handleShare = async (content: string) => {
