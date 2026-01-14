@@ -1778,6 +1778,76 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: MERGE LLM SEMANTIC EXTRACTION INTO INDUCTION RESULT
+      // The new LLM-based mappedCodes.observation_codes must be injected into
+      // inductionResult.symptoms so they flow through to clarification & rules
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (mappedCodes.observation_codes.length > 0) {
+        console.log(`      🔄 MERGING ${mappedCodes.observation_codes.length} LLM-extracted codes into induction result`);
+        
+        // Convert ObservationKey codes to symptom symbols for the induction result
+        for (const code of mappedCodes.observation_codes) {
+          // Check if symptom already exists in inductionResult
+          const existingSymptom = inductionResult.symptoms.find(s => s.symbol === code);
+          if (!existingSymptom) {
+            inductionResult.symptoms.push({
+              symbol: code,
+              confidence: semanticExtraction.confidence,
+              source: 'LLM_SEMANTIC_EXTRACTOR'
+            });
+            inductionResult.total_symbols_extracted++;
+          }
+        }
+        
+        // Add affected part and distribution from LLM extraction
+        if (mappedCodes.affected_part_code) {
+          const existingPart = inductionResult.symptoms.find(s => s.symbol === mappedCodes.affected_part_code);
+          if (!existingPart) {
+            inductionResult.symptoms.push({
+              symbol: mappedCodes.affected_part_code,
+              confidence: semanticExtraction.confidence,
+              source: 'LLM_SEMANTIC_EXTRACTOR'
+            });
+            inductionResult.total_symbols_extracted++;
+          }
+        }
+        
+        if (mappedCodes.distribution_code) {
+          const existingDist = inductionResult.symptoms.find(s => s.symbol === mappedCodes.distribution_code);
+          if (!existingDist) {
+            inductionResult.symptoms.push({
+              symbol: mappedCodes.distribution_code,
+              confidence: semanticExtraction.confidence,
+              source: 'LLM_SEMANTIC_EXTRACTOR'
+            });
+            inductionResult.total_symbols_extracted++;
+          }
+        }
+        
+        if (mappedCodes.severity_code) {
+          const existingSev = inductionResult.symptoms.find(s => s.symbol === mappedCodes.severity_code);
+          if (!existingSev) {
+            inductionResult.symptoms.push({
+              symbol: mappedCodes.severity_code,
+              confidence: semanticExtraction.confidence,
+              source: 'LLM_SEMANTIC_EXTRACTOR'
+            });
+            inductionResult.total_symbols_extracted++;
+          }
+        }
+        
+        // Update symbol coverage based on merged symptoms
+        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8); // 8 is approx max symptoms
+        inductionResult.aggregated_confidence = Math.max(
+          inductionResult.aggregated_confidence,
+          semanticExtraction.confidence
+        );
+        
+        console.log(`      ✅ POST-MERGE: ${inductionResult.symptoms.length} total symptoms, coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%`);
+        console.log(`      Merged symptoms: [${inductionResult.symptoms.map(s => s.symbol).join(', ')}]`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE INDUCTION GATE: Determine if symbolic brain should run
       // Based on symbol_coverage and aggregated_confidence, NOT intent confidence
       // ═══════════════════════════════════════════════════════════════════════════
