@@ -22,7 +22,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+// Supabase client is passed via input, no import needed
 
 export const HYPOTHESIS_EVALUATOR_VERSION = '1.0.0';
 
