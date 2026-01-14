@@ -189,20 +189,39 @@ export function EnhancedAIChatInterface() {
   const [loadedSessionIds, setLoadedSessionIds] = useState<Set<string>>(new Set());
   const [hasEverHadMessages, setHasEverHadMessages] = useState<Record<string, boolean>>({});
   
-  // CRITICAL FIX: Reset loaded state when user changes (re-login scenario)
+  // CRITICAL FIX (2026-01-14): Reset loaded state when user OR tenant changes (re-login scenario)
   const prevUserIdRef = useRef<string | null>(null);
+  const prevTenantIdRef = useRef<string | null>(null);
   useEffect(() => {
-    if (user?.id && user.id !== prevUserIdRef.current) {
-      // Reset all loaded states when user changes to force reload
+    const userChanged = user?.id && user.id !== prevUserIdRef.current;
+    const tenantChanged = tenant?.id && tenant.id !== prevTenantIdRef.current;
+    
+    if (userChanged || tenantChanged) {
+      // Reset all loaded states when user/tenant changes to force reload
       setLoadedSessionIds(new Set());
       setSessionIds({});
       setMessages({ general: [] });
       setHasEverHadMessages({});
       setLands([]);
-      if (import.meta.env.DEV) console.log('🔄 [Chat] Reset state for new user:', user.id);
-      prevUserIdRef.current = user.id;
+      
+      // CRITICAL: Re-initialize localDB for new tenant
+      if (tenant?.id) {
+        localDB.initializeWithTenant(tenant.id).catch(console.error);
+      }
+      
+      if (import.meta.env.DEV) {
+        console.log('🔄 [Chat] Reset state for user/tenant change:', { 
+          userId: user?.id, 
+          tenantId: tenant?.id,
+          userChanged,
+          tenantChanged
+        });
+      }
+      
+      prevUserIdRef.current = user?.id || null;
+      prevTenantIdRef.current = tenant?.id || null;
     }
-  }, [user?.id]);
+  }, [user?.id, tenant?.id]);
   const [playingMessageId, setPlayingMessageId] = useState<string | null>(null);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
