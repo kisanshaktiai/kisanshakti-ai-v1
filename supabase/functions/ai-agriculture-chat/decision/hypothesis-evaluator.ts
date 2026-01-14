@@ -231,28 +231,53 @@ function calculateStageRelevance(
 function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] {
   if (!raw) return [];
   
+  // CRITICAL FIX: Handle edge cases where observable_characteristics is {} or invalid
+  if (typeof raw === 'object' && !Array.isArray(raw)) {
+    // It's an object - check if it has valid keys
+    const keys = Object.keys(raw);
+    if (keys.length === 0) {
+      console.log('   [ExtractObs] Skipping empty object {}');
+      return [];
+    }
+    // If object has observation_key, treat as single item
+    if (raw.observation_key) {
+      raw = [raw];
+    } else {
+      // Unknown object structure, skip
+      console.log('   [ExtractObs] Skipping unknown object structure:', keys.slice(0, 3));
+      return [];
+    }
+  }
+  
   const charArray = Array.isArray(raw) ? raw : [raw];
   
   return charArray.map((char: any, idx: number) => {
+    // Handle string keys
     if (typeof char === 'string') {
       return {
         id: char,
         observation_key: char,
-        label_en: char,
+        label_en: char.replace(/_/g, ' '),
         is_visual: true
       };
     }
     
-    return {
-      id: char.id || char.observation_key || `obs_${idx}`,
-      observation_key: char.observation_key || char.id || `obs_${idx}`,
-      label_en: char.label_en || char.label || char.observation_key,
-      label_hi: char.label_hi,
-      label_mr: char.label_mr,
-      confidence_boost: char.confidence_boost || 0.15,
-      is_visual: char.is_visual !== false // Default true
-    };
-  }).filter((c: ObservableCharacteristic) => c.observation_key);
+    // Handle object with observation_key
+    if (char && typeof char === 'object' && char.observation_key) {
+      return {
+        id: char.id || char.observation_key || `obs_${idx}`,
+        observation_key: char.observation_key,
+        label_en: char.label_en || char.label || char.observation_key.replace(/_/g, ' '),
+        label_hi: char.label_hi,
+        label_mr: char.label_mr,
+        confidence_boost: char.confidence_boost || 0.15,
+        is_visual: char.is_visual !== false
+      };
+    }
+    
+    // Skip invalid entries
+    return null;
+  }).filter((c): c is ObservableCharacteristic => c !== null && !!c.observation_key);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -273,13 +298,46 @@ export async function evaluateCandidateHypotheses(
   console.log(`   Known observations: ${input.known_observations.join(', ') || 'none'}`);
   console.log(`   NDVI: ${input.ndvi_level || 'unknown'} (${input.ndvi_trend || 'unknown'})`);
   
+  // Stage normalization map: UI stage names → DB stage names
+  const STAGE_DB_MAP: Record<string, string> = {
+    'seedling': 'germination',
+    'vegetative': 'tillering',
+    'tillering': 'tillering',
+    'flowering': 'grand_growth',
+    'reproductive': 'grand_growth',
+    'grand_growth': 'grand_growth',
+    'maturation': 'maturity',
+    'maturity': 'maturity',
+    'ripening': 'maturity',
+    'harvesting': 'harvest',
+    'harvest': 'harvest',
+    'germination': 'germination',
+    'planting': 'planting',
+  };
+  
+  const normalizeStage = (stage: string): string => {
+    const key = stage.toLowerCase().trim().replace(/[\s-]/g, '_');
+    return STAGE_DB_MAP[key] || key;
+  };
+  
   try {
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 1: Load rules filtered by crop_code, stage_applicable, canonical_group
+    // CRITICAL FIX: Normalize stage to DB format and query with lowercase + 'all'
     // ═══════════════════════════════════════════════════════════════════════
     
-    const groupFilter = HYPOTHESIS_CANONICAL_GROUPS.map(g => `canonical_group.ilike.%${g}%`).join(',');
+    const dbStage = normalizeStage(growth_stage);
+    const cropLower = crop_code.toLowerCase();
     
+    console.log(`   [HypothesisEval] Stage normalization: ${growth_stage} → ${dbStage}`);
+    console.log(`   [HypothesisEval] Crop normalization: ${crop_code} → ${cropLower}`);
+    
+    // CRITICAL FIX: Use separate queries for stage-specific and 'all' rules
+    // The .cs. operator requires exact case matching, so we query both variants
+    const stageVariants = [dbStage, dbStage.toLowerCase(), dbStage.toUpperCase(), 'all', '*'];
+    
+    // Query 1: Rules with observable_characteristics for this crop OR universal ('all') rules
+    // NOTE: Filter out empty object {} which is not useful
     const { data: rules, error } = await supabaseClient
       .from('decision_rules')
       .select(`
@@ -294,11 +352,11 @@ export async function evaluateCandidateHypotheses(
         trigger_keywords
       `)
       .eq('is_active', true)
-      .ilike('crop_code', crop_code)
-      .or(`stage_applicable.cs.{${growth_stage}},stage_applicable.is.null`)
+      .or(`crop_code.eq.${cropLower},crop_code.ilike.${cropLower},crop_code.eq.all`)
       .not('observable_characteristics', 'is', null)
-      .or(groupFilter)
-      .limit(50);
+      .neq('observable_characteristics', '{}')
+      .neq('observable_characteristics', '[]')
+      .limit(100);
     
     if (error) {
       console.error(`   ❌ [HypothesisEval] Database error:`, error);
