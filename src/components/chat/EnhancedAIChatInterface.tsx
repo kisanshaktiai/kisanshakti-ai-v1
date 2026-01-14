@@ -412,7 +412,22 @@ export function EnhancedAIChatInterface() {
       // ═══════════════════════════════════════════════════════════════════════
       // PHASE 1: Load from LocalDB INSTANTLY (0ms perceived latency)
       // ═══════════════════════════════════════════════════════════════════════
+      
+      // CRITICAL FIX (2026-01-14): Ensure tenantIsolationService has userId before querying
+      // This prevents stale user context in LocalDB queries after re-login
+      const { tenantIsolationService } = await import('@/services/tenantIsolationService');
+      tenantIsolationService.setUserId(user.id);
+      
+      // Ensure localDB is initialized for current tenant
+      await localDB.initialize();
+      
       const cachedMessages = await localDB.getChatMessages(landId, user.id);
+      
+      console.log(`📱 [Cache-First] Checking LocalDB for ${sessionKey}:`, {
+        cachedCount: cachedMessages?.length || 0,
+        userId: user.id,
+        landId
+      });
       
       if (cachedMessages && cachedMessages.length > 0) {
         console.log(`⚡ [Cache-First] INSTANT load: ${cachedMessages.length} messages for ${sessionKey}`);
@@ -897,8 +912,22 @@ export function EnhancedAIChatInterface() {
       
       // ⚡ PHASE 1: DON'T show loading for cache-first loads
       // Only show loading if we have no cached data
+      
+      // CRITICAL FIX (2026-01-14): Ensure tenantIsolationService has userId before querying
+      const { tenantIsolationService } = await import('@/services/tenantIsolationService');
+      tenantIsolationService.setUserId(user.id);
+      
+      // Ensure localDB is initialized for current tenant
+      await localDB.initialize();
+      
       const cachedMessages = await localDB.getChatMessages(landId, user.id);
       const hasCache = cachedMessages && cachedMessages.length > 0;
+      
+      console.log(`🔍 [Session Load] Checking cache for ${sessionKey}:`, {
+        hasCache,
+        messageCount: cachedMessages?.length || 0,
+        userId: user.id
+      });
       
       if (!hasCache) {
         // No cache - need to show loading

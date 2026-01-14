@@ -1271,10 +1271,15 @@ class LocalDatabase {
 
   async getChatSessionsByLand(landId: string | null): Promise<AIChatSessionData[]> {
     if (!this.db) await this.initialize();
+    
     if (landId) {
       return await this.db!.getAllFromIndex('aiChatSessions', 'by-land', landId);
     }
-    return [];
+    
+    // CRITICAL FIX: For general sessions (landId === null), we cannot use index lookup
+    // because IndexedDB doesn't index null values. Instead, filter all sessions manually.
+    const allSessions = await this.db!.getAll('aiChatSessions');
+    return allSessions.filter(s => s.land_id === null || s.land_id === undefined);
   }
 
   async saveChatMessage(message: Omit<AIChatMessageData, 'lastModified' | 'syncStatus'>): Promise<void> {
@@ -1295,31 +1300,43 @@ class LocalDatabase {
     const currentFarmerId = farmerId || tenantIsolationService.getUserId();
     
     if (!currentFarmerId) {
-      console.warn('⚠️ [LocalDB] getChatMessages called without farmer context, returning all matching messages');
+      console.warn('⚠️ [LocalDB] getChatMessages called without farmer context');
     }
     
-    // First, get sessions for this land (or general if landId is null)
+    // =========================================================================
+    // CRITICAL FIX (2026-01-14): Two-path message retrieval
+    // Path 1: Session-based (messages linked via session_id)
+    // Path 2: Direct farmer lookup (fallback for messages with missing session links)
+    // =========================================================================
+    
+    // Get all messages for this farmer first (direct farmer_id lookup)
+    const allMessages = await this.db!.getAll('aiChatMessages');
+    const farmerMessages = allMessages.filter(m => 
+      !currentFarmerId || m.farmer_id === currentFarmerId
+    );
+    
+    if (farmerMessages.length === 0) {
+      console.log(`📱 [LocalDB] No messages found for farmer ${currentFarmerId} in IndexedDB`);
+      return [];
+    }
+    
+    // Get sessions to determine land association
     const allSessions = await this.db!.getAll('aiChatSessions');
     const relevantSessions = allSessions.filter(s => {
-      // Filter by farmer_id if available
       const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
       
       if (landId === null || landId === undefined) {
+        // General chat: sessions without land_id
         return farmerMatch && (s.land_id === null || s.land_id === undefined);
       }
+      // Land-specific: sessions with matching land_id
       return farmerMatch && s.land_id === landId;
     });
     
     const sessionIds = new Set(relevantSessions.map(s => s.id));
     
-    // Get all messages and filter by session (which already filters by farmer)
-    const allMessages = await this.db!.getAll('aiChatMessages');
-    const sessionFilteredMessages = allMessages.filter(m => {
-      const sessionMatch = sessionIds.has(m.session_id);
-      // Additional farmer filter for safety
-      const farmerMatch = !currentFarmerId || m.farmer_id === currentFarmerId;
-      return sessionMatch && farmerMatch;
-    });
+    // Filter messages by session, with fallback for messages that may have missing session links
+    const sessionFilteredMessages = farmerMessages.filter(m => sessionIds.has(m.session_id));
     
     // CRITICAL FIX: SMART CONTENT-BASED FILTERING
     const filteredMessages = sessionFilteredMessages.filter(msg => {
