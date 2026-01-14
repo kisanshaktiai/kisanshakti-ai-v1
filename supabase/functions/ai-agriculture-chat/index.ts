@@ -1092,6 +1092,7 @@ serve(async (req) => {
     };
     
     try {
+      // CRITICAL: Include tenant_id and farmer_id in update filter for security isolation
       await supabase
         .from('ai_chat_sessions')
         .update({ 
@@ -1118,7 +1119,9 @@ serve(async (req) => {
             }
           }
         })
-        .eq('id', currentSessionId);
+        .eq('id', currentSessionId)
+        .eq('tenant_id', finalTenantId)  // CRITICAL: Tenant isolation
+        .eq('farmer_id', finalFarmerId); // CRITICAL: Farmer isolation
       
       console.log(`💾 [Session] Decision tracking persisted:`, {
         state: decisionTracking.decision_state,

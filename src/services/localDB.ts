@@ -1266,20 +1266,41 @@ class LocalDatabase {
 
   async getChatSessionsByFarmer(farmerId: string): Promise<AIChatSessionData[]> {
     if (!this.db) await this.initialize();
-    return await this.db!.getAllFromIndex('aiChatSessions', 'by-farmer', farmerId);
+    
+    // CRITICAL: Also filter by tenant_id for multi-tenant isolation
+    const tenantId = tenantIsolationService.getTenantId();
+    const allSessions = await this.db!.getAllFromIndex('aiChatSessions', 'by-farmer', farmerId);
+    
+    if (tenantId) {
+      return allSessions.filter(s => s.tenant_id === tenantId);
+    }
+    return allSessions;
   }
 
-  async getChatSessionsByLand(landId: string | null): Promise<AIChatSessionData[]> {
+  async getChatSessionsByLand(landId: string | null, farmerId?: string): Promise<AIChatSessionData[]> {
     if (!this.db) await this.initialize();
     
+    // CRITICAL FIX: Get farmer and tenant context for proper isolation
+    const currentFarmerId = farmerId || tenantIsolationService.getUserId();
+    const tenantId = tenantIsolationService.getTenantId();
+    
+    let sessions: AIChatSessionData[];
+    
     if (landId) {
-      return await this.db!.getAllFromIndex('aiChatSessions', 'by-land', landId);
+      sessions = await this.db!.getAllFromIndex('aiChatSessions', 'by-land', landId);
+    } else {
+      // CRITICAL FIX: For general sessions (landId === null), we cannot use index lookup
+      // because IndexedDB doesn't index null values. Instead, filter all sessions manually.
+      const allSessions = await this.db!.getAll('aiChatSessions');
+      sessions = allSessions.filter(s => s.land_id === null || s.land_id === undefined);
     }
     
-    // CRITICAL FIX: For general sessions (landId === null), we cannot use index lookup
-    // because IndexedDB doesn't index null values. Instead, filter all sessions manually.
-    const allSessions = await this.db!.getAll('aiChatSessions');
-    return allSessions.filter(s => s.land_id === null || s.land_id === undefined);
+    // CRITICAL: Apply tenant and farmer isolation
+    return sessions.filter(s => {
+      const tenantMatch = !tenantId || s.tenant_id === tenantId;
+      const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
+      return tenantMatch && farmerMatch;
+    });
   }
 
   async saveChatMessage(message: Omit<AIChatMessageData, 'lastModified' | 'syncStatus'>): Promise<void> {
@@ -1293,50 +1314,58 @@ class LocalDatabase {
     await this.updatePendingCount();
   }
 
-  async getChatMessages(landId?: string | null, farmerId?: string): Promise<AIChatMessageData[]> {
+  async getChatMessages(landId?: string | null, farmerId?: string, tenantIdParam?: string): Promise<AIChatMessageData[]> {
     if (!this.db) await this.initialize();
     
-    // CRITICAL FIX: Get farmer ID from context if not provided
+    // CRITICAL FIX: Get farmer and tenant IDs from context if not provided
     const currentFarmerId = farmerId || tenantIsolationService.getUserId();
+    const currentTenantId = tenantIdParam || tenantIsolationService.getTenantId();
     
     if (!currentFarmerId) {
       console.warn('⚠️ [LocalDB] getChatMessages called without farmer context');
     }
+    if (!currentTenantId) {
+      console.warn('⚠️ [LocalDB] getChatMessages called without tenant context');
+    }
     
     // =========================================================================
-    // CRITICAL FIX (2026-01-14): Two-path message retrieval
-    // Path 1: Session-based (messages linked via session_id)
-    // Path 2: Direct farmer lookup (fallback for messages with missing session links)
+    // CRITICAL FIX (2026-01-14): Multi-tenant isolation in message retrieval
+    // All messages MUST be filtered by tenant_id AND farmer_id
     // =========================================================================
     
-    // Get all messages for this farmer first (direct farmer_id lookup)
+    // Get all messages and apply strict tenant + farmer isolation
     const allMessages = await this.db!.getAll('aiChatMessages');
-    const farmerMessages = allMessages.filter(m => 
-      !currentFarmerId || m.farmer_id === currentFarmerId
-    );
+    const isolatedMessages = allMessages.filter(m => {
+      const tenantMatch = !currentTenantId || m.tenant_id === currentTenantId;
+      const farmerMatch = !currentFarmerId || m.farmer_id === currentFarmerId;
+      return tenantMatch && farmerMatch;
+    });
     
-    if (farmerMessages.length === 0) {
-      console.log(`📱 [LocalDB] No messages found for farmer ${currentFarmerId} in IndexedDB`);
+    if (isolatedMessages.length === 0) {
+      console.log(`📱 [LocalDB] No messages found for tenant ${currentTenantId}, farmer ${currentFarmerId} in IndexedDB`);
       return [];
     }
     
-    // Get sessions to determine land association
+    // Get sessions to determine land association - also with tenant/farmer isolation
     const allSessions = await this.db!.getAll('aiChatSessions');
     const relevantSessions = allSessions.filter(s => {
+      const tenantMatch = !currentTenantId || s.tenant_id === currentTenantId;
       const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
+      
+      if (!tenantMatch || !farmerMatch) return false;
       
       if (landId === null || landId === undefined) {
         // General chat: sessions without land_id
-        return farmerMatch && (s.land_id === null || s.land_id === undefined);
+        return s.land_id === null || s.land_id === undefined;
       }
       // Land-specific: sessions with matching land_id
-      return farmerMatch && s.land_id === landId;
+      return s.land_id === landId;
     });
     
     const sessionIds = new Set(relevantSessions.map(s => s.id));
     
     // Filter messages by session, with fallback for messages that may have missing session links
-    const sessionFilteredMessages = farmerMessages.filter(m => sessionIds.has(m.session_id));
+    const sessionFilteredMessages = isolatedMessages.filter(m => sessionIds.has(m.session_id));
     
     // CRITICAL FIX: SMART CONTENT-BASED FILTERING
     const filteredMessages = sessionFilteredMessages.filter(msg => {
@@ -1378,7 +1407,7 @@ class LocalDatabase {
       return true;
     });
     
-    console.log(`📱 [LocalDB] getChatMessages: Found ${filteredMessages.length}/${sessionFilteredMessages.length} displayable messages for farmer ${currentFarmerId} and land ${landId || 'general'}`);
+    console.log(`📱 [LocalDB] getChatMessages: Found ${filteredMessages.length}/${sessionFilteredMessages.length} displayable messages for tenant ${currentTenantId}, farmer ${currentFarmerId} and land ${landId || 'general'}`);
     return filteredMessages;
   }
 

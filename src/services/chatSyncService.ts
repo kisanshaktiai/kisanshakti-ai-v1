@@ -37,10 +37,12 @@ class ChatSyncService {
 
   /**
    * Get the last message timestamp for delta sync
+   * CRITICAL: Includes tenantId for multi-tenant isolation
    */
-  async getLastMessageTime(landId: string | null, farmerId: string): Promise<string> {
+  async getLastMessageTime(landId: string | null, farmerId: string, tenantId: string): Promise<string> {
     try {
-      const messages = await localDB.getChatMessages(landId, farmerId);
+      // CRITICAL FIX: Pass tenantId for proper multi-tenant isolation
+      const messages = await localDB.getChatMessages(landId, farmerId, tenantId);
       
       if (!messages || messages.length === 0) {
         return '1970-01-01T00:00:00.000Z';
@@ -82,27 +84,30 @@ class ChatSyncService {
     const errors: string[] = [];
     
     try {
-      // Get last sync timestamp
-      const lastSyncTime = await this.getLastMessageTime(landId, farmerId);
-      console.log(`[ChatSync] Delta sync for ${sessionKey} since ${lastSyncTime}`);
+      // Get last sync timestamp - CRITICAL: Pass tenantId for isolation
+      const lastSyncTime = await this.getLastMessageTime(landId, farmerId, tenantId);
+      console.log(`[ChatSync] Delta sync for tenant ${tenantId}, ${sessionKey} since ${lastSyncTime}`);
       
       const authClient = supabaseWithAuth(farmerId, tenantId);
       
       // Build query for messages newer than last sync
+      // CRITICAL: Always filter by BOTH tenant_id AND farmer_id for multi-tenant isolation
       let query = authClient
         .from('ai_chat_messages')
         .select('*')
+        .eq('tenant_id', tenantId)  // CRITICAL: Tenant isolation first
         .eq('farmer_id', farmerId)
-        .eq('tenant_id', tenantId)
         .gt('created_at', lastSyncTime)
         .order('created_at', { ascending: true });
       
       // Filter by land_id through session
+      // CRITICAL: Always include tenant_id in session queries for isolation
       if (landId === null) {
         // General chat - get sessions without land_id
         const { data: sessions } = await authClient
           .from('ai_chat_sessions')
           .select('id')
+          .eq('tenant_id', tenantId)  // CRITICAL: Tenant isolation
           .eq('farmer_id', farmerId)
           .is('land_id', null);
         
@@ -114,6 +119,7 @@ class ChatSyncService {
         const { data: sessions } = await authClient
           .from('ai_chat_sessions')
           .select('id')
+          .eq('tenant_id', tenantId)  // CRITICAL: Tenant isolation
           .eq('farmer_id', farmerId)
           .eq('land_id', landId);
         
