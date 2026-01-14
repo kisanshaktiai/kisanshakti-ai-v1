@@ -392,6 +392,30 @@ export function getCategoryObservationKeys(
  * Load observation keys from database by crop and stage
  * Returns keys that exist in decision_rules.observable_characteristics
  */
+// Stage normalization map: UI stage names → DB stage names
+const STAGE_NORMALIZATION_MAP: Record<string, string> = {
+  'seedling': 'germination',
+  'vegetative': 'tillering',
+  'flowering': 'grand_growth',
+  'reproductive': 'grand_growth',
+  'maturation': 'maturity',
+  'ripening': 'maturity',
+  'harvesting': 'harvest',
+  // Direct mappings (already correct)
+  'germination': 'germination',
+  'tillering': 'tillering',
+  'grand_growth': 'grand_growth',
+  'maturity': 'maturity',
+  'harvest': 'harvest',
+  'planting': 'planting',
+  'post_harvest': 'post_harvest',
+};
+
+function normalizeStageForDB(stage: string): string {
+  const normalized = stage.toLowerCase().trim().replace(/[\s-]/g, '_');
+  return STAGE_NORMALIZATION_MAP[normalized] || normalized;
+}
+
 export async function loadObservationKeysFromDB(
   cropCode: string,
   stage: string
@@ -407,21 +431,18 @@ export async function loadObservationKeysFromDB(
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
+    // Normalize stage for DB lookup (e.g., SEEDLING → germination)
+    const dbStage = normalizeStageForDB(stage);
+    console.log(`[CanonicalLoader] Stage normalization: ${stage} → ${dbStage}`);
+    
     // Query decision_rules for observable_characteristics matching crop and stage.
-    // NOTE: We support different casing/formatting in DB (TILLERING vs tillering).
+    // Use normalized stage (dbStage) and also include 'all' stage rules.
     const crop = cropCode.toLowerCase();
-    const normalizeStage = (s: string) => s.trim().replace(/[\s-]/g, '_');
     const stageVariants = Array.from(
-      new Set(
-        [
-          stage,
-          stage.toUpperCase(),
-          stage.toLowerCase(),
-          normalizeStage(stage.toUpperCase()),
-          normalizeStage(stage.toLowerCase())
-        ].filter(Boolean)
-      )
+      new Set([dbStage, 'all'].filter(Boolean))
     );
+
+    console.log(`[CanonicalLoader] Querying for crop=${crop}, stages=${stageVariants.join(',')}`);
 
     let data: any[] | null = null;
     let lastError: any = null;
@@ -440,19 +461,23 @@ export async function loadObservationKeysFromDB(
         continue;
       }
 
-      data = res.data || [];
-      if (data.length > 0) break;
+      // Accumulate results from both stage-specific and 'all' rules
+      if (res.data && res.data.length > 0) {
+        data = data ? [...data, ...res.data] : res.data;
+      }
     }
 
-    if (lastError) {
+    if (lastError && (!data || data.length === 0)) {
       console.error('[CanonicalLoader] DB query error:', lastError);
       return getFallbackKeys(cropCode, stage);
     }
 
     if (!data || data.length === 0) {
-      console.warn(`[CanonicalLoader] No matching rules for ${cropCode}/${stage} (variants=${stageVariants.join(',')})`);
+      console.warn(`[CanonicalLoader] No matching rules for ${cropCode}/${dbStage}`);
       return getFallbackKeys(cropCode, stage);
     }
+
+    console.log(`[CanonicalLoader] Found ${data.length} rules with observable_characteristics`);
     
     // Extract unique keys from all matching rules
     const uniqueKeys = new Set<string>();
