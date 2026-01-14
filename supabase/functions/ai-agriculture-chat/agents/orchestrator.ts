@@ -75,8 +75,26 @@ import type { NLUIntent, ExtractedEntities, SafetyAlerts } from './rule-module-t
 import { resolveRuleModules, determineContextRequirements, generateRuleRequiredQuestions } from './rule-module-resolver.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LANGUAGE INDUCTION LAYER - Canonical English Symbol Extraction
-// Runs BEFORE any intent or confidence-based logic
+// UNIVERSAL SEMANTIC EXTRACTOR - LLM-Based Language-Agnostic NLU (Phase 21)
+// Replaces hardcoded dictionaries with LLM extraction + deterministic mapping
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  extractSemanticMeaning,
+  SEMANTIC_EXTRACTOR_VERSION,
+  type SemanticExtraction
+} from './semantic-extractor.ts';
+
+import {
+  mapToObservationCodes,
+  toObservationKeySet,
+  hasMeaningfulCodes,
+  OBSERVATION_CODE_MAPPER_VERSION,
+  type MappedObservationCodes
+} from '../decision/observation-code-mapper.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY LANGUAGE INDUCTION LAYER (Fallback only - to be deprecated)
+// Kept for USE_LLM_NLU=false feature flag during migration
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   induceCanonicalSymbols,
@@ -1717,11 +1735,34 @@ export class AIAgentOrchestrator {
       console.log(`      Language: ${normalizedInput.detected_language}, Removed: ${normalizedInput.removed_elements.length} elements`);
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // STAGE 1.5: LANGUAGE INDUCTION LAYER (CANONICAL SYMBOL EXTRACTION)
-      // Runs BEFORE any intent-confidence logic. Produces stable English symbols.
-      // Symbol coverage and aggregate confidence are INDEPENDENT of intent confidence.
+      // STAGE 1.5: UNIVERSAL SEMANTIC EXTRACTION (Phase 21 - LLM-Based)
+      // Uses LLM to extract semantic meaning in ANY language → plain English
+      // Then deterministic mapper converts English → ObservationKeys
       // ═══════════════════════════════════════════════════════════════════════════
-      console.log(`\n   🔤 Stage 1.5: Language Induction Layer (v${LANGUAGE_INDUCTION_VERSION})...`);
+      console.log(`\n   🔮 Stage 1.5: Universal Semantic Extractor (v${SEMANTIC_EXTRACTOR_VERSION})...`);
+      
+      // STEP 1: LLM extracts semantic meaning (any language → English)
+      const semanticExtraction: SemanticExtraction = await extractSemanticMeaning(
+        processedFarmerMessage, 
+        normalizedInput.detected_language
+      );
+      agentsUsed.push('SEMANTIC_EXTRACTOR');
+      
+      // STEP 2: Deterministic mapper converts English → ObservationKeys
+      const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
+      agentsUsed.push('OBSERVATION_CODE_MAPPER');
+      
+      console.log(`      Concern: "${semanticExtraction.farmer_concern.substring(0, 60)}..."`);
+      console.log(`      Parts: [${semanticExtraction.affected_plant_parts.join(', ')}]`);
+      console.log(`      Changes: [${semanticExtraction.visual_changes.slice(0, 3).join(', ')}${semanticExtraction.visual_changes.length > 3 ? '...' : ''}]`);
+      console.log(`      Codes: [${mappedCodes.observation_codes.slice(0, 5).join(', ')}${mappedCodes.observation_codes.length > 5 ? '...' : ''}]`);
+      console.log(`      Confidence: ${(semanticExtraction.confidence * 100).toFixed(0)}%, Method: ${semanticExtraction.extraction_method}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // LEGACY FALLBACK: Language Induction Layer (for backward compatibility)
+      // Still runs to provide inductionResult for existing code paths
+      // ═══════════════════════════════════════════════════════════════════════════
+      console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
       const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage);
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');

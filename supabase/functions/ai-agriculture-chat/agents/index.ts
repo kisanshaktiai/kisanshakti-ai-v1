@@ -73,8 +73,31 @@ export {
 } from './intent-lock.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LANGUAGE INDUCTION LAYER: Canonical English Symbol Extraction
-// Runs BEFORE intent/confidence logic for stable symbol output
+// UNIVERSAL SEMANTIC EXTRACTOR: LLM-Based Language-Agnostic NLU (Phase 21)
+// Supports ANY language without hardcoded dictionaries
+// ═══════════════════════════════════════════════════════════════════════════
+export {
+  extractSemanticMeaning,
+  SEMANTIC_EXTRACTOR_VERSION
+} from './semantic-extractor.ts';
+export type { SemanticExtraction } from './semantic-extractor.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION CODE MAPPER: Deterministic English→Code Mapping (Phase 21)
+// 100% deterministic pattern matching - same input = same output
+// ═══════════════════════════════════════════════════════════════════════════
+export {
+  mapToObservationCodes,
+  toObservationKeySet,
+  hasMeaningfulCodes,
+  serializeMappedCodes,
+  OBSERVATION_CODE_MAPPER_VERSION
+} from '../decision/observation-code-mapper.ts';
+export type { MappedObservationCodes } from '../decision/observation-code-mapper.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY LANGUAGE INDUCTION LAYER (Fallback - To Be Deprecated)
+// Kept for backward compatibility during migration period
 // ═══════════════════════════════════════════════════════════════════════════
 export {
   induceCanonicalSymbols,
