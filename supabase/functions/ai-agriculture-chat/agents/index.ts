@@ -1,11 +1,10 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- * AI AGENTS INDEX - KisanShakti Decision Brain
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Production-grade AI agents for agricultural advisory system.
- * Agents: NLU, Visual Intelligence, Context Manager, Diagnostic Flow, Rule Engine
+ * KisanShakti Decision Brain - Agent Exports
+ * Central export for all AI agents and decision modules
  */
+
+// Failure Class Detector (v1.0.0)
+export * from '../decision/failure-class-detector.ts';
 
 // Agent 1: Natural Language Understanding
 export * from './types.ts';
