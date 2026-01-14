@@ -44,15 +44,13 @@ import {
   validateEntityConsistency 
 } from './entity-normalizer.ts';
 
-// WORLD-CLASS: Import dialect normalizer for multi-dialect understanding
-import { 
-  normalizeDialect, 
-  quickSymptomMatch,
-  type DialectNormalizationResult,
-  type NormalizedObservation
-} from './dialect-normalizer.ts';
+// ═══════════════════════════════════════════════════════════════════════════
+// DEPRECATED: Old dialect-normalizer removed - now using LLM-based semantic extraction
+// The new system (semantic-extractor.ts + observation-code-mapper.ts) is called 
+// from orchestrator.ts BEFORE NLU agent runs
+// ═══════════════════════════════════════════════════════════════════════════
 
-const NLU_VERSION = '5.0.0'; // PHASE-NEW: Integrated multi-dialect normalization
+const NLU_VERSION = '6.0.0'; // REFACTORED: LLM-based semantic extraction (no hardcoded dictionaries)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // AI-POWERED SEMANTIC UNDERSTANDING (Gemini/OpenAI)
@@ -833,23 +831,16 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   };
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 0A: WORLD-CLASS DIALECT NORMALIZATION (NEW)
-  // Normalize ANY dialect into structured observations BEFORE AI/pattern matching
-  // This catches phrases like "मधली सुरळी वाळली" → DEAD_HEART
+  // DEPRECATED: OLD DIALECT NORMALIZATION REMOVED
+  // The new LLM-based semantic extraction is now called from orchestrator.ts:
+  //   1. extractSemanticMeaning() - LLM extracts English descriptions  
+  //   2. mapToObservationCodes() - Deterministic mapping to ObservationKeys
+  // These codes are merged into inductionResult.symptoms before NLU runs
   // ═══════════════════════════════════════════════════════════════════════════
-  let dialectResult: DialectNormalizationResult | null = null;
-  try {
-    dialectResult = normalizeDialect(input.raw_input);
-    if (dialectResult.observations.length > 0) {
-      console.log(`🗣️ [NLU] Dialect normalized: ${dialectResult.observations.map(o => o.canonical_symptom).join(', ')}`);
-      console.log(`   📊 Context: crop=${dialectResult.crop_mentioned}, age=${dialectResult.crop_age_indicator}, pattern=${dialectResult.pattern_indicator}, severity=${dialectResult.severity_indicator}`);
-    }
-  } catch (err) {
-    console.warn('⚠️ [NLU] Dialect normalization error:', err);
-  }
+  console.log(`🧪 [NLU v${NLU_VERSION}] Semantic extraction handled by orchestrator (LLM-based)`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 0B: Try AI-Powered Understanding (Gemini)
+  // STEP 0B: Try AI-Powered Understanding (Gemini) - for intent classification
   // ═══════════════════════════════════════════════════════════════════════════
   let aiResult: AIUnderstandingResult | null = null;
   try {
@@ -930,41 +921,11 @@ export async function processNLUAgent(input: Partial<NLUAgentInput> & { raw_inpu
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE NEW: INTEGRATE DIALECT NORMALIZATION RESULTS
-  // Add symptoms detected by dialect normalizer to entity results
+  // DEPRECATED: OLD DIALECT INTEGRATION REMOVED
+  // Symptom detection is now handled by LLM semantic extraction in orchestrator
+  // The observation codes are merged into inductionResult.symptoms upstream
   // ═══════════════════════════════════════════════════════════════════════════
-  if (dialectResult && dialectResult.observations.length > 0) {
-    // Add dialect-detected symptoms to entity results
-    for (const obs of dialectResult.observations) {
-      // Check if this symptom isn't already in the list
-      const existingSymptom = entityResult.symptoms.find(s => 
-        s.symptom_code === obs.canonical_symptom || s.symptom_code === obs.observation_key
-      );
-      
-      if (!existingSymptom) {
-        entityResult.symptoms.push({
-          symptom_code: obs.observation_key,
-          severity: dialectResult.severity_indicator !== 'UNKNOWN' ? 
-            (dialectResult.severity_indicator === 'DEAD' || dialectResult.severity_indicator === 'DYING' ? 'HIGH' : 'MODERATE') : 
-            'MODERATE',
-          affected_part: 'UNKNOWN',
-          location: dialectResult.pattern_indicator !== 'UNKNOWN' ? dialectResult.pattern_indicator : 'UNKNOWN',
-          confidence: obs.confidence
-        });
-        console.log(`🗣️ [NLU] Dialect symptom added: ${obs.observation_key} (${(obs.confidence * 100).toFixed(0)}%)`);
-      }
-    }
-    
-    // Add crop from dialect if not already detected
-    if (dialectResult.crop_mentioned && entityResult.crops.length === 0) {
-      entityResult.crops.push({
-        canonical: dialectResult.crop_mentioned,
-        localTerm: dialectResult.crop_mentioned,
-        confidence: 0.85
-      });
-      console.log(`🗣️ [NLU] Dialect crop detected: ${dialectResult.crop_mentioned}`);
-    }
-  }
+  // dialectResult integration removed - see orchestrator.ts for new LLM-based flow
   
   // Step 4: Urgency Assessment (use AI if available)
   const urgencyResult = assessUrgency(input.raw_input);
