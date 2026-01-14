@@ -6,6 +6,9 @@
 // Failure Class Detector (v1.0.0)
 export * from '../decision/failure-class-detector.ts';
 
+// Hypothesis Evaluator (v1.0.0) - Pre-evaluates rules for hypothesis-first clarification
+export * from '../decision/hypothesis-evaluator.ts';
+
 // Agent 1: Natural Language Understanding
 export * from './types.ts';
 export * from './agricultural-vocabulary.ts';
