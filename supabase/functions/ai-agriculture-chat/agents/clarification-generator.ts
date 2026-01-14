@@ -379,18 +379,37 @@ export function matchFarmerResponseToOption(
     };
   }
   
-  const response = farmerResponse.trim().toLowerCase();
+  const response = farmerResponse.trim();
   
-  // PHASE-9.1: NULL-SAFE option parsing with guard
-  // Check for numeric selection (1, 2, 3, 4 or Devanagari १, २, ३, ४)
-  const numMatch = response.match(/^[१२३४1-4]$/);
+  // ========================================
+  // UNICODE-AWARE DIGIT NORMALIZATION
+  // Supports Devanagari (Hindi/Marathi), Arabic, and other numeral systems
+  // ========================================
+  const UNICODE_DIGIT_MAP: Record<string, string> = {
+    // Devanagari digits
+    '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+    '५': '5', '६': '6', '७': '7', '८': '8', '९': '9',
+    // Arabic-Indic digits (used in some regions)
+    '٠': '0', '١': '1', '٢': '2', '٣': '3', '٤': '4',
+    '٥': '5', '٦': '6', '٧': '7', '٨': '8', '٩': '9',
+    // Extended Arabic-Indic
+    '۰': '0', '۱': '1', '۲': '2', '۳': '3', '۴': '4',
+    '۵': '5', '۶': '6', '۷': '7', '۸': '8', '۹': '9',
+  };
   
-  // PATCH 2: NULL-SAFE - Check if match exists before accessing properties
+  // Normalize response: convert all Unicode digits to ASCII
+  const normalizedResponse = response
+    .split('')
+    .map(c => UNICODE_DIGIT_MAP[c] || c)
+    .join('')
+    .trim()
+    .toLowerCase();
+  
+  // Check for numeric selection (1, 2, 3, 4) after normalization
+  const numMatch = normalizedResponse.match(/^[1-4]$/);
+  
   if (numMatch && numMatch[0]) {
-    // Convert Devanagari numerals to Arabic
-    const devanagariMap: Record<string, string> = { '१': '1', '२': '2', '३': '3', '४': '4' };
-    const numStr = devanagariMap[numMatch[0]] || numMatch[0];
-    const index = parseInt(numStr) - 1;
+    const index = parseInt(numMatch[0]) - 1;
     
     if (index >= 0 && index < pendingOptions.length) {
       return {
@@ -426,80 +445,152 @@ export function matchFarmerResponseToOption(
 /**
  * Map selected option back to ObservationKey.
  * This is used to update the observation state after farmer selects an option.
+ * 
+ * WORLD-CLASS FIX: Uses ENGLISH canonical keywords ONLY
+ * All matching is done against English canonical terms, making this
+ * language-agnostic and maintainable. The UI renders in the farmer's language,
+ * but option matching uses standardized English keywords embedded in option IDs.
  */
 export function mapOptionToObservation(
   option: string,
   scope: ClarificationScope
 ): ObservationKey | null {
-  // Map based on scope
+  // Normalize option to lowercase for matching
+  const optionLower = option.toLowerCase();
+  
+  // ========================================
+  // ENGLISH CANONICAL KEYWORD PATTERNS
+  // These are the ONLY allowed matching patterns
+  // Multilingual UI labels should contain these English keywords
+  // ========================================
+  
   switch (scope) {
     case ClarificationScope.IDENTIFY_CROP:
       return ObservationKey.CROP_IDENTIFIED;
       
     case ClarificationScope.IDENTIFY_LOCATION:
-      // Map based on option content
-      if (option.includes('पान') || option.includes('पत्त') || option.toLowerCase().includes('leaf')) {
+      // Plant part keywords (English canonical)
+      if (optionLower.includes('leaf') || optionLower.includes('leaves') || optionLower.includes('foliage')) {
         return ObservationKey.AFFECTED_PART_LEAF;
       }
-      if (option.includes('खोड') || option.includes('तना') || option.toLowerCase().includes('stem')) {
+      if (optionLower.includes('stem') || optionLower.includes('stalk') || optionLower.includes('trunk')) {
         return ObservationKey.AFFECTED_PART_STEM;
       }
-      if (option.includes('मूळ') || option.includes('जड़') || option.toLowerCase().includes('root')) {
+      if (optionLower.includes('root') || optionLower.includes('underground')) {
         return ObservationKey.AFFECTED_PART_ROOT;
       }
-      if (option.includes('फळ') || option.includes('फल') || option.toLowerCase().includes('fruit')) {
+      if (optionLower.includes('fruit') || optionLower.includes('pod') || optionLower.includes('grain') || optionLower.includes('ear')) {
         return ObservationKey.AFFECTED_PART_FRUIT;
+      }
+      if (optionLower.includes('flower') || optionLower.includes('blossom')) {
+        return ObservationKey.AFFECTED_PART_FLOWER;
+      }
+      if (optionLower.includes('whole') || optionLower.includes('entire') || optionLower.includes('plant')) {
+        return ObservationKey.AFFECTED_PART_WHOLE;
       }
       return ObservationKey.AFFECTED_PART_WHOLE;
       
     case ClarificationScope.IDENTIFY_DISTRIBUTION:
-      if (option.includes('सगळीकडे') || option.includes('हर जगह') || option.toLowerCase().includes('uniform')) {
+      // Distribution keywords (English canonical)
+      if (optionLower.includes('uniform') || optionLower.includes('everywhere') || optionLower.includes('all over') || optionLower.includes('entire field')) {
         return ObservationKey.DISTRIBUTION_UNIFORM;
       }
-      if (option.includes('ठिकठिकाणी') || option.includes('जगह-जगह') || option.toLowerCase().includes('patch')) {
+      if (optionLower.includes('patch') || optionLower.includes('scattered') || optionLower.includes('random') || optionLower.includes('spots')) {
         return ObservationKey.DISTRIBUTION_PATCHY;
       }
-      if (option.includes('कडे') || option.includes('किनार') || option.toLowerCase().includes('edge')) {
+      if (optionLower.includes('edge') || optionLower.includes('border') || optionLower.includes('boundary') || optionLower.includes('margin')) {
         return ObservationKey.DISTRIBUTION_EDGE;
       }
-      return ObservationKey.DISTRIBUTION_CENTER;
+      if (optionLower.includes('center') || optionLower.includes('middle') || optionLower.includes('central')) {
+        return ObservationKey.DISTRIBUTION_CENTER;
+      }
+      return ObservationKey.DISTRIBUTION_PATCHY; // Default to patchy if unclear
       
     case ClarificationScope.IDENTIFY_SEVERITY:
-      if (option.includes('थोड') || option.toLowerCase().includes('light')) {
+      // Severity keywords (English canonical)
+      if (optionLower.includes('light') || optionLower.includes('mild') || optionLower.includes('slight') || optionLower.includes('minor') || optionLower.includes('few')) {
         return ObservationKey.SEVERITY_LOW;
       }
-      if (option.includes('मध्यम') || option.toLowerCase().includes('moderate')) {
+      if (optionLower.includes('moderate') || optionLower.includes('medium') || optionLower.includes('some') || optionLower.includes('several')) {
         return ObservationKey.SEVERITY_MEDIUM;
       }
-      if (option.includes('जास्त') || option.includes('ज्यादा') || option.toLowerCase().includes('heavy')) {
+      if (optionLower.includes('heavy') || optionLower.includes('severe') || optionLower.includes('serious') || optionLower.includes('many') || optionLower.includes('most')) {
         return ObservationKey.SEVERITY_HIGH;
+      }
+      if (optionLower.includes('critical') || optionLower.includes('complete') || optionLower.includes('total') || optionLower.includes('all')) {
+        return ObservationKey.SEVERITY_CRITICAL;
       }
       return ObservationKey.SEVERITY_MEDIUM;
       
     case ClarificationScope.IDENTIFY_TIMING:
-      if (option.includes('आज') || option.includes('काल') || option.toLowerCase().includes('today')) {
+      // Timing keywords (English canonical)
+      if (optionLower.includes('today') || optionLower.includes('yesterday') || optionLower.includes('just') || optionLower.includes('recent') || optionLower.includes('1-2 day')) {
         return ObservationKey.TIMING_RECENT;
       }
-      if (option.includes('आठवड') || option.includes('हफ्त') || option.toLowerCase().includes('week')) {
+      if (optionLower.includes('week') || optionLower.includes('3-7 day') || optionLower.includes('few day')) {
         return ObservationKey.TIMING_WEEK;
       }
-      if (option.includes('दिवस') || option.includes('दिन') || option.toLowerCase().includes('long')) {
+      if (optionLower.includes('long') || optionLower.includes('month') || optionLower.includes('2+ week') || optionLower.includes('chronic')) {
         return ObservationKey.TIMING_LONG;
       }
       return ObservationKey.TIMING_WEEK;
     
-    // PHASE-10: Insect type identification for wheat pests
     case ClarificationScope.IDENTIFY_INSECT_TYPE:
-      if (option.includes('माव') || option.toLowerCase().includes('aphid') || option.includes('हिरव') || option.includes('पिवळ')) {
+      // Pest type keywords (English canonical)
+      if (optionLower.includes('aphid') || optionLower.includes('aphis') || optionLower.includes('lice') || optionLower.includes('green insect') || optionLower.includes('sucking')) {
         return ObservationKey.PEST_TYPE_APHID;
       }
-      if (option.includes('थ्रिप्स') || option.toLowerCase().includes('thrips') || option.includes('पातळ') || option.includes('लांब')) {
+      if (optionLower.includes('thrips') || optionLower.includes('thin') || optionLower.includes('slender') || optionLower.includes('rasping')) {
         return ObservationKey.PEST_TYPE_THRIPS;
       }
-      if (option.includes('कोळी') || option.toLowerCase().includes('mite') || option.includes('जाळी')) {
+      if (optionLower.includes('mite') || optionLower.includes('spider') || optionLower.includes('web') || optionLower.includes('tiny red')) {
         return ObservationKey.PEST_TYPE_MITE;
       }
+      if (optionLower.includes('whitefly') || optionLower.includes('white fly') || optionLower.includes('bemisia')) {
+        return ObservationKey.PEST_TYPE_WHITEFLY;
+      }
+      if (optionLower.includes('borer') || optionLower.includes('stem borer') || optionLower.includes('hole in stem')) {
+        return ObservationKey.PEST_TYPE_BORER;
+      }
+      if (optionLower.includes('caterpillar') || optionLower.includes('worm') || optionLower.includes('larva') || optionLower.includes('grub')) {
+        return ObservationKey.PEST_TYPE_CATERPILLAR;
+      }
+      if (optionLower.includes('hopper') || optionLower.includes('jumping') || optionLower.includes('leafhopper') || optionLower.includes('planthopper')) {
+        return ObservationKey.PEST_TYPE_HOPPER;
+      }
       return ObservationKey.PEST_TYPE_UNKNOWN;
+    
+    case ClarificationScope.IDENTIFY_INSECT_BEHAVIOR:
+      // Insect behavior keywords (English canonical)
+      if (optionLower.includes('flying') || optionLower.includes('fly') || optionLower.includes('flies')) {
+        return ObservationKey.BEHAVIOR_FLYING;
+      }
+      if (optionLower.includes('crawling') || optionLower.includes('crawl') || optionLower.includes('walking')) {
+        return ObservationKey.BEHAVIOR_CRAWLING;
+      }
+      if (optionLower.includes('jumping') || optionLower.includes('jump') || optionLower.includes('hopping')) {
+        return ObservationKey.BEHAVIOR_JUMPING;
+      }
+      if (optionLower.includes('stationary') || optionLower.includes('still') || optionLower.includes('not moving')) {
+        return ObservationKey.BEHAVIOR_STATIONARY;
+      }
+      return null;
+      
+    case ClarificationScope.IDENTIFY_PLANT_RESPONSE:
+      // Plant response keywords (English canonical)
+      if (optionLower.includes('wilting') || optionLower.includes('wilt') || optionLower.includes('drooping')) {
+        return ObservationKey.RESPONSE_WILTING;
+      }
+      if (optionLower.includes('yellowing') || optionLower.includes('yellow') || optionLower.includes('chlorosis')) {
+        return ObservationKey.RESPONSE_YELLOWING;
+      }
+      if (optionLower.includes('drying') || optionLower.includes('dry') || optionLower.includes('necrosis') || optionLower.includes('dead')) {
+        return ObservationKey.RESPONSE_DRYING;
+      }
+      if (optionLower.includes('stunted') || optionLower.includes('poor growth') || optionLower.includes('not growing')) {
+        return ObservationKey.RESPONSE_STUNTED;
+      }
+      return null;
       
     default:
       return null;

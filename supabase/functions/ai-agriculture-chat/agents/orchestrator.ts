@@ -340,88 +340,107 @@ export const ORCHESTRATOR_VERSION = '2.9.0'; // Phase-20: Clarification-first co
 // PHASE-12: Helper function to map clarification answer to visual symptom
 // UPDATED: Now maps to actual VisualSymptom enum values from canonical-state-builder
 // ═══════════════════════════════════════════════════════════════════════════
+/**
+ * WORLD-CLASS FIX: Map clarification answer to visual symptom
+ * Uses ENGLISH canonical keywords ONLY - no hardcoded Marathi/Hindi
+ * Matching uses standardized English keywords embedded in option IDs
+ */
 function mapDistributionToSymptom(optionText: string, scope: ClarificationScope): string {
-  // Based on the clarification scope, map the answer to a symptom
+  const optionLower = optionText.toLowerCase();
+  
   switch (scope) {
     case ClarificationScope.IDENTIFY_DISTRIBUTION:
-      // Distribution options map to symptom patterns
-      if (optionText.includes('सगळीकडे') || optionText.includes('हर जगह') || optionText.toLowerCase().includes('uniform')) {
+      // Distribution → symptom mapping (English canonical keywords)
+      if (optionLower.includes('uniform') || optionLower.includes('everywhere') || optionLower.includes('entire field')) {
         return 'GENERAL_YELLOWING'; // Uniform = likely nutrient issue
       }
-      if (optionText.includes('ठिकठिकाणी') || optionText.includes('जगह-जगह') || optionText.toLowerCase().includes('patch')) {
+      if (optionLower.includes('patch') || optionLower.includes('scattered') || optionLower.includes('random')) {
         return 'SPOTS_IRREGULAR'; // Patchy = likely pest/disease
       }
-      if (optionText.includes('कडे') || optionText.includes('किनार') || optionText.toLowerCase().includes('edge')) {
-        return 'LEAF_EDGE_BURN'; // Edge = water/wind stress
+      if (optionLower.includes('edge') || optionLower.includes('border') || optionLower.includes('margin')) {
+        return 'LEAF_EDGE_BURN'; // Edge = water/wind/salinity stress
+      }
+      if (optionLower.includes('center') || optionLower.includes('middle')) {
+        return 'SPOTS_CIRCULAR'; // Center = localized damage
       }
       return 'UNKNOWN';
       
     case ClarificationScope.IDENTIFY_SEVERITY:
-      // Severity doesn't change symptom type, just intensity
+      // Severity doesn't change symptom type, return based on intensity keywords
+      if (optionLower.includes('severe') || optionLower.includes('critical') || optionLower.includes('complete')) {
+        return 'WILTING'; // Severe = significant stress response
+      }
       return 'UNKNOWN';
       
     case ClarificationScope.IDENTIFY_LOCATION:
-      // Location affects what symptom to look for
-      if (optionText.includes('पान') || optionText.includes('पत्त') || optionText.toLowerCase().includes('leaf')) {
+      // Plant part → symptom mapping (English canonical keywords)
+      if (optionLower.includes('leaf') || optionLower.includes('leaves') || optionLower.includes('foliage')) {
         return 'CURLED_LEAVES';
       }
-      if (optionText.includes('खोड') || optionText.includes('तना') || optionText.toLowerCase().includes('stem')) {
+      if (optionLower.includes('stem') || optionLower.includes('stalk') || optionLower.includes('trunk')) {
         return 'STEM_DISCOLORATION';
+      }
+      if (optionLower.includes('root') || optionLower.includes('underground')) {
+        return 'ROOT_DAMAGE';
+      }
+      if (optionLower.includes('fruit') || optionLower.includes('pod') || optionLower.includes('grain')) {
+        return 'FRUIT_DAMAGE';
+      }
+      if (optionLower.includes('flower') || optionLower.includes('blossom')) {
+        return 'ROSETTE_FLOWER';
       }
       return 'UNKNOWN';
       
     case ClarificationScope.IDENTIFY_INSECT_TYPE:
-      // PHASE-10: Wheat pest identification
-      if (optionText.includes('माव') || optionText.toLowerCase().includes('aphid') || optionText.includes('हिरव') || optionText.includes('पिवळ')) {
+      // Pest type → symptom mapping (English canonical keywords)
+      if (optionLower.includes('aphid') || optionLower.includes('aphis')) {
         return 'CURLED_LEAVES'; // Aphid symptoms
       }
-      if (optionText.includes('थ्रिप्स') || optionText.toLowerCase().includes('thrips') || optionText.includes('पातळ') || optionText.includes('लांब')) {
-        return 'SILVERING'; // Thrips symptoms
+      if (optionLower.includes('borer') || optionLower.includes('stem borer')) {
+        return 'DEAD_HEART'; // Borer symptoms
       }
-      if (optionText.includes('कोळी') || optionText.toLowerCase().includes('mite') || optionText.includes('जाळी')) {
-        return 'WEBBING'; // Mite symptoms
+      if (optionLower.includes('caterpillar') || optionLower.includes('worm')) {
+        return 'HOLES_IN_LEAVES'; // Caterpillar symptoms
       }
-      return 'CURLED_LEAVES'; // Default to aphid if unclear
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PHASE-12: Insect Behavior Clarification (First-Order)
-    // Maps to VisualSymptom enum values that exist in canonical-state-builder
-    // ═══════════════════════════════════════════════════════════════════════════
+      if (optionLower.includes('mite') || optionLower.includes('spider')) {
+        return 'SILVERING'; // Mite symptoms
+      }
+      if (optionLower.includes('whitefly') || optionLower.includes('white fly')) {
+        return 'SOOTY_MOLD'; // Whitefly symptoms
+      }
+      if (optionLower.includes('hopper') || optionLower.includes('leafhopper')) {
+        return 'LEAF_TIP_BURN'; // Hopper symptoms
+      }
+      return 'SMALL_INSECTS_VISIBLE';
+      
     case ClarificationScope.IDENTIFY_INSECT_BEHAVIOR:
-      // Map flying/crawling behavior to proper VisualSymptom enum
-      if (optionText.includes('उडत') || optionText.includes('उड़') || optionText.toLowerCase().includes('fly')) {
+      // Behavior → symptom mapping (English canonical keywords)
+      if (optionLower.includes('flying') || optionLower.includes('fly')) {
         return 'FLYING_INSECTS_VISIBLE';
       }
-      if (optionText.includes('चालत') || optionText.includes('रांग') || optionText.includes('रेंग') || optionText.toLowerCase().includes('crawl')) {
+      if (optionLower.includes('crawling') || optionLower.includes('crawl')) {
         return 'CRAWLING_INSECTS_VISIBLE';
       }
-      if (optionText.includes('उड्या') || optionText.toLowerCase().includes('jump')) {
+      if (optionLower.includes('jumping') || optionLower.includes('jump') || optionLower.includes('hopping')) {
         return 'JUMPING_INSECTS_VISIBLE';
       }
-      return 'SMALL_INSECTS_VISIBLE'; // Default to generic insect presence
+      return 'SMALL_INSECTS_VISIBLE';
       
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PHASE-12: Plant Response Clarification (First-Order)
-    // Maps to VisualSymptom enum values that exist in canonical-state-builder
-    // ═══════════════════════════════════════════════════════════════════════════
     case ClarificationScope.IDENTIFY_PLANT_RESPONSE:
-      // Map visible plant responses to proper VisualSymptom enum
-      if (optionText.includes('वळ') || optionText.includes('मुड') || optionText.toLowerCase().includes('curl')) {
-        return 'CURLED_LEAVES';
+      // Plant response → symptom mapping (English canonical keywords)
+      if (optionLower.includes('wilting') || optionLower.includes('wilt') || optionLower.includes('droop')) {
+        return 'WILTING';
       }
-      if (optionText.includes('पिवळ') || optionText.includes('पीला') || optionText.toLowerCase().includes('yellow')) {
+      if (optionLower.includes('yellow') || optionLower.includes('chlorosis')) {
         return 'GENERAL_YELLOWING';
       }
-      if (optionText.includes('चिकट') || optionText.includes('चिपचिप') || optionText.toLowerCase().includes('sticky')) {
-        return 'HONEYDEW'; // Maps to HONEYDEW which is diagnostic
+      if (optionLower.includes('drying') || optionLower.includes('dry') || optionLower.includes('necrosis')) {
+        return 'LEAF_TIP_BURN';
       }
-      if (optionText.includes('छिद्र') || optionText.includes('भोक') || optionText.includes('छेद') || optionText.toLowerCase().includes('hole')) {
-        return 'LEAF_HOLES'; // Maps to proper enum
+      if (optionLower.includes('stunted') || optionLower.includes('poor growth')) {
+        return 'STUNTED_GROWTH';
       }
-      if (optionText.includes('काहीही नाही') || optionText.includes('कुछ नहीं') || optionText.toLowerCase().includes('no such') || optionText.toLowerCase().includes('nothing')) {
-        return 'INSECT_PRESENT_NO_DAMAGE'; // No visible damage - monitoring only
-      }
-      return 'SMALL_INSECTS_VISIBLE'; // Default
+      return 'UNKNOWN';
       
     default:
       return 'UNKNOWN';
@@ -1211,8 +1230,60 @@ export class AIAgentOrchestrator {
       // When pending_options > 0, COMPLETELY SKIP NLU pipeline - only process option selection
       // This is the CRITICAL FIX to prevent infinite clarification loops
       // ========================================
-      const pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
+      let pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
       const clarificationTurnCount = options.sessionState?.turnCount || 0;
+      
+      // ========================================
+      // NEW QUERY DETECTOR (CRITICAL FIX FOR DEADLOCK BUG)
+      // Detect when farmer is asking a NEW question vs selecting an option
+      // If NEW agricultural query detected, CLEAR pending options and proceed to NLU
+      // ========================================
+      if (pendingOptionsCount > 0) {
+        // Run Language Induction FIRST to detect new agricultural symptoms
+        const earlyInductionResult = induceCanonicalSymbols(farmerMessage);
+        const hasNewSymptoms = earlyInductionResult.symptoms.length > 0;
+        const hasNewCrop = earlyInductionResult.crop !== null;
+        
+        // Check if this looks like a new query rather than option selection
+        const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
+        const isNumericSelection = /^[१२३४१२३४1-4]$/.test(farmerMessage.trim());
+        const isOptionTextMatch = pendingOptions.some(opt => 
+          farmerMessage.toLowerCase().includes(opt.toLowerCase().slice(0, 10)) ||
+          opt.toLowerCase().includes(farmerMessage.toLowerCase())
+        );
+        const isLikelyNewQuery = (hasNewSymptoms || hasNewCrop) && 
+          !isNumericSelection && 
+          !isOptionTextMatch && 
+          farmerMessage.length > 20;
+        
+        // Agricultural symptom keywords that indicate a NEW problem
+        const newProblemKeywords = [
+          'problem', 'issue', 'help', 'damage', 'attack', 'disease', 'pest',
+          // English urgent
+          'dying', 'dead', 'wilting', 'yellowing', 'spots', 'holes',
+          // Marathi/Hindi urgent (detected via Language Induction)
+        ];
+        const hasNewProblemKeyword = newProblemKeywords.some(kw => 
+          farmerMessage.toLowerCase().includes(kw)
+        );
+        
+        const isNewAgriculturalQuery = isLikelyNewQuery || (hasNewProblemKeyword && !isNumericSelection && !isOptionTextMatch);
+        
+        if (isNewAgriculturalQuery) {
+          console.log('🆕 [NewQueryDetector] NEW agricultural query detected - clearing stale clarification');
+          console.log(`   Symptoms detected: ${earlyInductionResult.symptoms.map(s => s.symbol).join(', ')}`);
+          console.log(`   Crop detected: ${earlyInductionResult.crop?.symbol || 'none'}`);
+          console.log(`   Clearing ${pendingOptionsCount} pending options to proceed with fresh NLU`);
+          
+          // CLEAR pending options - this is a NEW query, not an option selection
+          pendingOptionsCount = 0;
+          if (options.sessionState) {
+            options.sessionState.pendingClarificationOptions = undefined;
+            options.sessionState.pendingClarificationScope = undefined;
+          }
+          // Fall through to regular NLU pipeline
+        }
+      }
       
       if (pendingOptionsCount > 0) {
         console.log('🔒 [Phase9.1-Fix] Clarification HARD GATE active - NLU pipeline BLOCKED');
