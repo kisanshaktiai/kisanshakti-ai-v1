@@ -1,21 +1,29 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CLARIFICATION-FIRST CONFIDENCE STRATEGY (v3.0.0)
+ * HYPOTHESIS-FIRST CLARIFICATION STRATEGY (v4.0.0)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
- * Treat clarification as a PRIMARY confidence-building step, not a fallback.
- * Generate clarification options SCOPED BY FAILURE CLASS.
+ * Source clarification options strictly from stage-scoped symbolic rule
+ * hypotheses instead of generic symptom buckets.
+ * 
+ * ARCHITECTURE:
+ * 1. HYPOTHESIS-FIRST: Pre-evaluate rules to build candidate hypothesis set
+ * 2. RULE-DRIVEN: Options sourced ONLY from candidate rules' observable_characteristics
+ * 3. DIFFERENTIATION: Rank by power to distinguish between hypotheses
+ * 4. STAGE-LOCKED: Enforce stage compatibility on all options
+ * 5. NON-GENERIC: Block generic output when crop/stage/candidates exist
  * 
  * RULES:
  * 1. Stage-Locked: Once crop stage is derived, lock it for entire turn
  * 2. Trigger Rule: If crop+stage known but symptoms partial → clarify BEFORE rules
- * 3. FAILURE CLASS FIRST: Determine primary failure class before generating options
- * 4. Rule-Driven: Options from decision_rules.observable_characteristics filtered by class
+ * 3. HYPOTHESIS-FIRST: Pre-evaluate rules before generating options
+ * 4. Rule-Driven: Options ONLY from candidate hypotheses' observable_characteristics
  * 5. Confidence Timing: Final confidence computed AFTER clarification response
  * 6. Canonical Rebuild: After clarification → map to symbols → re-run brain
  * 7. Decision Gate: Clarification + rule match → MUST return recommendation
  * 8. STAGE COMPATIBLE: All options must be valid for locked growth stage
+ * 9. NON-GENERIC: Never show generic symptom options when candidates exist
  * 
  * FAILURE CLASSES:
  * - ESTABLISHMENT_FAILURE: Plant death, gaps, poor emergence (NO leaf options)
@@ -41,8 +49,16 @@ import {
   logFailureClassDetection,
   ClarificationDomain
 } from '../decision/failure-class-detector.ts';
+import {
+  evaluateCandidateHypotheses,
+  CandidateHypothesis,
+  HypothesisEvaluationOutput,
+  calculateDifferentiationPower,
+  isObservationNDVIConsistent,
+  getVisualObservabilityScore
+} from '../decision/hypothesis-evaluator.ts';
 
-export const CLARIFICATION_STRATEGY_VERSION = '3.0.0';
+export const CLARIFICATION_STRATEGY_VERSION = '4.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -88,6 +104,14 @@ export interface RuleDrivenClarificationInput {
   detected_intent?: string;
   symptom_scope?: 'WHOLE_PLANT' | 'PART' | 'UNKNOWN';
   trace_id?: string;
+  // New: NDVI context for intelligent option ranking
+  ndvi_level?: string;
+  ndvi_trend?: string;
+  weather?: {
+    temp?: number;
+    humidity?: number;
+    rain_mm?: number;
+  };
 }
 
 export interface RuleDrivenOption {
@@ -96,17 +120,23 @@ export interface RuleDrivenOption {
   observation_key: string;
   rule_id: string;
   confidence_boost: number;
+  // New: Scoring metadata
+  differentiation_score?: number;
+  visual_score?: number;
 }
 
 export interface RuleDrivenClarificationOutput {
   question: string;
   options: RuleDrivenOption[];
-  source: 'DECISION_RULES' | 'FAILURE_CLASS_FALLBACK';
+  source: 'HYPOTHESIS_RULES' | 'DECISION_RULES' | 'FAILURE_CLASS_FALLBACK';
   stage_locked: string;
   generated_at: number;
   failure_class: FailureClass;
   fallback_used: boolean;
   fallback_reason?: string;
+  // New: Hypothesis metadata
+  candidate_hypotheses?: string[];
+  total_hypotheses_evaluated?: number;
 }
 
 export interface ConfidenceTimingResult {
@@ -276,13 +306,17 @@ export function shouldTriggerClarificationFirst(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// 3. RULE-DRIVEN CLARIFICATION ONLY
-// Generate options strictly from decision_rules metadata
+// 3. HYPOTHESIS-FIRST CLARIFICATION
+// Pre-evaluate rules, then source options ONLY from candidate hypotheses
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Fetch clarification options from decision_rules table.
- * SCOPED BY FAILURE CLASS - not generic symptom fallback.
+ * Fetch clarification options from candidate hypothesis rules.
+ * STEP 1: Pre-evaluate rules to build candidate hypothesis set
+ * STEP 2: Source options ONLY from candidate rules' observable_characteristics
+ * STEP 3: Rank by differentiation power and visual observability
+ * STEP 4: Enforce stage compatibility
+ * STEP 5: Block generic output when candidates exist
  */
 export async function fetchRuleDrivenClarificationOptions(
   input: RuleDrivenClarificationInput
@@ -290,13 +324,31 @@ export async function fetchRuleDrivenClarificationOptions(
   const { crop_code, stage, current_symptoms, language, supabaseClient } = input;
   const traceId = input.trace_id || `trace_${Date.now()}`;
   
-  console.log(`📊 [RuleDriven v3] Fetching clarification options for ${crop_code}/${stage}`);
+  console.log(`📊 [HypothesisFirst v4] Fetching clarification options for ${crop_code}/${stage}`);
   console.log(`   Current symptoms: ${current_symptoms.join(', ') || 'none'}`);
+  console.log(`   NDVI: ${input.ndvi_level || 'unknown'} (${input.ndvi_trend || 'unknown'})`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1: DETERMINE PRIMARY FAILURE CLASS
+  // STEP 1: PRE-EVALUATE RULES TO BUILD CANDIDATE HYPOTHESIS SET
   // ═══════════════════════════════════════════════════════════════════════════
   
+  const hypothesisResult = await evaluateCandidateHypotheses({
+    crop_code,
+    growth_stage: stage,
+    days_since_sowing: input.days_since_sowing ?? null,
+    ndvi_level: input.ndvi_level,
+    ndvi_trend: input.ndvi_trend,
+    weather: input.weather,
+    known_observations: current_symptoms,
+    user_query: input.user_query || '',
+    supabaseClient,
+    trace_id: traceId
+  });
+  
+  const candidates = hypothesisResult.candidates;
+  console.log(`   🎯 [HypothesisFirst] Found ${candidates.length} candidate hypotheses`);
+  
+  // Also determine failure class for fallback purposes
   const failureClassInput: FailureClassInput = {
     crop_code,
     growth_stage: stage,
@@ -306,158 +358,219 @@ export async function fetchRuleDrivenClarificationOptions(
     symptoms: current_symptoms,
     symptom_scope: input.symptom_scope || 'UNKNOWN'
   };
-  
   const failureResult = detectPrimaryFailureClass(failureClassInput);
   const domain = getClarificationDomain(failureResult.primary_class);
   
-  console.log(`   🎯 Failure Class: ${failureResult.primary_class} (${(failureResult.confidence * 100).toFixed(0)}%)`);
-  console.log(`   📦 Domain: ${domain.name}, Excluded: ${domain.excluded_observations.join(', ') || 'none'}`);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2: SOURCE OPTIONS ONLY FROM CANDIDATE RULES
+  // If candidates exist, do NOT fall back to generic symptom lists
+  // ═══════════════════════════════════════════════════════════════════════════
   
-  try {
-    // ═══════════════════════════════════════════════════════════════════════════
-    // STEP 2: QUERY RULES FILTERED BY FAILURE CLASS DOMAIN
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    let query = supabaseClient
-      .from('decision_rules')
-      .select(`
-        id,
-        rule_id,
-        canonical_group,
-        observable_characteristics,
-        differentiating_questions,
-        conditions_json,
-        stage_applicable
-      `)
-      .eq('is_active', true)
-      .ilike('crop_code', crop_code)
-      .or(`stage_applicable.cs.{${stage}},stage_applicable.is.null`)
-      .not('observable_characteristics', 'is', null)
-      .limit(15);
-    
-    // Filter by canonical_group if domain has specific groups
-    if (domain.canonical_groups.length > 0) {
-      const groupFilter = domain.canonical_groups.map(g => `canonical_group.ilike.%${g}%`).join(',');
-      query = query.or(groupFilter);
-    }
-    
-    const { data: rules, error } = await query;
-    
-    if (error) {
-      console.error(`   ❌ [RuleDriven] Database error:`, error);
-      return useFailureClassFallback(failureResult, stage, language, traceId, 'DATABASE_ERROR');
-    }
-    
-    if (!rules || rules.length === 0) {
-      console.log(`   ⚠️ [RuleDriven] No rules found - using failure class fallback`);
-      return useFailureClassFallback(failureResult, stage, language, traceId, 'NO_RULES_FOUND');
-    }
-    
-    console.log(`   📦 [RuleDriven] Found ${rules.length} rules for ${domain.name} domain`);
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // STEP 3: EXTRACT AND FILTER OPTIONS BY FAILURE CLASS
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    interface ScoredOption extends RuleDrivenOption {
-      score: number;
-      is_visual: boolean;
-      differentiates_count: number;
-    }
-    
-    const scoredOptions: ScoredOption[] = [];
-    
-    for (const rule of rules) {
-      const characteristics = rule.observable_characteristics;
-      if (!characteristics) continue;
-      
-      const charArray = Array.isArray(characteristics) ? characteristics : [characteristics];
-      
-      for (const char of charArray) {
-        const optionId = char.observation_key || char.id || `opt_${scoredOptions.length}`;
-        
-        // STEP 3a: Exclude observations not compatible with failure class
-        if (domain.excluded_observations.some(exc => optionId.toUpperCase().includes(exc))) {
-          console.log(`   ⛔ Excluding ${optionId} (not compatible with ${failureResult.primary_class})`);
-          continue;
-        }
-        
-        // STEP 4: Exclude observations not compatible with growth stage
-        if (!isObservationStageCompatible(optionId, stage)) {
-          continue;
-        }
-        
-        // Skip if already known or added
-        if (current_symptoms.some(s => s.toLowerCase() === optionId.toLowerCase())) continue;
-        if (scoredOptions.some(o => o.id === optionId)) continue;
-        
-        const label = char[`label_${language}`] || char.label_en || char.label || optionId;
-        const isVisual = isVisuallyObservable(optionId, label);
-        
-        // Calculate score with failure class boost
-        let score = 0;
-        const ruleStages = rule.stage_applicable || [];
-        if (Array.isArray(ruleStages) && ruleStages.some((s: string) => s.toUpperCase() === stage.toUpperCase())) {
-          score += 30;
-        }
-        if (isVisual) score += 20;
-        score += (char.confidence_boost || 0.15) * 10;
-        
-        scoredOptions.push({
-          id: optionId,
-          label,
-          observation_key: char.observation_key || optionId,
-          rule_id: rule.rule_id,
-          confidence_boost: char.confidence_boost || 0.15,
-          score,
-          is_visual: isVisual,
-          differentiates_count: 1
-        });
-      }
-    }
-    
-    // Sort and take top 3
-    scoredOptions.sort((a, b) => b.score - a.score);
-    const options: RuleDrivenOption[] = scoredOptions.slice(0, 3).map(opt => ({
-      id: opt.id,
-      label: opt.label,
-      observation_key: opt.observation_key,
-      rule_id: opt.rule_id,
-      confidence_boost: opt.confidence_boost
-    }));
-    
-    if (options.length === 0) {
-      console.log(`   ⚠️ [RuleDriven] No valid options after filtering - using fallback`);
-      return useFailureClassFallback(failureResult, stage, language, traceId, 'ALL_OPTIONS_FILTERED');
-    }
-    
-    // Generate failure-class-appropriate question
-    const question = getFailureClassQuestion(failureResult.primary_class, stage, language);
-    
-    // Log for audit
-    logFailureClassDetection(traceId, failureClassInput, failureResult, domain.name, false, null);
-    
-    console.log(`   ✅ [RuleDriven] Generated ${options.length} options scoped to ${failureResult.primary_class}`);
-    
-    return {
-      question,
-      options,
-      source: 'DECISION_RULES',
-      stage_locked: stage,
-      generated_at: Date.now(),
-      failure_class: failureResult.primary_class,
-      fallback_used: false
-    };
-  } catch (err) {
-    console.error(`   ❌ [RuleDriven] Error:`, err);
-    return useFailureClassFallback(failureResult, stage, language, traceId, 'EXCEPTION');
+  if (candidates.length === 0) {
+    console.log(`   ⚠️ [HypothesisFirst] No candidates - using failure class fallback`);
+    return useHypothesisFallback(failureResult, stage, language, traceId, 'NO_CANDIDATES');
   }
+  
+  // Collect all observable characteristics from candidate rules
+  interface ScoredHypothesisOption {
+    id: string;
+    label: string;
+    observation_key: string;
+    rule_id: string;
+    confidence_boost: number;
+    differentiation_score: number;
+    visual_score: number;
+    ndvi_consistent: boolean;
+    total_score: number;
+  }
+  
+  const allOptions: ScoredHypothesisOption[] = [];
+  const seenOptions = new Set<string>();
+  
+  for (const candidate of candidates) {
+    for (const char of candidate.observable_characteristics) {
+      const optionKey = char.observation_key.toUpperCase();
+      
+      // Skip duplicates
+      if (seenOptions.has(optionKey)) continue;
+      
+      // STEP 3a: Exclude observations not compatible with failure class domain
+      if (domain.excluded_observations.some(exc => optionKey.includes(exc))) {
+        console.log(`   ⛔ Excluding ${char.observation_key} (excluded by ${failureResult.primary_class} domain)`);
+        continue;
+      }
+      
+      // STEP 4: Enforce stage compatibility
+      if (!isObservationStageCompatible(char.observation_key, stage)) {
+        console.log(`   ⛔ Excluding ${char.observation_key} (stage incompatible with ${stage})`);
+        continue;
+      }
+      
+      // Skip if already known
+      if (current_symptoms.some(s => s.toUpperCase() === optionKey)) continue;
+      
+      seenOptions.add(optionKey);
+      
+      // Get label in requested language
+      const label = char[`label_${language}` as keyof typeof char] as string || 
+                    char.label_en || 
+                    char.observation_key;
+      
+      // Calculate differentiation power (Step 4 of request)
+      const differentiationScore = calculateDifferentiationPower(char.observation_key, candidates);
+      
+      // Calculate visual observability score
+      const visualScore = getVisualObservabilityScore(char.observation_key);
+      
+      // Check NDVI consistency
+      const ndviConsistent = isObservationNDVIConsistent(
+        char.observation_key, 
+        input.ndvi_level, 
+        input.ndvi_trend
+      );
+      
+      // Calculate total score (no new scoring systems - simple ordering)
+      // Differentiation power (40%) + Visual observability (30%) + NDVI consistency (30%)
+      const totalScore = (differentiationScore * 0.4) + 
+                         (visualScore * 0.3) + 
+                         (ndviConsistent ? 0.3 : 0);
+      
+      allOptions.push({
+        id: char.id,
+        label,
+        observation_key: char.observation_key,
+        rule_id: candidate.rule_id,
+        confidence_boost: char.confidence_boost || 0.15,
+        differentiation_score: differentiationScore,
+        visual_score: visualScore,
+        ndvi_consistent: ndviConsistent,
+        total_score: totalScore
+      });
+    }
+  }
+  
+  console.log(`   📦 [HypothesisFirst] Extracted ${allOptions.length} unique options from ${candidates.length} candidates`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 5: GUARANTEE NON-GENERIC OUTPUT
+  // If we have candidates but no valid options after filtering, regenerate
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  if (allOptions.length === 0 && candidates.length > 0) {
+    console.log(`   ⚠️ [HypothesisFirst] All options filtered - attempting regeneration from candidates`);
+    
+    // Try to extract ANY observation from candidates, relaxing some filters
+    for (const candidate of candidates) {
+      for (const char of candidate.observable_characteristics) {
+        // Only apply stage filter (mandatory)
+        if (!isObservationStageCompatible(char.observation_key, stage)) continue;
+        if (seenOptions.has(char.observation_key.toUpperCase())) continue;
+        if (current_symptoms.some(s => s.toUpperCase() === char.observation_key.toUpperCase())) continue;
+        
+        const label = char[`label_${language}` as keyof typeof char] as string || 
+                      char.label_en || 
+                      char.observation_key;
+        
+        allOptions.push({
+          id: char.id,
+          label,
+          observation_key: char.observation_key,
+          rule_id: candidate.rule_id,
+          confidence_boost: char.confidence_boost || 0.15,
+          differentiation_score: 0.5,
+          visual_score: 0.5,
+          ndvi_consistent: true,
+          total_score: 0.5
+        });
+        
+        seenOptions.add(char.observation_key.toUpperCase());
+        
+        // Stop after getting 3 options
+        if (allOptions.length >= 3) break;
+      }
+      if (allOptions.length >= 3) break;
+    }
+  }
+  
+  // Final fallback if still no options
+  if (allOptions.length === 0) {
+    console.log(`   ⚠️ [HypothesisFirst] No options after regeneration - using fallback`);
+    return useHypothesisFallback(failureResult, stage, language, traceId, 'ALL_OPTIONS_FILTERED');
+  }
+  
+  // Sort by total score and take top 3
+  allOptions.sort((a, b) => b.total_score - a.total_score);
+  const topOptions = allOptions.slice(0, 3);
+  
+  // Build final options array
+  const options: RuleDrivenOption[] = topOptions.map(opt => ({
+    id: opt.id,
+    label: opt.label,
+    observation_key: opt.observation_key,
+    rule_id: opt.rule_id,
+    confidence_boost: opt.confidence_boost,
+    differentiation_score: opt.differentiation_score,
+    visual_score: opt.visual_score
+  }));
+  
+  // Generate hypothesis-aware question
+  const question = getHypothesisAwareQuestion(candidates, stage, language);
+  
+  // Log for audit
+  logFailureClassDetection(traceId, failureClassInput, failureResult, domain.name, false, null);
+  
+  console.log(`   ✅ [HypothesisFirst] Generated ${options.length} hypothesis-driven options`);
+  options.forEach((opt, i) => {
+    console.log(`      ${i + 1}. ${opt.observation_key} (diff: ${topOptions[i].differentiation_score.toFixed(2)}, visual: ${topOptions[i].visual_score.toFixed(2)})`);
+  });
+  
+  return {
+    question,
+    options,
+    source: 'HYPOTHESIS_RULES',
+    stage_locked: stage,
+    generated_at: Date.now(),
+    failure_class: failureResult.primary_class,
+    fallback_used: false,
+    candidate_hypotheses: candidates.map(c => c.cause),
+    total_hypotheses_evaluated: hypothesisResult.total_rules_evaluated
+  };
 }
 
 /**
- * Generate failure-class-specific fallback when no rule-driven options found.
+ * Generate a question that reflects the candidate hypotheses being tested.
  */
-function useFailureClassFallback(
+function getHypothesisAwareQuestion(
+  candidates: CandidateHypothesis[],
+  stage: string,
+  language: 'mr' | 'hi' | 'en'
+): string {
+  // If single candidate, ask specifically about it
+  if (candidates.length === 1) {
+    const cause = candidates[0].cause;
+    const questions: Record<string, string> = {
+      mr: `🔍 ${cause} साठी, ${stage} अवस्थेत तुम्हाला खालीलपैकी काय दिसते?`,
+      hi: `🔍 ${cause} के लिए, ${stage} अवस्था में आपको इनमें से क्या दिखाई देता है?`,
+      en: `🔍 For ${cause} in ${stage} stage, which of these do you observe?`
+    };
+    return questions[language] || questions.en;
+  }
+  
+  // Multiple candidates - ask to differentiate
+  const causeList = candidates.slice(0, 2).map(c => c.cause).join(' / ');
+  const questions: Record<string, string> = {
+    mr: `🔍 ${causeList} यातील फरक ओळखण्यासाठी, ${stage} अवस्थेत तुम्हाला काय दिसते?`,
+    hi: `🔍 ${causeList} में अंतर जानने के लिए, ${stage} अवस्था में आपको क्या दिखाई देता है?`,
+    en: `🔍 To distinguish between ${causeList} in ${stage} stage, what do you observe?`
+  };
+  return questions[language] || questions.en;
+}
+
+/**
+ * Fallback when no hypothesis candidates or all options filtered.
+ * Uses failure-class-specific options, NOT generic symptom lists.
+ */
+function useHypothesisFallback(
   failureResult: FailureClassResult,
   stage: string,
   language: 'mr' | 'hi' | 'en',
@@ -481,7 +594,20 @@ function useFailureClassFallback(
   
   const question = getFailureClassQuestion(failureResult.primary_class, stage, language);
   
-  console.log(`   🔄 [Fallback] Using ${failureResult.primary_class} fallback (${options.length} options)`);
+  console.log(`   🔄 [HypothesisFallback] Using ${failureResult.primary_class} fallback (${options.length} options)`);
+  console.log(`   📝 Fallback reason: ${reason}`);
+  
+  // Log for audit
+  const failureClassInput: FailureClassInput = {
+    crop_code: '',
+    growth_stage: stage,
+    days_since_sowing: null,
+    user_query: '',
+    detected_intent: '',
+    symptoms: [],
+    symptom_scope: 'UNKNOWN'
+  };
+  logFailureClassDetection(traceId, failureClassInput, failureResult, 'FALLBACK', true, reason);
   
   return {
     question,
@@ -494,6 +620,8 @@ function useFailureClassFallback(
     fallback_reason: reason
   };
 }
+
+// Legacy useFailureClassFallback removed - replaced by useHypothesisFallback
 
 /**
  * Get failure-class-specific question template.
