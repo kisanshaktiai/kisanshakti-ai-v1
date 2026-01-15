@@ -1079,10 +1079,10 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     vegetation_uniformity: VegetationUniformity.UNKNOWN,
     ndvi_data_age_hours: ndviAgeHours,
     
-    // Soil (with NOT_TESTED distinction)
-    soil_nitrogen: soilTested ? mapNitrogenToEnum(soilN) : NutrientLevel.UNKNOWN,
-    soil_phosphorus: soilTested ? mapPhosphorusToEnum(soilP) : NutrientLevel.UNKNOWN,
-    soil_potassium: soilTested ? mapPotassiumToEnum(soilK) : NutrientLevel.UNKNOWN,
+    // Soil (with NOT_TESTED distinction) - FIXED: Use correct enum types
+    soil_nitrogen: soilTested ? mapNitrogenToEnum(soilN) : SoilNitrogen.UNKNOWN,
+    soil_phosphorus: soilTested ? mapPhosphorusToEnum(soilP) : SoilPhosphorus.UNKNOWN,
+    soil_potassium: soilTested ? mapPotassiumToEnum(soilK) : SoilPotassium.UNKNOWN,
     soil_ph: mapPHToEnum(soilPH),
     soil_organic_carbon: mapOrganicCarbonToEnum(soilOC),
     soil_data_age_days: soilAgeDays,
