@@ -352,7 +352,17 @@ import {
   CLARIFICATION_STRATEGY_VERSION
 } from './clarification-strategy.ts';
 
-export const ORCHESTRATOR_VERSION = '4.0.0'; // Phase-22 v4: Crop damage triggers diagnosis mode
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-22.5: HYPOTHESIS EVALUATOR FOR DIAGNOSIS-FIRST FLOW
+// Pre-evaluate rules to build candidate hypothesis set BEFORE clarification
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  evaluateCandidateHypotheses,
+  type CandidateHypothesis,
+  type HypothesisEvaluationOutput
+} from '../decision/hypothesis-evaluator.ts';
+
+export const ORCHESTRATOR_VERSION = '4.1.0'; // Phase-22.5: Diagnosis-First mode with hypothesis-driven options
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-21: CANONICAL CONTEXT CONTRACT IMPORTS
@@ -392,6 +402,19 @@ import {
   type CropDamageDetectionResult, // v4.0: Enhanced result type
   type PreAuthorityGateResult // v3.0: Pre-authority gate result type
 } from '../decision/diagnosis-only-mode.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-22.5: DIAGNOSIS-FIRST GENERATOR
+// When crop damage detected with land context, show hypothesis-driven options
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  generateDiagnosisFirstResponse,
+  createUnknownDiagnosisResponse,
+  formatForClarificationUI,
+  DIAGNOSIS_FIRST_VERSION,
+  type DiagnosisFirstOutput,
+  type DiagnosisOption
+} from '../decision/diagnosis-first-generator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
@@ -2285,14 +2308,134 @@ export class AIAgentOrchestrator {
         understandingResult.clarification_required = false;
         bypassClarification = true;
       } else if (diagnosisWithOptionalClarification) {
-        console.log(`\n🌾 [DIAGNOSIS MODE v4.0] Rules will execute with optional clarification`);
+        console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
-        console.log(`   Mode=DIAGNOSIS`);
+        console.log(`   Mode=DIAGNOSIS_FIRST`);
         console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
-        console.log(`   RulesExecuted=DIAGNOSIS`);
-        console.log(`   Clarification=OPTIONAL (for confirmation)`);
-        agentsUsed.push('DIAGNOSIS_WITH_CLARIFICATION_V4');
+        console.log(`   Source=DECISION_RULES`);
+        console.log(`   Clarification=HYPOTHESIS_DRIVEN (NOT generic)`);
+        agentsUsed.push('DIAGNOSIS_FIRST_MODE');
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // DIAGNOSIS-FIRST: Run hypothesis evaluation IMMEDIATELY
+        // This MUST happen BEFORE any generic clarification
+        // ═══════════════════════════════════════════════════════════════════════════
+        try {
+          const cropCode = canonicalContext?.crop_code || landContext?.current_crop?.toUpperCase() || 'UNKNOWN';
+          const growthStage = canonicalContext?.growth_stage || landContext?.growth_stage || 'UNKNOWN';
+          const currentObservations = [...allObservationsForPreAuth].map(o => String(o));
+          
+          console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
+          console.log(`   📊 Observations: ${currentObservations.slice(0, 5).join(', ')}`);
+          
+          const hypothesisResult = await evaluateCandidateHypotheses({
+            crop_code: cropCode,
+            growth_stage: growthStage,
+            days_since_sowing: canonicalContext?.days_since_sowing || landContext?.days_since_sowing || null,
+            ndvi_level: landContext?.ndvi?.level,
+            ndvi_trend: landContext?.ndvi?.trend,
+            known_observations: currentObservations,
+            user_query: farmerMessage,
+            supabaseClient: this.supabase,
+            trace_id: traceId
+          });
+          
+          agentsUsed.push('HYPOTHESIS_EVALUATOR');
+          
+          console.log(`   🎯 Found ${hypothesisResult.candidates.length} candidate hypotheses`);
+          
+          // Generate diagnosis-first response
+          let diagnosisFirstOutput: DiagnosisFirstOutput | null = null;
+          
+          if (hypothesisResult.candidates.length > 0) {
+            diagnosisFirstOutput = generateDiagnosisFirstResponse({
+              hypotheses: hypothesisResult.candidates,
+              crop_code: cropCode,
+              growth_stage: growthStage,
+              current_observations: currentObservations,
+              language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+              damage_observations: cropDamageResult.damage_observations,
+              trace_id: traceId
+            });
+          } else {
+            // No candidates - generate UNKNOWN diagnosis response
+            console.log(`   ⚠️ No hypothesis candidates - generating UNKNOWN diagnosis`);
+            diagnosisFirstOutput = createUnknownDiagnosisResponse(
+              cropCode,
+              growthStage,
+              cropDamageResult.damage_observations,
+              (options.language || 'mr') as 'mr' | 'hi' | 'en',
+              traceId
+            );
+          }
+          
+          if (diagnosisFirstOutput) {
+            agentsUsed.push('DIAGNOSIS_FIRST_GENERATOR');
+            
+            // Convert to clarification UI format and return immediately
+            const clarificationFormat = formatForClarificationUI(diagnosisFirstOutput);
+            
+            console.log(`\n═══════════════════════════════════════════════════════════════`);
+            console.log(`🔬 [DIAGNOSIS-FIRST] Returning hypothesis-driven options`);
+            console.log(`   Mode=DIAGNOSIS_FIRST`);
+            console.log(`   Source=DECISION_RULES`);
+            console.log(`   Clarification=HYPOTHESIS_DRIVEN`);
+            console.log(`   Options=${diagnosisFirstOutput.diagnoses.length} diagnoses + photo`);
+            console.log(`   Top causes: ${diagnosisFirstOutput.diagnoses.slice(0, 3).map(d => d.cause).join(', ')}`);
+            console.log(`═══════════════════════════════════════════════════════════════\n`);
+            
+            // Return diagnosis-first options to UI
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              communication: {
+                message_id: crypto.randomUUID(),
+                decision_id: `diag_first_${Date.now()}`,
+                session_id: sessionId,
+                farmer_id: farmerId,
+                language: options.language || 'mr',
+                format: 'RICH_TEXT',
+                tone: 'PROFESSIONAL',
+                created_at: new Date().toISOString(),
+                main_message: {
+                  full_text: {
+                    mr: diagnosisFirstOutput.question_text,
+                    hi: diagnosisFirstOutput.question_text,
+                    en: diagnosisFirstOutput.question_text
+                  }
+                },
+                quick_actions: [],
+                metadata: {
+                  word_count: diagnosisFirstOutput.question_text.split(/\s+/).length,
+                  reading_time_seconds: 5,
+                  complexity_score: 0.5,
+                  template_type: 'DIAGNOSIS_FIRST',
+                  sections_included: ['main_message', 'clarification_options']
+                }
+              } as any,
+              metadata: {
+                confidence: 0.7,
+                safety_status: 'NEEDS_CONFIRMATION',
+                rules_applied: diagnosisFirstOutput.total_hypotheses_considered,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed,
+                trace_id: traceId,
+                clarification_scope: 'DIAGNOSTIC_CONFIRMATION',
+                scope_validation_passed: true,
+                pendingClarificationOptions: clarificationFormat.options,
+                orchestratorType: 'DIAGNOSTIC_CONFIRMATION',
+                canonicalContext: canonicalContext,
+                diagnosisFirstMode: true,
+                cropDamageDetected: true,
+                damageObservations: cropDamageResult.damage_observations
+              }
+            };
+          }
+        } catch (diagnosisFirstError) {
+          console.error(`   ❌ Diagnosis-first generation failed:`, diagnosisFirstError);
+          // Fall through to standard clarification flow
+        }
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
