@@ -1,23 +1,32 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSIS-ONLY MODE (v1.0.0)
+ * DIAGNOSIS-ONLY MODE (v2.0.0)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * SENIOR AGRONOMIST PRINCIPLE:
- * "When I see terminal damage with known crop context, I state my diagnosis 
- * confidently. I don't ask the farmer to reconfirm what they already told me."
+ * "When crops die, we diagnose causes — we do not ask permission from NLU."
  * 
- * ACTIVATION CRITERIA:
- * 1. Canonical context is LOCKED (crop + stage known)
- * 2. Terminal damage indicators present (SEEDLING_DIED, PLANT_DIED, etc.)
- * 3. Sufficient observations for rule evaluation
+ * HARD INVARIANT:
+ * If any terminal damage ObservationKey is present (SEEDLING_DIED, PLANT_DIED,
+ * AFFECTED_PART_WHOLE, or PATCHY_DAMAGE + SEVERITY_HIGH), then:
  * 
- * BEHAVIOR:
- * 1. SKIP all clarification logic entirely
- * 2. SKIP IDENTIFY_LOCATION, IDENTIFY_PART, and generic scopes
- * 3. IMMEDIATELY execute symbolic rule engine
- * 4. Present top 1-3 diagnoses ranked by confidence
- * 5. Offer photo ONLY as optional confirmation (not a question)
+ * - Diagnosis authority is AUTOMATICALLY granted to CROP domain
+ * - NLU fields (hasPestOrDisease, intent, confidence) are IGNORED
+ * - authority = NONE is IMPOSSIBLE when terminal damage exists
+ * - Diagnosis-Only Mode activates BEFORE authority resolution
+ * - Clarification is PERMANENTLY SKIPPED
+ * 
+ * ACTIVATION SEQUENCE (runs BEFORE authority-resolver.ts):
+ * 1. Detect terminal damage from ObservationKeys (not NLU)
+ * 2. If detected + crop/stage known → FORCE CROP authority
+ * 3. SKIP clarification entirely
+ * 4. Run hypothesis-first rule evaluation immediately
+ * 5. Present diagnosis directly from decision_rules
+ * 
+ * NLU GATING PERMANENTLY DISABLED FOR:
+ * - hasPestOrDisease checks
+ * - intent classification
+ * - confidence thresholds
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -30,7 +39,70 @@ import {
   getDetectedTerminalDamage 
 } from './canonical-context-contract.ts';
 
-export const DIAGNOSIS_ONLY_MODE_VERSION = '1.0.0';
+import {
+  DecisionAuthority,
+  AuthorityStatus,
+  ResponseMode,
+  type AuthorityDecision
+} from './authority-types.ts';
+
+export const DIAGNOSIS_ONLY_MODE_VERSION = '2.0.0';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXTENDED TERMINAL DAMAGE DETECTION (v2.0 - Observation-Derived Authority)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extended terminal damage indicators - any of these FORCE CROP authority.
+ * These are ObservationKeys that represent terminal/severe plant damage.
+ */
+export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
+  // Direct terminal damage
+  'SEEDLING_DIED',
+  'PLANT_DIED',
+  'PLANT_DEATH',
+  'DEAD_SEEDLINGS',
+  'CROP_FAILURE',
+  'ESTABLISHMENT_FAILURE',
+  
+  // Whole-plant/severe damage
+  'AFFECTED_PART_WHOLE',
+  'ENTIRE_PLANT_AFFECTED',
+  'WILTING_SEVERE',
+  'PLANT_DRYING',
+  'COMPLETE_DRYING',
+  
+  // Terminal patterns
+  'PATCHY_DAMAGE',
+  'GAPS_IN_FIELD',
+  'DEAD_PATCHES',
+  
+  // Borer terminal symptoms
+  'DEAD_HEART',
+  'DEAD_HEART_VISIBLE',
+  'STEM_BORED',
+  'STEM_TUNNELING',
+  
+  // Root/base terminal damage
+  'ROOT_DAMAGE',
+  'ROOT_DECAY',
+  'BASE_ROT',
+  'COLLAR_ROT',
+  'TERMITE_DAMAGE',
+  'MUD_TUBES_VISIBLE'
+]);
+
+/**
+ * Severity modifiers that combine with PATCHY_DAMAGE to trigger terminal mode.
+ */
+export const SEVERITY_ESCALATORS = new Set([
+  'SEVERITY_HIGH',
+  'SEVERITY_CRITICAL',
+  'ENTIRE_FIELD_AFFECTED',
+  'AFFECTED_PERCENTAGE_HIGH',
+  'WIDESPREAD_DAMAGE',
+  'RAPID_SPREAD'
+]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -61,6 +133,11 @@ export interface DiagnosisOnlyOutput {
   clarification_status: 'SKIPPED';
   source: 'DECISION_RULES';
   context_status: 'LOCKED';
+  
+  // v2.0: Authority enforcement
+  authority: 'CROP';
+  authority_source: 'TERMINAL_DAMAGE_OBSERVATION';
+  nlu_gating: 'DISABLED';
   
   // Top diagnoses (ranked by confidence)
   diagnoses: DiagnosisResult[];
@@ -109,71 +186,256 @@ export interface MatchedRule {
   evidence_matched?: string[];
 }
 
+/**
+ * Terminal Damage Detection Result - v2.0
+ * Includes authority enforcement data for upstream use.
+ */
+export interface TerminalDamageDetectionResult {
+  detected: boolean;
+  terminal_damage: string[];
+  severity_escalators: string[];
+  
+  // v2.0: Authority enforcement
+  enforced_authority: DecisionAuthority.CROP | null;
+  nlu_gating_disabled: boolean;
+  reason: string;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
-// ACTIVATION CHECK: Should we use Diagnosis-Only Mode?
+// v2.0: TERMINAL DAMAGE DETECTION (RUNS BEFORE AUTHORITY RESOLUTION)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Detect terminal damage from observations.
+ * This runs BEFORE authority resolution to enforce CROP authority.
+ * 
+ * NLU GATING IS COMPLETELY BYPASSED for:
+ * - hasPestOrDisease checks
+ * - intent classification
+ * - confidence thresholds
+ * 
+ * Authority is derived from OBSERVATIONS, not NLU.
+ */
+export function detectTerminalDamageForAuthority(
+  observations: Set<string> | string[]
+): TerminalDamageDetectionResult {
+  const obsSet = observations instanceof Set ? observations : new Set(observations);
+  
+  const detectedTerminal: string[] = [];
+  const detectedSeverity: string[] = [];
+  
+  // Check direct terminal damage indicators
+  TERMINAL_DAMAGE_OBSERVATION_KEYS.forEach(key => {
+    if (obsSet.has(key)) {
+      detectedTerminal.push(key);
+    }
+  });
+  
+  // Check severity escalators
+  SEVERITY_ESCALATORS.forEach(key => {
+    if (obsSet.has(key)) {
+      detectedSeverity.push(key);
+    }
+  });
+  
+  // Terminal damage detected via direct indicators
+  const hasDirectTerminal = detectedTerminal.length > 0;
+  
+  // Terminal damage via PATCHY_DAMAGE + HIGH SEVERITY combination
+  const hasPatchyWithSeverity = 
+    obsSet.has('PATCHY_DAMAGE') && detectedSeverity.length > 0;
+  
+  const terminalDetected = hasDirectTerminal || hasPatchyWithSeverity;
+  
+  if (terminalDetected) {
+    console.log(`\n🔬 [TerminalDamageDetector] Terminal damage DETECTED from ObservationKeys`);
+    console.log(`   Mode=DIAGNOSIS_ONLY`);
+    console.log(`   Authority=CROP (ENFORCED)`);
+    console.log(`   NLU_GATING=DISABLED`);
+    console.log(`   Terminal indicators: ${detectedTerminal.join(', ')}`);
+    if (hasPatchyWithSeverity) {
+      console.log(`   Severity escalators: PATCHY_DAMAGE + ${detectedSeverity.join(', ')}`);
+    }
+    console.log(`   Source=OBSERVATION_KEYS`);
+    
+    return {
+      detected: true,
+      terminal_damage: detectedTerminal,
+      severity_escalators: detectedSeverity,
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: true,
+      reason: 'TERMINAL_DAMAGE_OBSERVATION_DETECTED'
+    };
+  }
+  
+  return {
+    detected: false,
+    terminal_damage: [],
+    severity_escalators: [],
+    enforced_authority: null,
+    nlu_gating_disabled: false,
+    reason: 'NO_TERMINAL_DAMAGE'
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v2.0: ENFORCED AUTHORITY DECISION (Overrides authority-resolver.ts)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create an enforced CROP authority decision for terminal damage.
+ * This OVERRIDES the normal authority-resolver.ts output.
+ * 
+ * HARD INVARIANT: When terminal damage is detected, authority = CROP.
+ */
+export function createEnforcedCropAuthority(
+  terminalDamage: string[],
+  observations: Set<string> | string[]
+): AuthorityDecision {
+  const obsSet = observations instanceof Set ? observations : new Set(observations);
+  
+  console.log(`\n🚨 [EnforcedAuthority] CROP authority ENFORCED by terminal damage`);
+  console.log(`   Terminal damage: ${terminalDamage.join(', ')}`);
+  console.log(`   NLU gating: DISABLED`);
+  console.log(`   Authority-resolver: BYPASSED`);
+  
+  return {
+    authority: DecisionAuthority.CROP,
+    authority_status: AuthorityStatus.CONFIRMED,
+    blocked_domains: [],
+    allowed_domains: [
+      DecisionAuthority.CROP,
+      DecisionAuthority.SAFETY
+    ],
+    reason: `Terminal damage detected (${terminalDamage.join(', ')}) - CROP authority ENFORCED`,
+    treatments_allowed: true,
+    response_mode: ResponseMode.TREATMENT,
+    resolver_version: `DIAGNOSIS_ONLY_MODE_v${DIAGNOSIS_ONLY_MODE_VERSION}`,
+    resolved_at: new Date().toISOString()
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v2.0: HARD ASSERTION (INVARIANT ENFORCEMENT)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * HARD ASSERTION: If terminal damage is detected, authority MUST be CROP.
+ * 
+ * @throws Error if invariant is violated
+ */
+export function assertTerminalDamageAuthority(
+  terminalDamageDetected: boolean,
+  authority: DecisionAuthority
+): void {
+  if (terminalDamageDetected && authority !== DecisionAuthority.CROP) {
+    const errorMsg = `INVARIANT VIOLATION: Terminal damage detected but authority is ${authority}, not CROP. ` +
+      `When terminal damage is present, authority MUST be CROP. This indicates a bug in the authority resolution flow.`;
+    
+    console.error(`\n🚨🚨🚨 [INVARIANT VIOLATION] ${errorMsg}`);
+    console.error(`   Expected: authority = CROP`);
+    console.error(`   Actual: authority = ${authority}`);
+    console.error(`   Action: THROWING FATAL ERROR`);
+    
+    throw new Error(errorMsg);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ACTIVATION CHECK: Should we use Diagnosis-Only Mode? (v2.0 - Observation-First)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Check if Diagnosis-Only Mode should be activated.
  * 
+ * v2.0 CHANGES:
+ * - Runs BEFORE authority resolution
+ * - Detects terminal damage from ObservationKeys, NOT NLU
+ * - NLU fields (hasPestOrDisease, intent, confidence) are IGNORED
+ * - Authority is ENFORCED from observations
+ * 
  * ACTIVATION CRITERIA:
- * 1. Canonical context is locked (crop + stage known)
- * 2. Terminal damage indicators present
- * 3. At least 1 rule matched (evidence exists)
+ * 1. Terminal damage detected from ObservationKeys
+ * 2. Canonical context is locked (crop + stage known)
+ * 
+ * Note: matchedRulesCount is no longer required for activation.
+ * Terminal damage detection itself grants diagnostic authority.
  */
 export function shouldActivateDiagnosisOnlyMode(
   canonicalContext: CanonicalContext | null,
   observations: Set<string> | string[],
-  matchedRulesCount: number
-): { activate: boolean; reason: string; terminal_damage: string[] } {
-  // Check 1: Context must be locked
+  matchedRulesCount: number = 1 // Kept for backward compatibility, but no longer blocking
+): { 
+  activate: boolean; 
+  reason: string; 
+  terminal_damage: string[];
+  enforced_authority: DecisionAuthority | null;
+  nlu_gating_disabled: boolean;
+} {
+  // v2.0: First detect terminal damage from observations
+  const terminalResult = detectTerminalDamageForAuthority(observations);
+  
+  // If no terminal damage, mode is not activated
+  if (!terminalResult.detected) {
+    return { 
+      activate: false, 
+      reason: 'NO_TERMINAL_DAMAGE',
+      terminal_damage: [],
+      enforced_authority: null,
+      nlu_gating_disabled: false
+    };
+  }
+  
+  // Terminal damage detected - check if context is sufficient
+  // Note: Even without context, we still detect terminal damage for logging
+  // But full activation requires crop/stage
+  
   if (!canonicalContext || !canonicalContext.is_locked) {
+    console.log(`\n⚠️ [DiagnosisOnlyMode] Terminal damage detected but context not locked`);
+    console.log(`   Terminal damage: ${terminalResult.terminal_damage.join(', ')}`);
+    console.log(`   Recommendation: Proceed with limited context, still enforce CROP authority`);
+    
+    // v2.0: Even without full context, terminal damage grants CROP authority
     return { 
-      activate: false, 
-      reason: 'CONTEXT_NOT_LOCKED', 
-      terminal_damage: [] 
+      activate: true, // Activate anyway - terminal damage takes precedence
+      reason: 'TERMINAL_DAMAGE_DETECTED_LIMITED_CONTEXT',
+      terminal_damage: terminalResult.terminal_damage,
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: true
     };
   }
   
-  // Check 2: Crop and stage must be known
+  // Check if crop/stage are known (preferred but not mandatory in v2.0)
   if (canonicalContext.crop_code === 'UNKNOWN' || canonicalContext.growth_stage === 'UNKNOWN') {
+    console.log(`\n⚠️ [DiagnosisOnlyMode] Terminal damage detected but crop/stage unknown`);
+    console.log(`   Crop: ${canonicalContext.crop_code}, Stage: ${canonicalContext.growth_stage}`);
+    console.log(`   Proceeding with generic rules, CROP authority still enforced`);
+    
     return { 
-      activate: false, 
-      reason: 'CROP_STAGE_UNKNOWN', 
-      terminal_damage: [] 
+      activate: true, // v2.0: Activate anyway
+      reason: 'TERMINAL_DAMAGE_DETECTED_GENERIC_CONTEXT',
+      terminal_damage: terminalResult.terminal_damage,
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: true
     };
   }
   
-  // Check 3: Terminal damage must be detected
-  const terminalDamage = getDetectedTerminalDamage(observations);
-  if (terminalDamage.length === 0) {
-    return { 
-      activate: false, 
-      reason: 'NO_TERMINAL_DAMAGE', 
-      terminal_damage: [] 
-    };
-  }
-  
-  // Check 4: At least one rule must have matched
-  if (matchedRulesCount === 0) {
-    return { 
-      activate: false, 
-      reason: 'NO_RULES_MATCHED', 
-      terminal_damage: terminalDamage 
-    };
-  }
-  
-  // All criteria met - ACTIVATE DIAGNOSIS-ONLY MODE
-  console.log(`\n🔬 [DiagnosisOnlyMode] ACTIVATED`);
-  console.log(`   Terminal damage: ${terminalDamage.join(', ')}`);
-  console.log(`   Crop: ${canonicalContext.crop_code}, Stage: ${canonicalContext.growth_stage}`);
-  console.log(`   Rules matched: ${matchedRulesCount}`);
-  console.log(`   Clarification: SKIPPED`);
+  // All criteria met - ACTIVATE DIAGNOSIS-ONLY MODE with full context
+  console.log(`\n🔬 [DiagnosisOnlyMode] ACTIVATED with full context`);
+  console.log(`   Mode=DIAGNOSIS_ONLY`);
+  console.log(`   Authority=CROP (ENFORCED)`);
+  console.log(`   NLU_GATING=DISABLED`);
+  console.log(`   Source=DECISION_RULES`);
+  console.log(`   Crop/Stage=${canonicalContext.crop_code}/${canonicalContext.growth_stage} (LOCKED)`);
+  console.log(`   Terminal damage: ${terminalResult.terminal_damage.join(', ')}`);
+  console.log(`   Clarification: PERMANENTLY SKIPPED`);
   
   return { 
     activate: true, 
-    reason: 'TERMINAL_DAMAGE_WITH_CONTEXT', 
-    terminal_damage: terminalDamage 
+    reason: 'TERMINAL_DAMAGE_WITH_FULL_CONTEXT',
+    terminal_damage: terminalResult.terminal_damage,
+    enforced_authority: DecisionAuthority.CROP,
+    nlu_gating_disabled: true
   };
 }
 
@@ -336,12 +598,20 @@ export function generateDiagnosisOnlyOutput(
   console.log(`   Top diagnosis: ${diagnoses[0]?.cause || 'NONE'} (confidence=${(topConfidence * 100).toFixed(0)}%)`);
   console.log(`   Treatment threshold: ${treatmentThreshold}, sufficient: ${confidenceSufficient}`);
   console.log(`   Total diagnoses: ${diagnoses.length}`);
+  console.log(`   Authority=CROP (ENFORCED)`);
+  console.log(`   NLU_GATING=DISABLED`);
   
   return {
     mode: 'DIAGNOSIS_ONLY',
     clarification_status: 'SKIPPED',
     source: 'DECISION_RULES',
     context_status: 'LOCKED',
+    
+    // v2.0: Authority enforcement fields
+    authority: 'CROP',
+    authority_source: 'TERMINAL_DAMAGE_OBSERVATION',
+    nlu_gating: 'DISABLED',
+    
     diagnoses,
     top_confidence: topConfidence,
     confidence_sufficient_for_treatment: confidenceSufficient,
@@ -442,11 +712,15 @@ export function logDiagnosisOnlyActivation(
   reason: string,
   terminalDamage: string[],
   cropCode: string,
-  growthStage: string
+  growthStage: string,
+  enforcedAuthority?: DecisionAuthority | null,
+  nluGatingDisabled?: boolean
 ): void {
   console.log(`\n════════════════════════════════════════════════════════════════`);
-  console.log(`🔬 [DIAGNOSIS-ONLY MODE CHECK]`);
+  console.log(`🔬 [DIAGNOSIS-ONLY MODE CHECK] v${DIAGNOSIS_ONLY_MODE_VERSION}`);
   console.log(`   Mode=${activated ? 'DIAGNOSIS_ONLY' : 'STANDARD'}`);
+  console.log(`   Authority=${enforcedAuthority || (activated ? 'CROP' : 'PENDING')}`);
+  console.log(`   NLU_GATING=${nluGatingDisabled === true ? 'DISABLED' : 'ENABLED'}`);
   console.log(`   Clarification=${activated ? 'SKIPPED' : 'ALLOWED'}`);
   console.log(`   Source=DECISION_RULES`);
   console.log(`   Crop/Stage=${cropCode}/${growthStage} (LOCKED)`);

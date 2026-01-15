@@ -1,22 +1,28 @@
-# Memory: logic/diagnosis-only-mode-terminal-damage-v1
+# Memory: logic/diagnosis-only-mode-terminal-damage-v2-final
 Updated: 2026-01-15
 
-The AI Chat implements a 'Diagnosis-Only Mode' (v1.0.0) that activates when:
-1. Canonical context is LOCKED (crop + stage known)
-2. Terminal damage indicators present (SEEDLING_DIED, PLANT_DIED, AFFECTED_PART_WHOLE, PATCHY_DAMAGE + SEVERITY_HIGH)
-3. At least 1 rule matched
+The AI Chat implements a 'Diagnosis-Only Mode' (v2.0.0) with **rule-granted diagnosis authority** that activates when:
+1. Terminal damage ObservationKeys are present (SEEDLING_DIED, PLANT_DIED, AFFECTED_PART_WHOLE, PATCHY_DAMAGE+SEVERITY_HIGH, DEAD_HEART, TERMITE_DAMAGE, etc.)
+2. Canonical context is LOCKED (crop + stage known) - but terminal damage activates even with limited context
+
+**HARD INVARIANT**: When terminal damage is detected, authority = CROP is ENFORCED:
+- `assertTerminalDamageAuthority()` throws error if authority !== CROP
+- NLU gating is DISABLED - `hasPestOrDisease`, `intent`, `confidence` are IGNORED
+- Authority is derived from ObservationKeys, not NLU classification
+- `authority = NONE` is IMPOSSIBLE when terminal damage exists
 
 When activated:
-- SKIPS all clarification logic entirely
-- SKIPS IDENTIFY_LOCATION, IDENTIFY_PART, and generic scopes
+- `detectTerminalDamageForAuthority()` runs BEFORE authority-resolver.ts
+- `createEnforcedCropAuthority()` overrides normal authority resolution
+- SKIPS all clarification logic permanently (IDENTIFY_LOCATION, IDENTIFY_PART, generic scopes)
 - IMMEDIATELY executes symbolic rule engine
-- Presents top 1-3 diagnoses ranked by confidence
-- Offers photo ONLY as optional confirmation ("For more accuracy, upload a photo")
+- Presents top 1-3 diagnoses ranked by confidence with agronomist-style explanations
+- Photo upload offered ONLY as optional confirmation
+
+Logs show: `Mode=DIAGNOSIS_ONLY`, `Authority=CROP`, `NLU_GATING=DISABLED`, `Clarification=SKIPPED`, `Source=DECISION_RULES`, `Crop/Stage=LOCKED`
 
 Key files:
-- `diagnosis-only-mode.ts`: Contains `shouldActivateDiagnosisOnlyMode()`, `generateDiagnosisOnlyOutput()`, `formatDiagnosisForLLM()`
-- `orchestrator.ts`: Checks activation before clarification gate, generates DIAGNOSIS_PROVIDED response
+- `diagnosis-only-mode.ts`: Contains `detectTerminalDamageForAuthority()`, `createEnforcedCropAuthority()`, `assertTerminalDamageAuthority()`, `shouldActivateDiagnosisOnlyMode()`, `generateDiagnosisOnlyOutput()`
+- `orchestrator.ts`: Enforces terminal damage authority BEFORE clarification gate
 
-Logs show: `Mode=DIAGNOSIS_ONLY`, `Clarification=SKIPPED`, `Source=DECISION_RULES`, `Crop/Stage=LOCKED`
-
-The LLM NEVER asks questions or invents diagnoses - it only formats rule-engine outputs in farmer's language.
+The system behaves like a senior agronomist: when crops die, we diagnose causes — we do not ask permission from NLU.
