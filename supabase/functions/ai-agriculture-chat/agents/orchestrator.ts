@@ -352,7 +352,21 @@ import {
   CLARIFICATION_STRATEGY_VERSION
 } from './clarification-strategy.ts';
 
-export const ORCHESTRATOR_VERSION = '2.9.0'; // Phase-20: Clarification-first confidence strategy
+export const ORCHESTRATOR_VERSION = '3.0.0'; // Phase-21: Single canonical context enforcement
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-21: CANONICAL CONTEXT CONTRACT IMPORTS
+// Single immutable context built once and passed by reference
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  buildCanonicalContext as buildCanonicalContextContract,
+  assertCanonicalContextLocked,
+  validateContextIntegrity,
+  hasDiagnosticContext,
+  hasTerminalDamage,
+  getContextPresenceFlags,
+  type CanonicalContext
+} from '../decision/canonical-context-contract.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
@@ -927,6 +941,24 @@ export class AIAgentOrchestrator {
       
       layerTimings.layer1_context = Date.now() - layer1Start;
       console.log(`   ✅ Layer 1 complete (${layerTimings.layer1_context}ms)`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-21: BUILD CANONICAL CONTEXT EXACTLY ONCE (HARD INVARIANT)
+      // This is the SINGLE source of truth for the entire turn.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const canonicalContext = buildCanonicalContextContract(landContext, !!landContext);
+      
+      if (canonicalContext) {
+        console.log(`✅ [PHASE-21] CanonicalContext built and LOCKED:`);
+        console.log(`   Scope=PHASE1_LOCKED`);
+        console.log(`   Crop=${canonicalContext.crop_code} (INVARIANT)`);
+        console.log(`   Stage=${canonicalContext.growth_stage} (INVARIANT)`);
+        console.log(`   DAS=${canonicalContext.days_since_sowing} (INVARIANT)`);
+        console.log(`   NDVI=${canonicalContext.ndvi.value} (INVARIANT)`);
+        console.log(`   Source=${canonicalContext.source}`);
+      } else {
+        console.log(`📋 [PHASE-21] No canonical context (general query mode)`);
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: PHOTO ANALYSIS EARLY PATH
@@ -2076,18 +2108,16 @@ export class AIAgentOrchestrator {
         // USE SCOPE-AWARE CLARIFICATION TO PREVENT DIAGNOSIS LEAKAGE
         // Options are constrained to what is OBSERVED, not suspected
         // ═══════════════════════════════════════════════════════════════════════════
-        // P0 FIX: Pass FULL landContext and farmerMessage for canonical authority
-        // The clarification context MUST inherit from canonical state, not NLU
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE-21: Pass CANONICAL CONTEXT (read-only) - NO MORE landContext/hasLandContext
+        // The canonicalContext is the SINGLE source of truth, built once in Phase-1
+        // ═══════════════════════════════════════════════════════════════════════════
         const scopedClarificationInput: ScopedClarificationInput = {
           language: normalizedInput.detected_language,
           observations: observationExtraction,
           understandingResult: understandingResult,
-          hasLandContext: !!landContext,
+          canonicalContext: canonicalContext, // PHASE-21: Single canonical context (read-only)
           diagnosisRulesFired: false, // No diagnosis rules have fired yet
-          hasCropContext: hasCropContext, // PHASE-8.1: Skip crop clarification
-          cropContext: cropContextAuthority, // PHASE-8.1: For stage-aware framing
-          // P0 CRITICAL: These were MISSING - causing hasLandContext: false in renderer
-          landContext: landContext, // FULL land context for dynamic clarification
           farmerMessage: farmerMessage // Farmer message for LLM context
         };
         
@@ -2197,48 +2227,26 @@ export class AIAgentOrchestrator {
         );
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // FAIL-FAST INVARIANT: Context integrity validation
-        // If hasLandContext=true but landContext is missing/incomplete, FAIL IMMEDIATELY
+        // PHASE-21: Validate canonical context integrity (fail-fast)
+        // Uses canonicalContext !== null instead of hasLandContext boolean
         // ═══════════════════════════════════════════════════════════════════════════
-        const hasLandContextFlag = !!landContext;
-        const isContextComplete = landContext?.current_crop && landContext?.growth_stage;
-        
-        if (hasLandContextFlag && !isContextComplete) {
-          console.error(`\n🚨 [FAIL-FAST] hasLandContext=true but landContext is incomplete!`);
-          console.error(`   Crop: ${landContext?.current_crop || 'MISSING'}`);
-          console.error(`   Stage: ${landContext?.growth_stage || 'MISSING'}`);
-          console.error(`   DAS: ${landContext?.days_since_sowing || 'MISSING'}`);
-          console.error(`   This violates the context preservation invariant.`);
-          throw new Error(`FAIL-FAST: hasLandContext=true but landContext is incomplete. Context MUST be passed as a single canonical object.`);
-        }
+        validateContextIntegrity(canonicalContext, !!canonicalContext, 'CLARIFICATION_RESPONSE');
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // TRUST-FIRST PRODUCTION READINESS VERIFICATION
-        // These logs MUST appear for valid clarification - used for audit trail
+        // PHASE-21: TRUST-FIRST PRODUCTION VERIFICATION
+        // Uses canonicalContext directly - no more preservedContext rebuilding
         // ═══════════════════════════════════════════════════════════════════════════
         const clarificationScope = clarificationResponse.scope || 'UNKNOWN';
         const isDiagnosticConfirmation = clarificationScope === 'DIAGNOSTIC_CONFIRMATION';
         
-        // Build preserved context for passing forward
-        const preservedContext = landContext ? {
-          crop_code: landContext.crop_code || landContext.current_crop?.toUpperCase() || 'UNKNOWN',
-          crop_name: landContext.current_crop || 'Unknown',
-          growth_stage: landContext.growth_stage || 'UNKNOWN',
-          days_since_sowing: landContext.days_since_sowing || null,
-          ndvi_value: landContext.ndvi?.latest_value || landContext.ndvi?.value || landContext.ndvi_value || null,
-          ndvi_trend: landContext.ndvi?.trend || landContext.ndvi_trend || null,
-          is_locked: true as const
-        } : null;
-        
         console.log(`\n✅ [ProductionCheck] Trust-First Clarification Generated:`);
         console.log(`   Scope=${clarificationScope}`);
         console.log(`   Source=${isDiagnosticConfirmation ? 'DECISION_RULES' : 'SYMBOLIC_SCOPED'}`);
-        console.log(`   Mode=${isDiagnosticConfirmation ? 'DIAGNOSTIC_CONFIRMATION' : 'STANDARD'}`);
-        console.log(`   hasLandContext=${hasLandContextFlag}`);
-        console.log(`   Crop=${preservedContext?.crop_name || 'UNKNOWN'} (INVARIANT: preserved)`);
-        console.log(`   Stage=${preservedContext?.growth_stage || 'UNKNOWN'} (INVARIANT: preserved)`);
-        console.log(`   DAS=${preservedContext?.days_since_sowing || 'UNKNOWN'} (INVARIANT: preserved)`);
-        console.log(`   NDVI=${preservedContext?.ndvi_value || 'UNKNOWN'} (INVARIANT: preserved)`);
+        console.log(`   CanonicalContext=${canonicalContext ? 'LOCKED' : 'NULL'}`);
+        console.log(`   Crop=${canonicalContext?.crop_name || 'UNKNOWN'} (INVARIANT)`);
+        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'} (INVARIANT)`);
+        console.log(`   DAS=${canonicalContext?.days_since_sowing || 'UNKNOWN'} (INVARIANT)`);
+        console.log(`   NDVI=${canonicalContext?.ndvi?.value || 'UNKNOWN'} (INVARIANT)`);
         console.log(`   Options count=${(clarificationResponse.options || []).length}`);
         
         // Log diagnostic confirmation details if applicable
@@ -2251,15 +2259,15 @@ export class AIAgentOrchestrator {
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // HARD INVARIANT: IDENTIFY_LOCATION is ILLEGAL when crop context is known
-        // This is a trust-first principle - never ask generic location questions
+        // PHASE-21: HARD INVARIANT - IDENTIFY_LOCATION is ILLEGAL with canonical context
+        // Uses canonicalContext instead of landContext
         // ═══════════════════════════════════════════════════════════════════════════
-        if (clarificationScope === 'IDENTIFY_LOCATION' && landContext?.current_crop) {
+        if (clarificationScope === 'IDENTIFY_LOCATION' && canonicalContext) {
           console.error(`\n🚨 [FATAL INVARIANT VIOLATION] IDENTIFY_LOCATION used with known crop!`);
-          console.error(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}`);
+          console.error(`   Crop: ${canonicalContext.crop_code}, Stage: ${canonicalContext.growth_stage}`);
           console.error(`   This violates agronomist-style diagnostic confirmation.`);
           console.error(`   Expected: DIAGNOSTIC_CONFIRMATION or REFINE_OBSERVATION`);
-          throw new Error(`INVARIANT VIOLATION: IDENTIFY_LOCATION scope is ILLEGAL when crop context is known. Crop=${landContext.current_crop}`);
+          throw new Error(`INVARIANT VIOLATION: IDENTIFY_LOCATION scope is ILLEGAL when canonical context is known. Crop=${canonicalContext.crop_code}`);
         }
         
         // ✅ CRITICAL FIX: Safe array handling - prevent .map() crash on undefined
@@ -2302,15 +2310,14 @@ export class AIAgentOrchestrator {
             scope_validation_passed: clarificationResponse.validation_passed,
             pendingClarificationOptions: safeOptions,
             // ═══════════════════════════════════════════════════════════════════════════
-            // TRUST-FIRST: Preserved canonical context (HARD INVARIANT)
-            // This context MUST be passed forward intact - never rebuilt or inferred
+            // PHASE-21: Pass canonical context directly (no more preservedContext)
             // ═══════════════════════════════════════════════════════════════════════════
-            preservedCanonicalContext: preservedContext,
-            // PHASE-9.1 PATCH 3: Lock crop context during clarification
-            lockedCropContext: cropContextAuthority ? {
-              crop_name: cropContextAuthority.crop_name,
-              growth_stage: cropContextAuthority.growth_stage,
-              days_since_sowing: cropContextAuthority.days_since_sowing
+            canonicalContext: canonicalContext,
+            // LEGACY: lockedCropContext for backward compatibility
+            lockedCropContext: canonicalContext ? {
+              crop_name: canonicalContext.crop_name,
+              growth_stage: canonicalContext.growth_stage,
+              days_since_sowing: canonicalContext.days_since_sowing ?? 0
             } : undefined
           }
         };
