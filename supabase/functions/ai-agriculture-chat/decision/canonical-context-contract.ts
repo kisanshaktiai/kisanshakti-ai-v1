@@ -21,7 +21,39 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CANONICAL_CONTEXT_CONTRACT_VERSION = '1.0.0';
+export const CANONICAL_CONTEXT_CONTRACT_VERSION = '2.0.0'; // v2: Phase-1 locking enforcement
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FAIL-FAST ASSERTION (MANDATORY GUARD)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Assert that canonical context is locked and non-null.
+ * Call this at the START of any function that requires context.
+ * This is the PRIMARY enforcement mechanism for canonical immutability.
+ * 
+ * @throws Error if context is null when it shouldn't be
+ */
+export function assertCanonicalContextLocked(
+  context: CanonicalContext | null,
+  location: string
+): asserts context is CanonicalContext {
+  if (!context) {
+    console.error(`🚨 [FATAL @ ${location}] CanonicalContext is null but was expected!`);
+    throw new Error(`FATAL @ ${location}: CanonicalContext is null. Context MUST be built once in Phase-1 and passed by reference.`);
+  }
+  
+  if (!context.is_locked) {
+    console.error(`🚨 [FATAL @ ${location}] CanonicalContext exists but is_locked=false!`);
+    throw new Error(`FATAL @ ${location}: CanonicalContext is not locked. This violates Phase-1 immutability.`);
+  }
+  
+  if (context.crop_code === 'UNKNOWN' || context.growth_stage === 'UNKNOWN') {
+    console.error(`🚨 [FATAL @ ${location}] CanonicalContext has UNKNOWN crop/stage!`);
+    console.error(`   Crop: ${context.crop_code}, Stage: ${context.growth_stage}`);
+    throw new Error(`FATAL @ ${location}: CanonicalContext has UNKNOWN values. Context was not properly built.`);
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL CONTEXT TYPE (SINGLE SOURCE OF TRUTH)
@@ -72,9 +104,15 @@ export interface CanonicalContext {
   readonly created_at: number;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // LOCK FLAG: Once true, this context CANNOT be modified
+  // LOCK FLAGS: Once true, this context CANNOT be modified
   // ═══════════════════════════════════════════════════════════════════════════
   readonly is_locked: true;
+  
+  /**
+   * Phase-1 lock flag - indicates context was built in orchestrator Phase-1
+   * and must NOT be rebuilt anywhere else in the pipeline.
+   */
+  readonly phase1_locked: true;
 }
 
 /**
@@ -190,7 +228,8 @@ export function buildCanonicalContext(
     farmer_id: landContext.farmer_id || null,
     source: landContext.source || 'LAND_DATA',
     created_at: Date.now(),
-    is_locked: true
+    is_locked: true,
+    phase1_locked: true
   });
   
   console.log(`✅ [CanonicalContext] Built and LOCKED:`);
