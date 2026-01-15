@@ -869,6 +869,15 @@ export async function generateDynamicClarification(
       hi: `कीड़े कैसे दिखते हैं?`,
       en: `What do insects look like?`
     },
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DIAGNOSTIC_CONFIRMATION - Trust-First Agronomist Mode
+    // When terminal damage is detected, confirm CAUSE not location
+    // ═══════════════════════════════════════════════════════════════════════════
+    [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
+      mr: `🔬 कारण ओळखण्यासाठी, खालीलपैकी काय दिसते ते सांगा:`,
+      hi: `🔬 कारण पहचानने के लिए, नीचे में से क्या दिखता है बताएं:`,
+      en: `🔬 To identify the cause, tell us which of these you see:`
+    },
     [ClarificationScope.PHOTO_ONLY]: {
       mr: `अचूक निदानासाठी प्रभावित भागाचा फोटो पाठवा`,
       hi: `सही निदान के लिए प्रभावित भाग की फोटो भेजें`,
