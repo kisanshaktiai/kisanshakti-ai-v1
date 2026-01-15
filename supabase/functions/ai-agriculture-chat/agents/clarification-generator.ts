@@ -172,27 +172,43 @@ export async function generateScopedClarification(
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Resolve clarification plan (ObservationKey-based, deterministic)
   // PHASE-8.1: Pass hasCropContext to skip crop clarification
+  // TRUST-FIRST: Pass preservedContext and hasLandContext for fail-fast checks
   // ═══════════════════════════════════════════════════════════════════════════
+  
+  // P0-2: FAIL-FAST INVARIANT CHECK (moved before plan resolution)
+  // If landContext exists but wasn't passed properly, FAIL FAST
+  const effectiveHasLandContext = !!landContext && !!landContext.current_crop;
+  if (hasLandContext && !effectiveHasLandContext) {
+    console.error(`\n🚨 [FAIL-FAST] hasLandContext=${hasLandContext} but landContext object is missing/empty!`);
+    console.error(`   This means land data was lost between orchestrator and clarification generator.`);
+    console.error(`   Received landContext:`, landContext);
+    throw new Error(`FAIL-FAST: hasLandContext=true but landContext is incomplete. Context MUST be a single canonical object.`);
+  }
+  
+  // Build preserved context for invariant enforcement
+  const preservedContext = landContext ? {
+    crop_code: landContext.crop_code || landContext.current_crop?.toUpperCase() || 'UNKNOWN',
+    crop_name: landContext.current_crop || 'Unknown',
+    growth_stage: landContext.growth_stage || 'UNKNOWN',
+    days_since_sowing: landContext.days_since_sowing || null,
+    ndvi_value: landContext.ndvi?.latest_value || landContext.ndvi?.value || landContext.ndvi_value || null,
+    ndvi_trend: landContext.ndvi?.trend || landContext.ndvi_trend || null,
+    is_locked: true as const
+  } : undefined;
+  
   const clarificationPlan = resolveClarificationPlan(
     observedKeys,
     turnCount,
     clarificationState?.previous_scopes || [],
-    hasCropContext || false // PHASE-8.1: Skip crop clarification if true
+    hasCropContext || false, // PHASE-8.1: Skip crop clarification if true
+    preservedContext, // TRUST-FIRST: Pass preserved context for invariant checks
+    hasLandContext // TRUST-FIRST: Pass hasLandContext for fail-fast validation
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-15: USE DYNAMIC CLARIFICATION if land context available
   // This generates context-aware options using crop, DOS, soil, NDVI, weather
   // ═══════════════════════════════════════════════════════════════════════════
-  
-  // P0-2: FAIL-FAST INVARIANT CHECK
-  // If landContext exists but wasn't passed properly, log and recover
-  const effectiveHasLandContext = !!landContext && !!landContext.current_crop;
-  if (hasLandContext && !effectiveHasLandContext) {
-    console.error(`🚨 [INVARIANT VIOLATION] hasLandContext=${hasLandContext} but landContext object is missing/empty!`);
-    console.error(`   This means land data was lost between orchestrator and clarification generator.`);
-    console.error(`   Received landContext:`, landContext);
-  }
   
   if (effectiveHasLandContext && clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
     try {
