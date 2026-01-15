@@ -1,8 +1,14 @@
 /**
- * ClarificationOptionsUI - Modern 2030-Ready Clarification Selection
+ * ClarificationOptionsUI - Trust-First Diagnostic Confirmation UI
  * 
  * World-class UI for selecting options from the Decision Brain.
  * Supports both single-choice (radio) and multi-choice (checkbox) selections.
+ * 
+ * DIAGNOSTIC CONFIRMATION MODE:
+ * When terminal damage is detected, renders as a trust-building checklist
+ * with farmer-friendly language (no codes), visual icons, and a mandatory
+ * photo option at the end.
+ * 
  * Designed for rural Indian farmers with clear visuals and large touch targets.
  */
 
@@ -12,9 +18,9 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { 
-  Check, HelpCircle, ChevronRight, 
-  Bug, Droplets, Leaf, Wind, Sun,
-  MoveHorizontal, ArrowDown, ArrowUp
+  Check, HelpCircle, ChevronRight, Camera,
+  Bug, Droplets, Leaf, Wind, Sun, AlertTriangle,
+  MoveHorizontal, ArrowDown, ArrowUp, Search, Zap
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -26,6 +32,8 @@ interface ClarificationOption {
   value?: string;
   icon?: string;
   description?: string;
+  observation_key?: string;
+  diagnostic_power?: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 type SelectionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
@@ -38,15 +46,48 @@ interface ClarificationOptionsUIProps {
   onSelect: (selectedOptions: string[]) => void;
   isSubmitting?: boolean;
   maxSelections?: number;
+  /** Enable trust-first diagnostic confirmation mode */
+  isDiagnosticConfirmation?: boolean;
+  /** Scope for enhanced styling */
+  scope?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// ICON MAPPING
+// ICON MAPPING - Enhanced for Diagnostic Confirmation
 // ═══════════════════════════════════════════════════════════════════════════
 
-const getOptionIcon = (label: string, index: number) => {
+const getOptionIcon = (label: string, index: number, isDiagnostic?: boolean) => {
   const labelLower = label.toLowerCase();
   
+  // Diagnostic confirmation icons (cause indicators)
+  if (isDiagnostic) {
+    // Dead heart / borer indicators
+    if (labelLower.includes('सुरळी') || labelLower.includes('dead') || labelLower.includes('heart') || labelLower.includes('whorl')) {
+      return <AlertTriangle className="h-5 w-5 text-red-500" />;
+    }
+    // Larvae / pest indicators
+    if (labelLower.includes('अळ') || labelLower.includes('larva') || labelLower.includes('इल्ली') || labelLower.includes('caterpillar')) {
+      return <Bug className="h-5 w-5 text-orange-500" />;
+    }
+    // Termite / soil indicators
+    if (labelLower.includes('वाळवी') || labelLower.includes('दीमक') || labelLower.includes('termite') || labelLower.includes('tunnel') || labelLower.includes('बोगद')) {
+      return <Search className="h-5 w-5 text-amber-600" />;
+    }
+    // Honeydew / aphid indicators
+    if (labelLower.includes('चिकट') || labelLower.includes('sticky') || labelLower.includes('honeydew') || labelLower.includes('काळी')) {
+      return <Droplets className="h-5 w-5 text-amber-500" />;
+    }
+    // Frass / boring marks
+    if (labelLower.includes('भुसा') || labelLower.includes('frass') || labelLower.includes('bore') || labelLower.includes('छिद्र')) {
+      return <Zap className="h-5 w-5 text-yellow-600" />;
+    }
+    // Photo option
+    if (labelLower.includes('फोटो') || labelLower.includes('photo') || labelLower.includes('📷')) {
+      return <Camera className="h-5 w-5 text-blue-500" />;
+    }
+  }
+  
+  // Standard icons for non-diagnostic mode
   // Check for flying/walking patterns
   if (labelLower.includes('उड') || labelLower.includes('fly') || labelLower.includes('उडता')) {
     return <Wind className="h-5 w-5" />;
@@ -76,7 +117,7 @@ const getOptionIcon = (label: string, index: number) => {
   }
   
   // Default numbered icons
-  const numberIcons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+  const numberIcons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣'];
   return <span className="text-lg">{numberIcons[index] || `${index + 1}.`}</span>;
 };
 
@@ -90,25 +131,31 @@ const LABELS: Record<string, Record<string, string>> = {
     selectMultiple: 'Select all that apply',
     submit: 'Submit',
     selected: 'Selected',
+    diagnosticTitle: 'Help us identify the cause',
+    diagnosticHint: 'Select what you observe in your field',
   },
   hi: {
     selectOne: 'एक विकल्प चुनें',
     selectMultiple: 'सभी लागू विकल्प चुनें',
     submit: 'जमा करें',
     selected: 'चयनित',
+    diagnosticTitle: 'कारण पहचानने में मदद करें',
+    diagnosticHint: 'अपने खेत में जो दिखता है उसे चुनें',
   },
   mr: {
     selectOne: 'एक पर्याय निवडा',
     selectMultiple: 'सर्व लागू पर्याय निवडा',
     submit: 'पाठवा',
     selected: 'निवडले',
+    diagnosticTitle: 'कारण ओळखण्यात मदत करा',
+    diagnosticHint: 'तुमच्या शेतात जे दिसते ते निवडा',
   }
 };
 
 const getLabels = (lang: string) => LABELS[lang] || LABELS.en;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLE CHOICE OPTION
+// SINGLE CHOICE OPTION - Enhanced for Diagnostic Mode
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface SingleChoiceOptionProps {
@@ -116,9 +163,14 @@ interface SingleChoiceOptionProps {
   index: number;
   isSelected: boolean;
   onSelect: () => void;
+  isDiagnostic?: boolean;
 }
 
-function SingleChoiceOption({ option, index, isSelected, onSelect }: SingleChoiceOptionProps) {
+function SingleChoiceOption({ option, index, isSelected, onSelect, isDiagnostic }: SingleChoiceOptionProps) {
+  const isPhotoOption = option.label.toLowerCase().includes('फोटो') || 
+                        option.label.toLowerCase().includes('photo') ||
+                        option.label.includes('📷');
+  
   return (
     <motion.button
       initial={{ opacity: 0, y: 10 }}
@@ -129,32 +181,47 @@ function SingleChoiceOption({ option, index, isSelected, onSelect }: SingleChoic
         "w-full p-4 rounded-2xl border-2 transition-all duration-200",
         "flex items-center gap-4 text-left min-h-[64px]",
         "active:scale-[0.98] touch-manipulation",
-        isSelected
-          ? "border-primary bg-primary/10 shadow-lg shadow-primary/20"
-          : "border-border/50 bg-card/50 hover:border-primary/50 hover:bg-card"
+        // Photo option special styling
+        isPhotoOption && isDiagnostic
+          ? "border-blue-300 bg-blue-50 dark:bg-blue-950/30 hover:border-blue-400 hover:bg-blue-100"
+          : isSelected
+            ? "border-primary bg-primary/10 shadow-lg shadow-primary/20"
+            : "border-border/50 bg-card/50 hover:border-primary/50 hover:bg-card",
+        // Diagnostic mode - slightly larger touch target
+        isDiagnostic && "min-h-[72px]"
       )}
     >
       {/* Icon/Number */}
       <div className={cn(
         "shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
-        isSelected 
-          ? "bg-primary text-primary-foreground" 
-          : "bg-muted text-muted-foreground"
+        isPhotoOption && isDiagnostic
+          ? "bg-blue-100 dark:bg-blue-900 text-blue-600"
+          : isSelected 
+            ? "bg-primary text-primary-foreground" 
+            : "bg-muted text-muted-foreground"
       )}>
-        {getOptionIcon(option.label, index)}
+        {getOptionIcon(option.label, index, isDiagnostic)}
       </div>
       
       {/* Label */}
       <div className="flex-1 min-w-0">
         <span className={cn(
           "text-base font-medium leading-tight block",
-          isSelected ? "text-primary" : "text-foreground"
+          isPhotoOption && isDiagnostic 
+            ? "text-blue-700 dark:text-blue-300"
+            : isSelected ? "text-primary" : "text-foreground"
         )}>
           {option.label}
         </span>
         {option.description && (
           <span className="text-xs text-muted-foreground mt-1 block">
             {option.description}
+          </span>
+        )}
+        {/* Diagnostic power indicator */}
+        {isDiagnostic && option.diagnostic_power === 'HIGH' && !isPhotoOption && (
+          <span className="text-xs text-green-600 dark:text-green-400 mt-1 block font-medium">
+            ✓ Strong indicator
           </span>
         )}
       </div>
@@ -181,9 +248,10 @@ interface MultiChoiceOptionProps {
   index: number;
   isSelected: boolean;
   onToggle: () => void;
+  isDiagnostic?: boolean;
 }
 
-function MultiChoiceOption({ option, index, isSelected, onToggle }: MultiChoiceOptionProps) {
+function MultiChoiceOption({ option, index, isSelected, onToggle, isDiagnostic }: MultiChoiceOptionProps) {
   return (
     <motion.button
       initial={{ opacity: 0, y: 10 }}
@@ -232,7 +300,7 @@ function MultiChoiceOption({ option, index, isSelected, onToggle }: MultiChoiceO
       
       {/* Icon */}
       <div className="shrink-0 text-muted-foreground">
-        {getOptionIcon(option.label, index)}
+        {getOptionIcon(option.label, index, isDiagnostic)}
       </div>
     </motion.button>
   );
@@ -249,10 +317,19 @@ export function ClarificationOptionsUI({
   language,
   onSelect,
   isSubmitting = false,
-  maxSelections = 3
+  maxSelections = 3,
+  isDiagnosticConfirmation = false,
+  scope
 }: ClarificationOptionsUIProps) {
   const [selectedOptions, setSelectedOptions] = useState<Set<string>>(new Set());
   const labels = getLabels(language);
+  
+  // Auto-detect diagnostic confirmation mode from scope or question content
+  const isDiagnostic = isDiagnosticConfirmation || 
+    scope === 'DIAGNOSTIC_CONFIRMATION' ||
+    question.includes('🔬') ||
+    question.toLowerCase().includes('कारण ओळख') ||
+    question.toLowerCase().includes('कारण पहचान');
   
   const handleSingleSelect = (optionLabel: string) => {
     // Immediately submit for single choice
@@ -285,17 +362,36 @@ export function ClarificationOptionsUI({
       animate={{ opacity: 1, scale: 1 }}
       className="w-full space-y-4"
     >
-      {/* Question Header */}
-      <div className="flex items-start gap-3 p-4 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent rounded-2xl border border-primary/20">
-        <div className="shrink-0 p-2 rounded-xl bg-primary/20">
-          <HelpCircle className="h-5 w-5 text-primary" />
+      {/* Question Header - Enhanced for Diagnostic Mode */}
+      <div className={cn(
+        "flex items-start gap-3 p-4 rounded-2xl border",
+        isDiagnostic
+          ? "bg-gradient-to-br from-amber-50 via-orange-50/50 to-transparent dark:from-amber-950/30 dark:via-orange-950/20 border-amber-200 dark:border-amber-800"
+          : "bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-primary/20"
+      )}>
+        <div className={cn(
+          "shrink-0 p-2 rounded-xl",
+          isDiagnostic 
+            ? "bg-amber-100 dark:bg-amber-900" 
+            : "bg-primary/20"
+        )}>
+          {isDiagnostic 
+            ? <Search className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            : <HelpCircle className="h-5 w-5 text-primary" />
+          }
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-base font-medium text-foreground leading-relaxed">
+          <p className={cn(
+            "text-base font-medium leading-relaxed",
+            isDiagnostic ? "text-amber-900 dark:text-amber-100" : "text-foreground"
+          )}>
             {question}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {isSingleChoice ? labels.selectOne : labels.selectMultiple}
+            {isDiagnostic 
+              ? labels.diagnosticHint 
+              : (isSingleChoice ? labels.selectOne : labels.selectMultiple)
+            }
           </p>
         </div>
       </div>
@@ -311,6 +407,7 @@ export function ClarificationOptionsUI({
                 index={index}
                 isSelected={false}
                 onSelect={() => handleSingleSelect(option.label)}
+                isDiagnostic={isDiagnostic}
               />
             ) : (
               <MultiChoiceOption
@@ -319,6 +416,7 @@ export function ClarificationOptionsUI({
                 index={index}
                 isSelected={selectedOptions.has(option.label)}
                 onToggle={() => handleMultiToggle(option.label)}
+                isDiagnostic={isDiagnostic}
               />
             )
           ))}

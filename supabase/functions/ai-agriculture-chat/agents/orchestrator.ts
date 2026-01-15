@@ -2197,22 +2197,40 @@ export class AIAgentOrchestrator {
         );
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // P0 FIX 6: PRODUCTION READINESS VERIFICATION LOGS
-        // These logs MUST appear for valid clarification generation
+        // TRUST-FIRST PRODUCTION READINESS VERIFICATION
+        // These logs MUST appear for valid clarification - used for audit trail
         // ═══════════════════════════════════════════════════════════════════════════
-        console.log(`✅ [ProductionCheck] Clarification generated:`);
-        console.log(`   Scope: ${clarificationResponse.scope}`);
-        console.log(`   hasLandContext: ${!!landContext}`);
-        console.log(`   Crop: ${landContext?.current_crop || 'UNKNOWN'}`);
-        console.log(`   Stage: ${landContext?.growth_stage || 'UNKNOWN'}`);
-        console.log(`   NDVI: ${landContext?.ndvi?.latest_value || landContext?.ndvi?.value || 'UNKNOWN'}`);
-        console.log(`   Options count: ${(clarificationResponse.options || []).length}`);
+        const clarificationScope = clarificationResponse.scope || 'UNKNOWN';
+        const isDiagnosticConfirmation = clarificationScope === 'DIAGNOSTIC_CONFIRMATION';
         
-        // P0 FAIL-FAST: Block illegal IDENTIFY_LOCATION with known crop
-        if (clarificationResponse.scope === 'IDENTIFY_LOCATION' && landContext?.current_crop) {
-          console.error(`🚨 [FATAL] IDENTIFY_LOCATION scope used despite known crop!`);
+        console.log(`\n✅ [ProductionCheck] Trust-First Clarification Generated:`);
+        console.log(`   Scope=${clarificationScope}`);
+        console.log(`   Source=${isDiagnosticConfirmation ? 'DECISION_RULES' : 'SYMBOLIC_SCOPED'}`);
+        console.log(`   Mode=${isDiagnosticConfirmation ? 'DIAGNOSTIC_CONFIRMATION' : 'STANDARD'}`);
+        console.log(`   hasLandContext=${!!landContext}`);
+        console.log(`   Crop=${landContext?.current_crop || 'UNKNOWN'} (INVARIANT: preserved)`);
+        console.log(`   Stage=${landContext?.growth_stage || 'UNKNOWN'} (INVARIANT: preserved)`);
+        console.log(`   NDVI=${landContext?.ndvi?.latest_value || landContext?.ndvi?.value || 'UNKNOWN'}`);
+        console.log(`   Options count=${(clarificationResponse.options || []).length}`);
+        
+        // Log diagnostic confirmation details if applicable
+        if (isDiagnosticConfirmation) {
+          console.log(`   🔬 DIAGNOSTIC_CONFIRMATION active:`);
+          console.log(`      - Options sourced from: DECISION_RULES.observable_characteristics`);
+          console.log(`      - IDENTIFY_LOCATION: PERMANENTLY BLOCKED`);
+          console.log(`      - Photo option: MANDATORY (replaces NONE_OF_THE_ABOVE)`);
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // HARD INVARIANT: IDENTIFY_LOCATION is ILLEGAL when crop context is known
+        // This is a trust-first principle - never ask generic location questions
+        // ═══════════════════════════════════════════════════════════════════════════
+        if (clarificationScope === 'IDENTIFY_LOCATION' && landContext?.current_crop) {
+          console.error(`\n🚨 [FATAL INVARIANT VIOLATION] IDENTIFY_LOCATION used with known crop!`);
           console.error(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}`);
-          throw new Error(`INVARIANT VIOLATION: Illegal IDENTIFY_LOCATION with known crop ${landContext.current_crop}`);
+          console.error(`   This violates agronomist-style diagnostic confirmation.`);
+          console.error(`   Expected: DIAGNOSTIC_CONFIRMATION or REFINE_OBSERVATION`);
+          throw new Error(`INVARIANT VIOLATION: IDENTIFY_LOCATION scope is ILLEGAL when crop context is known. Crop=${landContext.current_crop}`);
         }
         
         // ✅ CRITICAL FIX: Safe array handling - prevent .map() crash on undefined
@@ -2624,22 +2642,35 @@ export class AIAgentOrchestrator {
         const nluClarificationOptions = (nluOutput as any)?.clarification_options || [];
         
         // ═══════════════════════════════════════════════════════════════════════════
-        // P0 FIX 5: Ensure Rule-Driven Options Take Priority
-        // Rule-driven options MUST override NLU fallback when available
+        // TRUST-FIRST: Rule-Driven Options MUST Take Priority
+        // HARD INVARIANT: Rule-driven options CANNOT be overwritten by NLU fallback
         // ═══════════════════════════════════════════════════════════════════════════
         let finalClarificationOptions: string[];
+        let clarificationSource: 'DECISION_RULES' | 'NLU_FALLBACK' = 'NLU_FALLBACK';
+        
         if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
-          console.log(`   ✅ Using ${ruleDrivenClarification.options.length} RULE-DRIVEN options (not NLU fallback)`);
+          console.log(`   ✅ Using ${ruleDrivenClarification.options.length} RULE-DRIVEN options (Source=DECISION_RULES)`);
+          console.log(`      Options sourced from: hypothesis-first candidate rules`);
           finalClarificationOptions = ruleDrivenClarification.options.map(o => o.label);
+          clarificationSource = 'DECISION_RULES';
+          
+          // Log the rule-driven options for audit
+          ruleDrivenClarification.options.forEach((opt, i) => {
+            console.log(`      ${i + 1}. ${opt.observation_key}: "${opt.label.substring(0, 50)}..."`);
+          });
         } else {
           console.log(`   ⚠️ No rule-driven options available - using NLU fallback (${nluClarificationOptions.length} options)`);
           finalClarificationOptions = nluClarificationOptions;
           
-          // P0 INVARIANT CHECK: If we have land context and symptoms, rule options SHOULD exist
+          // ═══════════════════════════════════════════════════════════════════════════
+          // INVARIANT WARNING: When context exists, rule-driven options SHOULD exist
+          // This indicates a potential gap in decision_rules coverage
+          // ═══════════════════════════════════════════════════════════════════════════
           if (lockedStage && inductionResult.symptoms.length > 0) {
-            console.error(`   🚨 [INVARIANT WARNING] Land context + symptoms exist but no rule-driven options generated`);
+            console.error(`   🚨 [INVARIANT WARNING] Land context + symptoms exist but no rule-driven options`);
             console.error(`      Crop: ${lockedStage.crop_code}, Stage: ${lockedStage.growth_stage}`);
             console.error(`      Symptoms: [${inductionResult.symptoms.map(s => s.symbol).join(', ')}]`);
+            console.error(`      ACTION REQUIRED: Add observable_characteristics to matching decision_rules`);
           }
         }
         

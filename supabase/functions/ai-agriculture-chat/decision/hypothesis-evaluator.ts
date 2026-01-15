@@ -757,12 +757,28 @@ const DIAGNOSTIC_OBSERVATION_LABELS: Record<string, { mr: string; hi: string; en
  * 4. Returns max 4-5 options + mandatory photo option
  * 5. Removes "NONE_OF_THE_ABOVE" - replaced with "Take Photo"
  */
+/**
+ * Generate DIAGNOSTIC_CONFIRMATION options from candidate hypotheses.
+ * 
+ * AGRONOMIST PRINCIPLE:
+ * When terminal damage is detected, we CONFIRM THE CAUSE - not the LOCATION.
+ * This mirrors real agronomist behavior: "If the whole plant died, I don't ask 
+ * which part - I ask for evidence to find the cause"
+ * 
+ * This function:
+ * 1. Takes top candidate rules from hypothesis evaluation
+ * 2. Extracts unique observable_characteristics with field verifiability
+ * 3. Ranks by diagnostic power (differentiation ability), not symptom frequency
+ * 4. Returns max 4-6 options + mandatory photo option
+ * 5. NEVER includes "NONE_OF_THE_ABOVE" - replaced with "Take Photo"
+ */
 export function generateDiagnosticConfirmationOptions(
   candidates: CandidateHypothesis[],
   language: 'mr' | 'hi' | 'en' = 'mr',
-  maxOptions: number = 4
+  maxOptions: number = 5
 ): DiagnosticConfirmationResult {
-  console.log(`   🔬 [DiagnosticConfirmation] Generating options from ${candidates.length} hypotheses`);
+  console.log(`   🔬 [DiagnosticConfirmation] Generating trust-first options from ${candidates.length} hypotheses`);
+  console.log(`      Source=DECISION_RULES, Mode=TRUST_FIRST`);
   
   // Collect all unique observations with their diagnostic power
   const observationMap = new Map<string, {
@@ -770,6 +786,7 @@ export function generateDiagnosticConfirmationOptions(
     diagnostic_power: 'HIGH' | 'MEDIUM' | 'LOW';
     confidence_boost: number;
     differentiation_score: number;
+    field_verifiability: number; // How easy for farmer to verify in field
     source_rule_ids: string[];
   }>();
   
@@ -780,6 +797,9 @@ export function generateDiagnosticConfirmationOptions(
       // Calculate differentiation power (appears in some but not all candidates)
       const diffScore = calculateDifferentiationPower(key, candidates);
       
+      // Calculate field verifiability (visual observability)
+      const fieldVerifiability = getVisualObservabilityScore(key);
+      
       const existing = observationMap.get(key);
       if (!existing) {
         observationMap.set(key, {
@@ -787,6 +807,7 @@ export function generateDiagnosticConfirmationOptions(
           diagnostic_power: char.diagnostic_power || 'MEDIUM',
           confidence_boost: char.confidence_boost || 0.12,
           differentiation_score: diffScore,
+          field_verifiability: fieldVerifiability,
           source_rule_ids: [candidate.rule_id]
         });
       } else {
@@ -800,27 +821,30 @@ export function generateDiagnosticConfirmationOptions(
     }
   }
   
-  // Sort by: 1) Diagnostic power (HIGH first), 2) Differentiation score, 3) Visual observability
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RANKING: By diagnostic weight (40%) + field verifiability (40%) + differentiation (20%)
+  // This prioritizes options farmers can actually observe and that distinguish causes
+  // ═══════════════════════════════════════════════════════════════════════════
   const sortedObservations = Array.from(observationMap.values())
     .filter(obs => DIAGNOSTIC_OBSERVATION_LABELS[obs.observation_key]) // Only use labeled observations
     .sort((a, b) => {
-      // High power first
+      // Diagnostic power weight (40%)
       const powerOrder = { 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1 };
-      const powerDiff = powerOrder[b.diagnostic_power] - powerOrder[a.diagnostic_power];
-      if (powerDiff !== 0) return powerDiff;
+      const powerScore = (powerOrder[b.diagnostic_power] - powerOrder[a.diagnostic_power]) * 0.4;
       
-      // Then by differentiation score
-      const diffDiff = b.differentiation_score - a.differentiation_score;
-      if (Math.abs(diffDiff) > 0.1) return diffDiff;
+      // Field verifiability weight (40%)
+      const verifyScore = (b.field_verifiability - a.field_verifiability) * 0.4;
       
-      // Then by visual observability
-      return getVisualObservabilityScore(b.observation_key) - getVisualObservabilityScore(a.observation_key);
+      // Differentiation weight (20%)
+      const diffScore = (b.differentiation_score - a.differentiation_score) * 0.2;
+      
+      return powerScore + verifyScore + diffScore;
     })
     .slice(0, maxOptions);
   
-  console.log(`   📋 [DiagnosticConfirmation] Selected ${sortedObservations.length} observations for confirmation`);
+  console.log(`   📋 [DiagnosticConfirmation] Selected ${sortedObservations.length} diagnostic options (max ${maxOptions})`);
   sortedObservations.forEach((obs, i) => {
-    console.log(`      ${i + 1}. ${obs.observation_key} (${obs.diagnostic_power}, diff: ${(obs.differentiation_score * 100).toFixed(0)}%)`);
+    console.log(`      ${i + 1}. ${obs.observation_key} (power=${obs.diagnostic_power}, verify=${(obs.field_verifiability * 100).toFixed(0)}%, diff=${(obs.differentiation_score * 100).toFixed(0)}%)`);
   });
   
   // Build options with multilingual labels
@@ -839,12 +863,14 @@ export function generateDiagnosticConfirmationOptions(
   });
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // MANDATORY: Add "Take Photo" as FINAL option (replaces NONE_OF_THE_ABOVE)
+  // MANDATORY: Add "Take Photo" as FINAL option
+  // HARD RULE: NEVER include "NONE_OF_THE_ABOVE"
+  // Agronomic principle: If verbal confirmation fails, visual evidence is next step
   // ═══════════════════════════════════════════════════════════════════════════
   const photoOption: DiagnosticConfirmationOption = {
-    label_mr: '📷 फोटो काढा (स्पष्ट ओळखण्यासाठी)',
-    label_hi: '📷 फोटो लें (सही पहचान के लिए)',
-    label_en: '📷 Take Photo (for accurate identification)',
+    label_mr: '📷 फोटो काढा (तज्ञ विश्लेषणासाठी)',
+    label_hi: '📷 फोटो लें (विशेषज्ञ विश्लेषण के लिए)',
+    label_en: '📷 Upload Photo (for expert analysis)',
     observation_key: 'PHOTO_REQUESTED',
     diagnostic_power: 'HIGH',
     confidence_boost: 0.30, // Photo provides high confidence
@@ -852,12 +878,15 @@ export function generateDiagnosticConfirmationOptions(
   };
   options.push(photoOption);
   
-  // Build question text
+  // Build trust-first question text (confirms cause, not restates problem)
   const questionTexts = {
     mr: '🔬 कारण ओळखण्यासाठी, खालीलपैकी काय दिसते ते सांगा:',
     hi: '🔬 कारण पहचानने के लिए, नीचे में से क्या दिखता है बताएं:',
-    en: '🔬 To identify the cause, tell us which of these you see:'
+    en: '🔬 To identify the cause, tell us which of these you observe:'
   };
+  
+  console.log(`   ✅ [DiagnosticConfirmation] Generated ${options.length} options (including photo)`);
+  console.log(`      Photo option included=true, None_of_above=REMOVED`);
   
   return {
     question_mr: questionTexts.mr,
