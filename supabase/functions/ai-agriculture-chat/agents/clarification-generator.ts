@@ -65,7 +65,18 @@ import {
   DIAGNOSIS_KEYWORDS
 } from '../decision/clarification-validator.ts';
 
-export const CLARIFICATION_GENERATOR_VERSION = '3.3.0'; // P0: Fixed canonical state inheritance + async/await issues
+// ═══════════════════════════════════════════════════════════════════════════
+// v5.0: IMPORT CANONICAL CONTEXT CONTRACT (SINGLE SOURCE OF TRUTH)
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  type CanonicalContext,
+  buildCanonicalContext,
+  validateContextIntegrity,
+  hasDiagnosticContext,
+  logCanonicalContextAudit
+} from '../decision/canonical-context-contract.ts';
+
+export const CLARIFICATION_GENERATOR_VERSION = '4.0.0'; // v4: Unified CanonicalContext contract
 
 // Re-export types for convenience
 export { ClarificationScope };
@@ -134,28 +145,31 @@ export async function generateScopedClarification(
   const { language, observations, understandingResult, hasLandContext, clarificationState, hasCropContext, cropContext, landContext, farmerMessage } = input;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // P0 FIX: CANONICAL STATE AUTHORITY AUDIT
-  // Log full context to debug data loss between orchestrator and clarification
+  // v4.0: BUILD CANONICAL CONTEXT ONCE (SINGLE SOURCE OF TRUTH)
+  // This context object is IMMUTABLE and passed through the entire flow
   // ═══════════════════════════════════════════════════════════════════════════
-  console.log(`📋 [Clarification] Phase-15 DYNAMIC clarification generation...`);
-  console.log(`   🔍 [ClarificationContextAudit] Building clarification input...`);
-  console.log(`   Canonical state land:`, landContext ? {
-    current_crop: landContext.current_crop,
-    growth_stage: landContext.growth_stage,
-    days_since_sowing: landContext.days_since_sowing,
-    ndvi_value: landContext.ndvi?.latest_value || landContext.ndvi_value,
-    ndvi_trend: landContext.ndvi?.trend || landContext.ndvi_trend
-  } : 'NULL');
-  console.log(`   Has land context? ${!!landContext}`);
-  console.log(`   Crop from canonical: ${landContext?.current_crop || 'MISSING'}`);
-  console.log(`   Stage from canonical: ${landContext?.growth_stage || 'MISSING'}`);
-  console.log(`   DAS from canonical: ${landContext?.days_since_sowing || 'MISSING'}`);
-  console.log(`   NDVI from canonical:`, landContext?.ndvi || landContext?.ndvi_value || 'MISSING');
-  console.log(`   hasCropContext: ${hasCropContext || false}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
-  console.log(`   hasLandContext (input flag): ${hasLandContext}, hasLandContext (object): ${!!landContext}`);
+  const canonicalContext = buildCanonicalContext(landContext, hasLandContext);
+  
+  // Log context audit using canonical contract
+  console.log(`📋 [Clarification v4] Canonical Context Audit:`);
+  if (canonicalContext) {
+    logCanonicalContextAudit(canonicalContext, 'CLARIFICATION_GENERATOR', 'CANONICAL_CONTRACT');
+  } else {
+    console.log(`   Context=NULL (General Query Mode)`);
+  }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1: Map observations to ObservationKeys (with cropContext)
+  // STEP 1: Validate context integrity using canonical contract
+  // ═══════════════════════════════════════════════════════════════════════════
+  validateContextIntegrity(canonicalContext, hasLandContext, 'generateScopedClarification');
+  
+  const effectiveHasLandContext = hasDiagnosticContext(canonicalContext);
+  
+  console.log(`   hasCropContext: ${hasCropContext || false}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
+  console.log(`   hasLandContext (input flag): ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2: Map observations to ObservationKeys (with cropContext)
   // ═══════════════════════════════════════════════════════════════════════════
   const keyMappingResult = mapToObservationKeys(
     observations, 
@@ -170,29 +184,18 @@ export async function generateScopedClarification(
   console.log(`   Turn count: ${turnCount}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2: Resolve clarification plan (ObservationKey-based, deterministic)
-  // PHASE-8.1: Pass hasCropContext to skip crop clarification
-  // TRUST-FIRST: Pass preservedContext and hasLandContext for fail-fast checks
+  // STEP 3: Resolve clarification plan (ObservationKey-based, deterministic)
+  // v4.0: Use canonical context for preserved context
   // ═══════════════════════════════════════════════════════════════════════════
   
-  // P0-2: FAIL-FAST INVARIANT CHECK (moved before plan resolution)
-  // If landContext exists but wasn't passed properly, FAIL FAST
-  const effectiveHasLandContext = !!landContext && !!landContext.current_crop;
-  if (hasLandContext && !effectiveHasLandContext) {
-    console.error(`\n🚨 [FAIL-FAST] hasLandContext=${hasLandContext} but landContext object is missing/empty!`);
-    console.error(`   This means land data was lost between orchestrator and clarification generator.`);
-    console.error(`   Received landContext:`, landContext);
-    throw new Error(`FAIL-FAST: hasLandContext=true but landContext is incomplete. Context MUST be a single canonical object.`);
-  }
-  
-  // Build preserved context for invariant enforcement
-  const preservedContext = landContext ? {
-    crop_code: landContext.crop_code || landContext.current_crop?.toUpperCase() || 'UNKNOWN',
-    crop_name: landContext.current_crop || 'Unknown',
-    growth_stage: landContext.growth_stage || 'UNKNOWN',
-    days_since_sowing: landContext.days_since_sowing || null,
-    ndvi_value: landContext.ndvi?.latest_value || landContext.ndvi?.value || landContext.ndvi_value || null,
-    ndvi_trend: landContext.ndvi?.trend || landContext.ndvi_trend || null,
+  // Build preserved context from canonical context (backward compatible)
+  const preservedContext = canonicalContext ? {
+    crop_code: canonicalContext.crop_code,
+    crop_name: canonicalContext.crop_name,
+    growth_stage: canonicalContext.growth_stage,
+    days_since_sowing: canonicalContext.days_since_sowing,
+    ndvi_value: canonicalContext.ndvi.value,
+    ndvi_trend: canonicalContext.ndvi.trend,
     is_locked: true as const
   } : undefined;
   
@@ -200,9 +203,9 @@ export async function generateScopedClarification(
     observedKeys,
     turnCount,
     clarificationState?.previous_scopes || [],
-    hasCropContext || false, // PHASE-8.1: Skip crop clarification if true
-    preservedContext, // TRUST-FIRST: Pass preserved context for invariant checks
-    hasLandContext // TRUST-FIRST: Pass hasLandContext for fail-fast validation
+    hasCropContext || effectiveHasLandContext, // v4.0: Also use canonical context
+    preservedContext,
+    hasLandContext
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
