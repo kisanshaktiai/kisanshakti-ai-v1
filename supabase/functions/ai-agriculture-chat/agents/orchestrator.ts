@@ -1395,6 +1395,13 @@ export class AIAgentOrchestrator {
         // PATCH 2: NULL-SAFE option matching
         const matchResult = matchFarmerResponseToOption(farmerMessage, pendingOptions);
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Extract observation_key from frontend message if embedded
+        // Frontend sends: "Label text [obs_keys:OBSERVATION_KEY1,OBSERVATION_KEY2]"
+        // ═══════════════════════════════════════════════════════════════════════════
+        const obsKeysMatch = farmerMessage.match(/\[obs_keys:([^\]]+)\]/);
+        const embeddedObservationKeys = obsKeysMatch ? obsKeysMatch[1].split(',').filter(k => k.trim()) : [];
+        
         // PATCH 2: NULL-SAFE - matchResult always returns a valid object now
         if (matchResult.matched && matchResult.matched_option) {
           console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
@@ -1402,10 +1409,16 @@ export class AIAgentOrchestrator {
           // CRITICAL: Clear pending options and continue with ONLY the selected option
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
-          // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
-          const mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-          console.log(`   📋 Mapped to ObservationKey: "${mappedObservationKey || 'UNKNOWN'}"`);
-          
+          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping
+          let mappedObservationKey: string | null = null;
+          if (embeddedObservationKeys.length > 0) {
+            mappedObservationKey = embeddedObservationKeys[0];
+            console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
+          } else {
+            // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+            mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
+            console.log(`   📋 Mapped to ObservationKey (fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+          }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
           // Log pre-clarification state and rebuild with new symbols
@@ -2386,9 +2399,30 @@ export class AIAgentOrchestrator {
             console.log(`═══════════════════════════════════════════════════════════════\n`);
             
             // Return diagnosis-first options to UI
+            // ═══════════════════════════════════════════════════════════════════════════
+            // CRITICAL FIX: Use snake_case fields and `question.options` for proper 
+            // mapping in transformOrchestratorResponse (index.ts)
+            // ═══════════════════════════════════════════════════════════════════════════
+            const diagnosisOptions = clarificationFormat.options.map((opt: any) => ({
+              label: opt.label,
+              value: opt.value || opt.label,
+              observation_key: opt.observation_key || opt.value,
+              description: opt.description,
+              diagnostic_power: opt.diagnostic_power || 'MEDIUM'
+            }));
+            
             return {
               type: 'CLARIFICATION_QUESTION',
               session_id: sessionId,
+              // CRITICAL: Add `question` object with `options` array for proper transform
+              question: {
+                question_id: `diag_first_${Date.now()}`,
+                text_mr: diagnosisFirstOutput.question_text,
+                text_hi: diagnosisFirstOutput.question_text,
+                text_en: diagnosisFirstOutput.question_text,
+                options: diagnosisOptions,
+                scope: 'DIAGNOSTIC_CONFIRMATION'
+              },
               communication: {
                 message_id: crypto.randomUUID(),
                 decision_id: `diag_first_${Date.now()}`,
@@ -2406,6 +2440,8 @@ export class AIAgentOrchestrator {
                   }
                 },
                 quick_actions: [],
+                // CRITICAL: Also add options here for fallback extraction
+                options: diagnosisOptions,
                 metadata: {
                   word_count: diagnosisFirstOutput.question_text.split(/\s+/).length,
                   reading_time_seconds: 5,
@@ -2423,8 +2459,9 @@ export class AIAgentOrchestrator {
                 trace_id: traceId,
                 clarification_scope: 'DIAGNOSTIC_CONFIRMATION',
                 scope_validation_passed: true,
-                pendingClarificationOptions: clarificationFormat.options,
-                orchestratorType: 'DIAGNOSTIC_CONFIRMATION',
+                // CRITICAL: Use snake_case `orchestrator_type` for frontend mapping
+                orchestrator_type: 'CLARIFICATION_QUESTION',
+                selectionType: 'SINGLE_CHOICE',
                 canonicalContext: canonicalContext,
                 diagnosisFirstMode: true,
                 cropDamageDetected: true,

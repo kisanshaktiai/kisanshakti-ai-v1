@@ -102,7 +102,7 @@ interface Message {
   // Clarification options from Decision Brain
   clarificationOptions?: {
     question?: string;
-    options?: Array<{ label: string; value?: string; description?: string }>;
+    options?: Array<{ label: string; value?: string; description?: string; observation_key?: string }>;
     selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
   };
   // Orchestrator type for detecting clarification questions
