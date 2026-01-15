@@ -1,17 +1,27 @@
-# Memory: logic/diagnostic-confirmation-mode-v5-final
+# Memory: logic/diagnostic-confirmation-mode-v6-final-verified
 
-The AI Chat implements a 'Diagnostic Confirmation' mode (v5.0.0) that activates when crop/stage are known and terminal/high-severity damage (e.g., SEEDLING_DIED, PLANT_DIED, AFFECTED_PART_WHOLE, or PATCHY_DAMAGE + SEVERITY_HIGH) is detected. This mode enforces strict invariants: (1) Permanently blocks 'IDENTIFY_LOCATION' and generic scopes to prevent location re-confirmation when whole-plant damage is known. (2) Presents 4-6 cause-narrowing options (e.g., DEAD_HEART_PRESENT, LARVAE_VISIBLE) derived exclusively from 'observable_characteristics' of top candidate rules. (3) Replaces 'None of the above' with a mandatory '📷 Take Photo' option, pivoting to vision-assisted evidence extraction if verbal symptoms aren't confirmed. (4) Uses 'PreservedCanonicalContext' to ensure crop, stage, DAS, and NDVI data are passed as an immutable, locked object, preventing data loss or inference during clarification. (5) Rule-driven options must never be overwritten by NLU fallback. Rationale: System behavior must mirror a senior agronomist—confirming the cause, not the problem.
+The AI Chat implements a 'Diagnostic Confirmation' mode (v6.0.0) that activates when crop/stage are known and terminal/high-severity damage (e.g., SEEDLING_DIED, PLANT_DIED, AFFECTED_PART_WHOLE, or PATCHY_DAMAGE + SEVERITY_HIGH) is detected. (1) Permanently blocks 'IDENTIFY_LOCATION' to prevent redundant location questioning. (2) Presents 4-6 cause-narrowing options (e.g., DEAD_HEART_PRESENT, LARVAE_VISIBLE) derived from candidate rules. (3) Replaces 'None of the above' with a mandatory '📷 Take Photo' option. (4) Uses 'PreservedCanonicalContext' (a locked, single immutable object) to pass crop, stage, DAS, and NDVI data. (5) Rule-driven options always take priority over NLU fallback. (6) Selection re-runs the symbolic brain with updated facts. Behavior mirrors a senior agronomist—confirming the cause, not the problem.
 
-## Key Components
+## Key Architecture Components
 
-1. **PreservedCanonicalContext** (clarification-scope-resolver.ts): An immutable context type with crop_code, crop_name, growth_stage, days_since_sowing, ndvi_value, ndvi_trend, and is_locked=true. This context MUST be passed forward intact during clarification.
+1. **CanonicalContext Contract** (canonical-context-contract.ts): Defines a SINGLE, IMMUTABLE context object built EXACTLY ONCE per turn and passed by reference through: orchestrator → hypothesis-evaluator → clarification-generator → UI. No function may rebuild or infer context.
 
-2. **checkDiagnosticConfirmationAuthority** (clarification-scope-resolver.ts): A preemptive authority function that runs BEFORE any other clarification logic. It checks for terminal/high-severity indicators and blocks IDENTIFY_LOCATION when conditions are met.
+2. **buildCanonicalContext()**: Creates the locked context from landContext, throws FAIL-FAST error if hasLandContext=true but data is incomplete.
 
-3. **Fail-Fast Invariants** (clarification-scope-resolver.ts, clarification-generator.ts): If hasLandContext=true but landContext is incomplete/missing, the system throws an error immediately instead of falling back to generic clarification.
+3. **validateContextIntegrity()**: Called at critical points to catch invariant violations early. Throws if hasContext=true but context is null/UNKNOWN.
 
-4. **Terminal Damage Indicators**: SEEDLING_DIED, AFFECTED_PART_WHOLE, ESTABLISHMENT_FAILURE, PATCHY_DAMAGE, GAPS_IN_FIELD, PLANT_DEATH, CROP_FAILURE, DEAD_SEEDLINGS, PLANT_DRYING, WILTING_SEVERE.
+4. **checkDiagnosticConfirmationAuthority()**: Preemptive authority function that runs BEFORE any other clarification logic. Uses hasTerminalDamage() and getDetectedTerminalDamage() from canonical contract.
 
-5. **High Severity Indicators**: SEVERITY_HIGH, ENTIRE_FIELD_AFFECTED, SEVERITY_CRITICAL, AFFECTED_PERCENTAGE_HIGH.
+5. **Terminal Damage Indicators**: SEEDLING_DIED, AFFECTED_PART_WHOLE, ESTABLISHMENT_FAILURE, PATCHY_DAMAGE, GAPS_IN_FIELD, PLANT_DEATH, CROP_FAILURE, DEAD_SEEDLINGS, PLANT_DRYING, WILTING_SEVERE.
 
-6. **Production Logs**: Must show Scope=DIAGNOSTIC_CONFIRMATION, ClarificationAuthority=DECISION_RULES, ContextPreserved=true, and preserved crop/stage/DAS/NDVI context.
+6. **High Severity Indicators**: SEVERITY_HIGH, ENTIRE_FIELD_AFFECTED, SEVERITY_CRITICAL, AFFECTED_PERCENTAGE_HIGH.
+
+7. **Production Logs**: Must show Scope=DIAGNOSTIC_CONFIRMATION, Source=DECISION_RULES, CanonicalContext=LOCKED, and preserved crop/stage/DAS/NDVI context.
+
+## Invariants
+
+- Context is created EXACTLY ONCE per turn (not rebuilt)
+- If hasLandContext=true but context is incomplete, system MUST fail fast
+- IDENTIFY_LOCATION is PERMANENTLY BLOCKED when crop context is known
+- Rule-driven options MUST take priority over NLU fallback
+- Photo option is MANDATORY (replaces NONE_OF_THE_ABOVE)

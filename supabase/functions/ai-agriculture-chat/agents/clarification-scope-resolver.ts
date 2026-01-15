@@ -31,10 +31,28 @@ import {
 
 import { ClarificationScope } from './clarification-renderer.ts';
 
-export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '4.0.0'; // Trust-First: DIAGNOSTIC_CONFIRMATION as preemptive authority
+// ═══════════════════════════════════════════════════════════════════════════
+// IMPORT CANONICAL CONTEXT CONTRACT (SINGLE SOURCE OF TRUTH)
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  type CanonicalContext,
+  buildCanonicalContext,
+  hasDiagnosticContext,
+  validateContextIntegrity,
+  hasTerminalDamage,
+  getDetectedTerminalDamage,
+  logCanonicalContextAudit,
+  TERMINAL_DAMAGE_INDICATORS as CANONICAL_TERMINAL_INDICATORS,
+  HIGH_SEVERITY_INDICATORS as CANONICAL_SEVERITY_INDICATORS
+} from '../decision/canonical-context-contract.ts';
+
+export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '5.0.0'; // Unified CanonicalContext contract
 
 // Re-export ClarificationScope for convenience
 export { ClarificationScope };
+
+// Re-export CanonicalContext types for consumers
+export type { CanonicalContext };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION PLAN (OUTPUT)
@@ -141,14 +159,10 @@ const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
  */
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PRESERVED CANONICAL CONTEXT (HARD INVARIANT)
+ * PRESERVED CANONICAL CONTEXT (DEPRECATED - USE CanonicalContext)
  * ═══════════════════════════════════════════════════════════════════════════
- * This type represents the immutable context that MUST be passed forward 
- * during clarification. It is a hard invariant - these values cannot be 
- * rebuilt, inferred, or partially reconstructed.
- * 
- * AGRONOMIST PRINCIPLE: Once land context is loaded, it is LOCKED.
- * If hasLandContext=true but this object is missing/incomplete, FAIL FAST.
+ * @deprecated Use CanonicalContext from canonical-context-contract.ts instead.
+ * This interface is kept for backward compatibility during migration.
  */
 export interface PreservedCanonicalContext {
   crop_code: string;
@@ -157,7 +171,6 @@ export interface PreservedCanonicalContext {
   days_since_sowing: number | null;
   ndvi_value: number | null;
   ndvi_trend: string | null;
-  // Flag indicating this context was validated and locked
   is_locked: true;
 }
 
@@ -184,71 +197,55 @@ export interface DiagnosticConfirmationAuthority {
 /**
  * Check if DIAGNOSTIC_CONFIRMATION should be the preemptive authority.
  * This check runs BEFORE any other clarification logic.
+ * 
+ * UPGRADED v5.0: Now uses CanonicalContext directly for fail-fast checks.
  */
 export function checkDiagnosticConfirmationAuthority(
   observedKeys: Set<ObservationKey>,
   hasCropContext: boolean,
   hasLandContext: boolean,
-  landContextComplete: boolean
+  landContextComplete: boolean,
+  canonicalContext?: CanonicalContext | null // NEW: Direct context object
 ): DiagnosticConfirmationAuthority {
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAIL-FAST INVARIANT: Context integrity check
-  // If hasLandContext=true but context is incomplete, this is a fatal error
+  // FAIL-FAST INVARIANT: Use CanonicalContext directly if provided
   // ═══════════════════════════════════════════════════════════════════════════
-  if (hasLandContext && !landContextComplete) {
+  if (canonicalContext) {
+    // Validate context integrity using the contract
+    validateContextIntegrity(canonicalContext, hasLandContext, 'checkDiagnosticConfirmationAuthority');
+  } else if (hasLandContext && !landContextComplete) {
+    // Fallback: Legacy check for when canonicalContext not provided
     console.error(`\n🚨 [FAIL-FAST] hasLandContext=true but context is incomplete!`);
     console.error(`   This violates the context preservation invariant.`);
     throw new Error(`FAIL-FAST: hasLandContext=true but landContext is incomplete. Context MUST be a single canonical object.`);
   }
   
-  // Terminal damage indicators that ALWAYS trigger DIAGNOSTIC_CONFIRMATION
-  const TERMINAL_DAMAGE_INDICATORS = [
-    ObservationKey.SEEDLING_DIED,
-    ObservationKey.AFFECTED_PART_WHOLE,
-    ObservationKey.ESTABLISHMENT_FAILURE,
-    ObservationKey.PATCHY_DAMAGE,
-    ObservationKey.GAPS_IN_FIELD,
-    ObservationKey.PLANT_DEATH,
-    ObservationKey.CROP_FAILURE,
-    ObservationKey.DEAD_SEEDLINGS,
-    ObservationKey.PLANT_DRYING,
-    ObservationKey.WILTING_SEVERE
-  ];
-  
-  const SEVERITY_HIGH_INDICATORS = [
-    ObservationKey.SEVERITY_HIGH,
-    ObservationKey.ENTIRE_FIELD_AFFECTED,
-    ObservationKey.SEVERITY_CRITICAL,
-    ObservationKey.AFFECTED_PERCENTAGE_HIGH
-  ];
-  
-  const activatedBy: string[] = [];
-  
-  // Check for terminal damage
-  TERMINAL_DAMAGE_INDICATORS.forEach(k => {
-    if (observedKeys.has(k)) activatedBy.push(k);
-  });
-  
-  // Check for high severity
-  SEVERITY_HIGH_INDICATORS.forEach(k => {
-    if (observedKeys.has(k)) activatedBy.push(k);
-  });
-  
-  // Check for patchy + high severity combination
-  const hasPatchyWithHighSeverity = 
-    observedKeys.has(ObservationKey.PATCHY_DAMAGE) && 
-    SEVERITY_HIGH_INDICATORS.some(k => observedKeys.has(k));
-  
-  if (hasPatchyWithHighSeverity && !activatedBy.includes(ObservationKey.PATCHY_DAMAGE)) {
-    activatedBy.push(`${ObservationKey.PATCHY_DAMAGE}+SEVERITY_HIGH`);
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // USE CANONICAL CONTRACT FOR TERMINAL DAMAGE DETECTION
+  // ═══════════════════════════════════════════════════════════════════════════
+  const observedKeysArray = Array.from(observedKeys);
+  const terminalDamageDetected = hasTerminalDamage(observedKeysArray);
+  const detectedIndicators = getDetectedTerminalDamage(observedKeysArray);
   
   // DIAGNOSTIC_CONFIRMATION is active if: crop+stage known AND any terminal/severity indicator
-  const isActive = hasCropContext && activatedBy.length > 0;
+  const isActive = hasCropContext && terminalDamageDetected;
+  
+  if (isActive) {
+    // Log using canonical contract format
+    logCanonicalContextAudit(
+      canonicalContext || null,
+      'DIAGNOSTIC_CONFIRMATION',
+      'DECISION_RULES'
+    );
+    
+    console.log(`   🔬 [PREEMPTIVE AUTHORITY] DIAGNOSTIC_CONFIRMATION activated:`);
+    console.log(`      Triggered by: ${detectedIndicators.slice(0, 3).join(', ')}${detectedIndicators.length > 3 ? '...' : ''}`);
+    console.log(`      IDENTIFY_LOCATION: PERMANENTLY BLOCKED`);
+  }
   
   return {
     is_active: isActive,
-    activated_by: activatedBy,
+    activated_by: detectedIndicators,
     blocked_scopes: isActive ? [
       ClarificationScope.IDENTIFY_LOCATION,
       ClarificationScope.IDENTIFY_CROP,
