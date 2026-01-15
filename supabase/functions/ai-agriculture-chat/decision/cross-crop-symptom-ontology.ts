@@ -112,7 +112,14 @@ export enum CrossCropSymptomKey {
   HONEYDEW_PRESENT = 'HONEYDEW_PRESENT',
   SOOTY_MOLD_VISIBLE = 'SOOTY_MOLD_VISIBLE',
   FRUIT_DAMAGE = 'FRUIT_DAMAGE',
-  FLOWER_DAMAGE = 'FLOWER_DAMAGE'
+  FLOWER_DAMAGE = 'FLOWER_DAMAGE',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-14: PLANT DEATH / STAND FAILURE (Critical for diagnosis mode)
+  // ═══════════════════════════════════════════════════════════════════════════
+  PLANT_DEATH = 'PLANT_DEATH',
+  SEEDLING_DEATH = 'SEEDLING_DEATH',
+  GERMINATION_FAILURE = 'GERMINATION_FAILURE'
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

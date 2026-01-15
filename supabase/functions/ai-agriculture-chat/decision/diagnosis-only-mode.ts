@@ -72,10 +72,12 @@ export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
   // Direct terminal damage
   'SEEDLING_DIED',
   'PLANT_DIED',
-  'PLANT_DEATH',
+  'PLANT_DEATH',      // Canonical key from fact-extractor
+  'SEEDLING_DEATH',   // CrossCropSymptomKey v4.1
   'DEAD_SEEDLINGS',
   'CROP_FAILURE',
   'ESTABLISHMENT_FAILURE',
+  'GERMINATION_FAILURE',  // CrossCropSymptomKey v4.1
   
   // Whole-plant/severe damage
   'AFFECTED_PART_WHOLE',
@@ -112,12 +114,16 @@ export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
 export const CROP_DAMAGE_OBSERVATION_KEYS = new Set([
   // Growth/vigor issues
   'PATCHY_GROWTH',
-  'OVERALL_WEAK',
+  'OVERALL_WEAK',       // ← CRITICAL FIX: Cross-crop symptom for plant weakness/death
   'STUNTED_GROWTH',
   'POOR_GERMINATION',
   'UNEVEN_EMERGENCE',
   'REDUCED_TILLERS',
   'LOW_VIGOR',
+  // v4.1.0: Added cross-crop symptom keys
+  'AFFECTED_PATCHES',   // Cross-crop symptom for patchy damage
+  'PLANT_DEATH',        // Cross-crop symptom for plant death
+  'SEEDLING_DEATH',     // Cross-crop symptom for seedling death
   
   // Affected patches
   'AFFECTED_PATCHES',
