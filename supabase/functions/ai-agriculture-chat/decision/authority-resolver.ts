@@ -26,10 +26,17 @@
  * 4. SYSTEM - Overrides CROP only
  * 5. CROP - Default (pests, diseases, nutrients)
  * 
+ * 
+ * v2.0.0 UPDATE (SURGICAL REFACTOR):
+ * - Added observations parameter for terminal damage pre-check
+ * - Terminal damage detection runs BEFORE other authority rules
+ * - authority = NONE is PROHIBITED when terminal damage exists
+ * - Hard assertion enforces invariant at resolution
+ * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const AUTHORITY_RESOLVER_VERSION = '1.2.0';
+export const AUTHORITY_RESOLVER_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // P1-1 FIX: Import canonical types from authority-types.ts
@@ -42,6 +49,13 @@ import {
   ResponseMode,
   type AuthorityDecision
 } from './authority-types.ts';
+
+// v2.0: Import terminal damage detection from diagnosis-only-mode
+import {
+  detectTerminalDamageForAuthority,
+  createEnforcedCropAuthority,
+  assertTerminalDamageAuthority
+} from './diagnosis-only-mode.ts';
 
 // Re-export for backward compatibility
 export { DecisionAuthority, AuthorityStatus, ResponseMode };
@@ -164,7 +178,7 @@ const CLIMATE_SYMPTOMS = new Set([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN RESOLVER FUNCTION
+// MAIN RESOLVER FUNCTION (v2.0 - WITH TERMINAL DAMAGE PRE-CHECK)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -173,20 +187,65 @@ const CLIMATE_SYMPTOMS = new Set([
  * Determines which domain has the LEGAL RIGHT to make decisions.
  * This is pure symbolic logic with strict precedence rules.
  * 
+ * v2.0 CHANGE: Now accepts optional observations parameter for terminal
+ * damage pre-check. Terminal damage ALWAYS grants CROP authority,
+ * BEFORE other rules are evaluated.
+ * 
  * @param input - AuthorityInput from upstream symbolic layers
+ * @param observations - Optional ObservationKeys for terminal damage check
  * @returns AuthorityDecision with explicit blocked/allowed domains
  */
-export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecision {
+export function resolveDecisionAuthority(
+  input: AuthorityInput,
+  observations?: Set<string> | string[]
+): AuthorityDecision {
   const causes = new Set(input.detected_causes || []);
   const symptoms = new Set(input.cross_crop_symptoms || []);
   
   const resolvedAt = new Date().toISOString();
   
   // ═══════════════════════════════════════════════════════════════════════
+  // PRE-AUTHORITY GATE: Terminal damage OVERRIDES everything (v2.0)
+  // This runs BEFORE any other authority rules
+  // ═══════════════════════════════════════════════════════════════════════
+  
+  if (observations) {
+    const terminalCheck = detectTerminalDamageForAuthority(observations);
+    if (terminalCheck.detected) {
+      console.log(`\n🚨 [AuthorityResolver] TERMINAL DAMAGE DETECTED - CROP authority ENFORCED`);
+      console.log(`   Mode=DIAGNOSIS_ONLY`);
+      console.log(`   Authority=CROP`);
+      console.log(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
+      console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
+      console.log(`   Terminal indicators: ${terminalCheck.terminal_damage.join(', ')}`);
+      
+      return createEnforcedCropAuthority(
+        terminalCheck.terminal_damage,
+        observations
+      );
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
   // RULE 0: NO CAUSES = NONE AUTHORITY (Observation/Information Only)
+  // BUT NOT if terminal damage exists (checked above)
   // ═══════════════════════════════════════════════════════════════════════
   
   if (causes.size === 0 && symptoms.size === 0) {
+    // v2.0: Double-check observations for terminal damage even if causes/symptoms empty
+    // This prevents NONE authority when terminal damage exists
+    if (observations) {
+      const terminalRecheck = detectTerminalDamageForAuthority(observations);
+      if (terminalRecheck.detected) {
+        console.log(`\n🚨 [AuthorityResolver] NONE authority BLOCKED - terminal damage present`);
+        console.log(`   Mode=DIAGNOSIS_ONLY`);
+        console.log(`   Authority=CROP (ENFORCED)`);
+        console.log(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
+        console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
+        return createEnforcedCropAuthority(terminalRecheck.terminal_damage, observations);
+      }
+    }
+    
     return {
       authority: DecisionAuthority.NONE,
       authority_status: AuthorityStatus.UNCONFIRMED,
@@ -333,7 +392,7 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
   // Potential if we have any symptoms at all
   const hasPotential = symptoms.size > 0 || hasNutrientSymptom;
   
-  return {
+  const result: AuthorityDecision = {
     authority: DecisionAuthority.CROP,
     authority_status: isConfirmed ? AuthorityStatus.CONFIRMED : AuthorityStatus.UNCONFIRMED,
     blocked_domains: [],
@@ -354,6 +413,17 @@ export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecisi
     resolver_version: AUTHORITY_RESOLVER_VERSION,
     resolved_at: resolvedAt
   };
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // v2.0: FINAL INVARIANT CHECK - Terminal damage MUST have CROP authority
+  // ═══════════════════════════════════════════════════════════════════════
+  if (observations) {
+    const finalCheck = detectTerminalDamageForAuthority(observations);
+    // This will throw if invariant is violated
+    assertTerminalDamageAuthority(finalCheck.detected, result.authority);
+  }
+  
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

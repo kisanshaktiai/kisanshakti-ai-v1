@@ -37,6 +37,13 @@ import {
   AuthorityAuditEntry
 } from '../decision/authority-resolver.ts';
 
+// v3.0: Import terminal damage detection for observation-based authority
+import {
+  detectTerminalDamageForAuthority,
+  resolveDiagnosticAuthorityFromObservations,
+  assertTerminalDamageAuthority
+} from '../decision/diagnosis-only-mode.ts';
+
 // Static import for decision graph bridge (CRITICAL: No dynamic imports allowed in edge functions)
 import { evaluateDecisionGraph } from './decision-graph-bridge.ts';
 
@@ -134,25 +141,49 @@ export class DiagnosticFlowController {
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Proceed to decision when we have sufficient context
-    // Skip clarification for high-confidence queries with essential entities
+    // v3.0: OBSERVATION-BASED AUTHORITY RESOLUTION (NLU GATING REMOVED)
+    // 
+    // Authority is derived from ObservationKeys, NOT from NLU intent/confidence.
+    // hasProblem and hasPestOrDisease are NO LONGER used for diagnosis eligibility.
+    // Terminal damage observations automatically grant CROP authority.
     // ═══════════════════════════════════════════════════════════════════════════
     
-    // Relax requirement: crop alone OR pest/disease/symptoms alone is enough
+    // Extract ObservationKeys from NLU entities (symptom codes)
+    const observationKeys = new Set<string>(nluOutput.entities?.symptom_codes || []);
+    
+    // Check for terminal damage from observations (NOT NLU intent)
+    const terminalDamageResult = detectTerminalDamageForAuthority(observationKeys);
+    
+    // v3.0: If terminal damage detected, proceed DIRECTLY to rule evaluation
+    // NLU confidence is COMPLETELY IGNORED - authority comes from observations
+    if (terminalDamageResult.detected) {
+      console.log('🚨 [DiagnosticFlow] Terminal damage detected - proceeding directly to rule evaluation');
+      console.log('   Mode=DIAGNOSIS_ONLY');
+      console.log('   Authority=CROP (ENFORCED)');
+      console.log('   Trigger=TERMINAL_DAMAGE_OBSERVATION');
+      console.log('   NLU_ROLE=OBSERVATION_ONLY');
+      console.log(`   Terminal indicators: ${terminalDamageResult.terminal_damage.join(', ')}`);
+      
+      // Proceed directly to rule evaluation - skip all clarification
+      return await this.evaluateRules();
+    }
+    
+    // v3.0: Standard path - check for essential entities (NOT NLU confidence)
+    // hasProblem is derived from observations, not NLU classification
     const hasCrop = !!nluOutput.entities?.crop_code;
-    const hasProblem = !!(nluOutput.entities?.pest_code || nluOutput.entities?.disease_code || nluOutput.entities?.symptom_codes?.length);
-    const hasEssentialEntities = hasCrop || hasProblem;
+    const hasObservations = observationKeys.size > 0;
+    const hasEssentialEntities = hasCrop || hasObservations;
     
-    const highConfidence = overallConfidence >= 0.5; // Lowered from 0.6 to reduce excessive questions
-    const canProceedDirectly = hasEssentialEntities && highConfidence;
+    // v3.0: canProceedDirectly is based on entities, NOT NLU confidence
+    const canProceedDirectly = hasEssentialEntities;
     
-    console.log('📊 [DiagnosticFlow] Decision check:', {
+    console.log('📊 [DiagnosticFlow] Decision check (v3.0 - observation-based):', {
       hasEssentialEntities,
       hasCrop,
-      hasProblem,
-      highConfidence,
+      hasObservations,
       canProceedDirectly,
-      confidence: overallConfidence
+      terminalDamageDetected: terminalDamageResult.detected,
+      nluConfidence_IGNORED: overallConfidence // Logged but not used
     });
     
     // If we have essential context, proceed directly to rule evaluation
@@ -264,30 +295,57 @@ export class DiagnosticFlowController {
     });
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // DECISION AUTHORITY RESOLUTION (Land-First Governance)
-    // Must run BEFORE any diagnostic rules are evaluated
+    // v3.0: DECISION AUTHORITY RESOLUTION (WITH OBSERVATIONS)
+    // Pass observations to resolver for terminal damage pre-check
     // ═══════════════════════════════════════════════════════════════════════════
     
-    const authorityInput: AuthorityInput = {
-      detected_causes: this.extractDetectedCauses(nlu, context),
-      cross_crop_symptoms: nlu.entities?.symptom_codes || [],
-      land_context: context.land_id ? {
-        has_soil_health: !!(context as any).soil_health,
-        soil_ec: (context as any).soil_ec,
-        waterlogging: (context as any).waterlogging
-      } : undefined
-    };
+    // Collect all observations for authority check
+    const allObservations = new Set<string>([
+      ...(nlu.entities?.symptom_codes || []),
+      ...(context.observations || [])
+    ]);
     
-    const authorityDecision = resolveDecisionAuthority(authorityInput);
+    // v3.0: First check terminal damage via pre-authority gate
+    const preAuthorityResult = resolveDiagnosticAuthorityFromObservations(allObservations);
     
-    // Store audit trail
-    this.session.authority_audit = buildAuthorityAuditEntry(authorityInput, authorityDecision);
+    let authorityDecision: AuthorityDecision;
     
-    console.log('⚖️ [DiagnosticFlow] Authority resolved:', {
-      authority: authorityDecision.authority,
-      blocked_domains: authorityDecision.blocked_domains,
-      reason: authorityDecision.reason
-    });
+    if (preAuthorityResult.nlu_bypassed && preAuthorityResult.enforced_decision) {
+      // Terminal damage detected - use enforced authority
+      authorityDecision = preAuthorityResult.enforced_decision;
+      
+      console.log('🚨 [DiagnosticFlow] Authority ENFORCED by terminal damage:', {
+        authority: authorityDecision.authority,
+        trigger: preAuthorityResult.trigger,
+        terminal_indicators: preAuthorityResult.terminal_indicators,
+        nlu_bypassed: true
+      });
+    } else {
+      // Standard authority resolution (with observations for invariant check)
+      const authorityInput: AuthorityInput = {
+        detected_causes: this.extractDetectedCauses(nlu, context),
+        cross_crop_symptoms: nlu.entities?.symptom_codes || [],
+        land_context: context.land_id ? {
+          has_soil_health: !!(context as any).soil_health,
+          soil_ec: (context as any).soil_ec,
+          waterlogging: (context as any).waterlogging
+        } : undefined
+      };
+      
+      // v3.0: Pass observations to resolver for terminal damage check
+      authorityDecision = resolveDecisionAuthority(authorityInput, allObservations);
+      
+      console.log('⚖️ [DiagnosticFlow] Authority resolved (standard path):', {
+        authority: authorityDecision.authority,
+        blocked_domains: authorityDecision.blocked_domains,
+        reason: authorityDecision.reason
+      });
+    }
+    
+    // v3.0: Assert invariant - terminal damage MUST have CROP authority
+    if (preAuthorityResult.nlu_bypassed) {
+      assertTerminalDamageAuthority(true, authorityDecision.authority);
+    }
     
     // Check if crop rules should be skipped
     const skipCropRules = shouldSkipCropRules(authorityDecision);
