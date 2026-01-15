@@ -2104,15 +2104,9 @@ export class AIAgentOrchestrator {
       console.log(`      Symptoms detected: ${crossCropSymptoms.size}`);
       console.log(`      Symptoms: ${serializeCrossCropSymptoms(crossCropSymptoms).slice(0, 5).join(', ')}${crossCropSymptoms.size > 5 ? '...' : ''}`);
       
-      // CRITICAL FIX: Inject cross_crop_symptoms into NLU output for diagnostic-flow-controller
-      // This ensures terminal damage detection works even when NLU doesn't extract symptoms
-      if (nluOutput && crossCropSymptoms.size > 0) {
-        if (!nluOutput.symptom_extraction) {
-          nluOutput.symptom_extraction = { visual_symptoms: [], cross_crop_symptoms: [] };
-        }
-        nluOutput.symptom_extraction.cross_crop_symptoms = serializeCrossCropSymptoms(crossCropSymptoms);
-        console.log(`      Injected ${crossCropSymptoms.size} cross-crop symptoms into NLU output`);
-      }
+      // NOTE: Cross-crop symptoms will be injected into nluOutput AFTER NLU processing (line ~2760)
+      // The nluOutput variable is declared later, so we store crossCropSymptoms in this scope
+      // and inject them after NLU declaration
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 4: UNDERSTANDING COMPLETENESS CHECK (SYMBOLIC - NO LLM)
       // Determine if we have enough info to proceed or need clarification
@@ -2778,6 +2772,18 @@ export class AIAgentOrchestrator {
           
           console.log(`   💉 Boosted intent to ${mappedIntent} with confidence 0.9`);
         }
+      }
+      
+      // CRITICAL FIX: Inject cross_crop_symptoms into NLU output for diagnostic-flow-controller
+      // This ensures terminal damage detection works even when NLU doesn't extract symptoms
+      // NOTE: crossCropSymptoms was computed earlier in Stage 2.6 and stored in this._crossCropSymptoms
+      const storedCrossCropSymptoms = (this as any)._crossCropSymptoms as Set<string> | undefined;
+      if (nluOutput && storedCrossCropSymptoms && storedCrossCropSymptoms.size > 0) {
+        if (!nluOutput.symptom_extraction) {
+          nluOutput.symptom_extraction = { visual_symptoms: [], cross_crop_symptoms: [] };
+        }
+        nluOutput.symptom_extraction.cross_crop_symptoms = Array.from(storedCrossCropSymptoms);
+        console.log(`      Injected ${storedCrossCropSymptoms.size} cross-crop symptoms into NLU output`);
       }
       
       // ========================================
