@@ -370,17 +370,21 @@ import {
 } from '../decision/canonical-context-contract.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE-22: DIAGNOSIS-ONLY MODE
-// Skip clarification entirely when terminal damage is detected with known context
+// PHASE-22: DIAGNOSIS-ONLY MODE (v2.0 - Rule-Granted Authority)
+// Terminal damage grants CROP authority, bypasses NLU gating
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   shouldActivateDiagnosisOnlyMode,
   generateDiagnosisOnlyOutput,
   formatDiagnosisForLLM,
   logDiagnosisOnlyActivation,
+  detectTerminalDamageForAuthority,
+  createEnforcedCropAuthority,
+  assertTerminalDamageAuthority,
   DIAGNOSIS_ONLY_MODE_VERSION,
   type DiagnosisOnlyOutput,
-  type MatchedRule
+  type MatchedRule,
+  type TerminalDamageDetectionResult
 } from '../decision/diagnosis-only-mode.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2113,9 +2117,9 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // PHASE-22: DIAGNOSIS-ONLY MODE CHECK
-      // When terminal damage is detected with known context, SKIP CLARIFICATION
-      // and immediately run symbolic rule engine for direct diagnosis
+      // PHASE-22 v2.0: DIAGNOSIS-ONLY MODE CHECK (RULE-GRANTED AUTHORITY)
+      // When terminal damage is detected, CROP authority is ENFORCED
+      // NLU gating is DISABLED - authority comes from ObservationKeys
       // ═══════════════════════════════════════════════════════════════════════════
       
       // Collect all observations for terminal damage check
@@ -2138,35 +2142,66 @@ export class AIAgentOrchestrator {
         });
       }
       
-      // Check if Diagnosis-Only Mode should be activated
-      // Note: We pass 1 as matchedRulesCount to enable activation, actual rule evaluation happens later
+      // v2.0: Detect terminal damage BEFORE authority resolution
+      // This grants CROP authority directly from ObservationKeys
+      const terminalDamageResult = detectTerminalDamageForAuthority(allObservationsForDiagCheck);
+      
+      // v2.0: If terminal damage detected, ENFORCE CROP authority (overrides authority-resolver)
+      let enforcedAuthorityDecision = null;
+      if (terminalDamageResult.detected) {
+        enforcedAuthorityDecision = createEnforcedCropAuthority(
+          terminalDamageResult.terminal_damage,
+          allObservationsForDiagCheck
+        );
+        
+        console.log(`\n🚨 [TERMINAL DAMAGE AUTHORITY ENFORCEMENT]`);
+        console.log(`   Mode=DIAGNOSIS_ONLY`);
+        console.log(`   Authority=CROP (ENFORCED)`);
+        console.log(`   NLU_GATING=DISABLED`);
+        console.log(`   Source=DECISION_RULES`);
+        console.log(`   Terminal indicators: ${terminalDamageResult.terminal_damage.join(', ')}`);
+      }
+      
+      // Check if Diagnosis-Only Mode should be activated (v2.0 - enhanced)
       const diagnosisOnlyCheck = shouldActivateDiagnosisOnlyMode(
         canonicalContext,
         allObservationsForDiagCheck,
-        1 // Assume at least 1 rule will match - actual evaluation is deferred
+        1 // Kept for backward compatibility
       );
       
-      // Log the check result
+      // Log the check result (v2.0 - includes authority info)
       logDiagnosisOnlyActivation(
         diagnosisOnlyCheck.activate,
         diagnosisOnlyCheck.reason,
         diagnosisOnlyCheck.terminal_damage,
         canonicalContext?.crop_code || 'UNKNOWN',
-        canonicalContext?.growth_stage || 'UNKNOWN'
+        canonicalContext?.growth_stage || 'UNKNOWN',
+        diagnosisOnlyCheck.enforced_authority,
+        diagnosisOnlyCheck.nlu_gating_disabled
       );
       
       // If Diagnosis-Only Mode is activated, SKIP CLARIFICATION entirely
       let diagnosisOnlyModeActive = diagnosisOnlyCheck.activate;
       let bypassClarificationForTerminalDamage = diagnosisOnlyModeActive;
       
+      // v2.0: HARD INVARIANT CHECK - terminal damage MUST have CROP authority
+      if (diagnosisOnlyModeActive && diagnosisOnlyCheck.enforced_authority) {
+        assertTerminalDamageAuthority(
+          true, // terminalDamageDetected
+          diagnosisOnlyCheck.enforced_authority
+        );
+      }
+      
       if (diagnosisOnlyModeActive) {
-        console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Clarification SKIPPED - proceeding to direct rule evaluation`);
+        console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Clarification PERMANENTLY SKIPPED`);
         console.log(`   Mode=DIAGNOSIS_ONLY`);
+        console.log(`   Authority=CROP (ENFORCED)`);
+        console.log(`   NLU_GATING=DISABLED`);
         console.log(`   Clarification=SKIPPED`);
         console.log(`   Source=DECISION_RULES`);
         console.log(`   Crop/Stage=${canonicalContext?.crop_code}/${canonicalContext?.growth_stage} (LOCKED)`);
         console.log(`   Terminal damage: ${diagnosisOnlyCheck.terminal_damage.join(', ')}`);
-        agentsUsed.push('DIAGNOSIS_ONLY_MODE');
+        agentsUsed.push('DIAGNOSIS_ONLY_MODE_V2');
         
         // Force bypass clarification
         understandingResult.clarification_required = false;
