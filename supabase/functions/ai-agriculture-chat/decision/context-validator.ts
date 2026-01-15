@@ -396,10 +396,12 @@ export class ContextValidator {
     }
     
     // Soil data (15 points)
-    if (input.land_state?.soil.npk_available) score += 15;
+    // FIX: Null-safe access to prevent "Cannot read properties of undefined"
+    if (input.land_state?.soil?.npk_available) score += 15;
     
     // Weather data (10 points)
-    if (input.land_state?.weather.data_fresh) score += 10;
+    // FIX: Null-safe access
+    if (input.land_state?.weather?.data_fresh) score += 10;
     
     // Symptom specificity (15 points)
     const symptoms = input.symptom_keys || [];

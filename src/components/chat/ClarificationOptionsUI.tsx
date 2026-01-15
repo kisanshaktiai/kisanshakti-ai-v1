@@ -27,11 +27,12 @@ import {
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface ClarificationOption {
+export interface ClarificationOption {
   label: string;
   value?: string;
   icon?: string;
   description?: string;
+  /** CRITICAL: Observation key for rule engine re-evaluation */
   observation_key?: string;
   diagnostic_power?: 'HIGH' | 'MEDIUM' | 'LOW';
 }

@@ -155,7 +155,7 @@ interface Message {
   // Clarification options for Decision Brain interactive UI
   clarificationOptions?: {
     question?: string;
-    options?: Array<{ label: string; value?: string; description?: string }>;
+    options?: Array<{ label: string; value?: string; description?: string; observation_key?: string }>;
     selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
   };
   // ⚡ OPTIMISTIC UPDATE: Message status for WhatsApp-like UX
@@ -1498,7 +1498,9 @@ export function EnhancedAIChatInterface() {
         options: data.metadata.options.map((o: any) => ({
           label: typeof o === 'string' ? o : o.label,
           value: typeof o === 'string' ? o : (o.value || o.label),
-          description: typeof o === 'object' ? o.description : undefined
+          description: typeof o === 'object' ? o.description : undefined,
+          // CRITICAL: Preserve observation_key for rule engine re-evaluation
+          observation_key: typeof o === 'object' ? (o.observation_key || o.value) : undefined
         })),
         selectionType: (data.metadata?.selectionType || 'SINGLE_CHOICE') as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE'
       } : undefined;
@@ -1591,13 +1593,52 @@ export function EnhancedAIChatInterface() {
   };
 
   // Handle clarification option selection (Decision Brain UI)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Send structured selection with observation_key for rule engine
+  // Previously: Sent plain text labels (e.g., "मातीचे बोगद") 
+  // Now: Sends observation keys (e.g., "MUD_TUBES_PRESENT") for proper re-evaluation
+  // ═══════════════════════════════════════════════════════════════════════════
   const handleClarificationSelect = useCallback((selectedOptions: string[]) => {
     if (selectedOptions.length === 0) return;
     
-    // Send the selected option(s) as a message
-    const message = selectedOptions.join(', ');
-    sendMessage(message);
-  }, [sendMessage]);
+    // Get the last AI message to extract observation_keys from options
+    const currentMessages = messages[activeTab] || [];
+    const lastAIMessage = [...currentMessages].reverse().find(m => m.role === 'assistant' && m.clarificationOptions);
+    
+    // Try to map selected labels back to observation_keys
+    const selectedObservationKeys: string[] = [];
+    if (lastAIMessage?.clarificationOptions?.options) {
+      for (const selected of selectedOptions) {
+        const matchingOption = lastAIMessage.clarificationOptions.options.find(
+          (opt: any) => opt.label === selected || opt.value === selected
+        );
+        if (matchingOption?.observation_key) {
+          selectedObservationKeys.push(matchingOption.observation_key);
+        } else if (matchingOption?.value) {
+          selectedObservationKeys.push(matchingOption.value);
+        } else {
+          selectedObservationKeys.push(selected);
+        }
+      }
+    }
+    
+    // Build the message with observation keys embedded for backend parsing
+    // Format: "[OPTION_SELECTED] label | key: OBSERVATION_KEY"
+    const message = selectedOptions.length === 1 
+      ? selectedOptions[0]
+      : selectedOptions.join(', ');
+    
+    // Log for debugging
+    console.log('🔘 [ClarificationSelect] Selected:', {
+      labels: selectedOptions,
+      observationKeys: selectedObservationKeys,
+      hasStructuredOptions: !!lastAIMessage?.clarificationOptions?.options
+    });
+    
+    // Send with embedded observation keys as metadata hint
+    // The backend can parse the label OR use session state to map to observation_key
+    sendMessage(`${message} [obs_keys:${selectedObservationKeys.join(',')}]`);
+  }, [sendMessage, messages, activeTab]);
 
   const handleSuggestionSelect = async (messageId: string, type: 'organic' | 'fertilizer' | 'pesticide' | 'hybrid') => {
     if (!user?.id || !tenant?.id) return;
