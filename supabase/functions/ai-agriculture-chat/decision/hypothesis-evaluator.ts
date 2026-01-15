@@ -69,6 +69,7 @@ export interface ObservableCharacteristic {
   label_mr?: string;
   confidence_boost?: number;
   is_visual?: boolean;
+  diagnostic_power?: 'HIGH' | 'MEDIUM' | 'LOW'; // GAP #2: Evidence-weighted boost
 }
 
 export interface HypothesisEvaluationOutput {
@@ -251,26 +252,47 @@ function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] 
   
   const charArray = Array.isArray(raw) ? raw : [raw];
   
+  // Import diagnostic weight dynamically to avoid circular deps
+  const getDiagnosticPower = (key: string): 'HIGH' | 'MEDIUM' | 'LOW' => {
+    const normalized = key.toUpperCase().replace(/[\s-]/g, '_');
+    const HIGH_POWER = ['DEAD_HEART', 'DEADHEART', 'TUNNELS_IN_STEM', 'FRASS', 'MUD_TUNNELS', 'HONEYDEW', 'PINK_LARVAE'];
+    const LOW_POWER = ['YELLOWING', 'WILTING', 'STUNTED', 'DRYING', 'BROWNING', 'GAPS'];
+    if (HIGH_POWER.some(p => normalized.includes(p))) return 'HIGH';
+    if (LOW_POWER.some(p => normalized.includes(p))) return 'LOW';
+    return 'MEDIUM';
+  };
+  
+  const getBoostForPower = (power: 'HIGH' | 'MEDIUM' | 'LOW'): number => {
+    if (power === 'HIGH') return 0.25;  // GAP #2: +25% for pathognomonic
+    if (power === 'MEDIUM') return 0.12; // GAP #2: +12% for suggestive
+    return 0.05; // GAP #2: +5% for non-specific
+  };
+  
   return charArray.map((char: any, idx: number) => {
     // Handle string keys
     if (typeof char === 'string') {
+      const power = getDiagnosticPower(char);
       return {
         id: char,
         observation_key: char,
         label_en: char.replace(/_/g, ' '),
-        is_visual: true
+        is_visual: true,
+        diagnostic_power: power,
+        confidence_boost: getBoostForPower(power)
       };
     }
     
     // Handle object with observation_key
     if (char && typeof char === 'object' && char.observation_key) {
+      const power = getDiagnosticPower(char.observation_key);
       return {
         id: char.id || char.observation_key || `obs_${idx}`,
         observation_key: char.observation_key,
         label_en: char.label_en || char.label || char.observation_key.replace(/_/g, ' '),
         label_hi: char.label_hi,
         label_mr: char.label_mr,
-        confidence_boost: char.confidence_boost || 0.15,
+        diagnostic_power: power,
+        confidence_boost: getBoostForPower(power), // GAP #2: Use weighted boost instead of fixed 0.15
         is_visual: char.is_visual !== false
       };
     }
@@ -390,12 +412,37 @@ export async function evaluateCandidateHypotheses(
     
     const scoredCandidates: CandidateHypothesis[] = [];
     
+    // GAP #3: Detect strong diagnostic signals for cross-stage override
+    const STRONG_SIGNALS = new Set([
+      'DEAD_HEART', 'DEAD_HEART_PRESENT', 'DEADHEART', 'TUNNELS_IN_STEM',
+      'TERMITE_MUD_TUBES', 'MUD_TUNNELS', 'HONEYDEW_PRESENT', 'HONEYDEW',
+      'PINK_LARVAE_VISIBLE', 'PLANT_DEATH', 'SUDDEN_WILT'
+    ]);
+    
+    const hasStrongSignal = input.known_observations.some(obs => 
+      STRONG_SIGNALS.has(obs.toUpperCase().replace(/[\s-]/g, '_'))
+    );
+    
+    if (hasStrongSignal) {
+      console.log(`   ⚠️ [HypothesisEval] STRONG SIGNAL DETECTED - will allow cross-stage evaluation`);
+    }
+    
     for (const rule of rules) {
       // Calculate stage relevance
-      const stageRelevance = calculateStageRelevance(rule.stage_applicable, growth_stage);
+      let stageRelevance = calculateStageRelevance(rule.stage_applicable, growth_stage);
       
-      // Skip rules that don't apply to this stage at all
-      if (stageRelevance < 0.2) continue;
+      // GAP #3: Allow cross-stage evaluation if strong signal present
+      const shouldSkipByStage = stageRelevance < 0.2;
+      let crossStageOverride = false;
+      
+      if (shouldSkipByStage && hasStrongSignal) {
+        // Override stage restriction for strong diagnostic signals
+        stageRelevance = 0.4; // Allow through with reduced score
+        crossStageOverride = true;
+        console.log(`   ⚠️ [StageOverride] Allowing ${rule.rule_id} despite stage mismatch (strong signal)`);
+      } else if (shouldSkipByStage) {
+        continue; // Normal skip for low relevance
+      }
       
       // Calculate partial condition match
       const { score: partialScore, matchedConditions } = evaluatePartialConditionMatch(
