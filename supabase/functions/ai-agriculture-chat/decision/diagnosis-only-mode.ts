@@ -1,10 +1,15 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * DIAGNOSIS-ONLY MODE (v2.0.0)
+ * DIAGNOSIS-ONLY MODE (v3.0.0) - RULE-GRANTED AUTHORITY
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * SENIOR AGRONOMIST PRINCIPLE:
  * "When crops die, we diagnose causes — we do not ask permission from NLU."
+ * 
+ * ARCHITECTURAL CHANGE (v3.0):
+ * Authority is now derived SOLELY from ObservationKeys + crop + stage.
+ * NLU is treated as an OBSERVATION EXTRACTOR only — it NEVER decides if
+ * a "problem exists" or gates diagnosis eligibility.
  * 
  * HARD INVARIANT:
  * If any terminal damage ObservationKey is present (SEEDLING_DIED, PLANT_DIED,
@@ -18,15 +23,22 @@
  * 
  * ACTIVATION SEQUENCE (runs BEFORE authority-resolver.ts):
  * 1. Detect terminal damage from ObservationKeys (not NLU)
- * 2. If detected + crop/stage known → FORCE CROP authority
+ * 2. If detected → FORCE CROP authority (even with limited context)
  * 3. SKIP clarification entirely
  * 4. Run hypothesis-first rule evaluation immediately
  * 5. Present diagnosis directly from decision_rules
  * 
  * NLU GATING PERMANENTLY DISABLED FOR:
+ * - hasProblem checks
  * - hasPestOrDisease checks
  * - intent classification
  * - confidence thresholds
+ * 
+ * LOGS MUST SHOW:
+ * Mode=DIAGNOSIS_ONLY
+ * Authority=CROP
+ * Trigger=TERMINAL_DAMAGE_OBSERVATION
+ * NLU_ROLE=OBSERVATION_ONLY
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
@@ -46,7 +58,7 @@ import {
   type AuthorityDecision
 } from './authority-types.ts';
 
-export const DIAGNOSIS_ONLY_MODE_VERSION = '2.0.0';
+export const DIAGNOSIS_ONLY_MODE_VERSION = '3.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EXTENDED TERMINAL DAMAGE DETECTION (v2.0 - Observation-Derived Authority)
@@ -316,11 +328,14 @@ export function createEnforcedCropAuthority(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// v2.0: HARD ASSERTION (INVARIANT ENFORCEMENT)
+// v3.0: HARD ASSERTION (INVARIANT ENFORCEMENT)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * HARD ASSERTION: If terminal damage is detected, authority MUST be CROP.
+ * 
+ * This is a non-negotiable runtime assertion that enforces the architectural
+ * invariant: terminal damage observations ALWAYS grant CROP authority.
  * 
  * @throws Error if invariant is violated
  */
@@ -329,16 +344,100 @@ export function assertTerminalDamageAuthority(
   authority: DecisionAuthority
 ): void {
   if (terminalDamageDetected && authority !== DecisionAuthority.CROP) {
-    const errorMsg = `INVARIANT VIOLATION: Terminal damage detected but authority is ${authority}, not CROP. ` +
-      `When terminal damage is present, authority MUST be CROP. This indicates a bug in the authority resolution flow.`;
+    const errorMsg = `INVARIANT VIOLATION: Terminal crop damage must grant diagnostic authority. ` +
+      `Terminal damage detected but authority is ${authority}, not CROP. ` +
+      `When terminal damage is present, authority MUST be CROP. ` +
+      `This indicates a bug in the authority resolution flow.`;
     
     console.error(`\n🚨🚨🚨 [INVARIANT VIOLATION] ${errorMsg}`);
-    console.error(`   Expected: authority = CROP`);
-    console.error(`   Actual: authority = ${authority}`);
+    console.error(`   Mode=DIAGNOSIS_ONLY`);
+    console.error(`   Expected: Authority=CROP`);
+    console.error(`   Actual: Authority=${authority}`);
+    console.error(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
+    console.error(`   NLU_ROLE=OBSERVATION_ONLY`);
     console.error(`   Action: THROWING FATAL ERROR`);
     
     throw new Error(errorMsg);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v3.0: PRE-AUTHORITY GATE (RESOLVE FROM OBSERVATIONS, NOT NLU)
+// This is the SINGLE ENTRY POINT for observation-derived authority
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Result from pre-authority gate resolution.
+ * This replaces NLU-based authority gating.
+ */
+export interface PreAuthorityGateResult {
+  /** Resolved authority from observations */
+  authority: DecisionAuthority;
+  /** Whether NLU gating was bypassed */
+  nlu_bypassed: boolean;
+  /** Trigger type */
+  trigger: 'TERMINAL_DAMAGE' | 'STANDARD';
+  /** Terminal damage indicators detected */
+  terminal_indicators: string[];
+  /** The full enforced authority decision (if terminal damage) */
+  enforced_decision: AuthorityDecision | null;
+}
+
+/**
+ * resolveDiagnosticAuthorityFromObservations
+ * 
+ * PRE-AUTHORITY GATE: Resolves authority from ObservationKeys BEFORE
+ * authority-resolver.ts runs. This is the sole trigger for diagnosis authority.
+ * 
+ * NLU intent, hasPestOrDisease, and confidence are COMPLETELY IGNORED.
+ * Authority is derived from:
+ * - ObservationKeys (terminal damage indicators)
+ * - Crop context
+ * - Growth stage
+ * 
+ * HARD INVARIANT: If terminal damage exists, authority = CROP.
+ * 
+ * @param observations - Set of ObservationKeys from all sources
+ * @param existingAuthority - Optional existing authority (will be overridden if terminal damage)
+ */
+export function resolveDiagnosticAuthorityFromObservations(
+  observations: Set<string> | string[],
+  existingAuthority?: AuthorityDecision
+): PreAuthorityGateResult {
+  // 1. Detect terminal damage from ObservationKeys (NOT NLU)
+  const terminalResult = detectTerminalDamageForAuthority(observations);
+  
+  // 2. HARD INVARIANT: Terminal damage = CROP authority
+  if (terminalResult.detected) {
+    console.log(`\n🚨 [PRE-AUTHORITY GATE] Terminal damage detected from ObservationKeys`);
+    console.log(`   Mode=DIAGNOSIS_ONLY`);
+    console.log(`   Authority=CROP`);
+    console.log(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
+    console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
+    console.log(`   Terminal indicators: ${terminalResult.terminal_damage.join(', ')}`);
+    
+    const enforcedDecision = createEnforcedCropAuthority(
+      terminalResult.terminal_damage,
+      observations
+    );
+    
+    return {
+      authority: DecisionAuthority.CROP,
+      nlu_bypassed: true,
+      trigger: 'TERMINAL_DAMAGE',
+      terminal_indicators: terminalResult.terminal_damage,
+      enforced_decision: enforcedDecision
+    };
+  }
+  
+  // 3. Fall back to existing authority (if provided) or NONE
+  return {
+    authority: existingAuthority?.authority || DecisionAuthority.NONE,
+    nlu_bypassed: false,
+    trigger: 'STANDARD',
+    terminal_indicators: [],
+    enforced_decision: null
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

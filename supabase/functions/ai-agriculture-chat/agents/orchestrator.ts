@@ -352,7 +352,7 @@ import {
   CLARIFICATION_STRATEGY_VERSION
 } from './clarification-strategy.ts';
 
-export const ORCHESTRATOR_VERSION = '3.0.0'; // Phase-21: Single canonical context enforcement
+export const ORCHESTRATOR_VERSION = '3.1.0'; // Phase-22 v3: Observation-derived authority
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-21: CANONICAL CONTEXT CONTRACT IMPORTS
@@ -370,8 +370,9 @@ import {
 } from '../decision/canonical-context-contract.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE-22: DIAGNOSIS-ONLY MODE (v2.0 - Rule-Granted Authority)
+// PHASE-22: DIAGNOSIS-ONLY MODE (v3.0 - Rule-Granted Authority)
 // Terminal damage grants CROP authority, bypasses NLU gating
+// NLU is observation-only, never gates diagnosis
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   shouldActivateDiagnosisOnlyMode,
@@ -381,10 +382,12 @@ import {
   detectTerminalDamageForAuthority,
   createEnforcedCropAuthority,
   assertTerminalDamageAuthority,
+  resolveDiagnosticAuthorityFromObservations, // v3.0: Pre-authority gate
   DIAGNOSIS_ONLY_MODE_VERSION,
   type DiagnosisOnlyOutput,
   type MatchedRule,
-  type TerminalDamageDetectionResult
+  type TerminalDamageDetectionResult,
+  type PreAuthorityGateResult // v3.0: Pre-authority gate result type
 } from '../decision/diagnosis-only-mode.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2117,59 +2120,64 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // PHASE-22 v2.0: DIAGNOSIS-ONLY MODE CHECK (RULE-GRANTED AUTHORITY)
-      // When terminal damage is detected, CROP authority is ENFORCED
-      // NLU gating is DISABLED - authority comes from ObservationKeys
+      // PHASE-22 v3.0: PRE-AUTHORITY GATE (OBSERVATION-DERIVED AUTHORITY)
+      // 
+      // This is the SINGLE ENTRY POINT for rule-granted diagnosis authority.
+      // NLU is treated as OBSERVATION EXTRACTOR only - it NEVER gates diagnosis.
+      // Authority is derived from ObservationKeys + crop + stage.
+      // 
+      // Logs must show:
+      // Mode=DIAGNOSIS_ONLY, Authority=CROP, Trigger=TERMINAL_DAMAGE_OBSERVATION
+      // NLU_ROLE=OBSERVATION_ONLY
       // ═══════════════════════════════════════════════════════════════════════════
       
-      // Collect all observations for terminal damage check
-      const allObservationsForDiagCheck = new Set<string>();
+      // Collect all observations for pre-authority gate
+      const allObservationsForPreAuth = new Set<string>();
       
       // Add from observation keys
       if (observationKeys) {
-        observationKeys.forEach(key => allObservationsForDiagCheck.add(String(key)));
+        observationKeys.forEach(key => allObservationsForPreAuth.add(String(key)));
       }
       
       // Add from mapped codes
       if (mappedCodes?.observation_codes) {
-        mappedCodes.observation_codes.forEach((code: string) => allObservationsForDiagCheck.add(code));
+        mappedCodes.observation_codes.forEach((code: string) => allObservationsForPreAuth.add(code));
       }
       
       // Add from induction result symptoms
       if (inductionResult?.symptoms) {
         inductionResult.symptoms.forEach((s: any) => {
-          if (s.symbol) allObservationsForDiagCheck.add(s.symbol);
+          if (s.symbol) allObservationsForPreAuth.add(s.symbol);
         });
       }
       
-      // v2.0: Detect terminal damage BEFORE authority resolution
-      // This grants CROP authority directly from ObservationKeys
-      const terminalDamageResult = detectTerminalDamageForAuthority(allObservationsForDiagCheck);
+      // v3.0: Use unified pre-authority gate (replaces detectTerminalDamageForAuthority + createEnforcedCropAuthority)
+      const preAuthorityResult = resolveDiagnosticAuthorityFromObservations(allObservationsForPreAuth);
       
-      // v2.0: If terminal damage detected, ENFORCE CROP authority (overrides authority-resolver)
-      let enforcedAuthorityDecision = null;
-      if (terminalDamageResult.detected) {
-        enforcedAuthorityDecision = createEnforcedCropAuthority(
-          terminalDamageResult.terminal_damage,
-          allObservationsForDiagCheck
-        );
-        
-        console.log(`\n🚨 [TERMINAL DAMAGE AUTHORITY ENFORCEMENT]`);
+      // v3.0: If NLU was bypassed (terminal damage detected), use enforced authority
+      let enforcedAuthorityDecision = preAuthorityResult.enforced_decision;
+      
+      if (preAuthorityResult.nlu_bypassed) {
+        console.log(`\n🚨 [PRE-AUTHORITY GATE] Terminal damage detected - NLU gating DISABLED`);
         console.log(`   Mode=DIAGNOSIS_ONLY`);
-        console.log(`   Authority=CROP (ENFORCED)`);
-        console.log(`   NLU_GATING=DISABLED`);
+        console.log(`   Authority=CROP`);
+        console.log(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
+        console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
+        console.log(`   Terminal indicators: ${preAuthorityResult.terminal_indicators.join(', ')}`);
         console.log(`   Source=DECISION_RULES`);
-        console.log(`   Terminal indicators: ${terminalDamageResult.terminal_damage.join(', ')}`);
+        
+        // v3.0: Assert invariant immediately
+        assertTerminalDamageAuthority(true, preAuthorityResult.authority);
       }
       
-      // Check if Diagnosis-Only Mode should be activated (v2.0 - enhanced)
+      // Check if Diagnosis-Only Mode should be activated (uses pre-authority result)
       const diagnosisOnlyCheck = shouldActivateDiagnosisOnlyMode(
         canonicalContext,
-        allObservationsForDiagCheck,
+        allObservationsForPreAuth,
         1 // Kept for backward compatibility
       );
       
-      // Log the check result (v2.0 - includes authority info)
+      // Log the check result (v3.0 - enhanced logging)
       logDiagnosisOnlyActivation(
         diagnosisOnlyCheck.activate,
         diagnosisOnlyCheck.reason,
@@ -2181,27 +2189,29 @@ export class AIAgentOrchestrator {
       );
       
       // If Diagnosis-Only Mode is activated, SKIP CLARIFICATION entirely
-      let diagnosisOnlyModeActive = diagnosisOnlyCheck.activate;
+      let diagnosisOnlyModeActive = diagnosisOnlyCheck.activate || preAuthorityResult.nlu_bypassed;
       let bypassClarificationForTerminalDamage = diagnosisOnlyModeActive;
       
-      // v2.0: HARD INVARIANT CHECK - terminal damage MUST have CROP authority
-      if (diagnosisOnlyModeActive && diagnosisOnlyCheck.enforced_authority) {
+      // v3.0: HARD INVARIANT CHECK - terminal damage MUST have CROP authority
+      if (diagnosisOnlyModeActive && (diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority)) {
         assertTerminalDamageAuthority(
           true, // terminalDamageDetected
-          diagnosisOnlyCheck.enforced_authority
+          diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority
         );
       }
       
       if (diagnosisOnlyModeActive) {
-        console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Clarification PERMANENTLY SKIPPED`);
+        console.log(`\n🔬 [DIAGNOSIS-ONLY MODE v3.0] Clarification PERMANENTLY SKIPPED`);
         console.log(`   Mode=DIAGNOSIS_ONLY`);
         console.log(`   Authority=CROP (ENFORCED)`);
-        console.log(`   NLU_GATING=DISABLED`);
+        console.log(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
+        console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
         console.log(`   Clarification=SKIPPED`);
         console.log(`   Source=DECISION_RULES`);
         console.log(`   Crop/Stage=${canonicalContext?.crop_code}/${canonicalContext?.growth_stage} (LOCKED)`);
-        console.log(`   Terminal damage: ${diagnosisOnlyCheck.terminal_damage.join(', ')}`);
-        agentsUsed.push('DIAGNOSIS_ONLY_MODE_V2');
+        console.log(`   Terminal damage: ${(diagnosisOnlyCheck.terminal_damage || preAuthorityResult.terminal_indicators).join(', ')}`);
+        agentsUsed.push('DIAGNOSIS_ONLY_MODE_V3');
+        agentsUsed.push('PRE_AUTHORITY_GATE');
         
         // Force bypass clarification
         understandingResult.clarification_required = false;
