@@ -117,16 +117,31 @@ export class FactExtractor {
   
   /**
    * Extract core context facts from authoritative sources
+   * CRITICAL: Normalizes crop_code and growth_stage to lowercase for rule matching
    */
   private extractCoreFacts(
     canonicalState: CanonicalState,
     landState: AuthoritativeLandState | null
   ): Pick<SymbolicFact, 'crop' | 'crop_code' | 'dos' | 'growth_stage' | 'land_area_acres'> {
+    // Raw values for display
+    const rawCrop = landState?.crop.current_crop || canonicalState.crop_type || 'UNKNOWN';
+    const rawStage = landState?.crop.growth_stage || canonicalState.crop_stage || 'UNKNOWN';
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CANONICAL-TO-RULE NORMALIZATION
+    // Database rules use lowercase snake_case (e.g., "sugarcane", "grand_growth")
+    // CanonicalState uses UPPERCASE enums (e.g., "SUGARCANE", "GRAND_GROWTH")
+    // ═══════════════════════════════════════════════════════════════════════════
+    const normalizedCropCode = rawCrop === 'UNKNOWN' ? '' : rawCrop.toLowerCase().replace(/-/g, '_');
+    const normalizedStage = rawStage === 'UNKNOWN' ? 'unknown' : rawStage.toLowerCase().replace(/-/g, '_');
+    
+    console.log(`   📐 [FactExtractor] Normalization: crop=${rawCrop}→${normalizedCropCode}, stage=${rawStage}→${normalizedStage}`);
+    
     return {
-      crop: landState?.crop.current_crop || canonicalState.crop_type || 'UNKNOWN',
-      crop_code: landState?.crop.crop_code || canonicalState.crop_type?.toLowerCase() || '',
-      dos: landState?.crop.days_since_sowing || 0,
-      growth_stage: landState?.crop.growth_stage?.toUpperCase() || canonicalState.crop_stage || 'UNKNOWN',
+      crop: rawCrop,  // Keep original for display
+      crop_code: normalizedCropCode,  // Normalized for rule matching
+      dos: landState?.crop.days_since_sowing || canonicalState.days_after_sowing_exact || 0,
+      growth_stage: normalizedStage,  // Normalized for rule matching
       land_area_acres: landState?.area_acres || 0
     };
   }

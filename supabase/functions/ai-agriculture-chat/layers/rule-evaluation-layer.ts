@@ -22,6 +22,102 @@ import type { UnderstandingOutput } from '../llm-understanding-layer.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL-TO-RULE NORMALIZATION ADAPTER
+// ═══════════════════════════════════════════════════════════════════════════
+// 
+// PURPOSE: Reconcile CanonicalState enums with database-stored rule values
+// CanonicalState uses closed-world ENUMs (e.g., CropType.SUGARCANE, CropStage.GRAND_GROWTH)
+// decision_rules store values as lowercase snake_case strings (e.g., "sugarcane", "grand_growth")
+//
+// CRITICAL: Normalization happens ONLY at comparison time, NEVER mutates:
+// - CanonicalState (immutable after Phase 2.5)
+// - Database rule records (immutable)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalize CanonicalState enum value to rule-compatible lowercase snake_case string
+ * Used ONLY during rule matching - does NOT mutate the original value
+ */
+export function normalizeEnumForRuleMatch(enumValue: string | undefined | null): string {
+  if (!enumValue || enumValue === 'UNKNOWN') return '';
+  
+  // Convert ENUM_VALUE to lowercase snake_case: GRAND_GROWTH → grand_growth
+  return enumValue.toLowerCase().replace(/-/g, '_');
+}
+
+/**
+ * Check if a rule's crop_code matches the canonical state crop
+ * Handles wildcards: "all", "*", "universal"
+ */
+export function cropMatchesRule(canonicalCrop: string, ruleCropCode: string | null | undefined): boolean {
+  // Wildcard rules match everything
+  if (!ruleCropCode || ruleCropCode === 'all' || ruleCropCode === '*' || ruleCropCode === 'universal') {
+    return true;
+  }
+  
+  const normalizedCanonical = normalizeEnumForRuleMatch(canonicalCrop);
+  const normalizedRule = (ruleCropCode || '').toLowerCase().trim();
+  
+  return normalizedCanonical === normalizedRule;
+}
+
+/**
+ * Check if a rule's stage_applicable array includes the canonical state stage
+ * Handles wildcards: ["all"], ["*"]
+ */
+export function stageMatchesRule(
+  canonicalStage: string, 
+  ruleStageApplicable: string[] | null | undefined
+): boolean {
+  // No stage restriction or empty array = matches all stages
+  if (!ruleStageApplicable || ruleStageApplicable.length === 0) {
+    return true;
+  }
+  
+  const normalizedCanonical = normalizeEnumForRuleMatch(canonicalStage);
+  
+  // Check for wildcard entries
+  const hasWildcard = ruleStageApplicable.some(s => 
+    s === 'all' || s === '*' || s.toLowerCase() === 'all'
+  );
+  if (hasWildcard) return true;
+  
+  // Check for exact match (normalized)
+  return ruleStageApplicable.some(s => {
+    const normalizedRuleStage = (s || '').toLowerCase().replace(/-/g, '_').trim();
+    return normalizedRuleStage === normalizedCanonical;
+  });
+}
+
+/**
+ * Normalize a CanonicalState for rule evaluation
+ * Returns a normalized context object with lowercase snake_case values for matching
+ */
+export function createNormalizedContextForRules(canonicalState: CanonicalState): {
+  crop_code: string;
+  growth_stage: string;
+  days_after_sowing: string;
+  severity: string;
+  visual_symptom: string;
+  ndvi_level: string;
+  soil_nitrogen: string;
+  soil_phosphorus: string;
+  soil_potassium: string;
+} {
+  return {
+    crop_code: normalizeEnumForRuleMatch(canonicalState.crop_type),
+    growth_stage: normalizeEnumForRuleMatch(canonicalState.crop_stage),
+    days_after_sowing: normalizeEnumForRuleMatch(canonicalState.days_after_sowing),
+    severity: normalizeEnumForRuleMatch(canonicalState.severity),
+    visual_symptom: normalizeEnumForRuleMatch(canonicalState.visual_symptom),
+    ndvi_level: normalizeEnumForRuleMatch(canonicalState.ndvi_level),
+    soil_nitrogen: normalizeEnumForRuleMatch(canonicalState.soil_nitrogen),
+    soil_phosphorus: normalizeEnumForRuleMatch(canonicalState.soil_phosphorus),
+    soil_potassium: normalizeEnumForRuleMatch(canonicalState.soil_potassium),
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // INPUT/OUTPUT TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -196,8 +292,20 @@ function buildFactsFromInput(
   input: RuleEvaluationInput, 
   extractor: FactExtractor
 ): SymbolicFact {
-  // If we have a canonical state, use the extractor directly
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CANONICAL-TO-RULE NORMALIZATION: Apply normalization for rule matching
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // If we have a canonical state, use the extractor with normalized values
   if (input.canonical_state && input.land_state) {
+    // Create normalized context for rule matching
+    const normalizedContext = createNormalizedContextForRules(input.canonical_state);
+    
+    console.log(`   📐 [RuleNormalization] Canonical→Rule normalization:
+      crop_type: ${input.canonical_state.crop_type} → crop_code: ${normalizedContext.crop_code}
+      crop_stage: ${input.canonical_state.crop_stage} → growth_stage: ${normalizedContext.growth_stage}
+      severity: ${input.canonical_state.severity} → ${normalizedContext.severity}`);
+    
     return extractor.extractFacts(
       buildObservationFromUnderstanding(input.understanding),
       input.canonical_state,
@@ -206,7 +314,7 @@ function buildFactsFromInput(
     );
   }
   
-  // Otherwise build facts from understanding
+  // Otherwise build facts from understanding with normalization
   const understanding = input.understanding;
   const landState = input.land_state;
   
@@ -223,13 +331,27 @@ function buildFactsFromInput(
   const severityObs = understanding?.observations?.find(o => o.category === 'SEVERITY');
   const severity = severityObs?.key.replace('SEVERITY_', '').toLowerCase() || 'unknown';
   
-  // Build fact object
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NORMALIZATION: Convert enum values to lowercase snake_case for rule matching
+  // ═══════════════════════════════════════════════════════════════════════════
+  const rawCrop = landState?.crop.current_crop || understanding?.crop?.code || 'UNKNOWN';
+  const rawStage = landState?.crop.growth_stage || 'UNKNOWN';
+  
+  // Normalize for rule matching (lowercase snake_case)
+  const normalizedCropCode = normalizeEnumForRuleMatch(rawCrop);
+  const normalizedStage = normalizeEnumForRuleMatch(rawStage);
+  
+  console.log(`   📐 [RuleNormalization] Facts normalization:
+      raw_crop: ${rawCrop} → crop_code: ${normalizedCropCode}
+      raw_stage: ${rawStage} → growth_stage: ${normalizedStage}`);
+
+  // Build fact object with normalized values for rule matching
   const facts: SymbolicFact = {
-    // Core context
-    crop: landState?.crop.current_crop || understanding?.crop?.code || 'UNKNOWN',
-    crop_code: landState?.crop.crop_code || understanding?.crop?.code?.toLowerCase() || '',
+    // Core context - NORMALIZED for rule matching
+    crop: rawCrop,  // Keep original for display
+    crop_code: normalizedCropCode,  // Normalized for rule matching
     dos: landState?.crop.days_since_sowing || 0,
-    growth_stage: landState?.crop.growth_stage || 'UNKNOWN',
+    growth_stage: normalizedStage,  // Normalized for rule matching
     land_area_acres: landState?.area_acres || 0,
     
     // Symptom facts
