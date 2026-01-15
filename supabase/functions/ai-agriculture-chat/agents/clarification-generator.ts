@@ -66,21 +66,21 @@ import {
 } from '../decision/clarification-validator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// v5.0: IMPORT CANONICAL CONTEXT CONTRACT (SINGLE SOURCE OF TRUTH)
+// v6.0: CANONICAL CONTEXT CONTRACT (IMMUTABLE, PASSED BY REFERENCE)
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   type CanonicalContext,
-  buildCanonicalContext,
-  validateContextIntegrity,
+  assertCanonicalContextLocked,
   hasDiagnosticContext,
   logCanonicalContextAudit
 } from '../decision/canonical-context-contract.ts';
 
-export const CLARIFICATION_GENERATOR_VERSION = '4.0.0'; // v4: Unified CanonicalContext contract
+export const CLARIFICATION_GENERATOR_VERSION = '6.0.0'; // v6: Eliminate context rebuilding
 
 // Re-export types for convenience
 export { ClarificationScope };
 export type { ClarificationPlan, ClarificationState };
+export type { CanonicalContext };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // INPUT/OUTPUT TYPES
@@ -99,15 +99,22 @@ export interface ScopedClarificationInput {
   language: 'mr' | 'hi' | 'en';
   observations: ObservationExtraction;
   understandingResult: UnderstandingCheckResult;
-  hasLandContext: boolean;
   diagnosisRulesFired: boolean;
   clarificationState?: ClarificationState;
-  /** PHASE-8.1: Flag to skip crop clarification when CropContextAuthority exists */
-  hasCropContext?: boolean;
-  /** PHASE-8.1: Crop context for stage-aware framing */
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v6.0: SINGLE CANONICAL CONTEXT (IMMUTABLE, BUILT IN PHASE-1)
+  // This replaces: hasLandContext, landContext, hasCropContext, cropContext
+  // ═══════════════════════════════════════════════════════════════════════════
+  /** 
+   * The SINGLE canonical context object built in orchestrator Phase-1.
+   * This is IMMUTABLE and passed by reference. Do NOT rebuild or infer.
+   * If null, this is a general chat without land context.
+   */
+  canonicalContext: CanonicalContext | null;
+  
+  /** PHASE-8.1: Crop context for stage-aware framing (DEPRECATED - use canonicalContext) */
   cropContext?: CropContextAuthority | null;
-  /** PHASE-15: Full land context for dynamic clarification */
-  landContext?: any;
   /** PHASE-15: Farmer message for LLM context */
   farmerMessage?: string;
 }
@@ -138,35 +145,35 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 /**
  * Generate PHASE-15 DYNAMIC clarification response.
  * Uses full agronomic context (crop, DOS, soil, NDVI, weather) for intelligent options.
+ * 
+ * v6.0: Context is RECEIVED, not rebuilt. canonicalContext is IMMUTABLE.
  */
 export async function generateScopedClarification(
   input: ScopedClarificationInput
 ): Promise<ClarificationOutput> {
-  const { language, observations, understandingResult, hasLandContext, clarificationState, hasCropContext, cropContext, landContext, farmerMessage } = input;
+  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage } = input;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // v4.0: BUILD CANONICAL CONTEXT ONCE (SINGLE SOURCE OF TRUTH)
-  // This context object is IMMUTABLE and passed through the entire flow
+  // v6.0: USE PASSED CANONICAL CONTEXT (NEVER REBUILD)
+  // The context was built in orchestrator Phase-1 and is IMMUTABLE
   // ═══════════════════════════════════════════════════════════════════════════
-  const canonicalContext = buildCanonicalContext(landContext, hasLandContext);
+  
+  // Determine effective context state
+  const hasLandContext = canonicalContext !== null;
+  const effectiveHasLandContext = hasDiagnosticContext(canonicalContext);
+  const hasCropContext = effectiveHasLandContext;
   
   // Log context audit using canonical contract
-  console.log(`📋 [Clarification v4] Canonical Context Audit:`);
+  console.log(`📋 [Clarification v6] Canonical Context State:`);
   if (canonicalContext) {
     logCanonicalContextAudit(canonicalContext, 'CLARIFICATION_GENERATOR', 'CANONICAL_CONTRACT');
+    console.log(`   ✅ Context received (NOT rebuilt) - Phase-1 locked`);
   } else {
     console.log(`   Context=NULL (General Query Mode)`);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1: Validate context integrity using canonical contract
-  // ═══════════════════════════════════════════════════════════════════════════
-  validateContextIntegrity(canonicalContext, hasLandContext, 'generateScopedClarification');
-  
-  const effectiveHasLandContext = hasDiagnosticContext(canonicalContext);
-  
-  console.log(`   hasCropContext: ${hasCropContext || false}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
-  console.log(`   hasLandContext (input flag): ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
+  console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
+  console.log(`   hasLandContext: ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Map observations to ObservationKeys (with cropContext)
@@ -185,27 +192,15 @@ export async function generateScopedClarification(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Resolve clarification plan (ObservationKey-based, deterministic)
-  // v4.0: Use canonical context for preserved context
+  // v6.0: Pass canonicalContext directly to scope resolver
   // ═══════════════════════════════════════════════════════════════════════════
-  
-  // Build preserved context from canonical context (backward compatible)
-  const preservedContext = canonicalContext ? {
-    crop_code: canonicalContext.crop_code,
-    crop_name: canonicalContext.crop_name,
-    growth_stage: canonicalContext.growth_stage,
-    days_since_sowing: canonicalContext.days_since_sowing,
-    ndvi_value: canonicalContext.ndvi.value,
-    ndvi_trend: canonicalContext.ndvi.trend,
-    is_locked: true as const
-  } : undefined;
   
   const clarificationPlan = resolveClarificationPlan(
     observedKeys,
     turnCount,
     clarificationState?.previous_scopes || [],
-    hasCropContext || effectiveHasLandContext, // v4.0: Also use canonical context
-    preservedContext,
-    hasLandContext
+    hasCropContext,
+    canonicalContext // v6.0: Pass canonical context directly
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -213,12 +208,24 @@ export async function generateScopedClarification(
   // This generates context-aware options using crop, DOS, soil, NDVI, weather
   // ═══════════════════════════════════════════════════════════════════════════
   
-  if (effectiveHasLandContext && clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
+  if (effectiveHasLandContext && canonicalContext && clarificationPlan.scope === ClarificationScope.REFINE_OBSERVATION) {
     try {
-      console.log(`   🧠 Using DYNAMIC clarification generator with full context`);
+      console.log(`   🧠 Using DYNAMIC clarification generator with canonical context`);
       
-      // P0-3: Build agronomic context with explicit NDVI data
-      const agronomicContext = buildAgronomicContext(landContext);
+      // P0-3: Build agronomic context FROM canonical context (read-only extraction)
+      const agronomicContext: AgronomicContext = {
+        crop_name: canonicalContext.crop_name,
+        crop_code: canonicalContext.crop_code,
+        growth_stage: canonicalContext.growth_stage,
+        days_since_sowing: canonicalContext.days_since_sowing || 0,
+        ndvi_value: canonicalContext.ndvi.value ?? undefined,
+        ndvi_trend: canonicalContext.ndvi.trend as any ?? undefined,
+        soil_n: canonicalContext.soil.nitrogen ?? undefined,
+        soil_p: canonicalContext.soil.phosphorus ?? undefined,
+        soil_k: canonicalContext.soil.potassium ?? undefined,
+        temperature: canonicalContext.weather.temperature ?? undefined,
+        humidity: canonicalContext.weather.humidity ?? undefined
+      };
       
       // Log NDVI passthrough for debugging
       console.log(`   📊 NDVI data in agronomic context:`, {
@@ -236,14 +243,6 @@ export async function generateScopedClarification(
       
       console.log(`   ✅ Dynamic options generated: ${dynamicResult.options.length} (${dynamicResult.generated_by})`);
       
-      // P0-2: INVARIANT ASSERTION - Options should exist when land context exists
-      if (dynamicResult.options.length > 0 && !effectiveHasLandContext) {
-        console.error(`🚨 FATAL: Rule options exist but hasLandContext=false`);
-        console.error(`   Land data:`, landContext);
-        console.error(`   Dynamic result:`, dynamicResult);
-        throw new Error('INVARIANT VIOLATION: Lost land context in clarification');
-      }
-      
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-16: CRITICAL - Validate options for diagnosis leakage
       // This prevents pest/disease names from appearing in clarification options
@@ -259,11 +258,10 @@ export async function generateScopedClarification(
       }
       
       console.log(`   ✅ Options validated - no diagnosis leakage`);
-      console.log(`   ✅ Final clarification input:`, {
+      console.log(`   ✅ Final clarification input (CanonicalContext LOCKED):`, {
         hasCropContext: effectiveHasLandContext,
-        hasLandContext: effectiveHasLandContext,
-        crop: landContext?.current_crop,
-        stage: landContext?.growth_stage,
+        crop: canonicalContext.crop_code,
+        stage: canonicalContext.growth_stage,
         ndvi_level: agronomicContext.ndvi_trend || 'unknown'
       });
       
@@ -357,8 +355,8 @@ export async function generateScopedClarification(
  * LEGACY FUNCTION: Generate clarification response (backward compatibility).
  * Routes to Phase-8 system internally.
  * 
- * P0 FIX: This function now properly handles async - callers must await it
- * or handle the promise appropriately.
+ * v6.0 FIX: This function does NOT have land context, so it must pass
+ * canonicalContext: null. This fixes the INVARIANT VIOLATION bug.
  */
 export async function generateClarificationResponse(input: ClarificationInput): Promise<ClarificationOutput> {
   const { language, farmer_message, observations, crop_code, clarification_type } = input;
@@ -387,7 +385,8 @@ export async function generateClarificationResponse(input: ClarificationInput): 
     observation_count: observations.length
   };
   
-  // P0 FIX: Properly await the async function (was causing Promise leak)
+  // v6.0 FIX: Pass canonicalContext: null (legacy function has no land context)
+  // This fixes the bug where hasLandContext: !!crop_code was true but landContext was undefined
   return await generateScopedClarification({
     language,
     observations: observationExtraction,
@@ -402,7 +401,7 @@ export async function generateClarificationResponse(input: ClarificationInput): 
       clarification_reason: 'Legacy clarification request',
       diagnosis_rules_fired: false
     },
-    hasLandContext: !!crop_code,
+    canonicalContext: null,  // v6.0: Legacy function has NO context - this is correct
     diagnosisRulesFired: false
   });
 }

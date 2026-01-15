@@ -33,12 +33,11 @@ import { ClarificationScope } from './clarification-renderer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // IMPORT CANONICAL CONTEXT CONTRACT (SINGLE SOURCE OF TRUTH)
+// v6.0: Now uses CanonicalContext directly, not PreservedCanonicalContext
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   type CanonicalContext,
-  buildCanonicalContext,
   hasDiagnosticContext,
-  validateContextIntegrity,
   hasTerminalDamage,
   getDetectedTerminalDamage,
   logCanonicalContextAudit,
@@ -46,7 +45,7 @@ import {
   HIGH_SEVERITY_INDICATORS as CANONICAL_SEVERITY_INDICATORS
 } from '../decision/canonical-context-contract.ts';
 
-export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '5.0.0'; // Unified CanonicalContext contract
+export const CLARIFICATION_SCOPE_RESOLVER_VERSION = '6.0.0'; // v6: Use CanonicalContext directly
 
 // Re-export ClarificationScope for convenience
 export { ClarificationScope };
@@ -162,7 +161,8 @@ const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
  * PRESERVED CANONICAL CONTEXT (DEPRECATED - USE CanonicalContext)
  * ═══════════════════════════════════════════════════════════════════════════
  * @deprecated Use CanonicalContext from canonical-context-contract.ts instead.
- * This interface is kept for backward compatibility during migration.
+ * This interface is kept ONLY for backward compatibility during migration.
+ * All new code should use CanonicalContext directly.
  */
 export interface PreservedCanonicalContext {
   crop_code: string;
@@ -198,28 +198,13 @@ export interface DiagnosticConfirmationAuthority {
  * Check if DIAGNOSTIC_CONFIRMATION should be the preemptive authority.
  * This check runs BEFORE any other clarification logic.
  * 
- * UPGRADED v5.0: Now uses CanonicalContext directly for fail-fast checks.
+ * v6.0: Simplified to use CanonicalContext directly.
  */
 export function checkDiagnosticConfirmationAuthority(
   observedKeys: Set<ObservationKey>,
   hasCropContext: boolean,
-  hasLandContext: boolean,
-  landContextComplete: boolean,
-  canonicalContext?: CanonicalContext | null // NEW: Direct context object
+  canonicalContext: CanonicalContext | null
 ): DiagnosticConfirmationAuthority {
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FAIL-FAST INVARIANT: Use CanonicalContext directly if provided
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (canonicalContext) {
-    // Validate context integrity using the contract
-    validateContextIntegrity(canonicalContext, hasLandContext, 'checkDiagnosticConfirmationAuthority');
-  } else if (hasLandContext && !landContextComplete) {
-    // Fallback: Legacy check for when canonicalContext not provided
-    console.error(`\n🚨 [FAIL-FAST] hasLandContext=true but context is incomplete!`);
-    console.error(`   This violates the context preservation invariant.`);
-    throw new Error(`FAIL-FAST: hasLandContext=true but landContext is incomplete. Context MUST be a single canonical object.`);
-  }
-  
   // ═══════════════════════════════════════════════════════════════════════════
   // USE CANONICAL CONTRACT FOR TERMINAL DAMAGE DETECTION
   // ═══════════════════════════════════════════════════════════════════════════
@@ -233,7 +218,7 @@ export function checkDiagnosticConfirmationAuthority(
   if (isActive) {
     // Log using canonical contract format
     logCanonicalContextAudit(
-      canonicalContext || null,
+      canonicalContext,
       'DIAGNOSTIC_CONFIRMATION',
       'DECISION_RULES'
     );
@@ -261,11 +246,8 @@ export function checkDiagnosticConfirmationAuthority(
  * Resolve clarification plan based on ObservationKeys ONLY.
  * This is DETERMINISTIC - same keys + turn count = same output.
  * 
- * PHASE-8.1: Added hasCropContext parameter to skip crop clarification
- * when CropContextAuthority exists from crop_schedules.
- * 
- * TRUST-FIRST UPGRADE: Added preservedContext for invariant enforcement.
- * When preservedContext is provided, context MUST NOT be rebuilt.
+ * v6.0: Simplified signature - uses CanonicalContext directly.
+ * The context is IMMUTABLE and was built in orchestrator Phase-1.
  * 
  * PREEMPTIVE AUTHORITY: DIAGNOSTIC_CONFIRMATION is checked FIRST.
  */
@@ -274,8 +256,7 @@ export function resolveClarificationPlan(
   turnCount: number,
   previousScopes: ClarificationScope[] = [],
   hasCropContext: boolean = false,
-  preservedContext?: PreservedCanonicalContext, // Immutable context for clarification
-  hasLandContext: boolean = false // NEW: For fail-fast check
+  canonicalContext: CanonicalContext | null = null  // v6.0: Single immutable context
 ): ClarificationPlan {
   // ═══════════════════════════════════════════════════════════════════════════
   // HARD STOP: Maximum clarification turns reached
@@ -292,28 +273,16 @@ export function resolveClarificationPlan(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAIL-FAST INVARIANT: Context integrity check (MANDATORY)
-  // If hasCropContext=true but preservedContext is missing/invalid, FAIL FAST
+  // v6.0: CONTEXT VALIDATION (Simpler - just check if context exists)
+  // No fail-fast needed here since context is built once in Phase-1
   // ═══════════════════════════════════════════════════════════════════════════
-  const contextComplete = preservedContext && 
-    preservedContext.crop_code && 
-    preservedContext.crop_code !== 'UNKNOWN' &&
-    preservedContext.growth_stage &&
-    preservedContext.growth_stage !== 'UNKNOWN';
+  const hasContext = canonicalContext !== null && hasDiagnosticContext(canonicalContext);
   
-  if (hasLandContext && !contextComplete) {
-    console.error(`\n🚨 [FAIL-FAST] hasLandContext=true but preservedContext is incomplete!`);
-    console.error(`   Crop: ${preservedContext?.crop_code || 'MISSING'}`);
-    console.error(`   Stage: ${preservedContext?.growth_stage || 'MISSING'}`);
-    console.error(`   This violates the context preservation invariant.`);
-    throw new Error(`FAIL-FAST: hasLandContext=true but preservedContext is incomplete. Context MUST be passed as a single canonical object.`);
-  }
-  
-  if (hasCropContext && preservedContext) {
-    console.log(`   ✅ [INVARIANT] PreservedCanonicalContext validated:`);
-    console.log(`      Crop=${preservedContext.crop_code}, Stage=${preservedContext.growth_stage}`);
-    console.log(`      DAS=${preservedContext.days_since_sowing}, NDVI=${preservedContext.ndvi_value}`);
-    console.log(`      ContextPreserved=true, is_locked=true (CANNOT be rebuilt)`);
+  if (hasContext && canonicalContext) {
+    console.log(`   ✅ [INVARIANT] CanonicalContext validated (Phase-1 locked):`);
+    console.log(`      Crop=${canonicalContext.crop_code}, Stage=${canonicalContext.growth_stage}`);
+    console.log(`      DAS=${canonicalContext.days_since_sowing}, NDVI=${canonicalContext.ndvi.value}`);
+    console.log(`      ContextPreserved=true, phase1_locked=true`);
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -322,9 +291,8 @@ export function resolveClarificationPlan(
   // ═══════════════════════════════════════════════════════════════════════════
   const diagnosticAuthority = checkDiagnosticConfirmationAuthority(
     observedKeys,
-    hasCropContext,
-    hasLandContext,
-    contextComplete || !hasLandContext // Pass true if no land context (general chat)
+    hasCropContext || hasContext,
+    canonicalContext
   );
   
   if (diagnosticAuthority.is_active) {
@@ -336,10 +304,10 @@ export function resolveClarificationPlan(
     console.log(`      Blocked scopes: ${diagnosticAuthority.blocked_scopes.join(', ')}`);
     
     // Log preserved context
-    if (preservedContext) {
-      console.log(`      Crop=${preservedContext.crop_code} (LOCKED)`);
-      console.log(`      Stage=${preservedContext.growth_stage} (LOCKED)`);
-      console.log(`      DAS=${preservedContext.days_since_sowing} (LOCKED)`);
+    if (canonicalContext) {
+      console.log(`      Crop=${canonicalContext.crop_code} (LOCKED)`);
+      console.log(`      Stage=${canonicalContext.growth_stage} (LOCKED)`);
+      console.log(`      DAS=${canonicalContext.days_since_sowing} (LOCKED)`);
     }
     
     console.log(`   🚫 [INVARIANT] IDENTIFY_LOCATION permanently BLOCKED`);
