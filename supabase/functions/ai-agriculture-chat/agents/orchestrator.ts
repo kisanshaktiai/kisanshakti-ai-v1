@@ -2092,11 +2092,27 @@ export class AIAgentOrchestrator {
       const crossCropResult = mapToCrossCropSymptoms(observationExtraction.raw_symptom_text);
       const crossCropSymptoms = crossCropResult.symptoms;
       
+      // CRITICAL FIX: Also map farmer's direct message to catch death terms
+      const messageSymptomResult = mapToCrossCropSymptoms([farmerMessage]);
+      messageSymptomResult.symptoms.forEach(s => crossCropSymptoms.add(s));
+      
       agentsUsed.push('CROSS_CROP_SYMPTOM_MAPPER');
       
-      console.log(`      Symptoms detected: ${crossCropResult.symptom_count}`);
-      console.log(`      Symptoms: ${serializeCrossCropSymptoms(crossCropSymptoms).slice(0, 5).join(', ')}${crossCropResult.symptom_count > 5 ? '...' : ''}`);
+      // CRITICAL FIX: Store cross-crop symptoms in session context for diagnostic flow
+      (this as any)._crossCropSymptoms = crossCropSymptoms;
       
+      console.log(`      Symptoms detected: ${crossCropSymptoms.size}`);
+      console.log(`      Symptoms: ${serializeCrossCropSymptoms(crossCropSymptoms).slice(0, 5).join(', ')}${crossCropSymptoms.size > 5 ? '...' : ''}`);
+      
+      // CRITICAL FIX: Inject cross_crop_symptoms into NLU output for diagnostic-flow-controller
+      // This ensures terminal damage detection works even when NLU doesn't extract symptoms
+      if (nluOutput && crossCropSymptoms.size > 0) {
+        if (!nluOutput.symptom_extraction) {
+          nluOutput.symptom_extraction = { visual_symptoms: [], cross_crop_symptoms: [] };
+        }
+        nluOutput.symptom_extraction.cross_crop_symptoms = serializeCrossCropSymptoms(crossCropSymptoms);
+        console.log(`      Injected ${crossCropSymptoms.size} cross-crop symptoms into NLU output`);
+      }
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 4: UNDERSTANDING COMPLETENESS CHECK (SYMBOLIC - NO LLM)
       // Determine if we have enough info to proceed or need clarification

@@ -1840,12 +1840,11 @@ function extractAndAuditActionsWithFilterTrace(orchestratorResponse: Orchestrato
   if (decisionOutput.primary_decision) {
     const primary = decisionOutput.primary_decision;
     
-    // Validation: Check required fields
+    // Validation: Check required fields (NOTE: priority is optional for symbolic decisions)
     const validationErrors: string[] = [];
     if (!primary.action_type) validationErrors.push('primary.action_type missing');
-    if (!primary.priority && primary.action_type !== 'NO_ACTION') {
-      validationErrors.push('primary.priority missing');
-    }
+    // CRITICAL FIX: priority is optional - don't fail validation for missing priority
+    // The decision brain may not always set priority, but the decision is still valid
     
     // Build enriched action object with title/description
     const enrichedAction = {

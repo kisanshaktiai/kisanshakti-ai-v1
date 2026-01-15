@@ -84,6 +84,8 @@ export enum VisualSymptom {
   WHITE_POWDER = 'WHITE_POWDER',
   DOWNY_GROWTH = 'DOWNY_GROWTH',
   WILTING = 'WILTING',
+  PLANT_DEATH = 'PLANT_DEATH',         // CRITICAL: Terminal damage - plants have died
+  SEEDLING_DEATH = 'SEEDLING_DEATH',   // CRITICAL: Seedlings/young plants died
   STUNTED_GROWTH = 'STUNTED_GROWTH',
   PLANT_LODGING = 'PLANT_LODGING',
   STEM_BORING = 'STEM_BORING',
@@ -592,15 +594,22 @@ export function mapObservationsToSymptom(observations: string[]): { primary: Vis
     'stunted': VisualSymptom.STUNTED_GROWTH,
     'lodging': VisualSymptom.PLANT_LODGING,
     
-    // PHASE-14: Death/Germination failure patterns
-    'मेला': VisualSymptom.WILTING,
-    'मेले': VisualSymptom.WILTING,
-    'मेली': VisualSymptom.WILTING,
-    'died': VisualSymptom.WILTING,
-    'dead': VisualSymptom.WILTING,
-    'death': VisualSymptom.WILTING,
-    'मर_गय': VisualSymptom.WILTING,
-    'मर_गए': VisualSymptom.WILTING,
+    // CRITICAL FIX: Map death terms to PLANT_DEATH, not WILTING
+    // "मेला" (died) is terminal damage, not wilting
+    'मेला': VisualSymptom.PLANT_DEATH,
+    'मेले': VisualSymptom.PLANT_DEATH,
+    'मेली': VisualSymptom.PLANT_DEATH,
+    'मेलेला': VisualSymptom.PLANT_DEATH,
+    'मेलेले': VisualSymptom.PLANT_DEATH,
+    'died': VisualSymptom.PLANT_DEATH,
+    'dead': VisualSymptom.PLANT_DEATH,
+    'death': VisualSymptom.PLANT_DEATH,
+    'plant_death': VisualSymptom.PLANT_DEATH,
+    'मर_गय': VisualSymptom.PLANT_DEATH,
+    'मर_गए': VisualSymptom.PLANT_DEATH,
+    'मर गया': VisualSymptom.PLANT_DEATH,
+    'मर गई': VisualSymptom.PLANT_DEATH,
+    'मर गए': VisualSymptom.PLANT_DEATH,
     
     // PHASE-14: Patchy growth / germination gaps
     'गॅप': VisualSymptom.STUNTED_GROWTH,

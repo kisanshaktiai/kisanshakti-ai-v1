@@ -490,6 +490,15 @@ export class AuditLogger {
   }
   
   /**
+   * Log validation result (required by orchestrator)
+   */
+  logValidation(result: { passed: boolean; errors: string[] }): void {
+    this.currentTurn.validation_passed = result.passed;
+    this.currentTurn.validation_errors = result.errors || [];
+    console.log(`📋 [Audit] Validation: ${result.passed ? 'PASSED' : 'FAILED'}${result.errors?.length ? ` (${result.errors.join(', ')})` : ''}`);
+  }
+  
+  /**
    * Log crop context
    */
   logCropContext(context: {
