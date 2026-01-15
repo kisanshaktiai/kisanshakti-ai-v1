@@ -761,8 +761,19 @@ export async function generateDynamicClarification(
 ): Promise<DynamicClarificationOutput> {
   const { scope, language, agronomic_context: context, farmer_message } = input;
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P0 INVARIANT 1: Land Context Integrity Check
+  // If crop_code exists (non-UNKNOWN), crop_name MUST be populated
+  // This catches silent context loss before it causes downstream issues
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (context.crop_code && context.crop_code !== 'UNKNOWN' && context.crop_name === 'Unknown') {
+    console.error(`🚨 [FATAL] Invariant violation: crop_code=${context.crop_code} but crop_name=Unknown`);
+    console.error(`   Full context snapshot:`, JSON.stringify(context, null, 2));
+    throw new Error(`Invariant violation: landContext expected but missing. crop_code=${context.crop_code}, crop_name=Unknown. Blocking clarification.`);
+  }
+  
   console.log(`   🧠 [DynamicClarification] Generating context-aware options for ${context.crop_name}/${context.growth_stage}`);
-  console.log(`   📊 Context: DOS=${context.days_since_sowing}, NDVI=${context.ndvi_value}, Soil=${context.soil_tested ? 'tested' : 'not tested'}`);
+  console.log(`   📊 Context: DOS=${context.days_since_sowing}, NDVI=${context.ndvi_value ?? 'UNKNOWN'}, Soil=${context.soil_tested ? 'tested' : 'not tested'}`);
   
   // Generate context frame
   const contextFrame = generateContextFrame(context, language);
@@ -899,6 +910,22 @@ export async function generateDynamicClarification(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function buildAgronomicContext(landContext: any, scheduleData?: any): AgronomicContext {
+  // P0 FIX: Explicit NDVI passthrough with fallback chain
+  // Ensures NDVI data is captured regardless of landContext shape
+  const ndviValue = landContext?.ndvi?.latest_value || 
+                    landContext?.ndvi?.value || 
+                    landContext?.ndvi_value || 
+                    null;
+  const ndviTrend = landContext?.ndvi?.trend || 
+                    landContext?.ndvi_trend || 
+                    'STABLE';
+  
+  // P0 INVARIANT LOGGING: Log NDVI extraction for production verification
+  if (landContext) {
+    console.log(`   ✅ [NDVI Passthrough] Extracted: value=${ndviValue}, trend=${ndviTrend}`);
+    console.log(`   📊 [NDVI Source] ndvi.latest_value=${landContext?.ndvi?.latest_value}, ndvi.value=${landContext?.ndvi?.value}, ndvi_value=${landContext?.ndvi_value}`);
+  }
+  
   return {
     crop_name: landContext?.current_crop || 'Unknown',
     crop_code: landContext?.crop_code || landContext?.current_crop?.toUpperCase() || 'UNKNOWN',
@@ -912,9 +939,9 @@ export function buildAgronomicContext(landContext: any, scheduleData?: any): Agr
     soil_ph: landContext?.soil_health?.ph,
     soil_tested: !!landContext?.soil_tested,
     
-    // NDVI
-    ndvi_value: landContext?.ndvi?.value,
-    ndvi_trend: landContext?.ndvi?.trend,
+    // P0 FIX: NDVI with fallback chain (not just single path)
+    ndvi_value: ndviValue,
+    ndvi_trend: ndviTrend as 'IMPROVING' | 'STABLE' | 'DECLINING' | 'CRITICAL',
     
     // Weather
     temperature: landContext?.weather?.temperature,
