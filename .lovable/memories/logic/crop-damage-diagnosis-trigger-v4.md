@@ -1,35 +1,41 @@
 # Memory: logic/crop-damage-diagnosis-trigger-v4
 Updated: 2026-01-15
 
-The AI Chat implements a 'Crop Damage Diagnosis Trigger' (v4.0.0) that treats crop damage observations as sufficient grounds for DIAGNOSIS mode, independent of pest/disease identification.
+The AI Chat implements a 'Diagnosis-First Mode' (v4.1.0) that treats crop damage observations as sufficient grounds for DIAGNOSIS mode with hypothesis-driven options, independent of pest/disease identification.
 
-**HARD AGRONOMIC INVARIANT**: If canonical ObservationKeys OR CrossCropSymptoms indicate crop damage (e.g., PATCHY_GROWTH, AFFECTED_PATCHES, OVERALL_WEAK, SEEDLING_DIED, PLANT_DIED) with severity ≥ MEDIUM, the system MUST activate the DIAGNOSIS category for the crop and stage.
+**HARD AGRONOMIC INVARIANT**: If canonical ObservationKeys OR CrossCropSymptoms indicate crop damage (e.g., PATCHY_GROWTH, AFFECTED_PATCHES, OVERALL_WEAK, SEEDLING_DIED, PLANT_DIED) with severity ≥ MEDIUM, the system MUST:
+1. Activate DIAGNOSIS mode immediately
+2. Run `evaluateCandidateHypotheses()` BEFORE any clarification
+3. Return hypothesis-driven options from `decision_rules` (NOT generic clarification)
+4. Always include photo option as final fallback
 
-Key functions in `diagnosis-only-mode.ts`:
-- `detectCropDamageForDiagnosis()`: New pre-authority gate that inspects observations, ignores NLU intent/pest detection, sets authority=CROP when damage is present
-- `CROP_DAMAGE_OBSERVATION_KEYS`: Extended set of 40+ non-terminal damage indicators that trigger diagnosis
-- `TERMINAL_DAMAGE_OBSERVATION_KEYS`: Terminal damage indicators (death, complete failure)
-- `createUnknownDiagnosis()`: Emits explicit UNKNOWN diagnosis when no rules match (never suppresses output)
+**Key Functions**:
+- `detectCropDamageForDiagnosis()`: Pre-authority gate for damage detection
+- `evaluateCandidateHypotheses()`: Pre-evaluates rules to build candidate set
+- `generateDiagnosisFirstResponse()`: Generates ranked diagnosis options from hypotheses
+- `createUnknownDiagnosisResponse()`: Emits UNKNOWN diagnosis when no rules match
+- `formatForClarificationUI()`: Formats for UI rendering
 
-**Damage Types**:
-- `TERMINAL`: DIAGNOSIS_ONLY mode (skip clarification), NLU gating disabled
-- `SIGNIFICANT`: DIAGNOSIS_WITH_CLARIFICATION mode, NLU gating disabled  
-- `MINOR`: DIAGNOSIS mode with optional clarification
+**Damage Types → Response Flow**:
+- `TERMINAL`: DIAGNOSIS_ONLY mode (skip all clarification), direct to rules
+- `SIGNIFICANT`: DIAGNOSIS_FIRST mode (hypothesis-driven options, NOT generic)
+- `MINOR`: DIAGNOSIS_FIRST mode with optional clarification
 
 **Production Logging**:
 ```
-DiagnosticTrigger=CROP_DAMAGE
-Authority=CROP
-Mode=DIAGNOSIS
+Mode=DIAGNOSIS_FIRST
+Source=DECISION_RULES
+Clarification=HYPOTHESIS_DRIVEN
+Crop=<CROP_CODE>
 Stage=<GROWTH_STAGE>
-RulesExecuted=DIAGNOSIS
-NLU_GATING=DISABLED
+Hypotheses=<COUNT>
 ```
 
 **Key Invariants**:
 - `authority = NONE` is PROHIBITED when crop damage observations exist
-- Pest/disease entities are diagnostic OUTPUTS, not prerequisites
-- If no high-confidence diagnosis matches, emit UNKNOWN diagnosis explicitly
-- Diagnosis options ranked by: priority → confidence → severity
+- When land context exists, options MUST come from `decision_rules.observable_characteristics`
+- Generic symptom lists are NEVER returned when hypotheses exist
+- Photo option is ALWAYS available as final choice
+- Diagnoses ranked by: priority → confidence → severity
 
-The system behaves like a field agronomist: when crop damage is reported, diagnosis is mandatory — not optional.
+The system behaves like a senior field agronomist: when crop damage is reported with land context, we present ranked diagnosis options immediately — we do NOT ask generic clarification questions.
