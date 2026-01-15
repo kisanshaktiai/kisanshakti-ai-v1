@@ -80,15 +80,161 @@ function normalizePriority(priority: PriorityLevel | number): number {
 // KEYWORD MATCHING - Uses database rules
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════════════════
+// BUG FIX #3: Implement actual keyword matching instead of empty stub
+// Supports both string[] and RuleExecutionInput for compatibility
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Input type for matchRulesByKeywords - supports string array or object
+ */
+type KeywordInput = string[] | RuleExecutionInput | {
+  crop_code?: string;
+  crop_stage?: string;
+  severity?: string;
+  observations?: string[];
+  user_query?: string;
+  pest_code?: string;
+  disease_code?: string;
+};
+
+/**
+ * Extract keywords from various input types
+ */
+function extractKeywords(input: KeywordInput): string[] {
+  // If input is already a string array
+  if (Array.isArray(input)) {
+    return input.map(s => s.toLowerCase());
+  }
+  
+  const keywords: string[] = [];
+  
+  // Handle object input - check common properties
+  const obj = input as any;
+  
+  // From farmer_context (RuleExecutionInput structure)
+  if (obj.farmer_context) {
+    if (obj.farmer_context.crop_code) keywords.push(obj.farmer_context.crop_code.toLowerCase());
+    if (obj.farmer_context.crop_stage) keywords.push(obj.farmer_context.crop_stage.toLowerCase());
+  }
+  
+  // From pest_disease_state (RuleExecutionInput structure)
+  if (obj.pest_disease_state) {
+    if (obj.pest_disease_state.pest_code && obj.pest_disease_state.pest_code !== 'UNKNOWN') {
+      keywords.push(obj.pest_disease_state.pest_code.toLowerCase());
+    }
+    if (obj.pest_disease_state.disease_code && obj.pest_disease_state.disease_code !== 'UNKNOWN') {
+      keywords.push(obj.pest_disease_state.disease_code.toLowerCase());
+    }
+    if (obj.pest_disease_state.severity && obj.pest_disease_state.severity !== 'UNKNOWN') {
+      keywords.push(obj.pest_disease_state.severity.toLowerCase());
+    }
+  }
+  
+  // From simpler object structure
+  if (obj.crop_code) keywords.push(obj.crop_code.toLowerCase());
+  if (obj.crop_stage) keywords.push(obj.crop_stage.toLowerCase());
+  if (obj.severity) keywords.push(obj.severity.toLowerCase());
+  if (obj.pest_code) keywords.push(obj.pest_code.toLowerCase());
+  if (obj.disease_code) keywords.push(obj.disease_code.toLowerCase());
+  
+  // Add observations
+  if (obj.observations && Array.isArray(obj.observations)) {
+    keywords.push(...obj.observations.map((o: string) => o.toLowerCase()));
+  }
+  
+  // Add significant words from user query
+  if (obj.user_query) {
+    const words = obj.user_query.toLowerCase()
+      .split(/\s+/)
+      .filter((w: string) => w.length > 2);
+    keywords.push(...words);
+  }
+  
+  return [...new Set(keywords)];
+}
+
+/**
+ * Get crop code from various input types
+ */
+function getCropCodeFromInput(input: KeywordInput): string {
+  if (Array.isArray(input)) {
+    // Try to find common crop names in keywords
+    const crops = ['sugarcane', 'cotton', 'soybean', 'rice', 'wheat', 'maize', 'onion', 'tomato', 'tur'];
+    for (const crop of crops) {
+      if (input.some(k => k.toLowerCase().includes(crop))) {
+        return crop;
+      }
+    }
+    return 'all';
+  }
+  
+  const obj = input as any;
+  return obj.farmer_context?.crop_code?.toLowerCase() || 
+         obj.crop_code?.toLowerCase() || 
+         'all';
+}
+
 export function matchRulesByKeywords(
-  input: RuleExecutionInput,
+  input: KeywordInput,
   targetCategory?: RuleCategory
 ): SymbolicRule[] {
   console.log('🔍 [SymbolicBridge] matchRulesByKeywords - using database rules');
   
-  // Rules are loaded from database via bundled-rules/loader.ts
-  // Return empty for now - actual matching done via loadAllRules()
-  return [];
+  // Get all loaded rules for the crop
+  const cropCode = getCropCodeFromInput(input);
+  const allRules = loadRulesForCrop(cropCode);
+  
+  if (allRules.length === 0) {
+    console.log(`   ⚠️ [SymbolicBridge] No cached rules available for crop: ${cropCode}`);
+    return [];
+  }
+  
+  // Filter by category if specified
+  let filteredRules = targetCategory 
+    ? allRules.filter(r => r.category === targetCategory)
+    : allRules;
+  
+  // Extract keywords from input
+  const keywords = extractKeywords(input);
+  
+  // Filter by keyword match
+  if (keywords.length > 0) {
+    filteredRules = filteredRules.filter(r => {
+      const ruleKeywords = r.trigger_keywords || [];
+      const ruleCause = (r.cause || '').toLowerCase();
+      const ruleId = (r.rule_id || '').toLowerCase();
+      
+      // Check if any input keyword matches rule keywords, cause, or rule_id
+      return keywords.some(kw => 
+        ruleKeywords.some((rk: string) => 
+          rk.toLowerCase().includes(kw) || kw.includes(rk.toLowerCase())
+        ) ||
+        ruleCause.includes(kw) ||
+        ruleId.includes(kw)
+      );
+    });
+  }
+  
+  console.log(`   📋 Symbolic Bridge: ${filteredRules.length} rules matched for ${targetCategory || 'all'}`);
+  
+  // Convert ExecutableRule to SymbolicRule format
+  return filteredRules.map(r => ({
+    rule_id: r.rule_id,
+    category: r.category as RuleCategory,
+    crop_code: r.crop_code || 'all',
+    priority: r.priority || 50,
+    cause: r.cause || '',
+    scientific_source: r.scientific_source || '',
+    scientific_basis: r.scientific_basis || '',
+    icar_package: r.icar_package_ref,
+    trigger_keywords: r.trigger_keywords || [],
+    response_mr: r.response_mr,
+    response_hi: r.response_hi,
+    response_en: r.response_en,
+    alternatives: r.alternatives || [],
+    action_type: r.action_type as any
+  }));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

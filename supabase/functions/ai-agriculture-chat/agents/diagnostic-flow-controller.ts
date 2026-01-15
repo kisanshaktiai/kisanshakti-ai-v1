@@ -148,8 +148,24 @@ export class DiagnosticFlowController {
     // Terminal damage observations automatically grant CROP authority.
     // ═══════════════════════════════════════════════════════════════════════════
     
-    // Extract ObservationKeys from NLU entities (symptom codes)
-    const observationKeys = new Set<string>(nluOutput.entities?.symptom_codes || []);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BUG FIX #5: Collect observation keys from ALL sources, not just symptom_codes
+    // ═══════════════════════════════════════════════════════════════════════════
+    const observationKeys = new Set<string>([
+      ...(nluOutput.entities?.symptom_codes || []),
+      ...(nluOutput.symptom_extraction?.cross_crop_symptoms || []),
+      ...(nluOutput.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [])
+    ]);
+    
+    // Also check observation extraction from semantic layer
+    if (this.session.context?.observationExtraction?.observation_keys) {
+      for (const key of this.session.context.observationExtraction.observation_keys) {
+        observationKeys.add(key);
+      }
+    }
+    
+    console.log(`📋 [DiagnosticFlow] Observation keys collected: ${observationKeys.size}`, 
+      observationKeys.size > 0 ? Array.from(observationKeys).slice(0, 5) : 'none');
     
     // Check for terminal damage from observations (NOT NLU intent)
     const terminalDamageResult = detectTerminalDamageForAuthority(observationKeys);
@@ -614,6 +630,12 @@ export class DiagnosticFlowController {
    * Extract detected causes from NLU output and context.
    * Maps to cause codes used by the authority resolver.
    */
+  /**
+   * Extract detected causes from NLU output and context.
+   * Maps to cause codes used by the authority resolver.
+   * 
+   * BUG FIX #4: Add mappings for terminal damage symptoms to causes
+   */
   private extractDetectedCauses(
     nlu: NLUOutputWithRuleMapping,
     context: RuleEvaluationContext
@@ -632,17 +654,58 @@ export class DiagnosticFlowController {
       causes.push('EMERGENCY_ESCALATION');
     }
     
-    // From symptom codes that map to causes
-    const symptomCodes = nlu.entities?.symptom_codes || [];
+    // Collect ALL symptom codes from multiple sources
+    const symptomCodes = new Set<string>([
+      ...(nlu.entities?.symptom_codes || []),
+      ...(nlu.symptom_extraction?.cross_crop_symptoms || []),
+      ...(nlu.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [])
+    ]);
+    
     for (const symptom of symptomCodes) {
-      // Map critical symptoms to authority-level causes
-      if (symptom.includes('WATERLOG')) causes.push('WATERLOGGING');
-      if (symptom.includes('SALIN') || symptom.includes('SALT')) causes.push('SALINITY');
-      if (symptom.includes('FROST')) causes.push('FROST');
-      if (symptom.includes('HEAT') || symptom.includes('SCORCH')) causes.push('HEAT_STRESS');
-      if (symptom.includes('FLOOD')) causes.push('FLOOD_DAMAGE');
-      if (symptom.includes('IRRIGATION')) causes.push('IRRIGATION_FAILURE');
+      const upperSymptom = symptom.toUpperCase();
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // BUG FIX #4: Map terminal damage symptoms to causes for authority resolution
+      // ═══════════════════════════════════════════════════════════════════════════
+      
+      // Terminal damage symptoms -> CROP authority causes
+      if (upperSymptom.includes('PLANT_DEATH') || upperSymptom.includes('DIED') || upperSymptom.includes('DEAD')) {
+        causes.push('PLANT_MORTALITY');
+      }
+      if (upperSymptom.includes('SEEDLING_DEATH') || upperSymptom.includes('SEEDLING_DIED')) {
+        causes.push('SEEDLING_MORTALITY');
+      }
+      if (upperSymptom.includes('GERMINATION_FAIL') || upperSymptom.includes('GERMINATION_FAILURE')) {
+        causes.push('GERMINATION_FAILURE');
+      }
+      if (upperSymptom.includes('DEAD_HEART')) {
+        causes.push('BORER_SUSPECTED');
+      }
+      if (upperSymptom.includes('WILTING') || upperSymptom.includes('WILT')) {
+        causes.push('WILTING_SYNDROME');
+      }
+      if (upperSymptom.includes('PATCHY') || upperSymptom.includes('GAP')) {
+        causes.push('PATCHY_STAND');
+      }
+      
+      // Environmental stress symptoms
+      if (upperSymptom.includes('WATERLOG')) causes.push('WATERLOGGING');
+      if (upperSymptom.includes('SALIN') || upperSymptom.includes('SALT')) causes.push('SALINITY');
+      if (upperSymptom.includes('FROST')) causes.push('FROST');
+      if (upperSymptom.includes('HEAT') || upperSymptom.includes('SCORCH')) causes.push('HEAT_STRESS');
+      if (upperSymptom.includes('FLOOD')) causes.push('FLOOD_DAMAGE');
+      if (upperSymptom.includes('IRRIGATION')) causes.push('IRRIGATION_FAILURE');
+      if (upperSymptom.includes('DROUGHT') || upperSymptom.includes('WATER_STRESS')) causes.push('DROUGHT_STRESS');
+      
+      // Pest/disease indicators
+      if (upperSymptom.includes('BORER') || upperSymptom.includes('HOLES')) causes.push('PEST_DAMAGE');
+      if (upperSymptom.includes('TERMITE')) causes.push('TERMITE_INFESTATION');
+      if (upperSymptom.includes('YELLOWING') || upperSymptom.includes('YELLOW')) causes.push('NUTRIENT_OR_DISEASE');
+      if (upperSymptom.includes('SPOTS') || upperSymptom.includes('LESION')) causes.push('DISEASE_SUSPECTED');
     }
+    
+    console.log(`🔍 [DiagnosticFlow] Extracted causes from ${symptomCodes.size} symptoms:`, 
+      causes.length > 0 ? causes.slice(0, 5) : 'none');
     
     return [...new Set(causes)]; // Deduplicate
   }

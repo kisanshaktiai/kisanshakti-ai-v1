@@ -123,9 +123,9 @@ export class FactExtractor {
     canonicalState: CanonicalState,
     landState: AuthoritativeLandState | null
   ): Pick<SymbolicFact, 'crop' | 'crop_code' | 'dos' | 'growth_stage' | 'land_area_acres'> {
-    // Raw values for display
-    const rawCrop = landState?.crop.current_crop || canonicalState.crop_type || 'UNKNOWN';
-    const rawStage = landState?.crop.growth_stage || canonicalState.crop_stage || 'UNKNOWN';
+    // CRITICAL FIX: Safe nested property access with null checks
+    const rawCrop = landState?.crop?.current_crop || canonicalState.crop_type || 'UNKNOWN';
+    const rawStage = landState?.crop?.growth_stage || canonicalState.crop_stage || 'UNKNOWN';
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CANONICAL-TO-RULE NORMALIZATION
@@ -140,7 +140,7 @@ export class FactExtractor {
     return {
       crop: rawCrop,  // Keep original for display
       crop_code: normalizedCropCode,  // Normalized for rule matching
-      dos: landState?.crop.days_since_sowing || canonicalState.days_after_sowing_exact || 0,
+      dos: landState?.crop?.days_since_sowing || canonicalState.days_after_sowing_exact || 0,
       growth_stage: normalizedStage,  // Normalized for rule matching
       land_area_acres: landState?.area_acres || 0
     };
@@ -192,7 +192,8 @@ export class FactExtractor {
   private extractEnvironmentalFacts(
     landState: AuthoritativeLandState | null
   ): Pick<SymbolicFact, 'ndvi' | 'ndvi_trend' | 'ndvi_status' | 'temperature' | 'humidity' | 'recent_rain' | 'soil_moisture_estimated'> {
-    const ndviValue = landState?.ndvi.latest_value ?? null;
+    // CRITICAL FIX: Safe nested property access with null checks
+    const ndviValue = landState?.ndvi?.latest_value ?? null;
     
     // Calculate NDVI status
     let ndviStatus = 'UNKNOWN';
@@ -203,8 +204,8 @@ export class FactExtractor {
       else ndviStatus = 'CRITICAL';
     }
     
-    // Estimate soil moisture from rainfall
-    const rainfall = landState?.weather.rainfall_last_24h || 0;
+    // Estimate soil moisture from rainfall - with safe access
+    const rainfall = landState?.weather?.rainfall_last_24h || 0;
     let soilMoisture = 'UNKNOWN';
     if (landState?.weather) {
       if (rainfall > 20) soilMoisture = 'WET';
@@ -214,10 +215,10 @@ export class FactExtractor {
     
     return {
       ndvi: ndviValue,
-      ndvi_trend: landState?.ndvi.trend?.toUpperCase() || 'UNKNOWN',
+      ndvi_trend: landState?.ndvi?.trend?.toUpperCase() || 'UNKNOWN',
       ndvi_status: ndviStatus,
-      temperature: landState?.weather.temperature ?? null,
-      humidity: landState?.weather.humidity ?? null,
+      temperature: landState?.weather?.temperature ?? null,
+      humidity: landState?.weather?.humidity ?? null,
       recent_rain: rainfall > 5,
       soil_moisture_estimated: soilMoisture
     };
@@ -236,14 +237,15 @@ export class FactExtractor {
       return 'ADEQUATE';
     };
     
+    // CRITICAL FIX: Safe nested property access with null checks
     return {
-      soil_n: landState?.soil.nitrogen_kg_per_ha ?? null,
-      soil_n_status: getNutrientStatus(landState?.soil.nitrogen_kg_per_ha ?? null, 200, 400),
-      soil_p: landState?.soil.phosphorus_kg_per_ha ?? null,
-      soil_p_status: getNutrientStatus(landState?.soil.phosphorus_kg_per_ha ?? null, 10, 25),
-      soil_k: landState?.soil.potassium_kg_per_ha ?? null,
-      soil_k_status: getNutrientStatus(landState?.soil.potassium_kg_per_ha ?? null, 120, 280),
-      soil_ph: landState?.soil.ph ?? null
+      soil_n: landState?.soil?.nitrogen_kg_per_ha ?? null,
+      soil_n_status: getNutrientStatus(landState?.soil?.nitrogen_kg_per_ha ?? null, 200, 400),
+      soil_p: landState?.soil?.phosphorus_kg_per_ha ?? null,
+      soil_p_status: getNutrientStatus(landState?.soil?.phosphorus_kg_per_ha ?? null, 10, 25),
+      soil_k: landState?.soil?.potassium_kg_per_ha ?? null,
+      soil_k_status: getNutrientStatus(landState?.soil?.potassium_kg_per_ha ?? null, 120, 280),
+      soil_ph: landState?.soil?.ph ?? null
     };
   }
   

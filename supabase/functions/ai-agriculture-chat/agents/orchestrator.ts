@@ -3707,16 +3707,76 @@ export class AIAgentOrchestrator {
             const symbolicReasoner = new SymbolicReasoner();
             const factExtractor = new FactExtractor();
             
-            // Build authoritative land state for fact extraction
+            // ═══════════════════════════════════════════════════════════════════════════
+            // BUG FIX #2: Build NESTED AuthoritativeLandState matching interface
+            // The interface expects nested crop/soil/ndvi/weather objects, not flat fields
+            // ═══════════════════════════════════════════════════════════════════════════
             const authoritativeLandState = landContext ? {
               land_id: landContext.land_id,
-              current_crop: landContext.current_crop,
-              days_since_sowing: landContext.days_since_sowing,
-              growth_stage: landContext.growth_stage,
-              ndvi_value: landContext.ndvi?.value,
-              ndvi_trend: landContext.ndvi?.ndvi_trend,
-              soil_health: landContext.soil_health,
-              weather_data: fusedIntelligence.weather_data
+              tenant_id: tenantId,
+              farmer_id: farmerId,
+              land_name: landContext.land_name || '',
+              area_hectares: (landContext.area_acres || 0) * 0.404686,
+              area_acres: landContext.area_acres || 0,
+              latitude: landContext.center_lat || null,
+              longitude: landContext.center_lng || null,
+              district: landContext.district || null,
+              state: landContext.state || null,
+              // CRITICAL: Nested crop object matching AuthoritativeLandState interface
+              crop: {
+                current_crop: landContext.current_crop || null,
+                crop_code: landContext.current_crop?.toUpperCase() || null,
+                growth_stage: landContext.growth_stage || null,
+                days_since_sowing: landContext.days_since_sowing || null,
+                sowing_date: landContext.sowing_date || null,
+                expected_harvest_date: null,
+                schedule_status: 'active'
+              },
+              // CRITICAL: Nested soil object
+              soil: {
+                ph: landContext.soil_health?.ph_level || null,
+                organic_carbon: landContext.soil_health?.organic_carbon || null,
+                nitrogen_kg_per_ha: landContext.soil_health?.nitrogen_kg_per_ha || null,
+                phosphorus_kg_per_ha: landContext.soil_health?.phosphorus_kg_per_ha || null,
+                potassium_kg_per_ha: landContext.soil_health?.potassium_kg_per_ha || null,
+                texture: landContext.soil_health?.soil_texture || null,
+                test_date: null,
+                test_age_days: null,
+                data_fresh: !!landContext.soil_health
+              },
+              // CRITICAL: Nested ndvi object
+              ndvi: {
+                latest_value: landContext.ndvi?.value || null,
+                latest_date: landContext.ndvi?.measurement_date || null,
+                trend: landContext.ndvi?.ndvi_trend || 'unknown',
+                age_days: null,
+                history: landContext.ndvi_history || [],
+                data_fresh: !!landContext.ndvi
+              },
+              // CRITICAL: Nested weather object
+              weather: {
+                temperature: fusedIntelligence.weather_data?.temperature || null,
+                humidity: fusedIntelligence.weather_data?.humidity || null,
+                rainfall_last_24h: fusedIntelligence.weather_data?.rainfall_mm || null,
+                rain_probability: null,
+                wind_speed: fusedIntelligence.weather_data?.wind_speed || null,
+                data_timestamp: null,
+                data_age_hours: null,
+                data_fresh: !!fusedIntelligence.weather_data
+              },
+              // Optional GDD phenology
+              gdd_phenology: phenologyResult || null,
+              // Derived metrics (placeholder)
+              derived: {
+                water_stress_level: 'unknown' as const,
+                crop_health_status: 'unknown' as const,
+                data_completeness_score: 50,
+                data_freshness_score: 50,
+                critical_missing: []
+              },
+              loaded_at: new Date().toISOString(),
+              sources_available: ['land_context'],
+              sources_missing: []
             } : null;
             
             // Extract symbolic facts from observations
@@ -3727,14 +3787,15 @@ export class AIAgentOrchestrator {
               severity: canonicalState.severity || 'UNKNOWN'
             };
             
+            // ═══════════════════════════════════════════════════════════════════════════
+            // BUG FIX #1: Pass correct arguments to FactExtractor.extractFacts()
+            // Signature: extractFacts(observation, canonicalState, landState, userQuery)
+            // ═══════════════════════════════════════════════════════════════════════════
             const symbolicFacts = factExtractor.extractFacts(
               observations,
-              cropContextAuthority ? {
-                crop_name: cropContextAuthority.crop_name,
-                days_since_sowing: cropContextAuthority.days_since_sowing,
-                current_stage: cropContextAuthority.growth_stage
-              } : { crop_name: 'UNKNOWN', days_since_sowing: 0, current_stage: 'UNKNOWN' },
-              authoritativeLandState || {}
+              canonicalState,  // Pass actual CanonicalState, not a fragment
+              authoritativeLandState,  // Now properly structured
+              farmerMessage  // Add missing 4th argument (user query)
             );
             
             // Execute symbolic rules
