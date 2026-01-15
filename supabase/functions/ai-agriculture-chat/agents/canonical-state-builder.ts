@@ -743,8 +743,90 @@ export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSympt
 
 // ==================== MAIN STATE BUILDER ====================
 
+// Extended input interface that supports both flat properties AND nested objects
+// This ensures the function works with the orchestrator's actual call pattern
 export interface BuildCanonicalStateInput {
-  // Land & Crop Context
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NESTED OBJECTS (from orchestrator - THESE ARE THE PRIMARY SOURCES)
+  // ═══════════════════════════════════════════════════════════════════════════
+  landContext?: {
+    current_crop?: string;
+    crop?: string;
+    crop_code?: string;
+    growth_stage?: string;
+    stage?: string;
+    days_since_sowing?: number;
+    days_after_sowing?: number;
+    sowing_date?: string;
+    area_acres?: number;
+    land_id?: string;
+    farmer_id?: string;
+    district?: string;
+    state?: string;
+    irrigation_type?: string;
+    farming_mode?: string;
+    ndvi?: {
+      value?: number;
+      mean_ndvi?: number;
+      ndvi_trend?: string;
+      captured_at?: string;
+    };
+    soil_health?: {
+      nitrogen_kg_per_ha?: number;
+      phosphorus_kg_per_ha?: number;
+      potassium_kg_per_ha?: number;
+      ph_level?: number;
+      organic_carbon?: number;
+      test_date?: string;
+    };
+  };
+  
+  soilData?: {
+    nitrogen_kg_per_ha?: number;
+    phosphorus_kg_per_ha?: number;
+    potassium_kg_per_ha?: number;
+    ph_level?: number;
+    organic_carbon?: number;
+    test_date?: string;
+  };
+  
+  ndviData?: {
+    value?: number;
+    mean_ndvi?: number;
+    trend?: string;
+    ndvi_trend?: string;
+    captured_at?: string;
+  };
+  
+  weatherData?: {
+    temperature?: number;
+    humidity?: number;
+    rainfall_last_7_days?: number;
+    rain_probability?: number;
+    timestamp?: string;
+  };
+  
+  // GDD Phenology Result (MOST AUTHORITATIVE for stage)
+  gddResult?: {
+    growth_stage?: string;
+    stage_name?: string;
+    accumulated_gdd?: number;
+  };
+  
+  // NLU Output
+  nluOutput?: {
+    crop_identification?: {
+      crop_code?: string;
+      crop_name?: string;
+    };
+    symptom_extraction?: {
+      visual_symptoms?: Array<{ symptom_code: string }>;
+    };
+  };
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FLAT PROPERTIES (legacy support - FALLBACK only if nested not provided)
+  // ═══════════════════════════════════════════════════════════════════════════
   cropName?: string;
   cropStage?: string;
   daysAfterSowing?: number;
@@ -758,12 +840,12 @@ export interface BuildCanonicalStateInput {
   severity?: string;
   symptomDistribution?: string;
   
-  // NDVI Data
+  // NDVI Data (flat)
   ndviValue?: number;
   ndviTrend?: number | string;
   ndviDataTimestamp?: string;
   
-  // Soil Data
+  // Soil Data (flat)
   nitrogenKgHa?: number;
   phosphorusKgHa?: number;
   potassiumKgHa?: number;
@@ -771,7 +853,7 @@ export interface BuildCanonicalStateInput {
   organicCarbon?: number;
   soilDataTimestamp?: string;
   
-  // Weather Data
+  // Weather Data (flat)
   currentTempC?: number;
   humidityPercent?: number;
   rainfallLast7DaysMm?: number;
@@ -791,9 +873,119 @@ export interface BuildCanonicalStateInput {
 export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalState {
   const now = new Date();
   
-  // Map crop and stage
-  const cropType = mapCropNameToEnum(input.cropName);
-  const cropStage = mapStageToEnum(input.cropStage);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 2.5 FIX: AUTHORITATIVE SOURCE EXTRACTION
+  // Priority: landContext → gddResult → nluOutput → flat properties → UNKNOWN
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const landContext = input.landContext;
+  const gddResult = input.gddResult;
+  const nluOutput = input.nluOutput;
+  const soilData = input.soilData || landContext?.soil_health;
+  const ndviData = input.ndviData || landContext?.ndvi;
+  const weatherData = input.weatherData;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. CROP SOURCE PRIORITY (per requirement)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const cropNameRaw = 
+    landContext?.current_crop ||           // a) landContext.current_crop (database)
+    landContext?.crop ||                   // a.1) alternative field name
+    nluOutput?.crop_identification?.crop_code ||  // c) nluOutput crop
+    nluOutput?.crop_identification?.crop_name ||
+    input.cropName ||                      // d) flat property fallback
+    'UNKNOWN';
+  
+  const cropSource = landContext?.current_crop || landContext?.crop 
+    ? 'landContext' 
+    : nluOutput?.crop_identification?.crop_code 
+      ? 'nluOutput' 
+      : input.cropName 
+        ? 'flat_input' 
+        : 'none';
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 2. STAGE SOURCE PRIORITY (per requirement)
+  // GDD phenology is MOST AUTHORITATIVE for physiological stage
+  // ═══════════════════════════════════════════════════════════════════════════
+  const cropStageRaw = 
+    gddResult?.growth_stage ||             // a) GDD phenology result (HIGHEST)
+    gddResult?.stage_name ||               // a.1) alternative GDD field
+    landContext?.growth_stage ||           // b) landContext.growth_stage
+    landContext?.stage ||                  // b.1) alternative field name
+    input.cropStage ||                     // c) flat property fallback
+    'UNKNOWN';
+  
+  const stageSource = gddResult?.growth_stage || gddResult?.stage_name
+    ? 'GDD'
+    : landContext?.growth_stage || landContext?.stage
+      ? 'landContext'
+      : input.cropStage
+        ? 'flat_input'
+        : 'none';
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 3. DAYS AFTER SOWING
+  // ═══════════════════════════════════════════════════════════════════════════
+  const daysAfterSowing = 
+    landContext?.days_since_sowing ??
+    landContext?.days_after_sowing ??
+    input.daysAfterSowing ??
+    0;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4. NDVI SOURCE (per requirement: NOT_AVAILABLE vs UNKNOWN distinction)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ndviValue = ndviData?.value ?? ndviData?.mean_ndvi ?? input.ndviValue;
+  const ndviTrend = ndviData?.trend || ndviData?.ndvi_trend || input.ndviTrend;
+  const ndviTimestamp = ndviData?.captured_at || input.ndviDataTimestamp;
+  const ndviAvailable = ndviValue !== undefined && ndviValue !== null;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5. SOIL SOURCE (per requirement: NOT_TESTED vs missing distinction)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const soilN = soilData?.nitrogen_kg_per_ha ?? input.nitrogenKgHa;
+  const soilP = soilData?.phosphorus_kg_per_ha ?? input.phosphorusKgHa;
+  const soilK = soilData?.potassium_kg_per_ha ?? input.potassiumKgHa;
+  const soilPH = soilData?.ph_level ?? input.soilPH;
+  const soilOC = soilData?.organic_carbon ?? input.organicCarbon;
+  const soilTimestamp = soilData?.test_date || input.soilDataTimestamp;
+  const soilTested = soilN !== undefined || soilP !== undefined || soilK !== undefined;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 6. WEATHER DATA
+  // ═══════════════════════════════════════════════════════════════════════════
+  const tempC = weatherData?.temperature ?? input.currentTempC;
+  const humidity = weatherData?.humidity ?? input.humidityPercent;
+  const rainfall = weatherData?.rainfall_last_7_days ?? input.rainfallLast7DaysMm;
+  const weatherTimestamp = weatherData?.timestamp || input.weatherDataTimestamp;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 7. OTHER CONTEXT
+  // ═══════════════════════════════════════════════════════════════════════════
+  const landId = landContext?.land_id || input.landId;
+  const farmerId = landContext?.farmer_id || input.farmerId;
+  const district = landContext?.district || input.district;
+  const state = landContext?.state || input.state;
+  const irrigationType = landContext?.irrigation_type || input.irrigationType;
+  const farmingMode = landContext?.farming_mode || input.farmingMode;
+  const areaAcres = landContext?.area_acres;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LOG AUTHORITATIVE SOURCE SELECTION (for debugging)
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log(`📊 [CanonicalState] Built from authoritative sources:
+    Crop: ${cropNameRaw} (source: ${cropSource})
+    Stage: ${cropStageRaw} (source: ${stageSource})
+    DAS: ${daysAfterSowing}
+    NDVI: ${ndviAvailable ? ndviValue : 'NOT_AVAILABLE'} (trend: ${ndviTrend || 'UNKNOWN'})
+    Soil: N=${soilN ?? 'NOT_TESTED'}, P=${soilP ?? 'NOT_TESTED'}, K=${soilK ?? 'NOT_TESTED'}
+    Area: ${areaAcres ?? 'UNKNOWN'} acres
+  `);
+  
+  // Map crop and stage using the extracted values
+  const cropType = mapCropNameToEnum(cropNameRaw);
+  const cropStage = mapStageToEnum(cropStageRaw);
   
   // Map observations to symptoms
   const allObservations = [
@@ -803,24 +995,24 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
   
   // Calculate data ages
-  const ndviAgeHours = input.ndviDataTimestamp 
-    ? (now.getTime() - new Date(input.ndviDataTimestamp).getTime()) / (1000 * 60 * 60)
+  const ndviAgeHours = ndviTimestamp 
+    ? (now.getTime() - new Date(ndviTimestamp).getTime()) / (1000 * 60 * 60)
     : undefined;
   
-  const soilAgeDays = input.soilDataTimestamp
-    ? (now.getTime() - new Date(input.soilDataTimestamp).getTime()) / (1000 * 60 * 60 * 24)
+  const soilAgeDays = soilTimestamp
+    ? (now.getTime() - new Date(soilTimestamp).getTime()) / (1000 * 60 * 60 * 24)
     : undefined;
   
-  const weatherAgeHours = input.weatherDataTimestamp
-    ? (now.getTime() - new Date(input.weatherDataTimestamp).getTime()) / (1000 * 60 * 60)
+  const weatherAgeHours = weatherTimestamp
+    ? (now.getTime() - new Date(weatherTimestamp).getTime()) / (1000 * 60 * 60)
     : undefined;
   
   // Track data sources
   const dataSources = {
     farmer_description: (input.farmerObservations?.length || 0) > 0,
-    ndvi_data: input.ndviValue !== undefined,
-    soil_test: input.nitrogenKgHa !== undefined || input.phosphorusKgHa !== undefined,
-    weather_data: input.currentTempC !== undefined || input.rainfallLast7DaysMm !== undefined,
+    ndvi_data: ndviAvailable,
+    soil_test: soilTested,
+    weather_data: tempC !== undefined || rainfall !== undefined,
     image_analysis: (input.imageAnalysisSymptoms?.length || 0) > 0,
     historical_data: false // TODO: implement historical data check
   };
@@ -870,8 +1062,8 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     // Crop Context
     crop_type: cropType,
     crop_stage: cropStage,
-    days_after_sowing: mapDaysToSowingBucket(input.daysAfterSowing),
-    days_after_sowing_exact: input.daysAfterSowing,
+    days_after_sowing: mapDaysToSowingBucket(daysAfterSowing),
+    days_after_sowing_exact: daysAfterSowing,
     
     // Visual Symptoms
     visual_symptom: visualSymptom,
@@ -880,26 +1072,26 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     severity,
     affected_plant_parts: [],
     
-    // NDVI
-    ndvi_level: mapNDVIToLevel(input.ndviValue),
-    ndvi_trend: mapNDVITrendToEnum(input.ndviTrend),
-    ndvi_value: input.ndviValue,
-    vegetation_uniformity: VegetationUniformity.UNKNOWN, // TODO: calculate from NDVI std
+    // NDVI (with NOT_AVAILABLE distinction)
+    ndvi_level: ndviAvailable ? mapNDVIToLevel(ndviValue) : NDVILevel.UNKNOWN,
+    ndvi_trend: mapNDVITrendToEnum(ndviTrend),
+    ndvi_value: ndviValue,
+    vegetation_uniformity: VegetationUniformity.UNKNOWN,
     ndvi_data_age_hours: ndviAgeHours,
     
-    // Soil
-    soil_nitrogen: mapNitrogenToEnum(input.nitrogenKgHa),
-    soil_phosphorus: mapPhosphorusToEnum(input.phosphorusKgHa),
-    soil_potassium: mapPotassiumToEnum(input.potassiumKgHa),
-    soil_ph: mapPHToEnum(input.soilPH),
-    soil_organic_carbon: mapOrganicCarbonToEnum(input.organicCarbon),
+    // Soil (with NOT_TESTED distinction)
+    soil_nitrogen: soilTested ? mapNitrogenToEnum(soilN) : NutrientLevel.UNKNOWN,
+    soil_phosphorus: soilTested ? mapPhosphorusToEnum(soilP) : NutrientLevel.UNKNOWN,
+    soil_potassium: soilTested ? mapPotassiumToEnum(soilK) : NutrientLevel.UNKNOWN,
+    soil_ph: mapPHToEnum(soilPH),
+    soil_organic_carbon: mapOrganicCarbonToEnum(soilOC),
     soil_data_age_days: soilAgeDays,
     
     // Weather
-    water_stress: WaterStress.UNKNOWN, // TODO: calculate from soil moisture + rainfall
-    rainfall_recent: mapRainfallToEnum(input.rainfallLast7DaysMm),
-    temperature_stress: mapTemperatureToStress(input.currentTempC, cropType),
-    humidity_level: mapHumidityToEnum(input.humidityPercent),
+    water_stress: WaterStress.UNKNOWN,
+    rainfall_recent: mapRainfallToEnum(rainfall),
+    temperature_stress: mapTemperatureToStress(tempC, cropType),
+    humidity_level: mapHumidityToEnum(humidity),
     weather_data_age_hours: weatherAgeHours,
     
     // Pest/Disease
@@ -909,12 +1101,12 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     // Farmer Context
     recent_fertilizer_applied: input.recentFertilizerApplied || false,
     recent_pesticide_applied: input.recentPesticideApplied || false,
-    irrigation_type: input.irrigationType,
-    farming_mode: (input.farmingMode?.toUpperCase() as any) || 'UNKNOWN',
+    irrigation_type: irrigationType,
+    farming_mode: (farmingMode?.toUpperCase() as any) || 'UNKNOWN',
     
     // Location
-    district: input.district,
-    state: input.state,
+    district: district,
+    state: state,
     
     // Safety
     data_confidence: dataConfidence,
@@ -923,8 +1115,8 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     
     // Meta
     state_built_at: now.toISOString(),
-    land_id: input.landId,
-    farmer_id: input.farmerId
+    land_id: landId,
+    farmer_id: farmerId
   };
 }
 

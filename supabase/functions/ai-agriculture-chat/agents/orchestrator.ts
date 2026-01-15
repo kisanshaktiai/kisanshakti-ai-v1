@@ -3406,6 +3406,20 @@ export class AIAgentOrchestrator {
         const inductionSymptoms = getSymptomSymbolsForRules(inductionResult);
         const inductionCrop = getCropSymbolForRules(inductionResult);
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 2.5 FIX: Pass GDD phenology result as the MOST AUTHORITATIVE stage source
+        // Priority: gddResult.growth_stage → landContext.growth_stage → nluOutput → UNKNOWN
+        // ═══════════════════════════════════════════════════════════════════════════
+        const gddResultForCanonical = phenologyResult ? {
+          growth_stage: phenologyResult.current_stage,
+          stage_name: phenologyResult.stage_name,
+          accumulated_gdd: phenologyResult.accumulated_gdd
+        } : (landContext?.gdd_phenology ? {
+          growth_stage: landContext.gdd_phenology.current_stage,
+          stage_name: landContext.gdd_phenology.stage_name,
+          accumulated_gdd: landContext.gdd_phenology.accumulated_gdd
+        } : undefined);
+        
         canonicalState = buildCanonicalState({
           landContext,
           soilData: landContext?.soil_health,
@@ -3415,6 +3429,8 @@ export class AIAgentOrchestrator {
             captured_at: landContext.ndvi.captured_at
           } : undefined,
           weatherData: fusedIntelligence.weather_data,
+          // PHASE 2.5 FIX: Pass GDD result for authoritative stage
+          gddResult: gddResultForCanonical,
           // Use NLU symptoms first, fall back to induction symptoms
           farmerObservations: (nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []).length > 0
             ? nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
