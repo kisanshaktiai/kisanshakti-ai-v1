@@ -252,11 +252,34 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
   // Critical for germination stage diagnosis
   // ═══════════════════════════════════════════════════════════════════════════
   {
-    key: CrossCropSymptomKey.OVERALL_WEAK,
+    key: CrossCropSymptomKey.PLANT_DEATH,
     patterns: [
       /मेल/i, /मर/i, /died/i, /dead/i, /death/i,
+      /मरण/i, /मर.*गय/i, /मर.*गेल/i,
       /नाही.*उगवल/i, /उगवला.*नाही/i, /not.*germinating/i,
       /वाळून.*गेल/i, /सूख.*गय/i, /completely.*dried/i
+    ]
+  },
+  {
+    key: CrossCropSymptomKey.SEEDLING_DEATH,
+    patterns: [
+      /नवीन.*मेल/i, /नवी.*रोप.*मेल/i, /new.*seedling.*died/i,
+      /रोप.*मेल/i, /पौध.*मर.*गय/i, /seedling.*died/i,
+      /लहान.*मेल/i, /छोट.*मर.*गय/i
+    ]
+  },
+  {
+    key: CrossCropSymptomKey.GERMINATION_FAILURE,
+    patterns: [
+      /उगव.*नाही/i, /उगला.*नहीं/i, /not.*germinated/i,
+      /उगलाच.*नाही/i, /बिल्कुल.*उगा.*नहीं/i, /no.*germination/i
+    ]
+  },
+  {
+    key: CrossCropSymptomKey.OVERALL_WEAK,
+    patterns: [
+      /कमजोर/i, /कमज़ोर/i, /weak/i,
+      /अशक्त/i, /थक/i
     ]
   },
   
@@ -296,15 +319,8 @@ const SYMPTOM_PATTERNS: SymptomPattern[] = [
   },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // GENERAL CONDITIONS
+  // GENERAL CONDITIONS (Note: OVERALL_WEAK is defined in PHASE-14 section above)
   // ═══════════════════════════════════════════════════════════════════════════
-  {
-    key: CrossCropSymptomKey.OVERALL_WEAK,
-    patterns: [
-      /कमजोर/i, /कमज़ोर/i, /weak/i,
-      /अशक्त/i, /थक/i
-    ]
-  },
   {
     key: CrossCropSymptomKey.HONEYDEW_PRESENT,
     patterns: [

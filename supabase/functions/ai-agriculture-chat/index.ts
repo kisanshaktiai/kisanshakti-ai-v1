@@ -2845,13 +2845,23 @@ function transformOrchestratorResponse(
           type: 'clarification',
           orchestrator_type: 'CLARIFICATION_QUESTION',
           question_id: typeof question === 'string' ? question : question?.question_id,
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL FIX: Preserve observation_key for rule engine re-evaluation
+          // Previously: Only label/value were passed, dropping observation_key
+          // Now: Include observation_key, description, diagnostic_power for proper UI mapping
+          // ═══════════════════════════════════════════════════════════════════════════
           options: rawOptions.map((o: any) => ({
             label: typeof o === 'string' ? o : (o?.label || String(o)),
-            value: typeof o === 'string' ? o : (o?.value || o?.label || String(o))
+            value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
+            observation_key: typeof o === 'object' ? (o?.observation_key || o?.value) : undefined,
+            description: typeof o === 'object' ? o?.description : undefined,
+            diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
           })),
           selectionType: response.metadata?.selectionType || 'SINGLE_CHOICE',
           trace_id: response.metadata?.trace_id,
-          validation_failed: response.metadata?.validation_failed
+          validation_failed: response.metadata?.validation_failed,
+          // Also include scope for UI context
+          clarification_scope: response.metadata?.clarification_scope || 'GENERAL'
         },
         quickReplies: safeQuickReplies.length > 0 
           ? safeQuickReplies 

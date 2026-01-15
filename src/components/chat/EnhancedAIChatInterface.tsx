@@ -1428,8 +1428,26 @@ export function EnhancedAIChatInterface() {
         center_lon: land.center_lon
       } : null;
       
-      // Get conversation history for context
-      const conversationHistory = (messages[activeTab] || []).slice(-8).map(m => ({ 
+      // ═══════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: Deduplicate conversation history to prevent repeated messages
+      // The logs showed 9 identical user messages being sent to backend
+      // ═══════════════════════════════════════════════════════════════════════
+      const rawHistory = (messages[activeTab] || []).slice(-10);
+      
+      // Deduplicate: Remove consecutive identical messages
+      const deduplicatedHistory: typeof rawHistory = [];
+      for (const msg of rawHistory) {
+        const lastMsg = deduplicatedHistory[deduplicatedHistory.length - 1];
+        // Skip if same role and same content as previous message
+        if (lastMsg && lastMsg.role === msg.role && lastMsg.content === msg.content) {
+          console.log('[Chat] Skipping duplicate message:', msg.content.substring(0, 50));
+          continue;
+        }
+        deduplicatedHistory.push(msg);
+      }
+      
+      // Take last 6 unique messages for context
+      const conversationHistory = deduplicatedHistory.slice(-6).map(m => ({ 
         role: m.role, 
         content: m.content 
       }));
@@ -1540,17 +1558,40 @@ export function EnhancedAIChatInterface() {
         [activeTab]: [...(prev[activeTab] || []), aiMessage]
       }));
       
-      // Cache message to LocalDB for offline access
-      chatSyncService.batchSaveMessages([{
-        id: userMessageId,
-        session_id: sessionId,
-        tenant_id: tenant?.id,
-        farmer_id: user?.id,
-        role: 'user',
-        content: finalMessage,
-        created_at: new Date().toISOString(),
-        status: 'sent'
-      }]);
+      // ═══════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: Save BOTH user message AND AI response to LocalDB
+      // Previously: Only user message was saved, AI response was lost on refresh
+      // ═══════════════════════════════════════════════════════════════════════
+      chatSyncService.batchSaveMessages([
+        // User message
+        {
+          id: userMessageId,
+          session_id: sessionId,
+          tenant_id: tenant?.id,
+          farmer_id: user?.id,
+          role: 'user',
+          content: finalMessage,
+          created_at: new Date().toISOString(),
+          status: 'sent'
+        },
+        // AI response - CRITICAL: This was missing before!
+        {
+          id: aiMessageId,
+          session_id: sessionId,
+          tenant_id: tenant?.id,
+          farmer_id: user?.id,
+          role: 'assistant',
+          content: responseText,
+          created_at: new Date().toISOString(),
+          status: 'sent',
+          metadata: {
+            orchestrator_type: isClarification ? 'CLARIFICATION_QUESTION' : 
+                              (data.metadata?.orchestrator_type || 'DECISION_PROVIDED'),
+            trace_id: data.metadata?.trace_id,
+            clarification_options: clarificationOptions
+          }
+        }
+      ]);
       
       // Set quick replies from orchestrator
       if (data.quickReplies && data.quickReplies.length > 0) {
