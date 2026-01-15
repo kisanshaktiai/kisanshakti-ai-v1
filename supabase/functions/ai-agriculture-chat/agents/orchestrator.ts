@@ -352,7 +352,7 @@ import {
   CLARIFICATION_STRATEGY_VERSION
 } from './clarification-strategy.ts';
 
-export const ORCHESTRATOR_VERSION = '3.1.0'; // Phase-22 v3: Observation-derived authority
+export const ORCHESTRATOR_VERSION = '4.0.0'; // Phase-22 v4: Crop damage triggers diagnosis mode
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-21: CANONICAL CONTEXT CONTRACT IMPORTS
@@ -380,13 +380,16 @@ import {
   formatDiagnosisForLLM,
   logDiagnosisOnlyActivation,
   detectTerminalDamageForAuthority,
+  detectCropDamageForDiagnosis, // v4.0: Enhanced crop damage detection
   createEnforcedCropAuthority,
   assertTerminalDamageAuthority,
   resolveDiagnosticAuthorityFromObservations, // v3.0: Pre-authority gate
   DIAGNOSIS_ONLY_MODE_VERSION,
+  CROP_DAMAGE_OBSERVATION_KEYS, // v4.0: Crop damage triggers
   type DiagnosisOnlyOutput,
   type MatchedRule,
   type TerminalDamageDetectionResult,
+  type CropDamageDetectionResult, // v4.0: Enhanced result type
   type PreAuthorityGateResult // v3.0: Pre-authority gate result type
 } from '../decision/diagnosis-only-mode.ts';
 
@@ -2120,18 +2123,27 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // PHASE-22 v3.0: PRE-AUTHORITY GATE (OBSERVATION-DERIVED AUTHORITY)
+      // PHASE-22 v4.0: CROP DAMAGE DETECTION GATE (OBSERVATION-DERIVED AUTHORITY)
       // 
       // This is the SINGLE ENTRY POINT for rule-granted diagnosis authority.
+      // HARD AGRONOMIC INVARIANT: 
+      // If canonical ObservationKeys OR CrossCropSymptoms indicate crop damage
+      // (e.g., PATCHY_GROWTH, AFFECTED_PATCHES, OVERALL_WEAK, SEEDLING_DIED)
+      // with severity ≥ MEDIUM, the system MUST activate the DIAGNOSIS category.
+      // 
       // NLU is treated as OBSERVATION EXTRACTOR only - it NEVER gates diagnosis.
-      // Authority is derived from ObservationKeys + crop + stage.
+      // Authority is derived from ObservationKeys + crop + stage, NOT from NLU intent.
+      // pest_code and disease_code are NOT required to enter DIAGNOSIS mode.
       // 
       // Logs must show:
-      // Mode=DIAGNOSIS_ONLY, Authority=CROP, Trigger=TERMINAL_DAMAGE_OBSERVATION
-      // NLU_ROLE=OBSERVATION_ONLY
+      // DiagnosticTrigger=CROP_DAMAGE
+      // Authority=CROP
+      // Mode=DIAGNOSIS
+      // Stage=<GROWTH_STAGE>
+      // RulesExecuted=DIAGNOSIS
       // ═══════════════════════════════════════════════════════════════════════════
       
-      // Collect all observations for pre-authority gate
+      // Collect all observations for crop damage detection
       const allObservationsForPreAuth = new Set<string>();
       
       // Add from observation keys
@@ -2151,71 +2163,136 @@ export class AIAgentOrchestrator {
         });
       }
       
-      // v3.0: Use unified pre-authority gate (replaces detectTerminalDamageForAuthority + createEnforcedCropAuthority)
+      // Add cross-crop symptoms if available
+      const crossCropSymptomsList = crossCropSymptoms ? [...crossCropSymptoms] : [];
+      
+      // v4.0: Use enhanced crop damage detection (includes non-terminal damage)
+      const cropDamageResult = detectCropDamageForDiagnosis(
+        allObservationsForPreAuth,
+        crossCropSymptomsList
+      );
+      
+      // v4.0: Also run the legacy pre-authority gate for backward compatibility
       const preAuthorityResult = resolveDiagnosticAuthorityFromObservations(allObservationsForPreAuth);
       
-      // v3.0: If NLU was bypassed (terminal damage detected), use enforced authority
+      // v4.0: Enforced authority from either path
       let enforcedAuthorityDecision = preAuthorityResult.enforced_decision;
       
-      if (preAuthorityResult.nlu_bypassed) {
-        console.log(`\n🚨 [PRE-AUTHORITY GATE] Terminal damage detected - NLU gating DISABLED`);
-        console.log(`   Mode=DIAGNOSIS_ONLY`);
+      // v4.0: If crop damage detected (any level that requires diagnosis), enforce CROP authority
+      if (cropDamageResult.requires_diagnosis) {
+        console.log(`\n🌾 [CROP DAMAGE GATE v4.0] Crop damage detected - DIAGNOSIS mode activated`);
+        console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
-        console.log(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
-        console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
+        console.log(`   Mode=DIAGNOSIS`);
+        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
+        console.log(`   RulesExecuted=DIAGNOSIS`);
+        console.log(`   Damage type: ${cropDamageResult.damage_type}`);
+        console.log(`   Severity: ${cropDamageResult.severity_level}`);
+        console.log(`   Damage observations: ${cropDamageResult.damage_observations.slice(0, 5).join(', ')}`);
+        console.log(`   NLU_GATING=${cropDamageResult.nlu_gating_disabled ? 'DISABLED' : 'ENABLED'}`);
+        
+        // Create enforced authority if not already set
+        if (!enforcedAuthorityDecision && cropDamageResult.enforced_authority) {
+          enforcedAuthorityDecision = createEnforcedCropAuthority(
+            cropDamageResult.damage_observations,
+            allObservationsForPreAuth
+          );
+        }
+        
+        agentsUsed.push('CROP_DAMAGE_GATE_V4');
+      } else if (preAuthorityResult.nlu_bypassed) {
+        // Legacy terminal damage path
+        console.log(`\n🚨 [PRE-AUTHORITY GATE] Terminal damage detected - NLU gating DISABLED`);
+        console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
+        console.log(`   Authority=CROP`);
+        console.log(`   Mode=DIAGNOSIS`);
+        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
+        console.log(`   RulesExecuted=DIAGNOSIS`);
         console.log(`   Terminal indicators: ${preAuthorityResult.terminal_indicators.join(', ')}`);
+        console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
         console.log(`   Source=DECISION_RULES`);
         
         // v3.0: Assert invariant immediately
         assertTerminalDamageAuthority(true, preAuthorityResult.authority);
       }
       
-      // Check if Diagnosis-Only Mode should be activated (uses pre-authority result)
+      // Check if Diagnosis-Only Mode should be activated
+      // v4.0: Now also activated by non-terminal crop damage
       const diagnosisOnlyCheck = shouldActivateDiagnosisOnlyMode(
         canonicalContext,
         allObservationsForPreAuth,
         1 // Kept for backward compatibility
       );
       
-      // Log the check result (v3.0 - enhanced logging)
-      logDiagnosisOnlyActivation(
-        diagnosisOnlyCheck.activate,
-        diagnosisOnlyCheck.reason,
-        diagnosisOnlyCheck.terminal_damage,
-        canonicalContext?.crop_code || 'UNKNOWN',
-        canonicalContext?.growth_stage || 'UNKNOWN',
-        diagnosisOnlyCheck.enforced_authority,
-        diagnosisOnlyCheck.nlu_gating_disabled
-      );
+      // v4.0: Enhanced activation check - crop damage OR terminal damage
+      const shouldActivateDiagnosisMode = diagnosisOnlyCheck.activate || 
+        preAuthorityResult.nlu_bypassed || 
+        cropDamageResult.requires_diagnosis;
+      
+      // Log the check result (v4.0 - enhanced logging)
+      if (shouldActivateDiagnosisMode) {
+        console.log(`\n════════════════════════════════════════════════════════════════`);
+        console.log(`🔬 [DIAGNOSIS MODE ACTIVATED] v${DIAGNOSIS_ONLY_MODE_VERSION}`);
+        console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
+        console.log(`   Authority=CROP`);
+        console.log(`   Mode=DIAGNOSIS`);
+        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
+        console.log(`   RulesExecuted=DIAGNOSIS`);
+        console.log(`   Damage type: ${cropDamageResult.damage_type}`);
+        console.log(`   Diagnosis mode: ${cropDamageResult.diagnosis_mode}`);
+        console.log(`   Severity: ${cropDamageResult.severity_level}`);
+        console.log(`   NLU_GATING=${cropDamageResult.nlu_gating_disabled || preAuthorityResult.nlu_bypassed ? 'DISABLED' : 'ENABLED'}`);
+        console.log(`   Clarification=${cropDamageResult.diagnosis_mode === 'DIAGNOSIS_ONLY' ? 'SKIPPED' : 'OPTIONAL'}`);
+        console.log(`════════════════════════════════════════════════════════════════\n`);
+      }
       
       // If Diagnosis-Only Mode is activated, SKIP CLARIFICATION entirely
-      let diagnosisOnlyModeActive = diagnosisOnlyCheck.activate || preAuthorityResult.nlu_bypassed;
+      let diagnosisOnlyModeActive = cropDamageResult.diagnosis_mode === 'DIAGNOSIS_ONLY' || 
+        diagnosisOnlyCheck.activate || 
+        preAuthorityResult.nlu_bypassed;
       let bypassClarificationForTerminalDamage = diagnosisOnlyModeActive;
       
-      // v3.0: HARD INVARIANT CHECK - terminal damage MUST have CROP authority
-      if (diagnosisOnlyModeActive && (diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority)) {
-        assertTerminalDamageAuthority(
-          true, // terminalDamageDetected
-          diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority
-        );
+      // v4.0: For DIAGNOSIS_WITH_CLARIFICATION, allow optional confirmation but still run rules
+      let diagnosisWithOptionalClarification = cropDamageResult.diagnosis_mode === 'DIAGNOSIS_WITH_CLARIFICATION';
+      
+      // v4.0: HARD INVARIANT CHECK - crop damage MUST have CROP authority
+      if (shouldActivateDiagnosisMode && (cropDamageResult.enforced_authority || diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority)) {
+        const resolvedAuthority = cropDamageResult.enforced_authority || 
+          diagnosisOnlyCheck.enforced_authority || 
+          preAuthorityResult.authority;
+        
+        if (cropDamageResult.damage_type === 'TERMINAL' || cropDamageResult.severity_level === 'CRITICAL') {
+          assertTerminalDamageAuthority(true, resolvedAuthority);
+        }
       }
       
       if (diagnosisOnlyModeActive) {
-        console.log(`\n🔬 [DIAGNOSIS-ONLY MODE v3.0] Clarification PERMANENTLY SKIPPED`);
-        console.log(`   Mode=DIAGNOSIS_ONLY`);
+        console.log(`\n🔬 [DIAGNOSIS-ONLY MODE v4.0] Clarification PERMANENTLY SKIPPED`);
+        console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP (ENFORCED)`);
-        console.log(`   Trigger=TERMINAL_DAMAGE_OBSERVATION`);
+        console.log(`   Mode=DIAGNOSIS`);
+        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
+        console.log(`   RulesExecuted=DIAGNOSIS`);
         console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
         console.log(`   Clarification=SKIPPED`);
         console.log(`   Source=DECISION_RULES`);
         console.log(`   Crop/Stage=${canonicalContext?.crop_code}/${canonicalContext?.growth_stage} (LOCKED)`);
-        console.log(`   Terminal damage: ${(diagnosisOnlyCheck.terminal_damage || preAuthorityResult.terminal_indicators).join(', ')}`);
-        agentsUsed.push('DIAGNOSIS_ONLY_MODE_V3');
-        agentsUsed.push('PRE_AUTHORITY_GATE');
+        console.log(`   Damage observations: ${cropDamageResult.damage_observations.slice(0, 5).join(', ')}`);
+        agentsUsed.push('DIAGNOSIS_ONLY_MODE_V4');
+        agentsUsed.push('CROP_DAMAGE_GATE');
         
         // Force bypass clarification
         understandingResult.clarification_required = false;
         bypassClarification = true;
+      } else if (diagnosisWithOptionalClarification) {
+        console.log(`\n🌾 [DIAGNOSIS MODE v4.0] Rules will execute with optional clarification`);
+        console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
+        console.log(`   Authority=CROP`);
+        console.log(`   Mode=DIAGNOSIS`);
+        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
+        console.log(`   RulesExecuted=DIAGNOSIS`);
+        console.log(`   Clarification=OPTIONAL (for confirmation)`);
+        agentsUsed.push('DIAGNOSIS_WITH_CLARIFICATION_V4');
       }
       
       // ═══════════════════════════════════════════════════════════════════════════

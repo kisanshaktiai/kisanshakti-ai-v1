@@ -58,10 +58,10 @@ import {
   type AuthorityDecision
 } from './authority-types.ts';
 
-export const DIAGNOSIS_ONLY_MODE_VERSION = '3.0.0';
+export const DIAGNOSIS_ONLY_MODE_VERSION = '4.0.0'; // v4: Crop damage triggers diagnosis mode
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EXTENDED TERMINAL DAMAGE DETECTION (v2.0 - Observation-Derived Authority)
+// EXTENDED TERMINAL/CROP DAMAGE DETECTION (v4.0 - Crop Damage = Diagnosis Mode)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -105,15 +105,93 @@ export const TERMINAL_DAMAGE_OBSERVATION_KEYS = new Set([
 ]);
 
 /**
- * Severity modifiers that combine with PATCHY_DAMAGE to trigger terminal mode.
+ * v4.0: CROP DAMAGE OBSERVATION KEYS - Sufficient grounds for DIAGNOSIS mode.
+ * These are NON-TERMINAL but still require diagnostic investigation.
+ * Diagnosis is activated when these are present, even without pest/disease codes.
+ */
+export const CROP_DAMAGE_OBSERVATION_KEYS = new Set([
+  // Growth/vigor issues
+  'PATCHY_GROWTH',
+  'OVERALL_WEAK',
+  'STUNTED_GROWTH',
+  'POOR_GERMINATION',
+  'UNEVEN_EMERGENCE',
+  'REDUCED_TILLERS',
+  'LOW_VIGOR',
+  
+  // Affected patches
+  'AFFECTED_PATCHES',
+  'SCATTERED_DAMAGE',
+  'RANDOM_PATCHES',
+  'EDGE_DAMAGE',
+  'CENTER_DAMAGE',
+  
+  // Color/visual changes
+  'GENERAL_YELLOWING',
+  'LEAF_YELLOWING',
+  'INTERVEINAL_YELLOWING',
+  'LEAF_TIP_BURN',
+  'LEAF_EDGE_BURN',
+  'PALE_LEAVES',
+  'PURPLE_COLORATION',
+  
+  // Structural damage
+  'WILTING',
+  'DROOPING',
+  'CURLED_LEAVES',
+  'ROLLED_LEAVES',
+  'LEAF_HOLES',
+  'HOLES_IN_LEAVES',
+  'CHEWED_LEAVES',
+  
+  // Spots and lesions
+  'SPOTS_IRREGULAR',
+  'SPOTS_CIRCULAR',
+  'BROWN_SPOTS',
+  'WHITE_PATCHES',
+  'BLACK_SPOTS',
+  'LESIONS',
+  
+  // Stem/stalk issues
+  'STEM_DISCOLORATION',
+  'LODGING',
+  'STEM_WEAKNESS',
+  
+  // Root zone indicators (visible at surface)
+  'PLANT_FALLING_OVER',
+  'EASY_TO_PULL',
+  
+  // Insect evidence (triggers diagnosis without pest_code)
+  'SMALL_INSECTS_VISIBLE',
+  'FLYING_INSECTS_VISIBLE',
+  'CRAWLING_INSECTS_VISIBLE',
+  'JUMPING_INSECTS_VISIBLE',
+  'WEBBING_VISIBLE',
+  'HONEYDEW',
+  'SOOTY_MOLD',
+  'FRASS_VISIBLE',
+  'EGG_MASSES',
+  
+  // Disease evidence (triggers diagnosis without disease_code)
+  'POWDERY_COATING',
+  'FUZZY_GROWTH',
+  'WATER_SOAKED_LESIONS',
+  'RUST_PUSTULES'
+]);
+
+/**
+ * Severity modifiers that combine with damage observations to trigger diagnostic mode.
  */
 export const SEVERITY_ESCALATORS = new Set([
   'SEVERITY_HIGH',
   'SEVERITY_CRITICAL',
+  'SEVERITY_MEDIUM',
   'ENTIRE_FIELD_AFFECTED',
   'AFFECTED_PERCENTAGE_HIGH',
   'WIDESPREAD_DAMAGE',
-  'RAPID_SPREAD'
+  'RAPID_SPREAD',
+  'INCREASING',
+  'GETTING_WORSE'
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -214,12 +292,38 @@ export interface TerminalDamageDetectionResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// v2.0: TERMINAL DAMAGE DETECTION (RUNS BEFORE AUTHORITY RESOLUTION)
+// v4.0: CROP DAMAGE DETECTION RESULT
+// Extended to support non-terminal crop damage that requires diagnosis
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface CropDamageDetectionResult {
+  detected: boolean;
+  damage_type: 'TERMINAL' | 'SIGNIFICANT' | 'MINOR' | 'NONE';
+  damage_observations: string[];
+  severity_level: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN';
+  severity_indicators: string[];
+  requires_diagnosis: boolean;
+  diagnosis_mode: 'DIAGNOSIS_ONLY' | 'DIAGNOSIS_WITH_CLARIFICATION' | 'STANDARD';
+  enforced_authority: DecisionAuthority.CROP | null;
+  nlu_gating_disabled: boolean;
+  reason: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.0: CROP DAMAGE DETECTION (EXPANDED - Runs BEFORE authority resolution)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Detect terminal damage from observations.
+ * Detect crop damage from observations.
  * This runs BEFORE authority resolution to enforce CROP authority.
+ * 
+ * v4.0 CHANGE: Crop damage observations (not just terminal damage) are now
+ * sufficient to trigger DIAGNOSIS mode. Pest/disease codes are NOT required.
+ * 
+ * HARD AGRONOMIC INVARIANT:
+ * If canonical ObservationKeys OR CrossCropSymptoms indicate crop damage
+ * (e.g., PATCHY_GROWTH, AFFECTED_PATCHES, OVERALL_WEAK, SEEDLING_DIED)
+ * with severity ≥ MEDIUM, the system MUST activate the DIAGNOSIS category.
  * 
  * NLU GATING IS COMPLETELY BYPASSED for:
  * - hasPestOrDisease checks
@@ -228,18 +332,32 @@ export interface TerminalDamageDetectionResult {
  * 
  * Authority is derived from OBSERVATIONS, not NLU.
  */
-export function detectTerminalDamageForAuthority(
-  observations: Set<string> | string[]
-): TerminalDamageDetectionResult {
+export function detectCropDamageForDiagnosis(
+  observations: Set<string> | string[],
+  crossCropSymptoms?: string[]
+): CropDamageDetectionResult {
   const obsSet = observations instanceof Set ? observations : new Set(observations);
   
+  // Also check crossCropSymptoms if provided
+  if (crossCropSymptoms) {
+    crossCropSymptoms.forEach(sym => obsSet.add(sym));
+  }
+  
   const detectedTerminal: string[] = [];
+  const detectedCropDamage: string[] = [];
   const detectedSeverity: string[] = [];
   
-  // Check direct terminal damage indicators
+  // Check direct terminal damage indicators (highest priority)
   TERMINAL_DAMAGE_OBSERVATION_KEYS.forEach(key => {
     if (obsSet.has(key)) {
       detectedTerminal.push(key);
+    }
+  });
+  
+  // Check crop damage indicators (triggers diagnosis without pest/disease)
+  CROP_DAMAGE_OBSERVATION_KEYS.forEach(key => {
+    if (obsSet.has(key)) {
+      detectedCropDamage.push(key);
     }
   });
   
@@ -250,33 +368,150 @@ export function detectTerminalDamageForAuthority(
     }
   });
   
-  // Terminal damage detected via direct indicators
-  const hasDirectTerminal = detectedTerminal.length > 0;
+  // Determine severity level
+  let severityLevel: CropDamageDetectionResult['severity_level'] = 'UNKNOWN';
+  if (obsSet.has('SEVERITY_CRITICAL') || detectedTerminal.length >= 2) {
+    severityLevel = 'CRITICAL';
+  } else if (obsSet.has('SEVERITY_HIGH') || detectedTerminal.length > 0) {
+    severityLevel = 'HIGH';
+  } else if (obsSet.has('SEVERITY_MEDIUM') || detectedCropDamage.length >= 2) {
+    severityLevel = 'MEDIUM';
+  } else if (detectedCropDamage.length > 0) {
+    severityLevel = 'LOW';
+  }
   
-  // Terminal damage via PATCHY_DAMAGE + HIGH SEVERITY combination
-  const hasPatchyWithSeverity = 
-    obsSet.has('PATCHY_DAMAGE') && detectedSeverity.length > 0;
+  // Determine damage type
+  const hasTerminalDamage = detectedTerminal.length > 0;
+  const hasSignificantDamage = detectedCropDamage.length >= 2 || (detectedCropDamage.length > 0 && detectedSeverity.length > 0);
+  const hasMinorDamage = detectedCropDamage.length > 0;
   
-  const terminalDetected = hasDirectTerminal || hasPatchyWithSeverity;
+  // HARD INVARIANT: Crop damage with severity >= MEDIUM triggers DIAGNOSIS mode
+  const requiresDiagnosis = hasTerminalDamage || 
+    (hasSignificantDamage && ['CRITICAL', 'HIGH', 'MEDIUM'].includes(severityLevel)) ||
+    (hasMinorDamage && ['CRITICAL', 'HIGH'].includes(severityLevel));
   
-  if (terminalDetected) {
-    console.log(`\n🔬 [TerminalDamageDetector] Terminal damage DETECTED from ObservationKeys`);
-    console.log(`   Mode=DIAGNOSIS_ONLY`);
-    console.log(`   Authority=CROP (ENFORCED)`);
+  // Combine all damage observations
+  const allDamageObservations = [...new Set([...detectedTerminal, ...detectedCropDamage])];
+  
+  if (hasTerminalDamage) {
+    // Terminal damage: DIAGNOSIS_ONLY mode (skip clarification)
+    console.log(`\n🔬 [CropDamageDetector v4.0] TERMINAL DAMAGE detected`);
+    console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
+    console.log(`   Authority=CROP`);
+    console.log(`   Mode=DIAGNOSIS`);
+    console.log(`   Stage=${severityLevel}`);
+    console.log(`   RulesExecuted=DIAGNOSIS`);
     console.log(`   NLU_GATING=DISABLED`);
     console.log(`   Terminal indicators: ${detectedTerminal.join(', ')}`);
-    if (hasPatchyWithSeverity) {
-      console.log(`   Severity escalators: PATCHY_DAMAGE + ${detectedSeverity.join(', ')}`);
-    }
-    console.log(`   Source=OBSERVATION_KEYS`);
+    console.log(`   Severity: ${severityLevel}`);
     
     return {
       detected: true,
-      terminal_damage: detectedTerminal,
-      severity_escalators: detectedSeverity,
+      damage_type: 'TERMINAL',
+      damage_observations: allDamageObservations,
+      severity_level: severityLevel,
+      severity_indicators: detectedSeverity,
+      requires_diagnosis: true,
+      diagnosis_mode: 'DIAGNOSIS_ONLY',
       enforced_authority: DecisionAuthority.CROP,
       nlu_gating_disabled: true,
-      reason: 'TERMINAL_DAMAGE_OBSERVATION_DETECTED'
+      reason: 'TERMINAL_CROP_DAMAGE_DETECTED'
+    };
+  }
+  
+  if (requiresDiagnosis) {
+    // Significant damage: Diagnosis mode with optional clarification for confirmation
+    console.log(`\n🌾 [CropDamageDetector v4.0] SIGNIFICANT CROP DAMAGE detected`);
+    console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
+    console.log(`   Authority=CROP`);
+    console.log(`   Mode=DIAGNOSIS`);
+    console.log(`   Severity=${severityLevel}`);
+    console.log(`   RulesExecuted=DIAGNOSIS`);
+    console.log(`   NLU_GATING=DISABLED`);
+    console.log(`   Damage indicators: ${detectedCropDamage.slice(0, 5).join(', ')}`);
+    console.log(`   Severity modifiers: ${detectedSeverity.join(', ') || 'NONE'}`);
+    
+    return {
+      detected: true,
+      damage_type: 'SIGNIFICANT',
+      damage_observations: allDamageObservations,
+      severity_level: severityLevel,
+      severity_indicators: detectedSeverity,
+      requires_diagnosis: true,
+      diagnosis_mode: 'DIAGNOSIS_WITH_CLARIFICATION',
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: true,
+      reason: 'SIGNIFICANT_CROP_DAMAGE_DETECTED'
+    };
+  }
+  
+  if (hasMinorDamage) {
+    // Minor damage: Still triggers diagnosis but with lower priority
+    console.log(`\n🌱 [CropDamageDetector v4.0] Minor crop damage detected`);
+    console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
+    console.log(`   Authority=CROP`);
+    console.log(`   Mode=DIAGNOSIS`);
+    console.log(`   Severity=${severityLevel}`);
+    console.log(`   Damage indicators: ${detectedCropDamage.join(', ')}`);
+    
+    return {
+      detected: true,
+      damage_type: 'MINOR',
+      damage_observations: allDamageObservations,
+      severity_level: severityLevel,
+      severity_indicators: detectedSeverity,
+      requires_diagnosis: true, // v4.0: ALL crop damage triggers diagnosis
+      diagnosis_mode: 'DIAGNOSIS_WITH_CLARIFICATION',
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: false, // Minor damage can still use NLU for context
+      reason: 'MINOR_CROP_DAMAGE_DETECTED'
+    };
+  }
+  
+  return {
+    detected: false,
+    damage_type: 'NONE',
+    damage_observations: [],
+    severity_level: 'UNKNOWN',
+    severity_indicators: [],
+    requires_diagnosis: false,
+    diagnosis_mode: 'STANDARD',
+    enforced_authority: null,
+    nlu_gating_disabled: false,
+    reason: 'NO_CROP_DAMAGE_DETECTED'
+  };
+}
+
+/**
+ * BACKWARD COMPATIBILITY: Wrapper for existing terminal damage detection.
+ * Calls the new detectCropDamageForDiagnosis and maps to old format.
+ */
+export function detectTerminalDamageForAuthority(
+  observations: Set<string> | string[]
+): TerminalDamageDetectionResult {
+  const cropDamageResult = detectCropDamageForDiagnosis(observations);
+  
+  // Map to old format for backward compatibility
+  if (cropDamageResult.damage_type === 'TERMINAL' || cropDamageResult.damage_type === 'SIGNIFICANT') {
+    return {
+      detected: true,
+      terminal_damage: cropDamageResult.damage_observations,
+      severity_escalators: cropDamageResult.severity_indicators,
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: cropDamageResult.nlu_gating_disabled,
+      reason: cropDamageResult.reason
+    };
+  }
+  
+  // Minor damage in v4.0 also triggers diagnosis mode
+  if (cropDamageResult.damage_type === 'MINOR' && cropDamageResult.requires_diagnosis) {
+    return {
+      detected: true,
+      terminal_damage: cropDamageResult.damage_observations,
+      severity_escalators: cropDamageResult.severity_indicators,
+      enforced_authority: DecisionAuthority.CROP,
+      nlu_gating_disabled: false,
+      reason: cropDamageResult.reason
     };
   }
   
@@ -617,84 +852,111 @@ export function generateDiagnosisOnlyOutput(
   // Get terminal damage detected
   const terminalDamage = getDetectedTerminalDamage(observations);
   
-  // Sort rules by confidence (descending)
-  const sortedRules = [...matched_rules].sort((a, b) => b.confidence - a.confidence);
+  // Sort rules by priority first, then confidence (descending)
+  const sortedRules = [...matched_rules].sort((a, b) => {
+    // Priority takes precedence (lower number = higher priority)
+    const priorityDiff = (a.priority || 99) - (b.priority || 99);
+    if (priorityDiff !== 0) return priorityDiff;
+    // Then by confidence
+    return b.confidence - a.confidence;
+  });
   
   // Take top 3 diagnoses
   const topRules = sortedRules.slice(0, 3);
   
-  // Convert to diagnosis results
-  const diagnoses: DiagnosisResult[] = topRules.map(rule => {
-    const causeKey = rule.cause.toUpperCase().replace(/\s+/g, '_');
-    const translations = CAUSE_TRANSLATIONS[causeKey] || {
-      mr: rule.cause,
-      hi: rule.cause,
-      en: rule.cause
-    };
+  // v4.0: If no rules matched, emit UNKNOWN diagnosis rule explicitly
+  let diagnoses: DiagnosisResult[] = [];
+  
+  if (topRules.length === 0) {
+    console.log(`   ⚠️ [UNKNOWN_DIAGNOSIS] No high-confidence rules matched`);
+    console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
+    console.log(`   Authority=CROP`);
+    console.log(`   Mode=DIAGNOSIS`);
+    console.log(`   RulesExecuted=DIAGNOSIS`);
+    console.log(`   Result=UNKNOWN_DIAGNOSIS_EMITTED`);
     
-    // Determine action type based on confidence and severity
-    let actionType: 'TREAT' | 'WAIT' | 'MONITOR' | 'ESCALATE' = 'MONITOR';
-    if (rule.confidence >= 0.70) {
-      actionType = 'TREAT';
-    } else if (rule.confidence >= 0.50) {
-      actionType = 'WAIT';
-    } else if (rule.confidence < 0.30) {
-      actionType = 'ESCALATE';
-    }
-    
-    const actionTemplates = ACTION_TEMPLATES[actionType];
-    
-    // Build evidence points
-    const evidence: string[] = [];
-    if (rule.evidence_matched && rule.evidence_matched.length > 0) {
-      evidence.push(...rule.evidence_matched);
-    }
-    if (terminalDamage.length > 0) {
-      evidence.push(`Terminal damage: ${terminalDamage.join(', ')}`);
-    }
-    
-    // Extract treatment summary if available
-    let treatmentSummary: DiagnosisResult['treatment_summary'] = undefined;
-    if (rule.actions && rule.actions.length > 0) {
-      const primaryAction = rule.actions[0];
-      treatmentSummary = {
-        product_name: primaryAction.product_name || primaryAction.application_details?.product_name,
-        dosage: primaryAction.dosage || primaryAction.application_details?.dosage,
-        timing: primaryAction.timing || primaryAction.application_details?.timing
+    // Emit explicit UNKNOWN diagnosis instead of suppressing output
+    diagnoses = [createUnknownDiagnosis(terminalDamage, canonicalContext, language)];
+  } else {
+    // Convert matched rules to diagnosis results
+    diagnoses = topRules.map(rule => {
+      const causeKey = rule.cause.toUpperCase().replace(/\s+/g, '_');
+      const translations = CAUSE_TRANSLATIONS[causeKey] || {
+        mr: rule.cause,
+        hi: rule.cause,
+        en: rule.cause
       };
-    }
-    
-    return {
-      cause: rule.cause,
-      cause_name_mr: translations.mr,
-      cause_name_hi: translations.hi,
-      cause_name_en: translations.en,
-      confidence: rule.confidence,
-      canonical_group: rule.canonical_group,
-      rule_id: rule.rule_id,
-      evidence_points: evidence,
-      action_type: actionType,
-      action_guidance_mr: actionTemplates.mr,
-      action_guidance_hi: actionTemplates.hi,
-      action_guidance_en: actionTemplates.en,
-      treatment_summary: treatmentSummary
-    };
-  });
+      
+      // Determine action type based on confidence and severity
+      let actionType: 'TREAT' | 'WAIT' | 'MONITOR' | 'ESCALATE' = 'MONITOR';
+      if (rule.confidence >= 0.70) {
+        actionType = 'TREAT';
+      } else if (rule.confidence >= 0.50) {
+        actionType = 'WAIT';
+      } else if (rule.confidence < 0.30) {
+        actionType = 'ESCALATE';
+      }
+      
+      const actionTemplates = ACTION_TEMPLATES[actionType];
+      
+      // Build evidence points
+      const evidence: string[] = [];
+      if (rule.evidence_matched && rule.evidence_matched.length > 0) {
+        evidence.push(...rule.evidence_matched);
+      }
+      if (terminalDamage.length > 0) {
+        evidence.push(`Terminal damage: ${terminalDamage.join(', ')}`);
+      }
+      
+      // Extract treatment summary if available
+      let treatmentSummary: DiagnosisResult['treatment_summary'] = undefined;
+      if (rule.actions && rule.actions.length > 0) {
+        const primaryAction = rule.actions[0];
+        treatmentSummary = {
+          product_name: primaryAction.product_name || primaryAction.application_details?.product_name,
+          dosage: primaryAction.dosage || primaryAction.application_details?.dosage,
+          timing: primaryAction.timing || primaryAction.application_details?.timing
+        };
+      }
+      
+      return {
+        cause: rule.cause,
+        cause_name_mr: translations.mr,
+        cause_name_hi: translations.hi,
+        cause_name_en: translations.en,
+        confidence: rule.confidence,
+        canonical_group: rule.canonical_group,
+        rule_id: rule.rule_id,
+        evidence_points: evidence,
+        action_type: actionType,
+        action_guidance_mr: actionTemplates.mr,
+        action_guidance_hi: actionTemplates.hi,
+        action_guidance_en: actionTemplates.en,
+        treatment_summary: treatmentSummary
+      };
+    });
+  }
   
   // Calculate overall confidence
   const topConfidence = diagnoses.length > 0 ? diagnoses[0].confidence : 0;
   const treatmentThreshold = 0.65;
   const confidenceSufficient = topConfidence >= treatmentThreshold;
   
-  // Photo confirmation prompt (optional, not a question)
+  // Photo confirmation prompt - more prominent when diagnosis is uncertain
   const photoConfirmation = {
     available: true,
-    prompt_mr: '📷 अधिक अचूकतेसाठी, प्रभावित रोपाचा फोटो अपलोड करा.',
-    prompt_hi: '📷 अधिक सटीकता के लिए, प्रभावित पौधे की फोटो अपलोड करें.',
-    prompt_en: '📷 For more accuracy, upload a photo of the affected plant.'
+    prompt_mr: topConfidence < 0.5 
+      ? '📷 निदान अनिश्चित आहे. कृपया प्रभावित रोपाचा स्पष्ट फोटो पाठवा.'
+      : '📷 अधिक अचूकतेसाठी, प्रभावित रोपाचा फोटो अपलोड करा.',
+    prompt_hi: topConfidence < 0.5
+      ? '📷 निदान अनिश्चित है। कृपया प्रभावित पौधे की स्पष्ट फोटो भेजें।'
+      : '📷 अधिक सटीकता के लिए, प्रभावित पौधे की फोटो अपलोड करें.',
+    prompt_en: topConfidence < 0.5
+      ? '📷 Diagnosis is uncertain. Please send a clear photo of the affected plant.'
+      : '📷 For more accuracy, upload a photo of the affected plant.'
   };
   
-  console.log(`   Top diagnosis: ${diagnoses[0]?.cause || 'NONE'} (confidence=${(topConfidence * 100).toFixed(0)}%)`);
+  console.log(`   Top diagnosis: ${diagnoses[0]?.cause || 'UNKNOWN'} (confidence=${(topConfidence * 100).toFixed(0)}%)`);
   console.log(`   Treatment threshold: ${treatmentThreshold}, sufficient: ${confidenceSufficient}`);
   console.log(`   Total diagnoses: ${diagnoses.length}`);
   console.log(`   Authority=CROP (ENFORCED)`);
@@ -706,7 +968,7 @@ export function generateDiagnosisOnlyOutput(
     source: 'DECISION_RULES',
     context_status: 'LOCKED',
     
-    // v2.0: Authority enforcement fields
+    // v4.0: Authority enforcement fields
     authority: 'CROP',
     authority_source: 'TERMINAL_DAMAGE_OBSERVATION',
     nlu_gating: 'DISABLED',
@@ -721,6 +983,54 @@ export function generateDiagnosisOnlyOutput(
     terminal_damage_detected: terminalDamage,
     trace_id: traceId,
     timestamp: Date.now()
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v4.0: UNKNOWN DIAGNOSIS CREATION
+// When no high-confidence rules match, emit explicit UNKNOWN diagnosis
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Create an explicit UNKNOWN diagnosis when no rules match.
+ * This ensures the system never silently suppresses output when crop damage is present.
+ */
+function createUnknownDiagnosis(
+  terminalDamage: string[],
+  canonicalContext: CanonicalContext,
+  language: 'mr' | 'hi' | 'en'
+): DiagnosisResult {
+  const unknownTranslations = {
+    mr: 'अज्ञात कारण - तपासणी आवश्यक',
+    hi: 'अज्ञात कारण - जांच आवश्यक',
+    en: 'Unknown cause - investigation required'
+  };
+  
+  const unknownGuidance = {
+    mr: '📷 कृपया प्रभावित रोपाचा स्पष्ट फोटो पाठवा जेणेकरून अचूक निदान करता येईल. तोपर्यंत, पाणी व्यवस्थापन आणि वायुवीजन तपासा.',
+    hi: '📷 कृपया प्रभावित पौधे की स्पष्ट फोटो भेजें ताकि सही निदान हो सके। तब तक, पानी प्रबंधन और वायु-संचार जांचें।',
+    en: '📷 Please send a clear photo of the affected plant for accurate diagnosis. Meanwhile, check water management and ventilation.'
+  };
+  
+  return {
+    cause: 'UNKNOWN',
+    cause_name_mr: unknownTranslations.mr,
+    cause_name_hi: unknownTranslations.hi,
+    cause_name_en: unknownTranslations.en,
+    confidence: 0.25, // Low confidence for unknown
+    canonical_group: 'UNKNOWN',
+    rule_id: 'UNKNOWN_DIAGNOSIS_RULE',
+    evidence_points: [
+      `Observed damage: ${terminalDamage.length > 0 ? terminalDamage.join(', ') : 'Crop damage reported'}`,
+      `Crop: ${canonicalContext.crop_code}`,
+      `Stage: ${canonicalContext.growth_stage}`,
+      'No specific pattern matched existing rules'
+    ],
+    action_type: 'ESCALATE',
+    action_guidance_mr: unknownGuidance.mr,
+    action_guidance_hi: unknownGuidance.hi,
+    action_guidance_en: unknownGuidance.en,
+    treatment_summary: undefined
   };
 }
 
