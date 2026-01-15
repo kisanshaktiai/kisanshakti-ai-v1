@@ -3436,6 +3436,29 @@ export class AIAgentOrchestrator {
           accumulated_gdd: landContext.gdd_phenology.accumulated_gdd
         } : undefined);
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Collect ALL symptom sources for canonical state
+        // Include: visual_symptoms + cross_crop_symptoms + induction symptoms
+        // ═══════════════════════════════════════════════════════════════════════════
+        const visualSymptomCodes = nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [];
+        const crossCropSymptomCodes = nluOutput?.symptom_extraction?.cross_crop_symptoms || [];
+        
+        // Merge all symptom sources, prioritizing terminal damage symptoms
+        const allSymptomCodes = [
+          ...crossCropSymptomCodes,  // Cross-crop symptoms first (includes SEEDLING_DIED, PLANT_DEATH)
+          ...visualSymptomCodes,
+          ...inductionSymptoms
+        ];
+        
+        // Remove duplicates
+        const uniqueSymptomCodes = [...new Set(allSymptomCodes)];
+        
+        console.log(`   📋 Symptom sources for canonical state:`);
+        console.log(`      Visual symptoms: ${visualSymptomCodes.join(', ') || 'none'}`);
+        console.log(`      Cross-crop symptoms: ${crossCropSymptomCodes.join(', ') || 'none'}`);
+        console.log(`      Induction symptoms: ${inductionSymptoms.join(', ') || 'none'}`);
+        console.log(`      Combined unique: ${uniqueSymptomCodes.join(', ') || 'none'}`);
+        
         canonicalState = buildCanonicalState({
           landContext,
           soilData: landContext?.soil_health,
@@ -3447,10 +3470,8 @@ export class AIAgentOrchestrator {
           weatherData: fusedIntelligence.weather_data,
           // PHASE 2.5 FIX: Pass GDD result for authoritative stage
           gddResult: gddResultForCanonical,
-          // Use NLU symptoms first, fall back to induction symptoms
-          farmerObservations: (nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []).length > 0
-            ? nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || []
-            : inductionSymptoms,
+          // CRITICAL FIX: Use ALL symptom sources, not just visual_symptoms
+          farmerObservations: uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms,
           nluOutput: nluOutput
         });
         
@@ -3460,8 +3481,19 @@ export class AIAgentOrchestrator {
           canonicalState.crop_type = inductionCrop as any;
         }
         
-        // ENHANCEMENT: If no visual symptom but induction has symptoms, use first one
-        if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN') && inductionSymptoms.length > 0) {
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: If terminal damage symptoms detected, force PLANT_DEATH/SEEDLING_DEATH
+        // This ensures rule matching works for terminal damage regardless of mapping
+        // ═══════════════════════════════════════════════════════════════════════════
+        const terminalSymptoms = ['SEEDLING_DIED', 'PLANT_DIED', 'PLANT_DEATH', 'SEEDLING_DEATH'];
+        const hasTerminalDamage = uniqueSymptomCodes.some(s => terminalSymptoms.includes(s.toUpperCase()));
+        
+        if (hasTerminalDamage && (!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN' || canonicalState.visual_symptom === 'NONE')) {
+          console.log(`   🚨 Terminal damage detected - forcing PLANT_DEATH symptom`);
+          canonicalState.visual_symptom = 'PLANT_DEATH' as any;
+          canonicalState.severity = 'CRITICAL' as any;
+        } else if ((!canonicalState.visual_symptom || canonicalState.visual_symptom === 'UNKNOWN') && inductionSymptoms.length > 0) {
+          // ENHANCEMENT: If no visual symptom but induction has symptoms, use first one
           console.log(`   📝 Enriching canonical state symptom from induction: ${inductionSymptoms[0]}`);
           canonicalState.visual_symptom = inductionSymptoms[0] as any;
         }

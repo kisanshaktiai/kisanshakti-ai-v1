@@ -243,7 +243,8 @@ export async function extractSemanticMeaning(
         ],
         temperature: 0.1, // Low temperature for consistency
         max_tokens: 1000,
-        response_format: useGemini ? { type: 'json_object' } : undefined
+        // Only include response_format for OpenAI (not Gemini)
+        ...(provider === 'openai' ? { response_format: { type: 'json_object' } } : {})
       })
     });
     
