@@ -318,18 +318,47 @@ export function shouldTriggerClarificationFirst(
  * STEP 4: Enforce stage compatibility
  * STEP 5: Block generic output when candidates exist
  */
+/**
+ * Fetch clarification options strictly from stage-scoped rule hypotheses.
+ * 
+ * ARCHITECTURE (Trust-First):
+ * 1. HYPOTHESIS-FIRST: Pre-evaluate rules BEFORE generating options
+ * 2. RULE-DRIVEN: Options sourced ONLY from decision_rules.observable_characteristics
+ * 3. DIFFERENTIATION: Rank by power to distinguish between hypotheses
+ * 4. STAGE-LOCKED: All options must be valid for locked growth stage
+ * 5. NON-GENERIC: Block generic output when rule candidates exist
+ * 
+ * HARD INVARIANTS:
+ * - Crop/stage context is NEVER dropped or rebuilt during this function
+ * - Rule-driven options CANNOT be overwritten by NLU fallback
+ * - IDENTIFY_LOCATION is NEVER returned when terminal damage detected
+ */
 export async function fetchRuleDrivenClarificationOptions(
   input: RuleDrivenClarificationInput
 ): Promise<RuleDrivenClarificationOutput | null> {
   const { crop_code, stage, current_symptoms, language, supabaseClient } = input;
   const traceId = input.trace_id || `trace_${Date.now()}`;
   
-  console.log(`📊 [HypothesisFirst v4] Fetching clarification options for ${crop_code}/${stage}`);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HARD INVARIANT: Log preserved context (must never be undefined at this point)
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log(`📊 [HypothesisFirst v5] Trust-First Clarification for ${crop_code}/${stage}`);
+  console.log(`   Scope=RULE_DRIVEN, Source=DECISION_RULES`);
+  console.log(`   Preserved context: crop=${crop_code}, stage=${stage}, DAS=${input.days_since_sowing ?? 'unknown'}`);
   console.log(`   Current symptoms: ${current_symptoms.join(', ') || 'none'}`);
-  console.log(`   NDVI: ${input.ndvi_level || 'unknown'} (${input.ndvi_trend || 'unknown'})`);
+  console.log(`   NDVI: ${input.ndvi_level || 'unknown'} (trend: ${input.ndvi_trend || 'unknown'})`);
+  
+  // Validate hard invariants
+  if (!crop_code || crop_code === 'UNKNOWN') {
+    console.error(`   🚨 [INVARIANT VIOLATION] crop_code missing or UNKNOWN`);
+  }
+  if (!stage || stage === 'UNKNOWN') {
+    console.error(`   🚨 [INVARIANT VIOLATION] stage missing or UNKNOWN`);
+  }
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: PRE-EVALUATE RULES TO BUILD CANDIDATE HYPOTHESIS SET
+  // This MUST happen BEFORE scope selection to ensure rule-awareness
   // ═══════════════════════════════════════════════════════════════════════════
   
   const hypothesisResult = await evaluateCandidateHypotheses({
