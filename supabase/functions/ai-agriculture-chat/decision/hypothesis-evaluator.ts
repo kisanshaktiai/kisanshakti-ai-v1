@@ -642,3 +642,229 @@ export function getVisualObservabilityScore(observationKey: string): number {
   
   return 0.6; // Default mid-score
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIAGNOSTIC CONFIRMATION OPTIONS GENERATOR (Trust-First Mode)
+// ═══════════════════════════════════════════════════════════════════════════
+// When terminal damage is detected (plant died, whole plant affected),
+// generate cause-confirmation options from rule observable_characteristics.
+// These options help differentiate between hypotheses (pest vs disease vs abiotic).
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface DiagnosticConfirmationOption {
+  label_mr: string;
+  label_hi: string;
+  label_en: string;
+  observation_key: string;
+  diagnostic_power: 'HIGH' | 'MEDIUM' | 'LOW';
+  confidence_boost: number;
+  source_rule_id?: string;
+  icon?: string;
+}
+
+export interface DiagnosticConfirmationResult {
+  question_mr: string;
+  question_hi: string;
+  question_en: string;
+  options: DiagnosticConfirmationOption[];
+  photo_option_included: boolean;
+  hypotheses_count: number;
+}
+
+// Canonical labels for common diagnostic observations (crop-agnostic)
+const DIAGNOSTIC_OBSERVATION_LABELS: Record<string, { mr: string; hi: string; en: string; icon: string }> = {
+  'DEAD_HEART_PRESENT': {
+    mr: 'मधली सुरळी सुकलेली / ओढल्यास बाहेर येते',
+    hi: 'बीच की पत्ती सूखी / खींचने पर निकल जाती है',
+    en: 'Central whorl dried / pulls out easily',
+    icon: '🔴'
+  },
+  'LARVAE_PRESENT': {
+    mr: 'खोडात / मुळांजवळ अळ्या दिसतात',
+    hi: 'तने में / जड़ों के पास इल्ली दिखती है',
+    en: 'Larvae visible in stem / near roots',
+    icon: '🐛'
+  },
+  'MUD_TUBES_PRESENT': {
+    mr: 'मातीत पांढरे वाळवी / बोगदे दिसतात',
+    hi: 'मिट्टी में सफेद दीमक / सुरंग दिखती है',
+    en: 'White termites / tunnels visible in soil',
+    icon: '🏠'
+  },
+  'TUNNELS_IN_SOIL': {
+    mr: 'जमिनीत बोगदे दिसतात',
+    hi: 'जमीन में सुरंग दिखती है',
+    en: 'Tunnels visible in soil',
+    icon: '🕳️'
+  },
+  'HONEYDEW_PRESENT': {
+    mr: 'पानांवर चिकट पदार्थ / काळी बुरशी',
+    hi: 'पत्तों पर चिपचिपा पदार्थ / काली फफूंद',
+    en: 'Sticky substance / black mold on leaves',
+    icon: '✨'
+  },
+  'STEM_BORING_MARKS': {
+    mr: 'खोडावर छिद्र / भुसा दिसतो',
+    hi: 'तने पर छेद / भूसा दिखता है',
+    en: 'Holes in stem / frass visible',
+    icon: '🕳️'
+  },
+  'SETT_EASILY_PULLED_OUT': {
+    mr: 'रोप सहज बाहेर येते (मूळ कमकुवत)',
+    hi: 'पौधा आसानी से निकल जाता है (जड़ कमजोर)',
+    en: 'Plant pulls out easily (weak roots)',
+    icon: '🌱'
+  },
+  'FRASS_VISIBLE': {
+    mr: 'खोडाजवळ भुसा / मैला दिसतो',
+    hi: 'तने के पास भूसा / मैला दिखता है',
+    en: 'Frass / excreta visible near stem',
+    icon: '💩'
+  },
+  'WHITE_POWDERY_GROWTH': {
+    mr: 'पांढरी भुकटी / पावडर दिसते',
+    hi: 'सफेद पाउडर जैसा दिखता है',
+    en: 'White powdery substance visible',
+    icon: '🤍'
+  },
+  'ROOT_ROTTED': {
+    mr: 'मुळे सडलेली / काळी दिसतात',
+    hi: 'जड़ें सड़ी / काली दिखती हैं',
+    en: 'Roots rotted / blackened',
+    icon: '🪵'
+  },
+  'SOIL_TOO_DRY': {
+    mr: 'माती खूप कोरडी आहे',
+    hi: 'मिट्टी बहुत सूखी है',
+    en: 'Soil is very dry',
+    icon: '🏜️'
+  },
+  'FIELD_WATERLOGGED': {
+    mr: 'शेतात पाणी साचलेले आहे',
+    hi: 'खेत में पानी भरा है',
+    en: 'Field is waterlogged',
+    icon: '💧'
+  }
+};
+
+/**
+ * Generate DIAGNOSTIC_CONFIRMATION options from candidate hypotheses.
+ * 
+ * This function:
+ * 1. Takes top candidate rules from hypothesis evaluation
+ * 2. Extracts unique observable_characteristics
+ * 3. Ranks by diagnostic power (differentiation ability)
+ * 4. Returns max 4-5 options + mandatory photo option
+ * 5. Removes "NONE_OF_THE_ABOVE" - replaced with "Take Photo"
+ */
+export function generateDiagnosticConfirmationOptions(
+  candidates: CandidateHypothesis[],
+  language: 'mr' | 'hi' | 'en' = 'mr',
+  maxOptions: number = 4
+): DiagnosticConfirmationResult {
+  console.log(`   🔬 [DiagnosticConfirmation] Generating options from ${candidates.length} hypotheses`);
+  
+  // Collect all unique observations with their diagnostic power
+  const observationMap = new Map<string, {
+    observation_key: string;
+    diagnostic_power: 'HIGH' | 'MEDIUM' | 'LOW';
+    confidence_boost: number;
+    differentiation_score: number;
+    source_rule_ids: string[];
+  }>();
+  
+  for (const candidate of candidates) {
+    for (const char of candidate.observable_characteristics) {
+      const key = char.observation_key.toUpperCase();
+      
+      // Calculate differentiation power (appears in some but not all candidates)
+      const diffScore = calculateDifferentiationPower(key, candidates);
+      
+      const existing = observationMap.get(key);
+      if (!existing) {
+        observationMap.set(key, {
+          observation_key: key,
+          diagnostic_power: char.diagnostic_power || 'MEDIUM',
+          confidence_boost: char.confidence_boost || 0.12,
+          differentiation_score: diffScore,
+          source_rule_ids: [candidate.rule_id]
+        });
+      } else {
+        existing.source_rule_ids.push(candidate.rule_id);
+        // Prefer higher diagnostic power
+        if (char.diagnostic_power === 'HIGH') {
+          existing.diagnostic_power = 'HIGH';
+          existing.confidence_boost = Math.max(existing.confidence_boost, 0.25);
+        }
+      }
+    }
+  }
+  
+  // Sort by: 1) Diagnostic power (HIGH first), 2) Differentiation score, 3) Visual observability
+  const sortedObservations = Array.from(observationMap.values())
+    .filter(obs => DIAGNOSTIC_OBSERVATION_LABELS[obs.observation_key]) // Only use labeled observations
+    .sort((a, b) => {
+      // High power first
+      const powerOrder = { 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1 };
+      const powerDiff = powerOrder[b.diagnostic_power] - powerOrder[a.diagnostic_power];
+      if (powerDiff !== 0) return powerDiff;
+      
+      // Then by differentiation score
+      const diffDiff = b.differentiation_score - a.differentiation_score;
+      if (Math.abs(diffDiff) > 0.1) return diffDiff;
+      
+      // Then by visual observability
+      return getVisualObservabilityScore(b.observation_key) - getVisualObservabilityScore(a.observation_key);
+    })
+    .slice(0, maxOptions);
+  
+  console.log(`   📋 [DiagnosticConfirmation] Selected ${sortedObservations.length} observations for confirmation`);
+  sortedObservations.forEach((obs, i) => {
+    console.log(`      ${i + 1}. ${obs.observation_key} (${obs.diagnostic_power}, diff: ${(obs.differentiation_score * 100).toFixed(0)}%)`);
+  });
+  
+  // Build options with multilingual labels
+  const options: DiagnosticConfirmationOption[] = sortedObservations.map(obs => {
+    const labels = DIAGNOSTIC_OBSERVATION_LABELS[obs.observation_key];
+    return {
+      label_mr: `${labels.icon} ${labels.mr}`,
+      label_hi: `${labels.icon} ${labels.hi}`,
+      label_en: `${labels.icon} ${labels.en}`,
+      observation_key: obs.observation_key,
+      diagnostic_power: obs.diagnostic_power,
+      confidence_boost: obs.confidence_boost,
+      source_rule_id: obs.source_rule_ids[0],
+      icon: labels.icon
+    };
+  });
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MANDATORY: Add "Take Photo" as FINAL option (replaces NONE_OF_THE_ABOVE)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const photoOption: DiagnosticConfirmationOption = {
+    label_mr: '📷 फोटो काढा (स्पष्ट ओळखण्यासाठी)',
+    label_hi: '📷 फोटो लें (सही पहचान के लिए)',
+    label_en: '📷 Take Photo (for accurate identification)',
+    observation_key: 'PHOTO_REQUESTED',
+    diagnostic_power: 'HIGH',
+    confidence_boost: 0.30, // Photo provides high confidence
+    icon: '📷'
+  };
+  options.push(photoOption);
+  
+  // Build question text
+  const questionTexts = {
+    mr: '🔬 कारण ओळखण्यासाठी, खालीलपैकी काय दिसते ते सांगा:',
+    hi: '🔬 कारण पहचानने के लिए, नीचे में से क्या दिखता है बताएं:',
+    en: '🔬 To identify the cause, tell us which of these you see:'
+  };
+  
+  return {
+    question_mr: questionTexts.mr,
+    question_hi: questionTexts.hi,
+    question_en: questionTexts.en,
+    options,
+    photo_option_included: true,
+    hypotheses_count: candidates.length
+  };
+}

@@ -49,6 +49,12 @@ export enum ClarificationScope {
   // ═══════════════════════════════════════════════════════════════════════════
   IDENTIFY_INSECT_BEHAVIOR = 'IDENTIFY_INSECT_BEHAVIOR',   // Flying vs crawling
   IDENTIFY_PLANT_RESPONSE = 'IDENTIFY_PLANT_RESPONSE',     // Curling, yellowing, sticky, holes
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DIAGNOSTIC_CONFIRMATION (Trust-First Agronomist Mode)
+  // Activated when terminal/high-severity damage is reported (plant died, whole plant affected)
+  // Shows CAUSE-confirmation options (pest evidence, disease signs) NOT location questions
+  // ═══════════════════════════════════════════════════════════════════════════
+  DIAGNOSTIC_CONFIRMATION = 'DIAGNOSTIC_CONFIRMATION',
   REFINE_OBSERVATION = 'REFINE_OBSERVATION',
   PHOTO_ONLY = 'PHOTO_ONLY',
   STOP_ESCALATE = 'STOP_ESCALATE'
@@ -272,6 +278,44 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | 'en', {
     en: {
       question: '🌱 Please monitor your crop for now. If the problem increases, contact us again or visit your nearest agriculture service center.',
       options: []
+    }
+  },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DIAGNOSTIC_CONFIRMATION - Trust-First Agronomist Mode
+  // When terminal damage is detected, show CAUSE-confirmation options
+  // NOT location questions. This mirrors real agronomist behavior.
+  // ═══════════════════════════════════════════════════════════════════════════
+  [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
+    mr: {
+      question: '🔬 हे निश्चित करण्यासाठी, खालीलपैकी काय दिसते ते सांगा:',
+      options: [
+        '🔴 मधली सुरळी सुकलेली / ओढल्यास बाहेर येते (Dead Heart)',
+        '🐛 खोडात / मुळांजवळ अळ्या दिसतात',
+        '🏠 मातीत पांढरे वाळवी / बोगदे दिसतात',
+        '✨ पानांवर चिकट पदार्थ / काळी बुरशी',
+        '📷 फोटो काढा (स्पष्ट ओळखण्यासाठी)'
+      ]
+    },
+    hi: {
+      question: '🔬 इसे पक्का करने के लिए, नीचे में से क्या दिखता है बताएं:',
+      options: [
+        '🔴 बीच की पत्ती सूखी / खींचने पर निकल जाती है (Dead Heart)',
+        '🐛 तने में / जड़ों के पास इल्ली दिखती है',
+        '🏠 मिट्टी में सफेद दीमक / सुरंग दिखती है',
+        '✨ पत्तों पर चिपचिपा पदार्थ / काली फफूंद',
+        '📷 फोटो लें (सही पहचान के लिए)'
+      ]
+    },
+    en: {
+      question: '🔬 To confirm the cause, tell us which of these you see:',
+      options: [
+        '🔴 Central whorl dried / pulls out easily (Dead Heart)',
+        '🐛 Larvae visible in stem / near roots',
+        '🏠 White termites / tunnels visible in soil',
+        '✨ Sticky substance / black mold on leaves',
+        '📷 Take Photo (for accurate identification)'
+      ]
     }
   }
 };

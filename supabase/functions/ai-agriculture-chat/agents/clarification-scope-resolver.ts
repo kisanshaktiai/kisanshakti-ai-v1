@@ -91,6 +91,12 @@ export const MIN_DIMENSIONS_FOR_DIAGNOSIS = 2; // crop + affected_part minimum
  */
 const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
   [ClarificationScope.IDENTIFY_CROP]: 1,
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DIAGNOSTIC_CONFIRMATION has HIGHEST priority after crop
+  // When terminal damage is detected (SEEDLING_DIED, AFFECTED_PART_WHOLE),
+  // NEVER ask about location - go directly to cause confirmation
+  // ═══════════════════════════════════════════════════════════════════════════
+  [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: 1.5,    // BEFORE location questions
   [ClarificationScope.IDENTIFY_LOCATION]: 2,
   // PHASE-11: Insect-first clarification (before distribution)
   [ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]: 2.5,   // Flying vs crawling
@@ -171,11 +177,57 @@ export function resolveClarificationPlan(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // PRIORITY 1.5: DIAGNOSTIC_CONFIRMATION (Trust-First Agronomist Mode)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // When farmer reports terminal/high-severity damage, we CONFIRM THE CAUSE,
+  // not the location. This mirrors real agronomist behavior:
+  // "If the whole plant died, I don't ask which part - I ask for evidence to find cause"
+  // ═══════════════════════════════════════════════════════════════════════════
+  const TERMINAL_DAMAGE_INDICATORS = [
+    ObservationKey.SEEDLING_DIED,
+    ObservationKey.AFFECTED_PART_WHOLE,
+    ObservationKey.ESTABLISHMENT_FAILURE,
+    ObservationKey.PATCHY_DAMAGE,
+    ObservationKey.GAPS_IN_FIELD
+  ];
+  
+  const SEVERITY_HIGH_INDICATORS = [
+    ObservationKey.SEVERITY_HIGH,
+    ObservationKey.ENTIRE_FIELD_AFFECTED
+  ];
+  
+  const hasTerminalDamage = TERMINAL_DAMAGE_INDICATORS.some(k => observedKeys.has(k));
+  const hasHighSeverity = SEVERITY_HIGH_INDICATORS.some(k => observedKeys.has(k));
+  const hasWholePartAffected = observedKeys.has(ObservationKey.AFFECTED_PART_WHOLE);
+  
+  // Activate DIAGNOSTIC_CONFIRMATION if:
+  // - Crop and stage are known (hasCropContext=true)
+  // - Terminal damage or whole plant affected
+  if (hasCropContext && (hasTerminalDamage || hasWholePartAffected || hasHighSeverity)) {
+    console.log(`   🎯 [DIAGNOSTIC_CONFIRMATION] Terminal damage detected - showing cause-confirmation options`);
+    console.log(`      Terminal indicators: ${TERMINAL_DAMAGE_INDICATORS.filter(k => observedKeys.has(k)).join(', ')}`);
+    return {
+      scope: ClarificationScope.DIAGNOSTIC_CONFIRMATION,
+      target_keys: [
+        ObservationKey.DEAD_HEART_PRESENT,
+        ObservationKey.LARVAE_PRESENT,
+        ObservationKey.MUD_TUBES_PRESENT,
+        ObservationKey.HONEYDEW_PRESENT,
+        ObservationKey.TUNNELS_IN_SOIL
+      ],
+      turn_count: turnCount,
+      should_stop: false,
+      reason: 'Terminal/high-severity damage detected - showing diagnostic confirmation options (not location)',
+      priority: SCOPE_PRIORITY[ClarificationScope.DIAGNOSTIC_CONFIRMATION]
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 2: Affected Part Unknown
   // ═══════════════════════════════════════════════════════════════════════════
-  // P0 INVARIANT 2: IDENTIFY_LOCATION is ILLEGAL if hasCropContext=true
-  // When we have crop context (from land data), we should NEVER ask "पान/खोड/मूळ?"
-  // Instead, ask cause-narrowing questions like pest vs disease vs nutrient
+  // P0 INVARIANT 2: IDENTIFY_LOCATION is ILLEGAL if:
+  // - hasCropContext=true OR
+  // - AFFECTED_PART_WHOLE is set (whole plant damage = skip location question)
   // ═══════════════════════════════════════════════════════════════════════════
   if (observedKeys.has(ObservationKey.AFFECTED_PART_UNKNOWN)) {
     // Check if any specific part is identified
@@ -190,10 +242,28 @@ export function resolveClarificationPlan(
     ].some(k => observedKeys.has(k));
     
     if (!hasSpecificPart) {
-      // P0 FIX: Block IDENTIFY_LOCATION when hasCropContext=true
-      // Redirect to REFINE_OBSERVATION to ask cause-narrowing questions
+      // HARD OVERRIDE: Block IDENTIFY_LOCATION when hasCropContext=true
+      // Redirect to DIAGNOSTIC_CONFIRMATION if terminal damage, else REFINE_OBSERVATION
       if (hasCropContext) {
-        console.log(`   🚫 [INVARIANT] IDENTIFY_LOCATION blocked - hasCropContext=true, redirecting to REFINE_OBSERVATION`);
+        console.log(`   🚫 [INVARIANT] IDENTIFY_LOCATION blocked - hasCropContext=true`);
+        
+        // If we have terminal damage indicators, use DIAGNOSTIC_CONFIRMATION
+        if (hasTerminalDamage || hasHighSeverity) {
+          return {
+            scope: ClarificationScope.DIAGNOSTIC_CONFIRMATION,
+            target_keys: [
+              ObservationKey.DEAD_HEART_PRESENT,
+              ObservationKey.LARVAE_PRESENT,
+              ObservationKey.MUD_TUBES_PRESENT
+            ],
+            turn_count: turnCount,
+            should_stop: false,
+            reason: 'BLOCKED: hasCropContext=true + terminal damage, using DIAGNOSTIC_CONFIRMATION',
+            priority: SCOPE_PRIORITY[ClarificationScope.DIAGNOSTIC_CONFIRMATION]
+          };
+        }
+        
+        // Fallback to REFINE_OBSERVATION for non-terminal cases
         return {
           scope: ClarificationScope.REFINE_OBSERVATION,
           target_keys: [ObservationKey.SYMPTOM_UNKNOWN],
