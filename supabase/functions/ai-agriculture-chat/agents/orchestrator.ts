@@ -364,9 +364,24 @@ import {
   validateContextIntegrity,
   hasDiagnosticContext,
   hasTerminalDamage,
+  getDetectedTerminalDamage,
   getContextPresenceFlags,
   type CanonicalContext
 } from '../decision/canonical-context-contract.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-22: DIAGNOSIS-ONLY MODE
+// Skip clarification entirely when terminal damage is detected with known context
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  shouldActivateDiagnosisOnlyMode,
+  generateDiagnosisOnlyOutput,
+  formatDiagnosisForLLM,
+  logDiagnosisOnlyActivation,
+  DIAGNOSIS_ONLY_MODE_VERSION,
+  type DiagnosisOnlyOutput,
+  type MatchedRule
+} from '../decision/diagnosis-only-mode.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-12: Helper function to map clarification answer to visual symptom
@@ -2098,10 +2113,72 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-22: DIAGNOSIS-ONLY MODE CHECK
+      // When terminal damage is detected with known context, SKIP CLARIFICATION
+      // and immediately run symbolic rule engine for direct diagnosis
+      // ═══════════════════════════════════════════════════════════════════════════
+      
+      // Collect all observations for terminal damage check
+      const allObservationsForDiagCheck = new Set<string>();
+      
+      // Add from observation keys
+      if (observationKeys) {
+        observationKeys.forEach(key => allObservationsForDiagCheck.add(String(key)));
+      }
+      
+      // Add from mapped codes
+      if (mappedCodes?.observation_codes) {
+        mappedCodes.observation_codes.forEach((code: string) => allObservationsForDiagCheck.add(code));
+      }
+      
+      // Add from induction result symptoms
+      if (inductionResult?.symptoms) {
+        inductionResult.symptoms.forEach((s: any) => {
+          if (s.symbol) allObservationsForDiagCheck.add(s.symbol);
+        });
+      }
+      
+      // Check if Diagnosis-Only Mode should be activated
+      // Note: We pass 1 as matchedRulesCount to enable activation, actual rule evaluation happens later
+      const diagnosisOnlyCheck = shouldActivateDiagnosisOnlyMode(
+        canonicalContext,
+        allObservationsForDiagCheck,
+        1 // Assume at least 1 rule will match - actual evaluation is deferred
+      );
+      
+      // Log the check result
+      logDiagnosisOnlyActivation(
+        diagnosisOnlyCheck.activate,
+        diagnosisOnlyCheck.reason,
+        diagnosisOnlyCheck.terminal_damage,
+        canonicalContext?.crop_code || 'UNKNOWN',
+        canonicalContext?.growth_stage || 'UNKNOWN'
+      );
+      
+      // If Diagnosis-Only Mode is activated, SKIP CLARIFICATION entirely
+      let diagnosisOnlyModeActive = diagnosisOnlyCheck.activate;
+      let bypassClarificationForTerminalDamage = diagnosisOnlyModeActive;
+      
+      if (diagnosisOnlyModeActive) {
+        console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Clarification SKIPPED - proceeding to direct rule evaluation`);
+        console.log(`   Mode=DIAGNOSIS_ONLY`);
+        console.log(`   Clarification=SKIPPED`);
+        console.log(`   Source=DECISION_RULES`);
+        console.log(`   Crop/Stage=${canonicalContext?.crop_code}/${canonicalContext?.growth_stage} (LOCKED)`);
+        console.log(`   Terminal damage: ${diagnosisOnlyCheck.terminal_damage.join(', ')}`);
+        agentsUsed.push('DIAGNOSIS_ONLY_MODE');
+        
+        // Force bypass clarification
+        understandingResult.clarification_required = false;
+        bypassClarification = true;
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 4B: UNDERSTANDING-BASED CLARIFICATION GATE
       // If understanding is insufficient, ask clarification BEFORE NLU
+      // (SKIPPED if Diagnosis-Only Mode is active)
       // ═══════════════════════════════════════════════════════════════════════════
-      if (understandingResult.clarification_required && !bypassClarification) {
+      if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage) {
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -3396,7 +3473,101 @@ export class AIAgentOrchestrator {
               // Prevents wrong pesticide recommendations by asking farmer to clarify when
               // multiple pests/diseases match with similar confidence.
               // ═══════════════════════════════════════════════════════════════════════════
-              if (symbolicResult.firedRules && symbolicResult.firedRules.length > 1) {
+              // ═══════════════════════════════════════════════════════════════════════════
+              // PHASE-22: DIAGNOSIS-ONLY MODE - Skip multi-match clarification
+              // When terminal damage detected, present diagnoses directly instead of asking
+              // ═══════════════════════════════════════════════════════════════════════════
+              if (diagnosisOnlyModeActive && symbolicResult.firedRules && symbolicResult.firedRules.length > 0) {
+                console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Generating direct diagnosis output...`);
+                console.log(`   Mode=DIAGNOSIS_ONLY, Clarification=SKIPPED, Source=DECISION_RULES`);
+                
+                // Convert fired rules to MatchedRule format
+                const matchedRulesForDiagnosis: MatchedRule[] = symbolicResult.firedRules.map((r: any) => ({
+                  rule_id: r.ruleId || r.id || 'UNKNOWN',
+                  cause: r.cause || r.diagnosis?.cause || 'UNKNOWN',
+                  canonical_group: r.canonical_group || r.category || 'pest',
+                  confidence: r.confidence || symbolicResult.confidence || 0.6,
+                  priority: r.priority || 50,
+                  response_mr: r.response_mr || r.response?.mr,
+                  response_hi: r.response_hi || r.response?.hi,
+                  response_en: r.response_en || r.response?.en,
+                  actions: r.actions || [],
+                  evidence_matched: r.evidence_matched || r.matched_conditions || []
+                }));
+                
+                // Generate Diagnosis-Only output
+                const diagnosisOnlyOutput = generateDiagnosisOnlyOutput({
+                  canonicalContext: canonicalContext!,
+                  observations: allObservationsForDiagCheck,
+                  matched_rules: matchedRulesForDiagnosis,
+                  language: (options.language as 'mr' | 'hi' | 'en') || 'mr',
+                  trace_id: traceId
+                });
+                
+                console.log(`   🎯 Top diagnosis: ${diagnosisOnlyOutput.diagnoses[0]?.cause || 'NONE'}`);
+                console.log(`   Confidence: ${(diagnosisOnlyOutput.top_confidence * 100).toFixed(0)}%`);
+                console.log(`   Treatment sufficient: ${diagnosisOnlyOutput.confidence_sufficient_for_treatment}`);
+                
+                // Format diagnosis for farmer communication
+                const diagnosisMessage = formatDiagnosisForLLM(
+                  diagnosisOnlyOutput,
+                  (options.language as 'mr' | 'hi' | 'en') || 'mr'
+                );
+                
+                // Complete audit logging
+                auditLogger.logSymbolicDecision({
+                  decision_id: `diag_only_${traceId}`,
+                  rules_fired: matchedRulesForDiagnosis.map(r => r.rule_id),
+                  actions_returned: diagnosisOnlyOutput.diagnoses.map(d => ({
+                    action_type: d.action_type,
+                    cause: d.cause,
+                    confidence: d.confidence
+                  })),
+                  actions_filtered_out: []
+                });
+                
+                auditLogger.logResponse({
+                  source: 'DIAGNOSIS_ONLY_MODE',
+                  language_match: true,
+                  llm_model: undefined
+                });
+                
+                await auditLogger.completeTurn(Date.now() - startTime);
+                
+                // Return DIAGNOSIS_ONLY response
+                return {
+                  type: 'DIAGNOSIS_PROVIDED',
+                  session_id: sessionId,
+                  decision_id: `diag_only_${traceId}`,
+                  communication: {
+                    main_message: {
+                      mr: diagnosisMessage,
+                      hi: diagnosisMessage,
+                      en: diagnosisMessage
+                    },
+                    options: []
+                  },
+                  diagnosis_output: diagnosisOnlyOutput,
+                  metadata: {
+                    mode: 'DIAGNOSIS_ONLY',
+                    clarification_status: 'SKIPPED',
+                    source: 'DECISION_RULES',
+                    confidence: diagnosisOnlyOutput.top_confidence,
+                    safety_status: diagnosisOnlyOutput.confidence_sufficient_for_treatment ? 'TREATMENT_READY' : 'MONITORING_ADVISED',
+                    rules_applied: matchedRulesForDiagnosis.length,
+                    processing_time_ms: Date.now() - startTime,
+                    agents_used: agentsUsed,
+                    trace_id: traceId,
+                    terminal_damage: diagnosisOnlyOutput.terminal_damage_detected,
+                    crop_locked: diagnosisOnlyOutput.crop_code,
+                    stage_locked: diagnosisOnlyOutput.growth_stage,
+                    photo_confirmation_available: diagnosisOnlyOutput.photo_confirmation.available
+                  }
+                };
+              }
+              
+              // Standard multi-match detection (only when NOT in Diagnosis-Only Mode)
+              if (symbolicResult.firedRules && symbolicResult.firedRules.length > 1 && !diagnosisOnlyModeActive) {
                 console.log(`\n🔍 [MultiMatch] Checking ${symbolicResult.firedRules.length} fired rules for competition...`);
                 
                 try {
