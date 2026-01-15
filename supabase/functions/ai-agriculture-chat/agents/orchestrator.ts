@@ -2196,6 +2196,25 @@ export class AIAgentOrchestrator {
           observationExtraction.crop_mentioned || landContext?.current_crop
         );
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // P0 FIX 6: PRODUCTION READINESS VERIFICATION LOGS
+        // These logs MUST appear for valid clarification generation
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log(`✅ [ProductionCheck] Clarification generated:`);
+        console.log(`   Scope: ${clarificationResponse.scope}`);
+        console.log(`   hasLandContext: ${!!landContext}`);
+        console.log(`   Crop: ${landContext?.current_crop || 'UNKNOWN'}`);
+        console.log(`   Stage: ${landContext?.growth_stage || 'UNKNOWN'}`);
+        console.log(`   NDVI: ${landContext?.ndvi?.latest_value || landContext?.ndvi?.value || 'UNKNOWN'}`);
+        console.log(`   Options count: ${(clarificationResponse.options || []).length}`);
+        
+        // P0 FAIL-FAST: Block illegal IDENTIFY_LOCATION with known crop
+        if (clarificationResponse.scope === 'IDENTIFY_LOCATION' && landContext?.current_crop) {
+          console.error(`🚨 [FATAL] IDENTIFY_LOCATION scope used despite known crop!`);
+          console.error(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}`);
+          throw new Error(`INVARIANT VIOLATION: Illegal IDENTIFY_LOCATION with known crop ${landContext.current_crop}`);
+        }
+        
         // ✅ CRITICAL FIX: Safe array handling - prevent .map() crash on undefined
         const safeOptions = Array.isArray(clarificationResponse.options) 
           ? clarificationResponse.options.filter(opt => opt != null)
@@ -2604,6 +2623,26 @@ export class AIAgentOrchestrator {
         const nluClarificationType = (nluOutput as any)?.clarification_type || 'OPTIONS_PLUS_PHOTO';
         const nluClarificationOptions = (nluOutput as any)?.clarification_options || [];
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // P0 FIX 5: Ensure Rule-Driven Options Take Priority
+        // Rule-driven options MUST override NLU fallback when available
+        // ═══════════════════════════════════════════════════════════════════════════
+        let finalClarificationOptions: string[];
+        if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
+          console.log(`   ✅ Using ${ruleDrivenClarification.options.length} RULE-DRIVEN options (not NLU fallback)`);
+          finalClarificationOptions = ruleDrivenClarification.options.map(o => o.label);
+        } else {
+          console.log(`   ⚠️ No rule-driven options available - using NLU fallback (${nluClarificationOptions.length} options)`);
+          finalClarificationOptions = nluClarificationOptions;
+          
+          // P0 INVARIANT CHECK: If we have land context and symptoms, rule options SHOULD exist
+          if (lockedStage && inductionResult.symptoms.length > 0) {
+            console.error(`   🚨 [INVARIANT WARNING] Land context + symptoms exist but no rule-driven options generated`);
+            console.error(`      Crop: ${lockedStage.crop_code}, Stage: ${lockedStage.growth_stage}`);
+            console.error(`      Symptoms: [${inductionResult.symptoms.map(s => s.symbol).join(', ')}]`);
+          }
+        }
+        
         // Generate farmer-friendly clarification (use rule-driven if available)
         const clarificationInput: ClarificationInput = {
           language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
@@ -2611,9 +2650,7 @@ export class AIAgentOrchestrator {
           observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
           crop_code: inductionResult.crop?.symbol || landContext?.current_crop?.toUpperCase(),
           clarification_type: nluClarificationType as any,
-          clarification_options: ruleDrivenClarification 
-            ? ruleDrivenClarification.options.map(o => o.label)
-            : nluClarificationOptions
+          clarification_options: finalClarificationOptions
         };
         
         console.log(`   📋 Clarification input prepared: type=${nluClarificationType}, crop=${clarificationInput.crop_code}`);

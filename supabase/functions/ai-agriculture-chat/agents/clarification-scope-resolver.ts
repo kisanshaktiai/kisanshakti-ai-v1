@@ -173,6 +173,10 @@ export function resolveClarificationPlan(
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 2: Affected Part Unknown
   // ═══════════════════════════════════════════════════════════════════════════
+  // P0 INVARIANT 2: IDENTIFY_LOCATION is ILLEGAL if hasCropContext=true
+  // When we have crop context (from land data), we should NEVER ask "पान/खोड/मूळ?"
+  // Instead, ask cause-narrowing questions like pest vs disease vs nutrient
+  // ═══════════════════════════════════════════════════════════════════════════
   if (observedKeys.has(ObservationKey.AFFECTED_PART_UNKNOWN)) {
     // Check if any specific part is identified
     const hasSpecificPart = [
@@ -186,6 +190,20 @@ export function resolveClarificationPlan(
     ].some(k => observedKeys.has(k));
     
     if (!hasSpecificPart) {
+      // P0 FIX: Block IDENTIFY_LOCATION when hasCropContext=true
+      // Redirect to REFINE_OBSERVATION to ask cause-narrowing questions
+      if (hasCropContext) {
+        console.log(`   🚫 [INVARIANT] IDENTIFY_LOCATION blocked - hasCropContext=true, redirecting to REFINE_OBSERVATION`);
+        return {
+          scope: ClarificationScope.REFINE_OBSERVATION,
+          target_keys: [ObservationKey.SYMPTOM_UNKNOWN],
+          turn_count: turnCount,
+          should_stop: false,
+          reason: 'BLOCKED: hasCropContext=true, redirected to REFINE_OBSERVATION instead of IDENTIFY_LOCATION',
+          priority: SCOPE_PRIORITY[ClarificationScope.REFINE_OBSERVATION]
+        };
+      }
+      
       return {
         scope: ClarificationScope.IDENTIFY_LOCATION,
         target_keys: [

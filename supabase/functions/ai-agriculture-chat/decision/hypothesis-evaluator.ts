@@ -229,6 +229,14 @@ function calculateStageRelevance(
 // Parse and normalize observable_characteristics from rule
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * P0 FIX: Observable Characteristics Array Normalizer
+ * Handles multiple formats from decision_rules:
+ * - Array of strings: ["dead_heart", "larvae_present"]
+ * - Array of objects: [{observation_key: "DEAD_HEART"}]
+ * - Single object: {observation_key: "DEAD_HEART"}
+ * - Empty/null: returns empty array safely
+ */
 function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] {
   if (!raw) return [];
   
@@ -252,30 +260,56 @@ function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] 
   
   const charArray = Array.isArray(raw) ? raw : [raw];
   
-  // Import diagnostic weight dynamically to avoid circular deps
+  // P0 FIX: Diagnostic power registry for evidence-weighted confidence boosts
+  // Moved inline to avoid circular deps, aligned with diagnostic-weight-registry.ts
   const getDiagnosticPower = (key: string): 'HIGH' | 'MEDIUM' | 'LOW' => {
     const normalized = key.toUpperCase().replace(/[\s-]/g, '_');
-    const HIGH_POWER = ['DEAD_HEART', 'DEADHEART', 'TUNNELS_IN_STEM', 'FRASS', 'MUD_TUNNELS', 'HONEYDEW', 'PINK_LARVAE'];
-    const LOW_POWER = ['YELLOWING', 'WILTING', 'STUNTED', 'DRYING', 'BROWNING', 'GAPS'];
+    // HIGH: Pathognomonic (unique to specific pest/disease)
+    const HIGH_POWER = [
+      'DEAD_HEART', 'DEADHEART', 'DEAD_HEART_PRESENT',
+      'TUNNELS_IN_STEM', 'TUNNELING', 'BORE_HOLE',
+      'FRASS', 'FRASS_VISIBLE', 'FRASS_NEAR_BASE',
+      'MUD_TUNNELS', 'TERMITE_MUD_TUBES', 'MUD_GALLERIES',
+      'HONEYDEW', 'SOOTY_MOLD',
+      'PINK_LARVAE', 'LARVAE_PRESENT', 'LARVAE_VISIBLE',
+      'WHITE_POWDER', 'WOOLLY_MASS', 'COTTONY_MASS'
+    ];
+    // LOW: Non-specific (common to many causes)
+    const LOW_POWER = [
+      'YELLOWING', 'LEAF_YELLOWING', 'GENERAL_YELLOWING',
+      'WILTING', 'LEAF_WILTING', 'PLANT_WILTING',
+      'STUNTED', 'STUNTED_GROWTH', 'POOR_GROWTH',
+      'DRYING', 'LEAF_DRYING', 'TIP_DRYING',
+      'BROWNING', 'LEAF_BROWNING', 'EDGE_BROWNING',
+      'GAPS', 'PATCHY_DAMAGE', 'GAPS_IN_FIELD'
+    ];
     if (HIGH_POWER.some(p => normalized.includes(p))) return 'HIGH';
     if (LOW_POWER.some(p => normalized.includes(p))) return 'LOW';
     return 'MEDIUM';
   };
   
+  // P0 FIX: Evidence-weighted confidence boosts (GAP #2)
   const getBoostForPower = (power: 'HIGH' | 'MEDIUM' | 'LOW'): number => {
-    if (power === 'HIGH') return 0.25;  // GAP #2: +25% for pathognomonic
-    if (power === 'MEDIUM') return 0.12; // GAP #2: +12% for suggestive
-    return 0.05; // GAP #2: +5% for non-specific
+    if (power === 'HIGH') return 0.25;  // +25% for pathognomonic symptoms
+    if (power === 'MEDIUM') return 0.12; // +12% for suggestive symptoms
+    return 0.05; // +5% for non-specific symptoms
+  };
+  
+  // P0 FIX: Normalize string keys to canonical ObservationKey format
+  const normalizeToObservationKey = (str: string): string => {
+    // Convert snake_case, kebab-case, or spaces to UPPER_SNAKE_CASE
+    return str.toUpperCase().replace(/[\s-]/g, '_');
   };
   
   return charArray.map((char: any, idx: number) => {
-    // Handle string keys
+    // P0 FIX: Handle string keys (new array format from migration)
     if (typeof char === 'string') {
-      const power = getDiagnosticPower(char);
+      const normalizedKey = normalizeToObservationKey(char);
+      const power = getDiagnosticPower(normalizedKey);
       return {
-        id: char,
-        observation_key: char,
-        label_en: char.replace(/_/g, ' '),
+        id: normalizedKey,
+        observation_key: normalizedKey,
+        label_en: char.replace(/_/g, ' ').toLowerCase(),
         is_visual: true,
         diagnostic_power: power,
         confidence_boost: getBoostForPower(power)
@@ -284,15 +318,16 @@ function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] 
     
     // Handle object with observation_key
     if (char && typeof char === 'object' && char.observation_key) {
-      const power = getDiagnosticPower(char.observation_key);
+      const normalizedKey = normalizeToObservationKey(char.observation_key);
+      const power = getDiagnosticPower(normalizedKey);
       return {
-        id: char.id || char.observation_key || `obs_${idx}`,
-        observation_key: char.observation_key,
-        label_en: char.label_en || char.label || char.observation_key.replace(/_/g, ' '),
+        id: char.id || normalizedKey || `obs_${idx}`,
+        observation_key: normalizedKey,
+        label_en: char.label_en || char.label || char.observation_key.replace(/_/g, ' ').toLowerCase(),
         label_hi: char.label_hi,
         label_mr: char.label_mr,
         diagnostic_power: power,
-        confidence_boost: getBoostForPower(power), // GAP #2: Use weighted boost instead of fixed 0.15
+        confidence_boost: getBoostForPower(power),
         is_visual: char.is_visual !== false
       };
     }
