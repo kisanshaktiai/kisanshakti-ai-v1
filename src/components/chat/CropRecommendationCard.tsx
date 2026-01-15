@@ -9,10 +9,42 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import type { CropRecommendation, CropSelectionResult } from '@/decision-graph/crop-selection-rules';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TYPE DEFINITIONS
+// TYPE DEFINITIONS (Inline - previously from deprecated crop-selection-rules)
+// ═══════════════════════════════════════════════════════════════════════════
+
+type CropGroup = 'CEREALS' | 'PULSES' | 'OILSEEDS' | 'SUGARCANE' | 'COTTON' | 'VEGETABLES' | 'FRUITS' | 'SPICES';
+
+interface CropRecommendation {
+  crop_code: string;
+  crop_name: string;
+  crop_name_mr: string;
+  crop_name_hi: string;
+  crop_group: CropGroup;
+  suitability_score: number;
+  sowing_window: { start_month: number; end_month: number; optimal_days: string; };
+  expected_duration_days: number;
+  estimated_yield_per_acre: string;
+  estimated_cost_per_acre: number;
+  estimated_revenue_per_acre: number;
+  water_requirement: 'LOW' | 'MEDIUM' | 'HIGH';
+  reasons: string[];
+  warnings: string[];
+  rotation_benefit: string;
+  source_rules: string[];
+}
+
+interface CropSelectionResult {
+  recommendations: CropRecommendation[];
+  rotation_warnings: string[];
+  soil_limitations: string[];
+  confidence: number;
+  rules_applied: string[];
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPONENT TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface CropRecommendationCardProps {

@@ -95,19 +95,14 @@ const HYPOTHESIS_CANONICAL_GROUPS = [
 // STAGE COMPATIBILITY PATTERNS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const SEEDLING_STAGES = ['GERMINATION', 'SEEDLING', 'ESTABLISHMENT', 'SPROUTING', 'EMERGENCE'];
-const VEGETATIVE_STAGES = ['VEGETATIVE', 'TILLERING', 'GRAND_GROWTH', 'ROSETTE'];
-const REPRODUCTIVE_STAGES = ['FLOWERING', 'FRUITING', 'GRAIN_FILLING', 'POD_FORMATION'];
-const MATURITY_STAGES = ['MATURITY', 'RIPENING', 'HARVEST'];
-
-function getStageCategory(stage: string): 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURITY' | 'UNKNOWN' {
-  const normalizedStage = stage.toUpperCase();
-  if (SEEDLING_STAGES.some(s => normalizedStage.includes(s))) return 'SEEDLING';
-  if (VEGETATIVE_STAGES.some(s => normalizedStage.includes(s))) return 'VEGETATIVE';
-  if (REPRODUCTIVE_STAGES.some(s => normalizedStage.includes(s))) return 'REPRODUCTIVE';
-  if (MATURITY_STAGES.some(s => normalizedStage.includes(s))) return 'MATURITY';
-  return 'UNKNOWN';
-}
+// Import centralized stage normalizer
+import { 
+  normalizeStageForDB, 
+  getStageCategory, 
+  calculateStageRelevanceScore,
+  getStageQueryVariants,
+  type StageCategory 
+} from '../utils/stage-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PARTIAL CONDITION MATCHING
@@ -186,42 +181,15 @@ function evaluatePartialConditionMatch(
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE RELEVANCE SCORING
-// Higher score if rule is specifically applicable to current stage
+// Uses centralized stage-normalizer.ts for consistency
 // ═══════════════════════════════════════════════════════════════════════════
 
 function calculateStageRelevance(
   stageApplicable: string[] | null,
   currentStage: string
 ): number {
-  if (!stageApplicable || !Array.isArray(stageApplicable) || stageApplicable.length === 0) {
-    return 0.5; // Base score for universal rules
-  }
-  
-  const normalizedCurrent = currentStage.toUpperCase();
-  const currentCategory = getStageCategory(currentStage);
-  
-  // Exact stage match
-  if (stageApplicable.some(s => s.toUpperCase() === normalizedCurrent)) {
-    return 1.0;
-  }
-  
-  // Stage contains current
-  if (stageApplicable.some(s => normalizedCurrent.includes(s.toUpperCase()))) {
-    return 0.9;
-  }
-  
-  // Same category match
-  if (stageApplicable.some(s => getStageCategory(s) === currentCategory)) {
-    return 0.7;
-  }
-  
-  // Wildcard match
-  if (stageApplicable.some(s => s === '*' || s.toUpperCase() === 'ALL')) {
-    return 0.5;
-  }
-  
-  // No match - suppress this rule for this stage
-  return 0.1;
+  // Delegate to centralized normalizer
+  return calculateStageRelevanceScore(stageApplicable, currentStage);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -355,27 +323,7 @@ export async function evaluateCandidateHypotheses(
   console.log(`   Known observations: ${input.known_observations.join(', ') || 'none'}`);
   console.log(`   NDVI: ${input.ndvi_level || 'unknown'} (${input.ndvi_trend || 'unknown'})`);
   
-  // Stage normalization map: UI stage names → DB stage names
-  const STAGE_DB_MAP: Record<string, string> = {
-    'seedling': 'germination',
-    'vegetative': 'tillering',
-    'tillering': 'tillering',
-    'flowering': 'grand_growth',
-    'reproductive': 'grand_growth',
-    'grand_growth': 'grand_growth',
-    'maturation': 'maturity',
-    'maturity': 'maturity',
-    'ripening': 'maturity',
-    'harvesting': 'harvest',
-    'harvest': 'harvest',
-    'germination': 'germination',
-    'planting': 'planting',
-  };
-  
-  const normalizeStage = (stage: string): string => {
-    const key = stage.toLowerCase().trim().replace(/[\s-]/g, '_');
-    return STAGE_DB_MAP[key] || key;
-  };
+  // Stage normalization now uses centralized module
   
   try {
     // ═══════════════════════════════════════════════════════════════════════
@@ -383,15 +331,14 @@ export async function evaluateCandidateHypotheses(
     // CRITICAL FIX: Normalize stage to DB format and query with lowercase + 'all'
     // ═══════════════════════════════════════════════════════════════════════
     
-    const dbStage = normalizeStage(growth_stage);
+    const dbStage = normalizeStageForDB(growth_stage);
     const cropLower = crop_code.toLowerCase();
     
     console.log(`   [HypothesisEval] Stage normalization: ${growth_stage} → ${dbStage}`);
     console.log(`   [HypothesisEval] Crop normalization: ${crop_code} → ${cropLower}`);
     
-    // CRITICAL FIX: Use separate queries for stage-specific and 'all' rules
-    // The .cs. operator requires exact case matching, so we query both variants
-    const stageVariants = [dbStage, dbStage.toLowerCase(), dbStage.toUpperCase(), 'all', '*'];
+    // CRITICAL FIX: Use centralized stage variants from stage-normalizer
+    const stageVariants = getStageQueryVariants(growth_stage);
     
     // Query 1: Rules with observable_characteristics for this crop OR universal ('all') rules
     // NOTE: Filter out empty object {} which is not useful
