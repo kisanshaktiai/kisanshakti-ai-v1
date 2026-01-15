@@ -15,7 +15,7 @@
  * ❌ NOT allowed to hallucinate missing data
  */
 
-import type { LandContext } from '@/services/decisionBrainChatService';
+import type { LandContext } from './farmerMessageBuilder';
 import type { CropStage } from '@/decision-graph';
 
 // ═══════════════════════════════════════════════════════════════════════════
