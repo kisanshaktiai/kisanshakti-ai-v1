@@ -2197,20 +2197,48 @@ export class AIAgentOrchestrator {
         );
         
         // ═══════════════════════════════════════════════════════════════════════════
+        // FAIL-FAST INVARIANT: Context integrity validation
+        // If hasLandContext=true but landContext is missing/incomplete, FAIL IMMEDIATELY
+        // ═══════════════════════════════════════════════════════════════════════════
+        const hasLandContextFlag = !!landContext;
+        const isContextComplete = landContext?.current_crop && landContext?.growth_stage;
+        
+        if (hasLandContextFlag && !isContextComplete) {
+          console.error(`\n🚨 [FAIL-FAST] hasLandContext=true but landContext is incomplete!`);
+          console.error(`   Crop: ${landContext?.current_crop || 'MISSING'}`);
+          console.error(`   Stage: ${landContext?.growth_stage || 'MISSING'}`);
+          console.error(`   DAS: ${landContext?.days_since_sowing || 'MISSING'}`);
+          console.error(`   This violates the context preservation invariant.`);
+          throw new Error(`FAIL-FAST: hasLandContext=true but landContext is incomplete. Context MUST be passed as a single canonical object.`);
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════════════
         // TRUST-FIRST PRODUCTION READINESS VERIFICATION
         // These logs MUST appear for valid clarification - used for audit trail
         // ═══════════════════════════════════════════════════════════════════════════
         const clarificationScope = clarificationResponse.scope || 'UNKNOWN';
         const isDiagnosticConfirmation = clarificationScope === 'DIAGNOSTIC_CONFIRMATION';
         
+        // Build preserved context for passing forward
+        const preservedContext = landContext ? {
+          crop_code: landContext.crop_code || landContext.current_crop?.toUpperCase() || 'UNKNOWN',
+          crop_name: landContext.current_crop || 'Unknown',
+          growth_stage: landContext.growth_stage || 'UNKNOWN',
+          days_since_sowing: landContext.days_since_sowing || null,
+          ndvi_value: landContext.ndvi?.latest_value || landContext.ndvi?.value || landContext.ndvi_value || null,
+          ndvi_trend: landContext.ndvi?.trend || landContext.ndvi_trend || null,
+          is_locked: true as const
+        } : null;
+        
         console.log(`\n✅ [ProductionCheck] Trust-First Clarification Generated:`);
         console.log(`   Scope=${clarificationScope}`);
         console.log(`   Source=${isDiagnosticConfirmation ? 'DECISION_RULES' : 'SYMBOLIC_SCOPED'}`);
         console.log(`   Mode=${isDiagnosticConfirmation ? 'DIAGNOSTIC_CONFIRMATION' : 'STANDARD'}`);
-        console.log(`   hasLandContext=${!!landContext}`);
-        console.log(`   Crop=${landContext?.current_crop || 'UNKNOWN'} (INVARIANT: preserved)`);
-        console.log(`   Stage=${landContext?.growth_stage || 'UNKNOWN'} (INVARIANT: preserved)`);
-        console.log(`   NDVI=${landContext?.ndvi?.latest_value || landContext?.ndvi?.value || 'UNKNOWN'}`);
+        console.log(`   hasLandContext=${hasLandContextFlag}`);
+        console.log(`   Crop=${preservedContext?.crop_name || 'UNKNOWN'} (INVARIANT: preserved)`);
+        console.log(`   Stage=${preservedContext?.growth_stage || 'UNKNOWN'} (INVARIANT: preserved)`);
+        console.log(`   DAS=${preservedContext?.days_since_sowing || 'UNKNOWN'} (INVARIANT: preserved)`);
+        console.log(`   NDVI=${preservedContext?.ndvi_value || 'UNKNOWN'} (INVARIANT: preserved)`);
         console.log(`   Options count=${(clarificationResponse.options || []).length}`);
         
         // Log diagnostic confirmation details if applicable
@@ -2219,6 +2247,7 @@ export class AIAgentOrchestrator {
           console.log(`      - Options sourced from: DECISION_RULES.observable_characteristics`);
           console.log(`      - IDENTIFY_LOCATION: PERMANENTLY BLOCKED`);
           console.log(`      - Photo option: MANDATORY (replaces NONE_OF_THE_ABOVE)`);
+          console.log(`      - Context preservation: ENFORCED (single canonical object)`);
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -2272,6 +2301,11 @@ export class AIAgentOrchestrator {
             clarification_scope: clarificationResponse.scope,
             scope_validation_passed: clarificationResponse.validation_passed,
             pendingClarificationOptions: safeOptions,
+            // ═══════════════════════════════════════════════════════════════════════════
+            // TRUST-FIRST: Preserved canonical context (HARD INVARIANT)
+            // This context MUST be passed forward intact - never rebuilt or inferred
+            // ═══════════════════════════════════════════════════════════════════════════
+            preservedCanonicalContext: preservedContext,
             // PHASE-9.1 PATCH 3: Lock crop context during clarification
             lockedCropContext: cropContextAuthority ? {
               crop_name: cropContextAuthority.crop_name,

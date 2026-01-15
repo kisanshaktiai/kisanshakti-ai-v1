@@ -139,11 +139,41 @@ const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
  * 7. Photo only
  * 8. Stop / escalate
  */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * PRESERVED CANONICAL CONTEXT (HARD INVARIANT)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * This type represents the immutable context that MUST be passed forward 
+ * during clarification. It is a hard invariant - these values cannot be 
+ * rebuilt, inferred, or partially reconstructed.
+ */
+export interface PreservedCanonicalContext {
+  crop_code: string;
+  crop_name: string;
+  growth_stage: string;
+  days_since_sowing: number | null;
+  ndvi_value: number | null;
+  ndvi_trend: string | null;
+  // Flag indicating this context was validated and locked
+  is_locked: true;
+}
+
+/**
+ * Resolve clarification plan based on ObservationKeys ONLY.
+ * This is DETERMINISTIC - same keys + turn count = same output.
+ * 
+ * PHASE-8.1: Added hasCropContext parameter to skip crop clarification
+ * when CropContextAuthority exists from crop_schedules.
+ * 
+ * TRUST-FIRST UPGRADE: Added preservedContext for invariant enforcement.
+ * When preservedContext is provided, context MUST NOT be rebuilt.
+ */
 export function resolveClarificationPlan(
   observedKeys: Set<ObservationKey>,
   turnCount: number,
   previousScopes: ClarificationScope[] = [],
-  hasCropContext: boolean = false // PHASE-8.1: Skip crop clarification if true
+  hasCropContext: boolean = false,
+  preservedContext?: PreservedCanonicalContext // NEW: Immutable context for clarification
 ): ClarificationPlan {
   // ═══════════════════════════════════════════════════════════════════════════
   // HARD STOP: Maximum clarification turns reached
@@ -157,6 +187,17 @@ export function resolveClarificationPlan(
       reason: `Maximum clarification turns (${MAX_CLARIFICATION_TURNS}) reached`,
       priority: SCOPE_PRIORITY[ClarificationScope.STOP_ESCALATE]
     };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FAIL-FAST INVARIANT: Context integrity check
+  // If hasCropContext=true but no preservedContext, log warning
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (hasCropContext && preservedContext) {
+    console.log(`   ✅ [INVARIANT] PreservedCanonicalContext validated:`);
+    console.log(`      Crop=${preservedContext.crop_code}, Stage=${preservedContext.growth_stage}`);
+    console.log(`      DAS=${preservedContext.days_since_sowing}, NDVI=${preservedContext.ndvi_value}`);
+    console.log(`      Context locked=true (CANNOT be rebuilt)`);
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -179,10 +220,24 @@ export function resolveClarificationPlan(
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 1.5: DIAGNOSTIC_CONFIRMATION (Trust-First Agronomist Mode)
   // ═══════════════════════════════════════════════════════════════════════════
-  // When farmer reports terminal/high-severity damage, we CONFIRM THE CAUSE,
+  // ACTIVATION PRIORITY: This scope activates BEFORE any symptom-coverage or
+  // generic clarification logic. It has HIGHEST priority after crop identification.
+  //
+  // AGRONOMIST PRINCIPLE: When farmer reports crop death, confirm the CAUSE,
   // not the location. This mirrors real agronomist behavior:
   // "If the whole plant died, I don't ask which part - I ask for evidence to find cause"
+  //
+  // WHEN TO ACTIVATE (ALL must be true):
+  // 1. Crop is known (hasCropContext=true)
+  // 2. At least one terminal/whole-plant damage indicator exists
+  // 3. Either: confidence is low OR multiple competing hypotheses exist
+  //
+  // WHEN ACTIVE:
+  // - PERMANENTLY block IDENTIFY_LOCATION and all generic scopes
+  // - Present direct diagnostic options from decision_rules.observable_characteristics
+  // - Replace "None of the above" with "Upload photo for expert analysis"
   // ═══════════════════════════════════════════════════════════════════════════
+  
   // ═══════════════════════════════════════════════════════════════════════════
   // HARD INVARIANT: Terminal Damage Indicators (Trust-First Mode)
   // When ANY of these are detected, IDENTIFY_LOCATION is PERMANENTLY BLOCKED
@@ -194,39 +249,61 @@ export function resolveClarificationPlan(
     ObservationKey.PATCHY_DAMAGE,
     ObservationKey.GAPS_IN_FIELD,
     ObservationKey.PLANT_DEATH,
-    ObservationKey.CROP_FAILURE
+    ObservationKey.CROP_FAILURE,
+    ObservationKey.DEAD_SEEDLINGS,
+    ObservationKey.PLANT_DRYING,
+    ObservationKey.WILTING_SEVERE
   ];
   
   const SEVERITY_HIGH_INDICATORS = [
     ObservationKey.SEVERITY_HIGH,
     ObservationKey.ENTIRE_FIELD_AFFECTED,
-    ObservationKey.SEVERITY_CRITICAL
+    ObservationKey.SEVERITY_CRITICAL,
+    ObservationKey.AFFECTED_PERCENTAGE_HIGH
   ];
   
   const hasTerminalDamage = TERMINAL_DAMAGE_INDICATORS.some(k => observedKeys.has(k));
   const hasHighSeverity = SEVERITY_HIGH_INDICATORS.some(k => observedKeys.has(k));
   const hasWholePartAffected = observedKeys.has(ObservationKey.AFFECTED_PART_WHOLE);
   
+  // Combine patchy damage with high severity
+  const hasPatchyWithHighSeverity = observedKeys.has(ObservationKey.PATCHY_DAMAGE) && hasHighSeverity;
+  
   // ═══════════════════════════════════════════════════════════════════════════
-  // AGRONOMIST PRINCIPLE: When farmer reports crop death, confirm the CAUSE
-  // not the LOCATION. Never ask "which part" when whole plant is affected.
+  // DIAGNOSTIC_CONFIRMATION ACTIVATION CRITERIA (Trust-First Mode)
+  // Activates when: crop+stage known AND (terminal damage OR whole-plant OR high severity)
+  // This MUST trigger BEFORE any generic clarification scopes
   // ═══════════════════════════════════════════════════════════════════════════
   const shouldUseDiagnosticConfirmation = hasCropContext && 
-    (hasTerminalDamage || hasWholePartAffected || hasHighSeverity);
+    (hasTerminalDamage || hasWholePartAffected || hasHighSeverity || hasPatchyWithHighSeverity);
   
   if (shouldUseDiagnosticConfirmation) {
     const detectedIndicators = TERMINAL_DAMAGE_INDICATORS.filter(k => observedKeys.has(k));
     const severityIndicators = SEVERITY_HIGH_INDICATORS.filter(k => observedKeys.has(k));
     
-    console.log(`   🔬 [DIAGNOSTIC_CONFIRMATION] Trust-First Mode ACTIVATED`);
-    console.log(`      Scope=DIAGNOSTIC_CONFIRMATION, Source=DECISION_RULES`);
+    console.log(`\n   🔬 [DIAGNOSTIC_CONFIRMATION] Trust-First Mode ACTIVATED`);
+    console.log(`      Scope=DIAGNOSTIC_CONFIRMATION`);
+    console.log(`      Source=DECISION_RULES`);
     console.log(`      Terminal indicators: ${detectedIndicators.join(', ') || 'none'}`);
     console.log(`      Severity indicators: ${severityIndicators.join(', ') || 'none'}`);
     console.log(`      hasCropContext=true (INVARIANT: context preserved)`);
     
-    // HARD INVARIANT: Log that IDENTIFY_LOCATION is permanently blocked
-    if (hasWholePartAffected) {
-      console.log(`   🚫 [INVARIANT] IDENTIFY_LOCATION permanently BLOCKED (AFFECTED_PART_WHOLE=true)`);
+    // Log preserved context if provided
+    if (preservedContext) {
+      console.log(`      Crop=${preservedContext.crop_code} (LOCKED)`);
+      console.log(`      Stage=${preservedContext.growth_stage} (LOCKED)`);
+      console.log(`      DAS=${preservedContext.days_since_sowing} (LOCKED)`);
+      console.log(`      NDVI=${preservedContext.ndvi_value} (LOCKED)`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // HARD INVARIANT: IDENTIFY_LOCATION is PERMANENTLY BLOCKED
+    // When whole plant is affected, location question is semantically invalid
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (hasWholePartAffected || hasTerminalDamage) {
+      console.log(`   🚫 [INVARIANT] IDENTIFY_LOCATION permanently BLOCKED`);
+      console.log(`      Reason: Whole plant/terminal damage makes location question invalid`);
+      console.log(`      All generic clarification scopes: BLOCKED`);
     }
     
     return {
@@ -238,11 +315,12 @@ export function resolveClarificationPlan(
         ObservationKey.HONEYDEW_PRESENT,
         ObservationKey.TUNNELS_IN_SOIL,
         ObservationKey.FRASS_VISIBLE,
-        ObservationKey.STEM_BORING_MARKS
+        ObservationKey.STEM_BORING_MARKS,
+        ObservationKey.ROOT_DAMAGE_VISIBLE
       ],
       turn_count: turnCount,
       should_stop: false,
-      reason: `DIAGNOSTIC_CONFIRMATION: Terminal damage detected [${detectedIndicators.slice(0, 2).join(',')}] - confirming CAUSE not location`,
+      reason: `DIAGNOSTIC_CONFIRMATION: Terminal damage detected [${detectedIndicators.slice(0, 2).join(',')}] - confirming CAUSE (Source=DECISION_RULES)`,
       priority: SCOPE_PRIORITY[ClarificationScope.DIAGNOSTIC_CONFIRMATION]
     };
   }
