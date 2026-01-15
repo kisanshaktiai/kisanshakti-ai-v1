@@ -266,6 +266,12 @@ export const ACTION_TRANSLATIONS: Record<string, TrilingualText> = {
     hi: 'केवल निगरानी करें',
     en: 'Monitor only'
   },
+  // GAP #1: Positive terminal diagnosis - this is a SUCCESS state
+  'NO_INTERVENTION_REQUIRED': {
+    mr: '✅ सध्या कोणत्याही उपचाराची गरज नाही - पीक चांगले वाढत आहे',
+    hi: '✅ अभी कोई उपचार नहीं चाहिए - फसल अच्छी तरह बढ़ रही है',
+    en: '✅ No treatment needed at this time - crop is growing well'
+  },
   'ESCALATE_TO_EXPERT': {
     mr: 'तज्ञाचा सल्ला घ्या',
     hi: 'विशेषज्ञ से सलाह लें',

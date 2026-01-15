@@ -221,7 +221,8 @@ export type ActionType =
   | 'HARVEST'
   | 'NO_ACTION'
   | 'MONITOR_ONLY'
-  | 'ESCALATE_TO_EXPERT';
+  | 'ESCALATE_TO_EXPERT'
+  | 'NO_INTERVENTION_REQUIRED'; // GAP #1: Positive terminal diagnosis - this is a SUCCESS state
 
 export type UrgencyLevel = 'IMMEDIATE' | 'WITHIN_24H' | 'WITHIN_48H' | 'WITHIN_WEEK' | 'NON_URGENT';
 
