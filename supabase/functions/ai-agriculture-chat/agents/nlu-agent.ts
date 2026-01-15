@@ -196,21 +196,21 @@ async function fetchWithRetry(
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function callAIForUnderstanding(message: string): Promise<AIUnderstandingResult | null> {
-  // Try Gemini API first, then OpenAI as fallback
+  // Prefer OpenAI first (per production reliability), then Gemini as fallback
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-  
+
   if (!GEMINI_API_KEY && !OPENAI_API_KEY) {
     console.log('⚠️ [NLU] No AI API keys configured, falling back to pattern matching');
     return null;
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // SYMBOLIC BRAIN CONTRACT - NLU EXTRACTS OBSERVATIONS ONLY
   // CRITICAL: AI does NOT decide actions, clarifications, or recommendations
   // Those decisions belong EXCLUSIVELY to the Rule Engine
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   const systemPrompt = `You are a Symbolic Agricultural NLU Agent.
 
 ═══════════════════════════════════════════════════════════════════════════
@@ -251,7 +251,7 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
 
 ❌ pest_code, disease_code, crop_code, rule_id, product_id
 ❌ response_strategy (Rule Engine decides)
-❌ clarification_type (Rule Engine decides)  
+❌ clarification_type (Rule Engine decides)
 ❌ clarification_options (Rule Engine provides from database)
 ❌ recommendations, actions, treatments
 ❌ product names, dosages
@@ -278,13 +278,87 @@ For intent_label, use PLAIN LANGUAGE only:
 
 URGENCY INDICATORS: "dying", "emergency", "मरतंय", "वाचवा", "ताबडतोब"`;
 
+  const normalizeAIResult = (raw: AIUnderstandingResult): AIUnderstandingResult => {
+    // Backward compatibility: convert new contract fields into legacy fields used downstream.
+    // This prevents logs like "undefined undefined" and ensures AI result affects intent/confidence.
+    const normalized: AIUnderstandingResult = { ...raw };
+
+    if (normalized.intent_confidence === undefined && typeof normalized.confidence === 'number') {
+      normalized.intent_confidence = normalized.confidence;
+    }
+
+    if (!normalized.intent && typeof normalized.intent_label === 'string') {
+      const l = normalized.intent_label.toLowerCase();
+      if (l.includes('pest') || l.includes('insect')) normalized.intent = 'PEST_PROBLEM' as PrimaryIntent;
+      else if (l.includes('disease') || l.includes('fung')) normalized.intent = 'DISEASE_PROBLEM' as PrimaryIntent;
+      else if (l.includes('nutrient') || l.includes('fertil')) normalized.intent = 'NUTRIENT_ISSUE' as PrimaryIntent;
+      else if (l.includes('irrig') || l.includes('water')) normalized.intent = 'WATER_ISSUE' as PrimaryIntent;
+      else if (l.includes('weather') || l.includes('rain')) normalized.intent = 'WEATHER_QUERY' as PrimaryIntent;
+      else if (l.includes('market') || l.includes('price')) normalized.intent = 'MARKET_QUERY' as PrimaryIntent;
+      else if (l.includes('urgent') || l.includes('dying') || l.includes('emergency')) normalized.intent = 'EMERGENCY' as PrimaryIntent;
+      else if (l.includes('greet') || l.includes('hello') || l.includes('namaste')) normalized.intent = 'GREETING' as PrimaryIntent;
+      else normalized.intent = 'GENERAL_QUERY' as PrimaryIntent;
+    }
+
+    return normalized;
+  };
+
   let geminiError: string | null = null;
   let openaiError: string | null = null;
 
   try {
-    // Try Gemini first with retry logic
+    // 1) OpenAI FIRST (requested): more reliable for this project right now.
+    if (OPENAI_API_KEY) {
+      console.log('🔄 [NLU] Using OpenAI API for understanding...');
+      try {
+        const response = await fetchWithRetry(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${OPENAI_API_KEY}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o',
+              messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `Analyze this farmer message: "${message}"` }
+              ],
+              max_tokens: 500,
+              temperature: 0.1
+            }),
+          },
+          2,
+          500
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          const content = data.choices?.[0]?.message?.content;
+          if (content) {
+            let jsonStr = content.trim();
+            if (jsonStr.startsWith('```')) {
+              jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+            }
+            const raw = JSON.parse(jsonStr) as AIUnderstandingResult;
+            const result = normalizeAIResult(raw);
+            console.log('✅ [NLU] OpenAI understanding complete:', result.intent_label, result.confidence);
+            return result;
+          }
+        } else {
+          openaiError = `Status ${response.status}`;
+          console.error('❌ [NLU] OpenAI API error:', response.status);
+        }
+      } catch (error) {
+        openaiError = String(error);
+        console.error('❌ [NLU] OpenAI API failed:', error);
+      }
+    }
+
+    // 2) Gemini fallback
     if (GEMINI_API_KEY) {
-      console.log('🔄 [NLU] Using Gemini API for understanding...');
+      console.log('🔄 [NLU] Falling back to Gemini API for understanding...');
       try {
         const response = await fetchWithRetry(
           'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=' + GEMINI_API_KEY,
@@ -303,8 +377,8 @@ URGENCY INDICATORS: "dying", "emergency", "मरतंय", "वाचवा", 
               }
             }),
           },
-          3, // maxRetries
-          1000 // baseDelay
+          2,
+          500
         );
 
         if (response.ok) {
@@ -315,79 +389,32 @@ URGENCY INDICATORS: "dying", "emergency", "मरतंय", "वाचवा", 
             if (jsonStr.startsWith('```')) {
               jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
             }
-            const result = JSON.parse(jsonStr) as AIUnderstandingResult;
-            console.log('✅ [NLU] Gemini understanding complete:', result.intent, result.intent_confidence);
+            const raw = JSON.parse(jsonStr) as AIUnderstandingResult;
+            const result = normalizeAIResult(raw);
+            console.log('✅ [NLU] Gemini understanding complete:', result.intent_label, result.confidence);
             return result;
           }
         } else {
           geminiError = `Status ${response.status}`;
-          console.warn('⚠️ [NLU] Gemini API error after retries:', response.status);
+          console.warn('⚠️ [NLU] Gemini API error:', response.status);
         }
       } catch (error) {
         geminiError = String(error);
-        console.warn('⚠️ [NLU] Gemini API failed after retries:', error);
+        console.warn('⚠️ [NLU] Gemini API failed:', error);
       }
     }
-    
-    // Fallback to OpenAI with retry logic
-    if (OPENAI_API_KEY) {
-      console.log('🔄 [NLU] Falling back to OpenAI API...');
-      try {
-        const response = await fetchWithRetry(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${OPENAI_API_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o',  // UPGRADED: Using GPT-4o for better NLU accuracy
-              messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `Analyze this farmer message: "${message}"` }
-              ],
-              max_tokens: 500,
-              temperature: 0.1
-            }),
-          },
-          3, // maxRetries
-          1000 // baseDelay
-        );
 
-        if (response.ok) {
-          const data = await response.json();
-          const content = data.choices?.[0]?.message?.content;
-          if (content) {
-            let jsonStr = content.trim();
-            if (jsonStr.startsWith('```')) {
-              jsonStr = jsonStr.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-            }
-            const result = JSON.parse(jsonStr) as AIUnderstandingResult;
-            console.log('✅ [NLU] OpenAI understanding complete:', result.intent, result.intent_confidence);
-            return result;
-          }
-        } else {
-          openaiError = `Status ${response.status}`;
-          console.error('❌ [NLU] OpenAI API error after retries:', response.status);
-        }
-      } catch (error) {
-        openaiError = String(error);
-        console.error('❌ [NLU] OpenAI API failed after retries:', error);
-      }
-    }
-    
-    // Log combined errors if both failed
     if (geminiError || openaiError) {
-      console.error('❌ [NLU] All AI APIs failed:', { geminiError, openaiError });
+      console.error('❌ [NLU] All AI APIs failed:', { openaiError, geminiError });
     }
-    
+
     return null;
   } catch (error) {
     console.error('❌ [NLU] AI call failed:', error);
     return null;
   }
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STEP 1: LANGUAGE DETECTION & NORMALIZATION

@@ -211,11 +211,14 @@ export async function extractSemanticMeaning(
   
   try {
     // Determine which provider to use
-    const useGemini = hasGeminiKey();
-    const provider = useGemini ? 'gemini' : 'openai';
-    const model = useGemini ? AI_CONFIG.GEMINI_MODEL : AI_CONFIG.OPENAI_MODEL;
-    const endpoint = getAPIEndpoint(provider);
-    const apiKey = getAPIKey(provider);
+    // PRODUCTION FIX: Prefer OpenAI first (more reliable here), then Gemini fallback
+    const hasOpenAIKey = !!(Deno.env.get('OPENAI_API_KEY')?.trim());
+    const hasGemini = hasGeminiKey();
+
+    const provider = hasOpenAIKey ? 'openai' : (hasGemini ? 'gemini' : 'openai');
+    const model = provider === 'openai' ? 'gpt-4o' : AI_CONFIG.GEMINI_MODEL;
+    const endpoint = getAPIEndpoint(provider as any);
+    const apiKey = getAPIKey(provider as any);
     
     console.log(`   🤖 Using ${provider.toUpperCase()} (${model})`);
     
