@@ -169,6 +169,43 @@ const isUsableImageUrl = (url: string | undefined): boolean => {
   return isValidStorageUrl(url) || isBase64Image(url);
 };
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CRITICAL FIX: Clean user message content for display
+ * - Removes [obs_keys:...] patterns (backend parsing markers)
+ * - Deduplicates repeated lines
+ * - Shows only the farmer-friendly label
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+const cleanUserMessageContent = (content: string): string => {
+  if (!content) return '';
+  
+  // Step 1: Remove [obs_keys:...] patterns - these are for backend only
+  let cleaned = content.replace(/\s*\[obs_keys:[^\]]+\]/g, '');
+  
+  // Step 2: Split into lines and deduplicate
+  const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
+  const uniqueLines: string[] = [];
+  const seenLines = new Set<string>();
+  
+  for (const line of lines) {
+    // Normalize for comparison (remove emojis and extra spaces)
+    const normalized = line.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim().toLowerCase();
+    if (!seenLines.has(normalized) && normalized.length > 0) {
+      seenLines.add(normalized);
+      uniqueLines.push(line);
+    }
+  }
+  
+  // Step 3: Return cleaned content - show only the first unique line for selection messages
+  // This prevents showing duplicate selected options
+  if (uniqueLines.length === 1) {
+    return uniqueLines[0];
+  }
+  
+  return uniqueLines.join('\n');
+};
+
 export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, onClarificationSelect, onTakePhoto, isLoadingSuggestion }: ModernChatUIProps) {
   const { i18n } = useTranslation();
   const isUser = message.role === 'user';
@@ -772,7 +809,8 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 >
                   {isUser ? (
                     <span className="text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words">
-                      {message.content}
+                      {/* CRITICAL FIX: Clean user messages - remove [obs_keys:...] patterns and deduplicate */}
+                      {cleanUserMessageContent(message.content)}
                     </span>
                   ) : (
                     formatAIResponse(message.content)

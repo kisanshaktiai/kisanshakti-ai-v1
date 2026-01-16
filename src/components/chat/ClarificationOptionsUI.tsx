@@ -62,66 +62,66 @@ interface ClarificationOptionsUIProps {
 const getOptionIcon = (label: string, index: number, isDiagnostic?: boolean) => {
   const labelLower = label.toLowerCase();
   
-  // Diagnostic confirmation icons (cause indicators)
+  // Diagnostic confirmation icons (cause indicators) - using semantic color classes
   if (isDiagnostic) {
     // Dead heart / borer indicators
     if (labelLower.includes('सुरळी') || labelLower.includes('dead') || labelLower.includes('heart') || labelLower.includes('whorl')) {
-      return <AlertTriangle className="h-5 w-5 text-red-500" />;
+      return <AlertTriangle className="h-5 w-5 text-destructive" />;
     }
     // Larvae / pest indicators
     if (labelLower.includes('अळ') || labelLower.includes('larva') || labelLower.includes('इल्ली') || labelLower.includes('caterpillar')) {
-      return <Bug className="h-5 w-5 text-orange-500" />;
+      return <Bug className="h-5 w-5 text-warning" />;
     }
     // Termite / soil indicators
     if (labelLower.includes('वाळवी') || labelLower.includes('दीमक') || labelLower.includes('termite') || labelLower.includes('tunnel') || labelLower.includes('बोगद')) {
-      return <Search className="h-5 w-5 text-amber-600" />;
+      return <Search className="h-5 w-5 text-warning" />;
     }
     // Honeydew / aphid indicators
     if (labelLower.includes('चिकट') || labelLower.includes('sticky') || labelLower.includes('honeydew') || labelLower.includes('काळी')) {
-      return <Droplets className="h-5 w-5 text-amber-500" />;
+      return <Droplets className="h-5 w-5 text-warning" />;
     }
     // Frass / boring marks
     if (labelLower.includes('भुसा') || labelLower.includes('frass') || labelLower.includes('bore') || labelLower.includes('छिद्र')) {
-      return <Zap className="h-5 w-5 text-yellow-600" />;
+      return <Zap className="h-5 w-5 text-warning" />;
     }
     // Photo option
     if (labelLower.includes('फोटो') || labelLower.includes('photo') || labelLower.includes('📷')) {
-      return <Camera className="h-5 w-5 text-blue-500" />;
+      return <Camera className="h-5 w-5 text-info" />;
     }
   }
   
-  // Standard icons for non-diagnostic mode
-  // Check for flying/walking patterns
+  // Standard icons for non-diagnostic mode - using semantic colors
   if (labelLower.includes('उड') || labelLower.includes('fly') || labelLower.includes('उडता')) {
-    return <Wind className="h-5 w-5" />;
+    return <Wind className="h-5 w-5 text-muted-foreground" />;
   }
   if (labelLower.includes('चाल') || labelLower.includes('walk') || labelLower.includes('crawl')) {
-    return <Bug className="h-5 w-5" />;
+    return <Bug className="h-5 w-5 text-muted-foreground" />;
   }
-  // Check for distribution patterns
   if (labelLower.includes('एक जाग') || labelLower.includes('एका जागी') || labelLower.includes('one place') || labelLower.includes('center')) {
-    return <ArrowDown className="h-5 w-5" />;
+    return <ArrowDown className="h-5 w-5 text-muted-foreground" />;
   }
   if (labelLower.includes('पूर्ण') || labelLower.includes('सर्व') || labelLower.includes('whole') || labelLower.includes('all')) {
-    return <MoveHorizontal className="h-5 w-5" />;
+    return <MoveHorizontal className="h-5 w-5 text-muted-foreground" />;
   }
   if (labelLower.includes('कडा') || labelLower.includes('edge') || labelLower.includes('border')) {
-    return <ArrowUp className="h-5 w-5" />;
+    return <ArrowUp className="h-5 w-5 text-muted-foreground" />;
   }
-  // Check for color patterns
   if (labelLower.includes('पिवळ') || labelLower.includes('yellow') || labelLower.includes('पीला')) {
-    return <Sun className="h-5 w-5 text-yellow-500" />;
+    return <Sun className="h-5 w-5 text-warning" />;
   }
   if (labelLower.includes('हिरव') || labelLower.includes('green') || labelLower.includes('हरा')) {
-    return <Leaf className="h-5 w-5 text-green-500" />;
+    return <Leaf className="h-5 w-5 text-success" />;
   }
   if (labelLower.includes('पाणी') || labelLower.includes('water') || labelLower.includes('ओलावा')) {
-    return <Droplets className="h-5 w-5 text-blue-500" />;
+    return <Droplets className="h-5 w-5 text-info" />;
   }
   
-  // Default numbered icons
-  const numberIcons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣'];
-  return <span className="text-lg">{numberIcons[index] || `${index + 1}.`}</span>;
+  // Default: numbered badge using theme colors
+  return (
+    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-muted text-muted-foreground text-sm font-semibold">
+      {index + 1}
+    </span>
+  );
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -180,25 +180,31 @@ function SingleChoiceOption({ option, index, isSelected, onSelect, isDiagnostic 
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
       onClick={onSelect}
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.98 }}
       className={cn(
-        "w-full p-4 rounded-2xl border-2 transition-all duration-200",
-        "flex items-center gap-4 text-left min-h-[64px]",
+        // Base styles - using theme tokens
+        "w-full p-3.5 rounded-xl border transition-all duration-200",
+        "flex items-center gap-3 text-left",
         "active:scale-[0.98] touch-manipulation",
-        // Photo option special styling
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        
+        // Photo option - uses info color from theme
         isPhotoOption && isDiagnostic
-          ? "border-blue-300 bg-blue-50 dark:bg-blue-950/30 hover:border-blue-400 hover:bg-blue-100"
+          ? "border-info/40 bg-info/5 hover:border-info/60 hover:bg-info/10"
           : isSelected
-            ? "border-primary bg-primary/10 shadow-lg shadow-primary/20"
-            : "border-border/50 bg-card/50 hover:border-primary/50 hover:bg-card",
-        // Diagnostic mode - slightly larger touch target
-        isDiagnostic && "min-h-[72px]"
+            ? "border-primary bg-primary/10 shadow-md ring-2 ring-primary/20"
+            : "border-border bg-card hover:border-primary/40 hover:bg-accent/50",
+        
+        // Diagnostic mode - larger touch target
+        isDiagnostic ? "min-h-[68px]" : "min-h-[56px]"
       )}
     >
-      {/* Icon/Number */}
+      {/* Icon/Number container */}
       <div className={cn(
-        "shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
+        "shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
         isPhotoOption && isDiagnostic
-          ? "bg-blue-100 dark:bg-blue-900 text-blue-600"
+          ? "bg-info/10 text-info"
           : isSelected 
             ? "bg-primary text-primary-foreground" 
             : "bg-muted text-muted-foreground"
@@ -206,37 +212,37 @@ function SingleChoiceOption({ option, index, isSelected, onSelect, isDiagnostic 
         {getOptionIcon(option.label, index, isDiagnostic)}
       </div>
       
-      {/* Label */}
+      {/* Label container */}
       <div className="flex-1 min-w-0">
         <span className={cn(
-          "text-base font-medium leading-tight block",
+          "text-sm font-medium leading-snug block",
           isPhotoOption && isDiagnostic 
-            ? "text-blue-700 dark:text-blue-300"
+            ? "text-info"
             : isSelected ? "text-primary" : "text-foreground"
         )}>
           {option.label}
         </span>
         {option.description && (
-          <span className="text-xs text-muted-foreground mt-1 block">
+          <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
             {option.description}
           </span>
         )}
-        {/* Diagnostic power indicator */}
+        {/* Diagnostic power indicator - using success color */}
         {isDiagnostic && option.diagnostic_power === 'HIGH' && !isPhotoOption && (
-          <span className="text-xs text-green-600 dark:text-green-400 mt-1 block font-medium">
+          <span className="text-xs text-success mt-0.5 block font-medium">
             ✓ Strong indicator
           </span>
         )}
       </div>
       
-      {/* Check indicator */}
+      {/* Radio indicator */}
       <div className={cn(
-        "shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
+        "shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
         isSelected
           ? "border-primary bg-primary"
-          : "border-muted-foreground/30"
+          : "border-muted-foreground/30 bg-background"
       )}>
-        {isSelected && <Check className="h-4 w-4 text-primary-foreground" />}
+        {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
       </div>
     </motion.button>
   );
@@ -261,18 +267,23 @@ function MultiChoiceOption({ option, index, isSelected, onToggle, isDiagnostic }
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
       onClick={onToggle}
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.98 }}
       className={cn(
-        "w-full p-4 rounded-2xl border-2 transition-all duration-200",
-        "flex items-center gap-4 text-left min-h-[64px]",
+        // Base styles - using theme tokens
+        "w-full p-3.5 rounded-xl border transition-all duration-200",
+        "flex items-center gap-3 text-left",
         "active:scale-[0.98] touch-manipulation",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        isDiagnostic ? "min-h-[68px]" : "min-h-[56px]",
         isSelected
-          ? "border-primary bg-primary/10 shadow-lg shadow-primary/20"
-          : "border-border/50 bg-card/50 hover:border-primary/50 hover:bg-card"
+          ? "border-primary bg-primary/10 shadow-md ring-2 ring-primary/20"
+          : "border-border bg-card hover:border-primary/40 hover:bg-accent/50"
       )}
     >
-      {/* Checkbox */}
+      {/* Checkbox container */}
       <div className={cn(
-        "shrink-0 w-12 h-12 rounded-xl flex items-center justify-center transition-colors",
+        "shrink-0 w-10 h-10 rounded-lg flex items-center justify-center transition-colors",
         isSelected 
           ? "bg-primary text-primary-foreground" 
           : "bg-muted text-muted-foreground"
@@ -280,22 +291,22 @@ function MultiChoiceOption({ option, index, isSelected, onToggle, isDiagnostic }
         <Checkbox 
           checked={isSelected} 
           className={cn(
-            "h-6 w-6 border-2",
-            isSelected && "bg-primary-foreground border-primary-foreground data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+            "h-5 w-5 border-2",
+            isSelected && "data-[state=checked]:bg-primary-foreground data-[state=checked]:border-primary-foreground data-[state=checked]:text-primary"
           )}
         />
       </div>
       
-      {/* Label */}
+      {/* Label container */}
       <div className="flex-1 min-w-0">
         <span className={cn(
-          "text-base font-medium leading-tight block",
+          "text-sm font-medium leading-snug block",
           isSelected ? "text-primary" : "text-foreground"
         )}>
           {option.label}
         </span>
         {option.description && (
-          <span className="text-xs text-muted-foreground mt-1 block">
+          <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
             {option.description}
           </span>
         )}
@@ -408,30 +419,30 @@ export function ClarificationOptionsUI({
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
-      className="w-full space-y-4"
+      className="w-full space-y-3"
     >
-      {/* Question Header - Enhanced for Diagnostic Mode */}
+      {/* Question Header - Using semantic theme tokens */}
       <div className={cn(
-        "flex items-start gap-3 p-4 rounded-2xl border",
+        "flex items-start gap-3 p-3.5 rounded-xl border",
         isDiagnostic
-          ? "bg-gradient-to-br from-amber-50 via-orange-50/50 to-transparent dark:from-amber-950/30 dark:via-orange-950/20 border-amber-200 dark:border-amber-800"
-          : "bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border-primary/20"
+          ? "bg-warning/5 border-warning/20"
+          : "bg-accent/50 border-border"
       )}>
         <div className={cn(
-          "shrink-0 p-2 rounded-xl",
+          "shrink-0 p-2 rounded-lg",
           isDiagnostic 
-            ? "bg-amber-100 dark:bg-amber-900" 
-            : "bg-primary/20"
+            ? "bg-warning/10" 
+            : "bg-primary/10"
         )}>
           {isDiagnostic 
-            ? <Search className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            : <HelpCircle className="h-5 w-5 text-primary" />
+            ? <Search className="h-4 w-4 text-warning" />
+            : <HelpCircle className="h-4 w-4 text-primary" />
           }
         </div>
         <div className="flex-1 min-w-0">
           <p className={cn(
-            "text-base font-medium leading-relaxed",
-            isDiagnostic ? "text-amber-900 dark:text-amber-100" : "text-foreground"
+            "text-sm font-medium leading-relaxed",
+            isDiagnostic ? "text-warning" : "text-foreground"
           )}>
             {question}
           </p>
@@ -471,7 +482,7 @@ export function ClarificationOptionsUI({
         </AnimatePresence>
       </div>
       
-      {/* Submit Button (for multi-select only) */}
+      {/* Submit Button (for multi-select only) - using theme tokens */}
       {!isSingleChoice && selectedOptions.size > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
@@ -483,16 +494,15 @@ export function ClarificationOptionsUI({
             disabled={isSubmitting}
             size="lg"
             className={cn(
-              "w-full h-14 text-lg font-semibold rounded-2xl",
-              "bg-gradient-to-r from-primary to-primary/80",
-              "hover:from-primary/90 hover:to-primary/70",
-              "shadow-lg shadow-primary/30",
+              "w-full h-12 font-semibold rounded-xl",
+              "bg-primary hover:bg-primary/90",
+              "shadow-md shadow-primary/20",
               "disabled:opacity-50"
             )}
           >
-            <Check className="h-5 w-5 mr-2" />
+            <Check className="h-4 w-4 mr-2" />
             {labels.submit} ({selectedOptions.size} {labels.selected})
-            <ChevronRight className="h-5 w-5 ml-2" />
+            <ChevronRight className="h-4 w-4 ml-2" />
           </Button>
         </motion.div>
       )}
