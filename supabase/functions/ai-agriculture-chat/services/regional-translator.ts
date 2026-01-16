@@ -411,16 +411,84 @@ function getRegionVariant(district: string): string {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NORMALIZE PEST NAME FOR LOOKUP
+// CRITICAL FIX: Extract core pest name from verbose database values
+// Examples:
+//   "Early Shoot Borer (Chilo infuscatellus) infestation" → "early_shoot_borer"
+//   "SMUT_SEED_BORNE" → "smut"
+//   "IPM prevention for Red Rot using hot water treatment" → "red_rot"
 // ═══════════════════════════════════════════════════════════════════════════
 
 function normalizePestName(name: string): string {
-  return name
+  let normalized = name
     .toLowerCase()
-    .trim()
+    .trim();
+  
+  // Remove parenthetical scientific names: "(Chilo infuscatellus)"
+  normalized = normalized.replace(/\([^)]*\)/g, '');
+  
+  // Remove common suffixes/prefixes that make matching fail
+  const removePhrases = [
+    'infestation', 'attack', 'damage', 'symptoms', 'problem',
+    'ipm prevention for', 'ipm treatment for', 'using hot water treatment',
+    'using biocontrol', 'most destructive', 'check for',
+    'seed not germinated', 'dead heart present', 'insects visible',
+    'seed borne', 'soil borne'
+  ];
+  for (const phrase of removePhrases) {
+    normalized = normalized.replace(new RegExp(phrase, 'gi'), '');
+  }
+  
+  // Convert to snake_case
+  normalized = normalized
     .replace(/[\s-]+/g, '_')          // spaces/hyphens to underscore
     .replace(/['']/g, '')              // remove apostrophes
     .replace(/_+/g, '_')               // collapse multiple underscores
     .replace(/^_|_$/g, '');            // trim underscores
+  
+  // Try known patterns to extract core pest name
+  const knownPatterns: [RegExp, string][] = [
+    [/early_?shoot_?borer/i, 'early_shoot_borer'],
+    [/shoot_?borer/i, 'shoot_borer'],
+    [/stem_?borer/i, 'stem_borer'],
+    [/internode_?borer/i, 'internode_borer'],
+    [/top_?borer/i, 'top_borer'],
+    [/root_?borer/i, 'root_borer'],
+    [/termite/i, 'termite'],
+    [/red_?rot/i, 'red_rot'],
+    [/smut/i, 'smut'],
+    [/wilt/i, 'wilt'],
+    [/root_?rot/i, 'root_rot'],
+    [/whitefly/i, 'whitefly'],
+    [/aphid/i, 'aphid'],
+    [/mealybug/i, 'mealybug'],
+    [/thrips/i, 'thrips'],
+    [/bollworm/i, 'bollworm'],
+    [/pink_?bollworm/i, 'pink_bollworm'],
+    [/american_?bollworm/i, 'american_bollworm'],
+    [/leaf_?spot/i, 'leaf_spot'],
+    [/rust/i, 'rust'],
+    [/blight/i, 'blight'],
+    [/powdery_?mildew/i, 'powdery_mildew'],
+    [/downy_?mildew/i, 'downy_mildew'],
+    [/nitrogen/i, 'nitrogen_deficiency'],
+    [/phosphorus/i, 'phosphorus_deficiency'],
+    [/potassium/i, 'potassium_deficiency'],
+    [/iron/i, 'iron_deficiency'],
+    [/water_?stress/i, 'water_stress'],
+    [/waterlog/i, 'waterlogging'],
+    [/dead_?heart/i, 'dead_heart'],
+    [/poor_?germination/i, 'poor_germination'],
+    [/lodging/i, 'lodging']
+  ];
+  
+  for (const [pattern, key] of knownPatterns) {
+    if (pattern.test(normalized) || pattern.test(name)) {
+      console.log(`   [normalizePestName] Pattern matched: "${name}" → "${key}"`);
+      return key;
+    }
+  }
+  
+  return normalized;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

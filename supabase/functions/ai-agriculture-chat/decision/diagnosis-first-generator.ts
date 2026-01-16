@@ -120,19 +120,21 @@ function getGroupIcon(canonicalGroup: string): string {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CAUSE NAME TRANSLATIONS
+// CRITICAL: Farmer-friendly names in their language - NOT scientific terms
 // ═══════════════════════════════════════════════════════════════════════════
 
 const CAUSE_TRANSLATIONS: Record<string, { mr: string; hi: string; en: string }> = {
-  // Borers
+  // Borers - ऊस पोखरणारे किडे
   'shoot_borer': { mr: 'खोड किडा', hi: 'तना छेदक', en: 'Shoot Borer' },
   'stem_borer': { mr: 'खोड किडा', hi: 'तना छेदक', en: 'Stem Borer' },
-  'internode_borer': { mr: 'कांडी किडा', hi: 'इंटरनोड बोरर', en: 'Internode Borer' },
-  'early_shoot_borer': { mr: 'सुरुवातीची खोड किडा', hi: 'प्रारंभिक तना छेदक', en: 'Early Shoot Borer' },
-  'top_borer': { mr: 'शेंडा किडा', hi: 'टॉप बोरर', en: 'Top Borer' },
+  'internode_borer': { mr: 'कांडी किडा', hi: 'गांठ छेदक', en: 'Internode Borer' },
+  'early_shoot_borer': { mr: 'सुरुवातीचा खोड किडा', hi: 'प्रारंभिक तना छेदक', en: 'Early Shoot Borer' },
+  'top_borer': { mr: 'शेंडा किडा', hi: 'शीर्ष छेदक', en: 'Top Borer' },
+  'root_borer': { mr: 'मूळ किडा', hi: 'जड़ छेदक', en: 'Root Borer' },
   
   // Termites and soil pests
   'termite': { mr: 'वाळवी', hi: 'दीमक', en: 'Termite' },
-  'termite_attack': { mr: 'वाळवी हल्ला', hi: 'दीमक का हमला', en: 'Termite Attack' },
+  'termite_attack': { mr: 'वाळवीचा हल्ला', hi: 'दीमक का हमला', en: 'Termite Attack' },
   'white_grub': { mr: 'पांढरी अळी', hi: 'सफेद ग्रब', en: 'White Grub' },
   'root_grub': { mr: 'मूळ अळी', hi: 'जड़ ग्रब', en: 'Root Grub' },
   
@@ -148,69 +150,204 @@ const CAUSE_TRANSLATIONS: Record<string, { mr: string; hi: string; en: string }>
   'pink_bollworm': { mr: 'गुलाबी बोंडअळी', hi: 'गुलाबी बोलवर्म', en: 'Pink Bollworm' },
   'american_bollworm': { mr: 'अमेरिकन बोंडअळी', hi: 'अमेरिकन बोलवर्म', en: 'American Bollworm' },
   
-  // Diseases
+  // Diseases - रोग
   'root_rot': { mr: 'मूळ कुज', hi: 'जड़ सड़न', en: 'Root Rot' },
   'wilt': { mr: 'मर रोग', hi: 'म्लानि', en: 'Wilt' },
   'red_rot': { mr: 'लाल कुज', hi: 'लाल सड़न', en: 'Red Rot' },
-  'smut': { mr: 'काणी', hi: 'कंडुआ', en: 'Smut' },
+  'smut': { mr: 'काणी रोग', hi: 'कंडुआ', en: 'Smut' },
+  'smut_seed_borne': { mr: 'काणी रोग', hi: 'कंडुआ', en: 'Smut' },
   'leaf_spot': { mr: 'पानावर डाग', hi: 'पत्ती धब्बा', en: 'Leaf Spot' },
   'rust': { mr: 'तांबेरा', hi: 'गेरुआ', en: 'Rust' },
   'blight': { mr: 'करपा', hi: 'झुलसा', en: 'Blight' },
   'collar_rot': { mr: 'मुळांची कुज', hi: 'कॉलर रॉट', en: 'Collar Rot' },
+  'powdery_mildew': { mr: 'भुरी रोग', hi: 'पाउडर फफूंद', en: 'Powdery Mildew' },
+  'downy_mildew': { mr: 'केवडा', hi: 'डाउनी मिल्ड्यू', en: 'Downy Mildew' },
   
-  // Stress/Deficiency
+  // IPM treatments - These are causes that need translation
+  'ipm_prevention': { mr: 'जैविक उपचार', hi: 'जैविक उपचार', en: 'IPM Prevention' },
+  'hot_water_treatment': { mr: 'गरम पाण्याने उपचार', hi: 'गर्म पानी उपचार', en: 'Hot Water Treatment' },
+  
+  // Stress/Deficiency - ताण / कमतरता
   'water_stress': { mr: 'पाणी ताण', hi: 'पानी तनाव', en: 'Water Stress' },
   'waterlogging': { mr: 'पाणी साचणे', hi: 'जलभराव', en: 'Waterlogging' },
-  'nitrogen_deficiency': { mr: 'नायट्रोजन कमतरता', hi: 'नाइट्रोजन की कमी', en: 'Nitrogen Deficiency' },
+  'nitrogen_deficiency': { mr: 'नत्र कमतरता', hi: 'नाइट्रोजन की कमी', en: 'Nitrogen Deficiency' },
   'phosphorus_deficiency': { mr: 'स्फुरद कमतरता', hi: 'फास्फोरस की कमी', en: 'Phosphorus Deficiency' },
   'potassium_deficiency': { mr: 'पालाश कमतरता', hi: 'पोटाश की कमी', en: 'Potassium Deficiency' },
-  'iron_deficiency': { mr: 'लोह कमतरता', hi: 'लोहे की कमी', en: 'Iron Deficiency' }
+  'iron_deficiency': { mr: 'लोह कमतरता', hi: 'लोहे की कमी', en: 'Iron Deficiency' },
+  
+  // Germination issues
+  'poor_germination': { mr: 'कमी उगवण', hi: 'खराब अंकुरण', en: 'Poor Germination' },
+  'establishment_failure': { mr: 'रोप बसले नाही', hi: 'पौधा स्थापित नहीं', en: 'Establishment Failure' }
 };
 
+/**
+ * Get farmer-friendly cause label in their language.
+ * Uses pattern matching to extract core pest/disease name from complex database strings.
+ */
 function getCauseLabel(cause: string, language: 'mr' | 'hi' | 'en'): string {
-  const normalized = cause.toLowerCase().replace(/[\s-]+/g, '_');
-  const translation = CAUSE_TRANSLATIONS[normalized];
-  if (translation) {
-    return translation[language];
+  // First, try exact match with normalization
+  let normalized = cause.toLowerCase().replace(/[\s-]+/g, '_');
+  
+  if (CAUSE_TRANSLATIONS[normalized]) {
+    return CAUSE_TRANSLATIONS[normalized][language];
   }
-  // Fallback: capitalize cause name
-  return cause.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  
+  // Remove parenthetical scientific names and extra descriptions
+  let simplified = cause
+    .replace(/\([^)]*\)/g, '')  // Remove (scientific names)
+    .replace(/infestation/gi, '')
+    .replace(/attack/gi, '')
+    .replace(/most destructive/gi, '')
+    .replace(/using.*$/gi, '')  // Remove "using hot water treatment" etc.
+    .replace(/ipm prevention for/gi, '')
+    .trim();
+  
+  normalized = simplified.toLowerCase().replace(/[\s-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+  
+  if (CAUSE_TRANSLATIONS[normalized]) {
+    return CAUSE_TRANSLATIONS[normalized][language];
+  }
+  
+  // Try pattern matching for known pests/diseases
+  const patterns: [RegExp, string][] = [
+    [/early.?shoot.?borer/i, 'early_shoot_borer'],
+    [/shoot.?borer/i, 'shoot_borer'],
+    [/stem.?borer/i, 'stem_borer'],
+    [/internode.?borer/i, 'internode_borer'],
+    [/top.?borer/i, 'top_borer'],
+    [/root.?borer/i, 'root_borer'],
+    [/termite/i, 'termite'],
+    [/red.?rot/i, 'red_rot'],
+    [/smut/i, 'smut'],
+    [/wilt/i, 'wilt'],
+    [/root.?rot/i, 'root_rot'],
+    [/whitefly/i, 'whitefly'],
+    [/aphid/i, 'aphid'],
+    [/mealybug/i, 'mealybug'],
+    [/thrips/i, 'thrips'],
+    [/bollworm/i, 'bollworm'],
+    [/pink.?bollworm/i, 'pink_bollworm'],
+    [/american.?bollworm/i, 'american_bollworm'],
+    [/leaf.?spot/i, 'leaf_spot'],
+    [/rust/i, 'rust'],
+    [/blight/i, 'blight'],
+    [/powdery.?mildew/i, 'powdery_mildew'],
+    [/downy.?mildew/i, 'downy_mildew'],
+    [/nitrogen/i, 'nitrogen_deficiency'],
+    [/phosphorus/i, 'phosphorus_deficiency'],
+    [/potassium/i, 'potassium_deficiency'],
+    [/water.?stress/i, 'water_stress'],
+    [/waterlog/i, 'waterlogging'],
+    [/poor.?germination/i, 'poor_germination']
+  ];
+  
+  for (const [pattern, key] of patterns) {
+    if (pattern.test(cause)) {
+      const translation = CAUSE_TRANSLATIONS[key];
+      if (translation) {
+        console.log(`   [getCauseLabel] Pattern matched: "${cause}" → "${translation[language]}"`);
+        return translation[language];
+      }
+    }
+  }
+  
+  // Ultimate fallback: clean up and title case the cause
+  const fallback = simplified
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase())
+    .trim();
+  
+  console.log(`   ⚠️ [getCauseLabel] No translation found for: "${cause}", using: "${fallback}"`);
+  return fallback || cause;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OBSERVATION KEY TO FARMER-FRIENDLY LABEL
+// CRITICAL: These labels must be simple farmer-understandable phrases
 // ═══════════════════════════════════════════════════════════════════════════
 
 const OBSERVATION_LABELS: Record<string, { mr: string; hi: string; en: string }> = {
-  'DEAD_HEART': { mr: 'मधला सुरळी वाळलेला', hi: 'मध्य सूख गया', en: 'Dead heart (central whorl dried)' },
-  'DEAD_HEART_VISIBLE': { mr: 'मधला सुरळी वाळलेला', hi: 'मध्य सूख गया', en: 'Dead heart visible' },
+  // Dead heart symptoms
+  'DEAD_HEART': { mr: 'मधली पाने वाळली', hi: 'बीच के पत्ते सूखे', en: 'Central leaves dried' },
+  'DEAD_HEART_VISIBLE': { mr: 'मधली पाने वाळली', hi: 'बीच के पत्ते सूखे', en: 'Dead heart visible' },
+  'DEAD_HEART_PRESENT': { mr: 'मधली पाने वाळली', hi: 'बीच के पत्ते सूखे', en: 'Dead heart present' },
+  
+  // Borer symptoms
   'TUNNELS_IN_STEM': { mr: 'खोडात भोके', hi: 'तने में सुरंग', en: 'Tunnels in stem' },
-  'BORE_HOLES': { mr: 'खोडावर भोके', hi: 'तने में छेद', en: 'Bore holes in stem' },
-  'FRASS_VISIBLE': { mr: 'भुसा दिसतो', hi: 'भूसा दिखता है', en: 'Frass (sawdust-like waste) visible' },
+  'BORE_HOLES': { mr: 'खोडावर भोके', hi: 'तने में छेद', en: 'Holes in stem' },
+  'FRASS_VISIBLE': { mr: 'भुसा दिसतो', hi: 'भूसा दिखता है', en: 'Sawdust-like waste visible' },
+  
+  // Termite symptoms
   'MUD_TUBES_VISIBLE': { mr: 'मातीचे बोगदे', hi: 'मिट्टी की नलियाँ', en: 'Mud tubes at base' },
   'MUD_GALLERIES': { mr: 'मातीचे बोगदे', hi: 'मिट्टी की नलियाँ', en: 'Mud galleries' },
   'TERMITE_DAMAGE': { mr: 'वाळवीचे नुकसान', hi: 'दीमक का नुकसान', en: 'Termite damage' },
+  
+  // Root symptoms
   'ROOT_DAMAGE': { mr: 'मुळांचे नुकसान', hi: 'जड़ का नुकसान', en: 'Root damage visible' },
   'ROOT_ROT': { mr: 'मूळ कुजलेले', hi: 'जड़ सड़ी', en: 'Roots are rotting' },
   'WATERLOGGED_ROOTS': { mr: 'मुळांवर पाणी', hi: 'जड़ों में पानी', en: 'Waterlogged roots' },
+  
+  // Plant structure symptoms
   'EASY_TO_PULL': { mr: 'झाड सहज उपटते', hi: 'पौधा आसानी से उखड़ता', en: 'Plant pulls out easily' },
   'PLANT_FALLING_OVER': { mr: 'झाड पडते', hi: 'पौधा गिर रहा', en: 'Plant falling over' },
-  'WILTING': { mr: 'मुरझलेले', hi: 'मुरझाया', en: 'Wilting visible' },
-  'YELLOWING': { mr: 'पिवळे झाले', hi: 'पीला हो गया', en: 'Yellowing' },
-  'HONEYDEW': { mr: 'चिकट पदार्थ', hi: 'चिपचिपा पदार्थ', en: 'Sticky honeydew' },
+  'WILTING': { mr: 'पाने मुरझलेली', hi: 'पत्ते मुरझाए', en: 'Wilting visible' },
+  'YELLOWING': { mr: 'पाने पिवळी झाली', hi: 'पत्ते पीले हो गए', en: 'Yellowing' },
+  
+  // Pest symptoms
+  'HONEYDEW': { mr: 'चिकट पदार्थ पानावर', hi: 'पत्तों पर चिपचिपा', en: 'Sticky honeydew' },
   'SOOTY_MOLD': { mr: 'काळी बुरशी', hi: 'काला फफूंद', en: 'Black sooty mold' },
   'SMALL_INSECTS_VISIBLE': { mr: 'लहान किडे दिसतात', hi: 'छोटे कीड़े दिखते', en: 'Small insects visible' },
-  'LARVAE_VISIBLE': { mr: 'अळ्या दिसतात', hi: 'लार्वा दिखता है', en: 'Larvae visible' }
+  'INSECTS_VISIBLE': { mr: 'किडे दिसतात', hi: 'कीड़े दिखते', en: 'Insects visible' },
+  'LARVAE_VISIBLE': { mr: 'अळ्या दिसतात', hi: 'लार्वा दिखता है', en: 'Larvae visible' },
+  
+  // Germination symptoms
+  'SEED_NOT_GERMINATED': { mr: 'बियाणे उगवले नाही', hi: 'बीज नहीं उगा', en: 'Seed not germinated' },
+  'POOR_GERMINATION': { mr: 'कमी उगवण', hi: 'खराब अंकुरण', en: 'Poor germination' },
+  'GAPS_IN_ROWS': { mr: 'ओळीत खाली जागा', hi: 'कतार में खाली जगह', en: 'Gaps in rows' },
+  
+  // Disease symptoms
+  'RED_LESIONS': { mr: 'लाल डाग', hi: 'लाल धब्बे', en: 'Red lesions' },
+  'WHITE_POWDER': { mr: 'पांढरी भुकटी', hi: 'सफेद पाउडर', en: 'White powder' },
+  'BLACK_SPORES': { mr: 'काळ्या बीजाणू', hi: 'काले बीजाणु', en: 'Black spores' },
+  'LEAF_SPOTS': { mr: 'पानावर डाग', hi: 'पत्तों पर धब्बे', en: 'Leaf spots' },
+  
+  // Visual check fallback
+  'VISUAL_CHECK': { mr: 'पिकाची तपासणी करा', hi: 'फसल की जाँच करें', en: 'Check the crop' }
 };
 
 function getObservationLabel(key: string, language: 'mr' | 'hi' | 'en'): string {
-  const normalized = key.toUpperCase().replace(/[\s-]+/g, '_');
-  const translation = OBSERVATION_LABELS[normalized];
-  if (translation) {
-    return translation[language];
+  // Normalize the key
+  let normalized = key.toUpperCase().replace(/[\s-]+/g, '_');
+  
+  // Direct lookup
+  if (OBSERVATION_LABELS[normalized]) {
+    return OBSERVATION_LABELS[normalized][language];
   }
-  // Fallback: format the key
-  return key.replace(/_/g, ' ').toLowerCase();
+  
+  // Try without common prefixes/suffixes
+  normalized = normalized
+    .replace(/^CHECK_FOR_/i, '')
+    .replace(/_PRESENT$/i, '')
+    .replace(/_VISIBLE$/i, '');
+  
+  if (OBSERVATION_LABELS[normalized]) {
+    return OBSERVATION_LABELS[normalized][language];
+  }
+  
+  // Fallback: format the key in farmer-friendly way
+  const formatted = key
+    .replace(/_/g, ' ')
+    .replace(/check for/i, '')
+    .trim()
+    .toLowerCase();
+  
+  // Return with language-appropriate prefix
+  if (language === 'mr') {
+    return `${formatted} तपासा`;
+  } else if (language === 'hi') {
+    return `${formatted} जाँचें`;
+  }
+  return formatted;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
