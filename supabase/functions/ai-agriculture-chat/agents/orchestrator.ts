@@ -2301,6 +2301,31 @@ export class AIAgentOrchestrator {
       // v4.0: For DIAGNOSIS_WITH_CLARIFICATION, allow optional confirmation but still run rules
       let diagnosisWithOptionalClarification = cropDamageResult.diagnosis_mode === 'DIAGNOSIS_WITH_CLARIFICATION';
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX v4.1: Override DIAGNOSIS_ONLY → DIAGNOSIS_WITH_CLARIFICATION
+      // when land context exists. This ensures farmers see diagnosis options to
+      // select, which increases confidence for accurate treatment recommendations.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const hasLandContext = landContext && 
+        landContext.current_crop && 
+        landContext.days_since_sowing !== undefined &&
+        landContext.days_since_sowing !== null;
+      
+      const shouldShowDiagnosisOptions = cropDamageResult.requires_diagnosis && hasLandContext;
+      
+      if (shouldShowDiagnosisOptions && diagnosisOnlyModeActive) {
+        console.log(`\n🔄 [DIAGNOSIS MODE OVERRIDE v4.1]`);
+        console.log(`   Original mode: DIAGNOSIS_ONLY`);
+        console.log(`   Override to: DIAGNOSIS_WITH_CLARIFICATION`);
+        console.log(`   Reason: Land context available (${landContext.current_crop}, DAS: ${landContext.days_since_sowing})`);
+        console.log(`   Effect: Will show diagnosis options to farmer for confirmation`);
+        
+        // Override mode flags
+        diagnosisOnlyModeActive = false;
+        bypassClarificationForTerminalDamage = false;
+        diagnosisWithOptionalClarification = true;
+      }
+      
       // v4.0: HARD INVARIANT CHECK - crop damage MUST have CROP authority
       if (shouldActivateDiagnosisMode && (cropDamageResult.enforced_authority || diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority)) {
         const resolvedAuthority = cropDamageResult.enforced_authority || 
