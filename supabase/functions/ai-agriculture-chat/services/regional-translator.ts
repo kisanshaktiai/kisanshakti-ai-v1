@@ -161,26 +161,36 @@ Now translate for ${location.district} district:`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LLM CALLER
+// LLM CALLER - Uses Lovable AI Gateway for consistent API access
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function callLLMForTranslation(prompt: string): Promise<string | null> {
+  // Try Lovable AI Gateway first (preferred), then fall back to OpenAI direct
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
   
-  if (!OPENAI_API_KEY) {
-    console.warn('⚠️ [RegionalTranslator] OPENAI_API_KEY not available');
+  const apiKey = LOVABLE_API_KEY || OPENAI_API_KEY;
+  const apiUrl = LOVABLE_API_KEY 
+    ? 'https://ai.gateway.lovable.dev/v1/chat/completions'
+    : 'https://api.openai.com/v1/chat/completions';
+  const model = LOVABLE_API_KEY ? 'google/gemini-2.5-flash-lite' : 'gpt-4o-mini';
+  
+  if (!apiKey) {
+    console.warn('⚠️ [RegionalTranslator] No API key available (LOVABLE_API_KEY or OPENAI_API_KEY)');
     return null;
   }
   
+  console.log(`   🌐 [RegionalTranslator] Using ${LOVABLE_API_KEY ? 'Lovable AI Gateway' : 'OpenAI'} for translation`);
+  
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',  // Cost-effective for translation
+        model: model,  // Cost-effective model for translation
         messages: [
           { role: 'system', content: 'You are an agricultural translation expert for rural Indian farmers. Always respond with valid JSON only.' },
           { role: 'user', content: prompt }
@@ -191,12 +201,15 @@ async function callLLMForTranslation(prompt: string): Promise<string | null> {
     });
     
     if (!response.ok) {
-      console.error(`❌ [RegionalTranslator] LLM call failed: ${response.status}`);
+      const errorText = await response.text();
+      console.error(`❌ [RegionalTranslator] LLM call failed: ${response.status} - ${errorText}`);
       return null;
     }
     
     const data = await response.json();
-    return data.choices?.[0]?.message?.content || null;
+    const content = data.choices?.[0]?.message?.content;
+    console.log(`   ✅ [RegionalTranslator] LLM translation received: ${content?.substring(0, 100)}...`);
+    return content || null;
   } catch (error) {
     console.error(`❌ [RegionalTranslator] LLM call error:`, error);
     return null;
