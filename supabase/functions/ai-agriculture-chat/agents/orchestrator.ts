@@ -2396,15 +2396,29 @@ export class AIAgentOrchestrator {
           // Generate diagnosis-first response
           let diagnosisFirstOutput: DiagnosisFirstOutput | null = null;
           
+          // v1.1.0: Build farmer location for regional translation
+          const farmerLocation = landContext ? {
+            state: landContext.state || 'Maharashtra',
+            district: landContext.district || 'Pune',
+            tehsil: landContext.tehsil || undefined,
+            language: (options.language || 'mr') as 'mr' | 'hi' | 'en'
+          } : undefined;
+          
+          if (farmerLocation) {
+            console.log(`   🌍 Farmer location: ${farmerLocation.district}, ${farmerLocation.state}`);
+          }
+          
           if (hypothesisResult.candidates.length > 0) {
-            diagnosisFirstOutput = generateDiagnosisFirstResponse({
+            // v1.1.0: Now async for regional translation support
+            diagnosisFirstOutput = await generateDiagnosisFirstResponse({
               hypotheses: hypothesisResult.candidates,
               crop_code: cropCode,
               growth_stage: growthStage,
               current_observations: currentObservations,
               language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
               damage_observations: cropDamageResult.damage_observations,
-              trace_id: traceId
+              trace_id: traceId,
+              farmer_location: farmerLocation
             });
           } else {
             // No candidates - generate UNKNOWN diagnosis response
