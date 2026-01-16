@@ -821,6 +821,26 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     parts.push(`These are 1000x larger than chemical dosages - this is CORRECT!`);
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MATCHED RESPONSES - Pre-formatted responses from decision rules in farmer's language
+  // CRITICAL: These contain response_mr, response_hi, response_en from the rule database
+  // ═══════════════════════════════════════════════════════════════════════════
+  const matchedResponses = decision.matched_responses;
+  if (matchedResponses && matchedResponses.length > 0) {
+    parts.push(`\n═══ IPM TREATMENT RESPONSES (Use in farmer's language): ═══`);
+    matchedResponses.forEach((resp: any, idx: number) => {
+      // Use the response in the farmer's preferred language
+      const localizedResponse = resp[`response_${input.language}`] || resp.response_en || resp.response_mr || '';
+      if (localizedResponse) {
+        parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
+        parts.push(`   ═══ COPY THIS TEXT EXACTLY ═══`);
+        parts.push(`   ${localizedResponse}`);
+        parts.push(`   ═════════════════════════════`);
+      }
+    });
+    parts.push(`\n⚠️ IMPORTANT: Use the above IPM treatment responses as-is in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}. Do not modify them.`);
+  }
+  
   // Warnings
   if (decision.warnings && decision.warnings.length > 0) {
     parts.push(`\nWARNINGS:`);
@@ -1103,13 +1123,33 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       parts.push(askMore[lang]);
     }
   } else {
-    // No valid recommendation from rule engine - provide safe fallback
-    const safeAdvice: Record<string, string> = {
-      mr: '👀 **विश्लेषण:**\nतुमचा प्रश्न समजला. अचूक शिफारसीसाठी कृपया:\n• पिकाचा फोटो पाठवा\n• किंवा लक्षणांचे अधिक तपशील द्या',
-      hi: '👀 **विश्लेषण:**\nआपका प्रश्न समझा। सटीक सिफारिश के लिए कृपया:\n• फसल का फोटो भेजें\n• या लक्षणों का अधिक विवरण दें',
-      en: '👀 **Analysis:**\nI understand your question. For accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms'
-    };
-    parts.push(safeAdvice[lang]);
+    // Check for matched_responses (IPM treatment responses from rule database)
+    const matchedResponses = decision?.matched_responses;
+    if (matchedResponses && matchedResponses.length > 0) {
+      // Use pre-formatted responses from the rule database in farmer's language
+      const ipmHeader: Record<string, string> = {
+        mr: '📌 **शिफारस (IPM):**',
+        hi: '📌 **सिफारिश (IPM):**',
+        en: '📌 **Recommendation (IPM):**'
+      };
+      parts.push(ipmHeader[lang]);
+      
+      matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
+        // Use the response in farmer's preferred language
+        const localizedResponse = resp[`response_${lang}`] || resp.response_en || resp.response_mr || '';
+        if (localizedResponse) {
+          parts.push(`\n${idx + 1}. **${resp.cause || 'उपचार'}:**\n${localizedResponse}`);
+        }
+      });
+    } else {
+      // No valid recommendation from rule engine - provide safe fallback
+      const safeAdvice: Record<string, string> = {
+        mr: '👀 **विश्लेषण:**\nतुमचा प्रश्न समजला. अचूक शिफारसीसाठी कृपया:\n• पिकाचा फोटो पाठवा\n• किंवा लक्षणांचे अधिक तपशील द्या',
+        hi: '👀 **विश्लेषण:**\nआपका प्रश्न समझा। सटीक सिफारिश के लिए कृपया:\n• फसल का फोटो भेजें\n• या लक्षणों का अधिक विवरण दें',
+        en: '👀 **Analysis:**\nI understand your question. For accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms'
+      };
+      parts.push(safeAdvice[lang]);
+    }
   }
   
   // Secondary recommendations - from CURRENT decision only
