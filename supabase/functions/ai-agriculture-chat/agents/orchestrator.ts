@@ -2130,23 +2130,28 @@ export class AIAgentOrchestrator {
       console.log(`      Clarification required: ${understandingResult.clarification_required}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // PHASE-19: ENHANCE UNDERSTANDING WITH PHOTO ANALYSIS
-      // If farmer uploaded a photo, merge photo observations into understanding
+      // PHASE-19: ENHANCED PHOTO OBSERVATION NORMALIZATION
+      // If farmer uploaded a photo, normalize Vision AI output to canonical
+      // ObservationKey codes and inject into rule engine pipeline (same as text)
       // ═══════════════════════════════════════════════════════════════════════════
+      
+      // Import photo observation mapper for canonical code normalization
+      let photoMappedCodes: any = null;
+      
       if (photoAnalysisResult && photoAnalysisResult.success) {
-        console.log(`\n📸 [PHASE-19] Enhancing understanding with photo observations...`);
+        console.log(`\n📸 [PHASE-19 v2.0] Normalizing photo observations to ObservationKeys...`);
         
-        // Add photo observations to observation extraction
+        // STEP 1: Import and use the photo-to-ObservationKey mapper
+        const { mapPhotoToObservationKeys, photoProvidesSufficientData } = await import('../photo/photo-observation-mapper.ts');
+        photoMappedCodes = mapPhotoToObservationKeys(photoAnalysisResult);
+        
+        console.log(`   ✅ Mapped ${photoMappedCodes.observation_codes.length} ObservationKeys from photo`);
+        console.log(`   Keys: ${photoMappedCodes.observation_codes.slice(0, 5).join(', ')}${photoMappedCodes.observation_codes.length > 5 ? '...' : ''}`);
+        console.log(`   Severity: ${photoMappedCodes.severity_code}`);
+        console.log(`   Affected part: ${photoMappedCodes.affected_part_code}`);
+        
+        // STEP 2: Add photo observations to observation extraction (for NLU compatibility)
         photoAnalysisResult.observations.forEach(obs => {
-          // Map photo observation to observation extraction format
-          const photoSymptom = {
-            key: obs.key,
-            text: obs.description,
-            confidence: obs.confidence,
-            source: 'PHOTO_ANALYSIS'
-          };
-          
-          // Add to extracted symptoms if not already present
           if (!observationExtraction.extracted_symptoms?.some(s => s.text?.includes(obs.key))) {
             observationExtraction.extracted_symptoms = observationExtraction.extracted_symptoms || [];
             observationExtraction.extracted_symptoms.push({
@@ -2157,14 +2162,55 @@ export class AIAgentOrchestrator {
           }
         });
         
-        // Reduce clarification requirement if photo provides good data
-        if (photoAnalysisResult.observations.length >= 2 && photoAnalysisResult.confidence > 0.6) {
+        // STEP 3: Inject photo observation codes into observationKeys array
+        // This ensures photo data flows through rule engine exactly like text selections
+        if (photoMappedCodes.observation_codes.length > 0) {
+          console.log(`   📥 Injecting ${photoMappedCodes.observation_codes.length} photo codes into observationKeys...`);
+          
+          photoMappedCodes.observation_codes.forEach((code: any) => {
+            if (!observationKeys.includes(code)) {
+              observationKeys.push(code);
+            }
+          });
+          
+          // Also inject into inductionResult.symptoms for canonical state
+          photoMappedCodes.observation_codes.forEach((code: any) => {
+            if (!inductionResult.symptoms.find((s: any) => s.symbol === code)) {
+              inductionResult.symptoms.push({
+                symbol: code,
+                confidence: photoMappedCodes.confidence,
+                source: 'PHOTO_VISION_AI'
+              });
+            }
+          });
+          
+          // Also inject into mappedCodes.observation_codes if exists
+          if (mappedCodes?.observation_codes) {
+            photoMappedCodes.observation_codes.forEach((code: any) => {
+              if (!mappedCodes.observation_codes.includes(code)) {
+                mappedCodes.observation_codes.push(code);
+              }
+            });
+          }
+        }
+        
+        // STEP 4: Check if photo provides sufficient data to skip clarification
+        const photoIsSufficient = photoProvidesSufficientData(photoMappedCodes);
+        
+        if (photoIsSufficient) {
+          console.log(`   📈 Photo provides SUFFICIENT data (${photoMappedCodes.observation_codes.length} codes, ${(photoMappedCodes.confidence * 100).toFixed(0)}% confidence)`);
+          console.log(`   ⏭️ SKIPPING clarification - proceeding directly to rule evaluation`);
+          understandingResult.clarification_required = false;
+          understandingResult.completeness_score = Math.min(100, understandingResult.completeness_score + 30);
+          understandingResult.understanding_confidence = UnderstandingConfidence.HIGH;
+        } else if (photoAnalysisResult.observations.length >= 2 && photoAnalysisResult.confidence > 0.6) {
           console.log(`   📈 Photo provides ${photoAnalysisResult.observations.length} observations - reducing clarification need`);
           understandingResult.clarification_required = false;
           understandingResult.completeness_score = Math.min(100, understandingResult.completeness_score + 20);
           understandingResult.understanding_confidence = UnderstandingConfidence.SUFFICIENT;
         }
         
+        agentsUsed.push('PHOTO_OBSERVATION_NORMALIZER');
         agentsUsed.push('PHOTO_UNDERSTANDING_ENHANCED');
       }
       
@@ -2206,6 +2252,15 @@ export class AIAgentOrchestrator {
       if (inductionResult?.symptoms) {
         inductionResult.symptoms.forEach((s: any) => {
           if (s.symbol) allObservationsForPreAuth.add(s.symbol);
+        });
+      }
+      
+      // PHASE-19 v2.0: Add photo-mapped codes to allObservationsForPreAuth
+      // This ensures photo observations are evaluated by the rule engine
+      if (photoMappedCodes?.observation_codes) {
+        console.log(`   📸 Adding ${photoMappedCodes.observation_codes.length} photo codes to allObservationsForPreAuth`);
+        photoMappedCodes.observation_codes.forEach((code: any) => {
+          allObservationsForPreAuth.add(String(code));
         });
       }
       
@@ -2270,10 +2325,26 @@ export class AIAgentOrchestrator {
         1 // Kept for backward compatibility
       );
       
-      // v4.0: Enhanced activation check - crop damage OR terminal damage
+      // v4.0: Enhanced activation check - crop damage OR terminal damage OR photo-detected issues
+      // PHASE-19 v2.0: If photo detected high-confidence issues, force diagnosis mode
+      let photoForcedDiagnosis = false;
+      if (photoAnalysisResult?.success && photoAnalysisResult.detected_issues.length > 0) {
+        const photoHasHighConfidenceIssue = photoAnalysisResult.detected_issues.some(
+          (issue: any) => issue.confidence > 0.7
+        );
+        
+        if (photoHasHighConfidenceIssue) {
+          console.log(`   📸 [PHOTO DIAGNOSIS TRIGGER] Photo detected ${photoAnalysisResult.detected_issues.length} issues - forcing DIAGNOSIS mode`);
+          console.log(`   Photo severity: ${photoAnalysisResult.severity_assessment.overall_severity}`);
+          console.log(`   Photo confidence: ${(photoAnalysisResult.confidence * 100).toFixed(0)}%`);
+          photoForcedDiagnosis = true;
+        }
+      }
+      
       const shouldActivateDiagnosisMode = diagnosisOnlyCheck.activate || 
         preAuthorityResult.nlu_bypassed || 
-        cropDamageResult.requires_diagnosis;
+        cropDamageResult.requires_diagnosis ||
+        photoForcedDiagnosis;
       
       // Log the check result (v4.0 - enhanced logging)
       if (shouldActivateDiagnosisMode) {
