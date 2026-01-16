@@ -3178,12 +3178,12 @@ export class AIAgentOrchestrator {
       
       // FIX: Routing determinism - if symbolic path is chosen, invalidate direct-answer flag
       const isNonAgricultural = ['GREETING', 'APP_HELP'].includes(queryRoute.route);
-      const hasLandContext = !!landContext;
+      const hasLandContextForRouting = !!landContext; // Renamed to avoid duplicate declaration
       const hasSymptoms = inductionResult.symptoms.length > 0;
       
       // DETERMINISTIC ROUTING DECISION (evaluated exactly once)
       // Symbolic path takes priority when: land context exists OR symptoms detected OR rules needed
-      const forceSymbolicPath = hasLandContext || hasSymptoms || needsRules || shouldRunSymbolicBrain;
+      const forceSymbolicPath = hasLandContextForRouting || hasSymptoms || needsRules || shouldRunSymbolicBrain;
       const effectiveCanDirectAnswer = canDirectAnswer && !forceSymbolicPath && isNonAgricultural;
       
       console.log(`   🔀 Routing decision: canDirectAnswer=${canDirectAnswer}, needsRules=${needsRules}`);
@@ -3191,7 +3191,7 @@ export class AIAgentOrchestrator {
       
       // CRITICAL: Block LLM-first path if symbolic path is forced
       if (forceSymbolicPath && canDirectAnswer) {
-        console.log(`   🚫 LLM-first BLOCKED - symbolic path forced (land=${hasLandContext}, symptoms=${hasSymptoms})`);
+        console.log(`   🚫 LLM-first BLOCKED - symbolic path forced (land=${hasLandContextForRouting}, symptoms=${hasSymptoms})`);
       }
       
       // CRITICAL: Only allow LLM-first for NON-agricultural queries (use deterministic flag)
