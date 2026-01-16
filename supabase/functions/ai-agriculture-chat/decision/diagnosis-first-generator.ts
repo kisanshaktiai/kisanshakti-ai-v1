@@ -29,7 +29,8 @@
  */
 
 import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothesis-evaluator.ts';
-import type { FarmerLocation, RegionalTranslation } from '../services/regional-translator.ts';
+// STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
+import { translateToRegionalTerms, type FarmerLocation, type RegionalTranslation } from '../services/regional-translator.ts';
 
 export const DIAGNOSIS_FIRST_VERSION = '1.1.0';  // Updated for regional translation
 
@@ -349,9 +350,7 @@ export async function generateDiagnosisFirstResponse(
       
       if (farmer_location) {
         try {
-          // Dynamic import for optional regional translation
-          const { translateToRegionalTerms } = await import('../services/regional-translator.ts');
-          
+          // Use static import (already imported at top of file)
           const regional = await translateToRegionalTerms(
             {
               pest_name_en: h.cause,
