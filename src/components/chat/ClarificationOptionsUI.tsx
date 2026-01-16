@@ -45,6 +45,8 @@ interface ClarificationOptionsUIProps {
   selectionType?: SelectionType;
   language: string;
   onSelect: (selectedOptions: string[]) => void;
+  /** CRITICAL: Handler for photo option - opens camera instead of sending message */
+  onTakePhoto?: () => void;
   isSubmitting?: boolean;
   maxSelections?: number;
   /** Enable trust-first diagnostic confirmation mode */
@@ -317,6 +319,7 @@ export function ClarificationOptionsUI({
   selectionType = 'SINGLE_CHOICE',
   language,
   onSelect,
+  onTakePhoto,
   isSubmitting = false,
   maxSelections = 3,
   isDiagnosticConfirmation = false,
@@ -333,11 +336,31 @@ export function ClarificationOptionsUI({
     question.toLowerCase().includes('कारण पहचान');
   
   /**
-   * CRITICAL FIX: Send observation_key embedded in message for backend detection
+   * Check if an option is a photo option
+   */
+  const isPhotoOption = (option: ClarificationOption): boolean => {
+    const labelLower = option.label.toLowerCase();
+    const keyLower = (option.observation_key || option.value || '').toLowerCase();
+    return labelLower.includes('फोटो') || 
+           labelLower.includes('photo') ||
+           labelLower.includes('📷') ||
+           keyLower === 'photo_upload';
+  };
+  
+  /**
+   * CRITICAL FIX: Handle option selection
+   * - Photo options: trigger camera via onTakePhoto callback
+   * - Other options: send observation_key embedded in message for backend detection
    * Format: "Label text [obs_keys:OBSERVATION_KEY1,OBSERVATION_KEY2]"
-   * This breaks the infinite loop by allowing backend to directly extract keys
    */
   const handleSingleSelect = (option: ClarificationOption) => {
+    // CRITICAL: Check if this is a photo option - trigger camera instead of sending message
+    if (isPhotoOption(option) && onTakePhoto) {
+      console.log(`[ClarificationOptionsUI] Photo option selected - opening camera`);
+      onTakePhoto();
+      return;
+    }
+    
     // Build payload with embedded observation key for deterministic backend parsing
     const observationKey = option.observation_key || option.value;
     const payload = observationKey 

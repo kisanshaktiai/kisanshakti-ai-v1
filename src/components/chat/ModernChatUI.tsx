@@ -542,6 +542,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 selectionType={clarificationData.selectionType}
                 language={currentLanguage}
                 onSelect={onClarificationSelect}
+                onTakePhoto={onTakePhoto}
               />
               
               {/* Timestamp */}
