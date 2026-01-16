@@ -332,9 +332,20 @@ export function ClarificationOptionsUI({
     question.toLowerCase().includes('कारण ओळख') ||
     question.toLowerCase().includes('कारण पहचान');
   
-  const handleSingleSelect = (optionLabel: string) => {
-    // Immediately submit for single choice
-    onSelect([optionLabel]);
+  /**
+   * CRITICAL FIX: Send observation_key embedded in message for backend detection
+   * Format: "Label text [obs_keys:OBSERVATION_KEY1,OBSERVATION_KEY2]"
+   * This breaks the infinite loop by allowing backend to directly extract keys
+   */
+  const handleSingleSelect = (option: ClarificationOption) => {
+    // Build payload with embedded observation key for deterministic backend parsing
+    const observationKey = option.observation_key || option.value;
+    const payload = observationKey 
+      ? `${option.label} [obs_keys:${observationKey}]`
+      : option.label;
+    
+    console.log(`[ClarificationOptionsUI] Single select: ${payload}`);
+    onSelect([payload]);
   };
   
   const handleMultiToggle = (optionLabel: string) => {
@@ -349,9 +360,22 @@ export function ClarificationOptionsUI({
     });
   };
   
+  /**
+   * CRITICAL FIX: Map selected labels to observation_keys for multi-select
+   * Embeds observation keys in the message for deterministic backend parsing
+   */
   const handleSubmit = () => {
     if (selectedOptions.size > 0) {
-      onSelect(Array.from(selectedOptions));
+      // Map selected labels to their observation keys
+      const payloads = Array.from(selectedOptions).map(label => {
+        const option = options.find(opt => opt.label === label);
+        const observationKey = option?.observation_key || option?.value;
+        return observationKey 
+          ? `${label} [obs_keys:${observationKey}]`
+          : label;
+      });
+      console.log(`[ClarificationOptionsUI] Multi select: ${payloads.join(', ')}`);
+      onSelect(payloads);
     }
   };
   
@@ -407,7 +431,7 @@ export function ClarificationOptionsUI({
                 option={option}
                 index={index}
                 isSelected={false}
-                onSelect={() => handleSingleSelect(option.label)}
+                onSelect={() => handleSingleSelect(option)}
                 isDiagnostic={isDiagnostic}
               />
             ) : (

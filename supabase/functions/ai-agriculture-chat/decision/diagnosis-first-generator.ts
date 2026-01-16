@@ -29,8 +29,9 @@
  */
 
 import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothesis-evaluator.ts';
+import type { FarmerLocation, RegionalTranslation } from '../services/regional-translator.ts';
 
-export const DIAGNOSIS_FIRST_VERSION = '1.0.0';
+export const DIAGNOSIS_FIRST_VERSION = '1.1.0';  // Updated for regional translation
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -83,6 +84,8 @@ export interface DiagnosisFirstInput {
   language: 'mr' | 'hi' | 'en';
   damage_observations?: string[];
   trace_id?: string;
+  /** NEW v1.1.0: Farmer location for regional translation */
+  farmer_location?: FarmerLocation;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -262,10 +265,12 @@ function getQuestionText(
  * diagnosis options immediately - don't ask generic clarification questions.
  * 
  * This is how a senior agronomist operates in the field.
+ * 
+ * v1.1.0: Now supports async regional translation for authentic farmer vocabulary.
  */
-export function generateDiagnosisFirstResponse(
+export async function generateDiagnosisFirstResponse(
   input: DiagnosisFirstInput
-): DiagnosisFirstOutput | null {
+): Promise<DiagnosisFirstOutput | null> {
   const {
     hypotheses,
     crop_code,
@@ -273,7 +278,8 @@ export function generateDiagnosisFirstResponse(
     current_observations,
     language,
     damage_observations,
-    trace_id
+    trace_id,
+    farmer_location
   } = input;
   
   const traceIdFinal = trace_id || `diag_${Date.now()}`;
@@ -286,6 +292,9 @@ export function generateDiagnosisFirstResponse(
   console.log(`   Crop=${crop_code}, Stage=${growth_stage}`);
   console.log(`   Hypotheses received: ${hypotheses.length}`);
   console.log(`   Damage observations: ${(damage_observations || []).join(', ') || 'none'}`);
+  if (farmer_location) {
+    console.log(`   🌍 Regional translation: ${farmer_location.district}, ${farmer_location.state} (${farmer_location.language})`);
+  }
   
   // Validate: Need at least one hypothesis
   if (!hypotheses || hypotheses.length === 0) {
@@ -311,35 +320,75 @@ export function generateDiagnosisFirstResponse(
     console.log(`      ${i + 1}. ${h.cause} (group=${h.canonical_group}, priority=${h.priority}, score=${h.total_score.toFixed(2)})`);
   });
   
-  // Generate diagnosis options
-  const diagnoses: DiagnosisOption[] = topHypotheses.map((h, idx) => {
-    // Get the best differentiating observation for this hypothesis
-    let bestObservation = h.observable_characteristics?.[0];
-    
-    // Try to find an observation not already known
-    for (const obs of h.observable_characteristics || []) {
-      const obsKey = obs.observation_key.toUpperCase();
-      if (!current_observations.some(co => co.toUpperCase() === obsKey)) {
-        bestObservation = obs;
-        break;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v1.1.0: REGIONAL TRANSLATION SUPPORT
+  // If farmer_location is provided, use regional translator for authentic terms
+  // Otherwise, fallback to hardcoded translations
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Generate diagnosis options (with optional regional translation)
+  const diagnoses: DiagnosisOption[] = await Promise.all(
+    topHypotheses.map(async (h, idx) => {
+      // Get the best differentiating observation for this hypothesis
+      let bestObservation = h.observable_characteristics?.[0];
+      
+      // Try to find an observation not already known
+      for (const obs of h.observable_characteristics || []) {
+        const obsKey = obs.observation_key.toUpperCase();
+        if (!current_observations.some(co => co.toUpperCase() === obsKey)) {
+          bestObservation = obs;
+          break;
+        }
       }
-    }
-    
-    const observationKey = bestObservation?.observation_key || 'VISUAL_CHECK';
-    
-    return {
-      id: `diag_${idx}_${h.rule_id}`,
-      cause: h.cause,
-      cause_label: getCauseLabel(h.cause, language),
-      canonical_group: h.canonical_group,
-      observation_key: observationKey,
-      observation_label: getObservationLabel(observationKey, language),
-      confidence: h.total_score,
-      priority: h.priority,
-      icon: getGroupIcon(h.canonical_group),
-      rule_id: h.rule_id
-    };
-  });
+      
+      const observationKey = bestObservation?.observation_key || 'VISUAL_CHECK';
+      
+      // Determine cause label (regional or fallback)
+      let causeLabel: string;
+      let observationLabel: string;
+      
+      if (farmer_location) {
+        try {
+          // Dynamic import for optional regional translation
+          const { translateToRegionalTerms } = await import('../services/regional-translator.ts');
+          
+          const regional = await translateToRegionalTerms(
+            {
+              pest_name_en: h.cause,
+              treatment_description_en: `Check for ${observationKey.replace(/_/g, ' ').toLowerCase()}`,
+            },
+            farmer_location
+          );
+          
+          causeLabel = regional.pest_name_regional;
+          observationLabel = regional.treatment_label_regional || getObservationLabel(observationKey, language);
+          
+          console.log(`   🌍 Regional: ${h.cause} → ${causeLabel}`);
+        } catch (error) {
+          console.warn(`   ⚠️ Regional translation failed for ${h.cause}, using fallback`);
+          causeLabel = getCauseLabel(h.cause, language);
+          observationLabel = getObservationLabel(observationKey, language);
+        }
+      } else {
+        // Use hardcoded translations (fallback)
+        causeLabel = getCauseLabel(h.cause, language);
+        observationLabel = getObservationLabel(observationKey, language);
+      }
+      
+      return {
+        id: `diag_${idx}_${h.rule_id}`,
+        cause: h.cause,  // Keep English for backend logic
+        cause_label: causeLabel,  // Regional translation for display
+        canonical_group: h.canonical_group,
+        observation_key: observationKey,  // Keep English for backend logic
+        observation_label: observationLabel,  // Regional translation for display
+        confidence: h.total_score,
+        priority: h.priority,
+        icon: getGroupIcon(h.canonical_group),
+        rule_id: h.rule_id
+      };
+    })
+  );
   
   // Generate photo option (ALWAYS present)
   const photoLabels = PHOTO_LABELS[language] || PHOTO_LABELS['en'];
