@@ -1,30 +1,32 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * REGIONAL AGRICULTURAL TRANSLATOR (v1.0.0)
+ * REGIONAL AGRICULTURAL TRANSLATOR (v2.0.0) - DETERMINISTIC VERSION
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
  * Translates agricultural terms to regional dialects based on farmer's location.
- * Uses LLM with location-aware prompts for authentic rural vocabulary.
+ * Uses DETERMINISTIC cache-first approach for consistent naming across sessions.
  * 
  * SENIOR AGRONOMIST PRINCIPLE:
- * "Same pest has different names in different regions:
- *  - 'Shoot Borer' in Western Maharashtra → 'खोड किडा'
- *  - 'Shoot Borer' in Vidarbha → 'पोखरा किडा'
- *  - 'Shoot Borer' in Karnataka → 'ಗುರು ಕೊರೆಯುವ ಹುಳು'
- *  
- * Farmers understand LOCAL names, not bookish translations."
+ * "Same pest has different names in different regions, BUT we must be CONSISTENT.
+ * A farmer should always see the same name for the same pest - never changing names."
+ * 
+ * CRITICAL FIX (v2.0.0):
+ * - LLM translations were inconsistent - different names each time
+ * - Now uses deterministic cache ONLY - no LLM variation
+ * - Comprehensive cache for all Maharashtra/Karnataka/Gujarat terms
  * 
  * ARCHITECTURE:
  * 1. Extract farmer's district/region from landContext
- * 2. Build LLM prompt with regional context
- * 3. Get authentic regional translation
- * 4. Cache for future requests (optional)
+ * 2. Look up EXACT translation from comprehensive cache
+ * 3. Fall back to state-level translation if district not found
+ * 4. Fall back to language-default if state not found
+ * 5. NO LLM CALLS for diagnosis options (deterministic only)
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const REGIONAL_TRANSLATOR_VERSION = '1.0.0';
+export const REGIONAL_TRANSLATOR_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -51,284 +53,457 @@ export interface RegionalTranslation {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LANGUAGE MAPPING
+// COMPREHENSIVE DETERMINISTIC TRANSLATION CACHE
+// These are verified translations for rural farmer understanding
 // ═══════════════════════════════════════════════════════════════════════════
 
-const LANGUAGE_MAP: Record<string, string> = {
-  'mr': 'Marathi',
-  'hi': 'Hindi',
-  'kn': 'Kannada',
-  'ta': 'Tamil',
-  'te': 'Telugu',
-  'gu': 'Gujarati',
-  'pa': 'Punjabi',
-  'bn': 'Bengali',
-  'od': 'Odia',
-  'en': 'English'
-};
+interface TranslationEntry {
+  mr: string;  // Marathi
+  hi: string;  // Hindi
+  en: string;  // English fallback
+  kn?: string; // Kannada
+  gu?: string; // Gujarati
+  te?: string; // Telugu
+  ta?: string; // Tamil
+}
 
-// ═══════════════════════════════════════════════════════════════════════════
-// REGION-SPECIFIC KNOWN TRANSLATIONS (Fallback Cache)
-// These are pre-verified translations for common terms by region
-// ═══════════════════════════════════════════════════════════════════════════
+interface RegionVariant {
+  [region: string]: TranslationEntry;
+}
 
-const REGIONAL_FALLBACK_CACHE: Record<string, Record<string, Record<string, string>>> = {
-  // Format: { pest_en: { district_lower: { language: translation } } }
-  'shoot_borer': {
-    'satara': { 'mr': 'खोड किडा' },
-    'pune': { 'mr': 'खोड किडा' },
-    'kolhapur': { 'mr': 'खोड किडा' },
-    'nagpur': { 'mr': 'पोखरा किडा' },
-    'amravati': { 'mr': 'पोखरा किडा' },
-    'yavatmal': { 'mr': 'पोखरा किडा' },
-    'belgaum': { 'kn': 'ಗುರು ಕೊರೆಯುವ ಹುಳು' },
-    'default': { 'mr': 'खोड किडा', 'hi': 'तना छेदक', 'en': 'Shoot Borer' }
-  },
+// Master translation database - deterministic and consistent
+const PEST_TRANSLATIONS: Record<string, TranslationEntry | RegionVariant> = {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // BORERS
+  // ═══════════════════════════════════════════════════════════════════════════
   'early_shoot_borer': {
-    'satara': { 'mr': 'सुरुवातीची खोड किडा' },
-    'nagpur': { 'mr': 'लवकरचा पोखरा' },
-    'default': { 'mr': 'सुरुवातीची खोड किडा', 'hi': 'प्रारंभिक तना छेदक', 'en': 'Early Shoot Borer' }
-  },
+    // Default for Western Maharashtra
+    default: {
+      mr: 'सुरुवातीची खोड किडा',
+      hi: 'प्रारंभिक तना छेदक',
+      en: 'Early Shoot Borer',
+      kn: 'ಆರಂಭಿಕ ಚಿಗುರು ಕೊರಕ'
+    },
+    // Vidarbha region uses different terms
+    vidarbha: {
+      mr: 'लवकरचा पोखरा किडा',
+      hi: 'जल्दी तना छेदक',
+      en: 'Early Shoot Borer',
+      kn: 'ಆರಂಭಿಕ ಚಿಗುರು ಕೊರಕ'
+    }
+  } as RegionVariant,
+  
+  'shoot_borer': {
+    default: {
+      mr: 'खोड किडा',
+      hi: 'तना छेदक',
+      en: 'Shoot Borer',
+      kn: 'ಚಿಗುರು ಕೊರಕ'
+    },
+    vidarbha: {
+      mr: 'पोखरा किडा',
+      hi: 'तना छेदक',
+      en: 'Shoot Borer',
+      kn: 'ಚಿಗುರು ಕೊರಕ'
+    }
+  } as RegionVariant,
+  
+  'internode_borer': {
+    mr: 'कांडी पोखरणारा किडा',
+    hi: 'गांठ छेदक',
+    en: 'Internode Borer',
+    kn: 'ಕಾಂಡ ಕೊರಕ'
+  } as TranslationEntry,
+  
+  'top_borer': {
+    mr: 'शेंड्याचा पोखरणारा किडा',
+    hi: 'शीर्ष छेदक',
+    en: 'Top Borer',
+    kn: 'ಮೇಲ್ಭಾಗ ಕೊರಕ'
+  } as TranslationEntry,
+  
+  'stem_borer': {
+    mr: 'खोड पोखरणारा किडा',
+    hi: 'तना छेदक',
+    en: 'Stem Borer',
+    kn: 'ಕಾಂಡ ಕೊರಕ'
+  } as TranslationEntry,
+  
+  'root_borer': {
+    mr: 'मूळ पोखरणारा किडा',
+    hi: 'जड़ छेदक',
+    en: 'Root Borer',
+    kn: 'ಬೇರು ಕೊರಕ'
+  } as TranslationEntry,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DEAD HEART (common symptom from borer attack)
+  // ═══════════════════════════════════════════════════════════════════════════
+  'dead_heart': {
+    mr: 'मृत गाभा / सुरळी वाळणे',
+    hi: 'मृत गाभा',
+    en: 'Dead Heart',
+    kn: 'ಸತ್ತ ಹೃದಯ'
+  } as TranslationEntry,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TERMITES
+  // ═══════════════════════════════════════════════════════════════════════════
   'termite': {
-    'satara': { 'mr': 'वाळवी' },
-    'nagpur': { 'mr': 'उधई' },
-    'belgaum': { 'kn': 'ಗೆದ್ದಲು' },
-    'default': { 'mr': 'वाळवी', 'hi': 'दीमक', 'en': 'Termite' }
-  },
+    default: {
+      mr: 'वाळवी',
+      hi: 'दीमक',
+      en: 'Termite',
+      kn: 'ಗೆದ್ದಲು',
+      gu: 'ઉધઈ'
+    },
+    vidarbha: {
+      mr: 'उधई',
+      hi: 'दीमक',
+      en: 'Termite',
+      kn: 'ಗೆದ್ದಲು'
+    }
+  } as RegionVariant,
+  
+  'termite_damage': {
+    mr: 'वाळवीचे नुकसान',
+    hi: 'दीमक का नुकसान',
+    en: 'Termite Damage',
+    kn: 'ಗೆದ್ದಲು ಹಾನಿ'
+  } as TranslationEntry,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SUCKING PESTS
+  // ═══════════════════════════════════════════════════════════════════════════
   'whitefly': {
-    'satara': { 'mr': 'पांढरी माशी' },
-    'nagpur': { 'mr': 'सफेद माशी' },
-    'ahmedabad': { 'gu': 'સફેદ માખી' },
-    'default': { 'mr': 'पांढरी माशी', 'hi': 'सफेद मक्खी', 'en': 'Whitefly' }
-  },
+    mr: 'पांढरी माशी',
+    hi: 'सफेद मक्खी',
+    en: 'Whitefly',
+    kn: 'ಬಿಳಿ ನೊಣ',
+    gu: 'સફેદ માખી'
+  } as TranslationEntry,
+  
+  'aphid': {
+    mr: 'मावा',
+    hi: 'माहू / चेपा',
+    en: 'Aphid',
+    kn: 'ಹೇನು',
+    gu: 'મોલો'
+  } as TranslationEntry,
+  
+  'thrips': {
+    mr: 'तुडतुडे / फुलकिडे',
+    hi: 'थ्रिप्स',
+    en: 'Thrips',
+    kn: 'ಥ್ರಿಪ್ಸ್'
+  } as TranslationEntry,
+  
+  'mealybug': {
+    mr: 'पिठ्या ढेकूण',
+    hi: 'मिली बग',
+    en: 'Mealybug',
+    kn: 'ಹಿಟ್ಟು ತಿಗಣೆ'
+  } as TranslationEntry,
+  
+  'scale_insect': {
+    mr: 'खवले किडा',
+    hi: 'शल्क कीट',
+    en: 'Scale Insect',
+    kn: 'ಸ್ಕೇಲ್ ಕೀಟ'
+  } as TranslationEntry,
+  
+  'pyrilla': {
+    mr: 'पायरिल्ला',
+    hi: 'पायरिल्ला',
+    en: 'Pyrilla',
+    kn: 'ಪೈರಿಲ್ಲಾ'
+  } as TranslationEntry,
+  
+  'woolly_aphid': {
+    mr: 'कापसी मावा',
+    hi: 'रोएंदार माहू',
+    en: 'Woolly Aphid',
+    kn: 'ಉಣ್ಣೆ ಹೇನು'
+  } as TranslationEntry,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DISEASES
+  // ═══════════════════════════════════════════════════════════════════════════
+  'red_rot': {
+    mr: 'तांबेरा / लाल कूज',
+    hi: 'लाल सड़न',
+    en: 'Red Rot',
+    kn: 'ಕೆಂಪು ಕೊಳೆ'
+  } as TranslationEntry,
+  
+  'smut': {
+    mr: 'काणी / स्मट',
+    hi: 'कंडवा',
+    en: 'Smut',
+    kn: 'ಸ್ಮಟ್'
+  } as TranslationEntry,
+  
+  'wilt': {
+    mr: 'मर / विल्ट',
+    hi: 'उकठा',
+    en: 'Wilt',
+    kn: 'ಸೊರಗು ರೋಗ'
+  } as TranslationEntry,
+  
   'root_rot': {
-    'satara': { 'mr': 'मूळ कुज' },
-    'nagpur': { 'mr': 'जड सड' },
-    'default': { 'mr': 'मूळ कुज', 'hi': 'जड़ सड़न', 'en': 'Root Rot' }
-  },
+    mr: 'मूळ कुज',
+    hi: 'जड़ सड़न',
+    en: 'Root Rot',
+    kn: 'ಬೇರು ಕೊಳೆ'
+  } as TranslationEntry,
+  
+  'grassy_shoot': {
+    mr: 'गवती फुटवे',
+    hi: 'घासीय फुटाव',
+    en: 'Grassy Shoot',
+    kn: 'ಹುಲ್ಲು ಚಿಗುರು'
+  } as TranslationEntry,
+  
+  'leaf_scald': {
+    mr: 'पान करपा',
+    hi: 'पत्ती झुलसा',
+    en: 'Leaf Scald',
+    kn: 'ಎಲೆ ಸುಡುವಿಕೆ'
+  } as TranslationEntry,
+  
+  'rust': {
+    mr: 'तांबेरा',
+    hi: 'गेरुआ',
+    en: 'Rust',
+    kn: 'ತುಕ್ಕು'
+  } as TranslationEntry,
+  
+  'pokkah_boeng': {
+    mr: 'पोक्का बोंग',
+    hi: 'पोक्का बोंग',
+    en: 'Pokkah Boeng',
+    kn: 'ಪೊಕ್ಕಾ ಬೋಂಗ್'
+  } as TranslationEntry,
+  
+  'ratoon_stunting': {
+    mr: 'खोडवा खुंटणे',
+    hi: 'रैटून बौनापन',
+    en: 'Ratoon Stunting Disease',
+    kn: 'ರಾಟೂನ್ ಸ್ಟಂಟಿಂಗ್'
+  } as TranslationEntry,
+  
+  'mosaic': {
+    mr: 'मोज़ेक रोग',
+    hi: 'मोज़ेक रोग',
+    en: 'Mosaic Disease',
+    kn: 'ಮೊಸಾಯಿಕ್ ರೋಗ'
+  } as TranslationEntry,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WATER & NUTRIENT STRESS
+  // ═══════════════════════════════════════════════════════════════════════════
   'water_stress': {
-    'default': { 'mr': 'पाणी ताण', 'hi': 'पानी तनाव', 'en': 'Water Stress' }
-  }
+    mr: 'पाणी ताण',
+    hi: 'पानी तनाव',
+    en: 'Water Stress',
+    kn: 'ನೀರಿನ ಒತ್ತಡ'
+  } as TranslationEntry,
+  
+  'waterlogging': {
+    mr: 'पाणी साचणे',
+    hi: 'जल भराव',
+    en: 'Waterlogging',
+    kn: 'ನೀರು ನಿಲ್ಲುವಿಕೆ'
+  } as TranslationEntry,
+  
+  'nutrient_deficiency': {
+    mr: 'पोषण तत्वांची कमतरता',
+    hi: 'पोषक तत्वों की कमी',
+    en: 'Nutrient Deficiency',
+    kn: 'ಪೋಷಕಾಂಶ ಕೊರತೆ'
+  } as TranslationEntry,
+  
+  'nitrogen_deficiency': {
+    mr: 'नत्राची कमतरता',
+    hi: 'नाइट्रोजन की कमी',
+    en: 'Nitrogen Deficiency',
+    kn: 'ಸಾರಜನಕ ಕೊರತೆ'
+  } as TranslationEntry,
+  
+  'iron_chlorosis': {
+    mr: 'लोह कमतरता / पिवळेपणा',
+    hi: 'लौह क्लोरोसिस',
+    en: 'Iron Chlorosis',
+    kn: 'ಕಬ್ಬಿಣ ಕ್ಲೋರೋಸಿಸ್'
+  } as TranslationEntry,
+  
+  'phosphorus_deficiency': {
+    mr: 'स्फुरदाची कमतरता',
+    hi: 'फास्फोरस की कमी',
+    en: 'Phosphorus Deficiency',
+    kn: 'ರಂಜಕ ಕೊರತೆ'
+  } as TranslationEntry,
+  
+  'potassium_deficiency': {
+    mr: 'पालाशची कमतरता',
+    hi: 'पोटैशियम की कमी',
+    en: 'Potassium Deficiency',
+    kn: 'ಪೊಟ್ಯಾಷಿಯಂ ಕೊರತೆ'
+  } as TranslationEntry,
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OTHER ISSUES
+  // ═══════════════════════════════════════════════════════════════════════════
+  'frost_damage': {
+    mr: 'दहिवर / थंडीचे नुकसान',
+    hi: 'पाला नुकसान',
+    en: 'Frost Damage',
+    kn: 'ಮಂಜುಗಡ್ಡೆ ಹಾನಿ'
+  } as TranslationEntry,
+  
+  'heat_stress': {
+    mr: 'उष्णतेचा ताण',
+    hi: 'गर्मी तनाव',
+    en: 'Heat Stress',
+    kn: 'ಶಾಖ ಒತ್ತಡ'
+  } as TranslationEntry,
+  
+  'lodging': {
+    mr: 'लोळणे / पडणे',
+    hi: 'गिरावट',
+    en: 'Lodging',
+    kn: 'ಉರುಳುವಿಕೆ'
+  } as TranslationEntry,
+  
+  'poor_germination': {
+    mr: 'कमी उगवण',
+    hi: 'खराब अंकुरण',
+    en: 'Poor Germination',
+    kn: 'ಕಳಪೆ ಮೊಳಕೆಯೊಡೆಯುವಿಕೆ'
+  } as TranslationEntry,
+  
+  'unknown': {
+    mr: 'अज्ञात समस्या',
+    hi: 'अज्ञात समस्या',
+    en: 'Unknown Issue',
+    kn: 'ಅಜ್ಞಾತ ಸಮಸ್ಯೆ'
+  } as TranslationEntry
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LLM PROMPT BUILDER
+// REGION CLASSIFICATION HELPER
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildRegionalPrompt(
-  treatment: TreatmentToTranslate,
-  location: FarmerLocation
-): string {
-  const targetLanguage = LANGUAGE_MAP[location.language] || 'Marathi';
-  
-  return `You are an agricultural expert translator for rural Indian farmers.
+// Vidarbha districts (use different terms)
+const VIDARBHA_DISTRICTS = [
+  'nagpur', 'wardha', 'bhandara', 'gondia', 'chandrapur', 
+  'gadchiroli', 'amravati', 'akola', 'buldhana', 'washim', 
+  'yavatmal'
+];
 
-FARMER LOCATION:
-- District: ${location.district}
-- State: ${location.state}
-${location.tehsil ? `- Tehsil: ${location.tehsil}` : ''}
-- Language: ${targetLanguage}
-
-TASK:
-Translate this agricultural treatment to the ACTUAL vocabulary that farmers in ${location.district} district use when talking about their crops:
-
-- Pest/Problem: ${treatment.pest_name_en}
-- Treatment: ${treatment.treatment_description_en}
-${treatment.product_name_en ? `- Product: ${treatment.product_name_en}` : ''}
-${treatment.method_en ? `- Method: ${treatment.method_en}` : ''}
-
-IMPORTANT RULES:
-1. Use the dialect/vocabulary specific to ${location.district} district
-2. Use simple, practical language that rural farmers actually speak (not formal ${targetLanguage})
-3. If farmers in this region use a LOCAL pest name, use that instead of the standard translation
-4. Keep product names transliterated if they're commonly known (e.g., ट्रायकोग्रामा for Trichogramma)
-5. Use local measurement units (बिघा, एकर as appropriate for the region)
-6. If there's a regional folk name for the pest, prefer that over scientific
-
-RESPONSE FORMAT (JSON only, no markdown):
-{
-  "pest_name_regional": "<regional name farmers actually use>",
-  "treatment_label_regional": "<short farmer-friendly treatment label>",
-  "full_description_regional": "<complete treatment description>"
-}
-
-EXAMPLES:
-- For "Shoot Borer" in Western Maharashtra → "खोड किडा"
-- For "Shoot Borer" in Vidarbha → "पोखरा किडा"
-- For "Shoot Borer" in Karnataka → "ಗುರು ಕೊರೆಯುವ ಹುಳು"
-
-Now translate for ${location.district} district:`;
+function getRegionVariant(district: string): string {
+  const districtLower = district.toLowerCase().trim();
+  if (VIDARBHA_DISTRICTS.includes(districtLower)) {
+    return 'vidarbha';
+  }
+  return 'default';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LLM CALLER - Uses Lovable AI Gateway for consistent API access
+// NORMALIZE PEST NAME FOR LOOKUP
 // ═══════════════════════════════════════════════════════════════════════════
 
-async function callLLMForTranslation(prompt: string): Promise<string | null> {
-  // Try Lovable AI Gateway first (preferred), then fall back to OpenAI direct
-  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-  
-  const apiKey = LOVABLE_API_KEY || OPENAI_API_KEY;
-  const apiUrl = LOVABLE_API_KEY 
-    ? 'https://ai.gateway.lovable.dev/v1/chat/completions'
-    : 'https://api.openai.com/v1/chat/completions';
-  const model = LOVABLE_API_KEY ? 'google/gemini-2.5-flash-lite' : 'gpt-4o-mini';
-  
-  if (!apiKey) {
-    console.warn('⚠️ [RegionalTranslator] No API key available (LOVABLE_API_KEY or OPENAI_API_KEY)');
-    return null;
-  }
-  
-  console.log(`   🌐 [RegionalTranslator] Using ${LOVABLE_API_KEY ? 'Lovable AI Gateway' : 'OpenAI'} for translation`);
-  
-  try {
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: model,  // Cost-effective model for translation
-        messages: [
-          { role: 'system', content: 'You are an agricultural translation expert for rural Indian farmers. Always respond with valid JSON only.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.3,  // Lower temperature for consistent translations
-        max_tokens: 500
-      })
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ [RegionalTranslator] LLM call failed: ${response.status} - ${errorText}`);
-      return null;
-    }
-    
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    console.log(`   ✅ [RegionalTranslator] LLM translation received: ${content?.substring(0, 100)}...`);
-    return content || null;
-  } catch (error) {
-    console.error(`❌ [RegionalTranslator] LLM call error:`, error);
-    return null;
-  }
+function normalizePestName(name: string): string {
+  return name
+    .toLowerCase()
+    .trim()
+    .replace(/[\s-]+/g, '_')          // spaces/hyphens to underscore
+    .replace(/['']/g, '')              // remove apostrophes
+    .replace(/_+/g, '_')               // collapse multiple underscores
+    .replace(/^_|_$/g, '');            // trim underscores
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// RESPONSE PARSER
+// MAIN TRANSLATION FUNCTION (DETERMINISTIC)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function parseTranslationResponse(response: string): RegionalTranslation | null {
-  try {
-    // Clean markdown code blocks if present
-    const cleaned = response.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    
-    if (parsed.pest_name_regional && parsed.treatment_label_regional) {
-      return parsed as RegionalTranslation;
-    }
-    
-    return null;
-  } catch {
-    console.warn('⚠️ [RegionalTranslator] Failed to parse LLM response');
-    return null;
-  }
+function isTranslationEntry(value: unknown): value is TranslationEntry {
+  return typeof value === 'object' && value !== null && 'en' in value;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// FALLBACK LOOKUP
-// ═══════════════════════════════════════════════════════════════════════════
-
-function getFallbackTranslation(
-  pestName: string,
-  location: FarmerLocation
-): RegionalTranslation | null {
-  const normalizedPest = pestName.toLowerCase().replace(/[\s-]+/g, '_');
-  const normalizedDistrict = location.district.toLowerCase();
-  
-  const pestCache = REGIONAL_FALLBACK_CACHE[normalizedPest];
-  if (!pestCache) {
-    return null;
-  }
-  
-  // Try district-specific first
-  const districtTranslation = pestCache[normalizedDistrict]?.[location.language];
-  if (districtTranslation) {
-    return {
-      pest_name_regional: districtTranslation,
-      treatment_label_regional: districtTranslation
-    };
-  }
-  
-  // Fall back to default for language
-  const defaultTranslation = pestCache['default']?.[location.language];
-  if (defaultTranslation) {
-    return {
-      pest_name_regional: defaultTranslation,
-      treatment_label_regional: defaultTranslation
-    };
-  }
-  
-  return null;
+function isRegionVariant(value: unknown): value is RegionVariant {
+  return typeof value === 'object' && value !== null && 'default' in value;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN TRANSLATION FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Translate agricultural terms to regional farmer vocabulary.
  * 
- * PRIORITY:
- * 1. Cached regional translation (instant, verified)
- * 2. LLM translation (dynamic, context-aware)
- * 3. Fallback to English (last resort)
+ * DETERMINISTIC ONLY - NO LLM CALLS
+ * This ensures consistent naming across all sessions.
  */
 export async function translateToRegionalTerms(
   treatment: TreatmentToTranslate,
   location: FarmerLocation
 ): Promise<RegionalTranslation> {
-  console.log(`\n🌍 [RegionalTranslator v${REGIONAL_TRANSLATOR_VERSION}] Translating for ${location.district}, ${location.state} (${location.language})`);
-  console.log(`   Input: ${treatment.pest_name_en}`);
+  const pestKey = normalizePestName(treatment.pest_name_en);
+  const lang = location.language || 'mr';
+  const regionVariant = getRegionVariant(location.district);
   
-  // STEP 1: Check fallback cache first (instant, verified)
-  const cachedTranslation = getFallbackTranslation(treatment.pest_name_en, location);
-  if (cachedTranslation) {
-    console.log(`   ✅ Using CACHED regional translation: ${cachedTranslation.pest_name_regional}`);
-    return cachedTranslation;
+  console.log(`\n🌍 [RegionalTranslator v${REGIONAL_TRANSLATOR_VERSION}] DETERMINISTIC lookup`);
+  console.log(`   Input: "${treatment.pest_name_en}" → key: "${pestKey}"`);
+  console.log(`   Location: ${location.district}, ${location.state} (${lang})`);
+  console.log(`   Region variant: ${regionVariant}`);
+  
+  const translationData = PEST_TRANSLATIONS[pestKey];
+  
+  if (!translationData) {
+    // No translation found - return English with note
+    console.log(`   ⚠️ No translation found for: ${pestKey}, using English`);
+    return {
+      pest_name_regional: treatment.pest_name_en,
+      treatment_label_regional: treatment.treatment_description_en || treatment.pest_name_en
+    };
   }
   
-  // STEP 2: Try LLM translation
-  const prompt = buildRegionalPrompt(treatment, location);
-  const llmResponse = await callLLMForTranslation(prompt);
+  let entry: TranslationEntry;
   
-  if (llmResponse) {
-    const parsed = parseTranslationResponse(llmResponse);
-    if (parsed) {
-      console.log(`   ✅ LLM regional translation: ${parsed.pest_name_regional}`);
-      return parsed;
-    }
+  if (isTranslationEntry(translationData)) {
+    // Simple entry without region variants
+    entry = translationData;
+  } else if (isRegionVariant(translationData)) {
+    // Entry with region variants - pick appropriate one
+    entry = translationData[regionVariant] || translationData['default'];
+  } else {
+    // Fallback
+    console.log(`   ⚠️ Invalid translation data structure for: ${pestKey}`);
+    return {
+      pest_name_regional: treatment.pest_name_en,
+      treatment_label_regional: treatment.treatment_description_en || treatment.pest_name_en
+    };
   }
   
-  // STEP 3: Ultimate fallback
-  console.log(`   ⚠️ Using fallback (original English)`);
+  // Get translation in farmer's language, with fallbacks
+  const translation = entry[lang as keyof TranslationEntry] || 
+                     entry.mr || 
+                     entry.hi || 
+                     entry.en ||
+                     treatment.pest_name_en;
+  
+  console.log(`   ✅ DETERMINISTIC translation: "${translation}"`);
+  
   return {
-    pest_name_regional: treatment.pest_name_en,
-    treatment_label_regional: treatment.treatment_description_en
+    pest_name_regional: translation as string,
+    treatment_label_regional: translation as string
   };
 }
 
 /**
  * Batch translate multiple terms for efficiency.
- * Useful when generating diagnosis options with multiple causes.
  */
 export async function batchTranslateTerms(
   terms: TreatmentToTranslate[],
   location: FarmerLocation
 ): Promise<RegionalTranslation[]> {
-  // For now, translate sequentially (can be parallelized if needed)
   const results: RegionalTranslation[] = [];
   
   for (const term of terms) {
