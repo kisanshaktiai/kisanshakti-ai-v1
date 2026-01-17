@@ -85,8 +85,7 @@ export function getAPIEndpoint(provider: AIProvider): string {
 /**
  * Get the API key for the specified provider
  * CRITICAL FIX v2.1: Now respects the provider parameter to prevent key-endpoint mismatch
- * Previously this function ignored the provider and returned whatever key was found first,
- * causing Gemini keys to be sent to OpenAI endpoints = 401 errors
+ * Returns empty string if key not available (for backward compatibility with callers that check `if (!apiKey)`)
  */
 export function getAPIKey(provider: AIProvider): string {
   if (provider === 'openai') {
@@ -95,7 +94,8 @@ export function getAPIKey(provider: AIProvider): string {
       console.log("✅ [AIConfig] Using OPENAI_API_KEY for provider: openai");
       return openaiKey;
     }
-    throw new Error(`OpenAI provider requested but OPENAI_API_KEY not configured`);
+    console.log("⚠️ [AIConfig] OpenAI provider requested but OPENAI_API_KEY not configured");
+    return ""; // Return empty for backward compatibility
   }
   
   if (provider === 'gemini' || provider === 'google') {
@@ -104,10 +104,12 @@ export function getAPIKey(provider: AIProvider): string {
       console.log(`✅ [AIConfig] Using GEMINI_API_KEY for provider: ${provider}`);
       return geminiKey;
     }
-    throw new Error(`Gemini provider requested but GEMINI_API_KEY not configured`);
+    console.log(`⚠️ [AIConfig] Gemini provider requested but GEMINI_API_KEY not configured`);
+    return ""; // Return empty for backward compatibility
   }
   
-  throw new Error(`Unknown provider: ${provider}`);
+  console.log(`⚠️ [AIConfig] Unknown provider: ${provider}`);
+  return "";
 }
 
 /**

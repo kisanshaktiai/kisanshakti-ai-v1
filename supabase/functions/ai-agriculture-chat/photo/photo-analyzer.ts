@@ -15,7 +15,7 @@
  * @version 1.0.0
  */
 
-import { AI_MODELS, getAPIKey, hasGeminiKey } from '../../_shared/aiConfig.ts';
+import { AI_MODELS, getAPIKey, hasGeminiKey, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 
 export const PHOTO_ANALYZER_VERSION = '1.0.0';
 
@@ -146,15 +146,15 @@ export async function analyzePhoto(input: PhotoAnalysisInput): Promise<PhotoAnal
   console.log(`   Crop context: ${input.crop_context?.crop_code || 'none'}`);
   
   try {
-    // Determine which provider to use
-    const useGemini = hasGeminiKey();
-    const provider = useGemini ? 'gemini' : 'openai';
-    const apiKey = getAPIKey(provider);
+    // CRITICAL FIX: Use getBestAvailableProvider() to get matching provider+key
+    // This ensures we never send Gemini key to OpenAI endpoint or vice versa
+    const { provider, apiKey } = getBestAvailableProvider();
     
     if (!apiKey) {
       throw new Error('No API key available for vision analysis');
     }
     
+    const useGemini = provider === 'gemini' || provider === 'google';
     console.log(`   Using provider: ${provider}`);
     
     const analysisPrompt = buildAnalysisPrompt(input);
