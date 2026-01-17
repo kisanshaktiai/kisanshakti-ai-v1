@@ -21,7 +21,7 @@
  * @phase Universal NLU Refactoring
  */
 
-import { AI_CONFIG, getAPIKey, getAPIEndpoint, hasGeminiKey, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
+import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 
 export const SEMANTIC_EXTRACTOR_VERSION = '1.0.1';
 
