@@ -23,7 +23,7 @@
 
 import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 
-export const SEMANTIC_EXTRACTOR_VERSION = '1.0.1';
+export const SEMANTIC_EXTRACTOR_VERSION = '2.0.0'; // Removed hardcoded language patterns
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE
@@ -326,73 +326,40 @@ function validateSeverity(severity: any): 'mild' | 'moderate' | 'severe' | 'crit
 }
 
 /**
- * Create fallback extraction when LLM fails
- * Uses basic keyword detection for emergency response
+ * HONEST FALLBACK - No hardcoded language patterns
+ * 
+ * When LLM fails (API error, rate limit, network issue), we return an honest
+ * 0.0 confidence response. We do NOT attempt to parse symptoms with hardcoded
+ * patterns because:
+ * 
+ * 1. Can't cover all languages/dialects/regional variations
+ * 2. 40% confidence is unreliable for diagnosis anyway
+ * 3. Better to fail gracefully than give wrong diagnosis
+ * 4. Maintains "Universal Language" architecture integrity
+ * 
+ * @version 2.0.0 - Removed all hardcoded Marathi/Hindi/Telugu patterns
  */
 function createFallbackExtraction(
   farmerMessage: string,
   language: string,
   error: Error
 ): SemanticExtraction {
-  console.log(`   ⚠️ [SemanticExtractor] Using FALLBACK extraction due to: ${error.message}`);
+  console.log(`   ⚠️ [SemanticExtractor] LLM UNAVAILABLE - returning honest fallback`);
+  console.log(`   ⚠️ [SemanticExtractor] Error: ${error.message}`);
+  console.log(`   ⚠️ [SemanticExtractor] NO symptom detection attempted (respecting Universal Language Architecture)`);
   
-  const lowerMessage = farmerMessage.toLowerCase();
-  
-  // Basic keyword detection for fallback
-  const visualChanges: string[] = [];
-  const affectedParts: string[] = [];
-  let pestBehavior: string[] | null = null;
-  
-  // Leaf symptoms
-  if (lowerMessage.includes('पिवळ') || lowerMessage.includes('पीला') || lowerMessage.includes('yellow')) {
-    visualChanges.push('turning yellow');
-    affectedParts.push('leaves');
-  }
-  if (lowerMessage.includes('सुक') || lowerMessage.includes('सूख') || lowerMessage.includes('dry')) {
-    visualChanges.push('drying out');
-    if (!affectedParts.includes('leaves')) affectedParts.push('leaves');
-  }
-  if (lowerMessage.includes('मुरझ') || lowerMessage.includes('wilt')) {
-    visualChanges.push('wilting');
-    if (!affectedParts.includes('leaves')) affectedParts.push('leaves');
-  }
-  
-  // CRITICAL FIX: Add detection for "मरत" (dying/death) - common Marathi term
-  if (lowerMessage.includes('मरत') || lowerMessage.includes('मर ') || lowerMessage.includes('मेला') || lowerMessage.includes('मेले')) {
-    visualChanges.push('plant dying');
-    if (!affectedParts.includes('whole plant')) affectedParts.push('whole plant');
-  }
-  
-  // Insect detection
-  if (lowerMessage.includes('किडे') || lowerMessage.includes('कीड़') || lowerMessage.includes('insect') || lowerMessage.includes('bug')) {
-    pestBehavior = ['insects visible'];
-  }
-  
-  // Plant death
-  if (lowerMessage.includes('मेला') || lowerMessage.includes('मर गय') || lowerMessage.includes('dead') || lowerMessage.includes('died')) {
-    visualChanges.push('plant death');
-    affectedParts.push('whole plant');
-  }
-  
-  // Default if nothing detected
-  if (visualChanges.length === 0) {
-    visualChanges.push('general problem observed');
-  }
-  if (affectedParts.length === 0) {
-    affectedParts.push('whole plant');
-  }
-  
+  // Return honest 0.0 confidence - system is unavailable
   return {
-    farmer_concern: 'Unable to fully extract - using basic detection',
-    affected_plant_parts: affectedParts,
-    visual_changes: visualChanges,
-    pest_behavior: pestBehavior,
-    severity_indicator: 'moderate',
+    farmer_concern: 'System temporarily unavailable - please try again in a moment',
+    affected_plant_parts: [],
+    visual_changes: [],
+    pest_behavior: null,
+    severity_indicator: 'unknown',
     distribution_pattern: 'not specified',
     temporal_pattern: 'not specified',
     extraction_timestamp: new Date().toISOString(),
-    confidence: 0.4, // Low confidence for fallback
-    extraction_method: 'FALLBACK',
+    confidence: 0.0, // HONEST: We couldn't understand the message
+    extraction_method: 'FALLBACK_UNAVAILABLE',
     detected_language: language,
     raw_input: farmerMessage
   };
