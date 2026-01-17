@@ -21,9 +21,9 @@
  * @phase Universal NLU Refactoring
  */
 
-import { AI_CONFIG, getAPIKey, getAPIEndpoint, hasGeminiKey } from '../../_shared/aiConfig.ts';
+import { AI_CONFIG, getAPIKey, getAPIEndpoint, hasGeminiKey, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 
-export const SEMANTIC_EXTRACTOR_VERSION = '1.0.0';
+export const SEMANTIC_EXTRACTOR_VERSION = '1.0.1';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE
@@ -210,20 +210,36 @@ export async function extractSemanticMeaning(
   }
   
   try {
-    // Determine which provider to use
-    // PRODUCTION FIX: Prefer OpenAI first (more reliable here), then Gemini fallback
-    const hasOpenAIKey = !!(Deno.env.get('OPENAI_API_KEY')?.trim());
-    const hasGemini = hasGeminiKey();
-
-    const provider = hasOpenAIKey ? 'openai' : (hasGemini ? 'gemini' : 'openai');
-    const model = provider === 'openai' ? 'gpt-4o' : AI_CONFIG.GEMINI_MODEL;
-    const endpoint = getAPIEndpoint(provider as any);
-    const apiKey = getAPIKey(provider as any);
+    // CRITICAL FIX v1.0.1: Use getBestAvailableProvider() to get matching provider+key
+    // This ensures we never send Gemini key to OpenAI endpoint or vice versa
+    // Previously this code manually selected 'openai' as provider but getAPIKey() 
+    // returned whatever key was found first (Gemini), causing 401 errors
+    const { provider, model, apiKey } = getBestAvailableProvider();
+    const endpoint = getAPIEndpoint(provider);
     
-    console.log(`   🤖 Using ${provider.toUpperCase()} (${model})`);
+    console.log(`   🤖 Using ${provider.toUpperCase()} (${model}) with matching API key`);
     
     // Build prompt
     const prompt = SEMANTIC_EXTRACTION_PROMPT.replace('{farmer_message}', farmerMessage);
+    
+    // Build request body - Both OpenAI and Gemini support JSON mode
+    const requestBody: any = {
+      model,
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are an agricultural observation extractor. Extract observations from farmer messages and return JSON only.' 
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1, // Low temperature for consistency
+      max_tokens: 1000,
+    };
+    
+    // Both OpenAI and Gemini support JSON mode via response_format
+    if (provider === 'openai' || provider === 'gemini') {
+      requestBody.response_format = { type: 'json_object' };
+    }
     
     // Make LLM call
     const response = await fetch(endpoint, {
@@ -232,20 +248,7 @@ export async function extractSemanticMeaning(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are an agricultural observation extractor. Extract observations from farmer messages and return JSON only.' 
-          },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.1, // Low temperature for consistency
-        max_tokens: 1000,
-        // Only include response_format for OpenAI (not Gemini)
-        ...(provider === 'openai' ? { response_format: { type: 'json_object' } } : {})
-      })
+      body: JSON.stringify(requestBody)
     });
     
     if (!response.ok) {
@@ -352,6 +355,12 @@ function createFallbackExtraction(
   if (lowerMessage.includes('मुरझ') || lowerMessage.includes('wilt')) {
     visualChanges.push('wilting');
     if (!affectedParts.includes('leaves')) affectedParts.push('leaves');
+  }
+  
+  // CRITICAL FIX: Add detection for "मरत" (dying/death) - common Marathi term
+  if (lowerMessage.includes('मरत') || lowerMessage.includes('मर ') || lowerMessage.includes('मेला') || lowerMessage.includes('मेले')) {
+    visualChanges.push('plant dying');
+    if (!affectedParts.includes('whole plant')) affectedParts.push('whole plant');
   }
   
   // Insect detection
