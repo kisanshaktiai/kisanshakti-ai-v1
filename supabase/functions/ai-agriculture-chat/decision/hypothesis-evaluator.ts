@@ -24,7 +24,7 @@
 
 // Supabase client is passed via input, no import needed
 
-export const HYPOTHESIS_EVALUATOR_VERSION = '1.0.0';
+export const HYPOTHESIS_EVALUATOR_VERSION = '1.1.0'; // Added cause deduplication
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -103,6 +103,64 @@ import {
   getStageQueryVariants,
   type StageCategory 
 } from '../utils/stage-normalizer.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CAUSE NORMALIZATION FOR DEDUPLICATION
+// Normalizes cause strings to detect duplicates like:
+// - "Early Shoot Borer (Chilo infuscatellus) infestation" → "early shoot borer"
+// - "EARLY_SHOOT_BORER" → "early shoot borer"
+// - "early_shoot_borer_tillering" → "early shoot borer"
+// ═══════════════════════════════════════════════════════════════════════════
+
+function normalizeCauseForDedup(cause: string): string {
+  if (!cause) return 'unknown';
+  
+  let normalized = cause
+    // Remove parenthetical scientific names: "(Chilo infuscatellus)"
+    .replace(/\([^)]*\)/g, '')
+    // Remove common suffixes
+    .replace(/infestation/gi, '')
+    .replace(/attack/gi, '')
+    .replace(/damage/gi, '')
+    .replace(/suspect/gi, '')
+    .replace(/_suspect$/gi, '')
+    // Remove stage-specific suffixes: "_tillering", "_germination", "_seedling"
+    .replace(/_?(germination|tillering|seedling|grand_growth|maturity|establishment|vegetative)$/gi, '')
+    // Normalize whitespace and separators
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+    .trim();
+  
+  // Apply pattern-based normalization for known variations
+  const patterns: [RegExp, string][] = [
+    [/early\s*shoot\s*borer/i, 'early shoot borer'],
+    [/shoot\s*borer/i, 'shoot borer'],
+    [/stem\s*borer/i, 'stem borer'],
+    [/top\s*borer/i, 'top borer'],
+    [/internode\s*borer/i, 'internode borer'],
+    [/root\s*borer/i, 'root borer'],
+    [/white\s*grub/i, 'white grub'],
+    [/root\s*grub/i, 'root grub'],
+    [/termite/i, 'termite'],
+    [/aphid/i, 'aphid'],
+    [/whitefly/i, 'whitefly'],
+    [/thrips/i, 'thrips'],
+    [/mealybug/i, 'mealybug'],
+    [/red\s*rot/i, 'red rot'],
+    [/smut/i, 'smut'],
+    [/wilt/i, 'wilt'],
+    [/rust/i, 'rust'],
+  ];
+  
+  for (const [pattern, replacement] of patterns) {
+    if (pattern.test(normalized)) {
+      return replacement;
+    }
+  }
+  
+  return normalized;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PARTIAL CONDITION MATCHING
@@ -458,13 +516,37 @@ export async function evaluateCandidateHypotheses(
     }
     
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 3: Rank and return top 4 candidates
+    // STEP 3: DEDUPLICATE by normalized cause + Rank and return top 4 candidates
+    // CRITICAL FIX: Multiple rules exist for same pest (e.g., EARLY_SHOOT_BORER,
+    // early_shoot_borer_tillering, Early Shoot Borer infestation)
+    // We MUST deduplicate to avoid showing duplicate options to farmers
     // ═══════════════════════════════════════════════════════════════════════
     
+    // Sort by score first
     scoredCandidates.sort((a, b) => b.total_score - a.total_score);
-    const topCandidates = scoredCandidates.slice(0, 4);
     
-    console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} candidates:`);
+    // Deduplicate by normalized cause - keep highest scoring variant
+    const normalizedCauseSeen = new Set<string>();
+    const deduplicatedCandidates: CandidateHypothesis[] = [];
+    
+    for (const candidate of scoredCandidates) {
+      // Normalize cause: lowercase, remove scientific names, remove underscores
+      const normalizedCause = normalizeCauseForDedup(candidate.cause);
+      
+      if (!normalizedCauseSeen.has(normalizedCause)) {
+        normalizedCauseSeen.add(normalizedCause);
+        deduplicatedCandidates.push(candidate);
+      } else {
+        console.log(`   [Dedup] Skipping duplicate: "${candidate.cause}" → "${normalizedCause}"`);
+      }
+      
+      // Stop once we have 4 unique candidates
+      if (deduplicatedCandidates.length >= 4) break;
+    }
+    
+    const topCandidates = deduplicatedCandidates.slice(0, 4);
+    
+    console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} unique candidates (from ${scoredCandidates.length} scored):`);
     topCandidates.forEach((c, i) => {
       console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%`);
     });

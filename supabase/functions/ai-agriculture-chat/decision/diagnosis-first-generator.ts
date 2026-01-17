@@ -228,6 +228,8 @@ function getCauseLabel(cause: string, language: 'mr' | 'hi' | 'en'): string {
     [/bollworm/i, 'bollworm'],
     [/pink.?bollworm/i, 'pink_bollworm'],
     [/american.?bollworm/i, 'american_bollworm'],
+    [/white.?grub/i, 'white_grub'],
+    [/root.?grub/i, 'root_grub'],
     [/leaf.?spot/i, 'leaf_spot'],
     [/rust/i, 'rust'],
     [/blight/i, 'blight'],
