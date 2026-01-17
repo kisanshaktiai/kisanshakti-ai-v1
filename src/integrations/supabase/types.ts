@@ -6274,6 +6274,12 @@ export type Database = {
           response_hi: string | null
           response_mr: string | null
           risk_level: string | null
+          roi_confidence: number | null
+          roi_cost_saved_max: number | null
+          roi_cost_saved_min: number | null
+          roi_net_score: number | null
+          roi_yield_gain_pct: number | null
+          roi_yield_risk_pct: number | null
           rule_id: string
           rule_version: string | null
           scientific_basis: string | null
@@ -6339,6 +6345,12 @@ export type Database = {
           response_hi?: string | null
           response_mr?: string | null
           risk_level?: string | null
+          roi_confidence?: number | null
+          roi_cost_saved_max?: number | null
+          roi_cost_saved_min?: number | null
+          roi_net_score?: number | null
+          roi_yield_gain_pct?: number | null
+          roi_yield_risk_pct?: number | null
           rule_id: string
           rule_version?: string | null
           scientific_basis?: string | null
@@ -6404,6 +6416,12 @@ export type Database = {
           response_hi?: string | null
           response_mr?: string | null
           risk_level?: string | null
+          roi_confidence?: number | null
+          roi_cost_saved_max?: number | null
+          roi_cost_saved_min?: number | null
+          roi_net_score?: number | null
+          roi_yield_gain_pct?: number | null
+          roi_yield_risk_pct?: number | null
           rule_id?: string
           rule_version?: string | null
           scientific_basis?: string | null
