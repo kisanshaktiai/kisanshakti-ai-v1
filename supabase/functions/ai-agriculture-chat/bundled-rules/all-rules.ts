@@ -31,20 +31,59 @@ export interface BundledRule {
   icar_package_ref?: string;
   cause_confidence?: number;
   trigger_keywords?: string[];
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 5: New Response Contract Fields
+  // ═══════════════════════════════════════════════════════════════════════════
+  action_text?: string;      // What to do
+  reason_text?: string;      // Why (cause, risk, logic)
+  knowledge_text?: string;   // Agronomic / scientific basis
+  i18n_key?: string;         // Centralized i18n key for translations
+  
+  // Legacy response fields (deprecated - use action_text/reason_text/knowledge_text)
   response_mr?: string;
   response_hi?: string;
   response_en?: string;
+  
   alternatives?: string[];
   // Standard 8 action types per Jan 2026 Audit
   action_type?: 'treatment' | 'urgent_treatment' | 'prevention' | 'advisory' | 
                 'safety_gate' | 'monitoring' | 'clarification' | 'diagnosis';
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 1: Graph Control Fields
+  // ═══════════════════════════════════════════════════════════════════════════
+  blocks_rule_ids?: string[];      // Rules this rule blocks from firing
+  prerequisite_rule_ids?: string[]; // Rules that must fire before this one
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 2: Temporal Constraint Fields
+  // ═══════════════════════════════════════════════════════════════════════════
+  crop_age_days_min?: number;      // Minimum crop age for rule applicability
+  crop_age_days_max?: number;      // Maximum crop age for rule applicability
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 3: ETL Safety Gate Fields
+  // ═══════════════════════════════════════════════════════════════════════════
+  etl_applicable?: boolean;        // Whether ETL checking applies to this rule
+  etl_value_min?: number;          // Minimum threshold for pest count
+  etl_value_max?: number;          // Maximum threshold (spray required above this)
+  
   // Safety fields
   phi_days?: number;
   bee_toxicity?: 'HIGH' | 'MODERATE' | 'LOW' | 'SAFE';
   ipm_level?: 1 | 2 | 3 | 4;
-  etl_threshold?: string;
+  etl_threshold?: string;          // Legacy text-based threshold (deprecated)
   active_ingredient?: string;
   organic_alternative?: string;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 6: Safety Enhancement Fields
+  // ═══════════════════════════════════════════════════════════════════════════
+  farmer_safety_level?: 1 | 2 | 3; // Safety warning level for farmer
+  resistance_group?: string;       // Resistance management group (e.g., IRAC Group 1B)
+  mode_of_action?: string;         // Chemical mode of action for rotation
+  
   is_active?: boolean;
 }
 
