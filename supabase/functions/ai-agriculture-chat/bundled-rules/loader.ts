@@ -100,18 +100,58 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         scientific_source: row.scientific_source || '',
         scientific_basis: row.scientific_basis || '',
         icar_package_ref: row.icar_package_ref,
-        trigger_keywords: triggerKeywords, // FIX: Use extracted keywords
+        trigger_keywords: triggerKeywords,
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 5: New Response Contract Fields
+        // ═══════════════════════════════════════════════════════════════════════
+        action_text: row.action_text,
+        reason_text: row.reason_text,
+        knowledge_text: row.knowledge_text,
+        i18n_key: row.i18n_key,
+        
+        // Legacy response fields (deprecated)
         response_mr: row.response_mr,
         response_hi: row.response_hi,
         response_en: row.response_en,
+        
         alternatives: row.alternatives || [],
         action_type: row.action_type || 'advisory',
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 1: Graph Control Fields
+        // ═══════════════════════════════════════════════════════════════════════
+        blocks_rule_ids: row.blocks_rule_ids || [],
+        prerequisite_rule_ids: row.prerequisite_rule_ids || [],
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 2: Temporal Constraint Fields
+        // ═══════════════════════════════════════════════════════════════════════
+        crop_age_days_min: row.crop_age_days_min,
+        crop_age_days_max: row.crop_age_days_max,
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 3: ETL Safety Gate Fields
+        // ═══════════════════════════════════════════════════════════════════════
+        etl_applicable: row.etl_applicable,
+        etl_value_min: row.etl_value_min,
+        etl_value_max: row.etl_value_max,
+        
+        // Safety fields
         phi_days: row.phi_days,
         bee_toxicity: row.bee_toxicity,
         ipm_level: row.ipm_level,
         etl_threshold: row.etl_threshold,
         active_ingredient: row.active_ingredient,
         organic_alternative: row.organic_alternative,
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 6: Safety Enhancement Fields
+        // ═══════════════════════════════════════════════════════════════════════
+        farmer_safety_level: row.farmer_safety_level,
+        resistance_group: row.resistance_group,
+        mode_of_action: row.mode_of_action,
+        
         is_active: row.is_active
       };
     });
