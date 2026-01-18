@@ -481,7 +481,7 @@ serve(async (req) => {
     console.log(`\n🔬 [${traceId}] ═══ FILTERING AUDIT START ═══`);
     console.log(`🔬 [${traceId}] ─── BEFORE FILTERING: RAW DECISION GRAPH OUTPUT ───`);
     
-    const rawDecisionOutput = orchestratorResponse.decision_output;
+    let rawDecisionOutput = orchestratorResponse.decision_output;
     if (rawDecisionOutput) {
       console.log(`   Status: ${rawDecisionOutput.status}`);
       console.log(`   Primary Decision: ${rawDecisionOutput.primary_decision?.action_type || 'NONE'}`);
@@ -492,6 +492,7 @@ serve(async (req) => {
       if (rawDecisionOutput.primary_decision) {
         console.log(`   📌 RAW Primary: ${JSON.stringify({
           action_type: rawDecisionOutput.primary_decision.action_type,
+          rule_id: rawDecisionOutput.primary_decision.rule_id,
           product: rawDecisionOutput.primary_decision.application_details?.product_name,
           target: rawDecisionOutput.primary_decision.target,
           priority: rawDecisionOutput.primary_decision.priority
@@ -501,6 +502,96 @@ serve(async (req) => {
         rawDecisionOutput.secondary_actions.forEach((sec: any, i: number) => {
           console.log(`   📎 RAW Secondary ${i + 1}: ${sec.action} | Priority: ${sec.priority}`);
         });
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PRODUCTION HARDENING: PRIMARY DECISION INVARIANT
+      // A valid decision MUST have: rule_id AND action_type
+      // If violated: Generate system fallback instead of passing broken decision
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (rawDecisionOutput.status === 'SUCCESS' || rawDecisionOutput.status === 'PARTIAL') {
+        const primaryDecision = rawDecisionOutput.primary_decision;
+        const hasValidActionType = !!primaryDecision?.action_type;
+        const hasRuleId = !!primaryDecision?.rule_id || !!primaryDecision?.application_details?.rule_id;
+        
+        if (!hasValidActionType || !hasRuleId) {
+          console.error(`🚨 [${traceId}] PRIMARY DECISION INVARIANT VIOLATED!`);
+          console.error(`   primary_decision exists: ${!!primaryDecision}`);
+          console.error(`   action_type: ${primaryDecision?.action_type || 'MISSING'}`);
+          console.error(`   rule_id: ${primaryDecision?.rule_id || primaryDecision?.application_details?.rule_id || 'MISSING'}`);
+          
+          // Check if we have matched_responses to recover from
+          const matchedResponses = rawDecisionOutput.matched_responses;
+          if (matchedResponses && matchedResponses.length > 0) {
+            console.log(`   🔄 Attempting recovery from matched_responses (${matchedResponses.length} available)`);
+            
+            // Rebuild primary_decision from matched_responses
+            const firstMatch = matchedResponses[0];
+            rawDecisionOutput.primary_decision = {
+              action_type: 'RECOMMEND',
+              rule_id: firstMatch.rule_id || 'RECOVERED_FROM_MATCH',
+              specific_action: firstMatch.cause || 'Recommendation',
+              target: {},
+              urgency: 'WITHIN_24H',
+              timing: {
+                recommended_start: new Date().toISOString(),
+                recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                weather_dependency: false,
+                reason: 'Recovered from matched responses'
+              },
+              application_details: {
+                product_name: 'See matched response',
+                product_type: 'BOTANICAL',
+                action_text: firstMatch.action_text,
+                reason_text: firstMatch.reason_text,
+                knowledge_text: firstMatch.knowledge_text,
+                response_mr: firstMatch.response_mr,
+                response_hi: firstMatch.response_hi,
+                response_en: firstMatch.response_en
+              },
+              expected_outcomes: {
+                efficacy_percent: 75,
+                time_to_visible_effect_days: '3-5',
+                success_indicators: []
+              }
+            };
+            
+            console.log(`   ✅ Primary decision RECOVERED from matched_responses`);
+          } else {
+            // No matched_responses - generate system fallback
+            console.log(`   ⚠️ No matched_responses - generating SYSTEM_FALLBACK`);
+            
+            rawDecisionOutput.status = 'SYSTEM_FALLBACK';
+            rawDecisionOutput.primary_decision = {
+              action_type: 'MONITOR_ONLY',
+              rule_id: 'INVARIANT_FALLBACK',
+              specific_action: 'CONTINUE_MONITORING',
+              target: {},
+              urgency: 'NON_URGENT',
+              timing: {
+                recommended_start: new Date().toISOString(),
+                recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                weather_dependency: false,
+                reason: 'System fallback - primary decision invariant violated'
+              },
+              application_details: {
+                product_name: 'Continue monitoring',
+                product_type: 'CULTURAL',
+                concentration: 'Daily observation',
+                coverage_instructions: 'Monitor crop health and look for symptoms'
+              },
+              expected_outcomes: {
+                efficacy_percent: 100,
+                time_to_visible_effect_days: 'Ongoing',
+                success_indicators: ['Early detection of issues']
+              }
+            };
+            
+            console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+          }
+        } else {
+          console.log(`   ✅ Primary decision invariant PASSED: action_type=${primaryDecision.action_type}, rule_id=${primaryDecision.rule_id || primaryDecision.application_details?.rule_id}`);
+        }
       }
     } else {
       console.log(`   ⚠️ No decision_output present in orchestrator response`);

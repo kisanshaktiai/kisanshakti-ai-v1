@@ -265,43 +265,126 @@ function createBlockedAction(rule: RuleResult, priority: string): BlockedAction 
   };
 }
 
-function selectBestAction(viableActions: RuleResult[]): RuleResult {
-  // Prioritize by:
-  // 1. Lower IPM level (prefer biological over chemical)
-  // 2. Higher benefit/cost ratio
-  // 3. Higher confidence
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCTION HARDENING: ACTION TYPE PRIORITY (STRICT ORDER)
+// This ensures deterministic primary decision selection
+// ═══════════════════════════════════════════════════════════════════════════
+const ACTION_TYPE_PRIORITY: Record<string, number> = {
+  // BLOCKING actions are highest priority
+  'BLOCK': 1,
+  'URGENT_BLOCK': 1,
   
-  const scored = viableActions.map(action => {
+  // URGENT actions come next
+  'URGENT_ACTION': 2,
+  'URGENT_TREATMENT': 2,
+  'urgent_treatment': 2,
+  
+  // IMMEDIATE actions
+  'IMMEDIATE_ACTION': 3,
+  'IMMEDIATE_TREATMENT': 3,
+  
+  // TREATMENT recommendations
+  'TREATMENT': 4,
+  'treatment': 4,
+  'RECOMMEND': 4,
+  'SPRAY_CHEMICAL': 4,
+  'SPRAY_BIOPESTICIDE': 4,
+  'SPRAY_BOTANICAL': 4,
+  
+  // PREVENTION
+  'PREVENTION': 5,
+  'prevention': 5,
+  'CULTURAL_PRACTICE': 5,
+  
+  // ADVISORY/MONITORING
+  'MONITOR': 6,
+  'MONITOR_ONLY': 6,
+  'monitoring': 6,
+  'advisory': 6,
+  'ADVISORY': 6,
+  
+  // DIAGNOSIS (not an action, but for completeness)
+  'DIAGNOSIS': 7,
+  'diagnosis': 7,
+  
+  // CLARIFICATION (not an action, but for completeness)
+  'CLARIFICATION': 8,
+  'clarification': 8,
+  
+  // NO_ACTION is lowest priority
+  'NO_ACTION_REQUIRED': 9,
+  'NO_ACTION': 9
+};
+
+function getActionTypePriority(actionType?: string): number {
+  if (!actionType) return 999; // Missing action_type = lowest priority
+  return ACTION_TYPE_PRIORITY[actionType] ?? 50; // Default middle priority for unknown types
+}
+
+function selectBestAction(viableActions: RuleResult[]): RuleResult {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRODUCTION HARDENING: Filter out rules without valid action_type FIRST
+  // Then apply priority-based selection
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Step 1: Filter out rules without action_type (these cannot become primary decisions)
+  const validActions = viableActions.filter(a => {
+    const hasActionType = !!a.action_type || !!a.recommendation?.action_type;
+    if (!hasActionType) {
+      console.warn(`⚠️ [selectBestAction] Filtering out rule ${a.rule_id} - no action_type`);
+    }
+    return hasActionType;
+  });
+  
+  // If no valid actions remain, return first viable action (fallback)
+  if (validActions.length === 0) {
+    console.warn(`⚠️ [selectBestAction] No rules with action_type - using fallback`);
+    return viableActions[0];
+  }
+  
+  // Step 2: Score by action_type priority FIRST, then IPM level, then confidence
+  const scored = validActions.map(action => {
+    const actionType = action.action_type || action.recommendation?.action_type || '';
+    const actionPriority = getActionTypePriority(actionType);
     const ipmLevel = action.recommendation?.ipm_level ?? 5;
     const bcr = action.recommendation?.benefit_cost_ratio ?? 1;
-    const confidence = action.confidence;
+    const confidence = action.confidence || 0;
     
-    // Score formula: prioritize lower IPM levels, higher BCR, higher confidence
-    const score = (6 - ipmLevel) * 100 + bcr * 10 + confidence * 5;
+    // Score formula: 
+    // - Lower action_type priority = HIGHER score (we invert it)
+    // - Then lower IPM levels = higher score
+    // - Then higher confidence
+    const score = (100 - actionPriority) * 1000 + (6 - ipmLevel) * 100 + bcr * 10 + confidence * 5;
     
-    return { action, score };
+    return { action, score, actionPriority, actionType };
   });
   
   scored.sort((a, b) => b.score - a.score);
   
-  // If top action is IPM level 3-4 (biological/botanical) with BCR > 2, prefer it
-  const ipmPreferred = scored.find(s => 
-    (s.action.recommendation?.ipm_level ?? 5) <= 4 && 
-    (s.action.recommendation?.benefit_cost_ratio ?? 0) > 2
-  );
+  console.log(`🎯 [selectBestAction] Ranked ${scored.length} actions:`);
+  scored.slice(0, 3).forEach((s, i) => {
+    console.log(`   ${i + 1}. ${s.action.rule_id}: action_type=${s.actionType}, priority=${s.actionPriority}, score=${s.score}`);
+  });
   
-  if (ipmPreferred) {
-    return ipmPreferred.action;
-  }
-  
-  // Otherwise return highest scored
+  // Return highest scored
   return scored[0].action;
 }
 
 function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
   const rec = rule.recommendation;
   
-  const actionType = mapToActionType(rec?.product_type);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRODUCTION HARDENING: action_type MUST come from rule, NOT derived from product_type
+  // This is the CRITICAL fix - action_type was being lost in the conversion
+  // ═══════════════════════════════════════════════════════════════════════════
+  const actionType = rule.action_type || 
+                     rec?.action_type || 
+                     mapToActionType(rec?.product_type);
+  
+  // CRITICAL: Log if action_type is missing - this indicates a data issue
+  if (!rule.action_type && !rec?.action_type) {
+    console.warn(`⚠️ [convertToPrimaryDecision] Rule ${rule.rule_id} missing action_type - deriving from product_type`);
+  }
   
   // CRITICAL FIX: Extract product name properly, NEVER use reason_mr/hi as product name
   // reason fields contain user-facing messages like weather warnings, NOT product names
@@ -319,10 +402,17 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
                       rule.cause?.toUpperCase().includes('BLIGHT') ||
                       rule.cause?.toUpperCase().includes('ROT') ? rule.cause : undefined);
   
-  console.log(`🎯 [ConflictResolver] Converting to PrimaryDecision: product=${productName}, dosage=${dosage}, pest=${pestCode}, disease=${diseaseCode}`);
+  console.log(`🎯 [ConflictResolver] Converting to PrimaryDecision:`);
+  console.log(`   rule_id=${rule.rule_id}, action_type=${actionType}`);
+  console.log(`   product=${productName}, dosage=${dosage}`);
+  console.log(`   pest=${pestCode}, disease=${diseaseCode}`);
   
   return {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PRODUCTION HARDENING: These fields are REQUIRED for valid PrimaryDecision
+    // ═══════════════════════════════════════════════════════════════════════════
     action_type: actionType,
+    rule_id: rule.rule_id, // CRITICAL: Include rule_id for traceability
     specific_action: productName || rule.cause,
     target: {
       pest_code: pestCode,
@@ -350,7 +440,13 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
         needed: true,
         interval_days: 7,
         max_applications_season: 3
-      }
+      },
+      // ═══════════════════════════════════════════════════════════════════════════
+      // NEW RESPONSE CONTRACT: Pass structured response fields
+      // ═══════════════════════════════════════════════════════════════════════════
+      action_text: rec?.action_text || rule.action_text,
+      reason_text: rec?.reason_text || rule.reason_text,
+      knowledge_text: rec?.knowledge_text || rule.knowledge_text
     },
     expected_outcomes: {
       efficacy_percent: rec?.efficacy_percent || 75,
@@ -362,7 +458,7 @@ function convertToPrimaryDecision(rule: RuleResult): PrimaryDecision {
       ]
     },
     ipm_level: rec?.ipm_level,
-    // Preserve multilingual reasons for LLM formatter
+    // Preserve multilingual reasons for LLM formatter (LEGACY - for backward compat)
     reason_mr: rule.reason_mr,
     reason_hi: rule.reason_hi
   };

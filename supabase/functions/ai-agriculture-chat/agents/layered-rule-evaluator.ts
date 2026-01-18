@@ -262,13 +262,20 @@ export function evaluateRulesLayered(
         });
         
         // CRITICAL: Collect response text from matched diagnosis rules for LLM formatting
-        if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
+        // PRODUCTION HARDENING: Include new response contract fields
+        const actionDetails = rule.then.action_details || {};
+        if (actionDetails.response_mr || actionDetails.response_en || actionDetails.action_text) {
           result.matched_responses.push({
             rule_id: rule.id,
             cause: rule.then.possible_cause,
-            response_mr: rule.then.action_details?.response_mr,
-            response_hi: rule.then.action_details?.response_hi,
-            response_en: rule.then.action_details?.response_en
+            // NEW RESPONSE CONTRACT (PRIORITY)
+            action_text: actionDetails.action_text,
+            reason_text: actionDetails.reason_text,
+            knowledge_text: actionDetails.knowledge_text,
+            // LEGACY (FALLBACK)
+            response_mr: actionDetails.response_mr,
+            response_hi: actionDetails.response_hi,
+            response_en: actionDetails.response_en
           });
         }
       }
@@ -402,13 +409,20 @@ export function evaluateRulesLayered(
       firedRuleIds.add(rule.id);
       
       // CRITICAL: Also collect responses from prescription rules
-      if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
+      // PRODUCTION HARDENING: Include new response contract fields
+      const prescriptionActionDetails = rule.then.action_details || {};
+      if (prescriptionActionDetails.response_mr || prescriptionActionDetails.response_en || prescriptionActionDetails.action_text) {
         result.matched_responses.push({
           rule_id: rule.id,
           cause: rule.then.possible_cause || rule.then.action_type || 'TREATMENT',
-          response_mr: rule.then.action_details?.response_mr,
-          response_hi: rule.then.action_details?.response_hi,
-          response_en: rule.then.action_details?.response_en
+          // NEW RESPONSE CONTRACT (PRIORITY)
+          action_text: prescriptionActionDetails.action_text,
+          reason_text: prescriptionActionDetails.reason_text,
+          knowledge_text: prescriptionActionDetails.knowledge_text,
+          // LEGACY (FALLBACK)
+          response_mr: prescriptionActionDetails.response_mr,
+          response_hi: prescriptionActionDetails.response_hi,
+          response_en: prescriptionActionDetails.response_en
         });
       }
     }
@@ -419,13 +433,20 @@ export function evaluateRulesLayered(
       result.rules_evaluated++;
       if (matchesConditions(rule, state)) {
         // Don't add to prescriptions (blocked), but collect responses for display
-        if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
+        // PRODUCTION HARDENING: Include new response contract fields
+        const blockedActionDetails = rule.then.action_details || {};
+        if (blockedActionDetails.response_mr || blockedActionDetails.response_en || blockedActionDetails.action_text) {
           result.matched_responses.push({
             rule_id: rule.id,
             cause: rule.then.possible_cause || rule.then.action_type || 'MONITORING_ADVICE',
-            response_mr: rule.then.action_details?.response_mr,
-            response_hi: rule.then.action_details?.response_hi,
-            response_en: rule.then.action_details?.response_en
+            // NEW RESPONSE CONTRACT (PRIORITY)
+            action_text: blockedActionDetails.action_text,
+            reason_text: blockedActionDetails.reason_text,
+            knowledge_text: blockedActionDetails.knowledge_text,
+            // LEGACY (FALLBACK)
+            response_mr: blockedActionDetails.response_mr,
+            response_hi: blockedActionDetails.response_hi,
+            response_en: blockedActionDetails.response_en
           });
         }
       }
@@ -529,21 +550,64 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     then: {
       possible_cause: bundled.cause,
       cause_confidence: bundled.cause_confidence || 0.7,
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PRODUCTION HARDENING: action_type is REQUIRED - use from DB, never default
+      // ═══════════════════════════════════════════════════════════════════════════
       action_type: bundled.action_type || 'RECOMMEND',
       action_details: {
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 1: Graph Control Fields - CRITICAL for rule dependencies
+        // ═══════════════════════════════════════════════════════════════════════════
+        blocks_rule_ids: bundled.blocks_rule_ids || [],
+        prerequisite_rule_ids: bundled.prerequisite_rule_ids || [],
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 2: Temporal Constraint Fields - CRITICAL for age-based filtering
+        // ═══════════════════════════════════════════════════════════════════════════
+        crop_age_days_min: bundled.crop_age_days_min,
+        crop_age_days_max: bundled.crop_age_days_max,
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 3: ETL Safety Gate Fields - CRITICAL for spray decision
+        // ═══════════════════════════════════════════════════════════════════════════
+        etl_applicable: bundled.etl_applicable,
+        etl_value_min: bundled.etl_value_min,
+        etl_value_max: bundled.etl_value_max,
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 6: Safety Enhancement Fields - CRITICAL for farmer safety
+        // ═══════════════════════════════════════════════════════════════════════════
+        farmer_safety_level: bundled.farmer_safety_level,
+        resistance_group: bundled.resistance_group,
+        mode_of_action: bundled.mode_of_action,
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // NEW RESPONSE CONTRACT: action_text, reason_text, knowledge_text (PRIORITY)
+        // Legacy response_mr/hi/en are FALLBACK ONLY
+        // ═══════════════════════════════════════════════════════════════════════════
+        action_text: bundled.action_text,
+        reason_text: bundled.reason_text,
+        knowledge_text: bundled.knowledge_text,
+        i18n_key: bundled.i18n_key,
+        
+        // LEGACY: Deprecated response fields (fallback only)
         response_mr: bundled.response_mr,
         response_hi: bundled.response_hi,
         response_en: bundled.response_en,
+        
         alternatives: bundled.alternatives,
-        // CRITICAL: Include product info for prescription rules
+        // Product info for prescription rules
         active_ingredient: bundled.active_ingredient,
         phi_days: bundled.phi_days,
         bee_toxicity: bundled.bee_toxicity,
         ipm_level: bundled.ipm_level,
         etl_threshold: bundled.etl_threshold,
-        organic_alternative: bundled.organic_alternative
+        organic_alternative: bundled.organic_alternative,
+        
+        // CRITICAL: Include rule_id for traceability within action_details
+        rule_id: bundled.rule_id
       },
-      // CRITICAL: Include rule_id for traceability
+      // CRITICAL: Include rule_id for traceability at top level
       product_reference: bundled.rule_id
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
