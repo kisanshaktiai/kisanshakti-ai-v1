@@ -785,7 +785,7 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     // ═══════════════════════════════════════════════════════════════════════════
     // LEGACY: Extract and pass product details (fallback when new contract empty)
     // ═══════════════════════════════════════════════════════════════════════════
-    if (appDetails) {
+    if (appDetails && Object.keys(appDetails).length > 0) {
       parts.push(`\n- Product Name: ${appDetails.product_name || 'Not specified'}`);
       parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
       parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
@@ -811,40 +811,8 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
     
     // Urgency indicator
-    const urgency = IPM_URGENCY_LABELS[primary.ipm_level || 'LEVEL_3']?.[input.language] || 'Normal priority';
-    parts.push(`- Urgency: ${urgency}`);
-    
-    if (primary.rule_id) {
-      parts.push(`- Scientific Basis: ICAR Rule ${primary.rule_id}`);
-    }
-    if (appDetails) {
-      parts.push(`- Product Name: ${appDetails.product_name || 'Not specified'}`);
-      parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
-      parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
-      parts.push(`- Application Method: ${appDetails.method || appDetails.application_method || 'Standard application'}`);
-      parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'Early morning 6-10 AM'}`);
-      parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || '200 L/acre'}`);
-      parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'} (कापणीपूर्वी वाट पाहा)`);
-      parts.push(`- Expected Efficacy: ${appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent || 75}%`);
-      parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'No rain within 4-6 hours after spray'}`);
-      
-      // Multilingual product names for farmer
-      if (appDetails.names) {
-        const names = appDetails.names as { mr?: string; hi?: string; en?: string };
-        parts.push(`- Product (Marathi): ${names.mr || appDetails.product_name}`);
-        parts.push(`- Product (Hindi): ${names.hi || appDetails.product_name}`);
-      }
-    } else {
-      parts.push(`- Product: ${primary.product_name || 'Not specified'}`);
-      parts.push(`- Dosage: As per label`);
-    }
-    
-    parts.push(`- Priority: ${primary.priority || 'HIGH'}`);
-    parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
-    
-    // Urgency indicator
-    const urgency = IPM_URGENCY_LABELS[primary.ipm_level || 'LEVEL_3']?.[input.language] || 'Normal priority';
-    parts.push(`- Urgency: ${urgency}`);
+    const urgencyLabel = IPM_URGENCY_LABELS[primary.ipm_level || 'LEVEL_3']?.[input.language] || 'Normal priority';
+    parts.push(`- Urgency: ${urgencyLabel}`);
     
     if (primary.rule_id) {
       parts.push(`- Scientific Basis: ICAR Rule ${primary.rule_id}`);
