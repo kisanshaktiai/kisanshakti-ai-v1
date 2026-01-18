@@ -507,7 +507,11 @@ serve(async (req) => {
       // ═══════════════════════════════════════════════════════════════════════════
       // PRODUCTION HARDENING: PRIMARY DECISION INVARIANT
       // A valid decision MUST have: rule_id AND action_type
-      // If violated: Generate system fallback instead of passing broken decision
+      // RECOVERY PRIORITY: 
+      //   1. layered_rule_result.primary_decision (NEW - from LayeredRuleEvaluator)
+      //   2. primary_matched_response (LEGACY)
+      //   3. matched_responses array
+      //   4. SYSTEM_FALLBACK
       // ═══════════════════════════════════════════════════════════════════════════
       if (rawDecisionOutput.status === 'SUCCESS' || rawDecisionOutput.status === 'PARTIAL') {
         const primaryDecision = rawDecisionOutput.primary_decision;
@@ -521,30 +525,38 @@ serve(async (req) => {
           console.error(`   rule_id: ${primaryDecision?.rule_id || primaryDecision?.application_details?.rule_id || 'MISSING'}`);
           console.error(`   source: index.ts`);
           
-          // PRIORITY 1: Check for primary_matched_response from layered-rule-evaluator
-          const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
-          if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type) {
-            console.log(`   🔄 RECOVERY: Using primary_matched_response from layered-rule-evaluator`);
+          // ═══════════════════════════════════════════════════════════════════════════
+          // PRIORITY 1: Check for layered_rule_result.primary_decision (NEW CONTRACT)
+          // This is built by layered-rule-evaluator.ts from eligible matched_responses
+          // ═══════════════════════════════════════════════════════════════════════════
+          const layeredPrimaryDecision = rawDecisionOutput.layered_rule_result?.primary_decision;
+          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type) {
+            console.log(`   🔄 RECOVERY: Using layered_rule_result.primary_decision`);
             
             rawDecisionOutput.primary_decision = {
-              action_type: primaryMatchedResponse.action_type,
-              rule_id: primaryMatchedResponse.rule_id,
-              specific_action: primaryMatchedResponse.action_type,
+              action_type: layeredPrimaryDecision.action_type,
+              rule_id: layeredPrimaryDecision.rule_id,
+              specific_action: layeredPrimaryDecision.action_type,
               target: {},
               urgency: 'WITHIN_24H',
+              priority: layeredPrimaryDecision.priority,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                 weather_dependency: false,
-                reason: 'Recovered from primary_matched_response'
+                reason: 'Recovered from layered_rule_result.primary_decision'
               },
               application_details: {
                 product_name: 'See structured response',
                 product_type: 'BOTANICAL',
-                action_text: primaryMatchedResponse.action_text,
-                reason_text: primaryMatchedResponse.reason_text,
-                knowledge_text: primaryMatchedResponse.knowledge_text,
-                rule_id: primaryMatchedResponse.rule_id
+                action_text: layeredPrimaryDecision.action_text,
+                reason_text: layeredPrimaryDecision.reason_text,
+                knowledge_text: layeredPrimaryDecision.knowledge_text,
+                i18n_key: layeredPrimaryDecision.i18n_key,
+                response_mr: layeredPrimaryDecision.response_mr,
+                response_hi: layeredPrimaryDecision.response_hi,
+                response_en: layeredPrimaryDecision.response_en,
+                rule_id: layeredPrimaryDecision.rule_id
               },
               expected_outcomes: {
                 efficacy_percent: 75,
@@ -553,43 +565,33 @@ serve(async (req) => {
               }
             };
             
-            console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${primaryMatchedResponse.action_type}`);
-          } 
-          // PRIORITY 2: Check matched_responses array
+            console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
+          }
+          // PRIORITY 2: Check for primary_matched_response (LEGACY)
           else {
-            const matchedResponses = rawDecisionOutput.matched_responses;
-            
-            // Filter for eligible responses (must have rule_id AND action_type)
-            const eligibleResponses = (matchedResponses || []).filter((r: any) => 
-              r.rule_id && r.action_type && (r.action_text || r.response_en || r.response_mr)
-            );
-            
-            if (eligibleResponses.length > 0) {
-              console.log(`   🔄 RECOVERY: Using eligible matched_response (${eligibleResponses.length} available)`);
+            const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
+            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type) {
+              console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
               
-              const firstMatch = eligibleResponses[0];
               rawDecisionOutput.primary_decision = {
-                action_type: firstMatch.action_type,
-                rule_id: firstMatch.rule_id,
-                specific_action: firstMatch.cause || 'Recommendation',
+                action_type: primaryMatchedResponse.action_type,
+                rule_id: primaryMatchedResponse.rule_id,
+                specific_action: primaryMatchedResponse.action_type,
                 target: {},
                 urgency: 'WITHIN_24H',
                 timing: {
                   recommended_start: new Date().toISOString(),
                   recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                   weather_dependency: false,
-                  reason: 'Recovered from matched responses'
+                  reason: 'Recovered from primary_matched_response'
                 },
                 application_details: {
-                  product_name: 'See matched response',
+                  product_name: 'See structured response',
                   product_type: 'BOTANICAL',
-                  action_text: firstMatch.action_text,
-                  reason_text: firstMatch.reason_text,
-                  knowledge_text: firstMatch.knowledge_text,
-                  response_mr: firstMatch.response_mr,
-                  response_hi: firstMatch.response_hi,
-                  response_en: firstMatch.response_en,
-                  rule_id: firstMatch.rule_id
+                  action_text: primaryMatchedResponse.action_text,
+                  reason_text: primaryMatchedResponse.reason_text,
+                  knowledge_text: primaryMatchedResponse.knowledge_text,
+                  rule_id: primaryMatchedResponse.rule_id
                 },
                 expected_outcomes: {
                   efficacy_percent: 75,
@@ -598,42 +600,91 @@ serve(async (req) => {
                 }
               };
               
-              console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
-            } else {
-              // PRIORITY 3: No eligible responses - generate system fallback
-              console.error(`   🚨 No eligible responses found - generating SYSTEM_FALLBACK`);
-              console.error(`   matched_responses count: ${matchedResponses?.length || 0}`);
+              console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${primaryMatchedResponse.action_type}`);
+            } 
+            // PRIORITY 3: Check matched_responses array
+            else {
+              const matchedResponses = rawDecisionOutput.matched_responses || 
+                                       rawDecisionOutput.layered_rule_result?.matched_responses || [];
               
-              rawDecisionOutput.status = 'SYSTEM_FALLBACK';
-              rawDecisionOutput.primary_decision = {
-                action_type: 'MONITOR_ONLY',
-                rule_id: 'INVARIANT_FALLBACK',
-                specific_action: 'CONTINUE_MONITORING',
-                target: {},
-                urgency: 'NON_URGENT',
-                timing: {
-                  recommended_start: new Date().toISOString(),
-                  recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                  weather_dependency: false,
-                  reason: 'System fallback - primary decision invariant violated'
-                },
-                application_details: {
-                  product_name: 'Continue monitoring',
-                  product_type: 'CULTURAL',
-                  concentration: 'Daily observation',
-                  coverage_instructions: 'Monitor crop health and look for symptoms',
-                  action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
-                  reason_text: 'Insufficient information to provide specific recommendation.',
-                  rule_id: 'INVARIANT_FALLBACK'
-                },
-                expected_outcomes: {
-                  efficacy_percent: 100,
-                  time_to_visible_effect_days: 'Ongoing',
-                  success_indicators: ['Early detection of issues']
-                }
-              };
+              // Filter for eligible responses (must have rule_id AND action_type AND content)
+              const eligibleResponses = matchedResponses.filter((r: any) => 
+                r.rule_id && r.action_type && (r.action_text || r.response_en || r.response_mr)
+              );
               
-              console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+              if (eligibleResponses.length > 0) {
+                console.log(`   🔄 RECOVERY: Using eligible matched_response (${eligibleResponses.length} available)`);
+                
+                const firstMatch = eligibleResponses[0];
+                rawDecisionOutput.primary_decision = {
+                  action_type: firstMatch.action_type,
+                  rule_id: firstMatch.rule_id,
+                  specific_action: firstMatch.cause || 'Recommendation',
+                  target: {},
+                  urgency: 'WITHIN_24H',
+                  priority: firstMatch.priority,
+                  timing: {
+                    recommended_start: new Date().toISOString(),
+                    recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                    weather_dependency: false,
+                    reason: 'Recovered from matched responses'
+                  },
+                  application_details: {
+                    product_name: 'See matched response',
+                    product_type: 'BOTANICAL',
+                    action_text: firstMatch.action_text,
+                    reason_text: firstMatch.reason_text,
+                    knowledge_text: firstMatch.knowledge_text,
+                    i18n_key: firstMatch.i18n_key,
+                    response_mr: firstMatch.response_mr,
+                    response_hi: firstMatch.response_hi,
+                    response_en: firstMatch.response_en,
+                    rule_id: firstMatch.rule_id
+                  },
+                  expected_outcomes: {
+                    efficacy_percent: 75,
+                    time_to_visible_effect_days: '3-5',
+                    success_indicators: []
+                  }
+                };
+                
+                console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
+              } else {
+                // PRIORITY 4: No eligible responses - generate system fallback
+                console.error(`🚨 [${traceId}] No eligible responses found - generating SYSTEM_FALLBACK`);
+                console.error(`   matched_responses count: ${matchedResponses?.length || 0}`);
+                
+                rawDecisionOutput.status = 'SYSTEM_FALLBACK';
+                rawDecisionOutput.primary_decision = {
+                  action_type: 'MONITOR_ONLY',
+                  rule_id: 'INVARIANT_FALLBACK',
+                  specific_action: 'CONTINUE_MONITORING',
+                  target: {},
+                  urgency: 'NON_URGENT',
+                  timing: {
+                    recommended_start: new Date().toISOString(),
+                    recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                    weather_dependency: false,
+                    reason: 'System fallback - primary decision invariant violated'
+                  },
+                  application_details: {
+                    product_name: 'Continue monitoring',
+                    product_type: 'CULTURAL',
+                    concentration: 'Daily observation',
+                    coverage_instructions: 'Monitor crop health and look for symptoms',
+                    action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
+                    reason_text: 'Insufficient information to provide specific recommendation.',
+                    rule_id: 'INVARIANT_FALLBACK'
+                  },
+                  expected_outcomes: {
+                    efficacy_percent: 100,
+                    time_to_visible_effect_days: 'Ongoing',
+                    success_indicators: ['Early detection of issues']
+                  }
+                };
+                
+                console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+              }
             }
           }
         } else {

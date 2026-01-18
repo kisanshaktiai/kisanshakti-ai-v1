@@ -131,12 +131,56 @@ export interface Rule {
   active: boolean;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MANDATORY INTERFACE: MatchedResponse for primary decision eligibility
+// CRITICAL: A response is ONLY eligible for primary decision if it has:
+//   - rule_id (EXISTS)
+//   - action_type (NOT NULL)
+//   - action_text OR response_en OR response_mr (NOT NULL)
+// ═══════════════════════════════════════════════════════════════════════════
+export interface MatchedResponse {
+  rule_id: string;
+  cause: string;
+  action_type: string;  // MANDATORY - required for primary eligibility
+  priority?: number;     // For deterministic selection
+  confidence_score?: number;
+  // NEW RESPONSE CONTRACT (PRIORITY)
+  action_text?: string;
+  reason_text?: string;
+  knowledge_text?: string;
+  i18n_key?: string;
+  // LEGACY (FALLBACK ONLY)
+  response_mr?: string;
+  response_hi?: string;
+  response_en?: string;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MANDATORY INTERFACE: PrimaryDecision - built from selected MatchedResponse
+// This is the ACTUAL PRIMARY DECISION passed to UnifiedGate and LLM Formatter
+// ═══════════════════════════════════════════════════════════════════════════
+export interface PrimaryDecision {
+  rule_id: string;
+  action_type: string;
+  priority: number;
+  confidence_score: number;
+  // NEW RESPONSE CONTRACT
+  action_text?: string;
+  reason_text?: string;
+  knowledge_text?: string;
+  i18n_key?: string;
+  // LEGACY FALLBACK
+  response_mr?: string;
+  response_hi?: string;
+  response_en?: string;
+}
+
 export interface LayeredRuleResult {
   rules_evaluated: number;
   rules_matched: number;
   rules_applied: string[];
-  rules_blocked_by_graph: string[];  // NEW: Rules blocked by graph constraints
-  rules_blocked_by_etl: string[];    // NEW: Rules blocked by ETL threshold
+  rules_blocked_by_graph: string[];
+  rules_blocked_by_etl: string[];
   observations: string[];
   diagnoses: Diagnosis[];
   final_diagnosis: Diagnosis | null;
@@ -146,30 +190,15 @@ export interface LayeredRuleResult {
   safety_blocks: { rule_id: string; message: string }[];
   prescriptions: RuleAssertions[];
   warnings: RuleAssertions[];
-  safety_warnings: string[];  // NEW: Farmer safety warnings
+  safety_warnings: string[];
   confidence_in_result: number;
-  // CRITICAL: Include matched responses for LLM formatting even when prescriptions are blocked
-  // PRODUCTION HARDENING: Extended to include new response contract fields
-  matched_responses: { 
-    rule_id: string; 
-    cause: string; 
-    action_type?: string;  // REQUIRED for valid primary decision
-    action_text?: string;   // NEW RESPONSE CONTRACT
-    reason_text?: string;   // NEW RESPONSE CONTRACT
-    knowledge_text?: string; // NEW RESPONSE CONTRACT
-    response_mr?: string;   // LEGACY (fallback only)
-    response_hi?: string;   // LEGACY (fallback only)
-    response_en?: string;   // LEGACY (fallback only)
-  }[];
-  // PRODUCTION HARDENING: Primary decision selected from matched_responses
-  primary_matched_response?: {
-    rule_id: string;
-    action_type: string;
-    action_text?: string;
-    reason_text?: string;
-    knowledge_text?: string;
-    confidence_score?: number;
-  } | null;
+  // All matched responses from evaluation (for audit/fallback)
+  matched_responses: MatchedResponse[];
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL: PRIMARY_DECISION - Built from highest-priority eligible response
+  // This MUST be passed to orchestrator.ts and mapped into decision_output
+  // ═══════════════════════════════════════════════════════════════════════════
+  primary_decision: PrimaryDecision | null;
 }
 
 // ==================== STUB: Empty rule arrays ====================
@@ -237,8 +266,12 @@ export function evaluateRulesLayered(
     warnings: [],
     safety_warnings: [],
     confidence_in_result: 0.5,
-    matched_responses: [], // CRITICAL: Collect responses from all matched rules
-    primary_matched_response: null // PRODUCTION HARDENING: Best valid primary response
+    matched_responses: [],
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL: primary_decision is NULL until explicitly built from eligible response
+    // This will be populated AFTER evaluation via selectPrimaryDecision()
+    // ═══════════════════════════════════════════════════════════════════════════
+    primary_decision: null
   };
   
   // PHASE-16: Early return if no rules to evaluate
@@ -283,32 +316,39 @@ export function evaluateRulesLayered(
         });
         
         // CRITICAL: Collect response text from matched diagnosis rules for LLM formatting
-        // PRODUCTION HARDENING: Include new response contract fields AND action_type
+        // PRODUCTION HARDENING: Include new response contract fields, priority, i18n_key, AND action_type
         const actionDetails = rule.then.action_details || {};
         const ruleActionType = rule.then.action_type || actionDetails.action_type;
+        const rulePriority = rule.priority || 50;
         
-        // PRODUCTION HARDENING: Only add to matched_responses if action_type exists
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PRIMARY_ACTION_ELIGIBILITY: Only add if action_type exists AND has content
+        // ═══════════════════════════════════════════════════════════════════════════
         if (ruleActionType && (actionDetails.action_text || actionDetails.response_en || actionDetails.response_mr)) {
           result.matched_responses.push({
             rule_id: rule.id,
             cause: rule.then.possible_cause || 'DIAGNOSIS',
             action_type: ruleActionType,
+            priority: rulePriority,
+            confidence_score: rule.then.cause_confidence,
             // NEW RESPONSE CONTRACT (PRIORITY)
             action_text: actionDetails.action_text,
             reason_text: actionDetails.reason_text,
             knowledge_text: actionDetails.knowledge_text,
+            i18n_key: actionDetails.i18n_key,
             // LEGACY (FALLBACK)
             response_mr: actionDetails.response_mr,
             response_hi: actionDetails.response_hi,
             response_en: actionDetails.response_en
           });
         } else if (actionDetails.response_mr || actionDetails.response_en) {
-          // LEGACY: Rules without action_type - log warning but still collect
-          console.warn(`⚠️ [LayeredRuleEvaluator] Rule ${rule.id} missing action_type - legacy fallback`);
+          // LEGACY: Rules without action_type - add with default DIAGNOSIS type
+          console.warn(`⚠️ [LayeredRuleEvaluator] Rule ${rule.id} missing action_type - using DIAGNOSIS default`);
           result.matched_responses.push({
             rule_id: rule.id,
             cause: rule.then.possible_cause || 'DIAGNOSIS',
-            action_type: 'DIAGNOSIS', // Default for diagnosis rules
+            action_type: 'DIAGNOSIS', // Default for diagnosis rules without explicit type
+            priority: rulePriority,
             response_mr: actionDetails.response_mr,
             response_hi: actionDetails.response_hi,
             response_en: actionDetails.response_en
@@ -519,8 +559,9 @@ export function evaluateRulesLayered(
   result.confidence_in_result = conflictResult.confidence_in_resolution;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PRODUCTION HARDENING: SELECT PRIMARY MATCHED RESPONSE
-  // Apply PRIMARY_ACTION_ELIGIBILITY filter: rule_id + action_type + (action_text OR response_en)
+  // CRITICAL: BUILD PRIMARY_DECISION FROM ELIGIBLE MATCHED RESPONSES
+  // PRIMARY_ACTION_ELIGIBILITY: rule_id EXISTS + action_type NOT NULL + content NOT NULL
+  // This decision is MANDATORY for UnifiedGate and LLM Formatter
   // ═══════════════════════════════════════════════════════════════════════════
   const eligibleResponses = result.matched_responses.filter(r => 
     r.rule_id && 
@@ -529,7 +570,9 @@ export function evaluateRulesLayered(
   );
   
   if (eligibleResponses.length > 0) {
-    // Apply ACTION_TYPE_PRIORITY for selection
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ACTION_TYPE_PRIORITY for deterministic selection (BLOCK > URGENT > etc.)
+    // ═══════════════════════════════════════════════════════════════════════════
     const ACTION_TYPE_PRIORITY: Record<string, number> = {
       'BLOCK': 1, 'URGENT_BLOCK': 1,
       'URGENT_ACTION': 2, 'URGENT_TREATMENT': 2, 'urgent_treatment': 2,
@@ -546,36 +589,59 @@ export function evaluateRulesLayered(
       priority: ACTION_TYPE_PRIORITY[r.action_type || ''] ?? 50
     }));
     
+    // Sort by priority (lower = higher priority)
     scored.sort((a, b) => a.priority - b.priority);
     const best = scored[0].response;
     
-    result.primary_matched_response = {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MANDATORY: Build complete PrimaryDecision object with ALL required fields
+    // This is the ACTUAL decision passed to orchestrator → UnifiedGate → LLM
+    // ═══════════════════════════════════════════════════════════════════════════
+    result.primary_decision = {
       rule_id: best.rule_id,
-      action_type: best.action_type!,
+      action_type: best.action_type,
+      priority: best.priority ?? scored[0].priority * 10,
+      confidence_score: best.confidence_score ?? result.confidence_in_result,
+      // NEW RESPONSE CONTRACT (PRIORITY)
       action_text: best.action_text,
       reason_text: best.reason_text,
-      knowledge_text: best.knowledge_text
+      knowledge_text: best.knowledge_text,
+      i18n_key: best.i18n_key,
+      // LEGACY (FALLBACK)
+      response_mr: best.response_mr,
+      response_hi: best.response_hi,
+      response_en: best.response_en
     };
     
-    console.log(`✅ [LayeredRuleEvaluator] PRIMARY_MATCHED_RESPONSE selected: ${best.rule_id}, action_type=${best.action_type}`);
+    console.log(`✅ [LayeredRuleEvaluator] PRIMARY_DECISION built successfully:`);
+    console.log(`   rule_id=${result.primary_decision.rule_id}`);
+    console.log(`   action_type=${result.primary_decision.action_type}`);
+    console.log(`   has_action_text=${!!result.primary_decision.action_text}`);
+    console.log(`   has_reason_text=${!!result.primary_decision.reason_text}`);
   } else {
-    console.error(`🚨 [LayeredRuleEvaluator] PRIMARY_ACTION_INVALID: No eligible responses found`);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FAIL-FAST LOGGING: Log detailed error when no eligible responses found
+    // ═══════════════════════════════════════════════════════════════════════════
+    console.error(`🚨 [LayeredRuleEvaluator] PRIMARY_ACTION_INVALID:`);
     console.error(`   matched_responses.length=${result.matched_responses.length}`);
+    console.error(`   source=layered-rule-evaluator.ts`);
     result.matched_responses.forEach((r, i) => {
-      console.error(`   ${i + 1}. rule_id=${r.rule_id}, action_type=${r.action_type || 'MISSING'}, has_action_text=${!!r.action_text}`);
+      console.error(`   ${i + 1}. rule_id=${r.rule_id}, action_type=${r.action_type || 'MISSING'}, has_content=${!!(r.action_text || r.response_en)}`);
     });
+    
+    // primary_decision remains null - orchestrator.ts will handle fallback
   }
   
-  // Log summary
-  console.log(`📊 [LayeredRuleEvaluator] Summary:
-   - Rules evaluated: ${result.rules_evaluated}
-   - Rules matched: ${result.rules_matched}
-   - Matched responses: ${result.matched_responses.length}
-   - Eligible for primary: ${eligibleResponses.length}
-   - Primary selected: ${result.primary_matched_response ? result.primary_matched_response.rule_id : 'NONE'}
-   - Blocked by graph: ${result.rules_blocked_by_graph.length}
-   - Blocked by ETL: ${result.rules_blocked_by_etl.length}
-   - Safety warnings: ${result.safety_warnings.length}`);
+  // Log evaluation summary
+  console.log(`📊 [LayeredRuleEvaluator] Summary:`);
+  console.log(`   Rules evaluated: ${result.rules_evaluated}`);
+  console.log(`   Rules matched: ${result.rules_matched}`);
+  console.log(`   Matched responses: ${result.matched_responses.length}`);
+  console.log(`   Eligible for primary: ${eligibleResponses.length}`);
+  console.log(`   Primary decision: ${result.primary_decision ? result.primary_decision.rule_id : 'NULL'}`);
+  console.log(`   Blocked by graph: ${result.rules_blocked_by_graph.length}`);
+  console.log(`   Blocked by ETL: ${result.rules_blocked_by_etl.length}`);
+  console.log(`   Safety warnings: ${result.safety_warnings.length}`);
   
   return result;
 }
