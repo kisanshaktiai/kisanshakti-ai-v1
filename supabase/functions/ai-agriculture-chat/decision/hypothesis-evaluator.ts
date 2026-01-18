@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * HYPOTHESIS-FIRST CLARIFICATION EVALUATOR (v1.0.0)
+ * HYPOTHESIS-FIRST CLARIFICATION EVALUATOR (v1.2.0)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
@@ -16,15 +16,28 @@
  * - Use only existing rule metadata (conditions_json, observable_characteristics)
  * 
  * STEP 1: Load rules filtered by crop_code, stage_applicable, canonical_group
- * STEP 2: Evaluate using partial condition matching only
- * STEP 3: Produce max 4 candidate hypotheses ranked by relevance
+ * STEP 2: Filter by temporal constraints (crop_age_days_min/max)
+ * STEP 3: Evaluate using partial condition matching only
+ * STEP 4: Produce max 4 candidate hypotheses ranked by relevance
  * 
+ * PHASE-17 UPDATE: Added temporal constraint filtering
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
 // Supabase client is passed via input, no import needed
 
-export const HYPOTHESIS_EVALUATOR_VERSION = '1.1.0'; // Added cause deduplication
+export const HYPOTHESIS_EVALUATOR_VERSION = '1.2.0'; // Added temporal constraint filtering
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-17: TEMPORAL CONSTRAINT VALIDATOR IMPORT
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  validateCropAge,
+  filterRulesByAge,
+  logTemporalValidation,
+  logTemporalFilteringSummary,
+  type TemporalValidationInput
+} from './temporal-constraint-validator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -75,6 +88,7 @@ export interface ObservableCharacteristic {
 export interface HypothesisEvaluationOutput {
   candidates: CandidateHypothesis[];
   total_rules_evaluated: number;
+  rules_after_temporal_filter?: number;  // PHASE-17: Count after temporal filtering
   stage_locked: string;
   evaluation_method: 'PARTIAL_MATCH';
   timestamp: number;
@@ -400,7 +414,8 @@ export async function evaluateCandidateHypotheses(
     
     // Query 1: Rules with observable_characteristics for this crop OR universal ('all') rules
     // NOTE: Filter out empty object {} which is not useful
-    const { data: rules, error } = await supabaseClient
+    // PHASE-17: Include temporal constraint fields for filtering
+    const { data: rulesRaw, error } = await supabaseClient
       .from('decision_rules')
       .select(`
         rule_id,
@@ -411,7 +426,9 @@ export async function evaluateCandidateHypotheses(
         conditions_json,
         observable_characteristics,
         differentiating_questions,
-        trigger_keywords
+        trigger_keywords,
+        crop_age_days_min,
+        crop_age_days_max
       `)
       .eq('is_active', true)
       .or(`crop_code.eq.${cropLower},crop_code.ilike.${cropLower},crop_code.eq.all`)
@@ -432,7 +449,7 @@ export async function evaluateCandidateHypotheses(
       };
     }
     
-    if (!rules || rules.length === 0) {
+    if (!rulesRaw || rulesRaw.length === 0) {
       console.log(`   ⚠️ [HypothesisEval] No rules found for ${crop_code}/${growth_stage}`);
       return {
         candidates: [],
@@ -444,10 +461,51 @@ export async function evaluateCandidateHypotheses(
       };
     }
     
-    console.log(`   📦 [HypothesisEval] Loaded ${rules.length} candidate rules`);
+    console.log(`   📦 [HypothesisEval] Loaded ${rulesRaw.length} candidate rules from database`);
     
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 2: Evaluate using partial condition matching
+    // STEP 2: PHASE-17 - Filter by temporal constraints (crop_age_days_min/max)
+    // This ensures early-stage rules don't fire for mature crops and vice versa
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    const temporalFilterInput = rulesRaw.map(r => ({
+      rule_id: r.rule_id,
+      crop_age_days_min: r.crop_age_days_min,
+      crop_age_days_max: r.crop_age_days_max,
+      // Preserve all original fields
+      ...r
+    }));
+    
+    const { valid: rules, filtered: temporallyFiltered, reasons: temporalReasons } = filterRulesByAge(
+      temporalFilterInput,
+      input.days_since_sowing
+    );
+    
+    if (temporallyFiltered.length > 0) {
+      console.log(`   ⏰ [TemporalFilter] Filtered ${temporallyFiltered.length} rules by crop age (DAS: ${input.days_since_sowing})`);
+      // Log first 3 filtered rules for debugging
+      temporallyFiltered.slice(0, 3).forEach(r => {
+        const reason = temporalReasons.get(r.rule_id) || 'unknown';
+        console.log(`      - ${r.rule_id}: ${reason}`);
+      });
+    }
+    
+    logTemporalFilteringSummary(rules.length, temporallyFiltered.length, input.days_since_sowing, traceId);
+    
+    if (rules.length === 0) {
+      console.log(`   ⚠️ [HypothesisEval] All rules filtered by temporal constraints`);
+      return {
+        candidates: [],
+        total_rules_evaluated: rulesRaw.length,
+        stage_locked: growth_stage,
+        evaluation_method: 'PARTIAL_MATCH',
+        timestamp: Date.now(),
+        trace_id: traceId
+      };
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 3: Evaluate using partial condition matching
     // ═══════════════════════════════════════════════════════════════════════
     
     const scoredCandidates: CandidateHypothesis[] = [];
@@ -546,14 +604,15 @@ export async function evaluateCandidateHypotheses(
     
     const topCandidates = deduplicatedCandidates.slice(0, 4);
     
-    console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} unique candidates (from ${scoredCandidates.length} scored):`);
+    console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} unique candidates (from ${scoredCandidates.length} scored, ${rulesRaw.length} loaded):`);
     topCandidates.forEach((c, i) => {
       console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%`);
     });
     
     return {
       candidates: topCandidates,
-      total_rules_evaluated: rules.length,
+      total_rules_evaluated: rulesRaw.length,  // Total loaded before temporal filtering
+      rules_after_temporal_filter: rules.length,  // After temporal constraint filtering
       stage_locked: growth_stage,
       evaluation_method: 'PARTIAL_MATCH',
       timestamp: Date.now(),

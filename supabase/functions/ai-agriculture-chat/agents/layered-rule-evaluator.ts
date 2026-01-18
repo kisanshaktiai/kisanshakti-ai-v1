@@ -1,5 +1,5 @@
-// ============= LAYERED RULE EVALUATION PIPELINE - v2.0 with JSON Conditions =============
-// PHASE-16: Enhanced with proper conditions_json evaluation from SymbolicReasoner
+// ============= LAYERED RULE EVALUATION PIPELINE - v3.0 with Graph Control & ETL =============
+// PHASE-17: Enhanced with graph control, temporal constraints, and ETL validation
 // Rules loaded from database at runtime to prevent bundle timeout
 
 import { 
@@ -37,6 +37,31 @@ import {
   SymbolicReasoner,
   type SymbolicFact
 } from '../decision/symbolic-reasoner.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-17: GRAPH CONTROL & SAFETY VALIDATORS
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  validateGraphConstraints,
+  checkRuleBlocking,
+  checkPrerequisites,
+  logGraphValidation,
+  type GraphValidationInput,
+  type GraphValidationResult
+} from '../decision/graph-control-validator.ts';
+
+import {
+  validateETLThreshold,
+  logETLDecision,
+  type ETLInput,
+  type ETLValidationResult
+} from '../decision/etl-gate.ts';
+
+import {
+  generateSafetyWarning,
+  checkResistanceRotation,
+  type SafetyEnhancementInput
+} from '../decision/safety-enhancement.ts';
 
 // PHASE-16: Singleton instance for rule evaluation
 let symbolicReasonerInstance: SymbolicReasoner | null = null;
@@ -107,6 +132,8 @@ export interface LayeredRuleResult {
   rules_evaluated: number;
   rules_matched: number;
   rules_applied: string[];
+  rules_blocked_by_graph: string[];  // NEW: Rules blocked by graph constraints
+  rules_blocked_by_etl: string[];    // NEW: Rules blocked by ETL threshold
   observations: string[];
   diagnoses: Diagnosis[];
   final_diagnosis: Diagnosis | null;
@@ -116,6 +143,7 @@ export interface LayeredRuleResult {
   safety_blocks: { rule_id: string; message: string }[];
   prescriptions: RuleAssertions[];
   warnings: RuleAssertions[];
+  safety_warnings: string[];  // NEW: Farmer safety warnings
   confidence_in_result: number;
   // CRITICAL: Include matched responses for LLM formatting even when prescriptions are blocked
   matched_responses: { rule_id: string; cause: string; response_mr?: string; response_hi?: string; response_en?: string }[];
@@ -153,17 +181,29 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
 // ==================== MAIN EVALUATION ====================
 
 /**
- * PHASE-16: Enhanced rule evaluation with safe array handling
+ * PHASE-17: Enhanced rule evaluation with graph control, ETL, and safety
  * CRITICAL: All array operations are now null-safe to prevent crashes
  */
-export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): LayeredRuleResult {
+export function evaluateRulesLayered(
+  rules: Rule[], 
+  state: CanonicalState,
+  options?: {
+    daysSinceSowing?: number;
+    observedPestCount?: number;
+    recentTreatments?: { resistance_group: string; date: string }[];
+    traceId?: string;
+  }
+): LayeredRuleResult {
   // PHASE-16: Safe initialization - prevent undefined errors
   const safeRules = Array.isArray(rules) ? rules : [];
+  const traceId = options?.traceId || `eval_${Date.now()}`;
   
   const result: LayeredRuleResult = {
     rules_evaluated: 0,
     rules_matched: 0,
     rules_applied: [],
+    rules_blocked_by_graph: [],
+    rules_blocked_by_etl: [],
     observations: [],
     diagnoses: [],
     final_diagnosis: null,
@@ -172,6 +212,7 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
     safety_blocks: [],
     prescriptions: [],
     warnings: [],
+    safety_warnings: [],
     confidence_in_result: 0.5,
     matched_responses: [] // CRITICAL: Collect responses from all matched rules
   };
@@ -181,6 +222,10 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
     console.warn('⚠️ [LayeredRuleEvaluator] No rules to evaluate - returning empty result');
     return result;
   }
+  
+  // PHASE-17: Graph control context - track fired rules and their blocking relationships
+  const firedRules = new Map<string, string[]>(); // rule_id -> blocks_rule_ids
+  const firedRuleIds = new Set<string>();
   
   const diagnosisCandidates: Diagnosis[] = [];
   const rulesByCategory = groupRulesByCategory(safeRules);
@@ -259,25 +304,110 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
     result.prescription_gate_reason = gateResult.reason;
   }
   
-  // PHASE 5: PRESCRIPTION
+  // PHASE 5: PRESCRIPTION with Graph Control, ETL, and Safety
   if (result.prescription_allowed) {
     for (const rule of rulesByCategory.get(RuleCategory.PRESCRIPTION) || []) {
       result.rules_evaluated++;
-      if (matchesConditions(rule, state)) {
-        result.rules_matched++;
-        result.rules_applied.push(rule.id);
-        result.prescriptions.push(rule.then);
+      
+      if (!matchesConditions(rule, state)) continue;
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE-17: GRAPH CONTROL VALIDATION
+      // Check if this rule is blocked by any previously fired rule
+      // ═══════════════════════════════════════════════════════════════════════
+      const graphInput: GraphValidationInput = {
+        rule_id: rule.id,
+        blocks_rule_ids: rule.then.action_details?.blocks_rule_ids || [],
+        prerequisite_rule_ids: rule.then.action_details?.prerequisite_rule_ids || []
+      };
+      
+      const graphResult = validateGraphConstraints(graphInput, firedRules, firedRuleIds);
+      logGraphValidation(rule.id, graphResult, traceId);
+      
+      if (!graphResult.can_fire) {
+        result.rules_blocked_by_graph.push(rule.id);
+        console.log(`🚫 [GraphControl] Rule ${rule.id} blocked: ${graphResult.reason}`);
+        continue; // Skip this rule
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE-17: ETL VALIDATION (for pesticide/treatment rules)
+      // ═══════════════════════════════════════════════════════════════════════
+      const etlApplicable = rule.then.action_details?.etl_applicable;
+      if (etlApplicable && options?.observedPestCount !== undefined) {
+        const etlInput: ETLInput = {
+          observed_pest_count: options.observedPestCount,
+          etl_value_min: rule.then.action_details?.etl_value_min,
+          etl_value_max: rule.then.action_details?.etl_value_max,
+          crop_code: state.crop_type || '',
+          rule_id: rule.id
+        };
         
-        // CRITICAL: Also collect responses from prescription rules
-        if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
-          result.matched_responses.push({
-            rule_id: rule.id,
-            cause: rule.then.possible_cause || rule.then.action_type || 'TREATMENT',
-            response_mr: rule.then.action_details?.response_mr,
-            response_hi: rule.then.action_details?.response_hi,
-            response_en: rule.then.action_details?.response_en
-          });
+        const etlResult = validateETLThreshold(etlInput);
+        logETLDecision(rule.id, etlResult, traceId);
+        
+        if (!etlResult.threshold_crossed) {
+          result.rules_blocked_by_etl.push(rule.id);
+          console.log(`🚫 [ETL] Rule ${rule.id} blocked: ETL not crossed (${options.observedPestCount} < ${etlResult.min_threshold || 'N/A'})`);
+          continue; // Skip this rule - pest count below threshold
         }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE-17: RESISTANCE ROTATION CHECK
+      // ═══════════════════════════════════════════════════════════════════════
+      const resistanceGroup = rule.then.action_details?.resistance_group;
+      if (resistanceGroup && options?.recentTreatments) {
+        const rotationResult = checkResistanceRotation({
+          resistance_group: resistanceGroup,
+          mode_of_action: rule.then.action_details?.mode_of_action || '',
+          recent_treatments: options.recentTreatments
+        });
+        
+        if (!rotationResult.rotation_safe) {
+          result.warnings.push({
+            warning_type: 'RESISTANCE_WARNING',
+            warning_message: rotationResult.warning,
+            warning_severity: 'HIGH'
+          });
+          console.warn(`⚠️ [Resistance] ${rule.id}: ${rotationResult.warning}`);
+        }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE-17: FARMER SAFETY WARNING GENERATION
+      // ═══════════════════════════════════════════════════════════════════════
+      const farmerSafetyLevel = rule.then.action_details?.farmer_safety_level;
+      if (farmerSafetyLevel) {
+        const safetyWarning = generateSafetyWarning({
+          farmer_safety_level: farmerSafetyLevel,
+          active_ingredient: rule.then.action_details?.active_ingredient || '',
+          mode_of_action: rule.then.action_details?.mode_of_action || ''
+        });
+        
+        if (safetyWarning.has_warning) {
+          result.safety_warnings.push(safetyWarning.warning_text);
+        }
+      }
+      
+      // Rule passed all validations - fire it
+      result.rules_matched++;
+      result.rules_applied.push(rule.id);
+      result.prescriptions.push(rule.then);
+      
+      // Register fired rule for graph control tracking
+      firedRules.set(rule.id, rule.then.action_details?.blocks_rule_ids || []);
+      firedRuleIds.add(rule.id);
+      
+      // CRITICAL: Also collect responses from prescription rules
+      if (rule.then.action_details?.response_mr || rule.then.action_details?.response_en) {
+        result.matched_responses.push({
+          rule_id: rule.id,
+          cause: rule.then.possible_cause || rule.then.action_type || 'TREATMENT',
+          response_mr: rule.then.action_details?.response_mr,
+          response_hi: rule.then.action_details?.response_hi,
+          response_en: rule.then.action_details?.response_en
+        });
       }
     }
   } else {
@@ -314,6 +444,16 @@ export function evaluateRulesLayered(rules: Rule[], state: CanonicalState): Laye
   const conflictResult = resolveConflicts(diagnosisCandidates, state);
   result.final_diagnosis = conflictResult.primary_diagnosis;
   result.confidence_in_result = conflictResult.confidence_in_resolution;
+  
+  // Log summary
+  if (result.rules_blocked_by_graph.length > 0 || result.rules_blocked_by_etl.length > 0) {
+    console.log(`📊 [LayeredRuleEvaluator] Summary:
+   - Rules evaluated: ${result.rules_evaluated}
+   - Rules matched: ${result.rules_matched}
+   - Blocked by graph: ${result.rules_blocked_by_graph.length}
+   - Blocked by ETL: ${result.rules_blocked_by_etl.length}
+   - Safety warnings: ${result.safety_warnings.length}`);
+  }
   
   return result;
 }
