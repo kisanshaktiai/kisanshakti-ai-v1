@@ -51,16 +51,19 @@ import {
 } from '../decision/graph-control-validator.ts';
 
 import {
-  validateETLThreshold,
-  logETLDecision,
+  shouldBlockSpray,
+  logETLValidation,
   type ETLInput,
+  type ETLContext,
   type ETLValidationResult
 } from '../decision/etl-gate.ts';
 
 import {
-  generateSafetyWarning,
+  getSafetyWarning,
+  formatSafetyWarning,
   checkResistanceRotation,
-  type SafetyEnhancementInput
+  type SafetyLevel,
+  type SafetyWarning
 } from '../decision/safety-enhancement.ts';
 
 // PHASE-16: Singleton instance for rule evaluation
@@ -334,21 +337,27 @@ export function evaluateRulesLayered(
       // PHASE-17: ETL VALIDATION (for pesticide/treatment rules)
       // ═══════════════════════════════════════════════════════════════════════
       const etlApplicable = rule.then.action_details?.etl_applicable;
-      if (etlApplicable && options?.observedPestCount !== undefined) {
+      if (etlApplicable !== false) {
         const etlInput: ETLInput = {
-          observed_pest_count: options.observedPestCount,
+          rule_id: rule.id,
+          etl_applicable: rule.then.action_details?.etl_applicable,
           etl_value_min: rule.then.action_details?.etl_value_min,
           etl_value_max: rule.then.action_details?.etl_value_max,
-          crop_code: state.crop_type || '',
-          rule_id: rule.id
+          action_type: rule.then.action_type,
+          ipm_level: rule.then.action_details?.ipm_level
         };
         
-        const etlResult = validateETLThreshold(etlInput);
-        logETLDecision(rule.id, etlResult, traceId);
+        const etlContext: ETLContext = {
+          observed_pest_count: options?.observedPestCount,
+          has_photo_confirmation: false
+        };
         
-        if (!etlResult.threshold_crossed) {
+        const etlResult = shouldBlockSpray(etlInput, etlContext);
+        logETLValidation(rule.id, etlResult, traceId);
+        
+        if (!etlResult.spray_allowed && etlResult.recommendation !== 'ETL_NOT_APPLICABLE') {
           result.rules_blocked_by_etl.push(rule.id);
-          console.log(`🚫 [ETL] Rule ${rule.id} blocked: ETL not crossed (${options.observedPestCount} < ${etlResult.min_threshold || 'N/A'})`);
+          console.log(`🚫 [ETL] Rule ${rule.id} blocked: ${etlResult.reason}`);
           continue; // Skip this rule - pest count below threshold
         }
       }
@@ -358,16 +367,13 @@ export function evaluateRulesLayered(
       // ═══════════════════════════════════════════════════════════════════════
       const resistanceGroup = rule.then.action_details?.resistance_group;
       if (resistanceGroup && options?.recentTreatments) {
-        const rotationResult = checkResistanceRotation({
-          resistance_group: resistanceGroup,
-          mode_of_action: rule.then.action_details?.mode_of_action || '',
-          recent_treatments: options.recentTreatments
-        });
+        const recentGroups = options.recentTreatments.map(t => t.resistance_group);
+        const rotationResult = checkResistanceRotation(resistanceGroup, recentGroups);
         
-        if (!rotationResult.rotation_safe) {
+        if (!rotationResult.rotation_allowed) {
           result.warnings.push({
             warning_type: 'RESISTANCE_WARNING',
-            warning_message: rotationResult.warning,
+            warning_message: rotationResult.warning || `Resistance risk: ${resistanceGroup} used consecutively`,
             warning_severity: 'HIGH'
           });
           console.warn(`⚠️ [Resistance] ${rule.id}: ${rotationResult.warning}`);
@@ -377,16 +383,12 @@ export function evaluateRulesLayered(
       // ═══════════════════════════════════════════════════════════════════════
       // PHASE-17: FARMER SAFETY WARNING GENERATION
       // ═══════════════════════════════════════════════════════════════════════
-      const farmerSafetyLevel = rule.then.action_details?.farmer_safety_level;
-      if (farmerSafetyLevel) {
-        const safetyWarning = generateSafetyWarning({
-          farmer_safety_level: farmerSafetyLevel,
-          active_ingredient: rule.then.action_details?.active_ingredient || '',
-          mode_of_action: rule.then.action_details?.mode_of_action || ''
-        });
-        
-        if (safetyWarning.has_warning) {
-          result.safety_warnings.push(safetyWarning.warning_text);
+      const farmerSafetyLevel = rule.then.action_details?.farmer_safety_level as SafetyLevel | undefined;
+      if (farmerSafetyLevel && farmerSafetyLevel > 1) {
+        const safetyWarning = getSafetyWarning(farmerSafetyLevel, 'en');
+        if (safetyWarning) {
+          const warningText = formatSafetyWarning(safetyWarning, 'en');
+          result.safety_warnings.push(warningText);
         }
       }
       
