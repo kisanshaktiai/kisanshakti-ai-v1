@@ -754,12 +754,69 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     
     parts.push(`\nPRIMARY RECOMMENDATION:`);
     parts.push(`- Action Type: ${primary.action_type}`);
+    parts.push(`- Rule ID: ${primary.rule_id || primary.application_details?.rule_id || 'UNKNOWN'}`);
     parts.push(`- Target: ${pestName || diseaseName || primary.target?.nutrient_deficiency || 'General'}`);
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Extract and pass COMPLETE product details
+    // PRODUCTION HARDENING: NEW RESPONSE CONTRACT (PRIORITY OVER LEGACY)
+    // Use action_text, reason_text, knowledge_text FIRST, then fall back to legacy
     // ═══════════════════════════════════════════════════════════════════════════
-    const appDetails = primary.application_details;
+    const appDetails = primary.application_details || {};
+    
+    // NEW CONTRACT FIELDS (PRIORITY)
+    const actionText = appDetails.action_text;
+    const reasonText = appDetails.reason_text;
+    const knowledgeText = appDetails.knowledge_text;
+    
+    if (actionText || reasonText || knowledgeText) {
+      parts.push(`\n═══ STRUCTURED RESPONSE (USE THESE EXACT TEXTS) ═══`);
+      if (actionText) {
+        parts.push(`📋 ACTION (What to do): ${actionText}`);
+      }
+      if (reasonText) {
+        parts.push(`🔍 REASON (Why): ${reasonText}`);
+      }
+      if (knowledgeText) {
+        parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText}`);
+      }
+      parts.push(`═══════════════════════════════════════════════════`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LEGACY: Extract and pass product details (fallback when new contract empty)
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (appDetails) {
+      parts.push(`\n- Product Name: ${appDetails.product_name || 'Not specified'}`);
+      parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
+      parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
+      parts.push(`- Application Method: ${appDetails.method || appDetails.application_method || 'Standard application'}`);
+      parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'Early morning 6-10 AM'}`);
+      parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || '200 L/acre'}`);
+      parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'} (कापणीपूर्वी वाट पाहा)`);
+      parts.push(`- Expected Efficacy: ${appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent || 75}%`);
+      parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'No rain within 4-6 hours after spray'}`);
+      
+      // Multilingual product names for farmer
+      if (appDetails.names) {
+        const names = appDetails.names as { mr?: string; hi?: string; en?: string };
+        parts.push(`- Product (Marathi): ${names.mr || appDetails.product_name}`);
+        parts.push(`- Product (Hindi): ${names.hi || appDetails.product_name}`);
+      }
+    } else {
+      parts.push(`- Product: ${primary.product_name || 'Not specified'}`);
+      parts.push(`- Dosage: As per label`);
+    }
+    
+    parts.push(`- Priority: ${primary.priority || 'HIGH'}`);
+    parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
+    
+    // Urgency indicator
+    const urgency = IPM_URGENCY_LABELS[primary.ipm_level || 'LEVEL_3']?.[input.language] || 'Normal priority';
+    parts.push(`- Urgency: ${urgency}`);
+    
+    if (primary.rule_id) {
+      parts.push(`- Scientific Basis: ICAR Rule ${primary.rule_id}`);
+    }
     if (appDetails) {
       parts.push(`- Product Name: ${appDetails.product_name || 'Not specified'}`);
       parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
@@ -823,19 +880,36 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
   
   // ═══════════════════════════════════════════════════════════════════════════
   // MATCHED RESPONSES - Pre-formatted responses from decision rules in farmer's language
-  // CRITICAL: These contain response_mr, response_hi, response_en from the rule database
+  // PRODUCTION HARDENING: Uses new response contract (action_text, reason_text, knowledge_text) 
+  // with fallback to legacy response_mr/hi/en
   // ═══════════════════════════════════════════════════════════════════════════
   const matchedResponses = decision.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
     parts.push(`\n═══ IPM TREATMENT RESPONSES (Use in farmer's language): ═══`);
     matchedResponses.forEach((resp: any, idx: number) => {
-      // Use the response in the farmer's preferred language
+      parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
+      
+      // PRIORITY 1: Use structured response contract fields
+      if (resp.action_text || resp.reason_text || resp.knowledge_text) {
+        parts.push(`   ─── STRUCTURED RESPONSE (PRIORITY) ───`);
+        if (resp.action_text) {
+          parts.push(`   📋 कृती (Action): ${resp.action_text}`);
+        }
+        if (resp.reason_text) {
+          parts.push(`   🔍 कारण (Reason): ${resp.reason_text}`);
+        }
+        if (resp.knowledge_text) {
+          parts.push(`   📚 आधार (Knowledge): ${resp.knowledge_text}`);
+        }
+        parts.push(`   ────────────────────────────────────`);
+      }
+      
+      // PRIORITY 2: Fallback to legacy response fields
       const localizedResponse = resp[`response_${input.language}`] || resp.response_en || resp.response_mr || '';
       if (localizedResponse) {
-        parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
-        parts.push(`   ═══ COPY THIS TEXT EXACTLY ═══`);
+        parts.push(`   ═══ COPY THIS TEXT EXACTLY (LEGACY) ═══`);
         parts.push(`   ${localizedResponse}`);
-        parts.push(`   ═════════════════════════════`);
+        parts.push(`   ═════════════════════════════════════`);
       }
     });
     parts.push(`\n⚠️ IMPORTANT: Use the above IPM treatment responses as-is in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}. Do not modify them.`);
