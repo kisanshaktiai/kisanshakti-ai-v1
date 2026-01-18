@@ -149,7 +149,27 @@ export interface LayeredRuleResult {
   safety_warnings: string[];  // NEW: Farmer safety warnings
   confidence_in_result: number;
   // CRITICAL: Include matched responses for LLM formatting even when prescriptions are blocked
-  matched_responses: { rule_id: string; cause: string; response_mr?: string; response_hi?: string; response_en?: string }[];
+  // PRODUCTION HARDENING: Extended to include new response contract fields
+  matched_responses: { 
+    rule_id: string; 
+    cause: string; 
+    action_type?: string;  // REQUIRED for valid primary decision
+    action_text?: string;   // NEW RESPONSE CONTRACT
+    reason_text?: string;   // NEW RESPONSE CONTRACT
+    knowledge_text?: string; // NEW RESPONSE CONTRACT
+    response_mr?: string;   // LEGACY (fallback only)
+    response_hi?: string;   // LEGACY (fallback only)
+    response_en?: string;   // LEGACY (fallback only)
+  }[];
+  // PRODUCTION HARDENING: Primary decision selected from matched_responses
+  primary_matched_response?: {
+    rule_id: string;
+    action_type: string;
+    action_text?: string;
+    reason_text?: string;
+    knowledge_text?: string;
+    confidence_score?: number;
+  } | null;
 }
 
 // ==================== STUB: Empty rule arrays ====================
@@ -217,7 +237,8 @@ export function evaluateRulesLayered(
     warnings: [],
     safety_warnings: [],
     confidence_in_result: 0.5,
-    matched_responses: [] // CRITICAL: Collect responses from all matched rules
+    matched_responses: [], // CRITICAL: Collect responses from all matched rules
+    primary_matched_response: null // PRODUCTION HARDENING: Best valid primary response
   };
   
   // PHASE-16: Early return if no rules to evaluate
@@ -262,17 +283,32 @@ export function evaluateRulesLayered(
         });
         
         // CRITICAL: Collect response text from matched diagnosis rules for LLM formatting
-        // PRODUCTION HARDENING: Include new response contract fields
+        // PRODUCTION HARDENING: Include new response contract fields AND action_type
         const actionDetails = rule.then.action_details || {};
-        if (actionDetails.response_mr || actionDetails.response_en || actionDetails.action_text) {
+        const ruleActionType = rule.then.action_type || actionDetails.action_type;
+        
+        // PRODUCTION HARDENING: Only add to matched_responses if action_type exists
+        if (ruleActionType && (actionDetails.action_text || actionDetails.response_en || actionDetails.response_mr)) {
           result.matched_responses.push({
             rule_id: rule.id,
-            cause: rule.then.possible_cause,
+            cause: rule.then.possible_cause || 'DIAGNOSIS',
+            action_type: ruleActionType,
             // NEW RESPONSE CONTRACT (PRIORITY)
             action_text: actionDetails.action_text,
             reason_text: actionDetails.reason_text,
             knowledge_text: actionDetails.knowledge_text,
             // LEGACY (FALLBACK)
+            response_mr: actionDetails.response_mr,
+            response_hi: actionDetails.response_hi,
+            response_en: actionDetails.response_en
+          });
+        } else if (actionDetails.response_mr || actionDetails.response_en) {
+          // LEGACY: Rules without action_type - log warning but still collect
+          console.warn(`⚠️ [LayeredRuleEvaluator] Rule ${rule.id} missing action_type - legacy fallback`);
+          result.matched_responses.push({
+            rule_id: rule.id,
+            cause: rule.then.possible_cause || 'DIAGNOSIS',
+            action_type: 'DIAGNOSIS', // Default for diagnosis rules
             response_mr: actionDetails.response_mr,
             response_hi: actionDetails.response_hi,
             response_en: actionDetails.response_en
@@ -409,17 +445,31 @@ export function evaluateRulesLayered(
       firedRuleIds.add(rule.id);
       
       // CRITICAL: Also collect responses from prescription rules
-      // PRODUCTION HARDENING: Include new response contract fields
+      // PRODUCTION HARDENING: Include action_type and new response contract fields
       const prescriptionActionDetails = rule.then.action_details || {};
-      if (prescriptionActionDetails.response_mr || prescriptionActionDetails.response_en || prescriptionActionDetails.action_text) {
+      const prescriptionActionType = rule.then.action_type || prescriptionActionDetails.action_type;
+      
+      if (prescriptionActionType && (prescriptionActionDetails.action_text || prescriptionActionDetails.response_en || prescriptionActionDetails.response_mr)) {
         result.matched_responses.push({
           rule_id: rule.id,
-          cause: rule.then.possible_cause || rule.then.action_type || 'TREATMENT',
+          cause: rule.then.possible_cause || prescriptionActionType || 'TREATMENT',
+          action_type: prescriptionActionType,
           // NEW RESPONSE CONTRACT (PRIORITY)
           action_text: prescriptionActionDetails.action_text,
           reason_text: prescriptionActionDetails.reason_text,
           knowledge_text: prescriptionActionDetails.knowledge_text,
           // LEGACY (FALLBACK)
+          response_mr: prescriptionActionDetails.response_mr,
+          response_hi: prescriptionActionDetails.response_hi,
+          response_en: prescriptionActionDetails.response_en
+        });
+      } else if (prescriptionActionDetails.response_mr || prescriptionActionDetails.response_en) {
+        // LEGACY: Rules without action_type - log warning but still collect
+        console.warn(`⚠️ [LayeredRuleEvaluator] Prescription rule ${rule.id} missing action_type - legacy fallback`);
+        result.matched_responses.push({
+          rule_id: rule.id,
+          cause: rule.then.possible_cause || 'TREATMENT',
+          action_type: 'RECOMMEND', // Default for prescription rules
           response_mr: prescriptionActionDetails.response_mr,
           response_hi: prescriptionActionDetails.response_hi,
           response_en: prescriptionActionDetails.response_en
@@ -468,15 +518,64 @@ export function evaluateRulesLayered(
   result.final_diagnosis = conflictResult.primary_diagnosis;
   result.confidence_in_result = conflictResult.confidence_in_resolution;
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRODUCTION HARDENING: SELECT PRIMARY MATCHED RESPONSE
+  // Apply PRIMARY_ACTION_ELIGIBILITY filter: rule_id + action_type + (action_text OR response_en)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const eligibleResponses = result.matched_responses.filter(r => 
+    r.rule_id && 
+    r.action_type && 
+    (r.action_text || r.response_en || r.response_mr)
+  );
+  
+  if (eligibleResponses.length > 0) {
+    // Apply ACTION_TYPE_PRIORITY for selection
+    const ACTION_TYPE_PRIORITY: Record<string, number> = {
+      'BLOCK': 1, 'URGENT_BLOCK': 1,
+      'URGENT_ACTION': 2, 'URGENT_TREATMENT': 2, 'urgent_treatment': 2,
+      'IMMEDIATE_ACTION': 3, 'IMMEDIATE_TREATMENT': 3,
+      'TREATMENT': 4, 'treatment': 4, 'RECOMMEND': 4,
+      'PREVENTION': 5, 'prevention': 5,
+      'MONITOR': 6, 'MONITOR_ONLY': 6, 'advisory': 6,
+      'DIAGNOSIS': 7, 'diagnosis': 7,
+      'NO_ACTION_REQUIRED': 9
+    };
+    
+    const scored = eligibleResponses.map(r => ({
+      response: r,
+      priority: ACTION_TYPE_PRIORITY[r.action_type || ''] ?? 50
+    }));
+    
+    scored.sort((a, b) => a.priority - b.priority);
+    const best = scored[0].response;
+    
+    result.primary_matched_response = {
+      rule_id: best.rule_id,
+      action_type: best.action_type!,
+      action_text: best.action_text,
+      reason_text: best.reason_text,
+      knowledge_text: best.knowledge_text
+    };
+    
+    console.log(`✅ [LayeredRuleEvaluator] PRIMARY_MATCHED_RESPONSE selected: ${best.rule_id}, action_type=${best.action_type}`);
+  } else {
+    console.error(`🚨 [LayeredRuleEvaluator] PRIMARY_ACTION_INVALID: No eligible responses found`);
+    console.error(`   matched_responses.length=${result.matched_responses.length}`);
+    result.matched_responses.forEach((r, i) => {
+      console.error(`   ${i + 1}. rule_id=${r.rule_id}, action_type=${r.action_type || 'MISSING'}, has_action_text=${!!r.action_text}`);
+    });
+  }
+  
   // Log summary
-  if (result.rules_blocked_by_graph.length > 0 || result.rules_blocked_by_etl.length > 0) {
-    console.log(`📊 [LayeredRuleEvaluator] Summary:
+  console.log(`📊 [LayeredRuleEvaluator] Summary:
    - Rules evaluated: ${result.rules_evaluated}
    - Rules matched: ${result.rules_matched}
+   - Matched responses: ${result.matched_responses.length}
+   - Eligible for primary: ${eligibleResponses.length}
+   - Primary selected: ${result.primary_matched_response ? result.primary_matched_response.rule_id : 'NONE'}
    - Blocked by graph: ${result.rules_blocked_by_graph.length}
    - Blocked by ETL: ${result.rules_blocked_by_etl.length}
    - Safety warnings: ${result.safety_warnings.length}`);
-  }
   
   return result;
 }

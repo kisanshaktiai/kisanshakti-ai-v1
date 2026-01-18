@@ -169,6 +169,39 @@ export async function formatRecommendationsWithLLM(
   const hasPrimaryDecision = !!input.decision_output?.primary_decision;
   const hasSecondaryActions = (input.decision_output?.secondary_actions?.length || 0) > 0;
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRODUCTION HARDENING: PRIMARY ACTION CONTRACT VALIDATION (CRITICAL)
+  // Validate that primary_decision has required fields BEFORE formatting
+  // ═══════════════════════════════════════════════════════════════════════════
+  const primary = input.decision_output?.primary_decision;
+  if (hasPrimaryDecision && primary) {
+    if (!primary.action_type || !primary.rule_id) {
+      console.error(`
+🚨 [LLM FORMATTER] PRIMARY_ACTION_CONTRACT_VIOLATION:
+   rule_id=${primary.rule_id || 'MISSING'}
+   action_type=${primary.action_type || 'MISSING'}
+   source=llm-response-formatter
+   
+   BLOCKING LLM to prevent rendering invalid decision.
+      `);
+      
+      return {
+        formatted_response: '',
+        confidence: 0,
+        source: 'TEMPLATE_FALLBACK' as const,
+        processing_time_ms: Date.now() - startTime,
+        sections_included: ['ERROR_INVALID_PRIMARY'],
+        validation_passed: false,
+        validation_violations: ['PRIMARY_ACTION_CONTRACT_VIOLATION: Missing action_type or rule_id'],
+        gate_status: GateStatus.FAIL,
+        gate_action: GateAction.PROVIDE_INFORMATION_ONLY,
+        reasoning_included: false,
+        symbolic_decision_id: input.decision_output?.decision_id
+      };
+    }
+    console.log(`   ✅ Primary decision validated: rule_id=${primary.rule_id}, action_type=${primary.action_type}`);
+  }
+  
   // CRITICAL SAFETY CHECK: No symbolic decision = NO treatment recommendations
   // This is the core enforcement that prevents LLM from inventing agronomy actions
   if (!isDecisionBrain) {
@@ -760,27 +793,38 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     // ═══════════════════════════════════════════════════════════════════════════
     // PRODUCTION HARDENING: NEW RESPONSE CONTRACT (PRIORITY OVER LEGACY)
     // Use action_text, reason_text, knowledge_text FIRST, then fall back to legacy
+    // MANDATORY FALLBACK CHAIN: action_text || i18n(i18n_key) || "[Action unavailable]"
     // ═══════════════════════════════════════════════════════════════════════════
     const appDetails = primary.application_details || {};
     
     // NEW CONTRACT FIELDS (PRIORITY)
-    const actionText = appDetails.action_text;
-    const reasonText = appDetails.reason_text;
-    const knowledgeText = appDetails.knowledge_text;
+    let actionText = appDetails.action_text;
+    let reasonText = appDetails.reason_text;
+    let knowledgeText = appDetails.knowledge_text;
     
-    if (actionText || reasonText || knowledgeText) {
-      parts.push(`\n═══ STRUCTURED RESPONSE (USE THESE EXACT TEXTS) ═══`);
-      if (actionText) {
-        parts.push(`📋 ACTION (What to do): ${actionText}`);
+    // MANDATORY FALLBACK CHAIN for action_text
+    if (!actionText) {
+      // Try i18n_key lookup (placeholder - would need i18n loader)
+      if (appDetails.i18n_key) {
+        console.warn(`⚠️ [LLM Formatter] action_text missing, i18n_key=${appDetails.i18n_key} - i18n lookup not implemented`);
       }
-      if (reasonText) {
-        parts.push(`🔍 REASON (Why): ${reasonText}`);
+      // Final fallback - log error and use placeholder
+      if (!actionText) {
+        console.error(`🚨 [LLM Formatter] FALLBACK TRIGGERED: action_text unavailable for rule ${primary.rule_id}`);
+        actionText = '[Action text unavailable — data error. Please consult agricultural expert.]';
       }
-      if (knowledgeText) {
-        parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText}`);
-      }
-      parts.push(`═══════════════════════════════════════════════════`);
     }
+    
+    // Always output structured response section
+    parts.push(`\n═══ STRUCTURED RESPONSE (USE THESE EXACT TEXTS) ═══`);
+    parts.push(`📋 ACTION (What to do): ${actionText}`);
+    if (reasonText) {
+      parts.push(`🔍 REASON (Why): ${reasonText}`);
+    }
+    if (knowledgeText) {
+      parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText}`);
+    }
+    parts.push(`═══════════════════════════════════════════════════`);
     
     // ═══════════════════════════════════════════════════════════════════════════
     // LEGACY: Extract and pass product details (fallback when new contract empty)
