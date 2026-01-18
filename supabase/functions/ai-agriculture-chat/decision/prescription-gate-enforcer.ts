@@ -205,6 +205,32 @@ export function enforcePrescriptionGate(input: PrescriptionGateInput): Prescript
   const { symbolic_decision, crop_stage, days_since_sowing, crop_name, has_confirmed_diagnosis, land_id } = input;
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // GATE 0: PRIMARY ACTION TYPE VALIDATION (CRITICAL - MUST BE FIRST)
+  // PRODUCTION HARDENING: Block invalid rule output BEFORE any other gate
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  if (symbolic_decision?.primary_decision) {
+    const primary = symbolic_decision.primary_decision;
+    if (!primary.action_type) {
+      console.error(`🚨 [PrescriptionGate] GATE 0 BLOCKED: Missing action_type in primary_decision`);
+      console.error(`   rule_id=${primary.rule_id}, source=prescription-gate-enforcer`);
+      return {
+        allowed: false,
+        response_mode: ResponseMode.INFORMATION,
+        authority_confirmation: AuthorityConfirmation.UNCONFIRMED,
+        allowed_actions: ['PROVIDE_INFO', 'MONITOR'],
+        blocked_actions: [...TREATMENT_ACTIONS],
+        allowed_products: [],
+        allowed_dosages: [],
+        reason: 'Missing action_type - invalid rule output. Decision blocked for safety.',
+        stage_gate_triggered: false,
+        gate_version: PRESCRIPTION_GATE_VERSION,
+        checked_at: checkedAt
+      };
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 1: No Symbolic Decision = No Treatments
   // ═══════════════════════════════════════════════════════════════════════════
   
