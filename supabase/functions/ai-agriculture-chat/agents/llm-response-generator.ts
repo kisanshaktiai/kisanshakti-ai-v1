@@ -1,633 +1,497 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * LLM RESPONSE GENERATOR - Direct AI-Powered Responses for Farmers
+ * LLM RESPONSE GENERATOR v2.0.0 - NARRATION-ONLY LAYER
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * This module provides direct LLM-based response generation for farmer queries
- * that don't require rule-based decisions (pest treatment, chemical applications).
+ * CRITICAL CONTRACT: This module is a PURE NARRATION LAYER.
  * 
- * Key capabilities:
- * - Direct answering of general agricultural questions
- * - Context-aware responses using land data
- * - Multi-language support (Marathi, Hindi, English)
- * - Fallback to safe, helpful responses when LLM unavailable
+ * ❌ FORBIDDEN:
+ *   - Intent detection / classification
+ *   - Language-specific patterns or regex
+ *   - Crop-specific logic or recommendations
+ *   - Advisory behavior or follow-up generation
+ *   - Direct answering without symbolic decision
+ *   - Diagnosis, prescription, or dosage generation
+ * 
+ * ✅ ALLOWED:
+ *   - Accept symbolic decision payload
+ *   - Convert structured decision to natural language
+ *   - Validate LLM output matches symbolic input
+ *   - Return fallback_text if validation fails
+ * 
+ * @version 2.0.0
+ * @see memory/architecture/symbolic-decision-brain-architecture-v1
  */
 
-import { ruralLanguageGuide, icarGuidelines, getIcarGuidance } from '../../_shared/ruralLanguageGuide.ts';
-import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
+import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
 
-// Types for the LLM response generator
-export interface LLMResponseInput {
-  farmer_message: string;
+// ═══════════════════════════════════════════════════════════════════════════
+// STRICT INPUT CONTRACT - Symbolic Decision Payload
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface SymbolicNarrationInput {
+  /** Language for narration output */
   language: 'mr' | 'hi' | 'en';
-  intent: string;
+  
+  /** The symbolic decision from Rule Engine - REQUIRED */
+  symbolic_decision: {
+    /** Decision status from rule engine */
+    status: 'READY' | 'NEEDS_CLARIFICATION' | 'NO_MATCH' | 'BLOCKED' | 'ESCALATE';
+    
+    /** Primary action from rule engine (if status=READY) */
+    primary_action?: {
+      action_type: string;
+      action_text: string;
+      product_name?: string;
+      dosage?: string;
+      timing?: string;
+      reason_text?: string;
+      knowledge_text?: string;
+    };
+    
+    /** Identified causes from rule engine */
+    causes?: Array<{
+      cause_code: string;
+      cause_name: string;
+      confidence: number;
+    }>;
+    
+    /** Clarification needed (if status=NEEDS_CLARIFICATION) */
+    clarification?: {
+      question_text: string;
+      options: Array<{
+        option_id: string;
+        display_text: string;
+      }>;
+    };
+    
+    /** Fallback text to use if LLM narration fails validation */
+    fallback_text: string;
+    
+    /** Rules that fired (for audit) */
+    rules_applied: string[];
+    
+    /** Risk level from symbolic brain */
+    risk_level?: 'low' | 'medium' | 'high' | 'critical';
+  };
+  
+  /** Original farmer message (for context, NOT for re-interpretation) */
+  farmer_message: string;
+  
+  /** Land context for localization (NOT for decision-making) */
   land_context?: {
     current_crop?: string;
     crop_stage?: string;
-    area_acres?: number;
-    soil_tested?: boolean;
-    soil_health?: {
-      nitrogen_kg_per_ha?: number;
-      phosphorus_kg_per_ha?: number;
-      potassium_kg_per_ha?: number;
-      ph?: number;       // Can accept either ph or ph_level
-      ph_level?: number; // Schema uses ph_level
-      organic_carbon?: number;
-    };
-    ndvi?: {
-      value?: number;
-      trend?: string;
-    };
-    sowing_date?: string;
-    days_since_sowing?: number;
     village?: string;
     district?: string;
   };
-  weather?: {
-    temperature_current?: number;
-    humidity_percent?: number;
-    rain_probability_percent?: number;
-  };
-  conversation_history?: Array<{role: string; content: string}>;
 }
 
-export interface LLMResponseOutput {
+export interface NarrationOutput {
+  /** Narrated response text */
   response_text: string;
-  confidence: number;
-  source: 'LLM_DIRECT' | 'CONTEXT_DIRECT' | 'FALLBACK';
-  suggested_followups?: string[];
+  
+  /** Source of response */
+  source: 'LLM_NARRATION' | 'FALLBACK_USED';
+  
+  /** Whether validation passed */
+  validation_passed: boolean;
+  
+  /** Validation errors if any */
+  validation_errors?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// INTENT CATEGORIES THAT DON'T NEED RULE ENGINE
+// NARRATION-ONLY SYSTEM PROMPT v1.0
 // ═══════════════════════════════════════════════════════════════════════════
 
-const DIRECT_ANSWER_INTENTS = [
-  'GREETING',
-  'GENERAL_QUERY',
-  'CROP_INFO_QUERY',        // "What crop is in this field?"
-  'LAND_INFO_QUERY',        // "What is my land area?"
-  'SOIL_INFO_QUERY',        // "What is my soil status?"
-  'GROWTH_STAGE_QUERY',     // "What stage is my crop?"
-  'HARVEST_QUERY',          // "When should I harvest?"
-  'SOWING_QUERY',           // "When should I sow?"
-  'MARKET_QUERY',           // Basic market info
-  'WEATHER_QUERY',          // Simple weather questions
-  'CONFIRMATION',
-];
+const NARRATION_SYSTEM_PROMPT = `You are a NARRATION ENGINE for agricultural decisions.
 
-// Intents that REQUIRE rule engine (spray/chemical/treatment decisions)
-const RULE_ENGINE_REQUIRED_INTENTS = [
-  'PEST_PROBLEM',
-  'DISEASE_PROBLEM', 
-  'EMERGENCY',
-  'NUTRIENT_ISSUE',  // Only when asking for specific fertilizer recommendations
-];
+═══════════════════════════════════════════════════════════════════════════
+🚫 ABSOLUTE PROHIBITIONS (VIOLATING = IMMEDIATE REJECTION):
+═══════════════════════════════════════════════════════════════════════════
+
+1. You CANNOT diagnose problems - the diagnosis is ALREADY PROVIDED to you
+2. You CANNOT recommend products - the products are ALREADY DECIDED for you
+3. You CANNOT suggest dosages - the dosage is ALREADY CALCULATED for you
+4. You CANNOT infer new causes - only narrate the causes GIVEN to you
+5. You CANNOT ask follow-up questions - only clarifications from the input
+6. You CANNOT modify, adjust, or "improve" the decision in ANY way
+
+═══════════════════════════════════════════════════════════════════════════
+✅ YOUR ONLY TASK:
+═══════════════════════════════════════════════════════════════════════════
+
+Take the EXACT decision payload and render it as warm, farmer-friendly text.
+
+RENDER RULES:
+- Use the EXACT action_text, product_name, dosage from the payload
+- Use the EXACT cause_name from the payload
+- Use the EXACT reason_text from the payload
+- Add only: greetings, conjunctions, empathy phrases
+- Keep language simple and rural-appropriate
+
+OUTPUT FORMAT:
+- Start with brief acknowledgment
+- State the identified cause (from payload)
+- State the recommended action (from payload)
+- State dosage/timing EXACTLY as given
+- End with encouragement
+
+FORBIDDEN IN OUTPUT:
+- ❌ New product names not in payload
+- ❌ Modified dosages or percentages
+- ❌ Additional recommendations
+- ❌ Alternative treatments
+- ❌ New diagnostic questions`;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VALIDATION GATE - Ensures LLM didn't add unauthorized content
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ValidationResult {
+  valid: boolean;
+  errors: string[];
+}
 
 /**
- * Check if a question can be answered directly without rule engine
+ * Validates that LLM output doesn't contain unauthorized content
  */
-export function canAnswerDirectly(intent: string, farmerMessage: string): boolean {
-  // Always use direct answer for greetings
-  if (intent === 'GREETING') return true;
+function validateNarrationOutput(
+  symbolicInput: SymbolicNarrationInput,
+  llmOutput: string
+): ValidationResult {
+  const errors: string[] = [];
+  const output = llmOutput.toLowerCase();
   
-  // Check if intent is in direct answer list
-  if (DIRECT_ANSWER_INTENTS.includes(intent)) return true;
-  
-  // Pattern-based detection for simple questions
-  const simpleQuestionPatterns = [
-    /कोणते\s*पीक/i,           // "which crop"
-    /कोणती\s*पिक/i,
-    /काय\s*पीक/i,             // "what crop"
-    /पीक\s*काय/i,
-    /कौन\s*सी\s*फसल/i,        // "which crop" in Hindi
-    /क्या\s*फसल/i,            // "what crop" in Hindi
-    /what\s*crop/i,
-    /which\s*crop/i,
-    /शेत\s*किती/i,            // "how much land"
-    /क्षेत्र\s*किती/i,         // "how much area"
-    /जमीन\s*किती/i,           // "how much land"
-    /नमस्कार|नमस्ते|hello|hi/i,
-    /धन्यवाद|thanks/i,
-    /कसे\s*आहात/i,            // "how are you"
-    /कैसे\s*हो/i,
+  // Common pesticide/fungicide names that should only appear if in payload
+  const KNOWN_PRODUCTS = [
+    'chlorpyrifos', 'imidacloprid', 'carbendazim', 'mancozeb', 'thiamethoxam',
+    'fipronil', 'acephate', 'monocrotophos', 'dimethoate', 'cypermethrin',
+    'lambda-cyhalothrin', 'profenofos', 'spinosad', 'emamectin', 'chlorantraniliprole',
+    'क्लोरपायरीफॉस', 'इमिडाक्लोप्रिड', 'कार्बेन्डाझिम', 'मॅंकोझेब',
+    'क्लोरपायरीफ़ॉस', 'इमिडाक्लोप्रिड', 'कार्बेन्डाज़िम', 'मैंकोज़ेब'
   ];
   
-  for (const pattern of simpleQuestionPatterns) {
-    if (pattern.test(farmerMessage)) return true;
+  // Check for products mentioned that aren't in the symbolic input
+  const payloadProducts = symbolicInput.symbolic_decision.primary_action?.product_name?.toLowerCase() || '';
+  
+  for (const product of KNOWN_PRODUCTS) {
+    if (output.includes(product.toLowerCase()) && !payloadProducts.includes(product.toLowerCase())) {
+      errors.push(`LLM introduced unauthorized product: ${product}`);
+    }
   }
   
-  return false;
-}
-
-/**
- * Check if question requires rule engine for safety-critical decisions
- */
-export function requiresRuleEngine(intent: string, farmerMessage: string): boolean {
-  // Explicit rule engine intents
-  if (RULE_ENGINE_REQUIRED_INTENTS.includes(intent)) return true;
+  // Check for percentage claims not in payload
+  const percentagePattern = /(\d{1,3})%\s*(effective|प्रभावी|असरदार|कार्यक्षम)/gi;
+  const matches = output.matchAll(percentagePattern);
+  for (const match of matches) {
+    errors.push(`LLM introduced unauthorized efficacy claim: ${match[0]}`);
+  }
   
-  // Pattern-based detection for treatment/spray questions
-  const treatmentPatterns = [
-    /फवारणी/i,               // "spraying"
-    /स्प्रे/i,                // "spray"
-    /औषध/i,                  // "medicine/pesticide"
-    /कीटकनाशक/i,             // "insecticide"
-    /बुरशीनाशक/i,            // "fungicide"
-    /किडी/i,                 // "pest"
-    /रोग/i,                  // "disease"
-    /कीड़/i,                  // "pest" Hindi
-    /दवा/i,                  // "medicine" Hindi
-    /छिड़काव/i,              // "spray" Hindi
-    /pesticide|insecticide|fungicide|spray/i,
-    /treatment|control|kill/i,
-    /मर\s*रह|वाळ|सुक/i,       // "dying/wilting"
+  // Check for new dosage patterns not in original
+  const dosagePattern = /(\d+)\s*(ml|gm|kg|liter|लीटर|ग्राम|मिली)/gi;
+  const payloadDosage = symbolicInput.symbolic_decision.primary_action?.dosage?.toLowerCase() || '';
+  const outputDosages = [...output.matchAll(dosagePattern)];
+  
+  for (const match of outputDosages) {
+    if (!payloadDosage.includes(match[1])) {
+      // Dosage number not in payload - potential hallucination
+      errors.push(`LLM introduced unauthorized dosage: ${match[0]}`);
+    }
+  }
+  
+  // Check for diagnostic question patterns (forbidden)
+  const questionPatterns = [
+    /कोणत.*निवडा/gi,  // "select which"
+    /कौन.*चुनें/gi,    // "choose which"
+    /select.*option/gi,
+    /please.*choose/gi,
+    /निदान.*करा/gi,    // "diagnose"
+    /क्या.*लक्षण/gi,   // "what symptoms"
+    /what.*symptom/gi
   ];
   
-  for (const pattern of treatmentPatterns) {
-    if (pattern.test(farmerMessage)) return true;
-  }
-  
-  return false;
-}
-
-/**
- * Generate a direct response for simple questions using land context
- */
-export function generateContextDirectResponse(
-  input: LLMResponseInput
-): LLMResponseOutput | null {
-  const { farmer_message, language, land_context } = input;
-  const lowerMessage = farmer_message.toLowerCase();
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CROP QUERY - "या शेतात कोणते पीक आहे" / "What crop is in this field"
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (/कोणते\s*पीक|काय\s*पीक|पीक\s*काय|कौन.*फसल|क्या.*फसल|what.*crop|which.*crop/i.test(farmer_message)) {
-    if (land_context?.current_crop) {
-      const crop = land_context.current_crop;
-      const stage = land_context.crop_stage || '';
-      const days = land_context.days_since_sowing;
-      
-      const responses: Record<string, string> = {
-        mr: `🌾 या शेतात सध्या **${crop}** हे पीक आहे.${stage ? ` पिकाचा टप्पा: ${stage}.` : ''}${days ? ` पेरणीपासून ${days} दिवस झाले.` : ''}`,
-        hi: `🌾 इस खेत में अभी **${crop}** फसल है।${stage ? ` फसल की अवस्था: ${stage}।` : ''}${days ? ` बुवाई के ${days} दिन हो गए।` : ''}`,
-        en: `🌾 This field currently has **${crop}**.${stage ? ` Crop stage: ${stage}.` : ''}${days ? ` ${days} days since sowing.` : ''}`
-      };
-      
-      return {
-        response_text: responses[language] || responses.en,
-        confidence: 0.95,
-        source: 'CONTEXT_DIRECT',
-        suggested_followups: getFollowupsForCrop(crop, language)
-      };
-    } else {
-      const responses: Record<string, string> = {
-        mr: '🌱 या शेताची पीक माहिती अद्याप नोंदवलेली नाही. कृपया "पीक नोंदणी" मध्ये पीक जोडा.',
-        hi: '🌱 इस खेत की फसल जानकारी अभी दर्ज नहीं है। कृपया "फसल पंजीकरण" में फसल जोड़ें।',
-        en: '🌱 Crop information for this field is not yet recorded. Please add crop in "Crop Registration".'
-      };
-      return {
-        response_text: responses[language] || responses.en,
-        confidence: 0.9,
-        source: 'CONTEXT_DIRECT'
-      };
-    }
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // LAND AREA QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (/किती\s*(एकर|क्षेत्र|जमीन)|कितना\s*(एकड़|क्षेत्र)|how\s*much.*area|land\s*size/i.test(farmer_message)) {
-    if (land_context?.area_acres) {
-      const area = land_context.area_acres;
-      const responses: Record<string, string> = {
-        mr: `📐 या शेताचे क्षेत्रफळ **${area.toFixed(2)} एकर** आहे.`,
-        hi: `📐 इस खेत का क्षेत्रफल **${area.toFixed(2)} एकड़** है।`,
-        en: `📐 This field is **${area.toFixed(2)} acres**.`
-      };
-      return {
-        response_text: responses[language] || responses.en,
-        confidence: 0.95,
-        source: 'CONTEXT_DIRECT'
-      };
-    }
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SOIL HEALTH QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (/माती|मातीची\s*आरोग्य|मृदा|soil|जमिनीची/i.test(farmer_message)) {
-    if (land_context?.soil_health && land_context.soil_tested) {
-      const soil = land_context.soil_health;
-      // CRITICAL FIX: Support both ph and ph_level field names
-      const phValue = soil.ph ?? soil.ph_level ?? 'N/A';
-      const responses: Record<string, string> = {
-        mr: `🧪 **मातीची आरोग्य स्थिती:**
-• नत्र (N): ${soil.nitrogen_kg_per_ha ?? 'N/A'} kg/ha
-• स्फुरद (P): ${soil.phosphorus_kg_per_ha ?? 'N/A'} kg/ha  
-• पालाश (K): ${soil.potassium_kg_per_ha ?? 'N/A'} kg/ha
-• pH: ${phValue}
-• सेंद्रिय कर्ब: ${soil.organic_carbon ?? 'N/A'}%`,
-        hi: `🧪 **मिट्टी स्वास्थ्य स्थिति:**
-• नाइट्रोजन (N): ${soil.nitrogen_kg_per_ha ?? 'N/A'} kg/ha
-• फास्फोरस (P): ${soil.phosphorus_kg_per_ha ?? 'N/A'} kg/ha
-• पोटाश (K): ${soil.potassium_kg_per_ha ?? 'N/A'} kg/ha
-• pH: ${phValue}
-• जैविक कार्बन: ${soil.organic_carbon ?? 'N/A'}%`,
-        en: `🧪 **Soil Health Status:**
-• Nitrogen (N): ${soil.nitrogen_kg_per_ha ?? 'N/A'} kg/ha
-• Phosphorus (P): ${soil.phosphorus_kg_per_ha ?? 'N/A'} kg/ha
-• Potassium (K): ${soil.potassium_kg_per_ha ?? 'N/A'} kg/ha
-• pH: ${phValue}
-• Organic Carbon: ${soil.organic_carbon ?? 'N/A'}%`
-      };
-      return {
-        response_text: responses[language] || responses.en,
-        confidence: 0.95,
-        source: 'CONTEXT_DIRECT'
-      };
-    } else {
-      const responses: Record<string, string> = {
-        mr: '🧪 या शेताची माती तपासणी अद्याप झालेली नाही. माती परीक्षण करून अहवाल जोडा.',
-        hi: '🧪 इस खेत की मिट्टी जांच अभी नहीं हुई है। मिट्टी परीक्षण करवाकर रिपोर्ट जोड़ें।',
-        en: '🧪 Soil test for this field is not yet done. Please get soil tested and add report.'
-      };
-      return {
-        response_text: responses[language] || responses.en,
-        confidence: 0.9,
-        source: 'CONTEXT_DIRECT'
-      };
-    }
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GREETING
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (/^(नमस्कार|नमस्ते|hello|hi|hey|नमस्ते जी)[\s!।]*$/i.test(farmer_message.trim())) {
-    const crop = land_context?.current_crop || '';
-    const greetings: Record<string, string> = {
-      mr: `🙏 नमस्कार शेतकरी बंधू! ${crop ? `आपल्या ${crop} पिकाबद्दल` : 'शेतीबद्दल'} काही प्रश्न असल्यास विचारा.`,
-      hi: `🙏 नमस्कार किसान भाई! ${crop ? `आपकी ${crop} फसल के बारे में` : 'खेती के बारे में'} कोई सवाल हो तो पूछें।`,
-      en: `🙏 Hello farmer! Feel free to ask any questions ${crop ? `about your ${crop} crop` : 'about farming'}.`
-    };
-    return {
-      response_text: greetings[language] || greetings.en,
-      confidence: 0.95,
-      source: 'CONTEXT_DIRECT',
-      suggested_followups: [
-        language === 'mr' ? 'पिकाची सध्याची स्थिती कशी आहे?' : 
-        language === 'hi' ? 'फसल की वर्तमान स्थिति कैसी है?' : 
-        'How is the current crop condition?'
-      ]
-    };
-  }
-  
-  return null; // Could not answer directly from context
-}
-
-/**
- * Generate LLM-powered response for general agricultural queries
- */
-export async function generateLLMResponse(
-  input: LLMResponseInput
-): Promise<LLMResponseOutput> {
-  const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-  const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-  
-  // First try context-direct response
-  const contextResponse = generateContextDirectResponse(input);
-  if (contextResponse) {
-    return contextResponse;
-  }
-  
-  // Build rich context for LLM
-  const contextInfo = buildContextString(input);
-  const languageRules = getRuralLanguageRules(input.language);
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // FARMER INTERACTION ENGINE SYSTEM PROMPT
-  // CRITICAL: Follow these rules EXACTLY - no exceptions
-  // ═══════════════════════════════════════════════════════════════════════════
-  
-  const hasLandContext = !!(input.land_context?.current_crop || input.land_context?.growth_stage);
-  
-  const systemPrompt = `You are KisanMitra (किसानमित्र), a friendly agricultural advisor for Indian farmers.
-You speak in simple, rural ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'} that farmers understand.
-
-${languageRules}
-
-═══════════════════════════════════════════════════════════════════════════
-🚫 STRICTLY FORBIDDEN (CRITICAL - VIOLATING THESE BREAKS FARMER TRUST):
-═══════════════════════════════════════════════════════════════════════════
-
-1. NEVER ask farmer to "classify" their question
-   ❌ Do NOT say: "Is this a general query?", "Select a topic", "Choose problem type"
-   
-2. NEVER use internal system words
-   ❌ Do NOT say: "intent", "query type", "classification", "diagnostic options"
-   
-3. NEVER show multiple options unless you have LAND-SPECIFIC CONTEXT
-   ${!hasLandContext ? '❌ NO diagnostic options - this is a GENERAL query without land context' : ''}
-   
-4. NEVER request photo upload for general queries without land context
-   ${!hasLandContext ? '❌ Do NOT ask for photo - respond directly with helpful information' : ''}
-
-5. NEVER ask multiple questions at once - maximum ONE follow-up question
-
-═══════════════════════════════════════════════════════════════════════════
-✅ HOW TO RESPOND (MANDATORY):
-═══════════════════════════════════════════════════════════════════════════
-
-1. Treat EVERY farmer message as meaningful - even incomplete sentences
-2. Respond NATURALLY like a knowledgeable village elder
-3. Pattern: ACKNOWLEDGE → EXPLAIN → SUGGEST NEXT STEP
-4. Use simple village words, NOT textbook language
-5. Be warm, respectful, and encouraging ("भाऊ", "भैया", "brother")
-6. Give PRACTICAL, actionable advice
-7. If unsure, say honestly you need one more detail (explain WHY)
-
-${hasLandContext ? `FARMER'S LAND CONTEXT:\n${contextInfo}` : 'NO LAND CONTEXT - Answer as general agricultural knowledge.'}
-
-═══════════════════════════════════════════════════════════════════════════
-RESPONSE VALIDATION (CHECK BEFORE SENDING):
-═══════════════════════════════════════════════════════════════════════════
-
-✓ Did I answer the farmer's actual question?
-✓ Did I use simple language they understand?
-✓ Did I avoid asking them to classify their question?
-${!hasLandContext ? '✓ Did I give direct information without diagnostic options?' : ''}
-✓ Is my response SHORT, CLEAR, and PRACTICAL?`;
-
-  const userPrompt = `Farmer's question: "${input.farmer_message}"
-
-Please provide a helpful, accurate response in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}.`;
-
-  try {
-    let responseText = '';
-    
-    // TIER 1: Try OpenAI FIRST (user preference) with 10-second timeout
-    if (OPENAI_API_KEY) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      try {
-        console.log('   🔄 LLM-Direct: Trying OpenAI (primary)...');
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          signal: controller.signal,
-          body: JSON.stringify({
-            model: 'gpt-4o',  // UPGRADED: Using GPT-4o for better response quality
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            max_tokens: 800,
-            temperature: 0.7
-          })
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          responseText = data.choices?.[0]?.message?.content || '';
-          if (responseText) console.log('   ✅ OpenAI response successful');
-        } else if (response.status === 429) {
-          console.warn('   ⚠️ OpenAI rate limited, waiting before fallback...');
-          await new Promise(r => setTimeout(r, 2000));
-        }
-      } catch (e) {
-        console.warn('OpenAI API failed:', e);
+  for (const pattern of questionPatterns) {
+    if (pattern.test(llmOutput)) {
+      // Only flag if clarification wasn't in the input
+      if (!symbolicInput.symbolic_decision.clarification) {
+        errors.push(`LLM added unauthorized diagnostic question`);
       }
     }
-    
-    // TIER 2: Fallback to Gemini if OpenAI failed
-    if (!responseText && GEMINI_API_KEY) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
-      try {
-        console.log('   🔄 LLM-Direct: Trying Gemini (fallback)...');
-        const response = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              contents: [{
-                parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
-              }],
-              generationConfig: {
-                temperature: 0.7,
-                maxOutputTokens: 800
-              }
-            })
-          }
-        );
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          responseText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          if (responseText) console.log('   ✅ Gemini response successful');
-        } else if (response.status === 429) {
-          console.warn('   ⚠️ Gemini rate limited');
-        }
-      } catch (e) {
-        console.warn('Gemini API failed:', e);
-      }
-    }
-    
-    // Fallback to Lovable AI
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!responseText && LOVABLE_API_KEY) {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-      
-      try {
-        console.log('   🔄 LLM-Direct: Trying Lovable AI (tertiary)...');
-        const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${OPENAI_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          signal: controller.signal,
-          body: JSON.stringify({
-            model: 'gpt-4o',  // UPGRADED: Using GPT-4o for Lovable AI fallback
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt }
-            ],
-            max_tokens: 800,
-            temperature: 0.7
-          })
-        });
-        
-        clearTimeout(timeoutId);
-        
-        if (response.ok) {
-          const data = await response.json();
-          responseText = data.choices?.[0]?.message?.content || '';
-        }
-      } catch (e) {
-        console.warn('OpenAI API failed:', e);
-      }
-    }
-    
-    if (responseText) {
-      // Post-process for rural language
-      responseText = replaceFormalsWithRural(responseText, input.language);
-      
-      return {
-        response_text: responseText,
-        confidence: 0.85,
-        source: 'LLM_DIRECT',
-        suggested_followups: generateFollowups(input)
-      };
-    }
-  } catch (error) {
-    console.error('LLM response generation failed:', error);
   }
-  
-  // Fallback response
-  return generateFallbackResponse(input);
-}
-
-/**
- * Build context string for LLM prompt
- */
-function buildContextString(input: LLMResponseInput): string {
-  const ctx = input.land_context;
-  if (!ctx) return 'No land context available.';
-  
-  const parts: string[] = [];
-  
-  if (ctx.current_crop) parts.push(`Current Crop: ${ctx.current_crop}`);
-  if (ctx.crop_stage) parts.push(`Growth Stage: ${ctx.crop_stage}`);
-  if (ctx.area_acres) parts.push(`Land Area: ${ctx.area_acres} acres`);
-  if (ctx.days_since_sowing) parts.push(`Days since sowing: ${ctx.days_since_sowing}`);
-  if (ctx.village) parts.push(`Village: ${ctx.village}`);
-  if (ctx.district) parts.push(`District: ${ctx.district}`);
-  
-  if (ctx.soil_health) {
-    const soil = ctx.soil_health;
-    parts.push(`Soil: N=${soil.nitrogen_kg_per_ha || 'N/A'}, P=${soil.phosphorus_kg_per_ha || 'N/A'}, K=${soil.potassium_kg_per_ha || 'N/A'}, pH=${soil.ph || 'N/A'}`);
-  }
-  
-  if (ctx.ndvi) {
-    parts.push(`Crop Health (NDVI): ${ctx.ndvi.value?.toFixed(2) || 'N/A'} (${ctx.ndvi.trend || 'unknown trend'})`);
-  }
-  
-  if (input.weather) {
-    parts.push(`Weather: ${input.weather.temperature_current || 'N/A'}°C, Humidity ${input.weather.humidity_percent || 'N/A'}%, Rain chance ${input.weather.rain_probability_percent || 'N/A'}%`);
-  }
-  
-  return parts.length > 0 ? parts.join('\n') : 'Limited context available.';
-}
-
-/**
- * Generate follow-up suggestions based on context
- */
-function generateFollowups(input: LLMResponseInput): string[] {
-  const lang = input.language;
-  const crop = input.land_context?.current_crop;
-  
-  if (crop) {
-    return getFollowupsForCrop(crop, lang);
-  }
-  
-  const defaults: Record<string, string[]> = {
-    mr: ['पिकाची आरोग्य स्थिती तपासा', 'हवामान माहिती पहा', 'मातीची तपासणी करा'],
-    hi: ['फसल स्वास्थ्य जांचें', 'मौसम जानकारी देखें', 'मिट्टी परीक्षण करें'],
-    en: ['Check crop health', 'View weather info', 'Get soil tested']
-  };
-  
-  return defaults[lang] || defaults.en;
-}
-
-/**
- * Get crop-specific follow-ups
- */
-function getFollowupsForCrop(crop: string, lang: string): string[] {
-  const cropLower = crop.toLowerCase();
-  
-  const followups: Record<string, Record<string, string[]>> = {
-    sugarcane: {
-      mr: ['ऊसाला पाणी कधी द्यावे?', 'ऊसाचे खत व्यवस्थापन', 'ऊसावरील किडींची माहिती'],
-      hi: ['गन्ने को पानी कब दें?', 'गन्ने की खाद प्रबंधन', 'गन्ने के कीट जानकारी'],
-      en: ['When to irrigate sugarcane?', 'Sugarcane fertilizer management', 'Sugarcane pest info']
-    },
-    cotton: {
-      mr: ['कापसाला पाणी कधी द्यावे?', 'कापसाचे किडी व्यवस्थापन', 'कापूस वेचणी कधी?'],
-      hi: ['कपास को पानी कब दें?', 'कपास कीट प्रबंधन', 'कपास कब तोड़ें?'],
-      en: ['When to irrigate cotton?', 'Cotton pest management', 'When to pick cotton?']
-    },
-    soybean: {
-      mr: ['सोयाबीनची फवारणी कधी?', 'सोयाबीन खत व्यवस्थापन', 'सोयाबीन काढणी कधी?'],
-      hi: ['सोयाबीन छिड़काव कब?', 'सोयाबीन खाद प्रबंधन', 'सोयाबीन कटाई कब?'],
-      en: ['When to spray soybean?', 'Soybean fertilizer management', 'When to harvest soybean?']
-    }
-  };
-  
-  // Find matching crop
-  for (const [key, value] of Object.entries(followups)) {
-    if (cropLower.includes(key) || key.includes(cropLower)) {
-      return value[lang] || value.en;
-    }
-  }
-  
-  // Default followups
-  const defaults: Record<string, string[]> = {
-    mr: ['पिकाला पाणी कधी द्यावे?', 'खत कधी टाकावे?', 'किडी आहेत का तपासा'],
-    hi: ['फसल को पानी कब दें?', 'खाद कब डालें?', 'कीट हैं क्या जांचें'],
-    en: ['When to irrigate?', 'When to fertilize?', 'Check for pests']
-  };
-  
-  return defaults[lang] || defaults.en;
-}
-
-/**
- * Generate fallback response when LLM is unavailable
- */
-function generateFallbackResponse(input: LLMResponseInput): LLMResponseOutput {
-  const lang = input.language;
-  const crop = input.land_context?.current_crop || '';
-  
-  // Get ICAR guidance if available
-  const icarInfo = crop ? getIcarGuidance(crop) : '';
-  
-  const fallbacks: Record<string, string> = {
-    mr: `🙏 शेतकरी मित्र, तुमचा प्रश्न समजला. 
-${crop ? `तुमच्या ${crop} पिकाबद्दल:` : ''}
-${icarInfo || 'कृपया अधिक तपशील द्या किंवा पुन्हा प्रयत्न करा.'}
-
-💡 **टीप:** पिकावर किडी/रोग असल्यास, "InstaScan" वापरून फोटो पाठवा - अचूक निदान मिळेल.`,
-    
-    hi: `🙏 किसान भाई, आपका सवाल समझ गया।
-${crop ? `आपकी ${crop} फसल के बारे में:` : ''}
-${icarInfo || 'कृपया अधिक जानकारी दें या फिर से प्रयास करें।'}
-
-💡 **सुझाव:** फसल पर कीट/रोग है तो "InstaScan" से फोटो भेजें - सटीक निदान मिलेगा।`,
-    
-    en: `🙏 Dear farmer, I understand your question.
-${crop ? `About your ${crop} crop:` : ''}
-${icarInfo || 'Please provide more details or try again.'}
-
-💡 **Tip:** If you have pest/disease issues, use "InstaScan" to send a photo for accurate diagnosis.`
-  };
   
   return {
-    response_text: fallbacks[lang] || fallbacks.en,
-    confidence: 0.6,
-    source: 'FALLBACK',
-    suggested_followups: generateFollowups(input)
+    valid: errors.length === 0,
+    errors
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INPUT VALIDATION GATE - Rejects invalid symbolic input
+// ═══════════════════════════════════════════════════════════════════════════
+
+function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult {
+  const errors: string[] = [];
+  
+  // Must have symbolic_decision
+  if (!input.symbolic_decision) {
+    errors.push('Missing required symbolic_decision payload');
+    return { valid: false, errors };
+  }
+  
+  // Must have valid status
+  const validStatuses = ['READY', 'NEEDS_CLARIFICATION', 'NO_MATCH', 'BLOCKED', 'ESCALATE'];
+  if (!validStatuses.includes(input.symbolic_decision.status)) {
+    errors.push(`Invalid decision status: ${input.symbolic_decision.status}`);
+  }
+  
+  // Must have fallback_text
+  if (!input.symbolic_decision.fallback_text) {
+    errors.push('Missing required fallback_text');
+  }
+  
+  // If READY, must have primary_action
+  if (input.symbolic_decision.status === 'READY' && !input.symbolic_decision.primary_action) {
+    errors.push('Status is READY but primary_action is missing');
+  }
+  
+  // If NEEDS_CLARIFICATION, must have clarification
+  if (input.symbolic_decision.status === 'NEEDS_CLARIFICATION' && !input.symbolic_decision.clarification) {
+    errors.push('Status is NEEDS_CLARIFICATION but clarification payload is missing');
+  }
+  
+  return {
+    valid: errors.length === 0,
+    errors
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BUILD NARRATION PROMPT - Converts symbolic decision to LLM input
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildNarrationPrompt(input: SymbolicNarrationInput): string {
+  const { symbolic_decision, language, land_context } = input;
+  const langName = language === 'mr' ? 'Marathi' : language === 'hi' ? 'Hindi' : 'English';
+  
+  let prompt = `Convert this symbolic decision to farmer-friendly ${langName} text.\n\n`;
+  prompt += `DECISION STATUS: ${symbolic_decision.status}\n\n`;
+  
+  // Add causes if present
+  if (symbolic_decision.causes && symbolic_decision.causes.length > 0) {
+    prompt += `IDENTIFIED CAUSES (narrate these EXACTLY):\n`;
+    for (const cause of symbolic_decision.causes) {
+      prompt += `- ${cause.cause_name} (${cause.cause_code})\n`;
+    }
+    prompt += '\n';
+  }
+  
+  // Add primary action if present
+  if (symbolic_decision.primary_action) {
+    const action = symbolic_decision.primary_action;
+    prompt += `PRIMARY ACTION (narrate this EXACTLY):\n`;
+    prompt += `- Action Type: ${action.action_type}\n`;
+    prompt += `- Action Text: ${action.action_text}\n`;
+    if (action.product_name) prompt += `- Product: ${action.product_name}\n`;
+    if (action.dosage) prompt += `- Dosage: ${action.dosage}\n`;
+    if (action.timing) prompt += `- Timing: ${action.timing}\n`;
+    if (action.reason_text) prompt += `- Reason: ${action.reason_text}\n`;
+    prompt += '\n';
+  }
+  
+  // Add clarification if needed
+  if (symbolic_decision.clarification) {
+    const clar = symbolic_decision.clarification;
+    prompt += `CLARIFICATION NEEDED (present these options):\n`;
+    prompt += `Question: ${clar.question_text}\n`;
+    prompt += `Options:\n`;
+    for (const opt of clar.options) {
+      prompt += `- ${opt.display_text}\n`;
+    }
+    prompt += '\n';
+  }
+  
+  // Add context for localization only
+  if (land_context?.current_crop) {
+    prompt += `CONTEXT (for localization only, NOT for decision):\n`;
+    prompt += `- Crop: ${land_context.current_crop}\n`;
+    if (land_context.village) prompt += `- Village: ${land_context.village}\n`;
+    prompt += '\n';
+  }
+  
+  prompt += `RISK LEVEL: ${symbolic_decision.risk_level || 'medium'}\n\n`;
+  prompt += `OUTPUT LANGUAGE: ${langName}\n`;
+  prompt += `RENDER: Create warm, farmer-friendly narration using ONLY the data above.`;
+  
+  return prompt;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN NARRATION FUNCTION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Generate narrated response from symbolic decision
+ * 
+ * CRITICAL: This function can ONLY be called AFTER symbolic brain completes.
+ * It does NOT make decisions - it only narrates decisions already made.
+ */
+export async function generateNarratedResponse(
+  input: SymbolicNarrationInput
+): Promise<NarrationOutput> {
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GATE 1: Validate symbolic input exists and is complete
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const inputValidation = validateSymbolicInput(input);
+  if (!inputValidation.valid) {
+    console.error('❌ NarrationLayer: Invalid symbolic input:', inputValidation.errors);
+    return {
+      response_text: input.symbolic_decision?.fallback_text || 
+        'कृपया पुन्हा प्रयत्न करा. | Please try again.',
+      source: 'FALLBACK_USED',
+      validation_passed: false,
+      validation_errors: inputValidation.errors
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GATE 2: For simple statuses, use fallback directly (no LLM needed)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  if (['BLOCKED', 'ESCALATE', 'NO_MATCH'].includes(input.symbolic_decision.status)) {
+    console.log(`⚡ NarrationLayer: Using fallback for status=${input.symbolic_decision.status}`);
+    return {
+      response_text: input.symbolic_decision.fallback_text,
+      source: 'FALLBACK_USED',
+      validation_passed: true
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GATE 3: Build narration prompt and call LLM
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  try {
+    const { provider, model, apiKey } = getBestAvailableProvider();
+    
+    if (!apiKey) {
+      console.warn('⚠️ NarrationLayer: No API key available, using fallback');
+      return {
+        response_text: input.symbolic_decision.fallback_text,
+        source: 'FALLBACK_USED',
+        validation_passed: true
+      };
+    }
+    
+    const narrationPrompt = buildNarrationPrompt(input);
+    
+    const messages = [
+      { role: 'system', content: NARRATION_SYSTEM_PROMPT },
+      { role: 'user', content: narrationPrompt }
+    ];
+    
+    const requestBody = buildAIRequest(provider, model, messages, {
+      maxTokens: AI_CONFIG.MAX_TOKENS,
+      temperature: 0.3 // Low temperature for consistent narration
+    });
+    
+    console.log(`🎙️ NarrationLayer: Calling ${provider}/${model} for narration...`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    let endpoint: string;
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    
+    if (provider === 'openai') {
+      endpoint = 'https://api.openai.com/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    } else if (provider === 'gemini' || provider === 'google') {
+      endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    } else {
+      // Lovable AI fallback
+      endpoint = 'https://ai.gateway.lovable.dev/v1/chat/completions';
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      signal: controller.signal,
+      body: JSON.stringify(requestBody)
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.warn(`⚠️ NarrationLayer: API error ${response.status}, using fallback`);
+      return {
+        response_text: input.symbolic_decision.fallback_text,
+        source: 'FALLBACK_USED',
+        validation_passed: true
+      };
+    }
+    
+    const data = await response.json();
+    
+    // Extract response based on provider
+    let llmOutput = '';
+    if (provider === 'gemini' || provider === 'google') {
+      llmOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      llmOutput = data.choices?.[0]?.message?.content || '';
+    }
+    
+    if (!llmOutput) {
+      console.warn('⚠️ NarrationLayer: Empty LLM response, using fallback');
+      return {
+        response_text: input.symbolic_decision.fallback_text,
+        source: 'FALLBACK_USED',
+        validation_passed: true
+      };
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // GATE 4: Validate LLM output didn't add unauthorized content
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const outputValidation = validateNarrationOutput(input, llmOutput);
+    
+    if (!outputValidation.valid) {
+      console.error('❌ NarrationLayer: LLM output validation failed:', outputValidation.errors);
+      console.log('   → Using fallback_text instead of LLM output');
+      return {
+        response_text: input.symbolic_decision.fallback_text,
+        source: 'FALLBACK_USED',
+        validation_passed: false,
+        validation_errors: outputValidation.errors
+      };
+    }
+    
+    console.log('✅ NarrationLayer: Validation passed, returning LLM narration');
+    
+    return {
+      response_text: llmOutput,
+      source: 'LLM_NARRATION',
+      validation_passed: true
+    };
+    
+  } catch (error) {
+    console.error('❌ NarrationLayer: Error during narration:', error);
+    return {
+      response_text: input.symbolic_decision.fallback_text,
+      source: 'FALLBACK_USED',
+      validation_passed: false,
+      validation_errors: [error instanceof Error ? error.message : 'Unknown error']
+    };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORTED TYPES FOR UPSTREAM MODULES
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type { SymbolicNarrationInput, NarrationOutput, ValidationResult };
