@@ -495,3 +495,90 @@ export async function generateNarratedResponse(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type { SymbolicNarrationInput, NarrationOutput, ValidationResult };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY EXPORTS - BACKWARD COMPATIBILITY FOR ORCHESTRATOR
+// These functions exist ONLY to prevent import errors during migration
+// They should be removed once orchestrator is refactored
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * @deprecated Legacy interface - use SymbolicNarrationInput instead
+ */
+export interface LLMResponseInput {
+  farmer_message: string;
+  language: 'mr' | 'hi' | 'en';
+  intent?: string;
+  land_context?: {
+    current_crop?: string;
+    crop_stage?: string;
+    area_acres?: number;
+    soil_tested?: boolean;
+    soil_health?: any;
+    ndvi?: any;
+    days_since_sowing?: number;
+    village?: string;
+    district?: string;
+  };
+}
+
+/**
+ * @deprecated This function should not be used - routing decisions belong in orchestrator
+ * Returns false to force symbolic path for all queries (safe default)
+ */
+export function canAnswerDirectly(intent: string, farmerMessage: string): boolean {
+  console.warn('[DEPRECATED] canAnswerDirectly called - always returns false to force symbolic path');
+  // Only allow direct answer for pure greetings/help - everything else goes to symbolic brain
+  const pureGreetingPatterns = /^(hello|hi|hey|namaste|namaskar|नमस्ते|नमस्कार|हेलो|हाय)[\s!?.]*$/i;
+  const isGreetingOnly = pureGreetingPatterns.test(farmerMessage.trim());
+  return isGreetingOnly && intent === 'GREETING';
+}
+
+/**
+ * @deprecated This function should not be used - routing decisions belong in orchestrator
+ * Returns true to force symbolic path for all agricultural queries (safe default)
+ */
+export function requiresRuleEngine(intent: string, farmerMessage: string): boolean {
+  console.warn('[DEPRECATED] requiresRuleEngine called - returns true for most intents');
+  // All agricultural intents require rule engine
+  const nonRuleIntents = ['GREETING', 'APP_HELP'];
+  return !nonRuleIntents.includes(intent);
+}
+
+/**
+ * @deprecated Use generateNarratedResponse with SymbolicNarrationInput instead
+ * This is a compatibility wrapper that creates a minimal symbolic input
+ */
+export async function generateLLMResponse(input: LLMResponseInput): Promise<{ response_text: string; source: string }> {
+  console.warn('[DEPRECATED] generateLLMResponse called - should migrate to generateNarratedResponse');
+  
+  // Create a minimal symbolic input with generic fallback
+  const fallbackMessages = {
+    mr: '🙏 कृपया तुमचा प्रश्न पुन्हा विचारा. मी तुमची मदत करण्यासाठी तयार आहे.',
+    hi: '🙏 कृपया अपना प्रश्न दोबारा पूछें। मैं आपकी मदद के लिए तैयार हूं।',
+    en: '🙏 Please ask your question again. I am ready to help you.'
+  };
+  
+  const symbolicInput: SymbolicNarrationInput = {
+    language: input.language,
+    farmer_message: input.farmer_message,
+    symbolic_decision: {
+      status: 'NO_MATCH',
+      fallback_text: fallbackMessages[input.language],
+      rules_applied: []
+    },
+    land_context: input.land_context ? {
+      current_crop: input.land_context.current_crop,
+      crop_stage: input.land_context.crop_stage,
+      village: input.land_context.village,
+      district: input.land_context.district
+    } : undefined
+  };
+  
+  const result = await generateNarratedResponse(symbolicInput);
+  
+  return {
+    response_text: result.response_text,
+    source: result.source
+  };
+}
