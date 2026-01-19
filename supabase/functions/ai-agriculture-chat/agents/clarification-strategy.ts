@@ -71,6 +71,10 @@ export interface LockedStageContext {
   locked_at: number; // timestamp
   source: 'CROP_SCHEDULE' | 'LAND_CONTEXT' | 'CALCULATED';
   failure_class?: FailureClass;
+  
+  // PROMPT 3 FIX: Track validated observations separately from farmer claims
+  validated_observations: string[];
+  rejected_observations: Array<{ raw: string; reason: string }>;
 }
 
 export interface ClarificationTriggerInput {
