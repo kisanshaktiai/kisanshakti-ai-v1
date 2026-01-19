@@ -510,11 +510,35 @@ export async function generateDiagnosisFirstResponse(
             },
             farmer_location
           );
-          
-          causeLabel = regional.pest_name_regional;
-          observationLabel = regional.treatment_label_regional || getObservationLabel(observationKey, language);
-          
-          console.log(`   🌍 Regional: ${h.cause} → ${causeLabel}`);
+
+          const isUntranslated = (text: string | undefined | null): boolean => {
+            const t = (text || '').trim();
+            if (!t) return true;
+            if (language === 'en') return false;
+            // For mr/hi we expect Devanagari; if not present, treat as untranslated
+            const hasDevanagari = /[\u0900-\u097F]/.test(t);
+            if ((language === 'mr' || language === 'hi') && !hasDevanagari) return true;
+            // If it looks identical to the English input, treat as untranslated
+            if (t.toLowerCase() === (h.cause || '').trim().toLowerCase()) return true;
+            // Avoid raw "Check for ..." leakage
+            if (/\bcheck\s+for\b/i.test(t)) return true;
+            return false;
+          };
+
+          // If regional translator couldn't localize (common for rare disease names), fall back to hardcoded matcher.
+          causeLabel = isUntranslated(regional.pest_name_regional)
+            ? getCauseLabel(h.cause, language)
+            : regional.pest_name_regional;
+
+          observationLabel = isUntranslated(regional.treatment_label_regional)
+            ? getObservationLabel(observationKey, language)
+            : regional.treatment_label_regional;
+
+          if (isUntranslated(regional.pest_name_regional) || isUntranslated(regional.treatment_label_regional)) {
+            console.log(`   🌍 Regional fallback used: cause="${h.cause}" → "${causeLabel}" | obs="${observationKey}" → "${observationLabel}"`);
+          } else {
+            console.log(`   🌍 Regional: ${h.cause} → ${causeLabel}`);
+          }
         } catch (error) {
           console.warn(`   ⚠️ Regional translation failed for ${h.cause}, using fallback`);
           causeLabel = getCauseLabel(h.cause, language);
