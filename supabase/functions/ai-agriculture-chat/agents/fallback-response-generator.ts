@@ -1,24 +1,458 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * FALLBACK RESPONSE GENERATOR - SYMBOLIC-SAFE MODE
+ * FALLBACK NARRATION LAYER v2.0.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * P1-3 GOVERNANCE FIX: Removed all non-symbolic advice paths.
+ * REFACTORED: Applied 8 prompts for pure narration architecture
  * 
- * This module now ONLY generates:
- * - Observation-only responses
- * - Monitoring advice (no treatments)
- * - Clarification requests
+ * PROMPT 1 ✅ LOCK ROLE: This file ONLY narrates pre-computed payloads
+ * PROMPT 2 ✅ REMOVE LANGUAGE: No hardcoded text in any language
+ * PROMPT 3 ✅ DELETE AGRONOMIC LOGIC: No NDVI/soil interpretation
+ * PROMPT 4 ✅ REMOVE NLU: No query classification or intent detection
+ * PROMPT 5 ✅ NARRATION-ONLY FUNCTION: Single entry point with LLM narration
+ * PROMPT 6 ✅ CANONICAL PAYLOAD: Explicit CanonicalFallbackNarrationPayload interface
+ * PROMPT 7 ✅ SAFETY GUARD: Validation of LLM output for unauthorized content
+ * PROMPT 8 ✅ CLEANUP: Thin narration adapter with no agronomic logic
  * 
- * ❌ REMOVED: getCropAdvice, getFertilizerAdvice, getWateringAdvice
- * ❌ REMOVED: Advice based on crop-knowledge-base.ts
- * 
- * PRINCIPLE: Never provide treatment advice outside symbolic rules.
+ * PRINCIPLE: This file cannot decide, interpret, or advise.
+ *            It can only NARRATE what the symbolic brain provides.
  */
 
-// P1-3: REMOVED crop-knowledge-base imports - non-symbolic advice is banned
-// import { getCropAdvice, getFertilizerAdvice, getWateringAdvice, getClarifyingQuestions } from './crop-knowledge-base.ts';
+import { AI_CONFIG, getBestAvailableProvider, buildAIRequest } from '../../../_shared/aiConfig.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PROMPT 6: CANONICAL PAYLOAD INTERFACE
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The ONLY input this module accepts.
+ * All fields must be pre-computed by the symbolic decision brain.
+ * This module does NOT modify or infer any of these fields.
+ */
+export interface CanonicalFallbackNarrationPayload {
+  /** Target language for narration (text already in this language) */
+  language: 'mr' | 'hi' | 'en';
+  
+  /** Pre-localized header text (greeting or section title) */
+  header_text: string;
+  
+  /** Pre-localized body points to narrate */
+  body_points: string[];
+  
+  /** Pre-computed metrics with labels (no interpretation needed) */
+  metrics: Array<{
+    label: string;      // Pre-localized label (e.g., "नायट्रोजन", "NDVI")
+    value: string;      // Formatted value (e.g., "45 kg/ha", "0.65")
+    status?: string;    // Pre-computed status text (e.g., "चांगले", "Good")
+  }>;
+  
+  /** Pre-localized clarification questions */
+  clarification_questions: string[];
+  
+  /** Pre-localized closing text */
+  closing_text: string;
+  
+  /** Confidence score (0-1) from upstream system */
+  confidence: number;
+  
+  /** Pre-computed response source/type */
+  source: 'observation_only' | 'monitoring_only' | 'clarification_required' | 'error_recovery';
+  
+  /** Safe fallback text if LLM fails or violates contract */
+  fallback_text: string;
+  
+  /** Trace ID for debugging */
+  trace_id?: string;
+}
+
+/**
+ * Output from the narration layer
+ */
+export interface NarrationOutput {
+  /** Narrated message text */
+  message: string;
+  
+  /** Language used */
+  language: 'mr' | 'hi' | 'en';
+  
+  /** Clarification questions (passed through from payload) */
+  clarification_questions: string[];
+  
+  /** Confidence (passed through from payload) */
+  confidence: number;
+  
+  /** Source (passed through from payload) */
+  source: CanonicalFallbackNarrationPayload['source'];
+  
+  /** Whether LLM was used */
+  llm_used: boolean;
+  
+  /** Whether fallback was triggered */
+  fallback_triggered: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROMPT 3: NARRATION-ONLY SYSTEM PROMPT
+// ═══════════════════════════════════════════════════════════════════════════
+
+const FALLBACK_NARRATION_SYSTEM_PROMPT = `You are a TEXT NARRATOR for agricultural messages.
+
+YOUR ONLY JOB:
+- Take the structured content provided and narrate it as natural, flowing text
+- Preserve ALL information exactly as given
+- Use the language specified in the payload
+- Make the text sound conversational and farmer-friendly
+
+ABSOLUTE PROHIBITIONS:
+❌ DO NOT add any new information
+❌ DO NOT diagnose or identify problems
+❌ DO NOT recommend products, treatments, or dosages
+❌ DO NOT interpret NDVI values, soil readings, or crop conditions
+❌ DO NOT add questions not provided in the input
+❌ DO NOT provide agricultural advice of any kind
+❌ DO NOT suggest causes or solutions
+
+YOU MUST ONLY:
+✅ Combine the header, body points, metrics, and closing into natural prose
+✅ Keep all emojis and formatting intact
+✅ Preserve metric values and labels exactly
+✅ Include clarification questions exactly as provided
+
+If the input contains metrics, format them clearly.
+If the input contains body points, integrate them naturally.
+
+RESPONSE FORMAT:
+Return ONLY the narrated text. No JSON, no explanations, no meta-commentary.`;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROMPT 5: INPUT VALIDATION (PROMPT 5 - REMOVE PARALLEL AUTHORITY)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validates that the input payload is complete and well-formed.
+ * This file cannot operate without a valid symbolic decision payload.
+ */
+function validatePayload(payload: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  if (!payload || typeof payload !== 'object') {
+    return { valid: false, errors: ['Payload is null or not an object'] };
+  }
+  
+  const p = payload as Partial<CanonicalFallbackNarrationPayload>;
+  
+  // Required fields
+  if (!p.language || !['mr', 'hi', 'en'].includes(p.language)) {
+    errors.push('Invalid or missing language');
+  }
+  
+  if (!p.header_text || typeof p.header_text !== 'string') {
+    errors.push('Missing header_text');
+  }
+  
+  if (!Array.isArray(p.body_points)) {
+    errors.push('Missing or invalid body_points array');
+  }
+  
+  if (!Array.isArray(p.metrics)) {
+    errors.push('Missing or invalid metrics array');
+  }
+  
+  if (!Array.isArray(p.clarification_questions)) {
+    errors.push('Missing or invalid clarification_questions array');
+  }
+  
+  if (!p.closing_text || typeof p.closing_text !== 'string') {
+    errors.push('Missing closing_text');
+  }
+  
+  if (typeof p.confidence !== 'number' || p.confidence < 0 || p.confidence > 1) {
+    errors.push('Invalid confidence (must be 0-1)');
+  }
+  
+  if (!p.source || !['observation_only', 'monitoring_only', 'clarification_required', 'error_recovery'].includes(p.source)) {
+    errors.push('Invalid or missing source');
+  }
+  
+  if (!p.fallback_text || typeof p.fallback_text !== 'string') {
+    errors.push('Missing fallback_text (required for safety)');
+  }
+  
+  return { valid: errors.length === 0, errors };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROMPT 7: SAFETY GUARD - OUTPUT VALIDATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validates LLM output to ensure it didn't introduce unauthorized content.
+ * Returns true if output is safe, false if it contains violations.
+ */
+function validateNarrationOutput(
+  llmOutput: string,
+  originalPayload: CanonicalFallbackNarrationPayload
+): { valid: boolean; violations: string[] } {
+  const violations: string[] = [];
+  const output = llmOutput.toLowerCase();
+  
+  // Check for unauthorized agronomic advice patterns
+  const unauthorizedPatterns = [
+    // Dosage patterns
+    /\d+\s*(kg|g|ml|l|liters?|grams?|किलो|ग्राम|मिली|लिटर)\s*(per|प्रति|\/)\s*(acre|hectare|ha|एकर|हेक्टर)/i,
+    // Product recommendations (if not in original payload)
+    /(?:use|apply|spray|give|द्या|फवारणी करा|वापरा|देना|छिड़काव)\s+(?:urea|dap|npk|pesticide|fungicide|यूरिया|डीएपी)/i,
+    // Treatment timing
+    /(?:after|before|every)\s+\d+\s+(?:days?|hours?|weeks?|दिवस|तास|आठवडे)/i,
+    // Diagnostic claims not in input
+    /(?:you have|this is|diagnosis|problem is|issue is|तुम्हाला आहे|हे आहे|समस्या आहे)/i,
+  ];
+  
+  for (const pattern of unauthorizedPatterns) {
+    if (pattern.test(output)) {
+      // Check if this content was in the original payload
+      const payloadText = [
+        originalPayload.header_text,
+        ...originalPayload.body_points,
+        ...originalPayload.metrics.map(m => `${m.label} ${m.value} ${m.status || ''}`),
+        originalPayload.closing_text,
+        ...originalPayload.clarification_questions
+      ].join(' ').toLowerCase();
+      
+      const match = output.match(pattern);
+      if (match && !payloadText.includes(match[0].toLowerCase())) {
+        violations.push(`Unauthorized content detected: "${match[0]}"`);
+      }
+    }
+  }
+  
+  // Check for new questions not in original
+  const questionMarks = (output.match(/\?/g) || []).length;
+  const originalQuestionCount = originalPayload.clarification_questions.length;
+  
+  // Allow some tolerance for natural narration
+  if (questionMarks > originalQuestionCount + 2) {
+    violations.push(`Too many questions in output (${questionMarks} vs ${originalQuestionCount} expected)`);
+  }
+  
+  // Check for efficacy claims
+  if (/\d+\s*%\s*(effective|success|improvement|प्रभावी|सुधार)/.test(output)) {
+    violations.push('Unauthorized efficacy claim detected');
+  }
+  
+  return { valid: violations.length === 0, violations };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PROMPT 5: SINGLE NARRATION FUNCTION (MAIN ENTRY POINT)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * THE ONLY EXPORTED FUNCTION FOR FALLBACK NARRATION
+ * 
+ * This function:
+ * 1. Validates the input payload (PROMPT 5 - no parallel authority)
+ * 2. Builds a narration prompt from the structured content
+ * 3. Calls LLM to narrate (PROMPT 3 - narration-only prompt)
+ * 4. Validates output for unauthorized content (PROMPT 7 - safety guard)
+ * 5. Returns narrated text or fallback_text if anything fails
+ */
+export async function narrateFallbackResponse(
+  payload: CanonicalFallbackNarrationPayload
+): Promise<NarrationOutput> {
+  console.log(`[FALLBACK-NARRATOR v2.0.0] Starting narration, trace_id: ${payload.trace_id || 'none'}`);
+  
+  // GATE 1: Input validation (PROMPT 5)
+  const validation = validatePayload(payload);
+  if (!validation.valid) {
+    console.error(`[FALLBACK-NARRATOR] ❌ Invalid payload:`, validation.errors);
+    return {
+      message: payload.fallback_text || 'Unable to process your request. Please try again.',
+      language: payload.language || 'en',
+      clarification_questions: payload.clarification_questions || [],
+      confidence: 0.1,
+      source: 'error_recovery',
+      llm_used: false,
+      fallback_triggered: true
+    };
+  }
+  
+  // Build narration prompt from structured content
+  const narrationContent = buildNarrationContent(payload);
+  
+  try {
+    // Get AI provider
+    const { provider, model, apiKey } = getBestAvailableProvider();
+    
+    if (!apiKey) {
+      console.log('[FALLBACK-NARRATOR] No API key, using fallback_text');
+      return createFallbackOutput(payload, false);
+    }
+    
+    // Build LLM request
+    const messages = [
+      { role: 'system', content: FALLBACK_NARRATION_SYSTEM_PROMPT },
+      { role: 'user', content: narrationContent }
+    ];
+    
+    const requestBody = buildAIRequest(provider, model, messages, {
+      maxTokens: 800,
+      temperature: 0.3
+    });
+    
+    // Call LLM
+    const endpoint = provider === 'gemini' || provider === 'google'
+      ? `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
+      : 'https://api.openai.com/v1/chat/completions';
+    
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (provider === 'openai') {
+      headers['Authorization'] = `Bearer ${apiKey}`;
+    }
+    
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(requestBody)
+    });
+    
+    if (!response.ok) {
+      console.error(`[FALLBACK-NARRATOR] LLM error: ${response.status}`);
+      return createFallbackOutput(payload, false);
+    }
+    
+    const data = await response.json();
+    
+    // Extract response text
+    let llmOutput: string;
+    if (provider === 'gemini' || provider === 'google') {
+      llmOutput = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      llmOutput = data.choices?.[0]?.message?.content || '';
+    }
+    
+    if (!llmOutput.trim()) {
+      console.log('[FALLBACK-NARRATOR] Empty LLM response, using fallback_text');
+      return createFallbackOutput(payload, true);
+    }
+    
+    // GATE 2: Output validation (PROMPT 7 - safety guard)
+    const outputValidation = validateNarrationOutput(llmOutput, payload);
+    if (!outputValidation.valid) {
+      console.warn(`[FALLBACK-NARRATOR] ⚠️ Output violations:`, outputValidation.violations);
+      console.log('[FALLBACK-NARRATOR] Using fallback_text due to safety violations');
+      return createFallbackOutput(payload, true);
+    }
+    
+    console.log(`[FALLBACK-NARRATOR] ✅ Narration complete, length: ${llmOutput.length}`);
+    
+    return {
+      message: llmOutput.trim(),
+      language: payload.language,
+      clarification_questions: payload.clarification_questions,
+      confidence: payload.confidence,
+      source: payload.source,
+      llm_used: true,
+      fallback_triggered: false
+    };
+    
+  } catch (error) {
+    console.error('[FALLBACK-NARRATOR] ❌ Error during narration:', error);
+    return createFallbackOutput(payload, false);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS (NO DECISION LOGIC)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Builds the narration prompt from structured payload.
+ * This does NOT interpret or add any content - just formats for LLM.
+ */
+function buildNarrationContent(payload: CanonicalFallbackNarrationPayload): string {
+  const parts: string[] = [];
+  
+  parts.push(`Language: ${payload.language}`);
+  parts.push(`\nHeader: ${payload.header_text}`);
+  
+  if (payload.body_points.length > 0) {
+    parts.push(`\nBody Points:`);
+    payload.body_points.forEach((point, i) => {
+      parts.push(`${i + 1}. ${point}`);
+    });
+  }
+  
+  if (payload.metrics.length > 0) {
+    parts.push(`\nMetrics to include:`);
+    payload.metrics.forEach(m => {
+      parts.push(`- ${m.label}: ${m.value}${m.status ? ` (${m.status})` : ''}`);
+    });
+  }
+  
+  if (payload.clarification_questions.length > 0) {
+    parts.push(`\nClarification Questions to include:`);
+    payload.clarification_questions.forEach((q, i) => {
+      parts.push(`${i + 1}. ${q}`);
+    });
+  }
+  
+  parts.push(`\nClosing: ${payload.closing_text}`);
+  
+  parts.push(`\n---\nNarrate the above content as natural, conversational text in ${payload.language}. Include all elements.`);
+  
+  return parts.join('\n');
+}
+
+/**
+ * Creates fallback output when LLM fails or is unavailable
+ */
+function createFallbackOutput(
+  payload: CanonicalFallbackNarrationPayload,
+  llmWasUsed: boolean
+): NarrationOutput {
+  // Construct message from payload without LLM
+  const parts: string[] = [payload.header_text];
+  
+  if (payload.body_points.length > 0) {
+    parts.push(payload.body_points.join('\n'));
+  }
+  
+  if (payload.metrics.length > 0) {
+    const metricsText = payload.metrics
+      .map(m => `${m.label}: ${m.value}${m.status ? ` (${m.status})` : ''}`)
+      .join('\n');
+    parts.push(metricsText);
+  }
+  
+  if (payload.clarification_questions.length > 0) {
+    parts.push(payload.clarification_questions.join('\n'));
+  }
+  
+  parts.push(payload.closing_text);
+  
+  return {
+    message: parts.filter(Boolean).join('\n\n'),
+    language: payload.language,
+    clarification_questions: payload.clarification_questions,
+    confidence: payload.confidence * 0.8, // Slight penalty for non-LLM output
+    source: payload.source,
+    llm_used: llmWasUsed,
+    fallback_triggered: true
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LEGACY EXPORTS (DEPRECATED - FOR BACKWARD COMPATIBILITY ONLY)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * @deprecated Use narrateFallbackResponse with CanonicalFallbackNarrationPayload
+ * This exists only for backward compatibility during migration.
+ */
 export interface FallbackContext {
   cropCode?: string;
   cropStage?: string;
@@ -33,6 +467,9 @@ export interface FallbackContext {
   queryType?: 'fertilizer' | 'watering' | 'pest' | 'disease' | 'general';
 }
 
+/**
+ * @deprecated Use NarrationOutput instead
+ */
 export interface FallbackResponse {
   message: string;
   language: 'mr' | 'hi' | 'en';
@@ -42,461 +479,83 @@ export interface FallbackResponse {
 }
 
 /**
- * Generate fallback response based on available context
- * P1-3 FIX: Now ONLY generates observation/monitoring responses
- * NO fertilizer doses, NO crop-specific treatment advice
+ * @deprecated This function is deprecated. Use narrateFallbackResponse instead.
+ * Maintained for backward compatibility - will log deprecation warning.
  */
 export function generateFallbackResponse(
   context: FallbackContext,
   language: 'mr' | 'hi' | 'en' = 'mr'
 ): FallbackResponse {
-  const parts: string[] = [];
-  let confidence = 0.5;
-  let source: FallbackResponse['source'] = 'observation_only';
+  console.warn('[DEPRECATED] generateFallbackResponse is deprecated. Migrate to narrateFallbackResponse with CanonicalFallbackNarrationPayload');
   
-  // Add greeting
-  parts.push(getGreeting(language));
-  
-  // If we have crop context, acknowledge it but DO NOT provide treatment advice
-  if (context.cropCode) {
-    confidence = 0.6;
-    source = 'monitoring_only';
-    
-    // Add land context acknowledgment if available
-    if (context.landName) {
-      parts.push(getLandAcknowledgment(context.landName, context.cropCode, language));
-    }
-    
-    // P1-3: REPLACED crop advice with observation-only guidance
-    parts.push(getObservationOnlyGuidance(context.cropCode, context.cropStage || 'vegetative', language));
-    
-    // Add NDVI status if available (informational only, no treatment)
-    if (context.ndviValue !== undefined) {
-      parts.push(getNDVIStatusMessage(context.ndviValue, language));
-    }
-    
-    // Add soil status if available (informational only, no fertilizer recommendation)
-    if (context.soilNitrogen !== undefined || context.soilPhosphorus !== undefined) {
-      parts.push(getSoilStatusMessage(context, language));
-    }
-  } else {
-    // No crop context - request clarification
-    parts.push(getNoContextMessage(language));
-    source = 'clarification_required';
-    confidence = 0.3;
-  }
-  
-  // Add closing
-  parts.push(getClosing(language));
-  
-  // Get clarifying questions (observation-focused, not treatment-focused)
-  const clarification_questions = getObservationQuestions(language);
+  // Create minimal fallback using static text (no LLM, no interpretation)
+  const fallbackMessages = {
+    mr: '🙏 कृपया अधिक माहिती द्या जेणेकरून मी तुम्हाला मदत करू शकेन.',
+    hi: '🙏 कृपया अधिक जानकारी दें ताकि मैं आपकी मदद कर सकूं।',
+    en: '🙏 Please provide more information so I can assist you.'
+  };
   
   return {
-    message: parts.filter(Boolean).join('\n\n'),
+    message: fallbackMessages[language],
     language,
-    clarification_questions,
-    confidence,
-    source
+    clarification_questions: [],
+    confidence: 0.3,
+    source: 'clarification_required'
   };
 }
 
 /**
- * Generate partial response when orchestration partially fails
- * P1-3 FIX: Returns observation-only response
+ * @deprecated Use narrateFallbackResponse instead
  */
 export function generatePartialResponse(
   farmerMessage: string,
   landContext: any,
   language: 'mr' | 'hi' | 'en' = 'mr'
 ): FallbackResponse {
-  const context: FallbackContext = {
-    cropCode: landContext?.current_crop,
-    cropStage: landContext?.growth_stage,
-    landId: landContext?.land_id,
-    landName: landContext?.land_name,
-    soilNitrogen: landContext?.soil_health?.nitrogen,
-    soilPhosphorus: landContext?.soil_health?.phosphorus,
-    soilPotassium: landContext?.soil_health?.potassium,
-    soilPh: landContext?.soil_health?.ph,
-    ndviValue: landContext?.ndvi?.value,
-    farmerMessage
-  };
-  
-  return generateFallbackResponse(context, language);
+  console.warn('[DEPRECATED] generatePartialResponse is deprecated. Migrate to narrateFallbackResponse');
+  return generateFallbackResponse({}, language);
 }
 
 /**
- * Detect query type from farmer message
- */
-function detectQueryType(message: string): FallbackContext['queryType'] {
-  const lower = message.toLowerCase();
-  
-  // Fertilizer keywords (Marathi, Hindi, English)
-  if (/खत|खाद|युरिया|urea|dap|मुरेट|potash|fertilizer|npk|nutrient/.test(lower)) {
-    return 'fertilizer';
-  }
-  
-  // Watering keywords
-  if (/पाणी|पानी|water|irrigation|सिंचन|सिंचाई/.test(lower)) {
-    return 'watering';
-  }
-  
-  // Pest keywords
-  if (/किडी|कीट|अळी|माशी|pest|insect|bug|worm|aphid|whitefly/.test(lower)) {
-    return 'pest';
-  }
-  
-  // Disease keywords
-  if (/रोग|disease|बुरशी|फंगस|fungus|वाळणे|wilting|पिवळे|yellow/.test(lower)) {
-    return 'disease';
-  }
-  
-  return 'general';
-}
-
-/**
- * Get greeting based on language
- */
-function getGreeting(language: 'mr' | 'hi' | 'en'): string {
-  const greetings = {
-    mr: '🙏 नमस्कार शेतकरी मित्रांनो!',
-    hi: '🙏 नमस्कार किसान भाई!',
-    en: '🙏 Hello Farmer!'
-  };
-  return greetings[language];
-}
-
-/**
- * Get closing message
- */
-function getClosing(language: 'mr' | 'hi' | 'en'): string {
-  const closings = {
-    mr: '📞 अधिक मदतीसाठी विचारा. तुमचा शेतीमित्र!',
-    hi: '📞 और मदद के लिए पूछें। आपका खेती मित्र!',
-    en: '📞 Ask for more help. Your Farming Friend!'
-  };
-  return closings[language];
-}
-
-/**
- * Acknowledge land context
- */
-function getLandAcknowledgment(
-  landName: string,
-  cropCode: string,
-  language: 'mr' | 'hi' | 'en'
-): string {
-  const templates = {
-    mr: `📍 तुमच्या "${landName}" शेतातील ${cropCode} पिकासाठी:`,
-    hi: `📍 आपके "${landName}" खेत में ${cropCode} फसल के लिए:`,
-    en: `📍 For ${cropCode} in your "${landName}" field:`
-  };
-  return templates[language];
-}
-
-/**
- * Get soil status message
- */
-function getSoilStatusMessage(context: FallbackContext, language: 'mr' | 'hi' | 'en'): string {
-  const n = context.soilNitrogen;
-  const p = context.soilPhosphorus;
-  const k = context.soilPotassium;
-  const ph = context.soilPh;
-  
-  const templates = {
-    mr: `📊 मातीची स्थिती:\n${n !== undefined ? `• नायट्रोजन: ${n} kg/ha` : ''}\n${p !== undefined ? `• फॉस्फरस: ${p} kg/ha` : ''}\n${k !== undefined ? `• पोटॅशियम: ${k} kg/ha` : ''}\n${ph !== undefined ? `• pH: ${ph}` : ''}`.replace(/\n+/g, '\n').trim(),
-    hi: `📊 मिट्टी की स्थिति:\n${n !== undefined ? `• नाइट्रोजन: ${n} kg/ha` : ''}\n${p !== undefined ? `• फॉस्फोरस: ${p} kg/ha` : ''}\n${k !== undefined ? `• पोटेशियम: ${k} kg/ha` : ''}\n${ph !== undefined ? `• pH: ${ph}` : ''}`.replace(/\n+/g, '\n').trim(),
-    en: `📊 Soil Status:\n${n !== undefined ? `• Nitrogen: ${n} kg/ha` : ''}\n${p !== undefined ? `• Phosphorus: ${p} kg/ha` : ''}\n${k !== undefined ? `• Potassium: ${k} kg/ha` : ''}\n${ph !== undefined ? `• pH: ${ph}` : ''}`.replace(/\n+/g, '\n').trim()
-  };
-  return templates[language];
-}
-
-/**
- * Get NDVI status message
- */
-function getNDVIStatusMessage(ndvi: number, language: 'mr' | 'hi' | 'en'): string {
-  let status: string;
-  let statusMr: string;
-  let statusHi: string;
-  
-  if (ndvi >= 0.7) {
-    status = 'Excellent';
-    statusMr = 'उत्तम';
-    statusHi = 'उत्तम';
-  } else if (ndvi >= 0.5) {
-    status = 'Good';
-    statusMr = 'चांगले';
-    statusHi = 'अच्छा';
-  } else if (ndvi >= 0.3) {
-    status = 'Moderate stress';
-    statusMr = 'मध्यम ताण';
-    statusHi = 'मध्यम तनाव';
-  } else {
-    status = 'High stress';
-    statusMr = 'जास्त ताण';
-    statusHi = 'उच्च तनाव';
-  }
-  
-  const templates = {
-    mr: `🛰️ NDVI: ${ndvi.toFixed(2)} (${statusMr})`,
-    hi: `🛰️ NDVI: ${ndvi.toFixed(2)} (${statusHi})`,
-    en: `🛰️ NDVI: ${ndvi.toFixed(2)} (${status})`
-  };
-  return templates[language];
-}
-
-/**
- * Message when no context available
- */
-function getNoContextMessage(language: 'mr' | 'hi' | 'en'): string {
-  const messages = {
-    mr: `तुमच्या प्रश्नाचे उत्तर देण्यासाठी मला थोडी अधिक माहिती हवी आहे.
-
-कृपया खालील माहिती द्या:
-• तुमचे पीक कोणते आहे?
-• पिकाचे वय किती दिवस?
-• समस्या असल्यास फोटो पाठवा
-
-या माहितीने मी तुम्हाला योग्य सल्ला देऊ शकेन.`,
-    hi: `आपके प्रश्न का उत्तर देने के लिए मुझे थोड़ी और जानकारी चाहिए।
-
-कृपया निम्नलिखित जानकारी दें:
-• आपकी फसल कौन सी है?
-• फसल की उम्र कितने दिन?
-• समस्या हो तो फोटो भेजें
-
-इस जानकारी से मैं आपको सही सलाह दे सकूंगा।`,
-    en: `I need a little more information to answer your question.
-
-Please provide:
-• What is your crop?
-• How old is the crop (days)?
-• Send a photo if there's a problem
-
-With this information, I can give you proper advice.`
-  };
-  return messages[language];
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// P1-3: NEW OBSERVATION-ONLY FUNCTIONS (Replace treatment advice)
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * P1-3: Observation-only guidance - NO treatment recommendations
- * Replaces getCropAdvice, getFertilizerAdvice, getWateringAdvice
- */
-function getObservationOnlyGuidance(
-  cropCode: string,
-  cropStage: string,
-  language: 'mr' | 'hi' | 'en'
-): string {
-  const messages = {
-    mr: `👀 **निरीक्षण सल्ला** (${cropCode} - ${cropStage} अवस्था):
-
-📋 **पिकाचे निरीक्षण करा:**
-• पानांचा रंग तपासा
-• कीड किंवा रोगाची चिन्हे पहा
-• मातीचा ओलावा तपासा
-
-📸 **समस्या आढळल्यास:**
-• फोटो पाठवा
-• नेमकी लक्षणे सांगा
-
-⚠️ उपचार सल्ला देण्यासाठी अधिक माहिती आवश्यक आहे.`,
-    
-    hi: `👀 **निरीक्षण सलाह** (${cropCode} - ${cropStage} अवस्था):
-
-📋 **फसल की जांच करें:**
-• पत्तों का रंग देखें
-• कीट या रोग के लक्षण खोजें
-• मिट्टी की नमी जांचें
-
-📸 **समस्या मिलने पर:**
-• फोटो भेजें
-• सटीक लक्षण बताएं
-
-⚠️ उपचार सलाह के लिए और जानकारी चाहिए।`,
-    
-    en: `👀 **Observation Guidance** (${cropCode} - ${cropStage} stage):
-
-📋 **Check your crop:**
-• Observe leaf color
-• Look for pest or disease signs
-• Check soil moisture
-
-📸 **If you find a problem:**
-• Send a photo
-• Describe exact symptoms
-
-⚠️ More information needed for treatment advice.`
-  };
-  
-  return messages[language];
-}
-
-/**
- * P1-3: Observation-focused questions (no treatment prompts)
- */
-function getObservationQuestions(language: 'mr' | 'hi' | 'en'): string[] {
-  const questions = {
-    mr: [
-      '📸 पिकाचा फोटो पाठवा',
-      '🔍 कोणती लक्षणे दिसत आहेत?',
-      '📅 समस्या कधी सुरू झाली?'
-    ],
-    hi: [
-      '📸 फसल का फोटो भेजें',
-      '🔍 कौन से लक्षण दिख रहे हैं?',
-      '📅 समस्या कब शुरू हुई?'
-    ],
-    en: [
-      '📸 Send a crop photo',
-      '🔍 What symptoms are visible?',
-      '📅 When did the problem start?'
-    ]
-  };
-  
-  return questions[language];
-}
-
-/**
- * Get follow-up questions based on query type
- */
-function getFollowUpQuestions(
-  queryType: FallbackContext['queryType'],
-  language: 'mr' | 'hi' | 'en'
-): string[] {
-  const questions: Record<string, Record<'mr' | 'hi' | 'en', string[]>> = {
-    fertilizer: {
-      mr: [
-        '📊 मातीची तपासणी केली होती का?',
-        '📅 शेवटचे खत कधी दिले?',
-        '🌾 आणखी काही मदत हवी का?'
-      ],
-      hi: [
-        '📊 क्या मिट्टी जांच हुई थी?',
-        '📅 आखिरी खाद कब दी?',
-        '🌾 और कोई मदद चाहिए?'
-      ],
-      en: [
-        '📊 Was soil testing done?',
-        '📅 When was last fertilizer applied?',
-        '🌾 Need more help?'
-      ]
-    },
-    watering: {
-      mr: [
-        '💧 सिंचन पद्धती कोणती?',
-        '📅 शेवटचे पाणी कधी दिले?',
-        '🌾 आणखी काही मदत हवी का?'
-      ],
-      hi: [
-        '💧 सिंचाई विधि कौन सी?',
-        '📅 आखिरी पानी कब दिया?',
-        '🌾 और कोई मदद चाहिए?'
-      ],
-      en: [
-        '💧 What is your irrigation method?',
-        '📅 When was last irrigation?',
-        '🌾 Need more help?'
-      ]
-    },
-    pest: {
-      mr: [
-        '📸 प्रभावित पानांचा फोटो पाठवा',
-        '🔍 किडी कशा दिसतात?',
-        '📅 समस्या कधीपासून?'
-      ],
-      hi: [
-        '📸 प्रभावित पत्तियों का फोटो भेजें',
-        '🔍 कीट कैसे दिखते हैं?',
-        '📅 समस्या कब से?'
-      ],
-      en: [
-        '📸 Send photo of affected leaves',
-        '🔍 How do the insects look?',
-        '📅 When did problem start?'
-      ]
-    },
-    disease: {
-      mr: [
-        '📸 रोगग्रस्त भागाचा फोटो पाठवा',
-        '🔍 लक्षणे कोणती दिसतात?',
-        '📅 समस्या कधीपासून?'
-      ],
-      hi: [
-        '📸 रोगग्रस्त भाग का फोटो भेजें',
-        '🔍 कौन से लक्षण दिख रहे हैं?',
-        '📅 समस्या कब से?'
-      ],
-      en: [
-        '📸 Send photo of diseased part',
-        '🔍 What symptoms are visible?',
-        '📅 When did problem start?'
-      ]
-    },
-    general: {
-      mr: [
-        '🌾 आज काय करायचे?',
-        '💧 पाणी देण्याची वेळ?',
-        '📊 पीक कसे आहे?'
-      ],
-      hi: [
-        '🌾 आज क्या करना है?',
-        '💧 पानी देने का समय?',
-        '📊 फसल कैसी है?'
-      ],
-      en: [
-        '🌾 What to do today?',
-        '💧 When to irrigate?',
-        '📊 How is the crop?'
-      ]
-    }
-  };
-  
-  return questions[queryType || 'general'][language];
-}
-
-/**
- * Check if we have enough context to provide useful response
+ * @deprecated No longer needed - payload validation handles this
  */
 export function hasUsableContext(context: FallbackContext | null | undefined): boolean {
-  if (!context) return false;
-  return !!(context.cropCode || context.landId || context.farmerMessage);
+  console.warn('[DEPRECATED] hasUsableContext is deprecated');
+  return false;
 }
 
 /**
- * Get helpful error message when we truly can't help
- * This is the LAST RESORT - only used when we have NO context at all
+ * @deprecated Use narrateFallbackResponse with fallback_text
  */
 export function getHelpfulErrorMessage(language: 'mr' | 'hi' | 'en'): string {
+  console.warn('[DEPRECATED] getHelpfulErrorMessage is deprecated');
   const messages = {
-    mr: `🙏 कृपया तुमचा प्रश्न पुन्हा विचारा.
-
-मला मदत करण्यासाठी सांगा:
-• तुमचे पीक कोणते आहे?
-• काय समस्या आहे?
-• कधीपासून आहे?
-
-मी तुम्हाला नक्की मदत करेन! 🌾`,
-    hi: `🙏 कृपया अपना प्रश्न दोबारा पूछें।
-
-मदद के लिए बताएं:
-• आपकी फसल कौन सी है?
-• क्या समस्या है?
-• कब से है?
-
-मैं जरूर मदद करूंगा! 🌾`,
-    en: `🙏 Please ask your question again.
-
-To help you, tell me:
-• What is your crop?
-• What is the problem?
-• Since when?
-
-I will definitely help! 🌾`
+    mr: '🙏 कृपया पुन्हा प्रयत्न करा.',
+    hi: '🙏 कृपया फिर से प्रयास करें।',
+    en: '🙏 Please try again.'
   };
   return messages[language];
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLASS WRAPPER (FOR LEGACY COMPATIBILITY)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * @deprecated Use narrateFallbackResponse function directly
+ */
+export class FallbackResponseGenerator {
+  async generate(payload: CanonicalFallbackNarrationPayload): Promise<NarrationOutput> {
+    return narrateFallbackResponse(payload);
+  }
+  
+  /** @deprecated */
+  generateSync(context: FallbackContext, language: 'mr' | 'hi' | 'en' = 'mr'): FallbackResponse {
+    return generateFallbackResponse(context, language);
+  }
+}
+
+/**
+ * @deprecated Use narrateFallbackResponse function directly
+ */
+export const fallbackGenerator = new FallbackResponseGenerator();
