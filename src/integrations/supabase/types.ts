@@ -5290,6 +5290,36 @@ export type Database = {
           },
         ]
       }
+      crop_stage_master: {
+        Row: {
+          created_at: string | null
+          crop_code: string
+          das_max: number
+          das_min: number
+          growth_stage: string
+          id: string
+          stage_description: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          crop_code: string
+          das_max: number
+          das_min: number
+          growth_stage: string
+          id?: string
+          stage_description?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          crop_code?: string
+          das_max?: number
+          das_min?: number
+          growth_stage?: string
+          id?: string
+          stage_description?: string | null
+        }
+        Relationships: []
+      }
       crop_templates: {
         Row: {
           best_practices: Json | null
@@ -10925,6 +10955,95 @@ export type Database = {
         }
         Relationships: []
       }
+      intent_observation_mapping: {
+        Row: {
+          confidence_rank: number | null
+          created_at: string | null
+          crop_code: string
+          das_max: number
+          das_min: number
+          growth_stage: string
+          id: string
+          intent_code: string
+          is_active: boolean | null
+          observation_code: string
+        }
+        Insert: {
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code: string
+          das_max: number
+          das_min: number
+          growth_stage: string
+          id?: string
+          intent_code: string
+          is_active?: boolean | null
+          observation_code: string
+        }
+        Update: {
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code?: string
+          das_max?: number
+          das_min?: number
+          growth_stage?: string
+          id?: string
+          intent_code?: string
+          is_active?: boolean | null
+          observation_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intent_observation_mapping_intent_code_fkey"
+            columns: ["intent_code"]
+            isOneToOne: false
+            referencedRelation: "observation_intent_master"
+            referencedColumns: ["intent_code"]
+          },
+          {
+            foreignKeyName: "intent_observation_mapping_observation_code_fkey"
+            columns: ["observation_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
+          },
+        ]
+      }
+      intent_translations: {
+        Row: {
+          created_at: string | null
+          display_text: string
+          id: string
+          intent_code: string
+          language_code: string
+          question_text: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          display_text: string
+          id?: string
+          intent_code: string
+          language_code: string
+          question_text?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          display_text?: string
+          id?: string
+          intent_code?: string
+          language_code?: string
+          question_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intent_translations_intent_code_fkey"
+            columns: ["intent_code"]
+            isOneToOne: false
+            referencedRelation: "observation_intent_master"
+            referencedColumns: ["intent_code"]
+          },
+        ]
+      }
       inventory_movements: {
         Row: {
           created_at: string
@@ -14816,6 +14935,95 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      observation_intent_master: {
+        Row: {
+          created_at: string | null
+          intent_category: string
+          intent_code: string
+          intent_description: string
+          is_active: boolean | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          intent_category: string
+          intent_code: string
+          intent_description: string
+          is_active?: boolean | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          intent_category?: string
+          intent_code?: string
+          intent_description?: string
+          is_active?: boolean | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      observation_master: {
+        Row: {
+          created_at: string | null
+          description: string
+          is_diagnostic: boolean | null
+          observation_code: string
+          symptom_category: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description: string
+          is_diagnostic?: boolean | null
+          observation_code: string
+          symptom_category?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string
+          is_diagnostic?: boolean | null
+          observation_code?: string
+          symptom_category?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      observation_translations: {
+        Row: {
+          created_at: string | null
+          description_text: string | null
+          display_text: string
+          id: string
+          language_code: string
+          observation_code: string
+        }
+        Insert: {
+          created_at?: string | null
+          description_text?: string | null
+          display_text: string
+          id?: string
+          language_code: string
+          observation_code: string
+        }
+        Update: {
+          created_at?: string | null
+          description_text?: string | null
+          display_text?: string
+          id?: string
+          language_code?: string
+          observation_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "observation_translations_observation_code_fkey"
+            columns: ["observation_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
           },
         ]
       }
