@@ -873,11 +873,13 @@ export class AIAgentOrchestrator {
     daysSinceSowing: number,
     language: 'mr' | 'hi' | 'en'
   ): { message: string; actions: string[]; photoRequested: boolean } {
-    // ✅ FIX: Remove embedded numbers - use clean instructional text
+    // ✅ FIX: Translate crop names for proper Marathi/Hindi display
+    const translatedCrop = this.translateCropName(cropCode, language);
+    
     const messages: Record<string, string> = {
-      mr: `🌾 तुमचे ${cropCode} पीक ${daysSinceSowing} दिवसांचे आहे.\n\n📍 समस्येचे अचूक निदान करण्यासाठी:\n\n• प्रभावित भागाचा फोटो पाठवा\n• किंवा लक्षणे स्पष्ट सांगा\n\n📷 फोटो पाठवल्यास योग्य उपाय सुचवता येईल.`,
-      hi: `🌾 आपकी ${cropCode} फसल ${daysSinceSowing} दिन पुरानी है.\n\n📍 समस्या का सही निदान करने के लिए:\n\n• प्रभावित भाग की फोटो भेजें\n• या लक्षण स्पष्ट बताएं\n\n📷 फोटो भेजने पर सही उपाय बताया जा सकेगा.`,
-      en: `🌾 Your ${cropCode} crop is ${daysSinceSowing} days old.\n\n📍 For accurate diagnosis:\n\n• Send photo of affected area\n• Or describe symptoms clearly\n\n📷 With a photo, I can suggest the right solution.`
+      mr: `🌾 तुमचे ${translatedCrop} पीक ${daysSinceSowing} दिवसांचे आहे.\n\n📍 समस्येचे अचूक निदान करण्यासाठी:\n\n• प्रभावित भागाचा फोटो पाठवा\n• किंवा लक्षणे स्पष्ट सांगा\n\n📷 फोटो पाठवल्यास योग्य उपाय सुचवता येईल.`,
+      hi: `🌾 आपकी ${translatedCrop} फसल ${daysSinceSowing} दिन पुरानी है.\n\n📍 समस्या का सही निदान करने के लिए:\n\n• प्रभावित भाग की फोटो भेजें\n• या लक्षण स्पष्ट बताएं\n\n📷 फोटो भेजने पर सही उपाय बताया जा सकेगा.`,
+      en: `🌾 Your ${translatedCrop} crop is ${daysSinceSowing} days old.\n\n📍 For accurate diagnosis:\n\n• Send photo of affected area\n• Or describe symptoms clearly\n\n📷 With a photo, I can suggest the right solution.`
     };
     
     return {
@@ -885,6 +887,33 @@ export class AIAgentOrchestrator {
       actions: ['Monitor crop regularly', 'Send photo for diagnosis'],
       photoRequested: true
     };
+  }
+  
+  /**
+   * Translate crop code to local language name
+   */
+  private translateCropName(cropCode: string, language: 'mr' | 'hi' | 'en'): string {
+    const CROP_NAMES: Record<string, Record<string, string>> = {
+      'SUGARCANE': { mr: 'ऊस', hi: 'गन्ना', en: 'Sugarcane' },
+      'COTTON': { mr: 'कापूस', hi: 'कपास', en: 'Cotton' },
+      'SOYBEAN': { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'Soybean' },
+      'RICE': { mr: 'भात', hi: 'धान', en: 'Rice' },
+      'WHEAT': { mr: 'गहू', hi: 'गेहूं', en: 'Wheat' },
+      'MAIZE': { mr: 'मका', hi: 'मक्का', en: 'Maize' },
+      'TOMATO': { mr: 'टोमॅटो', hi: 'टमाटर', en: 'Tomato' },
+      'ONION': { mr: 'कांदा', hi: 'प्याज', en: 'Onion' },
+      'CHILLI': { mr: 'मिरची', hi: 'मिर्च', en: 'Chilli' },
+      'GROUNDNUT': { mr: 'भुईमूग', hi: 'मूंगफली', en: 'Groundnut' },
+      'TUR': { mr: 'तूर', hi: 'अरहर', en: 'Pigeon Pea' },
+      'GRAM': { mr: 'हरभरा', hi: 'चना', en: 'Chickpea' },
+      'BANANA': { mr: 'केळी', hi: 'केला', en: 'Banana' },
+      'GRAPES': { mr: 'द्राक्षे', hi: 'अंगूर', en: 'Grapes' },
+      'POMEGRANATE': { mr: 'डाळिंब', hi: 'अनार', en: 'Pomegranate' },
+      'MANGO': { mr: 'आंबा', hi: 'आम', en: 'Mango' }
+    };
+    
+    const normalized = cropCode?.toUpperCase() || '';
+    return CROP_NAMES[normalized]?.[language] || cropCode;
   }
   
   /**

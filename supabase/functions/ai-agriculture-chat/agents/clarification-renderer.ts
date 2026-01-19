@@ -285,12 +285,13 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | 'en', {
   // DIAGNOSTIC_CONFIRMATION - Trust-First Agronomist Mode
   // When terminal damage is detected, show CAUSE-confirmation options
   // NOT location questions. This mirrors real agronomist behavior.
+  // CRITICAL: ALL options MUST be in the same language - NO mixed language!
   // ═══════════════════════════════════════════════════════════════════════════
   [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
     mr: {
       question: '🔬 हे निश्चित करण्यासाठी, खालीलपैकी काय दिसते ते सांगा:',
       options: [
-        '🔴 मधली सुरळी सुकलेली / ओढल्यास बाहेर येते (Dead Heart)',
+        '🔴 मधली सुरळी सुकलेली / ओढल्यास बाहेर येते (मेलेला गाभा)',
         '🐛 खोडात / मुळांजवळ अळ्या दिसतात',
         '🏠 मातीत पांढरे वाळवी / बोगदे दिसतात',
         '✨ पानांवर चिकट पदार्थ / काळी बुरशी',
@@ -300,7 +301,7 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | 'en', {
     hi: {
       question: '🔬 इसे पक्का करने के लिए, नीचे में से क्या दिखता है बताएं:',
       options: [
-        '🔴 बीच की पत्ती सूखी / खींचने पर निकल जाती है (Dead Heart)',
+        '🔴 बीच की पत्ती सूखी / खींचने पर निकल जाती है (मृत गभा)',
         '🐛 तने में / जड़ों के पास इल्ली दिखती है',
         '🏠 मिट्टी में सफेद दीमक / सुरंग दिखती है',
         '✨ पत्तों पर चिपचिपा पदार्थ / काली फफूंद',
@@ -404,6 +405,39 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
             question: '🎋 Where is the problem in germination stage?',
             options: ['Sett/Node', 'New shoot', 'Roots', 'Whole plant']
           }
+        },
+        // CRITICAL: SEEDLING stage maps here for terminal damage
+        [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
+          mr: {
+            question: '🔬 उगवण/रोपावस्थेत काय दिसते ते सांगा:',
+            options: [
+              '🔍 सुरुवातीची खोड किडा (मेलेला गाभा)',
+              '🐛 वाळवी / मातीत बोगदे',
+              '🌱 बेणे कुजले / काळे झाले',
+              '💧 पाणी साचल्याने नुकसान',
+              '📷 फोटो पाठवा'
+            ]
+          },
+          hi: {
+            question: '🔬 अंकुरण/पौध अवस्था में क्या दिखता है बताएं:',
+            options: [
+              '🔍 शुरुआती तना छेदक (मृत गभा)',
+              '🐛 दीमक / मिट्टी में सुरंग',
+              '🌱 बीज सड़ गया / काला हो गया',
+              '💧 जलभराव से नुकसान',
+              '📷 फोटो भेजें'
+            ]
+          },
+          en: {
+            question: '🔬 What do you see at germination/seedling stage:',
+            options: [
+              '🔍 Early Shoot Borer (Dead Heart)',
+              '🐛 Termite / Tunnels in soil',
+              '🌱 Sett rotted / turned black',
+              '💧 Waterlogging damage',
+              '📷 Send Photo'
+            ]
+          }
         }
       },
       'TILLERING': {
@@ -419,6 +453,39 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
           en: {
             question: '🪴 What do you see in sugarcane at tillering stage?',
             options: ['Dried central whorl', 'Holes visible in stem', 'Leaves yellowing/reddening', 'Less tillers', 'Plants drying']
+          }
+        },
+        // Tillering stage diagnostic confirmation options - for terminal damage
+        [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
+          mr: {
+            question: '🔬 फुटवा अवस्थेत काय दिसते ते सांगा:',
+            options: [
+              '🔴 मधली सुरळी सुकलेली (मेलेला गाभा)',
+              '🐛 खोडात छिद्र / अळ्या दिसतात',
+              '🏠 मातीत वाळवी / बोगदे',
+              '💧 पाणी साचल्याने नुकसान',
+              '📷 फोटो पाठवा'
+            ]
+          },
+          hi: {
+            question: '🔬 कल्ले अवस्था में क्या दिखता है बताएं:',
+            options: [
+              '🔴 बीच की पत्ती सूखी (मृत गभा)',
+              '🐛 तने में छेद / इल्ली दिखती है',
+              '🏠 मिट्टी में दीमक / सुरंग',
+              '💧 जलभराव से नुकसान',
+              '📷 फोटो भेजें'
+            ]
+          },
+          en: {
+            question: '🔬 What do you see at tillering stage:',
+            options: [
+              '🔴 Dried central whorl (Dead Heart)',
+              '🐛 Holes in stem / larvae visible',
+              '🏠 Termite / tunnels in soil',
+              '💧 Waterlogging damage',
+              '📷 Send Photo'
+            ]
           }
         }
       },
@@ -537,6 +604,17 @@ function getContextAwareTemplate(
   // Priority: Stage-specific > Crop default > Base template > English fallback
   // ═══════════════════════════════════════════════════════════════════════════
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL: Stage normalization for template lookup
+  // SEEDLING maps to GERMINATION for sugarcane (agronomically same)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const STAGE_TEMPLATE_ALIASES: Record<string, string> = {
+    'SEEDLING': 'GERMINATION',
+    'SEEDLING_STAGE': 'GERMINATION',
+    'EMERGENCE': 'GERMINATION',
+    'SPROUTING': 'GERMINATION'
+  };
+  
   try {
     if (cropContext?.crop_name) {
       const cropKey = cropContext.crop_name.toUpperCase();
@@ -545,7 +623,13 @@ function getContextAwareTemplate(
       if (cropTemplates) {
         // 1. Try stage-specific template first (highest priority)
         if (cropContext.growth_stage && cropTemplates.stages) {
-          const stageKey = cropContext.growth_stage.toUpperCase();
+          // Normalize stage key - use alias if available
+          let stageKey = cropContext.growth_stage.toUpperCase().replace(/[\s-]/g, '_');
+          if (STAGE_TEMPLATE_ALIASES[stageKey]) {
+            console.log(`   🔄 Stage alias: ${stageKey} → ${STAGE_TEMPLATE_ALIASES[stageKey]}`);
+            stageKey = STAGE_TEMPLATE_ALIASES[stageKey];
+          }
+          
           const stageTemplates = cropTemplates.stages[stageKey];
           
           if (stageTemplates && stageTemplates[scope]) {
