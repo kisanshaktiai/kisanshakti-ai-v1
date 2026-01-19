@@ -4355,8 +4355,73 @@ export class AIAgentOrchestrator {
       let decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
       agentsUsed.push('RuleEngine');
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: Attach layered_rule_result to decisionOutput for index.ts recovery
+      // This ensures primary_decision from LayeredRuleEvaluator is available for fallback
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (layeredRuleResult) {
+        decisionOutput.layered_rule_result = layeredRuleResult;
+        
+        // CRITICAL: If ruleEngine.execute() returned empty primary_decision but layeredRuleResult has one,
+        // use layeredRuleResult.primary_decision as the authoritative source
+        if (layeredRuleResult.primary_decision && 
+            layeredRuleResult.primary_decision.rule_id && 
+            layeredRuleResult.primary_decision.action_type) {
+          
+          const hasValidPrimary = decisionOutput.primary_decision?.action_type && 
+                                  (decisionOutput.primary_decision?.rule_id || 
+                                   decisionOutput.primary_decision?.application_details?.rule_id);
+          
+          if (!hasValidPrimary) {
+            console.log(`   🔄 PRIMARY_DECISION RECOVERY: Using layered_rule_result.primary_decision`);
+            console.log(`      rule_id=${layeredRuleResult.primary_decision.rule_id}`);
+            console.log(`      action_type=${layeredRuleResult.primary_decision.action_type}`);
+            
+            decisionOutput.primary_decision = {
+              action_type: layeredRuleResult.primary_decision.action_type,
+              rule_id: layeredRuleResult.primary_decision.rule_id,
+              specific_action: layeredRuleResult.primary_decision.action_type,
+              target: {},
+              urgency: 'WITHIN_24H',
+              priority: layeredRuleResult.primary_decision.priority,
+              timing: {
+                recommended_start: new Date().toISOString(),
+                recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                weather_dependency: false,
+                reason: 'Recovered from layered_rule_result.primary_decision in orchestrator'
+              },
+              application_details: {
+                product_name: 'See structured response',
+                product_type: 'BOTANICAL',
+                action_text: layeredRuleResult.primary_decision.action_text,
+                reason_text: layeredRuleResult.primary_decision.reason_text,
+                knowledge_text: layeredRuleResult.primary_decision.knowledge_text,
+                i18n_key: layeredRuleResult.primary_decision.i18n_key,
+                response_mr: layeredRuleResult.primary_decision.response_mr,
+                response_hi: layeredRuleResult.primary_decision.response_hi,
+                response_en: layeredRuleResult.primary_decision.response_en,
+                rule_id: layeredRuleResult.primary_decision.rule_id
+              },
+              expected_outcomes: {
+                efficacy_percent: layeredRuleResult.primary_decision.confidence_score 
+                  ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100) 
+                  : 75,
+                time_to_visible_effect_days: '3-5',
+                success_indicators: []
+              }
+            };
+          }
+        }
+        
+        // Also attach matched_responses for additional recovery options
+        if (layeredRuleResult.matched_responses && layeredRuleResult.matched_responses.length > 0) {
+          decisionOutput.matched_responses = layeredRuleResult.matched_responses;
+        }
+      }
+      
       console.log('   ✅ Decision generated:', decisionOutput.status);
       console.log('   ✅ Rules applied:', decisionOutput.rules_applied?.length || 0);
+      console.log(`   ✅ Primary decision: ${decisionOutput.primary_decision?.action_type || 'NONE'} (rule: ${decisionOutput.primary_decision?.rule_id || decisionOutput.primary_decision?.application_details?.rule_id || 'NONE'})`);
       
       layerTimings.layer3_rules = Date.now() - layer3Start;
       console.log(`   ✅ Layer 3 complete (${layerTimings.layer3_rules}ms)`);

@@ -178,6 +178,54 @@ export interface DecisionOutput {
   
   /** Farmer-facing messages (trilingual) */
   farmer_messages?: FarmerMessages;
+  
+  /** Layered rule result from LayeredRuleEvaluator (for primary_decision recovery) */
+  layered_rule_result?: {
+    primary_decision?: {
+      rule_id: string;
+      action_type: string;
+      priority: number;
+      confidence_score: number;
+      action_text?: string;
+      reason_text?: string;
+      knowledge_text?: string;
+      i18n_key?: string;
+      response_mr?: string;
+      response_hi?: string;
+      response_en?: string;
+    };
+    matched_responses?: Array<{
+      rule_id: string;
+      cause: string;
+      action_type: string;
+      priority?: number;
+      confidence_score?: number;
+      action_text?: string;
+      reason_text?: string;
+      knowledge_text?: string;
+      i18n_key?: string;
+      response_mr?: string;
+      response_hi?: string;
+      response_en?: string;
+    }>;
+    rules_matched?: number;
+    rules_applied?: string[];
+  };
+  
+  /** Matched responses for fallback recovery */
+  matched_responses?: Array<{
+    rule_id: string;
+    cause: string;
+    action_type: string;
+    priority?: number;
+    action_text?: string;
+    reason_text?: string;
+    knowledge_text?: string;
+    i18n_key?: string;
+    response_mr?: string;
+    response_hi?: string;
+    response_en?: string;
+  }>;
 }
 
 export type DecisionStatus = 
