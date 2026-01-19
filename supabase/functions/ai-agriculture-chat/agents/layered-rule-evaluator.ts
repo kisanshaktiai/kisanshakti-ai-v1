@@ -680,8 +680,52 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     when: {
       custom: (state: CanonicalState & { user_query?: string; visual_symptoms?: string[] }) => {
         try {
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL FIX: ENFORCE stage_applicable BEFORE evaluating other conditions
+          // This prevents rules like SMUT (GRAND_GROWTH/TILLERING/MATURITY) from firing at SEEDLING
+          // ═══════════════════════════════════════════════════════════════════════════
+          const stageApplicable = bundled.stage_applicable || [];
+          const currentStage = state.crop_stage?.toUpperCase()?.replace(/[\s-]/g, '_') || '';
+          
+          if (stageApplicable.length > 0 && currentStage) {
+            // Normalize all stage values for comparison
+            const normalizedApplicableStages = stageApplicable.map((s: string) => 
+              s.toUpperCase().replace(/[\s-]/g, '_')
+            );
+            
+            // Check for wildcard matches
+            const hasWildcard = normalizedApplicableStages.some((s: string) => 
+              s === '*' || s === 'ALL' || s === 'UNIVERSAL' || s === 'ANY'
+            );
+            
+            if (!hasWildcard) {
+              // Strict stage matching - rule MUST be applicable to current stage
+              const stageMatch = normalizedApplicableStages.includes(currentStage);
+              
+              if (!stageMatch) {
+                // CRITICAL: Log stage mismatch for debugging but don't spam logs
+                if (bundled.priority && bundled.priority > 70) {
+                  console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage}`);
+                }
+                return false; // HARD GATE - Rule cannot fire at this stage
+              }
+            }
+          }
+          
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL FIX: ENFORCE crop_code matching
+          // ═══════════════════════════════════════════════════════════════════════════
+          const ruleCropCode = bundled.crop_code?.toUpperCase() || '';
+          const stateCropCode = state.crop_type?.toUpperCase() || '';
+          
+          if (ruleCropCode && stateCropCode) {
+            const isUniversalRule = ruleCropCode === '*' || ruleCropCode === 'ALL' || ruleCropCode === 'UNIVERSAL';
+            if (!isUniversalRule && ruleCropCode !== stateCropCode) {
+              return false; // Rule is for different crop
+            }
+          }
+          
           // Pass ALL CanonicalState properties to rule conditions
-          // CRITICAL: Normalize crop_code to lowercase for case-insensitive matching
           const input = {
             crop_code: state.crop_type?.toLowerCase() || '',
             crop_stage: state.crop_stage?.toLowerCase() || '',
@@ -716,7 +760,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       possible_cause: bundled.cause,
       cause_confidence: bundled.cause_confidence || 0.7,
       // ═══════════════════════════════════════════════════════════════════════════
-      // PRODUCTION HARDENING: action_type is REQUIRED - use from DB, never default
+      // PRODUCTION HARDENING: action_type is REQUIRED - use from DB, fallback to RECOMMEND
       // ═══════════════════════════════════════════════════════════════════════════
       action_type: bundled.action_type || 'RECOMMEND',
       action_details: {
@@ -754,6 +798,12 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
         reason_text: bundled.reason_text,
         knowledge_text: bundled.knowledge_text,
         i18n_key: bundled.i18n_key,
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL: Include action_type in action_details for downstream propagation
+        // This ensures action_type is available in matched_responses
+        // ═══════════════════════════════════════════════════════════════════════════
+        action_type: bundled.action_type || 'RECOMMEND',
         
         // LEGACY: Deprecated response fields (fallback only)
         response_mr: bundled.response_mr,

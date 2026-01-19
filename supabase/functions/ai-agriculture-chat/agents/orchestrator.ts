@@ -1610,6 +1610,92 @@ export class AIAgentOrchestrator {
             const primaryResponse = hasMatchedResponses ? ruleResult.matched_responses[0] : null;
             const statusToUse = ruleResult.prescriptions.length > 0 ? 'DIAGNOSIS_COMPLETE' : 'OBSERVATION_PROVIDED';
             
+            // ═══════════════════════════════════════════════════════════════════════════
+            // CRITICAL FIX: Build proper primary_decision object from layered_rule_result
+            // This MUST be a PrimaryDecision object, NOT a string
+            // ═══════════════════════════════════════════════════════════════════════════
+            const layeredPrimaryDecision = ruleResult.primary_decision;
+            let primaryDecisionObject: any = null;
+            
+            if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type) {
+              // Use the properly built PrimaryDecision from LayeredRuleEvaluator
+              primaryDecisionObject = {
+                action_type: layeredPrimaryDecision.action_type,
+                rule_id: layeredPrimaryDecision.rule_id,
+                specific_action: layeredPrimaryDecision.action_type,
+                target: {},
+                urgency: layeredPrimaryDecision.action_type === 'BLOCK' || layeredPrimaryDecision.action_type === 'URGENT_TREATMENT' ? 'IMMEDIATE' : 'WITHIN_24H',
+                priority: layeredPrimaryDecision.priority,
+                timing: {
+                  recommended_start: new Date().toISOString(),
+                  recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                  weather_dependency: false,
+                  reason: 'Built from layered_rule_result.primary_decision in OPTION_SELECTED path'
+                },
+                application_details: {
+                  product_name: layeredPrimaryDecision.action_text?.includes('Apply') ? 'See action text' : 'Cultural practice',
+                  product_type: 'IPM',
+                  action_text: layeredPrimaryDecision.action_text,
+                  reason_text: layeredPrimaryDecision.reason_text,
+                  knowledge_text: layeredPrimaryDecision.knowledge_text,
+                  i18n_key: layeredPrimaryDecision.i18n_key,
+                  response_mr: layeredPrimaryDecision.response_mr,
+                  response_hi: layeredPrimaryDecision.response_hi,
+                  response_en: layeredPrimaryDecision.response_en,
+                  rule_id: layeredPrimaryDecision.rule_id
+                },
+                expected_outcomes: {
+                  efficacy_percent: Math.round((layeredPrimaryDecision.confidence_score || 0.75) * 100),
+                  time_to_visible_effect_days: '3-5',
+                  success_indicators: []
+                }
+              };
+              
+              console.log(`   ✅ PRIMARY_DECISION built from layered_rule_result: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
+            } else if (safeMatchedResponses.length > 0) {
+              // Fallback: Build from first eligible matched response
+              const firstMatch = safeMatchedResponses.find(r => r.rule_id && r.action_type);
+              if (firstMatch) {
+                primaryDecisionObject = {
+                  action_type: firstMatch.action_type,
+                  rule_id: firstMatch.rule_id,
+                  specific_action: firstMatch.action_type,
+                  target: {},
+                  urgency: 'WITHIN_24H',
+                  priority: firstMatch.priority || 50,
+                  timing: {
+                    recommended_start: new Date().toISOString(),
+                    recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                    weather_dependency: false,
+                    reason: 'Built from matched_responses fallback in OPTION_SELECTED path'
+                  },
+                  application_details: {
+                    product_name: 'See action text',
+                    product_type: 'IPM',
+                    action_text: firstMatch.action_text,
+                    reason_text: firstMatch.reason_text,
+                    knowledge_text: firstMatch.knowledge_text,
+                    i18n_key: firstMatch.i18n_key,
+                    response_mr: firstMatch.response_mr,
+                    response_hi: firstMatch.response_hi,
+                    response_en: firstMatch.response_en,
+                    rule_id: firstMatch.rule_id
+                  },
+                  expected_outcomes: {
+                    efficacy_percent: 75,
+                    time_to_visible_effect_days: '3-5',
+                    success_indicators: []
+                  }
+                };
+                
+                console.log(`   ✅ PRIMARY_DECISION built from matched_responses: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
+              }
+            }
+            
+            if (!primaryDecisionObject) {
+              console.error(`   🚨 OPTION_SELECTED: Failed to build primary_decision - no eligible source found`);
+            }
+            
             return {
               type: 'DECISION_PROVIDED',
               session_id: sessionId,
@@ -1620,7 +1706,15 @@ export class AIAgentOrchestrator {
                 decision_brain_source: true,
                 // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
                 authority_decision: authorityDecision,
-                primary_decision: ruleResult.final_diagnosis?.cause || ruleResult.diagnoses[0]?.cause || primaryResponse?.cause,
+                // ═══════════════════════════════════════════════════════════════════════════
+                // CRITICAL FIX: primary_decision MUST be an object, NOT a string!
+                // ═══════════════════════════════════════════════════════════════════════════
+                primary_decision: primaryDecisionObject,
+                // CRITICAL: Attach layered_rule_result for recovery in index.ts
+                layered_rule_result: {
+                  primary_decision: ruleResult.primary_decision,
+                  matched_responses: ruleResult.matched_responses
+                },
                 actions_returned: actionsToReturn,
                 // CRITICAL: Include matched_responses for LLM to use
                 matched_responses: ruleResult.matched_responses,

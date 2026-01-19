@@ -220,7 +220,10 @@ export interface UnifiedGateInput {
 // TREATMENT ACTION CLASSIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
+// CRITICAL FIX: Include new symbolic action_types that indicate treatment/prescription
+// These come from the decision_rules table action_type column
 const TREATMENT_ACTIONS = new Set([
+  // Legacy action types (application method based)
   'APPLY_PESTICIDE',
   'APPLY_FUNGICIDE',
   'APPLY_INSECTICIDE',
@@ -232,16 +235,39 @@ const TREATMENT_ACTIONS = new Set([
   'SOIL_APPLICATION',
   'DRENCH_APPLICATION',
   'SEED_TREATMENT',
-  'GRANULAR_APPLICATION'
+  'GRANULAR_APPLICATION',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW: Dominance action types from decision_rules.action_type column
+  // These indicate a rule has prescription-level content
+  // ═══════════════════════════════════════════════════════════════════════════
+  'BLOCK',           // Urgent action required (e.g., rogue smutted plants)
+  'URGENT_BLOCK',    // Emergency action
+  'URGENT_ACTION',   // Time-critical intervention
+  'URGENT_TREATMENT',// Immediate treatment required
+  'urgent_treatment',// Lowercase variant
+  'IMMEDIATE_ACTION',// Must act now
+  'IMMEDIATE_TREATMENT',
+  'TREATMENT',       // Standard treatment recommendation
+  'treatment',       // Lowercase variant
+  'RECOMMEND',       // Recommended action with products
+  'PREVENTION',      // Preventive treatment
+  'prevention'       // Lowercase variant
 ]);
 
+// Actions that are observation/monitoring only (NOT treatment)
 const OBSERVATION_ACTIONS = new Set([
   'MONITOR',
+  'MONITOR_ONLY',
   'OBSERVE',
   'SCOUT',
   'INSPECT',
   'CHECK',
-  'WATCH'
+  'WATCH',
+  'advisory',        // General advisory without treatment
+  'DIAGNOSIS',       // Diagnosis only, not treatment
+  'diagnosis',
+  'NO_ACTION_REQUIRED'
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -647,12 +673,34 @@ function checkHasTreatmentActions(decision: UnifiedGateInput['symbolic_decision'
   if (!decision) return false;
   
   const primary = decision.primary_decision;
-  if (primary?.action_type && TREATMENT_ACTIONS.has(primary.action_type)) {
-    return true;
+  if (primary?.action_type) {
+    // CRITICAL FIX: Normalize action_type and check against treatment set
+    const normalizedActionType = primary.action_type.toUpperCase();
+    if (TREATMENT_ACTIONS.has(primary.action_type) || TREATMENT_ACTIONS.has(normalizedActionType)) {
+      return true;
+    }
+    // Also check if action_type indicates prescription (not observation)
+    if (!OBSERVATION_ACTIONS.has(primary.action_type) && !OBSERVATION_ACTIONS.has(normalizedActionType)) {
+      // If it's not explicitly observation, and has action_text with treatment language, consider it treatment
+      const appDetails = primary.application_details as Record<string, unknown> | undefined;
+      if (appDetails?.action_text && typeof appDetails.action_text === 'string') {
+        const actionText = appDetails.action_text.toLowerCase();
+        if (actionText.includes('apply') || actionText.includes('spray') || 
+            actionText.includes('drench') || actionText.includes('treat') ||
+            actionText.includes('rogue') || actionText.includes('remove') ||
+            actionText.includes('burn') || actionText.includes('cut')) {
+          return true;
+        }
+      }
+    }
   }
   
   const actions = decision.actions_returned || [];
-  return actions.some(a => a.action_type && TREATMENT_ACTIONS.has(a.action_type));
+  return actions.some(a => {
+    if (!a.action_type) return false;
+    const normalized = a.action_type.toUpperCase();
+    return TREATMENT_ACTIONS.has(a.action_type) || TREATMENT_ACTIONS.has(normalized);
+  });
 }
 
 function hasConfirmedPestOrDisease(decision: UnifiedGateInput['symbolic_decision']): boolean {
