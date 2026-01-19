@@ -177,7 +177,15 @@ const CAUSE_TRANSLATIONS: Record<string, { mr: string; hi: string; en: string }>
   
   // Germination issues
   'poor_germination': { mr: 'कमी उगवण', hi: 'खराब अंकुरण', en: 'Poor Germination' },
-  'establishment_failure': { mr: 'रोप बसले नाही', hi: 'पौधा स्थापित नहीं', en: 'Establishment Failure' }
+  'establishment_failure': { mr: 'रोप बसले नाही', hi: 'पौधा स्थापित नहीं', en: 'Establishment Failure' },
+  
+  // PHASE-21 FIX: Added missing disease translations for SEEDLING stage
+  'sett_rot': { mr: 'बेणे कूज', hi: 'बीज सड़न', en: 'Sett Rot' },
+  'pineapple_disease': { mr: 'बेणे कूज (अननस रोग)', hi: 'बीज सड़न (पाइनएपल रोग)', en: 'Pineapple Disease' },
+  'sett_rot_pineapple': { mr: 'बेणे कूज', hi: 'बीज सड़न', en: 'Sett Rot/Pineapple Disease' },
+  
+  // Smut disease (for SEEDLING stage)
+  'smut_seed_borne_infection': { mr: 'काणी / स्मट', hi: 'कंडुआ / स्मट', en: 'Smut (Seed-borne)' }
 };
 
 /**
@@ -240,7 +248,12 @@ function getCauseLabel(cause: string, language: 'mr' | 'hi' | 'en'): string {
     [/potassium/i, 'potassium_deficiency'],
     [/water.?stress/i, 'water_stress'],
     [/waterlog/i, 'waterlogging'],
-    [/poor.?germination/i, 'poor_germination']
+    [/poor.?germination/i, 'poor_germination'],
+    // PHASE-21 FIX: Added missing disease patterns for SEEDLING stage
+    [/sett.?rot.*pineapple|pineapple.*sett.?rot/i, 'sett_rot_pineapple'],
+    [/sett.?rot/i, 'sett_rot'],
+    [/pineapple.?disease/i, 'pineapple_disease'],
+    [/seed.?borne.*smut|smut.*seed.?borne/i, 'smut_seed_borne_infection']
   ];
   
   for (const [pattern, key] of patterns) {
