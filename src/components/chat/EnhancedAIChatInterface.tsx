@@ -1641,12 +1641,26 @@ export function EnhancedAIChatInterface() {
   // ═══════════════════════════════════════════════════════════════════════════
   const handleClarificationSelect = useCallback((selectedOptions: string[]) => {
     if (selectedOptions.length === 0) return;
-    
-    // Get the last AI message to extract observation_keys from options
+
+    // Build the message (some UIs already embed [obs_keys:...])
+    const message = selectedOptions.length === 1 
+      ? selectedOptions[0]
+      : selectedOptions.join(', ');
+
+    const hasEmbeddedObsKeys = /\[obs_keys:[^\]]+\]/.test(message);
+
+    // If already embedded, send as-is to avoid double nesting like:
+    // "... [obs_keys:X] [obs_keys:... [obs_keys:X]]"
+    if (hasEmbeddedObsKeys) {
+      console.log('🔘 [ClarificationSelect] Sending embedded selection as-is');
+      sendMessage(message);
+      return;
+    }
+
+    // Otherwise, map labels back to observation_keys from the last AI clarification message
     const currentMessages = messages[activeTab] || [];
     const lastAIMessage = [...currentMessages].reverse().find(m => m.role === 'assistant' && m.clarificationOptions);
-    
-    // Try to map selected labels back to observation_keys
+
     const selectedObservationKeys: string[] = [];
     if (lastAIMessage?.clarificationOptions?.options) {
       for (const selected of selectedOptions) {
@@ -1657,27 +1671,17 @@ export function EnhancedAIChatInterface() {
           selectedObservationKeys.push(matchingOption.observation_key);
         } else if (matchingOption?.value) {
           selectedObservationKeys.push(matchingOption.value);
-        } else {
-          selectedObservationKeys.push(selected);
         }
       }
     }
-    
-    // Build the message with observation keys embedded for backend parsing
-    // Format: "[OPTION_SELECTED] label | key: OBSERVATION_KEY"
-    const message = selectedOptions.length === 1 
-      ? selectedOptions[0]
-      : selectedOptions.join(', ');
-    
-    // Log for debugging
+
     console.log('🔘 [ClarificationSelect] Selected:', {
       labels: selectedOptions,
       observationKeys: selectedObservationKeys,
-      hasStructuredOptions: !!lastAIMessage?.clarificationOptions?.options
+      hasStructuredOptions: !!lastAIMessage?.clarificationOptions?.options,
+      embeddedInLabel: false
     });
-    
-    // Send with embedded observation keys as metadata hint
-    // The backend can parse the label OR use session state to map to observation_key
+
     sendMessage(`${message} [obs_keys:${selectedObservationKeys.join(',')}]`);
   }, [sendMessage, messages, activeTab]);
 
