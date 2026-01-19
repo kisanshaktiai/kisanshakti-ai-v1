@@ -1,45 +1,51 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * UNIVERSAL SEMANTIC EXTRACTOR (LLM-Based)
+ * UNIVERSAL SEMANTIC EXTRACTOR v3.0.0 (Intent-Based Architecture)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
  * Extract semantic meaning from farmer messages in ANY language and output
- * structured English descriptions. This replaces 2,700+ lines of hardcoded
- * multilingual dictionaries with a single LLM-based extraction layer.
+ * a universal INTENT_CODE that maps to database-validated observations.
  * 
- * SUPPORTED LANGUAGES:
- * - Marathi, Hindi, English (primary)
- * - Telugu, Gujarati, Tamil, Kannada, Bengali, Punjabi (automatic)
- * - ANY other language the LLM understands
+ * v3.0.0 CHANGES:
+ * - Now outputs intent_code instead of detailed observations
+ * - Intents are validated against observation_intent_master table
+ * - Observations are resolved via intent_observation_mapping (crop+stage aware)
  * 
- * OUTPUT:
- * Plain English descriptions that are then mapped to canonical ObservationKeys
- * by the deterministic observation-code-mapper.ts
+ * FLOW:
+ * 1. Farmer message (any language) → LLM → intent_code
+ * 2. intent_code → intent-resolver.ts → observation_code[]
+ * 3. observation_code[] → rule engine → treatment
  * 
- * @version 1.0.0
- * @phase Universal NLU Refactoring
+ * @version 3.0.0
+ * @phase Database-Driven Symbolic Brain
  */
 
 import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
+import { classifyFarmerIntent, IntentClassification } from './intent-classifier.ts';
 
-export const SEMANTIC_EXTRACTOR_VERSION = '2.0.0'; // Removed hardcoded language patterns
+export const SEMANTIC_EXTRACTOR_VERSION = '3.0.0'; // Intent-based architecture
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OUTPUT INTERFACE
+// OUTPUT INTERFACE (v3.0.0 - Intent-Based)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface SemanticExtraction {
+  // v3.0.0: Primary output is now intent_code
+  intent_code: string;                        // Universal intent from LLM
+  intent_confidence: number;                  // Confidence in intent classification
+  
+  // Legacy fields for backward compatibility
   farmer_concern: string;                     // Plain English description of problem
   affected_plant_parts: string[];             // ["leaves", "stem", "roots", etc.]
   visual_changes: string[];                   // ["turning yellow", "drying out", etc.]
   pest_behavior: string[] | null;             // ["small insects visible", "flying", etc.]
-  severity_indicator: 'mild' | 'moderate' | 'severe' | 'critical';
+  severity_indicator: 'mild' | 'moderate' | 'severe' | 'critical' | 'unknown';
   distribution_pattern: string;               // "entire field", "patches", "scattered", etc.
   temporal_pattern: string;                   // "sudden", "gradual", "recently started", etc.
   extraction_timestamp: string;
   confidence: number;                         // 0.0-1.0
-  extraction_method: 'LLM' | 'FALLBACK';
+  extraction_method: 'LLM' | 'FALLBACK' | 'INTENT_CLASSIFIER' | 'FALLBACK_UNAVAILABLE';
   detected_language: string;
   raw_input: string;
 }
@@ -183,16 +189,18 @@ function setCache(message: string, result: SemanticExtraction): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN EXTRACTION FUNCTION
+// MAIN EXTRACTION FUNCTION (v3.0.0 - Intent-First)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Extract semantic meaning from farmer's message in ANY language
- * Returns structured English descriptions for downstream mapping
+ * 
+ * v3.0.0: Now uses intent classification as primary output.
+ * The intent_code is used by intent-resolver.ts to get database-validated observations.
  * 
  * @param farmerMessage - Raw farmer input in any language
  * @param detectedLanguage - Optional language code (for logging only)
- * @returns SemanticExtraction - Structured English observations
+ * @returns SemanticExtraction - With intent_code as primary output
  */
 export async function extractSemanticMeaning(
   farmerMessage: string,
@@ -200,7 +208,7 @@ export async function extractSemanticMeaning(
 ): Promise<SemanticExtraction> {
   const startTime = Date.now();
   
-  console.log(`\n🔮 [SemanticExtractor v${SEMANTIC_EXTRACTOR_VERSION}] Processing message...`);
+  console.log(`\n🔮 [SemanticExtractor v${SEMANTIC_EXTRACTOR_VERSION}] Processing message (Intent-First)...`);
   console.log(`   Input (${detectedLanguage}): \"${farmerMessage.substring(0, 80)}${farmerMessage.length > 80 ? '...' : ''}\"`);
   
   // Check cache first
@@ -210,84 +218,31 @@ export async function extractSemanticMeaning(
   }
   
   try {
-    // CRITICAL FIX v1.0.1: Use getBestAvailableProvider() to get matching provider+key
-    // This ensures we never send Gemini key to OpenAI endpoint or vice versa
-    // Previously this code manually selected 'openai' as provider but getAPIKey() 
-    // returned whatever key was found first (Gemini), causing 401 errors
-    const { provider, model, apiKey } = getBestAvailableProvider();
-    const endpoint = getAPIEndpoint(provider);
+    // v3.0.0: Use Intent Classifier as PRIMARY extraction
+    const intentResult: IntentClassification = await classifyFarmerIntent(
+      farmerMessage,
+      detectedLanguage
+    );
     
-    console.log(`   🤖 Using ${provider.toUpperCase()} (${model}) with matching API key`);
+    console.log(`   🎯 Intent: ${intentResult.intent_code} (${(intentResult.confidence * 100).toFixed(0)}%)`);
     
-    // Build prompt
-    const prompt = SEMANTIC_EXTRACTION_PROMPT.replace('{farmer_message}', farmerMessage);
-    
-    // Build request body - Both OpenAI and Gemini support JSON mode
-    const requestBody: any = {
-      model,
-      messages: [
-        { 
-          role: 'system', 
-          content: 'You are an agricultural observation extractor. Extract observations from farmer messages and return JSON only.' 
-        },
-        { role: 'user', content: prompt }
-      ],
-      temperature: 0.1, // Low temperature for consistency
-      max_tokens: 1000,
-    };
-    
-    // Both OpenAI and Gemini support JSON mode via response_format
-    if (provider === 'openai' || provider === 'gemini') {
-      requestBody.response_format = { type: 'json_object' };
-    }
-    
-    // Make LLM call
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`   ❌ LLM API Error: ${response.status} - ${errorText}`);
-      throw new Error(`LLM API returned ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    
-    if (!content) {
-      throw new Error('Empty response from LLM');
-    }
-    
-    // Parse JSON response
-    let parsed: any;
-    try {
-      // Remove any markdown code blocks if present
-      const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-      parsed = JSON.parse(cleanContent);
-    } catch (parseError) {
-      console.error(`   ❌ JSON Parse Error: ${parseError}`);
-      console.error(`   Raw content: ${content.substring(0, 200)}`);
-      throw new Error('Failed to parse LLM response as JSON');
-    }
-    
-    // Build result
+    // Build result with intent as primary output
     const result: SemanticExtraction = {
-      farmer_concern: parsed.farmer_concern || 'Unable to extract concern',
-      affected_plant_parts: Array.isArray(parsed.affected_plant_parts) ? parsed.affected_plant_parts : [],
-      visual_changes: Array.isArray(parsed.visual_changes) ? parsed.visual_changes : [],
-      pest_behavior: Array.isArray(parsed.pest_behavior) ? parsed.pest_behavior : null,
-      severity_indicator: validateSeverity(parsed.severity_indicator),
-      distribution_pattern: parsed.distribution_pattern || 'not specified',
-      temporal_pattern: parsed.temporal_pattern || 'not specified',
+      // v3.0.0: Intent-first fields
+      intent_code: intentResult.intent_code,
+      intent_confidence: intentResult.confidence,
+      
+      // Legacy fields (populated from intent for backward compatibility)
+      farmer_concern: getDefaultConcernFromIntent(intentResult.intent_code),
+      affected_plant_parts: getAffectedPartsFromIntent(intentResult.intent_code),
+      visual_changes: getVisualChangesFromIntent(intentResult.intent_code),
+      pest_behavior: intentResult.intent_code === 'PEST_PRESENCE_VISIBLE' ? ['insects visible'] : null,
+      severity_indicator: getSeverityFromIntent(intentResult.intent_code),
+      distribution_pattern: 'not specified',
+      temporal_pattern: 'not specified',
       extraction_timestamp: new Date().toISOString(),
-      confidence: 0.9, // High confidence for successful LLM extraction
-      extraction_method: 'LLM',
+      confidence: intentResult.confidence,
+      extraction_method: intentResult.classification_method === 'LLM' ? 'INTENT_CLASSIFIER' : 'FALLBACK',
       detected_language: detectedLanguage,
       raw_input: farmerMessage
     };
@@ -297,11 +252,7 @@ export async function extractSemanticMeaning(
     
     const elapsed = Date.now() - startTime;
     console.log(`   ✅ Extraction complete in ${elapsed}ms`);
-    console.log(`      Concern: \"${result.farmer_concern}\"`);
-    console.log(`      Parts: [${result.affected_plant_parts.join(', ')}]`);
-    console.log(`      Changes: [${result.visual_changes.join(', ')}]`);
-    console.log(`      Pests: ${result.pest_behavior ? `[${result.pest_behavior.join(', ')}]` : 'none'}`);
-    console.log(`      Severity: ${result.severity_indicator}, Distribution: ${result.distribution_pattern}`);
+    console.log(`      Intent: ${result.intent_code} (confidence: ${result.intent_confidence})`);
     
     return result;
     
@@ -311,6 +262,66 @@ export async function extractSemanticMeaning(
     // Return fallback extraction
     return createFallbackExtraction(farmerMessage, detectedLanguage, error as Error);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTENT TO LEGACY FIELD MAPPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function getDefaultConcernFromIntent(intent: string): string {
+  const concernMap: Record<string, string> = {
+    'EMERGENCE_FAILURE': 'Crop emergence/germination problem',
+    'GROWTH_ANOMALY': 'Abnormal or slow growth observed',
+    'COLOR_CHANGE': 'Plant color changes observed',
+    'WILTING_OR_DROOPING': 'Plants wilting or drooping',
+    'LEAF_DAMAGE_VISIBLE': 'Physical damage to leaves visible',
+    'LEAF_MARKS_OR_SPOTS': 'Spots or marks on leaves',
+    'STEM_DAMAGE': 'Stem damage or boring observed',
+    'ROOT_OR_BASE_PROBLEM': 'Root or base issues',
+    'PEST_PRESENCE_VISIBLE': 'Insects or pests visible',
+    'DISEASE_LIKE_PATTERN': 'Disease-like pattern spreading',
+    'WATER_STRESS_SIGNAL': 'Water stress signs visible',
+    'NUTRIENT_STRESS_SIGNAL': 'Nutrient deficiency signs',
+    'UNEVEN_FIELD_PATTERN': 'Uneven growth pattern in field',
+    'YIELD_OR_OUTPUT_ISSUE': 'Yield or output concern',
+    'UNKNOWN_OBSERVATION': 'Observation needs clarification'
+  };
+  return concernMap[intent] || 'Agricultural observation';
+}
+
+function getAffectedPartsFromIntent(intent: string): string[] {
+  const partsMap: Record<string, string[]> = {
+    'LEAF_DAMAGE_VISIBLE': ['leaves'],
+    'LEAF_MARKS_OR_SPOTS': ['leaves'],
+    'COLOR_CHANGE': ['leaves'],
+    'STEM_DAMAGE': ['stem'],
+    'ROOT_OR_BASE_PROBLEM': ['roots'],
+    'WILTING_OR_DROOPING': ['whole plant'],
+    'EMERGENCE_FAILURE': ['whole plant'],
+    'GROWTH_ANOMALY': ['whole plant']
+  };
+  return partsMap[intent] || [];
+}
+
+function getVisualChangesFromIntent(intent: string): string[] {
+  const changesMap: Record<string, string[]> = {
+    'COLOR_CHANGE': ['color change visible'],
+    'WILTING_OR_DROOPING': ['wilting'],
+    'LEAF_DAMAGE_VISIBLE': ['physical damage'],
+    'LEAF_MARKS_OR_SPOTS': ['spots or marks'],
+    'STEM_DAMAGE': ['stem damage'],
+    'GROWTH_ANOMALY': ['growth abnormality']
+  };
+  return changesMap[intent] || [];
+}
+
+function getSeverityFromIntent(intent: string): 'mild' | 'moderate' | 'severe' | 'critical' | 'unknown' {
+  const severeIntents = ['STEM_DAMAGE', 'ROOT_OR_BASE_PROBLEM', 'EMERGENCE_FAILURE'];
+  const moderateIntents = ['COLOR_CHANGE', 'WILTING_OR_DROOPING', 'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN'];
+  
+  if (severeIntents.includes(intent)) return 'severe';
+  if (moderateIntents.includes(intent)) return 'moderate';
+  return 'moderate';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
