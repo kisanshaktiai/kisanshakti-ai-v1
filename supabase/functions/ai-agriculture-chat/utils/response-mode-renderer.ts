@@ -1,23 +1,28 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * RESPONSE MODE RENDERER v1.1.0 - CRASH-PROOF OUTPUT SYSTEM
+ * RESPONSE MODE RENDERER v2.0.0 - CRASH-PROOF CONFIDENCE-DRIVEN OUTPUT
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * CRITICAL: This module renders responses based on RESPONSE MODE, not text presence.
  * 
  * INVARIANT: Farmer-facing responses are mode-driven, not text-assumed.
  * 
- * SUPPORTED MODES (Aligned with UI Response Contract):
- * - OBSERVATION: 1-2 short sentences only
- * - CLARIFICATION_REQUIRED / CLARIFICATION: Render options array, no text required
+ * KEY v2.0.0 CHANGES:
+ * - Confidence-driven mode resolution (LOW → CLARIFICATION, not OBSERVATION)
+ * - Invariant guard: Low confidence + symptoms never returns OBSERVATION
+ * - Integration with FarmerResponseContract
+ * 
+ * SUPPORTED MODES (Aligned with FarmerResponseContract):
+ * - OBSERVATION: Watch and wait (HIGH confidence only)
+ * - CLARIFICATION_REQUIRED / CLARIFICATION: Render options array
  * - PHOTO_REQUIRED: Camera prompt
  * - MONITORING_ADVISED: Simple reassurance, no LLM required
  * - TREATMENT_ALLOWED / TREATMENT: Full explanation + steps
+ * - INFORMATION: General info for medium confidence
  * - NO_ACTION_NEEDED: Healthy crop, no action required
- * - INFORMATION: General information response
  * - ERROR: Error state with recovery message
  * 
- * @version 1.1.0
+ * @version 2.0.0
  */
 
 import { ResponseMode } from '../decision/authority-types.ts';
@@ -517,4 +522,4 @@ export function validateRenderedOutput(output: ModeRenderedOutput): {
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const RESPONSE_MODE_RENDERER_VERSION = '1.0.0';
+export const RESPONSE_MODE_RENDERER_VERSION = '2.0.0';
