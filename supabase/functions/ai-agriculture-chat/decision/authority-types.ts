@@ -64,13 +64,22 @@ export enum AuthorityStatus {
 /**
  * ResponseMode determines what type of response is allowed based on
  * authority status and gate validation.
+ * 
+ * LOCKED ENUM - Changes require version bump in authority-types.ts
  */
 export enum ResponseMode {
+  // Core modes
   TREATMENT = 'TREATMENT',                       // Full treatment recommendations allowed
   OBSERVATION = 'OBSERVATION',                   // Observation/monitoring only
   INFORMATION = 'INFORMATION',                   // Information only, no actions
   CLARIFICATION = 'CLARIFICATION',               // Must ask clarification questions
-  DIAGNOSTIC_ESCALATION = 'DIAGNOSTIC_ESCALATION' // Expert-level diagnostic with hypotheses
+  DIAGNOSTIC_ESCALATION = 'DIAGNOSTIC_ESCALATION', // Expert-level diagnostic with hypotheses
+  
+  // Extended modes for UI contract alignment
+  MONITORING_ADVISED = 'MONITORING_ADVISED',     // Simple monitoring reassurance
+  PHOTO_REQUIRED = 'PHOTO_REQUIRED',             // Photo upload needed for diagnosis
+  NO_ACTION_NEEDED = 'NO_ACTION_NEEDED',         // Crop is healthy, no action
+  ERROR = 'ERROR'                                // Error state
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
