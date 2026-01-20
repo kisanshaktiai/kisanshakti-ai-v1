@@ -206,6 +206,35 @@ export interface UnifiedGateResult {
   /** Confidence level */
   confidence_level: 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW';
   
+  /**
+   * CRITICAL: Numeric decision confidence (0-100) for response mode resolution
+   * Populated from semantic extractor, observation certainty, and diagnosis confirmation
+   */
+  decision_confidence: number;
+  
+  /**
+   * Whether symptoms were detected in the farmer message
+   * Used by response mode resolver to avoid OBSERVATION for symptomatic queries
+   */
+  has_symptoms: boolean;
+  
+  /**
+   * Whether visual ambiguity was detected (photo would help)
+   * Triggers PHOTO_REQUIRED mode when combined with low confidence
+   */
+  has_visual_ambiguity: boolean;
+  
+  /**
+   * Clarification options to display when mode is CLARIFICATION
+   * Must be populated when response_mode === CLARIFICATION
+   */
+  clarification_options?: Array<{
+    label: string;
+    value: string;
+    observation_key?: string;
+    i18n_key?: string;
+  }>;
+  
   /** Gate version for audit */
   gate_version: string;
   

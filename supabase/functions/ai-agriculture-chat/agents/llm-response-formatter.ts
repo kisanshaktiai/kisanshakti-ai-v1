@@ -185,18 +185,35 @@ export async function formatRecommendationsWithLLM(
   console.log(`   Message Preview: ${safePreviewText(safeFarmerMessage)}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // RESOLVE RESPONSE MODE - Determines rendering strategy
+  // RESOLVE RESPONSE MODE - CONFIDENCE-DRIVEN (CRITICAL FIX)
   // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Extract confidence data from decision metadata
+  const decisionConfidence = input.decision_output?.metadata?.decision_confidence ?? 
+                              input.decision_output?.confidence ?? 0;
+  const hasSymptoms = input.decision_output?.metadata?.has_symptoms ?? 
+                       !!(input.decision_output?.symptom_keys?.length);
+  const hasVisualAmbiguity = input.decision_output?.metadata?.has_visual_ambiguity ?? 
+                              input.decision_output?.needs_photo_for_diagnosis ?? false;
+  const clarificationOptions = input.decision_output?.clarification_options ?? [];
+  
   const responseMode = resolveResponseMode({
     response_mode: input.decision_output?.metadata?.response_mode,
     gate_action: input.decision_output?.metadata?.gate_action,
     has_treatment: !!input.decision_output?.primary_decision?.action_type,
     has_clarification: !!input.decision_output?.clarification_needed,
-    has_options: (input.decision_output?.clarification_options?.length || 0) > 0,
-    needs_photo: input.decision_output?.needs_photo_for_diagnosis
+    has_options: clarificationOptions.length > 0,
+    needs_photo: input.decision_output?.needs_photo_for_diagnosis,
+    // NEW: Confidence-driven fields
+    decision_confidence: decisionConfidence,
+    has_symptoms: hasSymptoms,
+    has_visual_ambiguity: hasVisualAmbiguity,
+    clarification_options: clarificationOptions
   });
   
   console.log(`   Resolved Response Mode: ${responseMode}`);
+  console.log(`   Decision Confidence: ${decisionConfidence}`);
+  console.log(`   Has Symptoms: ${hasSymptoms}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // P1-4: GATE CHECK REMOVED - NOW HAPPENS IN index.ts VIA evaluateUnifiedGate()

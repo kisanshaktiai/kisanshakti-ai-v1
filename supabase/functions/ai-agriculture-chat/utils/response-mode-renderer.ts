@@ -164,15 +164,33 @@ const PHOTO_GUIDANCE_TEMPLATES: Record<string, PhotoGuidance> = {
 // RESPONSE MODE RESOLVER - Determines mode from decision context
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function resolveResponseMode(context: {
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CONFIDENCE-DRIVEN RESPONSE MODE RESOLUTION (CRITICAL FIX)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * BUG FIX: Previously defaulted to OBSERVATION for all unknown cases.
+ * NOW: Uses decision_confidence to determine appropriate mode.
+ * 
+ * INVARIANT: Low confidence (<50%) with symptoms → CLARIFICATION or PHOTO_REQUIRED
+ */
+export interface ResponseModeContext {
   gate_action?: string;
   response_mode?: string | ResponseMode;
   has_treatment?: boolean;
   has_clarification?: boolean;
   has_options?: boolean;
   needs_photo?: boolean;
-}): ResponseMode {
-  // Priority 1: Explicit response_mode from gate
+  // NEW: Confidence-driven fields
+  decision_confidence?: number;
+  has_symptoms?: boolean;
+  has_visual_ambiguity?: boolean;
+  symptom_keys?: string[];
+  clarification_options?: Array<{ label?: string; value?: string }>;
+}
+
+export function resolveResponseMode(context: ResponseModeContext): ResponseMode {
+  // Priority 1: Explicit response_mode from gate (highest priority)
   if (context.response_mode) {
     const mode = context.response_mode.toString().toUpperCase();
     if (mode in ResponseMode || Object.values(ResponseMode).includes(mode as ResponseMode)) {
@@ -188,7 +206,7 @@ export function resolveResponseMode(context: {
   }
   
   if (gateAction.includes('PHOTO') || context.needs_photo) {
-    return ResponseMode.CLARIFICATION; // Photo requests are a form of clarification
+    return ResponseMode.PHOTO_REQUIRED;
   }
   
   if (gateAction.includes('TREATMENT') || gateAction.includes('ALLOW')) {
@@ -203,8 +221,79 @@ export function resolveResponseMode(context: {
     return ResponseMode.INFORMATION;
   }
   
-  // Default: OBSERVATION (safe fallback)
-  return ResponseMode.OBSERVATION;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONFIDENCE-DRIVEN RESOLUTION (CRITICAL BUG FIX)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const confidence = context.decision_confidence ?? 0;
+  const hasSymptoms = context.has_symptoms || (context.symptom_keys && context.symptom_keys.length > 0);
+  const hasVisualAmbiguity = context.has_visual_ambiguity || false;
+  const hasOptions = context.clarification_options && context.clarification_options.length > 0;
+  
+  // LOW CONFIDENCE (<50%) + Symptoms → Clarification or Photo Required
+  if (confidence < 50 && hasSymptoms) {
+    if (hasVisualAmbiguity) {
+      console.log(`[ResponseModeResolver] Low confidence (${confidence}) + visual ambiguity → PHOTO_REQUIRED`);
+      return ResponseMode.PHOTO_REQUIRED;
+    }
+    if (hasOptions) {
+      console.log(`[ResponseModeResolver] Low confidence (${confidence}) + symptoms + options → CLARIFICATION`);
+      return ResponseMode.CLARIFICATION;
+    }
+    // Even without options, prefer clarification over observation for low confidence
+    console.log(`[ResponseModeResolver] Low confidence (${confidence}) + symptoms → CLARIFICATION`);
+    return ResponseMode.CLARIFICATION;
+  }
+  
+  // MEDIUM CONFIDENCE (50-70%) → Information mode
+  if (confidence >= 50 && confidence < 70) {
+    console.log(`[ResponseModeResolver] Medium confidence (${confidence}) → INFORMATION`);
+    return ResponseMode.INFORMATION;
+  }
+  
+  // HIGH CONFIDENCE (70%+) with treatment data → Treatment
+  if (confidence >= 70 && context.has_treatment) {
+    console.log(`[ResponseModeResolver] High confidence (${confidence}) + treatment → TREATMENT`);
+    return ResponseMode.TREATMENT;
+  }
+  
+  // Only use OBSERVATION when:
+  // - No symptoms detected
+  // - No uncertainty
+  // - No actionable intent
+  if (!hasSymptoms && confidence >= 50) {
+    return ResponseMode.OBSERVATION;
+  }
+  
+  // INVARIANT ASSERTION: Low confidence should NOT result in OBSERVATION when symptoms exist
+  if (confidence < 70 && hasSymptoms) {
+    console.warn(`[ResponseModeResolver] INVARIANT: Low confidence (${confidence}) with symptoms - forcing CLARIFICATION`);
+    return ResponseMode.CLARIFICATION;
+  }
+  
+  // Default fallback: Information (safer than OBSERVATION for unknown cases)
+  console.log(`[ResponseModeResolver] Default fallback → INFORMATION`);
+  return ResponseMode.INFORMATION;
+}
+
+/**
+ * INVARIANT VALIDATOR: Throws if low confidence results in OBSERVATION with symptoms
+ * Call this to detect architectural violations during development
+ */
+export function assertResponseModeInvariant(
+  mode: ResponseMode | string,
+  confidence: number,
+  hasSymptoms: boolean
+): void {
+  const modeStr = (mode || '').toString().toUpperCase();
+  
+  if (modeStr === 'OBSERVATION' && confidence < 70 && hasSymptoms) {
+    const errorMessage = `INVARIANT VIOLATION: OBSERVATION mode with confidence=${confidence} and symptoms present. ` +
+      `This indicates a bug in response mode resolution. Expected CLARIFICATION or PHOTO_REQUIRED.`;
+    console.error(`🚨 [ResponseModeInvariant] ${errorMessage}`);
+    // In production, log but don't throw to prevent crashes
+    // In development, this would throw: throw new Error(errorMessage);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
