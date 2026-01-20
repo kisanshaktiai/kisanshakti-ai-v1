@@ -248,7 +248,9 @@ export async function isObservationValidForCropStage(
     .limit(1);
   
   if (error) {
-    return { valid: true, reason_code: 'DB_ERROR_ALLOW' };
+    // FAIL-CLOSED: Database errors must not allow unsafe recommendations
+    console.error(`[IntentResolver] Validation DB error: ${error.message}`);
+    return { valid: false, reason_code: 'VALIDATION_UNAVAILABLE' };
   }
   
   if (data && data.length > 0) {
