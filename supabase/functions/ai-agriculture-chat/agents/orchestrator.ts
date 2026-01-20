@@ -1869,11 +1869,15 @@ export class AIAgentOrchestrator {
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
       
-      console.log(`      Concern: "${semanticExtraction.farmer_concern.substring(0, 60)}..."`);
-      console.log(`      Parts: [${semanticExtraction.affected_plant_parts.join(', ')}]`);
-      console.log(`      Changes: [${semanticExtraction.visual_changes.slice(0, 3).join(', ')}${semanticExtraction.visual_changes.length > 3 ? '...' : ''}]`);
-      console.log(`      Codes: [${mappedCodes.observation_codes.slice(0, 5).join(', ')}${mappedCodes.observation_codes.length > 5 ? '...' : ''}]`);
-      console.log(`      Confidence: ${(semanticExtraction.confidence * 100).toFixed(0)}%, Method: ${semanticExtraction.extraction_method}`);
+      // CRASH-PROOF LOGGING: Use safe accessors for all fields (v5.1.0 SemanticExtraction)
+      const intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
+      const intentConf = typeof semanticExtraction?.intent_confidence === 'number' 
+        ? semanticExtraction.intent_confidence : 0;
+      const obsCodesList = mappedCodes?.observation_codes || [];
+      
+      console.log(`      Intent: ${intentCode} (${(intentConf * 100).toFixed(0)}% confidence)`);
+      console.log(`      Codes: [${obsCodesList.slice(0, 5).join(', ')}${obsCodesList.length > 5 ? '...' : ''}]`);
+      console.log(`      Mapping: ${mappedCodes?.mapping_method || 'UNKNOWN'}, Patterns: ${(mappedCodes?.patterns_matched || []).length}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // LEGACY FALLBACK: Language Induction Layer (for backward compatibility)
@@ -1899,6 +1903,11 @@ export class AIAgentOrchestrator {
       // The new LLM-based mappedCodes.observation_codes must be injected into
       // inductionResult.symptoms so they flow through to clarification & rules
       // ═══════════════════════════════════════════════════════════════════════════
+      // CRASH-PROOF: Use intent_confidence with fallback (v5.1.0 compatibility)
+      const safeConfidence = typeof semanticExtraction?.intent_confidence === 'number'
+        ? semanticExtraction.intent_confidence
+        : (typeof semanticExtraction?.confidence === 'number' ? semanticExtraction.confidence : 0.5);
+      
       if (mappedCodes.observation_codes.length > 0) {
         console.log(`      🔄 MERGING ${mappedCodes.observation_codes.length} LLM-extracted codes into induction result`);
         
@@ -1909,7 +1918,7 @@ export class AIAgentOrchestrator {
           if (!existingSymptom) {
             inductionResult.symptoms.push({
               symbol: code,
-              confidence: semanticExtraction.confidence,
+              confidence: safeConfidence,
               source: 'LLM_SEMANTIC_EXTRACTOR'
             });
             inductionResult.total_symbols_extracted++;
@@ -1922,7 +1931,7 @@ export class AIAgentOrchestrator {
           if (!existingPart) {
             inductionResult.symptoms.push({
               symbol: mappedCodes.affected_part_code,
-              confidence: semanticExtraction.confidence,
+              confidence: safeConfidence,
               source: 'LLM_SEMANTIC_EXTRACTOR'
             });
             inductionResult.total_symbols_extracted++;
@@ -1934,7 +1943,7 @@ export class AIAgentOrchestrator {
           if (!existingDist) {
             inductionResult.symptoms.push({
               symbol: mappedCodes.distribution_code,
-              confidence: semanticExtraction.confidence,
+              confidence: safeConfidence,
               source: 'LLM_SEMANTIC_EXTRACTOR'
             });
             inductionResult.total_symbols_extracted++;
@@ -1946,7 +1955,7 @@ export class AIAgentOrchestrator {
           if (!existingSev) {
             inductionResult.symptoms.push({
               symbol: mappedCodes.severity_code,
-              confidence: semanticExtraction.confidence,
+              confidence: safeConfidence,
               source: 'LLM_SEMANTIC_EXTRACTOR'
             });
             inductionResult.total_symbols_extracted++;
@@ -1957,7 +1966,7 @@ export class AIAgentOrchestrator {
         inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8); // 8 is approx max symptoms
         inductionResult.aggregated_confidence = Math.max(
           inductionResult.aggregated_confidence,
-          semanticExtraction.confidence
+          safeConfidence
         );
         
         console.log(`      ✅ POST-MERGE: ${inductionResult.symptoms.length} total symptoms, coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%`);

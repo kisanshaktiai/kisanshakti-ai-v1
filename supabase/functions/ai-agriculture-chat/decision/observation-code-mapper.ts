@@ -1,26 +1,32 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION CODE MAPPER (100% Deterministic)
+ * OBSERVATION CODE MAPPER v2.0.0 (100% Deterministic, Crash-Proof)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
- * Convert plain English semantic extractions to stable ObservationKey codes
+ * Convert SemanticExtraction (intent_code) to stable ObservationKey codes
  * using pure pattern matching. This is the ONLY layer that produces codes.
+ * 
+ * v2.0.0 CHANGES:
+ * - Now works with intent_code-based SemanticExtraction (v5.1.0)
+ * - All field accesses are null-safe with defaults
+ * - Falls back gracefully when legacy fields are empty
  * 
  * RULES:
  * - 100% deterministic: same input ALWAYS produces same output
  * - Uses simple .includes() pattern matching on English text
  * - Maps to ObservationKey enum values from observation-ontology.ts
  * - NO LLM calls, NO randomness, NO external dependencies
+ * - NEVER crashes on undefined/null fields
  * 
- * @version 1.0.0
- * @phase Universal NLU Refactoring
+ * @version 2.0.0
+ * @phase Universal NLU Refactoring - Crash-Proof Edition
  */
 
 import { ObservationKey } from './observation-ontology.ts';
 import type { SemanticExtraction } from '../agents/semantic-extractor.ts';
 
-export const OBSERVATION_CODE_MAPPER_VERSION = '1.0.0';
+export const OBSERVATION_CODE_MAPPER_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT INTERFACE
@@ -31,14 +37,118 @@ export interface MappedObservationCodes {
   affected_part_code: ObservationKey;          // Primary affected part
   distribution_code: ObservationKey | null;    // Distribution pattern if detected
   severity_code: ObservationKey;               // Severity level
-  mapping_method: 'DETERMINISTIC';             // Always this value
+  mapping_method: 'DETERMINISTIC' | 'INTENT_BASED';
   mapping_confidence: number;                  // 1.0 for deterministic
   mapping_timestamp: string;
   patterns_matched: string[];                  // For audit trail
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// VISUAL CHANGES → OBSERVATION CODES MAPPING
+// INTENT CODE → OBSERVATION CODES MAPPING (v2.0.0 PRIMARY PATH)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface IntentMapping {
+  intent_codes: string[];
+  observation_codes: ObservationKey[];
+  default_part: ObservationKey;
+  default_severity: ObservationKey;
+}
+
+const INTENT_TO_OBSERVATION_MAPPINGS: IntentMapping[] = [
+  {
+    intent_codes: ['EMERGENCE_FAILURE'],
+    observation_codes: [ObservationKey.SEEDLING_DIED, ObservationKey.STUNTED_PLANTS],
+    default_part: ObservationKey.AFFECTED_PART_WHOLE,
+    default_severity: ObservationKey.SEVERITY_HIGH
+  },
+  {
+    intent_codes: ['GROWTH_ANOMALY'],
+    observation_codes: [ObservationKey.STUNTED_PLANTS],
+    default_part: ObservationKey.AFFECTED_PART_WHOLE,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['COLOR_CHANGE'],
+    observation_codes: [ObservationKey.LEAF_YELLOWING, ObservationKey.LEAF_PALE_GREEN],
+    default_part: ObservationKey.AFFECTED_PART_LEAF,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['WILTING_OR_DROOPING'],
+    observation_codes: [ObservationKey.LEAF_WILTING],
+    default_part: ObservationKey.AFFECTED_PART_LEAF,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['LEAF_DAMAGE_VISIBLE'],
+    observation_codes: [ObservationKey.LEAF_CHEWING],
+    default_part: ObservationKey.AFFECTED_PART_LEAF,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['LEAF_MARKS_OR_SPOTS'],
+    observation_codes: [ObservationKey.LEAF_SPOTS_PRESENT],
+    default_part: ObservationKey.AFFECTED_PART_LEAF,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['STEM_DAMAGE'],
+    observation_codes: [ObservationKey.STEM_BORING_MARKS, ObservationKey.DEAD_HEART_PRESENT],
+    default_part: ObservationKey.AFFECTED_PART_STEM,
+    default_severity: ObservationKey.SEVERITY_HIGH
+  },
+  {
+    intent_codes: ['ROOT_OR_BASE_PROBLEM'],
+    observation_codes: [ObservationKey.ROOTS_ROTTED, ObservationKey.ROOT_BLACKENING],
+    default_part: ObservationKey.AFFECTED_PART_ROOT,
+    default_severity: ObservationKey.SEVERITY_HIGH
+  },
+  {
+    intent_codes: ['PEST_PRESENCE_VISIBLE'],
+    observation_codes: [ObservationKey.INSECT_PRESENCE_CONFIRMED],
+    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['DISEASE_LIKE_PATTERN'],
+    observation_codes: [ObservationKey.FUNGAL_GROWTH_VISIBLE],
+    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['WATER_STRESS_SIGNAL'],
+    observation_codes: [ObservationKey.LEAF_WILTING, ObservationKey.LEAF_DRYING],
+    default_part: ObservationKey.AFFECTED_PART_LEAF,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['NUTRIENT_STRESS_SIGNAL'],
+    observation_codes: [ObservationKey.LEAF_YELLOWING, ObservationKey.STUNTED_PLANTS],
+    default_part: ObservationKey.AFFECTED_PART_LEAF,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['UNEVEN_FIELD_PATTERN'],
+    observation_codes: [ObservationKey.PATCHY_DAMAGE],
+    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
+    default_severity: ObservationKey.SEVERITY_LOW
+  },
+  {
+    intent_codes: ['YIELD_OR_OUTPUT_ISSUE'],
+    observation_codes: [],
+    default_part: ObservationKey.AFFECTED_PART_WHOLE,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  },
+  {
+    intent_codes: ['UNKNOWN_OBSERVATION'],
+    observation_codes: [],
+    default_part: ObservationKey.AFFECTED_PART_UNKNOWN,
+    default_severity: ObservationKey.SEVERITY_MEDIUM
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VISUAL CHANGES → OBSERVATION CODES MAPPING (Legacy fallback)
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface PatternMapping {
@@ -98,19 +208,19 @@ const VISUAL_CHANGE_MAPPINGS: PatternMapping[] = [
   
   // Fruit/flower symptoms
   { patterns: ['flower drop', 'flowers falling'], code: ObservationKey.FLOWER_DROP },
-  { patterns: ['fruit drop', 'fruits falling'], code: ObservationKey.FRUIT_DROP },
   { patterns: ['fruit rot', 'rotting fruit'], code: ObservationKey.FRUIT_ROT },
-  { patterns: ['poor flowering', 'no flowers'], code: ObservationKey.POOR_FLOWERING },
+  { patterns: ['boll damage', 'boll rot'], code: ObservationKey.BOLL_DAMAGE },
   
-  // Germination issues
-  { patterns: ['not germinated', 'no germination', 'failed to germinate'], code: ObservationKey.SEED_NOT_GERMINATED },
-  { patterns: ['poor germination', 'low germination'], code: ObservationKey.POOR_GERMINATION_PERCENT },
-  { patterns: ['gaps in field', 'missing plants'], code: ObservationKey.GAPS_IN_FIELD },
-  { patterns: ['patchy emergence', 'uneven emergence'], code: ObservationKey.PATCHY_EMERGENCE },
+  // Field patterns
+  { patterns: ['patches', 'patchy'], code: ObservationKey.PATCHY_DAMAGE },
+  { patterns: ['edges', 'field edges'], code: ObservationKey.EDGE_DAMAGE_ONLY },
+  { patterns: ['spreading', 'spreading pattern'], code: ObservationKey.DISTRIBUTION_SPREADING },
   
-  // Soil/water related
-  { patterns: ['waterlogged', 'water logging', 'standing water'], code: ObservationKey.FIELD_WATERLOGGED },
-  { patterns: ['dry soil', 'soil too dry', 'cracked soil'], code: ObservationKey.SOIL_TOO_DRY },
+  // Pest indicators
+  { patterns: ['webbing', 'webs', 'silk threads'], code: ObservationKey.WEBBING_PRESENT },
+  { patterns: ['honeydew', 'sticky'], code: ObservationKey.HONEYDEW_STICKY },
+  { patterns: ['frass', 'insect droppings'], code: ObservationKey.FRASS_VISIBLE },
+  { patterns: ['insect', 'pest', 'bug', 'worm'], code: ObservationKey.INSECT_PRESENCE_CONFIRMED },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -118,32 +228,13 @@ const VISUAL_CHANGE_MAPPINGS: PatternMapping[] = [
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PEST_BEHAVIOR_MAPPINGS: PatternMapping[] = [
-  // Presence
-  { patterns: ['insects visible', 'bugs visible', 'insects seen', 'pests visible'], code: ObservationKey.INSECTS_VISIBLE },
-  { patterns: ['larvae', 'caterpillar', 'caterpillars', 'worm', 'worms', 'grub'], code: ObservationKey.LARVAE_PRESENT },
-  { patterns: ['eggs', 'egg mass'], code: ObservationKey.EGGS_PRESENT },
-  
-  // Behavior
-  { patterns: ['flying', 'fly when disturbed', 'flies away'], code: ObservationKey.INSECTS_FLYING },
-  { patterns: ['crawling', 'moving slowly', 'creeping'], code: ObservationKey.INSECTS_CRAWLING },
-  { patterns: ['jumping', 'hop', 'hopping', 'leaping'], code: ObservationKey.INSECTS_JUMPING },
-  
-  // Size
-  { patterns: ['small insects', 'tiny insects', 'small bugs'], code: ObservationKey.SMALL_INSECTS },
-  { patterns: ['large insects', 'big insects', 'large bugs'], code: ObservationKey.LARGE_INSECTS },
-  
-  // Color
-  { patterns: ['green insects', 'green bugs', 'green colored'], code: ObservationKey.GREEN_INSECTS },
-  { patterns: ['black insects', 'black bugs', 'black colored'], code: ObservationKey.BLACK_INSECTS },
-  { patterns: ['brown insects', 'brown bugs', 'brown colored'], code: ObservationKey.BROWN_INSECTS },
-  { patterns: ['white insects', 'white bugs', 'white colored', 'whitefly', 'white fly'], code: ObservationKey.WHITE_INSECTS },
-  
-  // Secondary signs
-  { patterns: ['honeydew', 'sticky substance', 'sticky leaves'], code: ObservationKey.HONEYDEW_PRESENT },
-  { patterns: ['sooty mold', 'black coating'], code: ObservationKey.SOOTY_MOLD_ON_HONEYDEW },
-  { patterns: ['webbing', 'silk web', 'web'], code: ObservationKey.SILK_WEBBING_VISIBLE },
-  { patterns: ['frass', 'insect droppings', 'excrement'], code: ObservationKey.FRASS_VISIBLE },
-  { patterns: ['ants', 'ant present'], code: ObservationKey.ANTS_PRESENT },
+  { patterns: ['boring', 'tunneling', 'internal damage'], code: ObservationKey.STEM_BORING_MARKS },
+  { patterns: ['chewing', 'eating leaves'], code: ObservationKey.LEAF_CHEWING },
+  { patterns: ['sucking', 'sap sucking'], code: ObservationKey.LEAF_YELLOWING },
+  { patterns: ['webbing', 'making webs'], code: ObservationKey.WEBBING_PRESENT },
+  { patterns: ['laying eggs'], code: ObservationKey.INSECT_PRESENCE_CONFIRMED },
+  { patterns: ['flying', 'flying around'], code: ObservationKey.INSECT_PRESENCE_CONFIRMED },
+  { patterns: ['burrowing'], code: ObservationKey.ROOTS_ROTTED },
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -208,12 +299,26 @@ const SEVERITY_MAPPINGS: Record<string, ObservationKey> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN MAPPING FUNCTION
+// SAFE FIELD ACCESSORS (Crash-proof)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function safeArray<T>(arr: T[] | undefined | null): T[] {
+  return Array.isArray(arr) ? arr : [];
+}
+
+function safeString(str: string | undefined | null): string {
+  return typeof str === 'string' ? str : '';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN MAPPING FUNCTION (v2.0.0 - Intent-Based with Legacy Fallback)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
  * Map semantic extraction to canonical ObservationKey codes
  * 100% DETERMINISTIC - same input always produces same output
+ * 
+ * v2.0.0: Uses intent_code as primary mapping source, with legacy field fallback
  * 
  * @param semantic - SemanticExtraction from LLM layer
  * @returns MappedObservationCodes - Canonical codes for rule engine
@@ -225,12 +330,48 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
   const observationCodes: ObservationKey[] = [];
   const patternsMatched: string[] = [];
   
+  // Determine mapping method based on intent_code presence
+  const intentCode = safeString(semantic?.intent_code).toUpperCase();
+  let usedIntentMapping = false;
+  let affectedPartCode = ObservationKey.AFFECTED_PART_UNKNOWN;
+  let severityCode = ObservationKey.SEVERITY_MEDIUM;
+  
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 1: Map visual changes
+  // PRIMARY PATH: Map from intent_code (v5.x SemanticExtraction)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (semantic.visual_changes && semantic.visual_changes.length > 0) {
-    for (const change of semantic.visual_changes) {
-      const changeLower = change.toLowerCase();
+  if (intentCode && intentCode !== 'UNKNOWN_OBSERVATION') {
+    const intentMapping = INTENT_TO_OBSERVATION_MAPPINGS.find(
+      m => m.intent_codes.includes(intentCode)
+    );
+    
+    if (intentMapping) {
+      usedIntentMapping = true;
+      
+      // Add observation codes from intent mapping
+      for (const code of intentMapping.observation_codes) {
+        if (!observationCodes.includes(code)) {
+          observationCodes.push(code);
+          patternsMatched.push(`intent:${intentCode}→${code}`);
+        }
+      }
+      
+      // Use intent-derived defaults for part and severity
+      affectedPartCode = intentMapping.default_part;
+      severityCode = intentMapping.default_severity;
+      patternsMatched.push(`intent_part:${affectedPartCode}`);
+      patternsMatched.push(`intent_severity:${severityCode}`);
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FALLBACK: Map from legacy fields if available (backward compatibility)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Map visual changes (if any exist)
+  const visualChanges = safeArray(semantic?.visual_changes);
+  if (visualChanges.length > 0) {
+    for (const change of visualChanges) {
+      const changeLower = safeString(change).toLowerCase();
       
       for (const mapping of VISUAL_CHANGE_MAPPINGS) {
         for (const pattern of mapping.patterns) {
@@ -239,19 +380,18 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
               observationCodes.push(mapping.code);
               patternsMatched.push(`visual:"${pattern}"→${mapping.code}`);
             }
-            break; // Only add code once per mapping
+            break;
           }
         }
       }
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2: Map pest behavior
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (semantic.pest_behavior && semantic.pest_behavior.length > 0) {
-    for (const behavior of semantic.pest_behavior) {
-      const behaviorLower = behavior.toLowerCase();
+  // Map pest behavior (if any exist)
+  const pestBehavior = safeArray(semantic?.pest_behavior);
+  if (pestBehavior.length > 0) {
+    for (const behavior of pestBehavior) {
+      const behaviorLower = safeString(behavior).toLowerCase();
       
       for (const mapping of PEST_BEHAVIOR_MAPPINGS) {
         for (const pattern of mapping.patterns) {
@@ -267,13 +407,10 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 3: Map affected parts
-  // ═══════════════════════════════════════════════════════════════════════════
-  let affectedPartCode = ObservationKey.AFFECTED_PART_UNKNOWN;
-  
-  if (semantic.affected_plant_parts && semantic.affected_plant_parts.length > 0) {
-    const primaryPart = semantic.affected_plant_parts[0].toLowerCase();
+  // Map affected parts (if any exist and we didn't get one from intent)
+  const affectedParts = safeArray(semantic?.affected_plant_parts);
+  if (affectedParts.length > 0 && !usedIntentMapping) {
+    const primaryPart = safeString(affectedParts[0]).toLowerCase();
     
     for (const [partPattern, code] of Object.entries(AFFECTED_PART_MAPPINGS)) {
       if (primaryPart.includes(partPattern)) {
@@ -284,28 +421,28 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 4: Map distribution pattern
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Map distribution pattern
   let distributionCode: ObservationKey | null = null;
-  
-  if (semantic.distribution_pattern && semantic.distribution_pattern !== 'not specified') {
-    const distLower = semantic.distribution_pattern.toLowerCase();
-    
-    for (const [distPattern, code] of Object.entries(DISTRIBUTION_MAPPINGS)) {
-      if (distLower.includes(distPattern)) {
+  const distPattern = safeString(semantic?.distribution_pattern).toLowerCase();
+  if (distPattern && distPattern !== 'not specified') {
+    for (const [pattern, code] of Object.entries(DISTRIBUTION_MAPPINGS)) {
+      if (distPattern.includes(pattern)) {
         distributionCode = code;
-        patternsMatched.push(`dist:"${distPattern}"→${code}`);
+        patternsMatched.push(`dist:"${pattern}"→${code}`);
         break;
       }
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 5: Map severity
-  // ═══════════════════════════════════════════════════════════════════════════
-  const severityCode = SEVERITY_MAPPINGS[semantic.severity_indicator] || ObservationKey.SEVERITY_MEDIUM;
-  patternsMatched.push(`severity:${semantic.severity_indicator}→${severityCode}`);
+  // Map severity (if we didn't get one from intent)
+  const severityIndicator = safeString(semantic?.severity_indicator).toLowerCase();
+  if (severityIndicator && !usedIntentMapping) {
+    const mappedSeverity = SEVERITY_MAPPINGS[severityIndicator];
+    if (mappedSeverity) {
+      severityCode = mappedSeverity;
+      patternsMatched.push(`severity:${severityIndicator}→${severityCode}`);
+    }
+  }
   
   // ═══════════════════════════════════════════════════════════════════════════
   // BUILD RESULT
@@ -315,7 +452,7 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
     affected_part_code: affectedPartCode,
     distribution_code: distributionCode,
     severity_code: severityCode,
-    mapping_method: 'DETERMINISTIC',
+    mapping_method: usedIntentMapping ? 'INTENT_BASED' : 'DETERMINISTIC',
     mapping_confidence: 1.0, // Deterministic = 100% confident
     mapping_timestamp: new Date().toISOString(),
     patterns_matched: patternsMatched
