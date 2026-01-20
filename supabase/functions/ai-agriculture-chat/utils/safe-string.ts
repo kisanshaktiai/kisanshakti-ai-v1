@@ -1,28 +1,32 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * SAFE STRING UTILITIES v2.0.0 - Production-Grade Guards
+ * SAFE STRING UTILITIES v3.0.0 - CRASH-PROOF PRODUCTION GUARDS
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * PHASE 2 HARDENING: Prevents runtime crashes from undefined/null string operations.
+ * CRITICAL INVARIANTS:
+ * - ZERO TypeError from undefined/null string operations
+ * - Image-only and option-click flows MUST work without text
+ * - All string methods are guarded against non-string inputs
  * 
- * CRITICAL: These guards ensure zero TypeError from:
- * - substring, slice, trim
- * - toLowerCase, toUpperCase
- * - includes, split
- * - length access
+ * MANDATORY USAGE:
+ * - normalizeText: Convert unknown → string (empty fallback) - USE AT FUNCTION ENTRY
+ * - safePreview: Safe text preview for logging - NEVER use .substring() directly
+ * - hasText: Check if has non-whitespace content - USE before any text-dependent logic
  * 
- * USAGE:
- * - normalizeText: Convert unknown → string (empty fallback)
- * - safePreview: Safe text preview for logging
- * - hasText: Check if has non-whitespace content
+ * FORBIDDEN OPERATIONS (on raw input):
+ * ❌ input.substring()
+ * ❌ input.trim()
+ * ❌ input.toLowerCase()
+ * ❌ input.includes()
+ * ❌ input.length (without guard)
  * 
- * @version 2.0.0
+ * @version 3.0.0
  */
 
-export const SAFE_STRING_VERSION = '2.0.0';
+export const SAFE_STRING_VERSION = '3.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHASE 2: CORE GUARD FUNCTIONS
+// CORE GUARD FUNCTIONS - USE THESE EVERYWHERE
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -267,7 +271,71 @@ export function safeRegexMatch(input: unknown, pattern: RegExp): RegExpMatchArra
   return typeof input === 'string' ? input.match(pattern) : null;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// FAIL-SAFE i18n KEY RESOLUTION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Resolve an i18n key with a guaranteed fallback.
+ * NEVER returns undefined - always returns a valid string.
+ */
+export function resolveI18nKey(key: unknown, fallbackKey = 'system.monitoring.default'): string {
+  if (typeof key === 'string' && key.trim().length > 0) {
+    return key.trim();
+  }
+  return fallbackKey;
+}
+
+/**
+ * Safe response mode resolution with fallback.
+ * Ensures invalid modes default to ASK_CLARIFICATION.
+ */
+export function resolveResponseModeString(mode: unknown, fallback = 'CLARIFICATION'): string {
+  const VALID_MODES = [
+    'OBSERVATION', 'CLARIFICATION', 'CLARIFICATION_REQUIRED', 'PHOTO_REQUIRED',
+    'MONITORING_ADVISED', 'TREATMENT', 'TREATMENT_ALLOWED', 'INFORMATION',
+    'NO_ACTION_NEEDED', 'ERROR', 'DECISION_PROVIDED', 'BLOCKED'
+  ];
+  
+  const modeStr = typeof mode === 'string' ? mode.toUpperCase().trim() : '';
+  
+  if (VALID_MODES.includes(modeStr)) {
+    return modeStr;
+  }
+  
+  console.warn(`[SafeString] Invalid response mode "${mode}" - falling back to ${fallback}`);
+  return fallback;
+}
+
+/**
+ * Safe extraction of severity from unknown input.
+ */
+export function resolveSeverity(input: unknown): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+  const VALID_SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+  const severity = typeof input === 'string' ? input.toUpperCase().trim() : '';
+  
+  if (VALID_SEVERITIES.includes(severity)) {
+    return severity as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  }
+  
+  return 'MEDIUM'; // Safe default
+}
+
+/**
+ * Create guaranteed action_codes array from input.
+ */
+export function resolveActionCodes(input: unknown): string[] {
+  if (Array.isArray(input)) {
+    return input.filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+  }
+  return [];
+}
+
 export default {
+  // Core guards
+  normalizeText,
+  safePreview,
+  hasText,
   safePreviewText,
   safeLowerCase,
   safeUpperCase,
@@ -275,12 +343,21 @@ export default {
   safeIncludes,
   safeLength,
   safeSubstring,
+  // Message handling
   normalizeFarmerMessage,
   hasTextContent,
   extractMessageContent,
   formatForLogging,
+  // Extraction defaults
   getEmptyExtractionResult,
+  // Regex safety
   safeRegexTest,
   safeRegexMatch,
+  // i18n/mode resolution (NEW)
+  resolveI18nKey,
+  resolveResponseModeString,
+  resolveSeverity,
+  resolveActionCodes,
+  // Version
   SAFE_STRING_VERSION
 };

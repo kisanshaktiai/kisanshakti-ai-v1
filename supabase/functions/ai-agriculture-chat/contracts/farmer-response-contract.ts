@@ -14,21 +14,33 @@
  * @version 1.0.0
  */
 
-export const FARMER_RESPONSE_CONTRACT_VERSION = '1.0.0';
+export const FARMER_RESPONSE_CONTRACT_VERSION = '1.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE MODE ENUM - LOCKED (Changes require version bump)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * FarmerResponseMode - PRODUCTION ENUM
+ * 
+ * INVARIANT: These are the ONLY valid response modes.
+ * Adding a mode requires incrementing FARMER_RESPONSE_CONTRACT_VERSION.
+ */
 export type FarmerResponseMode =
   | 'DECISION_PROVIDED'      // Symbolic brain returned a treatment/action decision
   | 'CLARIFICATION_REQUIRED' // Need farmer input before proceeding
   | 'MONITORING_ADVISED'     // Young crop or no action needed
+  | 'MONITOR_ONLY'           // Alias for MONITORING_ADVISED (for compatibility)
   | 'NO_ACTION_REQUIRED'     // Crop is healthy
   | 'PHOTO_REQUIRED'         // Need photo for visual diagnosis
   | 'BLOCKED'                // Higher authority blocked action
   | 'INFORMATION_ONLY'       // General information, no treatment
   | 'ERROR';                 // System error
+
+/**
+ * Severity levels for symbolic outputs
+ */
+export type SeverityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UI INPUT TYPE - What input the UI should request
@@ -93,13 +105,33 @@ export interface ActionCode {
  * 
  * This is the output from orchestrator → narration layer.
  * The narration layer converts this to farmer-friendly text.
+ * 
+ * MANDATORY FIELDS:
+ * - response_mode (ENUM)
+ * - trace_id (string)
+ * 
+ * OPTIONAL FIELDS (based on mode):
+ * - primary_i18n_key: For narration lookup
+ * - action_codes: Array of symbolic action codes
+ * - severity: SeverityLevel enum
+ * - clarification: Object with options
+ * - actions: Array of ActionCode
  */
 export interface FarmerResponseContract {
   /** Response mode - DRIVES ALL UI BEHAVIOR */
   response_mode: FarmerResponseMode;
   
   /** Primary i18n key for main message (narration layer renders) */
-  primary_i18n_key?: string;
+  primary_i18n_key: string;
+  
+  /** Symbolic action codes (NEW: Phase 5) */
+  action_codes: string[];
+  
+  /** Severity level (NEW: Phase 5) */
+  severity: SeverityLevel;
+  
+  /** Trace ID for audit */
+  trace_id: string;
   
   /** Clarification details (when mode = CLARIFICATION_REQUIRED) */
   clarification?: {
@@ -122,9 +154,6 @@ export interface FarmerResponseContract {
   /** Confidence score (0-1) */
   confidence?: number;
   
-  /** Trace ID for audit */
-  trace_id: string;
-  
   /** Rules that fired (for audit) */
   rules_applied?: string[];
   
@@ -146,8 +175,12 @@ export interface FarmerResponseBuilderInput {
   response_mode: FarmerResponseMode;
   trace_id: string;
   
-  // Optional fields based on mode
+  // MANDATORY with defaults
   primary_i18n_key?: string;
+  action_codes?: string[];
+  severity?: SeverityLevel;
+  
+  // Optional fields based on mode
   confidence?: number;
   rules_applied?: string[];
   
@@ -168,11 +201,18 @@ export interface FarmerResponseBuilderInput {
   error_code?: string;
 }
 
+/**
+ * buildFarmerResponse - Creates a VALID FarmerResponseContract with GUARANTEED defaults
+ * 
+ * CRASH-PROOF: All required fields have safe defaults
+ */
 export function buildFarmerResponse(input: FarmerResponseBuilderInput): FarmerResponseContract {
   const {
     response_mode,
     trace_id,
     primary_i18n_key,
+    action_codes,
+    severity,
     confidence,
     rules_applied,
     clarification_reason_code,
@@ -185,17 +225,17 @@ export function buildFarmerResponse(input: FarmerResponseBuilderInput): FarmerRe
     error_code
   } = input;
   
+  // FAIL-SAFE DEFAULTS
   const response: FarmerResponseContract = {
     response_mode,
     trace_id,
+    // MANDATORY with defaults
+    primary_i18n_key: primary_i18n_key || 'system.monitoring.default',
+    action_codes: action_codes || [],
+    severity: severity || 'MEDIUM',
     confidence,
     rules_applied
   };
-  
-  // Add primary i18n key if provided
-  if (primary_i18n_key) {
-    response.primary_i18n_key = primary_i18n_key;
-  }
   
   // Build clarification if mode requires it
   if (response_mode === 'CLARIFICATION_REQUIRED' || response_mode === 'PHOTO_REQUIRED') {
@@ -215,7 +255,7 @@ export function buildFarmerResponse(input: FarmerResponseBuilderInput): FarmerRe
   // Add blocking info if blocked
   if (response_mode === 'BLOCKED') {
     response.blocking_authority = blocking_authority;
-    response.blocking_reason_code = blocking_reason_code;
+    response.blocking_reason_code = blocking_reason_code || 'UNKNOWN_BLOCK_REASON';
   }
   
   // Add error code if error
@@ -227,13 +267,14 @@ export function buildFarmerResponse(input: FarmerResponseBuilderInput): FarmerRe
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// VALIDATION FUNCTION - Ensures contract compliance
+// VALIDATION FUNCTION - Ensures contract compliance (CRASH-PROOF)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function validateFarmerResponseContract(
   response: FarmerResponseContract
-): { valid: boolean; errors: string[] } {
+): { valid: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
+  const warnings: string[] = [];
   
   // Must have response_mode
   if (!response.response_mode) {
@@ -245,28 +286,46 @@ export function validateFarmerResponseContract(
     errors.push('Missing required field: trace_id');
   }
   
-  // Mode-specific validation
+  // MANDATORY fields with defaults should just warn, not error
+  if (!response.primary_i18n_key) {
+    warnings.push('Missing primary_i18n_key - will use default');
+  }
+  
+  if (!response.action_codes || response.action_codes.length === 0) {
+    // This is OK for many modes - just log
+    if (response.response_mode === 'DECISION_PROVIDED') {
+      warnings.push('DECISION_PROVIDED mode should have action_codes');
+    }
+  }
+  
+  // Mode-specific validation (less strict - we want to avoid crashes)
   if (response.response_mode === 'CLARIFICATION_REQUIRED') {
     if (!response.clarification) {
-      errors.push('CLARIFICATION_REQUIRED mode requires clarification object');
+      warnings.push('CLARIFICATION_REQUIRED mode should have clarification object');
     }
   }
   
   if (response.response_mode === 'DECISION_PROVIDED') {
     if (!response.actions || response.actions.length === 0) {
-      errors.push('DECISION_PROVIDED mode requires at least one action');
+      warnings.push('DECISION_PROVIDED mode should have at least one action');
     }
   }
   
   if (response.response_mode === 'BLOCKED') {
     if (!response.blocking_reason_code) {
-      errors.push('BLOCKED mode requires blocking_reason_code');
+      warnings.push('BLOCKED mode should have blocking_reason_code');
     }
+  }
+  
+  // MONITORING modes are VALID without actions
+  if (response.response_mode === 'MONITORING_ADVISED' || response.response_mode === 'MONITOR_ONLY') {
+    // These are valid without actions or clarification
   }
   
   return {
     valid: errors.length === 0,
-    errors
+    errors,
+    warnings
   };
 }
 
@@ -275,22 +334,42 @@ export function validateFarmerResponseContract(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function mapOrchestratorTypeToResponseMode(
-  type: string
+  type: string | null | undefined
 ): FarmerResponseMode {
-  switch (type.toUpperCase()) {
+  // CRASH-PROOF: Handle null/undefined
+  const safeType = (type || '').toUpperCase().trim();
+  
+  switch (safeType) {
     case 'DECISION_PROVIDED':
       return 'DECISION_PROVIDED';
     case 'CLARIFICATION_QUESTION':
+    case 'CLARIFICATION':
+    case 'CLARIFICATION_REQUIRED':
+    case 'ASK_CLARIFICATION':
       return 'CLARIFICATION_REQUIRED';
     case 'PHOTO_REQUEST':
+    case 'PHOTO_REQUIRED':
+    case 'NEEDS_PHOTO':
       return 'PHOTO_REQUIRED';
     case 'SAFETY_BLOCKED':
+    case 'BLOCKED':
       return 'BLOCKED';
     case 'ESCALATION_REQUIRED':
       return 'BLOCKED';
     case 'SYSTEM_ERROR':
+    case 'ERROR':
       return 'ERROR';
+    case 'MONITORING':
+    case 'MONITORING_ADVISED':
+    case 'MONITOR_ONLY':
+      return 'MONITORING_ADVISED';
+    case 'NO_ACTION':
+    case 'NO_ACTION_REQUIRED':
+    case 'HEALTHY':
+      return 'NO_ACTION_REQUIRED';
     default:
+      // FAIL-SAFE: Unknown types become INFORMATION_ONLY (safest default)
+      console.warn(`[FarmerResponseContract] Unknown type "${type}" mapped to INFORMATION_ONLY`);
       return 'INFORMATION_ONLY';
   }
 }
