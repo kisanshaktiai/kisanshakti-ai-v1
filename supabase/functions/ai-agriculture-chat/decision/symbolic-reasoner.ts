@@ -84,9 +84,10 @@ export interface FiredRule {
   cause: string;
   actions: {
     action_type: string;
-    response_mr?: string;
-    response_hi?: string;
-    response_en?: string;
+    action_text?: string;
+    reason_text?: string;
+    knowledge_text?: string;
+    i18n_key?: string;
     product_reference?: string;
     phi_days?: number;
     bee_toxicity?: string;
@@ -117,9 +118,9 @@ export interface InferenceResult {
   matched_responses: {
     rule_id: string;
     cause: string;
-    response_mr?: string;
-    response_hi?: string;
-    response_en?: string;
+    action_text?: string;
+    reason_text?: string;
+    i18n_key?: string;
   }[];
 }
 
