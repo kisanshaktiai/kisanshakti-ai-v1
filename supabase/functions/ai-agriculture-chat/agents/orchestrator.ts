@@ -774,130 +774,33 @@ export class AIAgentOrchestrator {
       metadata: {
         crop_code: cropCode,
         stage_code: stage,
-        das: daysSinceSowing
-      'VEGETATIVE': { mr: 'वाढीचा काळ', hi: 'वनस्पति काल', en: 'vegetative' },
-      'FLOWERING': { mr: 'फुलोरा', hi: 'फूलने का समय', en: 'flowering' },
-      'SQUARING': { mr: 'कळी अवस्था', hi: 'कली अवस्था', en: 'squaring' }
-    };
-    
-    const cropName = cropNames[cropCode.toUpperCase()]?.[language] || cropCode;
-    const stageName = stageNames[stage.toUpperCase()]?.[language] || stage;
-    
-    // Build pest/disease watch lists for this stage
-    const pestList = stageAdvice.pest_watch.slice(0, 3);
-    const diseaseList = stageAdvice.disease_watch.slice(0, 2);
-    
-    // Generate response message based on language
-    let message: string;
-    
-    if (language === 'mr') {
-      message = `🌱 **${cropName} (${stageName} अवस्था - ${daysSinceSowing} दिवस)**\n\n`;
-      message += `📍 तुमच्या समस्येचे निदान करण्यासाठी अधिक माहिती आवश्यक आहे.\n\n`;
-      
-      if (pestList.length > 0 || diseaseList.length > 0) {
-        message += `⚠️ **या अवस्थेत सामान्य समस्या:**\n`;
-        if (pestList.length > 0) message += `🐛 कीड: ${pestList.join(', ')}\n`;
-        if (diseaseList.length > 0) message += `🦠 रोग: ${diseaseList.join(', ')}\n\n`;
+        das: daysSinceSowing,
+        pest_watch: stageAdvice.pest_watch.slice(0, 3),
+        disease_watch: stageAdvice.disease_watch.slice(0, 2),
+        critical_actions: stageAdvice.critical_actions.slice(0, 3)
       }
-      
-      message += `👉 **तपासण्याच्या गोष्टी:**\n`;
-      stageAdvice.critical_actions.slice(0, 3).forEach((action, i) => {
-        message += `${i + 1}. ${action}\n`;
-      });
-      
-      message += `\n📸 **प्रभावित भागाचा फोटो पाठवा - त्यामुळे अचूक निदान होईल.**`;
-    } else if (language === 'hi') {
-      message = `🌱 **${cropName} (${stageName} अवस्था - ${daysSinceSowing} दिन)**\n\n`;
-      message += `📍 आपकी समस्या का निदान करने के लिए अधिक जानकारी आवश्यक है.\n\n`;
-      
-      if (pestList.length > 0 || diseaseList.length > 0) {
-        message += `⚠️ **इस अवस्था में सामान्य समस्याएं:**\n`;
-        if (pestList.length > 0) message += `🐛 कीट: ${pestList.join(', ')}\n`;
-        if (diseaseList.length > 0) message += `🦠 रोग: ${diseaseList.join(', ')}\n\n`;
-      }
-      
-      message += `👉 **जाँच करने वाली बातें:**\n`;
-      stageAdvice.critical_actions.slice(0, 3).forEach((action, i) => {
-        message += `${i + 1}. ${action}\n`;
-      });
-      
-      message += `\n📸 **प्रभावित भाग की फोटो भेजें - इससे सही निदान होगा.**`;
-    } else {
-      message = `🌱 **${cropName} (${stageName} stage - ${daysSinceSowing} DAS)**\n\n`;
-      message += `📍 Need more information to diagnose your problem.\n\n`;
-      
-      if (pestList.length > 0 || diseaseList.length > 0) {
-        message += `⚠️ **Common issues at this stage:**\n`;
-        if (pestList.length > 0) message += `🐛 Pests: ${pestList.join(', ')}\n`;
-        if (diseaseList.length > 0) message += `🦠 Diseases: ${diseaseList.join(', ')}\n\n`;
-      }
-      
-      message += `👉 **Things to check:**\n`;
-      stageAdvice.critical_actions.slice(0, 3).forEach((action, i) => {
-        message += `${i + 1}. ${action}\n`;
-      });
-      
-      message += `\n📸 **Please send a photo of the affected area for accurate diagnosis.**`;
-    }
-    
-    console.log(`✅ [STAGE_FALLBACK] Generated stage-aware response for ${cropCode}/${stage}`);
-    
-    return {
-      message,
-      actions: stageAdvice.critical_actions,
-      photoRequested: true
     };
   }
   
   /**
    * Generic fallback when no crop-stage advisor data is available
+   * Returns symbolic structure - narration layer handles i18n
    */
   private generateGenericFallback(
     cropCode: string,
     daysSinceSowing: number,
-    language: 'mr' | 'hi' | 'en'
-  ): { message: string; actions: string[]; photoRequested: boolean } {
-    // ✅ FIX: Translate crop names for proper Marathi/Hindi display
-    const translatedCrop = this.translateCropName(cropCode, language);
-    
-    const messages: Record<string, string> = {
-      mr: `🌾 तुमचे ${translatedCrop} पीक ${daysSinceSowing} दिवसांचे आहे.\n\n📍 समस्येचे अचूक निदान करण्यासाठी:\n\n• प्रभावित भागाचा फोटो पाठवा\n• किंवा लक्षणे स्पष्ट सांगा\n\n📷 फोटो पाठवल्यास योग्य उपाय सुचवता येईल.`,
-      hi: `🌾 आपकी ${translatedCrop} फसल ${daysSinceSowing} दिन पुरानी है.\n\n📍 समस्या का सही निदान करने के लिए:\n\n• प्रभावित भाग की फोटो भेजें\n• या लक्षण स्पष्ट बताएं\n\n📷 फोटो भेजने पर सही उपाय बताया जा सकेगा.`,
-      en: `🌾 Your ${translatedCrop} crop is ${daysSinceSowing} days old.\n\n📍 For accurate diagnosis:\n\n• Send photo of affected area\n• Or describe symptoms clearly\n\n📷 With a photo, I can suggest the right solution.`
-    };
-    
+    _language: 'mr' | 'hi' | 'en'
+  ): { i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> } {
+    // Return symbolic structure only - NO hardcoded language text
     return {
-      message: messages[language] || messages['en'],
-      actions: ['Monitor crop regularly', 'Send photo for diagnosis'],
-      photoRequested: true
+      i18n_key: 'fallback.generic.need_more_info',
+      action_codes: ['MONITOR', 'TAKE_PHOTO', 'DESCRIBE_SYMPTOMS'],
+      photoRequested: true,
+      metadata: {
+        crop_code: cropCode,
+        das: daysSinceSowing
+      }
     };
-  }
-  
-  /**
-   * Translate crop code to local language name
-   */
-  private translateCropName(cropCode: string, language: 'mr' | 'hi' | 'en'): string {
-    const CROP_NAMES: Record<string, Record<string, string>> = {
-      'SUGARCANE': { mr: 'ऊस', hi: 'गन्ना', en: 'Sugarcane' },
-      'COTTON': { mr: 'कापूस', hi: 'कपास', en: 'Cotton' },
-      'SOYBEAN': { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'Soybean' },
-      'RICE': { mr: 'भात', hi: 'धान', en: 'Rice' },
-      'WHEAT': { mr: 'गहू', hi: 'गेहूं', en: 'Wheat' },
-      'MAIZE': { mr: 'मका', hi: 'मक्का', en: 'Maize' },
-      'TOMATO': { mr: 'टोमॅटो', hi: 'टमाटर', en: 'Tomato' },
-      'ONION': { mr: 'कांदा', hi: 'प्याज', en: 'Onion' },
-      'CHILLI': { mr: 'मिरची', hi: 'मिर्च', en: 'Chilli' },
-      'GROUNDNUT': { mr: 'भुईमूग', hi: 'मूंगफली', en: 'Groundnut' },
-      'TUR': { mr: 'तूर', hi: 'अरहर', en: 'Pigeon Pea' },
-      'GRAM': { mr: 'हरभरा', hi: 'चना', en: 'Chickpea' },
-      'BANANA': { mr: 'केळी', hi: 'केला', en: 'Banana' },
-      'GRAPES': { mr: 'द्राक्षे', hi: 'अंगूर', en: 'Grapes' },
-      'POMEGRANATE': { mr: 'डाळिंब', hi: 'अनार', en: 'Pomegranate' },
-      'MANGO': { mr: 'आंबा', hi: 'आम', en: 'Mango' }
-    };
-    
-    const normalized = cropCode?.toUpperCase() || '';
-    return CROP_NAMES[normalized]?.[language] || cropCode;
   }
   
   /**
