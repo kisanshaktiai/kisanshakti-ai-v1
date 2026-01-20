@@ -549,13 +549,12 @@ serve(async (req) => {
               application_details: {
                 product_name: 'See structured response',
                 product_type: 'BOTANICAL',
+                // SSOT: Language-independent response fields only
                 action_text: layeredPrimaryDecision.action_text,
                 reason_text: layeredPrimaryDecision.reason_text,
                 knowledge_text: layeredPrimaryDecision.knowledge_text,
                 i18n_key: layeredPrimaryDecision.i18n_key,
-                response_mr: layeredPrimaryDecision.response_mr,
-                response_hi: layeredPrimaryDecision.response_hi,
-                response_en: layeredPrimaryDecision.response_en,
+                decision_trace_template: layeredPrimaryDecision.decision_trace_template,
                 rule_id: layeredPrimaryDecision.rule_id
               },
               expected_outcomes: {
@@ -607,9 +606,10 @@ serve(async (req) => {
               const matchedResponses = rawDecisionOutput.matched_responses || 
                                        rawDecisionOutput.layered_rule_result?.matched_responses || [];
               
-              // Filter for eligible responses (must have rule_id AND action_type AND content)
+              // SSOT: Filter for eligible responses using action_text or i18n_key
+              // NOTE: response_mr/hi/en were DROPPED per SSOT architecture
               const eligibleResponses = matchedResponses.filter((r: any) => 
-                r.rule_id && r.action_type && (r.action_text || r.response_en || r.response_mr)
+                r.rule_id && r.action_type && (r.action_text || r.i18n_key)
               );
               
               if (eligibleResponses.length > 0) {
@@ -632,13 +632,12 @@ serve(async (req) => {
                   application_details: {
                     product_name: 'See matched response',
                     product_type: 'BOTANICAL',
+                    // SSOT: Language-independent response fields only
                     action_text: firstMatch.action_text,
                     reason_text: firstMatch.reason_text,
                     knowledge_text: firstMatch.knowledge_text,
                     i18n_key: firstMatch.i18n_key,
-                    response_mr: firstMatch.response_mr,
-                    response_hi: firstMatch.response_hi,
-                    response_en: firstMatch.response_en,
+                    decision_trace_template: firstMatch.decision_trace_template,
                     rule_id: firstMatch.rule_id
                   },
                   expected_outcomes: {
