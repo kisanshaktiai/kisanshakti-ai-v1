@@ -59,6 +59,27 @@ import {
 } from './follow-up-generator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SAFE STRING UTILITIES - Crash-proof text operations
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  safePreviewText,
+  safeTrim,
+  safeLowerCase,
+  hasTextContent,
+  normalizeFarmerMessage,
+  extractMessageContent
+} from '../utils/safe-string.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPONSE MODE RENDERER - Mode-driven output generation
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  renderByMode,
+  resolveResponseMode,
+  type ModeRenderedOutput
+} from '../utils/response-mode-renderer.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -142,7 +163,7 @@ const DISEASE_TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN LLM FORMATTER FUNCTION - RENDER-ONLY MODE
+// MAIN LLM FORMATTER FUNCTION - RENDER-ONLY MODE (WITH MODE-DRIVEN FALLBACK)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export async function formatRecommendationsWithLLM(
@@ -151,9 +172,31 @@ export async function formatRecommendationsWithLLM(
   const startTime = Date.now();
   const traceId = input.trace_id || `fmt_${Date.now().toString(36)}`;
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SAFE INPUT NORMALIZATION - Prevent crashes from undefined text
+  // ═══════════════════════════════════════════════════════════════════════════
+  const safeFarmerMessage = normalizeFarmerMessage(input.farmer_message);
+  const hasText = hasTextContent(safeFarmerMessage);
+  
   console.log(`\n📝 [${traceId}] ═══ PHASE 5: LLM RENDER-ONLY FORMATTING ═══`);
   console.log(`   Language: ${input.language}`);
   console.log(`   Decision Status: ${input.decision_output?.status}`);
+  console.log(`   Has Text Input: ${hasText}`);
+  console.log(`   Message Preview: ${safePreviewText(safeFarmerMessage)}`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RESOLVE RESPONSE MODE - Determines rendering strategy
+  // ═══════════════════════════════════════════════════════════════════════════
+  const responseMode = resolveResponseMode({
+    response_mode: input.decision_output?.metadata?.response_mode,
+    gate_action: input.decision_output?.metadata?.gate_action,
+    has_treatment: !!input.decision_output?.primary_decision?.action_type,
+    has_clarification: !!input.decision_output?.clarification_needed,
+    has_options: (input.decision_output?.clarification_options?.length || 0) > 0,
+    needs_photo: input.decision_output?.needs_photo_for_diagnosis
+  });
+  
+  console.log(`   Resolved Response Mode: ${responseMode}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // P1-4: GATE CHECK REMOVED - NOW HAPPENS IN index.ts VIA evaluateUnifiedGate()
@@ -1099,20 +1142,103 @@ async function callLovableAIWithTimeout(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TEMPLATE FALLBACK (when LLM unavailable)
+// TEMPLATE FALLBACK (when LLM unavailable) - MODE-DRIVEN
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLMFormatterOutput {
-  const lang = input.language;
+  const lang = input.language || 'mr';
   const decision = input.decision_output;
-  const parts: string[] = [];
   
-  // SESSION-AWARE TEMPLATE FALLBACK - CRITICAL FIX
-  // NEVER use cached/global data - ALWAYS use current decision_output
-  console.log(`   📋 Building SESSION-AWARE template fallback`);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RESOLVE RESPONSE MODE - Determines rendering approach
+  // ═══════════════════════════════════════════════════════════════════════════
+  const responseMode = resolveResponseMode({
+    response_mode: decision?.metadata?.response_mode,
+    gate_action: decision?.metadata?.gate_action,
+    has_treatment: !!decision?.primary_decision?.action_type,
+    has_clarification: !!decision?.clarification_needed,
+    has_options: (decision?.clarification_options?.length || 0) > 0,
+    needs_photo: decision?.needs_photo_for_diagnosis
+  });
+  
+  console.log(`   📋 Building MODE-DRIVEN template fallback`);
+  console.log(`   📋 Response Mode: ${responseMode}`);
   console.log(`   📋 Decision status: ${decision?.status}`);
   console.log(`   📋 Primary action: ${decision?.primary_decision?.action_type}`);
   console.log(`   📋 Land crop: ${input.land_context?.current_crop}`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODE: CLARIFICATION - Render options without requiring text
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (responseMode === ResponseMode.CLARIFICATION || decision?.clarification_needed) {
+    const modeOutput = renderByMode(ResponseMode.CLARIFICATION, lang, {
+      options: decision?.clarification_options?.map((opt: any) => ({
+        label: opt.label || opt.display_text || opt.text,
+        value: opt.value || opt.observation_key || opt.label,
+        observation_key: opt.observation_key
+      }))
+    });
+    
+    return {
+      formatted_response: modeOutput.primary_message || '',
+      confidence: 0.8,
+      source: 'TEMPLATE_FALLBACK',
+      processing_time_ms: Date.now() - startTime,
+      sections_included: ['clarification'],
+      validation_passed: true,
+      validation_violations: [],
+      gate_status: GateStatus.PARTIAL,
+      gate_action: GateAction.REQUIRE_CLARIFICATION,
+      reasoning_included: false
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODE: PHOTO_REQUIRED - Camera prompt
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (decision?.needs_photo_for_diagnosis) {
+    const modeOutput = renderByMode('PHOTO_REQUIRED', lang, {});
+    
+    return {
+      formatted_response: modeOutput.primary_message || '',
+      confidence: 0.8,
+      source: 'TEMPLATE_FALLBACK',
+      processing_time_ms: Date.now() - startTime,
+      sections_included: ['photo_request'],
+      validation_passed: true,
+      validation_violations: [],
+      gate_status: GateStatus.PARTIAL,
+      gate_action: GateAction.REQUEST_PHOTO,
+      reasoning_included: false
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODE: OBSERVATION/MONITORING - Simple reassurance
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (responseMode === ResponseMode.OBSERVATION || !decision?.primary_decision) {
+    const modeOutput = renderByMode(ResponseMode.OBSERVATION, lang, {
+      monitoring_message: decision?.monitoring_note
+    });
+    
+    return {
+      formatted_response: modeOutput.primary_message || '',
+      confidence: 0.7,
+      source: 'TEMPLATE_FALLBACK',
+      processing_time_ms: Date.now() - startTime,
+      sections_included: ['observation'],
+      validation_passed: true,
+      validation_violations: [],
+      gate_status: GateStatus.PASS,
+      gate_action: GateAction.PROVIDE_OBSERVATION_ONLY,
+      reasoning_included: false
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MODE: TREATMENT - Full recommendation with legacy template
+  // ═══════════════════════════════════════════════════════════════════════════
+  const parts: string[] = [];
   
   // Greeting
   const greetings: Record<string, string> = {

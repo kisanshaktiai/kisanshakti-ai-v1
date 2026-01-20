@@ -104,11 +104,27 @@ export function safeSubstring(input: unknown, start: number, end?: number): stri
  * Normalize farmer message to safe string.
  * This is the PRIMARY guard to use at function entry points.
  * 
+ * Handles: string, {content: string}, {text: string}, {message: string}
+ * 
  * @param input - Any input value (usually farmer message)
  * @returns Guaranteed string (original or empty)
  */
 export function normalizeFarmerMessage(input: unknown): string {
-  return typeof input === 'string' ? input : '';
+  if (typeof input === 'string') {
+    return input;
+  }
+  if (input === null || input === undefined) {
+    return '';
+  }
+  // Handle objects with content/text properties
+  if (typeof input === 'object') {
+    const obj = input as Record<string, unknown>;
+    if (typeof obj.content === 'string') return obj.content;
+    if (typeof obj.text === 'string') return obj.text;
+    if (typeof obj.message === 'string') return obj.message;
+    if (typeof obj.farmer_message === 'string') return obj.farmer_message;
+  }
+  return '';
 }
 
 /**
@@ -119,6 +135,55 @@ export function normalizeFarmerMessage(input: unknown): string {
  */
 export function hasTextContent(input: unknown): boolean {
   return typeof input === 'string' && input.trim().length > 0;
+}
+
+/**
+ * Extract message content from various input formats safely.
+ * More comprehensive than normalizeFarmerMessage.
+ */
+export function extractMessageContent(input: unknown): string {
+  // Direct string
+  if (typeof input === 'string') {
+    return input;
+  }
+  
+  // Null/undefined
+  if (input === null || input === undefined) {
+    return '';
+  }
+  
+  // Object with content properties
+  if (typeof input === 'object') {
+    const obj = input as Record<string, unknown>;
+    
+    // Common message formats
+    if (typeof obj.content === 'string') return obj.content;
+    if (typeof obj.text === 'string') return obj.text;
+    if (typeof obj.message === 'string') return obj.message;
+    if (typeof obj.farmer_message === 'string') return obj.farmer_message;
+    if (typeof obj.user_message === 'string') return obj.user_message;
+    
+    // Nested content
+    if (obj.content && typeof obj.content === 'object') {
+      const nested = obj.content as Record<string, unknown>;
+      if (typeof nested.text === 'string') return nested.text;
+    }
+  }
+  
+  return '';
+}
+
+/**
+ * Format message for safe logging (truncated + sanitized).
+ */
+export function formatForLogging(input: unknown, maxLength = 100): string {
+  const text = extractMessageContent(input);
+  if (!text) {
+    return '[EMPTY_MESSAGE]';
+  }
+  // Remove newlines for single-line logging
+  const cleaned = text.replace(/[\r\n]+/g, ' ').trim();
+  return safePreviewText(cleaned, maxLength);
 }
 
 /**
@@ -179,6 +244,8 @@ export default {
   safeSubstring,
   normalizeFarmerMessage,
   hasTextContent,
+  extractMessageContent,
+  formatForLogging,
   getEmptyExtractionResult,
   safeRegexTest,
   safeRegexMatch,
