@@ -1,25 +1,30 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * RESPONSE MODE RENDERER v1.0.0 - CRASH-PROOF OUTPUT SYSTEM
+ * RESPONSE MODE RENDERER v1.1.0 - CRASH-PROOF OUTPUT SYSTEM
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * CRITICAL: This module renders responses based on RESPONSE MODE, not text presence.
  * 
  * INVARIANT: Farmer-facing responses are mode-driven, not text-assumed.
  * 
- * SUPPORTED MODES:
- * - MONITORING_ADVISED: Simple reassurance, no LLM required
- * - CLARIFICATION_REQUIRED: Render options array, no text required
- * - PHOTO_REQUIRED: Camera prompt
+ * SUPPORTED MODES (Aligned with UI Response Contract):
  * - OBSERVATION: 1-2 short sentences only
- * - TREATMENT_ALLOWED: Full explanation + steps
+ * - CLARIFICATION_REQUIRED / CLARIFICATION: Render options array, no text required
+ * - PHOTO_REQUIRED: Camera prompt
+ * - MONITORING_ADVISED: Simple reassurance, no LLM required
+ * - TREATMENT_ALLOWED / TREATMENT: Full explanation + steps
+ * - NO_ACTION_NEEDED: Healthy crop, no action required
  * - INFORMATION: General information response
+ * - ERROR: Error state with recovery message
  * 
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 import { ResponseMode } from '../decision/authority-types.ts';
 import { safePreviewText, safeTrim, hasTextContent } from './safe-string.ts';
+
+// Re-export for compatibility
+export { ResponseMode };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // OUTPUT CONTRACT - Explicit response structure
@@ -52,6 +57,9 @@ export interface ModeRenderedOutput {
   
   /** Rendering source for audit */
   render_source: 'MODE_RENDERER' | 'FALLBACK';
+  
+  /** Whether photo upload is supported */
+  supports_photo_upload?: boolean;
 }
 
 export interface ClarificationOption {
@@ -59,6 +67,7 @@ export interface ClarificationOption {
   value: string;
   observation_key?: string;
   icon?: string;
+  diagnostic_power?: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface PhotoGuidance {
@@ -101,6 +110,11 @@ const MODE_TEMPLATES: Record<string, Record<string, string>> = {
     hi: '❓ कृपया नीचे से एक चुनें:',
     en: '❓ Please select one of the following:'
   },
+  CLARIFICATION: {
+    mr: '❓ कृपया खालीलपैकी एक निवडा:',
+    hi: '❓ कृपया नीचे से एक चुनें:',
+    en: '❓ Please select one of the following:'
+  },
   INFORMATION: {
     mr: '📋 माहिती:',
     hi: '📋 जानकारी:',
@@ -110,6 +124,21 @@ const MODE_TEMPLATES: Record<string, Record<string, string>> = {
     mr: '💊 शिफारस:',
     hi: '💊 सिफारिश:',
     en: '💊 Recommendation:'
+  },
+  TREATMENT_ALLOWED: {
+    mr: '💊 शिफारस:',
+    hi: '💊 सिफारिश:',
+    en: '💊 Recommendation:'
+  },
+  NO_ACTION_NEEDED: {
+    mr: '✅ कोणतीही कृती आवश्यक नाही. पीक निरोगी आहे.',
+    hi: '✅ कोई कार्रवाई आवश्यक नहीं। फसल स्वस्थ है।',
+    en: '✅ No action needed. Your crop is healthy.'
+  },
+  ERROR: {
+    mr: '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.',
+    hi: '⚠️ कुछ गलत हुआ। कृपया दोबारा प्रयास करें।',
+    en: '⚠️ Something went wrong. Please try again.'
   }
 };
 
