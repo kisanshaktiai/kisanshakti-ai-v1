@@ -1,6 +1,22 @@
 /**
+ * ARCHITECTURAL CONTRACT — INTENT RESOLVER
+ *
+ * This module:
+ * - Maps intent_code → observation_code[]
+ * - Enforces biological validity via crop + DAS
+ *
+ * This module MUST NOT:
+ * - handle language
+ * - generate text
+ * - decide clarification
+ * - perform diagnosis
+ *
+ * All narration is handled by the LLM response layer.
+ */
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
- * INTENT RESOLVER v1.0.0
+ * INTENT RESOLVER v2.0.0 - PURE SYMBOLIC RESOLUTION
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
@@ -11,44 +27,43 @@
  * FLOW:
  * 1. LLM extracts intent_code (e.g., COLOR_CHANGE, STEM_DAMAGE)
  * 2. This module queries intent_observation_mapping table
- * 3. Returns biologically valid observations for the crop/stage/DAS
+ * 3. Returns biologically valid observation_codes for the crop/DAS
  * 
- * NO HARDCODED RULES - Everything comes from database.
+ * NO LANGUAGE HANDLING - Pure symbolic codes only.
+ * NO CLARIFICATION LOGIC - Decided by confidence gates downstream.
+ * NO UI TEXT - Handled by narration layer.
  * 
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.9';
 
-export const INTENT_RESOLVER_VERSION = '1.0.0';
+export const INTENT_RESOLVER_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TYPE DEFINITIONS
+// TYPE DEFINITIONS - PURE SYMBOLIC (NO LANGUAGE, NO UI TEXT)
 // ═══════════════════════════════════════════════════════════════════════════
 
+/**
+ * Input for intent resolution - NO language field
+ */
 export interface IntentResolverInput {
   intent_code: string;
   crop_code: string;
   days_since_sowing: number;
   growth_stage?: string;
-  language: 'mr' | 'hi' | 'en';
 }
 
-export interface ResolvedObservation {
-  observation_code: string;
-  display_text: string;
-  description_text: string;
-  confidence_rank: number;
-}
-
+/**
+ * Output from intent resolution - observation codes ONLY
+ */
 export interface IntentResolverOutput {
   success: boolean;
   intent_code: string;
   crop_code: string;
   growth_stage: string;
-  observations: ResolvedObservation[];
-  clarification_needed: boolean;
-  clarification_question?: string;
+  observation_codes: string[];
+  confidence_ranks: number[];
   error?: string;
 }
 
@@ -97,39 +112,36 @@ export async function getStageFromDASDatabase(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OBSERVATION LOOKUP FROM DATABASE
+// OBSERVATION LOOKUP FROM DATABASE - CODES ONLY, NO TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+interface ObservationMapping {
+  observation_code: string;
+  confidence_rank: number;
+}
+
 /**
- * Get valid observations for an intent + crop + DAS from database
+ * Get valid observation codes for an intent + crop + DAS from database
+ * Returns ONLY codes and confidence ranks - NO translations
  */
-export async function getValidObservationsForIntent(
+export async function getValidObservationCodes(
   intentCode: string,
   cropCode: string,
-  das: number,
-  language: 'mr' | 'hi' | 'en' = 'en'
-): Promise<ResolvedObservation[]> {
+  das: number
+): Promise<ObservationMapping[]> {
   const supabase = getSupabaseClient();
   
-  console.log(`📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropCode}, DAS=${das}, lang=${language}`);
+  console.log(`📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropCode}, DAS=${das}`);
   
-  // Query intent_observation_mapping with translations
+  // Query intent_observation_mapping - CODES ONLY, NO translation joins
   const { data: mappings, error: mapError } = await supabase
     .from('intent_observation_mapping')
-    .select(`
-      observation_code,
-      confidence_rank,
-      observation_translations!inner(
-        display_text,
-        description_text
-      )
-    `)
+    .select('observation_code, confidence_rank')
     .eq('intent_code', intentCode)
     .eq('crop_code', cropCode.toUpperCase())
     .eq('is_active', true)
     .lte('das_min', das)
     .gte('das_max', das)
-    .eq('observation_translations.language_code', language)
     .order('confidence_rank', { ascending: true });
   
   if (mapError) {
@@ -142,66 +154,25 @@ export async function getValidObservationsForIntent(
     return [];
   }
   
-  console.log(`✅ [IntentResolver] Found ${mappings.length} valid observations`);
+  console.log(`✅ [IntentResolver] Found ${mappings.length} valid observation codes`);
   
-  // Transform to output format
-  return mappings.map((m: any) => ({
-    observation_code: m.observation_code,
-    display_text: m.observation_translations?.[0]?.display_text || m.observation_code,
-    description_text: m.observation_translations?.[0]?.description_text || '',
-    confidence_rank: m.confidence_rank
-  }));
+  return mappings;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// INTENT TRANSLATION LOOKUP
+// MAIN RESOLVER FUNCTION - PURE SYMBOLIC OUTPUT
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get translated clarification question for an intent
- */
-export async function getIntentClarificationQuestion(
-  intentCode: string,
-  language: 'mr' | 'hi' | 'en' = 'mr'
-): Promise<string | null> {
-  const supabase = getSupabaseClient();
-  
-  const { data, error } = await supabase
-    .from('intent_translations')
-    .select('question_text')
-    .eq('intent_code', intentCode)
-    .eq('language_code', language)
-    .single();
-  
-  if (error || !data) {
-    // Fallback to English
-    const { data: enData } = await supabase
-      .from('intent_translations')
-      .select('question_text')
-      .eq('intent_code', intentCode)
-      .eq('language_code', 'en')
-      .single();
-    
-    return enData?.question_text || null;
-  }
-  
-  return data.question_text;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// MAIN RESOLVER FUNCTION
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Resolve an intent to biologically valid observations
+ * Resolve an intent to biologically valid observation codes
  * 
- * @param input - Intent code, crop, DAS, language
- * @returns Resolved observations with translations
+ * @param input - Intent code, crop, DAS (NO language)
+ * @returns Observation codes and confidence ranks ONLY
  */
 export async function resolveIntentToObservations(
   input: IntentResolverInput
 ): Promise<IntentResolverOutput> {
-  const { intent_code, crop_code, days_since_sowing, language } = input;
+  const { intent_code, crop_code, days_since_sowing } = input;
   
   console.log(`\n🔍 [IntentResolver v${INTENT_RESOLVER_VERSION}] Resolving intent...`);
   console.log(`   Intent: ${intent_code}`);
@@ -209,37 +180,30 @@ export async function resolveIntentToObservations(
   
   try {
     // 1. Get growth stage from database
-    let growthStage = input.growth_stage || await getStageFromDASDatabase(crop_code, days_since_sowing);
+    const growthStage = input.growth_stage || await getStageFromDASDatabase(crop_code, days_since_sowing);
     
     console.log(`   Stage: ${growthStage}`);
     
-    // 2. Get valid observations for this intent + crop + DAS
-    const observations = await getValidObservationsForIntent(
+    // 2. Get valid observation codes for this intent + crop + DAS
+    const mappings = await getValidObservationCodes(
       intent_code,
       crop_code,
-      days_since_sowing,
-      language
+      days_since_sowing
     );
     
-    // 3. Determine if clarification is needed
-    const clarificationNeeded = observations.length > 1;
+    // 3. Extract codes and ranks into parallel arrays
+    const observation_codes = mappings.map(m => m.observation_code);
+    const confidence_ranks = mappings.map(m => m.confidence_rank);
     
-    // 4. Get clarification question if needed
-    let clarificationQuestion: string | undefined;
-    if (clarificationNeeded) {
-      clarificationQuestion = await getIntentClarificationQuestion(intent_code, language) || undefined;
-    }
-    
-    console.log(`   Found: ${observations.length} observations, clarification: ${clarificationNeeded}`);
+    console.log(`   Found: ${observation_codes.length} observation codes`);
     
     return {
       success: true,
       intent_code,
       crop_code: crop_code.toUpperCase(),
       growth_stage: growthStage,
-      observations,
-      clarification_needed: clarificationNeeded,
-      clarification_question: clarificationQuestion
+      observation_codes,
+      confidence_ranks
     };
     
   } catch (error) {
@@ -250,15 +214,15 @@ export async function resolveIntentToObservations(
       intent_code,
       crop_code: crop_code.toUpperCase(),
       growth_stage: 'UNKNOWN',
-      observations: [],
-      clarification_needed: true,
+      observation_codes: [],
+      confidence_ranks: [],
       error: error instanceof Error ? error.message : 'Unknown error'
     };
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// VALIDATION HELPER
+// VALIDATION HELPER - PURE SYMBOLIC
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -269,7 +233,7 @@ export async function isObservationValidForCropStage(
   observationCode: string,
   cropCode: string,
   das: number
-): Promise<{ valid: boolean; reason: string }> {
+): Promise<{ valid: boolean; reason_code: string }> {
   const supabase = getSupabaseClient();
   
   // Check if this observation exists in mapping for this crop/DAS
@@ -284,16 +248,16 @@ export async function isObservationValidForCropStage(
     .limit(1);
   
   if (error) {
-    return { valid: true, reason: 'Database error - allowing observation' };
+    return { valid: true, reason_code: 'DB_ERROR_ALLOW' };
   }
   
   if (data && data.length > 0) {
-    return { valid: true, reason: `${observationCode} is valid for ${cropCode} at DAS ${das}` };
+    return { valid: true, reason_code: 'VALID_FOR_CROP_DAS' };
   }
   
   return {
     valid: false,
-    reason: `${observationCode} is not biologically valid for ${cropCode} at DAS ${das}`
+    reason_code: 'INVALID_FOR_CROP_DAS'
   };
 }
 
@@ -328,10 +292,14 @@ export function isValidIntentCode(code: string): code is IntentCode {
   return VALID_INTENT_CODES.includes(code as IntentCode);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// EXPORTS
+// ═══════════════════════════════════════════════════════════════════════════
+
 export default {
   resolveIntentToObservations,
   getStageFromDASDatabase,
-  getValidObservationsForIntent,
+  getValidObservationCodes,
   isObservationValidForCropStage,
   isValidIntentCode,
   VALID_INTENT_CODES,
