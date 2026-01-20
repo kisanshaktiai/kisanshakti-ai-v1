@@ -702,6 +702,9 @@ export function createUnknownDiagnosisResponse(
 /**
  * Format DiagnosisFirstOutput for ClarificationOptionsUI.
  * Converts to the format expected by the frontend.
+ * 
+ * v1.1.1: FIX - Prevent duplicate text in labels by checking for similarity
+ * between cause_label and observation_label before combining them.
  */
 export function formatForClarificationUI(
   output: DiagnosisFirstOutput
@@ -727,16 +730,46 @@ export function formatForClarificationUI(
     growth_stage: string;
   };
 } {
+  // Helper: Check if two labels are similar (would cause duplication)
+  const areLabelsSimilar = (a: string, b: string): boolean => {
+    if (!a || !b) return false;
+    const normA = a.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').trim();
+    const normB = b.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '').trim();
+    // Check for substring containment or high overlap
+    if (normA === normB) return true;
+    if (normA.includes(normB) || normB.includes(normA)) return true;
+    // Check for >70% character overlap using Jaccard-like similarity
+    const setA = new Set(normA.split(''));
+    const setB = new Set(normB.split(''));
+    const intersection = [...setA].filter(c => setB.has(c)).length;
+    const union = new Set([...setA, ...setB]).size;
+    return union > 0 && (intersection / union) > 0.7;
+  };
+
   // Convert diagnoses to clarification options format
-  const options = output.diagnoses.map(d => ({
-    id: d.id,
-    label: `${d.icon} ${d.cause_label} (${d.observation_label})`,
-    observation_key: d.observation_key,
-    rule_id: d.rule_id,
-    confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
-    icon: d.icon,
-    cause: d.cause
-  }));
+  // FIX: Avoid duplication when cause_label and observation_label are similar
+  const options = output.diagnoses.map(d => {
+    let label: string;
+    
+    // If cause_label already contains observation_label or they're very similar, use only cause_label
+    if (areLabelsSimilar(d.cause_label, d.observation_label)) {
+      // Only use cause_label (with icon)
+      label = `${d.icon} ${d.cause_label}`;
+    } else {
+      // Combine both (no duplication)
+      label = `${d.icon} ${d.cause_label} (${d.observation_label})`;
+    }
+    
+    return {
+      id: d.id,
+      label,
+      observation_key: d.observation_key,
+      rule_id: d.rule_id,
+      confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
+      icon: d.icon,
+      cause: d.cause
+    };
+  });
   
   // Add photo option at end
   options.push({
