@@ -195,6 +195,12 @@ export interface UnifiedGateInput {
       dosage?: string;
     }>;
     clarification_needed?: boolean;
+    clarification_options?: Array<{
+      label: string;
+      value: string;
+      observation_key?: string;
+      i18n_key?: string;
+    }>;
   } | null;
   
   // Crop context
@@ -214,6 +220,22 @@ export interface UnifiedGateInput {
   
   // Land context
   land_id?: string;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW: Confidence-driven fields (CRITICAL FOR MODE RESOLUTION)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  /** Decision confidence from semantic extraction (0-100) */
+  decision_confidence?: number;
+  
+  /** Whether photo would help resolve visual ambiguity */
+  has_visual_ambiguity?: boolean;
+  
+  /** Semantic extractor confidence */
+  semantic_confidence?: number;
+  
+  /** Observation certainty from prior clarification */
+  observation_certainty?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -335,6 +357,29 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   console.log(`   Treatments Allowed by Authority: ${authority_decision.treatments_allowed}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // CALCULATE DECISION CONFIDENCE (CRITICAL FOR MODE RESOLUTION)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const baseConfidence = input.decision_confidence ?? 0;
+  const semanticConfidence = input.semantic_confidence ?? 50;
+  const observationCertainty = input.observation_certainty ?? 50;
+  
+  // Weighted confidence calculation
+  const calculatedConfidence = Math.round(
+    (baseConfidence * 0.4) + 
+    (semanticConfidence * 0.3) + 
+    (observationCertainty * 0.3)
+  );
+  
+  // Detect symptom presence from input
+  const hasSymptoms = !!(input.symptom_keys && input.symptom_keys.length > 0);
+  const hasVisualAmbiguity = input.has_visual_ambiguity ?? false;
+  const clarificationOptions = symbolic_decision?.clarification_options ?? [];
+  
+  console.log(`   Decision Confidence: ${calculatedConfidence}`);
+  console.log(`   Has Symptoms: ${hasSymptoms}`);
+  console.log(`   Has Visual Ambiguity: ${hasVisualAmbiguity}`);
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // GATE 1: EMERGENCY BYPASS CHECK
   // ═══════════════════════════════════════════════════════════════════════════
   
@@ -361,6 +406,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       missing_criteria: [],
       reason: 'Emergency severity detected - fast-track enabled',
       confidence_level: 'MEDIUM',
+      decision_confidence: 80,
+      has_symptoms: hasSymptoms,
+      has_visual_ambiguity: false,
+      clarification_options: [],
       gate_version: UNIFIED_GATE_VERSION,
       checked_at: checkedAt
     };
@@ -402,6 +451,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       missing_criteria: [],
       reason: `${authority_decision.authority} authority blocks crop treatments: ${authority_decision.reason}`,
       confidence_level: 'HIGH',
+      decision_confidence: 80,
+      has_symptoms: hasSymptoms,
+      has_visual_ambiguity: false,
+      clarification_options: [],
       gate_version: UNIFIED_GATE_VERSION,
       checked_at: checkedAt
     };
@@ -434,6 +487,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       missing_criteria: ['CLARIFICATION_RESPONSE'],
       reason: 'Clarification required before treatment can be recommended',
       confidence_level: 'LOW',
+      decision_confidence: calculatedConfidence,
+      has_symptoms: hasSymptoms,
+      has_visual_ambiguity: hasVisualAmbiguity,
+      clarification_options: clarificationOptions,
       gate_version: UNIFIED_GATE_VERSION,
       checked_at: checkedAt
     };
@@ -463,7 +520,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       blocked_actions: [...TREATMENT_ACTIONS],
       allowed_products: [],
       allowed_dosages: [],
-      response_mode: ResponseMode.INFORMATION,
+      // CRITICAL FIX: Use confidence-driven mode instead of always INFORMATION
+      response_mode: hasSymptoms && calculatedConfidence < 50 
+        ? (hasVisualAmbiguity ? ResponseMode.PHOTO_REQUIRED : ResponseMode.CLARIFICATION)
+        : ResponseMode.INFORMATION,
       authority_decision,
       criteria_results: {
         authority_resolved: { passed: authorityResolved, reason: authority_decision.reason },
@@ -475,6 +535,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       missing_criteria: ['SYMBOLIC_DECISION'],
       reason: 'No symbolic brain decision - LLM restricted to information only',
       confidence_level: 'LOW',
+      decision_confidence: calculatedConfidence,
+      has_symptoms: hasSymptoms,
+      has_visual_ambiguity: hasVisualAmbiguity,
+      clarification_options: hasSymptoms ? clarificationOptions : [],
       gate_version: UNIFIED_GATE_VERSION,
       checked_at: checkedAt
     };
@@ -537,6 +601,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
         missing_criteria: ['PHOTO_CONFIRMATION', 'SEVERITY_ASSESSMENT'],
         reason: `Diagnostic escalation: symptoms identified but confidence below treatment threshold. Photo recommended.`,
         confidence_level: 'MEDIUM',
+        decision_confidence: 40,
+        has_symptoms: true,
+        has_visual_ambiguity: true,
+        clarification_options: [],
         gate_version: UNIFIED_GATE_VERSION,
         checked_at: checkedAt,
         diagnostic_escalation: escalationData
@@ -566,6 +634,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       missing_criteria: ['CONFIRMED_DIAGNOSIS'],
       reason: `Young crop (${input.growth_stage || 'early'} stage, ${input.days_since_sowing || 0} days) without confirmed diagnosis - monitoring only`,
       confidence_level: 'MEDIUM',
+      decision_confidence: 50,
+      has_symptoms: false,
+      has_visual_ambiguity: false,
+      clarification_options: [],
       gate_version: UNIFIED_GATE_VERSION,
       checked_at: checkedAt
     };
@@ -598,6 +670,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       missing_criteria: ['PRODUCTS_AND_DOSAGES'],
       reason: 'Symbolic brain returned treatment action but no products/dosages - blocking LLM',
       confidence_level: 'MEDIUM',
+      decision_confidence: 60,
+      has_symptoms: hasSymptoms,
+      has_visual_ambiguity: false,
+      clarification_options: [],
       gate_version: UNIFIED_GATE_VERSION,
       checked_at: checkedAt
     };
@@ -631,6 +707,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
     missing_criteria: [],
     reason: 'All criteria met - treatment recommendations allowed',
     confidence_level: 'HIGH',
+    decision_confidence: 85,
+    has_symptoms: hasSymptoms,
+    has_visual_ambiguity: false,
+    clarification_options: [],
     gate_version: UNIFIED_GATE_VERSION,
     checked_at: checkedAt
   };
