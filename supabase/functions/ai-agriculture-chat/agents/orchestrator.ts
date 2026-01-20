@@ -206,6 +206,16 @@ import {
   type PhenologyResult 
 } from './gdd-phenology-engine.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SAFE STRING UTILITIES - Production-grade guards against undefined/null
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  safePreviewText,
+  normalizeFarmerMessage,
+  hasTextContent,
+  safeLowerCase
+} from '../utils/safe-string.ts';
+
 // P0: Agricultural NLP Validator - Marathi/Hindi validation with fuzzy matching
 import { 
   validateAgricultureNLP, 
@@ -841,6 +851,13 @@ export class AIAgentOrchestrator {
     const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
     
     // ═══════════════════════════════════════════════════════════════════════════
+    // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
+    // Valid flows: text input, image-only, option-click, monitoring mode, system continuation
+    // ═══════════════════════════════════════════════════════════════════════════
+    const safeFarmerMessage = normalizeFarmerMessage(farmerMessage);
+    const hasTextInput = hasTextContent(safeFarmerMessage);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
     // PHASE-18: Layer timing infrastructure for 3-layer architecture visibility
     // ═══════════════════════════════════════════════════════════════════════════
     const layerTimings = {
@@ -853,7 +870,8 @@ export class AIAgentOrchestrator {
     
     console.log(`\n🚀 [${traceId}] Orchestrator v${ORCHESTRATOR_VERSION}: Starting full diagnostic flow...`);
     console.log(`   [${traceId}] Session: ${sessionId}`);
-    console.log(`   [${traceId}] Message: ${farmerMessage.substring(0, 50)}...`);
+    console.log(`   [${traceId}] Message: ${safePreviewText(safeFarmerMessage)}`);
+    console.log(`   [${traceId}] HasText: ${hasTextInput}, HasPhoto: ${!!options.photoUrl}`);
     
     // PHASE 8: Log session context for debugging
     if (options.sessionState?.hasPreviousRecommendations) {
@@ -1254,21 +1272,21 @@ export class AIAgentOrchestrator {
       // ========================================
       if (pendingOptionsCount > 0) {
         // Run Language Induction FIRST to detect new agricultural symptoms
-        const earlyInductionResult = induceCanonicalSymbols(farmerMessage);
+        const earlyInductionResult = induceCanonicalSymbols(safeFarmerMessage);
         const hasNewSymptoms = earlyInductionResult.symptoms.length > 0;
         const hasNewCrop = earlyInductionResult.crop !== null;
         
         // Check if this looks like a new query rather than option selection
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
-        const isNumericSelection = /^[१२३४१२३४1-4]$/.test(farmerMessage.trim());
+        const isNumericSelection = /^[१२३४१२३४1-4]$/.test(safeFarmerMessage.trim());
         const isOptionTextMatch = pendingOptions.some(opt => 
-          farmerMessage.toLowerCase().includes(opt.toLowerCase().slice(0, 10)) ||
-          opt.toLowerCase().includes(farmerMessage.toLowerCase())
+          safeFarmerMessage.toLowerCase().includes(opt.toLowerCase().slice(0, 10)) ||
+          opt.toLowerCase().includes(safeFarmerMessage.toLowerCase())
         );
         const isLikelyNewQuery = (hasNewSymptoms || hasNewCrop) && 
           !isNumericSelection && 
           !isOptionTextMatch && 
-          farmerMessage.length > 20;
+          safeFarmerMessage.length > 20;
         
         // Agricultural symptom keywords that indicate a NEW problem
         const newProblemKeywords = [
@@ -1278,7 +1296,7 @@ export class AIAgentOrchestrator {
           // Marathi/Hindi urgent (detected via Language Induction)
         ];
         const hasNewProblemKeyword = newProblemKeywords.some(kw => 
-          farmerMessage.toLowerCase().includes(kw)
+          safeFarmerMessage.toLowerCase().includes(kw)
         );
         
         const isNewAgriculturalQuery = isLikelyNewQuery || (hasNewProblemKeyword && !isNumericSelection && !isOptionTextMatch);
@@ -1309,13 +1327,13 @@ export class AIAgentOrchestrator {
         const pendingScope = options.sessionState?.pendingClarificationScope as ClarificationScope || ClarificationScope.IDENTIFY_DISTRIBUTION;
         
         // PATCH 2: NULL-SAFE option matching
-        const matchResult = matchFarmerResponseToOption(farmerMessage, pendingOptions);
+        const matchResult = matchFarmerResponseToOption(safeFarmerMessage, pendingOptions);
         
         // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL FIX: Extract observation_key from frontend message if embedded
         // Frontend sends: "Label text [obs_keys:OBSERVATION_KEY1,OBSERVATION_KEY2]"
         // ═══════════════════════════════════════════════════════════════════════════
-        const obsKeysMatch = farmerMessage.match(/\[obs_keys:([^\]]+)\]/);
+        const obsKeysMatch = safeFarmerMessage.match(/\[obs_keys:([^\]]+)\]/);
         const embeddedObservationKeys = obsKeysMatch ? obsKeysMatch[1].split(',').filter(k => k.trim()) : [];
         
         // PATCH 2: NULL-SAFE - matchResult always returns a valid object now
@@ -1801,12 +1819,12 @@ export class AIAgentOrchestrator {
         options.sessionState?.lockedCropContext || null;
       
       // Detect numeric/Devanagari option selection patterns for logging only
-      const isNumberSelection = /^[१२३४1-4]$/.test(farmerMessage.trim());
+      const isNumberSelection = /^[१२३४1-4]$/.test(safeFarmerMessage.trim());
       
-      console.log(`   📋 Input: "${farmerMessage}" | IsNumber: ${isNumberSelection} | Fresh query mode`);
+      console.log(`   📋 Input: "${safePreviewText(safeFarmerMessage)}" | IsNumber: ${isNumberSelection} | Fresh query mode`);
       console.log(`   🔐 LockedCropContext: ${lockedCropContext ? lockedCropContext.crop_name : 'none (will derive from land context)'}`);
       
-      let processedFarmerMessage = farmerMessage;
+      let processedFarmerMessage = safeFarmerMessage;
       let matchedObservation: { observation: string; likely_cause: string } | null = null;
       
       // ========================================
@@ -1833,8 +1851,8 @@ export class AIAgentOrchestrator {
       const normalizedInput = normalizeLanguage(processedFarmerMessage);
       agentsUsed.push('LANGUAGE_NORMALIZER');
       
-      console.log(`      Original: "${normalizedInput.original_text.substring(0, 50)}..."`);
-      console.log(`      Normalized: "${normalizedInput.normalized_text.substring(0, 50)}..."`);
+      console.log(`      Original: "${safePreviewText(normalizedInput.original_text)}"...`);
+      console.log(`      Normalized: "${safePreviewText(normalizedInput.normalized_text)}"...`);
       console.log(`      Language: ${normalizedInput.detected_language}, Removed: ${normalizedInput.removed_elements.length} elements`);
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -3859,7 +3877,7 @@ export class AIAgentOrchestrator {
    Crop: ${canonicalState.crop_type}
    Stage: ${canonicalState.crop_stage}
    Symptom: ${canonicalState.visual_symptom}
-   User Query: "${farmerMessage.substring(0, 100)}"
+   User Query: "${safePreviewText(safeFarmerMessage, 100)}"
    
    🚨 ISSUE: Neither enum nor keyword rules matched.
    ACTION: Add rules for this combination or escalate to diagnostic.
@@ -6476,7 +6494,7 @@ export class AIAgentOrchestrator {
       error_details: {
         error_type: error.name,
         error_message: error.message,
-        farmer_input_snippet: farmerMessage.substring(0, 200),
+        farmer_input_snippet: typeof farmerMessage === 'string' ? farmerMessage.substring(0, 200) : '[NO_TEXT]',
         stack_snippet: error.stack?.substring(0, 500),
         timestamp: new Date().toISOString()
       }
@@ -6488,7 +6506,8 @@ export class AIAgentOrchestrator {
     // PRODUCTION FIX: Generate context-aware helpful response even on error
     // Instead of generic message, provide stage-aware monitoring advice
     // ═══════════════════════════════════════════════════════════════════════════
-    const messageLower = farmerMessage.toLowerCase();
+    const safeErrorMessage = typeof farmerMessage === 'string' ? farmerMessage : '';
+    const messageLower = safeErrorMessage.toLowerCase();
     let fallbackAdvice = '';
     
     // Build context-aware advice if we have land data

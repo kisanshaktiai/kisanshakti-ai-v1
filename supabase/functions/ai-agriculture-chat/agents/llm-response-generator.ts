@@ -528,9 +528,11 @@ export interface LLMResponseInput {
  */
 export function canAnswerDirectly(intent: string, farmerMessage: string): boolean {
   console.warn('[DEPRECATED] canAnswerDirectly called - always returns false to force symbolic path');
+  // SAFETY GUARD: Handle undefined/empty input
+  const safeMessage = typeof farmerMessage === 'string' ? farmerMessage : '';
   // Only allow direct answer for pure greetings/help - everything else goes to symbolic brain
   const pureGreetingPatterns = /^(hello|hi|hey|namaste|namaskar|नमस्ते|नमस्कार|हेलो|हाय)[\s!?.]*$/i;
-  const isGreetingOnly = pureGreetingPatterns.test(farmerMessage.trim());
+  const isGreetingOnly = pureGreetingPatterns.test(safeMessage.trim());
   return isGreetingOnly && intent === 'GREETING';
 }
 

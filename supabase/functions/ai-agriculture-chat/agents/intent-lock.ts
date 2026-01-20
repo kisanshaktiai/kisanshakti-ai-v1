@@ -387,6 +387,12 @@ export function shouldBypassClarificationForAgriSymptom(
   farmerMessage: string,
   intentConfidence: number
 ): boolean {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SAFETY GUARD: Handle undefined/empty input gracefully
+  // ═══════════════════════════════════════════════════════════════════════════
+  const safeMessage = typeof farmerMessage === 'string' ? farmerMessage : '';
+  if (!safeMessage.trim()) return false;
+  
   // Agricultural symptom keywords in Marathi, Hindi, and English
   const AGRI_SYMPTOM_KEYWORDS = [
     // Marathi pest/disease terms
@@ -407,7 +413,7 @@ export function shouldBypassClarificationForAgriSymptom(
     'problem', 'issue', 'attack', 'infestation'
   ];
   
-  const normalizedMessage = farmerMessage.toLowerCase();
+  const normalizedMessage = safeMessage.toLowerCase();
   
   const hasAgriSymptom = AGRI_SYMPTOM_KEYWORDS.some(kw => 
     normalizedMessage.includes(kw.toLowerCase())
@@ -418,7 +424,8 @@ export function shouldBypassClarificationForAgriSymptom(
   const BYPASS_THRESHOLD = 0.30;
   
   if (hasAgriSymptom && intentConfidence >= BYPASS_THRESHOLD) {
-    console.log(`🌾 [AgriBypass] Agricultural symptom detected in: "${farmerMessage.substring(0, 50)}..."`);
+    const preview = safeMessage.length > 50 ? safeMessage.substring(0, 50) + '...' : safeMessage;
+    console.log(`🌾 [AgriBypass] Agricultural symptom detected in: "${preview}"`);
     console.log(`   ✅ Bypassing clarification (${(intentConfidence * 100).toFixed(0)}% >= ${BYPASS_THRESHOLD * 100}% threshold)`);
     return true;
   }
