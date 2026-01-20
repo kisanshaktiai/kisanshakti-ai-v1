@@ -237,6 +237,8 @@ Deno.serve(async (req) => {
     };
 
     // Format rules for database with all normalizations
+    // NOTE: response_en, response_hi, response_mr, trigger_keywords, action_text 
+    // were removed per architectural cleanup - narration is now LLM-generated
     const formatRule = (rule: RuleFromJSON) => ({
       rule_id: rule.rule_id,
       crop_group: normalizeCropCode(rule.crop_group || 'universal'),
@@ -249,10 +251,6 @@ Deno.serve(async (req) => {
       priority: Math.min(10, Math.max(1, Math.round(rule.priority / 10))),
       scientific_source: rule.scientific_source,
       scientific_basis: rule.icar_package_ref || rule.scientific_source,
-      trigger_keywords: [],
-      response_mr: rule.response_mr,
-      response_hi: rule.response_hi,
-      response_en: rule.response_en,
       action_type: normalizeActionType(rule.action_type),
       canonical_group: normalizeCanonicalGroup(rule.canonical_group),
       is_active: rule.is_active !== false,
