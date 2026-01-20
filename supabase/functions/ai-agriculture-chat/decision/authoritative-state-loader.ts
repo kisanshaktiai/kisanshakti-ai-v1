@@ -1,20 +1,238 @@
+// ✅ FORENSIC REFACTOR COMPLETE
+// Authority: SINGLE SOURCE OF TRUTH for NDVI interpretation, soil interpretation, and land state assembly
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * AUTHORITATIVE STATE LOADER - SINGLE SOURCE OF TRUTH
+ * AUTHORITATIVE STATE LOADER v2.0.0 - SSOT ENFORCED
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * CRITICAL: This module loads land state from AUTHORITATIVE database tables,
- * NOT from JSONB context fields in chat messages.
+ * ROLE: Single Source of Truth for all agronomic data interpretation
  * 
- * This ensures:
- * 1. Temporal consistency (always current data, not stale snapshots)
- * 2. Single source of truth (joins to actual tables, not copies)
- * 3. Complete data (all signals from soil, ndvi, weather, schedule)
+ * DOES:
+ * - Load land state from authoritative database tables
+ * - Interpret NDVI values → canonical status codes (ONCE, here only)
+ * - Interpret soil nutrients → canonical level codes (ONCE, here only)
+ * - Calculate derived metrics (water stress, crop health)
+ * - Export canonical state object for all downstream consumers
  * 
- * ARCHITECTURE: Database-first, with calculated derived metrics
+ * DOES NOT:
+ * - Generate language-specific text (→ LLM narration layer)
+ * - Provide agronomic recommendations (→ symbolic decision brain)
+ * - Classify queries or intents (→ LIL layer)
+ * 
+ * CONSUMERS MUST:
+ * - Use this module's interpretation functions, NOT implement their own
+ * - Consume AuthoritativeLandState.derived for all interpreted values
+ * 
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+
+export const AUTHORITATIVE_STATE_LOADER_VERSION = '2.0.0';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CANONICAL INTERPRETATION ENUMS - SINGLE SOURCE OF TRUTH
+// These are the ONLY valid values for interpreted agronomic data
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Canonical NDVI status - SSOT interpretation
+ * All NDVI interpretation in the system MUST use these values
+ */
+export enum NDVIStatus {
+  EXCELLENT = 'EXCELLENT',      // >= 0.7
+  GOOD = 'GOOD',                // 0.55 - 0.69
+  MODERATE = 'MODERATE',        // 0.4 - 0.54
+  POOR = 'POOR',                // 0.25 - 0.39
+  CRITICAL = 'CRITICAL',        // < 0.25
+  UNKNOWN = 'UNKNOWN'           // No data
+}
+
+/**
+ * Canonical soil nutrient level - SSOT interpretation
+ * All soil interpretation in the system MUST use these values
+ */
+export enum SoilNutrientLevel {
+  HIGH = 'HIGH',
+  ADEQUATE = 'ADEQUATE',
+  LOW = 'LOW',
+  CRITICAL = 'CRITICAL',
+  UNKNOWN = 'UNKNOWN'
+}
+
+/**
+ * Canonical water stress level - derived from NDVI + rainfall
+ */
+export enum WaterStressLevel {
+  NONE = 'NONE',
+  MILD = 'MILD',
+  MODERATE = 'MODERATE',
+  SEVERE = 'SEVERE',
+  UNKNOWN = 'UNKNOWN'
+}
+
+/**
+ * Canonical NDVI trend - calculated from historical data
+ */
+export enum NDVITrend {
+  IMPROVING = 'IMPROVING',
+  STABLE = 'STABLE',
+  DECLINING = 'DECLINING',
+  UNKNOWN = 'UNKNOWN'
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTERPRETATION THRESHOLDS - SINGLE SOURCE OF TRUTH
+// These are the ONLY thresholds used for interpretation
+// ═══════════════════════════════════════════════════════════════════════════
+
+const NDVI_THRESHOLDS = {
+  EXCELLENT: 0.7,
+  GOOD: 0.55,
+  MODERATE: 0.4,
+  POOR: 0.25
+  // Below POOR = CRITICAL
+} as const;
+
+const SOIL_THRESHOLDS = {
+  NITROGEN: {
+    HIGH: 350,      // kg/ha
+    ADEQUATE: 250,
+    LOW: 150
+    // Below LOW = CRITICAL
+  },
+  PHOSPHORUS: {
+    HIGH: 25,       // kg/ha
+    ADEQUATE: 15,
+    LOW: 8
+  },
+  POTASSIUM: {
+    HIGH: 200,      // kg/ha
+    ADEQUATE: 130,
+    LOW: 80
+  }
+} as const;
+
+const FRESHNESS_THRESHOLDS = {
+  SOIL_TEST_DAYS: 90,      // Soil test valid for 90 days
+  NDVI_DAYS: 7,            // NDVI should be <7 days old
+  WEATHER_HOURS: 6,        // Weather should be <6 hours old
+  SCHEDULE_DAYS: 365       // Schedule valid for current season
+} as const;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SSOT INTERPRETATION FUNCTIONS
+// These are the ONLY functions that interpret agronomic values
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Interpret NDVI value to canonical status
+ * THIS IS THE ONLY PLACE where NDVI is interpreted
+ */
+export function interpretNDVI(value: number | null | undefined): NDVIStatus {
+  if (value === null || value === undefined || isNaN(value)) {
+    return NDVIStatus.UNKNOWN;
+  }
+  
+  if (value >= NDVI_THRESHOLDS.EXCELLENT) return NDVIStatus.EXCELLENT;
+  if (value >= NDVI_THRESHOLDS.GOOD) return NDVIStatus.GOOD;
+  if (value >= NDVI_THRESHOLDS.MODERATE) return NDVIStatus.MODERATE;
+  if (value >= NDVI_THRESHOLDS.POOR) return NDVIStatus.POOR;
+  return NDVIStatus.CRITICAL;
+}
+
+/**
+ * Interpret nitrogen value to canonical level
+ * THIS IS THE ONLY PLACE where nitrogen is interpreted
+ */
+export function interpretNitrogen(value: number | null | undefined): SoilNutrientLevel {
+  if (value === null || value === undefined || isNaN(value)) {
+    return SoilNutrientLevel.UNKNOWN;
+  }
+  
+  if (value >= SOIL_THRESHOLDS.NITROGEN.HIGH) return SoilNutrientLevel.HIGH;
+  if (value >= SOIL_THRESHOLDS.NITROGEN.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
+  if (value >= SOIL_THRESHOLDS.NITROGEN.LOW) return SoilNutrientLevel.LOW;
+  return SoilNutrientLevel.CRITICAL;
+}
+
+/**
+ * Interpret phosphorus value to canonical level
+ * THIS IS THE ONLY PLACE where phosphorus is interpreted
+ */
+export function interpretPhosphorus(value: number | null | undefined): SoilNutrientLevel {
+  if (value === null || value === undefined || isNaN(value)) {
+    return SoilNutrientLevel.UNKNOWN;
+  }
+  
+  if (value >= SOIL_THRESHOLDS.PHOSPHORUS.HIGH) return SoilNutrientLevel.HIGH;
+  if (value >= SOIL_THRESHOLDS.PHOSPHORUS.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
+  if (value >= SOIL_THRESHOLDS.PHOSPHORUS.LOW) return SoilNutrientLevel.LOW;
+  return SoilNutrientLevel.CRITICAL;
+}
+
+/**
+ * Interpret potassium value to canonical level
+ * THIS IS THE ONLY PLACE where potassium is interpreted
+ */
+export function interpretPotassium(value: number | null | undefined): SoilNutrientLevel {
+  if (value === null || value === undefined || isNaN(value)) {
+    return SoilNutrientLevel.UNKNOWN;
+  }
+  
+  if (value >= SOIL_THRESHOLDS.POTASSIUM.HIGH) return SoilNutrientLevel.HIGH;
+  if (value >= SOIL_THRESHOLDS.POTASSIUM.ADEQUATE) return SoilNutrientLevel.ADEQUATE;
+  if (value >= SOIL_THRESHOLDS.POTASSIUM.LOW) return SoilNutrientLevel.LOW;
+  return SoilNutrientLevel.CRITICAL;
+}
+
+/**
+ * Calculate water stress level from NDVI and rainfall
+ * THIS IS THE ONLY PLACE where water stress is calculated
+ */
+export function calculateWaterStress(
+  ndviValue: number | null | undefined,
+  recentRainfall: number | null | undefined
+): WaterStressLevel {
+  if (ndviValue === null || ndviValue === undefined) {
+    return WaterStressLevel.UNKNOWN;
+  }
+  
+  const rainfall = recentRainfall ?? 0;
+  
+  if (ndviValue < 0.3 && rainfall < 5) return WaterStressLevel.SEVERE;
+  if (ndviValue < 0.4 && rainfall < 10) return WaterStressLevel.MODERATE;
+  if (ndviValue < 0.5) return WaterStressLevel.MILD;
+  return WaterStressLevel.NONE;
+}
+
+/**
+ * Calculate NDVI trend from historical readings
+ * THIS IS THE ONLY PLACE where NDVI trend is calculated
+ */
+export function calculateNDVITrend(
+  readings: { value: number; date: string }[]
+): NDVITrend {
+  if (!readings || readings.length < 2) {
+    return NDVITrend.UNKNOWN;
+  }
+  
+  const recentAvg = readings.slice(0, 3).reduce((sum, r) => sum + (r.value || 0), 0) / Math.min(3, readings.length);
+  const olderCount = Math.min(3, readings.length - 3);
+  
+  if (olderCount <= 0) return NDVITrend.UNKNOWN;
+  
+  const olderAvg = readings.slice(3, 6).reduce((sum, r) => sum + (r.value || 0), 0) / olderCount;
+  
+  if (olderAvg <= 0) return NDVITrend.UNKNOWN;
+  
+  const change = (recentAvg - olderAvg) / olderAvg;
+  
+  if (change > 0.05) return NDVITrend.IMPROVING;
+  if (change < -0.05) return NDVITrend.DECLINING;
+  return NDVITrend.STABLE;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - AUTHORITATIVE LAND STATE
@@ -63,7 +281,7 @@ export interface AuthoritativeLandState {
   ndvi: {
     latest_value: number | null;
     latest_date: string | null;
-    trend: 'improving' | 'stable' | 'declining' | 'unknown';
+    trend: NDVITrend;
     age_days: number | null;
     history: { value: number; date: string }[];
     data_fresh: boolean;
@@ -81,10 +299,23 @@ export interface AuthoritativeLandState {
     data_fresh: boolean;
   };
   
-  // Derived Metrics
+  // Derived Metrics - SSOT INTERPRETATIONS
   derived: {
-    water_stress_level: 'none' | 'mild' | 'moderate' | 'severe' | 'unknown';
+    // NDVI interpretation - SSOT
+    ndvi_status: NDVIStatus;
+    
+    // Soil interpretation - SSOT
+    nitrogen_level: SoilNutrientLevel;
+    phosphorus_level: SoilNutrientLevel;
+    potassium_level: SoilNutrientLevel;
+    
+    // Water stress - SSOT
+    water_stress_level: WaterStressLevel;
+    
+    // Legacy fields for backward compatibility
     crop_health_status: 'excellent' | 'good' | 'moderate' | 'poor' | 'critical' | 'unknown';
+    
+    // Data quality
     data_completeness_score: number; // 0-100
     data_freshness_score: number; // 0-100
     critical_missing: string[];
@@ -102,17 +333,6 @@ export interface StateLoadingResult {
   error?: string;
   loading_time_ms: number;
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// FRESHNESS THRESHOLDS
-// ═══════════════════════════════════════════════════════════════════════════
-
-const FRESHNESS_THRESHOLDS = {
-  SOIL_TEST_DAYS: 90,      // Soil test valid for 90 days
-  NDVI_DAYS: 7,            // NDVI should be <7 days old
-  WEATHER_HOURS: 6,        // Weather should be <6 hours old
-  SCHEDULE_DAYS: 365       // Schedule valid for current season
-};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN LOADER FUNCTION
@@ -230,13 +450,12 @@ export async function loadAuthoritativeLandState(
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // PROCESS NDVI DATA
+    // PROCESS NDVI DATA WITH SSOT INTERPRETATION
     // ═══════════════════════════════════════════════════════════════════════════
     const ndviReadings = ndviResult.data || [];
     let ndviLatest: number | null = null;
     let ndviLatestDate: string | null = null;
     let ndviAgeDays: number | null = null;
-    let ndviTrend: 'improving' | 'stable' | 'declining' | 'unknown' = 'unknown';
     let ndviDataFresh = false;
     
     if (ndviReadings.length > 0) {
@@ -248,20 +467,14 @@ export async function loadAuthoritativeLandState(
         ndviAgeDays = Math.floor((now.getTime() - latestDate.getTime()) / (1000 * 60 * 60 * 24));
         ndviDataFresh = ndviAgeDays <= FRESHNESS_THRESHOLDS.NDVI_DAYS;
       }
-      
-      // Calculate trend if we have multiple readings
-      if (ndviReadings.length >= 2) {
-        const recentAvg = ndviReadings.slice(0, 3).reduce((sum, r) => sum + (r.ndvi_value || 0), 0) / Math.min(3, ndviReadings.length);
-        const olderAvg = ndviReadings.slice(3, 6).reduce((sum, r) => sum + (r.ndvi_value || 0), 0) / Math.min(3, ndviReadings.length - 3);
-        
-        if (olderAvg > 0) {
-          const change = (recentAvg - olderAvg) / olderAvg;
-          if (change > 0.05) ndviTrend = 'improving';
-          else if (change < -0.05) ndviTrend = 'declining';
-          else ndviTrend = 'stable';
-        }
-      }
     }
+    
+    // Calculate NDVI trend using SSOT function
+    const ndviHistory = ndviReadings.slice(0, 5).map(r => ({
+      value: r.ndvi_value,
+      date: r.observation_date
+    }));
+    const ndviTrend = calculateNDVITrend(ndviHistory);
     
     // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS WEATHER DATA
@@ -277,7 +490,7 @@ export async function loadAuthoritativeLandState(
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CALCULATE DERIVED METRICS
+    // CALCULATE DERIVED METRICS USING SSOT INTERPRETATION FUNCTIONS
     // ═══════════════════════════════════════════════════════════════════════════
     const sourcesAvailable: string[] = [];
     const sourcesMissing: string[] = [];
@@ -298,29 +511,22 @@ export async function loadAuthoritativeLandState(
     ];
     const dataFreshnessScore = (freshnessPoints.reduce((a, b) => a + b, 0) / 4) * 100;
     
-    // Water stress calculation
-    let waterStressLevel: 'none' | 'mild' | 'moderate' | 'severe' | 'unknown' = 'unknown';
-    if (ndviLatest !== null && weather?.rainfall !== undefined) {
-      if (ndviLatest < 0.3 && (weather.rainfall || 0) < 5) {
-        waterStressLevel = 'severe';
-      } else if (ndviLatest < 0.4 && (weather.rainfall || 0) < 10) {
-        waterStressLevel = 'moderate';
-      } else if (ndviLatest < 0.5) {
-        waterStressLevel = 'mild';
-      } else {
-        waterStressLevel = 'none';
-      }
-    }
+    // SSOT INTERPRETATION: Use interpretation functions
+    const ndviStatus = interpretNDVI(ndviLatest);
+    const nitrogenLevel = interpretNitrogen(soilHealth?.nitrogen_kg_per_ha);
+    const phosphorusLevel = interpretPhosphorus(soilHealth?.phosphorus_kg_per_ha);
+    const potassiumLevel = interpretPotassium(soilHealth?.potassium_kg_per_ha);
+    const waterStressLevel = calculateWaterStress(ndviLatest, weather?.rainfall);
     
-    // Crop health status
-    let cropHealthStatus: 'excellent' | 'good' | 'moderate' | 'poor' | 'critical' | 'unknown' = 'unknown';
-    if (ndviLatest !== null) {
-      if (ndviLatest >= 0.7) cropHealthStatus = 'excellent';
-      else if (ndviLatest >= 0.55) cropHealthStatus = 'good';
-      else if (ndviLatest >= 0.4) cropHealthStatus = 'moderate';
-      else if (ndviLatest >= 0.25) cropHealthStatus = 'poor';
-      else cropHealthStatus = 'critical';
-    }
+    // Legacy crop health status mapping
+    const cropHealthMap: Record<NDVIStatus, 'excellent' | 'good' | 'moderate' | 'poor' | 'critical' | 'unknown'> = {
+      [NDVIStatus.EXCELLENT]: 'excellent',
+      [NDVIStatus.GOOD]: 'good',
+      [NDVIStatus.MODERATE]: 'moderate',
+      [NDVIStatus.POOR]: 'poor',
+      [NDVIStatus.CRITICAL]: 'critical',
+      [NDVIStatus.UNKNOWN]: 'unknown'
+    };
     
     // Critical missing data
     const criticalMissing: string[] = [];
@@ -372,10 +578,7 @@ export async function loadAuthoritativeLandState(
         latest_date: ndviLatestDate,
         trend: ndviTrend,
         age_days: ndviAgeDays,
-        history: ndviReadings.slice(0, 5).map(r => ({
-          value: r.ndvi_value,
-          date: r.observation_date
-        })),
+        history: ndviHistory,
         data_fresh: ndviDataFresh
       },
       
@@ -390,9 +593,14 @@ export async function loadAuthoritativeLandState(
         data_fresh: weatherDataFresh
       },
       
+      // SSOT INTERPRETATIONS - All interpretation happens HERE
       derived: {
+        ndvi_status: ndviStatus,
+        nitrogen_level: nitrogenLevel,
+        phosphorus_level: phosphorusLevel,
+        potassium_level: potassiumLevel,
         water_stress_level: waterStressLevel,
-        crop_health_status: cropHealthStatus,
+        crop_health_status: cropHealthMap[ndviStatus],
         data_completeness_score: dataCompletenessScore,
         data_freshness_score: dataFreshnessScore,
         critical_missing: criticalMissing
@@ -406,7 +614,8 @@ export async function loadAuthoritativeLandState(
     const loadingTime = Date.now() - startTime;
     console.log(`✅ [AuthoritativeStateLoader] State loaded in ${loadingTime}ms`);
     console.log(`   Sources: ${sourcesAvailable.join(', ')} | Missing: ${sourcesMissing.join(', ')}`);
-    console.log(`   Completeness: ${dataCompletenessScore.toFixed(0)}% | Freshness: ${dataFreshnessScore.toFixed(0)}%`);
+    console.log(`   NDVI: ${ndviLatest} → ${ndviStatus} | Water Stress: ${waterStressLevel}`);
+    console.log(`   Soil N: ${nitrogenLevel}, P: ${phosphorusLevel}, K: ${potassiumLevel}`);
     
     return {
       success: true,
@@ -477,15 +686,13 @@ export function calculateDecisionConfidence(
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STRUCTURED FOLLOW-UP QUESTION GENERATOR
-// When data is insufficient, generate structured questions
+// Returns language-neutral question codes, NOT text
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface StructuredQuestion {
   fact_type: string;
-  question_mr: string;
-  question_hi: string;
-  question_en: string;
-  options: { value: string; label_mr: string; label_hi: string; label_en: string }[];
+  question_key: string;  // Language-neutral key for translation
+  options: { value: string; label_key: string }[];  // Language-neutral keys
   why_needed: string;
   priority: 'critical' | 'important' | 'helpful';
 }
@@ -500,14 +707,12 @@ export function generateMissingDataQuestions(
   if (!state?.crop.current_crop || missingFacts.includes('crop')) {
     questions.push({
       fact_type: 'current_crop',
-      question_mr: 'कोणते पीक लावले आहे?',
-      question_hi: 'कौन सी फसल लगाई है?',
-      question_en: 'Which crop is planted?',
+      question_key: 'QUESTION_WHICH_CROP',
       options: [
-        { value: 'sugarcane', label_mr: 'ऊस', label_hi: 'गन्ना', label_en: 'Sugarcane' },
-        { value: 'wheat', label_mr: 'गहू', label_hi: 'गेहूं', label_en: 'Wheat' },
-        { value: 'cotton', label_mr: 'कापूस', label_hi: 'कपास', label_en: 'Cotton' },
-        { value: 'rice', label_mr: 'भात', label_hi: 'धान', label_en: 'Rice' }
+        { value: 'sugarcane', label_key: 'CROP_SUGARCANE' },
+        { value: 'wheat', label_key: 'CROP_WHEAT' },
+        { value: 'cotton', label_key: 'CROP_COTTON' },
+        { value: 'rice', label_key: 'CROP_RICE' }
       ],
       why_needed: 'Required to provide crop-specific recommendations',
       priority: 'critical'
@@ -518,14 +723,12 @@ export function generateMissingDataQuestions(
   if (!state?.soil.ph || missingFacts.includes('soil_moisture')) {
     questions.push({
       fact_type: 'soil_moisture',
-      question_mr: 'माती कशी वाटते? (ओलावा)',
-      question_hi: 'मिट्टी कैसी लग रही है? (नमी)',
-      question_en: 'How does the soil feel? (moisture)',
+      question_key: 'QUESTION_SOIL_MOISTURE',
       options: [
-        { value: 'dry', label_mr: 'कोरडी', label_hi: 'सूखी', label_en: 'Dry' },
-        { value: 'moist', label_mr: 'ओलसर', label_hi: 'नम', label_en: 'Moist' },
-        { value: 'wet', label_mr: 'ओली', label_hi: 'गीली', label_en: 'Wet' },
-        { value: 'waterlogged', label_mr: 'पाणी साचलेले', label_hi: 'जलभराव', label_en: 'Waterlogged' }
+        { value: 'dry', label_key: 'SOIL_DRY' },
+        { value: 'moist', label_key: 'SOIL_MOIST' },
+        { value: 'wet', label_key: 'SOIL_WET' },
+        { value: 'waterlogged', label_key: 'SOIL_WATERLOGGED' }
       ],
       why_needed: 'Required for irrigation and fertilizer recommendations',
       priority: 'important'
@@ -536,14 +739,12 @@ export function generateMissingDataQuestions(
   if (missingFacts.includes('severity')) {
     questions.push({
       fact_type: 'symptom_severity',
-      question_mr: 'किती पीक प्रभावित झाले आहे?',
-      question_hi: 'कितनी फसल प्रभावित है?',
-      question_en: 'How much of the crop is affected?',
+      question_key: 'QUESTION_SEVERITY',
       options: [
-        { value: 'few_plants', label_mr: 'काही झाडे', label_hi: 'कुछ पौधे', label_en: 'Few plants (<5%)' },
-        { value: 'one_patch', label_mr: 'एक भाग', label_hi: 'एक हिस्सा', label_en: 'One patch (5-20%)' },
-        { value: 'many_patches', label_mr: 'अनेक भाग', label_hi: 'कई हिस्से', label_en: 'Many patches (20-50%)' },
-        { value: 'entire_field', label_mr: 'संपूर्ण शेत', label_hi: 'पूरा खेत', label_en: 'Entire field (>50%)' }
+        { value: 'few_plants', label_key: 'SEVERITY_FEW' },
+        { value: 'one_patch', label_key: 'SEVERITY_PATCH' },
+        { value: 'many_patches', label_key: 'SEVERITY_MANY' },
+        { value: 'entire_field', label_key: 'SEVERITY_ENTIRE' }
       ],
       why_needed: 'Required to determine urgency and treatment intensity',
       priority: 'critical'
@@ -554,15 +755,13 @@ export function generateMissingDataQuestions(
   if (!state?.crop.days_since_sowing || missingFacts.includes('crop_age')) {
     questions.push({
       fact_type: 'days_since_sowing',
-      question_mr: 'पीक किती दिवसांपूर्वी लावले?',
-      question_hi: 'फसल कितने दिन पहले लगाई?',
-      question_en: 'How long ago was the crop planted?',
+      question_key: 'QUESTION_CROP_AGE',
       options: [
-        { value: '0-15', label_mr: '0-15 दिवस', label_hi: '0-15 दिन', label_en: '0-15 days' },
-        { value: '15-30', label_mr: '15-30 दिवस', label_hi: '15-30 दिन', label_en: '15-30 days' },
-        { value: '30-60', label_mr: '30-60 दिवस', label_hi: '30-60 दिन', label_en: '30-60 days' },
-        { value: '60-90', label_mr: '60-90 दिवस', label_hi: '60-90 दिन', label_en: '60-90 days' },
-        { value: '90+', label_mr: '90+ दिवस', label_hi: '90+ दिन', label_en: '90+ days' }
+        { value: '0-15', label_key: 'AGE_0_15' },
+        { value: '15-30', label_key: 'AGE_15_30' },
+        { value: '30-60', label_key: 'AGE_30_60' },
+        { value: '60-90', label_key: 'AGE_60_90' },
+        { value: '90+', label_key: 'AGE_90_PLUS' }
       ],
       why_needed: 'Required for growth stage-specific recommendations',
       priority: 'important'
@@ -575,3 +774,6 @@ export function generateMissingDataQuestions(
   
   return questions.slice(0, 3); // Maximum 3 questions at a time
 }
+
+// Export version for consumers to verify SSOT compliance
+export { AUTHORITATIVE_STATE_LOADER_VERSION as VERSION };

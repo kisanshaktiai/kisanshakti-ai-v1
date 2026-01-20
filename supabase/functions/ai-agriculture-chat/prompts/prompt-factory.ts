@@ -3,8 +3,7 @@
 // NOW WITH RURAL LANGUAGE ENFORCEMENT + FARMER INTERACTION RULES
 
 import { getBaseIdentity } from './base-identity.ts';
-import { getQueryPrompt } from './query-prompts.ts';
-import { getRuralLanguageRules } from '../rural-language-dictionary.ts';
+// REMOVED: getQueryPrompt - query-specific prompts now come from symbolic decision brain
 
 export interface PromptConfig {
   queryType: string;
@@ -28,8 +27,8 @@ export function buildOptimizedSystemPrompt(config: PromptConfig): string {
   // CRITICAL: Add farmer interaction rules (MUST be added)
   prompt += '\n\n' + getFarmerInteractionRules(language, hasLand);
   
-  // Query-specific rules with InstaScan CTAs: ~150 tokens
-  prompt += '\n\n' + getQueryPrompt(queryType, language);
+  // REMOVED: Query-specific prompts - now come from symbolic decision brain output
+  // The LLM is narration-only, agronomic content comes from decision_rules table
   
   // Formatting rules (minimal): ~100 tokens
   prompt += '\n\n' + getFormattingRules(language);
