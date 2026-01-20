@@ -375,19 +375,27 @@ export function detectEmergencyIndicators(farmerMessage: string): {
   indicators: string[];
   severity: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'NONE';
 } {
-  const lowerMessage = farmerMessage.toLowerCase();
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SAFETY GUARD: Handle undefined/empty input gracefully
+  // ═══════════════════════════════════════════════════════════════════════════
+  const safeMessage = typeof farmerMessage === 'string' ? farmerMessage : '';
+  if (!safeMessage.trim()) {
+    return { is_emergency: false, indicators: [], severity: 'NONE' };
+  }
+  
+  const lowerMessage = safeMessage.toLowerCase();
   const foundIndicators: string[] = [];
   
   // Check emergency keywords
   EMERGENCY_KEYWORDS.forEach(keyword => {
-    if (farmerMessage.includes(keyword) || lowerMessage.includes(keyword.toLowerCase())) {
+    if (safeMessage.includes(keyword) || lowerMessage.includes(keyword.toLowerCase())) {
       foundIndicators.push(keyword);
     }
   });
   
   // Check rapid spread indicators
   RAPID_SPREAD_INDICATORS.forEach(indicator => {
-    if (farmerMessage.includes(indicator) || lowerMessage.includes(indicator.toLowerCase())) {
+    if (safeMessage.includes(indicator) || lowerMessage.includes(indicator.toLowerCase())) {
       foundIndicators.push(`RAPID_SPREAD: ${indicator}`);
     }
   });

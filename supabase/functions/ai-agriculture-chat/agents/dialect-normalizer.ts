@@ -361,6 +361,24 @@ const URGENCY_PATTERNS = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function normalizeDialect(farmerMessage: string): DialectNormalizationResult {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SAFETY GUARD: Handle undefined/empty input gracefully
+  // Valid flows: image-only, option-click, monitoring mode
+  // ═══════════════════════════════════════════════════════════════════════════
+  const safeMessage = typeof farmerMessage === 'string' ? farmerMessage : '';
+  
+  if (!safeMessage.trim()) {
+    return {
+      observations: [],
+      crop_mentioned: null,
+      crop_age_indicator: 'UNKNOWN',
+      pattern_indicator: 'UNKNOWN',
+      severity_indicator: 'UNKNOWN',
+      urgency_level: 'MEDIUM',
+      extracted_context: 'No input provided'
+    };
+  }
+  
   const observations: NormalizedObservation[] = [];
   let crop_mentioned: string | null = null;
   let crop_age_indicator: 'NEW' | 'YOUNG' | 'MATURE' | 'UNKNOWN' = 'UNKNOWN';
@@ -368,7 +386,7 @@ export function normalizeDialect(farmerMessage: string): DialectNormalizationRes
   let severity_indicator: 'DEAD' | 'DYING' | 'STRESSED' | 'MILD' | 'UNKNOWN' = 'UNKNOWN';
   let urgency_level: 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' = 'MEDIUM';
   
-  const normalizedMessage = farmerMessage.toLowerCase().trim();
+  const normalizedMessage = safeMessage.toLowerCase().trim();
   
   // ═══════════════════════════════════════════════════════════════════════════
   // 1. Detect crop

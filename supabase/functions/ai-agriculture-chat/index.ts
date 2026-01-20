@@ -380,16 +380,20 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // EXTRACT USER MESSAGE
+    // EXTRACT USER MESSAGE - WITH SAFETY GUARD
     // ═══════════════════════════════════════════════════════════════════════════
     const lastUserMessage = messages[messages.length - 1];
-    const userMessageContent = typeof lastUserMessage === 'string' 
+    const rawMessageContent = typeof lastUserMessage === 'string' 
       ? lastUserMessage 
-      : lastUserMessage?.content || '';
+      : lastUserMessage?.content;
+    
+    // SAFETY: Normalize to empty string, not undefined
+    const userMessageContent = typeof rawMessageContent === 'string' ? rawMessageContent : '';
 
-    if (!userMessageContent.trim()) {
+    // Only reject if truly empty AND no image provided
+    if (!userMessageContent.trim() && !imageUrl) {
       return new Response(
-        JSON.stringify({ error: 'Empty message provided' }),
+        JSON.stringify({ error: 'Empty message provided or no image' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -425,12 +429,19 @@ serve(async (req) => {
       console.log(`🔗 [Session] Injecting context for follow-up:`, contextPrefix);
     }
 
+    // Safe preview helper for logging
+    const safePreview = (text: string, len = 50) => 
+      typeof text === 'string' && text.length > 0 
+        ? (text.length > len ? text.substring(0, len) + '...' : text) 
+        : '[NO_TEXT]';
+    
     console.log(`🚀 [${traceId}] Processing message:`, {
       sessionId: currentSessionId,
       farmerId: finalFarmerId,
       language: detectedLanguage,
       hasImage: !!imageUrl,
-      messagePreview: userMessageContent.substring(0, 50)
+      hasText: userMessageContent.trim().length > 0,
+      messagePreview: safePreview(userMessageContent)
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
