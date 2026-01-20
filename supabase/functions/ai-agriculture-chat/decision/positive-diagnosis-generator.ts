@@ -1,48 +1,40 @@
+// ✅ FORENSIC REFACTOR COMPLETE
+// Authority: Pure symbolic positive diagnosis evaluator - emits diagnosis codes, confidence, and i18n_keys ONLY
+
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * POSITIVE DIAGNOSIS GENERATOR - GAP #1 FIX
+ * POSITIVE DIAGNOSIS GENERATOR - SSOT COMPLIANT v2.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
  * Generate "NO_INTERVENTION_REQUIRED" as a POSITIVE terminal diagnosis
  * when crop is healthy and no treatment is needed.
  * 
+ * ARCHITECTURAL ROLE:
+ * - Outputs ONLY symbolic codes and structured data
+ * - NO language text (mr/hi/en) in this file
+ * - All human-readable messages via i18n_keys
+ * - Narration layer handles text rendering
+ * 
  * AGRONOMIC RATIONALE:
  * 40-55% of early crop complaints are "monitor only" cases.
  * This is a SUCCESS, not a failure state.
  * 
- * VERSION: 1.0.0
+ * VERSION: 2.0.0 - SSOT Compliant
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 
-export const POSITIVE_DIAGNOSIS_VERSION = '1.0.0';
+export const POSITIVE_DIAGNOSIS_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TYPE DEFINITIONS
+// CANONICAL ENUMS - Language-neutral codes only
 // ═══════════════════════════════════════════════════════════════════════════
 
-export interface PositiveDiagnosisInput {
-  ndvi_value: number | null;
-  ndvi_trend: string | null;
-  symptoms_count: number;
-  symptoms_severity: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | 'unknown';
-  crop_code: string;
-  growth_stage: string;
-  days_since_sowing: number | null;
-  rules_matched: number;
-  land_state?: AuthoritativeLandState | null;
-}
-
-export interface PositiveDiagnosisOutput {
-  is_positive: boolean;
-  diagnosis_type: 'NO_INTERVENTION_REQUIRED' | 'MONITOR_AND_WAIT' | 'NEEDS_INVESTIGATION';
-  confidence: number;
-  follow_up_days: number;
-  reason: string;
-  reason_code: PositiveReasonCode;
-  recommendations: string[];
-}
+export type DiagnosisType = 
+  | 'NO_INTERVENTION_REQUIRED' 
+  | 'MONITOR_AND_WAIT' 
+  | 'NEEDS_INVESTIGATION';
 
 export type PositiveReasonCode = 
   | 'HEALTHY_NDVI'
@@ -52,8 +44,45 @@ export type PositiveReasonCode =
   | 'SEASONAL_VARIATION'
   | 'NEEDS_CLARIFICATION';
 
+export type SeverityLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' | 'unknown';
+
 // ═══════════════════════════════════════════════════════════════════════════
-// NDVI HEALTH THRESHOLDS BY STAGE
+// SYMBOLIC INPUT/OUTPUT CONTRACTS
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface PositiveDiagnosisInput {
+  ndvi_value: number | null;
+  ndvi_trend: string | null;
+  symptoms_count: number;
+  symptoms_severity: SeverityLevel;
+  crop_code: string;
+  growth_stage: string;
+  days_since_sowing: number | null;
+  rules_matched: number;
+  land_state?: AuthoritativeLandState | null;
+}
+
+/**
+ * Symbolic output - NO text, only codes and metadata
+ */
+export interface PositiveDiagnosisOutput {
+  is_positive: boolean;
+  diagnosis_type: DiagnosisType;
+  confidence: number;
+  follow_up_days: number;
+  reason_code: PositiveReasonCode;
+  i18n_key: string;
+  recommendation_codes: string[];
+  metadata: {
+    ndvi_healthy: boolean;
+    symptoms_non_critical: boolean;
+    no_rules_matched: boolean;
+    evaluation_factors: string[];
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NDVI HEALTH THRESHOLDS BY STAGE - Pure data, no interpretation text
 // ═══════════════════════════════════════════════════════════════════════════
 
 const NDVI_HEALTHY_THRESHOLDS: Record<string, number> = {
@@ -86,29 +115,17 @@ function isNDVIHealthy(ndviValue: number | null, stage: string): boolean {
   return ndviValue >= threshold;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// MILD SYMPTOM INDICATORS
-// ═══════════════════════════════════════════════════════════════════════════
-
-const MILD_SYMPTOM_INDICATORS = [
-  'MILD_YELLOWING',
-  'SLIGHT_WILTING',
-  'MINOR_SPOTS',
-  'LOWER_LEAF_YELLOWING',
-  'EDGE_BROWNING'
-];
-
 /**
  * Check if symptoms indicate mild, non-critical issues
  */
-function areSymptomsNonCritical(severity: string, symptomCount: number): boolean {
+function areSymptomsNonCritical(severity: SeverityLevel, symptomCount: number): boolean {
   if (severity === 'HIGH' || severity === 'CRITICAL') return false;
   if (symptomCount > 3) return false;
   return severity === 'LOW' || severity === 'unknown';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN POSITIVE DIAGNOSIS EVALUATION
+// MAIN POSITIVE DIAGNOSIS EVALUATION - Symbolic output only
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -121,36 +138,45 @@ function areSymptomsNonCritical(severity: string, symptomCount: number): boolean
  * 2. Symptoms are mild or non-specific
  * 3. No specific rules matched (meaning no clear pest/disease)
  * 4. Crop stage is progressing normally
+ * 
+ * @returns Symbolic output with codes - NO text
  */
 export function evaluatePositiveDiagnosis(
   input: PositiveDiagnosisInput
 ): PositiveDiagnosisOutput {
-  console.log(`🌿 [PositiveDiagnosis] Evaluating healthy crop scenario...`);
-  console.log(`   NDVI: ${input.ndvi_value}, Stage: ${input.growth_stage}, Symptoms: ${input.symptoms_count}`);
+  console.log(`[PositiveDiagnosis v${POSITIVE_DIAGNOSIS_VERSION}] Evaluating...`);
+  console.log(`  NDVI: ${input.ndvi_value}, Stage: ${input.growth_stage}, Symptoms: ${input.symptoms_count}`);
   
   const ndviHealthy = isNDVIHealthy(input.ndvi_value, input.growth_stage);
   const symptomsNonCritical = areSymptomsNonCritical(input.symptoms_severity, input.symptoms_count);
   const noRulesMatched = input.rules_matched === 0;
+  
+  const evaluationFactors: string[] = [];
+  if (ndviHealthy) evaluationFactors.push('NDVI_HEALTHY');
+  if (symptomsNonCritical) evaluationFactors.push('SYMPTOMS_NON_CRITICAL');
+  if (noRulesMatched) evaluationFactors.push('NO_RULES_MATCHED');
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CASE 1: HEALTHY NDVI + MILD SYMPTOMS + NO RULES → NO INTERVENTION REQUIRED
   // ═══════════════════════════════════════════════════════════════════════════
   
   if (ndviHealthy && symptomsNonCritical && noRulesMatched) {
-    console.log(`   ✅ POSITIVE DIAGNOSIS: Healthy crop, no intervention required`);
+    console.log(`  ✅ POSITIVE: diagnosis_type=NO_INTERVENTION_REQUIRED`);
     
     return {
       is_positive: true,
       diagnosis_type: 'NO_INTERVENTION_REQUIRED',
       confidence: 0.85,
       follow_up_days: calculateFollowUpDays(input.growth_stage),
-      reason: 'Crop is progressing well. Observed symptoms are within normal range for this growth stage.',
       reason_code: 'HEALTHY_NDVI',
-      recommendations: [
-        'Continue regular monitoring',
-        'Maintain current irrigation schedule',
-        'No treatment needed at this time'
-      ]
+      i18n_key: 'diagnosis.positive.healthy_ndvi',
+      recommendation_codes: ['CONTINUE_MONITORING', 'MAINTAIN_IRRIGATION', 'NO_TREATMENT'],
+      metadata: {
+        ndvi_healthy: ndviHealthy,
+        symptoms_non_critical: symptomsNonCritical,
+        no_rules_matched: noRulesMatched,
+        evaluation_factors: evaluationFactors
+      }
     };
   }
   
@@ -162,21 +188,22 @@ export function evaluatePositiveDiagnosis(
       input.days_since_sowing < 30 && 
       symptomsNonCritical && 
       noRulesMatched) {
-    console.log(`   ✅ POSITIVE DIAGNOSIS: Early stage adjustment period`);
+    console.log(`  ✅ POSITIVE: diagnosis_type=MONITOR_AND_WAIT (early_stage)`);
     
     return {
       is_positive: true,
       diagnosis_type: 'MONITOR_AND_WAIT',
       confidence: 0.78,
       follow_up_days: 7,
-      reason: 'Crop is in early establishment phase. Mild symptoms often resolve as roots develop.',
       reason_code: 'EARLY_STAGE_ADJUSTMENT',
-      recommendations: [
-        'Allow 7 days for natural adjustment',
-        'Ensure adequate soil moisture',
-        'Avoid unnecessary interventions',
-        'Report if symptoms worsen significantly'
-      ]
+      i18n_key: 'diagnosis.positive.early_stage',
+      recommendation_codes: ['WAIT_7_DAYS', 'ENSURE_MOISTURE', 'AVOID_INTERVENTION', 'REPORT_IF_WORSE'],
+      metadata: {
+        ndvi_healthy: ndviHealthy,
+        symptoms_non_critical: symptomsNonCritical,
+        no_rules_matched: noRulesMatched,
+        evaluation_factors: [...evaluationFactors, 'EARLY_DAS']
+      }
     };
   }
   
@@ -185,20 +212,22 @@ export function evaluatePositiveDiagnosis(
   // ═══════════════════════════════════════════════════════════════════════════
   
   if (symptomsNonCritical && input.symptoms_count <= 2 && noRulesMatched) {
-    console.log(`   ✅ POSITIVE DIAGNOSIS: Mild symptoms, monitor only`);
+    console.log(`  ✅ POSITIVE: diagnosis_type=MONITOR_AND_WAIT (mild_symptoms)`);
     
     return {
       is_positive: true,
       diagnosis_type: 'MONITOR_AND_WAIT',
       confidence: 0.72,
       follow_up_days: 5,
-      reason: 'Symptoms are mild and may be due to temporary environmental factors.',
       reason_code: 'MILD_SYMPTOMS_NORMAL_GROWTH',
-      recommendations: [
-        'Observe for 5-7 days',
-        'Take photos if symptoms change',
-        'No spray needed at this time'
-      ]
+      i18n_key: 'diagnosis.positive.mild_symptoms',
+      recommendation_codes: ['OBSERVE_5_DAYS', 'TAKE_PHOTOS', 'NO_SPRAY'],
+      metadata: {
+        ndvi_healthy: ndviHealthy,
+        symptoms_non_critical: symptomsNonCritical,
+        no_rules_matched: noRulesMatched,
+        evaluation_factors: [...evaluationFactors, 'LOW_SYMPTOM_COUNT']
+      }
     };
   }
   
@@ -206,16 +235,22 @@ export function evaluatePositiveDiagnosis(
   // CASE 4: NOT A POSITIVE CASE → NEEDS INVESTIGATION
   // ═══════════════════════════════════════════════════════════════════════════
   
-  console.log(`   ⚠️ NOT a positive diagnosis case - needs further investigation`);
+  console.log(`  ⚠️ NOT positive - diagnosis_type=NEEDS_INVESTIGATION`);
   
   return {
     is_positive: false,
     diagnosis_type: 'NEEDS_INVESTIGATION',
     confidence: 0.50,
     follow_up_days: 3,
-    reason: 'Symptoms require further investigation or clarification.',
     reason_code: 'NEEDS_CLARIFICATION',
-    recommendations: []
+    i18n_key: 'diagnosis.needs_investigation',
+    recommendation_codes: [],
+    metadata: {
+      ndvi_healthy: ndviHealthy,
+      symptoms_non_critical: symptomsNonCritical,
+      no_rules_matched: noRulesMatched,
+      evaluation_factors: evaluationFactors
+    }
   };
 }
 
@@ -249,49 +284,21 @@ function calculateFollowUpDays(stage: string): number {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TRILINGUAL POSITIVE DIAGNOSIS MESSAGES
+// I18N KEY REGISTRY - Maps reason codes to translation keys
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const POSITIVE_DIAGNOSIS_MESSAGES: Record<PositiveReasonCode, { mr: string; hi: string; en: string }> = {
-  'HEALTHY_NDVI': {
-    mr: '✅ तुमचे पीक चांगले वाढत आहे. सध्या कोणत्याही उपचाराची गरज नाही. {follow_up_days} दिवसांनी पुन्हा तपासा.',
-    hi: '✅ आपकी फसल अच्छी तरह बढ़ रही है। अभी कोई उपचार नहीं चाहिए। {follow_up_days} दिनों बाद फिर जांच करें।',
-    en: '✅ Your crop is growing well. No treatment needed at this time. Check again in {follow_up_days} days.'
-  },
-  'MILD_SYMPTOMS_NORMAL_GROWTH': {
-    mr: '🌱 हे लक्षणे सौम्य आहेत आणि सामान्यतः स्वतःच बरे होतात. {follow_up_days} दिवस निरीक्षण करा.',
-    hi: '🌱 ये लक्षण हल्के हैं और आमतौर पर अपने आप ठीक हो जाते हैं। {follow_up_days} दिन निगरानी करें।',
-    en: '🌱 These symptoms are mild and often resolve naturally. Monitor for {follow_up_days} days.'
-  },
-  'EARLY_STAGE_ADJUSTMENT': {
-    mr: '🌾 पीक सुरुवातीच्या टप्प्यात आहे. मुळे विकसित होताना ही लक्षणे सामान्य असतात. {follow_up_days} दिवस थांबा.',
-    hi: '🌾 फसल शुरुआती चरण में है। जड़ें विकसित होते समय ये लक्षण सामान्य हैं। {follow_up_days} दिन प्रतीक्षा करें।',
-    en: '🌾 Crop is in early stage. These symptoms are normal as roots develop. Wait {follow_up_days} days.'
-  },
-  'NO_SPECIFIC_THREAT': {
-    mr: '👍 कोणताही विशिष्ट धोका आढळला नाही. नियमित निरीक्षण सुरू ठेवा.',
-    hi: '👍 कोई विशेष खतरा नहीं मिला। नियमित निगरानी जारी रखें।',
-    en: '👍 No specific threat detected. Continue regular monitoring.'
-  },
-  'SEASONAL_VARIATION': {
-    mr: '🌤️ हे हंगामातील सामान्य बदल आहेत. काळजी करण्याची गरज नाही.',
-    hi: '🌤️ ये मौसमी सामान्य परिवर्तन हैं। चिंता की जरूरत नहीं।',
-    en: '🌤️ These are normal seasonal variations. No cause for concern.'
-  },
-  'NEEDS_CLARIFICATION': {
-    mr: 'अधिक माहिती आवश्यक आहे.',
-    hi: 'अधिक जानकारी आवश्यक है।',
-    en: 'More information needed.'
-  }
+export const POSITIVE_DIAGNOSIS_I18N_KEYS: Record<PositiveReasonCode, string> = {
+  'HEALTHY_NDVI': 'diagnosis.positive.healthy_ndvi',
+  'MILD_SYMPTOMS_NORMAL_GROWTH': 'diagnosis.positive.mild_symptoms',
+  'EARLY_STAGE_ADJUSTMENT': 'diagnosis.positive.early_stage',
+  'NO_SPECIFIC_THREAT': 'diagnosis.positive.no_threat',
+  'SEASONAL_VARIATION': 'diagnosis.positive.seasonal',
+  'NEEDS_CLARIFICATION': 'diagnosis.needs_clarification'
 };
 
 /**
- * Get formatted positive diagnosis message in specified language
+ * Get i18n key for a reason code
  */
-export function getPositiveDiagnosisMessage(
-  output: PositiveDiagnosisOutput,
-  language: 'mr' | 'hi' | 'en'
-): string {
-  const template = POSITIVE_DIAGNOSIS_MESSAGES[output.reason_code][language];
-  return template.replace('{follow_up_days}', output.follow_up_days.toString());
+export function getPositiveDiagnosisI18nKey(reasonCode: PositiveReasonCode): string {
+  return POSITIVE_DIAGNOSIS_I18N_KEYS[reasonCode];
 }
