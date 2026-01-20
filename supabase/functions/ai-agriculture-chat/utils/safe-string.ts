@@ -1,10 +1,9 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * SAFE STRING UTILITIES - Production-Grade Guards
+ * SAFE STRING UTILITIES v2.0.0 - Production-Grade Guards
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Prevents runtime crashes from undefined/null string operations.
- * Used across AI chat agents and orchestrator.
+ * PHASE 2 HARDENING: Prevents runtime crashes from undefined/null string operations.
  * 
  * CRITICAL: These guards ensure zero TypeError from:
  * - substring, slice, trim
@@ -12,10 +11,44 @@
  * - includes, split
  * - length access
  * 
- * @version 1.0.0
+ * USAGE:
+ * - normalizeText: Convert unknown → string (empty fallback)
+ * - safePreview: Safe text preview for logging
+ * - hasText: Check if has non-whitespace content
+ * 
+ * @version 2.0.0
  */
 
-export const SAFE_STRING_VERSION = '1.0.0';
+export const SAFE_STRING_VERSION = '2.0.0';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 2: CORE GUARD FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalize any input to string (empty fallback for non-strings).
+ * This is the CORE guard function.
+ */
+export function normalizeText(input: unknown): string {
+  return typeof input === 'string' ? input : '';
+}
+
+/**
+ * Safe preview for logging - never crashes.
+ */
+export function safePreview(input: unknown, len = 50): string {
+  const text = normalizeText(input);
+  return text.length > 0
+    ? text.slice(0, len) + (text.length > len ? '...' : '')
+    : '[NO_TEXT]';
+}
+
+/**
+ * Check if has non-empty text content.
+ */
+export function hasText(input: unknown): boolean {
+  return normalizeText(input).trim().length > 0;
+}
 
 /**
  * Safely preview text for logging without crash risk.

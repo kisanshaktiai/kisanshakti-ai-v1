@@ -1760,14 +1760,8 @@ export class AIAgentOrchestrator {
           // DO NOT continue to NLU pipeline - this is the HARD GATE
           console.log('⚠️ [ClarificationGate] No valid option selected — returning reminder (NLU BLOCKED)');
           
-          const reminderMessages: Record<string, string> = {
-            mr: `🌾 कृपया वरीलपैकी एक पर्याय निवडा (1, 2, 3 किंवा पूर्ण मजकूर टाइप करा).\n\n${pendingOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}`,
-            hi: `🌾 कृपया ऊपर दिए गए विकल्पों में से एक चुनें (1, 2, 3 या पूरा पाठ टाइप करें).\n\n${pendingOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}`,
-            en: `🌾 Please select one of the options above (type 1, 2, 3 or the full text).\n\n${pendingOptions.map((opt, i) => `${i + 1}️⃣ ${opt}`).join('\n')}`
-          };
-          
-          const lang = options.language || 'en';
-          const reminderText = reminderMessages[lang] || reminderMessages['en'];
+          // REFACTORED: Use i18n_key instead of hardcoded language text
+          // The narration layer will resolve the actual display text
           
           // PHASE-9.1-FIX: HARD RETURN - Return clarification reminder and STOP
           // This is the CRITICAL gate that prevents NLU from running
@@ -1776,12 +1770,13 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             question: {
               question_id: `clarification_reminder_${Date.now()}`,
-              text_mr: reminderMessages['mr'],
-              text_hi: reminderMessages['hi'],
-              text_en: reminderMessages['en'],
+              // SYMBOLIC: i18n_key for narration layer to resolve
+              i18n_key: 'clarification.select_option_reminder',
+              // Options are passed through for narration layer to render
               options: pendingOptions.map((opt, idx) => ({
                 value: String(idx + 1),
-                label: opt
+                label: opt, // These are already localized observation descriptions
+                option_code: `OPTION_${idx + 1}`
               }))
             },
             metadata: {
@@ -1795,7 +1790,8 @@ export class AIAgentOrchestrator {
               pendingClarificationOptions: pendingOptions,
               // PATCH 3: PRESERVE locked crop context - prevents re-asking crop
               lockedCropContext: lockedCropContext,
-              clarification_reminder: true
+              clarification_reminder: true,
+              i18n_driven: true
             }
           };
         }
@@ -6798,15 +6794,29 @@ export class AIAgentOrchestrator {
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // P1-A: CROP HEALTH RESPONSE GENERATOR
-  // Generates a crop health assessment using NDVI, soil, and weather data
+  // P1-A: CROP HEALTH RESPONSE GENERATOR - REFACTORED TO SYMBOLIC OUTPUT
+  // Returns structured data + i18n_keys, NOT hardcoded language text
+  // Narration layer handles all text rendering
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateCropHealthResponse(
     landContext: any,
-    language: 'mr' | 'hi' | 'en'
-  ): { message: string; confidence: number; suggestions: string[]; actions: any[]; isCritical: boolean } {
-    const crop = landContext.current_crop || 'पीक';
+    _language: 'mr' | 'hi' | 'en' // Kept for backward compat but NOT used for text
+  ): { 
+    message: string;  // DEPRECATED: Narration layer fills this
+    confidence: number; 
+    suggestions: string[]; 
+    actions: any[]; 
+    isCritical: boolean;
+    // NEW: Symbolic output for narration layer
+    symbolic_output?: {
+      health_status_code: string;
+      i18n_key: string;
+      data_points: Record<string, any>;
+      action_codes: string[];
+    };
+  } {
+    const crop = landContext.current_crop || '';
     const cropCode = (crop || '').toUpperCase();
     const stage = landContext.growth_stage || 'VEGETATIVE';
     const das = landContext.days_since_sowing || 0;
@@ -6815,10 +6825,9 @@ export class AIAgentOrchestrator {
     const soil = landContext.soil_health;
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL: NDVI THRESHOLDS BY CROP + STAGE (ICAR Standards)
+    // NDVI THRESHOLDS BY CROP + STAGE (ICAR Standards) - Pure data, no language
     // ═══════════════════════════════════════════════════════════════════════════
     
-    // Expected NDVI ranges by stage for common crops
     const EXPECTED_NDVI_BY_STAGE: Record<string, { min: number; critical: number }> = {
       'GERMINATION': { min: 0.08, critical: 0.05 },
       'SEEDLING': { min: 0.15, critical: 0.10 },
@@ -6830,7 +6839,6 @@ export class AIAgentOrchestrator {
       'MATURITY': { min: 0.35, critical: 0.20 }
     };
     
-    // Determine expected NDVI for current stage
     const stageUpper = (stage || 'VEGETATIVE').toUpperCase();
     const expectedNdvi = EXPECTED_NDVI_BY_STAGE[stageUpper] || { min: 0.35, critical: 0.20 };
     
@@ -6838,7 +6846,6 @@ export class AIAgentOrchestrator {
     const nitrogenKgPerHa = soil?.nitrogen_kg_per_ha;
     let nitrogenState: 'LOW' | 'ADEQUATE' | 'HIGH' = 'ADEQUATE';
     
-    // Nitrogen thresholds by crop (kg/ha)
     const N_THRESHOLDS: Record<string, { low: number; high: number }> = {
       'WHEAT': { low: 100, high: 200 },
       'RICE': { low: 100, high: 200 },
@@ -6855,226 +6862,104 @@ export class AIAgentOrchestrator {
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // HEALTH STATUS DETERMINATION (CRITICAL FIX)
+    // HEALTH STATUS DETERMINATION - SYMBOLIC CODES ONLY
     // ═══════════════════════════════════════════════════════════════════════════
     
-    let healthStatus: 'excellent' | 'good' | 'moderate' | 'concern' | 'critical' = 'good';
-    let healthIcon = '✅';
+    let healthStatusCode: 'EXCELLENT' | 'GOOD' | 'MODERATE' | 'CONCERN' | 'CRITICAL' = 'GOOD';
     let isCritical = false;
-    const actions: any[] = [];
+    const actionCodes: string[] = [];
     
     if (ndvi !== undefined) {
-      // CRITICAL: NDVI below critical threshold for stage
       if (ndvi < expectedNdvi.critical) {
-        healthStatus = 'critical';
-        healthIcon = '🚨';
+        healthStatusCode = 'CRITICAL';
         isCritical = true;
         console.log(`🚨 [NDVI CRITICAL] NDVI=${ndvi} < critical threshold ${expectedNdvi.critical} for stage ${stageUpper}`);
       } else if (ndvi < expectedNdvi.min) {
-        healthStatus = 'concern';
-        healthIcon = '🔴';
+        healthStatusCode = 'CONCERN';
       } else if (ndvi >= 0.6) {
-        healthStatus = 'excellent';
-        healthIcon = '🌟';
+        healthStatusCode = 'EXCELLENT';
       } else if (ndvi >= 0.4) {
-        healthStatus = 'good';
-        healthIcon = '✅';
+        healthStatusCode = 'GOOD';
       } else {
-        healthStatus = 'moderate';
-        healthIcon = '⚠️';
+        healthStatusCode = 'MODERATE';
       }
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // BUILD ACTIONS BASED ON ACTUAL CONDITIONS
+    // BUILD SYMBOLIC ACTIONS - i18n_keys, NOT text
     // ═══════════════════════════════════════════════════════════════════════════
     
-    // Add fertilizer action if nitrogen is low
+    const actions: any[] = [];
+    
     if (nitrogenState === 'LOW') {
       const ureaDosage = cropCode === 'WHEAT' ? '50' : cropCode === 'RICE' ? '45' : '40';
       actions.push({
         action_type: 'APPLY_FERTILIZER',
-        title: language === 'mr' ? 'युरिया खत द्या' : language === 'hi' ? 'यूरिया खाद दें' : 'Apply Urea',
-        description: language === 'mr' 
-          ? `नायट्रोजन कमी आहे (${nitrogenKgPerHa?.toFixed(1)} kg/ha). युरिया ${ureaDosage} kg/acre द्या.`
-          : language === 'hi'
-          ? `नाइट्रोजन कम है (${nitrogenKgPerHa?.toFixed(1)} kg/ha). यूरिया ${ureaDosage} kg/acre दें.`
-          : `Nitrogen is low (${nitrogenKgPerHa?.toFixed(1)} kg/ha). Apply Urea ${ureaDosage} kg/acre.`,
-        dosage: `${ureaDosage} kg/acre`,
-        product_name: 'Urea (46% N)',
+        action_code: 'APPLY_UREA',
+        i18n_key: 'action.apply_urea',
+        product_code: 'UREA_46N',
+        dosage_value: ureaDosage,
+        dosage_unit: 'kg/acre',
         priority: isCritical ? 'URGENT' : 'HIGH',
-        timing: { recommended_start: new Date().toISOString() }
+        data: { nitrogen_kg_ha: nitrogenKgPerHa }
       });
+      actionCodes.push('APPLY_UREA');
     }
     
-    // Add monitoring action
+    // Always add monitoring action
     actions.push({
       action_type: 'MONITOR',
-      title: language === 'mr' ? 'निरीक्षण करा' : language === 'hi' ? 'निगरानी करें' : 'Monitor',
-      description: language === 'mr' 
-        ? 'पिकाचे नियमित निरीक्षण करा'
-        : language === 'hi'
-        ? 'फसल की नियमित निगरानी करें'
-        : 'Regularly monitor the crop',
+      action_code: 'MONITOR_CROP',
+      i18n_key: 'action.monitor_regular',
       priority: 'MEDIUM',
-      timing: 'Every 3-5 days'
+      timing_code: 'EVERY_3_5_DAYS'
     });
+    actionCodes.push('MONITOR_CROP');
     
-    // ═══════════════════════════════════════════════════════════════════════════
-    // BUILD RESPONSE MESSAGE
-    // ═══════════════════════════════════════════════════════════════════════════
-    
-    let healthMessage = '';
-    
-    if (language === 'mr') {
-      const statusMap: Record<string, string> = {
-        excellent: 'उत्कृष्ट',
-        good: 'चांगले',
-        moderate: 'मध्यम',
-        concern: 'चिंताजनक',
-        critical: '🚨 गंभीर - तातडीने लक्ष द्या!'
-      };
-      
-      healthMessage = `${healthIcon} **तुमच्या ${crop} पिकाची स्थिती: ${statusMap[healthStatus]}**\n\n`;
-      healthMessage += `🌱 **पिकाचा टप्पा:** ${stage} (${das} दिवस झाले)\n`;
-      
-      if (ndvi !== undefined) {
-        healthMessage += `📊 **NDVI (पिकाची हिरवळ):** ${ndvi.toFixed(3)}`;
-        
-        // Show expected vs actual for critical cases
-        if (healthStatus === 'critical' || healthStatus === 'concern') {
-          healthMessage += ` ⚠️ (अपेक्षित: ${expectedNdvi.min.toFixed(2)}+)`;
-        }
-        
-        if (ndviTrend === 'IMPROVING' || ndviTrend === 'RISING') {
-          healthMessage += ' 📈 (सुधारत आहे)';
-        } else if (ndviTrend === 'DECLINING') {
-          healthMessage += ' 📉 (कमी होत आहे)';
-        }
-        healthMessage += '\n';
-      }
-      
-      if (soil) {
-        healthMessage += `\n🧪 **जमिनीची स्थिती:**\n`;
-        healthMessage += `   • नत्र (N): ${nitrogenKgPerHa?.toFixed(1) || 'N/A'} kg/ha`;
-        if (nitrogenState === 'LOW') healthMessage += ' ⚠️ **कमी**';
-        else if (nitrogenState === 'HIGH') healthMessage += ' ⬆️ जास्त';
-        healthMessage += '\n';
-        healthMessage += `   • स्फुरद (P): ${soil.phosphorus_kg_per_ha?.toFixed(1) || 'N/A'} kg/ha\n`;
-        healthMessage += `   • पालाश (K): ${soil.potassium_kg_per_ha?.toFixed(1) || 'N/A'} kg/ha\n`;
-        healthMessage += `   • pH: ${soil.ph_level || 'N/A'}\n`;
-      }
-      
-      // Add recommendations based on status
-      healthMessage += `\n💡 **पुढील कृती:**\n`;
-      
-      if (healthStatus === 'critical') {
-        healthMessage += `🚨 **तातडीने कृती करा:**\n`;
-        if (nitrogenState === 'LOW') {
-          healthMessage += `• युरिया खत तातडीने द्या (${actions[0]?.dosage})\n`;
-        }
-        healthMessage += `• पिकाला पाणी द्या\n`;
-        healthMessage += `• किडी-रोग तपासा\n`;
-        healthMessage += `• तज्ञांचा सल्ला घ्या\n`;
-      } else if (healthStatus === 'concern') {
-        healthMessage += `⚠️ **लक्ष द्या:**\n`;
-        if (nitrogenState === 'LOW') {
-          healthMessage += `• नत्र कमी आहे - युरिया द्या\n`;
-        }
-        healthMessage += `• पिकाची काळजी घ्या\n`;
-        healthMessage += `• पाण्याचे प्रमाण तपासा\n`;
-      } else if (healthStatus === 'excellent' || healthStatus === 'good') {
-        healthMessage += `• सध्याचे व्यवस्थापन चांगले आहे, चालू ठेवा\n`;
-        healthMessage += `• नियमित पाणी व्यवस्थापन करा\n`;
-      } else {
-        healthMessage += `• पिकाची अधिक काळजी घ्या\n`;
-        if (nitrogenState === 'LOW') {
-          healthMessage += `• नायट्रोजन कमी - खत द्या\n`;
-        }
-      }
-      
-    } else if (language === 'hi') {
-      const statusMap: Record<string, string> = {
-        excellent: 'उत्कृष्ट',
-        good: 'अच्छी',
-        moderate: 'मध्यम',
-        concern: 'चिंताजनक',
-        critical: '🚨 गंभीर - तुरंत ध्यान दें!'
-      };
-      
-      healthMessage = `${healthIcon} **आपकी ${crop} फसल की स्थिति: ${statusMap[healthStatus]}**\n\n`;
-      healthMessage += `🌱 **फसल की अवस्था:** ${stage} (${das} दिन हुए)\n`;
-      
-      if (ndvi !== undefined) {
-        healthMessage += `📊 **NDVI (फसल की हरियाली):** ${ndvi.toFixed(3)}`;
-        if (healthStatus === 'critical' || healthStatus === 'concern') {
-          healthMessage += ` ⚠️ (अपेक्षित: ${expectedNdvi.min.toFixed(2)}+)`;
-        }
-        healthMessage += '\n';
-      }
-      
-      healthMessage += `\n💡 **अगला कदम:**\n`;
-      if (healthStatus === 'critical') {
-        healthMessage += `🚨 **तुरंत कार्रवाई करें:**\n`;
-        if (nitrogenState === 'LOW') {
-          healthMessage += `• यूरिया खाद तुरंत दें\n`;
-        }
-        healthMessage += `• फसल को पानी दें\n`;
-        healthMessage += `• विशेषज्ञ से सलाह लें\n`;
-      } else {
-        healthMessage += `• नियमित निगरानी जारी रखें\n`;
-      }
-      
-    } else {
-      const statusMap: Record<string, string> = {
-        excellent: 'Excellent',
-        good: 'Good',
-        moderate: 'Moderate',
-        concern: 'Needs Attention',
-        critical: '🚨 CRITICAL - Urgent Action Required!'
-      };
-      
-      healthMessage = `${healthIcon} **Your ${crop} crop status: ${statusMap[healthStatus]}**\n\n`;
-      healthMessage += `🌱 **Growth Stage:** ${stage} (Day ${das})\n`;
-      
-      if (ndvi !== undefined) {
-        healthMessage += `📊 **NDVI (Vegetation Index):** ${ndvi.toFixed(3)}`;
-        if (healthStatus === 'critical' || healthStatus === 'concern') {
-          healthMessage += ` ⚠️ (Expected: ${expectedNdvi.min.toFixed(2)}+)`;
-        }
-        healthMessage += '\n';
-      }
-      
-      healthMessage += `\n💡 **Next Steps:**\n`;
-      if (healthStatus === 'critical') {
-        healthMessage += `🚨 **Take Immediate Action:**\n`;
-        if (nitrogenState === 'LOW') {
-          healthMessage += `• Apply Urea fertilizer immediately\n`;
-        }
-        healthMessage += `• Check irrigation\n`;
-        healthMessage += `• Consult agricultural expert\n`;
-      } else {
-        healthMessage += `• Continue regular monitoring\n`;
-      }
+    // Add urgent actions for critical status
+    if (isCritical) {
+      actionCodes.push('CHECK_IRRIGATION', 'INSPECT_PEST_DISEASE', 'CONSULT_EXPERT');
     }
     
-    const suggestions = language === 'mr' 
-      ? ['किडी समस्या आहे का?', 'पाणी कधी द्यावे?', 'खत शिफारस']
-      : language === 'hi'
-      ? ['कीट समस्या है?', 'पानी कब दें?', 'खाद सिफारिश']
-      : ['Any pest issues?', 'When to irrigate?', 'Fertilizer recommendation'];
+    // ═══════════════════════════════════════════════════════════════════════════
+    // BUILD SYMBOLIC OUTPUT - Narration layer renders to farmer language
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    const symbolicOutput = {
+      health_status_code: healthStatusCode,
+      i18n_key: `crop_health.status.${healthStatusCode.toLowerCase()}`,
+      data_points: {
+        crop_code: cropCode,
+        stage_code: stageUpper,
+        days_after_sowing: das,
+        ndvi_value: ndvi,
+        ndvi_expected_min: expectedNdvi.min,
+        ndvi_trend: ndviTrend,
+        nitrogen_state: nitrogenState,
+        nitrogen_kg_ha: nitrogenKgPerHa,
+        phosphorus_kg_ha: soil?.phosphorus_kg_per_ha,
+        potassium_kg_ha: soil?.potassium_kg_per_ha,
+        ph_level: soil?.ph_level
+      },
+      action_codes: actionCodes
+    };
+    
+    // Suggestion codes for quick actions (not hardcoded text)
+    const suggestionCodes = ['PEST_QUERY', 'IRRIGATION_QUERY', 'FERTILIZER_QUERY'];
     
     return {
-      message: healthMessage,
+      message: '', // DEPRECATED: Narration layer fills this from symbolic_output
       confidence: ndvi !== undefined ? 0.85 : 0.65,
-      suggestions,
+      suggestions: suggestionCodes, // These are CODES, not display text
       actions,
-      isCritical
+      isCritical,
+      symbolic_output: symbolicOutput
     };
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 8: GREETING RESPONSE GENERATOR
+  // PHASE 8: GREETING RESPONSE GENERATOR - SYMBOLIC ONLY
+  // REFACTORED: Returns i18n_key, narration layer handles text
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateGreetingResponse(
@@ -7084,12 +6969,8 @@ export class AIAgentOrchestrator {
     agentsUsed: string[],
     traceId: string
   ): OrchestratorResponse {
-    const greetings: Record<'mr' | 'hi' | 'en', string> = {
-      mr: '🙏 नमस्कार! मी तुमचा कृषी सल्लागार आहे. तुम्ही तुमच्या पिकाबद्दल, किडी-रोग, पाणी व्यवस्थापन, खत शिफारस किंवा बाजारभाव याबद्दल विचारू शकता. मला कशाबद्दल मदत करू?',
-      hi: '🙏 नमस्ते! मैं आपका कृषि सलाहकार हूं। आप अपनी फसल, कीट-रोग, पानी प्रबंधन, खाद सिफारिश या बाजार भाव के बारे में पूछ सकते हैं। मैं किस बारे में मदद करूं?',
-      en: '🙏 Hello! I am your agricultural advisor. You can ask me about your crop, pests, diseases, irrigation, fertilizer recommendations, or market prices. How can I help you today?'
-    };
-    
+    // SYMBOLIC OUTPUT: Return i18n_key and action codes, NOT hardcoded text
+    // Narration layer will convert these to farmer-friendly language
     return {
       type: 'DECISION_PROVIDED',
       session_id: sessionId,
@@ -7102,20 +6983,25 @@ export class AIAgentOrchestrator {
         format: 'RICH_TEXT',
         tone: 'FRIENDLY',
         created_at: new Date().toISOString(),
+        // SYMBOLIC: i18n_key for narration layer
         main_message: {
-          full_text: greetings
+          i18n_key: 'greeting.welcome',
+          // fallback_text is ONLY for narration layer failure - not displayed directly
+          fallback_text: ''
         },
+        // SYMBOLIC: action_codes instead of hardcoded labels
         quick_actions: [
-          { label: language === 'mr' ? '🐛 किडी समस्या' : language === 'hi' ? '🐛 कीट समस्या' : '🐛 Pest Problem', action: 'pest_query' },
-          { label: language === 'mr' ? '💧 पाणी' : language === 'hi' ? '💧 पानी' : '💧 Irrigation', action: 'water_query' },
-          { label: language === 'mr' ? '🌾 खत' : language === 'hi' ? '🌾 खाद' : '🌾 Fertilizer', action: 'fertilizer_query' }
+          { action_code: 'PEST_QUERY', i18n_key: 'quick_action.pest_problem', icon_code: 'PEST' },
+          { action_code: 'WATER_QUERY', i18n_key: 'quick_action.irrigation', icon_code: 'WATER' },
+          { action_code: 'FERTILIZER_QUERY', i18n_key: 'quick_action.fertilizer', icon_code: 'FERTILIZER' }
         ],
         metadata: {
-          word_count: greetings[language].split(/\s+/).length,
+          word_count: 0, // Narration layer calculates
           reading_time_seconds: 5,
           confidence_score: 1.0,
           source: 'GREETING',
-          response_type: 'GREETING'
+          response_type: 'GREETING',
+          i18n_driven: true
         }
       } as any,
       decision_output: {
@@ -7124,6 +7010,8 @@ export class AIAgentOrchestrator {
         status: 'INFORMATION_PROVIDED',
         decision_brain_source: false,
         actions_returned: [],
+        // SYMBOLIC: Include i18n_key in output
+        primary_i18n_key: 'greeting.welcome',
         metadata: {
           confidence: 1.0,
           trace_id: traceId,
@@ -7145,76 +7033,37 @@ export class AIAgentOrchestrator {
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // P1-2: AUTHORITY BLOCK MESSAGE GENERATOR
+  // P1-2: AUTHORITY BLOCK MESSAGE GENERATOR - REFACTORED TO SYMBOLIC
+  // Returns i18n_key + reason_code, narration layer renders text
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateAuthorityBlockMessage(
     authority: string,
     reason: string,
-    language: string
+    _language: string // Kept for backward compat but NOT used
   ): string {
-    const messages: Record<string, Record<string, string>> = {
-      LAND: {
-        mr: `⚠️ **जमिनीची समस्या आढळली**\n\n${reason}\n\n` +
-            `🚫 सध्या सिंचन/स्प्रे करू नका.\n\n` +
-            `💡 **पुढचे पाऊल:**\n` +
-            `• मातीची EC तपासणी करा\n` +
-            `• जास्त पाणी देणे टाळा\n` +
-            `• कृषी अधिकाऱ्यांचा सल्ला घ्या`,
-        hi: `⚠️ **जमीन की समस्या पाई गई**\n\n${reason}\n\n` +
-            `🚫 अभी सिंचाई/स्प्रे न करें।\n\n` +
-            `💡 **अगला कदम:**\n` +
-            `• मिट्टी की EC जांच करें\n` +
-            `• अधिक पानी देना बंद करें\n` +
-            `• कृषि अधिकारी से सलाह लें`,
-        en: `⚠️ **Land Issue Detected**\n\n${reason}\n\n` +
-            `🚫 Do not irrigate or spray now.\n\n` +
-            `💡 **Next Steps:**\n` +
-            `• Check soil EC level\n` +
-            `• Avoid overwatering\n` +
-            `• Consult agricultural officer`
-      },
-      SAFETY: {
-        mr: `🚨 **सुरक्षितता चिंता**\n\n${reason}\n\n` +
-            `⛔ कोणतीही फवारणी करू नका.\n` +
-            `📞 कृपया तज्ञांशी संपर्क साधा.`,
-        hi: `🚨 **सुरक्षा चिंता**\n\n${reason}\n\n` +
-            `⛔ कोई स्प्रे न करें।\n` +
-            `📞 कृपया विशेषज्ञ से संपर्क करें।`,
-        en: `🚨 **Safety Concern**\n\n${reason}\n\n` +
-            `⛔ Do not spray anything.\n` +
-            `📞 Please contact an expert.`
-      },
-      CLIMATE: {
-        mr: `🌧️ **हवामान चेतावणी**\n\n${reason}\n\n` +
-            `⏳ हवामान सुधारल्यानंतर कार्यवाही करा.`,
-        hi: `🌧️ **मौसम चेतावनी**\n\n${reason}\n\n` +
-            `⏳ मौसम ठीक होने पर कार्रवाई करें।`,
-        en: `🌧️ **Weather Warning**\n\n${reason}\n\n` +
-            `⏳ Wait for weather to improve before taking action.`
-      }
-    };
+    // SYMBOLIC: Return an i18n_key marker that narration layer will resolve
+    // The actual text rendering happens in narration layer
+    const i18nKey = `authority_block.${authority.toLowerCase()}`;
+    console.log(`[SYMBOLIC] Authority block: ${authority}, i18n_key: ${i18nKey}, reason: ${reason}`);
     
-    const authorityMessages = messages[authority] || messages['LAND'];
-    return authorityMessages[language] || authorityMessages['mr'];
+    // Return empty string - caller should use symbolic output instead
+    // This maintains backward compatibility while encouraging migration
+    return `[i18n:${i18nKey}][reason:${reason}]`;
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // P1-2: LAND STRESS WARNING PREPENDER FOR CROP HEALTH
+  // P1-2: LAND STRESS WARNING - REFACTORED TO SYMBOLIC
   // ═══════════════════════════════════════════════════════════════════════════
   
   private prependLandStressWarning(
     originalMessage: string,
     reason: string,
-    language: string
+    _language: string // Kept for backward compat but NOT used
   ): string {
-    const warnings: Record<string, string> = {
-      mr: `⚠️ **जमिनीची समस्या आढळली:** ${reason}\n\n`,
-      hi: `⚠️ **जमीन समस्या पाई गई:** ${reason}\n\n`,
-      en: `⚠️ **Land Issue Detected:** ${reason}\n\n`
-    };
-    
-    return (warnings[language] || warnings['mr']) + originalMessage;
+    // SYMBOLIC: Return marker for narration layer
+    console.log(`[SYMBOLIC] Land stress warning, reason: ${reason}`);
+    return `[i18n:land_stress_warning][reason:${reason}]\n\n${originalMessage}`;
   }
 }
 
