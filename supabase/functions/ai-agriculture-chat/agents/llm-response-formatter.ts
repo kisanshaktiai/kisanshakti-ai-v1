@@ -67,7 +67,11 @@ import {
   safeLowerCase,
   hasTextContent,
   normalizeFarmerMessage,
-  extractMessageContent
+  extractMessageContent,
+  resolveI18nKey,
+  resolveResponseModeString,
+  resolveSeverity,
+  resolveActionCodes
 } from '../utils/safe-string.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -76,6 +80,7 @@ import {
 import {
   renderByMode,
   resolveResponseMode,
+  assertResponseModeInvariant,
   type ModeRenderedOutput
 } from '../utils/response-mode-renderer.ts';
 
@@ -188,7 +193,7 @@ export async function formatRecommendationsWithLLM(
   // RESOLVE RESPONSE MODE - CONFIDENCE-DRIVEN (CRITICAL FIX)
   // ═══════════════════════════════════════════════════════════════════════════
   
-  // Extract confidence data from decision metadata
+  // CRASH-PROOF: Extract confidence data with safe defaults
   const decisionConfidence = input.decision_output?.metadata?.decision_confidence ?? 
                               input.decision_output?.confidence ?? 0;
   const hasSymptoms = input.decision_output?.metadata?.has_symptoms ?? 
@@ -197,6 +202,18 @@ export async function formatRecommendationsWithLLM(
                               input.decision_output?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = input.decision_output?.clarification_options ?? [];
   
+  // FAIL-SAFE: Resolve i18n key with guaranteed fallback
+  const primaryI18nKey = resolveI18nKey(
+    input.decision_output?.primary_i18n_key ?? input.decision_output?.metadata?.i18n_key,
+    'system.monitoring.default'
+  );
+  
+  // FAIL-SAFE: Resolve action codes safely
+  const actionCodes = resolveActionCodes(input.decision_output?.action_codes ?? []);
+  
+  // FAIL-SAFE: Resolve severity
+  const severity = resolveSeverity(input.decision_output?.severity ?? input.decision_output?.metadata?.severity);
+  
   const responseMode = resolveResponseMode({
     response_mode: input.decision_output?.metadata?.response_mode,
     gate_action: input.decision_output?.metadata?.gate_action,
@@ -204,16 +221,22 @@ export async function formatRecommendationsWithLLM(
     has_clarification: !!input.decision_output?.clarification_needed,
     has_options: clarificationOptions.length > 0,
     needs_photo: input.decision_output?.needs_photo_for_diagnosis,
-    // NEW: Confidence-driven fields
+    // CRITICAL: Confidence-driven fields
     decision_confidence: decisionConfidence,
     has_symptoms: hasSymptoms,
     has_visual_ambiguity: hasVisualAmbiguity,
     clarification_options: clarificationOptions
   });
   
+  // INVARIANT ASSERTION: Prevent OBSERVATION with low confidence + symptoms
+  assertResponseModeInvariant(responseMode, decisionConfidence, hasSymptoms);
+  
   console.log(`   Resolved Response Mode: ${responseMode}`);
   console.log(`   Decision Confidence: ${decisionConfidence}`);
   console.log(`   Has Symptoms: ${hasSymptoms}`);
+  console.log(`   Primary i18n Key: ${primaryI18nKey}`);
+  console.log(`   Action Codes: ${actionCodes.length > 0 ? actionCodes.join(', ') : '[none]'}`);
+  console.log(`   Severity: ${severity}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // P1-4: GATE CHECK REMOVED - NOW HAPPENS IN index.ts VIA evaluateUnifiedGate()
@@ -1167,22 +1190,45 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   const decision = input.decision_output;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // RESOLVE RESPONSE MODE - Determines rendering approach
+  // CRASH-PROOF: Safe extraction with guaranteed defaults
+  // ═══════════════════════════════════════════════════════════════════════════
+  const decisionConfidence = decision?.metadata?.decision_confidence ?? decision?.confidence ?? 0;
+  const hasSymptoms = decision?.metadata?.has_symptoms ?? !!(decision?.symptom_keys?.length);
+  const hasVisualAmbiguity = decision?.metadata?.has_visual_ambiguity ?? decision?.needs_photo_for_diagnosis ?? false;
+  const clarificationOptions = decision?.clarification_options ?? [];
+  
+  // FAIL-SAFE: Resolve i18n key
+  const primaryI18nKey = resolveI18nKey(
+    decision?.primary_i18n_key ?? decision?.metadata?.i18n_key,
+    'system.monitoring.default'
+  );
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RESOLVE RESPONSE MODE - Confidence-driven with invariant check
   // ═══════════════════════════════════════════════════════════════════════════
   const responseMode = resolveResponseMode({
     response_mode: decision?.metadata?.response_mode,
     gate_action: decision?.metadata?.gate_action,
     has_treatment: !!decision?.primary_decision?.action_type,
     has_clarification: !!decision?.clarification_needed,
-    has_options: (decision?.clarification_options?.length || 0) > 0,
-    needs_photo: decision?.needs_photo_for_diagnosis
+    has_options: clarificationOptions.length > 0,
+    needs_photo: decision?.needs_photo_for_diagnosis,
+    decision_confidence: decisionConfidence,
+    has_symptoms: hasSymptoms,
+    has_visual_ambiguity: hasVisualAmbiguity,
+    clarification_options: clarificationOptions
   });
+  
+  // INVARIANT CHECK: Log if violation detected
+  assertResponseModeInvariant(responseMode, decisionConfidence, hasSymptoms);
   
   console.log(`   📋 Building MODE-DRIVEN template fallback`);
   console.log(`   📋 Response Mode: ${responseMode}`);
-  console.log(`   📋 Decision status: ${decision?.status}`);
-  console.log(`   📋 Primary action: ${decision?.primary_decision?.action_type}`);
-  console.log(`   📋 Land crop: ${input.land_context?.current_crop}`);
+  console.log(`   📋 Decision confidence: ${decisionConfidence}`);
+  console.log(`   📋 Has symptoms: ${hasSymptoms}`);
+  console.log(`   📋 Primary i18n key: ${primaryI18nKey}`);
+  console.log(`   📋 Primary action: ${decision?.primary_decision?.action_type || '[none]'}`);
+  console.log(`   📋 Land crop: ${input.land_context?.current_crop || '[none]'}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // MODE: CLARIFICATION - Render options without requiring text

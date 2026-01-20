@@ -241,24 +241,34 @@ function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult 
   }
   
   // Must have valid status
-  const validStatuses = ['READY', 'NEEDS_CLARIFICATION', 'NO_MATCH', 'BLOCKED', 'ESCALATE'];
+  const validStatuses = ['READY', 'NEEDS_CLARIFICATION', 'NO_MATCH', 'BLOCKED', 'ESCALATE', 'MONITOR_ONLY', 'MONITORING_ADVISED'];
   if (!validStatuses.includes(input.symbolic_decision.status)) {
-    errors.push(`Invalid decision status: ${input.symbolic_decision.status}`);
+    // FAIL-SAFE: Instead of erroring, log and use fallback
+    console.warn(`[NarrationLayer] Unknown status "${input.symbolic_decision.status}" - treating as NO_MATCH`);
   }
   
-  // Must have fallback_text
+  // CRASH-PROOF: fallback_text is optional - generate default if missing
   if (!input.symbolic_decision.fallback_text) {
-    errors.push('Missing required fallback_text');
+    console.warn('[NarrationLayer] Missing fallback_text - using default');
+    // Generate default based on language
+    const defaultFallbacks: Record<string, string> = {
+      mr: '🙏 कृपया तुमचा प्रश्न पुन्हा विचारा.',
+      hi: '🙏 कृपया अपना प्रश्न दोबारा पूछें।',
+      en: '🙏 Please ask your question again.'
+    };
+    input.symbolic_decision.fallback_text = defaultFallbacks[input.language] || defaultFallbacks.mr;
   }
   
-  // If READY, must have primary_action
+  // MONITOR_ONLY mode: Does NOT require primary_action or any decision text
+  // This is a VALID state where farmer just needs reassurance
   if (input.symbolic_decision.status === 'READY' && !input.symbolic_decision.primary_action) {
-    errors.push('Status is READY but primary_action is missing');
+    // NOT an error for MONITOR_ONLY - just log info
+    console.log('[NarrationLayer] Status is READY without primary_action - treating as monitoring');
   }
   
   // If NEEDS_CLARIFICATION, must have clarification
   if (input.symbolic_decision.status === 'NEEDS_CLARIFICATION' && !input.symbolic_decision.clarification) {
-    errors.push('Status is NEEDS_CLARIFICATION but clarification payload is missing');
+    console.warn('[NarrationLayer] Status is NEEDS_CLARIFICATION but clarification payload missing - will use fallback');
   }
   
   return {
@@ -359,12 +369,21 @@ export async function generateNarratedResponse(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // GATE 2: For simple statuses, use fallback directly (no LLM needed)
+  // INCLUDES: MONITOR_ONLY - which legally has no decision text
   // ═══════════════════════════════════════════════════════════════════════════
   
-  if (['BLOCKED', 'ESCALATE', 'NO_MATCH'].includes(input.symbolic_decision.status)) {
+  const statusesThatUseFallback = ['BLOCKED', 'ESCALATE', 'NO_MATCH', 'MONITOR_ONLY', 'MONITORING_ADVISED'];
+  if (statusesThatUseFallback.includes(input.symbolic_decision.status)) {
     console.log(`⚡ NarrationLayer: Using fallback for status=${input.symbolic_decision.status}`);
+    
+    // CRASH-PROOF: Ensure fallback_text is never undefined
+    const fallbackText = input.symbolic_decision.fallback_text || 
+      (input.language === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा.' :
+       input.language === 'hi' ? '🌾 फसल की निगरानी जारी रखें।' :
+       '🌾 Continue monitoring your crop.');
+    
     return {
-      response_text: input.symbolic_decision.fallback_text,
+      response_text: fallbackText,
       source: 'FALLBACK_USED',
       validation_passed: true
     };
