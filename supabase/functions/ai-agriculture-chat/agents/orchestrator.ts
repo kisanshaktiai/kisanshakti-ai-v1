@@ -712,53 +712,38 @@ export class AIAgentOrchestrator {
   }
   
   /**
-   * Generate default clarification message when clarification generator returns empty
-   * CRITICAL: Never expose internal intent names to farmers
+   * Generate default clarification - returns i18n_key for narration layer
+   * @deprecated Use narration layer for text generation
    */
   private generateDefaultClarification(
     language: string,
     farmerMessage: string,
     cropName?: string
   ): string {
-    const lang = language as 'mr' | 'hi' | 'en';
-    
-    // ✅ FIX: Remove embedded numbers from text - options will be rendered as buttons by UI
-    const templates: Record<string, string> = {
-      mr: `🌾 समजले.\n\nतुमच्या ${cropName || 'पिकाच्या'} समस्येबद्दल मला अधिक माहिती हवी आहे.\n\n👇 कृपया खालीलपैकी एक निवडा:`,
-      hi: `🌾 समझ गया.\n\nआपकी ${cropName || 'फसल की'} समस्या के बारे में मुझे अधिक जानकारी चाहिए.\n\n👇 कृपया नीचे से एक चुनें:`,
-      en: `🌾 Understood.\n\nI need more information about your ${cropName || 'crop'} problem.\n\n👇 Please select one:`
-    };
-    
-    return templates[lang] || templates['en'];
+    // Return i18n key - narration layer handles actual text
+    console.log('[Orchestrator] generateDefaultClarification - delegating to narration layer');
+    return `clarification.default.${language}`;
   }
   
   /**
-   * Generate farmer-friendly clarification for intent lock mismatch
-   * CRITICAL: Never expose internal intent names like "GENERAL_QUERY" to farmers
+   * Generate clarification structure with i18n keys
+   * Text rendering delegated to narration layer
    */
   private generateIntentMismatchClarification(
     language: string,
     cropName?: string
-  ): { text_mr: string; text_hi: string; text_en: string; options: Array<{ value: string; label: string }> } {
-    const cropLabel = cropName || 'पीक';
-    
-    // ✅ FIX: Remove embedded numbers - options are rendered as buttons by frontend
+  ): { i18n_key: string; option_codes: string[] } {
+    // Return symbolic structure - narration layer handles text
+    console.log('[Orchestrator] generateIntentMismatchClarification - using i18n keys');
     return {
-      text_mr: `🌾 समजले.\n\n${cropLabel} बद्दल अधिक माहिती द्या.\n\n👇 तुम्हाला कोणत्या प्रकारची मदत हवी आहे?`,
-      text_hi: `🌾 समझ गया.\n\n${cropLabel} के बारे में अधिक जानकारी दें.\n\n👇 आपको किस प्रकार की मदद चाहिए?`,
-      text_en: `🌾 Understood.\n\nPlease tell me more about your ${cropLabel}.\n\n👇 What kind of help do you need?`,
-      options: [
-        { value: '1', label: language === 'mr' ? 'रोग/कीड समस्या' : language === 'hi' ? 'रोग/कीट समस्या' : 'Disease/pest problem' },
-        { value: '2', label: language === 'mr' ? 'खत/पाणी व्यवस्थापन' : language === 'hi' ? 'खाद/पानी प्रबंधन' : 'Fertilizer/water management' },
-        { value: '3', label: language === 'mr' ? 'सामान्य सल्ला' : language === 'hi' ? 'सामान्य सलाह' : 'General advice' }
-      ]
+      i18n_key: 'clarification.intent_mismatch',
+      option_codes: ['DISEASE_PEST_PROBLEM', 'NUTRIENT_WATER_MANAGEMENT', 'GENERAL_ADVICE']
     };
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE-14: Stage-Aware Fallback Response Generator
-  // Uses crop-stage-advisor data to provide contextual monitoring advice
-  // when no specific diagnostic rules match
+  // PHASE-14: Stage-Aware Fallback - Returns symbolic structure
+  // Text generation delegated to narration layer
   // ═══════════════════════════════════════════════════════════════════════════
   private generateStageAwareFallback(
     cropCode: string,
@@ -766,31 +751,30 @@ export class AIAgentOrchestrator {
     symptomContext: string,
     daysSinceSowing: number,
     language: 'mr' | 'hi' | 'en' = 'mr'
-  ): { message: string; actions: string[]; photoRequested: boolean } {
-    console.log(`🌱 [STAGE_FALLBACK] Generating for ${cropCode}/${stage} (${daysSinceSowing} DAS)`);
+  ): { i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> } {
+    console.log(`[STAGE_FALLBACK] ${cropCode}/${stage} (${daysSinceSowing} DAS)`);
     
-    // Get crop-stage specific advice
     const stageAdvice = getStageSpecificAdvice(cropCode, stage);
     
     if (!stageAdvice) {
-      console.log(`⚠️ [STAGE_FALLBACK] No advice found for ${cropCode}/${stage}, using generic`);
-      return this.generateGenericFallback(cropCode, daysSinceSowing, language);
+      console.log(`[STAGE_FALLBACK] No advice for ${cropCode}/${stage}, using generic`);
+      return {
+        i18n_key: 'fallback.generic.monitoring',
+        action_codes: ['CONTINUE_MONITORING', 'TAKE_PHOTO'],
+        photoRequested: true,
+        metadata: { crop_code: cropCode, das: daysSinceSowing }
+      };
     }
     
-    // Build trilingual response based on stage-specific data
-    const cropNames: Record<string, Record<string, string>> = {
-      'SUGARCANE': { mr: 'उसाची', hi: 'गन्ने की', en: 'sugarcane' },
-      'WHEAT': { mr: 'गव्हाची', hi: 'गेहूं की', en: 'wheat' },
-      'RICE': { mr: 'भाताची', hi: 'धान की', en: 'rice' },
-      'COTTON': { mr: 'कापसाची', hi: 'कपास की', en: 'cotton' }
-    };
-    
-    const stageNames: Record<string, Record<string, string>> = {
-      'GERMINATION': { mr: 'उगवण', hi: 'अंकुरण', en: 'germination' },
-      'TILLERING': { mr: 'फुटवा', hi: 'कल्ले निकलना', en: 'tillering' },
-      'GRAND_GROWTH': { mr: 'जोमदार वाढ', hi: 'तेज बढ़वार', en: 'grand growth' },
-      'MATURITY': { mr: 'परिपक्वता', hi: 'परिपक्वता', en: 'maturity' },
-      'SEEDLING': { mr: 'रोप अवस्था', hi: 'बीजावस्था', en: 'seedling' },
+    // Return symbolic structure - narration layer handles i18n
+    return {
+      i18n_key: `fallback.stage.${cropCode.toLowerCase()}.${stage.toLowerCase()}`,
+      action_codes: stageAdvice.action_codes || ['MONITOR', 'OBSERVE'],
+      photoRequested: true,
+      metadata: {
+        crop_code: cropCode,
+        stage_code: stage,
+        das: daysSinceSowing
       'VEGETATIVE': { mr: 'वाढीचा काळ', hi: 'वनस्पति काल', en: 'vegetative' },
       'FLOWERING': { mr: 'फुलोरा', hi: 'फूलने का समय', en: 'flowering' },
       'SQUARING': { mr: 'कळी अवस्था', hi: 'कली अवस्था', en: 'squaring' }
