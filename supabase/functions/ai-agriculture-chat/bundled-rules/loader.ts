@@ -74,15 +74,8 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     
     console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database`);
     return (data || []).map(row => {
-      // CRITICAL FIX: Extract trigger_keywords from conditions_json
-      // NOTE: trigger_keywords column was dropped per SSOT cleanup
+      // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
-      let triggerKeywords: string[] = [];
-      
-      // Only source is conditions_json now (column was dropped)
-      if (Array.isArray(conditionsJson.trigger_keywords)) {
-        triggerKeywords = conditionsJson.trigger_keywords;
-      }
       
       return {
         rule_id: row.rule_id,
@@ -99,7 +92,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         scientific_source: row.scientific_source || '',
         scientific_basis: row.scientific_basis || '',
         icar_package_ref: row.icar_package_ref,
-        trigger_keywords: triggerKeywords,
+        // SSOT: trigger_keywords removed - use conditions_json.observations instead
         
         // ═══════════════════════════════════════════════════════════════════════
         // PHASE 5: New Response Contract Fields (language-independent)
@@ -110,6 +103,7 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         reason_text: row.reason_text,
         knowledge_text: row.knowledge_text,
         i18n_key: row.i18n_key,
+        decision_trace_template: row.decision_trace_template,
         
         alternatives: row.alternatives || [],
         action_type: row.action_type || 'advisory',

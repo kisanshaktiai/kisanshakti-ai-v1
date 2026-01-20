@@ -75,6 +75,11 @@ export interface RuleCondition {
   value?: any;
 }
 
+/**
+ * FiredRule - LANGUAGE-INDEPENDENT symbolic output
+ * NOTE: response_mr/hi/en were DROPPED per SSOT architecture.
+ * All narration is LLM-generated from action_text + i18n_key.
+ */
 export interface FiredRule {
   rule_id: string;
   rule_name: string;
@@ -84,10 +89,13 @@ export interface FiredRule {
   cause: string;
   actions: {
     action_type: string;
+    // SSOT response fields (language-independent)
     action_text?: string;
     reason_text?: string;
     knowledge_text?: string;
     i18n_key?: string;
+    decision_trace_template?: string;
+    // Product metadata (symbolic, not language)
     product_reference?: string;
     phi_days?: number;
     bee_toxicity?: string;
@@ -107,6 +115,10 @@ export interface Hypothesis {
   supporting_rules: string[];
 }
 
+/**
+ * InferenceResult - LANGUAGE-INDEPENDENT symbolic output
+ * NOTE: response_mr/hi/en were DROPPED per SSOT architecture.
+ */
 export interface InferenceResult {
   diagnosis: Hypothesis | null;
   alternative_diagnoses: Hypothesis[];
@@ -115,12 +127,17 @@ export interface InferenceResult {
   reasoning: string[];
   rules_fired: number;
   rules_evaluated: number;
+  // SSOT: matched_responses now use action_text + i18n_key (NO response_mr/hi/en)
   matched_responses: {
     rule_id: string;
     cause: string;
+    action_type: string;
+    priority?: number;
     action_text?: string;
     reason_text?: string;
+    knowledge_text?: string;
     i18n_key?: string;
+    decision_trace_template?: string;
   }[];
 }
 
@@ -173,34 +190,34 @@ export class SymbolicReasoner {
       const rules = await this.loadRulesForContext(facts);
       console.log(`   📦 Loaded ${rules.length} candidate rules`);
       
-      // 2. Evaluate each rule against facts
+      // 2. Evaluate each rule against facts - PURELY SYMBOLIC (NO keyword/language matching)
       for (const rule of rules) {
         rulesEvaluated++;
         
-        // Evaluate conditions_json
+        // SSOT: Evaluate conditions_json ONLY - no keyword fallback
+        // trigger_keywords column was DROPPED per SSOT architecture
         const conditionsJson = rule.conditions_json || {};
         const match = this.evaluateConditionsJson(conditionsJson, facts);
         
-        // Also check keyword matching as fallback
-        const keywordMatch = this.checkKeywordMatch(rule.trigger_keywords || [], facts.user_query);
-        
         // PHASE-17 FIX: Try fuzzy matching if exact match fails
         let partialMatch: { matches: boolean; confidence: number; missing: string[] } | null = null;
-        if (!match.matches && !keywordMatch.matches && allowFuzzy) {
+        if (!match.matches && allowFuzzy) {
           partialMatch = this.evaluatePartialMatch(conditionsJson, facts, minFuzzyScore);
         }
         
-        const matches = match.matches || keywordMatch.matches || (partialMatch?.matches ?? false);
+        // SSOT: Only conditions_json or partial matching - NO keyword matching
+        const matches = match.matches || (partialMatch?.matches ?? false);
         const matchConfidence = Math.max(
           match.confidence, 
-          keywordMatch.confidence,
           partialMatch?.confidence ?? 0
         );
         
         if (matches) {
-          const matchType = match.matches ? 'EXACT' : keywordMatch.matches ? 'KEYWORD' : 'PARTIAL';
+          const matchType = match.matches ? 'EXACT' : 'PARTIAL';
           console.log(`   ✅ Rule fired: ${rule.rule_id} (conf: ${(matchConfidence * 100).toFixed(0)}%, type: ${matchType})`);
           
+          // SSOT: FiredRule uses language-independent fields ONLY
+          // response_mr/hi/en columns were DROPPED per SSOT architecture
           const firedRule: FiredRule = {
             rule_id: rule.rule_id,
             rule_name: rule.cause || rule.rule_id,
@@ -210,9 +227,13 @@ export class SymbolicReasoner {
             cause: rule.cause || 'UNKNOWN',
             actions: {
               action_type: rule.action_type || 'advisory',
-              response_mr: rule.response_mr,
-              response_hi: rule.response_hi,
-              response_en: rule.response_en,
+              // SSOT: Language-independent response fields
+              action_text: rule.action_text,
+              reason_text: rule.reason_text,
+              knowledge_text: rule.knowledge_text,
+              i18n_key: rule.i18n_key,
+              decision_trace_template: rule.decision_trace_template,
+              // Product metadata
               product_reference: rule.rule_id,
               phi_days: rule.phi_days,
               bee_toxicity: rule.bee_toxicity,
@@ -221,19 +242,23 @@ export class SymbolicReasoner {
               organic_alternative: rule.organic_alternative
             },
             reasoning: this.generateRuleExplanation(rule, facts, match),
-            conditions_matched: match.matched_conditions || [keywordMatch.matched_keyword || 'keyword_match']
+            conditions_matched: match.matched_conditions || ['conditions_json_match']
           };
           
           firedRules.push(firedRule);
           
-          // Collect responses for LLM formatting
-          if (rule.response_mr || rule.response_hi || rule.response_en) {
+          // SSOT: Collect responses using action_text + i18n_key (NOT response_mr/hi/en)
+          if (rule.action_type || rule.action_text || rule.i18n_key) {
             matchedResponses.push({
               rule_id: rule.rule_id,
               cause: rule.cause || 'UNKNOWN',
-              response_mr: rule.response_mr,
-              response_hi: rule.response_hi,
-              response_en: rule.response_en
+              action_type: rule.action_type || 'advisory',
+              priority: rule.priority,
+              action_text: rule.action_text,
+              reason_text: rule.reason_text,
+              knowledge_text: rule.knowledge_text,
+              i18n_key: rule.i18n_key,
+              decision_trace_template: rule.decision_trace_template
             });
           }
           
@@ -572,54 +597,19 @@ export class SymbolicReasoner {
   }
   
   /**
-   * ENHANCED: Check keyword match with multilingual partial matching
-   * Supports Marathi, Hindi, and English with word boundary awareness
+   * @deprecated REMOVED per SSOT architecture.
+   * Keyword matching is language-dependent and violates symbolic purity.
+   * All matching now uses conditions_json only.
+   * 
+   * This stub remains to prevent TypeScript errors during transition.
    */
   private checkKeywordMatch(
-    keywords: string[],
-    userQuery: string
+    _keywords: string[],
+    _userQuery: string
   ): { matches: boolean; confidence: number; matched_keyword: string | null } {
-    if (!keywords || keywords.length === 0 || !userQuery) {
-      return { matches: false, confidence: 0, matched_keyword: null };
-    }
-    
-    const queryLower = userQuery.toLowerCase();
-    const queryWords = queryLower.split(/\s+/);
-    
-    for (const keyword of keywords) {
-      const keywordLower = keyword.toLowerCase();
-      
-      // 1. Direct substring match (highest confidence)
-      if (queryLower.includes(keywordLower)) {
-        return { matches: true, confidence: 0.85, matched_keyword: keyword };
-      }
-      
-      // 2. Word-level match for partial matching (Marathi/Hindi/English)
-      for (const word of queryWords) {
-        // Check if word contains keyword or keyword contains word
-        // This helps with Marathi suffixes like मेला/मेले, वाळले/वाळत, etc.
-        if (word.includes(keywordLower) || keywordLower.includes(word)) {
-          // Require minimum overlap for short words
-          const minLength = Math.min(word.length, keywordLower.length);
-          if (minLength >= 2) {
-            return { matches: true, confidence: 0.7, matched_keyword: keyword };
-          }
-        }
-      }
-      
-      // 3. Devanagari-aware partial matching for common suffixes
-      // Match "मेला" in "मेले" or "मेलेले" etc.
-      const devanagariPattern = keywordLower.replace(/[ेैोौाी]/g, '[ेैोौाीं]?');
-      try {
-        const regex = new RegExp(devanagariPattern, 'i');
-        if (regex.test(queryLower)) {
-          return { matches: true, confidence: 0.65, matched_keyword: keyword };
-        }
-      } catch {
-        // Invalid regex, skip this check
-      }
-    }
-    
+    // SSOT: No keyword matching in symbolic brain
+    // trigger_keywords column was DROPPED per SSOT architecture
+    console.warn('⚠️ [SymbolicReasoner] checkKeywordMatch is DEPRECATED - use conditions_json only');
     return { matches: false, confidence: 0, matched_keyword: null };
   }
   
