@@ -136,7 +136,8 @@ export interface Rule {
 // CRITICAL: A response is ONLY eligible for primary decision if it has:
 //   - rule_id (EXISTS)
 //   - action_type (NOT NULL)
-//   - action_text OR response_en OR response_mr (NOT NULL)
+//   - action_text OR i18n_key (NOT NULL) - LLM narration layer handles text
+// NOTE: response_en/hi/mr columns were DROPPED per SSOT architecture
 // ═══════════════════════════════════════════════════════════════════════════
 export interface MatchedResponse {
   rule_id: string;
@@ -144,35 +145,28 @@ export interface MatchedResponse {
   action_type: string;  // MANDATORY - required for primary eligibility
   priority?: number;     // For deterministic selection
   confidence_score?: number;
-  // NEW RESPONSE CONTRACT (PRIORITY)
+  // RESPONSE CONTRACT (language-independent)
   action_text?: string;
   reason_text?: string;
   knowledge_text?: string;
   i18n_key?: string;
-  // LEGACY (FALLBACK ONLY)
-  response_mr?: string;
-  response_hi?: string;
-  response_en?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MANDATORY INTERFACE: PrimaryDecision - built from selected MatchedResponse
 // This is the ACTUAL PRIMARY DECISION passed to UnifiedGate and LLM Formatter
+// NOTE: All narration is LLM-generated - no language-specific columns
 // ═══════════════════════════════════════════════════════════════════════════
 export interface PrimaryDecision {
   rule_id: string;
   action_type: string;
   priority: number;
   confidence_score: number;
-  // NEW RESPONSE CONTRACT
+  // RESPONSE CONTRACT (language-independent)
   action_text?: string;
   reason_text?: string;
   knowledge_text?: string;
   i18n_key?: string;
-  // LEGACY FALLBACK
-  response_mr?: string;
-  response_hi?: string;
-  response_en?: string;
 }
 
 export interface LayeredRuleResult {
@@ -316,7 +310,8 @@ export function evaluateRulesLayered(
         });
         
         // CRITICAL: Collect response text from matched diagnosis rules for LLM formatting
-        // PRODUCTION HARDENING: Include new response contract fields, priority, i18n_key, AND action_type
+        // SSOT ARCHITECTURE: action_text + i18n_key are the only response fields
+        // response_mr/hi/en columns were DROPPED - narration is LLM-generated
         const actionDetails = rule.then.action_details || {};
         const ruleActionType = rule.then.action_type || actionDetails.action_type;
         const rulePriority = rule.priority || 50;
@@ -324,34 +319,25 @@ export function evaluateRulesLayered(
         // ═══════════════════════════════════════════════════════════════════════════
         // PRIMARY_ACTION_ELIGIBILITY: Only add if action_type exists AND has content
         // ═══════════════════════════════════════════════════════════════════════════
-        if (ruleActionType && (actionDetails.action_text || actionDetails.response_en || actionDetails.response_mr)) {
+        if (ruleActionType && (actionDetails.action_text || actionDetails.i18n_key)) {
           result.matched_responses.push({
             rule_id: rule.id,
             cause: rule.then.possible_cause || 'DIAGNOSIS',
             action_type: ruleActionType,
             priority: rulePriority,
             confidence_score: rule.then.cause_confidence,
-            // NEW RESPONSE CONTRACT (PRIORITY)
             action_text: actionDetails.action_text,
             reason_text: actionDetails.reason_text,
             knowledge_text: actionDetails.knowledge_text,
-            i18n_key: actionDetails.i18n_key,
-            // LEGACY (FALLBACK)
-            response_mr: actionDetails.response_mr,
-            response_hi: actionDetails.response_hi,
-            response_en: actionDetails.response_en
+            i18n_key: actionDetails.i18n_key
           });
-        } else if (actionDetails.response_mr || actionDetails.response_en) {
-          // LEGACY: Rules without action_type - add with default DIAGNOSIS type
-          console.warn(`⚠️ [LayeredRuleEvaluator] Rule ${rule.id} missing action_type - using DIAGNOSIS default`);
+        } else if (ruleActionType) {
+          // Rules with action_type but no content - still eligible with cause
           result.matched_responses.push({
             rule_id: rule.id,
             cause: rule.then.possible_cause || 'DIAGNOSIS',
-            action_type: 'DIAGNOSIS', // Default for diagnosis rules without explicit type
-            priority: rulePriority,
-            response_mr: actionDetails.response_mr,
-            response_hi: actionDetails.response_hi,
-            response_en: actionDetails.response_en
+            action_type: ruleActionType,
+            priority: rulePriority
           });
         }
       }
@@ -489,30 +475,22 @@ export function evaluateRulesLayered(
       const prescriptionActionDetails = rule.then.action_details || {};
       const prescriptionActionType = rule.then.action_type || prescriptionActionDetails.action_type;
       
-      if (prescriptionActionType && (prescriptionActionDetails.action_text || prescriptionActionDetails.response_en || prescriptionActionDetails.response_mr)) {
+      if (prescriptionActionType && (prescriptionActionDetails.action_text || prescriptionActionDetails.i18n_key)) {
         result.matched_responses.push({
           rule_id: rule.id,
           cause: rule.then.possible_cause || prescriptionActionType || 'TREATMENT',
           action_type: prescriptionActionType,
-          // NEW RESPONSE CONTRACT (PRIORITY)
           action_text: prescriptionActionDetails.action_text,
           reason_text: prescriptionActionDetails.reason_text,
           knowledge_text: prescriptionActionDetails.knowledge_text,
-          // LEGACY (FALLBACK)
-          response_mr: prescriptionActionDetails.response_mr,
-          response_hi: prescriptionActionDetails.response_hi,
-          response_en: prescriptionActionDetails.response_en
+          i18n_key: prescriptionActionDetails.i18n_key
         });
-      } else if (prescriptionActionDetails.response_mr || prescriptionActionDetails.response_en) {
-        // LEGACY: Rules without action_type - log warning but still collect
-        console.warn(`⚠️ [LayeredRuleEvaluator] Prescription rule ${rule.id} missing action_type - legacy fallback`);
+      } else if (prescriptionActionType) {
+        // Rules with action_type but minimal content - still eligible
         result.matched_responses.push({
           rule_id: rule.id,
           cause: rule.then.possible_cause || 'TREATMENT',
-          action_type: 'RECOMMEND', // Default for prescription rules
-          response_mr: prescriptionActionDetails.response_mr,
-          response_hi: prescriptionActionDetails.response_hi,
-          response_en: prescriptionActionDetails.response_en
+          action_type: prescriptionActionType
         });
       }
     }
@@ -523,20 +501,18 @@ export function evaluateRulesLayered(
       result.rules_evaluated++;
       if (matchesConditions(rule, state)) {
         // Don't add to prescriptions (blocked), but collect responses for display
-        // PRODUCTION HARDENING: Include new response contract fields
+        // SSOT ARCHITECTURE: action_text + i18n_key only (response_mr/hi/en dropped)
         const blockedActionDetails = rule.then.action_details || {};
-        if (blockedActionDetails.response_mr || blockedActionDetails.response_en || blockedActionDetails.action_text) {
+        const blockedActionType = rule.then.action_type || blockedActionDetails.action_type || 'MONITORING_ADVICE';
+        if (blockedActionDetails.action_text || blockedActionDetails.i18n_key || blockedActionType) {
           result.matched_responses.push({
             rule_id: rule.id,
-            cause: rule.then.possible_cause || rule.then.action_type || 'MONITORING_ADVICE',
-            // NEW RESPONSE CONTRACT (PRIORITY)
+            cause: rule.then.possible_cause || blockedActionType,
+            action_type: blockedActionType,
             action_text: blockedActionDetails.action_text,
             reason_text: blockedActionDetails.reason_text,
             knowledge_text: blockedActionDetails.knowledge_text,
-            // LEGACY (FALLBACK)
-            response_mr: blockedActionDetails.response_mr,
-            response_hi: blockedActionDetails.response_hi,
-            response_en: blockedActionDetails.response_en
+            i18n_key: blockedActionDetails.i18n_key
           });
         }
       }
@@ -561,12 +537,12 @@ export function evaluateRulesLayered(
   // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL: BUILD PRIMARY_DECISION FROM ELIGIBLE MATCHED RESPONSES
   // PRIMARY_ACTION_ELIGIBILITY: rule_id EXISTS + action_type NOT NULL + content NOT NULL
-  // This decision is MANDATORY for UnifiedGate and LLM Formatter
+  // NOTE: response_en/hi/mr were DROPPED - content = action_text OR i18n_key
   // ═══════════════════════════════════════════════════════════════════════════
   const eligibleResponses = result.matched_responses.filter(r => 
     r.rule_id && 
     r.action_type && 
-    (r.action_text || r.response_en || r.response_mr)
+    (r.action_text || r.i18n_key)
   );
   
   if (eligibleResponses.length > 0) {
@@ -595,29 +571,24 @@ export function evaluateRulesLayered(
     
     // ═══════════════════════════════════════════════════════════════════════════
     // MANDATORY: Build complete PrimaryDecision object with ALL required fields
-    // This is the ACTUAL decision passed to orchestrator → UnifiedGate → LLM
+    // SSOT ARCHITECTURE: No language-specific response columns
     // ═══════════════════════════════════════════════════════════════════════════
     result.primary_decision = {
       rule_id: best.rule_id,
       action_type: best.action_type,
       priority: best.priority ?? scored[0].priority * 10,
       confidence_score: best.confidence_score ?? result.confidence_in_result,
-      // NEW RESPONSE CONTRACT (PRIORITY)
       action_text: best.action_text,
       reason_text: best.reason_text,
       knowledge_text: best.knowledge_text,
-      i18n_key: best.i18n_key,
-      // LEGACY (FALLBACK)
-      response_mr: best.response_mr,
-      response_hi: best.response_hi,
-      response_en: best.response_en
+      i18n_key: best.i18n_key
     };
     
     console.log(`✅ [LayeredRuleEvaluator] PRIMARY_DECISION built successfully:`);
     console.log(`   rule_id=${result.primary_decision.rule_id}`);
     console.log(`   action_type=${result.primary_decision.action_type}`);
     console.log(`   has_action_text=${!!result.primary_decision.action_text}`);
-    console.log(`   has_reason_text=${!!result.primary_decision.reason_text}`);
+    console.log(`   has_i18n_key=${!!result.primary_decision.i18n_key}`);
   } else {
     // ═══════════════════════════════════════════════════════════════════════════
     // FAIL-FAST LOGGING: Log detailed error when no eligible responses found
@@ -626,7 +597,7 @@ export function evaluateRulesLayered(
     console.error(`   matched_responses.length=${result.matched_responses.length}`);
     console.error(`   source=layered-rule-evaluator.ts`);
     result.matched_responses.forEach((r, i) => {
-      console.error(`   ${i + 1}. rule_id=${r.rule_id}, action_type=${r.action_type || 'MISSING'}, has_content=${!!(r.action_text || r.response_en)}`);
+      console.error(`   ${i + 1}. rule_id=${r.rule_id}, action_type=${r.action_type || 'MISSING'}, has_content=${!!(r.action_text || r.i18n_key)}`);
     });
     
     // primary_decision remains null - orchestrator.ts will handle fallback

@@ -259,10 +259,11 @@ export async function initializeTranslationCache(
   }
   
   try {
-    // Load translations from decision_rules i18n_key + response fields
+    // Load translations from decision_rules i18n_key + action_text fields
+    // NOTE: response_mr/hi/en columns were DROPPED per SSOT architecture
     const { data, error } = await supabaseClient
       .from('decision_rules')
-      .select('i18n_key, response_mr, response_hi, response_en, cause, category')
+      .select('i18n_key, action_text, reason_text, cause, category')
       .not('i18n_key', 'is', null)
       .limit(2000);
     
@@ -273,15 +274,17 @@ export async function initializeTranslationCache(
     
     const translations = new Map<string, Translation>();
     
-    // Add database translations
+    // Add database translations - using action_text as source for all languages
+    // LLM narration layer handles actual translation
     for (const row of data || []) {
       if (row.i18n_key) {
         const key = normalizeI18nKey(row.i18n_key);
+        const text = row.action_text || row.reason_text || row.cause || '';
         translations.set(key, {
           key,
-          mr: row.response_mr || row.cause || '',
-          hi: row.response_hi || row.cause || '',
-          en: row.response_en || row.cause || '',
+          mr: text,  // Placeholder - LLM translates at runtime
+          hi: text,  // Placeholder - LLM translates at runtime
+          en: text,  // Base English text
           category: row.category
         });
       }

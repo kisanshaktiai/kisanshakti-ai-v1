@@ -74,14 +74,13 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     
     console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database`);
     return (data || []).map(row => {
-      // CRITICAL FIX: Extract trigger_keywords from conditions_json if column is empty
+      // CRITICAL FIX: Extract trigger_keywords from conditions_json
+      // NOTE: trigger_keywords column was dropped per SSOT cleanup
       const conditionsJson = row.conditions_json || {};
       let triggerKeywords: string[] = [];
       
-      // Priority: 1) Column value, 2) conditions_json.trigger_keywords
-      if (Array.isArray(row.trigger_keywords) && row.trigger_keywords.length > 0) {
-        triggerKeywords = row.trigger_keywords;
-      } else if (Array.isArray(conditionsJson.trigger_keywords)) {
+      // Only source is conditions_json now (column was dropped)
+      if (Array.isArray(conditionsJson.trigger_keywords)) {
         triggerKeywords = conditionsJson.trigger_keywords;
       }
       
@@ -103,17 +102,14 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         trigger_keywords: triggerKeywords,
         
         // ═══════════════════════════════════════════════════════════════════════
-        // PHASE 5: New Response Contract Fields
+        // PHASE 5: New Response Contract Fields (language-independent)
+        // NOTE: response_mr/hi/en were DROPPED per SSOT architecture
+        // All narration is now LLM-generated from action_text + i18n_key
         // ═══════════════════════════════════════════════════════════════════════
         action_text: row.action_text,
         reason_text: row.reason_text,
         knowledge_text: row.knowledge_text,
         i18n_key: row.i18n_key,
-        
-        // Legacy response fields (deprecated)
-        response_mr: row.response_mr,
-        response_hi: row.response_hi,
-        response_en: row.response_en,
         
         alternatives: row.alternatives || [],
         action_type: row.action_type || 'advisory',
