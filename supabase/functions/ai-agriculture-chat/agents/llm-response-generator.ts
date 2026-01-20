@@ -35,8 +35,10 @@ export interface SymbolicNarrationInput {
   
   /** The symbolic decision from Rule Engine - REQUIRED */
   symbolic_decision: {
-    /** Decision status from rule engine */
-    status: 'READY' | 'NEEDS_CLARIFICATION' | 'NO_MATCH' | 'BLOCKED' | 'ESCALATE';
+  /** Decision status from rule engine - EXPANDED for all modes */
+  status: 'READY' | 'NEEDS_CLARIFICATION' | 'NO_MATCH' | 'BLOCKED' | 'ESCALATE' | 
+          'MONITOR_ONLY' | 'MONITORING_ADVISED' | 'OBSERVATION' | 'NO_ACTION_REQUIRED' |
+          'CLARIFICATION_REQUIRED' | 'PHOTO_REQUIRED' | 'INFORMATION_ONLY' | 'ERROR';
     
     /** Primary action from rule engine (if status=READY) */
     primary_action?: {
@@ -369,18 +371,44 @@ export async function generateNarratedResponse(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // GATE 2: For simple statuses, use fallback directly (no LLM needed)
-  // INCLUDES: MONITOR_ONLY - which legally has no decision text
+  // EXPANDED: All monitoring/observation modes use fallback (v2.0.0)
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const statusesThatUseFallback = ['BLOCKED', 'ESCALATE', 'NO_MATCH', 'MONITOR_ONLY', 'MONITORING_ADVISED'];
+  const statusesThatUseFallback = [
+    'BLOCKED', 'ESCALATE', 'NO_MATCH', 
+    'MONITOR_ONLY', 'MONITORING_ADVISED', 'OBSERVATION',
+    'NO_ACTION_REQUIRED', 'INFORMATION_ONLY', 'ERROR'
+  ];
+  
   if (statusesThatUseFallback.includes(input.symbolic_decision.status)) {
     console.log(`⚡ NarrationLayer: Using fallback for status=${input.symbolic_decision.status}`);
     
-    // CRASH-PROOF: Ensure fallback_text is never undefined
-    const fallbackText = input.symbolic_decision.fallback_text || 
-      (input.language === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा.' :
-       input.language === 'hi' ? '🌾 फसल की निगरानी जारी रखें।' :
-       '🌾 Continue monitoring your crop.');
+    // CRASH-PROOF: Ensure fallback_text is never undefined with mode-specific defaults
+    let fallbackText = input.symbolic_decision.fallback_text;
+    
+    if (!fallbackText) {
+      // Mode-specific fallback messages
+      const status = input.symbolic_decision.status;
+      const lang = input.language;
+      
+      if (status === 'OBSERVATION' || status === 'MONITOR_ONLY' || status === 'MONITORING_ADVISED') {
+        fallbackText = lang === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा. समस्या वाढल्यास पुन्हा संपर्क करा.' :
+                       lang === 'hi' ? '🌾 फसल की निगरानी जारी रखें। समस्या बढ़े तो संपर्क करें।' :
+                       '🌾 Continue monitoring your crop. Contact us if the issue worsens.';
+      } else if (status === 'NO_ACTION_REQUIRED') {
+        fallbackText = lang === 'mr' ? '✅ कोणतीही कृती आवश्यक नाही. पीक निरोगी आहे.' :
+                       lang === 'hi' ? '✅ कोई कार्रवाई आवश्यक नहीं। फसल स्वस्थ है।' :
+                       '✅ No action needed. Your crop is healthy.';
+      } else if (status === 'ERROR') {
+        fallbackText = lang === 'mr' ? '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.' :
+                       lang === 'hi' ? '⚠️ कुछ गलत हुआ। कृपया दोबारा प्रयास करें।' :
+                       '⚠️ Something went wrong. Please try again.';
+      } else {
+        fallbackText = lang === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा.' :
+                       lang === 'hi' ? '🌾 फसल की निगरानी जारी रखें।' :
+                       '🌾 Continue monitoring your crop.';
+      }
+    }
     
     return {
       response_text: fallbackText,

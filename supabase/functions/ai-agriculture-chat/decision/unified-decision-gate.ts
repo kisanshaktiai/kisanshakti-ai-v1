@@ -35,7 +35,7 @@ import {
   type DiagnosticEscalationInput
 } from './diagnostic-escalation-generator.ts';
 
-export const UNIFIED_GATE_VERSION = '1.0.1';
+export const UNIFIED_GATE_VERSION = '2.0.0'; // Phase 7: Confidence-driven mode resolution
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RECOMMENDATION SUPPRESSION GUARD
@@ -497,7 +497,7 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // GATE 4: SYMBOLIC DECISION VALIDATION
+  // GATE 4: SYMBOLIC DECISION VALIDATION + CONFIDENCE-DRIVEN MODE RESOLUTION
   // ═══════════════════════════════════════════════════════════════════════════
   
   const hasSymbolicDecision = symbolic_decision?.decision_brain_source === true;
@@ -510,20 +510,51 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   console.log(`   Products: ${products.length}, Dosages: ${dosages.length}`);
   
   if (!hasSymbolicDecision) {
-    console.log(`   🚫 NO SYMBOLIC DECISION - Information only`);
+    console.log(`   🚫 NO SYMBOLIC DECISION - Applying confidence-driven mode`);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Confidence-Driven Mode Resolution (NOT always INFORMATION)
+    // ═══════════════════════════════════════════════════════════════════════════
+    let resolvedMode: ResponseMode;
+    let resolvedReason: string;
+    
+    if (hasSymptoms && calculatedConfidence < 50) {
+      // Low confidence + symptoms → Ask for clarification or photo
+      if (hasVisualAmbiguity) {
+        resolvedMode = ResponseMode.PHOTO_REQUIRED;
+        resolvedReason = 'Visual ambiguity detected with low confidence - photo needed';
+      } else if (clarificationOptions.length > 0) {
+        resolvedMode = ResponseMode.CLARIFICATION;
+        resolvedReason = 'Symptoms detected with low confidence - clarification needed';
+      } else {
+        resolvedMode = ResponseMode.CLARIFICATION;
+        resolvedReason = 'Symptoms detected with low confidence - need more information';
+      }
+    } else if (calculatedConfidence < 70) {
+      // Medium confidence → Information only
+      resolvedMode = ResponseMode.INFORMATION;
+      resolvedReason = 'Medium confidence - providing information only';
+    } else {
+      // High confidence but no symbolic decision → Observation
+      resolvedMode = ResponseMode.OBSERVATION;
+      resolvedReason = 'No treatment decision available - monitoring recommended';
+    }
+    
+    console.log(`   Resolved Mode: ${resolvedMode} (confidence=${calculatedConfidence})`);
     
     return {
       gate_status: GateStatus.FAIL,
-      gate_action: GateAction.PROVIDE_INFORMATION_ONLY,
+      gate_action: hasSymptoms && calculatedConfidence < 50 
+        ? GateAction.REQUIRE_CLARIFICATION 
+        : GateAction.PROVIDE_INFORMATION_ONLY,
       treatments_allowed: false,
-      allowed_actions: ['PROVIDE_INFO', 'ANSWER_QUERY'],
+      allowed_actions: hasSymptoms && calculatedConfidence < 50 
+        ? ['ASK_CLARIFICATION', 'REQUEST_PHOTO'] 
+        : ['PROVIDE_INFO', 'ANSWER_QUERY'],
       blocked_actions: [...TREATMENT_ACTIONS],
       allowed_products: [],
       allowed_dosages: [],
-      // CRITICAL FIX: Use confidence-driven mode instead of always INFORMATION
-      response_mode: hasSymptoms && calculatedConfidence < 50 
-        ? (hasVisualAmbiguity ? ResponseMode.PHOTO_REQUIRED : ResponseMode.CLARIFICATION)
-        : ResponseMode.INFORMATION,
+      response_mode: resolvedMode,
       authority_decision,
       criteria_results: {
         authority_resolved: { passed: authorityResolved, reason: authority_decision.reason },
@@ -533,8 +564,8 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
         symbolic_decision_valid: { passed: false, reason: 'No symbolic brain decision' }
       },
       missing_criteria: ['SYMBOLIC_DECISION'],
-      reason: 'No symbolic brain decision - LLM restricted to information only',
-      confidence_level: 'LOW',
+      reason: resolvedReason,
+      confidence_level: calculatedConfidence < 50 ? 'LOW' : 'MEDIUM',
       decision_confidence: calculatedConfidence,
       has_symptoms: hasSymptoms,
       has_visual_ambiguity: hasVisualAmbiguity,
