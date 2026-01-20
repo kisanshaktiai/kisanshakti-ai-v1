@@ -1,137 +1,72 @@
 /**
+ * IMPORTANT ARCHITECTURAL CONTRACT
+ *
+ * This module is INTENT-ONLY.
+ * It MUST NOT:
+ * - infer observations
+ * - infer severity
+ * - infer affected plant parts
+ * - infer symptoms
+ *
+ * Intent ≠ Observation.
+ * Observation resolution happens ONLY via:
+ * intent → intent-resolver → intent_observation_mapping (database)
+ */
+
+/**
  * ═══════════════════════════════════════════════════════════════════════════
- * UNIVERSAL SEMANTIC EXTRACTOR v3.0.0 (Intent-Based Architecture)
+ * UNIVERSAL SEMANTIC EXTRACTOR v4.0.0 (Pure Intent Architecture)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
- * Extract semantic meaning from farmer messages in ANY language and output
- * a universal INTENT_CODE that maps to database-validated observations.
+ * Extract INTENT ONLY from farmer messages. This module does NOT infer
+ * observations, severity, plant parts, or any agronomic meaning.
  * 
- * v3.0.0 CHANGES:
- * - Now outputs intent_code instead of detailed observations
- * - Intents are validated against observation_intent_master table
- * - Observations are resolved via intent_observation_mapping (crop+stage aware)
+ * v4.0.0 CHANGES:
+ * - REMOVED: getDefaultConcernFromIntent (violates symbolic authority)
+ * - REMOVED: getAffectedPartsFromIntent (violates symbolic authority)
+ * - REMOVED: getVisualChangesFromIntent (violates symbolic authority)
+ * - REMOVED: getSeverityFromIntent (violates symbolic authority)
+ * - All legacy fields now use neutral/empty values only
+ * - Observation resolution happens ONLY in intent-resolver.ts via database
  * 
  * FLOW:
- * 1. Farmer message (any language) → LLM → intent_code
- * 2. intent_code → intent-resolver.ts → observation_code[]
+ * 1. Farmer message (any language) → classifyFarmerIntent() → intent_code
+ * 2. intent_code → intent-resolver.ts → observation_code[] (database lookup)
  * 3. observation_code[] → rule engine → treatment
  * 
- * @version 3.0.0
- * @phase Database-Driven Symbolic Brain
+ * @version 4.0.0
+ * @phase Pure Intent Architecture - No Observation Inference
  */
 
-import { getAPIEndpoint, getBestAvailableProvider } from '../../_shared/aiConfig.ts';
 import { classifyFarmerIntent, IntentClassification } from './intent-classifier.ts';
 
-export const SEMANTIC_EXTRACTOR_VERSION = '3.0.0'; // Intent-based architecture
+export const SEMANTIC_EXTRACTOR_VERSION = '4.0.0'; // Pure intent architecture
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OUTPUT INTERFACE (v3.0.0 - Intent-Based)
+// OUTPUT INTERFACE (v4.0.0 - Pure Intent)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface SemanticExtraction {
-  // v3.0.0: Primary output is now intent_code
+  // v4.0.0: Primary output - ONLY these fields carry meaning
   intent_code: string;                        // Universal intent from LLM
   intent_confidence: number;                  // Confidence in intent classification
-  
-  // Legacy fields for backward compatibility
-  farmer_concern: string;                     // Plain English description of problem
-  affected_plant_parts: string[];             // ["leaves", "stem", "roots", etc.]
-  visual_changes: string[];                   // ["turning yellow", "drying out", etc.]
-  pest_behavior: string[] | null;             // ["small insects visible", "flying", etc.]
-  severity_indicator: 'mild' | 'moderate' | 'severe' | 'critical' | 'unknown';
-  distribution_pattern: string;               // "entire field", "patches", "scattered", etc.
-  temporal_pattern: string;                   // "sudden", "gradual", "recently started", etc.
-  extraction_timestamp: string;
+  raw_input: string;                          // Original farmer message
+  detected_language: string;                  // Detected language code
+  extraction_timestamp: string;               // ISO timestamp
+  extraction_method: 'INTENT_CLASSIFIER' | 'FALLBACK_UNAVAILABLE';
   confidence: number;                         // 0.0-1.0
-  extraction_method: 'LLM' | 'FALLBACK' | 'INTENT_CLASSIFIER' | 'FALLBACK_UNAVAILABLE';
-  detected_language: string;
-  raw_input: string;
+  
+  // Legacy fields - MUST remain neutral for backward compatibility
+  // These fields exist ONLY for API compatibility and MUST NOT contain inferred meaning
+  farmer_concern: string | null;              // Always null - no inference allowed
+  affected_plant_parts: string[];             // Always empty - no inference allowed
+  visual_changes: string[];                   // Always empty - no inference allowed
+  pest_behavior: string[] | null;             // Always null - no inference allowed
+  severity_indicator: 'unknown';              // Always 'unknown' - no inference allowed
+  distribution_pattern: 'unknown';            // Always 'unknown' - no inference allowed
+  temporal_pattern: 'unknown';                // Always 'unknown' - no inference allowed
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LLM PROMPT TEMPLATE
-// ═══════════════════════════════════════════════════════════════════════════
-
-const SEMANTIC_EXTRACTION_PROMPT = `You are an agricultural observation extractor. Your job is to understand what the farmer is describing and convert it to simple, plain English.
-
-INPUT: Farmer's message in any language (Marathi, Hindi, English, Telugu, Gujarati, Tamil, or any other)
-OUTPUT: JSON object with plain English descriptions
-
-Extract the following:
-1. farmer_concern: What is the farmer seeing/experiencing? (plain English, 1-2 sentences)
-2. affected_plant_parts: Which parts of the plant are affected? Array of: "leaves", "stem", "roots", "whole plant", "fruit", "flower", "grain", "boll"
-3. visual_changes: What physical changes are visible? Array of descriptions like: "turning yellow", "drying out", "wilting", "spots appearing", "holes", "rotting", "curling", "browning"
-4. pest_behavior: If insects are mentioned, describe their behavior. Array like: "small insects visible", "flying insects", "crawling insects", "jumping insects", "larvae present", "small green insects", "small black insects", "white insects". Set to null if no insects mentioned.
-5. severity_indicator: Based on the farmer's tone and description, what is the severity? One of: "mild", "moderate", "severe", "critical"
-6. distribution_pattern: Is the problem affecting the whole field or just some areas? One of: "entire field", "patches", "scattered", "field edges", "specific area", "not specified"
-7. temporal_pattern: When did this start or how is it progressing? One of: "sudden", "gradual", "recently started", "ongoing for weeks", "just noticed", "not specified"
-
-CRITICAL RULES:
-- Use ONLY plain English words, NO codes, NO technical terms, NO pest/disease names
-- If insects are mentioned, describe their size/color/behavior in English (e.g., "small green insects", "large brown insects")
-- If the farmer mentions a time period, extract it (e.g., "started 3 days ago" → "recently started")
-- Keep descriptions simple and farmer-understandable
-- For visual_changes, use simple descriptive phrases like "turning yellow" not "yellowing"
-- Do NOT diagnose - only describe what the farmer observes
-
-Example 1:
-Input (Marathi): "माझ्या ऊस पिकाचे पान पिवळे झाले आणि सुकत आहेत"
-Output:
-{
-  "farmer_concern": "Leaves are turning yellow and drying out",
-  "affected_plant_parts": ["leaves"],
-  "visual_changes": ["turning yellow", "drying out"],
-  "pest_behavior": null,
-  "severity_indicator": "moderate",
-  "distribution_pattern": "not specified",
-  "temporal_pattern": "not specified"
-}
-
-Example 2:
-Input (Hindi): "मेरे खेत में कुछ जगह पर पौधे मर गए हैं और छोटे काले कीड़े दिख रहे हैं"
-Output:
-{
-  "farmer_concern": "Plants have died in some areas and small black insects are visible",
-  "affected_plant_parts": ["whole plant"],
-  "visual_changes": ["plant death"],
-  "pest_behavior": ["small insects visible", "black insects"],
-  "severity_indicator": "severe",
-  "distribution_pattern": "patches",
-  "temporal_pattern": "not specified"
-}
-
-Example 3:
-Input (Telugu): "నా పంట ఆకులు పసుపు అయ్యాయి మరియు చిన్న తెల్ల పురుగులు కనిపిస్తున్నాయి"
-Output:
-{
-  "farmer_concern": "Leaves have turned yellow and small white insects are visible",
-  "affected_plant_parts": ["leaves"],
-  "visual_changes": ["turning yellow"],
-  "pest_behavior": ["small insects visible", "white insects"],
-  "severity_indicator": "moderate",
-  "distribution_pattern": "not specified",
-  "temporal_pattern": "not specified"
-}
-
-Example 4:
-Input (English): "My sugarcane has dead heart, the central shoot dried and can be pulled easily"
-Output:
-{
-  "farmer_concern": "Central shoot is dead and dried, can be pulled out easily",
-  "affected_plant_parts": ["stem"],
-  "visual_changes": ["dead heart", "central shoot dried", "easily pulled out"],
-  "pest_behavior": null,
-  "severity_indicator": "severe",
-  "distribution_pattern": "not specified",
-  "temporal_pattern": "not specified"
-}
-
-Now process this farmer message:
-{farmer_message}
-
-Return ONLY valid JSON, no markdown, no explanations, no code blocks.`;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // IN-MEMORY CACHE (5 minute TTL)
@@ -189,18 +124,19 @@ function setCache(message: string, result: SemanticExtraction): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// MAIN EXTRACTION FUNCTION (v3.0.0 - Intent-First)
+// MAIN EXTRACTION FUNCTION (v4.0.0 - Pure Intent)
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Extract semantic meaning from farmer's message in ANY language
+ * Extract INTENT ONLY from farmer's message in ANY language.
  * 
- * v3.0.0: Now uses intent classification as primary output.
- * The intent_code is used by intent-resolver.ts to get database-validated observations.
+ * v4.0.0: This function outputs ONLY intent_code and confidence.
+ * All legacy fields are set to neutral/empty values.
+ * Observation resolution happens ONLY via intent-resolver.ts + database.
  * 
  * @param farmerMessage - Raw farmer input in any language
  * @param detectedLanguage - Optional language code (for logging only)
- * @returns SemanticExtraction - With intent_code as primary output
+ * @returns SemanticExtraction - With intent_code as ONLY meaningful output
  */
 export async function extractSemanticMeaning(
   farmerMessage: string,
@@ -208,8 +144,8 @@ export async function extractSemanticMeaning(
 ): Promise<SemanticExtraction> {
   const startTime = Date.now();
   
-  console.log(`\n🔮 [SemanticExtractor v${SEMANTIC_EXTRACTOR_VERSION}] Processing message (Intent-First)...`);
-  console.log(`   Input (${detectedLanguage}): \"${farmerMessage.substring(0, 80)}${farmerMessage.length > 80 ? '...' : ''}\"`);
+  console.log(`\n🔮 [SemanticExtractor v${SEMANTIC_EXTRACTOR_VERSION}] Processing message (Pure Intent)...`);
+  console.log(`   Input (${detectedLanguage}): "${farmerMessage.substring(0, 80)}${farmerMessage.length > 80 ? '...' : ''}"`);
   
   // Check cache first
   const cached = getFromCache(farmerMessage);
@@ -218,7 +154,7 @@ export async function extractSemanticMeaning(
   }
   
   try {
-    // v3.0.0: Use Intent Classifier as PRIMARY extraction
+    // v4.0.0: Use Intent Classifier as ONLY extraction method
     const intentResult: IntentClassification = await classifyFarmerIntent(
       farmerMessage,
       detectedLanguage
@@ -226,25 +162,27 @@ export async function extractSemanticMeaning(
     
     console.log(`   🎯 Intent: ${intentResult.intent_code} (${(intentResult.confidence * 100).toFixed(0)}%)`);
     
-    // Build result with intent as primary output
+    // Build result with intent as ONLY meaningful output
+    // All legacy fields are neutral - NO inference allowed
     const result: SemanticExtraction = {
-      // v3.0.0: Intent-first fields
+      // v4.0.0: Authoritative fields - these are the ONLY meaningful outputs
       intent_code: intentResult.intent_code,
       intent_confidence: intentResult.confidence,
-      
-      // Legacy fields (populated from intent for backward compatibility)
-      farmer_concern: getDefaultConcernFromIntent(intentResult.intent_code),
-      affected_plant_parts: getAffectedPartsFromIntent(intentResult.intent_code),
-      visual_changes: getVisualChangesFromIntent(intentResult.intent_code),
-      pest_behavior: intentResult.intent_code === 'PEST_PRESENCE_VISIBLE' ? ['insects visible'] : null,
-      severity_indicator: getSeverityFromIntent(intentResult.intent_code),
-      distribution_pattern: 'not specified',
-      temporal_pattern: 'not specified',
-      extraction_timestamp: new Date().toISOString(),
-      confidence: intentResult.confidence,
-      extraction_method: intentResult.classification_method === 'LLM' ? 'INTENT_CLASSIFIER' : 'FALLBACK',
+      raw_input: farmerMessage,
       detected_language: detectedLanguage,
-      raw_input: farmerMessage
+      extraction_timestamp: new Date().toISOString(),
+      extraction_method: intentResult.classification_method === 'LLM' ? 'INTENT_CLASSIFIER' : 'FALLBACK_UNAVAILABLE',
+      confidence: intentResult.confidence,
+      
+      // Legacy fields - ALL neutral/empty for backward compatibility
+      // These MUST NOT contain inferred meaning per architectural contract
+      farmer_concern: null,
+      affected_plant_parts: [],
+      visual_changes: [],
+      pest_behavior: null,
+      severity_indicator: 'unknown',
+      distribution_pattern: 'unknown',
+      temporal_pattern: 'unknown'
     };
     
     // Cache result
@@ -259,96 +197,27 @@ export async function extractSemanticMeaning(
   } catch (error) {
     console.error(`   ❌ [SemanticExtractor] Error: ${error}`);
     
-    // Return fallback extraction
+    // Return fallback extraction with honest 0.0 confidence
     return createFallbackExtraction(farmerMessage, detectedLanguage, error as Error);
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// INTENT TO LEGACY FIELD MAPPERS
+// FALLBACK EXTRACTION
 // ═══════════════════════════════════════════════════════════════════════════
-
-function getDefaultConcernFromIntent(intent: string): string {
-  const concernMap: Record<string, string> = {
-    'EMERGENCE_FAILURE': 'Crop emergence/germination problem',
-    'GROWTH_ANOMALY': 'Abnormal or slow growth observed',
-    'COLOR_CHANGE': 'Plant color changes observed',
-    'WILTING_OR_DROOPING': 'Plants wilting or drooping',
-    'LEAF_DAMAGE_VISIBLE': 'Physical damage to leaves visible',
-    'LEAF_MARKS_OR_SPOTS': 'Spots or marks on leaves',
-    'STEM_DAMAGE': 'Stem damage or boring observed',
-    'ROOT_OR_BASE_PROBLEM': 'Root or base issues',
-    'PEST_PRESENCE_VISIBLE': 'Insects or pests visible',
-    'DISEASE_LIKE_PATTERN': 'Disease-like pattern spreading',
-    'WATER_STRESS_SIGNAL': 'Water stress signs visible',
-    'NUTRIENT_STRESS_SIGNAL': 'Nutrient deficiency signs',
-    'UNEVEN_FIELD_PATTERN': 'Uneven growth pattern in field',
-    'YIELD_OR_OUTPUT_ISSUE': 'Yield or output concern',
-    'UNKNOWN_OBSERVATION': 'Observation needs clarification'
-  };
-  return concernMap[intent] || 'Agricultural observation';
-}
-
-function getAffectedPartsFromIntent(intent: string): string[] {
-  const partsMap: Record<string, string[]> = {
-    'LEAF_DAMAGE_VISIBLE': ['leaves'],
-    'LEAF_MARKS_OR_SPOTS': ['leaves'],
-    'COLOR_CHANGE': ['leaves'],
-    'STEM_DAMAGE': ['stem'],
-    'ROOT_OR_BASE_PROBLEM': ['roots'],
-    'WILTING_OR_DROOPING': ['whole plant'],
-    'EMERGENCE_FAILURE': ['whole plant'],
-    'GROWTH_ANOMALY': ['whole plant']
-  };
-  return partsMap[intent] || [];
-}
-
-function getVisualChangesFromIntent(intent: string): string[] {
-  const changesMap: Record<string, string[]> = {
-    'COLOR_CHANGE': ['color change visible'],
-    'WILTING_OR_DROOPING': ['wilting'],
-    'LEAF_DAMAGE_VISIBLE': ['physical damage'],
-    'LEAF_MARKS_OR_SPOTS': ['spots or marks'],
-    'STEM_DAMAGE': ['stem damage'],
-    'GROWTH_ANOMALY': ['growth abnormality']
-  };
-  return changesMap[intent] || [];
-}
-
-function getSeverityFromIntent(intent: string): 'mild' | 'moderate' | 'severe' | 'critical' | 'unknown' {
-  const severeIntents = ['STEM_DAMAGE', 'ROOT_OR_BASE_PROBLEM', 'EMERGENCE_FAILURE'];
-  const moderateIntents = ['COLOR_CHANGE', 'WILTING_OR_DROOPING', 'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN'];
-  
-  if (severeIntents.includes(intent)) return 'severe';
-  if (moderateIntents.includes(intent)) return 'moderate';
-  return 'moderate';
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-function validateSeverity(severity: any): 'mild' | 'moderate' | 'severe' | 'critical' {
-  const valid = ['mild', 'moderate', 'severe', 'critical'];
-  if (typeof severity === 'string' && valid.includes(severity.toLowerCase())) {
-    return severity.toLowerCase() as 'mild' | 'moderate' | 'severe' | 'critical';
-  }
-  return 'moderate'; // Default
-}
 
 /**
- * HONEST FALLBACK - No hardcoded language patterns
+ * HONEST FALLBACK - No hardcoded language patterns, no inference
  * 
  * When LLM fails (API error, rate limit, network issue), we return an honest
- * 0.0 confidence response. We do NOT attempt to parse symptoms with hardcoded
- * patterns because:
+ * 0.0 confidence response. We do NOT attempt to infer anything because:
  * 
- * 1. Can't cover all languages/dialects/regional variations
- * 2. 40% confidence is unreliable for diagnosis anyway
- * 3. Better to fail gracefully than give wrong diagnosis
- * 4. Maintains "Universal Language" architecture integrity
+ * 1. Intent ≠ Observation (observation resolution is database-driven)
+ * 2. Can't cover all languages/dialects/regional variations
+ * 3. 0.0 confidence is honest - system is unavailable
+ * 4. Maintains Pure Intent Architecture integrity
  * 
- * @version 2.0.0 - Removed all hardcoded Marathi/Hindi/Telugu patterns
+ * @version 4.0.0 - No inference, no hardcoded patterns
  */
 function createFallbackExtraction(
   farmerMessage: string,
@@ -357,22 +226,28 @@ function createFallbackExtraction(
 ): SemanticExtraction {
   console.log(`   ⚠️ [SemanticExtractor] LLM UNAVAILABLE - returning honest fallback`);
   console.log(`   ⚠️ [SemanticExtractor] Error: ${error.message}`);
-  console.log(`   ⚠️ [SemanticExtractor] NO symptom detection attempted (respecting Universal Language Architecture)`);
+  console.log(`   ⚠️ [SemanticExtractor] NO inference attempted (Pure Intent Architecture)`);
   
   // Return honest 0.0 confidence - system is unavailable
+  // All fields neutral/empty per architectural contract
   return {
-    farmer_concern: 'System temporarily unavailable - please try again in a moment',
+    // Authoritative fields - honest failure state
+    intent_code: 'UNKNOWN_OBSERVATION',
+    intent_confidence: 0.0,
+    raw_input: farmerMessage,
+    detected_language: language,
+    extraction_timestamp: new Date().toISOString(),
+    extraction_method: 'FALLBACK_UNAVAILABLE',
+    confidence: 0.0,
+    
+    // Legacy fields - ALL neutral/empty
+    farmer_concern: null,
     affected_plant_parts: [],
     visual_changes: [],
     pest_behavior: null,
     severity_indicator: 'unknown',
-    distribution_pattern: 'not specified',
-    temporal_pattern: 'not specified',
-    extraction_timestamp: new Date().toISOString(),
-    confidence: 0.0, // HONEST: We couldn't understand the message
-    extraction_method: 'FALLBACK_UNAVAILABLE',
-    detected_language: language,
-    raw_input: farmerMessage
+    distribution_pattern: 'unknown',
+    temporal_pattern: 'unknown'
   };
 }
 
