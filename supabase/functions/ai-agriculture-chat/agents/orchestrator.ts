@@ -894,6 +894,22 @@ export class AIAgentOrchestrator {
     // ═══════════════════════════════════════════════════════════════════════════
     initializeTrace(traceId);
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE-26: MANDATORY SESSION STATE LOGGING (Every Turn)
+    // Track decision state to detect infinite clarification loops
+    // ═══════════════════════════════════════════════════════════════════════════
+    const incomingDecisionState = options.sessionState?.decisionState || 'no_session_state';
+    const pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
+    const clarificationActive = incomingDecisionState === 'awaiting_clarification';
+    
+    console.log(`\n📊 [${traceId}] ═══ DECISION STATE TRACKING (Turn Start) ═══`);
+    console.log(`   session_decision_state: ${incomingDecisionState}`);
+    console.log(`   clarification_active: ${clarificationActive}`);
+    console.log(`   pending_options_count: ${pendingOptionsCount}`);
+    console.log(`   option_selected: ${clarificationActive && pendingOptionsCount > 0 && hasTextInput ? 'LIKELY' : 'NO'}`);
+    console.log(`   unified_gate_mode: ${clarificationActive ? 'BLOCKED (awaiting clarification)' : 'ALLOW'}`);
+    console.log(`   ═════════════════════════════════════════════════════════`);
+    
     // PHASE 8: Log session context for debugging
     if (options.sessionState?.hasPreviousRecommendations) {
       console.log(`   [${traceId}] 🔗 Session Context: previousPest=${options.sessionState.previousPest}, previousCrop=${options.sessionState.previousCrop}, turn=${options.sessionState.turnCount}`);
@@ -1518,13 +1534,17 @@ export class AIAgentOrchestrator {
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: DECISION GATE ALIGNMENT
           // If clarification completed + rules fire → MUST return recommendation
+          // SESSION STATE IS AUTHORITATIVE - clarification just answered
           // ═══════════════════════════════════════════════════════════════════
           
           const decisionGateCheck = checkDecisionGateAlignment({
             clarification_completed: true, // We just processed a clarification selection
             rules_fired: ruleResult.rules_matched,
             has_recommendations: ruleResult.prescriptions.length > 0 || hasMatchedResponses,
-            authority_blocked: !authorityDecision.treatments_allowed
+            authority_blocked: !authorityDecision.treatments_allowed,
+            // CRITICAL: Pass session state for authoritative clarification status
+            session_decision_state: 'decision_in_progress', // Clarification just answered = not awaiting
+            clarification_answer_received: true
           });
           
           // LOGGING: Post-clarification confidence
@@ -1675,9 +1695,34 @@ export class AIAgentOrchestrator {
               console.error(`   🚨 OPTION_SELECTED: Failed to build primary_decision - no eligible source found`);
             }
             
+            // ═══════════════════════════════════════════════════════════════════════════
+            // CRITICAL FIX: SESSION STATE TRANSITION - Decision state MUST be updated
+            // This signals to index.ts that clarification is COMPLETE
+            // ═══════════════════════════════════════════════════════════════════════════
+            const sessionStateUpdate = {
+              decision_state: 'decision_in_progress',  // NOT 'awaiting_clarification'
+              pending_options: 0,
+              pending_action: false,
+              last_action_source: 'FARMER_SELECTION',
+              clarification_answered: true,
+              clarification_resolved_at: new Date().toISOString()
+            };
+            
+            // MANDATORY LOGGING: Track decision state transition
+            console.log(`\n🔄 [SESSION_STATE] ═══ DECISION STATE TRANSITION ═══`);
+            console.log(`   session_decision_state: ${sessionStateUpdate.decision_state}`);
+            console.log(`   clarification_active: false (answered)`);
+            console.log(`   option_selected: "${matchResult.matched_option}"`);
+            console.log(`   unified_gate_mode: ALLOW (clarification resolved)`);
+            console.log(`   ═══════════════════════════════════════════════`);
+            
             return {
               type: 'DECISION_PROVIDED',
               session_id: sessionId,
+              // ═══════════════════════════════════════════════════════════════════════════
+              // CRITICAL: session_state_update tells index.ts to transition decision_state
+              // ═══════════════════════════════════════════════════════════════════════════
+              session_state_update: sessionStateUpdate,
               decision_output: {
                 decision_id: `rule_${Date.now()}`,
                 session_id: sessionId,
@@ -1710,7 +1755,9 @@ export class AIAgentOrchestrator {
                   prescription_allowed: ruleResult.prescription_allowed,
                   prescription_gate_reason: ruleResult.prescription_gate_reason,
                   // FIX: Include locked crop context in metadata
-                  lockedCropContext: finalLockedCropContext
+                  lockedCropContext: finalLockedCropContext,
+                  // SESSION STATE: Signal to index.ts
+                  session_state_update: sessionStateUpdate
                 }
               } as any,
               // FIX: Include dataAudit to preserve land context
@@ -1726,7 +1773,9 @@ export class AIAgentOrchestrator {
                 pendingClarificationOptions: undefined,
                 pendingClarificationScope: undefined,
                 // PATCH 3: Preserve locked crop context for next turn
-                lockedCropContext: finalLockedCropContext
+                lockedCropContext: finalLockedCropContext,
+                // SESSION STATE: Signal to index.ts
+                session_state_update: sessionStateUpdate
               }
             };
           }
@@ -1756,9 +1805,26 @@ export class AIAgentOrchestrator {
             options.language || 'mr'
           );
           
+          // SESSION STATE: Stage fallback still transitions decision state
+          const sessionStateUpdateNoRules = {
+            decision_state: 'decision_in_progress',
+            pending_options: 0,
+            pending_action: false,
+            last_action_source: 'FARMER_SELECTION_STAGE_FALLBACK',
+            clarification_answered: true,
+            clarification_resolved_at: new Date().toISOString()
+          };
+          
+          console.log(`\n🔄 [SESSION_STATE] ═══ DECISION STATE TRANSITION (Stage Fallback) ═══`);
+          console.log(`   session_decision_state: ${sessionStateUpdateNoRules.decision_state}`);
+          console.log(`   clarification_active: false (answered with stage fallback)`);
+          console.log(`   option_selected: "${matchResult.matched_option}"`);
+          console.log(`   ═══════════════════════════════════════════════`);
+          
           return {
             type: 'DECISION_PROVIDED',
             session_id: sessionId,
+            session_state_update: sessionStateUpdateNoRules,
             decision_output: {
               decision_id: `option_selected_stage_fallback_${Date.now()}`,
               session_id: sessionId,
@@ -1783,7 +1849,8 @@ export class AIAgentOrchestrator {
                 rules_matched: 0,
                 no_rules_matched_reason: `Stage-aware fallback for ${cropName}/${growthStage}`,
                 // FIX: Include locked crop context in metadata
-                lockedCropContext: finalLockedCropContextNoRules
+                lockedCropContext: finalLockedCropContextNoRules,
+                session_state_update: sessionStateUpdateNoRules
               }
             } as any,
             // FIX: Include dataAudit to preserve land context
@@ -1797,7 +1864,8 @@ export class AIAgentOrchestrator {
               trace_id: traceId,
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
-              lockedCropContext: finalLockedCropContextNoRules
+              lockedCropContext: finalLockedCropContextNoRules,
+              session_state_update: sessionStateUpdateNoRules
             }
           };
         } else {

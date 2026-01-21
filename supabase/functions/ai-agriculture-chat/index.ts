@@ -1262,6 +1262,18 @@ serve(async (req) => {
     const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
                                   orchestratorResponse.metadata?.pendingClarificationOptions || [];
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
+    // If orchestrator returns session_state_update, use it AUTHORITATIVELY
+    // This prevents infinite clarification loops
+    // ═══════════════════════════════════════════════════════════════════════════
+    const sessionStateUpdateFromOrchestrator = orchestratorResponse.session_state_update ||
+      orchestratorResponse.metadata?.session_state_update ||
+      orchestratorResponse.decision_output?.metadata?.session_state_update;
+    
+    const clarificationAnswered = sessionStateUpdateFromOrchestrator?.clarification_answered === true ||
+      orchestratorResponse.decision_output?.metadata?.clarification_resolved === true;
+    
     // P0-3 FIX: Extract lockedCropContext for session persistence
     const lockedCropContextForSession = 
       orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
@@ -1272,10 +1284,47 @@ serve(async (req) => {
         days_since_sowing: orchestratorResponse.dataAudit.land.days_since_sowing
       } : null);
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DECISION STATE DETERMINATION - Session state is AUTHORITATIVE
+    // Priority: session_state_update from orchestrator > isClarificationResponse > recommendationsProvided
+    // ═══════════════════════════════════════════════════════════════════════════
+    let computedDecisionState: string;
+    
+    if (sessionStateUpdateFromOrchestrator?.decision_state) {
+      // AUTHORITATIVE: Orchestrator explicitly set decision state
+      computedDecisionState = sessionStateUpdateFromOrchestrator.decision_state;
+      console.log(`🔄 [Session] Decision state from ORCHESTRATOR: ${computedDecisionState}`);
+    } else if (clarificationAnswered) {
+      // Clarification was answered but no explicit state update
+      computedDecisionState = recommendationsProvided ? 'recommendations_given' : 'decision_in_progress';
+      console.log(`🔄 [Session] Clarification answered, state: ${computedDecisionState}`);
+    } else if (recommendationsProvided) {
+      computedDecisionState = 'recommendations_given';
+    } else if (isClarificationResponse) {
+      computedDecisionState = 'awaiting_clarification';
+    } else {
+      computedDecisionState = 'no_action_needed';
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INVARIANT CHECK: Clarification answered but still awaiting_clarification = BUG
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (clarificationAnswered && computedDecisionState === 'awaiting_clarification') {
+      console.error(`🚨 [INVARIANT VIOLATION] Clarification answered but decision_state is still awaiting_clarification!`);
+      console.error(`   Forcing transition to 'decision_in_progress'`);
+      computedDecisionState = 'decision_in_progress';
+    }
+    
+    // MANDATORY LOGGING: Decision state tracking
+    console.log(`\n📊 [Session] ═══ DECISION STATE TRACKING ═══`);
+    console.log(`   session_decision_state: ${computedDecisionState}`);
+    console.log(`   clarification_active: ${isClarificationResponse && !clarificationAnswered}`);
+    console.log(`   option_selected: ${clarificationAnswered}`);
+    console.log(`   unified_gate_mode: ${computedDecisionState === 'awaiting_clarification' ? 'BLOCKED (awaiting)' : 'ALLOW'}`);
+    console.log(`   ═══════════════════════════════════════════`);
+    
     const decisionTracking = {
-      decision_state: recommendationsProvided ? 'recommendations_given' : 
-                      isClarificationResponse ? 'awaiting_clarification' : 
-                      'no_action_needed',
+      decision_state: computedDecisionState,
       last_pest: lastPest,
       last_disease: lastDisease,
       last_crop: lastCrop,
@@ -1284,10 +1333,13 @@ serve(async (req) => {
       recommendations_count: actions_returned?.length || 0,
       last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
       timestamp: new Date().toISOString(),
-      // CRITICAL FIX 1: Store clarification options for option matching in next turn
-      pending_clarification_options: isClarificationResponse ? clarificationOptions : [],
+      // CRITICAL FIX: Clear pending options when clarification is answered
+      pending_clarification_options: (isClarificationResponse && !clarificationAnswered) ? clarificationOptions : [],
       // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
-      lockedCropContext: lockedCropContextForSession
+      lockedCropContext: lockedCropContextForSession,
+      // Track clarification resolution
+      clarification_answered: clarificationAnswered,
+      clarification_resolved_at: sessionStateUpdateFromOrchestrator?.clarification_resolved_at
     };
     
     try {
