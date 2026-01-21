@@ -390,6 +390,21 @@ import {
 } from '../decision/canonical-context-contract.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE-25: CONTEXT TRACER - Track crop/stage/DAS through execution path
+// Detects and logs context drift between CanonicalContext and CanonicalState
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  initializeTrace,
+  clearTrace,
+  traceFromLandContext,
+  traceFromCanonicalContext,
+  traceFromCanonicalState,
+  assertAndCorrectContextAlignment,
+  logSessionDrifts,
+  CONTEXT_TRACER_VERSION
+} from '../utils/context-tracer.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-22: DIAGNOSIS-ONLY MODE (v3.0 - Rule-Granted Authority)
 // Terminal damage grants CROP authority, bypasses NLU gating
 // NLU is observation-only, never gates diagnosis
@@ -872,6 +887,12 @@ export class AIAgentOrchestrator {
     console.log(`   [${traceId}] Session: ${sessionId}`);
     console.log(`   [${traceId}] Message: ${safePreviewText(safeFarmerMessage)}`);
     console.log(`   [${traceId}] HasText: ${hasTextInput}, HasPhoto: ${!!options.photoUrl}`);
+    console.log(`   [${traceId}] ContextTracer: v${CONTEXT_TRACER_VERSION}`);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE-25: Initialize context trace for this turn
+    // ═══════════════════════════════════════════════════════════════════════════
+    initializeTrace(traceId);
     
     // PHASE 8: Log session context for debugging
     if (options.sessionState?.hasPreviousRecommendations) {
@@ -928,9 +949,20 @@ export class AIAgentOrchestrator {
       // PHASE-21: BUILD CANONICAL CONTEXT EXACTLY ONCE (HARD INVARIANT)
       // This is the SINGLE source of truth for the entire turn.
       // ═══════════════════════════════════════════════════════════════════════════
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-25: TRACE POINT 1 - After landContext fetch
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (landContext) {
+        traceFromLandContext('LAND_FETCH', landContext, traceId);
+      }
+      
       const canonicalContext = buildCanonicalContextContract(landContext, !!landContext);
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-25: TRACE POINT 2 - After CanonicalContext build
+      // ═══════════════════════════════════════════════════════════════════════════
       if (canonicalContext) {
+        traceFromCanonicalContext('CANONICAL_CONTEXT', canonicalContext, traceId);
         console.log(`✅ [PHASE-21] CanonicalContext built and LOCKED:`);
         console.log(`   Scope=PHASE1_LOCKED`);
         console.log(`   Crop=${canonicalContext.crop_code} (INVARIANT)`);
@@ -1443,16 +1475,29 @@ export class AIAgentOrchestrator {
           console.log(`   📋 Treatments allowed: ${authorityDecision.treatments_allowed}, Response mode: ${authorityDecision.response_mode}`);
           
           // Build canonical state with the clarification answer
+          // FIX: Pass full landContext to preserve DAS, NDVI, soil data
           const canonicalState = buildCanonicalState({
-            crop_type: mapCropNameToEnum(cropName),
-            crop_stage: mapStageToEnum(growthStage),
-            visual_symptom: mapVisualSymptomToEnum(visualSymptom),
-            data_confidence: hasAuthorativeStage ? DataConfidence.MEDIUM : DataConfidence.LOW,
-            // Include previous observations from session if available
-            ndvi_level: options.sessionState?.ndvi_level,
-            ndvi_trend: options.sessionState?.ndvi_trend,
-            soil_nitrogen: options.sessionState?.soil_nitrogen
+            // CRITICAL FIX: Pass landContext to preserve all land data
+            landContext: landContextForOptionSelection,
+            // Override with clarification-resolved values
+            cropName: cropName,
+            cropStage: growthStage,
+            daysAfterSowing: landContextForOptionSelection?.days_since_sowing ?? null,
+            // Farmer observations
+            farmerObservations: visualSymptom ? [visualSymptom] : [],
+            // NDVI data from landContext
+            ndviData: landContextForOptionSelection?.ndvi ? {
+              value: landContextForOptionSelection.ndvi.value || landContextForOptionSelection.ndvi.mean_ndvi,
+              trend: landContextForOptionSelection.ndvi.ndvi_trend,
+              captured_at: landContextForOptionSelection.ndvi.captured_at
+            } : undefined,
+            // Soil data from landContext
+            soilData: landContextForOptionSelection?.soil_health
           });
+          
+          console.log(`   📊 Canonical state built with full landContext, running layered rule evaluation...`);
+          console.log(`      DAS: ${canonicalState.days_after_sowing_exact}, NDVI: ${canonicalState.ndvi_value}`);
+          console.log(`      Soil N: ${canonicalState.soil_nitrogen}`);
           
           console.log(`   📊 Canonical state built, running layered rule evaluation...`);
           
