@@ -774,29 +774,58 @@ export interface DecisionGateCheckInput {
   rules_fired: number;
   has_recommendations: boolean;
   authority_blocked: boolean;
+  // NEW: Session state is authoritative for clarification status
+  session_decision_state?: string;
+  clarification_answer_received?: boolean;
 }
 
 export interface DecisionGateCheckResult {
   must_return_recommendation: boolean;
   allow_empty_response: boolean;
   reason: string;
+  // NEW: Computed clarification active status
+  clarification_active: boolean;
 }
 
 /**
  * Check if the decision gate mandates a recommendation.
+ * 
+ * CRITICAL: Session state is AUTHORITATIVE for clarification status.
+ * Runtime flags are advisory only.
+ * 
  * After clarification + rule match → empty responses are NOT allowed.
  */
 export function checkDecisionGateAlignment(
   input: DecisionGateCheckInput
 ): DecisionGateCheckResult {
-  console.log(`🚪 [DecisionGate] Checking: clarification=${input.clarification_completed}, rules=${input.rules_fired}, hasRec=${input.has_recommendations}, blocked=${input.authority_blocked}`);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL: SESSION STATE IS AUTHORITATIVE
+  // Compute clarification_active from session state, NOT runtime flags
+  // ═══════════════════════════════════════════════════════════════════════════
+  const clarificationActive = input.session_decision_state === 'awaiting_clarification';
+  
+  // INVARIANT CHECK: If clarification answered but session still says awaiting
+  if (input.clarification_answer_received === true && clarificationActive) {
+    console.error(`🚨 [DecisionGate] INVARIANT VIOLATION: Clarification answered but session_decision_state is still 'awaiting_clarification'`);
+    console.error(`   This should NEVER happen - session state must be transitioned BEFORE DecisionGate`);
+    // Force correction
+  }
+  
+  console.log(`🚪 [DecisionGate] Checking:`);
+  console.log(`   session_decision_state: ${input.session_decision_state || 'not_provided'}`);
+  console.log(`   clarification_active: ${clarificationActive} (from session state)`);
+  console.log(`   clarification_completed: ${input.clarification_completed}`);
+  console.log(`   rules_fired: ${input.rules_fired}`);
+  console.log(`   has_recommendations: ${input.has_recommendations}`);
+  console.log(`   authority_blocked: ${input.authority_blocked}`);
   
   // If authority blocked, allow monitoring-only response
   if (input.authority_blocked) {
     return {
       must_return_recommendation: false,
       allow_empty_response: false, // Still must return SOMETHING (monitoring advice)
-      reason: 'AUTHORITY_BLOCKED_MONITORING_ONLY'
+      reason: 'AUTHORITY_BLOCKED_MONITORING_ONLY',
+      clarification_active: false // If blocked, clarification is not active
     };
   }
   
@@ -809,7 +838,8 @@ export function checkDecisionGateAlignment(
     return {
       must_return_recommendation: true,
       allow_empty_response: false,
-      reason: 'CLARIFICATION_PLUS_RULES_MANDATE_RESPONSE'
+      reason: 'CLARIFICATION_PLUS_RULES_MANDATE_RESPONSE',
+      clarification_active: false // Clarification is DONE, not active
     };
   }
   
@@ -817,7 +847,8 @@ export function checkDecisionGateAlignment(
   return {
     must_return_recommendation: input.rules_fired > 0,
     allow_empty_response: input.rules_fired === 0,
-    reason: input.rules_fired > 0 ? 'RULES_FIRED' : 'NO_RULES_MATCHED'
+    reason: input.rules_fired > 0 ? 'RULES_FIRED' : 'NO_RULES_MATCHED',
+    clarification_active: clarificationActive
   };
 }
 
