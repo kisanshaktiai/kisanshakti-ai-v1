@@ -368,7 +368,8 @@ export interface CanonicalState {
 
 // ==================== MAPPING FUNCTIONS ====================
 
-export function mapDaysToSowingBucket(days: number | undefined): DaysAfterSowingBucket {
+export function mapDaysToSowingBucket(days: number | null | undefined): DaysAfterSowingBucket {
+  // FIX: Handle null explicitly - null means UNKNOWN, not D0_7
   if (days === undefined || days === null || isNaN(days)) return DaysAfterSowingBucket.UNKNOWN;
   if (days <= 7) return DaysAfterSowingBucket.D0_7;
   if (days <= 15) return DaysAfterSowingBucket.D8_15;
@@ -756,6 +757,28 @@ export function mapVisualSymptomToEnum(symptom: string | undefined): VisualSympt
 // This ensures the function works with the orchestrator's actual call pattern
 export interface BuildCanonicalStateInput {
   // ═══════════════════════════════════════════════════════════════════════════
+  // NEW: CANONICAL CONTEXT (HIGHEST AUTHORITY when provided)
+  // Pass from Phase-1 locked context to ensure alignment
+  // ═══════════════════════════════════════════════════════════════════════════
+  canonicalContext?: {
+    readonly crop_code: string;
+    readonly crop_name: string;
+    readonly growth_stage: string;
+    readonly days_since_sowing: number | null;
+    readonly ndvi: {
+      readonly value: number | null;
+      readonly trend: string | null;
+    };
+    readonly soil: {
+      readonly nitrogen: number | null;
+      readonly phosphorus: number | null;
+      readonly potassium: number | null;
+      readonly ph: number | null;
+    };
+    readonly is_locked: boolean;
+  };
+  
+  // ═══════════════════════════════════════════════════════════════════════════
   // NESTED OBJECTS (from orchestrator - THESE ARE THE PRIMARY SOURCES)
   // ═══════════════════════════════════════════════════════════════════════════
   landContext?: {
@@ -884,9 +907,10 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 2.5 FIX: AUTHORITATIVE SOURCE EXTRACTION
-  // Priority: landContext → gddResult → nluOutput → flat properties → UNKNOWN
+  // NEW PRIORITY: canonicalContext → landContext → gddResult → nluOutput → flat
   // ═══════════════════════════════════════════════════════════════════════════
   
+  const canonicalCtx = input.canonicalContext;
   const landContext = input.landContext;
   const gddResult = input.gddResult;
   const nluOutput = input.nluOutput;
@@ -895,9 +919,11 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
   const weatherData = input.weatherData;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 1. CROP SOURCE PRIORITY (per requirement)
+  // 1. CROP SOURCE PRIORITY (UPDATED: canonicalContext is HIGHEST when locked)
   // ═══════════════════════════════════════════════════════════════════════════
   const cropNameRaw = 
+    (canonicalCtx?.is_locked && canonicalCtx?.crop_code && canonicalCtx.crop_code !== 'UNKNOWN')
+      ? canonicalCtx.crop_code :           // ✅ HIGHEST: Locked canonical context
     landContext?.current_crop ||           // a) landContext.current_crop (database)
     landContext?.crop ||                   // a.1) alternative field name
     nluOutput?.crop_identification?.crop_code ||  // c) nluOutput crop
@@ -905,42 +931,52 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     input.cropName ||                      // d) flat property fallback
     'UNKNOWN';
   
-  const cropSource = landContext?.current_crop || landContext?.crop 
-    ? 'landContext' 
+  const cropSource = 
+    (canonicalCtx?.is_locked && canonicalCtx?.crop_code && canonicalCtx.crop_code !== 'UNKNOWN')
+      ? 'canonicalContext' 
+    : landContext?.current_crop || landContext?.crop 
+      ? 'landContext' 
     : nluOutput?.crop_identification?.crop_code 
       ? 'nluOutput' 
-      : input.cropName 
-        ? 'flat_input' 
-        : 'none';
+    : input.cropName 
+      ? 'flat_input' 
+      : 'none';
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 2. STAGE SOURCE PRIORITY (per requirement)
-  // GDD phenology is MOST AUTHORITATIVE for physiological stage
+  // 2. STAGE SOURCE PRIORITY (UPDATED: canonicalContext > GDD > landContext)
   // ═══════════════════════════════════════════════════════════════════════════
   const cropStageRaw = 
-    gddResult?.growth_stage ||             // a) GDD phenology result (HIGHEST)
+    (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
+      ? canonicalCtx.growth_stage :        // ✅ HIGHEST: Locked canonical context
+    gddResult?.growth_stage ||             // a) GDD phenology result
     gddResult?.stage_name ||               // a.1) alternative GDD field
     landContext?.growth_stage ||           // b) landContext.growth_stage
     landContext?.stage ||                  // b.1) alternative field name
     input.cropStage ||                     // c) flat property fallback
     'UNKNOWN';
   
-  const stageSource = gddResult?.growth_stage || gddResult?.stage_name
-    ? 'GDD'
+  const stageSource = 
+    (canonicalCtx?.is_locked && canonicalCtx?.growth_stage && canonicalCtx.growth_stage !== 'UNKNOWN')
+      ? 'canonicalContext'
+    : gddResult?.growth_stage || gddResult?.stage_name
+      ? 'GDD'
     : landContext?.growth_stage || landContext?.stage
       ? 'landContext'
-      : input.cropStage
-        ? 'flat_input'
-        : 'none';
+    : input.cropStage
+      ? 'flat_input'
+      : 'none';
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 3. DAYS AFTER SOWING
+  // 3. DAYS AFTER SOWING (UPDATED: canonicalContext has priority)
+  // FIX: Default to null instead of 0 to prevent false young-crop protection
   // ═══════════════════════════════════════════════════════════════════════════
   const daysAfterSowing = 
+    (canonicalCtx?.is_locked && canonicalCtx?.days_since_sowing !== null && canonicalCtx.days_since_sowing !== undefined)
+      ? canonicalCtx.days_since_sowing :   // ✅ HIGHEST: Locked canonical context
     landContext?.days_since_sowing ??
     landContext?.days_after_sowing ??
     input.daysAfterSowing ??
-    0;
+    null;  // ✅ FIX: null = unknown, NOT 0 (which triggers young crop logic)
   
   // ═══════════════════════════════════════════════════════════════════════════
   // 4. NDVI SOURCE (per requirement: NOT_AVAILABLE vs UNKNOWN distinction)
