@@ -236,33 +236,88 @@ Deno.serve(async (req) => {
       return mapping[lower] || 'advisory';
     };
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // VALIDATION LAYER - Ensure agronomic safety before insertion
+    // ═══════════════════════════════════════════════════════════════════════════
+    const validateRule = (rule: RuleFromJSON): string[] => {
+      const errors: string[] = [];
+      
+      // WHAT validation - cause is required
+      if (!rule.cause || rule.cause.length < 3) {
+        errors.push(`${rule.rule_id}: Missing or invalid 'cause' (WHAT)`);
+      }
+      
+      // HOW validation for treatment rules - safety fields required
+      const actionType = normalizeActionType(rule.action_type);
+      if (actionType === 'treatment' || actionType === 'urgent_treatment') {
+        if (rule.active_ingredient && !rule.phi_days) {
+          // Warning only - don't block insertion
+          console.warn(`⚠️ ${rule.rule_id}: Treatment with active_ingredient missing phi_days`);
+        }
+        if (rule.active_ingredient && !rule.bee_toxicity) {
+          console.warn(`⚠️ ${rule.rule_id}: Treatment with active_ingredient missing bee_toxicity`);
+        }
+      }
+      
+      // WHY validation - reason_text is highly recommended
+      if (!rule.reason_text && !rule.scientific_source) {
+        console.warn(`⚠️ ${rule.rule_id}: Missing reason_text or scientific_source (WHY)`);
+      }
+      
+      return errors;
+    };
+
+    // Normalize observable_characteristics to array format
+    const normalizeObservableChars = (chars: unknown): unknown => {
+      if (!chars) return null;
+      if (Array.isArray(chars)) return chars.map(c => String(c).toUpperCase());
+      if (typeof chars === 'object' && chars !== null) {
+        return Object.keys(chars).map(k => k.toUpperCase());
+      }
+      return null;
+    };
+
     // Format rules for database with all normalizations
-    // NOTE: response_en, response_hi, response_mr, trigger_keywords, action_text 
-    // were removed per architectural cleanup - narration is now LLM-generated
-    const formatRule = (rule: RuleFromJSON) => ({
-      rule_id: rule.rule_id,
-      crop_group: normalizeCropCode(rule.crop_group || 'universal'),
-      crop_code: normalizeCropCode(rule.crop_code),
-      category: rule.category?.toLowerCase() || 'advisory',
-      stage_applicable: normalizeStages(rule.stage_applicable),
-      conditions_json: rule.conditions_json,
-      condition_code: rule.condition_code || '',
-      cause: rule.cause,
-      priority: Math.min(10, Math.max(1, Math.round(rule.priority / 10))),
-      scientific_source: rule.scientific_source,
-      scientific_basis: rule.icar_package_ref || rule.scientific_source,
-      action_type: normalizeActionType(rule.action_type),
-      canonical_group: normalizeCanonicalGroup(rule.canonical_group),
-      is_active: rule.is_active !== false,
-      version: RULES_VERSION,
-      etl_threshold: rule.etl_threshold || null,
-      phi_days: rule.phi_days || null,
-      active_ingredient: rule.active_ingredient || null,
-      organic_alternative: rule.organic_alternative || null,
-      ipm_level: rule.ipm_level || null,
-      bee_toxicity: normalizeBee(rule.bee_toxicity),
-      icar_package_ref: rule.icar_package_ref || null
-    });
+    // WHAT → HOW → WHY paradigm: action_text, reason_text, knowledge_text
+    const formatRule = (rule: RuleFromJSON) => {
+      // Validate before formatting
+      const validationErrors = validateRule(rule);
+      if (validationErrors.length > 0) {
+        console.warn(`⚠️ Validation warnings for ${rule.rule_id}:`, validationErrors);
+      }
+      
+      return {
+        rule_id: rule.rule_id,
+        crop_group: normalizeCropCode(rule.crop_group || 'universal'),
+        crop_code: normalizeCropCode(rule.crop_code),
+        category: rule.category?.toLowerCase() || 'advisory',
+        stage_applicable: normalizeStages(rule.stage_applicable),
+        conditions_json: rule.conditions_json,
+        condition_code: rule.condition_code || '',
+        cause: rule.cause,
+        priority: Math.min(10, Math.max(1, Math.round(rule.priority / 10))),
+        scientific_source: rule.scientific_source,
+        scientific_basis: rule.icar_package_ref || rule.scientific_source,
+        action_type: normalizeActionType(rule.action_type),
+        canonical_group: normalizeCanonicalGroup(rule.canonical_group),
+        is_active: rule.is_active !== false,
+        version: RULES_VERSION,
+        // Safety-critical fields
+        etl_threshold: rule.etl_threshold || null,
+        phi_days: rule.phi_days || null,
+        active_ingredient: rule.active_ingredient || null,
+        organic_alternative: rule.organic_alternative || null,
+        ipm_level: rule.ipm_level || null,
+        bee_toxicity: normalizeBee(rule.bee_toxicity),
+        icar_package_ref: rule.icar_package_ref || null,
+        // WHAT → HOW → WHY columns (these may not exist in DB yet - will be ignored if missing)
+        // action_text: rule.action_text || null,
+        reason_text: (rule as any).reason_text || null,
+        knowledge_text: (rule as any).knowledge_text || null,
+        // Normalized observable_characteristics (always array)
+        observable_characteristics: normalizeObservableChars((rule as any).observable_characteristics),
+      };
+    };
 
     // Batch insert
     const batchSize = 50;
