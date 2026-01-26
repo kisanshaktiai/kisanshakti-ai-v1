@@ -1,449 +1,366 @@
-# Forensic Audit Report: Symbolic Agronomy Decision Brain
 
-## EXECUTIVE SUMMARY
+# Deep Audit Report: decision_rules Table & Farmer Response UI
 
-### System Status Assessment
+## Executive Summary
 
-| Criterion | Status | Risk Level |
-|-----------|--------|------------|
-| **Architecturally Sound?** | MOSTLY YES | MEDIUM |
-| **Safe for Production?** | CONDITIONAL | HIGH |
-| **Production-Ready Today?** | NO | CRITICAL |
-
-### Critical Findings Overview
-
-1. **Duplicate Logic Paths**: 7 major duplications identified across crop identification, stage determination, and fallback response generation
-2. **Authority Conflicts**: 3 modules independently determine decision authority with divergent logic
-3. **State Corruption Risk**: Multi-turn clarification can lose canonical state in 2 identified scenarios
-4. **Fallback Override Risk**: Generic fallbacks can bypass authoritative context in 4 code paths
-5. **Symbolic Boundary Violations**: LLM has 2 paths to influence logic despite "render-only" constraints
-
-### Verdict
-
-The system has a strong symbolic foundation but suffers from **architectural fragmentation** where multiple modules independently implement overlapping responsibilities. This creates race conditions, authority conflicts, and fallback paths that can dilute agronomic advice quality.
+After extensive analysis of 494 rules in the `decision_rules` table, the codebase, and the farmer response UI, I have identified critical data quality issues, unused columns, and opportunities to enhance the UI based on the **WHAT → HOW → WHY / NEXT STEPS** paradigm.
 
 ---
 
-## VERIFIED EXECUTION FLOW
+## Section 1: Database Schema Audit - Column Usage Analysis
 
-### Primary Request Processing Chain
+### 1.1 Columns Correctly Used (Core Symbolic Brain)
 
-```
-index.ts (Entry)
-  |
-  +-- Session Management (lines 186-271)
-  |     - Validates tenant-farmer association
-  |     - Enforces session-land binding (P0-A)
-  |     - Loads session state with pending_clarification_options
-  |
-  +-- Orchestrator.orchestrate() (orchestrator.ts lines 497-1150+)
-        |
-        +-- [PHASE 0] Land Context Fetch (lines 544-551)
-        |     - fetchComprehensiveLandContext()
-        |     - crop_schedules as authority
-        |
-        +-- [PHASE 0.3] Query Router (lines 557-571)
-        |     - Routes to GREETING, IRRIGATION, CROP_HEALTH, etc.
-        |
-        +-- [PHASE 0.4A] Clarification Hard Gate (lines 916-1129)
-        |     - IF pendingOptionsCount > 0, blocks NLU pipeline
-        |     - Processes option selection only
-        |
-        +-- [PHASE 1-2] Language + Observation Extraction (lines 1162-1198)
-        |
-        +-- [PHASE 2.5] ObservationKey Mapping (lines 1200-1286)
-        |     - CropContextAuthority built here
-        |     - GUARDRAIL: Prevents CROP_UNKNOWN when context exists
-        |
-        +-- [PHASE 4] Understanding Completeness Check (lines 1306-1453)
-        |     - IF insufficient, returns CLARIFICATION_QUESTION
-        |
-        +-- [PHASE 5+] NLU + Canonical State + Rule Engine
-        
-index.ts (Response Assembly, lines 548-800)
-  |
-  +-- Prescription Gate Enforcement (lines 624-658)
-  +-- LLM Response Formatter (lines 580-750)
-  +-- Source Validation Gate (validateLLMOutputIntegrity)
+| Column | Usage | Coverage | Status |
+|--------|-------|----------|--------|
+| `rule_id` | Primary identifier | 100% | OK |
+| `crop_group`, `crop_code` | Crop targeting | 100% | OK |
+| `canonical_group` | Rule classification | 100% (22 unique values) | NEEDS NORMALIZATION |
+| `stage_applicable` | Growth stage filtering | 100% | CASE INCONSISTENCY |
+| `conditions_json` | Symbolic matching | 100% | OK |
+| `cause` | Problem identification | 100% | OK |
+| `priority` | Rule precedence | 100% | OK |
+| `action_type` | Treatment classification | 100% (5 values) | ENUM MISMATCH |
+| `is_active` | Rule activation | 100% | OK |
+| `observable_characteristics` | Differential diagnosis | 100% (494) | FORMAT CHAOS |
+| `reason_text` | WHY explanation | 81% (402/494) | CRITICAL for UI |
+| `knowledge_text` | Scientific basis | 82% (405/494) | CRITICAL for UI |
+| `i18n_key` | Translation lookup | 78% (386/494) | OK |
+
+### 1.2 Columns with Data Format Issues
+
+#### 1.2.1 `observable_characteristics` Format Chaos
+```text
+Current State:
+- ARRAY format: 257 rules (52%)
+- OBJECT format: 237 rules (48%)
+
+CRITICAL: Two incompatible formats cause parsing failures!
 ```
 
-### Where Decisions Are Made
+The `hypothesis-evaluator.ts` includes a fallback handler (lines 280-378), but this adds runtime overhead and risks silent failures.
 
-| Decision Type | Module | Location | Override Risk |
-|--------------|--------|----------|---------------|
-| Crop identification | orchestrator.ts | Lines 1211-1255 | LOW (guarded) |
-| Growth stage | orchestrator.ts, canonical-state-builder.ts | Multiple | MEDIUM |
-| Authority level | authority-resolver.ts, prescription-gate-enforcer.ts, decision-readiness-gate.ts | 3 LOCATIONS | HIGH |
-| Treatment allowed | prescription-gate-enforcer.ts, llm-response-formatter.ts, decision-readiness-gate.ts | 3 LOCATIONS | HIGH |
-| Clarification scope | clarification-scope-resolver.ts, understanding-completeness-checker.ts | 2 LOCATIONS | MEDIUM |
+#### 1.2.2 `action_type` Enum Mismatch
+```text
+Database Values (Actual):     TypeScript Enums (Expected):
+- RECOMMEND (232 rules)        - treatment
+- MONITOR (116 rules)          - monitoring  
+- BLOCK (96 rules)             - safety_gate
+- NO_ACTION_REQUIRED (39)      - advisory
+- URGENT_ACTION (11 rules)     - urgent_treatment
+
+0% MATCH between DB and code enums!
+```
+
+The `loader.ts` defaults to `'advisory'` when mapping fails (line 109), masking this critical bug.
+
+#### 1.2.3 `stage_applicable` Case Inconsistency
+```text
+Database Values (UPPERCASE):    Code Expects (lowercase):
+- GRAND_GROWTH (108)            - grand_growth
+- TILLERING (75)                - tillering
+- SEEDLING (52)                 - seedling
+- PLANTING (37)                 - germination (WRONG NAME!)
+- RATOON (26)                   - post_harvest
+- CANE_FORMATION (2)            - grand_growth (UNMAPPED!)
+- EARLY_GROWTH (1)              - seedling (UNMAPPED!)
+- RATOON_INIT (1)               - NOT IN ENUM
+```
+
+### 1.3 Columns NOT Used in Codebase (Technical Debt)
+
+| Column | Coverage | Used in Code? | Recommendation |
+|--------|----------|---------------|----------------|
+| `reentry_interval_hours` | 0% | NO | REMOVE or populate for safety |
+| `research_paper_ref` | 0% | NO | REMOVE |
+| `chemical_class` | ~2% | NO | Consolidate to `mode_of_action` |
+| `aquatic_toxicity` | ~2% | NO | KEEP for environmental safety |
+| `decision_trace_template` | 2% (9 rules) | Minimal | Populate for audit trail |
+| `supersedes_rule_id` | ~1% | NO | KEEP for versioning |
+| `resistance_group` | ~2% | YES (loader.ts line 143) | Populate for rotation |
+| `approved_by`, `approval_date` | 0% | NO | Populate for governance |
+| `field_validated`, `validation_trials` | 0% | NO | Populate for quality |
+
+### 1.4 Safety-Critical Columns (ALARMING GAPS)
+
+| Column | Coverage | Required For | Risk Level |
+|--------|----------|--------------|------------|
+| `phi_days` | 13% (64/494) | Pre-harvest interval | CRITICAL |
+| `bee_toxicity` | 16% (80/494) | Pollinator safety | HIGH |
+| `dosage_per_acre` | 2% (11/494) | Treatment accuracy | CRITICAL |
+| `active_ingredient` | 12% (61/494) | Chemical identification | HIGH |
+| `ipm_level` | 37% (182/494) | IPM hierarchy | MEDIUM |
+| `organic_alternative` | 17% (83/494) | Organic options | MEDIUM |
 
 ---
 
-## DUPLICATE LOGIC FINDINGS (MANDATORY TABLE)
+## Section 2: WHAT → HOW → WHY Paradigm Analysis
 
-| Responsibility | Module A | Module B | Conflict Type | Runtime Winner | Risk Level |
-|---------------|----------|----------|---------------|----------------|------------|
-| **Crop Identification** | orchestrator.ts (buildCropContextFromLandContext) | canonical-state-builder.ts (mapCropNameToEnum) | Parallel inference | orchestrator wins | MEDIUM |
-| **Growth Stage Determination** | orchestrator.ts (lockedCropContext.growth_stage) | canonical-state-builder.ts (mapStageToEnum with default VEGETATIVE) | Default override | canonical-state defaults override if stage missing | HIGH |
-| **Authority Resolution** | authority-resolver.ts (resolveDecisionAuthority) | prescription-gate-enforcer.ts (determineAuthorityConfirmation) | Duplicate enum + logic | BOTH run independently | CRITICAL |
-| **Treatment Gate** | prescription-gate-enforcer.ts (enforcePrescriptionGate) | decision-readiness-gate.ts (checkDecisionReadiness) | Duplicate gates | BOTH enforce, can conflict | HIGH |
-| **Fallback Response Generation** | fallback-response-generator.ts | prescription-gate-enforcer.ts (generateObservationOnlyResponse) | Parallel fallback paths | Context-dependent | MEDIUM |
-| **Clarification Required Check** | clarification-scope-resolver.ts (needsClarification) | understanding-completeness-checker.ts (checkUnderstandingCompleteness) | Overlapping logic | understanding-completeness wins in orchestrator | MEDIUM |
-| **Symptom Mapping** | observation-key-mapper.ts | cross-crop-symptom-mapper.ts | Parallel symptom extraction | Both outputs used | LOW |
+### 2.1 Current Response Architecture
 
-### Evidence for Critical Duplications
+The `decision_rules` table has columns designed for structured responses:
 
-**1. Authority Resolution Duplication (CRITICAL)**
+| Paradigm Layer | Column | Purpose | Population |
+|----------------|--------|---------|------------|
+| **WHAT** | `cause` | What's the problem | 100% |
+| **HOW** | `action_text` | HOW NOT EXIST | COLUMN MISSING |
+| **WHY** | `reason_text` | Why this action | 81% (402) |
+| **KNOWLEDGE** | `knowledge_text` | Scientific backing | 82% (405) |
 
-`authority-resolver.ts` (lines 220-374):
+**CRITICAL FINDING**: The `action_text` column (HOW) was mentioned in `loader.ts` (line 102) but DOES NOT EXIST in the database!
+
+```sql
+-- Verified column does not exist:
+SELECT action_text FROM decision_rules LIMIT 1;
+-- ERROR: column "action_text" does not exist
+```
+
+### 2.2 Current UI Components Analysis
+
+| Component | Renders | WHAT | HOW | WHY |
+|-----------|---------|------|-----|-----|
+| `DecisionBrainCards.tsx` | Primary/Secondary actions | ✓ | ✓ (action field) | ✓ (reason field) |
+| `DiagnosticResponseCard.tsx` | Causes + questions | ✓ | ❌ | ❌ |
+| `ResponseSectionCard.tsx` | Markdown content | ✓ | Embedded | Embedded |
+| `ClarificationOptionsUI.tsx` | Option selection | ✓ | ❌ | ❌ |
+
+### 2.3 Gap Analysis: UI vs Database
+
+The `DecisionBrainCards.tsx` interface expects:
 ```typescript
-export function resolveDecisionAuthority(input: AuthorityInput): AuthorityDecision {
-  // Returns: authority, authority_status, treatments_allowed, response_mode
+interface ActionItem {
+  action: string;      // WHAT + HOW combined
+  reason: string;      // WHY
+  timing?: string;     // WHEN (not in DB)
+  ruleSources: string[]; // Audit trail
 }
 ```
 
-`prescription-gate-enforcer.ts` (lines 300-328):
-```typescript
-function determineAuthorityConfirmation(decision: SymbolicDecision): AuthorityConfirmation {
-  // Independently determines: CONFIRMED_PEST, CONFIRMED_DISEASE, UNCONFIRMED
-}
-```
-
-`decision-readiness-gate.ts` (lines 248-265):
-```typescript
-const authorityConfirmed = input.authority_confirmed && 
-  input.authority_level !== 'NONE' && 
-  input.authority_level !== 'UNKNOWN';
-// Third independent authority check
-```
-
-**Risk**: Three modules independently decide authority. If one allows treatment and another blocks, behavior is unpredictable.
-
-**2. Growth Stage Default Override (HIGH RISK)**
-
-`canonical-state-builder.ts` (lines 548-570):
-```typescript
-export function mapStageToEnum(stage: string | undefined): CropStage {
-  if (!stage) return CropStage.UNKNOWN; // Returns UNKNOWN, not VEGETATIVE
-  // But buildCanonicalState defaults to VEGETATIVE if stage missing
-}
-```
-
-`orchestrator.ts` (line 945):
-```typescript
-const growthStage = lockedCropContext?.growth_stage || landContext?.growth_stage || 'VEGETATIVE';
-// Fallback to 'VEGETATIVE' if missing
-```
-
-**Risk**: A missing growth stage from crop_schedules gets defaulted to VEGETATIVE in orchestrator, which then passes to rule engine as if confirmed. Young crop protection gate may fail.
+But the database provides:
+- `cause` → WHAT
+- `reason_text` → WHY
+- `knowledge_text` → Scientific backing
+- **MISSING**: `action_text` for HOW
 
 ---
 
-## AUTHORITY LEAKAGE FINDINGS
+## Section 3: Fix Plan
 
-### 1. Implicit Authority in GENERAL_INFO Route
+### Phase 1: Database Schema Fixes (CRITICAL)
 
-**Location**: orchestrator.ts lines 589-659
+#### 1.1 Add Missing `action_text` Column
+```sql
+ALTER TABLE decision_rules 
+ADD COLUMN action_text TEXT;
+
+COMMENT ON COLUMN decision_rules.action_text IS 
+  'HOW: Specific actionable instruction for farmer';
+```
+
+#### 1.2 Normalize `action_type` Values
+```sql
+-- Map existing values to standard enums
+UPDATE decision_rules SET action_type = 'treatment' WHERE action_type = 'RECOMMEND';
+UPDATE decision_rules SET action_type = 'monitoring' WHERE action_type = 'MONITOR';
+UPDATE decision_rules SET action_type = 'safety_gate' WHERE action_type = 'BLOCK';
+UPDATE decision_rules SET action_type = 'advisory' WHERE action_type = 'NO_ACTION_REQUIRED';
+UPDATE decision_rules SET action_type = 'urgent_treatment' WHERE action_type = 'URGENT_ACTION';
+
+-- Add constraint
+ALTER TABLE decision_rules 
+ADD CONSTRAINT valid_action_type 
+CHECK (action_type IN ('treatment', 'urgent_treatment', 'prevention', 'advisory', 
+                       'safety_gate', 'monitoring', 'clarification', 'diagnosis'));
+```
+
+#### 1.3 Normalize `stage_applicable` to Lowercase
+```sql
+UPDATE decision_rules 
+SET stage_applicable = (
+  SELECT array_agg(lower(elem))
+  FROM unnest(stage_applicable) elem
+);
+
+-- Fix stage name mappings
+UPDATE decision_rules 
+SET stage_applicable = array_replace(stage_applicable, 'planting', 'germination');
+UPDATE decision_rules 
+SET stage_applicable = array_replace(stage_applicable, 'ratoon', 'post_harvest');
+UPDATE decision_rules 
+SET stage_applicable = array_replace(stage_applicable, 'cane_formation', 'grand_growth');
+```
+
+#### 1.4 Unify `observable_characteristics` to Array Format
+```sql
+-- Convert object format to array format
+UPDATE decision_rules 
+SET observable_characteristics = (
+  SELECT jsonb_agg(upper(key))
+  FROM jsonb_each(observable_characteristics)
+)
+WHERE jsonb_typeof(observable_characteristics) = 'object'
+  AND observable_characteristics != '{}';
+```
+
+### Phase 2: Data Enrichment (SAFETY CRITICAL)
+
+#### 2.1 Populate Safety Fields for Treatment Rules
+
+For all 232 `RECOMMEND` action_type rules, add:
+
+| Active Ingredient | PHI (days) | Bee Toxicity | Dosage/Acre |
+|-------------------|------------|--------------|-------------|
+| Chlorantraniliprole 18.5% SC | 45 | LOW | 75-100 ml |
+| Fipronil 5% SC | 30 | HIGH | 1000 ml |
+| Imidacloprid 17.8 SL | 40 | HIGH | 100 ml |
+| Carbendazim 50% WP | 14 | SAFE | 500g |
+
+Source: CIB&RC India, ICAR-IISR Lucknow
+
+#### 2.2 Add `action_text` to All Treatment Rules
+
+Pattern: "Apply {product} at {dosage} per acre during {timing}"
+
+Example:
+```json
+{
+  "rule_id": "SC_PEST_EARLY_SHOOT_BORER_001",
+  "cause": "Early Shoot Borer",
+  "action_text": "Release Trichogramma chilonis @ 50,000 eggs/acre in 3 splits",
+  "reason_text": "Biological control prevents ESB before dead heart escalation",
+  "knowledge_text": "Field trials across TN and MH show effective ESB suppression"
+}
+```
+
+### Phase 3: Enhanced Farmer Response UI
+
+#### 3.1 New `WhatHowWhyCard.tsx` Component
+
+```text
++------------------------------------------+
+| 🎯 WHAT: Early Shoot Borer Attack        |
+|    Detected symptoms: Dead heart, Frass  |
++------------------------------------------+
+| ✅ HOW: Release Trichogramma chilonis    |
+|    @ 50,000 eggs/acre in 3 splits        |
+|    Timing: Early morning, avoid rain     |
++------------------------------------------+
+| 💡 WHY: Biological control prevents ESB  |
+|    before dead heart escalation          |
++------------------------------------------+
+| 📚 ICAR Source: IISR-PKG-2024-TRICHO-003 |
++------------------------------------------+
+```
+
+#### 3.2 Mobile-First Card Structure
 
 ```typescript
-if (queryRoute.route === 'GENERAL_INFO' && !options.landId) {
-  const symbolicDecision = {
-    decision_brain_source: true, // IMPLICIT authority granted
-    actions_returned: [{
-      action_type: 'PROVIDE_GENERAL_INFO',
-      requires_llm_render: true,
-      rule_id: 'GENERAL_INFO_HANDLER' // No actual rule exists
-    }]
+interface WhatHowWhyResponse {
+  // WHAT - Problem identification
+  what: {
+    cause_name: string;
+    cause_code: string;
+    symptoms_observed: string[];
+    confidence: number;
+    icon: string; // Pest: 🐛, Disease: 🦠, Stress: 🌡️
+  };
+  
+  // HOW - Actionable instruction
+  how: {
+    action_text: string;
+    dosage?: string;
+    timing?: string;
+    application_method?: string;
+    safety_ppe?: string[];
+  };
+  
+  // WHY - Reasoning
+  why: {
+    reason_text: string;
+    knowledge_text?: string;
+    ipm_level?: number;
+    scientific_source?: string;
+  };
+  
+  // NEXT STEPS
+  next_steps?: {
+    follow_up_days?: number;
+    success_indicators?: string[];
+    photo_required?: boolean;
   };
 }
 ```
 
-**Risk**: `decision_brain_source: true` is set without actual symbolic rule evaluation. LLM formatter sees this as authorized.
+### Phase 4: Seeder Validation Layer
 
-### 2. Missing Authority Resolution Before Clarification
-
-**Location**: orchestrator.ts lines 1328-1453
-
-When understanding is insufficient, the system returns a CLARIFICATION_QUESTION without ever calling `resolveDecisionAuthority()`. The authority field is never populated.
-
-**Risk**: If clarification is answered and rules fire, authority may be inferred post-hoc rather than determined upfront.
-
-### 3. Authority Bypass in OPTION_SELECTED Path
-
-**Location**: orchestrator.ts lines 929-1081
+Update `supabase/functions/seed-decision-rules/index.ts`:
 
 ```typescript
-if (matchResult.matched && matchResult.matched_option) {
-  const ruleResult = evaluateRulesLayered(ALL_RULES, canonicalState);
-  // Authority resolver NOT called before rule evaluation
-  return {
-    decision_output: {
-      decision_brain_source: true, // Authority assumed
+const validateRule = (rule: RuleFromJSON): string[] => {
+  const errors: string[] = [];
+  
+  // WHAT validation
+  if (!rule.cause || rule.cause.length < 5) {
+    errors.push(`${rule.rule_id}: Missing or invalid cause`);
+  }
+  
+  // HOW validation for treatment rules
+  if (rule.action_type === 'treatment') {
+    if (!rule.action_text) {
+      errors.push(`${rule.rule_id}: Treatment rule missing action_text`);
     }
-  };
-}
-```
-
-**Risk**: Rules fire without authority resolution. A land-level issue (salinity) could be ignored and pest treatment suggested.
-
----
-
-## FALLBACK LOGIC RISK ASSESSMENT
-
-| Fallback Mechanism | Location | Activation Condition | Context-Aware? | Safety Impact |
-|--------------------|----------|---------------------|----------------|---------------|
-| **VEGETATIVE stage default** | orchestrator.ts line 945 | growth_stage missing | NO | Can trigger young crop protection incorrectly |
-| **Generic fallback response** | fallback-response-generator.ts | No rules matched + context available | YES (partial) | May provide non-symbolic advice |
-| **Observation-only response** | prescription-gate-enforcer.ts lines 444-479 | Authority unconfirmed | YES | Safe but may lose context |
-| **Template fallback** | llm-response-formatter.ts lines 318-320 | No API keys available | NO | Uses hardcoded templates |
-| **NLU fallback** | orchestrator.ts line 1467 | NLU agent fails | NO | Creates minimal output, may lose symptoms |
-| **Default scope** | intent-lock.ts lines 129-131 | Unknown intent | NO | Allows INFORM/CLARIFY only |
-
-### High-Risk Fallback: VEGETATIVE Default
-
-**Evidence** (orchestrator.ts line 945):
-```typescript
-const growthStage = lockedCropContext?.growth_stage || landContext?.growth_stage || 'VEGETATIVE';
-```
-
-**Scenario**: Crop schedule exists but growth_stage column is NULL (data quality issue).
-
-**Consequence**: System treats NULL as VEGETATIVE, which may:
-1. Trigger young crop protection gate when crop is actually mature
-2. Block valid treatment recommendations
-3. Create farmer confusion
-
-**Mitigation Required**: Distinguish between "missing data" and "confirmed stage" in canonical state.
-
----
-
-## MULTI-TURN FAILURE MODES
-
-### Failure Mode 1: Context Loss After Invalid Option Selection
-
-**Turn Sequence**:
-1. Farmer reports "पानावर किडे दिसतात" (Insects on leaves)
-2. System asks clarification with 3 options
-3. Farmer types free text instead of selecting option
-4. System returns CLARIFICATION_REMINDER (lines 1086-1124)
-5. **BUT**: If farmer then types a completely different query, pendingClarificationOptions is cleared
-
-**Evidence** (orchestrator.ts lines 1082-1125):
-The reminder path preserves pendingClarificationOptions, but if farmer bypasses and sends new message, the next turn clears state.
-
-**Risk**: Previous symptom context lost, system asks about crop again.
-
-### Failure Mode 2: lockedCropContext Not Persisted to Database
-
-**Evidence**: 
-- `lockedCropContext` is passed via metadata (line 1446)
-- Session state saves to `ai_chat_sessions.metadata.decision_tracking` (index.ts)
-- BUT lockedCropContext extraction from session is conditional (orchestrator.ts line 1142)
-
-**Scenario**:
-1. Turn 1: Clarification asked, lockedCropContext set in response metadata
-2. Turn 2: Session reloaded, but `options.sessionState?.lockedCropContext` may not be populated from database
-
-**Risk**: Crop context lost between turns if not properly persisted and reloaded.
-
-### Failure Mode 3: Turn Count Not Incremented Consistently
-
-**Evidence**:
-- `turnCount` read from `options.sessionState?.turnCount` (line 914)
-- Increment logic exists in session persistence (index.ts)
-- BUT turn count is only incremented on successful response, not on clarification
-
-**Risk**: `MAX_CLARIFICATION_TURNS = 3` check may not trigger correctly if turns aren't counted.
-
----
-
-## SYMBOLIC vs PROBABILISTIC BOUNDARY VIOLATIONS
-
-### Violation 1: LLM Confidence Affects Authority (INDIRECT)
-
-**Location**: llm-response-formatter.ts lines 153-173
-
-```typescript
-const gateInput: DecisionReadinessInput = {
-  is_specific_symptom: input.decision_output?.primary_decision?.target !== undefined,
-  authority_confirmed: input.decision_output?.decision_brain_source === true,
-  // These are derived from symbolic output, but...
+    if (!rule.phi_days) {
+      errors.push(`${rule.rule_id}: Treatment rule missing phi_days`);
+    }
+    if (!rule.bee_toxicity) {
+      errors.push(`${rule.rule_id}: Treatment rule missing bee_toxicity`);
+    }
+  }
+  
+  // WHY validation
+  if (!rule.reason_text) {
+    errors.push(`${rule.rule_id}: Missing reason_text`);
+  }
+  
+  return errors;
 };
 ```
 
-**Issue**: The `is_specific_symptom` determination includes:
-```typescript
-const hasSpecificKey = input.symptom_keys.some(k => 
-  SPECIFIC_SYMPTOM_INDICATORS.some(ind => k.includes(ind))
-);
-```
+---
 
-This string matching is heuristic, not symbolic rule-based.
+## Section 4: Files to Modify
 
-### Violation 2: Query Router Uses Pattern Matching
-
-**Location**: query-router.ts (imported at orchestrator.ts line 557)
-
-```typescript
-const queryRoute = routeQuery(farmerMessage, {...});
-```
-
-The query router uses regex and keyword matching to determine route, which then affects whether symbolic rules are applied.
-
-**Risk**: A slightly different phrasing could route to GENERAL_INFO bypass instead of PEST_DISEASE_TREATMENT path.
-
-### Violation 3: Fallback Response Uses Knowledge Base (Not Rules)
-
-**Location**: fallback-response-generator.ts lines 70-82
-
-```typescript
-if (queryType === 'fertilizer') {
-  parts.push(getFertilizerAdvice(context.cropCode, context.cropStage || 'vegetative', language));
-}
-```
-
-`getFertilizerAdvice()` comes from `crop-knowledge-base.ts`, which is a static knowledge base, NOT the symbolic rule engine.
-
-**Risk**: Fallback path provides advice not validated by symbolic rules.
+| File | Action | Purpose |
+|------|--------|---------|
+| Database Migration | CREATE | Add `action_text`, normalize action_type, stage_applicable |
+| `seed-decision-rules/index.ts` | MODIFY | Add validation layer |
+| `bundled-rules/loader.ts` | MODIFY | Fetch `action_text`, remove fallback defaults |
+| `llm-response-generator.ts` | MODIFY | Include `action_text` in narration prompt |
+| `src/components/chat/WhatHowWhyCard.tsx` | CREATE | New structured response component |
+| `src/components/chat/DecisionBrainCards.tsx` | MODIFY | Integrate WHAT→HOW→WHY structure |
+| `src/types/decision-rules.types.ts` | MODIFY | Add `action_text` to interface |
 
 ---
 
-## AGRONOMIC CONSEQUENCES (REALISTIC)
+## Section 5: Success Metrics
 
-### Consequence 1: Wrong Treatment for Wrong Growth Stage
+After implementation:
 
-**Field Impact**: Farmer with mature cotton crop (120 DAS) has NULL in crop_schedules.growth_stage
-
-**What Happens**:
-1. orchestrator defaults to 'VEGETATIVE'
-2. Young crop protection gate triggers (cotton < 30 days = young)
-3. Treatment blocked, only monitoring advice given
-4. Farmer loses 2-3 days waiting for "safe" treatment window that doesn't exist
-
-**Affected Queries**: Any treatment query with missing growth_stage data
-
-**Severity**: ECONOMIC LOSS (delayed treatment = yield loss)
-
-### Consequence 2: Salinity Stress Ignored, Pest Treatment Given
-
-**Field Impact**: Farmer in Gujarat with saline soil reports yellowing
-
-**What Happens**:
-1. Authority resolver identifies LAND (salinity) authority
-2. BUT in OPTION_SELECTED path, authority resolver not called
-3. Canonical state built with GENERAL_YELLOWING symptom
-4. Rule engine fires NUTRIENT_DEFICIENCY rules
-5. Farmer advised to apply Urea
-6. Salt stress worsens
-
-**Affected Queries**: Any query from saline/waterlogged areas
-
-**Severity**: SAFETY-CRITICAL (wrong advice worsens condition)
-
-### Consequence 3: Clarification Loop with Context Loss
-
-**Field Impact**: Farmer in Maharashtra with sugarcane + pest issue
-
-**What Happens**:
-1. Reports "माझ्या उसावर किडे" (insects on my sugarcane)
-2. System asks "flying or crawling?"
-3. Farmer mistypes, gets reminder
-4. Farmer types new question: "काय फवारणी करू?" (what spray?)
-5. System clears pendingOptions, loses "insects" context
-6. Asks "what problem?" again
-7. Farmer frustrated, abandons
-
-**Affected Queries**: Any multi-turn clarification flow
-
-**Severity**: USER EXPERIENCE / TRUST
-
-### Consequence 4: Biocontrol Leakage Across Crops
-
-**Field Impact**: System trained on sugarcane Trichogramma rules advises same for wheat
-
-**What Happens**:
-1. WHEAT + FLYING_INSECTS canonical state
-2. Universal observation rules fire
-3. Biocontrol rule (designed for sugarcane) matches
-4. Trichogramma advised for wheat aphids
-5. Trichogramma ineffective for aphids (it targets lepidopteran eggs)
-
-**Affected Queries**: Any pest query on non-sugarcane crops
-
-**Severity**: AGRONOMIC (ineffective advice)
+| Metric | Current | Target |
+|--------|---------|--------|
+| `action_text` coverage | 0% | 100% |
+| `action_type` enum compliance | 0% | 100% |
+| `stage_applicable` lowercase | 0% | 100% |
+| `observable_characteristics` array format | 52% | 100% |
+| `phi_days` for treatment rules | 13% | 100% |
+| `bee_toxicity` for treatment rules | 16% | 100% |
+| UI displays WHAT→HOW→WHY | No | Yes |
 
 ---
 
-## NON-NEGOTIABLE CONCLUSIONS
+## Technical Notes
 
-### MUST BE FIXED (P0 - Blockers for Production)
-
-1. **Unify Authority Resolution**: Create single `resolveAuthority()` call point that ALL paths must pass through. Current 3 independent implementations create conflict.
-
-2. **Prevent VEGETATIVE Default Override**: Add explicit `stage_source: 'CONFIRMED' | 'DEFAULT'` flag. Block treatment if `stage_source === 'DEFAULT'`.
-
-3. **Persist lockedCropContext to Database**: Ensure session reload populates `lockedCropContext` from `ai_chat_sessions.metadata`.
-
-4. **Call Authority Resolver in OPTION_SELECTED Path**: Add `resolveDecisionAuthority()` call before `evaluateRulesLayered()` in lines 967-970.
-
-5. **Remove GENERAL_INFO Bypass**: Route ALL queries through symbolic path. Set `decision_brain_source: true` only after actual rule evaluation.
-
-### MUST NOT BE TOUCHED (Stable Components)
-
-1. **Crop Context Authority (buildCropContextFromLandContext)**: This is correctly implemented with crop_schedules as single source of truth.
-
-2. **PHASE-8.1 Guardrail (lines 1278-1286)**: The CROP_UNKNOWN violation check is critical and working.
-
-3. **Clarification Hard Gate (lines 916-1129)**: The option selection flow is well-designed and prevents NLU bypass.
-
-4. **LLM Render-Only Enforcement (llm-response-formatter.ts lines 181-240)**: These gates correctly block unauthorized content.
-
-5. **PHI/Pollinator Safety Gates**: These are production-ready and well-tested.
-
-### CAN WAIT (P1/P2 - Post-Launch)
-
-1. **Consolidate Clarification Logic**: Merge `clarification-scope-resolver.ts` and `understanding-completeness-checker.ts` into single module.
-
-2. **Add Turn Count Persistence Tests**: Current implementation works but edge cases need integration tests.
-
-3. **Fallback Response Audit Trail**: Add logging when fallback-response-generator is used instead of symbolic path.
-
-4. **Query Router Symbolic Replacement**: Replace pattern-matching router with rule-based intent classification.
-
-5. **Crop Knowledge Base Deprecation**: Move all crop advice to symbolic rules, deprecate static knowledge base.
-
----
-
-## IMPLEMENTATION PRIORITY
-
-| Priority | Issue | Effort | Impact |
-|----------|-------|--------|--------|
-| P0-1 | Unify Authority Resolution | 4h | Eliminates authority conflicts |
-| P0-2 | Fix VEGETATIVE Default | 2h | Prevents wrong stage gates |
-| P0-3 | Persist lockedCropContext | 2h | Fixes multi-turn context loss |
-| P0-4 | Authority in OPTION_SELECTED | 1h | Prevents salinity bypass |
-| P0-5 | Remove GENERAL_INFO Bypass | 2h | Ensures symbolic-only path |
-| P1-1 | Consolidate Clarification | 8h | Code quality |
-| P1-2 | Turn Count Tests | 4h | Reliability |
-| P2-1 | Router Replacement | 16h | Full symbolic compliance |
-
----
-
-## AUDIT METADATA
-
-- **Audit Version**: 1.0.0
-- **Auditor**: Senior Agronomy Systems Auditor + AI Safety Architect
-- **Date**: 2026-01-06
-- **Files Examined**: 15+ core modules
-- **Lines Analyzed**: ~10,000
-- **Evidence Sources**: Code analysis only (no runtime logs available)
-
----
-
-## Critical Files for Implementation
-
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` - Central orchestration with duplicate authority paths (lines 916-1081, 1200-1286)
-- `supabase/functions/ai-agriculture-chat/decision/authority-resolver.ts` - One of 3 authority implementations
-- `supabase/functions/ai-agriculture-chat/decision/prescription-gate-enforcer.ts` - Duplicate authority determination
-- `supabase/functions/ai-agriculture-chat/decision/decision-readiness-gate.ts` - Third authority check location
-- `supabase/functions/ai-agriculture-chat/index.ts` - Session persistence and lockedCropContext handling (lines 584-658)
+1. **Database Migration**: Run migrations before code deployment
+2. **Backward Compatibility**: `loader.ts` already handles missing fields with defaults
+3. **Testing**: Validate 10 sample rules across all crops before full deployment
+4. **Rollback**: Keep backup of current `decision_rules` table state
