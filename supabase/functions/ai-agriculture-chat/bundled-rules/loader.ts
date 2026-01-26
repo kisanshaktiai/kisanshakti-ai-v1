@@ -77,13 +77,108 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
       
+      // ═══════════════════════════════════════════════════════════════════════
+      // ON-THE-FLY NORMALIZATION (Alternative to migrations)
+      // ═══════════════════════════════════════════════════════════════════════
+      
+      // Normalize action_type to standard enums
+      const normalizeActionType = (action: string | null): string => {
+        const mapping: Record<string, string> = {
+          'RECOMMEND': 'treatment',
+          'MONITOR': 'monitoring',
+          'BLOCK': 'safety_gate',
+          'NO_ACTION_REQUIRED': 'advisory',
+          'URGENT_ACTION': 'urgent_treatment',
+          'APPLY_TREATMENT': 'treatment',
+          'recommend': 'treatment',
+          'monitor': 'monitoring',
+          'block': 'safety_gate',
+        };
+        const normalized = action ? mapping[action] || action.toLowerCase() : 'advisory';
+        const validTypes = ['treatment', 'urgent_treatment', 'prevention', 'advisory', 
+                           'safety_gate', 'monitoring', 'clarification', 'diagnosis'];
+        return validTypes.includes(normalized) ? normalized : 'advisory';
+      };
+      
+      // Normalize canonical_group to 13-group system
+      const normalizeCanonicalGroup = (group: string | null): string => {
+        if (!group) return '12_monitoring';
+        const g = group.toLowerCase();
+        
+        // Handle SC_PEST_*, CT_PEST_* patterns
+        if (g.startsWith('sc_pest_') || g.startsWith('ct_pest_')) return '03_pest';
+        if (g.startsWith('sc_disease_') || g.startsWith('ct_disease_')) return '04_disease';
+        if (g.startsWith('sc_nutrient_') || g.startsWith('ct_nutrient_')) return '05_nutrition';
+        if (g.startsWith('sc_stress_') || g.startsWith('ct_stress_')) return '08_stress';
+        if (g.startsWith('sc_irrigation_') || g.startsWith('ct_irrigation_')) return '10_irrigation';
+        if (g.startsWith('sc_safety_') || g.startsWith('ct_safety_')) return '11_safety';
+        if (g.startsWith('sc_weather_') || g.startsWith('ct_weather_')) return '09_weather';
+        
+        // Direct mapping for short names
+        const mapping: Record<string, string> = {
+          'pest': '03_pest',
+          'disease': '04_disease',
+          'nutrition': '05_nutrition',
+          'nutrient': '05_nutrition',
+          'weed': '06_weed',
+          'clarification': '07_clarification',
+          'stress': '08_stress',
+          'weather': '09_weather',
+          'weather_alert': '09_weather',
+          'irrigation': '10_irrigation',
+          'safety': '11_safety',
+          'monitoring': '12_monitoring',
+          'treatment': '13_treatment',
+          'identity': '01_crop_identity',
+          'crop_identity': '01_crop_identity',
+          'growth_stage': '02_growth_stage',
+        };
+        
+        return mapping[g] || (g.match(/^\d{2}_/) ? g : '12_monitoring');
+      };
+      
+      // Normalize stage_applicable to lowercase
+      const normalizeStages = (stages: string[] | null): string[] => {
+        if (!stages || !Array.isArray(stages)) return ['all'];
+        const stageMapping: Record<string, string> = {
+          'PLANTING': 'germination',
+          'RATOON': 'post_harvest',
+          'CANE_FORMATION': 'grand_growth',
+          'EARLY_GROWTH': 'seedling',
+          'RATOON_INIT': 'post_harvest',
+        };
+        return stages.map(s => {
+          const upper = s.toUpperCase();
+          return stageMapping[upper] || s.toLowerCase();
+        });
+      };
+      
+      // Normalize observable_characteristics to array
+      const normalizeObservableChars = (chars: unknown): string[] | null => {
+        if (!chars) return null;
+        if (Array.isArray(chars)) return chars.map(c => String(c).toUpperCase());
+        if (typeof chars === 'object') {
+          return Object.keys(chars).map(k => k.toUpperCase());
+        }
+        return null;
+      };
+      
+      // Normalize bee_toxicity
+      const normalizeBeeToxicity = (val: string | null): string | null => {
+        if (!val) return null;
+        const upper = val.toUpperCase();
+        if (['HIGH', 'MODERATE', 'LOW', 'SAFE'].includes(upper)) return upper;
+        if (upper === 'NONE') return 'SAFE';
+        return null;
+      };
+      
       return {
         rule_id: row.rule_id,
-        category: row.category,
-        crop_code: row.crop_code,
-        crop_group: row.crop_group,
-        canonical_group: row.canonical_group,
-        stage_applicable: row.stage_applicable || [],
+        category: row.category?.toLowerCase() || 'advisory',
+        crop_code: row.crop_code?.toLowerCase() || 'universal',
+        crop_group: row.crop_group?.toLowerCase() || 'universal',
+        canonical_group: normalizeCanonicalGroup(row.canonical_group),
+        stage_applicable: normalizeStages(row.stage_applicable),
         conditionCode: row.condition_code || '() => true',
         conditions_json: conditionsJson,
         cause: row.cause,
@@ -92,21 +187,21 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         scientific_source: row.scientific_source || '',
         scientific_basis: row.scientific_basis || '',
         icar_package_ref: row.icar_package_ref,
-        // SSOT: trigger_keywords removed - use conditions_json.observations instead
         
         // ═══════════════════════════════════════════════════════════════════════
         // PHASE 5: New Response Contract Fields (language-independent)
-        // NOTE: response_mr/hi/en were DROPPED per SSOT architecture
-        // All narration is now LLM-generated from action_text + i18n_key
         // ═══════════════════════════════════════════════════════════════════════
-        action_text: row.action_text,
-        reason_text: row.reason_text,
-        knowledge_text: row.knowledge_text,
+        action_text: row.action_text || null, // May be null, handle in UI
+        reason_text: row.reason_text || null,
+        knowledge_text: row.knowledge_text || null,
         i18n_key: row.i18n_key,
         decision_trace_template: row.decision_trace_template,
         
+        // Normalized observable_characteristics (array only)
+        observable_characteristics: normalizeObservableChars(row.observable_characteristics),
+        
         alternatives: row.alternatives || [],
-        action_type: row.action_type || 'advisory',
+        action_type: normalizeActionType(row.action_type),
         
         // ═══════════════════════════════════════════════════════════════════════
         // PHASE 1: Graph Control Fields
@@ -127,9 +222,9 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         etl_value_min: row.etl_value_min,
         etl_value_max: row.etl_value_max,
         
-        // Safety fields
+        // Safety fields (normalized)
         phi_days: row.phi_days,
-        bee_toxicity: row.bee_toxicity,
+        bee_toxicity: normalizeBeeToxicity(row.bee_toxicity),
         ipm_level: row.ipm_level,
         etl_threshold: row.etl_threshold,
         active_ingredient: row.active_ingredient,
