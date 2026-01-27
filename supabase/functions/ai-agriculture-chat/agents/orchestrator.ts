@@ -216,6 +216,14 @@ import {
   safeLowerCase
 } from '../utils/safe-string.ts';
 
+// RESPONSE INVARIANT GUARD - Ensures deterministic response delivery
+import {
+  checkResponseInvariant,
+  assertResponseReturned,
+  logInvariantCheck,
+  type InvariantCheckResult
+} from '../utils/response-invariant-guard.ts';
+
 // P0: Agricultural NLP Validator - Marathi/Hindi validation with fuzzy matching
 import { 
   validateAgricultureNLP, 
@@ -4573,6 +4581,52 @@ export class AIAgentOrchestrator {
       console.log(`   ✅ Layer 3 complete (${layerTimings.layer3_rules}ms)`);
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // HARD INVARIANT: If PRIMARY_DECISION exists with valid rule_id, return NOW
+      // This prevents timeout by ensuring we don't continue processing indefinitely
+      // ═══════════════════════════════════════════════════════════════════════════
+      const primaryRuleId = decisionOutput.primary_decision?.rule_id || 
+                            decisionOutput.primary_decision?.application_details?.rule_id;
+      const primaryActionType = decisionOutput.primary_decision?.action_type;
+      
+      if (primaryRuleId && primaryActionType) {
+        console.log(`\n✅ [INVARIANT] PRIMARY_DECISION valid - generating immediate response`);
+        console.log(`   rule_id: ${primaryRuleId}`);
+        console.log(`   action_type: ${primaryActionType}`);
+        
+        // Complete audit trail
+        await auditLogger.completeTurn(Date.now() - startTime);
+        
+        // Generate farmer communication using the decision
+        const immediateResponse = await this.generateFarmerCommunication(
+          decisionOutput,
+          landContext,
+          fusedIntelligence,
+          options.language || 'mr',
+          traceId
+        );
+        
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          decision_id: decisionOutput.decision_id,
+          decision_output: decisionOutput,
+          communication: immediateResponse,
+          dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
+          metadata: {
+            confidence: layeredRuleResult?.primary_decision?.confidence_score || 
+                        decisionOutput.confidence_score || 0.7,
+            safety_status: 'PENDING_VALIDATION',
+            rules_applied: decisionOutput.rules_applied?.length || 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId,
+            response_source: 'IMMEDIATE_PRIMARY_DECISION',
+            layer_timings: layerTimings
+          }
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-19: PHOTO REQUEST ON LOW CONFIDENCE + NO RULES
       // If rule engine returned no recommendations AND confidence is low,
       // request a photo to help with diagnosis
@@ -5442,13 +5496,19 @@ export class AIAgentOrchestrator {
   /**
    * Calculate NDVI trend from historical data
    */
+  /**
+   * Calculate NDVI trend from historical data
+   * REFACTORED: Returns English canonical symbols (NDVI_IMPROVING, NDVI_DECLINING, NDVI_STABLE)
+   * Narration layer handles translation to farmer language
+   */
   private calculateNDVITrend(history: Array<{ ndvi_value?: number; mean_ndvi?: number; captured_at: string }>): {
     direction: 'IMPROVING' | 'STABLE' | 'DECLINING';
     slope: number;
     description: string;
   } {
     if (!history || history.length < 2) {
-      return { direction: 'STABLE', slope: 0, description: 'पुरेसा डेटा नाही' };
+      // CANONICAL: English symbol for insufficient data
+      return { direction: 'STABLE', slope: 0, description: 'INSUFFICIENT_DATA' };
     }
     
     // Get values (prefer ndvi_value, fallback to mean_ndvi)
@@ -5457,7 +5517,7 @@ export class AIAgentOrchestrator {
       .filter((v): v is number => v !== null && v !== undefined);
     
     if (values.length < 2) {
-      return { direction: 'STABLE', slope: 0, description: 'पुरेसा डेटा नाही' };
+      return { direction: 'STABLE', slope: 0, description: 'INSUFFICIENT_DATA' };
     }
     
     // Calculate simple linear regression slope
@@ -5476,18 +5536,19 @@ export class AIAgentOrchestrator {
     const slope = denominator !== 0 ? numerator / denominator : 0;
     
     // Determine direction based on slope (inverted because newest is first)
+    // CANONICAL: Use English symbols - narration layer handles translation
     let direction: 'IMPROVING' | 'STABLE' | 'DECLINING';
     let description: string;
     
     if (slope < -0.02) {
       direction = 'IMPROVING';  // Slope is negative because array is newest-first
-      description = 'पिकाची आरोग्य सुधारत आहे ✓';
+      description = 'NDVI_IMPROVING';  // Canonical symbol
     } else if (slope > 0.02) {
       direction = 'DECLINING';  // Slope is positive because array is newest-first
-      description = 'पिकाची आरोग्य घटत आहे ⚠️';
+      description = 'NDVI_DECLINING';  // Canonical symbol
     } else {
       direction = 'STABLE';
-      description = 'पिकाची आरोग्य स्थिर आहे';
+      description = 'NDVI_STABLE';  // Canonical symbol
     }
     
     return { direction, slope: -slope, description };  // Negate slope for intuitive interpretation
@@ -6634,38 +6695,33 @@ export class AIAgentOrchestrator {
       const stage = landContext.growth_stage;
       const days = landContext.days_since_sowing || '?';
       
-      const stageAdviceMap: Record<string, Record<string, string>> = {
-        'mr': {
-          GERMINATION: `🌱 तुमचे ${cropName} उगवण अवस्थेत आहे (${days} दिवस). या टप्प्यात:\n• मातीचा ओलावा तपासा\n• अति पाणी टाळा\n• उंदीर/किडीचे निरीक्षण करा`,
-          SEEDLING: `🌿 तुमचे ${cropName} रोप अवस्थेत आहे (${days} दिवस). या टप्प्यात:\n• पाणी व्यवस्थापन योग्य ठेवा\n• नायट्रोजन खताची पहिली मात्रा द्या\n• रोपांची संख्या तपासा`,
-          TILLERING: `🌾 तुमचे ${cropName} फुटवा अवस्थेत आहे (${days} दिवस). या टप्प्यात:\n• युरिया टॉप ड्रेसिंग करा\n• खुंट भरणी करा\n• कीड/रोग निरीक्षण सुरू ठेवा`,
-          VEGETATIVE: `🌱 तुमचे ${cropName} वाढीच्या अवस्थेत आहे (${days} दिवस). या टप्प्यात:\n• नियमित निरीक्षण करा\n• पाणी व्यवस्थापन योग्य ठेवा`,
-          GRAND_GROWTH: `🌴 तुमचे ${cropName} जोमदार वाढ अवस्थेत आहे (${days} दिवस). या टप्प्यात:\n• पाणी आणि खत पुरेसे द्या\n• आंतर मशागत करा`,
-          FLOWERING: `🌸 तुमचे ${cropName} फुलोरा अवस्थेत आहे (${days} दिवस). या टप्प्यात:\n• मधमाशांसाठी विषारी औषधे टाळा\n• पाणी थांबवू नका`,
-          MATURITY: `🌾 तुमचे ${cropName} परिपक्व होत आहे (${days} दिवस). या टप्प्यात:\n• पाणी कमी करा\n• कापणीची तयारी करा`
-        },
-        'hi': {
-          GERMINATION: `🌱 आपकी ${cropName} अंकुरण अवस्था में है (${days} दिन). इस समय:\n• मिट्टी की नमी जांचें\n• अधिक पानी न दें\n• चूहे/कीटों पर नजर रखें`,
-          SEEDLING: `🌿 आपकी ${cropName} बीजावस्था में है (${days} दिन). इस समय:\n• पानी प्रबंधन सही रखें\n• नाइट्रोजन की पहली खुराक दें\n• पौधों की संख्या जांचें`,
-          TILLERING: `🌾 आपकी ${cropName} कल्ले निकलने की अवस्था में है (${days} दिन). इस समय:\n• यूरिया टॉप ड्रेसिंग करें\n• गड्ढे भरें\n• कीट/रोग निगरानी जारी रखें`,
-          VEGETATIVE: `🌱 आपकी ${cropName} वनस्पति अवस्था में है (${days} दिन). इस समय:\n• नियमित निगरानी करें\n• पानी प्रबंधन सही रखें`,
-          GRAND_GROWTH: `🌴 आपकी ${cropName} तेज बढ़वार में है (${days} दिन). इस समय:\n• पानी और खाद पर्याप्त दें\n• अंतर-कृषि करें`,
-          FLOWERING: `🌸 आपकी ${cropName} फूल आने की अवस्था में है (${days} दिन). इस समय:\n• मधुमक्खियों के लिए विषाक्त दवाइयां टालें\n• पानी बंद न करें`,
-          MATURITY: `🌾 आपकी ${cropName} पक रही है (${days} दिन). इस समय:\n• पानी कम करें\n• कटाई की तैयारी करें`
-        },
-        'en': {
-          GERMINATION: `🌱 Your ${cropName} is in germination stage (${days} days). At this stage:\n• Check soil moisture\n• Avoid excess water\n• Monitor for rodents/pests`,
-          SEEDLING: `🌿 Your ${cropName} is in seedling stage (${days} days). At this stage:\n• Maintain proper water management\n• Apply first nitrogen dose\n• Check plant population`,
-          TILLERING: `🌾 Your ${cropName} is in tillering stage (${days} days). At this stage:\n• Apply urea top dressing\n• Fill gaps\n• Continue pest/disease monitoring`,
-          VEGETATIVE: `🌱 Your ${cropName} is in vegetative stage (${days} days). At this stage:\n• Monitor regularly\n• Maintain proper water management`,
-          GRAND_GROWTH: `🌴 Your ${cropName} is in grand growth stage (${days} days). At this stage:\n• Provide adequate water and fertilizer\n• Do intercultivation`,
-          FLOWERING: `🌸 Your ${cropName} is in flowering stage (${days} days). At this stage:\n• Avoid bee-toxic chemicals\n• Don't stop irrigation`,
-          MATURITY: `🌾 Your ${cropName} is maturing (${days} days). At this stage:\n• Reduce irrigation\n• Prepare for harvest`
-        }
-      };
+      // ═══════════════════════════════════════════════════════════════════════════
+      // REFACTORED: Use i18n keys instead of hardcoded Marathi/Hindi text
+      // The actual text rendering happens in the narration/UI layer
+      // This ensures SSOT compliance and easier maintenance
+      // ═══════════════════════════════════════════════════════════════════════════
       
       const stageUpper = stage.toUpperCase();
-      fallbackAdvice = stageAdviceMap[language]?.[stageUpper] || stageAdviceMap['mr']?.[stageUpper] || '';
+      
+      // Map stages to i18n keys - narration layer handles translation
+      const stageI18nKeys: Record<string, string> = {
+        'GERMINATION': 'error.fallback.stage.germination',
+        'SEEDLING': 'error.fallback.stage.seedling',
+        'TILLERING': 'error.fallback.stage.tillering',
+        'VEGETATIVE': 'error.fallback.stage.vegetative',
+        'STEM_ELONGATION': 'error.fallback.stage.stem_elongation',
+        'GRAND_GROWTH': 'error.fallback.stage.grand_growth',
+        'FLOWERING': 'error.fallback.stage.flowering',
+        'GRAIN_FILLING': 'error.fallback.stage.grain_filling',
+        'MATURITY': 'error.fallback.stage.maturity',
+        'HARVEST': 'error.fallback.stage.harvest'
+      };
+      
+      const i18nKey = stageI18nKeys[stageUpper] || 'error.fallback.stage.generic';
+      
+      // Build symbolic fallback advice with data placeholders
+      // Narration layer will resolve i18n_key and inject data
+      fallbackAdvice = `[i18n:${i18nKey}][crop:${cropName}][days:${days}][stage:${stageUpper}]`;
     }
     
     // If no stage advice, detect query type and provide relevant generic advice
