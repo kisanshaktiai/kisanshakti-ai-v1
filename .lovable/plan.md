@@ -1,366 +1,358 @@
 
-# Deep Audit Report: decision_rules Table & Farmer Response UI
+
+# Critical Bug Audit: AI Agriculture Chat System
 
 ## Executive Summary
 
-After extensive analysis of 494 rules in the `decision_rules` table, the codebase, and the farmer response UI, I have identified critical data quality issues, unused columns, and opportunities to enhance the UI based on the **WHAT → HOW → WHY / NEXT STEPS** paradigm.
+After deep analysis of the edge function logs, database schema, and codebase, I have identified **6 CRITICAL BUGS** that are causing wrong results for farmer queries.
 
 ---
 
-## Section 1: Database Schema Audit - Column Usage Analysis
+## Bug #1: Missing Column Query (DATABASE BREAKING)
 
-### 1.1 Columns Correctly Used (Core Symbolic Brain)
+**Severity:** CRITICAL  
+**Impact:** All hypothesis evaluations FAIL with database error
 
-| Column | Usage | Coverage | Status |
-|--------|-------|----------|--------|
-| `rule_id` | Primary identifier | 100% | OK |
-| `crop_group`, `crop_code` | Crop targeting | 100% | OK |
-| `canonical_group` | Rule classification | 100% (22 unique values) | NEEDS NORMALIZATION |
-| `stage_applicable` | Growth stage filtering | 100% | CASE INCONSISTENCY |
-| `conditions_json` | Symbolic matching | 100% | OK |
-| `cause` | Problem identification | 100% | OK |
-| `priority` | Rule precedence | 100% | OK |
-| `action_type` | Treatment classification | 100% (5 values) | ENUM MISMATCH |
-| `is_active` | Rule activation | 100% | OK |
-| `observable_characteristics` | Differential diagnosis | 100% (494) | FORMAT CHAOS |
-| `reason_text` | WHY explanation | 81% (402/494) | CRITICAL for UI |
-| `knowledge_text` | Scientific basis | 82% (405/494) | CRITICAL for UI |
-| `i18n_key` | Translation lookup | 78% (386/494) | OK |
+**Location:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` (line 429)
 
-### 1.2 Columns with Data Format Issues
-
-#### 1.2.1 `observable_characteristics` Format Chaos
-```text
-Current State:
-- ARRAY format: 257 rules (52%)
-- OBJECT format: 237 rules (48%)
-
-CRITICAL: Two incompatible formats cause parsing failures!
+```
+Error: column decision_rules.trigger_keywords does not exist
 ```
 
-The `hypothesis-evaluator.ts` includes a fallback handler (lines 280-378), but this adds runtime overhead and risks silent failures.
+**Root Cause:**
+The code attempts to SELECT `trigger_keywords` from `decision_rules`, but this column was DROPPED from the database during the SSOT migration.
 
-#### 1.2.2 `action_type` Enum Mismatch
-```text
-Database Values (Actual):     TypeScript Enums (Expected):
-- RECOMMEND (232 rules)        - treatment
-- MONITOR (116 rules)          - monitoring  
-- BLOCK (96 rules)             - safety_gate
-- NO_ACTION_REQUIRED (39)      - advisory
-- URGENT_ACTION (11 rules)     - urgent_treatment
-
-0% MATCH between DB and code enums!
+**Evidence from logs:**
 ```
-
-The `loader.ts` defaults to `'advisory'` when mapping fails (line 109), masking this critical bug.
-
-#### 1.2.3 `stage_applicable` Case Inconsistency
-```text
-Database Values (UPPERCASE):    Code Expects (lowercase):
-- GRAND_GROWTH (108)            - grand_growth
-- TILLERING (75)                - tillering
-- SEEDLING (52)                 - seedling
-- PLANTING (37)                 - germination (WRONG NAME!)
-- RATOON (26)                   - post_harvest
-- CANE_FORMATION (2)            - grand_growth (UNMAPPED!)
-- EARLY_GROWTH (1)              - seedling (UNMAPPED!)
-- RATOON_INIT (1)               - NOT IN ENUM
-```
-
-### 1.3 Columns NOT Used in Codebase (Technical Debt)
-
-| Column | Coverage | Used in Code? | Recommendation |
-|--------|----------|---------------|----------------|
-| `reentry_interval_hours` | 0% | NO | REMOVE or populate for safety |
-| `research_paper_ref` | 0% | NO | REMOVE |
-| `chemical_class` | ~2% | NO | Consolidate to `mode_of_action` |
-| `aquatic_toxicity` | ~2% | NO | KEEP for environmental safety |
-| `decision_trace_template` | 2% (9 rules) | Minimal | Populate for audit trail |
-| `supersedes_rule_id` | ~1% | NO | KEEP for versioning |
-| `resistance_group` | ~2% | YES (loader.ts line 143) | Populate for rotation |
-| `approved_by`, `approval_date` | 0% | NO | Populate for governance |
-| `field_validated`, `validation_trials` | 0% | NO | Populate for quality |
-
-### 1.4 Safety-Critical Columns (ALARMING GAPS)
-
-| Column | Coverage | Required For | Risk Level |
-|--------|----------|--------------|------------|
-| `phi_days` | 13% (64/494) | Pre-harvest interval | CRITICAL |
-| `bee_toxicity` | 16% (80/494) | Pollinator safety | HIGH |
-| `dosage_per_acre` | 2% (11/494) | Treatment accuracy | CRITICAL |
-| `active_ingredient` | 12% (61/494) | Chemical identification | HIGH |
-| `ipm_level` | 37% (182/494) | IPM hierarchy | MEDIUM |
-| `organic_alternative` | 17% (83/494) | Organic options | MEDIUM |
-
----
-
-## Section 2: WHAT → HOW → WHY Paradigm Analysis
-
-### 2.1 Current Response Architecture
-
-The `decision_rules` table has columns designed for structured responses:
-
-| Paradigm Layer | Column | Purpose | Population |
-|----------------|--------|---------|------------|
-| **WHAT** | `cause` | What's the problem | 100% |
-| **HOW** | `action_text` | HOW NOT EXIST | COLUMN MISSING |
-| **WHY** | `reason_text` | Why this action | 81% (402) |
-| **KNOWLEDGE** | `knowledge_text` | Scientific backing | 82% (405) |
-
-**CRITICAL FINDING**: The `action_text` column (HOW) was mentioned in `loader.ts` (line 102) but DOES NOT EXIST in the database!
-
-```sql
--- Verified column does not exist:
-SELECT action_text FROM decision_rules LIMIT 1;
--- ERROR: column "action_text" does not exist
-```
-
-### 2.2 Current UI Components Analysis
-
-| Component | Renders | WHAT | HOW | WHY |
-|-----------|---------|------|-----|-----|
-| `DecisionBrainCards.tsx` | Primary/Secondary actions | ✓ | ✓ (action field) | ✓ (reason field) |
-| `DiagnosticResponseCard.tsx` | Causes + questions | ✓ | ❌ | ❌ |
-| `ResponseSectionCard.tsx` | Markdown content | ✓ | Embedded | Embedded |
-| `ClarificationOptionsUI.tsx` | Option selection | ✓ | ❌ | ❌ |
-
-### 2.3 Gap Analysis: UI vs Database
-
-The `DecisionBrainCards.tsx` interface expects:
-```typescript
-interface ActionItem {
-  action: string;      // WHAT + HOW combined
-  reason: string;      // WHY
-  timing?: string;     // WHEN (not in DB)
-  ruleSources: string[]; // Audit trail
+❌ [HypothesisEval] Database error: {
+  code: "42703",
+  message: "column decision_rules.trigger_keywords does not exist"
 }
 ```
 
-But the database provides:
-- `cause` → WHAT
-- `reason_text` → WHY
-- `knowledge_text` → Scientific backing
-- **MISSING**: `action_text` for HOW
+**Fix Required:**
+Remove `trigger_keywords` from the SELECT query in `hypothesis-evaluator.ts` line 429. The column no longer exists in the database.
 
 ---
 
-## Section 3: Fix Plan
+## Bug #2: No Wheat Rules in Database (DATA GAP)
 
-### Phase 1: Database Schema Fixes (CRITICAL)
+**Severity:** CRITICAL  
+**Impact:** All wheat farmer queries return fallback/unknown responses
 
-#### 1.1 Add Missing `action_text` Column
+**Database Query Results:**
 ```sql
-ALTER TABLE decision_rules 
-ADD COLUMN action_text TEXT;
+SELECT DISTINCT crop_code, COUNT(*) FROM decision_rules WHERE is_active = true GROUP BY crop_code;
 
-COMMENT ON COLUMN decision_rules.action_text IS 
-  'HOW: Specific actionable instruction for farmer';
+-- Results:
+-- SC (Sugarcane): 409 rules
+-- ALL: 36 rules  
+-- CTN (Cotton): 27 rules
+-- WHEAT: 0 rules ← ZERO RULES!
 ```
 
-#### 1.2 Normalize `action_type` Values
-```sql
--- Map existing values to standard enums
-UPDATE decision_rules SET action_type = 'treatment' WHERE action_type = 'RECOMMEND';
-UPDATE decision_rules SET action_type = 'monitoring' WHERE action_type = 'MONITOR';
-UPDATE decision_rules SET action_type = 'safety_gate' WHERE action_type = 'BLOCK';
-UPDATE decision_rules SET action_type = 'advisory' WHERE action_type = 'NO_ACTION_REQUIRED';
-UPDATE decision_rules SET action_type = 'urgent_treatment' WHERE action_type = 'URGENT_ACTION';
+**Root Cause:**
+The `decision_rules` table has NO rules for wheat crop. The farmer's query for `WHEAT/STEM_ELONGATION` has no matching rules.
 
--- Add constraint
-ALTER TABLE decision_rules 
-ADD CONSTRAINT valid_action_type 
-CHECK (action_type IN ('treatment', 'urgent_treatment', 'prevention', 'advisory', 
-                       'safety_gate', 'monitoring', 'clarification', 'diagnosis'));
+**Impact on Farmer:**
+- Query: "गहू तवरी पडत आहे" (Wheat falling over)
+- Expected: Lodging prevention advice
+- Actual: "Class: UNKNOWN (confidence: 40%)"
+
+**Fix Required:**
+Add wheat crop rules to the decision_rules table covering all growth stages.
+
+---
+
+## Bug #3: Stage Normalization Mismatch
+
+**Severity:** HIGH  
+**Impact:** Rules don't match due to stage format inconsistency
+
+**Evidence from logs:**
+```
+[HypothesisEval] Stage normalization: STEM_ELONGATION → tillering
 ```
 
-#### 1.3 Normalize `stage_applicable` to Lowercase
-```sql
-UPDATE decision_rules 
-SET stage_applicable = (
-  SELECT array_agg(lower(elem))
-  FROM unnest(stage_applicable) elem
-);
+**Root Cause:**
+1. Land context provides: `STEM_ELONGATION` (from crop_schedules)
+2. Stage normalizer maps: `STEM_ELONGATION` → `tillering`
+3. But database stages are ALL UPPERCASE: `GRAND_GROWTH`, `TILLERING`, `GERMINATION`
+4. Query uses lowercase: `tillering` ≠ `TILLERING`
 
--- Fix stage name mappings
-UPDATE decision_rules 
-SET stage_applicable = array_replace(stage_applicable, 'planting', 'germination');
-UPDATE decision_rules 
-SET stage_applicable = array_replace(stage_applicable, 'ratoon', 'post_harvest');
-UPDATE decision_rules 
-SET stage_applicable = array_replace(stage_applicable, 'cane_formation', 'grand_growth');
+**Database Evidence:**
+```sql
+SELECT DISTINCT unnest(stage_applicable) as stage FROM decision_rules;
+-- GRAND_GROWTH (154), TILLERING (151), GERMINATION (75) ← ALL UPPERCASE
 ```
 
-#### 1.4 Unify `observable_characteristics` to Array Format
-```sql
--- Convert object format to array format
-UPDATE decision_rules 
-SET observable_characteristics = (
-  SELECT jsonb_agg(upper(key))
-  FROM jsonb_each(observable_characteristics)
-)
-WHERE jsonb_typeof(observable_characteristics) = 'object'
-  AND observable_characteristics != '{}';
+**Fix Required:**
+Normalize stage comparisons to be case-insensitive or migrate database stages to lowercase.
+
+---
+
+## Bug #4: trigger_keywords Used in Multiple Files
+
+**Severity:** HIGH  
+**Impact:** Multiple code paths break when trying to access non-existent column
+
+**Affected Files:**
+1. `hypothesis-evaluator.ts` (line 429) - SELECT query
+2. `symbolic-rules-bridge.ts` (lines 204, 231) - Expects `trigger_keywords` property
+3. `layered-rule-evaluator.ts` (line 878) - Matches against `trigger_keywords`
+4. `loader.ts` (lines 77, 288-406) - References in conditions_json handling
+5. `all-rules.ts` (line 33) - Interface definition
+
+**Fix Required:**
+Remove all `trigger_keywords` column references from:
+- Database SELECT statements
+- TypeScript interfaces
+- Runtime matching logic
+
+Since `trigger_keywords` is now stored INSIDE `conditions_json`, the code should use `rule.conditions_json.trigger_keywords` instead of `rule.trigger_keywords`.
+
+---
+
+## Bug #5: Hardcoded Regional Language Keywords (Technical Debt)
+
+**Severity:** MEDIUM  
+**Impact:** Maintenance nightmare, not database-driven (violates SSOT principle)
+
+**Locations with hardcoded Marathi/Hindi:**
+
+| File | Lines | Content |
+|------|-------|---------|
+| `failure-class-detector.ts` | 100-133 | Hardcoded keyword arrays in Hindi/Marathi |
+| `nlp-agriculture-validator.ts` | 59-92 | `MARATHI_AG_VOCABULARY` with 5000+ terms |
+| `clarification-renderer.ts` | 114-321 | `BASE_TEMPLATES` with hardcoded questions/options |
+| `diagnosis-only-mode.ts` | 788-795 | Pest name translations |
+
+**Example (failure-class-detector.ts lines 118-121):**
+```typescript
+const NUTRIENT_KEYWORDS = [
+  // Marathi
+  'पिवळे', 'पिवळसर', 'फिकट', 'खुरटलेले', 'पोषण', 'वाढ नाही',
+  'कमकुवत', 'लालसर', 'पान पिवळे', 'कडा जळाला'
+];
 ```
 
-### Phase 2: Data Enrichment (SAFETY CRITICAL)
+**Recommendation:**
+These should be loaded from database tables (`observation_translations`, `intent_translations`) per the SSOT principle. However, this is lower priority than the database-breaking bugs.
 
-#### 2.1 Populate Safety Fields for Treatment Rules
+---
 
-For all 232 `RECOMMEND` action_type rules, add:
+## Bug #6: Confidence Score Logic Inconsistency
 
-| Active Ingredient | PHI (days) | Bee Toxicity | Dosage/Acre |
-|-------------------|------------|--------------|-------------|
-| Chlorantraniliprole 18.5% SC | 45 | LOW | 75-100 ml |
-| Fipronil 5% SC | 30 | HIGH | 1000 ml |
-| Imidacloprid 17.8 SL | 40 | HIGH | 100 ml |
-| Carbendazim 50% WP | 14 | SAFE | 500g |
+**Severity:** MEDIUM  
+**Impact:** Confidence calculations vary across modules with no single source of truth
 
-Source: CIB&RC India, ICAR-IISR Lucknow
+**Inconsistent Thresholds Across Files:**
 
-#### 2.2 Add `action_text` to All Treatment Rules
+| File | Threshold | Purpose |
+|------|-----------|---------|
+| `confidence-engine.ts` | 0.40 floor | Minimum base confidence |
+| `diagnosis-conflict-resolver.ts` | < 0.6 | requires_clarification |
+| `diagnosis-conflict-resolver.ts` | < 0.5 | all diagnoses low |
+| `unified-decision-gate.ts` | 0.4 base, 0.7 treatment | Mixed thresholds |
+| `nlp-agriculture-validator.ts` | 0.8-1.0 | Entity detection |
 
-Pattern: "Apply {product} at {dosage} per acre during {timing}"
+**Root Cause:**
+The `confidence-engine.ts` in `src/decision-graph/` is a **frontend module** but the edge function has its own confidence logic scattered across multiple files.
 
-Example:
-```json
-{
-  "rule_id": "SC_PEST_EARLY_SHOOT_BORER_001",
-  "cause": "Early Shoot Borer",
-  "action_text": "Release Trichogramma chilonis @ 50,000 eggs/acre in 3 splits",
-  "reason_text": "Biological control prevents ESB before dead heart escalation",
-  "knowledge_text": "Field trials across TN and MH show effective ESB suppression"
+**Fix Required:**
+Consolidate confidence thresholds into a single constants file in the edge function.
+
+---
+
+## Implementation Priority
+
+| Bug | Priority | Effort | Impact |
+|-----|----------|--------|--------|
+| #1 | P0 | 1 hour | Fixes database error |
+| #2 | P0 | 4 hours | Wheat crop support |
+| #4 | P0 | 2 hours | Removes broken code paths |
+| #3 | P1 | 1 hour | Stage matching works |
+| #6 | P2 | 2 hours | Consistent confidence |
+| #5 | P3 | 8 hours | SSOT compliance |
+
+---
+
+## Phase 1: Immediate Fixes (P0)
+
+### 1.1 Remove trigger_keywords from hypothesis-evaluator.ts
+
+**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
+
+Lines 418-432: Remove `trigger_keywords` from SELECT:
+```typescript
+const { data: rulesRaw, error } = await supabaseClient
+  .from('decision_rules')
+  .select(`
+    rule_id,
+    cause,
+    canonical_group,
+    priority,
+    stage_applicable,
+    conditions_json,
+    observable_characteristics,
+    differentiating_questions,
+    crop_age_days_min,
+    crop_age_days_max
+  `)  // REMOVED: trigger_keywords
+```
+
+Lines 226-237: Update `evaluatePartialConditionMatch` to use `conditions.trigger_keywords` (from conditions_json) instead of expecting column:
+```typescript
+// Check trigger_keywords from conditions_json (not column)
+if (conditionsJson.trigger_keywords && Array.isArray(conditionsJson.trigger_keywords)) {
+  // ... existing logic works because it uses conditionsJson
 }
 ```
 
-### Phase 3: Enhanced Farmer Response UI
+### 1.2 Fix symbolic-rules-bridge.ts
 
-#### 3.1 New `WhatHowWhyCard.tsx` Component
+**File:** `supabase/functions/ai-agriculture-chat/agents/symbolic-rules-bridge.ts`
 
-```text
-+------------------------------------------+
-| 🎯 WHAT: Early Shoot Borer Attack        |
-|    Detected symptoms: Dead heart, Frass  |
-+------------------------------------------+
-| ✅ HOW: Release Trichogramma chilonis    |
-|    @ 50,000 eggs/acre in 3 splits        |
-|    Timing: Early morning, avoid rain     |
-+------------------------------------------+
-| 💡 WHY: Biological control prevents ESB  |
-|    before dead heart escalation          |
-+------------------------------------------+
-| 📚 ICAR Source: IISR-PKG-2024-TRICHO-003 |
-+------------------------------------------+
+Lines 44-47: Remove from interface:
+```typescript
+// REMOVE: trigger_keywords?: string[];
 ```
 
-#### 3.2 Mobile-First Card Structure
-
+Lines 202-217: Update to use conditions_json:
 ```typescript
-interface WhatHowWhyResponse {
-  // WHAT - Problem identification
-  what: {
-    cause_name: string;
-    cause_code: string;
-    symptoms_observed: string[];
-    confidence: number;
-    icon: string; // Pest: 🐛, Disease: 🦠, Stress: 🌡️
-  };
-  
-  // HOW - Actionable instruction
-  how: {
-    action_text: string;
-    dosage?: string;
-    timing?: string;
-    application_method?: string;
-    safety_ppe?: string[];
-  };
-  
-  // WHY - Reasoning
-  why: {
-    reason_text: string;
-    knowledge_text?: string;
-    ipm_level?: number;
-    scientific_source?: string;
-  };
-  
-  // NEXT STEPS
-  next_steps?: {
-    follow_up_days?: number;
-    success_indicators?: string[];
-    photo_required?: boolean;
-  };
+if (keywords.length > 0) {
+  filteredRules = filteredRules.filter(r => {
+    // Get trigger_keywords from conditions_json, not column
+    const ruleKeywords = r.conditions_json?.trigger_keywords || [];
+    const ruleCause = (r.cause || '').toLowerCase();
+    const ruleId = (r.rule_id || '').toLowerCase();
+    // ... rest of logic
+  });
 }
 ```
 
-### Phase 4: Seeder Validation Layer
-
-Update `supabase/functions/seed-decision-rules/index.ts`:
-
+Lines 229-233: Remove from mapping:
 ```typescript
-const validateRule = (rule: RuleFromJSON): string[] => {
-  const errors: string[] = [];
-  
-  // WHAT validation
-  if (!rule.cause || rule.cause.length < 5) {
-    errors.push(`${rule.rule_id}: Missing or invalid cause`);
+// REMOVE: trigger_keywords: r.trigger_keywords || [],
+```
+
+### 1.3 Fix layered-rule-evaluator.ts
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+
+Lines 877-896: Update to use conditions_json:
+```typescript
+for (const rule of allBundled) {
+  // Get trigger_keywords from conditions_json, not column
+  const ruleKeywords = rule.conditions_json?.trigger_keywords || [];
+  if (ruleKeywords.some(kw => queryLower.includes(kw.toLowerCase()))) {
+    // ... rest of logic
   }
-  
-  // HOW validation for treatment rules
-  if (rule.action_type === 'treatment') {
-    if (!rule.action_text) {
-      errors.push(`${rule.rule_id}: Treatment rule missing action_text`);
-    }
-    if (!rule.phi_days) {
-      errors.push(`${rule.rule_id}: Treatment rule missing phi_days`);
-    }
-    if (!rule.bee_toxicity) {
-      errors.push(`${rule.rule_id}: Treatment rule missing bee_toxicity`);
-    }
-  }
-  
-  // WHY validation
-  if (!rule.reason_text) {
-    errors.push(`${rule.rule_id}: Missing reason_text`);
-  }
-  
-  return errors;
-};
+}
+```
+
+### 1.4 Fix all-rules.ts Interface
+
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
+
+Line 33: Remove from interface:
+```typescript
+// REMOVE: trigger_keywords?: string[];
 ```
 
 ---
 
-## Section 4: Files to Modify
+## Phase 2: Stage Normalization Fix (P1)
+
+### 2.1 Case-Insensitive Stage Matching
+
+**File:** `supabase/functions/ai-agriculture-chat/utils/stage-normalizer.ts`
+
+Update `normalizeStageForDB` to return lowercase only:
+```typescript
+export function normalizeStageForDB(stage: string | undefined | null): string {
+  if (!stage) return 'unknown';
+  const key = stage.toLowerCase().trim().replace(/[\s-]+/g, '_');
+  return STAGE_DB_MAP[key] || key;  // Already lowercase
+}
+```
+
+Update `calculateStageRelevanceScore` to use case-insensitive comparison:
+```typescript
+const normalizedCurrent = normalizeStageForDB(currentStage).toLowerCase();
+if (stageApplicable.some(s => normalizeStageForDB(s).toLowerCase() === normalizedCurrent)) {
+  return 1.0;
+}
+```
+
+---
+
+## Phase 3: Confidence Threshold Consolidation (P2)
+
+### 3.1 Create Centralized Constants
+
+**File:** `supabase/functions/ai-agriculture-chat/decision/confidence-thresholds.ts` (NEW)
+
+```typescript
+export const CONFIDENCE_THRESHOLDS = {
+  // Core thresholds
+  MINIMUM_BASE: 0.40,
+  TREATMENT_ALLOWED: 0.70,
+  CLARIFICATION_REQUIRED: 0.60,
+  LOW_CONFIDENCE: 0.50,
+  
+  // Entity detection
+  ENTITY_HIGH: 1.0,
+  ENTITY_MEDIUM: 0.8,
+  
+  // Risk adjustments
+  CRITICAL_PENALTY: 0.8,
+  MULTIPLE_CAUSES_PENALTY: 0.95,
+  HEALTHY_BOOST: 1.05
+} as const;
+```
+
+---
+
+## Files to Modify
 
 | File | Action | Purpose |
 |------|--------|---------|
-| Database Migration | CREATE | Add `action_text`, normalize action_type, stage_applicable |
-| `seed-decision-rules/index.ts` | MODIFY | Add validation layer |
-| `bundled-rules/loader.ts` | MODIFY | Fetch `action_text`, remove fallback defaults |
-| `llm-response-generator.ts` | MODIFY | Include `action_text` in narration prompt |
-| `src/components/chat/WhatHowWhyCard.tsx` | CREATE | New structured response component |
-| `src/components/chat/DecisionBrainCards.tsx` | MODIFY | Integrate WHAT→HOW→WHY structure |
-| `src/types/decision-rules.types.ts` | MODIFY | Add `action_text` to interface |
+| `decision/hypothesis-evaluator.ts` | MODIFY | Remove trigger_keywords from SELECT |
+| `agents/symbolic-rules-bridge.ts` | MODIFY | Use conditions_json.trigger_keywords |
+| `agents/layered-rule-evaluator.ts` | MODIFY | Use conditions_json.trigger_keywords |
+| `bundled-rules/all-rules.ts` | MODIFY | Remove from interface |
+| `utils/stage-normalizer.ts` | MODIFY | Case-insensitive matching |
+| `decision/confidence-thresholds.ts` | CREATE | Centralized thresholds |
 
 ---
 
-## Section 5: Success Metrics
+## Success Criteria
 
 After implementation:
 
-| Metric | Current | Target |
-|--------|---------|--------|
-| `action_text` coverage | 0% | 100% |
-| `action_type` enum compliance | 0% | 100% |
-| `stage_applicable` lowercase | 0% | 100% |
-| `observable_characteristics` array format | 52% | 100% |
-| `phi_days` for treatment rules | 13% | 100% |
-| `bee_toxicity` for treatment rules | 16% | 100% |
-| UI displays WHAT→HOW→WHY | No | Yes |
+| Metric | Before | After |
+|--------|--------|-------|
+| Database error on hypothesis eval | Yes | No |
+| trigger_keywords column references | 5+ files | 0 files |
+| Stage matching (case mismatch) | Fails | Works |
+| Confidence threshold locations | 6+ files | 1 file |
 
 ---
 
-## Technical Notes
+## Notes for Implementation
 
-1. **Database Migration**: Run migrations before code deployment
-2. **Backward Compatibility**: `loader.ts` already handles missing fields with defaults
-3. **Testing**: Validate 10 sample rules across all crops before full deployment
-4. **Rollback**: Keep backup of current `decision_rules` table state
+1. **Database Migration NOT Required:** The trigger_keywords column is already removed. We just need to update code.
+
+2. **Wheat Rules Addition:** This requires agronomist input to create proper wheat rules with:
+   - Growth stages: SEEDLING, TILLERING, STEM_ELONGATION, BOOTING, HEADING, FLOWERING, GRAIN_FILLING, MATURITY
+   - Pest/disease rules for each stage
+   - Nutrient management rules
+
+3. **Hardcoded Regional Text:** Low priority - the current hardcoded vocabulary works but violates SSOT. Can be addressed in a future sprint.
+
+4. **Testing:** After fixes, test with:
+   - Wheat query: "गहू तवरी पडत आहे" (expect: lodging advice)
+   - Sugarcane query: "खोड किडा लागला" (expect: stem borer treatment)
+   - Cotton query: "पाने पिवळी होत आहेत" (expect: nutrient/pest diagnosis)
+
