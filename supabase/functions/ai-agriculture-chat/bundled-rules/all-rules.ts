@@ -30,7 +30,8 @@ export interface BundledRule {
   icar_package?: string;
   icar_package_ref?: string;
   cause_confidence?: number;
-  trigger_keywords?: string[];
+  // REMOVED: trigger_keywords - column was DROPPED per SSOT architecture
+  // trigger_keywords now lives INSIDE conditions_json: conditions_json.trigger_keywords
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 5: New Response Contract Fields

@@ -875,7 +875,11 @@ export async function evaluateBundledKeywordRules(
   const matches: any[] = [];
   
   for (const rule of allBundled) {
-    if (rule.trigger_keywords?.some(kw => queryLower.includes(kw.toLowerCase()))) {
+    // CRITICAL FIX: trigger_keywords column was DROPPED - use conditions_json.trigger_keywords
+    const conditionsJson = (rule as any).conditions_json || {};
+    const triggerKeywords: string[] = conditionsJson.trigger_keywords || [];
+    
+    if (triggerKeywords.some(kw => queryLower.includes(kw.toLowerCase()))) {
       const ruleCropLower = rule.crop_code?.toLowerCase() || '';
       const cropMatch = ruleCropLower === 'all' || ruleCropLower === '*' || 
                        ruleCropLower === 'universal' || ruleCropLower === stateCropLower;

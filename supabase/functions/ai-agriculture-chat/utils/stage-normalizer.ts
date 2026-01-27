@@ -200,6 +200,7 @@ export function areStagesCompatible(
 /**
  * Calculate stage relevance score (0-1).
  * Higher score = better match for rule evaluation.
+ * CRITICAL FIX: Case-insensitive comparison to handle DB uppercase vs code lowercase
  */
 export function calculateStageRelevanceScore(
   stageApplicable: string[] | null | undefined,
@@ -209,32 +210,36 @@ export function calculateStageRelevanceScore(
     return 0.5; // Universal rules get base score
   }
   
-  const normalizedCurrent = normalizeStageForDB(currentStage);
+  const normalizedCurrent = normalizeStageForDB(currentStage).toLowerCase();
   const currentCategory = getStageCategory(currentStage);
   
-  // Exact match (highest score)
-  if (stageApplicable.some(s => normalizeStageForDB(s) === normalizedCurrent)) {
+  // CRITICAL FIX: Case-insensitive exact match (highest score)
+  if (stageApplicable.some(s => normalizeStageForDB(s).toLowerCase() === normalizedCurrent)) {
     return 1.0;
   }
   
-  // Current stage contains rule stage or vice versa
+  // Case-insensitive substring match
   if (stageApplicable.some(s => {
-    const normalized = normalizeStageForDB(s);
+    const normalized = normalizeStageForDB(s).toLowerCase();
     return normalizedCurrent.includes(normalized) || normalized.includes(normalizedCurrent);
   })) {
     return 0.9;
   }
   
-  // Same category match
+  // Same category match (case-insensitive)
   if (stageApplicable.some(s => getStageCategory(s) === currentCategory)) {
     return 0.7;
   }
   
-  // Wildcard match
-  if (stageApplicable.some(s => s === '*' || s.toLowerCase() === 'all')) {
+  // Wildcard match (case-insensitive)
+  if (stageApplicable.some(s => {
+    const lower = s.toLowerCase();
+    return lower === '*' || lower === 'all';
+  })) {
     return 0.5;
   }
   
   // No match - low relevance
   return 0.1;
 }
+
