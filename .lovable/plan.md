@@ -1,315 +1,265 @@
 
+# Fix Edge Function Timeout: Ensure Deterministic Response Delivery
 
-# Critical Bug Audit: AI Agriculture Chat System
+## Problem Summary
+The Edge Function times out because even though `PRIMARY_DECISION` is correctly constructed and logged, the orchestrator does not always return an HTTP response. The pipeline continues processing without hitting a hard return point, eventually timing out.
 
-## Executive Summary
+## Root Cause Analysis
 
-After deep analysis of the edge function logs, database schema, and codebase, I have identified **6 CRITICAL BUGS** that are causing wrong results for farmer queries.
+### 1. **Missing Response Return After Rules Fire**
+The orchestrator has multiple exit paths but lacks a **hard invariant** that ensures a response is returned when:
+- Clarification is completed (`clarification_answered = true`)
+- Rules have fired (`rules_applied > 0` or `layered_rule_result` exists)
+- `PRIMARY_DECISION` is constructed
 
----
+Currently, the flow can fall through various phases without hitting a return statement, causing the 30-second Edge Function timeout.
 
-## Bug #1: Missing Column Query (DATABASE BREAKING)
+### 2. **Response Generation Not Called Immediately**
+After `PRIMARY_DECISION` is built in the orchestrator (around lines 4500-4570), the code continues to:
+- Run PHI enforcement
+- Run pollinator protection
+- Run safety verification
+- Run question classification
+- Generate farmer communication
 
-**Severity:** CRITICAL  
-**Impact:** All hypothesis evaluations FAIL with database error
+If any of these steps fail silently or takes too long, no response is returned.
 
-**Location:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` (line 429)
+### 3. **Hardcoded Regional Language in Logic Files**
+Found hardcoded Marathi/Hindi strings in logic/decision files that should use English canonical symbols:
 
-```
-Error: column decision_rules.trigger_keywords does not exist
-```
-
-**Root Cause:**
-The code attempts to SELECT `trigger_keywords` from `decision_rules`, but this column was DROPPED from the database during the SSOT migration.
-
-**Evidence from logs:**
-```
-❌ [HypothesisEval] Database error: {
-  code: "42703",
-  message: "column decision_rules.trigger_keywords does not exist"
-}
-```
-
-**Fix Required:**
-Remove `trigger_keywords` from the SELECT query in `hypothesis-evaluator.ts` line 429. The column no longer exists in the database.
-
----
-
-## Bug #2: No Wheat Rules in Database (DATA GAP)
-
-**Severity:** CRITICAL  
-**Impact:** All wheat farmer queries return fallback/unknown responses
-
-**Database Query Results:**
-```sql
-SELECT DISTINCT crop_code, COUNT(*) FROM decision_rules WHERE is_active = true GROUP BY crop_code;
-
--- Results:
--- SC (Sugarcane): 409 rules
--- ALL: 36 rules  
--- CTN (Cotton): 27 rules
--- WHEAT: 0 rules ← ZERO RULES!
-```
-
-**Root Cause:**
-The `decision_rules` table has NO rules for wheat crop. The farmer's query for `WHEAT/STEM_ELONGATION` has no matching rules.
-
-**Impact on Farmer:**
-- Query: "गहू तवरी पडत आहे" (Wheat falling over)
-- Expected: Lodging prevention advice
-- Actual: "Class: UNKNOWN (confidence: 40%)"
-
-**Fix Required:**
-Add wheat crop rules to the decision_rules table covering all growth stages.
+**Files with hardcoded strings in logic:**
+- `orchestrator.ts` (lines 5451, 5460, 5484-5490) - NDVI trend descriptions
+- `orchestrator.ts` (lines 6638-6690) - Error handler stage advice
+- `static-data-gate.ts` (line 483-485) - Soil type responses
+- `query-router.ts` (lines 170-176) - Pattern matching using Marathi
+- `clarification-renderer.ts` (line 828-830) - Hardcoded advice text
 
 ---
 
-## Bug #3: Stage Normalization Mismatch
+## Implementation Plan
 
-**Severity:** HIGH  
-**Impact:** Rules don't match due to stage format inconsistency
+### Phase 1: Add Hard Return After PRIMARY_DECISION (CRITICAL)
 
-**Evidence from logs:**
-```
-[HypothesisEval] Stage normalization: STEM_ELONGATION → tillering
-```
+**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
 
-**Root Cause:**
-1. Land context provides: `STEM_ELONGATION` (from crop_schedules)
-2. Stage normalizer maps: `STEM_ELONGATION` → `tillering`
-3. But database stages are ALL UPPERCASE: `GRAND_GROWTH`, `TILLERING`, `GERMINATION`
-4. Query uses lowercase: `tillering` ≠ `TILLERING`
+**Location:** After line ~4570 (after `PRIMARY_DECISION RECOVERY` block)
 
-**Database Evidence:**
-```sql
-SELECT DISTINCT unnest(stage_applicable) as stage FROM decision_rules;
--- GRAND_GROWTH (154), TILLERING (151), GERMINATION (75) ← ALL UPPERCASE
-```
-
-**Fix Required:**
-Normalize stage comparisons to be case-insensitive or migrate database stages to lowercase.
-
----
-
-## Bug #4: trigger_keywords Used in Multiple Files
-
-**Severity:** HIGH  
-**Impact:** Multiple code paths break when trying to access non-existent column
-
-**Affected Files:**
-1. `hypothesis-evaluator.ts` (line 429) - SELECT query
-2. `symbolic-rules-bridge.ts` (lines 204, 231) - Expects `trigger_keywords` property
-3. `layered-rule-evaluator.ts` (line 878) - Matches against `trigger_keywords`
-4. `loader.ts` (lines 77, 288-406) - References in conditions_json handling
-5. `all-rules.ts` (line 33) - Interface definition
-
-**Fix Required:**
-Remove all `trigger_keywords` column references from:
-- Database SELECT statements
-- TypeScript interfaces
-- Runtime matching logic
-
-Since `trigger_keywords` is now stored INSIDE `conditions_json`, the code should use `rule.conditions_json.trigger_keywords` instead of `rule.trigger_keywords`.
-
----
-
-## Bug #5: Hardcoded Regional Language Keywords (Technical Debt)
-
-**Severity:** MEDIUM  
-**Impact:** Maintenance nightmare, not database-driven (violates SSOT principle)
-
-**Locations with hardcoded Marathi/Hindi:**
-
-| File | Lines | Content |
-|------|-------|---------|
-| `failure-class-detector.ts` | 100-133 | Hardcoded keyword arrays in Hindi/Marathi |
-| `nlp-agriculture-validator.ts` | 59-92 | `MARATHI_AG_VOCABULARY` with 5000+ terms |
-| `clarification-renderer.ts` | 114-321 | `BASE_TEMPLATES` with hardcoded questions/options |
-| `diagnosis-only-mode.ts` | 788-795 | Pest name translations |
-
-**Example (failure-class-detector.ts lines 118-121):**
+Add a **hard invariant check** that ensures response is generated immediately when:
 ```typescript
-const NUTRIENT_KEYWORDS = [
-  // Marathi
-  'पिवळे', 'पिवळसर', 'फिकट', 'खुरटलेले', 'पोषण', 'वाढ नाही',
-  'कमकुवत', 'लालसर', 'पान पिवळे', 'कडा जळाला'
-];
-```
-
-**Recommendation:**
-These should be loaded from database tables (`observation_translations`, `intent_translations`) per the SSOT principle. However, this is lower priority than the database-breaking bugs.
-
----
-
-## Bug #6: Confidence Score Logic Inconsistency
-
-**Severity:** MEDIUM  
-**Impact:** Confidence calculations vary across modules with no single source of truth
-
-**Inconsistent Thresholds Across Files:**
-
-| File | Threshold | Purpose |
-|------|-----------|---------|
-| `confidence-engine.ts` | 0.40 floor | Minimum base confidence |
-| `diagnosis-conflict-resolver.ts` | < 0.6 | requires_clarification |
-| `diagnosis-conflict-resolver.ts` | < 0.5 | all diagnoses low |
-| `unified-decision-gate.ts` | 0.4 base, 0.7 treatment | Mixed thresholds |
-| `nlp-agriculture-validator.ts` | 0.8-1.0 | Entity detection |
-
-**Root Cause:**
-The `confidence-engine.ts` in `src/decision-graph/` is a **frontend module** but the edge function has its own confidence logic scattered across multiple files.
-
-**Fix Required:**
-Consolidate confidence thresholds into a single constants file in the edge function.
-
----
-
-## Implementation Priority
-
-| Bug | Priority | Effort | Impact |
-|-----|----------|--------|--------|
-| #1 | P0 | 1 hour | Fixes database error |
-| #2 | P0 | 4 hours | Wheat crop support |
-| #4 | P0 | 2 hours | Removes broken code paths |
-| #3 | P1 | 1 hour | Stage matching works |
-| #6 | P2 | 2 hours | Consistent confidence |
-| #5 | P3 | 8 hours | SSOT compliance |
-
----
-
-## Phase 1: Immediate Fixes (P0)
-
-### 1.1 Remove trigger_keywords from hypothesis-evaluator.ts
-
-**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
-
-Lines 418-432: Remove `trigger_keywords` from SELECT:
-```typescript
-const { data: rulesRaw, error } = await supabaseClient
-  .from('decision_rules')
-  .select(`
-    rule_id,
-    cause,
-    canonical_group,
-    priority,
-    stage_applicable,
-    conditions_json,
-    observable_characteristics,
-    differentiating_questions,
-    crop_age_days_min,
-    crop_age_days_max
-  `)  // REMOVED: trigger_keywords
-```
-
-Lines 226-237: Update `evaluatePartialConditionMatch` to use `conditions.trigger_keywords` (from conditions_json) instead of expecting column:
-```typescript
-// Check trigger_keywords from conditions_json (not column)
-if (conditionsJson.trigger_keywords && Array.isArray(conditionsJson.trigger_keywords)) {
-  // ... existing logic works because it uses conditionsJson
-}
-```
-
-### 1.2 Fix symbolic-rules-bridge.ts
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/symbolic-rules-bridge.ts`
-
-Lines 44-47: Remove from interface:
-```typescript
-// REMOVE: trigger_keywords?: string[];
-```
-
-Lines 202-217: Update to use conditions_json:
-```typescript
-if (keywords.length > 0) {
-  filteredRules = filteredRules.filter(r => {
-    // Get trigger_keywords from conditions_json, not column
-    const ruleKeywords = r.conditions_json?.trigger_keywords || [];
-    const ruleCause = (r.cause || '').toLowerCase();
-    const ruleId = (r.rule_id || '').toLowerCase();
-    // ... rest of logic
+// HARD INVARIANT: If PRIMARY_DECISION exists with valid rule_id, generate response NOW
+if (decisionOutput.primary_decision?.rule_id && 
+    decisionOutput.primary_decision?.action_type) {
+  
+  console.log(`\n✅ [INVARIANT] PRIMARY_DECISION valid - generating immediate response`);
+  console.log(`   rule_id: ${decisionOutput.primary_decision.rule_id}`);
+  console.log(`   action_type: ${decisionOutput.primary_decision.action_type}`);
+  
+  // Generate response using ResponseGenerator (narration layer)
+  const responseGenerator = new ResponseGenerator();
+  const immediateResponse = responseGenerator.generateFromDecision({
+    decisionOutput,
+    language: options.language || 'mr',
+    landContext,
+    traceId
   });
+  
+  // Complete audit and return IMMEDIATELY
+  await auditLogger.completeTurn(Date.now() - startTime);
+  
+  return {
+    type: 'DECISION_PROVIDED',
+    session_id: sessionId,
+    decision_id: decisionOutput.decision_id,
+    decision_output: decisionOutput,
+    communication: immediateResponse.communication,
+    metadata: {
+      confidence: layeredRuleResult?.primary_decision?.confidence_score || 0.7,
+      safety_status: 'PENDING_VALIDATION',
+      rules_applied: decisionOutput.rules_applied?.length || 0,
+      processing_time_ms: Date.now() - startTime,
+      agents_used: agentsUsed,
+      trace_id: traceId,
+      response_source: 'IMMEDIATE_PRIMARY_DECISION'
+    }
+  };
 }
 ```
 
-Lines 229-233: Remove from mapping:
+### Phase 2: Add Clarification Completion Invariant
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
+
+**Location:** Early in the orchestrate() method, after session state is loaded (~line 870)
+
+Add invariant check:
 ```typescript
-// REMOVE: trigger_keywords: r.trigger_keywords || [],
+// INVARIANT: If clarification was completed AND rules fired, response MUST be returned
+const clarificationCompleted = options.sessionState?.clarificationCompleted === true;
+const hasPendingOptions = (options.sessionState?.pendingClarificationOptions?.length || 0) > 0;
+const optionWasSelected = matchedOption !== null;
+
+if (clarificationCompleted && optionWasSelected) {
+  console.log(`\n🔒 [INVARIANT] Clarification completed + option selected = MUST return response`);
+  // Set a flag that will be checked at the end of orchestration
+  (this as any)._mustReturnResponse = true;
+  (this as any)._clarificationContext = {
+    matchedOption,
+    optionLabel: matchedObservation?.symptom_label,
+    likelyCause: matchedObservation?.likely_cause
+  };
+}
 ```
 
-### 1.3 Fix layered-rule-evaluator.ts
+### Phase 3: Add Safety Assertion Before Final Return
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
 
-Lines 877-896: Update to use conditions_json:
+**Location:** At the very end of the orchestrate() method (before the final catch block)
+
+Add safety assertion:
 ```typescript
-for (const rule of allBundled) {
-  // Get trigger_keywords from conditions_json, not column
-  const ruleKeywords = rule.conditions_json?.trigger_keywords || [];
-  if (ruleKeywords.some(kw => queryLower.includes(kw.toLowerCase()))) {
-    // ... rest of logic
+// SAFETY ASSERTION: If PRIMARY_DECISION exists but we reached here without returning, throw
+if (decisionOutput?.primary_decision?.rule_id) {
+  const errorMsg = `[ASSERTION FAILED] PRIMARY_DECISION exists (rule_id=${decisionOutput.primary_decision.rule_id}) but no response was returned. This is a bug.`;
+  console.error(`🚨 ${errorMsg}`);
+  
+  // Log for debugging
+  console.error(`   Decision status: ${decisionOutput.status}`);
+  console.error(`   Action type: ${decisionOutput.primary_decision.action_type}`);
+  console.error(`   Agents used: ${agentsUsed.join(', ')}`);
+  
+  throw new Error(errorMsg);
+}
+```
+
+### Phase 4: Remove Hardcoded Marathi/Hindi from Logic Files
+
+**4.1: Fix orchestrator.ts - NDVI trend descriptions**
+
+**Location:** Lines 5450-5491
+
+Change from:
+```typescript
+return { direction: 'STABLE', slope: 0, description: 'पुरेसा डेटा नाही' };
+// and
+description = 'पिकाची आरोग्य सुधारत आहे ✓';
+description = 'पिकाची आरोग्य घटत आहे ⚠️';
+description = 'पिकाची आरोग्य स्थिर आहे';
+```
+
+Change to:
+```typescript
+return { direction: 'STABLE', slope: 0, description: 'INSUFFICIENT_DATA' };
+// and
+description = 'NDVI_IMPROVING';
+description = 'NDVI_DECLINING';
+description = 'NDVI_STABLE';
+```
+
+**4.2: Fix orchestrator.ts - Error handler stage advice**
+
+**Location:** Lines 6638-6690 (stageAdviceMap)
+
+Replace hardcoded Marathi/Hindi with i18n keys:
+```typescript
+const stageAdviceMap: Record<string, Record<string, string>> = {
+  'GERMINATION': 'error.fallback.stage.germination',
+  'SEEDLING': 'error.fallback.stage.seedling',
+  'TILLERING': 'error.fallback.stage.tillering',
+  // ... etc
+};
+```
+
+The actual text localization should happen in the response/UI layer.
+
+**4.3: Fix static-data-gate.ts**
+
+**Location:** Line 483
+
+Replace:
+```typescript
+mr: '🪨 मातीचा प्रकार नोंदवलेला नाही.',
+```
+
+With i18n key reference:
+```typescript
+// Return i18n_key instead of hardcoded text
+i18n_key: 'data_gate.soil_type_not_recorded'
+```
+
+**4.4: Fix query-router.ts patterns**
+
+**Location:** Lines 170-176
+
+Move Marathi patterns to a database table or configuration file. For now, keep patterns but add English canonical comments:
+```typescript
+// Pattern: CROP_STATUS_QUERY (Marathi)
+/पिकाची\s*स्थिती/i,
+// Add English canonical pattern as primary
+/crop\s*status/i,
+```
+
+### Phase 5: Create Response Invariant Guard Utility
+
+**New File:** `supabase/functions/ai-agriculture-chat/utils/response-invariant-guard.ts`
+
+```typescript
+/**
+ * Response Invariant Guard
+ * Ensures deterministic response delivery
+ */
+
+export interface ResponseInvariantInput {
+  hasPrimaryDecision: boolean;
+  primaryRuleId?: string;
+  clarificationCompleted: boolean;
+  rulesFired: number;
+  traceId: string;
+}
+
+export interface InvariantCheckResult {
+  mustReturnResponse: boolean;
+  reason: string;
+  priority: 'CRITICAL' | 'HIGH' | 'NORMAL';
+}
+
+export function checkResponseInvariant(input: ResponseInvariantInput): InvariantCheckResult {
+  // CRITICAL: If PRIMARY_DECISION exists, MUST return response
+  if (input.hasPrimaryDecision && input.primaryRuleId) {
+    return {
+      mustReturnResponse: true,
+      reason: `PRIMARY_DECISION exists with rule_id=${input.primaryRuleId}`,
+      priority: 'CRITICAL'
+    };
+  }
+  
+  // HIGH: If clarification completed AND rules fired
+  if (input.clarificationCompleted && input.rulesFired > 0) {
+    return {
+      mustReturnResponse: true,
+      reason: `Clarification completed with ${input.rulesFired} rules fired`,
+      priority: 'HIGH'
+    };
+  }
+  
+  return {
+    mustReturnResponse: false,
+    reason: 'No invariant triggered',
+    priority: 'NORMAL'
+  };
+}
+
+export function assertResponseReturned(
+  responseReturned: boolean,
+  invariant: InvariantCheckResult,
+  traceId: string
+): void {
+  if (invariant.mustReturnResponse && !responseReturned) {
+    const errorMsg = `[INVARIANT VIOLATION] ${invariant.reason} but no response returned (priority: ${invariant.priority})`;
+    console.error(`🚨 [${traceId}] ${errorMsg}`);
+    throw new Error(errorMsg);
   }
 }
-```
-
-### 1.4 Fix all-rules.ts Interface
-
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
-
-Line 33: Remove from interface:
-```typescript
-// REMOVE: trigger_keywords?: string[];
-```
-
----
-
-## Phase 2: Stage Normalization Fix (P1)
-
-### 2.1 Case-Insensitive Stage Matching
-
-**File:** `supabase/functions/ai-agriculture-chat/utils/stage-normalizer.ts`
-
-Update `normalizeStageForDB` to return lowercase only:
-```typescript
-export function normalizeStageForDB(stage: string | undefined | null): string {
-  if (!stage) return 'unknown';
-  const key = stage.toLowerCase().trim().replace(/[\s-]+/g, '_');
-  return STAGE_DB_MAP[key] || key;  // Already lowercase
-}
-```
-
-Update `calculateStageRelevanceScore` to use case-insensitive comparison:
-```typescript
-const normalizedCurrent = normalizeStageForDB(currentStage).toLowerCase();
-if (stageApplicable.some(s => normalizeStageForDB(s).toLowerCase() === normalizedCurrent)) {
-  return 1.0;
-}
-```
-
----
-
-## Phase 3: Confidence Threshold Consolidation (P2)
-
-### 3.1 Create Centralized Constants
-
-**File:** `supabase/functions/ai-agriculture-chat/decision/confidence-thresholds.ts` (NEW)
-
-```typescript
-export const CONFIDENCE_THRESHOLDS = {
-  // Core thresholds
-  MINIMUM_BASE: 0.40,
-  TREATMENT_ALLOWED: 0.70,
-  CLARIFICATION_REQUIRED: 0.60,
-  LOW_CONFIDENCE: 0.50,
-  
-  // Entity detection
-  ENTITY_HIGH: 1.0,
-  ENTITY_MEDIUM: 0.8,
-  
-  // Risk adjustments
-  CRITICAL_PENALTY: 0.8,
-  MULTIPLE_CAUSES_PENALTY: 0.95,
-  HEALTHY_BOOST: 1.05
-} as const;
 ```
 
 ---
@@ -318,41 +268,38 @@ export const CONFIDENCE_THRESHOLDS = {
 
 | File | Action | Purpose |
 |------|--------|---------|
-| `decision/hypothesis-evaluator.ts` | MODIFY | Remove trigger_keywords from SELECT |
-| `agents/symbolic-rules-bridge.ts` | MODIFY | Use conditions_json.trigger_keywords |
-| `agents/layered-rule-evaluator.ts` | MODIFY | Use conditions_json.trigger_keywords |
-| `bundled-rules/all-rules.ts` | MODIFY | Remove from interface |
-| `utils/stage-normalizer.ts` | MODIFY | Case-insensitive matching |
-| `decision/confidence-thresholds.ts` | CREATE | Centralized thresholds |
+| `agents/orchestrator.ts` | MODIFY | Add hard return after PRIMARY_DECISION, add invariants |
+| `agents/orchestrator.ts` | MODIFY | Replace Marathi/Hindi strings with English canonical symbols |
+| `agents/static-data-gate.ts` | MODIFY | Replace hardcoded text with i18n keys |
+| `agents/clarification-renderer.ts` | MODIFY | Move hardcoded advice to i18n layer |
+| `agents/query-router.ts` | MODIFY | Add English canonical patterns |
+| `utils/response-invariant-guard.ts` | CREATE | Response invariant checking utility |
 
 ---
 
 ## Success Criteria
 
-After implementation:
-
 | Metric | Before | After |
 |--------|--------|-------|
-| Database error on hypothesis eval | Yes | No |
-| trigger_keywords column references | 5+ files | 0 files |
-| Stage matching (case mismatch) | Fails | Works |
-| Confidence threshold locations | 6+ files | 1 file |
+| Edge Function timeout rate | Intermittent | 0% |
+| Response returned when PRIMARY_DECISION exists | Not guaranteed | 100% guaranteed |
+| Hardcoded Marathi/Hindi in logic files | 70+ occurrences | 0 |
+| Response invariant violations logged | No | Yes (with trace_id) |
 
 ---
 
-## Notes for Implementation
+## Testing Strategy
 
-1. **Database Migration NOT Required:** The trigger_keywords column is already removed. We just need to update code.
+1. **Unit Test:** Call orchestrator with valid `layeredRuleResult.primary_decision` → verify response returned
+2. **Integration Test:** Complete clarification flow → verify response returned
+3. **Timeout Test:** Run 10 consecutive queries → all should complete < 20 seconds
+4. **Language Test:** Verify orchestrator returns only English canonical symbols (no Devanagari in decision objects)
 
-2. **Wheat Rules Addition:** This requires agronomist input to create proper wheat rules with:
-   - Growth stages: SEEDLING, TILLERING, STEM_ELONGATION, BOOTING, HEADING, FLOWERING, GRAIN_FILLING, MATURITY
-   - Pest/disease rules for each stage
-   - Nutrient management rules
+---
 
-3. **Hardcoded Regional Text:** Low priority - the current hardcoded vocabulary works but violates SSOT. Can be addressed in a future sprint.
+## Technical Notes
 
-4. **Testing:** After fixes, test with:
-   - Wheat query: "गहू तवरी पडत आहे" (expect: lodging advice)
-   - Sugarcane query: "खोड किडा लागला" (expect: stem borer treatment)
-   - Cotton query: "पाने पिवळी होत आहेत" (expect: nutrient/pest diagnosis)
-
+1. **No Database Migration Required:** All changes are code-only
+2. **Backward Compatible:** Existing response format unchanged
+3. **Fail-Fast:** Invariant violations throw errors with trace_id for debugging
+4. **Audit Trail:** All invariant checks logged to console with trace_id
