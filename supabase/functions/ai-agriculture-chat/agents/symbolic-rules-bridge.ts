@@ -43,7 +43,8 @@ export interface SymbolicRule {
   scientific_source: string;
   scientific_basis: string;
   icar_package?: string;
-  trigger_keywords?: string[];
+  // REMOVED: trigger_keywords - column was DROPPED, use conditions_json.trigger_keywords
+  conditions_json?: Record<string, unknown>;
   response_mr?: string;
   response_hi?: string;
   response_en?: string;
@@ -198,10 +199,12 @@ export function matchRulesByKeywords(
   // Extract keywords from input
   const keywords = extractKeywords(input);
   
-  // Filter by keyword match
+  // Filter by keyword match - CRITICAL FIX: use conditions_json.trigger_keywords
   if (keywords.length > 0) {
     filteredRules = filteredRules.filter(r => {
-      const ruleKeywords = r.trigger_keywords || [];
+      // Get trigger_keywords from conditions_json (column was DROPPED)
+      const conditionsJson = (r as any).conditions_json || {};
+      const ruleKeywords: string[] = conditionsJson.trigger_keywords || [];
       const ruleCause = (r.cause || '').toLowerCase();
       const ruleId = (r.rule_id || '').toLowerCase();
       
@@ -219,6 +222,7 @@ export function matchRulesByKeywords(
   console.log(`   📋 Symbolic Bridge: ${filteredRules.length} rules matched for ${targetCategory || 'all'}`);
   
   // Convert ExecutableRule to SymbolicRule format
+  // CRITICAL FIX: Map conditions_json instead of trigger_keywords column
   return filteredRules.map(r => ({
     rule_id: r.rule_id,
     category: r.category as RuleCategory,
@@ -228,7 +232,7 @@ export function matchRulesByKeywords(
     scientific_source: r.scientific_source || '',
     scientific_basis: r.scientific_basis || '',
     icar_package: r.icar_package_ref,
-    trigger_keywords: r.trigger_keywords || [],
+    conditions_json: (r as any).conditions_json || {},
     response_mr: r.response_mr,
     response_hi: r.response_hi,
     response_en: r.response_en,

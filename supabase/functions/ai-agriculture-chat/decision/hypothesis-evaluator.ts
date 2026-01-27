@@ -415,6 +415,8 @@ export async function evaluateCandidateHypotheses(
     // Query 1: Rules with observable_characteristics for this crop OR universal ('all') rules
     // NOTE: Filter out empty object {} which is not useful
     // PHASE-17: Include temporal constraint fields for filtering
+    // CRITICAL FIX: trigger_keywords column was DROPPED - removed from SELECT
+    // Use conditions_json.trigger_keywords instead (handled in evaluatePartialConditionMatch)
     const { data: rulesRaw, error } = await supabaseClient
       .from('decision_rules')
       .select(`
@@ -426,7 +428,6 @@ export async function evaluateCandidateHypotheses(
         conditions_json,
         observable_characteristics,
         differentiating_questions,
-        trigger_keywords,
         crop_age_days_min,
         crop_age_days_max
       `)
