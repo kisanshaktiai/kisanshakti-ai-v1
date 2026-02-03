@@ -3433,7 +3433,7 @@ export class AIAgentOrchestrator {
       // FIX: Routing determinism - if symbolic path is chosen, invalidate direct-answer flag
       const isNonAgricultural = ['GREETING', 'APP_HELP'].includes(queryRoute.route);
       const hasLandContextForRouting = !!landContext; // Renamed to avoid duplicate declaration
-      const hasSymptoms = inductionResult.symptoms.length > 0;
+      // NOTE: Reusing hasSymptoms from line 2109 (already declared in this scope)
       
       // DETERMINISTIC ROUTING DECISION (evaluated exactly once)
       // Symbolic path takes priority when: land context exists OR symptoms detected OR rules needed
