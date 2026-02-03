@@ -582,43 +582,75 @@ export async function generateFallbackClarificationOptions(
       }
     }
     
-    // Always add photo option
-    if (language === 'mr') options.push('📷 फोटो पाठवा');
-    else if (language === 'hi') options.push('📷 फोटो भेजें');
-    else options.push('📷 Send photo');
+    // Always add photo option (icon is language-neutral)
+    options.push(`${getObservationIcon('PHOTO_REQUEST')} Photo`);
     
     console.log(`   ✅ [FallbackClarification] Generated ${options.length} options`);
-    return options.length > 0 ? options : getDefaultClarificationOptions(language);
+    return options.length > 0 ? options : getDefaultClarificationOptionsFallback(language);
     
   } catch (err) {
     console.error(`   ❌ [FallbackClarification] Error:`, err);
-    return getDefaultClarificationOptions(language);
+    return getDefaultClarificationOptionsFallback(language);
   }
 }
 
-function getDefaultClarificationOptions(language: 'mr' | 'hi' | 'en'): string[] {
-  if (language === 'mr') {
-    return [
-      '🐛 छोटे किडे दिसतात',
-      '🍂 पाने पिवळी/वाळलेली दिसतात',
-      '🦠 डाग/पट्टे दिसतात',
-      '📷 फोटो पाठवा'
-    ];
-  } else if (language === 'hi') {
-    return [
-      '🐛 छोटे कीड़े दिखते हैं',
-      '🍂 पत्ते पीले/सूखे दिखते हैं',
-      '🦠 धब्बे/पट्टियां दिखती हैं',
-      '📷 फोटो भेजें'
-    ];
-  } else {
-    return [
-      '🐛 Small insects visible',
-      '🍂 Yellow/dry leaves',
-      '🦠 Spots/streaks visible',
-      '📷 Send photo'
-    ];
+// ═══════════════════════════════════════════════════════════════════════════
+// SSOT: Default clarification options now loaded from database
+// Import from observation-label-loader for consistent translations
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { loadObservationLabels, DEFAULT_CLARIFICATION_CODES, getObservationIcon } from '../i18n/observation-label-loader.ts';
+
+/**
+ * Get default clarification options from database
+ * SSOT: All display text comes from observation_translations table
+ * Falls back to formatted English codes if database unavailable
+ */
+async function getDefaultClarificationOptionsFromDB(
+  supabaseClient: any,
+  language: 'mr' | 'hi' | 'en'
+): Promise<string[]> {
+  try {
+    const labelMap = await loadObservationLabels(
+      supabaseClient, 
+      DEFAULT_CLARIFICATION_CODES, 
+      language
+    );
+    
+    const options: string[] = [];
+    for (const code of DEFAULT_CLARIFICATION_CODES) {
+      const label = labelMap.get(code.toUpperCase());
+      if (label) {
+        options.push(`${label.icon} ${label.display_text}`);
+      }
+    }
+    
+    // Ensure we have at least one option
+    if (options.length === 0) {
+      console.warn(`   ⚠️ [DefaultClarification] No options loaded from DB - using fallback`);
+      return getDefaultClarificationOptionsFallback(language);
+    }
+    
+    return options;
+    
+  } catch (err) {
+    console.error(`   ❌ [DefaultClarification] DB error: ${err}`);
+    return getDefaultClarificationOptionsFallback(language);
   }
+}
+
+/**
+ * Fallback when database unavailable - returns formatted English codes
+ * This is language-neutral to comply with SSOT principle
+ */
+function getDefaultClarificationOptionsFallback(language: 'mr' | 'hi' | 'en'): string[] {
+  // Return formatted English codes with icons (SSOT-compliant fallback)
+  return [
+    `${getObservationIcon('INSECTS_VISIBLE')} Insects Visible`,
+    `${getObservationIcon('LEAF_YELLOWING')} Leaf Yellowing`, 
+    `${getObservationIcon('LEAF_SPOTS')} Leaf Spots`,
+    `${getObservationIcon('PHOTO_REQUEST')} Send Photo`
+  ];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

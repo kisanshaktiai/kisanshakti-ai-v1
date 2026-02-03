@@ -80,6 +80,58 @@ Farmer message:
 {farmer_message}`;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SAFE JSON EXTRACTION - Multi-strategy parsing for resilient LLM output handling
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Safely extract JSON from LLM output that may contain non-JSON preamble
+ * This is pure parsing logic - NO language strings involved
+ */
+function safeExtractJson(content: string): { intent_code: string; confidence: number } | null {
+  if (!content || typeof content !== 'string') return null;
+  
+  // Clean markdown fences
+  let cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+  
+  // Strategy 1: Direct parse (most common case)
+  try {
+    const direct = JSON.parse(cleaned);
+    if (direct && typeof direct.intent_code === 'string') {
+      return direct;
+    }
+  } catch { /* continue to fallback strategies */ }
+  
+  // Strategy 2: Find JSON object containing intent_code in mixed content
+  // Handles cases like "Here is the classification: {...}"
+  const jsonMatch = cleaned.match(/\{[^{}]*"intent_code"[^{}]*\}/);
+  if (jsonMatch) {
+    try {
+      const extracted = JSON.parse(jsonMatch[0]);
+      if (extracted && typeof extracted.intent_code === 'string') {
+        console.log(`   📋 [SafeExtract] Extracted JSON from mixed content`);
+        return extracted;
+      }
+    } catch { /* continue */ }
+  }
+  
+  // Strategy 3: Try to find any valid JSON object in the content
+  const anyJsonMatch = cleaned.match(/\{[\s\S]*?\}/);
+  if (anyJsonMatch) {
+    try {
+      const extracted = JSON.parse(anyJsonMatch[0]);
+      if (extracted && typeof extracted.intent_code === 'string') {
+        console.log(`   📋 [SafeExtract] Extracted JSON via fallback regex`);
+        return extracted;
+      }
+    } catch { /* continue */ }
+  }
+  
+  // LLM returned plain text - signal for clarification flow
+  console.warn(`   ⚠️ [SafeExtract] No valid JSON found in LLM response`);
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN CLASSIFICATION FUNCTION - STATELESS, LLM-ONLY
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -129,9 +181,16 @@ export async function classifyFarmerIntent(
       throw new Error('Empty response from LLM');
     }
     
-    // Parse JSON safely
-    const cleanContent = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const parsed = JSON.parse(cleanContent);
+    // Parse JSON safely using multi-strategy extraction
+    const parsed = safeExtractJson(content);
+    
+    if (!parsed) {
+      console.warn(`   ⚠️ LLM returned non-JSON - forcing clarification flow`);
+      return {
+        intent_code: 'UNKNOWN_OBSERVATION',
+        confidence: 0.0
+      };
+    }
     
     // Validate intent code against allowed list
     let intentCode = parsed.intent_code?.toUpperCase() || 'UNKNOWN_OBSERVATION';

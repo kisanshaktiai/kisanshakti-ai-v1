@@ -613,12 +613,22 @@ export function getCropSymbolForRules(result: LanguageInductionResult): string {
 
 /**
  * Check if induction result has sufficient coverage for rule evaluation
+ * 
+ * SSOT PRINCIPLE: Symbolic brain requires SYMPTOMS, not just crop detection.
+ * A crop symbol alone (e.g., SUGARCANE) is NOT sufficient for rule matching.
+ * We must have at least 1 symptom to run the symbolic decision brain.
  */
 export function hasMinimumCoverage(
   result: LanguageInductionResult, 
   minCoverage: number = 0.3
 ): boolean {
-  return result.symbol_coverage >= minCoverage || result.total_symbols_extracted >= 1;
+  // CRITICAL FIX: Require at least 1 symptom for symbolic brain activation
+  const hasSymptoms = result.symptoms.length >= 1;
+  const hasSufficientCoverage = result.symbol_coverage >= minCoverage;
+  const hasMultipleSymbols = result.total_symbols_extracted >= 2;
+  
+  // Must have symptoms AND (coverage OR multiple symbols)
+  return hasSymptoms && (hasSufficientCoverage || hasMultipleSymbols);
 }
 
 /**

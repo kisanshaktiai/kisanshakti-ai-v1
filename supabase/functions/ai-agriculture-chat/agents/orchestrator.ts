@@ -2100,9 +2100,24 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       const inductionCoverageSufficient = hasMinimumCoverage(inductionResult, 0.25); // 25% coverage or 1+ symbols
       const inductionConfidenceSufficient = inductionResult.aggregated_confidence >= 0.5 || inductionResult.total_symbols_extracted >= 2;
-      const shouldRunSymbolicBrain = inductionCoverageSufficient || inductionConfidenceSufficient;
       
-      console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, run_symbolic=${shouldRunSymbolicBrain}`);
+      // ═══════════════════════════════════════════════════════════════════════════
+      // FIX: HARD BLOCK SYMBOLIC BRAIN WHEN ZERO SYMPTOMS EXTRACTED
+      // A crop symbol alone (e.g., SUGARCANE) is NOT sufficient to run rule engine
+      // SSOT PRINCIPLE: Must have at least 1 symptom for meaningful rule matching
+      // ═══════════════════════════════════════════════════════════════════════════
+      const hasSymptoms = inductionResult.symptoms.length > 0;
+      const shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && hasSymptoms;
+      
+      if (!hasSymptoms && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
+        console.log(`\n⚠️ [INDUCTION_GATE] Blocking symbolic brain: coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}% but symptoms=0`);
+        console.log(`   → Crop detected: ${inductionResult.crop?.symbol || 'NONE'}`);
+        console.log(`   → Total symbols: ${inductionResult.total_symbols_extracted} (but none are symptoms)`);
+        console.log(`   → Forcing CLARIFICATION path instead of empty rule matching`);
+        agentsUsed.push('SYMPTOM_GATE_BLOCKED');
+      }
+      
+      console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2: OBSERVATION EXTRACTION (LLM, STRICT)
@@ -4640,14 +4655,18 @@ export class AIAgentOrchestrator {
         console.log(`\n📸 [PHASE-19] Low confidence + no rules matched - requesting photo`);
         console.log(`   Rules applied: ${rulesAppliedCount}, Confidence: ${decisionOutput.confidence_score || 0}`);
         
-        // Return photo request to help with diagnosis
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SSOT: Photo request uses i18n_keys - actual translations loaded by UI layer
+        // from observation_translations and message_translations tables
+        // ═══════════════════════════════════════════════════════════════════════════
         return {
           type: 'PHOTO_REQUEST',
           session_id: sessionId,
           photo_instructions: {
-            text_mr: `📷 अधिक अचूक निदानासाठी, कृपया प्रभावित पानाचा/पिकाचा फोटो पाठवा.\n\n💡 टिप्स:\n• चांगल्या प्रकाशात फोटो काढा\n• प्रभावित भागाचा जवळून फोटो\n• निरोगी पान सोबत ठेवा`,
-            text_hi: `📷 सटीक निदान के लिए, कृपया प्रभावित पत्ती/फसल की फोटो भेजें.\n\n💡 टिप्स:\n• अच्छी रोशनी में फोटो लें\n• प्रभावित क्षेत्र का करीब से फोटो\n• स्वस्थ पत्ती साथ में रखें`,
-            text_en: `📷 For accurate diagnosis, please send a photo of the affected leaf/crop.\n\n💡 Tips:\n• Take photo in good lighting\n• Close-up of affected area\n• Include a healthy leaf for comparison`,
+            // i18n_key for UI layer resolution (no hardcoded regional text)
+            i18n_key: 'photo_request.diagnosis_help',
+            text_en: 'For accurate diagnosis, please send a photo of the affected leaf/crop.',
+            tips_i18n_key: 'photo_request.tips',
             tips: [
               'Good lighting',
               'Close-up of affected area',
@@ -4662,7 +4681,85 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             layer_timings: layerTimings,
-            reason: 'LOW_CONFIDENCE_NO_RULES'
+            reason: 'LOW_CONFIDENCE_NO_RULES',
+            ssot_source: 'observation_translations'
+          }
+        };
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // MANDATORY FALLBACK: Generate SSOT-compliant clarification from decision_rules
+      // when zero rules matched and no primary decision exists
+      // This prevents the function from timing out without a response
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (hasNoRecommendations && !hasNoPhoto) {
+        console.warn(`\n⚠️ [MANDATORY_FALLBACK] No rules matched with photo present - generating SSOT clarification`);
+        
+        const cropCode = landContext?.current_crop?.toUpperCase() || landContext?.crop_code?.toUpperCase() || 'SC';
+        const growthStage = (landContext?.growth_stage || 'TILLERING').toUpperCase();
+        const userLanguage = (options.language as 'mr' | 'hi' | 'en') || 'mr';
+        
+        // SSOT: Load top observable_characteristics for this crop/stage from decision_rules
+        const { data: topRules } = await this.supabase
+          .from('decision_rules')
+          .select('observable_characteristics')
+          .eq('is_active', true)
+          .or(`crop_code.eq.${cropCode},crop_code.eq.all`)
+          .not('observable_characteristics', 'is', null)
+          .limit(10);
+        
+        // Extract unique observation codes
+        const obsCodesSet = new Set<string>();
+        for (const rule of topRules || []) {
+          const chars = rule.observable_characteristics;
+          if (Array.isArray(chars)) {
+            chars.slice(0, 3).forEach((c: string) => {
+              if (typeof c === 'string') obsCodesSet.add(c.toUpperCase());
+            });
+          }
+        }
+        
+        // Limit to top 4 + photo
+        const obsCodes = Array.from(obsCodesSet).slice(0, 4);
+        obsCodes.push('PHOTO_REQUEST');
+        
+        // SSOT: Load translations from observation_translations table
+        const { loadObservationLabels } = await import('../i18n/observation-label-loader.ts');
+        const labelMap = await loadObservationLabels(this.supabase, obsCodes, userLanguage);
+        
+        // Build options array
+        const clarificationOptions = obsCodes.map(code => {
+          const label = labelMap.get(code.toUpperCase());
+          return {
+            value: code,
+            label: label ? `${label.icon} ${label.display_text}` : code,
+            i18n_key: `observation.${code.toLowerCase()}`
+          };
+        });
+        
+        console.log(`   Loaded ${clarificationOptions.length} options from decision_rules + observation_translations`);
+        
+        agentsUsed.push('MANDATORY_FALLBACK');
+        
+        return {
+          type: 'CLARIFICATION_QUESTION',
+          session_id: sessionId,
+          question: {
+            question_id: `fallback_clarify_${Date.now()}`,
+            i18n_key: 'clarification.zero_symptoms_detected',
+            text_en: 'To help diagnose your crop issue, please select what you observe:',
+            options: clarificationOptions,
+            source: 'DECISION_RULES_SSOT'
+          },
+          metadata: {
+            confidence: 0.3,
+            safety_status: 'NEEDS_CLARIFICATION',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId,
+            fallback_reason: 'ZERO_RULES_WITH_PHOTO',
+            ssot_source: 'decision_rules.observable_characteristics'
           }
         };
       }

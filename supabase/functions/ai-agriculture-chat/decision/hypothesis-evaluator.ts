@@ -760,80 +760,35 @@ export interface DiagnosticConfirmationResult {
   hypotheses_count: number;
 }
 
-// Canonical labels for common diagnostic observations (crop-agnostic)
-const DIAGNOSTIC_OBSERVATION_LABELS: Record<string, { mr: string; hi: string; en: string; icon: string }> = {
-  'DEAD_HEART_PRESENT': {
-    mr: 'मधली सुरळी सुकलेली / ओढल्यास बाहेर येते',
-    hi: 'बीच की पत्ती सूखी / खींचने पर निकल जाती है',
-    en: 'Central whorl dried / pulls out easily',
-    icon: '🔴'
-  },
-  'LARVAE_PRESENT': {
-    mr: 'खोडात / मुळांजवळ अळ्या दिसतात',
-    hi: 'तने में / जड़ों के पास इल्ली दिखती है',
-    en: 'Larvae visible in stem / near roots',
-    icon: '🐛'
-  },
-  'MUD_TUBES_PRESENT': {
-    mr: 'मातीत पांढरे वाळवी / बोगदे दिसतात',
-    hi: 'मिट्टी में सफेद दीमक / सुरंग दिखती है',
-    en: 'White termites / tunnels visible in soil',
-    icon: '🏠'
-  },
-  'TUNNELS_IN_SOIL': {
-    mr: 'जमिनीत बोगदे दिसतात',
-    hi: 'जमीन में सुरंग दिखती है',
-    en: 'Tunnels visible in soil',
-    icon: '🕳️'
-  },
-  'HONEYDEW_PRESENT': {
-    mr: 'पानांवर चिकट पदार्थ / काळी बुरशी',
-    hi: 'पत्तों पर चिपचिपा पदार्थ / काली फफूंद',
-    en: 'Sticky substance / black mold on leaves',
-    icon: '✨'
-  },
-  'STEM_BORING_MARKS': {
-    mr: 'खोडावर छिद्र / भुसा दिसतो',
-    hi: 'तने पर छेद / भूसा दिखता है',
-    en: 'Holes in stem / frass visible',
-    icon: '🕳️'
-  },
-  'SETT_EASILY_PULLED_OUT': {
-    mr: 'रोप सहज बाहेर येते (मूळ कमकुवत)',
-    hi: 'पौधा आसानी से निकल जाता है (जड़ कमजोर)',
-    en: 'Plant pulls out easily (weak roots)',
-    icon: '🌱'
-  },
-  'FRASS_VISIBLE': {
-    mr: 'खोडाजवळ भुसा / मैला दिसतो',
-    hi: 'तने के पास भूसा / मैला दिखता है',
-    en: 'Frass / excreta visible near stem',
-    icon: '💩'
-  },
-  'WHITE_POWDERY_GROWTH': {
-    mr: 'पांढरी भुकटी / पावडर दिसते',
-    hi: 'सफेद पाउडर जैसा दिखता है',
-    en: 'White powdery substance visible',
-    icon: '🤍'
-  },
-  'ROOT_ROTTED': {
-    mr: 'मुळे सडलेली / काळी दिसतात',
-    hi: 'जड़ें सड़ी / काली दिखती हैं',
-    en: 'Roots rotted / blackened',
-    icon: '🪵'
-  },
-  'SOIL_TOO_DRY': {
-    mr: 'माती खूप कोरडी आहे',
-    hi: 'मिट्टी बहुत सूखी है',
-    en: 'Soil is very dry',
-    icon: '🏜️'
-  },
-  'FIELD_WATERLOGGED': {
-    mr: 'शेतात पाणी साचलेले आहे',
-    hi: 'खेत में पानी भरा है',
-    en: 'Field is waterlogged',
-    icon: '💧'
-  }
+// ═══════════════════════════════════════════════════════════════════════════
+// SSOT: Observation labels now loaded from observation_translations table
+// The loadObservationLabels function in i18n/observation-label-loader.ts
+// fetches display text from database instead of hardcoded dictionaries
+// ═══════════════════════════════════════════════════════════════════════════
+
+import { loadObservationLabels, getObservationIcon } from '../i18n/observation-label-loader.ts';
+
+// Fallback icon mapping for when database lookup is not used
+// (This is language-neutral - only visual symbols, no text)
+const OBSERVATION_ICONS_FALLBACK: Record<string, string> = {
+  'DEAD_HEART_PRESENT': '🔴',
+  'DEAD_HEART': '💀',
+  'LARVAE_PRESENT': '🐛',
+  'MUD_TUBES_PRESENT': '🏠',
+  'TUNNELS_IN_SOIL': '🕳️',
+  'HONEYDEW_PRESENT': '✨',
+  'STEM_BORING_MARKS': '🕳️',
+  'SETT_EASILY_PULLED_OUT': '🌱',
+  'FRASS_VISIBLE': '💩',
+  'WHITE_POWDERY_GROWTH': '🤍',
+  'ROOT_ROTTED': '🪵',
+  'SOIL_TOO_DRY': '🏜️',
+  'FIELD_WATERLOGGED': '💧',
+  'INSECTS_VISIBLE': '🐛',
+  'LEAF_YELLOWING': '🍂',
+  'LEAF_SPOTS': '🦠',
+  'STUNTED_GROWTH': '📉',
+  'PHOTO_REQUESTED': '📷'
 };
 
 /**
@@ -915,7 +870,7 @@ export function generateDiagnosticConfirmationOptions(
   // This prioritizes options farmers can actually observe and that distinguish causes
   // ═══════════════════════════════════════════════════════════════════════════
   const sortedObservations = Array.from(observationMap.values())
-    .filter(obs => DIAGNOSTIC_OBSERVATION_LABELS[obs.observation_key]) // Only use labeled observations
+    .filter(obs => OBSERVATION_ICONS_FALLBACK[obs.observation_key]) // Only use observations with icons
     .sort((a, b) => {
       // Diagnostic power weight (40%)
       const powerOrder = { 'HIGH': 3, 'MEDIUM': 2, 'LOW': 1 };
@@ -936,18 +891,27 @@ export function generateDiagnosticConfirmationOptions(
     console.log(`      ${i + 1}. ${obs.observation_key} (power=${obs.diagnostic_power}, verify=${(obs.field_verifiability * 100).toFixed(0)}%, diff=${(obs.differentiation_score * 100).toFixed(0)}%)`);
   });
   
-  // Build options with multilingual labels
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SSOT NOTE: For full compliance, this function should be made async and
+  // load labels from observation_translations table using loadObservationLabels().
+  // Current implementation uses observation_key for i18n_key resolution at UI layer.
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Build options with observation keys (UI layer resolves multilingual labels)
   const options: DiagnosticConfirmationOption[] = sortedObservations.map(obs => {
-    const labels = DIAGNOSTIC_OBSERVATION_LABELS[obs.observation_key];
+    const icon = OBSERVATION_ICONS_FALLBACK[obs.observation_key] || '❓';
+    // Use observation_key as i18n reference - UI/narration layer loads translations
+    const formattedLabel = formatObservationCode(obs.observation_key);
     return {
-      label_mr: `${labels.icon} ${labels.mr}`,
-      label_hi: `${labels.icon} ${labels.hi}`,
-      label_en: `${labels.icon} ${labels.en}`,
+      label_mr: `${icon} ${formattedLabel}`,  // Temporary: will be resolved by narration layer
+      label_hi: `${icon} ${formattedLabel}`,  // via i18n_key lookup in observation_translations
+      label_en: `${icon} ${formattedLabel}`,
       observation_key: obs.observation_key,
       diagnostic_power: obs.diagnostic_power,
       confidence_boost: obs.confidence_boost,
       source_rule_id: obs.source_rule_ids[0],
-      icon: labels.icon
+      icon: icon,
+      i18n_key: `observation.${obs.observation_key.toLowerCase()}`  // For UI layer resolution
     };
   });
   
@@ -955,34 +919,49 @@ export function generateDiagnosticConfirmationOptions(
   // MANDATORY: Add "Take Photo" as FINAL option
   // HARD RULE: NEVER include "NONE_OF_THE_ABOVE"
   // Agronomic principle: If verbal confirmation fails, visual evidence is next step
+  // SSOT: Photo option uses i18n_key for UI layer resolution
   // ═══════════════════════════════════════════════════════════════════════════
   const photoOption: DiagnosticConfirmationOption = {
-    label_mr: '📷 फोटो काढा (तज्ञ विश्लेषणासाठी)',
-    label_hi: '📷 फोटो लें (विशेषज्ञ विश्लेषण के लिए)',
+    label_mr: '📷 Photo',  // Placeholder - resolved via i18n_key
+    label_hi: '📷 Photo',  // Placeholder - resolved via i18n_key
     label_en: '📷 Upload Photo (for expert analysis)',
     observation_key: 'PHOTO_REQUESTED',
     diagnostic_power: 'HIGH',
     confidence_boost: 0.30, // Photo provides high confidence
-    icon: '📷'
+    icon: '📷',
+    i18n_key: 'observation.photo_request'  // UI layer resolves translation
   };
   options.push(photoOption);
   
-  // Build trust-first question text (confirms cause, not restates problem)
+  // SSOT: Question text uses i18n_key - actual translations loaded by UI/narration layer
+  // from message_translations or observation_translations table
   const questionTexts = {
-    mr: '🔬 कारण ओळखण्यासाठी, खालीलपैकी काय दिसते ते सांगा:',
-    hi: '🔬 कारण पहचानने के लिए, नीचे में से क्या दिखता है बताएं:',
-    en: '🔬 To identify the cause, tell us which of these you observe:'
+    mr: 'question_placeholder',  // Resolved by narration layer
+    hi: 'question_placeholder',  // Resolved by narration layer
+    en: 'To identify the cause, tell us which of these you observe:',
+    i18n_key: 'clarification.diagnostic_confirmation_question'  // SSOT key
   };
   
   console.log(`   ✅ [DiagnosticConfirmation] Generated ${options.length} options (including photo)`);
   console.log(`      Photo option included=true, None_of_above=REMOVED`);
+  console.log(`      SSOT: Using i18n_keys for UI layer translation resolution`);
   
   return {
     question_mr: questionTexts.mr,
     question_hi: questionTexts.hi,
     question_en: questionTexts.en,
+    question_i18n_key: questionTexts.i18n_key,
     options,
     photo_option_included: true,
     hypotheses_count: candidates.length
   };
+}
+
+// Helper function to format observation code as human-readable label
+function formatObservationCode(code: string): string {
+  return code
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }
