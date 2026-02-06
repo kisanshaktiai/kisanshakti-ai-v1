@@ -1082,19 +1082,44 @@ serve(async (req) => {
     
     // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATION GATE: Prevent silent failures before saving response
+    // CRITICAL FIX: SKIP validation for non-decision response types
+    // Clarification and photo requests should NOT be validated as treatment outputs
     // ═══════════════════════════════════════════════════════════════════════════
     const decision_brain_source = true;
-    const validationResult = validateResponseBeforeSave({
-      decision_brain_source,
-      actions_returned,
-      responseContent,
-      orchestratorResponse,
-      traceId,
-      language: detectedLanguage as 'mr' | 'hi' | 'en'  // CRITICAL FIX: Pass explicit language
-    });
+    
+    // Determine if this is a decision response that requires validation
+    const isClarificationOrPhotoResponse = [
+      'CLARIFICATION_QUESTION', 
+      'PHOTO_REQUEST', 
+      'CLARIFICATION_NEEDED',
+      'NEEDS_CLARIFICATION'
+    ].includes(orchestratorResponse.type);
+    
+    const isDecisionResponse = orchestratorResponse.type === 'DECISION_PROVIDED';
+    
+    let validationResult = { passed: true, errors: [] as string[] };
+    
+    if (isDecisionResponse && !isClarificationOrPhotoResponse) {
+      // Only validate actual decision/treatment responses
+      validationResult = validateResponseBeforeSave({
+        decision_brain_source,
+        actions_returned,
+        responseContent,
+        orchestratorResponse,
+        traceId,
+        language: detectedLanguage as 'mr' | 'hi' | 'en'
+      });
+    } else if (isClarificationOrPhotoResponse) {
+      // CRITICAL FIX: Skip validation for clarification/photo responses
+      // These responses don't have actions and shouldn't be validated as treatment outputs
+      console.log(`🔐 [${traceId}] VALIDATION SKIPPED: Response type is ${orchestratorResponse.type}`);
+      console.log(`   Clarification responses don't require treatment validation`);
+    }
     
     console.log(`🔐 [${traceId}] ═══ RESPONSE VALIDATION GATE ═══`);
     console.log(`   Decision Brain Source: ${decision_brain_source}`);
+    console.log(`   Response Type: ${orchestratorResponse.type}`);
+    console.log(`   Is Clarification/Photo: ${isClarificationOrPhotoResponse}`);
     console.log(`   Actions Returned Count: ${actions_returned?.length || 0}`);
     console.log(`   Response Content Length: ${responseContent?.length || 0}`);
     console.log(`   LLM Model Used: ${aiModelUsed || 'template'}`);

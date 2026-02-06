@@ -168,6 +168,21 @@ const MARATHI_SYMPTOM_MAP: Record<string, SymbolMapping> = {
   'वाढ थांबली': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
   'ठिकठिकाणी मेले': { symbol: CanonicalSymptomSymbol.PATCHY_DEATH, confidence: 0.95 },
   'उगवण कमी': { symbol: CanonicalSymptomSymbol.POOR_GERMINATION, confidence: 0.90 },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Additional Marathi growth patterns (common farmer phrases)
+  // These patterns were causing symptoms=[] and blocking the symbolic brain
+  // ═══════════════════════════════════════════════════════════════════════════
+  'वाढ होत नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.95 },  // "Growth is not happening" - MOST COMMON
+  'वाढ नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },       // "No growth"
+  'वाढत नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },      // "Not growing"
+  'वाढ कमी': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },        // "Less growth"
+  'वाढ मंद': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },        // "Slow growth"
+  'मंद वाढ': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },        // "Slow growth" (reversed)
+  'खुंटलेली वाढ': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },   // "Stunted growth"
+  'वाढ खुंटली': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },     // "Growth stunted"
+  'वाढ झाली नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 }, // "Growth did not happen"
+  'वाढ रखडली': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },     // "Growth stalled"
 };
 
 // Hindi symptom patterns → English symbols
@@ -202,6 +217,19 @@ const HINDI_SYMPTOM_MAP: Record<string, SymbolMapping> = {
   // Plant-wide
   'पौधा मर गया': { symbol: CanonicalSymptomSymbol.PLANT_DEATH, confidence: 0.95 },
   'बढ़वार रुक गई': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Additional Hindi growth patterns (common farmer phrases)
+  // Ensures Hindi growth queries also trigger symbolic brain correctly
+  // ═══════════════════════════════════════════════════════════════════════════
+  'बढ़ नहीं रहा': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },   // "Not growing"
+  'वृद्धि नहीं': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },    // "No growth"
+  'धीमी वृद्धि': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },    // "Slow growth"
+  'बढ़वार रुकी': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },    // "Growth stopped"
+  'बढ़त नहीं': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },      // "No growth"
+  'बढ़ नहीं रहा है': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 }, // "Is not growing"
+  'विकास नहीं': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },     // "No development"
+  'विकास रुक गया': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 }, // "Development stopped"
 };
 
 // English symptom patterns → English symbols
