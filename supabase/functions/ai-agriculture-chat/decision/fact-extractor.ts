@@ -6,67 +6,19 @@
  * Converts farmer observations + authoritative state into structured symbolic
  * facts that can be evaluated by the rule engine.
  * 
- * VERSION: 1.0.0
+ * REFACTORED: Phase-1 SSOT Compliance
+ * - Removed hardcoded Marathi/Hindi/English symptom mappings
+ * - Now relies on pre-extracted canonical symptoms from Language Induction Layer
+ * - Language-agnostic logic for production readiness
+ * 
+ * VERSION: 2.0.0
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
 
-// ═══════════════════════════════════════════════════════════════════════════
-// SYMPTOM CANONICAL MAPPING
-// Maps multilingual symptoms to canonical symptom codes
-// ═══════════════════════════════════════════════════════════════════════════
-
-const SYMPTOM_CANONICAL_MAP: Record<string, string> = {
-  // Marathi symptoms
-  'पान पिवळी': 'LEAF_YELLOWING',
-  'पान वाळले': 'LEAF_DRYING',
-  'पान सुकले': 'LEAF_DRYING',
-  'पानावर डाग': 'LEAF_SPOTS',
-  'सुरळी वाळली': 'DEAD_HEART',
-  'मेले': 'PLANT_DEATH',
-  'मेला': 'PLANT_DEATH',
-  'वाळवी': 'TERMITE_SUSPECTED',
-  'गॅप': 'GAPS_IN_FIELD',
-  'उगवले नाही': 'GERMINATION_FAILURE',
-  'किडा': 'INSECT_VISIBLE',
-  'अळी': 'CATERPILLAR_VISIBLE',
-  'छिद्र': 'HOLES_VISIBLE',
-  'पांढरे': 'WHITE_SUBSTANCE',
-  
-  // Hindi symptoms
-  'पत्ता पीला': 'LEAF_YELLOWING',
-  'पत्ता सूखा': 'LEAF_DRYING',
-  'धब्बे': 'LEAF_SPOTS',
-  'गोभ सूखी': 'DEAD_HEART',
-  'मर गया': 'PLANT_DEATH',
-  'दीमक': 'TERMITE_SUSPECTED',
-  'उगा नहीं': 'GERMINATION_FAILURE',
-  'कीड़ा': 'INSECT_VISIBLE',
-  'इल्ली': 'CATERPILLAR_VISIBLE',
-  'छेद': 'HOLES_VISIBLE',
-  'सफेद': 'WHITE_SUBSTANCE',
-  
-  // English symptoms
-  'yellow leaves': 'LEAF_YELLOWING',
-  'yellowing': 'LEAF_YELLOWING',
-  'drying': 'LEAF_DRYING',
-  'dried': 'LEAF_DRYING',
-  'wilting': 'WILTING',
-  'wilted': 'WILTING',
-  'spots': 'LEAF_SPOTS',
-  'dead heart': 'DEAD_HEART',
-  'died': 'PLANT_DEATH',
-  'termite': 'TERMITE_SUSPECTED',
-  'gap': 'GAPS_IN_FIELD',
-  'germination': 'GERMINATION_FAILURE',
-  'insect': 'INSECT_VISIBLE',
-  'caterpillar': 'CATERPILLAR_VISIBLE',
-  'borer': 'BORER_SUSPECTED',
-  'holes': 'HOLES_VISIBLE',
-  'white': 'WHITE_SUBSTANCE'
-};
+export const FACT_EXTRACTOR_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FACT EXTRACTOR CLASS
@@ -83,13 +35,13 @@ export class FactExtractor {
     landState: AuthoritativeLandState | null,
     userQuery: string
   ): SymbolicFact {
-    console.log('📊 [FactExtractor] Extracting symbolic facts...');
+    console.log(`📊 [FactExtractor v${FACT_EXTRACTOR_VERSION}] Extracting symbolic facts...`);
     
     // 1. Core context facts (from authoritative sources)
     const coreFacts = this.extractCoreFacts(canonicalState, landState);
     
-    // 2. Symptom facts (from observations)
-    const symptomFacts = this.extractSymptomFacts(observation, canonicalState, userQuery);
+    // 2. Symptom facts (from canonical state - already extracted by Language Induction Layer)
+    const symptomFacts = this.extractSymptomFacts(observation, canonicalState);
     
     // 3. Environmental facts
     const envFacts = this.extractEnvironmentalFacts(landState);
@@ -147,20 +99,15 @@ export class FactExtractor {
   }
   
   /**
-   * Extract symptom facts from farmer observations
+   * Extract symptom facts from canonical state (already extracted by Language Induction Layer)
+   * SSOT-COMPLIANT: No language-specific keyword matching here
    */
   private extractSymptomFacts(
     observation: any,
-    canonicalState: CanonicalState,
-    userQuery: string
+    canonicalState: CanonicalState
   ): Pick<SymbolicFact, 'primary_symptom' | 'affected_part' | 'distribution' | 'severity' | 'progression'> {
-    // Try to get canonical symptom from observation or query
-    let primarySymptom = canonicalState.visual_symptom || 'UNKNOWN';
-    
-    // If still unknown, try to extract from user query
-    if (primarySymptom === 'UNKNOWN' || primarySymptom === 'NONE') {
-      primarySymptom = this.extractSymptomFromQuery(userQuery);
-    }
+    // Get canonical symptom from canonical state (already extracted by Language Induction Layer)
+    const primarySymptom = canonicalState.visual_symptom || observation?.primary_symptom || 'UNKNOWN';
     
     return {
       primary_symptom: primarySymptom,
@@ -169,21 +116,6 @@ export class FactExtractor {
       severity: observation?.severity || canonicalState.severity || 'unknown',
       progression: observation?.timing || 'unknown'
     };
-  }
-  
-  /**
-   * Extract symptom from user query using keyword matching
-   */
-  private extractSymptomFromQuery(query: string): string {
-    const queryLower = query.toLowerCase();
-    
-    for (const [keyword, canonical] of Object.entries(SYMPTOM_CANONICAL_MAP)) {
-      if (queryLower.includes(keyword.toLowerCase())) {
-        return canonical;
-      }
-    }
-    
-    return 'UNKNOWN';
   }
   
   /**
@@ -302,22 +234,6 @@ export class FactExtractor {
       data_completeness: dataCompleteness,
       risk_level: riskLevel
     };
-  }
-  
-  /**
-   * Map canonical symptom to standardized form
-   */
-  mapToCanonicalSymptom(symptom: string): string {
-    // Already canonical
-    if (symptom.toUpperCase() === symptom && symptom.includes('_')) {
-      return symptom;
-    }
-    
-    // Try to find in map
-    const mapped = SYMPTOM_CANONICAL_MAP[symptom.toLowerCase()];
-    if (mapped) return mapped;
-    
-    return symptom.toUpperCase().replace(/\s+/g, '_');
   }
 }
 

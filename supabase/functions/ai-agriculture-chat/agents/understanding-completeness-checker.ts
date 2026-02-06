@@ -9,6 +9,11 @@
  * Symbolically (WITHOUT LLM) evaluate if we have enough information
  * to proceed with diagnosis and prescription.
  * 
+ * REFACTORED: Phase-1 SSOT Compliance
+ * - Removed hardcoded Marathi/Hindi/English urgency keywords
+ * - Now uses pre-extracted urgency flags from Language Induction Layer
+ * - Language-agnostic vague term detection using canonical patterns
+ * 
  * RULES:
  * - Pure deterministic logic, no AI inference
  * - Returns structured result indicating what's missing
@@ -20,7 +25,7 @@
 
 import type { ObservationExtraction } from './observation-extractor.ts';
 
-export const UNDERSTANDING_CHECKER_VERSION = '1.0.0';
+export const UNDERSTANDING_CHECKER_VERSION = '2.0.0'; // SSOT-compliant version
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -133,57 +138,69 @@ const CRITICAL_FIELDS: CriticalFieldCheck[] = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
-// VAGUE SYMPTOM DETECTION - For Multi-Match Clarification
+// VAGUE SYMPTOM DETECTION - CANONICAL OBSERVATION CODES
+// Uses canonical pest/disease observation patterns, NOT language strings
 // ═══════════════════════════════════════════════════════════════════════════
 
-const VAGUE_PEST_TERMS = [
-  // Marathi
-  'किडे', 'किडा', 'रोग', 'समस्या', 'खराब', 'अळ्या', 'कीड',
-  // Hindi  
-  'कीड़े', 'कीड़ा', 'बीमारी', 'समस्या', 'खराब', 'सूंडी', 'कीट',
-  // English
-  'insects', 'insect', 'bugs', 'bug', 'pests', 'pest',
-  'disease', 'problem', 'issue', 'damage', 'worms', 'worm'
-];
+const VAGUE_OBSERVATION_CODES = new Set([
+  // Generic pest codes that need clarification
+  'INSECT_PRESENT',
+  'PEST_DAMAGE',
+  'INSECT_VISIBLE',
+  'CATERPILLAR_VISIBLE',
+  'LARVAE_VISIBLE',
+  
+  // Generic disease codes that need clarification
+  'DISEASE_SYMPTOM',
+  'LEAF_SPOTS',
+  'FUNGAL_GROWTH',
+  'WILT_DISEASE',
+  
+  // Generic stress codes
+  'UNKNOWN_PROBLEM',
+  'GENERAL_STRESS',
+  'VISUAL_DAMAGE'
+]);
 
 /**
  * Detects if symptoms are vague and need clarification to distinguish
  * between multiple possible diagnoses.
  * 
+ * SSOT-COMPLIANT: Uses canonical observation codes, not language strings
+ * 
  * Returns true if:
- * 1. A vague pest term is used (e.g., "किडे", "insects")
- * 2. Fewer than 2 distinguishing features are present (color, size, behavior, location)
+ * 1. A vague observation code is present
+ * 2. Fewer than 2 distinguishing features are present
  */
 export function detectSymptomAmbiguity(observations: ObservationExtraction): boolean {
-  const allText = (observations.raw_symptom_text || []).join(' ').toLowerCase();
-  
-  // Check if any vague term is present
-  const hasVagueTerm = VAGUE_PEST_TERMS.some(term => 
-    allText.includes(term.toLowerCase())
+  // Check if any extracted observation codes are vague
+  const observationCodes = observations.extracted_observations || [];
+  const hasVagueObservation = observationCodes.some(code => 
+    VAGUE_OBSERVATION_CODES.has(code.toUpperCase())
   );
   
-  if (!hasVagueTerm) {
-    return false; // Specific terms used - not ambiguous
+  if (!hasVagueObservation) {
+    return false; // Specific observation codes - not ambiguous
   }
   
-  // Vague term found - check for distinguishing features
-  const hasColor = /हिरव|काळ|पांढर|green|black|white|हरे|काले|सफेद|तपकिरी|brown|पीले|yellow/.test(allText);
-  const hasSize = /छोट|मोठ|small|large|बड़े|tiny|लहान/.test(allText);
-  const hasBehavior = /उड|उड्या|flying|jumping|उड़|रेंग|crawl|cluster|गुच्छ/.test(allText);
+  // Vague observation found - check for distinguishing features in canonical state
+  const hasColor = observations.color_mentioned && observations.color_mentioned.length > 0;
+  const hasSize = observations.size_mentioned !== undefined;
+  const hasBehavior = observations.behavior_mentioned !== undefined;
   const hasSpecificLocation = observations.affected_part !== 'unknown' && 
                               observations.affected_part !== 'whole' &&
                               observations.affected_part !== '';
-  const hasSecondarySymptom = /चिकट|sticky|honeydew|काळी भुकटी|mold|वाळ|wilt|छिद्र|hole/.test(allText);
+  const hasSecondarySymptom = observations.secondary_symptoms && observations.secondary_symptoms.length > 0;
   
   // Count distinguishing features
   const featureCount = [hasColor, hasSize, hasBehavior, hasSpecificLocation, hasSecondarySymptom]
     .filter(Boolean).length;
   
-  // Need at least 2 distinguishing features for vague terms
+  // Need at least 2 distinguishing features for vague observations
   const isAmbiguous = featureCount < 2;
   
   if (isAmbiguous) {
-    console.log(`   ⚠️ [AmbiguityDetector] Vague symptoms without distinguishing features`);
+    console.log(`   ⚠️ [AmbiguityDetector v${UNDERSTANDING_CHECKER_VERSION}] Vague observations without distinguishing features`);
     console.log(`      Features present: ${featureCount}/5 (color:${hasColor}, size:${hasSize}, behavior:${hasBehavior}, location:${hasSpecificLocation}, secondary:${hasSecondarySymptom})`);
   }
   
@@ -191,28 +208,35 @@ export function detectSymptomAmbiguity(observations: ObservationExtraction): boo
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CONTRADICTION DETECTION
+// CONTRADICTION DETECTION - USING CANONICAL FLAGS
 // ═══════════════════════════════════════════════════════════════════════════
 
 function detectContradictions(obs: ObservationExtraction): string[] {
   const contradictions: string[] = [];
-  const text = obs.raw_symptom_text.join(' ').toLowerCase();
   
-  // Contradiction: "healthy" + "dying"
-  if ((text.includes('healthy') || text.includes('चांगले') || text.includes('अच्छा')) &&
-      (text.includes('dying') || text.includes('मरत') || text.includes('मर रहा'))) {
+  // Use canonical flags from Language Induction Layer instead of language strings
+  const healthyFlag = obs.plant_healthy === true;
+  const dyingFlag = obs.plant_dying === true;
+  const noProblemFlag = obs.no_problem_mentioned === true;
+  const hasDamageObs = (obs.extracted_observations || []).some(code => 
+    code.includes('DAMAGE') || code.includes('DEATH') || code.includes('ATTACK')
+  );
+  const hasSeverity = obs.severity_words && obs.severity_words.length > 0;
+  const isJustStarted = obs.timing_just_started === true;
+  const isSevere = obs.severity_level === 'SEVERE' || obs.severity_level === 'CRITICAL';
+  
+  // Contradiction: healthy + dying
+  if (healthyFlag && dyingFlag) {
     contradictions.push('Contradictory: plant described as both healthy and dying');
   }
   
-  // Contradiction: "no problem" + symptom descriptions
-  if ((text.includes('no problem') || text.includes('काही नाही') || text.includes('कुछ नहीं')) &&
-      (obs.severity_words.length > 0 || text.includes('damage') || text.includes('attack'))) {
+  // Contradiction: "no problem" + damage observations
+  if (noProblemFlag && (hasDamageObs || hasSeverity)) {
     contradictions.push('Contradictory: says no problem but describes damage');
   }
   
   // Contradiction: "just started" + "very severe"
-  if ((text.includes('just started') || text.includes('नुकतेच') || text.includes('अभी शुरू')) &&
-      obs.severity_words.some(w => ['severe', 'भयंकर', 'गंभीर', 'बहुत'].includes(w.toLowerCase()))) {
+  if (isJustStarted && isSevere) {
     contradictions.push('Contradictory: just started but very severe (unusual progression)');
   }
   
@@ -256,26 +280,29 @@ function determineClarificationPriority(unknownFields: string[]): 'crop' | 'symp
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// URGENCY DETECTION - Keywords indicating critical/dying crop
+// URGENCY DETECTION - USING CANONICAL FLAGS
+// SSOT-COMPLIANT: Uses pre-extracted urgency flag, NOT language keywords
 // ═══════════════════════════════════════════════════════════════════════════
 
-const URGENCY_KEYWORDS = [
-  // Marathi - dying/dead
-  'मेला', 'मेले', 'मेलेला', 'मेलेले', 'मेलेली', 'मरतोय', 'मरतय',
-  // Hindi - dying/dead
-  'मर गया', 'मर रहा', 'मरने लगा', 'मर गई', 'मर गए',
-  // English
-  'dead', 'dying', 'died', 'killing', 'emergency', 'urgent', 'critical',
-  // Drying/wilting
-  'सुकतोय', 'सुकतय', 'वाळतोय', 'सूख रहा', 'मुरझा रहा',
-  'wilting', 'drying', 'withering'
-];
-
 function detectUrgency(observations: ObservationExtraction): boolean {
-  const allText = observations.raw_symptom_text.join(' ').toLowerCase();
+  // Use urgency flag from Language Induction Layer (already extracted)
+  if (observations.is_urgent === true) {
+    return true;
+  }
   
-  for (const keyword of URGENCY_KEYWORDS) {
-    if (allText.includes(keyword.toLowerCase())) {
+  // Check for terminal observation codes
+  const terminalCodes = new Set([
+    'PLANT_DEATH',
+    'SEEDLING_DEATH',
+    'CROP_DYING',
+    'WILT_TERMINAL',
+    'DRYING_SEVERE',
+    'WITHERING_SEVERE'
+  ]);
+  
+  const extractedCodes = observations.extracted_observations || [];
+  for (const code of extractedCodes) {
+    if (terminalCodes.has(code.toUpperCase())) {
       return true;
     }
   }
@@ -317,7 +344,7 @@ export function checkUnderstandingCompleteness(
   // Calculate completeness score as percentage
   const completenessScore = Math.round((totalScore / maxScore) * 100);
   
-  // Detect contradictions
+  // Detect contradictions using canonical flags
   const contradictions = detectContradictions(observations);
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -335,17 +362,17 @@ export function checkUnderstandingCompleteness(
   // LOWER threshold for urgent queries (dying crop = need immediate advice)
   if (isUrgent) {
     requiredThreshold = 50;
-    console.log('   ⚡ [UnderstandingChecker] URGENCY detected - lowering threshold to 50%');
+    console.log(`   ⚡ [UnderstandingChecker v${UNDERSTANDING_CHECKER_VERSION}] URGENCY detected - lowering threshold to 50%`);
   }
   // LOWER threshold if we have crop + symptom + distribution (enough for diagnosis)
   else if (hasCropAndSymptom && hasDistribution) {
     requiredThreshold = 55;
-    console.log('   ✅ [UnderstandingChecker] Sufficient context (crop+symptom+distribution) - lowering threshold to 55%');
+    console.log(`   ✅ [UnderstandingChecker] Sufficient context (crop+symptom+distribution) - lowering threshold to 55%`);
   }
   // LOWER threshold if we have crop + symptom (minimum for rule matching)
   else if (hasCropAndSymptom) {
     requiredThreshold = 60;
-    console.log('   ℹ️ [UnderstandingChecker] Basic context (crop+symptom) - lowering threshold to 60%');
+    console.log(`   ℹ️ [UnderstandingChecker] Basic context (crop+symptom) - lowering threshold to 60%`);
   }
   
   // Determine confidence level using ADAPTIVE threshold
@@ -358,9 +385,8 @@ export function checkUnderstandingCompleteness(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Force clarification for vague pest/disease symptoms
-  // This catches cases like "पानावर छोटे किडे दिसत आहेत" which pass the
-  // completeness threshold but need clarification to distinguish between
-  // aphids, whiteflies, thrips, jassids, etc.
+  // This catches cases with vague observations that need clarification to 
+  // distinguish between aphids, whiteflies, thrips, jassids, etc.
   // ═══════════════════════════════════════════════════════════════════════════
   if (!clarificationRequired && !isUrgent) {
     const isAmbiguous = detectSymptomAmbiguity(observations);
@@ -390,73 +416,7 @@ export function checkUnderstandingCompleteness(
     missing_for_diagnosis: missingForDiagnosis,
     completeness_score: completenessScore,
     clarification_priority: determineClarificationPriority(unknownCriticalFields),
-    diagnosis_rules_fired: false // Will be updated by orchestrator if rules fire
-  };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PRESCRIPTION GATE - BLOCKS ACTIONS IF UNDERSTANDING INSUFFICIENT
-// ═══════════════════════════════════════════════════════════════════════════
-
-export interface PrescriptionGateResult {
-  can_prescribe: boolean;
-  reason?: string;
-  allowed_actions: ('PRESCRIBE' | 'CLARIFY' | 'MONITOR' | 'ESCALATE')[];
-  blocked_because: string[];
-}
-
-export function checkPrescriptionGate(
-  understandingResult: UnderstandingCheckResult,
-  dataConfidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'UNKNOWN'
-): PrescriptionGateResult {
-  const blockedReasons: string[] = [];
-  const allowedActions: ('PRESCRIBE' | 'CLARIFY' | 'MONITOR' | 'ESCALATE')[] = [];
-  
-  // Check understanding confidence
-  const understandingLow = 
-    understandingResult.understanding_confidence === UnderstandingConfidence.VERY_LOW ||
-    understandingResult.understanding_confidence === UnderstandingConfidence.LOW;
-  
-  if (understandingLow) {
-    blockedReasons.push(`Understanding confidence is ${understandingResult.understanding_confidence}`);
-    allowedActions.push('CLARIFY');
-  }
-  
-  // Check data confidence
-  if (dataConfidence === 'LOW' || dataConfidence === 'UNKNOWN') {
-    blockedReasons.push(`Data confidence is ${dataConfidence}`);
-    if (!allowedActions.includes('CLARIFY')) {
-      allowedActions.push('CLARIFY');
-    }
-    allowedActions.push('MONITOR');
-  }
-  
-  // Check for contradictions
-  if (understandingResult.contradiction_detected.length > 0) {
-    blockedReasons.push(`Contradictions detected: ${understandingResult.contradiction_detected[0]}`);
-    if (!allowedActions.includes('CLARIFY')) {
-      allowedActions.push('CLARIFY');
-    }
-  }
-  
-  // Determine if prescription is allowed
-  const canPrescribe = blockedReasons.length === 0;
-  
-  if (canPrescribe) {
-    allowedActions.push('PRESCRIBE');
-    allowedActions.push('MONITOR');
-  }
-  
-  // Always allow escalation for complex cases
-  if (!canPrescribe && understandingResult.completeness_score > 30) {
-    allowedActions.push('ESCALATE');
-  }
-  
-  return {
-    can_prescribe: canPrescribe,
-    reason: blockedReasons.length > 0 ? blockedReasons.join('; ') : undefined,
-    allowed_actions: allowedActions,
-    blocked_because: blockedReasons
+    diagnosis_rules_fired: false // Will be set by the orchestrator after rule evaluation
   };
 }
 
@@ -466,7 +426,6 @@ export function checkPrescriptionGate(
 
 export default {
   checkUnderstandingCompleteness,
-  checkPrescriptionGate,
-  UnderstandingConfidence,
+  detectSymptomAmbiguity,
   UNDERSTANDING_CHECKER_VERSION
 };
