@@ -238,6 +238,102 @@ export function normalizeCropCode(cropName: string | undefined): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// DB-COMPATIBLE CROP CODE MAPPER
+// Converts between full names (SUGARCANE) and DB short codes (SC)
+// CRITICAL FIX: decision_rules table uses short codes (SC, CTN)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Maps full crop names to DB-compatible short codes used in decision_rules table
+ * @param cropCode Full crop name from Language Induction (e.g., "SUGARCANE")
+ * @returns DB-compatible short code (e.g., "SC") OR original if no mapping exists
+ */
+export function normalizeCropCodeForDB(cropCode: string | undefined): string {
+  if (!cropCode) return 'ALL';
+  
+  const normalized = cropCode.toUpperCase().trim();
+  
+  // Mapping from full names to DB short codes
+  const DB_CROP_CODE_MAP: Record<string, string> = {
+    // Full name → DB short code
+    'SUGARCANE': 'SC',
+    'COTTON': 'CTN',
+    'SOYBEAN': 'SOY',
+    'RICE': 'RICE',
+    'PADDY': 'RICE',
+    'WHEAT': 'WHT',
+    'MAIZE': 'MZ',
+    'CORN': 'MZ',
+    'TOMATO': 'TOM',
+    'ONION': 'ONI',
+    'CHILLI': 'CHI',
+    'CHILI': 'CHI',
+    'GROUNDNUT': 'GN',
+    'PEANUT': 'GN',
+    'TUR': 'TUR',
+    'PIGEON_PEA': 'TUR',
+    'GRAM': 'GRAM',
+    'CHICKPEA': 'GRAM',
+    'BANANA': 'BAN',
+    'GRAPE': 'GRP',
+    'POMEGRANATE': 'POM',
+    // Pass through short codes unchanged
+    'SC': 'SC',
+    'CTN': 'CTN',
+    'SOY': 'SOY',
+    'MZ': 'MZ',
+    'WHT': 'WHT',
+    'TOM': 'TOM',
+    'ONI': 'ONI',
+    'CHI': 'CHI',
+    'GN': 'GN',
+    'BAN': 'BAN',
+    'GRP': 'GRP',
+    'POM': 'POM',
+    'ALL': 'ALL'
+  };
+  
+  return DB_CROP_CODE_MAP[normalized] || normalized;
+}
+
+/**
+ * Get both DB and full crop codes for flexible matching
+ * Used when querying decision_rules which may have either format
+ * @param cropCode Input crop code in any format
+ * @returns Array of possible codes to match against
+ */
+export function getCropCodeVariants(cropCode: string | undefined): string[] {
+  if (!cropCode) return ['ALL'];
+  
+  const normalized = cropCode.toUpperCase().trim();
+  const dbCode = normalizeCropCodeForDB(normalized);
+  
+  // Return all possible variants for flexible matching
+  const variants = new Set<string>([normalized, dbCode, 'ALL']);
+  
+  // Add reverse mapping (if we have SC, also add SUGARCANE)
+  const REVERSE_MAP: Record<string, string> = {
+    'SC': 'SUGARCANE',
+    'CTN': 'COTTON',
+    'SOY': 'SOYBEAN',
+    'MZ': 'MAIZE',
+    'WHT': 'WHEAT',
+    'TOM': 'TOMATO',
+    'ONI': 'ONION',
+    'CHI': 'CHILLI',
+    'GN': 'GROUNDNUT',
+    'BAN': 'BANANA',
+    'GRP': 'GRAPE',
+    'POM': 'POMEGRANATE'
+  };
+  
+  if (REVERSE_MAP[normalized]) variants.add(REVERSE_MAP[normalized]);
+  if (REVERSE_MAP[dbCode]) variants.add(REVERSE_MAP[dbCode]);
+  
+  return Array.from(variants);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PEST CODE MAPPINGS
 // ═══════════════════════════════════════════════════════════════════════════
 
