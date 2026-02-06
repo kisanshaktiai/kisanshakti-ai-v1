@@ -112,7 +112,9 @@ import {
   normalizePestCode, 
   normalizeDiseaseCode, 
   normalizeSeverity,
-  normalizeCropStage 
+  normalizeCropStage,
+  normalizeCropCodeForDB,  // NEW: DB-compatible crop code normalizer
+  getCropCodeVariants      // NEW: Get all possible crop code variants for matching
 } from './type-mappers.ts';
 
 // P0-C: Import entity code mapper for unified code normalization before rule engine
