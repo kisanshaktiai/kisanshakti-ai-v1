@@ -1,781 +1,392 @@
 
-
-# Critical Bug Fix Plan: SSOT-Compliant Symbolic Decision Brain
+# Deep Forensic Audit: Symbolic Decision Brain - Root Cause Analysis & Production Fix
 
 ## Executive Summary
 
-After deep forensic analysis of the codebase and database schema, I have identified that the system has **partial SSOT compliance** but contains critical violations that cause:
+After comprehensive analysis of the logs, database, and codebase, I have identified **5 interconnected root causes** that prevent the symbolic decision brain from working correctly for common Marathi farmer queries like "उसाची वाढ होत नाही" (sugarcane not growing).
 
-1. **Edge Function Timeouts** - LLM JSON parsing failure breaks the pipeline
-2. **Hardcoded Regional Text** - Clarification options and diagnostic labels bypass database translations
-3. **Wrong Induction Gate Logic** - Allows symbolic brain execution with 0 symptoms
+## Log Analysis - The Failure Sequence
 
-The `decision_rules` table already contains the correct data architecture:
-- `observable_characteristics` - Array of observation codes per rule (crop+stage specific)
-- `differentiating_questions` - JSON with `question_id`, `mr`, `hi`, `en` translations, `information_gain`
-- `conditions_json.symptom` - Symptom arrays for rule matching
+```text
+1. INPUT: "उसाची वाढ होत नाही"
+2. CROP DETECTED: SUGARCANE ✓ (उसाची → उस → SUGARCANE)
+3. SYMPTOMS EXTRACTED: [] ❌ (ZERO!)
+4. UNMAPPED TOKENS: "वाढ, होत, नाही" ❌
+5. SYMBOL COVERAGE: 25% (only crop symbol mapped)
+6. INDUCTION GATE: BLOCKED (coverage OK but symptoms=0)
+7. CLARIFICATION PATH TRIGGERED
+8. VALIDATION GATE: FAILED (wrong validation applied to clarification)
+9. FALLBACK: "Technical issue" message shown
+```
 
-The `observation_translations` table provides multilingual display text for observation codes.
+## Root Cause Analysis
 
-**The fix is NOT to add more hardcoded text, but to properly USE the existing database structure.**
+### ROOT CAUSE #1: Missing Marathi Symptom Mappings (CRITICAL)
 
----
+**Location:** `language-induction-layer.ts` lines 129-171
 
-## Current Database Architecture (SSOT)
+**Current MARATHI_SYMPTOM_MAP:**
+```typescript
+'वाढ थांबली': { symbol: STUNTED_GROWTH, confidence: 0.90 }  // Only this exists
+```
+
+**MISSING Patterns (common farmer phrases):**
+```typescript
+'वाढ होत नाही'   // "Growth is not happening" - MOST COMMON
+'वाढ नाही'       // "No growth"
+'वाढत नाही'      // "Not growing"  
+'वाढ कमी'        // "Less growth"
+'वाढ मंद'        // "Slow growth"
+```
+
+**Evidence:** These patterns already exist in `failure-class-detector.ts` (lines 119-132) but were never added to the Language Induction Layer.
+
+### ROOT CAUSE #2: Intent Classifier Returns UNKNOWN_OBSERVATION
+
+**Location:** `intent-classifier.ts` - LLM response parsing
+
+**Log Evidence:**
+```text
+⚠️ [SafeExtract] No valid JSON found in LLM response
+🎯 Intent: UNKNOWN_OBSERVATION (0%)
+⚠️ LLM returned non-JSON - forcing clarification flow
+```
+
+**Issue:** The LLM sometimes returns natural language instead of JSON. The `safeExtractJson()` function fails to recover the intent, defaulting to `UNKNOWN_OBSERVATION` with 0% confidence.
+
+**Impact:** When intent confidence is 0%, the system lacks understanding of what the farmer is asking about, leading to generic clarification.
+
+### ROOT CAUSE #3: Validation Gate Applied to Clarification Responses
+
+**Location:** `index.ts` lines 1083-1123
+
+**Issue:** The validation gate at line 1087 sets `decision_brain_source = true` unconditionally, then validates ALL responses as if they were treatment recommendations:
+
+```typescript
+const decision_brain_source = true;  // ALWAYS true
+const validationResult = validateResponseBeforeSave({...});  // Validates everything
+
+if (!validationResult.passed) {
+  // Generates "technical issue" fallback even for CLARIFICATION_QUESTION
+  responseContent = generateValidationFailureFallback(...);
+}
+```
+
+**Impact:** When the orchestrator correctly generates a `CLARIFICATION_QUESTION` response, the validation gate:
+1. Checks for `actions_returned` (empty for clarification - correct!)
+2. Checks for recommendation keywords (not present in clarification - correct!)
+3. FAILS validation and generates "technical issue" fallback instead
+
+### ROOT CAUSE #4: SSOT Fallback Not Generating Proper Clarification
+
+**Location:** `orchestrator.ts` - SSOT clarification generation
+
+When the induction gate blocks the symbolic brain (symptoms=0), the orchestrator should:
+1. Query `decision_rules.observable_characteristics` for the crop/stage
+2. Query `observation_translations` for localized display text
+3. Return a proper `CLARIFICATION_QUESTION` with options
+
+**Current Issue:** The generated clarification response is missing required fields:
+- `question.text_mr` / `text_hi` / `text_en` - The localized question text
+- `question.options` - Array of observation options from database
+
+**Impact:** `getResponseContent()` at line 2334 tries to read `response.question?.text_mr` but finds it empty, falling back to `generateClarificationPrompt()` which may also fail validation.
+
+### ROOT CAUSE #5: Crop Code Normalization Mismatch
+
+**Location:** Multiple files - crop code handling
+
+**Issue:** Database uses different crop code formats:
+- `decision_rules.crop_code`: `SC`, `CTN`, `SOY`
+- `observation_translations`: References by observation_code, not crop
+- Language Induction: Produces `SUGARCANE`, not `SC`
+
+**Impact:** When querying `decision_rules` for observable characteristics using `SUGARCANE`, no rules match because the database has `SC`.
+
+## Data Flow Diagram - Current (Broken)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          decision_rules (SSOT)                              │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ rule_id: SC_PEST_EARLY_SHOOT_BORER_006                                      │
-│ crop_code: SC                                                               │
-│ stage_applicable: [TILLERING, GERMINATION]                                  │
-│ cause: Early Shoot Borer                                                    │
-│                                                                             │
-│ observable_characteristics: [                                               │
-│   "DEAD_HEART_PRESENT",                                                     │
-│   "LARVAE_PRESENT",                                                         │
-│   "STEM_BORING_MARKS"                                                       │
-│ ]                                                                           │
-│                                                                             │
-│ differentiating_questions: [                                                │
-│   {                                                                         │
-│     "question_id": "DEADHEART_CHECK",                                       │
-│     "mr": "मधली सुरळी वाळली आहे का?",                                        │
-│     "hi": "बीच की पत्ती मुरझाई है?",                                         │
-│     "en": "Is the central whorl wilted (dead heart)?",                      │
-│     "information_gain": 0.95,                                               │
-│     "discriminates_from": ["TERMITE", "WATERLOGGING"]                       │
-│   }                                                                         │
-│ ]                                                                           │
+│                    FARMER: "उसाची वाढ होत नाही"                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
-                                    │ observation_code JOIN
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                      observation_translations                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│ observation_code: LEAF_YELLOWING                                            │
-│ language_code: mr → display_text: "पाने पिवळी"                              │
-│ language_code: hi → display_text: "पत्ते पीले"                               │
-│ language_code: en → display_text: "Leaf yellowing"                          │
+│ LANGUAGE INDUCTION LAYER                                                    │
+│                                                                             │
+│  MARATHI_SYMPTOM_MAP.contains("वाढ होत नाही")? → NO ❌                       │
+│  MARATHI_SYMPTOM_MAP.contains("वाढ थांबली")? → NO (different phrase)        │
+│                                                                             │
+│  Result: symptoms = [], crop = SUGARCANE                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ INDUCTION GATE                                                              │
+│                                                                             │
+│  hasSymptoms = symptoms.length >= 1 → FALSE                                 │
+│  shouldRunSymbolicBrain = hasSymptoms && (coverage || symbols) → FALSE      │
+│                                                                             │
+│  ⚠️ BLOCKING symbolic brain - forcing clarification                         │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ SSOT FALLBACK CLARIFICATION                                                 │
+│                                                                             │
+│  Query decision_rules WHERE crop_code = 'SUGARCANE' → NO MATCH (uses 'SC')  │
+│  Result: Empty options, missing question text                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ INDEX.TS VALIDATION GATE                                                    │
+│                                                                             │
+│  decision_brain_source = true (hardcoded)                                   │
+│  actions_returned = [] (empty - correct for clarification)                  │
+│  Check 2: FAIL - "decision_output has recommendations but actions empty"    │
+│                                                                             │
+│  ❌ VALIDATION FAILED → Generate "technical issue" fallback                 │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ FARMER SEES: "तांत्रिक समस्या आली" (Technical issue occurred)               │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Comprehensive Fix Implementation
 
-## Bug Analysis with SSOT Lens
+### FIX 1: Add Missing Marathi Growth Symptom Patterns
 
-### BUG #1: Unguarded JSON.parse() in Intent Classifier
+**File:** `language-induction-layer.ts`
 
-**File:** `agents/intent-classifier.ts` (line 134)
+Add to MARATHI_SYMPTOM_MAP (after line 171):
 
 ```typescript
-// CURRENT (BREAKS)
-const parsed = JSON.parse(cleanContent);
+// Growth/Stunting patterns - CRITICAL for farmer queries
+'वाढ होत नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.95 },
+'वाढ नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
+'वाढत नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
+'वाढ कमी': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },
+'वाढ मंद': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },
+'मंद वाढ': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },
+'खुंटलेली वाढ': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
+
+// Hindi equivalents
+'बढ़ नहीं रहा': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
+'वृद्धि नहीं': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
+'धीमी वृद्धि': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },
+'बढ़वार रुकी': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },
 ```
 
-**Impact:** LLM returns `"Here is the classification..."` → SyntaxError → 0% confidence fallback → pipeline corruption
+### FIX 2: Skip Validation Gate for Non-Decision Response Types
 
-**FIX:** Add safe JSON extraction with regex fallback (NO language text involved)
+**File:** `index.ts`
 
----
-
-### BUG #2: Induction Gate Allows Symbolic Brain with 0 Symptoms
-
-**File:** `agents/language-induction-layer.ts` (line 621)
+Modify lines 1083-1095 to skip validation for clarification/photo responses:
 
 ```typescript
-// CURRENT (WRONG)
-return result.symbol_coverage >= minCoverage || result.total_symbols_extracted >= 1;
-// A crop symbol alone (SUGARCANE) passes this gate!
-```
+// ═══════════════════════════════════════════════════════════════════════════
+// VALIDATION GATE: SKIP for non-decision response types
+// Clarification and photo requests should NOT be validated as treatment outputs
+// ═══════════════════════════════════════════════════════════════════════════
+const isDecisionResponse = orchestratorResponse.type === 'DECISION_PROVIDED';
+const isClarificationOrPhoto = ['CLARIFICATION_QUESTION', 'PHOTO_REQUEST', 
+                                'CLARIFICATION_NEEDED'].includes(orchestratorResponse.type);
 
-**Impact:** `symptoms=[]` but `total_symbols_extracted=1` (crop) → symbolic brain runs → 0 rules match → timeout
+let validationResult = { passed: true, errors: [] };
 
-**FIX:** Require `symptoms.length >= 1` for symbolic brain activation
-
----
-
-### BUG #3: DIAGNOSTIC_OBSERVATION_LABELS Hardcoded in hypothesis-evaluator.ts
-
-**File:** `decision/hypothesis-evaluator.ts` (lines 764-837)
-
-```typescript
-// CURRENT (SSOT VIOLATION)
-const DIAGNOSTIC_OBSERVATION_LABELS: Record<string, { mr: string; hi: string; en: string; icon: string }> = {
-  'DEAD_HEART_PRESENT': {
-    mr: 'मधली सुरळी सुकलेली / ओढल्यास बाहेर येते',  // ❌ HARDCODED
-    hi: 'बीच की पत्ती सूखी / खींचने पर निकल जाती है',  // ❌ HARDCODED
-    en: 'Central whorl dried / pulls out easily',
-    icon: '🔴'
-  },
-  // ... 12 more hardcoded entries
-};
-```
-
-**FIX:** Replace with database lookup from `observation_translations` table
-
----
-
-### BUG #4: DIFFERENTIAL_PATTERNS Hardcoded in differential-diagnosis-clarifier.ts
-
-**File:** `decision/differential-diagnosis-clarifier.ts` (lines 115-500)
-
-```typescript
-// CURRENT (SSOT VIOLATION)
-const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
-  'LEAF_YELLOWING': {
-    differentiating_questions: [
-      {
-        question_mr: 'पिवळेपणा आधी कोणत्या पानांवर आला...',  // ❌ HARDCODED
-        question_hi: 'पीलापन पहले किन पत्तियों पर आया...',   // ❌ HARDCODED
-        // ...
-      }
-    ]
-  }
-};
-```
-
-**DATABASE REALITY:** `decision_rules.differentiating_questions` ALREADY has this data with `mr`, `hi`, `en` translations!
-
-**FIX:** Load differential questions from `decision_rules.differentiating_questions` at runtime
-
----
-
-### BUG #5: getDefaultClarificationOptions Hardcoded in generic-multi-match-detector.ts
-
-**File:** `agents/generic-multi-match-detector.ts` (lines 599-622)
-
-```typescript
-// CURRENT (SSOT VIOLATION)
-function getDefaultClarificationOptions(language: 'mr' | 'hi' | 'en'): string[] {
-  if (language === 'mr') {
-    return [
-      '🐛 छोटे किडे दिसतात',          // ❌ HARDCODED
-      '🍂 पाने पिवळी/वाळलेली दिसतात', // ❌ HARDCODED
-      // ...
-    ];
-  }
+if (isDecisionResponse && !isClarificationOrPhoto) {
+  const decision_brain_source = true;
+  validationResult = validateResponseBeforeSave({
+    decision_brain_source,
+    actions_returned,
+    responseContent,
+    orchestratorResponse,
+    traceId,
+    language: detectedLanguage as 'mr' | 'hi' | 'en'
+  });
+} else if (isClarificationOrPhoto) {
+  console.log(`🔐 [${traceId}] VALIDATION SKIPPED: Response type is ${orchestratorResponse.type}`);
 }
 ```
 
-**FIX:** Load from `observation_translations` table using canonical observation codes
+### FIX 3: Normalize Crop Codes for Database Queries
 
----
+**File:** `orchestrator.ts`
 
-## Implementation Plan (SSOT-Compliant)
-
-### Phase 1: Fix JSON Parsing (No Language Involved)
-
-**File:** `agents/intent-classifier.ts`
+Add crop code normalization utility and use it in SSOT fallback:
 
 ```typescript
-/**
- * Safely extract JSON from LLM output that may contain non-JSON preamble
- * This is pure parsing logic - NO language strings involved
- */
-function safeExtractJson(content: string): { intent_code: string; confidence: number } | null {
-  if (!content || typeof content !== 'string') return null;
-  
-  // Clean markdown fences
-  let cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-  
-  // Strategy 1: Direct parse
-  try {
-    return JSON.parse(cleaned);
-  } catch { /* continue */ }
-  
-  // Strategy 2: Find JSON object in mixed content
-  const jsonMatch = cleaned.match(/\{[\s\S]*?"intent_code"[\s\S]*?\}/);
-  if (jsonMatch) {
-    try {
-      return JSON.parse(jsonMatch[0]);
-    } catch { /* continue */ }
-  }
-  
-  // LLM returned plain text - signal for clarification
-  return null;
+// Crop code normalization map (SUGARCANE → SC, etc.)
+const CROP_CODE_MAP: Record<string, string> = {
+  'SUGARCANE': 'SC',
+  'COTTON': 'CTN',
+  'SOYBEAN': 'SOY',
+  'RICE': 'RICE',
+  'WHEAT': 'WHT',
+  'MAIZE': 'MZ',
+  // Add more as needed
+};
+
+function normalizeCropCodeForDB(inductionCropCode: string): string {
+  const upper = inductionCropCode?.toUpperCase() || '';
+  return CROP_CODE_MAP[upper] || upper;
 }
 
-// Update line 134
-const parsed = safeExtractJson(cleanContent);
+// In SSOT fallback section, use normalized code:
+const dbCropCode = normalizeCropCodeForDB(inductionResult.crop?.symbol || 'SC');
+
+const { data: topRules } = await this.supabase
+  .from('decision_rules')
+  .select('observable_characteristics')
+  .eq('is_active', true)
+  .or(`crop_code.eq.${dbCropCode},crop_code.eq.all,crop_code.eq.ALL`)
+  .contains('stage_applicable', [growthStage.toUpperCase()])
+  .not('observable_characteristics', 'is', null)
+  .limit(10);
+```
+
+### FIX 4: Ensure SSOT Clarification Has Proper Structure
+
+**File:** `orchestrator.ts`
+
+When generating SSOT fallback clarification, ensure all required fields are populated:
+
+```typescript
+// Build complete clarification response structure
+const clarificationQuestion = {
+  question_id: `ssot_clarify_${Date.now()}`,
+  // CRITICAL: Populate localized question text
+  text_mr: 'तुमच्या पिकात खालीलपैकी काय दिसते?',
+  text_hi: 'आपकी फसल में निम्नलिखित में से क्या दिख रहा है?',
+  text_en: 'What do you see in your crop?',
+  i18n_key: 'clarification.what_do_you_see',
+  options: clarificationOptions.map(opt => ({
+    value: opt.observation_code,
+    label: `${opt.icon} ${opt.display_text}`,
+    observation_key: opt.observation_code
+  })),
+  source: 'DECISION_RULES_SSOT'
+};
+
+return {
+  type: 'CLARIFICATION_QUESTION',
+  session_id: sessionId,
+  question: clarificationQuestion,
+  metadata: {
+    confidence: 0.3,
+    safety_status: 'NEEDS_CLARIFICATION',
+    rules_applied: 0,
+    // ... rest of metadata
+  }
+};
+```
+
+### FIX 5: Add Fallback Intent Classification for Growth Queries
+
+**File:** `intent-classifier.ts`
+
+Add keyword-based fallback when LLM fails to return JSON:
+
+```typescript
+// After safeExtractJson returns null, try keyword-based fallback
 if (!parsed) {
-  console.warn(`   ⚠️ [IntentClassifier] LLM returned non-JSON - forcing clarification`);
+  console.warn(`   ⚠️ LLM JSON extraction failed - trying keyword fallback`);
+  
+  const messageLower = farmerMessage.toLowerCase();
+  
+  // Growth-related keywords → GROWTH_ANOMALY
+  const growthKeywords = ['वाढ', 'growth', 'बढ़', 'stunted', 'slow', 'नाही', 'नहीं'];
+  if (growthKeywords.some(kw => messageLower.includes(kw))) {
+    console.log(`   📋 Keyword fallback: GROWTH_ANOMALY detected`);
+    return { intent_code: 'GROWTH_ANOMALY', confidence: 0.6 };
+  }
+  
+  // Pest keywords → PEST_PRESENCE_VISIBLE
+  const pestKeywords = ['किडे', 'कीड़े', 'insect', 'pest', 'bug', 'अळी', 'इल्ली'];
+  if (pestKeywords.some(kw => messageLower.includes(kw))) {
+    return { intent_code: 'PEST_PRESENCE_VISIBLE', confidence: 0.6 };
+  }
+  
+  // Default: Unknown with low confidence
   return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.0 };
 }
 ```
 
----
-
-### Phase 2: Fix Induction Gate (Symptom Requirement)
-
-**File:** `agents/language-induction-layer.ts`
-
-```typescript
-/**
- * Check if induction result has sufficient coverage for rule evaluation
- * SSOT PRINCIPLE: Symbolic brain requires SYMPTOMS, not just crop detection
- */
-export function hasMinimumCoverage(
-  result: LanguageInductionResult, 
-  minCoverage: number = 0.3
-): boolean {
-  // FIX: A crop symbol alone is NOT sufficient for rule matching
-  // We must have at least 1 symptom to run the symbolic brain
-  const hasSymptoms = result.symptoms.length >= 1;
-  const hasSufficientCoverage = result.symbol_coverage >= minCoverage;
-  
-  return hasSymptoms && (hasSufficientCoverage || result.total_symbols_extracted >= 2);
-}
-```
-
-**File:** `agents/orchestrator.ts` (around line 2103)
-
-```typescript
-// Add explicit symptom gate
-const hasSymptoms = inductionResult.symptoms.length > 0;
-const effectiveShouldRunSymbolic = shouldRunSymbolicBrain && hasSymptoms;
-
-if (!hasSymptoms && shouldRunSymbolicBrain) {
-  console.log(`\n⚠️ [INDUCTION_GATE] Blocking symbolic: coverage=${inductionResult.symbol_coverage.toFixed(2)} but symptoms=0`);
-  console.log(`   → Crop detected: ${inductionResult.crop?.symbol || 'NONE'}`);
-  console.log(`   → Forcing CLARIFICATION path (no symptoms = no rules)`);
-}
-```
-
----
-
-### Phase 3: Create Database Observation Loader (SSOT)
-
-**File:** `supabase/functions/ai-agriculture-chat/i18n/observation-label-loader.ts` (NEW)
-
-```typescript
-/**
- * ═══════════════════════════════════════════════════════════════════════════
- * OBSERVATION LABEL LOADER - SSOT-COMPLIANT
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Loads observation display labels from observation_translations table.
- * Falls back to formatted English code if translation missing.
- * NEVER returns hardcoded regional text.
- */
-
-export const OBSERVATION_LOADER_VERSION = '1.0.0';
-
-// Icon mapping (visual symbols are language-neutral)
-const OBSERVATION_ICONS: Record<string, string> = {
-  'LEAF_YELLOWING': '🍂',
-  'LEAF_WILTING': '🥀',
-  'INSECTS_VISIBLE': '🐛',
-  'LARVAE_PRESENT': '🐛',
-  'STEM_BORING_MARKS': '🕳️',
-  'DEAD_HEART_PRESENT': '💀',
-  'DEAD_HEART': '💀',
-  'STUNTED_PLANTS': '📉',
-  'STUNTED_GROWTH': '📉',
-  'SLOW_GROWTH': '📉',
-  'FIELD_WATERLOGGED': '💧',
-  'SOIL_TOO_DRY': '🏜️',
-  'ROOT_ROTTED': '🪵',
-  'LEAF_SPOTS': '🦠',
-  'POOR_TILLERING': '🌾',
-  'PHOTO_REQUEST': '📷'
-};
-
-export interface ObservationLabel {
-  observation_code: string;
-  display_text: string;
-  description_text: string;
-  icon: string;
-}
-
-/**
- * Load observation labels from database for given codes and language
- * SSOT: All display text comes from observation_translations table
- */
-export async function loadObservationLabels(
-  supabaseClient: any,
-  observationCodes: string[],
-  language: 'mr' | 'hi' | 'en'
-): Promise<Map<string, ObservationLabel>> {
-  console.log(`📖 [ObservationLoader] Loading ${observationCodes.length} labels in ${language}`);
-  
-  const labelMap = new Map<string, ObservationLabel>();
-  
-  try {
-    const { data: translations, error } = await supabaseClient
-      .from('observation_translations')
-      .select('observation_code, display_text, description_text')
-      .in('observation_code', observationCodes.map(c => c.toUpperCase()))
-      .eq('language_code', language);
-    
-    if (error) {
-      console.error(`   ❌ DB error: ${error.message}`);
-    }
-    
-    // Build map from database results
-    for (const code of observationCodes) {
-      const upperCode = code.toUpperCase();
-      const translation = translations?.find(
-        t => t.observation_code.toUpperCase() === upperCode
-      );
-      const icon = OBSERVATION_ICONS[upperCode] || '❓';
-      
-      if (translation) {
-        labelMap.set(upperCode, {
-          observation_code: upperCode,
-          display_text: translation.display_text,
-          description_text: translation.description_text || '',
-          icon
-        });
-      } else {
-        // Fallback: Format code as English words (NOT hardcoded regional text)
-        labelMap.set(upperCode, {
-          observation_code: upperCode,
-          display_text: formatCodeAsLabel(upperCode),
-          description_text: '',
-          icon
-        });
-      }
-    }
-    
-    console.log(`   ✅ Loaded ${labelMap.size} labels from database`);
-    
-  } catch (err) {
-    console.error(`   ❌ Exception: ${err}`);
-  }
-  
-  return labelMap;
-}
-
-/**
- * Format observation code as human-readable label
- * STUNTED_GROWTH → Stunted Growth (English only - SSOT compliant)
- */
-function formatCodeAsLabel(code: string): string {
-  return code
-    .replace(/_/g, ' ')
-    .split(' ')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-    .join(' ');
-}
-```
-
----
-
-### Phase 4: Replace Hardcoded DIAGNOSTIC_OBSERVATION_LABELS
-
-**File:** `decision/hypothesis-evaluator.ts`
-
-**REMOVE:** Lines 764-837 (the hardcoded `DIAGNOSTIC_OBSERVATION_LABELS` dictionary)
-
-**REPLACE:** With database lookup function:
-
-```typescript
-import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
-
-/**
- * Get diagnostic observation label from database
- * SSOT: All display text from observation_translations table
- */
-async function getDiagnosticObservationLabel(
-  supabaseClient: any,
-  observationKey: string,
-  language: 'mr' | 'hi' | 'en'
-): Promise<{ text: string; icon: string } | null> {
-  const labels = await loadObservationLabels(supabaseClient, [observationKey], language);
-  const label = labels.get(observationKey.toUpperCase());
-  
-  if (label) {
-    return {
-      text: `${label.icon} ${label.display_text}`,
-      icon: label.icon
-    };
-  }
-  
-  return null;
-}
-```
-
-**UPDATE:** `generateDiagnosticConfirmationOptions()` function to use database lookup:
-
-```typescript
-export async function generateDiagnosticConfirmationOptions(
-  candidates: CandidateHypothesis[],
-  language: 'mr' | 'hi' | 'en' = 'mr',
-  maxOptions: number = 5,
-  supabaseClient: any  // NEW: Pass Supabase client
-): Promise<DiagnosticConfirmationResult> {
-  
-  // Collect all unique observation keys from candidates
-  const allObsKeys: string[] = [];
-  for (const candidate of candidates) {
-    for (const char of candidate.observable_characteristics) {
-      const key = char.observation_key.toUpperCase();
-      if (!allObsKeys.includes(key)) {
-        allObsKeys.push(key);
-      }
-    }
-  }
-  
-  // SSOT: Load labels from database (single batch query)
-  const labelMap = await loadObservationLabels(supabaseClient, allObsKeys, language);
-  
-  // Build options using database labels
-  const options: DiagnosticConfirmationOption[] = [];
-  // ... rest of logic using labelMap instead of hardcoded dictionary
-}
-```
-
----
-
-### Phase 5: Replace Hardcoded DIFFERENTIAL_PATTERNS
-
-**File:** `decision/differential-diagnosis-clarifier.ts`
-
-**CHANGE:** Load `differentiating_questions` from `decision_rules` table instead of hardcoded patterns.
-
-**Current hardcoded structure:**
-```typescript
-const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = { ... };
-```
-
-**New database-driven approach:**
-
-```typescript
-/**
- * Load differential diagnosis questions from decision_rules table
- * SSOT: differentiating_questions column has mr/hi/en translations
- */
-async function loadDifferentialQuestionsFromDB(
-  supabaseClient: any,
-  cropCode: string,
-  growthStage: string,
-  symptomCodes: string[]
-): Promise<DifferentialQuestion[]> {
-  
-  console.log(`📖 [DiffDiag] Loading questions from DB for ${cropCode}/${growthStage}`);
-  
-  // Query rules that have differentiating_questions for this crop/stage
-  const { data: rules, error } = await supabaseClient
-    .from('decision_rules')
-    .select('rule_id, cause, differentiating_questions')
-    .eq('is_active', true)
-    .or(`crop_code.eq.${cropCode.toUpperCase()},crop_code.eq.all`)
-    .contains('stage_applicable', [growthStage.toUpperCase()])
-    .not('differentiating_questions', 'is', null)
-    .neq('differentiating_questions', '[]')
-    .limit(20);
-  
-  if (error) {
-    console.error(`   ❌ DB error: ${error.message}`);
-    return [];
-  }
-  
-  // Extract questions with highest information_gain
-  const questions: DifferentialQuestion[] = [];
-  
-  for (const rule of rules || []) {
-    const ruleQuestions = rule.differentiating_questions || [];
-    for (const q of ruleQuestions) {
-      if (q.question_id && q.mr && q.en) {
-        questions.push({
-          question_id: q.question_id,
-          question_mr: q.mr,
-          question_hi: q.hi || q.en,  // Fallback to English if Hindi missing
-          question_en: q.en,
-          information_gain: q.information_gain || 0.5,
-          discriminates_from: q.discriminates_from || [],
-          source_rule_id: rule.rule_id
-        });
-      }
-    }
-  }
-  
-  // Sort by information_gain and deduplicate by question_id
-  const uniqueQuestions = new Map<string, DifferentialQuestion>();
-  for (const q of questions.sort((a, b) => b.information_gain - a.information_gain)) {
-    if (!uniqueQuestions.has(q.question_id)) {
-      uniqueQuestions.set(q.question_id, q);
-    }
-  }
-  
-  console.log(`   ✅ Loaded ${uniqueQuestions.size} unique questions from ${rules?.length || 0} rules`);
-  
-  return Array.from(uniqueQuestions.values());
-}
-```
-
----
-
-### Phase 6: Replace getDefaultClarificationOptions
-
-**File:** `agents/generic-multi-match-detector.ts`
-
-**REMOVE:** Lines 599-622 (the hardcoded `getDefaultClarificationOptions` function)
-
-**REPLACE:** With database-driven function:
-
-```typescript
-import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
-
-// Default observation codes for generic clarification (canonical symbols)
-const DEFAULT_CLARIFICATION_CODES = [
-  'INSECTS_VISIBLE',
-  'LEAF_YELLOWING',
-  'LEAF_SPOTS',
-  'PHOTO_REQUEST'
-];
-
-/**
- * Get default clarification options from database
- * SSOT: All display text from observation_translations table
- */
-async function getDefaultClarificationOptionsFromDB(
-  supabaseClient: any,
-  language: 'mr' | 'hi' | 'en'
-): Promise<string[]> {
-  const labelMap = await loadObservationLabels(
-    supabaseClient, 
-    DEFAULT_CLARIFICATION_CODES, 
-    language
-  );
-  
-  const options: string[] = [];
-  for (const code of DEFAULT_CLARIFICATION_CODES) {
-    const label = labelMap.get(code.toUpperCase());
-    if (label) {
-      options.push(`${label.icon} ${label.display_text}`);
-    }
-  }
-  
-  // Always include photo option (loaded from DB)
-  const photoLabel = labelMap.get('PHOTO_REQUEST');
-  if (!photoLabel) {
-    // Hardcoded photo icon is acceptable (universal symbol)
-    options.push('📷 Send photo');
-  }
-  
-  return options;
-}
-```
-
----
-
-### Phase 7: Add Mandatory Fallback Clarification (SSOT-Compliant)
-
-**File:** `agents/orchestrator.ts`
-
-Add at the end of orchestration, before final return:
-
-```typescript
-// ═══════════════════════════════════════════════════════════════════════════
-// MANDATORY FALLBACK: Generate clarification from decision_rules
-// when zero rules matched and no primary decision exists
-// ═══════════════════════════════════════════════════════════════════════════
-
-const rulesApplied = decisionOutput.rules_applied?.length || 0;
-const hasPrimaryDecision = !!(decisionOutput.primary_decision?.rule_id);
-
-if (rulesApplied === 0 && !hasPrimaryDecision) {
-  console.warn(`\n⚠️ [MANDATORY_FALLBACK] No rules matched - generating SSOT clarification`);
-  
-  const cropCode = landContext?.current_crop?.toUpperCase() || 'SC';
-  const growthStage = landContext?.growth_stage?.toUpperCase() || 'TILLERING';
-  const language = (options.language as 'mr' | 'hi' | 'en') || 'mr';
-  
-  // SSOT: Load top observable_characteristics for this crop/stage from decision_rules
-  const { data: topRules } = await this.supabase
-    .from('decision_rules')
-    .select('observable_characteristics')
-    .eq('is_active', true)
-    .or(`crop_code.eq.${cropCode},crop_code.eq.all`)
-    .contains('stage_applicable', [growthStage])
-    .not('observable_characteristics', 'is', null)
-    .limit(10);
-  
-  // Extract unique observation codes
-  const obsCodesSet = new Set<string>();
-  for (const rule of topRules || []) {
-    const chars = rule.observable_characteristics;
-    if (Array.isArray(chars)) {
-      chars.slice(0, 3).forEach((c: string) => obsCodesSet.add(c.toUpperCase()));
-    }
-  }
-  
-  // Limit to top 4 + photo
-  const obsCodes = Array.from(obsCodesSet).slice(0, 4);
-  obsCodes.push('PHOTO_REQUEST');
-  
-  // SSOT: Load translations from observation_translations table
-  const { loadObservationLabels } = await import('../i18n/observation-label-loader.ts');
-  const labelMap = await loadObservationLabels(this.supabase, obsCodes, language);
-  
-  // Build options array
-  const clarificationOptions = obsCodes.map(code => {
-    const label = labelMap.get(code);
-    return {
-      value: code,
-      label: label ? `${label.icon} ${label.display_text}` : code
-    };
-  });
-  
-  // SSOT: Load question text from message_translations or use i18n_key
-  return {
-    type: 'CLARIFICATION_QUESTION',
-    session_id: sessionId,
-    question: {
-      question_id: `fallback_clarify_${Date.now()}`,
-      i18n_key: 'clarification.zero_symptoms_detected',
-      options: clarificationOptions,
-      source: 'DECISION_RULES_SSOT'
-    },
-    metadata: {
-      confidence: 0.3,
-      safety_status: 'NEEDS_CLARIFICATION',
-      rules_applied: 0,
-      processing_time_ms: Date.now() - startTime,
-      agents_used: [...agentsUsed, 'MANDATORY_FALLBACK'],
-      trace_id: traceId,
-      fallback_reason: 'ZERO_RULES_ZERO_SYMPTOMS',
-      ssot_source: 'decision_rules.observable_characteristics'
-    }
-  };
-}
-```
-
----
-
-### Phase 8: Seed Missing Observation Translations
-
-**SQL to run:** Add missing translations for frequently used observation codes
-
-```sql
--- Add missing observation translations
-INSERT INTO observation_translations (observation_code, language_code, display_text, description_text) VALUES
-  -- English
-  ('INSECTS_VISIBLE', 'en', 'Insects visible', 'Small insects visible on plant'),
-  ('LARVAE_PRESENT', 'en', 'Larvae visible', 'Caterpillar or grub larvae present'),
-  ('STEM_BORING_MARKS', 'en', 'Bore holes in stem', 'Entry/exit holes visible on stem'),
-  ('SLOW_GROWTH', 'en', 'Slow growth', 'Plant growing slower than expected'),
-  ('FIELD_WATERLOGGED', 'en', 'Waterlogged field', 'Standing water in field'),
-  ('SOIL_TOO_DRY', 'en', 'Dry soil', 'Soil is very dry'),
-  ('POOR_TILLERING', 'en', 'Poor tillering', 'Less tillers than expected'),
-  ('PHOTO_REQUEST', 'en', 'Send photo', 'Take and send a photo'),
-  
-  -- Marathi
-  ('INSECTS_VISIBLE', 'mr', 'किडे दिसतात', 'रोपावर लहान किडे दिसतात'),
-  ('LARVAE_PRESENT', 'mr', 'अळ्या दिसतात', 'पोंग्यात किंवा मुळांजवळ अळ्या'),
-  ('STEM_BORING_MARKS', 'mr', 'खोडात छिद्र', 'खोडावर छिद्र दिसते'),
-  ('SLOW_GROWTH', 'mr', 'वाढ मंद', 'पीक अपेक्षेपेक्षा कमी वाढते'),
-  ('FIELD_WATERLOGGED', 'mr', 'पाणी साचले', 'शेतात पाणी साचलेले'),
-  ('SOIL_TOO_DRY', 'mr', 'माती कोरडी', 'माती खूप कोरडी आहे'),
-  ('POOR_TILLERING', 'mr', 'कमी फुटवे', 'अपेक्षेपेक्षा कमी फुटवे'),
-  ('PHOTO_REQUEST', 'mr', 'फोटो पाठवा', 'प्रभावित भागाचा फोटो काढा'),
-  
-  -- Hindi
-  ('INSECTS_VISIBLE', 'hi', 'कीड़े दिखते हैं', 'पौधे पर छोटे कीड़े दिखते हैं'),
-  ('LARVAE_PRESENT', 'hi', 'इल्ली दिखती है', 'तने या जड़ों के पास इल्ली'),
-  ('STEM_BORING_MARKS', 'hi', 'तने में छेद', 'तने पर छेद दिखता है'),
-  ('SLOW_GROWTH', 'hi', 'धीमी वृद्धि', 'फसल अपेक्षा से कम बढ़ रही'),
-  ('FIELD_WATERLOGGED', 'hi', 'पानी भरा', 'खेत में पानी जमा है'),
-  ('SOIL_TOO_DRY', 'hi', 'मिट्टी सूखी', 'मिट्टी बहुत सूखी है'),
-  ('POOR_TILLERING', 'hi', 'कम कल्ले', 'अपेक्षा से कम कल्ले'),
-  ('PHOTO_REQUEST', 'hi', 'फोटो भेजें', 'प्रभावित हिस्से की फोटो लें')
-ON CONFLICT (observation_code, language_code) DO NOTHING;
-```
-
----
-
 ## Files to Modify
 
-| File | Action | Purpose |
-|------|--------|---------|
-| `agents/intent-classifier.ts` | MODIFY | Add `safeExtractJson()` for robust LLM parsing |
-| `agents/language-induction-layer.ts` | MODIFY | Fix `hasMinimumCoverage()` to require symptoms |
-| `agents/orchestrator.ts` | MODIFY | Add symptom gate + SSOT fallback clarification |
-| `decision/hypothesis-evaluator.ts` | MODIFY | Remove hardcoded labels, use DB loader |
-| `decision/differential-diagnosis-clarifier.ts` | MODIFY | Load questions from `decision_rules` table |
-| `agents/generic-multi-match-detector.ts` | MODIFY | Use DB loader for default options |
-| `i18n/observation-label-loader.ts` | CREATE | SSOT label loader utility |
+| File | Priority | Changes |
+|------|----------|---------|
+| `language-induction-layer.ts` | P0 | Add 11 Marathi/Hindi growth symptom patterns |
+| `index.ts` | P0 | Skip validation gate for CLARIFICATION_QUESTION |
+| `orchestrator.ts` | P0 | Add crop code normalization + fix SSOT clarification structure |
+| `intent-classifier.ts` | P1 | Add keyword fallback for common patterns |
 
----
-
-## SSOT Data Flow (After Fix)
+## Expected Outcome After Fix
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                         FARMER QUERY                                        │
-│                  "उसाची वाढ होत नाही" (Sugarcane not growing)               │
+│                    FARMER: "उसाची वाढ होत नाही"                              │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ INTENT CLASSIFIER (safeExtractJson)                                         │
-│ → LLM returns "Here is..." → Regex extracts JSON → intent_code: UNKNOWN     │
-│ → confidence: 0.0 → Signals clarification needed                            │
+│ LANGUAGE INDUCTION LAYER (FIXED)                                            │
+│                                                                             │
+│  MARATHI_SYMPTOM_MAP.contains("वाढ होत नाही")? → YES ✓                       │
+│  → { symbol: STUNTED_GROWTH, confidence: 0.95 }                             │
+│                                                                             │
+│  Result: symptoms = [STUNTED_GROWTH], crop = SUGARCANE                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ LANGUAGE INDUCTION (Symptom Check)                                          │
-│ → Crop: SUGARCANE ✓                                                         │
-│ → Stage: TILLERING ✓                                                        │
-│ → Symptoms: [] (ZERO!)                                                      │
-│ → hasMinimumCoverage() returns FALSE → Blocks symbolic brain                │
+│ INDUCTION GATE                                                              │
+│                                                                             │
+│  hasSymptoms = symptoms.length >= 1 → TRUE ✓                                │
+│  shouldRunSymbolicBrain = hasSymptoms && coverage → TRUE ✓                  │
+│                                                                             │
+│  ✅ PASSING to Symbolic Decision Brain                                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ CLARIFICATION PATH (SSOT-Driven)                                            │
+│ SYMBOLIC DECISION BRAIN                                                     │
 │                                                                             │
-│ 1. Query decision_rules WHERE crop_code='SC' AND stage='TILLERING'          │
-│    → Get observable_characteristics: [LEAF_YELLOWING, INSECTS_VISIBLE, ...] │
+│  Query: crop_code=SC, symptoms=[STUNTED_GROWTH], stage=SEEDLING            │
+│  Matches: SC_PEST_EARLY_SHOOT_BORER, SC_STRESS_WATERLOGGING, etc.          │
 │                                                                             │
-│ 2. Query observation_translations WHERE observation_code IN (...) AND       │
-│    language_code='mr'                                                       │
-│    → Get display_text: "पाने पिवळी", "किडे दिसतात", ...                       │
-│                                                                             │
-│ 3. Return CLARIFICATION_QUESTION with database-sourced options              │
+│  ✅ Rules matched - generating diagnosis/clarification                      │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ FARMER SEES (in Marathi, from database):                                    │
+│ FARMER SEES: Relevant diagnostic question OR treatment advice              │
 │                                                                             │
-│ "तुमच्या पिकात खालीलपैकी काय दिसते?"                                         │
-│                                                                             │
-│ ○ 🍂 पाने पिवळी                                                             │
-│ ○ 🐛 किडे दिसतात                                                            │
-│ ○ 📉 वाढ मंद                                                                │
+│ "तुमच्या ऊस पिकात वाढ मंद आहे. खालीलपैकी काय दिसते?"                         │
+│ ○ 🔴 मधली सुरळी वाळलेली (Dead heart)                                        │
+│ ○ 🐛 खोडात छिद्र दिसते (Stem boring)                                        │
+│ ○ 💧 पाणी साचलेले (Waterlogging)                                            │
 │ ○ 📷 फोटो पाठवा                                                             │
-│                                                                             │
-│ [All text from observation_translations table - ZERO hardcoded strings]     │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Testing Strategy
 
-## Success Criteria
+1. **Unit Test:** Query "उसाची वाढ होत नाही" → verify `symptoms = [STUNTED_GROWTH]`
+2. **Integration Test:** End-to-end with same query → verify NO "technical issue" fallback
+3. **Regression Test:** Verify existing symptom patterns still work
+4. **Database Test:** Query `decision_rules` with `SC` crop code → verify rules match
+5. **Validation Test:** Verify CLARIFICATION_QUESTION bypasses validation gate
+
+## Success Metrics
 
 | Metric | Before | After |
 |--------|--------|-------|
-| Hardcoded MR/HI in hypothesis-evaluator.ts | 12 entries | 0 (DB-driven) |
-| Hardcoded MR/HI in differential-diagnosis-clarifier.ts | 400+ lines | 0 (DB-driven) |
-| Hardcoded MR/HI in generic-multi-match-detector.ts | 12 lines | 0 (DB-driven) |
-| JSON parse failures causing timeout | Yes | No (safe extraction) |
-| Symbolic brain runs with 0 symptoms | Yes | No (gate blocks) |
-| Clarification source | Hardcoded | decision_rules + observation_translations |
-| Edge Function timeout rate | Intermittent | 0% |
-
----
-
-## Testing Strategy
-
-1. **JSON Parse Test:** Mock LLM returning "Here is the analysis..." → verify clarification (not timeout)
-2. **Zero Symptom Test:** Send "उसाची वाढ होत नाही" → verify clarification options from DB
-3. **SSOT Audit:** Grep modified files for Devanagari → must return 0 matches in logic files
-4. **DB Translation Test:** Query observation_translations for test codes → verify all 3 languages exist
-5. **End-to-End Test:** Complete farmer query → response in < 10 seconds with DB-sourced text
-
+| "वाढ होत नाही" symptom extraction | 0% | 100% |
+| Technical issue fallback rate | High | 0% |
+| Symbolic brain activation rate | Low | High |
+| SSOT clarification quality | Missing text | Complete structure |
+| Response time | Timeout risk | < 10 seconds |
