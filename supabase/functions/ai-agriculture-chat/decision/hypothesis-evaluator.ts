@@ -288,11 +288,24 @@ function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] 
       console.log('   [ExtractObs] Skipping empty object {}');
       return [];
     }
-    // If object has observation_key, treat as single item
+    
+    // CASE 1: Object with observation_key field → treat as single item
     if (raw.observation_key) {
       raw = [raw];
-    } else {
-      // Unknown object structure, skip
+    }
+    // CASE 2: Legacy format {symptom_name: true, another_symptom: true}
+    // Database stores observable_characteristics as: {dead_heart: true, central_shoot_dried: true}
+    // We need to convert this to: ["DEAD_HEART", "CENTRAL_SHOOT_DRIED"]
+    else if (keys.some(k => typeof raw[k] === 'boolean')) {
+      console.log(`   [ExtractObs] Converting legacy boolean object format with ${keys.length} keys: ${keys.slice(0, 5).join(', ')}`);
+      // Convert {dead_heart: true, stem_hollow: true} → ["DEAD_HEART", "STEM_HOLLOW"]
+      raw = keys
+        .filter(k => raw[k] === true)
+        .map(k => k.toUpperCase().replace(/[\s-]/g, '_'));
+      console.log(`   [ExtractObs] Converted to array: [${raw.slice(0, 3).join(', ')}${raw.length > 3 ? '...' : ''}]`);
+    }
+    // CASE 3: Unknown object structure, skip
+    else {
       console.log('   [ExtractObs] Skipping unknown object structure:', keys.slice(0, 3));
       return [];
     }
