@@ -185,44 +185,16 @@ export async function classifyFarmerIntent(
     const parsed = safeExtractJson(content);
     
     if (!parsed) {
-      console.warn(`   ⚠️ LLM JSON extraction failed - trying keyword fallback`);
-      
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL FIX: Keyword-based fallback for common agricultural patterns
-      // When LLM fails to return JSON, detect intent from keywords
+      // LANGUAGE-AGNOSTIC ARCHITECTURE: No hardcoded keywords
+      // If LLM fails to return valid JSON, we return UNKNOWN and let downstream
+      // layers (hypothesis-evaluator, clarification-generator) handle it.
+      // This ensures scalability to ANY language without code changes.
       // ═══════════════════════════════════════════════════════════════════════════
-      const messageLower = farmerMessage.toLowerCase();
+      console.warn(`   ⚠️ LLM JSON extraction failed - returning UNKNOWN_OBSERVATION`);
+      console.log(`   📋 Architecture: LLM-first design means no hardcoded keyword fallbacks`);
+      console.log(`   📋 Downstream clarification layer will ask farmer for more details`);
       
-      // Growth-related keywords → GROWTH_ANOMALY (most common failure case)
-      const growthKeywords = ['वाढ', 'growth', 'बढ़', 'stunted', 'slow', 'नाही', 'नहीं', 'होत', 'रहा', 'धीमी', 'मंद', 'खुंटली'];
-      if (growthKeywords.some(kw => messageLower.includes(kw))) {
-        console.log(`   📋 Keyword fallback: GROWTH_ANOMALY detected from growth patterns`);
-        return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.6 };
-      }
-      
-      // Pest-related keywords → PEST_PRESENCE_VISIBLE
-      const pestKeywords = ['किडे', 'कीड़े', 'insect', 'pest', 'bug', 'अळी', 'इल्ली', 'किडा', 'कीड़ा'];
-      if (pestKeywords.some(kw => messageLower.includes(kw))) {
-        console.log(`   📋 Keyword fallback: PEST_PRESENCE_VISIBLE detected`);
-        return { intent_code: 'PEST_PRESENCE_VISIBLE' as IntentCode, confidence: 0.6 };
-      }
-      
-      // Yellowing/color keywords → COLOR_CHANGE
-      const colorKeywords = ['पिवळ', 'पीला', 'yellow', 'brown', 'तपकिरी', 'रंग'];
-      if (colorKeywords.some(kw => messageLower.includes(kw))) {
-        console.log(`   📋 Keyword fallback: COLOR_CHANGE detected`);
-        return { intent_code: 'COLOR_CHANGE' as IntentCode, confidence: 0.6 };
-      }
-      
-      // Wilting keywords → WILTING_OR_DROOPING
-      const wiltKeywords = ['wilting', 'drooping', 'वाळले', 'सुकले', 'मुरझा', 'सूखा'];
-      if (wiltKeywords.some(kw => messageLower.includes(kw))) {
-        console.log(`   📋 Keyword fallback: WILTING_OR_DROOPING detected`);
-        return { intent_code: 'WILTING_OR_DROOPING' as IntentCode, confidence: 0.6 };
-      }
-      
-      // Default fallback - still unknown
-      console.warn(`   ⚠️ No keyword patterns matched - returning UNKNOWN_OBSERVATION`);
       return {
         intent_code: 'UNKNOWN_OBSERVATION' as IntentCode,
         confidence: 0.0

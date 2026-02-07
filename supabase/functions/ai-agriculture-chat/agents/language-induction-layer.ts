@@ -1,17 +1,41 @@
 /**
- * Language Induction Layer v2.0
+ * ═══════════════════════════════════════════════════════════════════════════
+ * LANGUAGE INDUCTION LAYER v3.0 — DEPRECATED LEGACY FALLBACK
+ * ═══════════════════════════════════════════════════════════════════════════
  * 
- * PURPOSE: Always produce a stable list of canonical English symbols 
- * with confidence from multilingual farmer input.
+ * ⚠️  WARNING: THIS MODULE IS DEPRECATED AND SHOULD NOT BE EXTENDED
  * 
- * PRINCIPLES:
+ * ARCHITECTURAL DECISION (2024):
+ * The system now uses LLM-FIRST architecture for language understanding.
+ * The LLM (via semantic-extractor.ts and intent-classifier.ts) is the 
+ * PRIMARY source of intent and symptom extraction.
+ * 
+ * This module is kept ONLY for:
+ * 1. Backward compatibility with existing code paths
+ * 2. Offline fallback scenarios
+ * 3. Symbol enum definitions (CanonicalSymptomSymbol, etc.)
+ * 
+ * DO NOT:
+ * - Add new language keywords to the MARATHI_SYMPTOM_MAP or HINDI_SYMPTOM_MAP
+ * - Use this as the primary extraction mechanism
+ * - Extend the keyword dictionaries for "coverage"
+ * 
+ * Instead, ALL language understanding should flow through:
+ * semantic-extractor.ts → intent-classifier.ts → intent-resolver.ts
+ * 
+ * The LLM understands ANY language without hardcoded dictionaries.
+ * 
+ * PRINCIPLES (still valid for the symbol enums):
  * 1. English-only symbolic core - all output symbols are English enums
  * 2. Symbol coverage tracking - reports what % of input was mapped
  * 3. Aggregated confidence - independent of intent confidence
  * 4. Deterministic mapping - same input always produces same symbols
+ * 
+ * @version 3.0.0 - Deprecated keyword dictionaries, LLM-first architecture
+ * @deprecated Use semantic-extractor.ts for language understanding
  */
 
-export const LANGUAGE_INDUCTION_VERSION = '2.0.0';
+export const LANGUAGE_INDUCTION_VERSION = '3.0.0';
 
 // ============================================================================
 // CANONICAL SYMBOL ENUMS (English-only core)
