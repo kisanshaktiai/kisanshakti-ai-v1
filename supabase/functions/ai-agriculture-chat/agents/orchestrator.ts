@@ -2524,49 +2524,69 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // P0 FIX: QUERY-BASED PROBLEM KEYWORD FALLBACK
-      // When induction layer misses symptoms but farmer's message contains problem keywords,
-      // inject a generic symptom to trigger diagnosis-first mode
+      // LANGUAGE-AGNOSTIC ARCHITECTURE: LLM-First Symptom Fallback
+      // 
+      // OLD APPROACH (REMOVED): Hardcoded Marathi/Hindi/English keywords
+      // This was NOT scalable - required manual maintenance for each language.
+      // 
+      // NEW APPROACH: If induction layer returns no symptoms but NLU detected
+      // an agricultural problem intent (anything other than UNKNOWN_OBSERVATION),
+      // inject a generic symptom to trigger diagnosis-first mode.
+      // 
+      // This is LANGUAGE-AGNOSTIC because:
+      // 1. LLM understands ANY language the farmer uses
+      // 2. LLM maps farmer's concern to canonical intent_code
+      // 3. We use intent_code (not keywords) to determine if diagnosis is needed
+      // 4. No hardcoded regional language patterns required
       // ═══════════════════════════════════════════════════════════════════════════
       if (allObservationsForPreAuth.size === 0 && landContext && landContext.current_crop) {
-        const problemKeywords = [
-          // Marathi - drying/wilting/death
-          'वाळला', 'वाळले', 'वाळलेला', 'सुकला', 'सुकले', 'सुकलेला',
-          'मेला', 'मेले', 'मेलेला', 'मरतोय', 'खराब', 'समस्या',
-          // Marathi - pests/disease
-          'किडा', 'किडे', 'कीड', 'रोग', 'बुरशी',
-          // Marathi - colors indicating problems
-          'पिवळे', 'पिवळा', 'पिवळी', 'तपकिरी', 'काळा', 'काळे',
-          // Hindi equivalents
-          'सूखा', 'सूख गया', 'मर गया', 'मर रहा', 'खराब', 'समस्या',
-          'कीड़ा', 'कीड़े', 'रोग', 'पीला', 'पीले',
-          // English
-          'dying', 'died', 'dead', 'dried', 'drying', 'wilted', 'wilting',
-          'pest', 'insect', 'disease', 'problem', 'yellow', 'brown'
+        // Get intent from semantic extraction (LLM-based, language-agnostic)
+        const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
+        
+        // Define agricultural problem intents that should trigger diagnosis
+        const agriculturalProblemIntents = [
+          'PEST_PRESENCE_VISIBLE',
+          'DISEASE_LIKE_PATTERN', 
+          'WILTING_OR_DROOPING',
+          'COLOR_CHANGE',
+          'LEAF_DAMAGE_VISIBLE',
+          'LEAF_MARKS_OR_SPOTS',
+          'STEM_DAMAGE',
+          'ROOT_OR_BASE_PROBLEM',
+          'GROWTH_ANOMALY',
+          'WATER_STRESS_SIGNAL',
+          'NUTRIENT_STRESS_SIGNAL',
+          'EMERGENCE_FAILURE',
+          'UNEVEN_FIELD_PATTERN',
+          'YIELD_OR_OUTPUT_ISSUE'
         ];
         
-        const messageText = farmerMessage.toLowerCase();
-        const matchedKeyword = problemKeywords.find(kw => messageText.includes(kw.toLowerCase()));
-        
-        if (matchedKeyword) {
-          console.log(`\n🔧 [P0 FIX] Query contains problem keyword "${matchedKeyword}" but induction missed it`);
-          console.log(`   Injecting UNKNOWN_SYMPTOM to trigger diagnosis-first mode`);
+        if (agriculturalProblemIntents.includes(intentCode)) {
+          console.log(`\n🔧 [LLM-First Fallback] Intent ${intentCode} indicates agricultural problem`);
+          console.log(`   Injecting symptom based on LLM-detected intent (language-agnostic)`);
           
-          // Inject a generic symptom based on keyword type
-          let fallbackSymptom = 'UNKNOWN_SYMPTOM';
-          if (['वाळला', 'वाळले', 'सुकला', 'सुकले', 'सूखा', 'सूख गया', 'dried', 'drying'].some(k => matchedKeyword.includes(k))) {
-            fallbackSymptom = 'LEAF_DRYING';
-          } else if (['मेला', 'मेले', 'मर गया', 'died', 'dead', 'dying'].some(k => matchedKeyword.includes(k))) {
-            fallbackSymptom = 'PLANT_DEATH';
-          } else if (['पिवळे', 'पिवळा', 'पीला', 'पीले', 'yellow'].some(k => matchedKeyword.includes(k))) {
-            fallbackSymptom = 'LEAF_YELLOWING';
-          } else if (['किडा', 'किडे', 'कीड़ा', 'pest', 'insect'].some(k => matchedKeyword.includes(k))) {
-            fallbackSymptom = 'SMALL_INSECTS_VISIBLE';
-          }
+          // Map intent to appropriate symptom code
+          const intentToSymptom: Record<string, string> = {
+            'PEST_PRESENCE_VISIBLE': 'SMALL_INSECTS_VISIBLE',
+            'DISEASE_LIKE_PATTERN': 'FUNGAL_GROWTH',
+            'WILTING_OR_DROOPING': 'LEAF_WILTING',
+            'COLOR_CHANGE': 'LEAF_YELLOWING',
+            'LEAF_DAMAGE_VISIBLE': 'LEAF_HOLES',
+            'LEAF_MARKS_OR_SPOTS': 'LEAF_SPOTS',
+            'STEM_DAMAGE': 'STEM_BORER_DAMAGE',
+            'ROOT_OR_BASE_PROBLEM': 'ROOT_ROT',
+            'GROWTH_ANOMALY': 'STUNTED_GROWTH',
+            'WATER_STRESS_SIGNAL': 'WATER_STRESS',
+            'NUTRIENT_STRESS_SIGNAL': 'NUTRIENT_DEFICIENCY',
+            'EMERGENCE_FAILURE': 'POOR_GERMINATION',
+            'UNEVEN_FIELD_PATTERN': 'PATCHY_DEATH',
+            'YIELD_OR_OUTPUT_ISSUE': 'POOR_YIELD'
+          };
           
+          const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
           allObservationsForPreAuth.add(fallbackSymptom);
-          agentsUsed.push('P0_KEYWORD_FALLBACK');
-          console.log(`   Injected: ${fallbackSymptom}`);
+          agentsUsed.push('LLM_INTENT_FALLBACK');
+          console.log(`   Injected: ${fallbackSymptom} (from LLM intent: ${intentCode})`);
         }
       }
       
