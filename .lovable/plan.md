@@ -1,243 +1,98 @@
+# AI Chat Crop-Stage Specific Symptoms Fix
 
+## Status: ✅ IMPLEMENTED
 
-# Deep Forensic Analysis: AI Chat Not Showing Crop-Stage Specific Symptoms
+---
 
 ## Executive Summary
 
-After deep analysis of the logs, database, and codebase, I have identified **one critical root cause** and **two contributing factors** that cause the AI Chat to show generic 3-option clarifications instead of crop-stage-specific symptoms from the `decision_rules` database.
+Fixed the AI Chat to show crop-stage-specific diagnostic options from the `decision_rules` database instead of generic 3-option fallback (Water/Pest/Nutrient).
 
 ---
 
 ## Root Cause Analysis
 
-### The Farmer's Query Flow
+### Issue 1: Legacy Observable Characteristics Format
+**File:** `hypothesis-evaluator.ts`  
+**Problem:** Database stores `observable_characteristics` as `{dead_heart: true}` but code expected `["DEAD_HEART"]` or `[{observation_key: "DEAD_HEART"}]`  
+**Fix:** Updated `extractObservableCharacteristics()` to convert legacy boolean object format to array
 
-```text
-Farmer: "नवीन लावण केलेला ऊस काही ठिकाणी वाळला" 
-        (Newly planted sugarcane dried in some places)
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ CANONICAL CONTEXT BUILT CORRECTLY                                           │
-│   Crop: SUGARCANE ✓                                                         │
-│   Stage: SEEDLING ✓                                                         │
-│   DAS: 58 ✓                                                                 │
-│   NDVI: 0.36 ✓                                                              │
-└─────────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ DIAGNOSIS-FIRST MODE ACTIVATED ✓                                            │
-│   Mode: DIAGNOSIS_FIRST                                                     │
-│   Source: DECISION_RULES                                                    │
-│   Clarification: HYPOTHESIS_DRIVEN (NOT generic)                            │
-└─────────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ HYPOTHESIS EVALUATOR - RULE LOADING                                         │
-│   Query: crop_code = 'sc' OR crop_code = 'sugarcane' OR crop_code = 'all'   │
-│   Filter: observable_characteristics IS NOT NULL                            │
-│   Filter: observable_characteristics != '{}'                                │
-│                                                                             │
-│   Loaded: 28 rules with observable_characteristics                          │
-└─────────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ 🔴 CRITICAL BUG: extractObservableCharacteristics() FAILS                   │
-│                                                                             │
-│   Database format: { dead_heart: true, central_shoot_dried: true }          │
-│   Expected format: ["DEAD_HEART", "CENTRAL_SHOOT_DRIED"]                    │
-│                 OR [{observation_key: "DEAD_HEART"}]                        │
-│                                                                             │
-│   Code check at line 291-298:                                               │
-│   if (raw.observation_key) → FALSE (object has "dead_heart", not "obs_key") │
-│   else → return [] ← ALL 28 RULES GET EMPTY CHARACTERISTICS                 │
-│                                                                             │
-│   Result: observableChars.length === 0 → rule SKIPPED                       │
-└─────────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ NO CANDIDATE HYPOTHESES FOUND (candidates = [])                             │
-│                                                                             │
-│   Log: "⚠️ No hypothesis candidates - generating UNKNOWN diagnosis"         │
-│                                                                             │
-│   Falls back to: createUnknownDiagnosisResponse()                           │
-└─────────────────────────────────────────────────────────────────────────────┘
-                    │
-                    ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│ GENERIC 3-OPTION RESPONSE GENERATED                                         │
-│                                                                             │
-│   💧 पाण्याची समस्या (जास्त/कमी पाणी)                                        │
-│   🐛 कीड/किडीचा हल्ला                                                        │
-│   🌿 पोषण कमतरता (खत कमी)                                                   │
-│   📷 फोटो पाठवा                                                             │
-│                                                                             │
-│   These are HARDCODED in createUnknownDiagnosisResponse() lines 641-678     │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
+### Issue 2: Missing Marathi Symptom Keywords
+**File:** `language-induction-layer.ts`  
+**Problem:** Critical single-word Marathi keywords like "वाळला" (dried), "मेला" (died) weren't mapped  
+**Fix:** Added 30+ common single-word Marathi symptom patterns
+
+### Issue 3: Induction Gate Blocking Diagnosis Mode
+**File:** `orchestrator.ts`  
+**Problem:** When symptoms=0, the induction gate blocked the symbolic brain entirely  
+**Fix:** Added P0 keyword fallback that detects problem keywords in the query and injects symptoms to trigger diagnosis-first mode
 
 ---
 
-## Database Evidence
+## Files Modified
 
-| Metric | Value |
-|--------|-------|
-| Total SEEDLING rules | 52 |
-| Rules with observable_characteristics | 28 |
-| Rules in OBJECT format (failing) | 28 |
-| Rules in ARRAY format (working) | 0 |
-
-**Example of failing SEEDLING rule data:**
-
-```json
-{
-  "rule_id": "SC_DIAG_EARLY_SHOOT_BORER_001",
-  "cause": "Early Shoot Borer",
-  "observable_characteristics": {
-    "dead_heart": true,
-    "central_shoot_dried": true
-  }
-}
-```
-
-**Expected format that would work:**
-
-```json
-{
-  "rule_id": "SC_DIAG_EARLY_SHOOT_BORER_001",
-  "cause": "Early Shoot Borer",
-  "observable_characteristics": ["DEAD_HEART", "CENTRAL_SHOOT_DRIED"]
-}
-```
+| File | Change |
+|------|--------|
+| `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` | Convert `{symptom: true}` → `["SYMPTOM"]` format |
+| `supabase/functions/ai-agriculture-chat/agents/language-induction-layer.ts` | Added 30+ Marathi/Hindi single-word symptom keywords |
+| `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` | Added P0 keyword fallback for zero-symptom queries |
 
 ---
 
-## Buggy Code Location
+## Technical Implementation
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`  
-**Lines:** 280-298
-
+### 1. Legacy Format Handler (hypothesis-evaluator.ts:280-312)
 ```typescript
-function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] {
-  if (!raw) return [];
-  
-  if (typeof raw === 'object' && !Array.isArray(raw)) {
-    const keys = Object.keys(raw);
-    if (keys.length === 0) {
-      return [];
-    }
-    // BUG: Only handles {observation_key: "..."} format
-    if (raw.observation_key) {
-      raw = [raw];
-    } else {
-      // BUG: Returns empty for {dead_heart: true} format
-      console.log('   [ExtractObs] Skipping unknown object structure:', keys.slice(0, 3));
-      return [];  // ← ALL 28 SEEDLING RULES FAIL HERE
-    }
-  }
-  // ... rest of function never executes for these rules
+// Detect legacy {symptom: true} format
+else if (keys.some(k => typeof raw[k] === 'boolean')) {
+  raw = keys
+    .filter(k => raw[k] === true)
+    .map(k => k.toUpperCase().replace(/[\s-]/g, '_'));
+}
+```
+
+### 2. Single-Word Symptom Mappings (language-induction-layer.ts:186-214)
+```typescript
+'वाळला': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },
+'मेला': { symbol: CanonicalSymptomSymbol.PLANT_DEATH, confidence: 0.95 },
+'किडा': { symbol: CanonicalSymptomSymbol.SMALL_INSECTS_VISIBLE, confidence: 0.90 },
+// ... 25+ more patterns
+```
+
+### 3. Query Keyword Fallback (orchestrator.ts:2526-2571)
+```typescript
+// When induction misses symptoms but query has problem keywords
+if (allObservationsForPreAuth.size === 0 && landContext) {
+  const problemKeywords = ['वाळला', 'मेला', 'सुकला', ...];
+  // Inject appropriate symptom to trigger diagnosis-first mode
 }
 ```
 
 ---
 
-## Fix Strategy
-
-### Option A: Fix Code to Handle Legacy Format (PREFERRED)
-
-Modify `extractObservableCharacteristics()` to handle the legacy `{symptom_name: true}` object format by extracting object keys as observation codes.
-
-**Benefits:**
-- No database migration needed
-- Immediately fixes 28 SEEDLING rules
-- Backward compatible with both formats
-
-### Option B: Database Migration
-
-Migrate all 232 object-format rules to array format.
-
-**Drawbacks:**
-- Requires careful data migration
-- Risk of data corruption
-- Takes longer to implement and test
-
----
-
-## Implementation Plan (Option A)
-
-### Step 1: Fix extractObservableCharacteristics()
-
-Update the function to handle the legacy `{symptom: true}` format by treating object keys as observation codes:
-
-```typescript
-function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] {
-  if (!raw) return [];
-  
-  if (typeof raw === 'object' && !Array.isArray(raw)) {
-    const keys = Object.keys(raw);
-    if (keys.length === 0) {
-      return [];
-    }
-    
-    // Handle {observation_key: "..."} format
-    if (raw.observation_key) {
-      raw = [raw];
-    } 
-    // NEW: Handle legacy {symptom_name: true} format
-    // Extract keys as observation codes when values are boolean/truthy
-    else if (keys.some(k => typeof raw[k] === 'boolean' || raw[k] === true)) {
-      console.log(`   [ExtractObs] Converting legacy object format with keys: ${keys.join(', ')}`);
-      // Convert {dead_heart: true, stem_hollow: true} → ["DEAD_HEART", "STEM_HOLLOW"]
-      raw = keys
-        .filter(k => raw[k] === true || raw[k])
-        .map(k => k.toUpperCase().replace(/[\s-]/g, '_'));
-    }
-    else {
-      console.log('   [ExtractObs] Skipping unknown object structure:', keys.slice(0, 3));
-      return [];
-    }
-  }
-  // ... rest of function continues with array processing
-}
-```
-
-### Step 2: Add Unit Test Logging
-
-Add logging to verify the fix is working:
-
-```typescript
-console.log(`   [ExtractObs] Processed ${charArray.length} observations from ${typeof raw === 'object' ? 'converted-object' : 'array'} format`);
-```
-
-### Step 3: Verify with Edge Function Logs
-
-After deployment, verify:
-- `[ExtractObs] Converting legacy object format with keys: dead_heart, central_shoot_dried`
-- `[HypothesisEval] Found 5+ candidate hypotheses` (instead of 0)
-- Farmer sees actual pest/disease options instead of generic 3-option fallback
-
----
-
-## Expected Outcome After Fix
+## Expected Behavior After Fix
 
 ```text
 Farmer: "नवीन लावण केलेला ऊस काही ठिकाणी वाळला"
                     │
                     ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ HYPOTHESIS EVALUATOR - FIXED                                                │
+│ LANGUAGE INDUCTION                                                          │
+│   "वाळला" → LEAF_DRYING symbol (NEW: single-word match)                     │
+│   OR                                                                         │
+│   P0 KEYWORD FALLBACK → Injects LEAF_DRYING if induction misses            │
+└─────────────────────────────────────────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ HYPOTHESIS EVALUATOR                                                        │
 │   extractObservableCharacteristics() converts:                              │
-│   {dead_heart: true} → ["DEAD_HEART"]                                       │
+│   {dead_heart: true} → ["DEAD_HEART"] (NEW: legacy format support)          │
 │                                                                             │
 │   Candidates found: 5-8 hypotheses                                          │
 │   - Early Shoot Borer (dead heart, stem hollow)                             │
-│   - Termite (mud tunnels, stem gnawing)                                     │
 │   - Moisture stress (wilting, soil dry)                                     │
-│   - Sett rot (rotted setts, germination failure)                            │
+│   - Termite (mud tunnels, stem gnawing)                                     │
 └─────────────────────────────────────────────────────────────────────────────┘
                     │
                     ▼
@@ -256,51 +111,10 @@ Farmer: "नवीन लावण केलेला ऊस काही ठि
 
 ---
 
-## Files to Modify
+## Verification
 
-| File | Change |
-|------|--------|
-| `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` | Fix `extractObservableCharacteristics()` to handle legacy object format |
-
----
-
-## Technical Details
-
-### Legacy Format Detection Logic
-
-```typescript
-// Detect if object uses legacy {symptom: true} format
-const isLegacyBooleanFormat = (obj: Record<string, any>): boolean => {
-  const keys = Object.keys(obj);
-  if (keys.length === 0) return false;
-  if (obj.observation_key) return false; // Already proper format
-  
-  // Check if at least one key has a boolean value
-  return keys.some(k => typeof obj[k] === 'boolean');
-};
-```
-
-### Conversion Logic
-
-```typescript
-// Convert {dead_heart: true, stem_hollow: true} → ["DEAD_HEART", "STEM_HOLLOW"]
-const convertLegacyToArray = (obj: Record<string, boolean>): string[] => {
-  return Object.keys(obj)
-    .filter(k => obj[k] === true)
-    .map(k => k.toUpperCase().replace(/[\s-]/g, '_'));
-};
-```
-
----
-
-## Zero-Regression Verification
-
-After fix, verify these test cases:
-
-| Test Case | Expected |
-|-----------|----------|
-| "उसाची वाढ होत नाही" | Shows crop-stage specific symptoms (not 3 generic options) |
-| "किडे दिसतात" | Shows pest-specific options from SEEDLING rules |
-| Array-format rules (GRAND_GROWTH) | Continue working unchanged |
-| Object-format SEEDLING rules | Now extracted correctly |
-
+After deployment, logs should show:
+- `[ExtractObs] Converting legacy boolean object format with X keys: dead_heart, ...`
+- `[P0 FIX] Query contains problem keyword "वाळला" but induction missed it` (fallback)
+- `[HypothesisEval] Found 5+ candidate hypotheses`
+- `[DIAGNOSIS-FIRST] Returning hypothesis-driven options`

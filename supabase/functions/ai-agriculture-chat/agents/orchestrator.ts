@@ -2523,6 +2523,53 @@ export class AIAgentOrchestrator {
         });
       }
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0 FIX: QUERY-BASED PROBLEM KEYWORD FALLBACK
+      // When induction layer misses symptoms but farmer's message contains problem keywords,
+      // inject a generic symptom to trigger diagnosis-first mode
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (allObservationsForPreAuth.size === 0 && landContext && landContext.current_crop) {
+        const problemKeywords = [
+          // Marathi - drying/wilting/death
+          'वाळला', 'वाळले', 'वाळलेला', 'सुकला', 'सुकले', 'सुकलेला',
+          'मेला', 'मेले', 'मेलेला', 'मरतोय', 'खराब', 'समस्या',
+          // Marathi - pests/disease
+          'किडा', 'किडे', 'कीड', 'रोग', 'बुरशी',
+          // Marathi - colors indicating problems
+          'पिवळे', 'पिवळा', 'पिवळी', 'तपकिरी', 'काळा', 'काळे',
+          // Hindi equivalents
+          'सूखा', 'सूख गया', 'मर गया', 'मर रहा', 'खराब', 'समस्या',
+          'कीड़ा', 'कीड़े', 'रोग', 'पीला', 'पीले',
+          // English
+          'dying', 'died', 'dead', 'dried', 'drying', 'wilted', 'wilting',
+          'pest', 'insect', 'disease', 'problem', 'yellow', 'brown'
+        ];
+        
+        const messageText = farmerMessage.toLowerCase();
+        const matchedKeyword = problemKeywords.find(kw => messageText.includes(kw.toLowerCase()));
+        
+        if (matchedKeyword) {
+          console.log(`\n🔧 [P0 FIX] Query contains problem keyword "${matchedKeyword}" but induction missed it`);
+          console.log(`   Injecting UNKNOWN_SYMPTOM to trigger diagnosis-first mode`);
+          
+          // Inject a generic symptom based on keyword type
+          let fallbackSymptom = 'UNKNOWN_SYMPTOM';
+          if (['वाळला', 'वाळले', 'सुकला', 'सुकले', 'सूखा', 'सूख गया', 'dried', 'drying'].some(k => matchedKeyword.includes(k))) {
+            fallbackSymptom = 'LEAF_DRYING';
+          } else if (['मेला', 'मेले', 'मर गया', 'died', 'dead', 'dying'].some(k => matchedKeyword.includes(k))) {
+            fallbackSymptom = 'PLANT_DEATH';
+          } else if (['पिवळे', 'पिवळा', 'पीला', 'पीले', 'yellow'].some(k => matchedKeyword.includes(k))) {
+            fallbackSymptom = 'LEAF_YELLOWING';
+          } else if (['किडा', 'किडे', 'कीड़ा', 'pest', 'insect'].some(k => matchedKeyword.includes(k))) {
+            fallbackSymptom = 'SMALL_INSECTS_VISIBLE';
+          }
+          
+          allObservationsForPreAuth.add(fallbackSymptom);
+          agentsUsed.push('P0_KEYWORD_FALLBACK');
+          console.log(`   Injected: ${fallbackSymptom}`);
+        }
+      }
+      
       // Add cross-crop symptoms if available
       const crossCropSymptomsList = crossCropSymptoms ? [...crossCropSymptoms] : [];
       

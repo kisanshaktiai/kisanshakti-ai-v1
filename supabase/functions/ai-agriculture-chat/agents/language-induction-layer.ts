@@ -183,6 +183,39 @@ const MARATHI_SYMPTOM_MAP: Record<string, SymbolMapping> = {
   'वाढ खुंटली': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 },     // "Growth stunted"
   'वाढ झाली नाही': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.90 }, // "Growth did not happen"
   'वाढ रखडली': { symbol: CanonicalSymptomSymbol.STUNTED_GROWTH, confidence: 0.85 },     // "Growth stalled"
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P0 FIX: Critical single-word symptom patterns (common farmer phrases)
+  // These were causing symptoms=[] when farmer uses short descriptions
+  // Example: "नवीन लावण केलेला ऊस काही ठिकाणी वाळला" → missed "वाळला" (dried)
+  // ═══════════════════════════════════════════════════════════════════════════
+  'वाळला': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },           // "dried" - CRITICAL single word
+  'वाळले': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },           // "dried" (plural)
+  'वाळलेला': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },         // "dried" (adj)
+  'वाळून': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.85 },           // "while drying"
+  'सुकला': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },           // "dried up"
+  'सुकले': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },           // "dried up" (plural)
+  'सुकलेला': { symbol: CanonicalSymptomSymbol.LEAF_DRYING, confidence: 0.90 },         // "dried" (adj)
+  'मेला': { symbol: CanonicalSymptomSymbol.PLANT_DEATH, confidence: 0.95 },            // "died" - CRITICAL
+  'मेले': { symbol: CanonicalSymptomSymbol.PLANT_DEATH, confidence: 0.95 },            // "died" (plural)
+  'मेलेला': { symbol: CanonicalSymptomSymbol.PLANT_DEATH, confidence: 0.95 },          // "dead" (adj)
+  'मरतोय': { symbol: CanonicalSymptomSymbol.PLANT_DEATH, confidence: 0.90 },           // "is dying"
+  'खराब': { symbol: CanonicalSymptomSymbol.UNKNOWN_SYMPTOM, confidence: 0.70 },        // "damaged/bad" - general issue
+  'समस्या': { symbol: CanonicalSymptomSymbol.UNKNOWN_SYMPTOM, confidence: 0.65 },      // "problem" - general issue
+  'रोग': { symbol: CanonicalSymptomSymbol.FUNGAL_GROWTH, confidence: 0.75 },           // "disease"
+  'किड': { symbol: CanonicalSymptomSymbol.SMALL_INSECTS_VISIBLE, confidence: 0.85 },   // "pest"
+  'किडा': { symbol: CanonicalSymptomSymbol.SMALL_INSECTS_VISIBLE, confidence: 0.90 },  // "pest/insect"
+  'कीड': { symbol: CanonicalSymptomSymbol.SMALL_INSECTS_VISIBLE, confidence: 0.85 },   // "pest" variant
+  'पिवळे': { symbol: CanonicalSymptomSymbol.LEAF_YELLOWING, confidence: 0.90 },        // "yellow"
+  'पिवळा': { symbol: CanonicalSymptomSymbol.LEAF_YELLOWING, confidence: 0.90 },        // "yellow" (singular)
+  'पिवळी': { symbol: CanonicalSymptomSymbol.LEAF_YELLOWING, confidence: 0.90 },        // "yellow" (feminine)
+  'तपकिरी': { symbol: CanonicalSymptomSymbol.LEAF_BROWNING, confidence: 0.90 },        // "brown"
+  'काळा': { symbol: CanonicalSymptomSymbol.SOOTY_MOLD, confidence: 0.80 },             // "black"
+  'काळे': { symbol: CanonicalSymptomSymbol.SOOTY_MOLD, confidence: 0.80 },             // "black" (plural)
+  'कुजला': { symbol: CanonicalSymptomSymbol.ROOT_ROT, confidence: 0.90 },              // "rotted"
+  'कुजले': { symbol: CanonicalSymptomSymbol.ROOT_ROT, confidence: 0.90 },              // "rotted" (plural)
+  'उगवले नाही': { symbol: CanonicalSymptomSymbol.POOR_GERMINATION, confidence: 0.95 }, // "did not germinate"
+  'उगवत नाही': { symbol: CanonicalSymptomSymbol.POOR_GERMINATION, confidence: 0.90 },  // "not germinating"
 };
 
 // Hindi symptom patterns → English symbols
