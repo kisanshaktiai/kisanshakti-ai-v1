@@ -684,15 +684,40 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           }
           
           // ═══════════════════════════════════════════════════════════════════════════
-          // CRITICAL FIX: ENFORCE crop_code matching
+          // CRITICAL FIX: ENFORCE crop_code matching with proper normalization
+          // Database uses short codes (SC, CTN) while CanonicalState uses full names (SUGARCANE, COTTON)
           // ═══════════════════════════════════════════════════════════════════════════
+          const cropCodeAliases: Record<string, string[]> = {
+            'SC': ['SUGARCANE', 'SUGAR_CANE', 'USCANE', 'CANE'],
+            'CTN': ['COTTON', 'KAPAS'],
+            'WH': ['WHEAT', 'GEHUN'],
+            'RIC': ['RICE', 'PADDY', 'DHAN'],
+            'SOY': ['SOYBEAN', 'SOYA'],
+            'MAZ': ['MAIZE', 'CORN', 'MAKKA'],
+            'GRN': ['GROUNDNUT', 'PEANUT'],
+            'ON': ['ONION', 'KANDA'],
+            'TOM': ['TOMATO'],
+            'POT': ['POTATO', 'ALOO']
+          };
+          
           const ruleCropCode = bundled.crop_code?.toUpperCase() || '';
           const stateCropCode = state.crop_type?.toUpperCase() || '';
           
           if (ruleCropCode && stateCropCode) {
             const isUniversalRule = ruleCropCode === '*' || ruleCropCode === 'ALL' || ruleCropCode === 'UNIVERSAL';
-            if (!isUniversalRule && ruleCropCode !== stateCropCode) {
-              return false; // Rule is for different crop
+            if (!isUniversalRule) {
+              // Check direct match first
+              if (ruleCropCode === stateCropCode) {
+                // Direct match - OK
+              } else if (cropCodeAliases[ruleCropCode]?.includes(stateCropCode)) {
+                // Rule code (SC) matches state code (SUGARCANE) via alias - OK
+              } else if (Object.entries(cropCodeAliases).some(([code, aliases]) => 
+                aliases.includes(stateCropCode) && code === ruleCropCode
+              )) {
+                // Reverse alias match - OK
+              } else {
+                return false; // Rule is for different crop
+              }
             }
           }
           
