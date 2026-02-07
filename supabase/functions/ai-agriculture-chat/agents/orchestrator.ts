@@ -463,6 +463,51 @@ import {
 function mapDistributionToSymptom(optionText: string, scope: ClarificationScope): string {
   const optionLower = optionText.toLowerCase();
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: FIRST check for embedded observation_key in option text
+  // Options are formatted as: "Label text [obs_keys:KEY1,KEY2]"
+  // ═══════════════════════════════════════════════════════════════════════════
+  const obsKeyMatch = optionText.match(/\[obs_keys?:([^\]]+)\]/i);
+  if (obsKeyMatch) {
+    const embeddedKey = obsKeyMatch[1].split(',')[0].trim().toUpperCase();
+    // Map common embedded keys to proper visual symptoms for rule matching
+    const obsKeyToSymptom: Record<string, string> = {
+      // Nutrient-related keys
+      'NUTRIENT_CHECK': 'NUTRIENT_DEFICIENCY',
+      'NUTRIENT_DEFICIENCY': 'NUTRIENT_DEFICIENCY',
+      'NITROGEN_DEFICIENCY': 'GENERAL_YELLOWING',
+      'PHOSPHORUS_DEFICIENCY': 'PURPLE_LEAVES',
+      'POTASSIUM_DEFICIENCY': 'LEAF_EDGE_BURN',
+      // Pest-related keys
+      'INSECT_PRESENT': 'SMALL_INSECTS_VISIBLE',
+      'PEST_DAMAGE': 'HOLES_IN_LEAVES',
+      'BORER_DAMAGE': 'DEAD_HEART',
+      'WHITEFLY_INFESTATION': 'SOOTY_MOLD',
+      // Disease-related keys
+      'DISEASE_SYMPTOMS': 'SPOTS_IRREGULAR',
+      'FUNGAL_INFECTION': 'POWDERY_COATING',
+      'SMUT': 'SMUT_WHIP',
+      // Stress-related keys
+      'WATER_STRESS': 'WILTING',
+      'WATERLOGGING': 'ROOT_DAMAGE',
+      'DROUGHT_STRESS': 'LEAF_CURLING',
+      // General observations
+      'YELLOWING': 'GENERAL_YELLOWING',
+      'WILTING': 'WILTING',
+      'STUNTED': 'STUNTED_GROWTH',
+      'STUNTED_GROWTH': 'STUNTED_GROWTH',
+      'LEAF_DAMAGE': 'CURLED_LEAVES'
+    };
+    
+    if (obsKeyToSymptom[embeddedKey]) {
+      console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key detected: ${embeddedKey} → ${obsKeyToSymptom[embeddedKey]}`);
+      return obsKeyToSymptom[embeddedKey];
+    }
+    // Return the embedded key itself as the symptom code
+    console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key as-is: ${embeddedKey}`);
+    return embeddedKey;
+  }
+  
   switch (scope) {
     case ClarificationScope.IDENTIFY_DISTRIBUTION:
       // Distribution → symptom mapping (English canonical keywords)
@@ -478,6 +523,10 @@ function mapDistributionToSymptom(optionText: string, scope: ClarificationScope)
       if (optionLower.includes('center') || optionLower.includes('middle')) {
         return 'SPOTS_CIRCULAR'; // Center = localized damage
       }
+      // CRITICAL: Check for nutrient/fertilizer keywords in Marathi/Hindi
+      if (optionLower.includes('पोषण') || optionLower.includes('खत') || optionLower.includes('nutrient') || optionLower.includes('fertilizer')) {
+        return 'NUTRIENT_DEFICIENCY';
+      }
       return 'UNKNOWN';
       
     case ClarificationScope.IDENTIFY_SEVERITY:
@@ -489,38 +538,38 @@ function mapDistributionToSymptom(optionText: string, scope: ClarificationScope)
       
     case ClarificationScope.IDENTIFY_LOCATION:
       // Plant part → symptom mapping (English canonical keywords)
-      if (optionLower.includes('leaf') || optionLower.includes('leaves') || optionLower.includes('foliage')) {
+      if (optionLower.includes('leaf') || optionLower.includes('leaves') || optionLower.includes('foliage') || optionLower.includes('पान')) {
         return 'CURLED_LEAVES';
       }
-      if (optionLower.includes('stem') || optionLower.includes('stalk') || optionLower.includes('trunk')) {
+      if (optionLower.includes('stem') || optionLower.includes('stalk') || optionLower.includes('trunk') || optionLower.includes('खोड')) {
         return 'STEM_DISCOLORATION';
       }
-      if (optionLower.includes('root') || optionLower.includes('underground')) {
+      if (optionLower.includes('root') || optionLower.includes('underground') || optionLower.includes('मूळ')) {
         return 'ROOT_DAMAGE';
       }
-      if (optionLower.includes('fruit') || optionLower.includes('pod') || optionLower.includes('grain')) {
+      if (optionLower.includes('fruit') || optionLower.includes('pod') || optionLower.includes('grain') || optionLower.includes('फळ')) {
         return 'FRUIT_DAMAGE';
       }
-      if (optionLower.includes('flower') || optionLower.includes('blossom')) {
+      if (optionLower.includes('flower') || optionLower.includes('blossom') || optionLower.includes('फूल')) {
         return 'ROSETTE_FLOWER';
       }
       return 'UNKNOWN';
       
     case ClarificationScope.IDENTIFY_INSECT_TYPE:
       // Pest type → symptom mapping (English canonical keywords)
-      if (optionLower.includes('aphid') || optionLower.includes('aphis')) {
+      if (optionLower.includes('aphid') || optionLower.includes('aphis') || optionLower.includes('माव')) {
         return 'CURLED_LEAVES'; // Aphid symptoms
       }
-      if (optionLower.includes('borer') || optionLower.includes('stem borer')) {
+      if (optionLower.includes('borer') || optionLower.includes('stem borer') || optionLower.includes('खोडकिडा')) {
         return 'DEAD_HEART'; // Borer symptoms
       }
-      if (optionLower.includes('caterpillar') || optionLower.includes('worm')) {
+      if (optionLower.includes('caterpillar') || optionLower.includes('worm') || optionLower.includes('अळी')) {
         return 'HOLES_IN_LEAVES'; // Caterpillar symptoms
       }
       if (optionLower.includes('mite') || optionLower.includes('spider')) {
         return 'SILVERING'; // Mite symptoms
       }
-      if (optionLower.includes('whitefly') || optionLower.includes('white fly')) {
+      if (optionLower.includes('whitefly') || optionLower.includes('white fly') || optionLower.includes('पांढरी माशी')) {
         return 'SOOTY_MOLD'; // Whitefly symptoms
       }
       if (optionLower.includes('hopper') || optionLower.includes('leafhopper')) {
@@ -543,21 +592,31 @@ function mapDistributionToSymptom(optionText: string, scope: ClarificationScope)
       
     case ClarificationScope.IDENTIFY_PLANT_RESPONSE:
       // Plant response → symptom mapping (English canonical keywords)
-      if (optionLower.includes('wilting') || optionLower.includes('wilt') || optionLower.includes('droop')) {
+      if (optionLower.includes('wilting') || optionLower.includes('wilt') || optionLower.includes('droop') || optionLower.includes('मळमळ')) {
         return 'WILTING';
       }
-      if (optionLower.includes('yellow') || optionLower.includes('chlorosis')) {
+      if (optionLower.includes('yellow') || optionLower.includes('chlorosis') || optionLower.includes('पिवळे')) {
         return 'GENERAL_YELLOWING';
       }
-      if (optionLower.includes('drying') || optionLower.includes('dry') || optionLower.includes('necrosis')) {
+      if (optionLower.includes('drying') || optionLower.includes('dry') || optionLower.includes('necrosis') || optionLower.includes('सुकणे')) {
         return 'LEAF_TIP_BURN';
       }
-      if (optionLower.includes('stunted') || optionLower.includes('poor growth')) {
+      if (optionLower.includes('stunted') || optionLower.includes('poor growth') || optionLower.includes('वाढ कमी')) {
         return 'STUNTED_GROWTH';
       }
       return 'UNKNOWN';
       
     default:
+      // FALLBACK: Check common symptom keywords across all scopes
+      if (optionLower.includes('पोषण') || optionLower.includes('खत') || optionLower.includes('nutrient')) {
+        return 'NUTRIENT_DEFICIENCY';
+      }
+      if (optionLower.includes('किडे') || optionLower.includes('किड') || optionLower.includes('insect') || optionLower.includes('pest')) {
+        return 'SMALL_INSECTS_VISIBLE';
+      }
+      if (optionLower.includes('रोग') || optionLower.includes('disease')) {
+        return 'SPOTS_IRREGULAR';
+      }
       return 'UNKNOWN';
   }
 }
@@ -1502,6 +1561,29 @@ export class AIAgentOrchestrator {
           
           // Build canonical state with the clarification answer
           // FIX: Pass full landContext to preserve DAS, NDVI, soil data
+          // CRITICAL FIX: Include BOTH visualSymptom AND mappedObservationKey in observations
+          const allObservations: string[] = [];
+          if (visualSymptom && visualSymptom !== 'UNKNOWN') {
+            allObservations.push(visualSymptom);
+          }
+          // CRITICAL: Also add the embedded observation_key for rule matching
+          if (mappedObservationKey && mappedObservationKey !== visualSymptom) {
+            allObservations.push(mappedObservationKey);
+          }
+          // Add symptom keywords based on mappedObservationKey to improve rule matching
+          const obsKeyExpansion: Record<string, string[]> = {
+            'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'STUNTED_GROWTH', 'CHLOROSIS'],
+            'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'STUNTED_GROWTH', 'CHLOROSIS', 'PURPLE_LEAVES'],
+            'PEST_DAMAGE': ['HOLES_IN_LEAVES', 'INSECT_PRESENT', 'DAMAGED_LEAVES'],
+            'DISEASE_SYMPTOMS': ['SPOTS_IRREGULAR', 'POWDERY_COATING', 'LEAF_SPOTS'],
+            'WATER_STRESS': ['WILTING', 'LEAF_CURLING', 'LEAF_DRYING'],
+            'WATERLOGGING': ['ROOT_ROT', 'WILTING', 'FIELD_WATERLOGGED']
+          };
+          if (mappedObservationKey && obsKeyExpansion[mappedObservationKey]) {
+            allObservations.push(...obsKeyExpansion[mappedObservationKey]);
+          }
+          console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
+          
           const canonicalState = buildCanonicalState({
             // CRITICAL FIX: Pass landContext to preserve all land data
             landContext: landContextForOptionSelection,
@@ -1509,8 +1591,8 @@ export class AIAgentOrchestrator {
             cropName: cropName,
             cropStage: growthStage,
             daysAfterSowing: landContextForOptionSelection?.days_since_sowing ?? null,
-            // Farmer observations
-            farmerObservations: visualSymptom ? [visualSymptom] : [],
+            // Farmer observations - INCLUDE BOTH symptom and observation_key
+            farmerObservations: allObservations.length > 0 ? allObservations : [],
             // NDVI data from landContext
             ndviData: landContextForOptionSelection?.ndvi ? {
               value: landContextForOptionSelection.ndvi.value || landContextForOptionSelection.ndvi.mean_ndvi,
@@ -1531,8 +1613,14 @@ export class AIAgentOrchestrator {
           const allRulesForOption = await getAllRulesWithBundled();
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length}`);
           
-          // Pass user_query for keyword matching
-          const stateWithQuery = { ...canonicalState, user_query: farmerMessage };
+          // Pass user_query AND visual_symptoms for rule matching
+          // CRITICAL: visual_symptoms array is what evaluateConditionsJson checks!
+          const stateWithQuery = { 
+            ...canonicalState, 
+            user_query: farmerMessage,
+            visual_symptoms: allObservations,
+            primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
+          };
           const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);

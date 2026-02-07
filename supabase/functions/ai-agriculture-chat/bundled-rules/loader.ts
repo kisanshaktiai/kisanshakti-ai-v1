@@ -368,25 +368,55 @@ export function evaluateConditionsJson(
   if (conditions.observations && Array.isArray(conditions.observations) && conditions.observations.length > 0) {
     hasAnyCondition = true;
     const inputSymptoms = input.visual_symptoms || [];
-    const inputSymptom = input.primary_symptom || '';
+    const inputSymptom = (input as any).primary_symptom || '';
     
-    // Match if ANY observation in conditions matches ANY symptom in input
-    if (inputSymptoms.length > 0 || inputSymptom) {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Expand observation aliases for better matching
+    // Maps high-level observation codes to their symptoms
+    // ═══════════════════════════════════════════════════════════════════════════
+    const observationAliases: Record<string, string[]> = {
+      'NUTRIENT_DEFICIENCY': ['leaf_yellowing', 'chlorosis', 'stunted_growth', 'purple_leaves', 'interveinal_chlorosis', 'nutrient_check'],
+      'NUTRIENT_CHECK': ['nutrient_deficiency', 'leaf_yellowing', 'chlorosis', 'stunted_growth', 'fertilizer'],
+      'STUNTED_GROWTH': ['stunted', 'slow_growth', 'poor_growth', 'stunted_plants'],
+      'LEAF_YELLOWING': ['yellowing', 'yellow_leaves', 'chlorosis', 'general_yellowing'],
+      'WATER_STRESS': ['wilting', 'drought', 'dry', 'moisture_stress'],
+      'PEST_DAMAGE': ['insect_present', 'holes_in_leaves', 'damaged_leaves', 'chewed_leaves']
+    };
+    
+    // Build expanded symptom list
+    const expandedSymptoms: string[] = [...inputSymptoms.map(s => s.toLowerCase())];
+    if (inputSymptom) {
+      expandedSymptoms.push(inputSymptom.toLowerCase());
+    }
+    // Add aliases for each input symptom
+    for (const sym of inputSymptoms) {
+      const symUpper = sym.toUpperCase().replace(/[\s-]/g, '_');
+      if (observationAliases[symUpper]) {
+        expandedSymptoms.push(...observationAliases[symUpper]);
+      }
+    }
+    
+    // Match if ANY observation in conditions matches ANY symptom (including aliases)
+    if (expandedSymptoms.length > 0) {
       const obsMatch = conditions.observations.some((obs: string) => {
-        const obsLower = obs.toLowerCase();
-        // Check array symptoms
-        if (inputSymptoms.some((sym: string) => 
-          sym.toLowerCase().includes(obsLower) || obsLower.includes(sym.toLowerCase())
-        )) {
+        const obsLower = obs.toLowerCase().replace(/[\s-]/g, '_');
+        const obsNorm = obs.toUpperCase().replace(/[\s-]/g, '_');
+        
+        // Direct match
+        if (expandedSymptoms.some((sym: string) => {
+          const symNorm = sym.replace(/[\s-]/g, '_');
+          return symNorm.includes(obsLower) || obsLower.includes(symNorm);
+        })) {
           return true;
         }
-        // Check primary symptom
-        if (inputSymptom && (
-          inputSymptom.toLowerCase().includes(obsLower) || 
-          obsLower.includes(inputSymptom.toLowerCase())
-        )) {
-          return true;
+        
+        // Check if any input symptom is an alias of the rule observation
+        if (observationAliases[obsNorm]) {
+          return expandedSymptoms.some((sym: string) => 
+            observationAliases[obsNorm].some(alias => sym.includes(alias) || alias.includes(sym))
+          );
         }
+        
         return false;
       });
       if (!obsMatch) {
