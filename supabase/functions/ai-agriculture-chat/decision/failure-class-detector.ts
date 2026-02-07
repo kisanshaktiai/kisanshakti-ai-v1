@@ -416,6 +416,103 @@ export function getFailureClassThresholds(): Record<FailureClass, number> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// STAGE COMPATIBILITY CHECK - CANONICAL VERSION
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Check if an observation is stage-compatible.
+ * Uses canonical stage names - no language dependency.
+ */
+export function isObservationStageCompatible(
+  observationKey: string,
+  stage: string
+): boolean {
+  if (!observationKey || !stage) return true; // Allow if no stage/obs specified
+  
+  const upperStage = stage.toUpperCase();
+  const upperObs = observationKey.toUpperCase();
+  
+  // Establishment observations only valid in early stages
+  const isEarlyStage = EARLY_STAGES.has(stage) || EARLY_STAGES.has(upperStage);
+  const isEstablishmentObs = ESTABLISHMENT_OBSERVATIONS.has(upperObs);
+  
+  if (isEstablishmentObs && !isEarlyStage) {
+    // Establishment observations not valid in late stages
+    return false;
+  }
+  
+  // Flowering/fruiting observations not valid in very early stages
+  const floweringObs = new Set(['FLOWER_DROP', 'FRUIT_ROT', 'FRUIT_DROP', 'POD_BORER']);
+  if (floweringObs.has(upperObs) && isEarlyStage) {
+    return false;
+  }
+  
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FALLBACK OPTIONS FOR CLARIFICATION - CANONICAL VERSION
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface FallbackOption {
+  observation_key: string;
+  label: string;
+  category: string;
+}
+
+/**
+ * Get fallback clarification options for a failure class.
+ * Returns canonical observation keys with English labels.
+ * Localization happens at the rendering layer via i18n.
+ */
+export function getFailureClassFallbackOptions(
+  failureClass: FailureClass,
+  _language: string = 'en'
+): FallbackOption[] {
+  // NOTE: Language parameter retained for interface compatibility
+  // Actual localization uses i18n keys at render time
+  
+  const optionsByClass: Record<FailureClass, FallbackOption[]> = {
+    ESTABLISHMENT_FAILURE: [
+      { observation_key: 'GERMINATION_FAILURE', label: 'Seeds not sprouting', category: 'establishment' },
+      { observation_key: 'SEEDLING_DEATH', label: 'Seedlings dying', category: 'establishment' },
+      { observation_key: 'GAPS_IN_FIELD', label: 'Gaps in the field', category: 'establishment' },
+      { observation_key: 'ROOT_ROT', label: 'Root rotting', category: 'establishment' }
+    ],
+    VEGETATIVE_STRESS: [
+      { observation_key: 'STUNTED_GROWTH', label: 'Stunted growth', category: 'stress' },
+      { observation_key: 'WILTING', label: 'Plant wilting', category: 'stress' },
+      { observation_key: 'LEAF_CURLING', label: 'Leaf curling', category: 'stress' },
+      { observation_key: 'YELLOWING', label: 'Yellowing leaves', category: 'stress' }
+    ],
+    PEST_DAMAGE: [
+      { observation_key: 'INSECT_VISIBLE', label: 'Insects visible', category: 'pest' },
+      { observation_key: 'HOLES_VISIBLE', label: 'Holes in leaves', category: 'pest' },
+      { observation_key: 'DEAD_HEART', label: 'Dead heart (central shoot dry)', category: 'pest' },
+      { observation_key: 'CATERPILLAR_VISIBLE', label: 'Caterpillars visible', category: 'pest' }
+    ],
+    DISEASE_SYMPTOM: [
+      { observation_key: 'LEAF_SPOTS', label: 'Spots on leaves', category: 'disease' },
+      { observation_key: 'FUNGAL_GROWTH', label: 'Fungal growth visible', category: 'disease' },
+      { observation_key: 'WILT_DISEASE', label: 'Plant wilting (disease)', category: 'disease' },
+      { observation_key: 'RUST_PRESENT', label: 'Rust on leaves', category: 'disease' }
+    ],
+    NUTRIENT_DEFICIENCY: [
+      { observation_key: 'LEAF_YELLOWING', label: 'Yellowing leaves', category: 'nutrient' },
+      { observation_key: 'CHLOROSIS', label: 'Chlorosis (pale leaves)', category: 'nutrient' },
+      { observation_key: 'PURPLE_LEAVES', label: 'Purple coloration', category: 'nutrient' },
+      { observation_key: 'STUNTED_GROWTH', label: 'Stunted plants', category: 'nutrient' }
+    ],
+    UNKNOWN: [
+      { observation_key: 'GENERAL_PROBLEM', label: 'General problem', category: 'general' },
+      { observation_key: 'NEED_PHOTO', label: 'Need to see photo', category: 'general' }
+    ]
+  };
+  
+  return optionsByClass[failureClass] || optionsByClass.UNKNOWN;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // AUDIT LOGGING
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -437,6 +534,28 @@ export function createFailureClassAudit(
   };
 }
 
+/**
+ * Log failure class detection for debugging and audit purposes.
+ */
+export function logFailureClassDetection(
+  traceId: string,
+  input: FailureClassInput,
+  result: FailureClassResult,
+  domainName: string,
+  fallbackUsed: boolean,
+  fallbackReason: string | null
+): void {
+  console.log(`📊 [FailureClass ${traceId}] Detection complete:`);
+  console.log(`   Primary: ${result.primary_class} (confidence: ${(result.confidence * 100).toFixed(1)}%)`);
+  console.log(`   Domain: ${domainName}`);
+  console.log(`   Matched observations: ${result.matched_observations.join(', ') || 'none'}`);
+  console.log(`   Derived from: ${result.derived_from}`);
+  
+  if (fallbackUsed) {
+    console.warn(`   ⚠️ Fallback used: ${fallbackReason || 'unknown reason'}`);
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // EXPORTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -446,5 +565,8 @@ export default {
   getClarificationDomain,
   getFailureClassThresholds,
   createFailureClassAudit,
+  isObservationStageCompatible,
+  getFailureClassFallbackOptions,
+  logFailureClassDetection,
   FAILURE_CLASS_VERSION
 };
