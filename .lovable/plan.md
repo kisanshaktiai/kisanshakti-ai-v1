@@ -12,7 +12,15 @@
 ### Phase 3: DB-Driven Fallback
 - Already in place via diagnosis-first-generator; now works with Phase 2 fixes
 
+### Phase 4: CRITICAL FIX - Observation Key Embedding (2026-02-08)
+- **diagnosis-first-generator.ts v1.2.0**: NOW EMBEDS `[obs_keys:...]` in option labels
+- This allows orchestrator to extract the observation key when farmer selects an option
+- Previously, options like "🔍 मृत गाभा / सुरळी वाळणे" had no extractable obs_key → fell back to UNKNOWN_SYMPTOM
+- Now options are formatted as "🔍 मृत गाभा / सुरळी वाळणे [obs_keys:DEAD_HEART]"
+- **orchestrator.ts**: Expanded obsKeyExpansion mapping to cover all common diagnosis observation keys
+
 ## Verification Scenarios
-- Scenario A: Damage query → Dynamic SC+SEEDLING options
+- Scenario A: Damage query → Dynamic SC+SEEDLING options with embedded obs_keys
 - Scenario B: New question during pending options → Clears stale clarification  
 - Scenario C: Typed "कीड" → Token similarity matches option
+- Scenario D: Option selection → Orchestrator extracts [obs_keys:DEAD_HEART] → correct rule matching
