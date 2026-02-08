@@ -102,7 +102,7 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
 
       {/* FIX: Improved horizontal scroll with better snap and touch handling */}
       <div 
-        className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory"
+        className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory -mx-4 px-4"
         style={{
           scrollSnapType: 'x mandatory',
           WebkitOverflowScrolling: 'touch',
@@ -118,22 +118,29 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
             className="flex-none w-[140px] snap-center"
           >
             <Card className={cn(
-              "relative overflow-hidden border-2 h-full transition-all hover:shadow-md",
-              "bg-gradient-to-br from-background to-background/50"
+              "relative overflow-hidden border h-full transition-all hover:shadow-md",
+              "bg-gradient-to-br from-card to-card/80 backdrop-blur-sm",
+              rec.color === 'text-green-500' && "border-green-500/30",
+              rec.color === 'text-red-500' && "border-red-500/30",
+              rec.color === 'text-yellow-500' && "border-yellow-500/30",
+              rec.color === 'text-blue-500' && "border-blue-500/30"
             )}>
-              <div className={cn("absolute top-0 right-0 w-20 h-20 rounded-full -translate-y-10 translate-x-10 opacity-20", rec.bgColor)} />
+              <div className={cn(
+                "absolute top-0 right-0 w-20 h-20 rounded-full -translate-y-10 translate-x-10 opacity-20",
+                rec.bgColor
+              )} />
               
-              <CardContent className="p-4 space-y-2">
+              <CardContent className="p-4 space-y-2 relative">
                 <div className="flex items-center justify-between">
                   <rec.icon className={cn("h-8 w-8", rec.color)} />
                 </div>
                 
                 <div>
-                  <p className="text-sm font-semibold mb-1">{rec.title}</p>
+                  <p className="text-sm font-semibold mb-1.5">{rec.title}</p>
                   <Badge
                     variant="secondary"
                     className={cn(
-                      "text-xs font-bold px-2 py-0.5",
+                      "text-xs font-bold px-2.5 py-0.5 rounded-full",
                       rec.color,
                       rec.bgColor
                     )}
