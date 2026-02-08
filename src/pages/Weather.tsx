@@ -37,6 +37,7 @@ import { toastManager } from '@/utils/ToastManager';
 import { WeatherSkeleton } from '@/components/skeletons';
 import { PullRefreshController } from '@/components/weather/PullRefreshController';
 import { HourlyForecastChart } from '@/components/weather/HourlyForecastChart';
+import { SevenDayForecast } from '@/components/weather/SevenDayForecast';
 
 export default function Weather() {
   const { t } = useTranslation();
@@ -407,36 +408,8 @@ export default function Weather() {
               </Card>
             </motion.div>
 
-            {/* 7-Day Forecast */}
-            <div className="px-4 py-3">
-              <h3 className="text-base font-bold mb-3">{t('weather.forecast.title')}</h3>
-              <div className="grid grid-cols-7 gap-1.5">
-                {forecast.slice(0, 7).map((day, index) => (
-                  <motion.div
-                    key={day.dt}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="text-center"
-                  >
-                    <Card className="bg-background/60 backdrop-blur-sm hover:shadow-md transition-all p-2">
-                      <p className="text-[10px] font-semibold mb-1">{format(new Date(day.dt * 1000), 'EEE')}</p>
-                      <div className="flex justify-center mb-1">
-                        {getWeatherIcon(day.weather[0]?.main || 'Clear', 'small')}
-                      </div>
-                      <p className="text-sm font-bold mb-0.5">{Math.round(day.temp.max)}°</p>
-                      <p className="text-xs text-muted-foreground">{Math.round(day.temp.min)}°</p>
-                      {day.pop > 0.2 && (
-                        <div className="flex items-center justify-center gap-0.5 text-[10px] text-blue-500 mt-1">
-                          <CloudRain className="h-2.5 w-2.5" />
-                          {Math.round(day.pop * 100)}%
-                        </div>
-                      )}
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
+            {/* 7-Day Forecast - Modern 2030 Component */}
+            <SevenDayForecast forecast={forecast} />
           </div>
         </div>
       </PullRefreshController>

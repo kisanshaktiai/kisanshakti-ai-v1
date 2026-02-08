@@ -135,17 +135,36 @@ export const WeatherSkeleton = () => {
         </Card>
       </div>
 
-      {/* 7-Day Forecast Skeleton */}
+      {/* 7-Day Forecast Skeleton - Modern Vertical Layout */}
       <div className="px-4 py-3 pb-24">
-        <Skeleton className="h-5 w-32 mb-3" />
-        <div className="grid grid-cols-7 gap-1.5">
+        <div className="flex items-center justify-between mb-3">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-3 w-16" />
+        </div>
+        <div className="space-y-2">
           {[1, 2, 3, 4, 5, 6, 7].map((i) => (
-            <div key={i} className="bg-background/60 rounded-lg p-2">
-              <div className="flex flex-col items-center gap-1">
-                <Skeleton className="h-3 w-6" />
-                <Skeleton className="h-4 w-4 rounded" />
-                <Skeleton className="h-4 w-6" />
-                <Skeleton className="h-3 w-5" />
+            <div key={i} className="bg-card/90 backdrop-blur-xl rounded-xl p-3 border border-border/50">
+              <div className="flex items-center gap-3">
+                {/* Day label */}
+                <div className="w-12 flex-shrink-0 space-y-1">
+                  <Skeleton className="h-4 w-8" />
+                  <Skeleton className="h-2 w-10" />
+                </div>
+                {/* Weather icon */}
+                <Skeleton className="w-10 h-10 rounded-xl flex-shrink-0" />
+                {/* Temperature bar */}
+                <div className="flex-1 space-y-1">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-3 w-6" />
+                    <Skeleton className="h-4 w-8" />
+                  </div>
+                  <Skeleton className="h-2 w-full rounded-full" />
+                </div>
+                {/* Rain indicator */}
+                <div className="w-10 flex-shrink-0 flex flex-col items-center gap-0.5">
+                  <Skeleton className="h-4 w-4 rounded" />
+                  <Skeleton className="h-2 w-6" />
+                </div>
               </div>
             </div>
           ))}
