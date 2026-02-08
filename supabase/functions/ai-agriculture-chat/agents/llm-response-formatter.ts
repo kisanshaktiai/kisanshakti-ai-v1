@@ -128,6 +128,8 @@ export interface LLMFormatterOutput {
   gate_action?: GateAction;
   reasoning_included: boolean;
   symbolic_decision_id?: string;
+  // NEW: Token usage tracking for cost monitoring
+  tokens_used?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -396,6 +398,7 @@ export async function formatRecommendationsWithLLM(
   
   let formattedResponse = '';
   let aiModelUsed = '';
+  let tokensUsed = 0;  // NEW: Track token usage
   
   try {
     // TIER 1: Try OpenAI FIRST with 20-second timeout (user preference)
@@ -404,8 +407,9 @@ export async function formatRecommendationsWithLLM(
       const result = await callOpenAIWithTimeout(systemPrompt, userPrompt, OPENAI_API_KEY, 20000);
       if (result.success) {
         formattedResponse = result.text;
-        aiModelUsed = 'gpt-4o';  // UPGRADED: Using GPT-4o for better formatting
-        console.log(`   ✅ OpenAI formatting successful (gpt-4o)`);
+        aiModelUsed = 'gpt-4o-mini';  // COST OPTIMIZED: Using GPT-4o-mini
+        tokensUsed = result.tokens_used || 0;
+        console.log(`   ✅ OpenAI formatting successful (gpt-4o-mini)`);
       } else if (result.error === 'RATE_LIMIT') {
         console.warn(`   ⚠️ OpenAI rate limited, waiting 3s before fallback...`);
         await new Promise(r => setTimeout(r, 3000));
@@ -419,6 +423,7 @@ export async function formatRecommendationsWithLLM(
       if (result.success) {
         formattedResponse = result.text;
         aiModelUsed = 'gemini-2.0-flash';
+        tokensUsed = result.tokens_used || 0;
         console.log(`   ✅ Gemini formatting successful`);
       } else if (result.error === 'RATE_LIMIT') {
         console.warn(`   ⚠️ Gemini rate limited (429), waiting 3s before fallback...`);
@@ -486,7 +491,9 @@ export async function formatRecommendationsWithLLM(
     gate_status: GateStatus.PASS,
     gate_action: GateAction.ALLOW_TREATMENT,
     reasoning_included: formattedResponse.includes('कारण:') || formattedResponse.includes('कारण') || formattedResponse.includes('reason'),
-    symbolic_decision_id: input.decision_output?.decision_id
+    symbolic_decision_id: input.decision_output?.decision_id,
+    // NEW: Token usage for cost monitoring
+    tokens_used: tokensUsed
   };
 }
 
@@ -520,12 +527,33 @@ function validateLLMOutput(
   const lowerOutput = llmOutput.toLowerCase();
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // CHECK 1: All products present (ENHANCED - stricter check)
+  // CHECK 1: All products present (FIXED - skip generic action types)
+  // CRITICAL FIX: Generic action types like "Cultural practice", "Monitoring", 
+  // "Mechanical control" are NOT product names and should NOT require verbatim matching
   // ═══════════════════════════════════════════════════════════════════════════
   const primaryProductName = decisionInput?.decision_output?.primary_decision?.product_details?.product_name ||
                              decisionInput?.decision_output?.primary_decision?.application_details?.product_name;
   
-  if (primaryProductName && primaryProductName !== 'N/A' && primaryProductName !== 'None') {
+  // List of generic action types that are NOT specific products
+  const GENERIC_ACTION_TYPES = [
+    'cultural practice', 'cultural practices', 'cultural control',
+    'mechanical control', 'mechanical removal',
+    'biological control', 'biocontrol',
+    'monitoring', 'observation', 'scouting',
+    'integrated pest management', 'ipm',
+    'general advice', 'preventive measure',
+    'water management', 'irrigation adjustment',
+    'nutrient management', 'fertilizer adjustment',
+    'recommended treatment', 'treatment'
+  ];
+  
+  const isGenericActionType = primaryProductName && 
+    GENERIC_ACTION_TYPES.some(gt => primaryProductName.toLowerCase().includes(gt));
+  
+  if (primaryProductName && 
+      primaryProductName !== 'N/A' && 
+      primaryProductName !== 'None' && 
+      !isGenericActionType) {
     // Check if product name or any word from it appears in output
     const productWords = primaryProductName.toLowerCase().split(/[\s+@\/]+/).filter((w: string) => w.length > 2);
     const productFound = productWords.some((word: string) => lowerOutput.includes(word)) || 
@@ -535,6 +563,8 @@ function validateLLMOutput(
       errors.push(`Missing product from symbolic decision: ${primaryProductName}`);
       console.error(`🚫 [VALIDATION] Missing required product: ${primaryProductName}`);
     }
+  } else if (isGenericActionType) {
+    console.log(`   ℹ️ [VALIDATION] Skipping product check for generic action type: ${primaryProductName}`);
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1038,7 +1068,7 @@ async function callGeminiWithTimeout(
   userPrompt: string, 
   apiKey: string, 
   timeoutMs: number
-): Promise<{ success: boolean; text: string; error?: string }> {
+): Promise<{ success: boolean; text: string; error?: string; tokens_used?: number }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -1054,8 +1084,8 @@ async function callGeminiWithTimeout(
             parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
           }],
           generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 800
+            temperature: 0.5,    // LOWER: More consistent for safety
+            maxOutputTokens: 600  // REDUCED: Farmers need concise advice
           }
         })
       }
@@ -1074,7 +1104,12 @@ async function callGeminiWithTimeout(
     
     const data = await response.json();
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    return { success: !!text, text };
+    const tokens_used = data.usageMetadata?.totalTokenCount || 0;
+    
+    // Log token usage for monitoring
+    console.log(`   📊 [Gemini] Tokens used: ${tokens_used} (prompt: ${data.usageMetadata?.promptTokenCount || 0}, candidates: ${data.usageMetadata?.candidatesTokenCount || 0})`);
+    
+    return { success: !!text, text, tokens_used };
     
   } catch (error) {
     clearTimeout(timeoutId);
@@ -1089,7 +1124,7 @@ async function callOpenAIWithTimeout(
   userPrompt: string, 
   apiKey: string, 
   timeoutMs: number
-): Promise<{ success: boolean; text: string; error?: string }> {
+): Promise<{ success: boolean; text: string; error?: string; tokens_used?: number }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   
@@ -1102,13 +1137,13 @@ async function callOpenAIWithTimeout(
       },
       signal: controller.signal,
       body: JSON.stringify({
-        model: 'gpt-4o',  // UPGRADED: Using GPT-4o for better response quality
+        model: 'gpt-4o-mini',  // COST OPTIMIZATION: Using GPT-4o-mini for faster, cheaper responses
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 800,
-        temperature: 0.7
+        max_tokens: 600,  // REDUCED: Farmers need concise advice, not essays
+        temperature: 0.5   // LOWER: More consistent, less creative for safety
       })
     });
     
@@ -1125,7 +1160,12 @@ async function callOpenAIWithTimeout(
     
     const data = await response.json();
     const text = data.choices?.[0]?.message?.content || '';
-    return { success: !!text, text };
+    const tokens_used = data.usage?.total_tokens || 0;
+    
+    // Log token usage for monitoring
+    console.log(`   📊 [OpenAI] Tokens used: ${tokens_used} (prompt: ${data.usage?.prompt_tokens || 0}, completion: ${data.usage?.completion_tokens || 0})`);
+    
+    return { success: !!text, text, tokens_used };
     
   } catch (error) {
     clearTimeout(timeoutId);
@@ -1345,20 +1385,54 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     
     // CRITICAL: Extract from current decision_output ONLY
     const rawProductName = primary.application_details?.product_name;
+    const rawActionType = primary.action_type;
+    const rawActionText = primary.action_text;
     const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
     const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
     
-    // If product_name is null/empty, DO NOT use placeholder
+    // CRITICAL FIX: Translate generic action types to farmer-friendly language
+    const GENERIC_ACTION_TRANSLATIONS: Record<string, Record<string, string>> = {
+      'cultural practice': { mr: 'सांस्कृतिक पद्धती', hi: 'सांस्कृतिक तरीके', en: 'Cultural practice' },
+      'cultural control': { mr: 'सांस्कृतिक नियंत्रण', hi: 'सांस्कृतिक नियंत्रण', en: 'Cultural control' },
+      'mechanical control': { mr: 'यांत्रिक नियंत्रण', hi: 'यांत्रिक नियंत्रण', en: 'Mechanical control' },
+      'biological control': { mr: 'जैविक नियंत्रण', hi: 'जैविक नियंत्रण', en: 'Biological control' },
+      'monitoring': { mr: 'निरीक्षण', hi: 'निगरानी', en: 'Monitoring' },
+      'treatment': { mr: 'उपचार', hi: 'उपचार', en: 'Treatment' },
+      'prevention': { mr: 'प्रतिबंध', hi: 'रोकथाम', en: 'Prevention' }
+    };
+    
+    // Check if this is a generic action type and translate
+    const lowerProductName = (rawProductName || '').toLowerCase();
+    let translatedProductName = rawProductName || '';
+    let isGenericAction = false;
+    
+    for (const [key, translations] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
+      if (lowerProductName.includes(key)) {
+        translatedProductName = translations[lang] || translations.en;
+        isGenericAction = true;
+        break;
+      }
+    }
+    
+    // If not generic, use the normal translation function
+    if (!isGenericAction && rawProductName) {
+      translatedProductName = getProductName(rawProductName, lang);
+    }
+    
+    // If product_name is null/empty, try to use action_text
     if (rawProductName && rawProductName !== 'Recommended treatment') {
-      // CRITICAL FIX: Translate chemical name to farmer-friendly language
-      const translatedProductName = getProductName(rawProductName, lang);
-      
       let recText = `1. **${translatedProductName}**`;
-      // Only add dosage if not already included in the translated name
-      if (dosage && dosage !== 'As per label' && dosage !== 'N/A' && !translatedProductName.includes('/')) {
+      // Only add dosage if not already included and it's not a generic action
+      if (!isGenericAction && dosage && dosage !== 'As per label' && dosage !== 'N/A' && !translatedProductName.includes('/')) {
         recText += ` @ ${dosage}`;
       }
+      
+      // For generic actions, include the action text in farmer's language
+      if (isGenericAction && rawActionText) {
+        recText += `\n   🔧 ${rawActionText}`;
+      }
+      
       if (method) {
         // CRITICAL FIX: Translate method name
         const methodLabel = getActionTranslation(method, lang) || 
@@ -1388,6 +1462,20 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       if (urgencyLabel) {
         parts.push(`\n${urgencyLabel}`);
       }
+    } else if (rawActionText) {
+      // Use action_text as fallback - translate generic terms
+      let translatedActionText = rawActionText;
+      for (const [key, translations] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
+        if (rawActionText.toLowerCase().includes(key)) {
+          translatedActionText = rawActionText.replace(new RegExp(key, 'gi'), translations[lang] || translations.en);
+        }
+      }
+      const actionHeader: Record<string, string> = {
+        mr: '📋 **कृती:**',
+        hi: '📋 **कार्रवाई:**',
+        en: '📋 **Action:**'
+      };
+      parts.push(`${actionHeader[lang]}\n${translatedActionText}`);
     } else {
       // No valid product - ask for more info instead of giving wrong advice
       const askMore: Record<string, string> = {
