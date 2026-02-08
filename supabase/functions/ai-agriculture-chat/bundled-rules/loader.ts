@@ -443,9 +443,74 @@ export function evaluateConditionsJson(
     }
   }
   
-  // If no specific conditions were defined, match by default
-  if (!hasAnyCondition) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Handle UNKNOWN KEYS in conditions_json
+  // If the object has keys we don't recognize, do NOT default to match=true
+  // This prevents wrong rules from firing due to unrecognized condition formats
+  // ═══════════════════════════════════════════════════════════════════════════
+  const RECOGNIZED_KEYS = new Set([
+    'crop_stage', 'observations', 'trigger_keywords',
+    'all', 'any', 'fact', 'operator', 'value'
+  ]);
+  
+  const conditionKeys = Object.keys(conditions);
+  const hasUnrecognizedKeys = conditionKeys.some(key => !RECOGNIZED_KEYS.has(key));
+  
+  if (hasUnrecognizedKeys && !hasAnyCondition) {
+    // Unknown keys like { soil_fe_ppm: "<4.5" } - try to evaluate as comparators
+    for (const key of conditionKeys) {
+      if (RECOGNIZED_KEYS.has(key)) continue;
+      
+      const condValue = conditions[key];
+      const inputValue = input[key as keyof DecisionInput];
+      
+      // Handle string comparator values like "<4.5", ">=10", "between: 4-7"
+      if (typeof condValue === 'string') {
+        const numericInput = typeof inputValue === 'number' ? inputValue : parseFloat(String(inputValue));
+        
+        if (!isNaN(numericInput)) {
+          // Try to parse comparator: "<4.5", "<=10", ">34", ">=5"
+          const ltMatch = condValue.match(/^<\s*(\d+\.?\d*)$/);
+          const lteMatch = condValue.match(/^<=\s*(\d+\.?\d*)$/);
+          const gtMatch = condValue.match(/^>\s*(\d+\.?\d*)$/);
+          const gteMatch = condValue.match(/^>=\s*(\d+\.?\d*)$/);
+          const betweenMatch = condValue.match(/^between:\s*(\d+\.?\d*)\s*-\s*(\d+\.?\d*)$/i);
+          
+          if (ltMatch && !(numericInput < parseFloat(ltMatch[1]))) return false;
+          if (lteMatch && !(numericInput <= parseFloat(lteMatch[1]))) return false;
+          if (gtMatch && !(numericInput > parseFloat(gtMatch[1]))) return false;
+          if (gteMatch && !(numericInput >= parseFloat(gteMatch[1]))) return false;
+          if (betweenMatch) {
+            const min = parseFloat(betweenMatch[1]);
+            const max = parseFloat(betweenMatch[2]);
+            if (!(numericInput >= min && numericInput <= max)) return false;
+          }
+          
+          // If we matched a comparator but input value was undefined, return false
+          if (inputValue === undefined || inputValue === null) {
+            console.log(`   ⚠️ [ConditionsJson] Unknown key "${key}" requires value, but input is missing → no match`);
+            return false;
+          }
+          
+          hasAnyCondition = true;
+          continue;
+        }
+      }
+      
+      // If we can't evaluate the unknown key, return false (fail-safe)
+      console.log(`   ⚠️ [ConditionsJson] Unrecognized condition key "${key}" with unevaluable value → no match`);
+      return false;
+    }
+  }
+  
+  // If no specific conditions were defined (truly empty object), match by default
+  if (!hasAnyCondition && conditionKeys.length === 0) {
     return true;
+  }
+  
+  // If we had conditions but none matched, fail
+  if (!hasAnyCondition) {
+    return false;
   }
   
   return allMatch;
