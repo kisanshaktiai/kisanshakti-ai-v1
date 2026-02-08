@@ -7,10 +7,11 @@
  * - Block spray recommendations when rain probability > 50%
  * - Block spray when wind speed > 15 km/h
  * - Block spray when temperature > 35°C or < 10°C
+ * - NEW: Disease risk assessment for preventive spray recommendations
  * 
  * CRITICAL: Prevents farmer from wasting money on washed-away pesticides
  * 
- * VERSION: 1.0.0
+ * VERSION: 2.0.0 - Enhanced with disease risk calculations
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
@@ -20,6 +21,14 @@ import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type WeatherSafetyStatus = 'SAFE' | 'UNSAFE' | 'CAUTION' | 'UNKNOWN';
+export type DiseaseRiskLevel = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+
+export interface DiseaseRiskResult {
+  level: DiseaseRiskLevel;
+  score: number;
+  factors: string[];
+  spray_urgency: 'NONE' | 'MONITOR' | 'PREVENTIVE' | 'URGENT';
+}
 
 export interface WeatherSafetyResult {
   status: WeatherSafetyStatus;
@@ -46,6 +55,9 @@ export interface WeatherSafetyResult {
     message: string;
   };
   
+  // NEW: Disease risk assessment
+  disease_risk?: DiseaseRiskResult;
+  
   // Recommendation
   recommended_spray_window?: {
     start_time: string;
@@ -69,9 +81,12 @@ export interface WeatherSafetyInput {
     wind_speed_kmh?: number;
     temperature_c?: number;
     humidity?: number;
+    dew_point_c?: number; // NEW: For disease risk calculation
+    recent_rainfall_mm?: number; // NEW: 24h rainfall
     forecast_hours?: number;
   };
   spray_type?: 'PESTICIDE' | 'FUNGICIDE' | 'HERBICIDE' | 'FOLIAR_FERTILIZER' | 'BIOLOGICAL';
+  include_disease_risk?: boolean; // NEW: Flag to include disease assessment
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -110,6 +125,102 @@ const SPRAY_THRESHOLDS = {
     max_temperature: 35
   }
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DISEASE RISK CALCULATION (for preventive spray recommendations)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Calculate Dew Point using Magnus-Tetens formula
+ */
+function calculateDewPoint(tempC: number, humidityPercent: number): number {
+  if (humidityPercent <= 0) return tempC - 20;
+  if (humidityPercent >= 100) return tempC;
+  
+  const a = 17.27;
+  const b = 237.7;
+  const gamma = (a * tempC / (b + tempC)) + Math.log(humidityPercent / 100);
+  return Math.round(((b * gamma) / (a - gamma)) * 10) / 10;
+}
+
+/**
+ * Calculate disease risk based on weather conditions
+ * High disease risk may indicate need for preventive fungicide spray
+ */
+function calculateDiseaseRiskForSpray(
+  tempC: number,
+  humidityPercent: number,
+  dewPointC: number | null,
+  recentRainfallMm: number = 0
+): DiseaseRiskResult {
+  let score = 0;
+  const factors: string[] = [];
+  
+  // Calculate dew point if not provided
+  const dew = dewPointC ?? calculateDewPoint(tempC, humidityPercent);
+  
+  // High humidity favors fungal diseases
+  if (humidityPercent > 85) { 
+    score += 25; 
+    factors.push('HIGH_HUMIDITY'); 
+  } else if (humidityPercent > 70) { 
+    score += 15; 
+    factors.push('MODERATE_HUMIDITY'); 
+  }
+  
+  // Temperature close to dew point = condensation = leaf wetness
+  const dewPointProximity = Math.abs(tempC - dew);
+  if (dewPointProximity < 2) { 
+    score += 30; 
+    factors.push('CONDENSATION_LIKELY'); 
+  } else if (dewPointProximity < 5) { 
+    score += 15; 
+    factors.push('CONDENSATION_POSSIBLE'); 
+  }
+  
+  // Optimal disease development temperature (20-28°C for most pathogens)
+  if (tempC >= 20 && tempC <= 28) { 
+    score += 20; 
+    factors.push('OPTIMAL_PATHOGEN_TEMP'); 
+  } else if (tempC >= 15 && tempC <= 32) { 
+    score += 10; 
+    factors.push('FAVORABLE_PATHOGEN_TEMP'); 
+  }
+  
+  // Recent rainfall = wet canopy
+  if (recentRainfallMm > 15) { 
+    score += 25; 
+    factors.push('WET_CANOPY'); 
+  } else if (recentRainfallMm > 5) { 
+    score += 15; 
+    factors.push('DAMP_CONDITIONS'); 
+  }
+  
+  // Determine risk level and spray urgency
+  let level: DiseaseRiskLevel;
+  let spray_urgency: DiseaseRiskResult['spray_urgency'];
+  
+  if (score >= 75) {
+    level = 'CRITICAL';
+    spray_urgency = 'URGENT';
+  } else if (score >= 50) {
+    level = 'HIGH';
+    spray_urgency = 'PREVENTIVE';
+  } else if (score >= 25) {
+    level = 'MEDIUM';
+    spray_urgency = 'MONITOR';
+  } else {
+    level = 'LOW';
+    spray_urgency = 'NONE';
+  }
+  
+  return {
+    level,
+    score: Math.min(100, score),
+    factors,
+    spray_urgency
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN SAFETY CHECK
@@ -287,6 +398,41 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
   } else {
     result.status = 'SAFE';
     result.alternative_actions.push('Good conditions for spraying');
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════
+  // CHECK 4: Disease Risk Assessment (NEW - for preventive spray recommendations)
+  // ═══════════════════════════════════════════════════════════════════════
+  if (input.include_disease_risk !== false && weatherData.temperature_c !== null && weatherData.humidity !== null) {
+    const diseaseRisk = calculateDiseaseRiskForSpray(
+      weatherData.temperature_c,
+      weatherData.humidity ?? 65,
+      weatherData.dew_point_c ?? null,
+      weatherData.recent_rainfall_mm ?? 0
+    );
+    
+    result.disease_risk = diseaseRisk;
+    
+    console.log(`🦠 [WeatherSafetyGate] Disease Risk: ${diseaseRisk.level} (score: ${diseaseRisk.score}), Factors: ${diseaseRisk.factors.join(', ')}`);
+    
+    // Add disease-based recommendations
+    if (diseaseRisk.level === 'CRITICAL' || diseaseRisk.level === 'HIGH') {
+      // Even if weather is unsafe for general spraying, disease pressure may warrant urgent action
+      if (diseaseRisk.spray_urgency === 'URGENT') {
+        result.alternative_actions.push('🚨 High disease pressure - apply preventive fungicide ASAP when weather permits');
+      } else if (diseaseRisk.spray_urgency === 'PREVENTIVE') {
+        result.alternative_actions.push('⚠️ Disease risk elevated - consider preventive spray within 24-48 hours');
+      }
+      
+      // If spray is allowed and disease risk is high, recommend urgency
+      if (result.spray_allowed && (diseaseRisk.level === 'CRITICAL' || diseaseRisk.level === 'HIGH')) {
+        result.recommended_spray_window = {
+          start_time: 'ASAP',
+          end_time: '24h',
+          reason: `Disease risk ${diseaseRisk.level} - ${diseaseRisk.factors.join(', ')}`
+        };
+      }
+    }
   }
   
   console.log(`🌦️ [WeatherSafetyGate] Result: ${result.status}, Spray Allowed: ${result.spray_allowed}`);

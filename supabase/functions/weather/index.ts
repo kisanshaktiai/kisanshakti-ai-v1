@@ -745,7 +745,7 @@ async function cacheWeatherData(
     
     // ============= 5. Update weather_aggregates for the day =============
     if (tenantId) {
-      await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now)
+      await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now, rounded.lat)
     }
     
     console.log(`✅ [Weather] All weather data cached successfully for ${locationKey}`)
@@ -762,14 +762,15 @@ function getWindDirection(deg: number): string {
   return directions[index]
 }
 
-// Update daily weather aggregates
+// Update daily weather aggregates - ENHANCED with agricultural indices
 async function updateWeatherAggregate(
   supabase: any,
   tenantId: string,
   farmerId?: string,
   landId?: string,
   current?: CurrentWeatherData,
-  now?: Date
+  now?: Date,
+  latitude?: number // NEW: For ET0 calculation
 ) {
   if (!current || !now) return
   
@@ -781,6 +782,20 @@ async function updateWeatherAggregate(
   if (hour >= 12 && hour < 17) rainColumn = 'rain_mm_afternoon'
   else if (hour >= 17 && hour < 21) rainColumn = 'rain_mm_evening'
   else if (hour >= 21 || hour < 6) rainColumn = 'rain_mm_night'
+  
+  // Calculate agricultural indices
+  const tempMax = current.temp_max || current.temp + 3
+  const tempMin = current.temp_min || current.temp - 5
+  const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
+  const lat = latitude || 20 // Default to central India
+  
+  // Calculate dew point, GDD, and ET0
+  const dewPoint = calculateDewPointSimple(current.temp, current.humidity)
+  const dailyGDD = calculateDailyGDDSimple(tempMax, tempMin)
+  const et0 = calculateET0Simple(tempMax, tempMin, lat, dayOfYear)
+  const sunshineHours = estimateSunshineHoursSimple(current.clouds, current.sunrise, current.sunset)
+  
+  console.log(`🌡️ [Weather] Agricultural indices: GDD=${dailyGDD.toFixed(1)}, ET0=${et0.toFixed(1)}mm, DewPoint=${dewPoint.toFixed(1)}°C`)
   
   try {
     // Check if aggregate exists for today
@@ -817,10 +832,15 @@ async function updateWeatherAggregate(
         updates.wind_speed_max_kmh = current.wind_speed * 3.6
       }
       
-      // Risk calculations
+      // Risk calculations - ENHANCED with dew point
       updates.frost_risk = current.temp < 4
       updates.heat_stress_risk = current.temp > 38
-      updates.disease_risk_level = calculateDiseaseRisk(current.humidity, current.temp)
+      updates.disease_risk_level = calculateDiseaseRiskEnhanced(current.humidity, current.temp, dewPoint, current.rain_1h || 0)
+      
+      // NEW: Agricultural indices
+      updates.gdd_accumulated = (existing.gdd_accumulated || 0) + dailyGDD
+      updates.evapotranspiration_mm = et0
+      updates.sunshine_hours = sunshineHours
       
       await supabase
         .from('weather_aggregates')
@@ -844,7 +864,11 @@ async function updateWeatherAggregate(
         wind_speed_max_kmh: current.wind_speed * 3.6,
         frost_risk: current.temp < 4,
         heat_stress_risk: current.temp > 38,
-        disease_risk_level: calculateDiseaseRisk(current.humidity, current.temp),
+        disease_risk_level: calculateDiseaseRiskEnhanced(current.humidity, current.temp, dewPoint, current.rain_1h || 0),
+        // NEW: Agricultural indices
+        gdd_accumulated: dailyGDD,
+        evapotranspiration_mm: et0,
+        sunshine_hours: sunshineHours,
         created_at: now.toISOString(),
         updated_at: now.toISOString()
       }
@@ -852,18 +876,106 @@ async function updateWeatherAggregate(
       await supabase.from('weather_aggregates').insert(newAggregate)
     }
     
-    console.log(`💾 [Weather] ✅ Updated daily aggregate for ${today}`)
+    console.log(`💾 [Weather] ✅ Updated daily aggregate for ${today} with GDD=${dailyGDD.toFixed(1)}, ET0=${et0.toFixed(1)}`)
     
   } catch (error) {
     console.warn('⚠️ [Weather] Failed to update aggregate:', error)
   }
 }
 
-// Calculate disease risk based on humidity and temperature
-function calculateDiseaseRisk(humidity: number, temp: number): string {
-  // High humidity + moderate temp = high disease risk
-  if (humidity > 85 && temp >= 20 && temp <= 30) return 'high'
-  if (humidity > 70 && temp >= 15 && temp <= 35) return 'medium'
+// ═══════════════════════════════════════════════════════════════════════════
+// AGRICULTURAL CALCULATION HELPERS (simplified for inline use)
+// Full calculations available in agricultural-calculations.ts
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Calculate Dew Point using Magnus-Tetens formula
+ */
+function calculateDewPointSimple(tempC: number, humidityPercent: number): number {
+  if (humidityPercent <= 0) return tempC - 20
+  if (humidityPercent >= 100) return tempC
+  
+  const a = 17.27
+  const b = 237.7
+  const gamma = (a * tempC / (b + tempC)) + Math.log(humidityPercent / 100)
+  return Math.round(((b * gamma) / (a - gamma)) * 10) / 10
+}
+
+/**
+ * Calculate daily Growing Degree Days
+ */
+function calculateDailyGDDSimple(tempMax: number, tempMin: number, baseTemp: number = 10, maxTemp: number = 30): number {
+  const cappedMax = Math.min(tempMax, maxTemp)
+  const cappedMin = Math.max(tempMin, baseTemp)
+  if (cappedMax <= cappedMin) return 0
+  
+  const avgTemp = (cappedMax + cappedMin) / 2
+  return Math.round(Math.max(0, avgTemp - baseTemp) * 10) / 10
+}
+
+/**
+ * Calculate Reference Evapotranspiration (ET0) - Hargreaves method
+ */
+function calculateET0Simple(tempMax: number, tempMin: number, latitude: number, dayOfYear: number): number {
+  const tempMean = (tempMax + tempMin) / 2
+  const tempRange = Math.max(0, tempMax - tempMin)
+  
+  // Simplified Ra calculation for tropical/subtropical India
+  const latRad = latitude * Math.PI / 180
+  const dr = 1 + 0.033 * Math.cos(2 * Math.PI * dayOfYear / 365)
+  const delta = 0.409 * Math.sin(2 * Math.PI * dayOfYear / 365 - 1.39)
+  const ws = Math.acos(-Math.tan(latRad) * Math.tan(delta))
+  const Gsc = 0.0820
+  const Ra = (24 * 60 / Math.PI) * Gsc * dr * (
+    ws * Math.sin(latRad) * Math.sin(delta) +
+    Math.cos(latRad) * Math.cos(delta) * Math.sin(ws)
+  )
+  
+  const RaInMmPerDay = Math.max(0, Ra) / 2.45
+  const et0 = 0.0023 * RaInMmPerDay * Math.sqrt(tempRange) * (tempMean + 17.8)
+  
+  return Math.round(Math.max(0, et0) * 10) / 10
+}
+
+/**
+ * Estimate sunshine hours from cloud cover
+ */
+function estimateSunshineHoursSimple(cloudCoverPercent: number, sunriseTs?: number, sunsetTs?: number): number {
+  if (!sunriseTs || !sunsetTs) return 0
+  
+  const daylightHours = (sunsetTs - sunriseTs) / 3600
+  if (daylightHours <= 0) return 0
+  
+  const clearFraction = (100 - Math.min(100, Math.max(0, cloudCoverPercent))) / 100
+  return Math.round(daylightHours * clearFraction * 0.9 * 10) / 10
+}
+
+/**
+ * Enhanced disease risk with dew point and rainfall factors
+ */
+function calculateDiseaseRiskEnhanced(humidity: number, temp: number, dewPoint: number, recentRainMm: number): string {
+  let score = 0
+  
+  // High humidity
+  if (humidity > 85) score += 25
+  else if (humidity > 70) score += 15
+  
+  // Dew point proximity (condensation risk)
+  const dewPointProximity = Math.abs(temp - dewPoint)
+  if (dewPointProximity < 2) score += 30
+  else if (dewPointProximity < 5) score += 15
+  
+  // Optimal pathogen temperature
+  if (temp >= 20 && temp <= 28) score += 20
+  else if (temp >= 15 && temp <= 32) score += 10
+  
+  // Recent rainfall
+  if (recentRainMm > 15) score += 25
+  else if (recentRainMm > 5) score += 15
+  
+  if (score >= 75) return 'critical'
+  if (score >= 50) return 'high'
+  if (score >= 25) return 'medium'
   return 'low'
 }
 

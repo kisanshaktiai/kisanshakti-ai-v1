@@ -31467,8 +31467,10 @@ export type Database = {
           agricultural_alerts: Json | null
           created_at: string
           disease_risk_level: string | null
+          evapotranspiration_mm: number | null
           farmer_id: string | null
           frost_risk: boolean | null
+          gdd_accumulated: number | null
           heat_stress_risk: boolean | null
           humidity_avg_percent: number | null
           id: string
@@ -31492,8 +31494,10 @@ export type Database = {
           agricultural_alerts?: Json | null
           created_at?: string
           disease_risk_level?: string | null
+          evapotranspiration_mm?: number | null
           farmer_id?: string | null
           frost_risk?: boolean | null
+          gdd_accumulated?: number | null
           heat_stress_risk?: boolean | null
           humidity_avg_percent?: number | null
           id?: string
@@ -31517,8 +31521,10 @@ export type Database = {
           agricultural_alerts?: Json | null
           created_at?: string
           disease_risk_level?: string | null
+          evapotranspiration_mm?: number | null
           farmer_id?: string | null
           frost_risk?: boolean | null
+          gdd_accumulated?: number | null
           heat_stress_risk?: boolean | null
           humidity_avg_percent?: number | null
           id?: string
