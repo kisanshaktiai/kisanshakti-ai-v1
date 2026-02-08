@@ -1383,45 +1383,42 @@ export class AIAgentOrchestrator {
       const clarificationTurnCount = options.sessionState?.turnCount || 0;
       
       // ========================================
-      // NEW QUERY DETECTOR (CRITICAL FIX FOR DEADLOCK BUG)
-      // Detect when farmer is asking a NEW question vs selecting an option
-      // If NEW agricultural query detected, CLEAR pending options and proceed to NLU
+      // PHASE 1.2: NEW QUERY DETECTOR (FAIL-OPEN TO NLU)
+      // Language-agnostic detection of NEW question vs option selection
+      // If farmer types free text that doesn't match any option, treat as NEW query
       // ========================================
       if (pendingOptionsCount > 0) {
-        // Run Language Induction FIRST to detect new agricultural symptoms
-        const earlyInductionResult = induceCanonicalSymbols(safeFarmerMessage);
-        const hasNewSymptoms = earlyInductionResult.symptoms.length > 0;
-        const hasNewCrop = earlyInductionResult.crop !== null;
-        
-        // Check if this looks like a new query rather than option selection
         const pendingOptions = options.sessionState?.pendingClarificationOptions || [];
-        const isNumericSelection = /^[१२३४१२३४1-4]$/.test(safeFarmerMessage.trim());
-        const isOptionTextMatch = pendingOptions.some(opt => 
-          safeFarmerMessage.toLowerCase().includes(opt.toLowerCase().slice(0, 10)) ||
-          opt.toLowerCase().includes(safeFarmerMessage.toLowerCase())
-        );
-        const isLikelyNewQuery = (hasNewSymptoms || hasNewCrop) && 
-          !isNumericSelection && 
-          !isOptionTextMatch && 
-          safeFarmerMessage.length > 20;
         
-        // Agricultural symptom keywords that indicate a NEW problem
-        const newProblemKeywords = [
-          'problem', 'issue', 'help', 'damage', 'attack', 'disease', 'pest',
-          // English urgent
-          'dying', 'dead', 'wilting', 'yellowing', 'spots', 'holes',
-          // Marathi/Hindi urgent (detected via Language Induction)
-        ];
-        const hasNewProblemKeyword = newProblemKeywords.some(kw => 
-          safeFarmerMessage.toLowerCase().includes(kw)
-        );
+        // ========================================
+        // STEP 1: Try to match response to pending options (using improved matcher)
+        // This is the AUTHORITATIVE check - if it matches, it's an option selection
+        // ========================================
+        const matchResult = matchFarmerResponseToOption(safeFarmerMessage, pendingOptions);
         
-        const isNewAgriculturalQuery = isLikelyNewQuery || (hasNewProblemKeyword && !isNumericSelection && !isOptionTextMatch);
+        // ========================================
+        // STEP 2: Check for explicit option selection indicators
+        // ========================================
+        const isNumericOnly = /^[१२३४1-4]$/.test(safeFarmerMessage.trim());
+        const hasEmbeddedObsKeys = /\[obs_keys:[^\]]+\]/.test(safeFarmerMessage);
         
-        if (isNewAgriculturalQuery) {
-          console.log('🆕 [NewQueryDetector] NEW agricultural query detected - clearing stale clarification');
-          console.log(`   Symptoms detected: ${earlyInductionResult.symptoms.map(s => s.symbol).join(', ')}`);
-          console.log(`   Crop detected: ${earlyInductionResult.crop?.symbol || 'none'}`);
+        // ========================================
+        // STEP 3: FAIL-OPEN LOGIC
+        // If message:
+        //   - is NOT numeric-only (1-4), AND
+        //   - has NO embedded obs_keys, AND
+        //   - does NOT match any option (via improved matcher)
+        // Then: CLEAR stale clarification and proceed to NLU pipeline
+        // ========================================
+        const isLikelyNewQuery = !isNumericOnly && 
+                                  !hasEmbeddedObsKeys && 
+                                  !matchResult.matched && 
+                                  safeFarmerMessage.length > 10; // Minimum length for a real question
+        
+        if (isLikelyNewQuery) {
+          console.log('🆕 [NewQueryDetector v2] FREE TEXT detected - clearing stale clarification (FAIL-OPEN)');
+          console.log(`   Message preview: "${safeFarmerMessage.slice(0, 50)}..."`);
+          console.log(`   Length: ${safeFarmerMessage.length}, Match confidence: ${matchResult.match_confidence}`);
           console.log(`   Clearing ${pendingOptionsCount} pending options to proceed with fresh NLU`);
           
           // CLEAR pending options - this is a NEW query, not an option selection
@@ -1429,6 +1426,8 @@ export class AIAgentOrchestrator {
           if (options.sessionState) {
             options.sessionState.pendingClarificationOptions = undefined;
             options.sessionState.pendingClarificationScope = undefined;
+            // Also clear decision state to allow fresh processing
+            options.sessionState.decision_state = 'idle';
           }
           // Fall through to regular NLU pipeline
         }

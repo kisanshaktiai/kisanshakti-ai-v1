@@ -398,38 +398,100 @@ function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] 
  * Pre-evaluate symbolic rules to build candidate hypothesis set.
  * This is a READ-ONLY step that does NOT fire treatments.
  */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CROP CODE NORMALIZER - Maps between full names and DB short codes
+ * CRITICAL: decision_rules table uses short codes (SC, CTN, etc.)
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+function getCropCodeVariantsForDB(cropCode: string): string[] {
+  if (!cropCode) return ['all', 'ALL'];
+  
+  const normalized = cropCode.toUpperCase().trim();
+  
+  // Mapping from full names to DB short codes
+  const DB_CROP_MAP: Record<string, string> = {
+    'SUGARCANE': 'SC',
+    'COTTON': 'CTN',
+    'SOYBEAN': 'SOY',
+    'RICE': 'RICE',
+    'PADDY': 'RICE',
+    'WHEAT': 'WHT',
+    'MAIZE': 'MZ',
+    'CORN': 'MZ',
+    'TOMATO': 'TOM',
+    'ONION': 'ONI',
+    'CHILLI': 'CHI',
+    'GROUNDNUT': 'GN',
+    'BANANA': 'BAN',
+    'GRAPE': 'GRP',
+    'POMEGRANATE': 'POM',
+    // Pass-through for short codes
+    'SC': 'SC',
+    'CTN': 'CTN',
+    'SOY': 'SOY',
+    'MZ': 'MZ',
+    'WHT': 'WHT',
+  };
+  
+  // Reverse mapping
+  const REVERSE_MAP: Record<string, string> = {
+    'SC': 'SUGARCANE',
+    'CTN': 'COTTON',
+    'SOY': 'SOYBEAN',
+    'MZ': 'MAIZE',
+    'WHT': 'WHEAT',
+  };
+  
+  const dbCode = DB_CROP_MAP[normalized] || normalized;
+  const fullCode = REVERSE_MAP[normalized] || REVERSE_MAP[dbCode] || normalized;
+  
+  // Return all possible variants for flexible matching
+  const variants = new Set<string>([
+    normalized.toLowerCase(),
+    dbCode.toLowerCase(),
+    fullCode.toLowerCase(),
+    'all'
+  ]);
+  
+  return Array.from(variants);
+}
+
 export async function evaluateCandidateHypotheses(
   input: HypothesisEvaluationInput
 ): Promise<HypothesisEvaluationOutput> {
   const traceId = input.trace_id || `hyp_${Date.now()}`;
   const { crop_code, growth_stage, supabaseClient } = input;
   
-  console.log(`🎯 [HypothesisEval v1] Pre-evaluating rules for ${crop_code}/${growth_stage}`);
+  console.log(`🎯 [HypothesisEval v1.3] Pre-evaluating rules for ${crop_code}/${growth_stage}`);
   console.log(`   Known observations: ${input.known_observations.join(', ') || 'none'}`);
   console.log(`   NDVI: ${input.ndvi_level || 'unknown'} (${input.ndvi_trend || 'unknown'})`);
-  
-  // Stage normalization now uses centralized module
+  console.log(`   DAS: ${input.days_since_sowing ?? 'unknown'}`);
   
   try {
     // ═══════════════════════════════════════════════════════════════════════
-    // STEP 1: Load rules filtered by crop_code, stage_applicable, canonical_group
-    // CRITICAL FIX: Normalize stage to DB format and query with lowercase + 'all'
+    // STEP 1: NORMALIZE CROP CODE AND STAGE FOR DB QUERY
+    // CRITICAL FIX: Use crop code variants (SC, SUGARCANE, etc.)
     // ═══════════════════════════════════════════════════════════════════════
     
-    const dbStage = normalizeStageForDB(growth_stage);
-    const cropLower = crop_code.toLowerCase();
-    
-    console.log(`   [HypothesisEval] Stage normalization: ${growth_stage} → ${dbStage}`);
-    console.log(`   [HypothesisEval] Crop normalization: ${crop_code} → ${cropLower}`);
-    
-    // CRITICAL FIX: Use centralized stage variants from stage-normalizer
+    const cropVariants = getCropCodeVariantsForDB(crop_code);
     const stageVariants = getStageQueryVariants(growth_stage);
+    const dbStage = normalizeStageForDB(growth_stage);
     
-    // Query 1: Rules with observable_characteristics for this crop OR universal ('all') rules
-    // NOTE: Filter out empty object {} which is not useful
-    // PHASE-17: Include temporal constraint fields for filtering
-    // CRITICAL FIX: trigger_keywords column was DROPPED - removed from SELECT
-    // Use conditions_json.trigger_keywords instead (handled in evaluatePartialConditionMatch)
+    console.log(`   [HypothesisEval] Crop variants for query: [${cropVariants.join(', ')}]`);
+    console.log(`   [HypothesisEval] Stage variants for query: [${stageVariants.slice(0, 5).join(', ')}...]`);
+    console.log(`   [HypothesisEval] DB stage normalized: ${growth_stage} → ${dbStage}`);
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 1.5: BUILD DYNAMIC QUERY WITH CROP AND STAGE FILTERING
+    // This prevents loading 100 random rules - instead load stage-scoped rules
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    // Build crop filter: match any of the crop variants
+    const cropFilter = cropVariants.map(v => `crop_code.ilike.${v}`).join(',');
+    
+    // Query with both crop AND stage filtering for better precision
+    // Increase limit since we're filtering more precisely
     const { data: rulesRaw, error } = await supabaseClient
       .from('decision_rules')
       .select(`
@@ -445,11 +507,11 @@ export async function evaluateCandidateHypotheses(
         crop_age_days_max
       `)
       .eq('is_active', true)
-      .or(`crop_code.eq.${cropLower},crop_code.ilike.${cropLower},crop_code.eq.all`)
+      .or(cropFilter)
       .not('observable_characteristics', 'is', null)
       .neq('observable_characteristics', '{}')
       .neq('observable_characteristics', '[]')
-      .limit(100);
+      .limit(300); // Increased limit since we have crop filter
     
     if (error) {
       console.error(`   ❌ [HypothesisEval] Database error:`, error);
@@ -464,7 +526,7 @@ export async function evaluateCandidateHypotheses(
     }
     
     if (!rulesRaw || rulesRaw.length === 0) {
-      console.log(`   ⚠️ [HypothesisEval] No rules found for ${crop_code}/${growth_stage}`);
+      console.log(`   ⚠️ [HypothesisEval] No rules found for crop variants: [${cropVariants.join(', ')}]`);
       return {
         candidates: [],
         total_rules_evaluated: 0,
@@ -476,13 +538,46 @@ export async function evaluateCandidateHypotheses(
     }
     
     console.log(`   📦 [HypothesisEval] Loaded ${rulesRaw.length} candidate rules from database`);
+    console.log(`   📊 [Debug] First 3 rule crop_codes: ${rulesRaw.slice(0, 3).map((r: any) => r.cause).join(', ')}`);
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 1.6: FILTER BY STAGE_APPLICABLE (in-code filtering)
+    // Supabase can't do array-contains easily, so we filter in code
+    // ═══════════════════════════════════════════════════════════════════════
+    const stageFilteredRules = rulesRaw.filter((rule: any) => {
+      const stageApplicable = rule.stage_applicable;
+      
+      // No stage restriction = applies to all stages
+      if (!stageApplicable || !Array.isArray(stageApplicable) || stageApplicable.length === 0) {
+        return true;
+      }
+      
+      // Check if any stage variant matches
+      const stageApplicableLower = stageApplicable.map((s: string) => s.toLowerCase());
+      return stageVariants.some(variant => 
+        stageApplicableLower.includes(variant.toLowerCase()) ||
+        stageApplicableLower.includes('all') ||
+        stageApplicableLower.includes('*')
+      );
+    });
+    
+    console.log(`   🎯 [StageFilter] After stage filtering: ${stageFilteredRules.length}/${rulesRaw.length} rules`);
+    
+    if (stageFilteredRules.length === 0) {
+      console.log(`   ⚠️ [HypothesisEval] No rules match stage: ${growth_stage}`);
+      // Fall back to all rules (stage-agnostic) rather than returning empty
+      // This ensures we always have some options
+    }
+    
+    // Use stage-filtered rules if available, otherwise use all rules
+    const rulesToEvaluate = stageFilteredRules.length > 0 ? stageFilteredRules : rulesRaw;
     
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 2: PHASE-17 - Filter by temporal constraints (crop_age_days_min/max)
     // This ensures early-stage rules don't fire for mature crops and vice versa
     // ═══════════════════════════════════════════════════════════════════════
     
-    const temporalFilterInput = rulesRaw.map(r => ({
+    const temporalFilterInput = rulesToEvaluate.map((r: any) => ({
       rule_id: r.rule_id,
       crop_age_days_min: r.crop_age_days_min,
       crop_age_days_max: r.crop_age_days_max,
@@ -498,7 +593,7 @@ export async function evaluateCandidateHypotheses(
     if (temporallyFiltered.length > 0) {
       console.log(`   ⏰ [TemporalFilter] Filtered ${temporallyFiltered.length} rules by crop age (DAS: ${input.days_since_sowing})`);
       // Log first 3 filtered rules for debugging
-      temporallyFiltered.slice(0, 3).forEach(r => {
+      temporallyFiltered.slice(0, 3).forEach((r: any) => {
         const reason = temporalReasons.get(r.rule_id) || 'unknown';
         console.log(`      - ${r.rule_id}: ${reason}`);
       });
@@ -506,16 +601,11 @@ export async function evaluateCandidateHypotheses(
     
     logTemporalFilteringSummary(rules.length, temporallyFiltered.length, input.days_since_sowing, traceId);
     
-    if (rules.length === 0) {
-      console.log(`   ⚠️ [HypothesisEval] All rules filtered by temporal constraints`);
-      return {
-        candidates: [],
-        total_rules_evaluated: rulesRaw.length,
-        stage_locked: growth_stage,
-        evaluation_method: 'PARTIAL_MATCH',
-        timestamp: Date.now(),
-        trace_id: traceId
-      };
+    // CRITICAL: Use fallback rules if temporal filter removed everything
+    const finalRulesToEvaluate = rules.length > 0 ? rules : rulesToEvaluate;
+    
+    if (rules.length === 0 && rulesToEvaluate.length > 0) {
+      console.log(`   ⚠️ [HypothesisEval] All rules filtered by DAS - falling back to ${rulesToEvaluate.length} stage-filtered rules`);
     }
     
     // ═══════════════════════════════════════════════════════════════════════
@@ -539,7 +629,9 @@ export async function evaluateCandidateHypotheses(
       console.log(`   ⚠️ [HypothesisEval] STRONG SIGNAL DETECTED - will allow cross-stage evaluation`);
     }
     
-    for (const rule of rules) {
+    console.log(`   🔄 [HypothesisEval] Evaluating ${finalRulesToEvaluate.length} rules for candidates...`);
+    
+    for (const rule of finalRulesToEvaluate) {
       // Calculate stage relevance
       let stageRelevance = calculateStageRelevance(rule.stage_applicable, growth_stage);
       
