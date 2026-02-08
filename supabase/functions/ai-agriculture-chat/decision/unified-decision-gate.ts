@@ -35,7 +35,7 @@ import {
   type DiagnosticEscalationInput
 } from './diagnostic-escalation-generator.ts';
 
-export const UNIFIED_GATE_VERSION = '2.0.0'; // Phase 7: Confidence-driven mode resolution
+export const UNIFIED_GATE_VERSION = '2.1.0'; // v2.1.0: DAS-first young crop logic + SSOT fixes
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RECOMMENDATION SUPPRESSION GUARD
@@ -756,25 +756,35 @@ function checkIfYoungCrop(
   daysSinceSowing?: number | null,
   cropName?: string | null
 ): boolean {
-  // Check by stage name
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FIX: PRIORITIZE days_since_sowing OVER stage label
+  // A crop at 59 DAS is NOT young even if stage says SEEDLING (data might be stale)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // PRIORITY 1: If we have reliable days_since_sowing, use it as primary indicator
+  if (daysSinceSowing !== undefined && daysSinceSowing !== null) {
+    const maxYoungDays = cropName 
+      ? (YOUNG_CROP_MAX_DAYS[cropName.toUpperCase()] || 30)
+      : 30;
+    
+    // If DAS exceeds the young crop threshold, crop is NOT young regardless of stage label
+    if (daysSinceSowing > maxYoungDays) {
+      console.log(`   📊 [YoungCrop] DAS=${daysSinceSowing} > max=${maxYoungDays} for ${cropName || 'unknown'} → NOT young (DAS overrides stage)`);
+      return false;
+    }
+    
+    // If DAS is within young crop range, it IS young
+    console.log(`   📊 [YoungCrop] DAS=${daysSinceSowing} <= max=${maxYoungDays} → IS young crop`);
+    return true;
+  }
+  
+  // PRIORITY 2: Fallback to stage-based check only when DAS is unknown
   if (cropStage) {
     const normalizedStage = cropStage.toUpperCase().replace(/[_\s-]+/g, '_');
     if (YOUNG_CROP_STAGES.has(normalizedStage)) {
+      console.log(`   📊 [YoungCrop] Stage=${normalizedStage} (DAS unknown) → IS young by stage`);
       return true;
     }
-  }
-  
-  // Check by days since sowing
-  if (daysSinceSowing !== undefined && daysSinceSowing !== null && cropName) {
-    const maxYoungDays = YOUNG_CROP_MAX_DAYS[cropName.toUpperCase()] || 30;
-    if (daysSinceSowing <= maxYoungDays) {
-      return true;
-    }
-  }
-  
-  // Default: if days < 30, consider young
-  if (daysSinceSowing !== undefined && daysSinceSowing !== null && daysSinceSowing <= 30) {
-    return true;
   }
   
   return false;

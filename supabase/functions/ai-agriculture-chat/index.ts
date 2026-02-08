@@ -881,6 +881,19 @@ serve(async (req) => {
         // PHASE 11 + P1-4: UNIFIED DECISION GATE - Single point of treatment validation
         // Replaces dual prescription-gate and decision-readiness-gate
         // ═══════════════════════════════════════════════════════════════════════════
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Extract symptom_keys from SSOT (decision_output) first
+        // The orchestrator stores symptom info in decision_output, not just metadata
+        // ═══════════════════════════════════════════════════════════════════════════
+        const decisionOutput = orchestratorResponse.decision_output as Record<string, any> || {};
+        const symptomKeysFromDecision = decisionOutput.symptom_keys || 
+                                        decisionOutput.observation_keys ||
+                                        decisionOutput.canonical_observations ||
+                                        [];
+        const symptomKeysFromMetadata = orchestratorResponse.metadata?.symptomKeys || [];
+        const mergedSymptomKeys = [...new Set([...symptomKeysFromDecision, ...symptomKeysFromMetadata])];
+        
         const unifiedGateInput: UnifiedGateInput = {
           authority_decision: orchestratorResponse.decision_output?.authority_decision || {
             authority: 'NONE',
@@ -893,7 +906,7 @@ serve(async (req) => {
           growth_stage: finalGrowthStage,
           days_since_sowing: finalDaysSinceSowing,
           stage_source: orchestratorResponse.metadata?.stageSource || 'UNKNOWN',
-          symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
+          symptom_keys: mergedSymptomKeys,  // Use merged symptoms from both sources
           is_specific_symptom: !!orchestratorResponse.decision_output?.primary_decision?.target,
           clarification_turn_count: orchestratorResponse.metadata?.clarificationTurnCount || 0,
           pending_clarification: orchestratorResponse.decision_output?.clarification_needed || false,
@@ -901,15 +914,30 @@ serve(async (req) => {
           land_id: landId
         };
         
+        console.log(`   🔍 [UnifiedGate] Input: crop=${finalCropName}, stage=${finalGrowthStage}, DAS=${finalDaysSinceSowing}, symptoms=${mergedSymptomKeys.length}`);
+        
         const rawGateResult = evaluateUnifiedGate(unifiedGateInput);
         
         // Apply suppression guard to prevent silent recommendation drops
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Use decision_output as SSOT, not metadata
+        // decision_output contains the actual rules/actions from symbolic brain
+        // ═══════════════════════════════════════════════════════════════════════════
+        const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
         const symbolicDecisionForGuard = {
-          decision_brain_source: orchestratorResponse.decision_brain_source,
-          rules_fired: orchestratorResponse.metadata?.rulesFired || [],
-          actions_returned: orchestratorResponse.metadata?.actionsReturned || [],
-          matched_responses: orchestratorResponse.metadata?.matchedResponses || []
+          decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
+          // SSOT: Use decision_output fields first, fallback to metadata
+          rules_fired: decisionOutputSsot.rules_applied || 
+                       decisionOutputSsot.layered_rule_result?.rules_applied || 
+                       orchestratorResponse.metadata?.rulesFired || [],
+          actions_returned: decisionOutputSsot.actions_returned || 
+                            orchestratorResponse.metadata?.actionsReturned || [],
+          matched_responses: decisionOutputSsot.matched_responses || 
+                             orchestratorResponse.metadata?.matchedResponses || []
         };
+        
+        console.log(`   🔍 [SuppressionGuard] SSOT check: rules=${symbolicDecisionForGuard.rules_fired?.length || 0}, actions=${symbolicDecisionForGuard.actions_returned?.length || 0}, responses=${symbolicDecisionForGuard.matched_responses?.length || 0}`);
+        
         const unifiedGateResult = applySuppressionGuard(rawGateResult, symbolicDecisionForGuard);
         
         console.log(`   🚦 [UnifiedGate] ${unifiedGateResult.gate_status === 'PASS' ? '✅ PASS' : unifiedGateResult.gate_status === 'EMERGENCY_BYPASS' ? '🚨 EMERGENCY' : '🚫 ' + unifiedGateResult.gate_status}`);
