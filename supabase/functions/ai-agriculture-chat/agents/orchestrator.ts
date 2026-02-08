@@ -7108,8 +7108,24 @@ export class AIAgentOrchestrator {
     }
     
     try {
-      // FIXED: Query weather_observations table (was incorrectly using non-existent weather_data)
-      // First try to get from weather_aggregates which has min/max temps
+      // PRIORITY 1: Try weather_historical table (most accurate for GDD)
+      const { data: historical, error: histError } = await this.supabase
+        .from('weather_historical')
+        .select('record_date, temperature_min_celsius, temperature_max_celsius, growing_degree_days')
+        .gte('record_date', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+        .order('record_date', { ascending: false })
+        .limit(14);
+      
+      if (historical && historical.length > 0) {
+        console.log(`🌡️ [GDD] Fetched ${historical.length} days from weather_historical (best source)`);
+        return historical.map((d: any) => ({
+          date: d.record_date,
+          tmax: d.temperature_max_celsius || 35,
+          tmin: d.temperature_min_celsius || 20
+        }));
+      }
+      
+      // PRIORITY 2: Try weather_aggregates which has min/max temps
       if (landId) {
         const { data: aggregates, error: aggError } = await this.supabase
           .from('weather_aggregates')
@@ -7129,14 +7145,14 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // Fallback: Try weather_observations table
+      // PRIORITY 3: Try weather_observations table
       const { data, error } = await this.supabase
         .from('weather_observations')
         .select('observation_date, temperature_celsius, metadata')
         .eq('land_id', landId || null)
         .gte('observation_date', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
         .order('observation_date', { ascending: false })
-        .limit(14);
+        .limit(100); // Get more observations to group by date
       
       if (data && data.length > 0) {
         console.log(`🌡️ [GDD] Fetched ${data.length} observations from weather_observations`);
@@ -7148,7 +7164,7 @@ export class AIAgentOrchestrator {
           if (d.temperature_celsius) byDate.get(dateKey)!.push(d.temperature_celsius);
         });
         
-        return Array.from(byDate.entries()).map(([date, temps]) => ({
+        return Array.from(byDate.entries()).slice(0, 14).map(([date, temps]) => ({
           date,
           tmax: Math.max(...temps) + 3, // Estimate max
           tmin: Math.min(...temps) - 3  // Estimate min

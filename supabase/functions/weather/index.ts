@@ -878,8 +878,136 @@ async function updateWeatherAggregate(
     
     console.log(`💾 [Weather] ✅ Updated daily aggregate for ${today} with GDD=${dailyGDD.toFixed(1)}, ET0=${et0.toFixed(1)}`)
     
+    // ============= 6. Archive to weather_historical (end-of-day or new day detection) =============
+    await archiveToWeatherHistorical(supabase, tenantId, landId, lat)
+    
   } catch (error) {
     console.warn('⚠️ [Weather] Failed to update aggregate:', error)
+  }
+}
+
+/**
+ * Archive completed daily aggregates to weather_historical table
+ * This ensures GDD calculations have proper historical data
+ * CRITICAL: This was missing - causing weather_historical to be empty!
+ */
+async function archiveToWeatherHistorical(
+  supabase: any,
+  tenantId: string,
+  landId?: string,
+  latitude?: number
+) {
+  try {
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+    const yesterdayStr = yesterday.toISOString().split('T')[0]
+    
+    // Check if yesterday's data is already archived
+    const { data: existingHistorical } = await supabase
+      .from('weather_historical')
+      .select('id')
+      .eq('record_date', yesterdayStr)
+      .eq('latitude', latitude || 0)
+      .maybeSingle()
+    
+    if (existingHistorical) {
+      // Already archived, skip
+      return
+    }
+    
+    // Get yesterday's aggregate data
+    const { data: aggregate } = await supabase
+      .from('weather_aggregates')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('aggregate_date', yesterdayStr)
+      .eq('land_id', landId || null)
+      .maybeSingle()
+    
+    if (!aggregate) {
+      // No aggregate for yesterday, try to build from observations
+      const { data: observations } = await supabase
+        .from('weather_observations')
+        .select('temperature_celsius, humidity_percent, rainfall_mm, wind_speed_kmh')
+        .eq('observation_date', yesterdayStr)
+        .eq('land_id', landId || null)
+      
+      if (observations && observations.length > 0) {
+        const temps = observations.map((o: any) => o.temperature_celsius).filter((t: number) => t != null)
+        const humidities = observations.map((o: any) => o.humidity_percent).filter((h: number) => h != null)
+        const totalRain = observations.reduce((sum: number, o: any) => sum + (o.rainfall_mm || 0), 0)
+        const avgWind = observations.reduce((sum: number, o: any) => sum + (o.wind_speed_kmh || 0), 0) / observations.length
+        
+        if (temps.length > 0) {
+          const tmin = Math.min(...temps)
+          const tmax = Math.max(...temps)
+          const tavg = temps.reduce((a: number, b: number) => a + b, 0) / temps.length
+          const gdd = calculateDailyGDDSimple(tmax, tmin)
+          const dayOfYear = Math.floor((yesterday.getTime() - new Date(yesterday.getFullYear(), 0, 0).getTime()) / 86400000)
+          const et0 = calculateET0Simple(tmax, tmin, latitude || 20, dayOfYear)
+          
+          const historicalRecord = {
+            latitude: latitude || 0,
+            longitude: 0, // Will be updated with actual data
+            record_date: yesterdayStr,
+            temperature_avg_celsius: Math.round(tavg * 10) / 10,
+            temperature_min_celsius: Math.round(tmin * 10) / 10,
+            temperature_max_celsius: Math.round(tmax * 10) / 10,
+            rainfall_mm: Math.round(totalRain * 10) / 10,
+            humidity_avg_percent: humidities.length > 0 
+              ? Math.round(humidities.reduce((a: number, b: number) => a + b, 0) / humidities.length) 
+              : null,
+            wind_speed_avg_kmh: Math.round(avgWind * 10) / 10,
+            evapotranspiration_mm: et0,
+            growing_degree_days: gdd,
+            data_source: 'aggregated_observations',
+            created_at: new Date().toISOString()
+          }
+          
+          const { error: histError } = await supabase
+            .from('weather_historical')
+            .insert(historicalRecord)
+          
+          if (histError) {
+            console.warn('⚠️ [Weather] Failed to archive historical from observations:', histError.message)
+          } else {
+            console.log(`📚 [Weather] ✅ Archived ${yesterdayStr} to weather_historical from observations`)
+          }
+        }
+      }
+      return
+    }
+    
+    // Archive from aggregate
+    const historicalRecord = {
+      latitude: latitude || 0,
+      longitude: 0, // Will need to be set from land data
+      record_date: yesterdayStr,
+      temperature_avg_celsius: aggregate.temp_avg_celsius,
+      temperature_min_celsius: aggregate.temp_min_celsius,
+      temperature_max_celsius: aggregate.temp_max_celsius,
+      rainfall_mm: aggregate.rain_mm_total || 0,
+      humidity_avg_percent: aggregate.humidity_avg_percent,
+      wind_speed_avg_kmh: aggregate.wind_speed_avg_kmh,
+      evapotranspiration_mm: aggregate.evapotranspiration_mm || 0,
+      growing_degree_days: aggregate.gdd_accumulated || 0,
+      data_source: 'daily_aggregate',
+      created_at: new Date().toISOString()
+    }
+    
+    const { error: histError } = await supabase
+      .from('weather_historical')
+      .insert(historicalRecord)
+    
+    if (histError) {
+      console.warn('⚠️ [Weather] Failed to archive historical:', histError.message)
+    } else {
+      console.log(`📚 [Weather] ✅ Archived ${yesterdayStr} to weather_historical from aggregate`)
+    }
+    
+  } catch (error) {
+    console.warn('⚠️ [Weather] Historical archive error:', error)
   }
 }
 
