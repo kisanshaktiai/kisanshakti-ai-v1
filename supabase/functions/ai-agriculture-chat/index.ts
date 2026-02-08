@@ -1200,6 +1200,9 @@ serve(async (req) => {
       });
       
       // Store assistant response with language-appropriate content
+      // FIXED: Now includes tokens_used tracking for cost monitoring
+      const tokensUsed = llmFormatterOutput?.tokens_used || null;
+      
       await supabase.from('ai_chat_messages').insert({
         session_id: currentSessionId,
         tenant_id: finalTenantId,
@@ -1211,6 +1214,7 @@ serve(async (req) => {
         response_time_ms: responseTime,
         decision_brain_source: true,
         ai_model: aiModelUsed || 'template', // PHASE 5: Track LLM model used
+        tokens_used: tokensUsed,  // NEW: Track token usage for cost monitoring
         is_training_candidate: true,
         conversation_turn_number: messages.length + 1,
         // Store actions with explicit filter reasons
@@ -1232,6 +1236,7 @@ serve(async (req) => {
           llm_formatter_used: !!llmFormatterOutput,
           llm_formatter_source: llmFormatterOutput?.source,
           llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
+          tokens_used: tokensUsed,  // Also in metadata for easier querying
           // VALIDATION GATE: Track whether response passed validation
           response_validation_passed: validationResult.passed,
           validation_errors: validationResult.passed ? undefined : validationResult.errors,

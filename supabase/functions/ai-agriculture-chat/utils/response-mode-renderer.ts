@@ -110,15 +110,16 @@ const MODE_TEMPLATES: Record<string, Record<string, string>> = {
     hi: '📷 कृपया प्रभावित फसल का फोटो भेजें। इससे सटीक निदान होगा।',
     en: '📷 Please send a photo of the affected crop for accurate diagnosis.'
   },
+  // FARMER-FRIENDLY TERMINOLOGY: Use "observation" language instead of technical "clarification"
   CLARIFICATION_REQUIRED: {
-    mr: '❓ कृपया खालीलपैकी एक निवडा:',
-    hi: '❓ कृपया नीचे से एक चुनें:',
-    en: '❓ Please select one of the following:'
+    mr: '🔬 तुमच्या पिकाला खालीलपैकी कोणती समस्या असू शकते? (सर्वात जवळचे निवडा)',
+    hi: '🔬 आपकी फसल में नीचे में से कौन सी समस्या हो सकती है? (सबसे करीबी चुनें)',
+    en: '🔬 Which of the following problems might your crop have? (Select the closest)'
   },
   CLARIFICATION: {
-    mr: '❓ कृपया खालीलपैकी एक निवडा:',
-    hi: '❓ कृपया नीचे से एक चुनें:',
-    en: '❓ Please select one of the following:'
+    mr: '🔬 तुमच्या पिकाला खालीलपैकी कोणती समस्या असू शकते? (सर्वात जवळचे निवडा)',
+    hi: '🔬 आपकी फसल में नीचे में से कौन सी समस्या हो सकती है? (सबसे करीबी चुनें)',
+    en: '🔬 Which of the following problems might your crop have? (Select the closest)'
   },
   INFORMATION: {
     mr: '📋 माहिती:',
