@@ -24,6 +24,27 @@ import {
 } from 'lucide-react';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// UTILITY: Clean option labels for farmer-friendly display
+// Strips [obs_keys:...] metadata that is meant for backend routing only
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * CRITICAL FIX: Remove technical metadata from labels before showing to farmers.
+ * Backend embeds [obs_keys:...] for routing but farmers should see clean text.
+ * 
+ * Example:
+ *   Input:  "🐛 वाळवी [obs_keys:ROOT_BLACKENING]"
+ *   Output: "🐛 वाळवी"
+ */
+function cleanOptionLabel(label: string): string {
+  if (!label) return '';
+  return label
+    .replace(/\s*\[obs_keys:[^\]]+\]/gi, '')  // Remove [obs_keys:...]
+    .replace(/\s+/g, ' ')                      // Normalize whitespace
+    .trim();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -212,7 +233,7 @@ function SingleChoiceOption({ option, index, isSelected, onSelect, isDiagnostic 
         {getOptionIcon(option.label, index, isDiagnostic)}
       </div>
       
-      {/* Label container */}
+      {/* Label container - CRITICAL: Clean metadata before display */}
       <div className="flex-1 min-w-0">
         <span className={cn(
           "text-sm font-medium leading-snug block",
@@ -220,11 +241,11 @@ function SingleChoiceOption({ option, index, isSelected, onSelect, isDiagnostic 
             ? "text-info"
             : isSelected ? "text-primary" : "text-foreground"
         )}>
-          {option.label}
+          {cleanOptionLabel(option.label)}
         </span>
         {option.description && (
           <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
-            {option.description}
+            {cleanOptionLabel(option.description)}
           </span>
         )}
         {/* Diagnostic power indicator - using success color */}
@@ -297,17 +318,17 @@ function MultiChoiceOption({ option, index, isSelected, onToggle, isDiagnostic }
         />
       </div>
       
-      {/* Label container */}
+      {/* Label container - CRITICAL: Clean metadata before display */}
       <div className="flex-1 min-w-0">
         <span className={cn(
           "text-sm font-medium leading-snug block",
           isSelected ? "text-primary" : "text-foreground"
         )}>
-          {option.label}
+          {cleanOptionLabel(option.label)}
         </span>
         {option.description && (
           <span className="text-xs text-muted-foreground mt-0.5 block line-clamp-2">
-            {option.description}
+            {cleanOptionLabel(option.description)}
           </span>
         )}
       </div>

@@ -32,7 +32,7 @@ import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothes
 // STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
 import { translateToRegionalTerms, type FarmerLocation, type RegionalTranslation } from '../services/regional-translator.ts';
 
-export const DIAGNOSIS_FIRST_VERSION = '1.2.0';  // v1.2.0: Embed [obs_keys:] in labels for orchestrator extraction
+export const DIAGNOSIS_FIRST_VERSION = '1.3.0';  // v1.3.0: REMOVED [obs_keys:] from labels - now use observation_key field only (clean farmer UI)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -638,12 +638,13 @@ export function createUnknownDiagnosisResponse(
   
   const labels = checkLabels[language] || checkLabels['en'];
   
-  // CRITICAL FIX v1.2.0: Embed [obs_keys:...] in labels for orchestrator extraction
+  // v1.3.0: CLEAN labels - NO embedded [obs_keys:...] metadata
+  // The observation_key field carries routing info separately
   const diagnoses: DiagnosisOption[] = [
     {
       id: 'unknown_water',
       cause: 'water_issue',
-      cause_label: `${labels.water} [obs_keys:WATER_STRESS_CHECK]`,
+      cause_label: labels.water,  // CLEAN: No metadata in display label
       canonical_group: 'stress',
       observation_key: 'WATER_STRESS_CHECK',
       observation_label: labels.water,
@@ -655,7 +656,7 @@ export function createUnknownDiagnosisResponse(
     {
       id: 'unknown_pest',
       cause: 'pest_issue',
-      cause_label: `${labels.pest} [obs_keys:PEST_CHECK]`,
+      cause_label: labels.pest,  // CLEAN: No metadata in display label
       canonical_group: 'pest',
       observation_key: 'PEST_CHECK',
       observation_label: labels.pest,
@@ -667,7 +668,7 @@ export function createUnknownDiagnosisResponse(
     {
       id: 'unknown_nutrient',
       cause: 'nutrient_issue',
-      cause_label: `${labels.nutrient} [obs_keys:NUTRIENT_CHECK]`,
+      cause_label: labels.nutrient,  // CLEAN: No metadata in display label
       canonical_group: 'deficiency',
       observation_key: 'NUTRIENT_CHECK',
       observation_label: labels.nutrient,
@@ -749,30 +750,27 @@ export function formatForClarificationUI(
 
   // Convert diagnoses to clarification options format
   // FIX: Avoid duplication when cause_label and observation_label are similar
-  // CRITICAL FIX v1.2.0: Embed [obs_keys:...] in label for orchestrator extraction
+  // v1.3.0: CLEAN labels - NO embedded [obs_keys:...] metadata in display
+  // Frontend uses observation_key field for routing when farmer selects option
   const options = output.diagnoses.map(d => {
     let displayLabel: string;
     
     // If cause_label already contains observation_label or they're very similar, use only cause_label
     if (areLabelsSimilar(d.cause_label, d.observation_label)) {
-      // Only use cause_label (with icon)
+      // Only use cause_label (with icon) - CLEAN, no metadata
       displayLabel = `${d.icon} ${d.cause_label}`;
     } else {
-      // Combine both (no duplication)
+      // Combine both (no duplication) - CLEAN, no metadata
       displayLabel = `${d.icon} ${d.cause_label} (${d.observation_label})`;
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Embed observation_key in label for orchestrator extraction
-    // When farmer selects this option, the orchestrator extracts [obs_keys:...]
-    // from the message text and uses it for rule matching instead of fallback
-    // ═══════════════════════════════════════════════════════════════════════════
-    const embeddedLabel = `${displayLabel} [obs_keys:${d.observation_key}]`;
-    
+    // v1.3.0: Return CLEAN label for farmer UI
+    // The observation_key field carries routing info separately
+    // Frontend (ClarificationOptionsUI) will use observation_key when sending selection
     return {
       id: d.id,
-      label: embeddedLabel,
-      observation_key: d.observation_key,
+      label: displayLabel,  // CLEAN: Farmer sees only readable text
+      observation_key: d.observation_key,  // ROUTING: Backend uses this for rule matching
       rule_id: d.rule_id,
       confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
       icon: d.icon,
@@ -780,12 +778,11 @@ export function formatForClarificationUI(
     };
   });
   
-  // Add photo option at end
-  // CRITICAL FIX v1.2.0: Also embed obs_keys in photo option
+  // Add photo option at end - CLEAN label, observation_key for routing
   options.push({
     id: output.photo_option.id,
-    label: `${output.photo_option.label} [obs_keys:PHOTO_UPLOAD]`,
-    observation_key: 'PHOTO_UPLOAD',
+    label: output.photo_option.label,  // CLEAN: No metadata in display
+    observation_key: 'PHOTO_UPLOAD',  // ROUTING: Used by frontend for camera trigger
     rule_id: 'PHOTO_FALLBACK',
     confidence_boost: 0.25,
     icon: output.photo_option.icon
