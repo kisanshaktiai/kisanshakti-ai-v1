@@ -219,24 +219,29 @@ function countMatches(observations: string[], targetSet: Set<string>): string[] 
  */
 export function detectPrimaryFailureClass(input: FailureClassInput): FailureClassResult {
   const { crop_code, growth_stage, days_since_sowing, observations, symptoms, symptom_scope } = input;
-  
-  const normalizedStage = growth_stage.toUpperCase();
-  
+
+  // Defensive normalization (prevents response-generation failures if upstream omits fields)
+  const safeObservations = Array.isArray(observations) ? observations : [];
+  const safeSymptoms = Array.isArray(symptoms) ? symptoms : [];
+  const safeScope: FailureClassInput['symptom_scope'] = symptom_scope || 'UNKNOWN';
+
+  const normalizedStage = (growth_stage || 'UNKNOWN').toUpperCase();
+
   // Combine observations and symptoms for matching
-  const allObservations = [...observations, ...symptoms];
-  
+  const allObservations = [...safeObservations, ...safeSymptoms];
+
   console.log(`🔍 [FailureClass v${FAILURE_CLASS_VERSION}] Detecting for ${crop_code}/${normalizedStage}, DAS: ${days_since_sowing}`);
   console.log(`   Observations: [${allObservations.slice(0, 5).join(', ')}${allObservations.length > 5 ? '...' : ''}]`);
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: Check for ESTABLISHMENT_FAILURE signals
   // Priority if: early stage + whole plant symptoms + death/gap observations
   // ═══════════════════════════════════════════════════════════════════════════
-  
+
   const isEarlyStage = EARLY_STAGES.has(normalizedStage) || EARLY_STAGES.has(growth_stage);
   const isVeryEarlyDAS = days_since_sowing !== null && days_since_sowing <= 30;
-  const isWholePlant = symptom_scope === 'WHOLE_PLANT';
-  
+  const isWholePlant = safeScope === 'WHOLE_PLANT';
+
   const establishmentMatches = countMatches(allObservations, ESTABLISHMENT_OBSERVATIONS);
   
   // ESTABLISHMENT_FAILURE priority conditions
