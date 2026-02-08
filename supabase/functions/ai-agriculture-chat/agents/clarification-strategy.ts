@@ -386,10 +386,10 @@ export async function fetchRuleDrivenClarificationOptions(
     crop_code,
     growth_stage: stage,
     days_since_sowing: input.days_since_sowing ?? null,
-    user_query: input.user_query || '',
-    detected_intent: input.detected_intent || '',
-    symptoms: current_symptoms,
-    symptom_scope: input.symptom_scope || 'UNKNOWN'
+    observations: current_symptoms,
+    symptoms: [],
+    detected_intent: input.detected_intent || 'UNKNOWN',
+    symptom_scope: input.symptom_scope || 'UNKNOWN',
   };
   const failureResult = detectPrimaryFailureClass(failureClassInput);
   const domain = getClarificationDomain(failureResult.primary_class);
@@ -635,10 +635,10 @@ function useHypothesisFallback(
     crop_code: '',
     growth_stage: stage,
     days_since_sowing: null,
-    user_query: '',
-    detected_intent: '',
+    observations: [],
     symptoms: [],
-    symptom_scope: 'UNKNOWN'
+    detected_intent: 'UNKNOWN',
+    symptom_scope: 'UNKNOWN',
   };
   logFailureClassDetection(traceId, failureClassInput, failureResult, 'FALLBACK', true, reason);
   
