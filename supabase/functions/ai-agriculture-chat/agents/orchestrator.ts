@@ -7089,8 +7089,9 @@ export class AIAgentOrchestrator {
   
   /**
    * Fetch weather history for GDD calculation (last 14 days)
+   * FIXED: Now uses weather_observations table (the correct one)
    */
-  private async fetchWeatherHistoryForGDD(lat?: number, lon?: number): Promise<Array<{ date: string; tmax: number; tmin: number }>> {
+  private async fetchWeatherHistoryForGDD(lat?: number, lon?: number, landId?: string): Promise<Array<{ date: string; tmax: number; tmin: number }>> {
     if (!lat || !lon) {
       // Return estimated average temperatures if no coordinates
       const today = new Date();
@@ -7107,26 +7108,58 @@ export class AIAgentOrchestrator {
     }
     
     try {
-      // Try to fetch from weather_data table
+      // FIXED: Query weather_observations table (was incorrectly using non-existent weather_data)
+      // First try to get from weather_aggregates which has min/max temps
+      if (landId) {
+        const { data: aggregates, error: aggError } = await this.supabase
+          .from('weather_aggregates')
+          .select('aggregate_date, temp_min_celsius, temp_max_celsius, gdd_accumulated')
+          .eq('land_id', landId)
+          .gte('aggregate_date', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+          .order('aggregate_date', { ascending: false })
+          .limit(14);
+        
+        if (aggregates && aggregates.length > 0) {
+          console.log(`🌡️ [GDD] Fetched ${aggregates.length} days from weather_aggregates for land ${landId}`);
+          return aggregates.map((d: any) => ({
+            date: d.aggregate_date,
+            tmax: d.temp_max_celsius || 35,
+            tmin: d.temp_min_celsius || 20
+          }));
+        }
+      }
+      
+      // Fallback: Try weather_observations table
       const { data, error } = await this.supabase
-        .from('weather_data')
-        .select('recorded_at, temperature_max, temperature_min')
-        .gte('recorded_at', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString())
-        .order('recorded_at', { ascending: false })
+        .from('weather_observations')
+        .select('observation_date, temperature_celsius, metadata')
+        .eq('land_id', landId || null)
+        .gte('observation_date', new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0])
+        .order('observation_date', { ascending: false })
         .limit(14);
       
       if (data && data.length > 0) {
-        return data.map((d: any) => ({
-          date: d.recorded_at,
-          tmax: d.temperature_max || 35,
-          tmin: d.temperature_min || 20
+        console.log(`🌡️ [GDD] Fetched ${data.length} observations from weather_observations`);
+        // Group by date and estimate min/max from observations
+        const byDate = new Map<string, number[]>();
+        data.forEach((d: any) => {
+          const dateKey = d.observation_date;
+          if (!byDate.has(dateKey)) byDate.set(dateKey, []);
+          if (d.temperature_celsius) byDate.get(dateKey)!.push(d.temperature_celsius);
+        });
+        
+        return Array.from(byDate.entries()).map(([date, temps]) => ({
+          date,
+          tmax: Math.max(...temps) + 3, // Estimate max
+          tmin: Math.min(...temps) - 3  // Estimate min
         }));
       }
     } catch (e) {
-      console.warn('Weather history fetch failed, using defaults');
+      console.warn('⚠️ [GDD] Weather history fetch failed, using seasonal defaults:', e);
     }
     
     // Fallback to seasonal averages
+    console.log('📊 [GDD] Using seasonal average temperatures for GDD calculation');
     return this.fetchWeatherHistoryForGDD(undefined, undefined);
   }
   
