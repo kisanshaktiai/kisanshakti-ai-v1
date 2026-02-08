@@ -1570,13 +1570,43 @@ export class AIAgentOrchestrator {
             allObservations.push(mappedObservationKey);
           }
           // Add symptom keywords based on mappedObservationKey to improve rule matching
+          // ═══════════════════════════════════════════════════════════════════════════
+          // OBSERVATION KEY EXPANSION - Maps clarification selections to rule-matchable symbols
+          // This is CRITICAL for matching farmer selections to decision_rules
+          // ═══════════════════════════════════════════════════════════════════════════
           const obsKeyExpansion: Record<string, string[]> = {
+            // Nutrient issues
             'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'STUNTED_GROWTH', 'CHLOROSIS'],
             'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'STUNTED_GROWTH', 'CHLOROSIS', 'PURPLE_LEAVES'],
+            
+            // Pest issues
+            'PEST_CHECK': ['PEST_DAMAGE', 'INSECT_PRESENT', 'HOLES_IN_LEAVES', 'DAMAGED_LEAVES', 'BORER_DAMAGE'],
             'PEST_DAMAGE': ['HOLES_IN_LEAVES', 'INSECT_PRESENT', 'DAMAGED_LEAVES'],
-            'DISEASE_SYMPTOMS': ['SPOTS_IRREGULAR', 'POWDERY_COATING', 'LEAF_SPOTS'],
+            
+            // Water issues  
+            'WATER_STRESS_CHECK': ['WATER_STRESS', 'WILTING', 'LEAF_CURLING', 'LEAF_DRYING'],
             'WATER_STRESS': ['WILTING', 'LEAF_CURLING', 'LEAF_DRYING'],
-            'WATERLOGGING': ['ROOT_ROT', 'WILTING', 'FIELD_WATERLOGGED']
+            'WATERLOGGING': ['ROOT_ROT', 'WILTING', 'FIELD_WATERLOGGED'],
+            
+            // Disease issues
+            'DISEASE_SYMPTOMS': ['SPOTS_IRREGULAR', 'POWDERY_COATING', 'LEAF_SPOTS', 'FUNGAL_GROWTH'],
+            
+            // Borer symptoms - CRITICAL for sugarcane
+            'DEAD_HEART': ['DEAD_HEART', 'BORER_DAMAGE', 'DEAD_HEART_PRESENT', 'SHOOT_BORER_DAMAGE', 'CENTRAL_SHOOT_DRIED'],
+            'DEADHEART': ['DEAD_HEART', 'BORER_DAMAGE', 'DEAD_HEART_PRESENT', 'SHOOT_BORER_DAMAGE'],
+            'DEAD_HEART_PRESENT': ['DEAD_HEART', 'BORER_DAMAGE', 'SHOOT_BORER_DAMAGE'],
+            'BORER_DAMAGE': ['DEAD_HEART', 'TUNNELS_IN_STEM', 'BORER_HOLES', 'FRASS_VISIBLE'],
+            'SHOOT_BORER_DAMAGE': ['DEAD_HEART', 'BORER_DAMAGE', 'SHOOT_BORER'],
+            
+            // Termite symptoms
+            'TERMITE_DAMAGE': ['TERMITE', 'MUD_TUNNELS', 'WILTING', 'ROOT_DAMAGE'],
+            'MUD_TUNNELS': ['TERMITE', 'TERMITE_DAMAGE'],
+            
+            // Visual check fallback
+            'VISUAL_CHECK': ['SYMPTOM_REPORTED', 'OBSERVATION_MADE'],
+            
+            // Photo upload
+            'PHOTO_UPLOAD': ['PHOTO_SUBMITTED', 'VISUAL_EVIDENCE']
           };
           if (mappedObservationKey && obsKeyExpansion[mappedObservationKey]) {
             allObservations.push(...obsKeyExpansion[mappedObservationKey]);
