@@ -438,6 +438,55 @@ export interface OptionMatchResult {
  * 
  * PHASE-9.1: Returns standardized OptionMatchResult with NULL-SAFE design.
  */
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * LANGUAGE-AGNOSTIC TEXT NORMALIZATION (v2.0)
+ * Strips emojis, symbols, and metadata for pure text comparison
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+function normalizeTextForComparison(text: string): string {
+  if (!text) return '';
+  
+  return text
+    // Remove embedded observation keys: [obs_keys:...]
+    .replace(/\[obs_keys:[^\]]*\]/gi, '')
+    // Remove emojis and common symbols (Unicode-safe)
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Most emojis
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')   // Miscellaneous symbols
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')   // Dingbats
+    .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
+    .replace(/[🌾🐛💧🍂📷🔍✅❌⚠️🌱💚🪲🦠]/g, '') // Common agriculture emojis
+    // Remove punctuation but keep letters/numbers/spaces (Unicode-safe)
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    // Collapse multiple spaces to single
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Calculate token-based similarity between two strings (0-1)
+ * Language-agnostic: works on tokenized words in any script
+ */
+function calculateTokenSimilarity(text1: string, text2: string): number {
+  if (!text1 || !text2) return 0;
+  
+  const tokens1 = new Set(text1.toLowerCase().split(/\s+/).filter(t => t.length > 1));
+  const tokens2 = new Set(text2.toLowerCase().split(/\s+/).filter(t => t.length > 1));
+  
+  if (tokens1.size === 0 || tokens2.size === 0) return 0;
+  
+  // Count common tokens
+  let commonCount = 0;
+  for (const token of tokens1) {
+    if (tokens2.has(token)) commonCount++;
+  }
+  
+  // Jaccard-style similarity: intersection / union
+  const union = new Set([...tokens1, ...tokens2]);
+  return union.size > 0 ? commonCount / union.size : 0;
+}
+
 export function matchFarmerResponseToOption(
   farmerResponse: string,
   pendingOptions: string[]
@@ -453,7 +502,28 @@ export function matchFarmerResponseToOption(
   const response = farmerResponse.trim();
   
   // ========================================
-  // UNICODE-AWARE DIGIT NORMALIZATION
+  // CHECK 1: EMBEDDED OBSERVATION KEYS (HIGHEST PRIORITY)
+  // If message contains [obs_keys:...], this IS an option selection
+  // ========================================
+  const obsKeysMatch = response.match(/\[obs_keys:([^\]]+)\]/);
+  if (obsKeysMatch) {
+    // This is definitely an option selection from the UI
+    // Find the matching option by its embedded key
+    for (let i = 0; i < pendingOptions.length; i++) {
+      const optionObsMatch = pendingOptions[i].match(/\[obs_keys:([^\]]+)\]/);
+      if (optionObsMatch && optionObsMatch[1] === obsKeysMatch[1]) {
+        return {
+          matched: true,
+          matched_option: pendingOptions[i],
+          option_index: i,
+          match_confidence: 1.0
+        };
+      }
+    }
+  }
+  
+  // ========================================
+  // CHECK 2: UNICODE-AWARE DIGIT NORMALIZATION
   // Supports Devanagari (Hindi/Marathi), Arabic, and other numeral systems
   // ========================================
   const UNICODE_DIGIT_MAP: Record<string, string> = {
@@ -469,15 +539,14 @@ export function matchFarmerResponseToOption(
   };
   
   // Normalize response: convert all Unicode digits to ASCII
-  const normalizedResponse = response
+  const digitsNormalized = response
     .split('')
     .map(c => UNICODE_DIGIT_MAP[c] || c)
     .join('')
-    .trim()
-    .toLowerCase();
+    .trim();
   
   // Check for numeric selection (1, 2, 3, 4) after normalization
-  const numMatch = normalizedResponse.match(/^[1-4]$/);
+  const numMatch = digitsNormalized.match(/^[1-4]$/);
   
   if (numMatch && numMatch[0]) {
     const index = parseInt(numMatch[0]) - 1;
@@ -492,21 +561,86 @@ export function matchFarmerResponseToOption(
     }
   }
   
-  // Check for text match
+  // ========================================
+  // CHECK 3: NORMALIZED TEXT MATCHING (Language-Agnostic)
+  // Strip emojis/symbols and compare pure text
+  // ========================================
+  const normalizedResponse = normalizeTextForComparison(response);
+  
+  // If normalized response is too short (< 2 chars), it's not a valid selection
+  if (normalizedResponse.length < 2) {
+    return {
+      matched: false,
+      match_confidence: 0
+    };
+  }
+  
   for (let i = 0; i < pendingOptions.length; i++) {
-    const option = pendingOptions[i].toLowerCase();
-    // Exact or partial match
-    if (response === option || response.includes(option) || option.includes(response)) {
+    const normalizedOption = normalizeTextForComparison(pendingOptions[i]);
+    
+    // Exact normalized match
+    if (normalizedResponse === normalizedOption) {
       return {
         matched: true,
         matched_option: pendingOptions[i],
         option_index: i,
-        match_confidence: response === option ? 1.0 : 0.8
+        match_confidence: 1.0
       };
+    }
+    
+    // Strong substring match: response is contained in option OR vice versa
+    // Require at least 3 chars to prevent false positives
+    if (normalizedResponse.length >= 3) {
+      if (normalizedOption.includes(normalizedResponse)) {
+        return {
+          matched: true,
+          matched_option: pendingOptions[i],
+          option_index: i,
+          match_confidence: 0.85
+        };
+      }
+      if (normalizedResponse.includes(normalizedOption) && normalizedOption.length >= 3) {
+        return {
+          matched: true,
+          matched_option: pendingOptions[i],
+          option_index: i,
+          match_confidence: 0.8
+        };
+      }
     }
   }
   
-  // PHASE-9.1: No match - return safe default
+  // ========================================
+  // CHECK 4: TOKEN SIMILARITY (Language-Agnostic Fuzzy Match)
+  // For cases like "कीड" matching "🐛 कीड/किडीचा हल्ला"
+  // ========================================
+  let bestMatch: { index: number; confidence: number } | null = null;
+  
+  for (let i = 0; i < pendingOptions.length; i++) {
+    const normalizedOption = normalizeTextForComparison(pendingOptions[i]);
+    const similarity = calculateTokenSimilarity(normalizedResponse, normalizedOption);
+    
+    // Require >= 50% token overlap for a fuzzy match
+    if (similarity >= 0.5) {
+      if (!bestMatch || similarity > bestMatch.confidence) {
+        bestMatch = { index: i, confidence: similarity };
+      }
+    }
+  }
+  
+  if (bestMatch && bestMatch.confidence >= 0.5) {
+    return {
+      matched: true,
+      matched_option: pendingOptions[bestMatch.index],
+      option_index: bestMatch.index,
+      match_confidence: bestMatch.confidence * 0.9 // Slightly reduce confidence for fuzzy matches
+    };
+  }
+  
+  // ========================================
+  // NO MATCH FOUND
+  // This could be a NEW QUERY, not an option selection
+  // ========================================
   return {
     matched: false,
     match_confidence: 0
