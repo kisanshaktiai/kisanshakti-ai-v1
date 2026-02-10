@@ -837,9 +837,9 @@ function buildFormattingUserPrompt(input: LLMFormatterInput, recData: string): s
   const daysSinceSowing = input.land_context?.days_since_sowing || 0;
   const crop = input.land_context?.current_crop || 'Unknown';
   
-  // Determine if crop is young (harvest not appropriate)
-  const youngCropStages = ['GERMINATION', 'SEEDLING', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'];
-  const isYoungCrop = youngCropStages.includes(cropStage) || daysSinceSowing < 120;
+  // PRODUCTION FIX: Match the corrected young crop definition
+  const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
+  const isYoungCrop = trulyYoungStages.includes(cropStage) || daysSinceSowing < 30;
   
   // Build explicit constraint for young crops
   const harvestConstraint = isYoungCrop ? `
