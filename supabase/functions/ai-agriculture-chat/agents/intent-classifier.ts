@@ -47,10 +47,10 @@ export interface IntentClassification {
 // LLM PROMPT - MINIMAL, NO CROP/AGRONOMIC LOGIC
 // ═══════════════════════════════════════════════════════════════════════════
 
-const INTENT_CLASSIFICATION_PROMPT = `You are an intent classifier.
+const INTENT_CLASSIFICATION_PROMPT = `You are an intent classifier for farmer messages about crops.
 
 Your task:
-- Read the farmer message (any language)
+- Read the farmer message (any language: Marathi, Hindi, English, etc.)
 - Choose exactly ONE intent_code from the list below
 - Do not explain
 - Do not diagnose
@@ -71,6 +71,11 @@ INTENT CODES:
 - NUTRIENT_STRESS_SIGNAL: Nutrient deficiency patterns
 - UNEVEN_FIELD_PATTERN: Patchy, uneven growth in field
 - YIELD_OR_OUTPUT_ISSUE: Poor yield, harvest concerns
+- WEED_PROBLEM: Weeds growing, weed competition, unwanted plants (तण, खरपतवार)
+- FERTILIZER_SCHEDULE: When/how much fertilizer, nutrient schedule (खत, उर्वरक)
+- IRRIGATION_QUERY: Water schedule, irrigation timing (पाणी, सिंचन, सिंचाई)
+- HARVEST_TIMING: When to harvest, maturity signs
+- GENERAL_CROP_INFO: General crop management, planting info
 - UNKNOWN_OBSERVATION: Cannot classify
 
 Return JSON only:
@@ -222,12 +227,84 @@ export async function classifyFarmerIntent(
   } catch (error) {
     console.error(`   ❌ Classification error: ${error}`);
     
-    // Honest fallback - no heuristics, no fabrication
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PRODUCTION FIX: Emergency keyword-based fallback when LLM is unavailable
+    // This is a CRASH RECOVERY path, not primary classification.
+    // Without this, 429 errors cause the entire pipeline to return 0% confidence
+    // and the farmer gets a useless generic clarification instead of help.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const emergencyResult = emergencyKeywordFallback(farmerMessage);
+    if (emergencyResult) {
+      console.log(`   🚑 [EmergencyFallback] Recovered: ${emergencyResult.intent_code} (${(emergencyResult.confidence * 100).toFixed(0)}%)`);
+      return emergencyResult;
+    }
+    
     return {
       intent_code: 'UNKNOWN_OBSERVATION',
       confidence: 0.0
     };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EMERGENCY KEYWORD FALLBACK - Only used when LLM is completely unavailable
+// This is NOT the primary classification path. It prevents total pipeline failure.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function emergencyKeywordFallback(message: string): IntentClassification | null {
+  const msg = message.toLowerCase();
+  
+  // Weed-related (Marathi: तण, Hindi: खरपतवार/घास)
+  if (/तण|खरपतवार|weed|गवत.*वाढ|घास/i.test(msg)) {
+    return { intent_code: 'WEED_PROBLEM' as IntentCode, confidence: 0.6 };
+  }
+  
+  // Fertilizer/nutrition (Marathi: खत, Hindi: उर्वरक/खाद)
+  if (/खत|उर्वरक|खाद|fertiliz|nutrient|पोषण/i.test(msg)) {
+    return { intent_code: 'FERTILIZER_SCHEDULE' as IntentCode, confidence: 0.6 };
+  }
+  
+  // Irrigation/water (Marathi: पाणी/सिंचन, Hindi: सिंचाई/पानी)
+  if (/पाणी|सिंचन|सिंचाई|irrigat|water/i.test(msg)) {
+    return { intent_code: 'IRRIGATION_QUERY' as IntentCode, confidence: 0.6 };
+  }
+  
+  // Pest/insect (Marathi: किडा/किडे, Hindi: कीट/कीड़ा)
+  if (/किडा|किडे|कीट|कीड़|insect|pest|बोंड|अळी/i.test(msg)) {
+    return { intent_code: 'PEST_PRESENCE_VISIBLE' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Disease (Marathi: रोग, Hindi: रोग/बीमारी)
+  if (/रोग|बीमारी|disease|fungus|करपा|तांबेरा/i.test(msg)) {
+    return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Yellowing
+  if (/पिवळ|पीला|yellow|सुक/i.test(msg)) {
+    return { intent_code: 'COLOR_CHANGE' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Wilting
+  if (/मळमळ|मुरझ|wilt|droop|सुकत/i.test(msg)) {
+    return { intent_code: 'WILTING_OR_DROOPING' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Stem damage / borer
+  if (/खोड|तना|stem|borer|छेदक/i.test(msg)) {
+    return { intent_code: 'STEM_DAMAGE' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Harvest
+  if (/कापणी|काटाई|harvest|तोड/i.test(msg)) {
+    return { intent_code: 'HARVEST_TIMING' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Growth issues
+  if (/वाढ.*कमी|वाढ.*नाही|stunted|slow.*growth/i.test(msg)) {
+    return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.5 };
+  }
+  
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
