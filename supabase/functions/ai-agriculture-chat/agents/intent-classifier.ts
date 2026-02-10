@@ -47,10 +47,10 @@ export interface IntentClassification {
 // LLM PROMPT - MINIMAL, NO CROP/AGRONOMIC LOGIC
 // ═══════════════════════════════════════════════════════════════════════════
 
-const INTENT_CLASSIFICATION_PROMPT = `You are an intent classifier.
+const INTENT_CLASSIFICATION_PROMPT = `You are an intent classifier for farmer messages about crops.
 
 Your task:
-- Read the farmer message (any language)
+- Read the farmer message (any language: Marathi, Hindi, English, etc.)
 - Choose exactly ONE intent_code from the list below
 - Do not explain
 - Do not diagnose
@@ -71,6 +71,11 @@ INTENT CODES:
 - NUTRIENT_STRESS_SIGNAL: Nutrient deficiency patterns
 - UNEVEN_FIELD_PATTERN: Patchy, uneven growth in field
 - YIELD_OR_OUTPUT_ISSUE: Poor yield, harvest concerns
+- WEED_PROBLEM: Weeds growing, weed competition, unwanted plants (तण, खरपतवार)
+- FERTILIZER_SCHEDULE: When/how much fertilizer, nutrient schedule (खत, उर्वरक)
+- IRRIGATION_QUERY: Water schedule, irrigation timing (पाणी, सिंचन, सिंचाई)
+- HARVEST_TIMING: When to harvest, maturity signs
+- GENERAL_CROP_INFO: General crop management, planting info
 - UNKNOWN_OBSERVATION: Cannot classify
 
 Return JSON only:
