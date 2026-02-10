@@ -786,9 +786,10 @@ function getCropStageConstraints(input: LLMFormatterInput): string {
   const daysSinceSowing = input.land_context?.days_since_sowing || 0;
   const crop = input.land_context?.current_crop?.toUpperCase() || '';
   
-  // Define young crop stages where harvest is NEVER appropriate
-  const youngCropStages = ['GERMINATION', 'SEEDLING', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'];
-  const isYoungCrop = youngCropStages.includes(cropStage) || daysSinceSowing < 120;
+  // PRODUCTION FIX: Only truly young stages (pre-vegetative) block harvest
+  // TILLERING and GRAND_GROWTH are active growth stages, not "young"
+  const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
+  const isYoungCrop = trulyYoungStages.includes(cropStage) || daysSinceSowing < 30;
   
   // Define minimum harvest ages by crop (days)
   const minHarvestAge: Record<string, number> = {
