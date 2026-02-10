@@ -1684,14 +1684,25 @@ function validateResponseBeforeSave(params: {
     const effectiveDays = daysSinceSowing ?? fallbackDays ?? null;
     const effectiveStage = cropStage || fallbackStage?.toUpperCase() || '';
     
-    const youngCropStages = ['GERMINATION', 'SEEDLING', 'VEGETATIVE', 'TILLERING', 'GRAND_GROWTH'];
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PRODUCTION FIX: Only truly young stages should be blocked for harvest
+    // TILLERING (45-90 DAS for sugarcane) and GRAND_GROWTH are NOT young stages
+    // They are active growth stages where pest/disease control is primary concern
+    // Using blanket 120-day threshold was causing false rejections
+    // ═══════════════════════════════════════════════════════════════════════════
+    const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
     
-    // CRITICAL FIX: Only apply harvest check if we ACTUALLY know the crop's age
-    // If daysSinceSowing is null/undefined, skip this check - don't assume anything
+    // Use crop-specific minimum harvest age instead of blanket 120 days
+    const MIN_HARVEST_AGE: Record<string, number> = {
+      'SUGARCANE': 270, 'COTTON': 150, 'RICE': 120, 'WHEAT': 120,
+      'MAIZE': 90, 'SOYBEAN': 95, 'GROUNDNUT': 110, 'ONION': 120
+    };
+    const cropMinAge = MIN_HARVEST_AGE[crop] || 120;
+    
     const hasValidCropData = (effectiveDays !== null && effectiveDays > 0) || effectiveStage;
     const isYoungCrop = hasValidCropData && (
-      youngCropStages.includes(effectiveStage) || 
-      (effectiveDays !== null && effectiveDays > 0 && effectiveDays < 120)
+      trulyYoungStages.includes(effectiveStage) || 
+      (effectiveDays !== null && effectiveDays > 0 && effectiveDays < cropMinAge * 0.3) // Only block if < 30% of harvest age
     );
     
     // Check for harvest keywords in young crop responses

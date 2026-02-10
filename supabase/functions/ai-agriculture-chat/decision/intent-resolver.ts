@@ -282,6 +282,15 @@ export const VALID_INTENT_CODES = [
   'NUTRIENT_STRESS_SIGNAL',
   'UNEVEN_FIELD_PATTERN',
   'YIELD_OR_OUTPUT_ISSUE',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRODUCTION FIX: Missing intent codes for common farmer queries
+  // Without these, weed/fertilizer/irrigation queries fall to UNKNOWN_OBSERVATION
+  // ═══════════════════════════════════════════════════════════════════════════
+  'WEED_PROBLEM',
+  'FERTILIZER_SCHEDULE',
+  'IRRIGATION_QUERY',
+  'HARVEST_TIMING',
+  'GENERAL_CROP_INFO',
   'UNKNOWN_OBSERVATION'
 ] as const;
 
