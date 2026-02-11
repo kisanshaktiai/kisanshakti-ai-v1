@@ -2587,7 +2587,16 @@ export class AIAgentOrchestrator {
           'NUTRIENT_STRESS_SIGNAL',
           'EMERGENCE_FAILURE',
           'UNEVEN_FIELD_PATTERN',
-          'YIELD_OR_OUTPUT_ISSUE'
+          'YIELD_OR_OUTPUT_ISSUE',
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL FIX: These valid intent codes were missing from fallback list
+          // causing weed/fertilizer/irrigation queries to get 0 observations
+          // ═══════════════════════════════════════════════════════════════════════════
+          'WEED_PROBLEM',
+          'FERTILIZER_SCHEDULE',
+          'IRRIGATION_QUERY',
+          'HARVEST_TIMING',
+          'GENERAL_CROP_INFO'
         ];
         
         if (agriculturalProblemIntents.includes(intentCode)) {
@@ -2609,7 +2618,13 @@ export class AIAgentOrchestrator {
             'NUTRIENT_STRESS_SIGNAL': 'NUTRIENT_DEFICIENCY',
             'EMERGENCE_FAILURE': 'POOR_GERMINATION',
             'UNEVEN_FIELD_PATTERN': 'PATCHY_DEATH',
-            'YIELD_OR_OUTPUT_ISSUE': 'POOR_YIELD'
+            'YIELD_OR_OUTPUT_ISSUE': 'POOR_YIELD',
+            // CRITICAL FIX: Missing intent-to-symptom mappings
+            'WEED_PROBLEM': 'WEED_INFESTATION',
+            'FERTILIZER_SCHEDULE': 'NUTRIENT_QUERY',
+            'IRRIGATION_QUERY': 'WATER_MANAGEMENT',
+            'HARVEST_TIMING': 'HARVEST_READINESS',
+            'GENERAL_CROP_INFO': 'GENERAL_QUERY'
           };
           
           const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
@@ -2621,6 +2636,16 @@ export class AIAgentOrchestrator {
       
       // Add cross-crop symptoms if available
       const crossCropSymptomsList = crossCropSymptoms ? [...crossCropSymptoms] : [];
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL BUG FIX: Cross-crop symptoms MUST flow into allObservationsForPreAuth
+      // Previously, SPREADING_PATTERN etc. were detected but never reached the
+      // hypothesis evaluator, causing "Known observations: none" even when symptoms exist.
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (crossCropSymptomsList.length > 0) {
+        crossCropSymptomsList.forEach(sym => allObservationsForPreAuth.add(sym));
+        console.log(`   🔗 [CrossCropFix] Injected ${crossCropSymptomsList.length} cross-crop symptoms into observations: ${crossCropSymptomsList.join(', ')}`);
+      }
       
       // v4.0: Use enhanced crop damage detection (includes non-terminal damage)
       const cropDamageResult = detectCropDamageForDiagnosis(
@@ -2800,13 +2825,24 @@ export class AIAgentOrchestrator {
           const growthStage = canonicalContext?.growth_stage || landContext?.growth_stage || 'UNKNOWN';
           const currentObservations = [...allObservationsForPreAuth].map(o => String(o));
           
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL BUG FIX: DAS propagation - use ?? (nullish) not || (falsy)
+          // Also add robust fallback chain with logging to trace DAS source
+          // ═══════════════════════════════════════════════════════════════════════════
+          const resolvedDAS = canonicalContext?.days_since_sowing 
+            ?? landContext?.days_since_sowing 
+            ?? lockedCropContext?.days_since_sowing 
+            ?? (options.sessionState?.lockedCropContext as any)?.days_since_sowing
+            ?? null;
+          
           console.log(`   📊 Running hypothesis evaluation for ${cropCode}/${growthStage}...`);
-          console.log(`   📊 Observations: ${currentObservations.slice(0, 5).join(', ')}`);
+          console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
+          console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
           
           const hypothesisResult = await evaluateCandidateHypotheses({
             crop_code: cropCode,
             growth_stage: growthStage,
-            days_since_sowing: canonicalContext?.days_since_sowing || landContext?.days_since_sowing || null,
+            days_since_sowing: resolvedDAS,
             ndvi_level: landContext?.ndvi?.level,
             ndvi_trend: landContext?.ndvi?.trend,
             known_observations: currentObservations,
