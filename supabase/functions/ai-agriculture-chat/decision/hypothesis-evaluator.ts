@@ -492,26 +492,31 @@ export async function evaluateCandidateHypotheses(
     
     // Query with both crop AND stage filtering for better precision
     // Increase limit since we're filtering more precisely
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRITICAL BUG FIX: Do NOT filter out rules with empty observable_characteristics
+    // 184 rules (37.7%) were being excluded including nutrition, irrigation, pest rules
+    // These rules have matching data in conditions_json instead
+    // ═══════════════════════════════════════════════════════════════════════
     const { data: rulesRaw, error } = await supabaseClient
       .from('decision_rules')
       .select(`
         rule_id,
         cause,
         canonical_group,
+        category,
+        action_type,
         priority,
         stage_applicable,
         conditions_json,
         observable_characteristics,
         differentiating_questions,
+        action_text,
         crop_age_days_min,
         crop_age_days_max
       `)
       .eq('is_active', true)
       .or(cropFilter)
-      .not('observable_characteristics', 'is', null)
-      .neq('observable_characteristics', '{}')
-      .neq('observable_characteristics', '[]')
-      .limit(300); // Increased limit since we have crop filter
+      .limit(500); // Include ALL rules - conditions_json scoring handles empty obs
     
     if (error) {
       console.error(`   ❌ [HypothesisEval] Database error:`, error);
@@ -657,8 +662,42 @@ export async function evaluateCandidateHypotheses(
       // Extract observable characteristics
       const observableChars = extractObservableCharacteristics(rule.observable_characteristics);
       
-      // Skip rules with no observable characteristics
-      if (observableChars.length === 0) continue;
+      // ═══════════════════════════════════════════════════════════════════════
+      // CRITICAL BUG FIX: Do NOT skip rules with empty observable_characteristics
+      // Instead, generate synthetic observations from conditions_json.observations
+      // This ensures nutrition, irrigation, and soil rules are included
+      // ═══════════════════════════════════════════════════════════════════════
+      let effectiveObsChars = observableChars;
+      if (effectiveObsChars.length === 0) {
+        // Try to extract observations from conditions_json
+        const condObs = rule.conditions_json?.observations;
+        if (condObs && Array.isArray(condObs) && condObs.length > 0) {
+          effectiveObsChars = condObs.map((obs: string, idx: number) => ({
+            id: obs.toUpperCase(),
+            observation_key: obs.toUpperCase(),
+            label_en: obs.replace(/_/g, ' ').toLowerCase(),
+            is_visual: true,
+            diagnostic_power: 'MEDIUM' as const,
+            confidence_boost: 0.12
+          }));
+        } else {
+          // Generate from category + cause for context-based matching
+          const causeKey = (rule.cause || '').toUpperCase().replace(/[\s-]+/g, '_').substring(0, 30);
+          const categoryKey = (rule.category || rule.canonical_group || 'GENERAL').toUpperCase();
+          if (causeKey) {
+            effectiveObsChars = [{
+              id: causeKey,
+              observation_key: causeKey,
+              label_en: (rule.cause || 'General advisory').substring(0, 50),
+              is_visual: false,
+              diagnostic_power: 'LOW' as const,
+              confidence_boost: 0.05
+            }];
+          } else {
+            continue; // Only skip if truly nothing to work with
+          }
+        }
+      }
       
       // Calculate total score
       const priorityScore = (rule.priority || 50) / 100;
@@ -667,12 +706,12 @@ export async function evaluateCandidateHypotheses(
       scoredCandidates.push({
         rule_id: rule.rule_id,
         cause: rule.cause || 'unknown',
-        canonical_group: rule.canonical_group || 'general',
+        canonical_group: rule.canonical_group || rule.category || 'general',
         priority: rule.priority || 50,
         stage_relevance_score: stageRelevance,
         partial_match_score: partialScore,
         total_score: totalScore,
-        observable_characteristics: observableChars,
+        observable_characteristics: effectiveObsChars,
         differentiating_questions: rule.differentiating_questions || [],
         matched_conditions: matchedConditions,
         conditions_json: rule.conditions_json || {}
