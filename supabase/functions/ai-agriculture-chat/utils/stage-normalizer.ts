@@ -27,21 +27,25 @@ export type StageCategory = 'SEEDLING' | 'VEGETATIVE' | 'REPRODUCTIVE' | 'MATURI
 
 const SEEDLING_STAGES = [
   'germination', 'seedling', 'establishment', 'sprouting', 'emergence',
-  'planting', 'sowing', 'transplanting', 'd0_7', 'd8_15', 'd16_30'
+  'planting', 'sowing', 'transplanting', 'post_planting', 'pre_sowing',
+  'early_growth', 'd0_7', 'd8_15', 'd16_30'
 ];
 
 const VEGETATIVE_STAGES = [
-  'vegetative', 'tillering', 'grand_growth', 'rosette', 'leaf_development',
-  'stem_elongation', 'canopy', 'd31_60', 'd61_90'
+  'vegetative', 'tillering', 'early_tillering', 'grand_growth', 'cane_formation',
+  'rosette', 'leaf_development', 'stem_elongation', 'canopy', 
+  'post_irrigation', 'd31_60', 'd61_90'
 ];
 
 const REPRODUCTIVE_STAGES = [
   'flowering', 'fruiting', 'grain_filling', 'pod_formation', 'boll_formation',
-  'boll_opening', 'heading', 'booting', 'ear_emergence', 'd91_120'
+  'boll_development', 'boll_opening', 'heading', 'booting', 'ear_emergence',
+  'squaring', 'd91_120'
 ];
 
 const MATURITY_STAGES = [
-  'maturity', 'ripening', 'harvest', 'drying', 'senescence',
+  'maturity', 'ripening', 'harvest', 'pre_harvest', 'drying', 'senescence',
+  'post_harvest', 'ratoon', 'ratoon_init', 'early_ratoon',
   'd121_180', 'd180_plus'
 ];
 
@@ -55,21 +59,26 @@ const STAGE_DB_MAP: Record<string, string> = {
   'seedling': 'germination',
   'sprouting': 'germination',
   'emergence': 'germination',
-  'planting': 'germination',
+  'planting': 'planting',
   'sowing': 'germination',
   'transplanting': 'germination',
+  'post_planting': 'planting',
+  'pre_sowing': 'pre_sowing',
   
   // Vegetative variants  
   'vegetative': 'tillering',
   'tillering': 'tillering',
+  'early_tillering': 'tillering',
   'leaf_development': 'tillering',
   'stem_elongation': 'tillering',
+  'early_growth': 'germination',
   
   // Grand growth (sugarcane specific)
   'grand_growth': 'grand_growth',
   'grandgrowth': 'grand_growth',
   'grand-growth': 'grand_growth',
   'canopy': 'grand_growth',
+  'cane_formation': 'grand_growth',
   
   // Reproductive variants
   'flowering': 'flowering',
@@ -78,17 +87,27 @@ const STAGE_DB_MAP: Record<string, string> = {
   'grain_filling': 'grain_filling',
   'pod_formation': 'pod_formation',
   'boll_formation': 'boll_formation',
+  'boll_development': 'boll_formation',
   'boll_opening': 'boll_opening',
   'heading': 'heading',
   'booting': 'booting',
+  'squaring': 'squaring',
   
   // Maturity variants
   'maturation': 'maturity',
   'maturity': 'maturity',
   'ripening': 'maturity',
+  'pre_harvest': 'maturity',
   'harvesting': 'harvest',
   'harvest': 'harvest',
   'drying': 'harvest',
+  'post_harvest': 'post_harvest',
+  
+  // Ratoon (sugarcane specific - NOT post_harvest!)
+  'ratoon': 'ratoon',
+  'ratoon_init': 'ratoon',
+  'early_ratoon': 'ratoon',
+  'post_irrigation': 'tillering',
   
   // Pass-through (already in correct format)
   'germination': 'germination',
@@ -161,15 +180,25 @@ export function getStageQueryVariants(stage: string | undefined | null): string[
     variants.add('germination');
     variants.add('seedling');
     variants.add('establishment');
+    variants.add('planting');
+    variants.add('early_growth');
   } else if (category === 'VEGETATIVE') {
     variants.add('vegetative');
     variants.add('tillering');
+    variants.add('early_tillering');
+    variants.add('grand_growth');
+    variants.add('cane_formation');
   } else if (category === 'REPRODUCTIVE') {
     variants.add('flowering');
     variants.add('reproductive');
+    variants.add('squaring');
+    variants.add('boll_development');
   } else if (category === 'MATURITY') {
     variants.add('maturity');
     variants.add('harvest');
+    variants.add('pre_harvest');
+    variants.add('ratoon');
+    variants.add('post_harvest');
   }
   
   return Array.from(variants);
