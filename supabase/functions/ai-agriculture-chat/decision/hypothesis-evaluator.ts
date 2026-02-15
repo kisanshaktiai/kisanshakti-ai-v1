@@ -102,7 +102,8 @@ export interface HypothesisEvaluationOutput {
 const HYPOTHESIS_CANONICAL_GROUPS = [
   'pest', 'disease', 'stress', 'germination', 'irrigation',
   'nutrition', 'deficiency', 'insect', 'fungal', 'bacterial',
-  'viral', 'establishment', 'soil_borne', 'borer', 'mite'
+  'viral', 'establishment', 'soil_borne', 'borer', 'mite',
+  'weed', '06_weed', 'harvest', '11_harvest', 'economics'
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════

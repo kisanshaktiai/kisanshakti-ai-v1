@@ -148,8 +148,12 @@ export interface InferenceResult {
 export class SymbolicReasoner {
   private supabase: any;
   
-  constructor() {
-    this.supabase = createClient(
+  /**
+   * GAP #1 FIX: Accept external Supabase client to prevent connection exhaustion.
+   * Falls back to creating a new client only if none provided.
+   */
+  constructor(supabaseClient?: any) {
+    this.supabase = supabaseClient || createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
@@ -392,8 +396,11 @@ export class SymbolicReasoner {
   }
   
   /**
-   * CRITICAL: Evaluate conditions_json recursively
-   * Supports compound conditions (all/any) and atomic conditions
+   * CRITICAL: Evaluate conditions_json against facts.
+   * 
+   * BUG #1 FIX: Now handles BOTH formats:
+   * 1. Flat DB format (actual): {observations: [...], crop_stage: [...], ndvi_trend, soil_moisture_low, ...}
+   * 2. Recursive format (future): {all: [...], any: [...], fact: "...", operator: "..."}
    */
   evaluateConditionsJson(
     conditions: RuleCondition,
@@ -401,19 +408,19 @@ export class SymbolicReasoner {
   ): { matches: boolean; confidence: number; reason: string; matched_conditions: string[] } {
     const matchedConditions: string[] = [];
     
-    // Handle empty conditions (always match)
+    // Handle empty conditions (always match with low confidence)
     if (!conditions || Object.keys(conditions).length === 0) {
       return { matches: true, confidence: 0.5, reason: 'No conditions (default)', matched_conditions: [] };
     }
     
-    // Handle 'all' compound condition
+    // ═══════════════════════════════════════════════════════════════════════
+    // PATH A: Recursive all/any/fact/operator format (future-proof)
+    // ═══════════════════════════════════════════════════════════════════════
     if (conditions.all && Array.isArray(conditions.all)) {
       const results = conditions.all.map(c => this.evaluateConditionsJson(c, facts));
       const allMatch = results.every(r => r.matches);
       const avgConfidence = results.reduce((sum, r) => sum + r.confidence, 0) / results.length;
-      
       results.forEach(r => matchedConditions.push(...r.matched_conditions));
-      
       return {
         matches: allMatch,
         confidence: allMatch ? avgConfidence : 0,
@@ -422,14 +429,11 @@ export class SymbolicReasoner {
       };
     }
     
-    // Handle 'any' compound condition
     if (conditions.any && Array.isArray(conditions.any)) {
       const results = conditions.any.map(c => this.evaluateConditionsJson(c, facts));
       const anyMatch = results.some(r => r.matches);
       const maxConfidence = Math.max(...results.map(r => r.confidence), 0);
-      
       results.filter(r => r.matches).forEach(r => matchedConditions.push(...r.matched_conditions));
-      
       return {
         matches: anyMatch,
         confidence: anyMatch ? maxConfidence : 0,
@@ -438,37 +442,130 @@ export class SymbolicReasoner {
       };
     }
     
-    // Evaluate atomic condition
     if (conditions.fact && conditions.operator) {
       const factValue = this.getFactValue(facts, conditions.fact);
-      
       if (factValue === undefined || factValue === null) {
-        return {
-          matches: false,
-          confidence: 0,
-          reason: `Fact '${conditions.fact}' not available`,
-          matched_conditions: []
-        };
+        return { matches: false, confidence: 0, reason: `Fact '${conditions.fact}' not available`, matched_conditions: [] };
       }
-      
       const matches = this.evaluateOperator(factValue, conditions.operator, conditions.value);
-      
-      if (matches) {
-        matchedConditions.push(`${conditions.fact} ${conditions.operator} ${conditions.value}`);
-      }
-      
+      if (matches) matchedConditions.push(`${conditions.fact} ${conditions.operator} ${conditions.value}`);
       return {
         matches,
         confidence: matches ? 1.0 : 0,
-        reason: matches 
-          ? `${conditions.fact} ${conditions.operator} ${conditions.value}` 
-          : `${conditions.fact} condition failed`,
+        reason: matches ? `${conditions.fact} ${conditions.operator} ${conditions.value}` : `${conditions.fact} condition failed`,
         matched_conditions: matchedConditions
       };
     }
     
-    // Default: no recognized condition format
-    return { matches: false, confidence: 0, reason: 'Unknown condition format', matched_conditions: [] };
+    // ═══════════════════════════════════════════════════════════════════════
+    // PATH B: Flat DB format (actual production format)
+    // {observations: [...], crop_stage: [...], ndvi_trend, soil_moisture_low, ...}
+    // ═══════════════════════════════════════════════════════════════════════
+    const cond = conditions as any;
+    let totalConditions = 0;
+    let metConditions = 0;
+    
+    // 1. Observations matching: check against primary_symptom and user_query
+    if (cond.observations && Array.isArray(cond.observations) && cond.observations.length > 0) {
+      totalConditions++;
+      const factSymptom = (facts.primary_symptom || '').toUpperCase();
+      const factQuery = (facts.user_query || '').toUpperCase();
+      const obsMatch = cond.observations.some((obs: string) => {
+        const upperObs = obs.toUpperCase();
+        return factSymptom.includes(upperObs) || upperObs.includes(factSymptom) ||
+               factQuery.includes(upperObs);
+      });
+      if (obsMatch) {
+        metConditions++;
+        matchedConditions.push('observations');
+      }
+    }
+    
+    // 2. Crop stage matching
+    if (cond.crop_stage) {
+      totalConditions++;
+      const stages = Array.isArray(cond.crop_stage) ? cond.crop_stage : [cond.crop_stage];
+      const factStage = (facts.growth_stage || '').toUpperCase();
+      const stageMatch = stages.some((s: string) => {
+        const upper = s.toUpperCase();
+        return upper === factStage || upper === '*' || upper === 'ALL';
+      });
+      if (stageMatch) {
+        metConditions++;
+        matchedConditions.push('crop_stage');
+      }
+    }
+    
+    // 3. NDVI level/trend matching
+    if (cond.ndvi_level) {
+      totalConditions++;
+      if (facts.ndvi_status && cond.ndvi_level.toUpperCase() === facts.ndvi_status.toUpperCase()) {
+        metConditions++;
+        matchedConditions.push('ndvi_level');
+      }
+    }
+    if (cond.ndvi_trend) {
+      totalConditions++;
+      if (facts.ndvi_trend && cond.ndvi_trend.toUpperCase() === facts.ndvi_trend.toUpperCase()) {
+        metConditions++;
+        matchedConditions.push('ndvi_trend');
+      }
+    }
+    
+    // 4. Boolean flag matching (soil_moisture_low, recent_rain, etc.)
+    const BOOLEAN_FLAG_MAP: Record<string, (f: SymbolicFact) => boolean> = {
+      'soil_moisture_low': (f) => f.soil_moisture_estimated === 'DRY',
+      'soil_moisture_high': (f) => f.soil_moisture_estimated === 'WET',
+      'recent_rain': (f) => f.recent_rain === true,
+      'critical_stage': (f) => f.critical_stage === true,
+      'high_humidity': (f) => (f.humidity ?? 0) > 80,
+      'high_temperature': (f) => (f.temperature ?? 0) > 38,
+      'low_temperature': (f) => (f.temperature ?? 0) < 15,
+    };
+    
+    for (const [flagKey, evaluator] of Object.entries(BOOLEAN_FLAG_MAP)) {
+      if (cond[flagKey] !== undefined) {
+        totalConditions++;
+        const expected = cond[flagKey] === true || cond[flagKey] === 'true';
+        const actual = evaluator(facts);
+        if (expected === actual) {
+          metConditions++;
+          matchedConditions.push(flagKey);
+        }
+      }
+    }
+    
+    // 5. Severity matching
+    if (cond.severity) {
+      totalConditions++;
+      if (facts.severity && cond.severity.toUpperCase() === facts.severity.toUpperCase()) {
+        metConditions++;
+        matchedConditions.push('severity');
+      }
+    }
+    
+    // Skip trigger_keywords (deprecated per SSOT)
+    // If we reach here with only trigger_keywords and no other flat keys, treat as no-op
+    if (totalConditions === 0) {
+      // Check if this is a trigger_keywords-only rule
+      const keys = Object.keys(cond).filter(k => k !== 'trigger_keywords');
+      if (keys.length === 0) {
+        return { matches: true, confidence: 0.5, reason: 'No symbolic conditions (trigger_keywords-only)', matched_conditions: [] };
+      }
+      return { matches: true, confidence: 0.5, reason: 'No recognized conditions', matched_conditions: [] };
+    }
+    
+    const score = metConditions / totalConditions;
+    const matches = score >= 0.5; // At least half conditions must match
+    
+    return {
+      matches,
+      confidence: matches ? 0.6 + (score * 0.35) : 0,
+      reason: matches
+        ? `Flat conditions matched: ${metConditions}/${totalConditions} (${matchedConditions.join(', ')})`
+        : `Flat conditions failed: ${metConditions}/${totalConditions}`,
+      matched_conditions: matchedConditions
+    };
   }
   
   /**
@@ -821,9 +918,12 @@ export class SymbolicReasoner {
 
 let reasonerInstance: SymbolicReasoner | null = null;
 
-export function getSymbolicReasoner(): SymbolicReasoner {
+/**
+ * GAP #1 FIX: Accept optional Supabase client for connection reuse.
+ */
+export function getSymbolicReasoner(supabaseClient?: any): SymbolicReasoner {
   if (!reasonerInstance) {
-    reasonerInstance = new SymbolicReasoner();
+    reasonerInstance = new SymbolicReasoner(supabaseClient);
   }
   return reasonerInstance;
 }
