@@ -142,6 +142,46 @@ export interface InferenceResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RULE CACHE - In-memory per crop_code with 5-minute TTL
+// Prevents 300-500 rule DB loads per request at 1M+ scale
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface CachedRules {
+  rules: any[];
+  expiresAt: number;
+}
+
+const ruleCache = new Map<string, CachedRules>();
+const RULE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCachedRules(cacheKey: string): any[] | null {
+  const entry = ruleCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    ruleCache.delete(cacheKey);
+    return null;
+  }
+  return entry.rules;
+}
+
+function setCachedRules(cacheKey: string, rules: any[]): void {
+  // Cap cache size to prevent unbounded memory growth
+  if (ruleCache.size > 50) {
+    // Evict oldest entries
+    const now = Date.now();
+    for (const [key, val] of ruleCache) {
+      if (now > val.expiresAt) ruleCache.delete(key);
+    }
+    // If still too large, evict first entry
+    if (ruleCache.size > 50) {
+      const firstKey = ruleCache.keys().next().value;
+      if (firstKey) ruleCache.delete(firstKey);
+    }
+  }
+  ruleCache.set(cacheKey, { rules, expiresAt: Date.now() + RULE_CACHE_TTL_MS });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SYMBOLIC REASONER CLASS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -364,12 +404,24 @@ export class SymbolicReasoner {
   }
   
   /**
-   * Load rules matching the context from database
+   * Load rules matching the context from database.
+   * PHASE 3 FIX: Uses in-memory cache with 5-minute TTL per crop_code
+   * to eliminate 200-500ms DB hits on every request.
    */
   private async loadRulesForContext(facts: SymbolicFact): Promise<any[]> {
     const cropCode = facts.crop_code?.toLowerCase() || '';
     const stage = facts.growth_stage?.toLowerCase() || '';
+    const cacheKey = `rules_${cropCode}`;
     
+    // Check cache first
+    const cached = getCachedRules(cacheKey);
+    if (cached) {
+      console.log(`   ♻️ [Cache HIT] ${cached.length} rules for crop=${cropCode}`);
+      // Still filter by stage (stage can vary per request for same crop)
+      return this.filterByStage(cached, stage);
+    }
+    
+    console.log(`   🔄 [Cache MISS] Loading rules for crop=${cropCode} from DB`);
     const { data, error } = await this.supabase
       .from('decision_rules')
       .select('*')
@@ -383,16 +435,25 @@ export class SymbolicReasoner {
       return [];
     }
     
-    // Filter by stage if specified
-    const filtered = (data || []).filter(rule => {
+    const allRules = data || [];
+    // Cache the full crop rule set (before stage filtering)
+    setCachedRules(cacheKey, allRules);
+    console.log(`   💾 [Cache SET] ${allRules.length} rules cached for crop=${cropCode} (TTL=5min)`);
+    
+    return this.filterByStage(allRules, stage);
+  }
+  
+  /**
+   * Filter rules by growth stage
+   */
+  private filterByStage(rules: any[], stage: string): any[] {
+    return rules.filter(rule => {
       const stageApplicable = rule.stage_applicable || [];
       if (stageApplicable.length === 0) return true;
       return stageApplicable.some((s: string) => 
         s.toLowerCase() === stage || s === '*' || s === 'all'
       );
     });
-    
-    return filtered;
   }
   
   /**

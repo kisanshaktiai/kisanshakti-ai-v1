@@ -66,6 +66,32 @@ const corsHeaders = {
   'Access-Control-Max-Age': '86400',
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// REQUEST DEDUPLICATION GUARD
+// Prevents double-tap / duplicate concurrent requests from the same farmer
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface InFlightRequest {
+  promise: Promise<Response>;
+  expiresAt: number;
+}
+
+const inFlightRequests = new Map<string, InFlightRequest>();
+const DEDUP_WINDOW_MS = 5000; // 5-second dedup window
+
+function getDedupeKey(farmerId: string, message: string): string {
+  // Hash based on farmer + first 100 chars of message (covers double-tap)
+  const msgSnippet = (message || '').substring(0, 100).trim().toLowerCase();
+  return `${farmerId}:${msgSnippet}`;
+}
+
+function cleanExpiredInflight(): void {
+  const now = Date.now();
+  for (const [key, entry] of inFlightRequests) {
+    if (now > entry.expiresAt) inFlightRequests.delete(key);
+  }
+}
+
 // Initialize orchestrator singleton
 let orchestrator: AIAgentOrchestrator | null = null;
 
@@ -91,6 +117,7 @@ serve(async (req) => {
 
   const startTime = Date.now();
   const traceId = generateTraceId();
+  let dedupeKey: string | null = null;
   
   console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
   console.log(`🔍 [${traceId}] REQUEST START`);
@@ -204,7 +231,29 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // P0-A: SESSION MANAGEMENT WITH STRICT LAND ISOLATION
+    // REQUEST DEDUPLICATION: Prevent double-tap duplicate processing
+    // If an identical request from the same farmer is already in-flight, reject it
+    // ═══════════════════════════════════════════════════════════════════════════
+    cleanExpiredInflight();
+    const lastMessage = messages.length > 0 ? (messages[messages.length - 1]?.content || '') : '';
+    dedupeKey = getDedupeKey(finalFarmerId, lastMessage);
+    
+    if (inFlightRequests.has(dedupeKey)) {
+      console.log(`🔁 [${traceId}] DEDUP: Duplicate request blocked for farmer=${finalFarmerId}`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Duplicate request in progress',
+          details: 'Your previous identical request is still being processed. Please wait.',
+          trace_id: traceId
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    // Mark this request as in-flight
+    inFlightRequests.set(dedupeKey, { promise: Promise.resolve(new Response()), expiresAt: Date.now() + DEDUP_WINDOW_MS });
+
+    //
     // CRITICAL: Enforce sessionId ↔ landId binding to prevent cross-land contamination
     // ═══════════════════════════════════════════════════════════════════════════
     let currentSessionId = sessionId;
@@ -1462,6 +1511,11 @@ serve(async (req) => {
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // Clean up dedup entry on completion (success or failure)
+    if (typeof dedupeKey === 'string') {
+      inFlightRequests.delete(dedupeKey);
+    }
   }
 });
 
