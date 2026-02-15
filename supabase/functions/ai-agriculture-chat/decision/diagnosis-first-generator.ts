@@ -31,8 +31,12 @@
 import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothesis-evaluator.ts';
 // STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
 import { translateToRegionalTerms, type FarmerLocation, type RegionalTranslation } from '../services/regional-translator.ts';
+// PHASE 4: DB-driven i18n - replaces hardcoded CAUSE_TRANSLATIONS dictionary
+import { translateCause, initializeTranslationCache, type SupportedLanguage } from '../i18n/translation-loader.ts';
+// PHASE 4: DB-driven observation labels - replaces hardcoded OBSERVATION_LABELS dictionary
+import { loadObservationLabels, type ObservationLabel } from '../i18n/observation-label-loader.ts';
 
-export const DIAGNOSIS_FIRST_VERSION = '1.3.0';  // v1.3.0: REMOVED [obs_keys:] from labels - now use observation_key field only (clean farmer UI)
+export const DIAGNOSIS_FIRST_VERSION = '2.0.0';  // v2.0.0: DB-driven i18n, removed hardcoded CAUSE_TRANSLATIONS and OBSERVATION_LABELS
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -82,11 +86,13 @@ export interface DiagnosisFirstInput {
   crop_code: string;
   growth_stage: string;
   current_observations: string[];
-  language: 'mr' | 'hi' | 'en';
+  language: SupportedLanguage;
   damage_observations?: string[];
   trace_id?: string;
-  /** NEW v1.1.0: Farmer location for regional translation */
+  /** v1.1.0: Farmer location for regional translation */
   farmer_location?: FarmerLocation;
+  /** v2.0.0: Supabase client for DB-driven translation lookups */
+  supabaseClient?: any;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -119,249 +125,48 @@ function getGroupIcon(canonicalGroup: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CAUSE NAME TRANSLATIONS
-// CRITICAL: Farmer-friendly names in their language - NOT scientific terms
+// v2.0.0: CAUSE TRANSLATION - DB-DRIVEN via translateCause()
+// Replaces hardcoded CAUSE_TRANSLATIONS dictionary (was ~60 entries, mr/hi/en only)
+// Now scales to all crops and all languages via decision_rules.i18n_key + FALLBACK_TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CAUSE_TRANSLATIONS: Record<string, { mr: string; hi: string; en: string }> = {
-  // Borers - ऊस पोखरणारे किडे
-  'shoot_borer': { mr: 'खोड किडा', hi: 'तना छेदक', en: 'Shoot Borer' },
-  'stem_borer': { mr: 'खोड किडा', hi: 'तना छेदक', en: 'Stem Borer' },
-  'internode_borer': { mr: 'कांडी किडा', hi: 'गांठ छेदक', en: 'Internode Borer' },
-  'early_shoot_borer': { mr: 'सुरुवातीचा खोड किडा', hi: 'प्रारंभिक तना छेदक', en: 'Early Shoot Borer' },
-  'top_borer': { mr: 'शेंडा किडा', hi: 'शीर्ष छेदक', en: 'Top Borer' },
-  'root_borer': { mr: 'मूळ किडा', hi: 'जड़ छेदक', en: 'Root Borer' },
-  
-  // Termites and soil pests
-  'termite': { mr: 'वाळवी', hi: 'दीमक', en: 'Termite' },
-  'termite_attack': { mr: 'वाळवीचा हल्ला', hi: 'दीमक का हमला', en: 'Termite Attack' },
-  'white_grub': { mr: 'पांढरी अळी', hi: 'सफेद ग्रब', en: 'White Grub' },
-  'root_grub': { mr: 'मूळ अळी', hi: 'जड़ ग्रब', en: 'Root Grub' },
-  
-  // Sucking pests
-  'whitefly': { mr: 'पांढरी माशी', hi: 'सफेद मक्खी', en: 'Whitefly' },
-  'aphid': { mr: 'मावा', hi: 'माहू', en: 'Aphid' },
-  'thrips': { mr: 'तुडतुडे', hi: 'थ्रिप्स', en: 'Thrips' },
-  'jassid': { mr: 'तुडतुडे', hi: 'जैसिड', en: 'Jassid' },
-  'mealybug': { mr: 'लुसलुशी किडा', hi: 'मीलीबग', en: 'Mealybug' },
-  
-  // Bollworms
-  'bollworm': { mr: 'बोंडअळी', hi: 'बोलवर्म', en: 'Bollworm' },
-  'pink_bollworm': { mr: 'गुलाबी बोंडअळी', hi: 'गुलाबी बोलवर्म', en: 'Pink Bollworm' },
-  'american_bollworm': { mr: 'अमेरिकन बोंडअळी', hi: 'अमेरिकन बोलवर्म', en: 'American Bollworm' },
-  
-  // Diseases - रोग
-  'root_rot': { mr: 'मूळ कुज', hi: 'जड़ सड़न', en: 'Root Rot' },
-  'wilt': { mr: 'मर रोग', hi: 'म्लानि', en: 'Wilt' },
-  'red_rot': { mr: 'लाल कुज', hi: 'लाल सड़न', en: 'Red Rot' },
-  'smut': { mr: 'काणी रोग', hi: 'कंडुआ', en: 'Smut' },
-  'smut_seed_borne': { mr: 'काणी रोग', hi: 'कंडुआ', en: 'Smut' },
-  'leaf_spot': { mr: 'पानावर डाग', hi: 'पत्ती धब्बा', en: 'Leaf Spot' },
-  'rust': { mr: 'तांबेरा', hi: 'गेरुआ', en: 'Rust' },
-  'blight': { mr: 'करपा', hi: 'झुलसा', en: 'Blight' },
-  'collar_rot': { mr: 'मुळांची कुज', hi: 'कॉलर रॉट', en: 'Collar Rot' },
-  'powdery_mildew': { mr: 'भुरी रोग', hi: 'पाउडर फफूंद', en: 'Powdery Mildew' },
-  'downy_mildew': { mr: 'केवडा', hi: 'डाउनी मिल्ड्यू', en: 'Downy Mildew' },
-  
-  // IPM treatments - These are causes that need translation
-  'ipm_prevention': { mr: 'जैविक उपचार', hi: 'जैविक उपचार', en: 'IPM Prevention' },
-  'hot_water_treatment': { mr: 'गरम पाण्याने उपचार', hi: 'गर्म पानी उपचार', en: 'Hot Water Treatment' },
-  
-  // Stress/Deficiency - ताण / कमतरता
-  'water_stress': { mr: 'पाणी ताण', hi: 'पानी तनाव', en: 'Water Stress' },
-  'waterlogging': { mr: 'पाणी साचणे', hi: 'जलभराव', en: 'Waterlogging' },
-  'nitrogen_deficiency': { mr: 'नत्र कमतरता', hi: 'नाइट्रोजन की कमी', en: 'Nitrogen Deficiency' },
-  'phosphorus_deficiency': { mr: 'स्फुरद कमतरता', hi: 'फास्फोरस की कमी', en: 'Phosphorus Deficiency' },
-  'potassium_deficiency': { mr: 'पालाश कमतरता', hi: 'पोटाश की कमी', en: 'Potassium Deficiency' },
-  'iron_deficiency': { mr: 'लोह कमतरता', hi: 'लोहे की कमी', en: 'Iron Deficiency' },
-  
-  // Germination issues
-  'poor_germination': { mr: 'कमी उगवण', hi: 'खराब अंकुरण', en: 'Poor Germination' },
-  'establishment_failure': { mr: 'रोप बसले नाही', hi: 'पौधा स्थापित नहीं', en: 'Establishment Failure' },
-  
-  // PHASE-21 FIX: Added missing disease translations for SEEDLING stage
-  'sett_rot': { mr: 'बेणे कूज', hi: 'बीज सड़न', en: 'Sett Rot' },
-  'pineapple_disease': { mr: 'बेणे कूज (अननस रोग)', hi: 'बीज सड़न (पाइनएपल रोग)', en: 'Pineapple Disease' },
-  'sett_rot_pineapple': { mr: 'बेणे कूज', hi: 'बीज सड़न', en: 'Sett Rot/Pineapple Disease' },
-  
-  // Smut disease (for SEEDLING stage)
-  'smut_seed_borne_infection': { mr: 'काणी / स्मट', hi: 'कंडुआ / स्मट', en: 'Smut (Seed-borne)' }
-};
-
 /**
- * Get farmer-friendly cause label in their language.
- * Uses pattern matching to extract core pest/disease name from complex database strings.
+ * Get farmer-friendly cause label using DB-driven i18n system.
+ * Resolution chain: translation-loader cache → FALLBACK_TRANSLATIONS → formatted key
  */
-function getCauseLabel(cause: string, language: 'mr' | 'hi' | 'en'): string {
-  // First, try exact match with normalization
-  let normalized = cause.toLowerCase().replace(/[\s-]+/g, '_');
-  
-  if (CAUSE_TRANSLATIONS[normalized]) {
-    return CAUSE_TRANSLATIONS[normalized][language];
-  }
-  
-  // Remove parenthetical scientific names and extra descriptions
-  let simplified = cause
-    .replace(/\([^)]*\)/g, '')  // Remove (scientific names)
-    .replace(/infestation/gi, '')
-    .replace(/attack/gi, '')
-    .replace(/most destructive/gi, '')
-    .replace(/using.*$/gi, '')  // Remove "using hot water treatment" etc.
-    .replace(/ipm prevention for/gi, '')
-    .trim();
-  
-  normalized = simplified.toLowerCase().replace(/[\s-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-  
-  if (CAUSE_TRANSLATIONS[normalized]) {
-    return CAUSE_TRANSLATIONS[normalized][language];
-  }
-  
-  // Try pattern matching for known pests/diseases
-  const patterns: [RegExp, string][] = [
-    [/early.?shoot.?borer/i, 'early_shoot_borer'],
-    [/shoot.?borer/i, 'shoot_borer'],
-    [/stem.?borer/i, 'stem_borer'],
-    [/internode.?borer/i, 'internode_borer'],
-    [/top.?borer/i, 'top_borer'],
-    [/root.?borer/i, 'root_borer'],
-    [/termite/i, 'termite'],
-    [/red.?rot/i, 'red_rot'],
-    [/smut/i, 'smut'],
-    [/wilt/i, 'wilt'],
-    [/root.?rot/i, 'root_rot'],
-    [/whitefly/i, 'whitefly'],
-    [/aphid/i, 'aphid'],
-    [/mealybug/i, 'mealybug'],
-    [/thrips/i, 'thrips'],
-    [/bollworm/i, 'bollworm'],
-    [/pink.?bollworm/i, 'pink_bollworm'],
-    [/american.?bollworm/i, 'american_bollworm'],
-    [/white.?grub/i, 'white_grub'],
-    [/root.?grub/i, 'root_grub'],
-    [/leaf.?spot/i, 'leaf_spot'],
-    [/rust/i, 'rust'],
-    [/blight/i, 'blight'],
-    [/powdery.?mildew/i, 'powdery_mildew'],
-    [/downy.?mildew/i, 'downy_mildew'],
-    [/nitrogen/i, 'nitrogen_deficiency'],
-    [/phosphorus/i, 'phosphorus_deficiency'],
-    [/potassium/i, 'potassium_deficiency'],
-    [/water.?stress/i, 'water_stress'],
-    [/waterlog/i, 'waterlogging'],
-    [/poor.?germination/i, 'poor_germination'],
-    // PHASE-21 FIX: Added missing disease patterns for SEEDLING stage
-    [/sett.?rot.*pineapple|pineapple.*sett.?rot/i, 'sett_rot_pineapple'],
-    [/sett.?rot/i, 'sett_rot'],
-    [/pineapple.?disease/i, 'pineapple_disease'],
-    [/seed.?borne.*smut|smut.*seed.?borne/i, 'smut_seed_borne_infection']
-  ];
-  
-  for (const [pattern, key] of patterns) {
-    if (pattern.test(cause)) {
-      const translation = CAUSE_TRANSLATIONS[key];
-      if (translation) {
-        console.log(`   [getCauseLabel] Pattern matched: "${cause}" → "${translation[language]}"`);
-        return translation[language];
-      }
-    }
-  }
-  
-  // Ultimate fallback: clean up and title case the cause
-  const fallback = simplified
-    .replace(/_/g, ' ')
-    .replace(/\b\w/g, c => c.toUpperCase())
-    .trim();
-  
-  console.log(`   ⚠️ [getCauseLabel] No translation found for: "${cause}", using: "${fallback}"`);
-  return fallback || cause;
+function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string {
+  const translated = translateCause(cause, language);
+  console.log(`   [getCauseLabelDB] "${cause}" → "${translated}" (${language})`);
+  return translated;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// OBSERVATION KEY TO FARMER-FRIENDLY LABEL
-// CRITICAL: These labels must be simple farmer-understandable phrases
+// v2.0.0: OBSERVATION LABELS - DB-DRIVEN via loadObservationLabels()
+// Replaces hardcoded OBSERVATION_LABELS dictionary (was ~45 entries, mr/hi/en only)
+// Now loads from observation_translations table, scales to all languages
 // ═══════════════════════════════════════════════════════════════════════════
 
-const OBSERVATION_LABELS: Record<string, { mr: string; hi: string; en: string }> = {
-  // Dead heart symptoms
-  'DEAD_HEART': { mr: 'मधली पाने वाळली', hi: 'बीच के पत्ते सूखे', en: 'Central leaves dried' },
-  'DEAD_HEART_VISIBLE': { mr: 'मधली पाने वाळली', hi: 'बीच के पत्ते सूखे', en: 'Dead heart visible' },
-  'DEAD_HEART_PRESENT': { mr: 'मधली पाने वाळली', hi: 'बीच के पत्ते सूखे', en: 'Dead heart present' },
-  
-  // Borer symptoms
-  'TUNNELS_IN_STEM': { mr: 'खोडात भोके', hi: 'तने में सुरंग', en: 'Tunnels in stem' },
-  'BORE_HOLES': { mr: 'खोडावर भोके', hi: 'तने में छेद', en: 'Holes in stem' },
-  'FRASS_VISIBLE': { mr: 'भुसा दिसतो', hi: 'भूसा दिखता है', en: 'Sawdust-like waste visible' },
-  
-  // Termite symptoms
-  'MUD_TUBES_VISIBLE': { mr: 'मातीचे बोगदे', hi: 'मिट्टी की नलियाँ', en: 'Mud tubes at base' },
-  'MUD_GALLERIES': { mr: 'मातीचे बोगदे', hi: 'मिट्टी की नलियाँ', en: 'Mud galleries' },
-  'TERMITE_DAMAGE': { mr: 'वाळवीचे नुकसान', hi: 'दीमक का नुकसान', en: 'Termite damage' },
-  
-  // Root symptoms
-  'ROOT_DAMAGE': { mr: 'मुळांचे नुकसान', hi: 'जड़ का नुकसान', en: 'Root damage visible' },
-  'ROOT_ROT': { mr: 'मूळ कुजलेले', hi: 'जड़ सड़ी', en: 'Roots are rotting' },
-  'WATERLOGGED_ROOTS': { mr: 'मुळांवर पाणी', hi: 'जड़ों में पानी', en: 'Waterlogged roots' },
-  
-  // Plant structure symptoms
-  'EASY_TO_PULL': { mr: 'झाड सहज उपटते', hi: 'पौधा आसानी से उखड़ता', en: 'Plant pulls out easily' },
-  'PLANT_FALLING_OVER': { mr: 'झाड पडते', hi: 'पौधा गिर रहा', en: 'Plant falling over' },
-  'WILTING': { mr: 'पाने मुरझलेली', hi: 'पत्ते मुरझाए', en: 'Wilting visible' },
-  'YELLOWING': { mr: 'पाने पिवळी झाली', hi: 'पत्ते पीले हो गए', en: 'Yellowing' },
-  
-  // Pest symptoms
-  'HONEYDEW': { mr: 'चिकट पदार्थ पानावर', hi: 'पत्तों पर चिपचिपा', en: 'Sticky honeydew' },
-  'SOOTY_MOLD': { mr: 'काळी बुरशी', hi: 'काला फफूंद', en: 'Black sooty mold' },
-  'SMALL_INSECTS_VISIBLE': { mr: 'लहान किडे दिसतात', hi: 'छोटे कीड़े दिखते', en: 'Small insects visible' },
-  'INSECTS_VISIBLE': { mr: 'किडे दिसतात', hi: 'कीड़े दिखते', en: 'Insects visible' },
-  'LARVAE_VISIBLE': { mr: 'अळ्या दिसतात', hi: 'लार्वा दिखता है', en: 'Larvae visible' },
-  
-  // Germination symptoms
-  'SEED_NOT_GERMINATED': { mr: 'बियाणे उगवले नाही', hi: 'बीज नहीं उगा', en: 'Seed not germinated' },
-  'POOR_GERMINATION': { mr: 'कमी उगवण', hi: 'खराब अंकुरण', en: 'Poor germination' },
-  'GAPS_IN_ROWS': { mr: 'ओळीत खाली जागा', hi: 'कतार में खाली जगह', en: 'Gaps in rows' },
-  
-  // Disease symptoms
-  'RED_LESIONS': { mr: 'लाल डाग', hi: 'लाल धब्बे', en: 'Red lesions' },
-  'WHITE_POWDER': { mr: 'पांढरी भुकटी', hi: 'सफेद पाउडर', en: 'White powder' },
-  'BLACK_SPORES': { mr: 'काळ्या बीजाणू', hi: 'काले बीजाणु', en: 'Black spores' },
-  'LEAF_SPOTS': { mr: 'पानावर डाग', hi: 'पत्तों पर धब्बे', en: 'Leaf spots' },
-  
-  // Visual check fallback
-  'VISUAL_CHECK': { mr: 'पिकाची तपासणी करा', hi: 'फसल की जाँच करें', en: 'Check the crop' }
-};
-
-function getObservationLabel(key: string, language: 'mr' | 'hi' | 'en'): string {
-  // Normalize the key
-  let normalized = key.toUpperCase().replace(/[\s-]+/g, '_');
-  
-  // Direct lookup
-  if (OBSERVATION_LABELS[normalized]) {
-    return OBSERVATION_LABELS[normalized][language];
+/**
+ * Get observation label from pre-loaded DB labels map, with formatted fallback
+ */
+function getObservationLabelFromMap(
+  key: string,
+  labelsMap: Map<string, ObservationLabel>,
+  language: SupportedLanguage
+): string {
+  const upperKey = key.toUpperCase();
+  const label = labelsMap.get(upperKey);
+  if (label && label.display_text) {
+    return label.display_text;
   }
-  
-  // Try without common prefixes/suffixes
-  normalized = normalized
-    .replace(/^CHECK_FOR_/i, '')
-    .replace(/_PRESENT$/i, '')
-    .replace(/_VISIBLE$/i, '');
-  
-  if (OBSERVATION_LABELS[normalized]) {
-    return OBSERVATION_LABELS[normalized][language];
-  }
-  
-  // Fallback: format the key in farmer-friendly way
+  // Fallback: format code as readable label
   const formatted = key
     .replace(/_/g, ' ')
     .replace(/check for/i, '')
     .trim()
     .toLowerCase();
-  
-  // Return with language-appropriate prefix
-  if (language === 'mr') {
-    return `${formatted} तपासा`;
-  } else if (language === 'hi') {
-    return `${formatted} जाँचें`;
-  }
+  if (language === 'mr') return `${formatted} तपासा`;
+  if (language === 'hi') return `${formatted} जाँचें`;
   return formatted;
 }
 
@@ -432,7 +237,8 @@ export async function generateDiagnosisFirstResponse(
     language,
     damage_observations,
     trace_id,
-    farmer_location
+    farmer_location,
+    supabaseClient
   } = input;
   
   const traceIdFinal = trace_id || `diag_${Date.now()}`;
@@ -474,10 +280,42 @@ export async function generateDiagnosisFirstResponse(
   });
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // v1.1.0: REGIONAL TRANSLATION SUPPORT
-  // If farmer_location is provided, use regional translator for authentic terms
-  // Otherwise, fallback to hardcoded translations
+  // v2.0.0: DB-DRIVEN TRANSLATION
+  // 1. Initialize translation cache (from decision_rules.i18n_key)
+  // 2. Load observation labels from observation_translations table
+  // 3. Regional translator → DB-driven fallback (NOT hardcoded dictionaries)
   // ═══════════════════════════════════════════════════════════════════════════
+  
+  // Initialize i18n translation cache if supabaseClient available
+  if (supabaseClient) {
+    try {
+      await initializeTranslationCache(supabaseClient);
+    } catch (e) {
+      console.warn(`   ⚠️ Translation cache init failed, using fallbacks: ${e}`);
+    }
+  }
+  
+  // Collect all observation keys for batch DB lookup
+  const allObservationKeys: string[] = [];
+  for (const h of topHypotheses) {
+    for (const obs of h.observable_characteristics || []) {
+      if (obs.observation_key && !allObservationKeys.includes(obs.observation_key.toUpperCase())) {
+        allObservationKeys.push(obs.observation_key.toUpperCase());
+      }
+    }
+  }
+  allObservationKeys.push('VISUAL_CHECK'); // Always include fallback
+  
+  // Load observation labels from DB (single batch query)
+  let observationLabelsMap = new Map<string, ObservationLabel>();
+  if (supabaseClient) {
+    try {
+      observationLabelsMap = await loadObservationLabels(supabaseClient, allObservationKeys, language as 'mr' | 'hi' | 'en');
+      console.log(`   📖 Loaded ${observationLabelsMap.size} observation labels from DB`);
+    } catch (e) {
+      console.warn(`   ⚠️ Observation labels load failed: ${e}`);
+    }
+  }
   
   // Generate diagnosis options (with optional regional translation)
   const diagnoses: DiagnosisOption[] = await Promise.all(
@@ -496,13 +334,12 @@ export async function generateDiagnosisFirstResponse(
       
       const observationKey = bestObservation?.observation_key || 'VISUAL_CHECK';
       
-      // Determine cause label (regional or fallback)
+      // Determine cause label (regional or DB-driven fallback)
       let causeLabel: string;
       let observationLabel: string;
       
       if (farmer_location) {
         try {
-          // Use static import (already imported at top of file)
           const regional = await translateToRegionalTerms(
             {
               pest_name_en: h.cause,
@@ -515,39 +352,37 @@ export async function generateDiagnosisFirstResponse(
             const t = (text || '').trim();
             if (!t) return true;
             if (language === 'en') return false;
-            // For mr/hi we expect Devanagari; if not present, treat as untranslated
             const hasDevanagari = /[\u0900-\u097F]/.test(t);
             if ((language === 'mr' || language === 'hi') && !hasDevanagari) return true;
-            // If it looks identical to the English input, treat as untranslated
             if (t.toLowerCase() === (h.cause || '').trim().toLowerCase()) return true;
-            // Avoid raw "Check for ..." leakage
             if (/\bcheck\s+for\b/i.test(t)) return true;
             return false;
           };
 
-          // If regional translator couldn't localize (common for rare disease names), fall back to hardcoded matcher.
+          // v2.0.0: Fallback to DB-driven translateCause() instead of hardcoded dictionary
           causeLabel = isUntranslated(regional.pest_name_regional)
-            ? getCauseLabel(h.cause, language)
+            ? getCauseLabelFromDB(h.cause, language)
             : regional.pest_name_regional;
 
+          // v2.0.0: Fallback to DB-driven observation labels instead of hardcoded dictionary
           observationLabel = isUntranslated(regional.treatment_label_regional)
-            ? getObservationLabel(observationKey, language)
+            ? getObservationLabelFromMap(observationKey, observationLabelsMap, language)
             : regional.treatment_label_regional;
 
           if (isUntranslated(regional.pest_name_regional) || isUntranslated(regional.treatment_label_regional)) {
-            console.log(`   🌍 Regional fallback used: cause="${h.cause}" → "${causeLabel}" | obs="${observationKey}" → "${observationLabel}"`);
+            console.log(`   🌍 Regional fallback → DB: cause="${h.cause}" → "${causeLabel}" | obs="${observationKey}" → "${observationLabel}"`);
           } else {
             console.log(`   🌍 Regional: ${h.cause} → ${causeLabel}`);
           }
         } catch (error) {
-          console.warn(`   ⚠️ Regional translation failed for ${h.cause}, using fallback`);
-          causeLabel = getCauseLabel(h.cause, language);
-          observationLabel = getObservationLabel(observationKey, language);
+          console.warn(`   ⚠️ Regional translation failed for ${h.cause}, using DB fallback`);
+          causeLabel = getCauseLabelFromDB(h.cause, language);
+          observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
         }
       } else {
-        // Use hardcoded translations (fallback)
-        causeLabel = getCauseLabel(h.cause, language);
-        observationLabel = getObservationLabel(observationKey, language);
+        // v2.0.0: Use DB-driven translations (NOT hardcoded dictionaries)
+        causeLabel = getCauseLabelFromDB(h.cause, language);
+        observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       }
       
       return {
