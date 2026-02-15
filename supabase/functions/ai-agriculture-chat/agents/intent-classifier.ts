@@ -254,8 +254,8 @@ export async function classifyFarmerIntent(
 function emergencyKeywordFallback(message: string): IntentClassification | null {
   const msg = message.toLowerCase();
   
-  // Weed-related (Marathi: तण, Hindi: खरपतवार/घास)
-  if (/तण|खरपतवार|weed|गवत.*वाढ|घास/i.test(msg)) {
+  // Weed-related (Marathi: तण/निंदणी, Hindi: खरपतवार/घास/निराई)
+  if (/तण|खरपतवार|weed|गवत.*वाढ|घास|निंदणी|निराई|आंतरमशागत|களை|కలుపు|আগাছা|નીંદણ|ಕಳೆ|ਨਦੀਨ/i.test(msg)) {
     return { intent_code: 'WEED_PROBLEM' as IntentCode, confidence: 0.6 };
   }
   

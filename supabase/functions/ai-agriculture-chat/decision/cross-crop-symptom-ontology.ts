@@ -17,7 +17,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CROSS_CROP_SYMPTOM_ONTOLOGY_VERSION = '2.0.0'; // Phase-11: Insect-first clarification
+export const CROSS_CROP_SYMPTOM_ONTOLOGY_VERSION = '3.0.0'; // Phase-15: Weed observation keys
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROSS-CROP SYMPTOM KEYS
@@ -119,7 +119,19 @@ export enum CrossCropSymptomKey {
   // ═══════════════════════════════════════════════════════════════════════════
   PLANT_DEATH = 'PLANT_DEATH',
   SEEDLING_DEATH = 'SEEDLING_DEATH',
-  GERMINATION_FAILURE = 'GERMINATION_FAILURE'
+  GERMINATION_FAILURE = 'GERMINATION_FAILURE',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE-15: WEED OBSERVATIONS
+  // Pure field observations of weed presence, density, and type
+  // ═══════════════════════════════════════════════════════════════════════════
+  WEED_PRESENT = 'WEED_PRESENT',
+  WEED_HEAVY = 'WEED_HEAVY',
+  WEED_ABOVE_CROP = 'WEED_ABOVE_CROP',
+  WEED_IN_ROWS = 'WEED_IN_ROWS',
+  WEED_INFESTATION = 'WEED_INFESTATION',
+  GRASS_WEEDS = 'GRASS_WEEDS',
+  BROADLEAF_WEEDS = 'BROADLEAF_WEEDS'
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -133,12 +145,15 @@ export type SymptomCategory =
   | 'INSECT'
   | 'GROWTH'
   | 'DISTRIBUTION'
+  | 'WEED'
   | 'GENERAL';
 
 export function getSymptomCategory(symptom: CrossCropSymptomKey): SymptomCategory {
   if (symptom.startsWith('LEAF_')) return 'LEAF';
   if (symptom.startsWith('STEM_')) return 'STEM';
   if (symptom.startsWith('ROOT_')) return 'ROOT';
+  if (symptom.startsWith('WEED_') || symptom === CrossCropSymptomKey.GRASS_WEEDS || 
+      symptom === CrossCropSymptomKey.BROADLEAF_WEEDS) return 'WEED';
   if (symptom.includes('INSECTS') || symptom.includes('LARVAE') || 
       symptom.includes('EGGS') || symptom.includes('WEBBING')) return 'INSECT';
   if (symptom.includes('GROWTH') || symptom.includes('FLOWERING') || 
