@@ -39,6 +39,7 @@ export type FailureClass =
   | 'PEST_DAMAGE'
   | 'DISEASE_SYMPTOM'
   | 'NUTRIENT_DEFICIENCY'
+  | 'WEED_COMPETITION'
   | 'UNKNOWN';
 
 /**
@@ -158,6 +159,16 @@ const NUTRIENT_OBSERVATIONS = new Set([
   'NUTRIENT_DEFICIENCY'
 ]);
 
+const WEED_OBSERVATIONS = new Set([
+  'WEED_PRESENT',
+  'WEED_HEAVY',
+  'WEED_ABOVE_CROP',
+  'WEED_IN_ROWS',
+  'WEED_INFESTATION',
+  'GRASS_WEEDS',
+  'BROADLEAF_WEEDS'
+]);
+
 const VEGETATIVE_STRESS_OBSERVATIONS = new Set([
   'WILTING',
   'DROOPING',
@@ -259,7 +270,25 @@ export function detectPrimaryFailureClass(input: FailureClassInput): FailureClas
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2: Check PEST_DAMAGE signals
+  // STEP 2a: Check WEED_COMPETITION signals (before pest to prevent misrouting)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const weedMatches = countMatches(allObservations, WEED_OBSERVATIONS);
+  
+  if (weedMatches.length > 0) {
+    console.log(`   ✅ WEED_COMPETITION detected (${weedMatches.length} observations)`);
+    return {
+      primary_class: 'WEED_COMPETITION',
+      confidence: 0.82 + (weedMatches.length * 0.04),
+      matched_observations: weedMatches,
+      reasoning: `Weed competition observations detected: ${weedMatches.slice(0, 3).join(', ')}`,
+      stage_compatible: true,
+      derived_from: 'OBSERVATIONS'
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2b: Check PEST_DAMAGE signals
   // ═══════════════════════════════════════════════════════════════════════════
   
   const pestMatches = countMatches(allObservations, PEST_OBSERVATIONS);
@@ -365,7 +394,7 @@ const CLARIFICATION_DOMAINS: Record<FailureClass, ClarificationDomain> = {
     name: 'ESTABLISHMENT',
     allowed_symptom_scopes: ['WHOLE_PLANT', 'ROOT', 'STEM'],
     canonical_groups: ['establishment', 'germination', 'root'],
-    excluded_observations: ['LEAF_CURL', 'FRUIT_DROP'] // Not relevant for establishment
+    excluded_observations: ['LEAF_CURL', 'FRUIT_DROP']
   },
   VEGETATIVE_STRESS: {
     name: 'VEGETATIVE',
@@ -391,6 +420,12 @@ const CLARIFICATION_DOMAINS: Record<FailureClass, ClarificationDomain> = {
     canonical_groups: ['nutrient', 'deficiency'],
     excluded_observations: ['INSECT_HOLES', 'PEST_FRASS']
   },
+  WEED_COMPETITION: {
+    name: 'WEED',
+    allowed_symptom_scopes: ['WHOLE_PLANT'],
+    canonical_groups: ['weed', '06_weed'],
+    excluded_observations: ['DEAD_HEART', 'INSECT_VISIBLE']
+  },
   UNKNOWN: {
     name: 'GENERAL',
     allowed_symptom_scopes: ['WHOLE_PLANT', 'LEAF', 'STEM', 'ROOT', 'FRUIT'],
@@ -412,6 +447,7 @@ export function getClarificationDomain(failureClass: FailureClass): Clarificatio
 export function getFailureClassThresholds(): Record<FailureClass, number> {
   return {
     ESTABLISHMENT_FAILURE: 0.80,
+    WEED_COMPETITION: 0.78,
     PEST_DAMAGE: 0.75,
     DISEASE_SYMPTOM: 0.70,
     NUTRIENT_DEFICIENCY: 0.65,
@@ -507,6 +543,12 @@ export function getFailureClassFallbackOptions(
       { observation_key: 'CHLOROSIS', label: 'Chlorosis (pale leaves)', category: 'nutrient' },
       { observation_key: 'PURPLE_LEAVES', label: 'Purple coloration', category: 'nutrient' },
       { observation_key: 'STUNTED_GROWTH', label: 'Stunted plants', category: 'nutrient' }
+    ],
+    WEED_COMPETITION: [
+      { observation_key: 'WEED_PRESENT', label: 'Weeds growing in field', category: 'weed' },
+      { observation_key: 'WEED_HEAVY', label: 'Heavy weed infestation', category: 'weed' },
+      { observation_key: 'WEED_ABOVE_CROP', label: 'Weeds taller than crop', category: 'weed' },
+      { observation_key: 'GRASS_WEEDS', label: 'Grass weeds dominating', category: 'weed' }
     ],
     UNKNOWN: [
       { observation_key: 'GENERAL_PROBLEM', label: 'General problem', category: 'general' },

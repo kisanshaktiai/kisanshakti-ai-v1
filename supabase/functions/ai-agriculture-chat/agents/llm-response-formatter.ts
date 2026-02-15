@@ -90,7 +90,7 @@ import {
 
 export interface LLMFormatterInput {
   farmer_message: string;
-  language: 'mr' | 'hi' | 'en';
+  language: 'mr' | 'hi' | 'en' | 'ta' | 'te' | 'bn' | 'gu' | 'kn' | 'pa';
   decision_output: DecisionOutput;
   land_context?: {
     current_crop?: string;
