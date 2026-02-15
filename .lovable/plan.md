@@ -1,186 +1,112 @@
 
 
-# Forensic Audit: Symbolic Decision Brain Graph - Production Readiness Report
+# Fix Plan: Replace Hardcoded Translations with DB-Driven i18n System
 
-## AUDIT SCOPE
-- 494 active rules in `decision_rules` table
-- 7,600+ lines in orchestrator, 3,500+ in index.ts, 845 in symbolic-reasoner
-- 42 modules in `/decision`, 76 modules in `/agents`, 7 in `/utils`
-- Full data flow from farmer query to LLM-formatted response
+## Problem Summary
+
+The `diagnosis-first-generator.ts` file contains **two hardcoded dictionaries** (`CAUSE_TRANSLATIONS` with ~35 entries and `OBSERVATION_LABELS` with ~30 entries) that only support mr/hi/en. This violates the SSOT architecture and cannot scale to all crops and all 9 languages.
+
+Meanwhile, the proper DB-driven translation system already exists:
+- `i18n/observation-label-loader.ts` loads from `observation_translations` table
+- `i18n/translation-loader.ts` loads from `decision_rules.i18n_key` with a fallback dictionary
+- `agents/communication-translation-dictionary.ts` has a larger dictionary but is also hardcoded
+
+The root cause: `diagnosis-first-generator.ts` **never calls** `loadObservationLabels()` or `translateCause()` from the centralized loaders.
+
+## What Changes
+
+### File 1: `supabase/functions/ai-agriculture-chat/decision/diagnosis-first-generator.ts`
+
+**Change A: Replace hardcoded `getCauseLabel()` with DB-driven `translateCause()`**
+- Import `translateCause` and `initializeTranslationCache` from `../i18n/translation-loader.ts`
+- Replace calls to local `getCauseLabel(cause, language)` with `translateCause(cause, language)` which already handles normalization, cache lookup, fallback chain, and pattern matching
+- Remove the entire `CAUSE_TRANSLATIONS` dictionary (lines 126-189) and `getCauseLabel()` function (lines 195-277) and the regex pattern array (lines 220-257)
+
+**Change B: Replace hardcoded `getObservationLabel()` with DB-driven `loadObservationLabels()`**
+- Import `loadObservationLabels` from `../i18n/observation-label-loader.ts`
+- In `generateDiagnosisFirstResponse()`, collect all observation keys from hypotheses, call `loadObservationLabels(supabaseClient, codes, language)` once, then use the returned map for each diagnosis option
+- This requires passing a `supabaseClient` into the function -- add it to `DiagnosisFirstInput` interface
+- Remove the entire `OBSERVATION_LABELS` dictionary (lines 284-331) and `getObservationLabel()` function (lines 333-366)
+
+**Change C: Update `DiagnosisFirstInput` interface**
+- Add `supabaseClient?: any` to the interface so the DB loader can be called
+- Expand `language` type from `'mr' | 'hi' | 'en'` to include all 9 supported languages
+
+**Change D: Keep `regional-translator` as priority path, DB-loader as fallback**
+- Current flow: `regional-translator` -> `getCauseLabel()` (hardcoded) as fallback
+- New flow: `regional-translator` -> `translateCause()` (DB-cached) as fallback -> `loadObservationLabels()` (DB query) for observation labels
+- The `isUntranslated()` guard stays -- it correctly detects English leakage
+
+### File 2: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
+
+**Change E: Guard product/dosage block for BLOCK and NO_ACTION rules**
+- Wrap the product details output (lines 970-990) in a condition: only output if `action_type` is a treatment type (RECOMMEND, URGENT_ACTION, SPRAY, APPLY)
+- For BLOCK rules, output explicit instruction: "This is a BLOCK action. DO NOT recommend any product or dosage. Explain WHY using the REASON text."
+- For NO_ACTION_REQUIRED/MONITORING rules, skip product details entirely -- only output the reason/knowledge text
+
+### File 3: `observation_translations` table (Data - SQL to run manually)
+
+**Change F: Add missing observation codes for weed and nutrition domains**
+- Insert rows for: WEED_PRESENT, WEED_HEAVY, WEED_ABOVE_CROP, WEED_IN_ROWS, WEED_INFESTATION, BORON_TOXICITY, BORON_DEFICIENCY
+- Each code needs entries for all active languages (mr, hi, en at minimum)
+- This is the SSOT path -- once added to the DB, all modules pick it up automatically
+
+### File 4: Caller sites that pass `supabaseClient`
+
+**Change G: Update orchestrator call site**
+- Where `generateDiagnosisFirstResponse()` is called in the orchestrator, pass the existing `this.supabase` client so the DB loaders can query translations
+- Also update `diagnosis-only-mode.ts` if it calls this function
 
 ---
 
-## CRITICAL BUG #1: `conditions_json` Format Mismatch (SEVERITY: P0)
+## Technical Details
 
-The `SymbolicReasoner.evaluateConditionsJson()` expects a recursive `{all: [...], any: [...], fact: "...", operator: "..."}` format. However, **0 out of 494 rules** use the `fact/operator` format and only **1 rule** uses `all/any`. 
+### Translation Resolution Flow (After Fix)
 
-The actual DB format is flat key-value: `{observations: ["WEED_PRESENT"], crop_stage: "SEEDLING", ndvi_trend: "IMPROVING", soil_moisture_low: true}`.
-
-**Impact**: The `SymbolicReasoner.executeRules()` evaluates conditions using recursive `all/any/fact/operator` logic. Since no rules match this format, it falls through to `{matches: true, confidence: 0.5, reason: 'No conditions (default)'}` for EVERY rule -- meaning ALL rules for a given crop/stage fire indiscriminately, producing noise instead of precision.
-
-The system currently survives because the **HypothesisEvaluator** (used in the PHASE-20 clarification path) has its OWN `evaluatePartialConditionMatch()` that correctly parses the flat `{observations: [...], crop_stage: [...], trigger_keywords: [...]}` format. But the direct SymbolicReasoner path produces garbage matches.
-
-**Fix**: Rewrite `SymbolicReasoner.evaluateConditionsJson()` to handle the actual flat DB format (observations, crop_stage, ndvi_level, boolean flags like `soil_moisture_low`).
-
----
-
-## CRITICAL BUG #2: Weed Rules Missing `canonical_group` (SEVERITY: P0)
-
-6 weed rules have `canonical_group = NULL`. The `HYPOTHESIS_CANONICAL_GROUPS` filter in `hypothesis-evaluator.ts` lists:
+```text
+Farmer query (any language)
+  |
+  v
+Hypothesis Evaluator -> candidate rules with `cause` field (English)
+  |
+  v
+diagnosis-first-generator.ts:
+  1. Try regional-translator (farmer_location based)
+  2. If untranslated -> translateCause(cause, language) [from translation-loader.ts]
+     - Checks in-memory cache (loaded from decision_rules.i18n_key)
+     - Checks FALLBACK_TRANSLATIONS (97 entries covering pests/diseases/symptoms/actions)
+     - Last resort: formats key as "Title Case"
+  3. For observation labels -> loadObservationLabels(supabase, codes, language)
+     - Queries observation_translations table
+     - Falls back to formatted English code
 ```
-['pest', 'disease', 'stress', 'germination', 'irrigation',
- 'nutrition', 'deficiency', 'insect', 'fungal', 'bacterial',
- 'viral', 'establishment', 'soil_borne', 'borer', 'mite']
+
+### Why This Scales
+- Adding a new crop (e.g., cotton, rice) = add rules to `decision_rules` + add translations to `observation_translations`
+- Adding a new language (e.g., Telugu) = add rows with `language_code = 'te'` to `observation_translations`
+- No code changes needed for new crops or languages
+
+### BLOCK Rule Guard Logic (Change E)
+```text
+TREATMENT_ACTION_TYPES = ['RECOMMEND', 'URGENT_ACTION', 'treatment', 'spray', 'apply']
+
+if action_type in TREATMENT_ACTION_TYPES:
+  -> output product/dosage details as before
+elif action_type is 'BLOCK':
+  -> output "DO NOT recommend treatment. Explain WHY blocked."
+else (NO_ACTION_REQUIRED, MONITORING, OBSERVATION):
+  -> skip product section entirely, output only reason/knowledge
 ```
 
-This filter is NOT currently active in the main query (it was removed), but the NULL `canonical_group` still causes weed rules to appear as `canonical_group: 'general'` in candidates -- reducing their score and preventing proper categorization.
+### Files Modified
+1. `supabase/functions/ai-agriculture-chat/decision/diagnosis-first-generator.ts` (Changes A-D)
+2. `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` (Change E)
+3. SQL migration for `observation_translations` table (Change F - manual)
+4. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (Change G - pass supabaseClient)
 
-**Fix**: 
-1. Set `canonical_group = '06_weed'` for all 6 weed rules in the DB
-2. Add `'weed'` and `'06_weed'` to `HYPOTHESIS_CANONICAL_GROUPS` constant
-3. Add `WEED_COMPETITION` to `FailureClass` type in `failure-class-detector.ts`
-
----
-
-## CRITICAL BUG #3: Safety Data Gap - 97% of RECOMMEND Rules Missing Safety Fields (SEVERITY: P0)
-
-Out of 246 RECOMMEND/URGENT_ACTION rules:
-- **240 (97.6%)** missing `dosage_per_acre`
-- **229 (93.1%)** missing `phi_days`  
-- **223 (90.7%)** missing `bee_toxicity`
-- **233 (94.7%)** missing `active_ingredient`
-
-Many rules embed dosage info IN `action_text` (e.g., "Apply Chlorantraniliprole 18.5% SC at 0.4 ml/L") but NOT in the structured fields. This means:
-- PHI Enforcement Guardian (`phi-enforcement-guardian.ts`) cannot block pre-harvest spray
-- Pollinator Protection Rules (`pollinator-protection-rules.ts`) cannot enforce bee safety  
-- Resistance rotation checks (`safety-enhancement.ts`) cannot detect consecutive same-group use
-
-**Impact**: Safety gates are effectively disabled for 97% of chemical recommendations. This is a production blocker for farmer safety.
-
-**Fix**: Requires agronomic data enrichment -- extracting `active_ingredient`, `phi_days`, `bee_toxicity`, and `dosage_per_acre` from each rule's `action_text` into the structured columns. This is a data migration task, not a code fix.
-
----
-
-## CRITICAL BUG #4: 39 NO_ACTION_REQUIRED Rules Have NULL `action_text` (SEVERITY: P1)
-
-Rules like "Irrigation Method Selection Guide", "Bee Protection", "Heavy Rainfall" have no `action_text`, causing `[Action text unavailable]` to leak into farmer responses. The previous fix added a fallback chain (`action_text -> knowledge_text -> reason_text`), but 6 of these rules ALSO have NULL `knowledge_text`.
-
-**Fix**: Populate `action_text` for these 39 rules with appropriate guidance text, OR populate `knowledge_text` as minimum fallback content.
-
----
-
-## CRITICAL BUG #5: 92 Rules Missing `reason_text` (SEVERITY: P1)
-
-20 BLOCK rules have no `reason_text`. When the system blocks a treatment, it needs to explain WHY to the farmer. Without `reason_text`, the LLM has no symbolic data to explain the block, leading to generic "Do not apply" without agronomic justification.
-
----
-
-## BUG #6: `trigger_keywords` Still Present in 17 Rules (SEVERITY: P2)
-
-The SSOT architecture explicitly deprecated `trigger_keywords` -- the symbolic brain should match on `observations` array in `conditions_json` only. However, 17 rules (mostly weed rules) still contain `trigger_keywords` in their `conditions_json`. The `evaluatePartialConditionMatch()` in `hypothesis-evaluator.ts` still scores these via keyword matching against `user_query`, violating the language-agnostic contract.
-
-**Fix**: Remove `trigger_keywords` from `conditions_json` for all 17 rules. Ensure their `observations` arrays contain sufficient canonical codes for matching.
-
----
-
-## BUG #7: Duplicate `canonical_group` Namespaces (SEVERITY: P2)
-
-The DB has both:
-- `05_nutrition` (11 rules) AND `06_nutrition` (5 rules)
-- `11_harvest` (12 rules) AND `12_harvest` (1 rule)
-- `01_safety` AND `01_crop_identity` AND `01_seed_quality`
-
-This prevents clean aggregation and creates ambiguity in rule categorization.
-
-**Fix**: Consolidate to single namespace per domain (e.g., merge `06_nutrition` into `05_nutrition`, merge `12_harvest` into `11_harvest`).
-
----
-
-## BUG #8: `LLMFormatterInput.language` Type Too Narrow (SEVERITY: P2)
-
-The `LLMFormatterInput` interface defines `language: 'mr' | 'hi' | 'en'` but the system now supports 9 languages (Tamil, Telugu, Bengali, Gujarati, Kannada, Punjabi). Farmers selecting these languages will get type errors or fallback to English.
-
-**Fix**: Expand type to `'mr' | 'hi' | 'en' | 'ta' | 'te' | 'bn' | 'gu' | 'kn' | 'pa'`
-
----
-
-## PRODUCTION READINESS GAPS
-
-### Gap 1: No Connection Pooling / Supabase Client Reuse
-The `SymbolicReasoner` creates a NEW Supabase client in its constructor every time. At 1M+ users, this creates excessive connections. The `index.ts` already creates a client -- it should be passed to the reasoner.
-
-### Gap 2: No Rule Caching
-Every request loads 300-500 rules from DB. For sugarcane (431 rules), this is a 200-500ms DB hit per request. At 1M+ users this creates unsustainable DB load.
-
-**Fix**: Implement in-memory rule cache with 5-minute TTL per crop_code, invalidated on rule updates.
-
-### Gap 3: Orchestrator Size (7,616 lines)
-The orchestrator is a single 7,600-line file. This creates:
-- Memory pressure on cold starts (Deno must parse the entire file)
-- Difficulty debugging specific phases
-- Risk of timeout on initial boot
-
-### Gap 4: No Request Deduplication
-If a farmer double-taps, two identical requests run in parallel. At scale, this doubles load.
-
-### Gap 5: Missing `crop_age_days_min/max` on Most Rules
-The temporal constraint validator exists but most rules lack these columns, making it a no-op.
-
----
-
-## UNUSED COLUMNS IN `decision_rules`
-
-These columns exist in the schema but are rarely/never used in the codebase:
-- `roi_cost_saved_min/max`, `roi_yield_gain_pct`, `roi_yield_risk_pct`, `roi_confidence`, `roi_net_score` -- ROI calculator exists but these are unpopulated
-- `crop_family`, `crop_category`, `botanical_name` -- no code references these
-- `applicability_scope`, `crop_tags` -- no code references
-- `visual_markers` -- exists but code uses `observable_characteristics` instead
-- `reentry_interval_hours` -- safety-relevant but never checked in code
-- `aquatic_toxicity` -- never checked
-- `validation_trials`, `field_validated` -- metadata only
-
----
-
-## IMPLEMENTATION PLAN (Priority Order)
-
-### Phase 1: Critical Bug Fixes (Code Changes)
-
-**File 1: `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts`**
-- Rewrite `evaluateConditionsJson()` to handle flat DB format: `{observations: [...], crop_stage: [...], boolean_flags, ndvi_level, etc.}`
-- Add observation-based matching: if `conditions_json.observations` exists, check against `facts.primary_symptom` and `facts.user_query` observation codes
-- Add boolean flag matching: if key like `soil_moisture_low` exists, map to corresponding fact value
-- Keep existing `all/any/fact/operator` logic as secondary path for future rule format support
-
-**File 2: `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`**
-- Add `'weed'`, `'06_weed'`, `'harvest'`, `'economics'` to `HYPOTHESIS_CANONICAL_GROUPS`
-
-**File 3: `supabase/functions/ai-agriculture-chat/decision/failure-class-detector.ts`**
-- Add `WEED_COMPETITION` failure class with weed-specific observation keys
-
-**File 4: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`**
-- Expand `language` type to include all 9 supported languages
-
-### Phase 2: Data Fixes (SQL Migrations)
-- Set `canonical_group = '06_weed'` for 6 NULL weed rules
-- Remove `trigger_keywords` from `conditions_json` for 17 rules
-- Consolidate duplicate canonical_group namespaces
-- Populate `action_text` for 39 NO_ACTION_REQUIRED rules
-- Populate `reason_text` for 20 BLOCK rules
-
-### Phase 3: Production Hardening (Code Changes)
-- Pass Supabase client to SymbolicReasoner instead of creating new instances
-- Add in-memory rule cache with TTL
-- Add request deduplication guard
-
----
-
-## AGRONOMIC ACCURACY CHECK
-
-The rules themselves are agronomically sound based on spot-checking:
-- Sugarcane pest rules correctly reference ICAR packages (Chlorantraniliprole for borers, Cotesia for biocontrol)
-- Stage-applicable arrays are biologically valid (Early Shoot Borer at SEEDLING/TILLERING, Smut at GRAND_GROWTH)
-- Weed rules correctly differentiate manual vs chemical control by stage
-- BLOCK rules correctly prevent treatment at terminal damage stages
-
-The primary agronomic risk is the **safety data gap** (Bug #3) -- chemical recommendations go out without PHI/bee toxicity checks.
+### Risk Assessment
+- Low risk: Translation fallback chain ensures no blank labels even if DB query fails
+- The `FALLBACK_TRANSLATIONS` in `translation-loader.ts` already has 97 entries covering all major pests/diseases
+- Regional translator remains the primary path when farmer_location is available
+- Backward compatible: existing `observation_translations` data continues to work
 
