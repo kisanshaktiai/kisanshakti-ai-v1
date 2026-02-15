@@ -2,7 +2,7 @@
 // Detects farmer's intent to load only relevant data
 
 export interface QueryIntent {
-  type: 'watering' | 'fertilizer' | 'pest' | 'health' | 'market' | 'general';
+  type: 'watering' | 'fertilizer' | 'pest' | 'health' | 'market' | 'weed' | 'general';
   confidence: number;
   keywords: string[];
 }
@@ -63,6 +63,17 @@ const INTENT_PATTERNS = {
     kn: ['ಬೆಲೆ', 'ಮಾರುಕಟ್ಟೆ', 'ಇಳುವರಿ', 'ಆದಾಯ', 'ಮಾರಾಟ'],
     pa: ['ਕੀਮਤ', 'ਮਾਰਕੀਟ', 'ਪੈਦਾਵਾਰ', 'ਆਮਦਨ', 'ਵਿਕਰੀ'],
   },
+  weed: {
+    en: ['weed', 'weeds', 'weed problem', 'heavy weed', 'weed dense', 'weed taller', 'weed above', 'weed overtaking', 'weeds more than', 'grass growing', 'unwanted plants', 'intercultivation', 'weeding'],
+    hi: ['खरपतवार', 'घास', 'निराई', 'जंगली घास', 'खरपतवार ज्यादा', 'खरपतवार बढ़', 'गुड़ाई', 'निंदाई'],
+    mr: ['तण', 'गवत', 'निंदणी', 'तण वाढ', 'तण जास्त', 'गवत वाढ', 'आंतरमशागत', 'तण काढणे', 'तण ऊसापेक्षा'],
+    ta: ['களை', 'களைகள்', 'களை பிரச்சனை', 'புல்', 'களை எடுப்பு'],
+    te: ['కలుపు', 'కలుపు మొక్కలు', 'కలుపు సమస్య', 'గడ్డి'],
+    bn: ['আগাছা', 'ঘাস', 'আগাছা সমস্যা', 'নিড়ানি'],
+    gu: ['નીંદણ', 'ઘાસ', 'નીંદણ સમસ્યા', 'નીંદામણ'],
+    kn: ['ಕಳೆ', 'ಹುಲ್ಲು', 'ಕಳೆ ಸಮಸ್ಯೆ', 'ಕಳೆ ತೆಗೆಯುವುದು'],
+    pa: ['ਨਦੀਨ', 'ਘਾਹ', 'ਨਦੀਨ ਸਮੱਸਿਆ', 'ਗੁਡਾਈ'],
+  },
   general: {
     en: ['hello', 'hi', 'namaste', 'help', 'what can you do', 'who are you'],
     hi: ['नमस्ते', 'हेलो', 'हाय', 'मदद', 'आप कौन हैं', 'आप क्या कर सकते हैं'],
@@ -84,6 +95,7 @@ export function classifyFarmerQuery(text: string, language: string = 'en'): Quer
     pest: 0,
     health: 0,
     market: 0,
+    weed: 0,
     general: 0
   };
   

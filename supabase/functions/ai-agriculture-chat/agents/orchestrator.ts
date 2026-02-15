@@ -2620,7 +2620,7 @@ export class AIAgentOrchestrator {
             'UNEVEN_FIELD_PATTERN': 'PATCHY_DEATH',
             'YIELD_OR_OUTPUT_ISSUE': 'POOR_YIELD',
             // CRITICAL FIX: Missing intent-to-symptom mappings
-            'WEED_PROBLEM': 'WEED_INFESTATION',
+            'WEED_PROBLEM': 'WEED_PRESENT',
             'FERTILIZER_SCHEDULE': 'NUTRIENT_QUERY',
             'IRRIGATION_QUERY': 'WATER_MANAGEMENT',
             'HARVEST_TIMING': 'HARVEST_READINESS',
