@@ -772,9 +772,17 @@ ${ruralRules}
 
 ${cropStageConstraints}
 
-BIOCONTROL DOSAGE (Copy EXACTLY - ONLY if in recommendations):
+TRANSLATION RULES:
+- action_text, reason_text, knowledge_text are REFERENCE texts in English
+- TRANSLATE them into natural, farmer-friendly ${langName}
+- Do NOT copy English text verbatim into ${langName} responses
+- Translate technical terms like "Cultural practice" → ${input.language === 'mr' ? 'सांस्कृतिक पद्धती' : input.language === 'hi' ? 'सांस्कृतिक तरीके' : 'Cultural practice'}
+- Translate "NO_ACTION_REQUIRED" → ${input.language === 'mr' ? 'कोणतीही कृती आवश्यक नाही' : input.language === 'hi' ? 'कोई कार्रवाई आवश्यक नहीं' : 'No action required'}
+
+BIOCONTROL DOSAGE (ONLY if biocontrol is the PRIMARY recommendation):
 - Trichogramma chilonis: 50,000 parasitoids/acre
-- Cotesia flavipes: 5,000 cocoons/acre`;
+- Cotesia flavipes: 5,000 cocoons/acre
+- Do NOT mention biocontrol agents if the problem is about WEEDS, NUTRITION, or IRRIGATION`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -874,10 +882,11 @@ FORMAT this into natural, empathetic farmer advice in ${input.language === 'mr' 
 
 IMPORTANT REMINDERS:
 1. Include ALL product names and dosages EXACTLY as shown above
-2. Trichogramma = 50,000/acre (fifty thousand), Cotesia = 5,000/acre (five thousand)
+2. ONLY mention Trichogramma/Cotesia if they appear in PRIMARY RECOMMENDATION above
 3. ${isYoungCrop ? 'DO NOT recommend harvest - this is a young crop with pest problem' : 'Check PHI before recommending harvest'}
 4. For dead heart symptom, the solution is pest control, NOT harvesting
-5. Be warm and supportive`;
+5. Be warm and supportive
+6. TRANSLATE all English reference texts into ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'} - do NOT leave English phrases in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'} output`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -916,22 +925,37 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     let reasonText = appDetails.reason_text;
     let knowledgeText = appDetails.knowledge_text;
     
-    // MANDATORY FALLBACK CHAIN for action_text
+    // MANDATORY FALLBACK CHAIN for action_text (Change F: NO_ACTION_REQUIRED fix)
     if (!actionText) {
-      // Try i18n_key lookup (placeholder - would need i18n loader)
-      if (appDetails.i18n_key) {
-        console.warn(`⚠️ [LLM Formatter] action_text missing, i18n_key=${appDetails.i18n_key} - i18n lookup not implemented`);
-      }
-      // Final fallback - log error and use placeholder
-      if (!actionText) {
-        console.error(`🚨 [LLM Formatter] FALLBACK TRIGGERED: action_text unavailable for rule ${primary.rule_id}`);
-        actionText = '[Action text unavailable — data error. Please consult agricultural expert.]';
+      const actionType = (primary.action_type || '').toUpperCase();
+      if (actionType === 'NO_ACTION_REQUIRED' || actionType === 'NO_ACTION') {
+        // For NO_ACTION_REQUIRED, use knowledge_text or reason_text as primary content
+        actionText = knowledgeText || reasonText || 
+          (input.language === 'mr' ? 'सध्या कोणतीही कृती आवश्यक नाही. नियमित निरीक्षण करा.' :
+           input.language === 'hi' ? 'अभी कोई कार्रवाई आवश्यक नहीं। नियमित निगरानी करें।' :
+           'No action required at this time. Continue regular monitoring.');
+        console.log(`   ℹ️ [LLM Formatter] NO_ACTION_REQUIRED: Using fallback text for rule ${primary.rule_id}`);
+      } else {
+        // Try i18n_key lookup (placeholder - would need i18n loader)
+        if (appDetails.i18n_key) {
+          console.warn(`⚠️ [LLM Formatter] action_text missing, i18n_key=${appDetails.i18n_key} - i18n lookup not implemented`);
+        }
+        // Final fallback - use knowledge/reason text before error placeholder
+        actionText = knowledgeText || reasonText || '[Action text unavailable — data error. Please consult agricultural expert.]';
+        if (!knowledgeText && !reasonText) {
+          console.error(`🚨 [LLM Formatter] FALLBACK TRIGGERED: action_text unavailable for rule ${primary.rule_id}`);
+        }
       }
     }
     
+    // Translate action_type for LLM context (Change D)
+    const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English';
+    const translatedActionType = getActionTranslation(primary.action_type, input.language) || primary.action_type;
+    parts.push(`- Action Type (translated): ${translatedActionType}`);
+    
     // Always output structured response section
-    parts.push(`\n═══ STRUCTURED RESPONSE (USE THESE EXACT TEXTS) ═══`);
-    parts.push(`📋 ACTION (What to do): ${actionText}`);
+    parts.push(`\n═══ REFERENCE TEXTS (TRANSLATE TO ${langName.toUpperCase()}) ═══`);
+    parts.push(`📋 ACTION (What to do - TRANSLATE this): ${actionText}`);
     if (reasonText) {
       parts.push(`🔍 REASON (Why): ${reasonText}`);
     }
@@ -994,13 +1018,24 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // BIOCONTROL AGENTS - Explicit high-value information
+  // BIOCONTROL AGENTS - ONLY if primary decision involves biological control (Change A)
+  // CRITICAL FIX: Previously matched anywhere in decision JSON causing hallucinations
   // ═══════════════════════════════════════════════════════════════════════════
-  const biocontrolMentioned = JSON.stringify(decision).toLowerCase();
-  if (biocontrolMentioned.includes('trichogramma') || biocontrolMentioned.includes('cotesia')) {
+  const primaryActionType = (decision.primary_decision?.action_type || '').toLowerCase();
+  const primaryIngredient = (decision.primary_decision?.application_details?.active_ingredient || 
+                             decision.primary_decision?.application_details?.product_name || '').toLowerCase();
+  const isBiocontrolRecommendation = 
+    primaryActionType.includes('biological') || primaryActionType.includes('biocontrol') ||
+    primaryIngredient.includes('trichogramma') || primaryIngredient.includes('cotesia');
+  
+  if (isBiocontrolRecommendation) {
     parts.push(`\n═══ BIOCONTROL DOSAGE REMINDER (CRITICAL - Copy exactly): ═══`);
-    parts.push(`⚠️ Trichogramma chilonis: 50,000 parasitoids/acre (FIFTY THOUSAND)`);
-    parts.push(`⚠️ Cotesia flavipes: 5,000 cocoons/acre (FIVE THOUSAND)`);
+    if (primaryIngredient.includes('trichogramma') || primaryActionType.includes('biological')) {
+      parts.push(`⚠️ Trichogramma chilonis: 50,000 parasitoids/acre (FIFTY THOUSAND)`);
+    }
+    if (primaryIngredient.includes('cotesia') || primaryActionType.includes('biological')) {
+      parts.push(`⚠️ Cotesia flavipes: 5,000 cocoons/acre (FIVE THOUSAND)`);
+    }
     parts.push(`These are 1000x larger than chemical dosages - this is CORRECT!`);
   }
   
@@ -1030,10 +1065,10 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
         parts.push(`   ────────────────────────────────────`);
       }
       
-      // PRIORITY 2: Fallback to legacy response fields
+      // PRIORITY 2: Fallback to legacy response fields (Change E)
       const localizedResponse = resp[`response_${input.language}`] || resp.response_en || resp.response_mr || '';
       if (localizedResponse) {
-        parts.push(`   ═══ COPY THIS TEXT EXACTLY (LEGACY) ═══`);
+        parts.push(`   ═══ TRANSLATE this response to farmer's ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'} language ═══`);
         parts.push(`   ${localizedResponse}`);
         parts.push(`   ═════════════════════════════════════`);
       }
@@ -1086,7 +1121,7 @@ async function callGeminiWithTimeout(
           }],
           generationConfig: {
             temperature: 0.5,    // LOWER: More consistent for safety
-            maxOutputTokens: 600  // REDUCED: Farmers need concise advice
+            maxOutputTokens: 900  // INCREASED: Devanagari (Marathi/Hindi) uses ~1.5x more tokens
           }
         })
       }
@@ -1143,7 +1178,7 @@ async function callOpenAIWithTimeout(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 600,  // REDUCED: Farmers need concise advice, not essays
+        max_tokens: 900,  // INCREASED: Devanagari (Marathi/Hindi) uses ~1.5x more tokens
         temperature: 0.5   // LOWER: More consistent, less creative for safety
       })
     });

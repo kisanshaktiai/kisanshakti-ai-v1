@@ -98,53 +98,72 @@ const MODE_TEMPLATES: Record<string, Record<string, string>> = {
   MONITORING_ADVISED: {
     mr: '✅ सध्या तुमचे पीक चांगले आहे. नियमित निरीक्षण करा.',
     hi: '✅ अभी आपकी फसल ठीक है। नियमित निगरानी करें।',
-    en: '✅ Your crop is currently healthy. Continue regular monitoring.'
+    en: '✅ Your crop is currently healthy. Continue regular monitoring.',
+    pa: '✅ ਹੁਣ ਤੁਹਾਡੀ ਫਸਲ ਠੀਕ ਹੈ। ਨਿਯਮਿਤ ਨਿਗਰਾਨੀ ਕਰੋ।',
+    ta: '✅ தற்போது உங்கள் பயிர் நன்றாக உள்ளது. தொடர்ந்து கண்காணிக்கவும்.'
   },
   OBSERVATION: {
     mr: '👀 पिकाचे निरीक्षण करत रहा. समस्या वाढल्यास पुन्हा संपर्क करा.',
     hi: '👀 फसल की निगरानी जारी रखें। समस्या बढ़े तो संपर्क करें।',
-    en: '👀 Continue observing your crop. Contact us if the issue worsens.'
+    en: '👀 Continue observing your crop. Contact us if the issue worsens.',
+    pa: '👀 ਫਸਲ ਦੀ ਨਿਗਰਾਨੀ ਜਾਰੀ ਰੱਖੋ। ਸਮੱਸਿਆ ਵਧੇ ਤਾਂ ਸੰਪਰਕ ਕਰੋ।',
+    ta: '👀 பயிரை கவனித்துக் கொண்டிருங்கள். பிரச்சனை அதிகரித்தால் தொடர்பு கொள்ளுங்கள்.'
   },
   PHOTO_REQUIRED: {
     mr: '📷 कृपया प्रभावित पिकाचा फोटो पाठवा. यामुळे अचूक निदान होईल.',
     hi: '📷 कृपया प्रभावित फसल का फोटो भेजें। इससे सटीक निदान होगा।',
-    en: '📷 Please send a photo of the affected crop for accurate diagnosis.'
+    en: '📷 Please send a photo of the affected crop for accurate diagnosis.',
+    pa: '📷 ਕਿਰਪਾ ਕਰਕੇ ਪ੍ਰਭਾਵਿਤ ਫਸਲ ਦੀ ਫੋਟੋ ਭੇਜੋ। ਇਸ ਨਾਲ ਸਹੀ ਪਛਾਣ ਹੋਵੇਗੀ।',
+    ta: '📷 பாதிக்கப்பட்ட பயிரின் புகைப்படத்தை அனுப்பவும். இது சரியான கண்டறிதலுக்கு உதவும்.'
   },
-  // FARMER-FRIENDLY TERMINOLOGY: Use "observation" language instead of technical "clarification"
   CLARIFICATION_REQUIRED: {
     mr: '🔬 तुमच्या पिकाला खालीलपैकी कोणती समस्या असू शकते? (सर्वात जवळचे निवडा)',
     hi: '🔬 आपकी फसल में नीचे में से कौन सी समस्या हो सकती है? (सबसे करीबी चुनें)',
-    en: '🔬 Which of the following problems might your crop have? (Select the closest)'
+    en: '🔬 Which of the following problems might your crop have? (Select the closest)',
+    pa: '🔬 ਤੁਹਾਡੀ ਫਸਲ ਵਿੱਚ ਹੇਠਾਂ ਦਿੱਤੀਆਂ ਵਿੱਚੋਂ ਕਿਹੜੀ ਸਮੱਸਿਆ ਹੋ ਸਕਦੀ ਹੈ? (ਸਭ ਤੋਂ ਨੇੜੇ ਦੀ ਚੁਣੋ)',
+    ta: '🔬 உங்கள் பயிரில் கீழ்கண்ட பிரச்சனைகளில் எது இருக்கலாம்? (நெருங்கியதை தேர்வு செய்யவும்)'
   },
   CLARIFICATION: {
     mr: '🔬 तुमच्या पिकाला खालीलपैकी कोणती समस्या असू शकते? (सर्वात जवळचे निवडा)',
     hi: '🔬 आपकी फसल में नीचे में से कौन सी समस्या हो सकती है? (सबसे करीबी चुनें)',
-    en: '🔬 Which of the following problems might your crop have? (Select the closest)'
+    en: '🔬 Which of the following problems might your crop have? (Select the closest)',
+    pa: '🔬 ਤੁਹਾਡੀ ਫਸਲ ਵਿੱਚ ਹੇਠਾਂ ਦਿੱਤੀਆਂ ਵਿੱਚੋਂ ਕਿਹੜੀ ਸਮੱਸਿਆ ਹੋ ਸਕਦੀ ਹੈ? (ਸਭ ਤੋਂ ਨੇੜੇ ਦੀ ਚੁਣੋ)',
+    ta: '🔬 உங்கள் பயிரில் கீழ்கண்ட பிரச்சனைகளில் எது இருக்கலாம்? (நெருங்கியதை தேர்வு செய்யவும்)'
   },
   INFORMATION: {
     mr: '📋 माहिती:',
     hi: '📋 जानकारी:',
-    en: '📋 Information:'
+    en: '📋 Information:',
+    pa: '📋 ਜਾਣਕਾਰੀ:',
+    ta: '📋 தகவல்:'
   },
   TREATMENT: {
     mr: '💊 शिफारस:',
     hi: '💊 सिफारिश:',
-    en: '💊 Recommendation:'
+    en: '💊 Recommendation:',
+    pa: '💊 ਸਿਫਾਰਿਸ਼:',
+    ta: '💊 பரிந்துரை:'
   },
   TREATMENT_ALLOWED: {
     mr: '💊 शिफारस:',
     hi: '💊 सिफारिश:',
-    en: '💊 Recommendation:'
+    en: '💊 Recommendation:',
+    pa: '💊 ਸਿਫਾਰਿਸ਼:',
+    ta: '💊 பரிந்துரை:'
   },
   NO_ACTION_NEEDED: {
     mr: '✅ कोणतीही कृती आवश्यक नाही. पीक निरोगी आहे.',
     hi: '✅ कोई कार्रवाई आवश्यक नहीं। फसल स्वस्थ है।',
-    en: '✅ No action needed. Your crop is healthy.'
+    en: '✅ No action needed. Your crop is healthy.',
+    pa: '✅ ਕੋਈ ਕਾਰਵਾਈ ਦੀ ਲੋੜ ਨਹੀਂ। ਫਸਲ ਤੰਦਰੁਸਤ ਹੈ।',
+    ta: '✅ எந்த நடவடிக்கையும் தேவையில்லை. பயிர் ஆரோக்கியமாக உள்ளது.'
   },
   ERROR: {
     mr: '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.',
     hi: '⚠️ कुछ गलत हुआ। कृपया दोबारा प्रयास करें।',
-    en: '⚠️ Something went wrong. Please try again.'
+    en: '⚠️ Something went wrong. Please try again.',
+    pa: '⚠️ ਕੁਝ ਗਲਤ ਹੋਇਆ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
+    ta: '⚠️ ஏதோ தவறு ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.'
   }
 };
 
@@ -163,6 +182,16 @@ const PHOTO_GUIDANCE_TEMPLATES: Record<string, PhotoGuidance> = {
     prompt_text: '📷 Send Photo',
     what_to_capture: 'Take a close-up photo of the affected leaf or stem',
     tips: ['Take photo in good lighting', 'Choose an angle where symptoms are clearly visible']
+  },
+  pa: {
+    prompt_text: '📷 ਫੋਟੋ ਭੇਜੋ',
+    what_to_capture: 'ਪ੍ਰਭਾਵਿਤ ਪੱਤੇ ਜਾਂ ਤਣੇ ਦੀ ਨੇੜੇ ਤੋਂ ਫੋਟੋ ਖਿੱਚੋ',
+    tips: ['ਚੰਗੀ ਰੌਸ਼ਨੀ ਵਿੱਚ ਫੋਟੋ ਖਿੱਚੋ', 'ਲੱਛਣ ਸਾਫ਼ ਦਿਖਣ ਵਾਲਾ ਕੋਣ ਚੁਣੋ']
+  },
+  ta: {
+    prompt_text: '📷 புகைப்படம் அனுப்பவும்',
+    what_to_capture: 'பாதிக்கப்பட்ட இலை அல்லது தண்டின் நெருக்கமான புகைப்படம் எடுக்கவும்',
+    tips: ['நல்ல வெளிச்சத்தில் புகைப்படம் எடுக்கவும்', 'அறிகுறிகள் தெளிவாக தெரியும் கோணத்தை தேர்வு செய்யவும்']
   }
 };
 
