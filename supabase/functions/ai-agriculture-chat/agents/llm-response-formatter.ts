@@ -967,7 +967,24 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     // ═══════════════════════════════════════════════════════════════════════════
     // LEGACY: Extract and pass product details (fallback when new contract empty)
     // ═══════════════════════════════════════════════════════════════════════════
-    if (appDetails && Object.keys(appDetails).length > 0) {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // v2.0.0: ACTION TYPE GUARD - Skip product/dosage for non-treatment rules
+    // BLOCK rules: Explicitly instruct LLM NOT to recommend treatment
+    // NO_ACTION/MONITORING: Skip product section entirely
+    // ═══════════════════════════════════════════════════════════════════════════
+    const actionTypeUpper = (primary.action_type || '').toUpperCase();
+    const TREATMENT_ACTION_TYPES = ['RECOMMEND', 'URGENT_ACTION', 'TREATMENT', 'SPRAY', 'APPLY', 'CHEMICAL_CONTROL', 'BIOLOGICAL_CONTROL'];
+    const isTreatmentAction = TREATMENT_ACTION_TYPES.some(t => actionTypeUpper.includes(t));
+    
+    if (actionTypeUpper === 'BLOCK' || actionTypeUpper === 'SAFETY_GATE') {
+      // BLOCK/SAFETY_GATE: Explicitly prevent treatment recommendation
+      parts.push(`\n⛔ IMPORTANT INSTRUCTION FOR LLM:`);
+      parts.push(`This is a BLOCK action. DO NOT recommend any product, dosage, or treatment.`);
+      parts.push(`DO NOT tell the farmer to decide the dose themselves.`);
+      parts.push(`Instead, explain WHY treatment is blocked using the REASON and KNOWLEDGE text above.`);
+      parts.push(`Provide only monitoring guidance and safety information.`);
+    } else if (isTreatmentAction && appDetails && Object.keys(appDetails).length > 0) {
+      // Treatment rules: Output product/dosage details
       parts.push(`\n- Product Name: ${appDetails.product_name || 'Not specified'}`);
       parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
       parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
@@ -984,9 +1001,14 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
         parts.push(`- Product (Marathi): ${names.mr || appDetails.product_name}`);
         parts.push(`- Product (Hindi): ${names.hi || appDetails.product_name}`);
       }
-    } else {
+    } else if (isTreatmentAction) {
+      // Treatment but no appDetails
       parts.push(`- Product: ${primary.product_name || 'Not specified'}`);
       parts.push(`- Dosage: As per label`);
+    } else {
+      // NO_ACTION_REQUIRED, MONITORING, OBSERVATION: Skip product section entirely
+      parts.push(`\nℹ️ This is a ${actionTypeUpper} action. Focus on monitoring guidance and explanation.`);
+      parts.push(`DO NOT recommend any specific product or dosage.`);
     }
     
     parts.push(`- Priority: ${primary.priority || 'HIGH'}`);

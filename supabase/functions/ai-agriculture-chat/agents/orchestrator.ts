@@ -2880,7 +2880,8 @@ export class AIAgentOrchestrator {
               language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
               damage_observations: cropDamageResult.damage_observations,
               trace_id: traceId,
-              farmer_location: farmerLocation
+              farmer_location: farmerLocation,
+              supabaseClient: this.supabase
             });
           } else {
             // No candidates - generate UNKNOWN diagnosis response
