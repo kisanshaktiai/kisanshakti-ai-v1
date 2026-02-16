@@ -1450,6 +1450,7 @@ export type Database = {
           created_at: string | null
           decision_type: string
           error_message: string | null
+          evaluation_trace: Json | null
           execution_time_ms: number | null
           farmer_id: string | null
           feedback_comment: string | null
@@ -1457,14 +1458,17 @@ export type Database = {
           id: string
           input_data: Json
           land_id: string | null
+          missing_data_fields: string[] | null
           model_version: string | null
           ndvi_data: Json | null
           output_data: Json
+          prompt_version: string | null
           reasoning: string
           schedule_id: string | null
           soil_data: Json | null
           success: boolean | null
           tenant_id: string
+          top_5_rejected_rules: Json | null
           weather_data: Json | null
         }
         Insert: {
@@ -1472,6 +1476,7 @@ export type Database = {
           created_at?: string | null
           decision_type: string
           error_message?: string | null
+          evaluation_trace?: Json | null
           execution_time_ms?: number | null
           farmer_id?: string | null
           feedback_comment?: string | null
@@ -1479,14 +1484,17 @@ export type Database = {
           id?: string
           input_data: Json
           land_id?: string | null
+          missing_data_fields?: string[] | null
           model_version?: string | null
           ndvi_data?: Json | null
           output_data: Json
+          prompt_version?: string | null
           reasoning: string
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
           tenant_id: string
+          top_5_rejected_rules?: Json | null
           weather_data?: Json | null
         }
         Update: {
@@ -1494,6 +1502,7 @@ export type Database = {
           created_at?: string | null
           decision_type?: string
           error_message?: string | null
+          evaluation_trace?: Json | null
           execution_time_ms?: number | null
           farmer_id?: string | null
           feedback_comment?: string | null
@@ -1501,14 +1510,17 @@ export type Database = {
           id?: string
           input_data?: Json
           land_id?: string | null
+          missing_data_fields?: string[] | null
           model_version?: string | null
           ndvi_data?: Json | null
           output_data?: Json
+          prompt_version?: string | null
           reasoning?: string
           schedule_id?: string | null
           soil_data?: Json | null
           success?: boolean | null
           tenant_id?: string
+          top_5_rejected_rules?: Json | null
           weather_data?: Json | null
         }
         Relationships: []
@@ -3047,6 +3059,42 @@ export type Database = {
           new_canonical_group?: string | null
           old_canonical_group?: string | null
           rule_id?: string | null
+        }
+        Relationships: []
+      }
+      canonical_hint_mapping: {
+        Row: {
+          canonical_hint: string
+          created_at: string | null
+          crop_code: string | null
+          id: string
+          is_active: boolean | null
+          observation_code: string
+          updated_at: string | null
+          version: string | null
+          weight_modifier: number | null
+        }
+        Insert: {
+          canonical_hint: string
+          created_at?: string | null
+          crop_code?: string | null
+          id?: string
+          is_active?: boolean | null
+          observation_code: string
+          updated_at?: string | null
+          version?: string | null
+          weight_modifier?: number | null
+        }
+        Update: {
+          canonical_hint?: string
+          created_at?: string | null
+          crop_code?: string | null
+          id?: string
+          is_active?: boolean | null
+          observation_code?: string
+          updated_at?: string | null
+          version?: string | null
+          weight_modifier?: number | null
         }
         Relationships: []
       }
@@ -27927,6 +27975,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      semantic_bridge_metrics: {
+        Row: {
+          canonical_hints: string[] | null
+          confidence: number | null
+          fallback_used: boolean | null
+          farmer_id: string | null
+          id: string
+          intent: string | null
+          latency_ms: number | null
+          mapping_success: boolean | null
+          prompt_version: string | null
+          symbolic_invoked: boolean | null
+          tenant_id: string | null
+          timestamp: string | null
+          trace_id: string | null
+        }
+        Insert: {
+          canonical_hints?: string[] | null
+          confidence?: number | null
+          fallback_used?: boolean | null
+          farmer_id?: string | null
+          id?: string
+          intent?: string | null
+          latency_ms?: number | null
+          mapping_success?: boolean | null
+          prompt_version?: string | null
+          symbolic_invoked?: boolean | null
+          tenant_id?: string | null
+          timestamp?: string | null
+          trace_id?: string | null
+        }
+        Update: {
+          canonical_hints?: string[] | null
+          confidence?: number | null
+          fallback_used?: boolean | null
+          farmer_id?: string | null
+          id?: string
+          intent?: string | null
+          latency_ms?: number | null
+          mapping_success?: boolean | null
+          prompt_version?: string | null
+          symbolic_invoked?: boolean | null
+          tenant_id?: string | null
+          timestamp?: string | null
+          trace_id?: string | null
+        }
+        Relationships: []
       }
       shopping_carts: {
         Row: {
