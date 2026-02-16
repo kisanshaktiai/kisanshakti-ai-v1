@@ -11,14 +11,26 @@
  * - Now relies on pre-extracted canonical symptoms from Language Induction Layer
  * - Language-agnostic logic for production readiness
  * 
- * VERSION: 2.0.0
+ * VERSION: 3.0.0
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
 
-export const FACT_EXTRACTOR_VERSION = '2.0.0';
+export const FACT_EXTRACTOR_VERSION = '3.0.0';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PEST INDICATORS - Known pest observation codes
+// ═══════════════════════════════════════════════════════════════════════════
+const PEST_INDICATORS = new Set([
+  'DEAD_HEART_PRESENT', 'DEAD_HEART', 'STEM_BORING_MARKS', 'BORE_HOLES_AT_BASE',
+  'BORE_HOLES_VISIBLE', 'FRASS_VISIBLE', 'FRASS_IN_TUNNEL', 'LARVAE_PRESENT',
+  'INSECTS_VISIBLE', 'HONEYDEW_PRESENT', 'SMALL_INSECTS_VISIBLE',
+  'SHOOT_BORER', 'STEM_BORER', 'BOLLWORM', 'APHID_INFESTATION',
+  'WHITEFLY_INFESTATION', 'MEALYBUG_INFESTATION', 'THRIPS_DAMAGE',
+  'LEAF_MINER_TRAILS', 'WEBBING_VISIBLE', 'CATERPILLAR_PRESENT'
+]);
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FACT EXTRACTOR CLASS
@@ -33,7 +45,8 @@ export class FactExtractor {
     observation: any,
     canonicalState: CanonicalState,
     landState: AuthoritativeLandState | null,
-    userQuery: string
+    userQuery: string,
+    allObservations?: string[]
   ): SymbolicFact {
     console.log(`📊 [FactExtractor v${FACT_EXTRACTOR_VERSION}] Extracting symbolic facts...`);
     
@@ -52,9 +65,18 @@ export class FactExtractor {
     // 5. Derived facts
     const derivedFacts = this.calculateDerivedFacts(coreFacts, symptomFacts, envFacts, soilFacts);
     
+    // 6. Bug 2 Fix: Build all_observations array and detect pest evidence
+    const obsArray = allObservations || [];
+    // Also include primary_symptom if not already present
+    if (symptomFacts.primary_symptom && symptomFacts.primary_symptom !== 'UNKNOWN' && !obsArray.includes(symptomFacts.primary_symptom)) {
+      obsArray.push(symptomFacts.primary_symptom);
+    }
+    const hasPestEvidence = obsArray.some(obs => PEST_INDICATORS.has(obs.toUpperCase().replace(/[\s-]/g, '_')));
+    
     console.log(`   Core: crop=${coreFacts.crop}, stage=${coreFacts.growth_stage}, DOS=${coreFacts.dos}`);
     console.log(`   Symptom: ${symptomFacts.primary_symptom}, severity=${symptomFacts.severity}`);
     console.log(`   Derived: stress=${derivedFacts.stress_level}, risk=${derivedFacts.risk_level}`);
+    console.log(`   Observations: ${obsArray.length} total, pest_evidence=${hasPestEvidence}`);
     
     return {
       ...coreFacts,
@@ -62,6 +84,8 @@ export class FactExtractor {
       ...envFacts,
       ...soilFacts,
       ...derivedFacts,
+      all_observations: obsArray,
+      has_pest_evidence: hasPestEvidence,
       user_query: userQuery,
       recent_treatments: observation?.recent_actions || []
     };
@@ -255,8 +279,9 @@ export function extractSymbolicFacts(
   observation: any,
   canonicalState: any,
   landState: AuthoritativeLandState | null,
-  userQuery: string
+  userQuery: string,
+  allObservations?: string[]
 ): SymbolicFact {
   const extractor = getFactExtractor();
-  return extractor.extractFacts(observation, canonicalState, landState, userQuery);
+  return extractor.extractFacts(observation, canonicalState, landState, userQuery, allObservations);
 }

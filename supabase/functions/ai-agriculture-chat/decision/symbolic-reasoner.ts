@@ -38,6 +38,11 @@ export interface SymbolicFact {
   severity: string;
   progression: string;
   
+  // Bug 2 Fix: All observations array for multi-observation matching
+  all_observations: string[];
+  // Improvement 1: Pest evidence flag for category exclusion
+  has_pest_evidence: boolean;
+  
   // Environmental facts
   ndvi: number | null;
   ndvi_trend: string;
@@ -238,6 +243,12 @@ export class SymbolicReasoner {
       for (const rule of rules) {
         rulesEvaluated++;
         
+        // Bug 1 Fix: Category-based exclusion - skip nutrition rules when pest evidence exists
+        if (facts.has_pest_evidence && rule.category?.toLowerCase() === 'nutrition') {
+          console.log(`   🚫 [PestExclusion] Skipping nutrition rule ${rule.rule_id} - pest evidence present`);
+          continue;
+        }
+        
         // SSOT: Evaluate conditions_json ONLY - no keyword fallback
         // trigger_keywords column was DROPPED per SSOT architecture
         const conditionsJson = rule.conditions_json || {};
@@ -316,8 +327,16 @@ export class SymbolicReasoner {
       // 3. Rank hypotheses
       const rankedHypotheses = this.rankHypotheses(hypotheses, facts);
       
-      // 4. Sort recommendations by priority
-      firedRules.sort((a, b) => b.priority - a.priority);
+    // 4. Sort recommendations by CATEGORY PRIORITY then rule priority (Bug 4 Fix)
+      const CATEGORY_PRIORITY: Record<string, number> = {
+        pest: 1, disease: 2, ipm: 2, water_stress: 3, stress: 3, irrigation: 3, nutrition: 4, general: 5
+      };
+      firedRules.sort((a, b) => {
+        const catA = CATEGORY_PRIORITY[a.category?.toLowerCase()] || 3;
+        const catB = CATEGORY_PRIORITY[b.category?.toLowerCase()] || 3;
+        if (catA !== catB) return catA - catB; // Lower = higher priority
+        return b.priority - a.priority;
+      });
       
       // 5. Calculate final confidence
       const finalConfidence = this.calculateFinalConfidence(rankedHypotheses, firedRules, facts);
@@ -545,6 +564,8 @@ export class SymbolicReasoner {
     const factSymptom = (facts.primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
     const factQuery = (facts.user_query || '').toUpperCase();
     const factStageUpper = (facts.growth_stage || '').toUpperCase();
+    // Bug 2 Fix: Use all_observations for comprehensive matching
+    const allObsUpper = (facts.all_observations || []).map(o => o.toUpperCase().replace(/[\s-]/g, '_'));
     
     // ═══════════════════════════════════════════════════════════════════════
     // STAGE KEYS: crop_stage, stage, growth_stage (aliases)
@@ -571,10 +592,12 @@ export class SymbolicReasoner {
       totalConditions++;
       const obsList = Array.isArray(obsValue) ? obsValue : [obsValue];
       if (obsList.length > 0) {
+        // Bug 2 Fix: Match against ALL observations, not just primary_symptom
         const obsMatch = obsList.some((obs: string) => {
           const upperObs = String(obs).toUpperCase().replace(/[\s-]/g, '_');
           return factSymptom.includes(upperObs) || upperObs.includes(factSymptom) ||
-                 factQuery.includes(upperObs);
+                 factQuery.includes(upperObs) ||
+                 allObsUpper.some(ao => ao.includes(upperObs) || upperObs.includes(ao));
         });
         if (obsMatch) {
           metConditions++;
@@ -665,12 +688,13 @@ export class SymbolicReasoner {
       }
       
       // Boolean flags: {dead_heart: true, black_whip_like_structure: true}
-      // Match if the key (as uppercase symbol) matches the primary symptom
+      // Match if the key (as uppercase symbol) matches the primary symptom OR any observation
       if (val === true || val === 'true') {
         totalConditions++;
         const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
         if (factSymptom === keySymbol || factSymptom.includes(keySymbol) || 
-            keySymbol.includes(factSymptom) || factQuery.includes(keySymbol)) {
+            keySymbol.includes(factSymptom) || factQuery.includes(keySymbol) ||
+            allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol) || keySymbol.includes(ao))) {
           metConditions++;
           matchedConditions.push(key);
         }
@@ -678,12 +702,32 @@ export class SymbolicReasoner {
       }
       
       // String value conditions: {pest: "termite", disease: "smut"}
-      // Match if the value appears in symptom or query
+      // Bug 3 Fix: Check if string looks like a numeric threshold first
       if (typeof val === 'string') {
+        const thresholdMatch = val.match(/^([<>]=?|==?)\s*(-?\d+\.?\d*)$/);
+        if (thresholdMatch) {
+          // This is a numeric threshold like "<0.6", ">5.0", ">=3"
+          totalConditions++;
+          const operator = thresholdMatch[1];
+          const threshold = parseFloat(thresholdMatch[2]);
+          const factVal = this.getNumericFactForConditionKey(key, facts);
+          if (factVal !== null) {
+            const passes = this.evaluateThreshold(factVal, operator, threshold);
+            if (passes) {
+              metConditions++;
+              matchedConditions.push(`${key}${val}`);
+            }
+          }
+          // If factVal is null, we don't have the data - condition not met but counted
+          continue;
+        }
+        
+        // Regular string matching
         totalConditions++;
         const valUpper = val.toUpperCase().replace(/[\s-]/g, '_');
         if (factSymptom.includes(valUpper) || valUpper.includes(factSymptom) ||
-            factQuery.includes(valUpper)) {
+            factQuery.includes(valUpper) ||
+            allObsUpper.some(ao => ao.includes(valUpper) || valUpper.includes(ao))) {
           metConditions++;
           matchedConditions.push(key);
         }
@@ -696,8 +740,17 @@ export class SymbolicReasoner {
         continue;
       }
       
-      // Numeric conditions - skip gracefully for now
+      // Bug 3 Fix: Evaluate numeric conditions against fact values
       if (typeof val === 'number') {
+        totalConditions++;
+        const factVal = this.getNumericFactForConditionKey(key, facts);
+        if (factVal !== null) {
+          // For plain numeric values, check equality (within tolerance)
+          if (Math.abs(factVal - val) < 0.01) {
+            metConditions++;
+            matchedConditions.push(`${key}=${val}`);
+          }
+        }
         continue;
       }
     }
@@ -706,12 +759,13 @@ export class SymbolicReasoner {
     // SCORING
     // ═══════════════════════════════════════════════════════════════════════
     if (totalConditions === 0) {
-      const keys = Object.keys(cond).filter(k => k !== 'trigger_keywords');
+      const keys = Object.keys(cond).filter(k => k !== 'trigger_keywords' && !SKIP_KEYS.has(k));
       if (keys.length === 0) {
         return { matches: true, confidence: 0.5, reason: 'No symbolic conditions', matched_conditions: [] };
       }
-      // All conditions were skipped (complex objects only) - allow with low confidence
-      return { matches: true, confidence: 0.4, reason: 'Only contextual constraints (skipped)', matched_conditions: [] };
+      // Bug 1 Fix: If conditions existed but were ALL skipped (numeric/object), 
+      // do NOT match with 0.4 confidence - this causes false positives
+      return { matches: false, confidence: 0, reason: 'All conditions were non-evaluable (numeric/object) - no match', matched_conditions: [] };
     }
     
     const score = metConditions / totalConditions;
@@ -863,10 +917,44 @@ export class SymbolicReasoner {
     _keywords: string[],
     _userQuery: string
   ): { matches: boolean; confidence: number; matched_keyword: string | null } {
-    // SSOT: No keyword matching in symbolic brain
-    // trigger_keywords column was DROPPED per SSOT architecture
     console.warn('⚠️ [SymbolicReasoner] checkKeywordMatch is DEPRECATED - use conditions_json only');
     return { matches: false, confidence: 0, matched_keyword: null };
+  }
+  
+  /**
+   * Bug 3 Fix: Map condition keys to numeric fact values
+   */
+  private getNumericFactForConditionKey(key: string, facts: SymbolicFact): number | null {
+    const CONDITION_TO_FACT: Record<string, () => number | null> = {
+      'soil_zn_ppm': () => null, // Not tracked in SymbolicFact yet
+      'soil_ph': () => facts.soil_ph,
+      'soil_n': () => facts.soil_n,
+      'soil_p': () => facts.soil_p,
+      'soil_k': () => facts.soil_k,
+      'ndvi': () => facts.ndvi,
+      'ndvi_value': () => facts.ndvi,
+      'temperature': () => facts.temperature,
+      'humidity': () => facts.humidity,
+      'dos': () => facts.dos,
+      'days_after_sowing': () => facts.dos,
+      'land_area_acres': () => facts.land_area_acres,
+    };
+    const getter = CONDITION_TO_FACT[key.toLowerCase()];
+    return getter ? getter() : null;
+  }
+  
+  /**
+   * Bug 3 Fix: Evaluate numeric threshold comparison
+   */
+  private evaluateThreshold(factValue: number, operator: string, threshold: number): boolean {
+    switch (operator) {
+      case '<': return factValue < threshold;
+      case '<=': return factValue <= threshold;
+      case '>': return factValue > threshold;
+      case '>=': return factValue >= threshold;
+      case '=': case '==': return Math.abs(factValue - threshold) < 0.01;
+      default: return false;
+    }
   }
   
   /**
@@ -1038,6 +1126,10 @@ export class SymbolicReasoner {
       distribution: canonicalState.distribution || 'unknown',
       severity: canonicalState.severity || 'unknown',
       progression: 'unknown',
+      
+      // Bug 2 Fix: Initialize empty - will be populated by FactExtractor
+      all_observations: [],
+      has_pest_evidence: false,
       
       // Environmental facts
       ndvi: ndviValue,
