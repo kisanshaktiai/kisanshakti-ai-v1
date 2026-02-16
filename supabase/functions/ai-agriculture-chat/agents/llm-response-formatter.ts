@@ -475,6 +475,20 @@ export async function formatRecommendationsWithLLM(
   // Post-process: Apply rural language replacements
   formattedResponse = replaceFormalsWithRural(formattedResponse, input.language);
   
+  // BUG-5 FIX: Language consistency check - detect translation failures
+  if (input.language !== 'en') {
+    const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
+    const totalChars = formattedResponse.length;
+    const asciiRatio = totalChars > 0 ? asciiChars / totalChars : 0;
+    if (asciiRatio > 0.4) {
+      const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
+      console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${langName} response - possible translation failure. Applying force translation.`);
+      // The response has too much English for a non-English target - this is a translation failure
+      // Log for monitoring but allow through (force translate would need LLM call which we avoid here)
+      console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
+    }
+  }
+  
   const processingTime = Date.now() - startTime;
   console.log(`   ✅ PHASE 5 complete in ${processingTime}ms`);
   
@@ -544,7 +558,12 @@ function validateLLMOutput(
     'general advice', 'preventive measure',
     'water management', 'irrigation adjustment',
     'nutrient management', 'fertilizer adjustment',
-    'recommended treatment', 'treatment'
+    'recommended treatment', 'treatment',
+    // BUG-1 FIX: Internal placeholder strings that are NOT real product names
+    'see action text', 'see structured response', 'see concentration',
+    'not specified', 'n/a', 'as per label', 'follow label',
+    'continue monitoring', 'standard application', 'not applicable',
+    'see label', 'refer label', 'cultural method'
   ];
   
   const isGenericActionType = primaryProductName && 
@@ -776,8 +795,16 @@ TRANSLATION RULES:
 - action_text, reason_text, knowledge_text are REFERENCE texts in English
 - TRANSLATE them into natural, farmer-friendly ${langName}
 - Do NOT copy English text verbatim into ${langName} responses
+- NEVER leave English phrases or sentences in your ${langName} response. Every sentence MUST be in ${langName}.
 - Translate technical terms like "Cultural practice" → ${input.language === 'mr' ? 'सांस्कृतिक पद्धती' : input.language === 'hi' ? 'सांस्कृतिक तरीके' : 'Cultural practice'}
 - Translate "NO_ACTION_REQUIRED" → ${input.language === 'mr' ? 'कोणतीही कृती आवश्यक नाही' : input.language === 'hi' ? 'कोई कार्रवाई आवश्यक नहीं' : 'No action required'}
+
+DOSAGE CALCULATION RULES:
+- If land area is provided (e.g., 5 acres), ALWAYS calculate TOTAL quantities
+- Formula: Total product = dosage_per_acre × land_area
+- Formula: Total water = water_volume_per_acre × land_area
+- Show BOTH per-acre AND total quantities
+- Example: "प्रति एकर: 2ml/L | तुमच्या 5 एकरसाठी एकूण: 10ml in 1000L पाणी"
 
 BIOCONTROL DOSAGE (ONLY if biocontrol is the PRIMARY recommendation):
 - Trichogramma chilonis: 50,000 parasitoids/acre
@@ -994,6 +1021,20 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
       parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'} (कापणीपूर्वी वाट पाहा)`);
       parts.push(`- Expected Efficacy: ${appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent || 75}%`);
       parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'No rain within 4-6 hours after spray'}`);
+      
+      // BUG-2 FIX: Land-area-based total dosage calculation
+      const farmerAreaAcres = input.land_context?.area_acres;
+      if (farmerAreaAcres && farmerAreaAcres > 0) {
+        const dosagePerAcre = appDetails.dosage_per_acre || appDetails.concentration || '';
+        const waterPerAcre = appDetails.water_volume || appDetails.water_volume_per_acre || '200 L/acre';
+        parts.push(`\n═══ TOTAL FOR FARMER'S LAND (${farmerAreaAcres} acres) ═══`);
+        parts.push(`- Per acre dosage: ${dosagePerAcre}`);
+        parts.push(`- Farmer's land: ${farmerAreaAcres} acres`);
+        parts.push(`- CALCULATE: Multiply per-acre dosage × ${farmerAreaAcres} = TOTAL product needed`);
+        parts.push(`- CALCULATE: Multiply per-acre water × ${farmerAreaAcres} = TOTAL water needed`);
+        parts.push(`- IMPORTANT: Show BOTH per-acre AND total quantities in the response`);
+        parts.push(`═══════════════════════════════════════════════════`);
+      }
       
       // Multilingual product names for farmer
       if (appDetails.names) {

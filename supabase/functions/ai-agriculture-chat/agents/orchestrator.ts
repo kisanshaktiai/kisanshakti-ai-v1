@@ -2526,29 +2526,64 @@ export class AIAgentOrchestrator {
       // Collect all observations for crop damage detection
       const allObservationsForPreAuth = new Set<string>();
       
-      // Add from observation keys
+      // BUG-3 FIX: Canonical code filter - only UPPERCASE_CODE symbols enter rule engine
+      // Raw Marathi/Hindi text must be excluded to prevent diluting confidence and rule matching
+      function isCanonicalCode(s: string): boolean {
+        return /^[A-Z][A-Z0-9_]+$/.test(s);
+      }
+      
+      let filteredOutCount = 0;
+      
+      // Add from observation keys (filter non-canonical)
       if (observationKeys) {
-        observationKeys.forEach(key => allObservationsForPreAuth.add(String(key)));
-      }
-      
-      // Add from mapped codes
-      if (mappedCodes?.observation_codes) {
-        mappedCodes.observation_codes.forEach((code: string) => allObservationsForPreAuth.add(code));
-      }
-      
-      // Add from induction result symptoms
-      if (inductionResult?.symptoms) {
-        inductionResult.symptoms.forEach((s: any) => {
-          if (s.symbol) allObservationsForPreAuth.add(s.symbol);
+        observationKeys.forEach(key => {
+          const strKey = String(key);
+          if (isCanonicalCode(strKey)) {
+            allObservationsForPreAuth.add(strKey);
+          } else {
+            filteredOutCount++;
+            console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical observation key: "${strKey.substring(0, 30)}"`);
+          }
         });
       }
       
+      // Add from mapped codes (filter non-canonical)
+      if (mappedCodes?.observation_codes) {
+        mappedCodes.observation_codes.forEach((code: string) => {
+          if (isCanonicalCode(code)) {
+            allObservationsForPreAuth.add(code);
+          } else {
+            filteredOutCount++;
+            console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical mapped code: "${code.substring(0, 30)}"`);
+          }
+        });
+      }
+      
+      // Add from induction result symptoms (filter non-canonical)
+      if (inductionResult?.symptoms) {
+        inductionResult.symptoms.forEach((s: any) => {
+          if (s.symbol && isCanonicalCode(s.symbol)) {
+            allObservationsForPreAuth.add(s.symbol);
+          } else if (s.symbol) {
+            filteredOutCount++;
+            console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical symptom: "${String(s.symbol).substring(0, 30)}"`);
+          }
+        });
+      }
+      
+      if (filteredOutCount > 0) {
+        console.log(`   📊 [CANONICAL FILTER] Total filtered out: ${filteredOutCount} non-canonical entries`);
+      }
+      
       // PHASE-19 v2.0: Add photo-mapped codes to allObservationsForPreAuth
-      // This ensures photo observations are evaluated by the rule engine
+      // Photo codes are already canonical from the photo analyzer
       if (photoMappedCodes?.observation_codes) {
         console.log(`   📸 Adding ${photoMappedCodes.observation_codes.length} photo codes to allObservationsForPreAuth`);
         photoMappedCodes.observation_codes.forEach((code: any) => {
-          allObservationsForPreAuth.add(String(code));
+          const strCode = String(code);
+          if (isCanonicalCode(strCode)) {
+            allObservationsForPreAuth.add(strCode);
+          }
         });
       }
       
