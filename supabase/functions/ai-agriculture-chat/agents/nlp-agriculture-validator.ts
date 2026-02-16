@@ -19,7 +19,7 @@
 export interface NLPValidationResult {
   is_valid: boolean;
   confidence: number;
-  detected_language: 'mr' | 'hi' | 'en' | 'unknown';
+  detected_language: string;
   
   // Entity extraction
   entities: {

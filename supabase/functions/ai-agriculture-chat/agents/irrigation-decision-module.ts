@@ -308,7 +308,7 @@ function generateIrrigationReasoning(
 
 export function formatIrrigationResponse(
   recommendation: IrrigationRecommendation,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const r = recommendation;
   const lines: string[] = [];

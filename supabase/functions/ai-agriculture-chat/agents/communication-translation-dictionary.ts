@@ -4,16 +4,15 @@
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * Translation dictionary for symbolic codes to farmer-friendly multilingual text
- * Supports Marathi (mr), Hindi (hi), and English (en)
+ * Language-agnostic: uses Record<string, string> keyed by language code.
+ * Known translations exist for mr/hi/en, but system accepts any language.
+ * For unsupported languages, LLM translates the 'en' value at runtime.
  */
 
-export type SupportedLanguage = 'mr' | 'hi' | 'en';
+// Language-agnostic type - accepts any language code
+export type SupportedLanguage = string;
 
-export interface TrilingualText {
-  mr: string;
-  hi: string;
-  en: string;
-}
+export type TrilingualText = Record<string, string>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CAUSE TRANSLATIONS (Symbolic → Farmer Language)
@@ -930,10 +929,18 @@ export function ensureFullTranslation(
 
 /**
  * Check if response contains significant untranslated English text
- * Returns true if more than 20% of alphabetic characters are ASCII (English)
+ * Uses script-aware detection for any language, not just Devanagari.
  */
 export function hasUntranslatedEnglish(text: string, lang: SupportedLanguage): boolean {
   if (lang === 'en') return false;
+  
+  // Import script ranges from shared types
+  const SCRIPT_RANGES: Record<string, RegExp> = {
+    mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/, 
+    ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
+    ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
+    pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
+  };
   
   // Remove numbers, special characters, and product names (which are OK in English)
   const cleanText = text
@@ -942,10 +949,13 @@ export function hasUntranslatedEnglish(text: string, lang: SupportedLanguage): b
     .replace(/₹[\d,]+/g, '')             // Remove prices
     .replace(/\b(SC|SL|WP|WG|EC|SG|SP|G)\b/gi, ''); // Remove formulation codes
   
-  const devanagariChars = (cleanText.match(/[\u0900-\u097F]/g) || []).length;
+  const scriptRegex = SCRIPT_RANGES[lang];
+  const scriptChars = scriptRegex 
+    ? (cleanText.match(new RegExp(scriptRegex.source, 'g')) || []).length
+    : 0;
   const asciiAlphaChars = (cleanText.match(/[a-zA-Z]/g) || []).length;
   
-  const total = devanagariChars + asciiAlphaChars;
+  const total = scriptChars + asciiAlphaChars;
   if (total < 20) return false; // Too short to determine
   
   const englishRatio = asciiAlphaChars / total;

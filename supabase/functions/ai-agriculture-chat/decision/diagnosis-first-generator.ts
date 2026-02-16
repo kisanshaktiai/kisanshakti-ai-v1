@@ -32,7 +32,8 @@ import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothes
 // STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
 import { translateToRegionalTerms, type FarmerLocation, type RegionalTranslation } from '../services/regional-translator.ts';
 // PHASE 4: DB-driven i18n - replaces hardcoded CAUSE_TRANSLATIONS dictionary
-import { translateCause, initializeTranslationCache, type SupportedLanguage } from '../i18n/translation-loader.ts';
+import { translateCause, initializeTranslationCache } from '../i18n/translation-loader.ts';
+type SupportedLanguage = string;
 // PHASE 4: DB-driven observation labels - replaces hardcoded OBSERVATION_LABELS dictionary
 import { loadObservationLabels, type ObservationLabel } from '../i18n/observation-label-loader.ts';
 
@@ -138,11 +139,17 @@ function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string
   const translated = translateCause(cause, language);
   
   // CRITICAL FIX: Detect if translation is still English for non-English language
-  // This breaks the circular fallback: isUntranslated → getCauseLabelFromDB → translateCause → same English
+  // Uses script-aware detection instead of Devanagari-only check
   if (language !== 'en' && translated) {
-    const hasDevanagari = /[\u0900-\u097F]/.test(translated);
-    if (!hasDevanagari) {
-      // Translation failed - return empty so caller uses observation_label instead
+    const { isTranslatedForLanguage } = await import('../i18n/language-types.ts').catch(() => ({
+      isTranslatedForLanguage: (text: string, lang: string) => {
+        // Inline fallback: check for any non-ASCII content
+        const nonAscii = text.replace(/[\s\d\p{P}\p{S}a-zA-Z]/gu, '');
+        return nonAscii.length > 0;
+      }
+    }));
+    
+    if (!isTranslatedForLanguage(translated, language)) {
       console.warn(`   ⚠️ [getCauseLabelDB] No ${language} translation for "${cause}" - will use observation label`);
       return '';
     }
@@ -171,14 +178,12 @@ function getObservationLabelFromMap(
   if (label && label.display_text) {
     return label.display_text;
   }
-  // Fallback: format code as readable label
+  // Fallback: format code as readable label (English-only, language-agnostic)
   const formatted = key
     .replace(/_/g, ' ')
     .replace(/check for/i, '')
     .trim()
     .toLowerCase();
-  if (language === 'mr') return `${formatted} तपासा`;
-  if (language === 'hi') return `${formatted} जाँचें`;
   return formatted;
 }
 
@@ -186,15 +191,13 @@ function getObservationLabelFromMap(
 // PHOTO OPTION LABELS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// Photo and question labels keyed by language code (open to any language)
+// Unknown languages fall back to 'en'. LLM translates at runtime.
 const PHOTO_LABELS: Record<string, { label: string; description: string }> = {
   'mr': { label: '📷 फोटो पाठवा', description: 'अधिक अचूक निदानासाठी पिकाचा फोटो पाठवा' },
   'hi': { label: '📷 फोटो भेजें', description: 'अधिक सटीक निदान के लिए फसल का फोटो भेजें' },
   'en': { label: '📷 Send Photo', description: 'Send a crop photo for more accurate diagnosis' }
 };
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DIAGNOSIS QUESTION TEMPLATES
-// ═══════════════════════════════════════════════════════════════════════════
 
 const DIAGNOSIS_QUESTION_TEMPLATES: Record<string, { single: string; multiple: string }> = {
   'mr': {
@@ -213,7 +216,7 @@ const DIAGNOSIS_QUESTION_TEMPLATES: Record<string, { single: string; multiple: s
 
 function getQuestionText(
   diagnoses: DiagnosisOption[],
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const template = DIAGNOSIS_QUESTION_TEMPLATES[language] || DIAGNOSIS_QUESTION_TEMPLATES['en'];
   
@@ -322,7 +325,7 @@ export async function generateDiagnosisFirstResponse(
   let observationLabelsMap = new Map<string, ObservationLabel>();
   if (supabaseClient) {
     try {
-      observationLabelsMap = await loadObservationLabels(supabaseClient, allObservationKeys, language as 'mr' | 'hi' | 'en');
+      observationLabelsMap = await loadObservationLabels(supabaseClient, allObservationKeys, language);
       console.log(`   📖 Loaded ${observationLabelsMap.size} observation labels from DB`);
     } catch (e) {
       console.warn(`   ⚠️ Observation labels load failed: ${e}`);
@@ -360,12 +363,20 @@ export async function generateDiagnosisFirstResponse(
             farmer_location
           );
 
+          // Script-aware untranslated detection (works for any language)
           const isUntranslated = (text: string | undefined | null): boolean => {
             const t = (text || '').trim();
             if (!t) return true;
             if (language === 'en') return false;
-            const hasDevanagari = /[\u0900-\u097F]/.test(t);
-            if ((language === 'mr' || language === 'hi') && !hasDevanagari) return true;
+            // Use script-aware check from language-types
+            const SCRIPT_RANGES: Record<string, RegExp> = {
+              mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
+              ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
+              ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
+              pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
+            };
+            const scriptRegex = SCRIPT_RANGES[language];
+            if (scriptRegex && !scriptRegex.test(t)) return true;
             if (t.toLowerCase() === (h.cause || '').trim().toLowerCase()) return true;
             if (/\bcheck\s+for\b/i.test(t)) return true;
             return false;
@@ -454,7 +465,7 @@ export function createUnknownDiagnosisResponse(
   crop_code: string,
   growth_stage: string,
   damage_observations: string[],
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   trace_id?: string
 ): DiagnosisFirstOutput {
   const traceIdFinal = trace_id || `unknown_${Date.now()}`;

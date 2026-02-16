@@ -167,8 +167,8 @@ export interface FarmerBehaviorPatterns {
   avg_response_time_minutes: number;
   photo_willingness: 'HIGH' | 'MEDIUM' | 'LOW';
   detail_level: 'HIGH' | 'MODERATE' | 'LOW';
-  language_consistency: 'MARATHI_ONLY' | 'HINDI_ONLY' | 'ENGLISH_ONLY' | 'MIXED';
-  preferred_language: 'mr' | 'hi' | 'en';
+  language_consistency: string;  // e.g., 'MR_ONLY', 'HI_ONLY', 'MIXED'
+  preferred_language: string;
   cooperation_level: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 

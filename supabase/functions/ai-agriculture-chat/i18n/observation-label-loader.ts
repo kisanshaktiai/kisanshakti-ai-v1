@@ -74,7 +74,7 @@ export interface ObservationLabel {
 export async function loadObservationLabels(
   supabaseClient: any,
   observationCodes: string[],
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): Promise<Map<string, ObservationLabel>> {
   console.log(`📖 [ObservationLoader v${OBSERVATION_LOADER_VERSION}] Loading ${observationCodes.length} labels in ${language}`);
   

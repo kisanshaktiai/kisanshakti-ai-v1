@@ -73,7 +73,7 @@ export interface TurnAuditLog {
   raw_text: string;
   normalized_text: string;
   farmer_message: string;
-  detected_language: 'mr' | 'hi' | 'en';
+  detected_language: string;
   
   // Stage 2: Observation Extraction output
   extracted_observations?: {
@@ -223,7 +223,7 @@ export class AuditLogger {
     tenant_id: string;
     trace_id: string;
     farmer_message: string;
-    detected_language: 'mr' | 'hi' | 'en';
+    detected_language: string;
     land_id?: string;
     raw_text?: string;
     normalized_text?: string;

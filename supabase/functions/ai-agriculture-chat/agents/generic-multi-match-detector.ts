@@ -41,20 +41,14 @@ export interface ObservableCharacteristics {
 
 export interface DifferentiatingQuestion {
   question_id: string;
-  mr: string;
-  hi: string;
-  en: string;
+  [lang: string]: string | string[] | number;  // language code → question text
   discriminates_from: string[];
   information_gain: number;
 }
 
 export interface VisualMarkers {
   distinctive_feature?: string;
-  photo_guidance?: {
-    mr: string;
-    hi: string;
-    en: string;
-  };
+  photo_guidance?: Record<string, string>;  // language code → guidance text
 }
 
 export interface CompetingMatch {
@@ -69,11 +63,7 @@ export interface CompetingMatch {
 
 export interface ClarificationOption {
   id: string;
-  label: {
-    mr: string;
-    hi: string;
-    en: string;
-  };
+  label: Record<string, string>;  // language code → display text
   maps_to: {
     rule_id: string;
     cause_code: string;
@@ -87,11 +77,7 @@ export interface MultiMatchResult {
   clarification_needed: boolean;
   clarification_output?: {
     question_id: string;
-    question_text: {
-      mr: string;
-      hi: string;
-      en: string;
-    };
+    question_text: Record<string, string>;  // language code → question text
     options: ClarificationOption[];
     selection_type: 'SINGLE' | 'MULTIPLE';
     scope: string;
@@ -335,7 +321,7 @@ export async function detectCompetingMatches(
 
 export function generateDifferentialClarificationFromRules(
   competingMatches: CompetingMatch[],
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): MultiMatchResult['clarification_output'] | null {
 
   if (competingMatches.length === 0) {
@@ -358,9 +344,8 @@ export function generateDifferentialClarificationFromRules(
     options.push({
       id: match.rule_id,
       label: {
-        mr: `${chars.icon || '🐛'} ${description.mr}`,
-        hi: `${chars.icon || '🐛'} ${description.hi}`,
-        en: `${chars.icon || '🐛'} ${description.en}`
+        [language]: `${chars.icon || '🐛'} ${description[language] || description['en']}`,
+        en: `${chars.icon || '🐛'} ${description['en']}`
       },
       maps_to: {
         rule_id: match.rule_id,
@@ -406,14 +391,13 @@ export function generateDifferentialClarificationFromRules(
 
 function buildDescriptionFromCharacteristics(
   chars: ObservableCharacteristics,
-  language: 'mr' | 'hi' | 'en'
-): { mr: string; hi: string; en: string } {
+  language: string
+): Record<string, string> {
   
-  const buildForLanguage = (lang: 'mr' | 'hi' | 'en'): string => {
-    const t = TEMPLATES[lang];
+  const buildForLanguage = (lang: string): string => {
+    const t = TEMPLATES[lang] || TEMPLATES['en'];
     const parts: string[] = [];
 
-    // Add color
     if (chars.color && chars.color.length > 0) {
       const translatedColors = chars.color
         .map(c => t.color[c as keyof typeof t.color])
@@ -423,12 +407,10 @@ function buildDescriptionFromCharacteristics(
       }
     }
 
-    // Add size
     if (chars.size && t.size[chars.size as keyof typeof t.size]) {
       parts.push(t.size[chars.size as keyof typeof t.size]);
     }
 
-    // Add behavior
     if (chars.behavior && chars.behavior.length > 0) {
       const translatedBehaviors = chars.behavior
         .map(b => t.behavior[b as keyof typeof t.behavior])
@@ -438,13 +420,11 @@ function buildDescriptionFromCharacteristics(
       }
     }
 
-    // Base noun
+    // Base noun - language-agnostic via template lookup
     let description = parts.join(' ');
-    if (lang === 'mr') description += ' किडे';
-    else if (lang === 'hi') description += ' कीड़े';
-    else description += ' insects';
+    const baseNouns: Record<string, string> = { mr: 'किडे', hi: 'कीड़े', en: 'insects' };
+    description += ' ' + (baseNouns[lang] || baseNouns['en']);
 
-    // Add secondary symptom
     if (chars.secondary_symptoms && chars.secondary_symptoms.length > 0) {
       const symptom = chars.secondary_symptoms[0];
       if (t.secondary[symptom as keyof typeof t.secondary]) {
@@ -452,14 +432,16 @@ function buildDescriptionFromCharacteristics(
       }
     }
 
-    return description || (lang === 'mr' ? 'इतर लक्षणे' : lang === 'hi' ? 'अन्य लक्षण' : 'Other symptoms');
+    const fallbackLabels: Record<string, string> = { mr: 'इतर लक्षणे', hi: 'अन्य लक्षण', en: 'Other symptoms' };
+    return description.trim() || (fallbackLabels[lang] || fallbackLabels['en']);
   };
 
-  return {
-    mr: buildForLanguage('mr'),
-    hi: buildForLanguage('hi'),
-    en: buildForLanguage('en')
-  };
+  const result: Record<string, string> = { en: buildForLanguage('en') };
+  // Build for requested language if templates exist
+  if (TEMPLATES[language]) {
+    result[language] = buildForLanguage(language);
+  }
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -512,7 +494,7 @@ function extractObservationKeys(chars: ObservableCharacteristics): string[] {
 export async function generateFallbackClarificationOptions(
   cropCode: string | undefined,
   supabaseClient: any,
-  language: 'mr' | 'hi' | 'en' = 'mr'
+  language: string = 'mr'
 ): Promise<string[]> {
   console.log(`🔄 [FallbackClarification] Generating options for crop: ${cropCode || 'UNKNOWN'}`);
   
@@ -538,7 +520,7 @@ export async function generateFallbackClarificationOptions(
     
     // Build options from observable characteristics
     const options: string[] = [];
-    const t = TEMPLATES[language];
+    const t = TEMPLATES[language] || TEMPLATES['en'];
     
     for (const rule of rules.slice(0, 3)) {
       const chars = rule.observable_characteristics as ObservableCharacteristics;
@@ -567,6 +549,7 @@ export async function generateFallbackClarificationOptions(
       }
       
       // Add base noun
+      const baseNouns: Record<string, string> = { mr: 'किडे', hi: 'कीड़े', en: 'insects' };
       if (language === 'mr') parts.push('किडे');
       else if (language === 'hi') parts.push('कीड़े');
       else parts.push('insects');
@@ -608,7 +591,7 @@ import { loadObservationLabels, DEFAULT_CLARIFICATION_CODES, getObservationIcon 
  */
 async function getDefaultClarificationOptionsFromDB(
   supabaseClient: any,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): Promise<string[]> {
   try {
     const labelMap = await loadObservationLabels(
@@ -643,7 +626,7 @@ async function getDefaultClarificationOptionsFromDB(
  * Fallback when database unavailable - returns formatted English codes
  * This is language-neutral to comply with SSOT principle
  */
-function getDefaultClarificationOptionsFallback(language: 'mr' | 'hi' | 'en'): string[] {
+function getDefaultClarificationOptionsFallback(language: string): string[] {
   // Return formatted English codes with icons (SSOT-compliant fallback)
   return [
     `${getObservationIcon('INSECTS_VISIBLE')} Insects Visible`,
@@ -660,7 +643,7 @@ function getDefaultClarificationOptionsFallback(language: 'mr' | 'hi' | 'en'): s
 export async function performMultiMatchDetection(
   firedRules: any[],
   supabaseClient: any,
-  language: 'mr' | 'hi' | 'en' = 'mr',
+  language: string = 'mr',
   confidenceThreshold: number = 0.15
 ): Promise<MultiMatchResult> {
 

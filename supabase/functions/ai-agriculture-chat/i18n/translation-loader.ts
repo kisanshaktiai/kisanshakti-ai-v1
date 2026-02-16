@@ -30,9 +30,7 @@ export const I18N_LOADER_VERSION = '1.0.0';
 
 export interface Translation {
   key: string;
-  mr: string;
-  hi: string;
-  en: string;
+  [language: string]: string | undefined;  // Any language code → translated text
   category?: string;
 }
 
@@ -42,59 +40,60 @@ export interface TranslationCache {
   version: string;
 }
 
-export type SupportedLanguage = 'mr' | 'hi' | 'en';
+// Language-agnostic: accepts any language code
+export type SupportedLanguage = string;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FALLBACK TRANSLATIONS (Critical terms that must always be available)
 // ═══════════════════════════════════════════════════════════════════════════
 
 const FALLBACK_TRANSLATIONS: Record<string, Translation> = {
-  // Pests
-  'SHOOT_BORER': { key: 'SHOOT_BORER', mr: 'अंकुर बेधक (खोड किडा)', hi: 'अंकुर बेधक (तना छेदक)', en: 'Shoot Borer', category: 'pest' },
-  'STEM_BORER': { key: 'STEM_BORER', mr: 'खोड किडा', hi: 'तना छेदक', en: 'Stem Borer', category: 'pest' },
-  'TOP_BORER': { key: 'TOP_BORER', mr: 'शेंडा बेधक', hi: 'शीर्ष बेधक', en: 'Top Borer', category: 'pest' },
-  'INTERNODE_BORER': { key: 'INTERNODE_BORER', mr: 'कांडी बेधक', hi: 'गांठ बेधक', en: 'Internode Borer', category: 'pest' },
-  'ROOT_BORER': { key: 'ROOT_BORER', mr: 'मूळ बेधक', hi: 'जड़ बेधक', en: 'Root Borer', category: 'pest' },
-  'EARLY_SHOOT_BORER': { key: 'EARLY_SHOOT_BORER', mr: 'लवकर खोड किडा', hi: 'शुरुआती तना छेदक', en: 'Early Shoot Borer', category: 'pest' },
-  'TERMITE': { key: 'TERMITE', mr: 'वाळवी (उधई)', hi: 'दीमक', en: 'Termite', category: 'pest' },
-  'WHITE_GRUB': { key: 'WHITE_GRUB', mr: 'पांढरी अळी', hi: 'सफेद गिडार', en: 'White Grub', category: 'pest' },
-  'APHID': { key: 'APHID', mr: 'मावा', hi: 'माहूं', en: 'Aphid', category: 'pest' },
-  'WHITEFLY': { key: 'WHITEFLY', mr: 'पांढरी माशी', hi: 'सफेद मक्खी', en: 'Whitefly', category: 'pest' },
-  'THRIPS': { key: 'THRIPS', mr: 'तुडतुडे', hi: 'थ्रिप्स', en: 'Thrips', category: 'pest' },
-  'MEALYBUG': { key: 'MEALYBUG', mr: 'पिठ्या ढेकूण', hi: 'मिलीबग', en: 'Mealybug', category: 'pest' },
-  'PYRILLA': { key: 'PYRILLA', mr: 'पायरिला (तुडतुडा)', hi: 'पायरिला', en: 'Pyrilla (Leaf Hopper)', category: 'pest' },
-  'WOOLLY_APHID': { key: 'WOOLLY_APHID', mr: 'लोकरी मावा', hi: 'ऊनी माहूं', en: 'Woolly Aphid', category: 'pest' },
-  'SCALE_INSECT': { key: 'SCALE_INSECT', mr: 'खवले किडा', hi: 'स्केल कीट', en: 'Scale Insect', category: 'pest' },
-  'BOLLWORM': { key: 'BOLLWORM', mr: 'बोंड अळी', hi: 'बॉलवर्म', en: 'Bollworm', category: 'pest' },
-  'JASSID': { key: 'JASSID', mr: 'तुडतुडा', hi: 'जैसिड', en: 'Jassid', category: 'pest' },
+  // Pests - English is mandatory, mr/hi kept as known fallbacks
+  'SHOOT_BORER': { key: 'SHOOT_BORER', en: 'Shoot Borer', mr: 'अंकुर बेधक (खोड किडा)', hi: 'अंकुर बेधक (तना छेदक)', category: 'pest' },
+  'STEM_BORER': { key: 'STEM_BORER', en: 'Stem Borer', mr: 'खोड किडा', hi: 'तना छेदक', category: 'pest' },
+  'TOP_BORER': { key: 'TOP_BORER', en: 'Top Borer', mr: 'शेंडा बेधक', hi: 'शीर्ष बेधक', category: 'pest' },
+  'INTERNODE_BORER': { key: 'INTERNODE_BORER', en: 'Internode Borer', mr: 'कांडी बेधक', hi: 'गांठ बेधक', category: 'pest' },
+  'ROOT_BORER': { key: 'ROOT_BORER', en: 'Root Borer', mr: 'मूळ बेधक', hi: 'जड़ बेधक', category: 'pest' },
+  'EARLY_SHOOT_BORER': { key: 'EARLY_SHOOT_BORER', en: 'Early Shoot Borer', mr: 'लवकर खोड किडा', hi: 'शुरुआती तना छेदक', category: 'pest' },
+  'TERMITE': { key: 'TERMITE', en: 'Termite', mr: 'वाळवी (उधई)', hi: 'दीमक', category: 'pest' },
+  'WHITE_GRUB': { key: 'WHITE_GRUB', en: 'White Grub', mr: 'पांढरी अळी', hi: 'सफेद गिडार', category: 'pest' },
+  'APHID': { key: 'APHID', en: 'Aphid', mr: 'मावा', hi: 'माहूं', category: 'pest' },
+  'WHITEFLY': { key: 'WHITEFLY', en: 'Whitefly', mr: 'पांढरी माशी', hi: 'सफेद मक्खी', category: 'pest' },
+  'THRIPS': { key: 'THRIPS', en: 'Thrips', mr: 'तुडतुडे', hi: 'थ्रिप्स', category: 'pest' },
+  'MEALYBUG': { key: 'MEALYBUG', en: 'Mealybug', mr: 'पिठ्या ढेकूण', hi: 'मिलीबग', category: 'pest' },
+  'PYRILLA': { key: 'PYRILLA', en: 'Pyrilla (Leaf Hopper)', mr: 'पायरिला (तुडतुडा)', hi: 'पायरिला', category: 'pest' },
+  'WOOLLY_APHID': { key: 'WOOLLY_APHID', en: 'Woolly Aphid', mr: 'लोकरी मावा', hi: 'ऊनी माहूं', category: 'pest' },
+  'SCALE_INSECT': { key: 'SCALE_INSECT', en: 'Scale Insect', mr: 'खवले किडा', hi: 'स्केल कीट', category: 'pest' },
+  'BOLLWORM': { key: 'BOLLWORM', en: 'Bollworm', mr: 'बोंड अळी', hi: 'बॉलवर्म', category: 'pest' },
+  'JASSID': { key: 'JASSID', en: 'Jassid', mr: 'तुडतुडा', hi: 'जैसिड', category: 'pest' },
   
   // Diseases
-  'RED_ROT': { key: 'RED_ROT', mr: 'तांबडा कूज (रेड रॉट)', hi: 'लाल सड़न', en: 'Red Rot', category: 'disease' },
-  'SMUT': { key: 'SMUT', mr: 'काणी (स्मट)', hi: 'कंडुआ', en: 'Smut (Whip Smut)', category: 'disease' },
-  'WILT': { key: 'WILT', mr: 'मर रोग', hi: 'उकठा', en: 'Wilt', category: 'disease' },
-  'RUST': { key: 'RUST', mr: 'तांबेरा', hi: 'रतुआ', en: 'Rust', category: 'disease' },
-  'BLAST': { key: 'BLAST', mr: 'करपा', hi: 'ब्लास्ट', en: 'Blast', category: 'disease' },
-  'BLIGHT': { key: 'BLIGHT', mr: 'करपा', hi: 'झुलसा', en: 'Blight', category: 'disease' },
-  'LEAF_SPOT': { key: 'LEAF_SPOT', mr: 'पान ठिपके', hi: 'पत्ती धब्बा', en: 'Leaf Spot', category: 'disease' },
-  'LEAF_SCALD': { key: 'LEAF_SCALD', mr: 'पान भाजणे', hi: 'पत्ती झुलसा', en: 'Leaf Scald', category: 'disease' },
-  'GRASSY_SHOOT': { key: 'GRASSY_SHOOT', mr: 'गवती फुटवे', hi: 'घासी शूट', en: 'Grassy Shoot Disease', category: 'disease' },
-  'RATOON_STUNTING': { key: 'RATOON_STUNTING', mr: 'खोडवा खुंटणे', hi: 'रेटून स्टंटिंग', en: 'Ratoon Stunting Disease', category: 'disease' },
-  'POWDERY_MILDEW': { key: 'POWDERY_MILDEW', mr: 'भुरी', hi: 'चूर्णिल आसिता', en: 'Powdery Mildew', category: 'disease' },
-  'DOWNY_MILDEW': { key: 'DOWNY_MILDEW', mr: 'केवडा', hi: 'मृदुरोमिल आसिता', en: 'Downy Mildew', category: 'disease' },
+  'RED_ROT': { key: 'RED_ROT', en: 'Red Rot', mr: 'तांबडा कूज (रेड रॉट)', hi: 'लाल सड़न', category: 'disease' },
+  'SMUT': { key: 'SMUT', en: 'Smut (Whip Smut)', mr: 'काणी (स्मट)', hi: 'कंडुआ', category: 'disease' },
+  'WILT': { key: 'WILT', en: 'Wilt', mr: 'मर रोग', hi: 'उकठा', category: 'disease' },
+  'RUST': { key: 'RUST', en: 'Rust', mr: 'तांबेरा', hi: 'रतुआ', category: 'disease' },
+  'BLAST': { key: 'BLAST', en: 'Blast', mr: 'करपा', hi: 'ब्लास्ट', category: 'disease' },
+  'BLIGHT': { key: 'BLIGHT', en: 'Blight', mr: 'करपा', hi: 'झुलसा', category: 'disease' },
+  'LEAF_SPOT': { key: 'LEAF_SPOT', en: 'Leaf Spot', mr: 'पान ठिपके', hi: 'पत्ती धब्बा', category: 'disease' },
+  'LEAF_SCALD': { key: 'LEAF_SCALD', en: 'Leaf Scald', mr: 'पान भाजणे', hi: 'पत्ती झुलसा', category: 'disease' },
+  'GRASSY_SHOOT': { key: 'GRASSY_SHOOT', en: 'Grassy Shoot Disease', mr: 'गवती फुटवे', hi: 'घासी शूट', category: 'disease' },
+  'RATOON_STUNTING': { key: 'RATOON_STUNTING', en: 'Ratoon Stunting Disease', mr: 'खोडवा खुंटणे', hi: 'रेटून स्टंटिंग', category: 'disease' },
+  'POWDERY_MILDEW': { key: 'POWDERY_MILDEW', en: 'Powdery Mildew', mr: 'भुरी', hi: 'चूर्णिल आसिता', category: 'disease' },
+  'DOWNY_MILDEW': { key: 'DOWNY_MILDEW', en: 'Downy Mildew', mr: 'केवडा', hi: 'मृदुरोमिल आसिता', category: 'disease' },
   
   // Symptoms
-  'DEAD_HEART': { key: 'DEAD_HEART', mr: 'मेलेला गाभा (डेड हार्ट)', hi: 'मृत गभा', en: 'Dead Heart', category: 'symptom' },
-  'YELLOWING': { key: 'YELLOWING', mr: 'पानं पिवळी पडणे', hi: 'पत्तियां पीली पड़ना', en: 'Yellowing', category: 'symptom' },
-  'WILTING': { key: 'WILTING', mr: 'सुकणे / मलूल होणे', hi: 'मुरझाना', en: 'Wilting', category: 'symptom' },
-  'STUNTED_GROWTH': { key: 'STUNTED_GROWTH', mr: 'वाढ खुंटणे', hi: 'बौनापन', en: 'Stunted Growth', category: 'symptom' },
-  'DRYING': { key: 'DRYING', mr: 'वाळणे', hi: 'सूखना', en: 'Drying', category: 'symptom' },
+  'DEAD_HEART': { key: 'DEAD_HEART', en: 'Dead Heart', mr: 'मेलेला गाभा (डेड हार्ट)', hi: 'मृत गभा', category: 'symptom' },
+  'YELLOWING': { key: 'YELLOWING', en: 'Yellowing', mr: 'पानं पिवळी पडणे', hi: 'पत्तियां पीली पड़ना', category: 'symptom' },
+  'WILTING': { key: 'WILTING', en: 'Wilting', mr: 'सुकणे / मलूल होणे', hi: 'मुरझाना', category: 'symptom' },
+  'STUNTED_GROWTH': { key: 'STUNTED_GROWTH', en: 'Stunted Growth', mr: 'वाढ खुंटणे', hi: 'बौनापन', category: 'symptom' },
+  'DRYING': { key: 'DRYING', en: 'Drying', mr: 'वाळणे', hi: 'सूखना', category: 'symptom' },
   
   // Actions
-  'MONITOR': { key: 'MONITOR', mr: 'निरीक्षण करा', hi: 'निगरानी करें', en: 'Monitor', category: 'action' },
-  'SPRAY': { key: 'SPRAY', mr: 'फवारणी करा', hi: 'स्प्रे करें', en: 'Spray', category: 'action' },
-  'APPLY': { key: 'APPLY', mr: 'वापरा', hi: 'लगाएं', en: 'Apply', category: 'action' },
-  'REMOVE': { key: 'REMOVE', mr: 'काढून टाका', hi: 'हटाएं', en: 'Remove', category: 'action' },
-  'IRRIGATE': { key: 'IRRIGATE', mr: 'पाणी द्या', hi: 'सिंचाई करें', en: 'Irrigate', category: 'action' }
+  'MONITOR': { key: 'MONITOR', en: 'Monitor', mr: 'निरीक्षण करा', hi: 'निगरानी करें', category: 'action' },
+  'SPRAY': { key: 'SPRAY', en: 'Spray', mr: 'फवारणी करा', hi: 'स्प्रे करें', category: 'action' },
+  'APPLY': { key: 'APPLY', en: 'Apply', mr: 'वापरा', hi: 'लगाएं', category: 'action' },
+  'REMOVE': { key: 'REMOVE', en: 'Remove', mr: 'काढून टाका', hi: 'हटाएं', category: 'action' },
+  'IRRIGATE': { key: 'IRRIGATE', en: 'Irrigate', mr: 'पाणी द्या', hi: 'सिंचाई करें', category: 'action' }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
