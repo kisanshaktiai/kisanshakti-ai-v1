@@ -4416,7 +4416,7 @@ export class AIAgentOrchestrator {
               area_hectares: (landContext.area_acres || 0) * 0.404686,
               area_acres: landContext.area_acres || 0,
               latitude: landContext.center_lat || null,
-              longitude: landContext.center_lng || null,
+              longitude: landContext.center_lon || null,
               district: landContext.district || null,
               state: landContext.state || null,
               // CRITICAL: Nested crop object matching AuthoritativeLandState interface
@@ -4436,7 +4436,7 @@ export class AIAgentOrchestrator {
                 nitrogen_kg_per_ha: landContext.soil_health?.nitrogen_kg_per_ha || null,
                 phosphorus_kg_per_ha: landContext.soil_health?.phosphorus_kg_per_ha || null,
                 potassium_kg_per_ha: landContext.soil_health?.potassium_kg_per_ha || null,
-                texture: landContext.soil_health?.soil_texture || null,
+                texture: landContext.soil_health?.texture || null,
                 test_date: null,
                 test_age_days: null,
                 data_fresh: !!landContext.soil_health
@@ -4499,21 +4499,21 @@ export class AIAgentOrchestrator {
             // Execute symbolic rules
             const symbolicResult = await symbolicReasoner.executeRules(symbolicFacts, authoritativeLandState);
             
-            if (symbolicResult.rulesFired > 0) {
-              console.log(`   ✅ Symbolic Reasoner fired ${symbolicResult.rulesFired} rules`);
-              console.log(`   📋 Diagnosis: ${symbolicResult.diagnosis?.cause || 'none'}`);
+            if (symbolicResult.rules_fired > 0) {
+              console.log(`   ✅ Symbolic Reasoner fired ${symbolicResult.rules_fired} rules`);
+              console.log(`   📋 Diagnosis: ${symbolicResult.diagnosis?.cause_name || 'none'}`);
               
               // Merge symbolic results into layered result
-              layeredRuleResult.rules_matched = symbolicResult.rulesFired;
-              layeredRuleResult.rules_applied = symbolicResult.firedRuleIds || [];
+              layeredRuleResult.rules_matched = symbolicResult.rules_fired;
+              layeredRuleResult.rules_applied = symbolicResult.recommendations.map((r: any) => r.rule_id);
               if (symbolicResult.diagnosis) {
                 layeredRuleResult.final_diagnosis = {
-                  id: symbolicResult.diagnosis.ruleId || 'SYMBOLIC',
+                  id: symbolicResult.diagnosis.cause_id || 'SYMBOLIC',
                   category: 3 as any, // DiagnosisCategory
-                  cause: symbolicResult.diagnosis.cause,
+                  cause: symbolicResult.diagnosis.cause_name,
                   confidence: symbolicResult.confidence,
                   evidence: symbolicResult.reasoning || [],
-                  rule_ids: symbolicResult.firedRuleIds || [],
+                  rule_ids: symbolicResult.recommendations.map((r: any) => r.rule_id),
                   severity: canonicalState.severity,
                   requires_immediate_action: false
                 };
@@ -4529,7 +4529,7 @@ export class AIAgentOrchestrator {
                     product: r.product,
                     dosage: r.dosage
                   },
-                  product_reference: r.ruleId || 'SYMBOLIC'
+                  product_reference: r.rule_id || 'SYMBOLIC'
                 }));
               }
               
@@ -4538,7 +4538,7 @@ export class AIAgentOrchestrator {
               const confidenceScore = confidenceCalc.calculateConfidence(
                 layeredRuleResult.final_diagnosis || null,
                 symbolicFacts,
-                symbolicResult.firedRules || [],
+                symbolicResult.recommendations || [],
                 authoritativeLandState || {}
               );
               layeredRuleResult.confidence_in_result = confidenceScore.overall;
@@ -4554,14 +4554,14 @@ export class AIAgentOrchestrator {
               // PHASE-22: DIAGNOSIS-ONLY MODE - Skip multi-match clarification
               // When terminal damage detected, present diagnoses directly instead of asking
               // ═══════════════════════════════════════════════════════════════════════════
-              if (diagnosisOnlyModeActive && symbolicResult.firedRules && symbolicResult.firedRules.length > 0) {
+              if (diagnosisOnlyModeActive && symbolicResult.recommendations && symbolicResult.recommendations.length > 0) {
                 console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Generating direct diagnosis output...`);
                 console.log(`   Mode=DIAGNOSIS_ONLY, Clarification=SKIPPED, Source=DECISION_RULES`);
                 
                 // Convert fired rules to MatchedRule format
-                const matchedRulesForDiagnosis: MatchedRule[] = symbolicResult.firedRules.map((r: any) => ({
-                  rule_id: r.ruleId || r.id || 'UNKNOWN',
-                  cause: r.cause || r.diagnosis?.cause || 'UNKNOWN',
+                const matchedRulesForDiagnosis: MatchedRule[] = symbolicResult.recommendations.map((r: any) => ({
+                  rule_id: r.rule_id || r.id || 'UNKNOWN',
+                  cause: r.cause || symbolicResult.diagnosis?.cause_name || 'UNKNOWN',
                   canonical_group: r.canonical_group || r.category || 'pest',
                   confidence: r.confidence || symbolicResult.confidence || 0.6,
                   priority: r.priority || 50,
@@ -4644,12 +4644,12 @@ export class AIAgentOrchestrator {
               }
               
               // Standard multi-match detection (only when NOT in Diagnosis-Only Mode)
-              if (symbolicResult.firedRules && symbolicResult.firedRules.length > 1 && !diagnosisOnlyModeActive) {
-                console.log(`\n🔍 [MultiMatch] Checking ${symbolicResult.firedRules.length} fired rules for competition...`);
+              if (symbolicResult.recommendations && symbolicResult.recommendations.length > 1 && !diagnosisOnlyModeActive) {
+                console.log(`\n🔍 [MultiMatch] Checking ${symbolicResult.recommendations.length} fired rules for competition...`);
                 
                 try {
                   const multiMatchResult = await performMultiMatchDetection(
-                    symbolicResult.firedRules,
+                    symbolicResult.recommendations,
                     this.supabase,
                     options.language || 'mr',
                     0.15 // 15% confidence threshold
