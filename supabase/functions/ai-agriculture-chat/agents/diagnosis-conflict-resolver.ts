@@ -129,18 +129,20 @@ export function resolveDiagnosisConflicts(
       resolution_reason: 'No diagnoses to resolve',
       confidence_in_resolution: 0,
       requires_clarification: true,
-      clarification_question: 'Could not identify any issues. Please describe the problem in more detail.',
+      clarification_question: 'CLARIFY_DESCRIBE_PROBLEM',
       clarification_options: [
-        'पान पिवळे पडत आहेत',
-        'पान गळून पडत आहेत',
-        'कीड दिसत आहे',
-        'फोटो पाठवतो'
+        'LEAF_YELLOWING',
+        'LEAF_WILTING',
+        'INSECTS_VISIBLE',
+        'PHOTO_REQUEST'
       ],
       all_considered: []
     };
   }
   
   // Single diagnosis - no conflict
+  // NOTE: Clarification options use canonical observation codes (language-agnostic)
+  // Display text is resolved at runtime from observation_translations DB table
   if (diagnoses.length === 1) {
     return {
       primary_diagnosis: diagnoses[0],
@@ -352,23 +354,20 @@ function generateClarificationQuestion(
 ): string {
   const categories = [...new Set(diagnoses.map(d => d.category))];
   
-  // Pest vs Disease ambiguity
+  // Return canonical question codes - resolved to display text at runtime by i18n layer
   if (categories.includes(DiagnosisCategory.PEST) && categories.includes(DiagnosisCategory.DISEASE)) {
-    return 'कीड दिसत आहे की फक्त डाग/दाग दिसत आहेत?';
+    return 'CLARIFY_PEST_VS_DISEASE';
   }
   
-  // Water vs Nutrient ambiguity
   if (categories.includes(DiagnosisCategory.WATER_STRESS) && categories.includes(DiagnosisCategory.NUTRIENT_DEFICIENCY)) {
-    return 'माती कोरडी आहे की ओली? सर्व झाडे सारखीच प्रभावित आहेत का?';
+    return 'CLARIFY_WATER_VS_NUTRIENT';
   }
   
-  // Weather stress
   if (categories.includes(DiagnosisCategory.WEATHER_STRESS)) {
-    return 'ही समस्या अलीकडील गरमी/थंडी/पाऊस नंतर सुरू झाली का?';
+    return 'CLARIFY_WEATHER_STRESS_ONSET';
   }
   
-  // Default
-  return 'कृपया प्रभावित पानाचा/झाडाचा फोटो पाठवा.';
+  return 'CLARIFY_SEND_PHOTO';
 }
 
 function generateClarificationOptions(
@@ -377,32 +376,31 @@ function generateClarificationOptions(
 ): string[] {
   const categories = [...new Set(diagnoses.map(d => d.category))];
   
-  // Pest vs Disease ambiguity
+  // Return canonical observation codes - resolved to display text at runtime
   if (categories.includes(DiagnosisCategory.PEST) && categories.includes(DiagnosisCategory.DISEASE)) {
     return [
-      'किडे/अळी दिसत आहेत',
-      'फक्त डाग/बुरशी दिसते',
-      'दोन्ही दिसत आहेत',
-      'फोटो पाठवतो'
+      'INSECTS_VISIBLE',
+      'LEAF_SPOTS',
+      'INSECTS_AND_SPOTS',
+      'PHOTO_REQUEST'
     ];
   }
   
-  // Water vs Nutrient ambiguity
-  // FIX: Map to diagnosis-level canonical symbols, NOT generic LEAF_YELLOWING
+  // Water vs Nutrient ambiguity - diagnosis-level canonical symbols
   if (categories.includes(DiagnosisCategory.WATER_STRESS) && categories.includes(DiagnosisCategory.NUTRIENT_DEFICIENCY)) {
     return [
-      'माती कोरडी आहे',              // → WATER_STRESS_CONFIRMED
-      'माती ओली/पाणी साचले आहे',    // → FIELD_WATERLOGGED
-      'नत्राची कमतरता दिसते',         // → NITROGEN_DEFICIENCY_CONFIRMED
-      'जस्ताची कमतरता दिसते'          // → ZINC_DEFICIENCY_CONFIRMED
+      'WATER_STRESS_CONFIRMED',
+      'FIELD_WATERLOGGED',
+      'NITROGEN_DEFICIENCY_CONFIRMED',
+      'ZINC_DEFICIENCY_CONFIRMED'
     ];
   }
   
-  // Default options
+  // Default options - canonical codes
   return [
-    'होय, हे बरोबर आहे',
-    'नाही, वेगळे आहे',
-    'फोटो पाठवतो'
+    'CONFIRM_YES',
+    'CONFIRM_NO',
+    'PHOTO_REQUEST'
   ];
 }
 

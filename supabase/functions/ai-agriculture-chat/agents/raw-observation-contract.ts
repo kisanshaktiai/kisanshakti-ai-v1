@@ -41,7 +41,7 @@ export interface RawObservationCandidate {
   raw_phrase: string;
   
   /** Source language of the phrase */
-  source_language: 'mr' | 'hi' | 'en';
+  source_language: string;
   
   /** Position in original text (for context) */
   start_index?: number;
@@ -65,7 +65,7 @@ export interface Phase1TranslationOutput {
   // ═══════════════════════════════════════════════════════════════════════════
   
   /** Primary detected language */
-  detected_language: 'mr' | 'hi' | 'en';
+  detected_language: string;
   
   /** Whether message mixes languages */
   is_code_switched: boolean;
@@ -248,7 +248,7 @@ export function validatePhase1OutputContract(output: any): { valid: boolean; vio
 /**
  * Create an empty Phase1TranslationOutput for error cases
  */
-export function createEmptyPhase1Output(text: string, language: 'mr' | 'hi' | 'en'): Phase1TranslationOutput {
+export function createEmptyPhase1Output(text: string, language: string): Phase1TranslationOutput {
   return {
     version: RAW_OBSERVATION_CONTRACT_VERSION,
     detected_language: language,

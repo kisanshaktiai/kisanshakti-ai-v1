@@ -457,15 +457,16 @@ export function isSpraySafe(landState: AuthoritativeLandState | null): boolean {
  */
 export function getSpraySafetyMessage(
   landState: AuthoritativeLandState | null, 
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string | null {
   const result = checkWeatherSafety({ land_state: landState });
   
   if (result.spray_allowed) return null;
   
-  switch (language) {
-    case 'mr': return result.block_reason_mr || null;
-    case 'hi': return result.block_reason_hi || null;
-    default: return result.block_reason_en || null;
-  }
+  const messages: Record<string, string | undefined> = {
+    mr: result.block_reason_mr,
+    hi: result.block_reason_hi,
+    en: result.block_reason_en
+  };
+  return messages[language] || result.block_reason_en || null;
 }

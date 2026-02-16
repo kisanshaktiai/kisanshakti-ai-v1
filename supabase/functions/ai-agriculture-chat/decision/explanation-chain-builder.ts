@@ -364,7 +364,7 @@ function addDataSources(
 
 function generateSummary(
   steps: ExplanationStep[],
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   landState: AuthoritativeLandState | null
 ): { mr: string; hi: string; en: string } {
   const diagnosisSteps = steps.filter(s => s.category === 'DIAGNOSIS');
@@ -411,7 +411,7 @@ function generateSummary(
 
 export function formatExplanationForFarmer(
   chain: ExplanationChain,
-  language: 'mr' | 'hi' | 'en' = 'mr'
+  language: string = 'mr'
 ): string {
   let output = '';
   

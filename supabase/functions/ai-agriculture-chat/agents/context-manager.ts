@@ -395,9 +395,8 @@ function analyzeFarmerBehavior(
     avg_response_time_minutes: avgResponseTime,
     photo_willingness: hasUploadedPhoto ? 'HIGH' : 'MEDIUM',
     detail_level: detailLevel,
-    language_consistency: currentLanguage === 'mr' ? 'MARATHI_ONLY' : 
-                          currentLanguage === 'hi' ? 'HINDI_ONLY' : 'MIXED',
-    preferred_language: currentLanguage as 'mr' | 'hi' | 'en',
+    language_consistency: `${(currentLanguage || 'en').toUpperCase()}_ONLY`,
+    preferred_language: currentLanguage || 'en',
     cooperation_level: responseSpeed === 'FAST' ? 'HIGH' : 'MEDIUM'
   };
 }

@@ -76,7 +76,7 @@ export interface ObservationExtraction {
   /**
    * Detected input language
    */
-  detected_language: 'mr' | 'hi' | 'en';
+  detected_language: string;
   
   /**
    * Count of critical observations
@@ -188,12 +188,12 @@ function extractDistribution(text: string): SymptomDistribution {
   return 'unknown';
 }
 
-function extractSeverityWords(text: string, language: 'mr' | 'hi' | 'en'): string[] {
+function extractSeverityWords(text: string, language: string): string[] {
   const found: string[] = [];
   const lowerText = text.toLowerCase();
   
-  // Check language-specific patterns
-  for (const word of SEVERITY_WORDS[language]) {
+  // Check language-specific patterns (fallback to en if language not in dictionary)
+  for (const word of (SEVERITY_WORDS[language] || SEVERITY_WORDS.en)) {
     if (lowerText.includes(word.toLowerCase())) {
       found.push(word);
     }
@@ -211,11 +211,11 @@ function extractSeverityWords(text: string, language: 'mr' | 'hi' | 'en'): strin
   return found;
 }
 
-function extractUncertaintyMarkers(text: string, language: 'mr' | 'hi' | 'en'): string[] {
+function extractUncertaintyMarkers(text: string, language: string): string[] {
   const found: string[] = [];
   const lowerText = text.toLowerCase();
   
-  for (const marker of UNCERTAINTY_MARKERS[language]) {
+  for (const marker of (UNCERTAINTY_MARKERS[language] || UNCERTAINTY_MARKERS.en)) {
     if (lowerText.includes(marker.toLowerCase())) {
       found.push(marker);
     }
@@ -249,11 +249,11 @@ function extractTimeReference(text: string): string | undefined {
   return undefined;
 }
 
-function extractActionsTaken(text: string, language: 'mr' | 'hi' | 'en'): string[] {
+function extractActionsTaken(text: string, language: string): string[] {
   const found: string[] = [];
   const lowerText = text.toLowerCase();
   
-  for (const pattern of ACTION_PATTERNS[language]) {
+  for (const pattern of (ACTION_PATTERNS[language] || ACTION_PATTERNS.en)) {
     if (lowerText.includes(pattern.toLowerCase())) {
       found.push(pattern);
     }
@@ -339,7 +339,7 @@ export interface LandContextForExtraction {
 
 export function extractObservations(
   normalizedText: string,
-  detectedLanguage: 'mr' | 'hi' | 'en',
+  detectedLanguage: string,
   landContext?: LandContextForExtraction
 ): ObservationExtraction {
   const rawSymptomText = extractRawSymptomText(normalizedText);
