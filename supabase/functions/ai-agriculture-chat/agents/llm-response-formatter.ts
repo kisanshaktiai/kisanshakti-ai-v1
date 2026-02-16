@@ -481,17 +481,28 @@ export async function formatRecommendationsWithLLM(
   formattedResponse = replaceFormalsWithRural(formattedResponse, input.language);
   
   // BUG-5 FIX: Language consistency check - detect translation failures
-  if (input.language !== 'en') {
-    const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
-    const totalChars = formattedResponse.length;
-    const asciiRatio = totalChars > 0 ? asciiChars / totalChars : 0;
-    if (asciiRatio > 0.4) {
-      const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
-      console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${langName} response - possible translation failure. Applying force translation.`);
-      // The response has too much English for a non-English target - this is a translation failure
-      // Log for monitoring but allow through (force translate would need LLM call which we avoid here)
-      console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
-    }
+   // FIX 9: Improved language detection using Devanagari Unicode range
+   if (input.language !== 'en') {
+     const totalChars = formattedResponse.length;
+     // For Devanagari-script languages (mr, hi, etc.), check Unicode range ratio
+     const isDevanagariLang = ['mr', 'hi', 'gu', 'pa'].includes(input.language);
+     if (isDevanagariLang && totalChars > 50) {
+       const devanagariChars = (formattedResponse.match(/[\u0900-\u097F]/g) || []).length;
+       const devanagariRatio = devanagariChars / totalChars;
+       if (devanagariRatio < 0.3) {
+         const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
+         console.warn(`⚠️ [LANGUAGE CHECK] Only ${(devanagariRatio*100).toFixed(0)}% Devanagari in ${langName} response - possible translation failure.`);
+         console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
+       }
+     } else if (!isDevanagariLang) {
+       // Fallback for non-Devanagari regional languages (ta, te, bn, kn)
+       const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
+       const asciiRatio = totalChars > 0 ? asciiChars / totalChars : 0;
+       if (asciiRatio > 0.4) {
+         console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${input.language} response - possible translation failure.`);
+         console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
+       }
+     }
   }
   
   const processingTime = Date.now() - startTime;
@@ -591,31 +602,66 @@ function validateLLMOutput(
     console.log(`   ℹ️ [VALIDATION] Skipping product check for generic action type: ${primaryProductName}`);
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CHECK 2: Dosages unchanged (NEW - extract numbers and verify)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const dosagePerAcre = decisionInput?.decision_output?.primary_decision?.product_details?.dosage_per_acre ||
+   // ═══════════════════════════════════════════════════════════════════════════
+   // CHECK 2: Dosages unchanged (extract numbers and verify)
+   // ═══════════════════════════════════════════════════════════════════════════
+   const dosagePerAcre = decisionInput?.decision_output?.primary_decision?.product_details?.dosage_per_acre ||
                         decisionInput?.decision_output?.primary_decision?.application_details?.dosage ||
                         decisionInput?.decision_output?.primary_decision?.application_details?.concentration;
-  
-  if (dosagePerAcre && dosagePerAcre !== 'As per label' && dosagePerAcre !== 'N/A') {
-    // Extract all numbers from the dosage string
-    const dosageNumbers = dosagePerAcre.match(/\d+\.?\d*/g);
-    
-    if (dosageNumbers && dosageNumbers.length > 0) {
-      // Check if at least one dosage number appears in output
-      const numbersFound = dosageNumbers.some((n: string) => llmOutput.includes(n));
-      
-      if (!numbersFound) {
-        errors.push(`Dosage numbers mismatch. Expected: ${dosagePerAcre}, numbers: ${dosageNumbers.join(', ')}`);
-        console.warn(`⚠️ [VALIDATION] Dosage numbers not found in output: ${dosageNumbers.join(', ')}`);
-      }
-    }
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CHECK 3: No rule IDs leaked (NEW - forbidden internal patterns)
-  // ═══════════════════════════════════════════════════════════════════════════
+   
+   if (dosagePerAcre && dosagePerAcre !== 'As per label' && dosagePerAcre !== 'N/A') {
+     const dosageNumbers = dosagePerAcre.match(/\d+\.?\d*/g);
+     if (dosageNumbers && dosageNumbers.length > 0) {
+       const numbersFound = dosageNumbers.some((n: string) => llmOutput.includes(n));
+       if (!numbersFound) {
+         errors.push(`Dosage numbers mismatch. Expected: ${dosagePerAcre}, numbers: ${dosageNumbers.join(', ')}`);
+         console.warn(`⚠️ [VALIDATION] Dosage numbers not found in output: ${dosageNumbers.join(', ')}`);
+       }
+     }
+   }
+   
+   // ═══════════════════════════════════════════════════════════════════════════
+   // CHECK 2b: Secondary product/dosage validation (FIX 1 - CRITICAL)
+   // Secondary actions injected at prompt build but NEVER validated until now.
+   // ═══════════════════════════════════════════════════════════════════════════
+   const secondaryActions = decisionInput?.decision_output?.secondary_actions || 
+                            decisionInput?.decision_output?.secondary_recommendations || [];
+   for (const sec of secondaryActions) {
+     if (sec.product_name && sec.product_name !== 'N/A' && sec.product_name !== 'Not specified') {
+       allowedProducts.push(sec.product_name.toLowerCase());
+     }
+     if (sec.dosage) allowedDosages.push(sec.dosage.toLowerCase());
+     if (sec.dosage_per_acre) allowedDosages.push(sec.dosage_per_acre.toLowerCase());
+   }
+   // Validate secondary product names not modified by LLM
+   for (const sec of secondaryActions) {
+     if (sec.product_name && sec.product_name !== 'N/A' && sec.product_name !== 'Not specified') {
+       const secProductWords = sec.product_name.toLowerCase().split(/[\s+@\/]+/).filter((w: string) => w.length > 2);
+       const secProductFound = secProductWords.some((word: string) => lowerOutput.includes(word)) ||
+                               lowerOutput.includes(sec.product_name.toLowerCase());
+       if (!secProductFound && lowerOutput.length > 200) {
+         // Only flag if output is substantial enough to contain product info
+         console.warn(`⚠️ [VALIDATION] Secondary product may be missing: ${sec.product_name}`);
+       }
+     }
+   }
+   
+   // ═══════════════════════════════════════════════════════════════════════════
+   // CHECK 2c: PHI value validation (FIX 3 - CRITICAL)
+   // Ensure LLM preserved PHI days exactly as provided by rule engine.
+   // ═══════════════════════════════════════════════════════════════════════════
+   const phiDays = decisionInput?.decision_output?.primary_decision?.application_details?.phi_days;
+   if (phiDays && typeof phiDays === 'number' && phiDays > 0) {
+     const phiString = String(phiDays);
+     if (!llmOutput.includes(phiString)) {
+       errors.push(`PHI value modified or missing. Expected: ${phiDays} days`);
+       console.error(`🚫 [VALIDATION] PHI days not preserved: expected ${phiDays}`);
+     }
+   }
+   
+   // ═══════════════════════════════════════════════════════════════════════════
+   // CHECK 3: No rule IDs leaked (forbidden internal patterns)
+   // ═══════════════════════════════════════════════════════════════════════════
   const forbiddenPatterns = [
     { pattern: /SUGARCANE_TERMITE/i, name: 'SUGARCANE_TERMITE' },
     { pattern: /COTTON_BOLLWORM/i, name: 'COTTON_BOLLWORM' },
@@ -638,14 +684,24 @@ function validateLLMOutput(
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CHECK 4: Unauthorized percentage claims (existing)
-  // ═══════════════════════════════════════════════════════════════════════════
-  const percentagePattern = /(\d{1,3})\s*%\s*(effective|control|reduction|success)/gi;
-  const percentageMatches = llmOutput.match(percentagePattern);
-  if (percentageMatches) {
-    errors.push(`Unauthorized percentage claim: ${percentageMatches[0]}`);
-  }
+   // ═══════════════════════════════════════════════════════════════════════════
+   // CHECK 4: Unauthorized percentage claims (FIX 4 + FIX 12 - enhanced regex + efficacy exclusion)
+   // ═══════════════════════════════════════════════════════════════════════════
+   // Extract allowed efficacy values from rule engine to avoid false positives
+   const allowedEfficacy: number[] = [];
+   const ruleEfficacy = decisionInput?.decision_output?.primary_decision?.application_details?.efficacy_percent;
+   const outcomeEfficacy = decisionInput?.decision_output?.primary_decision?.expected_outcomes?.efficacy_percent;
+   if (typeof ruleEfficacy === 'number') allowedEfficacy.push(ruleEfficacy);
+   if (typeof outcomeEfficacy === 'number') allowedEfficacy.push(outcomeEfficacy);
+   
+   const percentagePattern = /(\d{1,3})\s*(%|percent|प्रतिशत|टक्के)\s*(effective|efficacy|control|reduction|success|protection|yield increase|प्रभावी|नियंत्रण)/gi;
+   let percentMatch;
+   while ((percentMatch = percentagePattern.exec(llmOutput)) !== null) {
+     const claimedNumber = parseInt(percentMatch[1], 10);
+     if (!allowedEfficacy.includes(claimedNumber)) {
+       errors.push(`Unauthorized percentage claim: ${percentMatch[0]}`);
+     }
+   }
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 5: Unauthorized products (existing - enhanced)
@@ -666,23 +722,24 @@ function validateLLMOutput(
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 6: Cross-crop biocontrol validation (existing)
   // ═══════════════════════════════════════════════════════════════════════════
-  if (cropType && cropType.toLowerCase() === 'wheat') {
-    const invalidBiocontrolsForWheat = [
-      'trichogramma', 'ट्रायकोग्रामा', 'ट्रायकोग्रामा चिलोनिस',
-      'cotesia', 'कोटेशिया',
-      'trichogramma chilonis', 'cotesia flavipes'
-    ];
-    
-    for (const biocontrol of invalidBiocontrolsForWheat) {
+   // FIX 11: Extended cross-crop biocontrol validation
+   const cropLower = (cropType || '').toLowerCase();
+   const CROP_INVALID_BIOCONTROLS: Record<string, string[]> = {
+     'wheat': ['trichogramma', 'ट्रायकोग्रामा', 'trichogramma chilonis', 'cotesia', 'कोटेशिया', 'cotesia flavipes'],
+     'rice': ['cotesia flavipes', 'कोटेशिया फ्लेव्हिप्स'],
+     'cotton': ['trichogramma chilonis', 'cotesia flavipes'],
+     'maize': ['cotesia flavipes'],
+   };
+   const invalidBiocontrols = CROP_INVALID_BIOCONTROLS[cropLower] || [];
+   if (invalidBiocontrols.length > 0) {
+     for (const biocontrol of invalidBiocontrols) {
       if (lowerOutput.includes(biocontrol.toLowerCase())) {
-        errors.push(`Invalid biocontrol for wheat: ${biocontrol}`);
-        console.warn(`
+         errors.push(`Invalid biocontrol for ${cropLower}: ${biocontrol}`);
+         console.warn(`
 ⚠️ [CROSS-CROP] Invalid biocontrol detected
-   Crop: Wheat
-   Invalid Biocontrol: ${biocontrol}
-   Reason: Trichogramma/Cotesia are for Lepidopteran pests (bollworms, stem borers)
-   Correct for Wheat: Ladybird beetles (Coccinella), Green lacewing (Chrysoperla)
-        `);
+    Crop: ${cropLower}
+    Invalid Biocontrol: ${biocontrol}
+         `);
       }
     }
   }
@@ -824,16 +881,40 @@ function buildFormattingUserPrompt(input: LLMFormatterInput, recData: string): s
   const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
   const isYoungCrop = trulyYoungStages.includes(cropStage) || daysSinceSowing < 30;
   
-  const landInfo = input.land_context ? `
-LAND CONTEXT:
-- Crop: ${input.land_context.current_crop || 'Not specified'}
-- Growth Stage: ${input.land_context.growth_stage || 'Not specified'} ${isYoungCrop ? '⚠️ YOUNG CROP - NO HARVEST' : ''}
-- Area: ${input.land_context.area_acres || 'N/A'} acres
-- Days Since Sowing: ${input.land_context.days_since_sowing || 'N/A'}
-- NDVI Health: ${input.land_context.ndvi?.value || 'N/A'} (${input.land_context.ndvi?.trend || 'unknown'})
-- Soil N/P/K: ${input.land_context.soil_health?.nitrogen_kg_per_ha || 'N/A'}/${input.land_context.soil_health?.phosphorus_kg_per_ha || 'N/A'}/${input.land_context.soil_health?.potassium_kg_per_ha || 'N/A'} kg/ha
-- pH: ${input.land_context.soil_health?.ph_level || 'N/A'}
-- Location: ${input.land_context.village || ''}, ${input.land_context.district || ''}` : '';
+   // FIX 6: Conditional land context injection - only include what's relevant
+   const primaryActionType = (input.decision_output?.primary_decision?.action_type || '').toUpperCase();
+   const primaryCanonicalGroup = (input.decision_output?.primary_decision?.canonical_group || '').toLowerCase();
+   const primaryActionText = (input.decision_output?.primary_decision?.application_details?.action_text || '').toLowerCase();
+   
+   const isNutritionRule = primaryCanonicalGroup.includes('nutri') || primaryCanonicalGroup.includes('deficiency') ||
+     primaryActionText.includes('fertilizer') || primaryActionText.includes('nutrient') || primaryActionText.includes('urea');
+   const isStressRule = primaryCanonicalGroup.includes('stress') || primaryCanonicalGroup.includes('drought') ||
+     primaryCanonicalGroup.includes('water');
+   const isWeatherRule = primaryActionType.includes('WEATHER') || primaryCanonicalGroup.includes('weather');
+   
+   let landContextParts: string[] = [];
+   if (input.land_context) {
+     // Always include: Crop, Growth Stage, Area, Days Since Sowing
+     landContextParts.push(`- Crop: ${input.land_context.current_crop || 'Not specified'}`);
+     landContextParts.push(`- Growth Stage: ${input.land_context.growth_stage || 'Not specified'} ${isYoungCrop ? '⚠️ YOUNG CROP - NO HARVEST' : ''}`);
+     landContextParts.push(`- Area: ${input.land_context.area_acres || 'N/A'} acres`);
+     landContextParts.push(`- Days Since Sowing: ${input.land_context.days_since_sowing || 'N/A'}`);
+     
+     // Conditional: NDVI only for stress assessment rules
+     if (isStressRule && input.land_context.ndvi?.value) {
+       landContextParts.push(`- NDVI Health: ${input.land_context.ndvi.value} (${input.land_context.ndvi.trend || 'unknown'})`);
+     }
+     // Conditional: Soil NPK only for nutrition-related rules
+     if (isNutritionRule && input.land_context.soil_health) {
+       landContextParts.push(`- Soil N/P/K: ${input.land_context.soil_health.nitrogen_kg_per_ha || 'N/A'}/${input.land_context.soil_health.phosphorus_kg_per_ha || 'N/A'}/${input.land_context.soil_health.potassium_kg_per_ha || 'N/A'} kg/ha`);
+       if (input.land_context.soil_health.ph_level) landContextParts.push(`- pH: ${input.land_context.soil_health.ph_level}`);
+     }
+     // Conditional: Location only for weather-dependent rules
+     if (isWeatherRule && (input.land_context.village || input.land_context.district)) {
+       landContextParts.push(`- Location: ${input.land_context.village || ''}, ${input.land_context.district || ''}`);
+     }
+   }
+   const landInfo = landContextParts.length > 0 ? `\nLAND CONTEXT:\n${landContextParts.join('\n')}` : '';
 
   return `FARMER'S QUESTION (in their language):
 "${input.farmer_message}"
@@ -908,7 +989,7 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     
     parts.push(`\nPRIMARY RECOMMENDATION:`);
     parts.push(`- Action Type: ${primary.action_type}`);
-    parts.push(`- Rule ID: ${primary.rule_id || primary.application_details?.rule_id || 'UNKNOWN'}`);
+    // FIX 7: Rule ID removed from LLM prompt to prevent leakage risk
     parts.push(`- Target: ${pestName || diseaseName || primary.target?.nutrient_deficiency || 'General'}`);
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -957,8 +1038,9 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     if (reasonText) {
       parts.push(`🔍 REASON (Why): ${reasonText}`);
     }
-    if (knowledgeText) {
-      parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText}`);
+     if (knowledgeText) {
+       // FIX 5: Cap knowledge_text to prevent token bloat from long ICAR references
+       parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText.substring(0, 600)}`);
     }
     parts.push(`═══════════════════════════════════════════════════`);
     
@@ -987,10 +1069,13 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
       parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
       parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
       parts.push(`- Application Method: ${appDetails.method || appDetails.application_method || 'Standard application'}`);
-      parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'Early morning 6-10 AM'}`);
-      parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || '200 L/acre'}`);
-      parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'} (कापणीपूर्वी वाट पाहा)`);
-      parts.push(`- Expected Efficacy: ${appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent || 75}%`);
+       // FIX 8: Remove hardcoded timing/water defaults - must come from rule engine
+       parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'As per label'}`);
+       parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || 'As per label'}`);
+       parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'} (कापणीपूर्वी वाट पाहा)`);
+       // FIX 12: Remove hardcoded 75% efficacy default - only use rule engine value
+       const efficacyValue = appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent;
+       parts.push(`- Expected Efficacy: ${efficacyValue ? efficacyValue + '%' : 'As per field conditions'}`);
       parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'No rain within 4-6 hours after spray'}`);
       
       // BUG-2 FIX: Land-area-based total dosage calculation
@@ -1027,11 +1112,17 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
     
     // Urgency indicator
-    const urgencyLabel = IPM_URGENCY_LABELS[primary.ipm_level || 'LEVEL_3']?.[input.language] || 'Normal priority';
-    parts.push(`- Urgency: ${urgencyLabel}`);
+     // FIX 10: IPM level unknown guard with warning log
+     const ipmLevel = primary.ipm_level || 'LEVEL_3';
+     if (!IPM_URGENCY_LABELS[ipmLevel]) {
+       console.warn(`[IPM_GOVERNANCE] Unknown IPM level: ${ipmLevel}`);
+     }
+     const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[input.language] || 'Normal priority';
+     parts.push(`- Urgency: ${urgencyLabel}`);
     
-    if (primary.rule_id) {
-      parts.push(`- Scientific Basis: ICAR Rule ${primary.rule_id}`);
+     if (primary.rule_id) {
+       // FIX 7: Remove rule_id from LLM prompt to prevent leakage
+       parts.push(`- Scientific Basis: ICAR Validated`);
     }
   }
   
@@ -1051,27 +1142,9 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     });
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BIOCONTROL AGENTS - ONLY if primary decision involves biological control (Change A)
-  // CRITICAL FIX: Previously matched anywhere in decision JSON causing hallucinations
-  // ═══════════════════════════════════════════════════════════════════════════
-  const primaryActionType = (decision.primary_decision?.action_type || '').toLowerCase();
-  const primaryIngredient = (decision.primary_decision?.application_details?.active_ingredient || 
-                             decision.primary_decision?.application_details?.product_name || '').toLowerCase();
-  const isBiocontrolRecommendation = 
-    primaryActionType.includes('biological') || primaryActionType.includes('biocontrol') ||
-    primaryIngredient.includes('trichogramma') || primaryIngredient.includes('cotesia');
-  
-  if (isBiocontrolRecommendation) {
-    parts.push(`\n═══ BIOCONTROL DOSAGE REMINDER (CRITICAL - Copy exactly): ═══`);
-    if (primaryIngredient.includes('trichogramma') || primaryActionType.includes('biological')) {
-      parts.push(`⚠️ Trichogramma chilonis: 50,000 parasitoids/acre (FIFTY THOUSAND)`);
-    }
-    if (primaryIngredient.includes('cotesia') || primaryActionType.includes('biological')) {
-      parts.push(`⚠️ Cotesia flavipes: 5,000 cocoons/acre (FIVE THOUSAND)`);
-    }
-    parts.push(`These are 1000x larger than chemical dosages - this is CORRECT!`);
-  }
+   // FIX 2: Removed hardcoded biocontrol dosages (Trichogramma/Cotesia).
+   // Biocontrol dosage comes from rule engine via application_details.dosage_per_acre.
+   // The product/dosage rendering at lines 984-1007 already handles this correctly.
   
   // ═══════════════════════════════════════════════════════════════════════════
   // MATCHED RESPONSES - TOKEN OPTIMIZED: Filter to max 3 relevant responses
@@ -1096,8 +1169,9 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
         parts.push(`   Reason: ${resp.reason_text}`);
       }
       // Only include knowledge_text for PRIMARY response (biggest token consumer)
-      if (isPrimary && resp.knowledge_text) {
-        parts.push(`   Knowledge: ${resp.knowledge_text}`);
+       // FIX 5: Cap knowledge_text for matched responses too
+       if (isPrimary && resp.knowledge_text) {
+         parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
       }
       
       // Fallback to legacy response fields ONLY if no action_text
