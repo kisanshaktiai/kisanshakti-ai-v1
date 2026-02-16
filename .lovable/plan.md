@@ -1,183 +1,216 @@
 
 
-# Critical Bug Fix: Same Response for Different Queries
+# Language Independence Audit & Refactoring Plan
 
-## Root Cause Analysis
+## Audit Summary
 
-The logs reveal a clear diagnostic chain that produces the WRONG result:
-
-```text
-Farmer selects "पाने पिवळी" (yellow leaves)
-    |
-    v
-Maps to LEAF_YELLOWING (single generic observation)
-    |
-    v
-494 rules evaluated, 104 MATCH, 91 eligible
-    |
-    v
-PRIMARY = SC_MICRO_ZN_DEFICIENCY_URGENT_001 (zinc deficiency!)
-    |
-    v
-SAME zinc response every time any leaf symptom is reported
-```
-
-## 3 Critical Bugs Found
-
-### BUG 1 (P0): Nutrition Conflict Arbitrator BYPASSED in Option Selection Path
-
-The recently added `nutrition-conflict-arbitrator.ts` (zinc gate, water stress dominance, macro dominance) is integrated ONLY into `symbolic-reasoner.ts` (lines 269-303).
-
-However, the OPTION_SELECTED code path in `orchestrator.ts` (lines 1620-1770) calls `evaluateRulesLayered()` DIRECTLY, completely bypassing the SymbolicReasoner and ALL nutrition gates.
-
-**Result:** When a farmer selects a clarification option, the zinc specificity gate, water stress dominance, and macro dominance checks NEVER run. The ZN urgent rule fires unchecked.
-
-### BUG 2 (P0): `evaluateConditionsJson` in loader.ts Matches Rules with Unevaluable Conditions
-
-The ZN rule has `conditions_json = {"soil_zn_ppm": "<0.6"}`. This is a soil test threshold. The system has NO soil zinc data (`soil_zn_ppm` is not in the `DecisionInput` interface).
-
-In `evaluateConditionsJson` (loader.ts lines 508-528), when `inputValue` is `undefined` for a string condition:
-- The numeric comparator path is skipped (NaN check fails)
-- The string match path runs, comparing `"<0.6"` against `inputSymptom` ("LEAF_YELLOWING") -- fails, sets `allMatch = false`
-
-**However**, many other rules with complex object conditions (nested weather objects, threshold objects, etc.) at line 494 are silently SKIPPED with `continue`, meaning they do NOT set `allMatch = false`. If a rule has ONLY skippable conditions plus a matching crop/stage, it matches with `allMatch` still `true`. This explains the 104 matches -- rules with only object-type conditions (ETL thresholds, weather maps, regional ROI objects) pass through without any actual condition validation.
-
-### BUG 3 (P1): ACTION_TYPE_PRIORITY Ignores Diagnostic Relevance
-
-In `layered-rule-evaluator.ts` (lines 552-570), the primary decision is selected purely by ACTION_TYPE_PRIORITY:
-- `URGENT_ACTION/URGENT_TREATMENT` = priority 2 (second highest)
-- `TREATMENT/RECOMMEND` = priority 4
-- `MONITOR` = priority 6
-
-So among 91 eligible rules, ANY urgent rule automatically wins regardless of whether its conditions actually matched the farmer's complaint. The ZN rule with `urgent_treatment` action type dominates over more relevant but lower-priority rules.
+After deep analysis of 80+ files in the symbolic decision brain, I identified **12 categories of hardcoded language-dependent code** across **~25 files** that violate the LLM-first, language-agnostic architecture. The system currently locks itself to `'mr' | 'hi' | 'en'` (3 languages) despite already having quick-reply support for 10 languages.
 
 ---
 
-## Fix Plan
+## Category 1: Hardcoded `SupportedLanguage` Type Locked to 3 Languages
 
-### Fix 1: Integrate Nutrition Arbitrator into LayeredRuleEvaluator
+**Files affected:**
+- `i18n/translation-loader.ts` (line 45): `type SupportedLanguage = 'mr' | 'hi' | 'en'`
+- `agents/communication-translation-dictionary.ts` (line 10): `type SupportedLanguage = 'mr' | 'hi' | 'en'`
+- `agents/raw-observation-contract.ts` (lines 44, 68, 251)
+- `agents/audit-logger.ts` (lines 76, 226)
+- `agents/nlp-agriculture-validator.ts` (line 22)
+- `agents/context-manager-types.ts` (line 171)
+- `agents/observation-extractor.ts` (lines 79, 191, 214, 252, 342)
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-
-Add nutrition conflict arbitration BEFORE building PRIMARY_DECISION (around line 542):
-
-```typescript
-// After filtering eligible responses, BEFORE selecting primary:
-import { passesZincSpecificityGate, checkWaterStressDominance, checkMacronutrientDominance } from '../decision/nutrition-conflict-arbitrator.ts';
-
-// Filter out nutrition rules that fail arbitration gates
-const arbitratedResponses = eligibleResponses.filter(r => {
-  const ruleCategory = r.cause?.toLowerCase() || '';
-  const isNutrition = ruleCategory.includes('nutri') || ruleCategory.includes('deficiency') || r.rule_id.includes('MICRO') || r.rule_id.includes('NUTRI');
-  
-  if (!isNutrition) return true; // Non-nutrition rules pass through
-  
-  // Zinc gate
-  const zincGate = passesZincSpecificityGate(r.rule_id, [], { all_observations: state.visual_symptoms || [] });
-  if (!zincGate.passes) {
-    console.log(`[ArbitrationGate] ${r.rule_id} blocked: ${zincGate.reason}`);
-    return false;
-  }
-  
-  // Water stress dominance
-  const waterBlock = checkWaterStressDominance(state.visual_symptoms || [], r.action_type, ruleCategory);
-  if (waterBlock.blocked) return false;
-  
-  // Macro dominance
-  const macroBlock = checkMacronutrientDominance(state.visual_symptoms || [], r.rule_id, r.cause || '', {});
-  if (macroBlock.blocked) return false;
-  
-  return true;
-});
-```
-
-Use `arbitratedResponses` instead of `eligibleResponses` for primary selection.
-
-### Fix 2: Reject Rules with Unevaluable-Only Conditions
-
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
-
-In `evaluateConditionsJson`, track skipped conditions separately. If ALL non-recognized conditions were skipped (object/array), the rule should NOT match -- it means we lack the data to evaluate it.
-
-Change lines 487-535 to track a `skippedConditions` counter alongside `hasAnyCondition`:
+**Fix:** Create a single `SupportedLanguage` type that accepts any string (with known codes as suggestions), and define it once in a shared types file.
 
 ```typescript
-let skippedConditions = 0;
-let evaluatedUnknownConditions = 0;
-
-for (const key of conditionKeys) {
-  if (RECOGNIZED_KEYS.has(key)) continue;
-  const condValue = conditions[key];
-  
-  if (condValue !== null && typeof condValue === 'object') {
-    skippedConditions++;  // Track instead of silently skip
-    continue;
-  }
-  
-  // ... rest of evaluation (boolean, string, etc.)
-  evaluatedUnknownConditions++;
-  // existing logic...
-}
-
-// NEW: If we only had skipped (unevaluable) conditions and no evaluated ones matched, FAIL
-if (skippedConditions > 0 && evaluatedUnknownConditions === 0 && !hasAnyCondition) {
-  return false; // Cannot evaluate = do not match
-}
+// New: shared language type
+export type SupportedLanguage = string; // Any language code (e.g., 'mr', 'hi', 'en', 'ta', 'te', 'bn', 'gu', 'kn', 'pa', 'ml', 'or', 'ur')
+export const KNOWN_LANGUAGES = ['mr', 'hi', 'en', 'ta', 'te', 'bn', 'gu', 'kn', 'pa', 'ml', 'or'] as const;
 ```
-
-### Fix 3: Add Diagnostic Relevance to Primary Selection
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-
-After sorting by ACTION_TYPE_PRIORITY, add a secondary sort that penalizes rules whose conditions_json did NOT include an observation that matches the farmer's reported symptom:
-
-```typescript
-// After scoring by action type priority, add relevance penalty
-const finalScored = scored.map(s => {
-  const ruleConditions = s.response.conditions_json || {};
-  const ruleObs = ruleConditions.observations || [];
-  const currentSymptoms = state.visual_symptoms || [];
-  
-  // If rule has NO observation overlap with current symptoms, penalize heavily
-  const hasObservationOverlap = ruleObs.length === 0 || 
-    ruleObs.some(o => currentSymptoms.some(s => 
-      s.toUpperCase().includes(o.toUpperCase()) || o.toUpperCase().includes(s.toUpperCase())
-    ));
-  
-  return {
-    ...s,
-    priority: s.priority + (hasObservationOverlap ? 0 : 100) // Push irrelevant rules down
-  };
-});
-
-finalScored.sort((a, b) => a.priority - b.priority);
-```
-
-### Fix 4: Add `conditions_json` to MatchedResponse for Downstream Validation
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-
-Extend the `MatchedResponse` interface to include `conditions_json` so downstream arbitration can inspect what the rule actually requires:
-
-```typescript
-export interface MatchedResponse {
-  // ... existing fields ...
-  conditions_json?: Record<string, unknown>; // NEW: for arbitration inspection
-}
-```
-
-Populate it when collecting matched responses in the evaluation phases.
 
 ---
 
-## Deployment
+## Category 2: Hardcoded Marathi Clarification Strings in Decision Brain
 
-All changes are in the `ai-agriculture-chat` edge function and will auto-deploy. The nutrition arbitrator already exists -- the primary fix is wiring it into the correct code path (LayeredRuleEvaluator) that the option selection flow actually uses.
+**Files affected:**
+- `agents/diagnosis-conflict-resolver.ts` (lines 134-138, 357-371, 382-406): Hardcoded Marathi clarification options and questions
+- `decision/diagnosis-first-generator.ts` (lines 180-182, 189-212, 457-488): Hardcoded mr/hi/en photo labels, question templates, unknown messages
 
-## Expected Outcome
+**Fix:** Replace inline Marathi/Hindi strings with database-driven translations loaded via `loadObservationLabels()` or LLM-generated text. For clarification options, use canonical observation codes and resolve display text from the `observation_translations` database table at runtime.
 
-- ZN deficiency rule will NO LONGER fire on generic LEAF_YELLOWING (zinc gate blocks it)
-- Rules with only soil/weather thresholds that cannot be evaluated will NOT match
-- Primary selection will prefer rules whose observations match the farmer's reported symptom
-- Different farmer queries will produce different, diagnostically relevant responses
+---
+
+## Category 3: Hardcoded Trilingual Translation Dictionaries
+
+**Files affected:**
+- `agents/communication-translation-dictionary.ts` (953 lines): Massive hardcoded dictionaries for CAUSE_TRANSLATIONS, ACTION_TRANSLATIONS, PRODUCT_TRANSLATIONS -- all locked to mr/hi/en
+- `i18n/translation-loader.ts` (lines 51-98): FALLBACK_TRANSLATIONS with hardcoded mr/hi/en
+- `agents/generic-multi-match-detector.ts` (lines 105-250): TEMPLATES with color/size/behavior translations for mr/hi/en only
+
+**Fix:**
+1. Move `communication-translation-dictionary.ts` content to a database table (`ui_translations`) with a `language_code` column that can hold any language.
+2. FALLBACK_TRANSLATIONS should only contain English text; non-English fallbacks are loaded from DB or generated by LLM.
+3. TEMPLATES in multi-match-detector should use DB-driven observable characteristic translations.
+
+---
+
+## Category 4: Devanagari Script Check Locks Out Non-Devanagari Languages
+
+**Files affected:**
+- `decision/diagnosis-first-generator.ts` (lines 143-148, 363-371): `isUntranslated()` checks for Devanagari `[\u0900-\u097F]` to validate mr/hi translations -- Tamil, Telugu, Kannada, etc. would all fail this check.
+- `agents/language-quality-validator.ts`: Devanagari ratio check for translation quality
+
+**Fix:** Replace Devanagari-specific checks with a script-aware validator that detects the expected Unicode range based on the target language (e.g., Tamil = `[\u0B80-\u0BFF]`, Telugu = `[\u0C00-\u0C7F]`). Create a `getExpectedScriptRange(language)` utility.
+
+---
+
+## Category 5: `if (language === 'mr')` / `if (language === 'hi')` Branching
+
+**Files affected:**
+- `agents/irrigation-decision-module.ts` (lines 321-343): Hard-branched formatting for mr/hi/en
+- `decision/weather-safety-gate.ts` (lines 466-470): Switch on 'mr'/'hi'
+- `agents/context-manager.ts` (lines 398-399): `'MARATHI_ONLY'` / `'HINDI_ONLY'`
+- `decision/explanation-chain-builder.ts` (lines 374-405, 419): Hardcoded summary text in mr/hi/en
+
+**Fix:** Replace language-specific branches with a template system driven by the `ui_translations` DB table. The pattern should be:
+```typescript
+const template = await getUITemplate('irrigation_details', language);
+// template returns localized format string
+```
+
+---
+
+## Category 6: Hardcoded Regional Keyword Dictionaries
+
+**Files affected:**
+- `agriculture-validator.ts` (lines 14-60): Keyword lists in Hindi/Marathi only for validation
+- `agents/observation-extractor.ts` (lines 274-303): `extractCropMention()` with hardcoded Marathi/Hindi crop names
+- `agents/nlp-agriculture-validator.ts`: Full Marathi/Hindi vocabulary dictionaries
+- `rural-language-dictionary.ts` (291 lines): Entire file is Marathi/Hindi term mappings
+- `query-classifier.ts` (lines 20-87): Intent keywords in 9 languages
+
+**Fix:**
+- `agriculture-validator.ts` and `observation-extractor.ts`: Move keyword lists to a DB table (`agricultural_vocabulary`) keyed by `(term, language_code, canonical_code)`. Load at runtime.
+- `rural-language-dictionary.ts`: This is LLM formatter guidance -- move to the LLM system prompt (base-identity already handles this).
+- `query-classifier.ts`: Already supports 9 languages via keyword lists. Mark as deprecated fallback; primary classification via LLM semantic-extractor.
+
+---
+
+## Category 7: Observation Labels and Icons Locked to 3 Languages
+
+**Files affected:**
+- `i18n/observation-label-loader.ts`: Already DB-driven but type signature limits to `'mr' | 'hi' | 'en'`
+- `agents/diagnostic-options-i18n.ts`: Hardcoded label records for `{ mr, hi, en }`
+
+**Fix:** Expand the `observation_translations` DB table query to accept any language code. For unsupported languages, fall back to LLM translation of the English label.
+
+---
+
+## Category 8: Quick Replies and Photo Labels
+
+**Files affected:**
+- `multilingual-quick-replies.ts`: Already supports 10 languages (good!), but has hardcoded response detection using mr/hi keywords (lines 125-134)
+
+**Fix:** Remove the keyword-based response type detection (lines 125-134) and rely on the `queryType` parameter passed from the orchestrator, which already classifies intent symbolically.
+
+---
+
+## Category 9: Generic Multi-Match Labels with `{ mr, hi, en }` Objects
+
+**Files affected:**
+- `agents/generic-multi-match-detector.ts` (lines 44-57, 70-82, 88-99, 361-400): All `label` and `question_text` objects are `{ mr: string; hi: string; en: string }`
+
+**Fix:** Change interface to `Record<string, string>` (language code to text). Generate non-English text via DB lookup or LLM at runtime. Only English is required at build time.
+
+---
+
+## Category 10: Base Identity Prompts
+
+**Files affected:**
+- `prompts/base-identity.ts`: Has identities for hi/mr/en/pa/ta -- this is CORRECT behavior (LLM system prompts SHOULD be language-specific). No changes needed here.
+
+---
+
+## Implementation Plan
+
+### Phase 1: Shared Language Types (1 file created, ~25 files updated)
+- Create `supabase/functions/ai-agriculture-chat/i18n/language-types.ts` with open `SupportedLanguage` type and script detection utilities
+- Update all imports across 25+ files
+
+### Phase 2: Remove Hardcoded Clarification Strings (2 files)
+- `diagnosis-conflict-resolver.ts`: Replace Marathi clarification strings with observation codes resolved from DB
+- `diagnosis-first-generator.ts`: Make photo labels, question templates, and unknown messages DB-driven
+
+### Phase 3: DB-Driven Translation Dictionary (3 files)
+- `communication-translation-dictionary.ts`: Convert to DB-loading pattern (keep as fallback-only)
+- `translation-loader.ts`: Expand FALLBACK_TRANSLATIONS to be English-only, add LLM translation fallback for unknown languages
+- `generic-multi-match-detector.ts`: Load TEMPLATES from DB
+
+### Phase 4: Script-Aware Validation (2 files)
+- Replace Devanagari checks in `diagnosis-first-generator.ts` and `language-quality-validator.ts` with `getExpectedScriptRange(language)` utility
+
+### Phase 5: Remove Language Branching (4 files)
+- `irrigation-decision-module.ts`: Template-driven formatting
+- `weather-safety-gate.ts`: DB-driven messages
+- `explanation-chain-builder.ts`: Template-driven summaries
+- `context-manager.ts`: Language-neutral consistency labels
+
+### Phase 6: LLM Fallback for Unsupported Languages (1 file)
+- Add utility in `i18n/language-types.ts`: If DB has no translation for a language, call LLM to translate the English text to the target language and cache the result
+
+---
+
+## Technical Details
+
+### New File: `i18n/language-types.ts`
+
+```typescript
+export type SupportedLanguage = string;
+
+export const SCRIPT_RANGES: Record<string, RegExp> = {
+  mr: /[\u0900-\u097F]/,  // Devanagari
+  hi: /[\u0900-\u097F]/,  // Devanagari
+  ta: /[\u0B80-\u0BFF]/,  // Tamil
+  te: /[\u0C00-\u0C7F]/,  // Telugu
+  kn: /[\u0C80-\u0CFF]/,  // Kannada
+  ml: /[\u0D00-\u0D7F]/,  // Malayalam
+  bn: /[\u0980-\u09FF]/,  // Bengali
+  gu: /[\u0A80-\u0AFF]/,  // Gujarati
+  pa: /[\u0A00-\u0A7F]/,  // Gurmukhi
+  or: /[\u0B00-\u0B7F]/,  // Odia
+  en: /[a-zA-Z]/,          // Latin
+};
+
+export function isTranslatedForLanguage(text: string, language: string): boolean {
+  if (language === 'en') return /[a-zA-Z]/.test(text);
+  const scriptRegex = SCRIPT_RANGES[language];
+  if (!scriptRegex) return true; // Unknown script = assume valid
+  const chars = text.replace(/[\s\d\p{P}\p{S}]/gu, '');
+  if (chars.length === 0) return false;
+  const matchCount = (chars.match(new RegExp(scriptRegex.source, 'g')) || []).length;
+  return matchCount / chars.length > 0.3;
+}
+
+export function getLanguageFallback(language: string): string {
+  return 'en'; // Always fall back to English
+}
+```
+
+### Interface Changes
+
+All `{ mr: string; hi: string; en: string }` objects will be replaced with `Record<string, string>` where only `en` is mandatory. The system will:
+1. Check DB for translation in target language
+2. If not found, use LLM to translate English text
+3. Cache the result for future use
+
+### What Stays Language-Specific (Correctly)
+- `prompts/base-identity.ts` -- LLM system prompts SHOULD be language-specific
+- `multilingual-quick-replies.ts` -- Already supports 10 languages, just needs keyword detection cleanup
+- DB tables (`observation_translations`, `intent_translations`) -- SSOT for translations
+
+### What Gets Removed
+- All `'mr' | 'hi' | 'en'` type unions
+- All `if (language === 'mr')` branches
+- All `{ mr: '...', hi: '...', en: '...' }` inline translation objects
+- Devanagari-only script validation
+- Hardcoded Marathi clarification strings in decision brain
 
