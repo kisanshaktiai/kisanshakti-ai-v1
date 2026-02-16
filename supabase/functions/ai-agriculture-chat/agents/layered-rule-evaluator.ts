@@ -66,6 +66,13 @@ import {
   type SafetyWarning
 } from '../decision/safety-enhancement.ts';
 
+// Fix 1: Import nutrition conflict arbitration gates
+import {
+  passesZincSpecificityGate,
+  checkWaterStressDominance,
+  checkMacronutrientDominance
+} from '../decision/nutrition-conflict-arbitrator.ts';
+
 // PHASE-16: Singleton instance for rule evaluation
 let symbolicReasonerInstance: SymbolicReasoner | null = null;
 
@@ -150,6 +157,8 @@ export interface MatchedResponse {
   reason_text?: string;
   knowledge_text?: string;
   i18n_key?: string;
+  // Fix 4: conditions_json for downstream arbitration inspection
+  conditions_json?: Record<string, unknown>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -329,7 +338,8 @@ export function evaluateRulesLayered(
             action_text: actionDetails.action_text,
             reason_text: actionDetails.reason_text,
             knowledge_text: actionDetails.knowledge_text,
-            i18n_key: actionDetails.i18n_key
+            i18n_key: actionDetails.i18n_key,
+            conditions_json: actionDetails.conditions_json || null
           });
         } else if (ruleActionType) {
           // Rules with action_type but no content - still eligible with cause
@@ -483,7 +493,8 @@ export function evaluateRulesLayered(
           action_text: prescriptionActionDetails.action_text,
           reason_text: prescriptionActionDetails.reason_text,
           knowledge_text: prescriptionActionDetails.knowledge_text,
-          i18n_key: prescriptionActionDetails.i18n_key
+          i18n_key: prescriptionActionDetails.i18n_key,
+          conditions_json: prescriptionActionDetails.conditions_json || null
         });
       } else if (prescriptionActionType) {
         // Rules with action_type but minimal content - still eligible
@@ -512,7 +523,8 @@ export function evaluateRulesLayered(
             action_text: blockedActionDetails.action_text,
             reason_text: blockedActionDetails.reason_text,
             knowledge_text: blockedActionDetails.knowledge_text,
-            i18n_key: blockedActionDetails.i18n_key
+            i18n_key: blockedActionDetails.i18n_key,
+            conditions_json: blockedActionDetails.conditions_json || null
           });
         }
       }
@@ -547,6 +559,50 @@ export function evaluateRulesLayered(
   
   if (eligibleResponses.length > 0) {
     // ═══════════════════════════════════════════════════════════════════════════
+    // Fix 1: NUTRITION CONFLICT ARBITRATION before primary selection
+    // Filters out nutrition rules that fail zinc gate, water stress, or macro dominance
+    // ═══════════════════════════════════════════════════════════════════════════
+    const arbitratedResponses = eligibleResponses.filter(r => {
+      const ruleCategory = (r.cause || '').toLowerCase();
+      const ruleIdUpper = r.rule_id.toUpperCase();
+      const isNutrition = ruleCategory.includes('nutri') || ruleCategory.includes('deficiency') || 
+        ruleIdUpper.includes('MICRO') || ruleIdUpper.includes('NUTRI') || ruleIdUpper.includes('ZN') || ruleIdUpper.includes('ZINC');
+      
+      if (!isNutrition) return true; // Non-nutrition rules pass through
+      
+      const currentSymptoms = state.visual_symptoms || [];
+      
+      // Zinc specificity gate
+      const zincGate = passesZincSpecificityGate(r.rule_id, [], { all_observations: currentSymptoms });
+      if (!zincGate.passes) {
+        console.log(`🚫 [ArbitrationGate] ${r.rule_id} blocked: ${zincGate.reason}`);
+        return false;
+      }
+      
+      // Water stress dominance
+      const waterBlock = checkWaterStressDominance(currentSymptoms, r.action_type, ruleCategory);
+      if (waterBlock.blocked) {
+        console.log(`🚫 [ArbitrationGate] ${r.rule_id} blocked by water stress: ${waterBlock.reason}`);
+        return false;
+      }
+      
+      // Macronutrient dominance
+      const macroBlock = checkMacronutrientDominance(currentSymptoms, r.rule_id, r.cause || '', {});
+      if (macroBlock.blocked) {
+        console.log(`🚫 [ArbitrationGate] ${r.rule_id} blocked by macro dominance: ${macroBlock.reason}`);
+        return false;
+      }
+      
+      return true;
+    });
+    
+    const responsesForSelection = arbitratedResponses.length > 0 ? arbitratedResponses : eligibleResponses;
+    
+    if (arbitratedResponses.length < eligibleResponses.length) {
+      console.log(`🔬 [ArbitrationGate] Filtered ${eligibleResponses.length - arbitratedResponses.length} nutrition rules, ${arbitratedResponses.length} remaining`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
     // ACTION_TYPE_PRIORITY for deterministic selection (BLOCK > URGENT > etc.)
     // ═══════════════════════════════════════════════════════════════════════════
     const ACTION_TYPE_PRIORITY: Record<string, number> = {
@@ -560,14 +616,42 @@ export function evaluateRulesLayered(
       'NO_ACTION_REQUIRED': 9
     };
     
-    const scored = eligibleResponses.map(r => ({
+    const scored = responsesForSelection.map(r => ({
       response: r,
       priority: ACTION_TYPE_PRIORITY[r.action_type || ''] ?? 50
     }));
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Fix 3: DIAGNOSTIC RELEVANCE - penalize rules with no observation overlap
+    // Rules whose conditions_json observations don't match farmer's reported symptom
+    // get a +100 priority penalty, pushing them below more relevant rules
+    // ═══════════════════════════════════════════════════════════════════════════
+    const currentSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
+    
+    const finalScored = scored.map(s => {
+      const ruleConditions = s.response.conditions_json || {};
+      const ruleObs: string[] = Array.isArray(ruleConditions.observations) ? ruleConditions.observations : [];
+      
+      // If rule has observations defined, check overlap with current symptoms
+      if (ruleObs.length > 0 && currentSymptoms.length > 0) {
+        const hasObservationOverlap = ruleObs.some((o: string) => {
+          const oNorm = String(o).toUpperCase().replace(/[\s-]/g, '_');
+          return currentSymptoms.some((sym: string) => 
+            sym.includes(oNorm) || oNorm.includes(sym)
+          );
+        });
+        
+        if (!hasObservationOverlap) {
+          return { ...s, priority: s.priority + 100 }; // Push irrelevant rules down
+        }
+      }
+      
+      return s;
+    });
+    
     // Sort by priority (lower = higher priority)
-    scored.sort((a, b) => a.priority - b.priority);
-    const best = scored[0].response;
+    finalScored.sort((a, b) => a.priority - b.priority);
+    const best = finalScored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
     // MANDATORY: Build complete PrimaryDecision object with ALL required fields
@@ -816,7 +900,9 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
         organic_alternative: bundled.organic_alternative,
         
         // CRITICAL: Include rule_id for traceability within action_details
-        rule_id: bundled.rule_id
+        rule_id: bundled.rule_id,
+        // Fix 4: Include conditions_json for downstream arbitration
+        conditions_json: bundled.conditions_json || null
       },
       // CRITICAL: Include rule_id for traceability at top level
       product_reference: bundled.rule_id
