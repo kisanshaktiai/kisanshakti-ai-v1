@@ -88,7 +88,12 @@ const PEST_DISEASE_PATTERNS = [
   /whitefly|aphid|borer|thrips|mealybug|jassid/i,
   /पांढर्या?\s*माशी|मावा|तेला|बोरर/i,
   /shoot\s*borer|stem\s*borer|fruit\s*borer|bollworm/i,
-  /termite|वाळवी|दीमक/i,                     // Termite patterns
+  /termite|वाळवी|दीमक/i,
+  
+  // Romanized pest/disease patterns (Marathi/Hindi in Latin script)
+  /kidi|kida|mashi|mava|ali|illi|rog|bimari|upay|ilaj|aushadh|davai/i,
+  /favarni|spray|kay karu|kya kare|ilaj karo/i,
+  /mela|mele|sukla|sukle|jalla|karpa|tambera/i,
   
   // Disease mentions
   /रोग|बीमारी|disease|infection|बुरशी|फफूंद/i,
@@ -96,14 +101,14 @@ const PEST_DISEASE_PATTERNS = [
   /पानावर\s*डाग|पानी\s*पिवळी/i,
   /leaf\s*(spot|curl|blight)/i,
   
-  // Symptom descriptions (CRITICAL: Include weak/dying symptoms)
+  // Symptom descriptions
   /मधली\s*सुरळी|dead\s*heart|सुरळी.*वाळ/i,
   /पाने?\s*(पिवळ|सुक|वाळ|गळ)/i,
   /पौधा?\s*(मुरझ|सूख)/i,
-  /कमकुवत|कमज़ोर|weak/i,                     // "weak" crop patterns
+  /कमकुवत|कमज़ोर|weak/i,
   /holes?\s*in\s*(leaves?|bolls?|fruits?)/i,
   /wilting|yellowing|drying|rotting/i,
-  /खराब|damage|नुकसान/i,                    // "damaged" patterns
+  /खराब|damage|नुकसान/i,
   
   // Treatment requests
   /फवारणी|स्प्रे|spray|छिड़काव/i,
@@ -120,7 +125,10 @@ const IRRIGATION_PATTERNS = [
   /केव्हा\s*पाणी|कब\s*पानी|when.*water/i,
   /किती\s*पाणी|कितना\s*पानी|how\s*much\s*water/i,
   /पाणी\s*(द्यायचे|देना|give)/i,
-  /water\s*schedule|irrigation\s*plan/i
+  /water\s*schedule|irrigation\s*plan/i,
+  // Romanized irrigation patterns
+  /pani|paani|sinchai|thibak|olava|nami/i,
+  /kiti pani|kitna pani|pani dyayche|pani dena|pani dya/i
 ];
 
 // Weather/Spray timing queries
@@ -132,7 +140,10 @@ const WEATHER_SPRAY_PATTERNS = [
   /स्प्रे.*टायमिंग|spray.*timing/i,
   /वारा|हवा|wind/i,
   /तापमान|temperature/i,
-  /उद्या\s*पाऊस|tomorrow.*rain/i
+  /उद्या\s*पाऊस|tomorrow.*rain/i,
+  // Romanized weather patterns
+  /havaman|mausam|paus|barish|varsha/i,
+  /favarni karu ka|spray kadhI|aaj paus/i
 ];
 
 // Market price queries
@@ -142,7 +153,9 @@ const MARKET_PATTERNS = [
   /मंडी|market|बाजार/i,
   /msp|minimum\s*support/i,
   /किती\s*मिळेल|कितना\s*मिलेगा|how\s*much.*get/i,
-  /best\s*time\s*to\s*sell/i
+  /best\s*time\s*to\s*sell/i,
+  // Romanized market patterns
+  /bhav|kimmat|vikri|bechna|mandi|bajar|dar/i
 ];
 
 // Follow-up patterns
@@ -162,7 +175,9 @@ const FOLLOW_UP_PATTERNS = [
 // Greeting patterns
 const GREETING_PATTERNS = [
   /^(नमस्ते|नमस्कार|hello|hi|hey|good\s*(morning|evening|afternoon))$/i,
-  /^(जय\s*हिंद|जय\s*श्रीराम|जय\s*जवान)/i
+  /^(जय\s*हिंद|जय\s*श्रीराम|जय\s*जवान)/i,
+  // Romanized greetings
+  /^(namaste|namaskar|jai hind|jai shriram)$/i
 ];
 
 // P1-A: Crop Health / Status Check patterns
@@ -186,7 +201,12 @@ const CROP_HEALTH_PATTERNS = [
   /crop\s*(status|health|condition)/i,
   /is\s*my\s*crop\s*(ok|fine|healthy|good)/i,
   /check\s*(my)?\s*(crop|field)/i,
-  /what('?s)?\s*(the)?\s*crop\s*(status|condition)/i
+  /what('?s)?\s*(the)?\s*crop\s*(status|condition)/i,
+  
+  // Romanized crop health patterns
+  /majhe pik|mera fasal|pik kase|fasal kaisi/i,
+  /pik changla ahe ka|fasal theek hai/i,
+  /shetat kay challay|khet kaisa hai/i
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
