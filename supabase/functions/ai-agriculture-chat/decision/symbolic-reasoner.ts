@@ -408,25 +408,40 @@ export class SymbolicReasoner {
    * PHASE 3 FIX: Uses in-memory cache with 5-minute TTL per crop_code
    * to eliminate 200-500ms DB hits on every request.
    */
-  private async loadRulesForContext(facts: SymbolicFact): Promise<any[]> {
+   private async loadRulesForContext(facts: SymbolicFact): Promise<any[]> {
     const cropCode = facts.crop_code?.toLowerCase() || '';
     const stage = facts.growth_stage?.toLowerCase() || '';
-    const cacheKey = `rules_${cropCode}`;
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Use crop code variants to match DB short codes
+    // DB uses SC, CTN, ALL - not sugarcane, cotton, etc.
+    // ═══════════════════════════════════════════════════════════════════════
+    const CROP_TO_DB: Record<string, string> = {
+      'sugarcane': 'SC', 'cotton': 'CTN', 'soybean': 'SOY',
+      'rice': 'RICE', 'paddy': 'RICE', 'wheat': 'WHT',
+      'maize': 'MZ', 'corn': 'MZ', 'tomato': 'TOM',
+      'onion': 'ONI', 'chilli': 'CHI', 'groundnut': 'GN',
+      'banana': 'BAN', 'grape': 'GRP', 'pomegranate': 'POM',
+    };
+    const dbCode = CROP_TO_DB[cropCode] || cropCode.toUpperCase();
+    const variants = new Set([cropCode, cropCode.toUpperCase(), dbCode, 'ALL', 'all', '*', 'universal']);
+    const cacheKey = `rules_${dbCode}`;
     
     // Check cache first
     const cached = getCachedRules(cacheKey);
     if (cached) {
-      console.log(`   ♻️ [Cache HIT] ${cached.length} rules for crop=${cropCode}`);
-      // Still filter by stage (stage can vary per request for same crop)
+      console.log(`   ♻️ [Cache HIT] ${cached.length} rules for crop=${dbCode}`);
       return this.filterByStage(cached, stage);
     }
     
-    console.log(`   🔄 [Cache MISS] Loading rules for crop=${cropCode} from DB`);
+    console.log(`   🔄 [Cache MISS] Loading rules for crop=${dbCode} (variants: ${[...variants].join(',')}) from DB`);
+    const variantArr = [...variants];
+    const orFilter = variantArr.map(v => `crop_code.eq.${v}`).join(',');
     const { data, error } = await this.supabase
       .from('decision_rules')
       .select('*')
       .eq('is_active', true)
-      .or(`crop_code.eq.${cropCode},crop_code.eq.all,crop_code.eq.*,crop_code.eq.universal`)
+      .or(orFilter)
       .order('priority', { ascending: false })
       .limit(500);
     
@@ -520,36 +535,27 @@ export class SymbolicReasoner {
     
     // ═══════════════════════════════════════════════════════════════════════
     // PATH B: Flat DB format (actual production format)
-    // {observations: [...], crop_stage: [...], ndvi_trend, soil_moisture_low, ...}
+    // Handles 200+ condition keys from decision_rules.conditions_json
     // ═══════════════════════════════════════════════════════════════════════
     const cond = conditions as any;
     let totalConditions = 0;
     let metConditions = 0;
     
-    // 1. Observations matching: check against primary_symptom and user_query
-    if (cond.observations && Array.isArray(cond.observations) && cond.observations.length > 0) {
-      totalConditions++;
-      const factSymptom = (facts.primary_symptom || '').toUpperCase();
-      const factQuery = (facts.user_query || '').toUpperCase();
-      const obsMatch = cond.observations.some((obs: string) => {
-        const upperObs = obs.toUpperCase();
-        return factSymptom.includes(upperObs) || upperObs.includes(factSymptom) ||
-               factQuery.includes(upperObs);
-      });
-      if (obsMatch) {
-        metConditions++;
-        matchedConditions.push('observations');
-      }
-    }
+    // Build a combined symptom/observation set for matching
+    const factSymptom = (facts.primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
+    const factQuery = (facts.user_query || '').toUpperCase();
+    const factStageUpper = (facts.growth_stage || '').toUpperCase();
     
-    // 2. Crop stage matching
-    if (cond.crop_stage) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // STAGE KEYS: crop_stage, stage, growth_stage (aliases)
+    // ═══════════════════════════════════════════════════════════════════════
+    const stageValue = cond.crop_stage || cond.stage || cond.growth_stage;
+    if (stageValue) {
       totalConditions++;
-      const stages = Array.isArray(cond.crop_stage) ? cond.crop_stage : [cond.crop_stage];
-      const factStage = (facts.growth_stage || '').toUpperCase();
+      const stages = Array.isArray(stageValue) ? stageValue : [stageValue];
       const stageMatch = stages.some((s: string) => {
-        const upper = s.toUpperCase();
-        return upper === factStage || upper === '*' || upper === 'ALL';
+        const upper = String(s).toUpperCase();
+        return upper === factStageUpper || upper === '*' || upper === 'ALL';
       });
       if (stageMatch) {
         metConditions++;
@@ -557,7 +563,29 @@ export class SymbolicReasoner {
       }
     }
     
-    // 3. NDVI level/trend matching
+    // ═══════════════════════════════════════════════════════════════════════
+    // OBSERVATION KEYS: observations, symptom, primary_symptom (aliases)
+    // ═══════════════════════════════════════════════════════════════════════
+    const obsValue = cond.observations || cond.symptom || cond.primary_symptom;
+    if (obsValue) {
+      totalConditions++;
+      const obsList = Array.isArray(obsValue) ? obsValue : [obsValue];
+      if (obsList.length > 0) {
+        const obsMatch = obsList.some((obs: string) => {
+          const upperObs = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+          return factSymptom.includes(upperObs) || upperObs.includes(factSymptom) ||
+                 factQuery.includes(upperObs);
+        });
+        if (obsMatch) {
+          metConditions++;
+          matchedConditions.push('observations');
+        }
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // NDVI KEYS
+    // ═══════════════════════════════════════════════════════════════════════
     if (cond.ndvi_level) {
       totalConditions++;
       if (facts.ndvi_status && cond.ndvi_level.toUpperCase() === facts.ndvi_status.toUpperCase()) {
@@ -565,7 +593,7 @@ export class SymbolicReasoner {
         matchedConditions.push('ndvi_level');
       }
     }
-    if (cond.ndvi_trend) {
+    if (cond.ndvi_trend && typeof cond.ndvi_trend === 'string') {
       totalConditions++;
       if (facts.ndvi_trend && cond.ndvi_trend.toUpperCase() === facts.ndvi_trend.toUpperCase()) {
         metConditions++;
@@ -573,7 +601,20 @@ export class SymbolicReasoner {
       }
     }
     
-    // 4. Boolean flag matching (soil_moisture_low, recent_rain, etc.)
+    // ═══════════════════════════════════════════════════════════════════════
+    // SEVERITY
+    // ═══════════════════════════════════════════════════════════════════════
+    if (cond.severity && typeof cond.severity === 'string') {
+      totalConditions++;
+      if (facts.severity && cond.severity.toUpperCase() === facts.severity.toUpperCase()) {
+        metConditions++;
+        matchedConditions.push('severity');
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // KNOWN BOOLEAN/THRESHOLD FLAGS (mapped to SymbolicFact)
+    // ═══════════════════════════════════════════════════════════════════════
     const BOOLEAN_FLAG_MAP: Record<string, (f: SymbolicFact) => boolean> = {
       'soil_moisture_low': (f) => f.soil_moisture_estimated === 'DRY',
       'soil_moisture_high': (f) => f.soil_moisture_estimated === 'WET',
@@ -596,24 +637,81 @@ export class SymbolicReasoner {
       }
     }
     
-    // 5. Severity matching
-    if (cond.severity) {
-      totalConditions++;
-      if (facts.severity && cond.severity.toUpperCase() === facts.severity.toUpperCase()) {
-        metConditions++;
-        matchedConditions.push('severity');
+    // ═══════════════════════════════════════════════════════════════════════
+    // BOOLEAN OBSERVATION FLAGS: keys like black_whip_like_structure, dead_heart,
+    // leaf_rolling, pest_present, etc. - matched against primary_symptom
+    // These are the 200+ domain-specific keys in conditions_json
+    // ═══════════════════════════════════════════════════════════════════════
+    const SKIP_KEYS = new Set([
+      'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
+      'ndvi_level', 'ndvi_trend', 'severity', 'trigger_keywords',
+      'all', 'any', 'fact', 'operator', 'value',
+      'crop_code', 'crop_type', // Already filtered at query level
+      ...Object.keys(BOOLEAN_FLAG_MAP),
+    ]);
+    
+    for (const key of Object.keys(cond)) {
+      if (SKIP_KEYS.has(key)) continue;
+      
+      const val = cond[key];
+      
+      // Skip complex object/array conditions we can't evaluate (etl thresholds, etc.)
+      // These are contextual constraints we don't have data for - DON'T reject the rule
+      if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+        continue; // Gracefully skip, don't count as failed condition
+      }
+      if (Array.isArray(val)) {
+        continue; // Skip unknown array conditions gracefully
+      }
+      
+      // Boolean flags: {dead_heart: true, black_whip_like_structure: true}
+      // Match if the key (as uppercase symbol) matches the primary symptom
+      if (val === true || val === 'true') {
+        totalConditions++;
+        const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+        if (factSymptom === keySymbol || factSymptom.includes(keySymbol) || 
+            keySymbol.includes(factSymptom) || factQuery.includes(keySymbol)) {
+          metConditions++;
+          matchedConditions.push(key);
+        }
+        continue;
+      }
+      
+      // String value conditions: {pest: "termite", disease: "smut"}
+      // Match if the value appears in symptom or query
+      if (typeof val === 'string') {
+        totalConditions++;
+        const valUpper = val.toUpperCase().replace(/[\s-]/g, '_');
+        if (factSymptom.includes(valUpper) || valUpper.includes(factSymptom) ||
+            factQuery.includes(valUpper)) {
+          metConditions++;
+          matchedConditions.push(key);
+        }
+        continue;
+      }
+      
+      // false boolean: {etl_exceeded: false, no_match: false}
+      if (val === false || val === 'false') {
+        // These are negative conditions - skip gracefully, don't penalize
+        continue;
+      }
+      
+      // Numeric conditions - skip gracefully for now
+      if (typeof val === 'number') {
+        continue;
       }
     }
     
-    // Skip trigger_keywords (deprecated per SSOT)
-    // If we reach here with only trigger_keywords and no other flat keys, treat as no-op
+    // ═══════════════════════════════════════════════════════════════════════
+    // SCORING
+    // ═══════════════════════════════════════════════════════════════════════
     if (totalConditions === 0) {
-      // Check if this is a trigger_keywords-only rule
       const keys = Object.keys(cond).filter(k => k !== 'trigger_keywords');
       if (keys.length === 0) {
-        return { matches: true, confidence: 0.5, reason: 'No symbolic conditions (trigger_keywords-only)', matched_conditions: [] };
+        return { matches: true, confidence: 0.5, reason: 'No symbolic conditions', matched_conditions: [] };
       }
-      return { matches: true, confidence: 0.5, reason: 'No recognized conditions', matched_conditions: [] };
+      // All conditions were skipped (complex objects only) - allow with low confidence
+      return { matches: true, confidence: 0.4, reason: 'Only contextual constraints (skipped)', matched_conditions: [] };
     }
     
     const score = metConditions / totalConditions;

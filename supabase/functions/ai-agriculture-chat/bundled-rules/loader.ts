@@ -445,61 +445,92 @@ export function evaluateConditionsJson(
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CRITICAL FIX: Handle UNKNOWN KEYS in conditions_json
-  // If the object has keys we don't recognize, do NOT default to match=true
-  // This prevents wrong rules from firing due to unrecognized condition formats
+  // Instead of rejecting on unknown keys, gracefully skip complex/contextual
+  // conditions we can't evaluate, and match boolean/string observation flags
+  // against user symptoms/query
   // ═══════════════════════════════════════════════════════════════════════════
   const RECOGNIZED_KEYS = new Set([
-    'crop_stage', 'observations', 'trigger_keywords',
-    'all', 'any', 'fact', 'operator', 'value'
+    'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
+    'trigger_keywords', 'all', 'any', 'fact', 'operator', 'value',
+    'crop_code', 'crop_type'
   ]);
   
   const conditionKeys = Object.keys(conditions);
-  const hasUnrecognizedKeys = conditionKeys.some(key => !RECOGNIZED_KEYS.has(key));
+  const inputSymptom = ((input as any).primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
+  const inputQuery = ((input as any).user_query || (input as any).query || '').toUpperCase();
   
-  if (hasUnrecognizedKeys && !hasAnyCondition) {
-    // Unknown keys like { soil_fe_ppm: "<4.5" } - try to evaluate as comparators
-    for (const key of conditionKeys) {
-      if (RECOGNIZED_KEYS.has(key)) continue;
+  // Handle stage aliases (stage, growth_stage -> crop_stage)
+  const stageAlias = conditions.stage || conditions.growth_stage;
+  if (stageAlias && !conditions.crop_stage) {
+    const stageArr = Array.isArray(stageAlias) ? stageAlias : [stageAlias];
+    const inputStage = (input.crop_stage || '').toUpperCase();
+    hasAnyCondition = true;
+    const stageMatch = stageArr.some((s: any) => {
+      const upper = String(s).toUpperCase();
+      return upper === inputStage || upper === '*' || upper === 'ALL';
+    });
+    if (!stageMatch && inputStage) allMatch = false;
+  }
+  
+  // Handle symptom alias -> observations
+  const symptomAlias = conditions.symptom || conditions.primary_symptom;
+  if (symptomAlias && !conditions.observations) {
+    const symArr = Array.isArray(symptomAlias) ? symptomAlias : [symptomAlias];
+    hasAnyCondition = true;
+    const symMatch = symArr.some((s: any) => {
+      const upper = String(s).toUpperCase().replace(/[\s-]/g, '_');
+      return inputSymptom.includes(upper) || upper.includes(inputSymptom) || inputQuery.includes(upper);
+    });
+    if (!symMatch) allMatch = false;
+  }
+  
+  // Process remaining unknown keys
+  for (const key of conditionKeys) {
+    if (RECOGNIZED_KEYS.has(key)) continue;
+    
+    const condValue = conditions[key];
+    
+    // Skip complex object/array conditions gracefully (etl thresholds, weather objects, etc.)
+    if (condValue !== null && typeof condValue === 'object') continue;
+    
+    // Boolean observation flags: {dead_heart: true, black_whip_like_structure: true}
+    if (condValue === true || condValue === 'true') {
+      hasAnyCondition = true;
+      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      if (!(inputSymptom === keySymbol || inputSymptom.includes(keySymbol) || 
+            keySymbol.includes(inputSymptom) || inputQuery.includes(keySymbol))) {
+        allMatch = false;
+      }
+      continue;
+    }
+    
+    // String value conditions: {pest: "termite", disease: "smut"}
+    if (typeof condValue === 'string') {
+      // Try numeric comparator first
+      const inputValue = (input as any)[key];
+      const numericInput = typeof inputValue === 'number' ? inputValue : parseFloat(String(inputValue));
       
-      const condValue = conditions[key];
-      const inputValue = input[key as keyof DecisionInput];
-      
-      // Handle string comparator values like "<4.5", ">=10", "between: 4-7"
-      if (typeof condValue === 'string') {
-        const numericInput = typeof inputValue === 'number' ? inputValue : parseFloat(String(inputValue));
-        
-        if (!isNaN(numericInput)) {
-          // Try to parse comparator: "<4.5", "<=10", ">34", ">=5"
-          const ltMatch = condValue.match(/^<\s*(\d+\.?\d*)$/);
-          const lteMatch = condValue.match(/^<=\s*(\d+\.?\d*)$/);
-          const gtMatch = condValue.match(/^>\s*(\d+\.?\d*)$/);
-          const gteMatch = condValue.match(/^>=\s*(\d+\.?\d*)$/);
-          const betweenMatch = condValue.match(/^between:\s*(\d+\.?\d*)\s*-\s*(\d+\.?\d*)$/i);
-          
-          if (ltMatch && !(numericInput < parseFloat(ltMatch[1]))) return false;
-          if (lteMatch && !(numericInput <= parseFloat(lteMatch[1]))) return false;
-          if (gtMatch && !(numericInput > parseFloat(gtMatch[1]))) return false;
-          if (gteMatch && !(numericInput >= parseFloat(gteMatch[1]))) return false;
-          if (betweenMatch) {
-            const min = parseFloat(betweenMatch[1]);
-            const max = parseFloat(betweenMatch[2]);
-            if (!(numericInput >= min && numericInput <= max)) return false;
-          }
-          
-          // If we matched a comparator but input value was undefined, return false
-          if (inputValue === undefined || inputValue === null) {
-            console.log(`   ⚠️ [ConditionsJson] Unknown key "${key}" requires value, but input is missing → no match`);
-            return false;
-          }
-          
-          hasAnyCondition = true;
-          continue;
-        }
+      if (!isNaN(numericInput) && inputValue !== undefined) {
+        const ltMatch = condValue.match(/^<\s*(\d+\.?\d*)$/);
+        const gteMatch = condValue.match(/^>=\s*(\d+\.?\d*)$/);
+        if (ltMatch && !(numericInput < parseFloat(ltMatch[1]))) { allMatch = false; hasAnyCondition = true; continue; }
+        if (gteMatch && !(numericInput >= parseFloat(gteMatch[1]))) { allMatch = false; hasAnyCondition = true; continue; }
+        hasAnyCondition = true;
+        continue;
       }
       
-      // If we can't evaluate the unknown key, return false (fail-safe)
-      console.log(`   ⚠️ [ConditionsJson] Unrecognized condition key "${key}" with unevaluable value → no match`);
-      return false;
+      // Match string value against symptom/query
+      hasAnyCondition = true;
+      const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+      if (!(inputSymptom.includes(valUpper) || valUpper.includes(inputSymptom) || inputQuery.includes(valUpper))) {
+        allMatch = false;
+      }
+      continue;
+    }
+    
+    // false booleans, numbers - skip gracefully
+    if (condValue === false || condValue === 'false' || typeof condValue === 'number') {
+      continue;
     }
   }
   
