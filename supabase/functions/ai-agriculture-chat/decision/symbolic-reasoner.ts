@@ -20,6 +20,17 @@ import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// NUTRITION CONFLICT ARBITRATION
+// ═══════════════════════════════════════════════════════════════════════════
+import {
+  passesZincSpecificityGate,
+  checkWaterStressDominance,
+  checkMacronutrientDominance,
+  auditNutritionRuleSpecificity,
+  type DominanceBlockResult,
+} from './nutrition-conflict-arbitrator.ts';
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -247,6 +258,48 @@ export class SymbolicReasoner {
         if (facts.has_pest_evidence && rule.category?.toLowerCase() === 'nutrition') {
           console.log(`   🚫 [PestExclusion] Skipping nutrition rule ${rule.rule_id} - pest evidence present`);
           continue;
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // NUTRITION CONFLICT ARBITRATION: Water stress & macro dominance gates
+        // ═══════════════════════════════════════════════════════════════════════
+        const ruleCategory = rule.category?.toLowerCase() || '';
+        const isNutritionRule = ruleCategory.includes('nutrition') || ruleCategory.includes('deficiency');
+        
+        if (isNutritionRule) {
+          // Water stress dominance: blocks ALL urgent nutrient treatments
+          const waterBlock = checkWaterStressDominance(
+            facts.all_observations || [],
+            rule.action_type || '',
+            rule.category || ''
+          );
+          if (waterBlock.blocked) {
+            console.log(`   🚫 [WaterStressDominance] ${rule.rule_id} blocked: ${waterBlock.reason}`);
+            continue;
+          }
+          
+          // Macronutrient dominance: N confirmed blocks micro urgent without soil evidence
+          const macroBlock = checkMacronutrientDominance(
+            facts.all_observations || [],
+            rule.rule_id,
+            rule.cause || '',
+            { soil_zn_deficient: facts.soil_n_status === 'DEFICIENT' ? undefined : undefined }
+          );
+          if (macroBlock.blocked) {
+            console.log(`   🚫 [MacroDominance] ${rule.rule_id} blocked: ${macroBlock.reason}`);
+            continue;
+          }
+          
+          // Zinc specificity gate: requires zinc-specific marker or soil evidence
+          const zincGate = passesZincSpecificityGate(
+            rule.rule_id,
+            [],
+            { all_observations: facts.all_observations }
+          );
+          if (!zincGate.passes) {
+            console.log(`   🚫 [ZincGate] ${rule.rule_id} blocked: ${zincGate.reason}`);
+            continue;
+          }
         }
         
         // SSOT: Evaluate conditions_json ONLY - no keyword fallback

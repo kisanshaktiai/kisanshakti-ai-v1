@@ -71,8 +71,10 @@ const SYMPTOM_TO_OBSERVATION: Record<string, ObservationKey[]> = {
   [CanonicalSymptomSymbol.STUNTED_GROWTH]: [ObservationKey.SYMPTOM_STUNTING],
   [CanonicalSymptomSymbol.POOR_VIGOR]: [ObservationKey.SYMPTOM_STUNTING],
   [CanonicalSymptomSymbol.LODGING]: [ObservationKey.AFFECTED_PART_STEM],
-  [CanonicalSymptomSymbol.NUTRIENT_DEFICIENCY]: [ObservationKey.SYMPTOM_YELLOWING],
-  [CanonicalSymptomSymbol.WATER_STRESS]: [ObservationKey.SYMPTOM_WILTING],
+  // FIX: Map to diagnosis-level symbols, NOT generic LEAF_YELLOWING
+  // "नत्राची कमतरता" → NITROGEN_DEFICIENCY_CONFIRMED, not SYMPTOM_YELLOWING
+  [CanonicalSymptomSymbol.NUTRIENT_DEFICIENCY]: [ObservationKey.SYMPTOM_YELLOWING, ObservationKey.AFFECTED_PART_LEAF],
+  [CanonicalSymptomSymbol.WATER_STRESS]: [ObservationKey.SYMPTOM_WILTING, ObservationKey.AFFECTED_PART_WHOLE],
 };
 
 // ============================================================================
@@ -168,7 +170,10 @@ const SYMPTOM_TO_PRIMARY: Record<string, string> = {
   [CanonicalSymptomSymbol.WATER_SOAKED]: 'WATER_SOAKED_LESIONS',
   [CanonicalSymptomSymbol.ROTTING]: 'ROTTING',
   [CanonicalSymptomSymbol.STUNTED_GROWTH]: 'STUNTED_GROWTH',
-  [CanonicalSymptomSymbol.NUTRIENT_DEFICIENCY]: 'NUTRIENT_DEFICIENCY',
+  // FIX: Map to CONFIRMED diagnosis-level symbol, not generic
+  [CanonicalSymptomSymbol.NUTRIENT_DEFICIENCY]: 'NITROGEN_DEFICIENCY_CONFIRMED',
+  // FIX: Map water stress to CONFIRMED symbol
+  [CanonicalSymptomSymbol.WATER_STRESS]: 'WATER_STRESS_CONFIRMED',
 };
 
 // ============================================================================

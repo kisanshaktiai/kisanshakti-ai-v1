@@ -388,12 +388,13 @@ function generateClarificationOptions(
   }
   
   // Water vs Nutrient ambiguity
+  // FIX: Map to diagnosis-level canonical symbols, NOT generic LEAF_YELLOWING
   if (categories.includes(DiagnosisCategory.WATER_STRESS) && categories.includes(DiagnosisCategory.NUTRIENT_DEFICIENCY)) {
     return [
-      'माती कोरडी आहे',
-      'माती ओली/पाणी साचले आहे',
-      'काही ठिकाणी पिवळे, काही ठिकाणी हिरवे',
-      'सर्व पिवळे पडत आहे'
+      'माती कोरडी आहे',              // → WATER_STRESS_CONFIRMED
+      'माती ओली/पाणी साचले आहे',    // → FIELD_WATERLOGGED
+      'नत्राची कमतरता दिसते',         // → NITROGEN_DEFICIENCY_CONFIRMED
+      'जस्ताची कमतरता दिसते'          // → ZINC_DEFICIENCY_CONFIRMED
     ];
   }
   

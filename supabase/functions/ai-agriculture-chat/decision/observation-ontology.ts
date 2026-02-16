@@ -339,7 +339,18 @@ export enum ObservationKey {
   RESPONSE_STUNTED = 'RESPONSE_STUNTED',
   
   // Severity Keys
-  SEVERITY_CRITICAL = 'SEVERITY_CRITICAL'
+  SEVERITY_CRITICAL = 'SEVERITY_CRITICAL',
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // O. DIAGNOSIS-LEVEL CONFIRMED SYMBOLS
+  // Used for conflict arbitration - maps from clarification selections
+  // ═══════════════════════════════════════════════════════════════════════════
+  NITROGEN_DEFICIENCY_CONFIRMED = 'NITROGEN_DEFICIENCY_CONFIRMED',
+  PHOSPHORUS_DEFICIENCY_CONFIRMED = 'PHOSPHORUS_DEFICIENCY_CONFIRMED',
+  POTASSIUM_DEFICIENCY_CONFIRMED = 'POTASSIUM_DEFICIENCY_CONFIRMED',
+  ZINC_DEFICIENCY_CONFIRMED = 'ZINC_DEFICIENCY_CONFIRMED',
+  IRON_DEFICIENCY_CONFIRMED = 'IRON_DEFICIENCY_CONFIRMED',
+  WATER_STRESS_CONFIRMED = 'WATER_STRESS_CONFIRMED',
 }
 
 /**
