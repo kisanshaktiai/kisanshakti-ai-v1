@@ -136,6 +136,18 @@ function getGroupIcon(canonicalGroup: string): string {
  */
 function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string {
   const translated = translateCause(cause, language);
+  
+  // CRITICAL FIX: Detect if translation is still English for non-English language
+  // This breaks the circular fallback: isUntranslated → getCauseLabelFromDB → translateCause → same English
+  if (language !== 'en' && translated) {
+    const hasDevanagari = /[\u0900-\u097F]/.test(translated);
+    if (!hasDevanagari) {
+      // Translation failed - return empty so caller uses observation_label instead
+      console.warn(`   ⚠️ [getCauseLabelDB] No ${language} translation for "${cause}" - will use observation label`);
+      return '';
+    }
+  }
+  
   console.log(`   [getCauseLabelDB] "${cause}" → "${translated}" (${language})`);
   return translated;
 }
