@@ -453,8 +453,11 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════════════
     const detectedLanguage = detectLanguage(userMessageContent, language);
     
-    // Normalize content to English for NLU processing (preprocessed_content)
-    const preprocessedContent = normalizeToEnglish(userMessageContent);
+    // BUG-4 FIX: DEPRECATED - normalizeToEnglish only had ~23 hardcoded mappings,
+    // creating half-translated hybrid strings. LLM Semantic Extractor (Stage 1.5) 
+    // handles all languages natively. Pass original text for DB logging/training.
+    // const preprocessedContent = normalizeToEnglish(userMessageContent);
+    const preprocessedContent = userMessageContent;
     
     console.log(`🌐 [${traceId}] Language Pipeline:`, {
       raw_input_language: detectedLanguage,
