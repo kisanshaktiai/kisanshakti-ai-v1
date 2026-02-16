@@ -2214,6 +2214,93 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX: ROUTER ENTITY FALLBACK
+      // When LLM returns 429 or UNKNOWN_OBSERVATION, use the query router's
+      // detected_entities (pest, symptom, crop) as fallback symptoms.
+      // The router uses deterministic regex and ALWAYS runs successfully.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const routerEntities = queryRoute?.detected_entities;
+      const llmFailed = intentCode === 'UNKNOWN_OBSERVATION' || intentCode === 'UNKNOWN' || intentConf < 0.1;
+      const routerHasEntities = routerEntities && (routerEntities.pest || routerEntities.symptom || routerEntities.crop);
+      
+      if (llmFailed && routerHasEntities && inductionResult.symptoms.length === 0) {
+        console.log(`\n🔄 [ROUTER_FALLBACK] LLM failed (${intentCode}/${(intentConf * 100).toFixed(0)}%) - injecting router entities as symptoms`);
+        
+        // Map router entity names to canonical symptom symbols
+        const routerSymbolMap: Record<string, string> = {
+          'SHOOT_BORER': 'INSECTS_VISIBLE',
+          'STEM_BORER': 'INSECTS_VISIBLE',
+          'DEAD_HEART': 'DEAD_HEART',
+          'LEAF_CURL': 'LEAF_CURLING',
+          'LEAF_SPOT': 'LEAF_SPOTS',
+          'YELLOWING': 'LEAF_YELLOWING',
+          'WILTING': 'LEAF_WILTING',
+          'WHITEFLY': 'INSECTS_VISIBLE',
+          'APHID': 'INSECTS_VISIBLE',
+          'MEALYBUG': 'INSECTS_VISIBLE',
+          'RUST': 'LEAF_SPOTS',
+          'SMUT': 'BLACK_WHIP_STRUCTURE',
+          'RED_ROT': 'STEM_DISCOLORATION',
+          'WILT': 'LEAF_WILTING',
+          'BLIGHT': 'LEAF_SPOTS',
+          'MOSAIC': 'LEAF_DISCOLORATION',
+          'GRASSY_SHOOT': 'ABNORMAL_GROWTH',
+          'POKKAH_BOENG': 'LEAF_CURLING',
+          'TOP_BORER': 'DEAD_HEART',
+          'INTERNODE_BORER': 'STEM_DAMAGE',
+          'MITE': 'LEAF_DISCOLORATION',
+          'TERMITE': 'ROOT_DAMAGE',
+          'WHITE_GRUB': 'ROOT_DAMAGE',
+          'DROUGHT_STRESS': 'LEAF_WILTING',
+          'NUTRIENT_DEFICIENCY': 'LEAF_YELLOWING',
+        };
+        
+        // Inject pest entity as symptom
+        if (routerEntities.pest) {
+          const mappedSymbol = routerSymbolMap[routerEntities.pest] || routerEntities.pest;
+          if (!inductionResult.symptoms.find(s => s.symbol === mappedSymbol)) {
+            inductionResult.symptoms.push({
+              symbol: mappedSymbol,
+              confidence: queryRoute.confidence,
+              source: 'QUERY_ROUTER_FALLBACK'
+            });
+            inductionResult.total_symbols_extracted++;
+            console.log(`   📋 Injected pest→symptom: ${routerEntities.pest} → ${mappedSymbol}`);
+          }
+        }
+        
+        // Inject symptom entity directly
+        if (routerEntities.symptom) {
+          const mappedSymbol = routerSymbolMap[routerEntities.symptom] || routerEntities.symptom;
+          if (!inductionResult.symptoms.find(s => s.symbol === mappedSymbol)) {
+            inductionResult.symptoms.push({
+              symbol: mappedSymbol,
+              confidence: queryRoute.confidence,
+              source: 'QUERY_ROUTER_FALLBACK'
+            });
+            inductionResult.total_symbols_extracted++;
+            console.log(`   📋 Injected symptom: ${routerEntities.symptom} → ${mappedSymbol}`);
+          }
+        }
+        
+        // Inject crop if not already present
+        if (routerEntities.crop && !inductionResult.crop) {
+          inductionResult.crop = {
+            symbol: routerEntities.crop,
+            confidence: queryRoute.confidence,
+            source: 'QUERY_ROUTER_FALLBACK'
+          };
+          console.log(`   📋 Injected crop: ${routerEntities.crop}`);
+        }
+        
+        // Recalculate coverage
+        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8);
+        inductionResult.aggregated_confidence = Math.max(inductionResult.aggregated_confidence, queryRoute.confidence);
+        
+        console.log(`   ✅ POST-ROUTER-FALLBACK: ${inductionResult.symptoms.length} symptoms, coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE INDUCTION GATE: Determine if symbolic brain should run
       // Based on symbol_coverage and aggregated_confidence, NOT intent confidence
       // ═══════════════════════════════════════════════════════════════════════════
@@ -2222,18 +2309,27 @@ export class AIAgentOrchestrator {
       
       // ═══════════════════════════════════════════════════════════════════════════
       // FIX: HARD BLOCK SYMBOLIC BRAIN WHEN ZERO SYMPTOMS EXTRACTED
-      // A crop symbol alone (e.g., SUGARCANE) is NOT sufficient to run rule engine
-      // SSOT PRINCIPLE: Must have at least 1 symptom for meaningful rule matching
+      // A crop symbol alone (e.g., SUGARCANE) is NOT sufficient for PEST/DISEASE rules
+      // BUT: Irrigation, crop health, and weather queries DON'T need symptoms
       // ═══════════════════════════════════════════════════════════════════════════
       const hasSymptoms = inductionResult.symptoms.length > 0;
-      const shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && hasSymptoms;
       
-      if (!hasSymptoms && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
+      // Routes that can run symbolic brain WITHOUT symptoms (they use crop/stage/NDVI rules)
+      const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'GENERAL_INFO', 'GREETING'];
+      const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
+      
+      const shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute);
+      
+      if (!hasSymptoms && !isSymptomFreeRoute && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
         console.log(`\n⚠️ [INDUCTION_GATE] Blocking symbolic brain: coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}% but symptoms=0`);
         console.log(`   → Crop detected: ${inductionResult.crop?.symbol || 'NONE'}`);
         console.log(`   → Total symbols: ${inductionResult.total_symbols_extracted} (but none are symptoms)`);
+        console.log(`   → Route: ${queryRoute.route} (requires symptoms)`);
         console.log(`   → Forcing CLARIFICATION path instead of empty rule matching`);
         agentsUsed.push('SYMPTOM_GATE_BLOCKED');
+      } else if (isSymptomFreeRoute && !hasSymptoms) {
+        console.log(`\n✅ [INDUCTION_GATE] Allowing symbolic brain for ${queryRoute.route} route WITHOUT symptoms (uses crop/stage/NDVI rules)`);
+        agentsUsed.push('SYMPTOM_FREE_ROUTE');
       }
       
       console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
@@ -3540,7 +3636,8 @@ export class AIAgentOrchestrator {
         inductionResult.symbol_coverage < 0.25 && 
         inductionResult.aggregated_confidence < 0.5 && 
         inductionResult.symptoms.length === 0 &&
-        !bypassClarification
+        !bypassClarification &&
+        !isSymptomFreeRoute  // Irrigation/crop health/weather queries don't need symptoms
       );
       
       // Also consider legacy intent-confidence for backward compatibility
@@ -3581,8 +3678,11 @@ export class AIAgentOrchestrator {
       );
       
       // Use PHASE-20 trigger as primary, legacy as fallback
-      const shouldPrepareClarification = (clarificationTrigger.should_clarify && !clarificationTrigger.bypass_allowed) || 
-        (inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass));
+      // CRITICAL FIX: Symptom-free routes (irrigation, crop health, etc.) MUST NOT be blocked by clarification
+      const shouldPrepareClarification = !isSymptomFreeRoute && (
+        (clarificationTrigger.should_clarify && !clarificationTrigger.bypass_allowed) || 
+        (inductionNeedsClarification || (legacyNeedsClarification && !inductionBasedBypass))
+      );
       
       if (shouldPrepareClarification && !bypassClarification) {
         console.log(`   ⚠️ PHASE-20: Clarification triggered (${clarificationTrigger.reason}) - PREPARING clarification (deferred)`);

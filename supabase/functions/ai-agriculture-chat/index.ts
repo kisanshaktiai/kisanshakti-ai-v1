@@ -400,12 +400,23 @@ serve(async (req) => {
           }
         }
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Auto-reset stuck session state
+        // If decision_state is 'awaiting_clarification' but no pending options exist,
+        // the session is STUCK from a previous turn. Reset to 'idle' to unblock.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const pendingCount = sessionState?.pending_clarification_options?.length || 0;
+        if (sessionState?.decision_state === 'awaiting_clarification' && pendingCount === 0) {
+          console.log(`🔓 [Session] AUTO-RESET: decision_state was 'awaiting_clarification' with 0 pending options → resetting to 'idle'`);
+          sessionState.decision_state = 'idle';
+        }
+        
         console.log(`📋 [Session] State loaded (P0-A validated, land=${requestedLandId}, isGeneral=${isGeneralSession}):`, {
           decision_state: sessionState?.decision_state,
           last_pest: sessionState?.last_pest,
           last_crop: sessionState?.last_crop,
           pending_action: sessionState?.pending_user_action,
-          pending_options: sessionState?.pending_clarification_options?.length || 0,
+          pending_options: pendingCount,
           turn: sessionState?.turn_count
         });
       }
