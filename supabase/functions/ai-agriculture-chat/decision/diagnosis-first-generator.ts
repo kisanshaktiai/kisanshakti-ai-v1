@@ -397,10 +397,14 @@ export async function generateDiagnosisFirstResponse(
         observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       }
       
+      // CRITICAL FIX: If causeLabel is empty (no regional translation found),
+      // use observationLabel as the display label so farmer never sees raw English keys
+      const finalCauseLabel = causeLabel || observationLabel || h.cause;
+      
       return {
         id: `diag_${idx}_${h.rule_id}`,
         cause: h.cause,  // Keep English for backend logic
-        cause_label: causeLabel,  // Regional translation for display
+        cause_label: finalCauseLabel,  // Regional translation for display (falls back to observation label)
         canonical_group: h.canonical_group,
         observation_key: observationKey,  // Keep English for backend logic
         observation_label: observationLabel,  // Regional translation for display
