@@ -134,7 +134,17 @@ export function getTranslation(
   // Check cache first
   if (translationCache?.translations.has(normalizedKey)) {
     const translation = translationCache.translations.get(normalizedKey)!;
-    return translation[language] || translation.en || normalizedKey;
+    const value = translation[language];
+    // CRITICAL FIX: Don't return English placeholder text for non-English languages
+    // The cache stores English action_text as placeholder for mr/hi - detect and skip
+    if (value && language === 'en') {
+      return value;
+    }
+    if (value && language !== 'en' && value !== translation.en) {
+      // Genuine translation exists (different from English) - use it
+      return value;
+    }
+    // For non-English where value equals English (placeholder), fall through to fallbacks
   }
   
   // Check fallback translations
