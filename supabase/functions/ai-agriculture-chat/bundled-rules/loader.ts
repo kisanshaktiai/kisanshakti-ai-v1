@@ -485,17 +485,25 @@ export function evaluateConditionsJson(
   }
   
   // Process remaining unknown keys
+  // Fix 2: Track skipped (unevaluable) conditions to prevent false matches
+  let skippedObjectConditions = 0;
+  let evaluatedUnknownConditions = 0;
+  
   for (const key of conditionKeys) {
     if (RECOGNIZED_KEYS.has(key)) continue;
     
     const condValue = conditions[key];
     
-    // Skip complex object/array conditions gracefully (etl thresholds, weather objects, etc.)
-    if (condValue !== null && typeof condValue === 'object') continue;
+    // Track complex object/array conditions as unevaluable instead of silently skipping
+    if (condValue !== null && typeof condValue === 'object') {
+      skippedObjectConditions++;
+      continue;
+    }
     
     // Boolean observation flags: {dead_heart: true, black_whip_like_structure: true}
     if (condValue === true || condValue === 'true') {
       hasAnyCondition = true;
+      evaluatedUnknownConditions++;
       const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
       if (!(inputSymptom === keySymbol || inputSymptom.includes(keySymbol) || 
             keySymbol.includes(inputSymptom) || inputQuery.includes(keySymbol))) {
@@ -506,6 +514,7 @@ export function evaluateConditionsJson(
     
     // String value conditions: {pest: "termite", disease: "smut"}
     if (typeof condValue === 'string') {
+      evaluatedUnknownConditions++;
       // Try numeric comparator first
       const inputValue = (input as any)[key];
       const numericInput = typeof inputValue === 'number' ? inputValue : parseFloat(String(inputValue));
@@ -532,6 +541,16 @@ export function evaluateConditionsJson(
     if (condValue === false || condValue === 'false' || typeof condValue === 'number') {
       continue;
     }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Fix 2: FAIL-CLOSED for rules with ONLY unevaluable conditions
+  // If ALL non-recognized conditions were complex objects (soil thresholds, 
+  // weather maps, ETL objects) and NO conditions were actually evaluated,
+  // the rule should NOT match — we lack the data to validate it.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (skippedObjectConditions > 0 && evaluatedUnknownConditions === 0 && !hasAnyCondition) {
+    return false; // Cannot evaluate = do not match
   }
   
   // If no specific conditions were defined (truly empty object), match by default
