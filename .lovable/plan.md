@@ -1,219 +1,211 @@
 
-# Critical Bug Fix Plan: Agronomically Accurate Symbolic Decision Brain
+# Critical Bug Audit Report: Data Flow Verification
 
-## Problems Found (4 Critical, 1 Major)
+## Summary
 
----
-
-## Critical Bug 1: `product_name` Placeholder Causes Validation Failure
-
-**Location:** `llm-response-formatter.ts` lines 538-548, `orchestrator.ts` lines 1762, 1799, `index.ts` lines 610, 648
-
-**Root Cause:** The orchestrator sets `product_name` to placeholder strings like `'See action text'`, `'See structured response'`, `'See concentration'`. The LLM output validator then checks if these strings appear in the LLM's response. Since they are NOT in the `GENERIC_ACTION_TYPES` allowlist, the validator treats them as real product names, fails, and falls back to a generic template -- producing agronomically useless advice.
-
-**Evidence:** Log pattern: `"Missing product from symbolic decision: See action text"` triggers `"Using template fallback to prevent spreading incorrect advice."`
-
-**Fix:** Add these placeholder strings to `GENERIC_ACTION_TYPES` in `llm-response-formatter.ts`:
-```
-'see action text', 'see structured response', 'see concentration',
-'not specified', 'n/a', 'as per label', 'follow label', 'continue monitoring'
-```
+After deep analysis of the database schema, edge function code, live data, and runtime logs, I found **3 critical bugs** that break the symbolic decision brain's data pipeline, plus **1 major routing bug** that prevents proper query classification.
 
 ---
 
-## Critical Bug 2: No Land-Area-Based Dosage Calculation
+## CRITICAL BUG 1: `authoritative-state-loader.ts` Queries Non-Existent Columns/Tables
 
-**Location:** `llm-response-formatter.ts` lines 986-997
+**Severity:** P0 - Complete data loading failure
 
-**Root Cause:** When the decision brain recommends a treatment, it passes `dosage_per_acre` from the rule (e.g., "2ml/L water"). The LLM formatter outputs this raw value. But it NEVER multiplies by `area_acres` to give the farmer total quantity needed for their specific land.
+The `authoritative-state-loader.ts` (the SSOT module) queries columns and tables that DO NOT EXIST in the database. Every query silently fails, returning null/empty data.
 
-A farmer with 5 acres gets "2ml/L, 200L water/acre" but does NOT get "Total: 10ml product in 1000L water for your 5 acres." This is a critical agronomic gap -- farmers need exact total quantities.
+### Column/Table Mismatches Found:
 
-**Fix:** In `buildRecommendationSummary()`, when treatment details are output and `input.land_context.area_acres` is available:
-- Calculate `total_dosage = dosage_per_acre * area_acres`
-- Calculate `total_water = water_volume_per_acre * area_acres`
-- Add a line: `"- TOTAL FOR YOUR LAND ({area} acres): {total_dosage} product in {total_water} water"`
-- Also instruct the LLM: `"IMPORTANT: Calculate and show TOTAL quantities for the farmer's {area} acre land."`
+| Code Queries | Actual DB Column/Table | Impact |
+|---|---|---|
+| `lands.area_hectares` | `lands.area_acres` | Area = 0, dosage calculations broken |
+| `lands.latitude` | `lands.center_lat` | No weather lookup possible |
+| `lands.longitude` | `lands.center_lon` | No weather lookup possible |
+| `ndvi_readings` (table) | `ndvi_data` (table) | NDVI always null |
+| `ndvi_readings.observation_date` | `ndvi_data.date` | NDVI date wrong |
+| `weather_data` (table) | Does not exist | Weather always null |
+| `crop_schedules.crop_code` | Does not exist | Crop code always null |
+| `crop_schedules.current_stage` | Does not exist | Stage always null |
+| `soil_health.soil_texture` | `soil_health.texture` | Soil texture null |
 
----
+**Result:** The authoritative state loader returns empty/zeroed data for ALL signals (NDVI, weather, soil texture, area, coordinates), making the derived interpretations meaningless.
 
-## Critical Bug 3: Raw Language Observations Mixed with Canonical Symbols
-
-**Location:** `orchestrator.ts` lines 2527-2553
-
-**Root Cause:** `allObservationsForPreAuth` collects symbols from 3 sources without filtering:
-1. `observationKeys` -- proper canonical codes (e.g., `DEAD_HEART_PRESENT`)
-2. `mappedCodes.observation_codes` -- proper canonical codes
-3. `inductionResult.symptoms` -- contains BOTH canonical codes AND raw Marathi/Hindi text (e.g., `"मधली सुरळी वाळली"`)
-
-Raw language strings flow into the rule engine and hypothesis evaluator, where they cannot match any rules, dilute confidence scores, and leak into clarification UI as mixed-language labels.
-
-**Fix:** Add a canonical code filter before populating `allObservationsForPreAuth`:
-```typescript
-function isCanonicalCode(s: string): boolean {
-  return /^[A-Z][A-Z0-9_]+$/.test(s);
-}
-```
-Only add entries passing `isCanonicalCode()`. Raw observations should be logged but excluded from rule evaluation.
-
----
-
-## Critical Bug 4: `normalizeToEnglish()` Creates Half-Translated Strings
-
-**Location:** `index.ts` lines 1530-1565
-
-**Root Cause:** This function has only ~23 hardcoded term mappings. It replaces some Marathi/Hindi words with English equivalents while leaving the rest unchanged, creating hybrid strings like:
-```
-"sugarcane च्या shoot borer ने पान खाल्ली"
-```
-This half-translated output is stored in `preprocessed_content` but NOT passed to the orchestrator (the orchestrator receives original `userMessageContent`). So it serves no functional purpose for the decision brain, only confusing debug logs.
-
-The LLM Semantic Extractor (Stage 1.5) already handles any-language-to-English extraction properly.
-
-**Fix:** 
-- Stop calling `normalizeToEnglish()` in the main path (line 457)
-- Or rename to `_legacyNormalizeHint()` and keep only for DB logging
-- The orchestrator already receives `userMessageContent` (original) which flows correctly to the LLM semantic extractor
-
----
-
-## Major Bug 5: LLM Translation Not Enforced
-
-**Location:** `llm-response-formatter.ts` lines 704-786
-
-**Root Cause:** The system prompt says "TRANSLATE TO Marathi" but there is no post-LLM check that the response is actually in the target language. The LLM frequently copies English `action_text` / `reason_text` verbatim or mixes English into Marathi output.
-
-**Fix:** After receiving LLM response (line 476), add an ASCII ratio check:
-- For non-English target languages (mr, hi, ta, te, etc.), check if response has >40% ASCII characters
-- If so, log a warning and either:
-  a. Retry with a stronger translation prompt, OR
-  b. Apply `forceTranslateResponse()` (already exists at line 1589)
-- Add explicit instruction in prompt: `"NEVER leave English phrases in your ${langName} response. Every sentence MUST be in ${langName}."`
-
----
-
-## Implementation Details
-
-### File 1: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
-
-**Change A (Bug 1):** Expand `GENERIC_ACTION_TYPES` array at line 538:
-Add: `'see action text', 'see structured response', 'see concentration', 'not specified', 'n/a', 'as per label', 'follow label', 'continue monitoring'`
-
-**Change B (Bug 2):** In `buildRecommendationSummary()` at line 986, after the treatment details block, add land-area-based total calculation:
-```text
-if (isTreatmentAction && input.land_context?.area_acres && appDetails.dosage_per_acre) {
-  const area = input.land_context.area_acres;
-  parts.push(`\n═══ TOTAL FOR FARMER'S LAND (${area} acres) ═══`);
-  parts.push(`Calculate: dosage_per_acre x ${area} = total dosage`);
-  parts.push(`Calculate: water_volume_per_acre x ${area} = total water needed`);
-  parts.push(`IMPORTANT: Show these TOTAL quantities prominently in the response.`);
-}
-```
-
-**Change C (Bug 5):** After line 476 (post-process), add language consistency check:
-```text
-if (input.language !== 'en') {
-  const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
-  const totalChars = formattedResponse.length;
-  const asciiRatio = asciiChars / totalChars;
-  if (asciiRatio > 0.4) {
-    console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${langName} response - possible translation failure`);
-    formattedResponse = forceTranslateResponse(formattedResponse, input.language);
-  }
-}
-```
-
-### File 2: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-**Change D (Bug 3):** At line 2527, before building `allObservationsForPreAuth`, add canonical code filter:
-```text
-function isCanonicalCode(s: string): boolean {
-  return /^[A-Z][A-Z0-9_]+$/.test(s);
-}
-```
-Then wrap each `.add()` call with this check:
-- Line 2531: `if (isCanonicalCode(String(key))) allObservationsForPreAuth.add(String(key));`
-- Line 2536: `if (isCanonicalCode(code)) allObservationsForPreAuth.add(code);`  
-- Line 2541: `if (s.symbol && isCanonicalCode(s.symbol)) allObservationsForPreAuth.add(s.symbol);`
-
-Log filtered-out non-canonical entries for debugging.
-
-### File 3: `supabase/functions/ai-agriculture-chat/index.ts`
-
-**Change E (Bug 4):** At line 457, deprecate the `normalizeToEnglish` call:
-```text
-// DEPRECATED: LLM Semantic Extractor handles all languages natively
-// const preprocessedContent = normalizeToEnglish(userMessageContent);
-const preprocessedContent = userMessageContent; // Pass original to DB for training
-```
-
-### File 4: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
-
-**Change F (Bug 2 enhancement):** Update the LLM system prompt at line 767 to add explicit total dosage instruction:
-```text
-DOSAGE CALCULATION RULES:
-- If land area is provided (e.g., 5 acres), ALWAYS calculate TOTAL quantities
-- Formula: Total product = dosage_per_acre x land_area
-- Formula: Total water = water_volume_per_acre x land_area  
-- Show both per-acre AND total quantities
-- Example: "प्रति एकर: 2ml/L | तुमच्या 5 एकरसाठी एकूण: 10ml in 1000L पाणी"
-```
-
----
-
-## Data Flow After All Fixes
+### Fix:
+Update all queries in `authoritative-state-loader.ts` to use the correct column names:
 
 ```text
-Farmer sends query in ANY language (text/photo/audio)
-       |
-       v
-index.ts: Pass ORIGINAL text to orchestrator (no partial translation)
-       |
-       v
-Orchestrator Stage 1.5: LLM Semantic Extractor
-  -> Extracts intent_code, observations in English
-  -> Maps to canonical ObservationKey codes (UPPERCASE)
-       |
-       v
-allObservationsForPreAuth: ONLY canonical codes pass filter
-  -> Raw Marathi/Hindi EXCLUDED from rule engine
-  -> Only DEAD_HEART_PRESENT, LEAF_YELLOWING etc.
-       |
-       v
-Symbolic Decision Brain: Rules fire on canonical codes
-  -> Returns action_text, dosage_per_acre, product_name
-       |
-       v
-LLM Formatter: 
-  1. Validates product_name (placeholders correctly skipped)
-  2. Calculates TOTAL dosage for farmer's land area
-  3. Translates ALL English text to farmer's language
-  4. Validates language consistency (ASCII ratio check)
-       |
-       v
-Farmer sees: Fully translated, agronomically accurate,
-             land-area-specific response
+lands: area_hectares -> area_acres (and compute hectares as area_acres/2.471)
+lands: latitude -> center_lat
+lands: longitude -> center_lon
+ndvi_readings -> ndvi_data
+ndvi_readings.observation_date -> ndvi_data.date
+weather_data -> weather_observations (or remove and use orchestrator's weather fetch)
+crop_schedules: remove crop_code, current_stage from select
+soil_health: soil_texture -> texture
 ```
 
-## Observation vs Clarification Distinction
+---
 
-| Type | Format | Used For | Example |
-|------|--------|----------|---------|
-| Raw Input | Original language | DB logging, NLU perception | "मधली सुरळी वाळली" |
-| Canonical Symbol | UPPERCASE_CODE | Rule engine matching | DEAD_HEART_PRESENT |
-| Clarification Label | DB-translated text | Farmer UI display | "मधले पान वाळणे" (from observation_translations) |
-| Response Text | Target language | Final advice to farmer | Full Marathi/Hindi advice |
+## CRITICAL BUG 2: Query Router Misses Romanized Language (Transliteration)
 
-## Risk Assessment
+**Severity:** P0 - Wrong routing for ~60% of farmer queries
 
-- Bug 1 fix: Very low risk (adding strings to allowlist)
-- Bug 2 fix: Low risk (additive calculation, no existing logic changed)
-- Bug 3 fix: Medium risk (filtering observations - must verify no legitimate codes are filtered)
-- Bug 4 fix: Very low risk (removing dead code path)
-- Bug 5 fix: Low risk (additive post-processing check)
+**Evidence from test:**
+- Message: `"sugarcane madhe pani kiti dyayche"` (Marathi in Latin script = "How much water for sugarcane?")
+- Expected route: `IRRIGATION_SCHEDULING`
+- Actual route: `GENERAL_INFO` (50% confidence)
 
-## Files Modified
+The `IRRIGATION_PATTERNS` array only matches:
+- Devanagari: `पाणी`, `पानी`, `सिंचाई`
+- English: `water`, `irrigat`, `moisture`
 
-1. `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` (Changes A, B, C, F)
-2. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (Change D)
-3. `supabase/functions/ai-agriculture-chat/index.ts` (Change E)
+It does NOT match romanized Marathi/Hindi: `pani`, `paani`, `sinchai`
+
+This affects ALL pattern arrays (pest, irrigation, weather, market, crop health). Rural Indian farmers frequently type in romanized regional languages.
+
+### Fix:
+Add romanized patterns to each regex array in `query-router.ts`:
+
+```text
+IRRIGATION_PATTERNS: Add /pani|paani|sinchai|drip|thibak|olava/i
+PEST_DISEASE_PATTERNS: Add /kidi|kida|mashi|mava|illi|ali|rog|bimari/i  
+WEATHER_SPRAY_PATTERNS: Add /havaman|mausam|paus|barish|favarni/i
+MARKET_PATTERNS: Add /bhav|kimmat|vikri|bechna|mandi|bajar/i
+CROP_HEALTH_PATTERNS: Add /majhe pik|mera fasal|pik kase/i
+```
+
+---
+
+## CRITICAL BUG 3: `area_acres` Becomes Zero in Authoritative State
+
+**Severity:** P0 - All dosage calculations produce zero values
+
+In `authoritative-state-loader.ts` line 547-548:
+```text
+area_hectares: land.area_hectares || 0,    // area_hectares doesn't exist -> 0
+area_acres: (land.area_hectares || 0) * 2.471,  // 0 * 2.471 = 0
+```
+
+Since `area_hectares` doesn't exist in the `lands` table, `area_acres` is always computed as `0 * 2.471 = 0`. This means:
+- Total dosage calculations: `dosage_per_acre * 0 = 0`
+- Total water calculations: `water_per_acre * 0 = 0`
+- Farmer gets "0ml product in 0L water"
+
+### Fix:
+```text
+area_acres: land.area_acres || 0,
+area_hectares: (land.area_acres || 0) / 2.471,
+```
+
+---
+
+## MAJOR BUG 4: Soil Data Missing for 3 of 4 Active Lands
+
+**Severity:** Major - Incomplete agronomic data
+
+### Current Farmer Data Status Report:
+
+| Land | Crop | Area | Sowing | Soil Data | NDVI | Coordinates |
+|---|---|---|---|---|---|---|
+| Mala (6b0d...) | Sugarcane 86032 | 7.59 ac | 2025-12-28 | MISSING | 0.124 (CRITICAL) | MISSING |
+| Mala- (a652...) | Sugarcane 86032 | 0.43 ac | 2025-12-11 | MISSING | MISSING | MISSING |
+| Mala (e3cc...) | Sugarcane 86032 | 1.96 ac | 2025-12-30 | MISSING | 0.222 (POOR) | MISSING |
+| Khari (ca96...) | Wheat HD-2967 | 0.33 ac | 2025-11-30 | YES (soilgrid) | 0.104 (CRITICAL) | YES |
+
+### Agronomic Concerns:
+1. **NDVI 0.104-0.222 for 50-day sugarcane** is suspiciously low. At 50 DAS, healthy sugarcane should show NDVI 0.3-0.5. These values suggest either bare soil or crop failure.
+2. **Soil data from SoilGrid only** - all readings show K=500 kg/ha (unusually high), which is typical of SoilGrid regional estimates, not field-specific tests.
+3. **3 lands missing coordinates** - weather cannot be fetched for these lands.
+4. **No irrigation_type set for the main land** (7.59 ac sugarcane) - the decision brain cannot provide irrigation scheduling advice.
+
+### Data the farmer needs to provide:
+- **Soil test reports** (actual lab test, not SoilGrid) for all sugarcane lands
+- **GPS coordinates** for the 3 lands without center_lat/center_lon
+- **Irrigation type and water source** for the main 7.59-acre land
+
+---
+
+## Implementation Plan
+
+### File 1: `supabase/functions/ai-agriculture-chat/decision/authoritative-state-loader.ts`
+
+Fix all broken queries:
+
+1. **Line 369**: Change `area_hectares, latitude, longitude` to `area_acres, center_lat, center_lon`
+2. **Lines 396-400**: Change `ndvi_readings` to `ndvi_data`, change `observation_date` to `date`
+3. **Lines 403-409**: Remove `weather_data` query (table doesn't exist). Use weather from orchestrator's weather fetch instead, or query `weather_observations`/`weather_aggregates`.
+4. **Line 378**: Remove `crop_code, current_stage` from crop_schedules select
+5. **Line 388**: Change `soil_texture` to `texture`
+6. **Lines 547-548**: Fix area computation: `area_acres: land.area_acres || 0` and `area_hectares: (land.area_acres || 0) / 2.471`
+7. **Lines 549-550**: Fix coordinates: `latitude: land.center_lat` and `longitude: land.center_lon`
+8. **Line 557**: Fix growth stage: Remove `current_stage` reference, compute from sowing_date
+9. **Line 570**: Fix `soil_texture` reference to `texture`
+
+### File 2: `supabase/functions/ai-agriculture-chat/agents/query-router.ts`
+
+Add romanized language patterns:
+
+1. **IRRIGATION_PATTERNS (line 116-124)**: Add romanized patterns:
+   `/pani|paani|sinchai|thibak|olava|nami/i`
+   `/kiti pani|kitna pani|pani dyayche|pani dena/i`
+
+2. **PEST_DISEASE_PATTERNS (line 78-113)**: Add romanized patterns:
+   `/kidi|kida|mashi|mava|ali|rog|bimari|upay|ilaj|aushadh|davai/i`
+   `/favarni|spray|kay karu|kya kare/i`
+
+3. **WEATHER_SPRAY_PATTERNS (line 127-136)**: Add:
+   `/havaman|mausam|paus|barish|favarni karu ka/i`
+
+4. **MARKET_PATTERNS (line 139-146)**: Add:
+   `/bhav|kimmat|vikri|bechna|mandi|bajar/i`
+
+5. **CROP_HEALTH_PATTERNS (line 169-190)**: Add:
+   `/majhe pik|mera fasal|pik kase|fasal kaisi/i`
+
+6. **GREETING_PATTERNS (line 163-166)**: Add:
+   `/^(namaste|namaskar|jai hind)$/i`
+
+---
+
+## Technical Details
+
+### Correct Column Mapping (DB Truth)
+
+```text
+lands table:
+  area_acres (NOT area_hectares)
+  center_lat (NOT latitude)
+  center_lon (NOT longitude)
+  soil_type, irrigation_type, water_source, cultivation_date
+
+soil_health table:
+  texture (NOT soil_texture)
+  ph_level, organic_carbon, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha
+  test_date (NOT tested_at)
+
+ndvi_data table (NOT ndvi_readings):
+  ndvi_value, mean_ndvi, date (NOT observation_date)
+  min_ndvi, max_ndvi, quality_score
+
+crop_schedules table:
+  crop_name, crop_variety, sowing_date, expected_harvest_date
+  is_active, status
+  (NO crop_code, NO current_stage columns)
+
+weather_observations table:
+  observation_date, temperature_celsius, metadata, land_id
+
+weather_aggregates table:
+  aggregate_date, temp_min_celsius, temp_max_celsius, gdd_accumulated, land_id
+```
+
+### Risk Assessment
+
+- Bug 1 fix (authoritative-state-loader): High impact, medium risk - must test all downstream consumers
+- Bug 2 fix (query-router): High impact, low risk - adding patterns is additive
+- Bug 3 fix (area_acres): High impact, low risk - single line fix
+- Bug 4 (data gaps): Informational - farmer needs to provide missing data
+
+### Files Modified
+
+1. `supabase/functions/ai-agriculture-chat/decision/authoritative-state-loader.ts` (Critical schema fixes)
+2. `supabase/functions/ai-agriculture-chat/agents/query-router.ts` (Romanized language patterns)
