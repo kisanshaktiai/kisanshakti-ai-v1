@@ -1,112 +1,219 @@
 
+# Critical Bug Fix Plan: Agronomically Accurate Symbolic Decision Brain
 
-# Fix Plan: Replace Hardcoded Translations with DB-Driven i18n System
-
-## Problem Summary
-
-The `diagnosis-first-generator.ts` file contains **two hardcoded dictionaries** (`CAUSE_TRANSLATIONS` with ~35 entries and `OBSERVATION_LABELS` with ~30 entries) that only support mr/hi/en. This violates the SSOT architecture and cannot scale to all crops and all 9 languages.
-
-Meanwhile, the proper DB-driven translation system already exists:
-- `i18n/observation-label-loader.ts` loads from `observation_translations` table
-- `i18n/translation-loader.ts` loads from `decision_rules.i18n_key` with a fallback dictionary
-- `agents/communication-translation-dictionary.ts` has a larger dictionary but is also hardcoded
-
-The root cause: `diagnosis-first-generator.ts` **never calls** `loadObservationLabels()` or `translateCause()` from the centralized loaders.
-
-## What Changes
-
-### File 1: `supabase/functions/ai-agriculture-chat/decision/diagnosis-first-generator.ts`
-
-**Change A: Replace hardcoded `getCauseLabel()` with DB-driven `translateCause()`**
-- Import `translateCause` and `initializeTranslationCache` from `../i18n/translation-loader.ts`
-- Replace calls to local `getCauseLabel(cause, language)` with `translateCause(cause, language)` which already handles normalization, cache lookup, fallback chain, and pattern matching
-- Remove the entire `CAUSE_TRANSLATIONS` dictionary (lines 126-189) and `getCauseLabel()` function (lines 195-277) and the regex pattern array (lines 220-257)
-
-**Change B: Replace hardcoded `getObservationLabel()` with DB-driven `loadObservationLabels()`**
-- Import `loadObservationLabels` from `../i18n/observation-label-loader.ts`
-- In `generateDiagnosisFirstResponse()`, collect all observation keys from hypotheses, call `loadObservationLabels(supabaseClient, codes, language)` once, then use the returned map for each diagnosis option
-- This requires passing a `supabaseClient` into the function -- add it to `DiagnosisFirstInput` interface
-- Remove the entire `OBSERVATION_LABELS` dictionary (lines 284-331) and `getObservationLabel()` function (lines 333-366)
-
-**Change C: Update `DiagnosisFirstInput` interface**
-- Add `supabaseClient?: any` to the interface so the DB loader can be called
-- Expand `language` type from `'mr' | 'hi' | 'en'` to include all 9 supported languages
-
-**Change D: Keep `regional-translator` as priority path, DB-loader as fallback**
-- Current flow: `regional-translator` -> `getCauseLabel()` (hardcoded) as fallback
-- New flow: `regional-translator` -> `translateCause()` (DB-cached) as fallback -> `loadObservationLabels()` (DB query) for observation labels
-- The `isUntranslated()` guard stays -- it correctly detects English leakage
-
-### File 2: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
-
-**Change E: Guard product/dosage block for BLOCK and NO_ACTION rules**
-- Wrap the product details output (lines 970-990) in a condition: only output if `action_type` is a treatment type (RECOMMEND, URGENT_ACTION, SPRAY, APPLY)
-- For BLOCK rules, output explicit instruction: "This is a BLOCK action. DO NOT recommend any product or dosage. Explain WHY using the REASON text."
-- For NO_ACTION_REQUIRED/MONITORING rules, skip product details entirely -- only output the reason/knowledge text
-
-### File 3: `observation_translations` table (Data - SQL to run manually)
-
-**Change F: Add missing observation codes for weed and nutrition domains**
-- Insert rows for: WEED_PRESENT, WEED_HEAVY, WEED_ABOVE_CROP, WEED_IN_ROWS, WEED_INFESTATION, BORON_TOXICITY, BORON_DEFICIENCY
-- Each code needs entries for all active languages (mr, hi, en at minimum)
-- This is the SSOT path -- once added to the DB, all modules pick it up automatically
-
-### File 4: Caller sites that pass `supabaseClient`
-
-**Change G: Update orchestrator call site**
-- Where `generateDiagnosisFirstResponse()` is called in the orchestrator, pass the existing `this.supabase` client so the DB loaders can query translations
-- Also update `diagnosis-only-mode.ts` if it calls this function
+## Problems Found (4 Critical, 1 Major)
 
 ---
 
-## Technical Details
+## Critical Bug 1: `product_name` Placeholder Causes Validation Failure
 
-### Translation Resolution Flow (After Fix)
+**Location:** `llm-response-formatter.ts` lines 538-548, `orchestrator.ts` lines 1762, 1799, `index.ts` lines 610, 648
 
-```text
-Farmer query (any language)
-  |
-  v
-Hypothesis Evaluator -> candidate rules with `cause` field (English)
-  |
-  v
-diagnosis-first-generator.ts:
-  1. Try regional-translator (farmer_location based)
-  2. If untranslated -> translateCause(cause, language) [from translation-loader.ts]
-     - Checks in-memory cache (loaded from decision_rules.i18n_key)
-     - Checks FALLBACK_TRANSLATIONS (97 entries covering pests/diseases/symptoms/actions)
-     - Last resort: formats key as "Title Case"
-  3. For observation labels -> loadObservationLabels(supabase, codes, language)
-     - Queries observation_translations table
-     - Falls back to formatted English code
+**Root Cause:** The orchestrator sets `product_name` to placeholder strings like `'See action text'`, `'See structured response'`, `'See concentration'`. The LLM output validator then checks if these strings appear in the LLM's response. Since they are NOT in the `GENERIC_ACTION_TYPES` allowlist, the validator treats them as real product names, fails, and falls back to a generic template -- producing agronomically useless advice.
+
+**Evidence:** Log pattern: `"Missing product from symbolic decision: See action text"` triggers `"Using template fallback to prevent spreading incorrect advice."`
+
+**Fix:** Add these placeholder strings to `GENERIC_ACTION_TYPES` in `llm-response-formatter.ts`:
+```
+'see action text', 'see structured response', 'see concentration',
+'not specified', 'n/a', 'as per label', 'follow label', 'continue monitoring'
 ```
 
-### Why This Scales
-- Adding a new crop (e.g., cotton, rice) = add rules to `decision_rules` + add translations to `observation_translations`
-- Adding a new language (e.g., Telugu) = add rows with `language_code = 'te'` to `observation_translations`
-- No code changes needed for new crops or languages
+---
 
-### BLOCK Rule Guard Logic (Change E)
+## Critical Bug 2: No Land-Area-Based Dosage Calculation
+
+**Location:** `llm-response-formatter.ts` lines 986-997
+
+**Root Cause:** When the decision brain recommends a treatment, it passes `dosage_per_acre` from the rule (e.g., "2ml/L water"). The LLM formatter outputs this raw value. But it NEVER multiplies by `area_acres` to give the farmer total quantity needed for their specific land.
+
+A farmer with 5 acres gets "2ml/L, 200L water/acre" but does NOT get "Total: 10ml product in 1000L water for your 5 acres." This is a critical agronomic gap -- farmers need exact total quantities.
+
+**Fix:** In `buildRecommendationSummary()`, when treatment details are output and `input.land_context.area_acres` is available:
+- Calculate `total_dosage = dosage_per_acre * area_acres`
+- Calculate `total_water = water_volume_per_acre * area_acres`
+- Add a line: `"- TOTAL FOR YOUR LAND ({area} acres): {total_dosage} product in {total_water} water"`
+- Also instruct the LLM: `"IMPORTANT: Calculate and show TOTAL quantities for the farmer's {area} acre land."`
+
+---
+
+## Critical Bug 3: Raw Language Observations Mixed with Canonical Symbols
+
+**Location:** `orchestrator.ts` lines 2527-2553
+
+**Root Cause:** `allObservationsForPreAuth` collects symbols from 3 sources without filtering:
+1. `observationKeys` -- proper canonical codes (e.g., `DEAD_HEART_PRESENT`)
+2. `mappedCodes.observation_codes` -- proper canonical codes
+3. `inductionResult.symptoms` -- contains BOTH canonical codes AND raw Marathi/Hindi text (e.g., `"मधली सुरळी वाळली"`)
+
+Raw language strings flow into the rule engine and hypothesis evaluator, where they cannot match any rules, dilute confidence scores, and leak into clarification UI as mixed-language labels.
+
+**Fix:** Add a canonical code filter before populating `allObservationsForPreAuth`:
+```typescript
+function isCanonicalCode(s: string): boolean {
+  return /^[A-Z][A-Z0-9_]+$/.test(s);
+}
+```
+Only add entries passing `isCanonicalCode()`. Raw observations should be logged but excluded from rule evaluation.
+
+---
+
+## Critical Bug 4: `normalizeToEnglish()` Creates Half-Translated Strings
+
+**Location:** `index.ts` lines 1530-1565
+
+**Root Cause:** This function has only ~23 hardcoded term mappings. It replaces some Marathi/Hindi words with English equivalents while leaving the rest unchanged, creating hybrid strings like:
+```
+"sugarcane च्या shoot borer ने पान खाल्ली"
+```
+This half-translated output is stored in `preprocessed_content` but NOT passed to the orchestrator (the orchestrator receives original `userMessageContent`). So it serves no functional purpose for the decision brain, only confusing debug logs.
+
+The LLM Semantic Extractor (Stage 1.5) already handles any-language-to-English extraction properly.
+
+**Fix:** 
+- Stop calling `normalizeToEnglish()` in the main path (line 457)
+- Or rename to `_legacyNormalizeHint()` and keep only for DB logging
+- The orchestrator already receives `userMessageContent` (original) which flows correctly to the LLM semantic extractor
+
+---
+
+## Major Bug 5: LLM Translation Not Enforced
+
+**Location:** `llm-response-formatter.ts` lines 704-786
+
+**Root Cause:** The system prompt says "TRANSLATE TO Marathi" but there is no post-LLM check that the response is actually in the target language. The LLM frequently copies English `action_text` / `reason_text` verbatim or mixes English into Marathi output.
+
+**Fix:** After receiving LLM response (line 476), add an ASCII ratio check:
+- For non-English target languages (mr, hi, ta, te, etc.), check if response has >40% ASCII characters
+- If so, log a warning and either:
+  a. Retry with a stronger translation prompt, OR
+  b. Apply `forceTranslateResponse()` (already exists at line 1589)
+- Add explicit instruction in prompt: `"NEVER leave English phrases in your ${langName} response. Every sentence MUST be in ${langName}."`
+
+---
+
+## Implementation Details
+
+### File 1: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
+
+**Change A (Bug 1):** Expand `GENERIC_ACTION_TYPES` array at line 538:
+Add: `'see action text', 'see structured response', 'see concentration', 'not specified', 'n/a', 'as per label', 'follow label', 'continue monitoring'`
+
+**Change B (Bug 2):** In `buildRecommendationSummary()` at line 986, after the treatment details block, add land-area-based total calculation:
 ```text
-TREATMENT_ACTION_TYPES = ['RECOMMEND', 'URGENT_ACTION', 'treatment', 'spray', 'apply']
-
-if action_type in TREATMENT_ACTION_TYPES:
-  -> output product/dosage details as before
-elif action_type is 'BLOCK':
-  -> output "DO NOT recommend treatment. Explain WHY blocked."
-else (NO_ACTION_REQUIRED, MONITORING, OBSERVATION):
-  -> skip product section entirely, output only reason/knowledge
+if (isTreatmentAction && input.land_context?.area_acres && appDetails.dosage_per_acre) {
+  const area = input.land_context.area_acres;
+  parts.push(`\n═══ TOTAL FOR FARMER'S LAND (${area} acres) ═══`);
+  parts.push(`Calculate: dosage_per_acre x ${area} = total dosage`);
+  parts.push(`Calculate: water_volume_per_acre x ${area} = total water needed`);
+  parts.push(`IMPORTANT: Show these TOTAL quantities prominently in the response.`);
+}
 ```
 
-### Files Modified
-1. `supabase/functions/ai-agriculture-chat/decision/diagnosis-first-generator.ts` (Changes A-D)
-2. `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` (Change E)
-3. SQL migration for `observation_translations` table (Change F - manual)
-4. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (Change G - pass supabaseClient)
+**Change C (Bug 5):** After line 476 (post-process), add language consistency check:
+```text
+if (input.language !== 'en') {
+  const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
+  const totalChars = formattedResponse.length;
+  const asciiRatio = asciiChars / totalChars;
+  if (asciiRatio > 0.4) {
+    console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${langName} response - possible translation failure`);
+    formattedResponse = forceTranslateResponse(formattedResponse, input.language);
+  }
+}
+```
 
-### Risk Assessment
-- Low risk: Translation fallback chain ensures no blank labels even if DB query fails
-- The `FALLBACK_TRANSLATIONS` in `translation-loader.ts` already has 97 entries covering all major pests/diseases
-- Regional translator remains the primary path when farmer_location is available
-- Backward compatible: existing `observation_translations` data continues to work
+### File 2: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
 
+**Change D (Bug 3):** At line 2527, before building `allObservationsForPreAuth`, add canonical code filter:
+```text
+function isCanonicalCode(s: string): boolean {
+  return /^[A-Z][A-Z0-9_]+$/.test(s);
+}
+```
+Then wrap each `.add()` call with this check:
+- Line 2531: `if (isCanonicalCode(String(key))) allObservationsForPreAuth.add(String(key));`
+- Line 2536: `if (isCanonicalCode(code)) allObservationsForPreAuth.add(code);`  
+- Line 2541: `if (s.symbol && isCanonicalCode(s.symbol)) allObservationsForPreAuth.add(s.symbol);`
+
+Log filtered-out non-canonical entries for debugging.
+
+### File 3: `supabase/functions/ai-agriculture-chat/index.ts`
+
+**Change E (Bug 4):** At line 457, deprecate the `normalizeToEnglish` call:
+```text
+// DEPRECATED: LLM Semantic Extractor handles all languages natively
+// const preprocessedContent = normalizeToEnglish(userMessageContent);
+const preprocessedContent = userMessageContent; // Pass original to DB for training
+```
+
+### File 4: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
+
+**Change F (Bug 2 enhancement):** Update the LLM system prompt at line 767 to add explicit total dosage instruction:
+```text
+DOSAGE CALCULATION RULES:
+- If land area is provided (e.g., 5 acres), ALWAYS calculate TOTAL quantities
+- Formula: Total product = dosage_per_acre x land_area
+- Formula: Total water = water_volume_per_acre x land_area  
+- Show both per-acre AND total quantities
+- Example: "प्रति एकर: 2ml/L | तुमच्या 5 एकरसाठी एकूण: 10ml in 1000L पाणी"
+```
+
+---
+
+## Data Flow After All Fixes
+
+```text
+Farmer sends query in ANY language (text/photo/audio)
+       |
+       v
+index.ts: Pass ORIGINAL text to orchestrator (no partial translation)
+       |
+       v
+Orchestrator Stage 1.5: LLM Semantic Extractor
+  -> Extracts intent_code, observations in English
+  -> Maps to canonical ObservationKey codes (UPPERCASE)
+       |
+       v
+allObservationsForPreAuth: ONLY canonical codes pass filter
+  -> Raw Marathi/Hindi EXCLUDED from rule engine
+  -> Only DEAD_HEART_PRESENT, LEAF_YELLOWING etc.
+       |
+       v
+Symbolic Decision Brain: Rules fire on canonical codes
+  -> Returns action_text, dosage_per_acre, product_name
+       |
+       v
+LLM Formatter: 
+  1. Validates product_name (placeholders correctly skipped)
+  2. Calculates TOTAL dosage for farmer's land area
+  3. Translates ALL English text to farmer's language
+  4. Validates language consistency (ASCII ratio check)
+       |
+       v
+Farmer sees: Fully translated, agronomically accurate,
+             land-area-specific response
+```
+
+## Observation vs Clarification Distinction
+
+| Type | Format | Used For | Example |
+|------|--------|----------|---------|
+| Raw Input | Original language | DB logging, NLU perception | "मधली सुरळी वाळली" |
+| Canonical Symbol | UPPERCASE_CODE | Rule engine matching | DEAD_HEART_PRESENT |
+| Clarification Label | DB-translated text | Farmer UI display | "मधले पान वाळणे" (from observation_translations) |
+| Response Text | Target language | Final advice to farmer | Full Marathi/Hindi advice |
+
+## Risk Assessment
+
+- Bug 1 fix: Very low risk (adding strings to allowlist)
+- Bug 2 fix: Low risk (additive calculation, no existing logic changed)
+- Bug 3 fix: Medium risk (filtering observations - must verify no legitimate codes are filtered)
+- Bug 4 fix: Very low risk (removing dead code path)
+- Bug 5 fix: Low risk (additive post-processing check)
+
+## Files Modified
+
+1. `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` (Changes A, B, C, F)
+2. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (Change D)
+3. `supabase/functions/ai-agriculture-chat/index.ts` (Change E)
