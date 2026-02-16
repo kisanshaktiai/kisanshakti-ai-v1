@@ -363,48 +363,48 @@ export async function loadAuthoritativeLandState(
       ndviResult,
       weatherResult
     ] = await Promise.all([
-      // 1. Land base data
+      // 1. Land base data — FIXED: use actual DB columns (area_acres, center_lat, center_lon)
       supabase
         .from('lands')
-        .select('id, name, area_hectares, latitude, longitude, farmer_id, tenant_id, district_id, state_id')
+        .select('id, name, area_acres, center_lat, center_lon, farmer_id, tenant_id, district_id, state_id, soil_type, irrigation_type, water_source, cultivation_date')
         .eq('id', landId)
         .eq('farmer_id', farmerId)
         .eq('tenant_id', tenantId)
         .single(),
       
-      // 2. Crop schedule (active season)
+      // 2. Crop schedule (active season) — FIXED: removed non-existent crop_code, current_stage
       supabase
         .from('crop_schedules')
-        .select('crop_name, crop_code, current_stage, sowing_date, expected_harvest_date, status')
+        .select('crop_name, crop_variety, sowing_date, expected_harvest_date, status, is_active')
         .eq('land_id', landId)
-        .eq('status', 'active')
+        .eq('is_active', true)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle(),
       
-      // 3. Soil health (latest test)
+      // 3. Soil health (latest test) — FIXED: soil_texture → texture
       supabase
         .from('soil_health')
-        .select('ph_level, organic_carbon, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, soil_texture, test_date, created_at')
+        .select('ph_level, organic_carbon, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, texture, test_date, created_at')
         .eq('land_id', landId)
         .order('test_date', { ascending: false })
         .limit(1)
         .maybeSingle(),
       
-      // 4. NDVI data (recent readings)
+      // 4. NDVI data — FIXED: ndvi_readings → ndvi_data, observation_date → date
       supabase
-        .from('ndvi_readings')
-        .select('ndvi_value, observation_date, created_at')
+        .from('ndvi_data')
+        .select('ndvi_value, mean_ndvi, date, min_ndvi, max_ndvi, quality_score')
         .eq('land_id', landId)
-        .order('observation_date', { ascending: false })
+        .order('date', { ascending: false })
         .limit(10),
       
-      // 5. Weather data (from weather cache or current readings)
+      // 5. Weather data — FIXED: weather_data → weather_observations (actual table)
       supabase
-        .from('weather_data')
-        .select('temperature, humidity, rainfall, rain_probability, wind_speed, fetched_at')
+        .from('weather_observations')
+        .select('temperature_celsius, metadata, observation_date, land_id')
         .eq('land_id', landId)
-        .order('fetched_at', { ascending: false })
+        .order('observation_date', { ascending: false })
         .limit(1)
         .maybeSingle()
     ]);
@@ -459,8 +459,8 @@ export async function loadAuthoritativeLandState(
     let ndviDataFresh = false;
     
     if (ndviReadings.length > 0) {
-      ndviLatest = ndviReadings[0].ndvi_value;
-      ndviLatestDate = ndviReadings[0].observation_date;
+      ndviLatest = ndviReadings[0].ndvi_value ?? ndviReadings[0].mean_ndvi ?? null;
+      ndviLatestDate = ndviReadings[0].date; // FIXED: observation_date → date
       
       if (ndviLatestDate) {
         const latestDate = new Date(ndviLatestDate);
@@ -469,22 +469,26 @@ export async function loadAuthoritativeLandState(
       }
     }
     
-    // Calculate NDVI trend using SSOT function
+    // Calculate NDVI trend using SSOT function — FIXED: use .date
     const ndviHistory = ndviReadings.slice(0, 5).map(r => ({
-      value: r.ndvi_value,
-      date: r.observation_date
+      value: r.ndvi_value ?? r.mean_ndvi ?? 0,
+      date: r.date
     }));
     const ndviTrend = calculateNDVITrend(ndviHistory);
     
     // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS WEATHER DATA
     // ═══════════════════════════════════════════════════════════════════════════
+    // FIXED: weather_data → weather_observations; use observation_date & temperature_celsius
     const weather = weatherResult.data;
     let weatherAgeHours: number | null = null;
     let weatherDataFresh = false;
     
-    if (weather?.fetched_at) {
-      const fetchedAt = new Date(weather.fetched_at);
+    // Parse metadata for humidity, rainfall, wind etc. if available
+    const weatherMeta = weather?.metadata as any || {};
+    
+    if (weather?.observation_date) {
+      const fetchedAt = new Date(weather.observation_date);
       weatherAgeHours = Math.floor((now.getTime() - fetchedAt.getTime()) / (1000 * 60 * 60));
       weatherDataFresh = weatherAgeHours <= FRESHNESS_THRESHOLDS.WEATHER_HOURS;
     }
@@ -516,7 +520,7 @@ export async function loadAuthoritativeLandState(
     const nitrogenLevel = interpretNitrogen(soilHealth?.nitrogen_kg_per_ha);
     const phosphorusLevel = interpretPhosphorus(soilHealth?.phosphorus_kg_per_ha);
     const potassiumLevel = interpretPotassium(soilHealth?.potassium_kg_per_ha);
-    const waterStressLevel = calculateWaterStress(ndviLatest, weather?.rainfall);
+    const waterStressLevel = calculateWaterStress(ndviLatest, weatherMeta?.rainfall ?? weatherMeta?.rainfall_last_24h ?? null);
     
     // Legacy crop health status mapping
     const cropHealthMap: Record<NDVIStatus, 'excellent' | 'good' | 'moderate' | 'poor' | 'critical' | 'unknown'> = {
@@ -539,22 +543,35 @@ export async function loadAuthoritativeLandState(
     // ═══════════════════════════════════════════════════════════════════════════
     // BUILD AUTHORITATIVE STATE OBJECT
     // ═══════════════════════════════════════════════════════════════════════════
+    // FIXED: Compute growth_stage from sowing_date since current_stage column doesn't exist
+    let computedGrowthStage: string | null = null;
+    if (daysSinceSowing !== null) {
+      if (daysSinceSowing <= 15) computedGrowthStage = 'GERMINATION';
+      else if (daysSinceSowing <= 35) computedGrowthStage = 'EARLY_VEGETATIVE';
+      else if (daysSinceSowing <= 60) computedGrowthStage = 'VEGETATIVE';
+      else if (daysSinceSowing <= 90) computedGrowthStage = 'GRAND_GROWTH';
+      else if (daysSinceSowing <= 150) computedGrowthStage = 'MATURITY';
+      else computedGrowthStage = 'HARVEST';
+    }
+
     const authoritativeState: AuthoritativeLandState = {
       land_id: land.id,
       tenant_id: tenantId,
       farmer_id: farmerId,
       land_name: land.name,
-      area_hectares: land.area_hectares || 0,
-      area_acres: (land.area_hectares || 0) * 2.471,
-      latitude: land.latitude,
-      longitude: land.longitude,
-      district: null, // Would need join to districts table
-      state: null,    // Would need join to states table
+      // FIXED: area_acres is the DB column; compute hectares from it
+      area_hectares: (land.area_acres || 0) / 2.471,
+      area_acres: land.area_acres || 0,
+      // FIXED: latitude/longitude → center_lat/center_lon
+      latitude: land.center_lat ?? null,
+      longitude: land.center_lon ?? null,
+      district: null,
+      state: null,
       
       crop: {
         current_crop: cropSchedule?.crop_name || null,
-        crop_code: cropSchedule?.crop_code || null,
-        growth_stage: cropSchedule?.current_stage || null,
+        crop_code: null, // FIXED: crop_code column doesn't exist in crop_schedules
+        growth_stage: computedGrowthStage, // FIXED: computed from sowing_date
         days_since_sowing: daysSinceSowing,
         sowing_date: cropSchedule?.sowing_date || null,
         expected_harvest_date: cropSchedule?.expected_harvest_date || null,
@@ -567,7 +584,7 @@ export async function loadAuthoritativeLandState(
         nitrogen_kg_per_ha: soilHealth?.nitrogen_kg_per_ha ?? null,
         phosphorus_kg_per_ha: soilHealth?.phosphorus_kg_per_ha ?? null,
         potassium_kg_per_ha: soilHealth?.potassium_kg_per_ha ?? null,
-        texture: soilHealth?.soil_texture ?? null,
+        texture: soilHealth?.texture ?? null, // FIXED: soil_texture → texture
         test_date: soilHealth?.test_date ?? null,
         test_age_days: soilTestAgeDays,
         data_fresh: soilDataFresh
@@ -583,17 +600,17 @@ export async function loadAuthoritativeLandState(
       },
       
       weather: {
-        temperature: weather?.temperature ?? null,
-        humidity: weather?.humidity ?? null,
-        rainfall_last_24h: weather?.rainfall ?? null,
-        rain_probability: weather?.rain_probability ?? null,
-        wind_speed: weather?.wind_speed ?? null,
-        data_timestamp: weather?.fetched_at ?? null,
+        temperature: weather?.temperature_celsius ?? weatherMeta?.temperature ?? null,
+        humidity: weatherMeta?.humidity ?? null,
+        rainfall_last_24h: weatherMeta?.rainfall ?? weatherMeta?.rainfall_last_24h ?? null,
+        rain_probability: weatherMeta?.rain_probability ?? null,
+        wind_speed: weatherMeta?.wind_speed ?? null,
+        data_timestamp: weather?.observation_date ?? null,
         data_age_hours: weatherAgeHours,
         data_fresh: weatherDataFresh
       },
       
-      // SSOT INTERPRETATIONS - All interpretation happens HERE
+      // SSOT INTERPRETATIONS
       derived: {
         ndvi_status: ndviStatus,
         nitrogen_level: nitrogenLevel,
