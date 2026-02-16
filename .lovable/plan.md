@@ -1,151 +1,152 @@
 
-# Prompt Token Optimization: 16,149 to ~2,500 tokens
+# LLM Response Formatter: 12 Safety and Quality Fixes
 
-## Key Findings from Deep Audit
+## Verified Findings Against Actual Code
 
-### Expert Claims Validated Against Actual Database
-
-| Claim | Verdict | Evidence |
-|---|---|---|
-| "stage_applicable is TEXT, needs JSONB migration" | WRONG | Column is already Postgres ARRAY (`_text`). Stage filtering works correctly via `filterByStage()`. |
-| "No database pre-filtering, all 437 rules sent to LLM" | WRONG | `loadRulesForContext()` queries by `crop_code` + `is_active`, then `filterByStage()` filters by growth stage. `evaluateConditionsJson()` does symbolic evaluation. LLM never selects rules. |
-| "LLM acts as rule ranker" | WRONG | `LayeredRuleEvaluator` selects PRIMARY_DECISION deterministically. LLM is render-only. |
-| "No symbolic condition evaluation" | WRONG | `evaluateConditionsJson()` handles temp, NDVI, soil, observations with exact + fuzzy matching. |
-| "51% of rules misfire from exact matching" | PARTIALLY VALID | System has `evaluatePartialMatch()` for fuzzy matching, but observation similarity could be improved with an in-memory dictionary. This is a Phase 2 enhancement, not critical. |
-| "No PHI enforcement" | PARTIALLY VALID | PHI days exist in DB but aren't actively checked during rule selection against days-to-harvest. Enhancement needed but not blocking. |
-
-### The ACTUAL Problem (Confirmed from Uploaded Prompt Log)
-
-The prompt log shows **73 IPM TREATMENT blocks** sent to OpenAI. Each block contains `action_text`, `reason_text`, and `knowledge_text` (some with multi-paragraph ICAR scientific references). This is the sole cause of the 16,149 token prompt.
-
-The flow is:
-1. Symbolic Reasoner: 494 rules loaded, 82 matched, 73 eligible (correct -- this is deterministic)
-2. LayeredRuleEvaluator: Selects 1 PRIMARY (SC_MICRO_ZN_DEFICIENCY_URGENT_001) (correct)
-3. ALL 73 matched_responses dumped into LLM prompt (BUG -- only primary + 2-3 relevant alternatives needed)
-
-Of the 73 responses: 81 "Do not apply any treatment" rules, 112 "Monitor" rules are being included. The farmer sees only the PRIMARY recommendation anyway.
-
-### Branding Error
-Line 732 of `llm-response-formatter.ts` says "KisanMitra" -- should be "SATHI".
+Each finding was validated line-by-line against `llm-response-formatter.ts` (1637 lines).
 
 ---
 
-## Implementation Plan
+## CRITICAL FIXES (4)
 
-### File: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
+### Fix 1: Secondary Product/Dosage Validation (Lines 349-376, 538-722)
 
-All changes are in this single file.
+**Problem confirmed:** `validateLLMOutput()` only validates `primary_decision.product_details.product_name` (line 553) and `primary_decision.application_details.dosage` (line 597). Secondary products injected at lines 1038-1051 (`secondary_actions`/`secondary_recommendations` with `product_name`, `dosage`, `dosage_per_acre`) are NEVER validated.
 
-#### Change 1: Add `filterRelevantResponses()` helper function (~8,000 token savings)
+**Fix:** After the primary product/dosage checks (around line 614), add a new CHECK section that iterates `decisionInput.decision_output.secondary_actions` and:
+- Extracts each `sec.product_name` and adds to `allowedProducts`
+- Extracts each `sec.dosage`/`sec.dosage_per_acre` and adds to `allowedDosages`
+- Validates that no secondary product names appear modified in the LLM output
 
-Add a new function before `buildRecommendationSummary()` that:
-- Always includes the PRIMARY decision's matched response (by `rule_id`)
-- Filters remaining responses: `priority >= 7` AND `action_text` is NOT "Do not apply any treatment at this stage." AND `action_text` is NOT "Monitor pest population regularly; no treatment required at this stage."
-- Hard caps at 3 total responses
-- Skips legacy `response_mr/hi/en` fields when `action_text` exists (avoids duplicate content per response)
+### Fix 2: Remove Hardcoded Biocontrol Dosages (Lines 1054-1074)
 
-#### Change 2: Modify `buildRecommendationSummary()` (lines 1121-1151)
+**Problem confirmed:** Lines 1066-1073 hardcode:
+- `Trichogramma chilonis: 50,000 parasitoids/acre`
+- `Cotesia flavipes: 5,000 cocoons/acre`
 
-Replace the unfiltered `matchedResponses.forEach(...)` loop with filtered set:
-- Call `filterRelevantResponses()` on `decision.matched_responses`
-- Pass `decision.primary_decision?.rule_id` as the primary rule filter
-- Only iterate over filtered (max 3) responses
-- Remove `knowledge_text` from non-primary responses (biggest token consumer -- the ICAR scientific references)
+These bypass the rule engine. The `application_details.dosage_per_acre` from the symbolic decision already contains the correct dosage from the database.
 
-#### Change 3: Compress system prompt (lines 723-823, ~2,700 token savings)
+**Fix:** Remove lines 1065-1074 entirely (the biocontrol dosage reminder block). The primary decision's `dosage_per_acre` field already carries the correct biocontrol dosage from the rule engine. The existing product/dosage rendering at lines 984-1007 already handles this.
 
-In `buildFormattingSystemPrompt()`:
-- Remove 3 decorator lines (each line of equal signs is ~30 tokens)
-- Merge FORBIDDEN + DIAGNOSTIC HIERARCHY into one condensed block
-- Remove inline translation examples (lines 810-811) -- LLM already knows Marathi/Hindi
-- Remove BIOCONTROL DOSAGE block (lines 820-823) from system prompt -- only relevant for 2% of requests, already conditionally added in `buildRecommendationSummary()` at line 1105
-- Condense OUTPUT STRUCTURE from 8 lines to 3 lines
-- Fix branding: "KisanMitra" to "SATHI"
+### Fix 3: PHI Value Validation (Lines 992, 538-722)
 
-#### Change 4: Remove duplicate content from user prompt (lines 881-928, ~1,500 token savings)
+**Problem confirmed:** Line 992 outputs `PHI Days: ${appDetails.phi_days}` to the LLM prompt, but `validateLLMOutput()` never checks that the LLM preserved this PHI value. The LLM could change "14 days" to "7 days" undetected.
 
-In `buildFormattingUserPrompt()`:
-- Remove `harvestConstraint` block (lines 891-898) -- identical content already in system prompt via `getCropStageConstraints()` which is included at line 803
-- Remove "IMPORTANT REMINDERS" section (lines 921-927) -- 6 bullet points repeating system prompt rules
+**Fix:** Add a new CHECK after the dosage validation (after line 614) that:
+- Extracts `appDetails.phi_days` number from the symbolic decision
+- If it exists and is a number, checks that the same number appears in the LLM output
+- Flags as violation if PHI number is missing or modified
 
-#### Change 5: Add token metrics logging
+### Fix 4: Percentage Validation Regex Enhancement (Line 644)
 
-After prompt construction (before LLM call), add:
+**Problem confirmed:** Current regex is:
 ```
-[TOKEN_METRICS] system_chars=X, user_chars=Y, est_tokens=Z, responses_sent=3/73
+/(\d{1,3})\s*%\s*(effective|control|reduction|success)/gi
+```
+This misses: `percent`, `efficacy`, `protection`, `yield increase`, and patterns like `85 percent control`.
+
+**Fix:** Replace line 644 with an expanded regex:
+```
+/(\d{1,3})\s*(%|percent|प्रतिशत|टक्के)\s*(effective|efficacy|control|reduction|success|protection|yield increase|प्रभावी|नियंत्रण)/gi
 ```
 
----
-
-## What Will NOT Be Changed (and Why)
-
-| Proposed Change | Decision | Reason |
-|---|---|---|
-| Migrate stage_applicable to JSONB | Skip | Already Postgres ARRAY, working correctly |
-| crop_maturity_reference table | Skip | `crop_stage_master` table + hardcoded constants already exist |
-| observation_similarity table | Defer to Phase 2 | Good idea but not blocking; current fuzzy matching works |
-| rule_evaluation_audit_logs table | Defer to Phase 2 | `ai_decision_log` exists; can add columns later |
-| New system prompt v4.0 | Skip | Describes what code already does; actual pipeline is 3-layer deterministic |
-| Database pre-filtering | Skip | Already implemented in `loadRulesForContext()` |
-| Symbolic evaluator | Skip | Already implemented in `evaluateConditionsJson()` |
-| Relevance ranker | Skip | Already implemented in `LayeredRuleEvaluator` |
+**Additionally (Finding 11 -- efficacy conflict):** The current validator blocks ALL percentage patterns, but line 993 injects `efficacy_percent` from the rule engine. Fix: before running the percentage check, extract allowed efficacy values from `appDetails.efficacy_percent` and `primary.expected_outcomes.efficacy_percent`, then exclude those specific numbers from the regex violation check.
 
 ---
 
-## Expected Token Impact
+## MODERATE FIXES (5)
 
-| Component | Before | After | Savings |
-|---|---|---|---|
-| matched_responses (73 to 3) | ~8,000 | ~450 | 94% |
-| System prompt compression | ~4,500 | ~1,800 | 60% |
-| Duplicate constraint removal | ~1,500 | 0 | 100% |
-| Land context + farmer question | ~2,100 | ~2,100 | 0% |
-| **TOTAL** | **~16,100** | **~4,350** | **73%** |
+### Fix 5: Cap knowledge_text Length (Lines 960-962)
 
-## Technical Details
+**Problem confirmed:** Line 961 outputs full `knowledge_text` with no length limit. Some ICAR scientific references are 500+ words.
 
-### `filterRelevantResponses()` Implementation
+**Fix:** At line 961, cap: `knowledgeText.substring(0, 600)` before injecting into prompt. Apply same cap at line 1099-1100 for matched response knowledge_text.
 
+### Fix 6: Conditional Land Context Injection (Lines 827-836)
+
+**Problem confirmed:** Lines 827-836 unconditionally inject Village, District, exact soil N/P/K, and NDVI into every prompt regardless of rule type.
+
+**Fix:** Make land context conditional in `buildFormattingUserPrompt()`:
+- Village/District: only include if `primary_decision.action_type` involves weather-dependent rules
+- Soil N/P/K: only include if primary rule's `canonical_group` is nutrition-related or action_text mentions nutrient/fertilizer
+- NDVI: only include if primary rule involves stress assessment
+- Always include: Crop, Growth Stage, Area, Days Since Sowing (these are always relevant)
+
+### Fix 7: Remove Rule ID from LLM Prompt (Line 911, 1034)
+
+**Problem confirmed:** Line 911 sends `Rule ID: ${primary.rule_id}` and line 1034 sends `Scientific Basis: ICAR Rule ${primary.rule_id}`. While the output validator blocks `RULE_*` patterns, sending rule_id to LLM increases leakage risk.
+
+**Fix:** Remove line 911 (`Rule ID` line) and change line 1034 to just `Scientific Basis: ICAR Validated` (no rule_id).
+
+### Fix 8: Remove Hardcoded Water Volume and Timing Defaults (Lines 990-991)
+
+**Problem confirmed:**
+- Line 991: `Water Volume: ${appDetails.water_volume || '200 L/acre'}` -- hardcoded fallback
+- Line 990: `Timing: ${appDetails.timing || 'Early morning 6-10 AM'}` -- hardcoded fallback
+
+These should come from the rule engine only.
+
+**Fix:** Change defaults to `'As per label'` instead of specific hardcoded values:
+- Water Volume fallback: `'As per label'`
+- Timing fallback: `'As per label'`
+
+### Fix 9: Improve ASCII Language Detection (Lines 484-494)
+
+**Problem confirmed:** Line 488 uses `asciiRatio > 0.4` which counts English numbers as ASCII, causing false positives for Marathi/Hindi text with numeric dosages.
+
+**Fix:** Replace ASCII ratio check with Devanagari Unicode range detection:
 ```typescript
-function filterRelevantResponses(
-  responses: any[],
-  primaryRuleId: string | undefined,
-  maxCount: number = 3
-): any[] {
-  if (!responses || responses.length === 0) return [];
+const devanagariChars = (formattedResponse.match(/[\u0900-\u097F]/g) || []).length;
+const devanagariRatio = totalChars > 0 ? devanagariChars / totalChars : 0;
+if (devanagariRatio < 0.3) { // Less than 30% Devanagari = likely translation failure
+```
 
-  const NO_ACTION_TEXTS = [
-    'do not apply any treatment at this stage.',
-    'monitor pest population regularly; no treatment required at this stage.'
-  ];
+---
 
-  // 1. Primary rule's response always included
-  const primary = primaryRuleId
-    ? responses.find(r => r.rule_id === primaryRuleId)
-    : null;
+## MINOR FIXES (3)
 
-  // 2. Filter remaining: priority >= 7, exclude "do nothing" rules
-  const others = responses
-    .filter(r => r.rule_id !== primaryRuleId)
-    .filter(r => (r.priority || 0) >= 7)
-    .filter(r => {
-      const actionText = (r.action_text || '').toLowerCase().trim();
-      return !NO_ACTION_TEXTS.includes(actionText);
-    })
-    .slice(0, maxCount - (primary ? 1 : 0));
+### Fix 10: IPM Urgency Unknown Level Guard (Lines 139-145, 1030)
 
-  const result = primary ? [primary, ...others] : others.slice(0, maxCount);
+**Problem confirmed:** `IPM_URGENCY_LABELS` only defines LEVEL_1 through LEVEL_5. Line 1030 falls back to `'Normal priority'` for unknown levels, but does not log a warning.
 
-  console.log(`   [TOKEN_OPT] Filtered responses: ${result.length}/${responses.length} (primary=${!!primary})`);
-  return result;
+**Fix:** At line 1030, add a console.warn when the IPM level is not found in the map:
+```typescript
+if (!IPM_URGENCY_LABELS[primary.ipm_level]) {
+  console.warn(`[IPM_GOVERNANCE] Unknown IPM level: ${primary.ipm_level}`);
 }
 ```
 
-### Risk Assessment
+### Fix 11: Cross-Crop Biocontrol Validation Enhancement (Lines 668-676)
 
-| Change | Risk | Notes |
+**Problem confirmed:** Only wheat is validated (line 669). Missing: Rice (no Cotesia flavipes), Cotton (no sugarcane-specific biocontrol), Maize (no cotton bollworm-specific agents).
+
+**Fix:** Extend the crop-specific biocontrol validation block to include Rice, Cotton, and Maize with their respective invalid biocontrols.
+
+### Fix 12: Efficacy Percentage Conflict Resolution (Line 993)
+
+**Problem confirmed:** Line 993 injects `efficacy_percent` from rule engine (or defaults to 75%), but the percentage validator at line 644 blocks all percentage claims. This creates a conflict where rule-engine-provided efficacy could trigger a false validation failure.
+
+**Fix:** In the percentage validation check, extract the rule-engine-provided efficacy number and exclude it from violation matching. Additionally, remove the hardcoded `|| 75` default at line 993 -- if no efficacy is provided by the rule engine, don't fabricate one.
+
+---
+
+## Technical Summary
+
+**File modified:** `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
+
+**No database changes required.** All fixes are in the formatter logic.
+
+| Fix | Lines Affected | Risk |
 |---|---|---|
-| Filter matched_responses | Low-Medium | Primary always included; "Do nothing" rules add no value to prompt |
-| Compress system prompt | Low | Core constraints preserved; only decoration removed |
-| Remove duplicates | None | Content literally sent twice today |
-| Branding fix | None | String replacement |
+| 1. Secondary validation | 349-376, ~614 | Low -- additive check |
+| 2. Remove hardcoded biocontrol | 1054-1074 | Low -- rule engine already provides dosage |
+| 3. PHI validation | ~614 | Low -- additive check |
+| 4. Percentage regex | 644 | Low -- broadens existing check |
+| 5. knowledge_text cap | 961, 1099 | Low -- substring only |
+| 6. Conditional land context | 827-836 | Medium -- logic change |
+| 7. Remove rule_id from prompt | 911, 1034 | Low -- string change |
+| 8. Remove hardcoded defaults | 990-991 | Low -- default value change |
+| 9. Devanagari detection | 484-494 | Low -- improved accuracy |
+| 10. IPM level guard | 1030 | None -- logging only |
+| 11. Cross-crop validation | 668-676 | Low -- additive checks |
+| 12. Efficacy conflict | 644, 993 | Medium -- logic interaction |
