@@ -396,6 +396,11 @@ export async function formatRecommendationsWithLLM(
   const systemPrompt = buildFormattingSystemPrompt(input);
   const userPrompt = buildFormattingUserPrompt(input, recommendationData);
   
+  // TOKEN_METRICS: Log prompt size for cost monitoring
+  const totalMatchedResponses = input.decision_output?.matched_responses?.length || 0;
+  const estTokens = Math.ceil((systemPrompt.length + userPrompt.length) / 4);
+  console.log(`   [TOKEN_METRICS] system_chars=${systemPrompt.length}, user_chars=${userPrompt.length}, est_tokens=${estTokens}, matched_responses_total=${totalMatchedResponses}`);
+  
   let formattedResponse = '';
   let aiModelUsed = '';
   let tokensUsed = 0;  // NEW: Track token usage
@@ -729,98 +734,30 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   // Get crop stage constraints
   const cropStageConstraints = getCropStageConstraints(input);
   
-  return `You are a LANGUAGE ADAPTER for KisanMitra (किसानमित्र), an agricultural advisory system.
+  return `You are a LANGUAGE ADAPTER for SATHI (साथी), an agricultural advisory system.
+You are a TRANSLATOR/FORMATTER ONLY. The SYMBOLIC DECISION BRAIN has already made all decisions.
+You CANNOT add, remove, or modify product names, dosages, timing, actions, priorities, or safety instructions. Copy them EXACTLY.
+Your ONLY job: translate symbolic brain output to ${langName}, format for readability, add empathetic tone.
 
-═══════════════════════════════════════════════════════════════════════════
-CRITICAL CONSTRAINT: RENDER-ONLY MODE
-═══════════════════════════════════════════════════════════════════════════
+FORBIDDEN: ❌ Invent products/dosages ❌ Add effectiveness claims ❌ Recommend harvest for young crops ❌ Add actions not in recommendations ❌ Modify PHI values ❌ Mention unreported pests/diseases
 
-You are NOT an advisor. You are a TRANSLATOR/FORMATTER ONLY.
-The SYMBOLIC DECISION BRAIN has already made all decisions.
+DIAGNOSTIC HIERARCHY:
+- Pest evidence (dead heart, bore holes, frass, larvae) → ONLY pest treatment, NEVER fertilizer
+- Dead heart in sugarcane = Shoot Borer (95%), NOT zinc deficiency
+- White bands/streaks = Zinc deficiency, NOT pest
+- Patchy damage = Biotic, Uniform = Abiotic
+- ONLY respond to what farmer asked. If NO pest/disease in recommendations → NO pest products
+- If symbolic brain output is empty → answer farmer's question directly, NEVER invent pest problems
 
-You CANNOT add, remove, or modify:
-- Product names (use EXACTLY as provided)
-- Dosages (copy EXACTLY)
-- Timing (copy EXACTLY)
-- Actions (copy EXACTLY)
-- Priorities (copy EXACTLY)
-- Safety instructions (copy EXACTLY)
-
-Your ONLY job is to:
-1. Translate symbolic brain output to ${langName}
-2. Format for readability (numbered lists, emojis)
-3. Add empathetic tone (greeting, closing)
-4. Match farmer's detected language
-
-═══════════════════════════════════════════════════════════════════════════
-FORBIDDEN - NEVER DO THESE:
-═══════════════════════════════════════════════════════════════════════════
-
-❌ Do NOT invent product names
-❌ Do NOT create new dosages
-❌ Do NOT add percentage effectiveness claims
-❌ Do NOT recommend harvest for young crops (check crop stage)
-❌ Do NOT add actions not in the recommendations
-❌ Do NOT modify PHI (Pre-Harvest Interval) values
-❌ Do NOT mention pests/diseases that are NOT in the recommendations
-❌ Do NOT suggest treatments for problems the farmer DID NOT report
-
-═══════════════════════════════════════════════════════════════════════════
-DIAGNOSTIC HIERARCHY (CRITICAL - AGRONOMIC SAFETY):
-═══════════════════════════════════════════════════════════════════════════
-
-1. If pest evidence exists (dead heart, bore holes, frass, larvae) → ONLY discuss pest treatment
-2. NEVER recommend fertilizer/nutrition when pest symptoms are the primary problem
-3. Dead heart in sugarcane = Shoot Borer (95% probability), NOT zinc deficiency
-4. White bands/streaks on leaves = Zinc deficiency, NOT pest damage
-5. Patchy damage = Biotic (pest/disease), Uniform damage = Abiotic (nutrition/water)
-6. If the farmer reports bore holes + dead heart → This is ALWAYS a borer pest, never nutrition
-
-CRITICAL - ONLY respond to what the farmer asked:
-- If farmer asked about CROP NAME → Answer with crop info, NOT pest treatment
-- If farmer asked about WATER → Answer with irrigation info, NOT pest treatment
-- If farmer asked about FERTILIZER → Answer with nutrition info, NOT pest treatment
-- If NO pest/disease in recommendations → DO NOT mention pest treatment products
-
-If symbolic brain output is empty or has NO actions:
-→ Answer the farmer's question directly without adding pest/disease treatments
-→ For crop info queries, just state the crop name and stage
-→ NEVER invent pest problems that aren't in the data
-
-═══════════════════════════════════════════════════════════════════════════
-OUTPUT STRUCTURE (Strict 1-5 Format):
-═══════════════════════════════════════════════════════════════════════════
-
-1. GREETING + ACKNOWLEDGMENT
-2. WHAT TO DO (actions from symbolic brain ONLY - if any)
-3. WHEN (timing from symbolic brain ONLY - if provided)
-4. HOW MUCH (dosage from symbolic brain ONLY - if provided)
-5. WHAT TO AVOID + SUPPORTIVE CLOSING
-
+OUTPUT: 1.Greeting 2.What to do 3.When 4.How much 5.What to avoid + closing
 OUTPUT LANGUAGE: ${langName}
 ${ruralRules}
 
 ${cropStageConstraints}
 
-TRANSLATION RULES:
-- action_text, reason_text, knowledge_text are REFERENCE texts in English
-- TRANSLATE them into natural, farmer-friendly ${langName}
-- Do NOT copy English text verbatim into ${langName} responses
-- NEVER leave English phrases or sentences in your ${langName} response. Every sentence MUST be in ${langName}.
-- Translate technical terms like "Cultural practice" → ${input.language === 'mr' ? 'सांस्कृतिक पद्धती' : input.language === 'hi' ? 'सांस्कृतिक तरीके' : 'Cultural practice'}
-- Translate "NO_ACTION_REQUIRED" → ${input.language === 'mr' ? 'कोणतीही कृती आवश्यक नाही' : input.language === 'hi' ? 'कोई कार्रवाई आवश्यक नहीं' : 'No action required'}
+TRANSLATION: action_text/reason_text/knowledge_text are English REFERENCE texts. TRANSLATE into natural ${langName}. NEVER leave English phrases in ${langName} output.
 
-DOSAGE CALCULATION RULES:
-- If land area is provided (e.g., 5 acres), ALWAYS calculate TOTAL quantities
-- Formula: Total product = dosage_per_acre × land_area
-- Formula: Total water = water_volume_per_acre × land_area
-- Show BOTH per-acre AND total quantities
-- Example: "प्रति एकर: 2ml/L | तुमच्या 5 एकरसाठी एकूण: 10ml in 1000L पाणी"
-
-BIOCONTROL DOSAGE (ONLY if biocontrol is the PRIMARY recommendation):
-- Trichogramma chilonis: 50,000 parasitoids/acre
-- Cotesia flavipes: 5,000 cocoons/acre
-- Do NOT mention biocontrol agents if the problem is about WEEDS, NUTRITION, or IRRIGATION`;
+DOSAGE: If land area provided, calculate TOTAL: dosage_per_acre × land_area. Show BOTH per-acre AND total.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -887,16 +824,6 @@ function buildFormattingUserPrompt(input: LLMFormatterInput, recData: string): s
   const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
   const isYoungCrop = trulyYoungStages.includes(cropStage) || daysSinceSowing < 30;
   
-  // Build explicit constraint for young crops
-  const harvestConstraint = isYoungCrop ? `
-⚠️ CRITICAL CONSTRAINT - READ CAREFULLY:
-This crop (${crop}) is only ${daysSinceSowing} days old in ${cropStage} stage.
-DO NOT recommend harvesting, cutting, or selling the crop.
-For pest/disease problems, recommend CONTROL MEASURES only.
-The farmer's problem is about pest damage (dead heart = shoot borer), NOT about harvesting.
-
-` : '';
-
   const landInfo = input.land_context ? `
 LAND CONTEXT:
 - Crop: ${input.land_context.current_crop || 'Not specified'}
@@ -911,20 +838,53 @@ LAND CONTEXT:
   return `FARMER'S QUESTION (in their language):
 "${input.farmer_message}"
 
-${harvestConstraint}${landInfo}
+${landInfo}
 
 RULE ENGINE RECOMMENDATIONS (PRESERVE ALL DOSAGES EXACTLY):
 ${recData}
 
-FORMAT this into natural, empathetic farmer advice in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}.
+FORMAT this into natural, empathetic farmer advice in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}.`;
+}
 
-IMPORTANT REMINDERS:
-1. Include ALL product names and dosages EXACTLY as shown above
-2. ONLY mention Trichogramma/Cotesia if they appear in PRIMARY RECOMMENDATION above
-3. ${isYoungCrop ? 'DO NOT recommend harvest - this is a young crop with pest problem' : 'Check PHI before recommending harvest'}
-4. For dead heart symptom, the solution is pest control, NOT harvesting
-5. Be warm and supportive
-6. TRANSLATE all English reference texts into ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'} - do NOT leave English phrases in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'} output`;
+// ═══════════════════════════════════════════════════════════════════════════
+// TOKEN OPTIMIZATION: Filter matched responses to max N relevant ones
+// Previously ALL 73 matched responses were dumped into the prompt (~8,000 tokens).
+// Now only the primary + top high-priority alternatives are included (~450 tokens).
+// ═══════════════════════════════════════════════════════════════════════════
+
+function filterRelevantResponses(
+  responses: any[],
+  primaryRuleId: string | undefined,
+  maxCount: number = 3
+): any[] {
+  if (!responses || responses.length === 0) return [];
+
+  const NO_ACTION_TEXTS = [
+    'do not apply any treatment at this stage.',
+    'monitor pest population regularly; no treatment required at this stage.',
+    'no treatment required at this stage.',
+    'continue regular monitoring.',
+  ];
+
+  // 1. Primary rule's response always included
+  const primary = primaryRuleId
+    ? responses.find(r => r.rule_id === primaryRuleId)
+    : null;
+
+  // 2. Filter remaining: priority >= 7, exclude "do nothing" / "monitor" rules
+  const others = responses
+    .filter(r => r.rule_id !== primaryRuleId)
+    .filter(r => (r.priority || 0) >= 7)
+    .filter(r => {
+      const actionText = (r.action_text || '').toLowerCase().trim();
+      return !NO_ACTION_TEXTS.some(noAction => actionText.includes(noAction));
+    })
+    .slice(0, maxCount - (primary ? 1 : 0));
+
+  const result = primary ? [primary, ...others] : others.slice(0, maxCount);
+
+  console.log(`   [TOKEN_OPT] Filtered responses: ${result.length}/${responses.length} (primary=${!!primary}, excluded_no_action=${responses.length - result.length})`);
+  return result;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1114,40 +1074,40 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // MATCHED RESPONSES - Pre-formatted responses from decision rules in farmer's language
-  // PRODUCTION HARDENING: Uses new response contract (action_text, reason_text, knowledge_text) 
-  // with fallback to legacy response_mr/hi/en
+  // MATCHED RESPONSES - TOKEN OPTIMIZED: Filter to max 3 relevant responses
+  // Previously sent ALL 73 matched responses (~8,000 tokens). Now sends only
+  // the primary + top 2 high-priority alternatives (~450 tokens).
   // ═══════════════════════════════════════════════════════════════════════════
   const matchedResponses = decision.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
-    parts.push(`\n═══ IPM TREATMENT RESPONSES (Use in farmer's language): ═══`);
-    matchedResponses.forEach((resp: any, idx: number) => {
+    const primaryRuleId = decision.primary_decision?.rule_id;
+    const filteredResponses = filterRelevantResponses(matchedResponses, primaryRuleId, 3);
+    
+    parts.push(`\nIPM TREATMENT RESPONSES (Use in farmer's language):`);
+    filteredResponses.forEach((resp: any, idx: number) => {
+      const isPrimary = resp.rule_id === primaryRuleId;
       parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
       
-      // PRIORITY 1: Use structured response contract fields
-      if (resp.action_text || resp.reason_text || resp.knowledge_text) {
-        parts.push(`   ─── STRUCTURED RESPONSE (PRIORITY) ───`);
-        if (resp.action_text) {
-          parts.push(`   📋 कृती (Action): ${resp.action_text}`);
-        }
-        if (resp.reason_text) {
-          parts.push(`   🔍 कारण (Reason): ${resp.reason_text}`);
-        }
-        if (resp.knowledge_text) {
-          parts.push(`   📚 आधार (Knowledge): ${resp.knowledge_text}`);
-        }
-        parts.push(`   ────────────────────────────────────`);
+      // Use structured response contract fields (skip legacy when action_text exists)
+      if (resp.action_text) {
+        parts.push(`   Action: ${resp.action_text}`);
+      }
+      if (resp.reason_text) {
+        parts.push(`   Reason: ${resp.reason_text}`);
+      }
+      // Only include knowledge_text for PRIMARY response (biggest token consumer)
+      if (isPrimary && resp.knowledge_text) {
+        parts.push(`   Knowledge: ${resp.knowledge_text}`);
       }
       
-      // PRIORITY 2: Fallback to legacy response fields (Change E)
-      const localizedResponse = resp[`response_${input.language}`] || resp.response_en || resp.response_mr || '';
-      if (localizedResponse) {
-        parts.push(`   ═══ TRANSLATE this response to farmer's ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'} language ═══`);
-        parts.push(`   ${localizedResponse}`);
-        parts.push(`   ═════════════════════════════════════`);
+      // Fallback to legacy response fields ONLY if no action_text
+      if (!resp.action_text) {
+        const localizedResponse = resp[`response_${input.language}`] || resp.response_en || resp.response_mr || '';
+        if (localizedResponse) {
+          parts.push(`   Response: ${localizedResponse}`);
+        }
       }
     });
-    parts.push(`\n⚠️ IMPORTANT: Use the above IPM treatment responses as-is in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}. Do not modify them.`);
   }
   
   // Warnings
