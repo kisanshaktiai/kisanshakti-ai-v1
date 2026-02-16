@@ -4062,13 +4062,19 @@ export class AIAgentOrchestrator {
         console.log('   ✅ G1 INPUT_NORMALIZATION: PASSED (language detected)');
         
         // G2: CONTEXT_COMPLETENESS - Block if crop=UNKNOWN OR stage=DEFAULT without sowing_date
+        // CRITICAL FIX: Use enriched canonical state crop (which includes induction result)
+        // instead of raw cropContextAuthority which may be undefined
+        const enrichedCropName = canonicalState.crop_type && canonicalState.crop_type !== 'UNKNOWN' 
+          ? canonicalState.crop_type 
+          : cropContextAuthority?.crop_name;
+        
         const contextValidation = validateContextCompleteness({
           farmer_mentioned_crop: observationExtraction?.crop_mentioned || null,
           land_context: landContext,
           nlu_output: nluOutput,
-          land_state: {
-            crop: { crop_name: cropContextAuthority?.crop_name || 'UNKNOWN' }
-          }
+          land_state: enrichedCropName && enrichedCropName !== 'UNKNOWN' 
+            ? { crop: { crop_name: enrichedCropName } } as any
+            : undefined  // Don't pass { crop_name: 'UNKNOWN' } - let farmer_mentioned_crop be used
         });
         
         if (contextValidation.status === 'NEEDS_CLARIFICATION') {
@@ -4776,7 +4782,8 @@ export class AIAgentOrchestrator {
         contextState,
         { farmerId, landId: options.landId, traceId },
         nluWithRuleMapping,
-        landContext  // CRITICAL FIX: Pass landContext directly
+        landContext,  // CRITICAL FIX: Pass landContext directly
+        canonicalState  // CRITICAL FIX: Pass enriched canonical state for crop fallback
       );
       
       let decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
@@ -6366,7 +6373,8 @@ export class AIAgentOrchestrator {
     context: ContextState,
     ids: { farmerId: string; landId?: string; traceId?: string },
     nluMapping?: any,
-    landContext?: any  // CRITICAL FIX: Accept landContext directly
+    landContext?: any,  // CRITICAL FIX: Accept landContext directly
+    canonicalState?: any  // CRITICAL FIX: Accept enriched canonical state for crop fallback
   ): RuleExecutionInput {
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Use landContext parameter directly (NOT context.land_context)
@@ -6388,8 +6396,15 @@ export class AIAgentOrchestrator {
     // Extract NLU entities
     const nluEntities = nluMapping?.entities || {};
     
-    // CRITICAL: Prioritize land's current crop over NLU extraction
+    // CRITICAL FIX: Use canonical state crop (enriched from LLM semantic extractor + induction)
+    // as fallback when land context has no crop. This ensures the crop detected from the
+    // farmer's message (e.g., "my sugarcane...") flows to the rule engine.
+    const canonicalCrop = canonicalState?.crop_type && canonicalState.crop_type !== 'UNKNOWN' 
+      ? canonicalState.crop_type : undefined;
+    
+    // Priority: Land Context > Canonical State (enriched) > NLU entities > Fusion > fallback
     const rawCropCode = landCurrentCrop ||  // ALWAYS trust land's current crop
+                        canonicalCrop ||     // ENRICHED canonical state (includes induction)
                         nluEntities.crop_code ||
                         fused.unified_context?.crop?.code || 
                         context.crop_context?.code || 

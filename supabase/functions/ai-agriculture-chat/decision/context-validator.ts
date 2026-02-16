@@ -223,12 +223,23 @@ export class ContextValidator {
    * G2.1: Crop Context Reconciliation
    */
   private validateCropContext(input: ContextValidationInput, result: ContextValidationResult): void {
-    const landCrop = input.land_context?.crop_name || input.land_context?.crop_code;
-    const farmerCrop = input.farmer_mentioned_crop;
-    const landStateCrop = input.land_state?.crop.crop_name;
+    // CRITICAL FIX: Treat 'UNKNOWN' as null/undefined so the priority chain falls through
+    const stripUnknown = (v: string | undefined | null): string | undefined => 
+      (v && v !== 'UNKNOWN' && v !== 'unknown') ? v : undefined;
     
-    // Priority: Land State > Land Context > Farmer Mentioned
-    let finalCrop = landStateCrop || landCrop || farmerCrop;
+    const landCrop = stripUnknown(input.land_context?.crop_name) || stripUnknown(input.land_context?.crop_code);
+    const farmerCrop = stripUnknown(input.farmer_mentioned_crop);
+    const landStateCrop = stripUnknown(input.land_state?.crop?.crop_name);
+    // Also check NLU output for crop
+    const nluCrop = stripUnknown(
+      (input as any).nlu_output?.crop_identification?.crop_code || 
+      (input as any).nlu_output?.crop_identification?.crop_name
+    );
+    
+    // Priority: Land State > Land Context > NLU > Farmer Mentioned
+    let finalCrop = landStateCrop || landCrop || nluCrop || farmerCrop;
+    
+    console.log(`   🌾 [G2 CropValidation] Sources: landState=${landStateCrop || 'N/A'}, land=${landCrop || 'N/A'}, nlu=${nluCrop || 'N/A'}, farmer=${farmerCrop || 'N/A'} → final=${finalCrop || 'NONE'}`);
     
     // Check for crop mismatch
     if (farmerCrop && landCrop && this.normalizeCrop(farmerCrop) !== this.normalizeCrop(landCrop)) {
@@ -255,7 +266,7 @@ export class ContextValidator {
       return;
     }
     
-    if (!finalCrop || finalCrop === 'UNKNOWN') {
+    if (!finalCrop) {
       result.missing_critical.push('crop_name');
       result.gates_failed.push('G2_CROP_COMPLETENESS');
       return;
@@ -273,12 +284,14 @@ export class ContextValidator {
     const cropCode = result.reconciled_crop || input.land_context?.crop_code;
     
     if (!sowingDate) {
-      // No sowing date = cannot calculate stage deterministically
-      result.missing_critical.push('sowing_date');
-      result.warnings.push('Growth stage defaulted - sowing_date missing');
+      // CRITICAL FIX: Missing sowing date should NOT block the system from giving advice.
+      // The system defaults to VEGETATIVE which is a safe fallback.
+      // Previously this pushed to gates_failed, causing NEEDS_CLARIFICATION for ALL farmers
+      // without sowing dates — making the system unusable for most farmers.
+      result.warnings.push('Growth stage defaulted to VEGETATIVE - sowing_date missing');
       result.reconciled_stage = 'VEGETATIVE'; // Safe default
       result.stage_source = 'DEFAULT';
-      result.gates_failed.push('G2_STAGE_DETERMINISM');
+      result.gates_passed.push('G2_STAGE_DETERMINISM'); // Pass with warning, don't block
       return;
     }
     
