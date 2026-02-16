@@ -556,6 +556,14 @@ function validateLLMOutput(
   const errors: string[] = [];
   const lowerOutput = llmOutput.toLowerCase();
   
+  // Hoisted for use in both CHECK 1 (generic action safety net) and CHECK 5
+  const commonPesticides = [
+    'chlorpyrifos', 'monocrotophos', 'cypermethrin', 'imidacloprid',
+    'carbofuran', 'phorate', 'thiamethoxam', 'fipronil', 'cartap',
+    'coragen', 'profenofos', 'quinalphos', 'acephate', 'malathion',
+    'lambda-cyhalothrin', 'deltamethrin', 'bifenthrin', 'emamectin'
+  ];
+
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: All products present (FIXED - skip generic action types)
   // CRITICAL FIX: Generic action types like "Cultural practice", "Monitoring", 
@@ -589,17 +597,44 @@ function validateLLMOutput(
       primaryProductName !== 'N/A' && 
       primaryProductName !== 'None' && 
       !isGenericActionType) {
-    // Check if product name or any word from it appears in output
-    const productWords = primaryProductName.toLowerCase().split(/[\s+@\/]+/).filter((w: string) => w.length > 2);
-    const productFound = productWords.some((word: string) => lowerOutput.includes(word)) || 
-                         lowerOutput.includes(primaryProductName.toLowerCase());
+    // FIX A: Entity-based product validation (replaces weak substring matching)
+    // Step 1: Check full product name match first (strongest signal)
+    const fullNameFound = lowerOutput.includes(primaryProductName.toLowerCase().trim());
     
-    if (!productFound) {
-      errors.push(`Missing product from symbolic decision: ${primaryProductName}`);
-      console.error(`🚫 [VALIDATION] Missing required product: ${primaryProductName}`);
+    // Step 2: Multi-word entity check (minimum 2 consecutive words from product name)
+    const productWords = primaryProductName.toLowerCase().split(/[\s+@\/]+/).filter((w: string) => w.length > 2);
+    let multiWordFound = false;
+    if (productWords.length >= 2) {
+      for (let i = 0; i <= productWords.length - 2; i++) {
+        const twoWordPhrase = productWords[i] + ' ' + productWords[i + 1];
+        if (lowerOutput.includes(twoWordPhrase)) {
+          multiWordFound = true;
+          break;
+        }
+      }
+    }
+    
+    // Step 3: Single-word fallback (downgraded to warning for transliteration cases)
+    const singleWordFound = productWords.some((word: string) => lowerOutput.includes(word));
+    
+    if (!fullNameFound && !multiWordFound) {
+      if (singleWordFound) {
+        // Partial match only - warn but don't block (may be transliterated)
+        console.warn(`⚠️ [VALIDATION] Product partially matched (single word only): ${primaryProductName}`);
+      } else {
+        errors.push(`Missing product from symbolic decision: ${primaryProductName}`);
+        console.error(`🚫 [VALIDATION] Missing required product: ${primaryProductName}`);
+      }
     }
   } else if (isGenericActionType) {
-    console.log(`   ℹ️ [VALIDATION] Skipping product check for generic action type: ${primaryProductName}`);
+    console.log(`   ℹ️ [VALIDATION] Skipping primary product check for generic action type: ${primaryProductName}`);
+    // FIX E: Safety net - still check for unauthorized chemicals in generic context
+    for (const pesticide of commonPesticides) {
+      if (lowerOutput.includes(pesticide) && !allowedProducts.includes(pesticide)) {
+        errors.push(`Chemical product "${pesticide}" found in generic action context`);
+        console.error(`🚫 [VALIDATION] Unauthorized chemical in generic context: ${pesticide}`);
+      }
+    }
   }
   
    // ═══════════════════════════════════════════════════════════════════════════
@@ -616,6 +651,32 @@ function validateLLMOutput(
        if (!numbersFound) {
          errors.push(`Dosage numbers mismatch. Expected: ${dosagePerAcre}, numbers: ${dosageNumbers.join(', ')}`);
          console.warn(`⚠️ [VALIDATION] Dosage numbers not found in output: ${dosageNumbers.join(', ')}`);
+       }
+       
+       // FIX B: Dosage UNIT consistency validation
+       // Catches magnitude errors like "250 ml/acre" → "250 L/acre" (1000x overdose)
+       const sourceUnitMatch = dosagePerAcre.match(/(ml|l|litre|liter|g|gm|kg|gram)/i);
+       const sourceUnit = sourceUnitMatch?.[0]?.toLowerCase();
+       if (sourceUnit && dosageNumbers) {
+         for (const num of dosageNumbers) {
+           const unitAfterNum = new RegExp(`${num}\\s*(ml|l|litre|liter|g|gm|kg|gram)`, 'gi');
+           const outputMatch = unitAfterNum.exec(llmOutput);
+           if (outputMatch) {
+             const outputUnit = outputMatch[1].toLowerCase();
+             // Detect same-category but different-magnitude unit swaps
+             const isMagnitudeSwap = 
+               (sourceUnit === 'ml' && outputUnit === 'l') || 
+               (sourceUnit === 'l' && outputUnit === 'ml') ||
+               (sourceUnit === 'g' && outputUnit === 'kg') || 
+               (sourceUnit === 'kg' && outputUnit === 'g') ||
+               (sourceUnit === 'gm' && outputUnit === 'kg') ||
+               (sourceUnit === 'kg' && outputUnit === 'gm');
+             if (isMagnitudeSwap) {
+               errors.push(`Dosage UNIT mismatch: source=${sourceUnit}, output=${outputUnit} for number ${num}`);
+               console.error(`🚫 [VALIDATION] Dosage unit magnitude error: ${sourceUnit} → ${outputUnit} for ${num}`);
+             }
+           }
+         }
        }
      }
    }
@@ -704,15 +765,8 @@ function validateLLMOutput(
    }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // CHECK 5: Unauthorized products (existing - enhanced)
+  // CHECK 5: Unauthorized products (uses hoisted commonPesticides)
   // ═══════════════════════════════════════════════════════════════════════════
-  const commonPesticides = [
-    'chlorpyrifos', 'monocrotophos', 'cypermethrin', 'imidacloprid',
-    'carbofuran', 'phorate', 'thiamethoxam', 'fipronil', 'cartap',
-    'coragen', 'profenofos', 'quinalphos', 'acephate', 'malathion',
-    'lambda-cyhalothrin', 'deltamethrin', 'bifenthrin', 'emamectin'
-  ];
-  
   for (const pesticide of commonPesticides) {
     if (lowerOutput.includes(pesticide) && !allowedProducts.includes(pesticide)) {
       errors.push(`Unauthorized product mentioned: ${pesticide}`);
@@ -1076,13 +1130,13 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
        // FIX 12: Remove hardcoded 75% efficacy default - only use rule engine value
        const efficacyValue = appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent;
        parts.push(`- Expected Efficacy: ${efficacyValue ? efficacyValue + '%' : 'As per field conditions'}`);
-      parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'No rain within 4-6 hours after spray'}`);
+      parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'Follow label instructions'}`);
       
       // BUG-2 FIX: Land-area-based total dosage calculation
       const farmerAreaAcres = input.land_context?.area_acres;
       if (farmerAreaAcres && farmerAreaAcres > 0) {
         const dosagePerAcre = appDetails.dosage_per_acre || appDetails.concentration || '';
-        const waterPerAcre = appDetails.water_volume || appDetails.water_volume_per_acre || '200 L/acre';
+        const waterPerAcre = appDetails.water_volume || appDetails.water_volume_per_acre || 'As per label';
         parts.push(`\n═══ TOTAL FOR FARMER'S LAND (${farmerAreaAcres} acres) ═══`);
         parts.push(`- Per acre dosage: ${dosagePerAcre}`);
         parts.push(`- Farmer's land: ${farmerAreaAcres} acres`);
