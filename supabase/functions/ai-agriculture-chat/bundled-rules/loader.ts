@@ -425,22 +425,17 @@ export function evaluateConditionsJson(
     }
   }
   
-  // Check trigger_keywords in user_query - KEYWORD MATCH OVERRIDES OTHER FAILURES
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SSOT FIX: trigger_keywords are DEPRECATED per language-independence architecture.
+  // They MUST NOT override other condition checks (soil thresholds, safety gates).
+  // Keyword matching is now handled by the Neuro-Symbolic Bridge upstream.
+  // If trigger_keywords exist in conditions_json, treat them as soft observation hints
+  // that contribute to allMatch but do NOT bypass other conditions.
+  // ═══════════════════════════════════════════════════════════════════════════
   if (conditions.trigger_keywords && Array.isArray(conditions.trigger_keywords) && conditions.trigger_keywords.length > 0) {
-    hasAnyCondition = true;
-    const queryLower = (input.user_query || '').toLowerCase();
-    
-    if (queryLower) {
-      const keywordMatch = conditions.trigger_keywords.some((kw: string) => {
-        const kwLower = kw.toLowerCase();
-        return queryLower.includes(kwLower);
-      });
-      
-      if (keywordMatch) {
-        // CRITICAL: Keyword match overrides other condition failures!
-        return true;
-      }
-    }
+    // Log deprecation warning but do NOT override other conditions
+    console.warn(`⚠️ [evaluateConditionsJson] trigger_keywords found but DEPRECATED - not overriding conditions`);
+    // trigger_keywords are ignored — observation matching handles this upstream
   }
   
   // ═══════════════════════════════════════════════════════════════════════════

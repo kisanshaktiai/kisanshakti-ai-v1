@@ -846,7 +846,7 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
     },
     then: {
       possible_cause: bundled.cause,
-      cause_confidence: bundled.cause_confidence || 0.7,
+      cause_confidence: bundled.confidence_score || 0.7,
       // ═══════════════════════════════════════════════════════════════════════════
       // PRODUCTION HARDENING: action_type is REQUIRED - use from DB, fallback to RECOMMEND
       // ═══════════════════════════════════════════════════════════════════════════
@@ -935,10 +935,16 @@ function mapBundledCategory(category: string): RuleCategory {
     'diagnosis': RuleCategory.DIAGNOSIS,
     'pest': RuleCategory.DIAGNOSIS,
     'disease': RuleCategory.DIAGNOSIS,
-    'nutrient': RuleCategory.DIAGNOSIS,
-    'nutrition': RuleCategory.DIAGNOSIS,
     'weed': RuleCategory.DIAGNOSIS,
     'stress': RuleCategory.DIAGNOSIS,
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Nutrition rules go to PRESCRIPTION, NOT DIAGNOSIS
+    // This prevents urgent nutrition rules from dominating primary selection
+    // over pest/disease diagnosis rules via ACTION_TYPE_PRIORITY
+    // ═══════════════════════════════════════════════════════════════════════
+    'nutrient': RuleCategory.PRESCRIPTION,
+    'nutrition': RuleCategory.PRESCRIPTION,
     
     // EXCLUSION rules - rule out causes
     'exclusion': RuleCategory.EXCLUSION,
@@ -947,16 +953,19 @@ function mapBundledCategory(category: string): RuleCategory {
     'safety': RuleCategory.SAFETY,
     'weather_safety': RuleCategory.SAFETY,
     'risk_safety': RuleCategory.SAFETY,
+    'decision_gate': RuleCategory.SAFETY,
     
     // PRESCRIPTION rules - provide treatments
     'prescription': RuleCategory.PRESCRIPTION,
     'irrigation': RuleCategory.PRESCRIPTION,
     'fertilizer': RuleCategory.PRESCRIPTION,
-    'ipm_treatment': RuleCategory.PRESCRIPTION, // CRITICAL: IPM treatments are prescriptions!
+    'ipm_treatment': RuleCategory.PRESCRIPTION,
     'treatment': RuleCategory.PRESCRIPTION,
     'stage_advisory': RuleCategory.PRESCRIPTION,
     'economics': RuleCategory.PRESCRIPTION,
     'harvest': RuleCategory.PRESCRIPTION,
+    'planting': RuleCategory.PRESCRIPTION,
+    'ratoon_management': RuleCategory.PRESCRIPTION,
     
     // WARNING rules - inform about risks
     'warning': RuleCategory.WARNING,
@@ -965,22 +974,26 @@ function mapBundledCategory(category: string): RuleCategory {
     // CLARIFICATION - special handling
     'clarification': RuleCategory.OBSERVATION
   };
-  return map[category?.toLowerCase()] || RuleCategory.DIAGNOSIS;
+  // ═══════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Default to OBSERVATION (lowest phase) not DIAGNOSIS
+  // Unknown categories should NOT compete with pest/disease diagnosis
+  // ═══════════════════════════════════════════════════════════════════════
+  return map[category?.toLowerCase()] || RuleCategory.OBSERVATION;
 }
 
 // ==================== KEYWORD FALLBACK ====================
 
-// PHASE-14: Strong agricultural keywords that trigger keyword fallback even when visual_symptom is NONE
-const STRONG_AGRI_KEYWORDS = [
-  // Marathi
-  'मेला', 'मेले', 'वाळले', 'सुकले', 'उगवले', 'उगवत', 'गॅप', 'किड', 'रोग', 'कीटक',
-  'अळी', 'पिवळे', 'तांबेरा', 'बुरशी', 'उधई', 'वाळवी', 'खोड', 'पाने', 'मूळ',
-  // Hindi  
-  'मर गया', 'मर गए', 'सूख गया', 'उगा नहीं', 'गैप', 'कीड़ा', 'रोग', 'इल्ली',
-  'पीले', 'रतुआ', 'फफूंद', 'दीमक', 'तना', 'पत्ते', 'जड़',
-  // English
-  'died', 'dead', 'dying', 'wilted', 'germination', 'gap', 'pest', 'disease',
-  'borer', 'yellow', 'rust', 'fungus', 'termite', 'stem', 'leaf', 'root'
+// ═══════════════════════════════════════════════════════════════════════════
+// LANGUAGE-AGNOSTIC: Strong agricultural observation codes (NO hardcoded mr/hi/en words)
+// These are canonical observation symbols, NOT language-specific keywords.
+// Language detection is handled by the Neuro-Symbolic Bridge (LLM semantic normalizer).
+// ═══════════════════════════════════════════════════════════════════════════
+const STRONG_AGRI_OBSERVATION_CODES = [
+  'DEAD_HEART', 'PLANT_DEATH', 'DRYING_WILTING', 'GERMINATION_FAILURE',
+  'GAPS_IN_FIELD', 'PEST_DAMAGE', 'DISEASE_PATTERN', 'STEM_BORER',
+  'LEAF_YELLOWING', 'LEAF_DRYING', 'ROOT_DAMAGE', 'TERMITE_DAMAGE',
+  'HOLES_VISIBLE', 'BORE_HOLES', 'FRASS_VISIBLE', 'INSECT_PRESENT',
+  'FUNGAL_GROWTH', 'WILTING', 'STUNTED_GROWTH', 'COLOR_CHANGE'
 ];
 
 export async function evaluateBundledKeywordRules(
@@ -1022,10 +1035,14 @@ export async function evaluateBundledKeywordRules(
   return matches.sort((a, b) => b.confidence - a.confidence).slice(0, 5);
 }
 
-// PHASE-14: Helper to check if query contains strong agricultural keywords
-export function hasStrongAgriKeywords(userQuery: string): boolean {
-  const queryLower = userQuery.toLowerCase();
-  return STRONG_AGRI_KEYWORDS.some(kw => queryLower.includes(kw.toLowerCase()));
+// LANGUAGE-AGNOSTIC: Check if extracted observations contain strong agricultural signals
+// This should be called with canonical observation codes, NOT raw user text
+export function hasStrongAgriObservations(observations: string[]): boolean {
+  if (!observations || observations.length === 0) return false;
+  const obsUpper = observations.map(o => o.toUpperCase().replace(/[\s-]/g, '_'));
+  return STRONG_AGRI_OBSERVATION_CODES.some(code => 
+    obsUpper.some(obs => obs.includes(code) || code.includes(obs))
+  );
 }
 
 export async function evaluateBundledRulesForCrop(cropCode: string, input: any): Promise<any[]> {
