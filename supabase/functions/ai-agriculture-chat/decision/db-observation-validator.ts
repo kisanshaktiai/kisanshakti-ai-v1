@@ -116,8 +116,9 @@ export async function validateObservationFromDB(
   const supabase = getSupabaseClient();
   const { crop_code, days_since_sowing, observation_code } = input;
   const cropUpper = crop_code.toUpperCase();
+  const obsUpper = observation_code.toUpperCase();
   
-  console.log(`🔬 [DBValidator] Validating: ${observation_code} for ${cropUpper} @ DAS ${days_since_sowing}`);
+  console.log(`🔬 [DBValidator] Validating: ${obsUpper} for ${cropUpper} @ DAS ${days_since_sowing}`);
   
   // 1. Get growth stage
   const growthStage = await getGrowthStageFromDB(cropUpper, days_since_sowing);
@@ -126,7 +127,7 @@ export async function validateObservationFromDB(
   if (growthStage === 'UNKNOWN') {
     return {
       valid: true, // Allow if we can't determine stage
-      observation_code,
+      observation_code: obsUpper,
       crop_code: cropUpper,
       growth_stage: 'UNKNOWN',
       reason: `Crop ${cropUpper} not found in database - allowing observation`
@@ -137,7 +138,7 @@ export async function validateObservationFromDB(
   const { data: mapping, error } = await supabase
     .from('intent_observation_mapping')
     .select('observation_code, intent_code')
-    .eq('observation_code', observation_code)
+    .eq('observation_code', obsUpper)
     .eq('crop_code', cropUpper)
     .lte('das_min', days_since_sowing)
     .gte('das_max', days_since_sowing)
@@ -148,7 +149,7 @@ export async function validateObservationFromDB(
     console.warn(`[DBValidator] Query error: ${error.message}`);
     return {
       valid: true, // Allow on error
-      observation_code,
+      observation_code: obsUpper,
       crop_code: cropUpper,
       growth_stage: growthStage,
       reason: 'Database error - allowing observation'
@@ -157,18 +158,18 @@ export async function validateObservationFromDB(
   
   // 3. Check result
   if (mapping && mapping.length > 0) {
-    console.log(`   ✅ VALID: ${observation_code} found in mapping`);
+    console.log(`   ✅ VALID: ${obsUpper} found in mapping`);
     return {
       valid: true,
-      observation_code,
+      observation_code: obsUpper,
       crop_code: cropUpper,
       growth_stage: growthStage,
-      reason: `${observation_code} is biologically valid for ${cropUpper}/${growthStage}`
+      reason: `${obsUpper} is biologically valid for ${cropUpper}/${growthStage}`
     };
   }
   
   // 4. NOT FOUND - Check if there are any similar valid observations
-  console.log(`   ⚠️ INVALID: ${observation_code} not found for ${cropUpper}/${growthStage}`);
+  console.log(`   ⚠️ INVALID: ${obsUpper} not found for ${cropUpper}/${growthStage}`);
   
   // Get valid observations for this stage to suggest corrections
   const { data: validObs } = await supabase
@@ -185,10 +186,10 @@ export async function validateObservationFromDB(
   
   return {
     valid: false,
-    observation_code,
+    observation_code: obsUpper,
     crop_code: cropUpper,
     growth_stage: growthStage,
-    reason: `${observation_code} is not biologically valid for ${cropUpper} at ${growthStage} stage (DAS ${days_since_sowing})`,
+    reason: `${obsUpper} is not biologically valid for ${cropUpper} at ${growthStage} stage (DAS ${days_since_sowing})`,
     correction_suggestion: suggestions.length > 0 ? suggestions[0] : undefined,
     clarification_question: `This observation is unusual at ${growthStage} stage. Did you mean one of: ${suggestions.join(', ')}?`
   };
