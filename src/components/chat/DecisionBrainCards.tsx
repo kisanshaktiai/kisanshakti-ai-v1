@@ -158,11 +158,13 @@ export function LandContextSummaryCard({ context, language }: LandContextCardPro
   // Get localized area display
   const getAreaDisplay = () => {
     if (context.landAreaGunta) {
-      const unit = language === 'en' ? 'gunta' : 'गुंठा';
+      const areaUnits: Record<string, string> = { en: 'gunta', hi: 'गुंठा', mr: 'गुंठा', ta: 'குந்தா', te: 'గుంట', kn: 'ಗುಂಟ' };
+      const unit = areaUnits[language] || areaUnits.en;
       return `${context.landAreaGunta} ${unit}`;
     }
     if (context.landAreaAcre) {
-      const unit = language === 'en' ? 'acre' : language === 'hi' ? 'एकड़' : 'एकर';
+      const acreUnits: Record<string, string> = { en: 'acre', hi: 'एकड़', mr: 'एकर', ta: 'ஏக்கர்', te: 'ఎకరం', kn: 'ಎಕರೆ' };
+      const unit = acreUnits[language] || acreUnits.en;
       return `${context.landAreaAcre.toFixed(2)} ${unit}`;
     }
     return context.landArea;

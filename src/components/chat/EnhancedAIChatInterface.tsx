@@ -416,14 +416,57 @@ export function EnhancedAIChatInterface() {
         orchestratorType: metadata?.orchestrator_type as Message['orchestratorType'],
         dataAudit: metadata?.data_audit,
         traceId: metadata?.trace_id,
-        status: 'synced' as MessageStatus, // Cached messages are synced
+        status: 'synced' as MessageStatus,
         analytics: msg.response_time_ms ? {
           responseTime: msg.response_time_ms,
           queryComplexity: metadata?.source
         } : undefined,
         feedback: msg.feedback_rating 
           ? (msg.feedback_rating >= 4 ? 'like' as const : 'dislike' as const) 
-          : null
+          : null,
+        // P0 FIX: Reconstruct clarification options from persisted metadata
+        clarificationOptions: metadata?.clarification_options ? {
+          question: metadata.clarification_options.question,
+          options: metadata.clarification_options.options?.map((o: any) => ({
+            label: typeof o === 'string' ? o : o.label,
+            value: typeof o === 'string' ? o : (o.value || o.label),
+            description: typeof o === 'object' ? o.description : undefined,
+            observation_key: typeof o === 'object' ? o.observation_key : undefined
+          })),
+          selectionType: metadata.clarification_options.selectionType || 'SINGLE_CHOICE'
+        } : undefined,
+        // P0 FIX: Reconstruct decision brain data for rich card rendering
+        decisionBrainResponse: metadata?.decision_brain_data ? {
+          primaryActions: (metadata.decision_brain_data.primary_decision ? [metadata.decision_brain_data.primary_decision] : []).map((d: any) => ({
+            action: d.action_text || d.action || '',
+            reason: d.reason_text || d.reason || '',
+            timing: d.timing,
+            ruleSources: d.rules_applied || d.rule_sources || [],
+            priority: d.priority || 1
+          })),
+          secondaryActions: (metadata.decision_brain_data.secondary_decisions || []).map((d: any) => ({
+            action: d.action_text || d.action || '',
+            reason: d.reason_text || d.reason || '',
+            timing: d.timing,
+            ruleSources: d.rules_applied || d.rule_sources || [],
+            priority: d.priority || 2
+          })),
+          blockedActions: (metadata.decision_brain_data.blocked_actions || []).map((b: any) => ({
+            action: b.action || '',
+            whyNot: b.reason || b.why_not || '',
+            blockedByRules: b.blocked_by_rules || []
+          })),
+          confidence: {
+            riskLevel: metadata.decision_brain_data.risk_level || 'LOW',
+            confidence: metadata.decision_brain_data.confidence || 0,
+            explanations: [],
+            rulesApplied: metadata?.rules_applied?.length || 0
+          },
+          farmerMessage: msg.content || '',
+          language: msg.language || 'en'
+        } : undefined,
+        // P0 FIX: Reconstruct diagnostic escalation data
+        diagnosticEscalationData: metadata?.diagnostic_escalation_data || undefined
       };
     };
     
