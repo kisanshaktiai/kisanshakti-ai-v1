@@ -19,7 +19,7 @@
  * @version 5.1.0 - Added backward-compatible defaults to prevent orchestrator crashes
  */
 
-import { classifyFarmerIntent } from './intent-classifier.ts';
+import { classifyFarmerIntent, type IntentLandContext } from './intent-classifier.ts';
 
 export const SEMANTIC_EXTRACTOR_VERSION = '5.1.0';
 
@@ -111,11 +111,13 @@ function buildSafeSemanticExtraction(
  * 
  * @param farmerMessage - Raw farmer input in any language
  * @param _detectedLanguage - Optional language hint (not used in v5.x)
+ * @param landContext - Optional land context for prompt enrichment
  * @returns SemanticExtraction - { intent_code, intent_confidence, ...backward-compatible defaults }
  */
 export async function extractSemanticMeaning(
   farmerMessage: string,
-  _detectedLanguage?: string
+  _detectedLanguage?: string,
+  landContext?: IntentLandContext
 ): Promise<SemanticExtraction> {
   console.log(`\n🔮 [SemanticExtractor v${SEMANTIC_EXTRACTOR_VERSION}] Extracting intent...`);
   
@@ -128,7 +130,7 @@ export async function extractSemanticMeaning(
   }
   
   try {
-    const intentResult = await classifyFarmerIntent(safeMessage);
+    const intentResult = await classifyFarmerIntent(safeMessage, landContext);
     
     // Validate intent_code is non-empty
     const intent_code = intentResult.intent_code && intentResult.intent_code.trim() !== ''

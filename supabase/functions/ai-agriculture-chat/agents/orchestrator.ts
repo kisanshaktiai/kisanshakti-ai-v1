@@ -2099,9 +2099,19 @@ export class AIAgentOrchestrator {
       console.log(`\n   🔮 Stage 1.5: Universal Semantic Extractor (v${SEMANTIC_EXTRACTOR_VERSION})...`);
       
       // STEP 1: LLM extracts semantic meaning (any language → English)
+      // v3.0.0: Pass land context so LLM can interpret romanized regional language
+      const intentLandContext = landContext ? {
+        current_crop: landContext.current_crop,
+        growth_stage: landContext.growth_stage,
+        days_since_sowing: landContext.days_since_sowing,
+        ndvi_value: landContext.ndvi_value,
+        soil_type: landContext.soil_type
+      } : undefined;
+      
       const semanticExtraction: SemanticExtraction = await extractSemanticMeaning(
         processedFarmerMessage, 
-        normalizedInput.detected_language
+        normalizedInput.detected_language,
+        intentLandContext
       );
       agentsUsed.push('SEMANTIC_EXTRACTOR');
       
@@ -2485,6 +2495,38 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // LLM FAILSAFE: When LLM failed but land context exists, force symbolic path
+      // This prevents dead-end responses when we have crop/stage data available
+      // ═══════════════════════════════════════════════════════════════════════════
+      const llmFailed = intentCode === 'UNKNOWN_OBSERVATION' && intentConf < 0.2;
+      const hasLandContextForFailsafe = landContext && landContext.current_crop && landContext.growth_stage;
+      
+      if (llmFailed && hasLandContextForFailsafe) {
+        console.log(`\n🚑 [LLM_FAILSAFE] LLM failed (intent=${intentCode}, conf=${(intentConf * 100).toFixed(0)}%) but land context available:`);
+        console.log(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, DAS: ${landContext.days_since_sowing || '?'}`);
+        console.log(`   → Boosting induction coverage to allow symbolic evaluation`);
+        
+        // Boost coverage minimums so induction gate opens
+        if (inductionResult.symbol_coverage < 0.25) {
+          inductionResult.symbol_coverage = 0.25;
+        }
+        if (inductionResult.aggregated_confidence < 0.4) {
+          inductionResult.aggregated_confidence = 0.4;
+        }
+        // Ensure crop symbol is present
+        if (!inductionResult.crop || inductionResult.crop.symbol === 'UNKNOWN_CROP') {
+          inductionResult.crop = {
+            symbol: landContext.current_crop.toUpperCase(),
+            source: 'LAND_CONTEXT_FAILSAFE'
+          };
+        }
+        if (inductionResult.total_symbols_extracted < 1) {
+          inductionResult.total_symbols_extracted = 1;
+        }
+        agentsUsed.push('LLM_FAILSAFE_OVERRIDE');
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE INDUCTION GATE: Determine if symbolic brain should run
       // Based on symbol_coverage and aggregated_confidence, NOT intent confidence
       // ═══════════════════════════════════════════════════════════════════════════
@@ -2495,6 +2537,8 @@ export class AIAgentOrchestrator {
       // FIX: HARD BLOCK SYMBOLIC BRAIN WHEN ZERO SYMPTOMS EXTRACTED
       // A crop symbol alone (e.g., SUGARCANE) is NOT sufficient for PEST/DISEASE rules
       // BUT: Irrigation, crop health, and weather queries DON'T need symptoms
+      // LLM FAILSAFE: When LLM failed with land context, allow symptom-free symbolic
+      // to generate clarification questions
       // ═══════════════════════════════════════════════════════════════════════════
       const hasSymptoms = inductionResult.symptoms.length > 0;
       
@@ -2502,21 +2546,27 @@ export class AIAgentOrchestrator {
       const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'GENERAL_INFO', 'GREETING'];
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
-      const shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute);
+      // LLM failsafe allows symbolic brain even without symptoms to generate clarification
+      const llmFailsafeActive = llmFailed && hasLandContextForFailsafe;
+      const shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute || llmFailsafeActive);
       
-      if (!hasSymptoms && !isSymptomFreeRoute && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
+      if (!hasSymptoms && !isSymptomFreeRoute && !llmFailsafeActive && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
         console.log(`\n⚠️ [INDUCTION_GATE] Blocking symbolic brain: coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}% but symptoms=0`);
         console.log(`   → Crop detected: ${inductionResult.crop?.symbol || 'NONE'}`);
         console.log(`   → Total symbols: ${inductionResult.total_symbols_extracted} (but none are symptoms)`);
         console.log(`   → Route: ${queryRoute.route} (requires symptoms)`);
         console.log(`   → Forcing CLARIFICATION path instead of empty rule matching`);
         agentsUsed.push('SYMPTOM_GATE_BLOCKED');
+      } else if (llmFailsafeActive && !hasSymptoms) {
+        console.log(`\n🚑 [LLM_FAILSAFE] Allowing symbolic brain WITHOUT symptoms (LLM failed, land context available)`);
+        console.log(`   → Will generate clarification question based on crop/stage context`);
+        agentsUsed.push('LLM_FAILSAFE_SYMBOLIC');
       } else if (isSymptomFreeRoute && !hasSymptoms) {
         console.log(`\n✅ [INDUCTION_GATE] Allowing symbolic brain for ${queryRoute.route} route WITHOUT symptoms (uses crop/stage/NDVI rules)`);
         agentsUsed.push('SYMPTOM_FREE_ROUTE');
       }
       
-      console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
+      console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}${llmFailsafeActive ? ' [LLM_FAILSAFE]' : ''}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2: OBSERVATION EXTRACTION (LLM, STRICT)
