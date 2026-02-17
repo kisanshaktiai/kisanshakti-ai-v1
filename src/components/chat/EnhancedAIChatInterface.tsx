@@ -440,14 +440,14 @@ export function EnhancedAIChatInterface() {
           primaryActions: (metadata.decision_brain_data.primary_decision ? [metadata.decision_brain_data.primary_decision] : []).map((d: any) => ({
             action: d.action_text || d.action || '',
             reason: d.reason_text || d.reason || '',
-            timing: d.timing,
+            timing: typeof d.timing === 'object' ? (d.timing?.reason || d.timing?.recommended_start || '') : (d.timing || ''),
             ruleSources: d.rules_applied || d.rule_sources || [],
             priority: d.priority || 1
           })),
           secondaryActions: (metadata.decision_brain_data.secondary_decisions || []).map((d: any) => ({
             action: d.action_text || d.action || '',
             reason: d.reason_text || d.reason || '',
-            timing: d.timing,
+            timing: typeof d.timing === 'object' ? (d.timing?.reason || d.timing?.recommended_start || '') : (d.timing || ''),
             ruleSources: d.rules_applied || d.rule_sources || [],
             priority: d.priority || 2
           })),
