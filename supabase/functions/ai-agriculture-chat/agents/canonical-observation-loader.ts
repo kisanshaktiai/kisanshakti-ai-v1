@@ -52,194 +52,205 @@ export interface LoadedObservationKeys {
 const OBSERVATION_KEY_LABELS: Record<string, { en: string; hi: string; mr: string; category: string; priority: number }> = {
   // ═══════════════════════════════════════════════════════════════════════════
   // A. ESTABLISHMENT & GERMINATION
+  // Labels describe WHAT FARMER SEES (visual symptoms), NOT technical names
   // ═══════════════════════════════════════════════════════════════════════════
-  'SEED_NOT_GERMINATED': { en: 'Seeds not germinating', hi: 'बीज अंकुरित नहीं हो रहे', mr: 'बी उगवत नाही', category: 'germination', priority: 1 },
-  'POOR_GERMINATION_PERCENT': { en: 'Poor germination rate', hi: 'कम अंकुरण दर', mr: 'कमी उगवण', category: 'germination', priority: 2 },
-  'GAPS_IN_FIELD': { en: 'Gaps in the field', hi: 'खेत में गैप', mr: 'शेतात गॅप/रिकाम्या जागा', category: 'germination', priority: 1 },
-  'SEEDLING_DIED': { en: 'Seedlings died', hi: 'पौधे मर गए', mr: 'रोपे मेले', category: 'germination', priority: 1 },
-  'SEEDLING_WILTED': { en: 'Seedlings wilted', hi: 'पौधे मुरझाए', mr: 'रोपे कोमेजली', category: 'germination', priority: 2 },
-  'SETT_EASILY_PULLED_OUT': { en: 'Sett pulls out easily', hi: 'गड्डी आसानी से निकलती है', mr: 'बेणे सहज उपटते', category: 'germination', priority: 1 },
-  'ROOTS_SOFT_OR_BLACK': { en: 'Roots soft or black', hi: 'जड़ें मुलायम या काली', mr: 'मुळे मऊ किंवा काळी', category: 'germination', priority: 2 },
-  'ROOTS_ROTTED': { en: 'Roots are rotted', hi: 'जड़ें सड़ गई', mr: 'मुळे सडली', category: 'germination', priority: 2 },
-  'SEED_DECAYED': { en: 'Seed decayed', hi: 'बीज सड़ गया', mr: 'बी सडले', category: 'germination', priority: 2 },
-  'SEEDLING_YELLOW': { en: 'Seedlings turning yellow', hi: 'पौधे पीले हो रहे', mr: 'रोपे पिवळी होत आहेत', category: 'germination', priority: 2 },
-  'SEEDLING_STUNTED': { en: 'Seedlings stunted', hi: 'पौधे बौने', mr: 'रोपे खुंटलेली', category: 'germination', priority: 2 },
-  'PATCHY_EMERGENCE': { en: 'Patchy emergence', hi: 'असमान उगाव', mr: 'ठिपके ठिपके उगवण', category: 'germination', priority: 2 },
-  'IRREGULAR_PLANT_STAND': { en: 'Irregular plant stand', hi: 'असमान पौधों का खड़ा होना', mr: 'अनियमित झाडांची उभारणी', category: 'germination', priority: 3 },
-  'SOIL_CRUSTING_VISIBLE': { en: 'Soil crusting visible', hi: 'मिट्टी पर पपड़ी', mr: 'मातीवर कठोर थर', category: 'germination', priority: 3 },
-  'WATER_LOGGING_AT_BASE': { en: 'Water logging at base', hi: 'जड़ के पास पानी जमा', mr: 'बुडाशी पाणी साचलेले', category: 'germination', priority: 2 },
-  'DRY_SOIL_AT_GERMINATION': { en: 'Dry soil at germination', hi: 'अंकुरण पर सूखी मिट्टी', mr: 'उगवणीला माती कोरडी', category: 'germination', priority: 2 },
+  'SEED_NOT_GERMINATED': { en: 'Seeds not sprouting from soil', hi: 'बीज मिट्टी से नहीं उग रहे', mr: 'बी मातीतून उगवत नाही', category: 'germination', priority: 1 },
+  'POOR_GERMINATION_PERCENT': { en: 'Very few plants came up', hi: 'बहुत कम पौधे निकले', mr: 'फार कमी झाडे उगवली', category: 'germination', priority: 2 },
+  'GAPS_IN_FIELD': { en: 'Empty patches where plants should be', hi: 'कुछ जगह पौधे नहीं उगे, खाली जगह दिखती है', mr: 'काही ठिकाणी झाडे नाहीत, रिकाम्या जागा दिसतात', category: 'germination', priority: 1 },
+  'SEEDLING_DIED': { en: 'Young plants have died', hi: 'छोटे पौधे मर गए', mr: 'लहान रोपे मेली', category: 'germination', priority: 1 },
+  'SEEDLING_WILTED': { en: 'Young plants drooping / wilted', hi: 'छोटे पौधे मुरझाए / लटक रहे', mr: 'लहान रोपे कोमेजली / लोंबकळत आहेत', category: 'germination', priority: 2 },
+  'SETT_EASILY_PULLED_OUT': { en: 'Plant pulls out easily from soil', hi: 'पौधा आसानी से मिट्टी से निकल जाता है', mr: 'झाड सहज मातीतून उपटते', category: 'germination', priority: 1 },
+  'ROOTS_SOFT_OR_BLACK': { en: 'Roots feel soft or look dark/black', hi: 'जड़ें मुलायम या काली दिखती हैं', mr: 'मुळे मऊ वाटतात किंवा काळी दिसतात', category: 'germination', priority: 2 },
+  'ROOTS_ROTTED': { en: 'Roots soft, dark and smell bad', hi: 'जड़ें मुलायम, काली और बदबूदार', mr: 'मुळे मऊ, काळी आणि दुर्गंधी येतात', category: 'germination', priority: 2 },
+  'SEED_DECAYED': { en: 'Seed/sett has rotted in soil', hi: 'बीज/गड्डी मिट्टी में सड़ गया', mr: 'बी/बेणे मातीत सडले', category: 'germination', priority: 2 },
+  'SEEDLING_YELLOW': { en: 'Young plants turning yellow', hi: 'छोटे पौधे पीले पड़ रहे हैं', mr: 'लहान रोपे पिवळी पडत आहेत', category: 'germination', priority: 2 },
+  'SEEDLING_STUNTED': { en: 'Young plants not growing, very short', hi: 'छोटे पौधे बढ़ नहीं रहे, बौने हैं', mr: 'लहान रोपे वाढत नाहीत, खुंटलेली आहेत', category: 'germination', priority: 2 },
+  'PATCHY_EMERGENCE': { en: 'Plants came up unevenly, some areas empty', hi: 'कुछ जगह पौधे आए कुछ जगह नहीं', mr: 'काही ठिकाणी उगवले काही ठिकाणी नाही', category: 'germination', priority: 2 },
+  'IRREGULAR_PLANT_STAND': { en: 'Plants not standing evenly in rows', hi: 'पौधे कतार में समान नहीं खड़े', mr: 'झाडे ओळीत सारखी उभी नाहीत', category: 'germination', priority: 3 },
+  'SOIL_CRUSTING_VISIBLE': { en: 'Hard crust formed on top of soil', hi: 'मिट्टी के ऊपर कड़ी पपड़ी बनी', mr: 'मातीवर कठीण थर जमला', category: 'germination', priority: 3 },
+  'WATER_LOGGING_AT_BASE': { en: 'Water standing around plant base', hi: 'पौधे के पास पानी जमा है', mr: 'झाडाच्या बुडाशी पाणी साचले', category: 'germination', priority: 2 },
+  'DRY_SOIL_AT_GERMINATION': { en: 'Soil is very dry, no moisture', hi: 'मिट्टी बहुत सूखी है, नमी नहीं', mr: 'माती खूप कोरडी, ओलावा नाही', category: 'germination', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // B. VEGETATIVE GROWTH
+  // B. VEGETATIVE GROWTH - farmer-friendly visual descriptions
   // ═══════════════════════════════════════════════════════════════════════════
-  'SLOW_GROWTH': { en: 'Slow growth', hi: 'धीमी वृद्धि', mr: 'संथ वाढ', category: 'vegetative', priority: 2 },
-  'STUNTED_PLANTS': { en: 'Stunted plants', hi: 'बौने पौधे', mr: 'खुंटलेली झाडे', category: 'vegetative', priority: 1 },
-  'SHORT_INTERNODES': { en: 'Short internodes', hi: 'छोटे इंटरनोड', mr: 'लहान कांडी', category: 'vegetative', priority: 3 },
-  'EXCESSIVE_TILLERS': { en: 'Excessive tillers', hi: 'अधिक कल्ले', mr: 'जास्त फुटवे', category: 'vegetative', priority: 3 },
-  'POOR_TILLERING': { en: 'Poor tillering', hi: 'कम कल्ले', mr: 'कमी फुटवे', category: 'vegetative', priority: 2 },
-  'WEAK_SHOOTS': { en: 'Weak shoots', hi: 'कमजोर शाखाएं', mr: 'कमकुवत कोंब', category: 'vegetative', priority: 2 },
-  'THIN_STEMS': { en: 'Thin stems', hi: 'पतले तने', mr: 'पातळ खोड', category: 'vegetative', priority: 2 },
-  'LUSH_VEGETATIVE_GROWTH': { en: 'Excess leafy growth', hi: 'अत्यधिक पत्तियां', mr: 'अति पानांची वाढ', category: 'vegetative', priority: 3 },
-  'UNEQUAL_PLANT_HEIGHT': { en: 'Unequal plant height', hi: 'असमान ऊंचाई', mr: 'असमान उंची', category: 'vegetative', priority: 3 },
-  'PLANTS_LODGING': { en: 'Plants falling/lodging', hi: 'पौधे गिर रहे', mr: 'झाडे पडत आहेत', category: 'vegetative', priority: 1 },
+  'SLOW_GROWTH': { en: 'Plants growing very slowly', hi: 'पौधे बहुत धीरे बढ़ रहे हैं', mr: 'झाडे खूप हळू वाढत आहेत', category: 'vegetative', priority: 2 },
+  'STUNTED_PLANTS': { en: 'Plants very short, not growing tall', hi: 'पौधे बौने हैं, ऊंचे नहीं बढ़ रहे', mr: 'झाडे खुंटलेली, उंच वाढत नाहीत', category: 'vegetative', priority: 1 },
+  'SHORT_INTERNODES': { en: 'Distance between leaf joints very short', hi: 'पत्तियों के बीच का फासला बहुत कम', mr: 'दोन पानांमधले अंतर खूप कमी', category: 'vegetative', priority: 3 },
+  'EXCESSIVE_TILLERS': { en: 'Too many side shoots growing', hi: 'बहुत ज्यादा बगल की शाखाएं निकल रही', mr: 'खूप जास्त बाजूचे फुटवे आले', category: 'vegetative', priority: 3 },
+  'POOR_TILLERING': { en: 'Very few side shoots/tillers', hi: 'बगल की शाखाएं बहुत कम निकली', mr: 'बाजूचे फुटवे खूप कमी आले', category: 'vegetative', priority: 2 },
+  'WEAK_SHOOTS': { en: 'New shoots are thin and weak', hi: 'नई शाखाएं पतली और कमजोर', mr: 'नवीन कोंब पातळ आणि कमकुवत', category: 'vegetative', priority: 2 },
+  'THIN_STEMS': { en: 'Stems are very thin', hi: 'तने बहुत पतले हैं', mr: 'खोडे खूप पातळ आहेत', category: 'vegetative', priority: 2 },
+  'LUSH_VEGETATIVE_GROWTH': { en: 'Too many leaves, very bushy', hi: 'बहुत ज्यादा पत्तियां, बहुत झाड़ीदार', mr: 'खूप जास्त पाने, खूप झाडोरा', category: 'vegetative', priority: 3 },
+  'UNEQUAL_PLANT_HEIGHT': { en: 'Some plants tall, some short', hi: 'कुछ पौधे ऊंचे कुछ नीचे', mr: 'काही झाडे उंच काही खुरटी', category: 'vegetative', priority: 3 },
+  'PLANTS_LODGING': { en: 'Plants falling down / leaning on ground', hi: 'पौधे जमीन पर गिर रहे / झुक रहे', mr: 'झाडे जमिनीवर पडत आहेत / वाकत आहेत', category: 'vegetative', priority: 1 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // C. LEAF-BASED OBSERVATIONS
+  // C. LEAF-BASED OBSERVATIONS - what farmer sees on leaves
   // ═══════════════════════════════════════════════════════════════════════════
-  'LEAF_YELLOWING': { en: 'Leaves turning yellow', hi: 'पत्ते पीले हो रहे', mr: 'पाने पिवळी होत आहेत', category: 'leaf', priority: 1 },
-  'INTERVEINAL_CHLOROSIS': { en: 'Yellow between veins', hi: 'नसों के बीच पीलापन', mr: 'शिरांमध्ये पिवळेपणा', category: 'leaf', priority: 2 },
-  'LEAF_PALE_GREEN': { en: 'Pale green leaves', hi: 'हल्के हरे पत्ते', mr: 'फिकट हिरवी पाने', category: 'leaf', priority: 2 },
-  'LEAF_REDDENING': { en: 'Leaves turning red', hi: 'पत्ते लाल हो रहे', mr: 'पाने लाल होत आहेत', category: 'leaf', priority: 2 },
-  'LEAF_BROWN_TIPS': { en: 'Brown tips on leaves', hi: 'पत्तों के सिरे भूरे', mr: 'पानांची टोके तपकिरी', category: 'leaf', priority: 2 },
-  'LEAF_SCORCHING': { en: 'Leaves scorched/burnt', hi: 'पत्ते जले हुए', mr: 'पाने करपलेली', category: 'leaf', priority: 1 },
-  'LEAF_DRYING': { en: 'Leaves drying', hi: 'पत्ते सूख रहे', mr: 'पाने सुकत आहेत', category: 'leaf', priority: 1 },
-  'LEAF_WILTING': { en: 'Leaves wilting', hi: 'पत्ते मुरझा रहे', mr: 'पाने कोमेजत आहेत', category: 'leaf', priority: 1 },
-  'LEAF_ROLLING': { en: 'Leaves rolling', hi: 'पत्ते मुड़ रहे', mr: 'पाने गुंडाळत आहेत', category: 'leaf', priority: 2 },
-  'LEAF_CURLING': { en: 'Leaves curling', hi: 'पत्ते मुड़े हुए', mr: 'पाने वळलेली', category: 'leaf', priority: 1 },
-  'LEAF_CRINKLING': { en: 'Leaves crinkling', hi: 'पत्ते सिकुड़े', mr: 'पाने चुरगळलेली', category: 'leaf', priority: 2 },
-  'LEAF_DISTORTION': { en: 'Leaves distorted', hi: 'पत्ते विकृत', mr: 'पाने विकृत', category: 'leaf', priority: 2 },
-  'LEAF_TWISTING': { en: 'Leaves twisting', hi: 'पत्ते मुड़े', mr: 'पाने वळलेली', category: 'leaf', priority: 2 },
-  'LEAF_NARROWING': { en: 'Leaves narrow', hi: 'पत्ते संकरे', mr: 'पाने अरुंद', category: 'leaf', priority: 3 },
-  'LEAF_DROOPING': { en: 'Leaves drooping', hi: 'पत्ते झुके', mr: 'पाने लोंबकळणारी', category: 'leaf', priority: 2 },
-  'LEAF_SPOTS_PRESENT': { en: 'Spots on leaves', hi: 'पत्तों पर धब्बे', mr: 'पानांवर डाग', category: 'leaf', priority: 1 },
-  'LEAF_STRIPES_PRESENT': { en: 'Stripes on leaves', hi: 'पत्तों पर धारियां', mr: 'पानांवर पट्टे', category: 'leaf', priority: 2 },
-  'LEAF_BLIGHTED': { en: 'Leaves blighted', hi: 'पत्ते झुलसे', mr: 'पाने करपलेली', category: 'leaf', priority: 1 },
-  'LEAF_BLAST_SYMPTOMS': { en: 'Blast spots on leaves', hi: 'पत्तों पर ब्लास्ट', mr: 'पानांवर करपा', category: 'leaf', priority: 1 },
-  'LEAF_MOSAIC_PATTERN': { en: 'Mosaic pattern on leaves', hi: 'मोज़ेक पैटर्न', mr: 'मोझेक नमुना', category: 'leaf', priority: 2 },
-  'LEAF_PUSTULES': { en: 'Pustules on leaves', hi: 'पत्तों पर फुंसी', mr: 'पानांवर गाठी', category: 'leaf', priority: 2 },
-  'LEAF_WHITE_PATCHES': { en: 'White patches on leaves', hi: 'पत्तों पर सफेद धब्बे', mr: 'पानांवर पांढरे डाग', category: 'leaf', priority: 2 },
-  'LEAF_BLACK_PATCHES': { en: 'Black patches on leaves', hi: 'पत्तों पर काले धब्बे', mr: 'पानांवर काळे डाग', category: 'leaf', priority: 2 },
+  'LEAF_YELLOWING': { en: 'Leaves turning yellow', hi: 'पत्ते पीले पड़ रहे हैं', mr: 'पाने पिवळी पडत आहेत', category: 'leaf', priority: 1 },
+  'INTERVEINAL_CHLOROSIS': { en: 'Leaf veins green but area between yellow', hi: 'पत्ते की नसें हरी पर बीच का हिस्सा पीला', mr: 'पानाच्या शिरा हिरव्या पण मधला भाग पिवळा', category: 'leaf', priority: 2 },
+  'LEAF_PALE_GREEN': { en: 'Leaves light green, not dark green', hi: 'पत्ते हल्के हरे, गहरे हरे नहीं', mr: 'पाने फिकट हिरवी, गडद हिरवी नाहीत', category: 'leaf', priority: 2 },
+  'LEAF_REDDENING': { en: 'Leaves turning red/reddish', hi: 'पत्ते लाल / लालिमा दिख रही', mr: 'पाने लाल होत आहेत / लालसर दिसतात', category: 'leaf', priority: 2 },
+  'LEAF_BROWN_TIPS': { en: 'Leaf tips turning brown/dry', hi: 'पत्तों के सिरे भूरे / सूखे', mr: 'पानांची टोके तपकिरी / कोरडी', category: 'leaf', priority: 2 },
+  'LEAF_SCORCHING': { en: 'Leaves look burnt/scorched', hi: 'पत्ते जले हुए दिखते हैं', mr: 'पाने करपल्यासारखी दिसतात', category: 'leaf', priority: 1 },
+  'LEAF_DRYING': { en: 'Leaves drying up from edges or tips', hi: 'पत्ते किनारों या सिरों से सूख रहे', mr: 'पाने कडांपासून किंवा टोकापासून सुकत आहेत', category: 'leaf', priority: 1 },
+  'LEAF_WILTING': { en: 'Leaves drooping down, not firm', hi: 'पत्ते नीचे लटक रहे, कड़े नहीं', mr: 'पाने खाली लोंबत आहेत, ताठ नाहीत', category: 'leaf', priority: 1 },
+  'LEAF_ROLLING': { en: 'Leaves rolling inward like a tube', hi: 'पत्ते अंदर की ओर मुड़ रहे, नली जैसे', mr: 'पाने आतमध्ये गुंडाळत आहेत, नळीसारखी', category: 'leaf', priority: 2 },
+  'LEAF_CURLING': { en: 'Leaves curling up or down', hi: 'पत्ते ऊपर या नीचे मुड़ गए', mr: 'पाने वर किंवा खाली वळलेली', category: 'leaf', priority: 1 },
+  'LEAF_CRINKLING': { en: 'Leaves wrinkled/crumpled', hi: 'पत्ते सिकुड़े / झुर्रीदार', mr: 'पाने चुरगळलेली / सुरकुतलेली', category: 'leaf', priority: 2 },
+  'LEAF_DISTORTION': { en: 'Leaves not normal shape, twisted', hi: 'पत्ते सामान्य आकार के नहीं, मुड़े', mr: 'पाने सामान्य आकाराची नाहीत, वाकडी', category: 'leaf', priority: 2 },
+  'LEAF_TWISTING': { en: 'Leaves twisting/spiraling', hi: 'पत्ते मुड़ / ऐंठ रहे', mr: 'पाने पिळवटलेली / वळलेली', category: 'leaf', priority: 2 },
+  'LEAF_NARROWING': { en: 'Leaves becoming thin/narrow', hi: 'पत्ते पतले / संकरे हो रहे', mr: 'पाने पातळ / अरुंद होत आहेत', category: 'leaf', priority: 3 },
+  'LEAF_DROOPING': { en: 'Leaves hanging down loosely', hi: 'पत्ते ढीले लटक रहे', mr: 'पाने सैल लोंबत आहेत', category: 'leaf', priority: 2 },
+  'LEAF_SPOTS_PRESENT': { en: 'Spots/marks visible on leaves', hi: 'पत्तों पर धब्बे / निशान दिखते हैं', mr: 'पानांवर डाग / खुणा दिसतात', category: 'leaf', priority: 1 },
+  'LEAF_STRIPES_PRESENT': { en: 'Lines/stripes visible on leaves', hi: 'पत्तों पर लंबी धारियां दिखती हैं', mr: 'पानांवर लांब पट्टे दिसतात', category: 'leaf', priority: 2 },
+  'LEAF_BLIGHTED': { en: 'Large brown/dark patches on leaves', hi: 'पत्तों पर बड़े भूरे / काले धब्बे', mr: 'पानांवर मोठे तपकिरी / काळे डाग', category: 'leaf', priority: 1 },
+  'LEAF_BLAST_SYMPTOMS': { en: 'Eye-shaped spots with grey center on leaves', hi: 'पत्तों पर आंख जैसे भूरे केंद्र वाले धब्बे', mr: 'पानांवर डोळ्यासारखे करड्या मध्यभागाचे डाग', category: 'leaf', priority: 1 },
+  'LEAF_MOSAIC_PATTERN': { en: 'Yellow-green mixed pattern on leaves', hi: 'पत्तों पर पीला-हरा मिश्रित पैटर्न', mr: 'पानांवर पिवळा-हिरवा मिश्र नमुना', category: 'leaf', priority: 2 },
+  'LEAF_PUSTULES': { en: 'Raised bumps/blisters on leaves', hi: 'पत्तों पर उठे हुए दाने / फुंसी', mr: 'पानांवर उठलेल्या गाठी / फोड', category: 'leaf', priority: 2 },
+  'LEAF_WHITE_PATCHES': { en: 'White powdery patches on leaves', hi: 'पत्तों पर सफेद पाउडर जैसे धब्बे', mr: 'पानांवर पांढरे भुकटीसारखे डाग', category: 'leaf', priority: 2 },
+  'LEAF_BLACK_PATCHES': { en: 'Black/dark patches on leaves', hi: 'पत्तों पर काले / गहरे धब्बे', mr: 'पानांवर काळे / गडद डाग', category: 'leaf', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // D. STEM / SHOOT / CROWN OBSERVATIONS
+  // D. STEM / SHOOT / CROWN OBSERVATIONS - visual symptoms only
   // ═══════════════════════════════════════════════════════════════════════════
-  'DEAD_HEART_PRESENT': { en: 'Dead heart (dried central shoot)', hi: 'गोभ सूख गई', mr: 'सुरळी वाळली (Dead Heart)', category: 'stem', priority: 1 },
-  'CENTRAL_SHOOT_DRY': { en: 'Central shoot dry', hi: 'बीच की टहनी सूखी', mr: 'मध्य कोंब सुकलेला', category: 'stem', priority: 1 },
-  'STEM_BORING_MARKS': { en: 'Boring marks on stem', hi: 'तने पर छेद के निशान', mr: 'खोडावर पोखरण्याचे खुण', category: 'stem', priority: 1 },
-  'STEM_HOLES_VISIBLE': { en: 'Holes visible in stem', hi: 'तने में छेद दिखते', mr: 'खोडात छिद्र दिसतात', category: 'stem', priority: 1 },
-  'STEM_SPLITTING': { en: 'Stem splitting', hi: 'तना फट रहा', mr: 'खोड फाटत आहे', category: 'stem', priority: 2 },
-  'STEM_SOFTENING': { en: 'Stem soft/mushy', hi: 'तना मुलायम', mr: 'खोड मऊ', category: 'stem', priority: 2 },
-  'STEM_ROT_PRESENT': { en: 'Stem rot present', hi: 'तने में सड़न', mr: 'खोड सडलेले', category: 'stem', priority: 1 },
-  'CROWN_ROT_PRESENT': { en: 'Crown rot', hi: 'ताज में सड़न', mr: 'मुकुट सड', category: 'stem', priority: 2 },
-  'BASE_DISCOLORATION': { en: 'Discoloration at base', hi: 'आधार पर रंग बदलाव', mr: 'बुडाशी रंग बदल', category: 'stem', priority: 2 },
+  'DEAD_HEART_PRESENT': { en: 'Central leaf dried, pulls out when pulled', hi: 'बीच की पत्ती सूखी, खींचने पर निकल जाती है', mr: 'मधली पाने सुकलेली, ओढल्यास बाहेर येतात', category: 'stem', priority: 1 },
+  'CENTRAL_SHOOT_DRY': { en: 'The middle/central shoot has dried up', hi: 'बीच का कोंपल / शाखा सूख गई', mr: 'मधला कोंब सुकून गेला', category: 'stem', priority: 1 },
+  'STEM_BORING_MARKS': { en: 'Small round holes visible on stem', hi: 'तने पर छोटे गोल छेद दिखते हैं', mr: 'खोडावर लहान गोल छिद्रे दिसतात', category: 'stem', priority: 1 },
+  'STEM_HOLES_VISIBLE': { en: 'Holes clearly visible in stem', hi: 'तने में छेद साफ दिखते हैं', mr: 'खोडात छिद्रे स्पष्ट दिसतात', category: 'stem', priority: 1 },
+  'STEM_SPLITTING': { en: 'Stem cracking/splitting open', hi: 'तना फट रहा / चीर रहा', mr: 'खोड फाटत आहे / चिरत आहे', category: 'stem', priority: 2 },
+  'STEM_SOFTENING': { en: 'Stem feels soft/mushy when pressed', hi: 'तना दबाने पर मुलायम / गीला लगता है', mr: 'खोड दाबल्यास मऊ / ओलसर वाटते', category: 'stem', priority: 2 },
+  'STEM_ROT_PRESENT': { en: 'Stem rotting, dark and soft inside', hi: 'तना सड़ रहा, अंदर से काला और नरम', mr: 'खोड सडत आहे, आतून काळे आणि मऊ', category: 'stem', priority: 1 },
+  'CROWN_ROT_PRESENT': { en: 'Base of plant rotting at soil level', hi: 'मिट्टी के पास पौधे का आधार सड़ रहा', mr: 'मातीजवळ झाडाचा बुडखा सडत आहे', category: 'stem', priority: 2 },
+  'BASE_DISCOLORATION': { en: 'Color change at base of stem', hi: 'तने के नीचे रंग बदला है', mr: 'खोडाच्या बुडाशी रंग बदलला', category: 'stem', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // E. ROOT OBSERVATIONS
+  // E. ROOT OBSERVATIONS - what farmer sees when pulling plant
   // ═══════════════════════════════════════════════════════════════════════════
-  'ROOT_BROWNING': { en: 'Roots browning', hi: 'जड़ें भूरी', mr: 'मुळे तपकिरी', category: 'root', priority: 2 },
-  'ROOT_BLACKENING': { en: 'Roots blackening', hi: 'जड़ें काली', mr: 'मुळे काळी', category: 'root', priority: 1 },
-  'ROOT_SOFT': { en: 'Roots soft', hi: 'जड़ें मुलायम', mr: 'मुळे मऊ', category: 'root', priority: 2 },
-  'ROOT_DRY': { en: 'Roots dry', hi: 'जड़ें सूखी', mr: 'मुळे कोरडी', category: 'root', priority: 2 },
-  'ROOT_POOR_DEVELOPMENT': { en: 'Poor root development', hi: 'जड़ों का कम विकास', mr: 'मुळांची कमी वाढ', category: 'root', priority: 2 },
-  'ROOT_GALLS_PRESENT': { en: 'Root galls/knots', hi: 'जड़ों पर गांठ', mr: 'मुळांवर गाठी', category: 'root', priority: 2 },
-  'ROOT_NEMATODE_SIGNS': { en: 'Nematode damage signs', hi: 'सूत्रकृमि के निशान', mr: 'सूत्रकृमी नुकसान', category: 'root', priority: 2 },
-  'ROOT_ROTTED': { en: 'Roots rotted', hi: 'जड़ें सड़ी', mr: 'मुळे सडली', category: 'root', priority: 1 },
+  'ROOT_BROWNING': { en: 'Roots look brown/dark', hi: 'जड़ें भूरी / गहरी दिखती हैं', mr: 'मुळे तपकिरी / गडद दिसतात', category: 'root', priority: 2 },
+  'ROOT_BLACKENING': { en: 'Roots turned black', hi: 'जड़ें काली हो गई हैं', mr: 'मुळे काळी पडली आहेत', category: 'root', priority: 1 },
+  'ROOT_SOFT': { en: 'Roots soft, break easily', hi: 'जड़ें मुलायम, आसानी से टूटती हैं', mr: 'मुळे मऊ, सहज तुटतात', category: 'root', priority: 2 },
+  'ROOT_DRY': { en: 'Roots dried out, no moisture', hi: 'जड़ें सूख गई, नमी नहीं', mr: 'मुळे सुकली, ओलावा नाही', category: 'root', priority: 2 },
+  'ROOT_POOR_DEVELOPMENT': { en: 'Very few/small roots', hi: 'जड़ें बहुत कम / छोटी हैं', mr: 'मुळे खूप कमी / लहान आहेत', category: 'root', priority: 2 },
+  'ROOT_GALLS_PRESENT': { en: 'Swollen bumps/knots on roots', hi: 'जड़ों पर सूजी हुई गांठें दिखती हैं', mr: 'मुळांवर सुजलेल्या गाठी दिसतात', category: 'root', priority: 2 },
+  'ROOT_NEMATODE_SIGNS': { en: 'Roots have knots and plant is weak', hi: 'जड़ों पर गांठ और पौधा कमजोर', mr: 'मुळांवर गाठी आणि झाड कमकुवत', category: 'root', priority: 2 },
+  'ROOT_ROTTED': { en: 'Roots soft, dark and smell bad', hi: 'जड़ें मुलायम, काली और बदबूदार', mr: 'मुळे मऊ, काळी आणि दुर्गंधी', category: 'root', priority: 1 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // F. INSECT / PEST OBSERVATIONS
+  // F. INSECT / PEST OBSERVATIONS - describe what farmer SEES, not pest name
   // ═══════════════════════════════════════════════════════════════════════════
-  'INSECTS_VISIBLE': { en: 'Insects visible', hi: 'कीड़े दिख रहे', mr: 'किडे दिसत आहेत', category: 'pest', priority: 1 },
-  'INSECTS_FLYING': { en: 'Flying insects', hi: 'उड़ते कीड़े', mr: 'उडणारे किडे', category: 'pest', priority: 2 },
-  'INSECTS_CRAWLING': { en: 'Crawling insects', hi: 'रेंगते कीड़े', mr: 'रांगणारे किडे', category: 'pest', priority: 2 },
-  'INSECTS_JUMPING': { en: 'Jumping insects', hi: 'कूदते कीड़े', mr: 'उडी मारणारे किडे', category: 'pest', priority: 2 },
-  'LARVAE_PRESENT': { en: 'Larvae/caterpillars present', hi: 'इल्ली/लार्वा दिख रहे', mr: 'अळ्या दिसत आहेत', category: 'pest', priority: 1 },
-  'EGGS_PRESENT': { en: 'Eggs visible', hi: 'अंडे दिख रहे', mr: 'अंडी दिसत आहेत', category: 'pest', priority: 2 },
-  'SMALL_INSECTS': { en: 'Small/tiny insects', hi: 'छोटे कीड़े', mr: 'छोटे किडे', category: 'pest', priority: 1 },
-  'MEDIUM_INSECTS': { en: 'Medium sized insects', hi: 'मध्यम आकार के कीड़े', mr: 'मध्यम आकाराचे किडे', category: 'pest', priority: 2 },
-  'LARGE_INSECTS': { en: 'Large insects', hi: 'बड़े कीड़े', mr: 'मोठे किडे', category: 'pest', priority: 2 },
-  'GREEN_INSECTS': { en: 'Green colored insects', hi: 'हरे कीड़े', mr: 'हिरवे किडे', category: 'pest', priority: 2 },
-  'BLACK_INSECTS': { en: 'Black colored insects', hi: 'काले कीड़े', mr: 'काळे किडे', category: 'pest', priority: 2 },
-  'BROWN_INSECTS': { en: 'Brown colored insects', hi: 'भूरे कीड़े', mr: 'तपकिरी किडे', category: 'pest', priority: 2 },
-  'WHITE_INSECTS': { en: 'White insects/woolly', hi: 'सफेद/रुई वाले कीड़े', mr: 'पांढरे/कापसासारखे किडे', category: 'pest', priority: 1 },
-  'LEAF_CHEWING': { en: 'Leaves being chewed', hi: 'पत्ते खाए जा रहे', mr: 'पाने खाल्ली जात आहेत', category: 'pest', priority: 1 },
-  'LEAF_SKELETONIZATION': { en: 'Leaf skeletonization', hi: 'पत्तों का कंकाल बनना', mr: 'पानांचा सांगाडा', category: 'pest', priority: 2 },
-  'LEAF_MINING': { en: 'Mining in leaves', hi: 'पत्तों में सुरंग', mr: 'पानात भुयार', category: 'pest', priority: 2 },
-  'LEAF_WEBBING': { en: 'Webbing on leaves', hi: 'पत्तों पर जाला', mr: 'पानांवर जाळे', category: 'pest', priority: 2 },
-  'STEM_BORING': { en: 'Stem boring', hi: 'तने में छेद', mr: 'खोड पोखरणे', category: 'pest', priority: 1 },
-  'ROOT_FEEDING': { en: 'Root feeding damage', hi: 'जड़ों का नुकसान', mr: 'मुळांचे नुकसान', category: 'pest', priority: 2 },
+  'INSECTS_VISIBLE': { en: 'Small creatures/insects visible on plant', hi: 'पौधे पर छोटे जीव / कीड़े दिखते हैं', mr: 'झाडावर लहान जीव / किडे दिसतात', category: 'pest', priority: 1 },
+  'INSECTS_FLYING': { en: 'Small flying creatures around plants', hi: 'पौधों के आसपास छोटे उड़ने वाले जीव', mr: 'झाडांभोवती लहान उडणारे जीव', category: 'pest', priority: 2 },
+  'INSECTS_CRAWLING': { en: 'Creatures crawling on plant', hi: 'पौधे पर रेंगते जीव दिखते हैं', mr: 'झाडावर रांगणारे जीव दिसतात', category: 'pest', priority: 2 },
+  'INSECTS_JUMPING': { en: 'Small jumping creatures on leaves', hi: 'पत्तों पर छोटे कूदने वाले जीव', mr: 'पानांवर लहान उड्या मारणारे जीव', category: 'pest', priority: 2 },
+  'LARVAE_PRESENT': { en: 'Worm-like creatures visible on/in plant', hi: 'पौधे पर / अंदर सूंडी जैसे जीव दिखते हैं', mr: 'झाडावर / आत अळीसारखे जीव दिसतात', category: 'pest', priority: 1 },
+  'EGGS_PRESENT': { en: 'Tiny eggs visible on leaves/stem', hi: 'पत्तों / तने पर छोटे अंडे दिखते हैं', mr: 'पानांवर / खोडावर लहान अंडी दिसतात', category: 'pest', priority: 2 },
+  'SMALL_INSECTS': { en: 'Very tiny creatures, hard to see clearly', hi: 'बहुत छोटे जीव, ठीक से दिखते नहीं', mr: 'खूप लहान जीव, नीट दिसत नाहीत', category: 'pest', priority: 1 },
+  'MEDIUM_INSECTS': { en: 'Medium-sized creatures visible', hi: 'मध्यम आकार के जीव दिखते हैं', mr: 'मध्यम आकाराचे जीव दिसतात', category: 'pest', priority: 2 },
+  'LARGE_INSECTS': { en: 'Large creatures visible on plant', hi: 'बड़े जीव पौधे पर दिखते हैं', mr: 'मोठे जीव झाडावर दिसतात', category: 'pest', priority: 2 },
+  'GREEN_INSECTS': { en: 'Green colored tiny creatures on leaves', hi: 'पत्तों पर हरे रंग के छोटे जीव', mr: 'पानांवर हिरव्या रंगाचे लहान जीव', category: 'pest', priority: 2 },
+  'BLACK_INSECTS': { en: 'Black colored creatures on plant', hi: 'काले रंग के जीव पौधे पर', mr: 'काळ्या रंगाचे जीव झाडावर', category: 'pest', priority: 2 },
+  'BROWN_INSECTS': { en: 'Brown colored creatures on plant', hi: 'भूरे रंग के जीव पौधे पर', mr: 'तपकिरी रंगाचे जीव झाडावर', category: 'pest', priority: 2 },
+  'WHITE_INSECTS': { en: 'White cottony/woolly creatures on plant', hi: 'पौधे पर सफेद रुई जैसे जीव', mr: 'झाडावर पांढरे कापसासारखे जीव', category: 'pest', priority: 1 },
+  'LEAF_CHEWING': { en: 'Leaves being eaten, bite marks visible', hi: 'पत्ते खाए जा रहे, काटने के निशान', mr: 'पाने खाल्ली जात आहेत, चावण्याच्या खुणा', category: 'pest', priority: 1 },
+  'LEAF_SKELETONIZATION': { en: 'Only leaf veins left, rest eaten', hi: 'पत्ते की सिर्फ नसें बची, बाकी खाया गया', mr: 'फक्त पानांच्या शिरा उरल्या, बाकी खाल्ले', category: 'pest', priority: 2 },
+  'LEAF_MINING': { en: 'Winding trails/tunnels inside leaves', hi: 'पत्तों के अंदर टेढ़ी-मेढ़ी सुरंगें', mr: 'पानांच्या आत वेड्यावाकड्या बोगद्या', category: 'pest', priority: 2 },
+  'LEAF_WEBBING': { en: 'Fine web/threads on leaves', hi: 'पत्तों पर बारीक जाला / धागे', mr: 'पानांवर बारीक जाळे / धागे', category: 'pest', priority: 2 },
+  'STEM_BORING': { en: 'Holes in stem, sawdust-like powder near it', hi: 'तने में छेद, पास में भूसा जैसा पाउडर', mr: 'खोडात छिद्रे, जवळ भुशासारखी भुकटी', category: 'pest', priority: 1 },
+  'ROOT_FEEDING': { en: 'Roots damaged, plant easily uprooted', hi: 'जड़ें कटी / खाई गई, पौधा आसानी से उखड़ता', mr: 'मुळे कापली / खाल्ली, झाड सहज उपटते', category: 'pest', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // G. DISEASE-SPECIFIC VISUAL SIGNS
+  // G. DISEASE-SPECIFIC VISUAL SIGNS - describe appearance, not disease name
   // ═══════════════════════════════════════════════════════════════════════════
-  'FUNGAL_GROWTH_VISIBLE': { en: 'Fungal growth visible', hi: 'फफूंद दिख रहा', mr: 'बुरशी दिसत आहे', category: 'disease', priority: 1 },
-  'WHITE_POWDERY_GROWTH': { en: 'White powdery growth', hi: 'सफेद पाउडर जैसा', mr: 'पांढरी भुकटी', category: 'disease', priority: 1 },
-  'GREY_MOLD_PRESENT': { en: 'Grey mold present', hi: 'भूरी फफूंद', mr: 'करडी बुरशी', category: 'disease', priority: 2 },
-  'BLACK_SOOTY_MOLD': { en: 'Black sooty mold', hi: 'काली कालिख जैसी फफूंद', mr: 'काळी काजळी बुरशी', category: 'disease', priority: 2 },
-  'BACTERIAL_OOZE': { en: 'Bacterial ooze visible', hi: 'बैक्टीरियल ऊज', mr: 'जिवाणू स्राव', category: 'disease', priority: 2 },
-  'WATER_SOAKED_LESIONS': { en: 'Water soaked lesions', hi: 'पानी भरे घाव', mr: 'पाणी भरलेले व्रण', category: 'disease', priority: 2 },
-  'FOUL_SMELL_PRESENT': { en: 'Foul smell from plant', hi: 'बदबू आ रही', mr: 'दुर्गंध येत आहे', category: 'disease', priority: 1 },
-  'RUST_PUSTULES': { en: 'Rust pustules', hi: 'जंग के दाने', mr: 'गंज गाठी', category: 'disease', priority: 2 },
-  'WILT_SYMPTOM': { en: 'Sudden wilting', hi: 'अचानक मुरझाना', mr: 'अचानक कोमेजणे', category: 'disease', priority: 1 },
-  'GUMMOSIS': { en: 'Gum oozing from stem', hi: 'तने से गोंद निकलना', mr: 'खोडातून डिंक', category: 'disease', priority: 2 },
+  'FUNGAL_GROWTH_VISIBLE': { en: 'White/grey/black growth visible on plant', hi: 'पौधे पर सफेद / भूरी / काली जमावट दिखती है', mr: 'झाडावर पांढरी / करडी / काळी वाढ दिसते', category: 'disease', priority: 1 },
+  'WHITE_POWDERY_GROWTH': { en: 'White powder-like coating on leaves', hi: 'पत्तों पर सफेद पाउडर जैसी परत', mr: 'पानांवर पांढरा भुकटीसारखा थर', category: 'disease', priority: 1 },
+  'GREY_MOLD_PRESENT': { en: 'Grey fuzzy growth on plant', hi: 'पौधे पर भूरी रोएंदार जमावट', mr: 'झाडावर करडी लवदार वाढ', category: 'disease', priority: 2 },
+  'BLACK_SOOTY_MOLD': { en: 'Black soot-like coating on leaves', hi: 'पत्तों पर काली कालिख जैसी परत', mr: 'पानांवर काळी काजळीसारखी परत', category: 'disease', priority: 2 },
+  'BACTERIAL_OOZE': { en: 'Sticky liquid oozing from stem when cut', hi: 'तना काटने पर चिपचिपा पानी निकलता है', mr: 'खोड कापल्यावर चिकट पाणी येते', category: 'disease', priority: 2 },
+  'WATER_SOAKED_LESIONS': { en: 'Wet/water-soaked patches on leaves/stem', hi: 'पत्तों / तने पर गीले / पानी भरे धब्बे', mr: 'पानांवर / खोडावर ओले / पाणी भरलेले डाग', category: 'disease', priority: 2 },
+  'FOUL_SMELL_PRESENT': { en: 'Bad/rotten smell coming from plant', hi: 'पौधे से सड़ी / बदबू आ रही है', mr: 'झाडातून सडका / दुर्गंध येत आहे', category: 'disease', priority: 1 },
+  'RUST_PUSTULES': { en: 'Orange/brown powder spots on leaves', hi: 'पत्तों पर नारंगी / भूरे पाउडर वाले धब्बे', mr: 'पानांवर नारिंगी / तपकिरी भुकटीचे डाग', category: 'disease', priority: 2 },
+  'WILT_SYMPTOM': { en: 'Whole plant suddenly drooping/wilting', hi: 'पूरा पौधा अचानक मुरझा गया', mr: 'संपूर्ण झाड अचानक कोमेजले', category: 'disease', priority: 1 },
+  'GUMMOSIS': { en: 'Sticky gum oozing from stem', hi: 'तने से चिपचिपा गोंद निकल रहा', mr: 'खोडातून चिकट डिंक येत आहे', category: 'disease', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // H. NUTRIENT DEFICIENCY INDICATORS
+  // H. NUTRIENT DEFICIENCY INDICATORS - visual symptoms only
   // ═══════════════════════════════════════════════════════════════════════════
-  'UNIFORM_YELLOWING_OLDER_LEAVES': { en: 'Older leaves turning yellow', hi: 'पुराने पत्ते पीले', mr: 'जुनी पाने पिवळी', category: 'nutrient', priority: 1 },
-  'UNIFORM_YELLOWING_YOUNG_LEAVES': { en: 'Young leaves turning yellow', hi: 'नए पत्ते पीले', mr: 'नवीन पाने पिवळी', category: 'nutrient', priority: 1 },
-  'PURPLISH_LEAVES': { en: 'Purplish leaves', hi: 'जामुनी पत्ते', mr: 'जांभळी पाने', category: 'nutrient', priority: 2 },
-  'LEAF_MARGIN_BURN': { en: 'Leaf edges burnt', hi: 'पत्तों के किनारे जले', mr: 'पानांच्या कडा करपलेल्या', category: 'nutrient', priority: 2 },
-  'TIP_BURN': { en: 'Leaf tips burnt', hi: 'पत्तों के सिरे जले', mr: 'पानांची टोके करपलेली', category: 'nutrient', priority: 2 },
-  'SMALL_LEAVES': { en: 'Leaves smaller than normal', hi: 'पत्ते छोटे', mr: 'पाने लहान', category: 'nutrient', priority: 3 },
-  'THICK_LEAVES': { en: 'Leaves thick/leathery', hi: 'पत्ते मोटे', mr: 'पाने जाड', category: 'nutrient', priority: 3 },
-  'BRITTLE_LEAVES': { en: 'Leaves brittle/break easily', hi: 'पत्ते भुरभुरे', mr: 'पाने ठिसूळ', category: 'nutrient', priority: 3 },
+  'UNIFORM_YELLOWING_OLDER_LEAVES': { en: 'Lower/older leaves turning yellow first', hi: 'नीचे / पुरानी पत्तियां पहले पीली पड़ रही', mr: 'खालची / जुनी पाने आधी पिवळी पडत आहेत', category: 'nutrient', priority: 1 },
+  'UNIFORM_YELLOWING_YOUNG_LEAVES': { en: 'New/top leaves turning yellow first', hi: 'ऊपर की / नई पत्तियां पहले पीली पड़ रही', mr: 'वरची / नवीन पाने आधी पिवळी पडत आहेत', category: 'nutrient', priority: 1 },
+  'PURPLISH_LEAVES': { en: 'Leaves turning purple/dark violet', hi: 'पत्ते बैंगनी / गहरे जामुनी हो रहे', mr: 'पाने जांभळी / गडद निळसर होत आहेत', category: 'nutrient', priority: 2 },
+  'LEAF_MARGIN_BURN': { en: 'Leaf edges turning brown/burnt', hi: 'पत्तों के किनारे भूरे / जले', mr: 'पानांच्या कडा तपकिरी / करपलेल्या', category: 'nutrient', priority: 2 },
+  'TIP_BURN': { en: 'Leaf tips turning brown/burnt', hi: 'पत्तों के सिरे भूरे / जले', mr: 'पानांची टोके तपकिरी / करपलेली', category: 'nutrient', priority: 2 },
+  'SMALL_LEAVES': { en: 'Leaves much smaller than normal', hi: 'पत्ते सामान्य से बहुत छोटे', mr: 'पाने सामान्यपेक्षा खूप लहान', category: 'nutrient', priority: 3 },
+  'THICK_LEAVES': { en: 'Leaves thick and leathery to touch', hi: 'पत्ते मोटे और चमड़े जैसे', mr: 'पाने जाड आणि चामड्यासारखी', category: 'nutrient', priority: 3 },
+  'BRITTLE_LEAVES': { en: 'Leaves break easily when bent', hi: 'पत्ते मोड़ने पर आसानी से टूटते हैं', mr: 'पाने वाकवल्यास सहज तुटतात', category: 'nutrient', priority: 3 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // I-J. FLOWER / FRUIT STAGE
+  // I-J. FLOWER / FRUIT STAGE - visual symptoms
   // ═══════════════════════════════════════════════════════════════════════════
-  'POOR_FLOWERING': { en: 'Poor/less flowering', hi: 'कम फूल आ रहे', mr: 'कमी फुले', category: 'reproductive', priority: 2 },
-  'FLOWER_DROP': { en: 'Flowers dropping', hi: 'फूल गिर रहे', mr: 'फुले गळत आहेत', category: 'reproductive', priority: 1 },
-  'BUD_DROP': { en: 'Buds dropping', hi: 'कलियां गिर रही', mr: 'कळ्या गळत आहेत', category: 'reproductive', priority: 1 },
-  'DELAYED_FLOWERING': { en: 'Delayed flowering', hi: 'देर से फूल आना', mr: 'उशिरा फुलणे', category: 'reproductive', priority: 3 },
-  'IRREGULAR_FLOWERING': { en: 'Irregular flowering', hi: 'असमान फूल आना', mr: 'अनियमित फुलणे', category: 'reproductive', priority: 3 },
-  'POOR_FRUIT_SET': { en: 'Poor fruit setting', hi: 'फल कम लग रहे', mr: 'फळे कमी लागत', category: 'reproductive', priority: 2 },
-  'FRUIT_DROP': { en: 'Fruits dropping', hi: 'फल गिर रहे', mr: 'फळे गळत आहेत', category: 'reproductive', priority: 1 },
-  'FRUIT_DEFORMED': { en: 'Fruits deformed', hi: 'फल टेढ़े-मेढ़े', mr: 'फळे विकृत', category: 'reproductive', priority: 2 },
-  'FRUIT_CRACKING': { en: 'Fruits cracking', hi: 'फल फट रहे', mr: 'फळे फुटत आहेत', category: 'reproductive', priority: 2 },
-  'FRUIT_ROT': { en: 'Fruits rotting', hi: 'फल सड़ रहे', mr: 'फळे सडत आहेत', category: 'reproductive', priority: 1 },
-  'SMALL_FRUITS': { en: 'Fruits smaller than normal', hi: 'फल छोटे', mr: 'फळे लहान', category: 'reproductive', priority: 2 },
-  'EMPTY_GRAINS': { en: 'Empty grains', hi: 'खाली दाने', mr: 'रिकामे दाणे', category: 'reproductive', priority: 1 },
-  'PARTIALLY_FILLED_GRAINS': { en: 'Partially filled grains', hi: 'आधे भरे दाने', mr: 'अर्धवट भरलेले दाणे', category: 'reproductive', priority: 2 },
+  'POOR_FLOWERING': { en: 'Very few flowers on plants', hi: 'पौधों पर बहुत कम फूल आ रहे', mr: 'झाडांवर खूप कमी फुले येत आहेत', category: 'reproductive', priority: 2 },
+  'FLOWER_DROP': { en: 'Flowers falling off before fruiting', hi: 'फल बनने से पहले फूल गिर रहे', mr: 'फळ लागण्याआधी फुले गळत आहेत', category: 'reproductive', priority: 1 },
+  'BUD_DROP': { en: 'Flower buds falling off', hi: 'कलियां गिर रही हैं', mr: 'कळ्या गळत आहेत', category: 'reproductive', priority: 1 },
+  'DELAYED_FLOWERING': { en: 'Flowers not coming on time', hi: 'फूल समय पर नहीं आ रहे', mr: 'फुले वेळेवर येत नाहीत', category: 'reproductive', priority: 3 },
+  'IRREGULAR_FLOWERING': { en: 'Some plants flowering, some not', hi: 'कुछ पौधों पर फूल, कुछ पर नहीं', mr: 'काही झाडांवर फुले, काहींवर नाहीत', category: 'reproductive', priority: 3 },
+  'POOR_FRUIT_SET': { en: 'Very few fruits forming', hi: 'बहुत कम फल लग रहे', mr: 'खूप कमी फळे लागत आहेत', category: 'reproductive', priority: 2 },
+  'FRUIT_DROP': { en: 'Fruits falling off before ripening', hi: 'पकने से पहले फल गिर रहे', mr: 'पिकण्याआधी फळे गळत आहेत', category: 'reproductive', priority: 1 },
+  'FRUIT_DEFORMED': { en: 'Fruits not normal shape, twisted/bent', hi: 'फल सामान्य आकार के नहीं, टेढ़े', mr: 'फळे सामान्य आकाराची नाहीत, वाकडी', category: 'reproductive', priority: 2 },
+  'FRUIT_CRACKING': { en: 'Fruits cracking/splitting open', hi: 'फल फट रहे / चीर रहे', mr: 'फळे फुटत / चिरत आहेत', category: 'reproductive', priority: 2 },
+  'FRUIT_ROT': { en: 'Fruits rotting on plant', hi: 'फल पौधे पर ही सड़ रहे', mr: 'फळे झाडावरच सडत आहेत', category: 'reproductive', priority: 1 },
+  'SMALL_FRUITS': { en: 'Fruits much smaller than expected', hi: 'फल उम्मीद से बहुत छोटे', mr: 'फळे अपेक्षेपेक्षा खूप लहान', category: 'reproductive', priority: 2 },
+  'EMPTY_GRAINS': { en: 'Grains are empty/hollow inside', hi: 'दाने अंदर से खाली / खोखले हैं', mr: 'दाणे आतून रिकामे / पोकळ आहेत', category: 'reproductive', priority: 1 },
+  'PARTIALLY_FILLED_GRAINS': { en: 'Grains only half filled, light weight', hi: 'दाने आधे भरे, हल्के हैं', mr: 'दाणे अर्धवट भरलेले, हलके आहेत', category: 'reproductive', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // K. FIELD-LEVEL PATTERNS
+  // K. FIELD-LEVEL PATTERNS - what farmer sees across field
   // ═══════════════════════════════════════════════════════════════════════════
-  'PATCHY_DAMAGE': { en: 'Patchy/scattered damage', hi: 'जगह-जगह नुकसान', mr: 'ठिकठिकाणी नुकसान', category: 'field_pattern', priority: 1 },
-  'EDGE_DAMAGE_ONLY': { en: 'Only edges affected', hi: 'सिर्फ किनारे प्रभावित', mr: 'फक्त कडेला नुकसान', category: 'field_pattern', priority: 2 },
-  'LOW_LYING_AREA_AFFECTED': { en: 'Low lying areas affected', hi: 'निचले क्षेत्र प्रभावित', mr: 'खालचा भाग प्रभावित', category: 'field_pattern', priority: 2 },
-  'ENTIRE_FIELD_AFFECTED': { en: 'Entire field affected', hi: 'पूरा खेत प्रभावित', mr: 'संपूर्ण शेत प्रभावित', category: 'field_pattern', priority: 1 },
-  'LOCALIZED_SPOTS': { en: 'Localized spots only', hi: 'कुछ ही जगहों पर', mr: 'काही ठिकाणीच', category: 'field_pattern', priority: 2 },
-  'DIRECTIONAL_SPREAD': { en: 'Spreading in one direction', hi: 'एक दिशा में फैल रहा', mr: 'एका दिशेने पसरत आहे', category: 'field_pattern', priority: 2 },
+  'PATCHY_DAMAGE': { en: 'Problem in scattered patches across field', hi: 'खेत में जगह-जगह समस्या दिखती है', mr: 'शेतात ठिकठिकाणी समस्या दिसते', category: 'field_pattern', priority: 1 },
+  'EDGE_DAMAGE_ONLY': { en: 'Problem only on field edges/borders', hi: 'सिर्फ खेत के किनारों पर समस्या', mr: 'फक्त शेताच्या कडेला समस्या', category: 'field_pattern', priority: 2 },
+  'LOW_LYING_AREA_AFFECTED': { en: 'Problem in low-lying/waterlogged areas', hi: 'नीची / पानी जमा वाली जगह में समस्या', mr: 'सखल / पाणी साचणाऱ्या भागात समस्या', category: 'field_pattern', priority: 2 },
+  'ENTIRE_FIELD_AFFECTED': { en: 'Problem everywhere in the field', hi: 'पूरे खेत में समस्या दिखती है', mr: 'संपूर्ण शेतात समस्या दिसते', category: 'field_pattern', priority: 1 },
+  'LOCALIZED_SPOTS': { en: 'Problem only in one or two spots', hi: 'सिर्फ एक-दो जगह पर समस्या', mr: 'फक्त एक-दोन ठिकाणीच समस्या', category: 'field_pattern', priority: 2 },
+  'DIRECTIONAL_SPREAD': { en: 'Problem spreading from one side', hi: 'एक तरफ से दूसरी तरफ फैल रहा', mr: 'एका बाजूने दुसऱ्या बाजूला पसरत आहे', category: 'field_pattern', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // L. WATER & SOIL CONTEXT
+  // L. WATER & SOIL CONTEXT - what farmer observes
   // ═══════════════════════════════════════════════════════════════════════════
-  'FIELD_WATERLOGGED': { en: 'Field waterlogged', hi: 'खेत में पानी भरा', mr: 'शेतात पाणी साचले', category: 'soil_water', priority: 1 },
-  'SOIL_TOO_DRY': { en: 'Soil too dry', hi: 'मिट्टी बहुत सूखी', mr: 'माती खूप कोरडी', category: 'soil_water', priority: 1 },
-  'CRACKS_IN_SOIL': { en: 'Cracks in soil', hi: 'मिट्टी में दरारें', mr: 'मातीत भेगा', category: 'soil_water', priority: 2 },
-  'SALT_CRUST_VISIBLE': { en: 'Salt crust visible', hi: 'नमक की परत', mr: 'मीठाचा थर', category: 'soil_water', priority: 2 },
-  'WHITE_SOIL_DEPOSITS': { en: 'White deposits on soil', hi: 'मिट्टी पर सफेद जमाव', mr: 'मातीवर पांढरे थर', category: 'soil_water', priority: 2 },
+  'FIELD_WATERLOGGED': { en: 'Water standing in field, not draining', hi: 'खेत में पानी भरा है, निकल नहीं रहा', mr: 'शेतात पाणी साचले आहे, जात नाही', category: 'soil_water', priority: 1 },
+  'SOIL_TOO_DRY': { en: 'Soil very dry with cracks', hi: 'मिट्टी बहुत सूखी, दरारें पड़ गई', mr: 'माती खूप कोरडी, भेगा पडल्या', category: 'soil_water', priority: 1 },
+  'CRACKS_IN_SOIL': { en: 'Deep cracks in soil visible', hi: 'मिट्टी में गहरी दरारें दिखती हैं', mr: 'मातीत खोल भेगा दिसतात', category: 'soil_water', priority: 2 },
+  'SALT_CRUST_VISIBLE': { en: 'White salty layer on top of soil', hi: 'मिट्टी के ऊपर सफेद नमकीन परत', mr: 'मातीवर पांढरा खारट थर', category: 'soil_water', priority: 2 },
+  'WHITE_SOIL_DEPOSITS': { en: 'White deposits/patches on soil surface', hi: 'मिट्टी की सतह पर सफेद जमाव', mr: 'मातीच्या पृष्ठभागावर पांढरे थर', category: 'soil_water', priority: 2 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // M. WEATHER / EVENT BASED
+  // M. WEATHER / EVENT BASED - timing context
   // ═══════════════════════════════════════════════════════════════════════════
-  'DAMAGE_AFTER_RAIN': { en: 'Damage appeared after rain', hi: 'बारिश के बाद नुकसान', mr: 'पावसानंतर नुकसान', category: 'weather', priority: 1 },
-  'DAMAGE_AFTER_FROST': { en: 'Damage after frost', hi: 'पाले के बाद नुकसान', mr: 'दवानंतर नुकसान', category: 'weather', priority: 1 },
-  'DAMAGE_AFTER_HEAT': { en: 'Damage after heat wave', hi: 'गर्मी के बाद नुकसान', mr: 'उष्णतेनंतर नुकसान', category: 'weather', priority: 1 },
-  'DAMAGE_AFTER_WIND': { en: 'Damage after wind/storm', hi: 'तूफान के बाद नुकसान', mr: 'वादळानंतर नुकसान', category: 'weather', priority: 1 },
-  'DAMAGE_AFTER_HAIL': { en: 'Damage after hail', hi: 'ओलों के बाद नुकसान', mr: 'गारपिटीनंतर नुकसान', category: 'weather', priority: 1 },
+  'DAMAGE_AFTER_RAIN': { en: 'Problem started after heavy rain', hi: 'भारी बारिश के बाद समस्या शुरू हुई', mr: 'जोरदार पावसानंतर समस्या सुरू झाली', category: 'weather', priority: 1 },
+  'DAMAGE_AFTER_FROST': { en: 'Problem started after cold/frost', hi: 'ठंड / पाले के बाद समस्या शुरू हुई', mr: 'थंडी / दवानंतर समस्या सुरू झाली', category: 'weather', priority: 1 },
+  'DAMAGE_AFTER_HEAT': { en: 'Problem started after very hot days', hi: 'बहुत गर्मी के बाद समस्या शुरू हुई', mr: 'खूप उष्णतेनंतर समस्या सुरू झाली', category: 'weather', priority: 1 },
+  'DAMAGE_AFTER_WIND': { en: 'Problem started after storm/strong wind', hi: 'तूफान / तेज हवा के बाद समस्या शुरू हुई', mr: 'वादळ / जोराच्या वाऱ्यानंतर समस्या सुरू झाली', category: 'weather', priority: 1 },
+  'DAMAGE_AFTER_HAIL': { en: 'Problem started after hailstorm', hi: 'ओलों के बाद समस्या शुरू हुई', mr: 'गारपिटीनंतर समस्या सुरू झाली', category: 'weather', priority: 1 },
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // N. ADDITIONAL WORLD-CLASS KEYS
+  // N. ADDITIONAL - visual evidence descriptions
   // ═══════════════════════════════════════════════════════════════════════════
-  'HONEYDEW_PRESENT': { en: 'Sticky honeydew on leaves', hi: 'पत्तों पर चिपचिपाहट', mr: 'पानांवर चिकटपणा', category: 'pest', priority: 1 },
-  'SOOTY_MOLD_ON_HONEYDEW': { en: 'Black sooty mold on honeydew', hi: 'चिपचिपाहट पर काली फफूंद', mr: 'चिकट भागावर काळी बुरशी', category: 'pest', priority: 2 },
-  'FRASS_VISIBLE': { en: 'Frass/droppings visible', hi: 'कीड़े की मल दिखाई', mr: 'किड्यांची विष्ठा दिसते', category: 'pest', priority: 2 },
-  'SILK_WEBBING_VISIBLE': { en: 'Silk webbing visible', hi: 'रेशम का जाला दिखाई', mr: 'रेशीम जाळे दिसते', category: 'pest', priority: 2 },
-  'ANTS_PRESENT': { en: 'Ants present on plants', hi: 'पौधों पर चींटियां', mr: 'झाडांवर मुंग्या', category: 'pest', priority: 3 },
-  'TUNNELS_IN_SOIL': { en: 'Tunnels in soil', hi: 'मिट्टी में सुरंग', mr: 'मातीत बिळे', category: 'pest', priority: 2 },
-  'MUD_TUBES_PRESENT': { en: 'Mud tubes present (termite)', hi: 'मिट्टी की नलियां (दीमक)', mr: 'मातीच्या नळ्या (वाळवी)', category: 'pest', priority: 1 }
+  'HONEYDEW_PRESENT': { en: 'Leaves feel sticky to touch', hi: 'पत्ते छूने पर चिपचिपे लगते हैं', mr: 'पाने हाताला चिकट लागतात', category: 'pest', priority: 1 },
+  'SOOTY_MOLD_ON_HONEYDEW': { en: 'Black coating on sticky leaves', hi: 'चिपचिपे पत्तों पर काली परत', mr: 'चिकट पानांवर काळी परत', category: 'pest', priority: 2 },
+  'FRASS_VISIBLE': { en: 'Sawdust-like powder near stem base', hi: 'तने के पास भूसा जैसा पाउडर दिखता है', mr: 'खोडाजवळ भुशासारखी भुकटी दिसते', category: 'pest', priority: 2 },
+  'SILK_WEBBING_VISIBLE': { en: 'Fine silky web on leaves/stem', hi: 'पत्तों / तने पर बारीक रेशमी जाला', mr: 'पानांवर / खोडावर बारीक रेशमी जाळे', category: 'pest', priority: 2 },
+  'ANTS_PRESENT': { en: 'Ants crawling on plants', hi: 'पौधों पर चींटियां चल रही हैं', mr: 'झाडांवर मुंग्या चालत आहेत', category: 'pest', priority: 3 },
+  'TUNNELS_IN_SOIL': { en: 'Tunnels/holes visible in soil near plant', hi: 'पौधे के पास मिट्टी में सुरंग / छेद', mr: 'झाडाजवळ मातीत बिळे / छिद्रे दिसतात', category: 'pest', priority: 2 },
+  'MUD_TUBES_PRESENT': { en: 'Mud/clay tubes on stem base or soil', hi: 'तने के नीचे या मिट्टी पर मिट्टी की नलियां', mr: 'खोडाच्या बुडाशी किंवा मातीवर मातीच्या नळ्या', category: 'pest', priority: 1 },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // O. PEST-SPECIFIC VISUAL SYMPTOMS (described by what farmer sees)
+  // These map to specific pests but labels describe VISUAL symptoms only
+  // ═══════════════════════════════════════════════════════════════════════════
+  'EARLY_SHOOT_BORER': { en: 'Young plant central leaf dried, pulls out easily', hi: 'छोटे पौधे की बीच की पत्ती सूखी, खींचने पर निकल जाती है', mr: 'लहान रोपाची मधली पाने वाळली, ओढल्यास बाहेर येतात', category: 'pest', priority: 1 },
+  'DEADHEART': { en: 'Central shoot completely dead and dry', hi: 'बीच का कोंपल पूरा सूख गया', mr: 'मधला कोंब पूर्ण सुकून गेला', category: 'pest', priority: 1 },
+  'DROUGHT_STRESS': { en: 'Plants wilting due to lack of water', hi: 'पानी की कमी से पौधे मुरझा रहे', mr: 'पाण्याच्या कमतरतेने झाडे कोमेजत आहेत', category: 'soil_water', priority: 1 },
+  'BORON_DEFICIENCY': { en: 'New growth distorted, tips dying', hi: 'नई वृद्धि विकृत, सिरे मर रहे', mr: 'नवीन वाढ विकृत, टोके मरत आहेत', category: 'nutrient', priority: 2 },
+  'BORON_TOXICITY': { en: 'Leaf tips and edges turning brown/burnt', hi: 'पत्तों के सिरे और किनारे भूरे / जले', mr: 'पानांची टोके आणि कडा तपकिरी / करपलेल्या', category: 'nutrient', priority: 2 }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

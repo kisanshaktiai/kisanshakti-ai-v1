@@ -98,6 +98,8 @@ export async function loadObservationLabels(
     }
     
     // Build map from database results
+    // CRITICAL FIX: Prefer description_text (farmer-friendly) over display_text (technical term)
+    // when description_text is available and substantive (>10 chars)
     for (const code of observationCodes) {
       const upperCode = code.toUpperCase();
       const translation = translations?.find(
@@ -106,10 +108,16 @@ export async function loadObservationLabels(
       const icon = OBSERVATION_ICONS[upperCode] || '❓';
       
       if (translation) {
+        // Use description_text as display if it's more descriptive (farmer-friendly)
+        // description_text describes WHAT FARMER SEES, display_text is often a technical term
+        const hasGoodDescription = translation.description_text && 
+          translation.description_text.length > 10 &&
+          translation.description_text.length > (translation.display_text?.length || 0);
+        
         labelMap.set(upperCode, {
           observation_code: upperCode,
-          display_text: translation.display_text,
-          description_text: translation.description_text || '',
+          display_text: hasGoodDescription ? translation.description_text : translation.display_text,
+          description_text: hasGoodDescription ? translation.display_text : (translation.description_text || ''),
           icon
         });
       } else {
