@@ -2498,10 +2498,10 @@ export class AIAgentOrchestrator {
       // LLM FAILSAFE: When LLM failed but land context exists, force symbolic path
       // This prevents dead-end responses when we have crop/stage data available
       // ═══════════════════════════════════════════════════════════════════════════
-      const llmFailed = intentCode === 'UNKNOWN_OBSERVATION' && intentConf < 0.2;
+      const llmFailedForFailsafe = intentCode === 'UNKNOWN_OBSERVATION' && intentConf < 0.2;
       const hasLandContextForFailsafe = landContext && landContext.current_crop && landContext.growth_stage;
       
-      if (llmFailed && hasLandContextForFailsafe) {
+      if (llmFailedForFailsafe && hasLandContextForFailsafe) {
         console.log(`\n🚑 [LLM_FAILSAFE] LLM failed (intent=${intentCode}, conf=${(intentConf * 100).toFixed(0)}%) but land context available:`);
         console.log(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, DAS: ${landContext.days_since_sowing || '?'}`);
         console.log(`   → Boosting induction coverage to allow symbolic evaluation`);
@@ -2547,7 +2547,7 @@ export class AIAgentOrchestrator {
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
       // LLM failsafe allows symbolic brain even without symptoms to generate clarification
-      const llmFailsafeActive = llmFailed && hasLandContextForFailsafe;
+      const llmFailsafeActive = llmFailedForFailsafe && hasLandContextForFailsafe;
       const shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute || llmFailsafeActive);
       
       if (!hasSymptoms && !isSymptomFreeRoute && !llmFailsafeActive && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
