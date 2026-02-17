@@ -19139,6 +19139,33 @@ export type Database = {
           },
         ]
       }
+      intent_observation_mapping_v2: {
+        Row: {
+          confidence_rank: number
+          created_at: string | null
+          id: string
+          intent_code: string
+          is_active: boolean | null
+          observation_code: string
+        }
+        Insert: {
+          confidence_rank?: number
+          created_at?: string | null
+          id?: string
+          intent_code: string
+          is_active?: boolean | null
+          observation_code: string
+        }
+        Update: {
+          confidence_rank?: number
+          created_at?: string | null
+          id?: string
+          intent_code?: string
+          is_active?: boolean | null
+          observation_code?: string
+        }
+        Relationships: []
+      }
       intent_translations: {
         Row: {
           created_at: string | null
@@ -23070,27 +23097,48 @@ export type Database = {
       }
       observation_intent_master: {
         Row: {
+          allowed_observation_groups: string[] | null
+          clarification_mode: string | null
           created_at: string | null
           intent_category: string
           intent_code: string
           intent_description: string
           is_active: boolean | null
+          is_biological: boolean | null
+          max_clarification_rounds: number | null
+          requires_crop_context: boolean | null
+          requires_stage_context: boolean | null
+          routing_target: string | null
           updated_at: string | null
         }
         Insert: {
+          allowed_observation_groups?: string[] | null
+          clarification_mode?: string | null
           created_at?: string | null
           intent_category: string
           intent_code: string
           intent_description: string
           is_active?: boolean | null
+          is_biological?: boolean | null
+          max_clarification_rounds?: number | null
+          requires_crop_context?: boolean | null
+          requires_stage_context?: boolean | null
+          routing_target?: string | null
           updated_at?: string | null
         }
         Update: {
+          allowed_observation_groups?: string[] | null
+          clarification_mode?: string | null
           created_at?: string | null
           intent_category?: string
           intent_code?: string
           intent_description?: string
           is_active?: boolean | null
+          is_biological?: boolean | null
+          max_clarification_rounds?: number | null
+          requires_crop_context?: boolean | null
+          requires_stage_context?: boolean | null
+          routing_target?: string | null
           updated_at?: string | null
         }
         Relationships: []
