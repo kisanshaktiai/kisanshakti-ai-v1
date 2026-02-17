@@ -1,99 +1,110 @@
 
-# Fix: Authoritative Crop Lock + Local Name Enforcement in LLM Narration Layer
+# Forensic Audit: Critical Bug - Same Clarification for All Queries
 
-## Problem
+## Root Cause Analysis (3 Critical Bugs Found)
 
-The LLM narration layer can hallucinate wrong crop names (e.g., "Wheat" instead of "Sugarcane") because:
-1. The system prompt gives LLM an "agronomist" identity that implies decision-making authority
-2. The narration prompt passes crop name as loose "context for localization" with no enforcement
-3. No crop local name (e.g., "oos" in Marathi) is provided -- LLM guesses translations
-4. No post-render validation checks whether the LLM output mentions the correct crop
+### Bug 1: DIRECT-mode intents forced through symptom clarification (P0)
 
-## Data Sources Already Available
+The `observation_intent_master` table defines `clarification_mode: 'DIRECT'` for intents like:
+- `FERTILIZER_SCHEDULE` ("What fertilizer to give sugarcane now?")
+- `IRRIGATION_QUERY` ("When to water?")
+- `HARVEST_TIMING` ("When to harvest?")
+- `GENERAL_CROP_INFO` ("How to manage sugarcane?")
+- `SOIL_TESTING_QUERY`
+- `SEED_SELECTION`
 
-The `ICAR_CALENDARS` in `crop-calendar-lookup.ts` already contains crop local names:
-- Sugarcane: `crop_name_mr: 'oos'`, `crop_name_hi: 'ganna'`, `crop_name_en: 'Sugarcane'`
-- Wheat: `crop_name_mr: 'gahu'`, `crop_name_hi: 'gehun'`
-- Cotton: `crop_name_mr: 'kapus'`, `crop_name_hi: 'kapas'`
-- etc.
+**The Problem:** The orchestrator reads `intentMetaFromDB.clarification_mode` (line 2317-2336) but **NEVER uses it to bypass the understanding checker**. Every query, regardless of intent type, flows through `checkUnderstandingCompleteness()` (line 2736) which always demands `raw_symptom_text`, `affected_part`, `severity_words`, and `time_reference`.
 
-The `land_context` in `SymbolicNarrationInput` already has `current_crop` and `crop_stage`.
+For "What fertilizer to give sugarcane now?", the farmer provides ZERO symptoms (because it's not a symptom query), so the understanding checker returns `clarification_required: true` with score below 70%. The system then shows the SAME 3 generic symptom options: "Color change", "Holes visible", "Drying/wilting".
 
-## Changes (3 modifications in 1 file)
+**Location:** `orchestrator.ts` lines 2729-2749, 3360
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/llm-response-generator.ts`
+### Bug 2: Non-symptom intents routed into DIAGNOSIS path (P0)
 
-### Change 1: Replace System Prompt Identity
+The `agriculturalProblemIntents` list (line 2941-2964) includes `FERTILIZER_SCHEDULE`, `IRRIGATION_QUERY`, `HARVEST_TIMING`, and `GENERAL_CROP_INFO`. This means fertilizer schedule queries get injected with a fake `NUTRIENT_QUERY` symptom (line 2989), triggering crop damage detection and diagnosis-first hypothesis evaluation -- completely wrong for "when to give fertilizer."
 
-Replace `NARRATION_SYSTEM_PROMPT` (lines 110-148) to change the LLM identity from "NARRATION ENGINE for agricultural decisions" to "multilingual agricultural language adapter". Add explicit crop lock enforcement rules:
+**Location:** `orchestrator.ts` lines 2941-2999
 
-- "You MUST use crop_local_name when writing in the farmer's language"
-- "You MUST NOT translate or replace crop_local_name"
-- "You MUST NOT infer any crop"
-- "You MUST NOT mention any crop other than the one in AUTHORITATIVE_CONTEXT"
-- "You are a language adapter only -- all biological information comes from AUTHORITATIVE_CONTEXT"
+### Bug 3: renderClarificationAsync always returns same 3 options (P1)
 
-Keep all existing prohibitions (no diagnosing, no products, no dosages, etc.).
+The template-based renderer in `clarification-renderer.ts` has a fixed set of `REFINE_OBSERVATION` templates. When the dynamic clarification generator (deprecated stub) returns empty and falls back to templates, the templates always show the same 3 symptom-observation options regardless of the farmer's actual question.
 
-### Change 2: Inject AUTHORITATIVE_CONTEXT into Narration Prompt
+**Location:** `clarification-renderer.ts` templates, `clarification-generator.ts` fallback path
 
-Modify `buildNarrationPrompt()` (lines 286-340) to:
+---
 
-1. Import `ICAR_CALENDARS` from `crop-calendar-lookup.ts` to resolve crop local name
-2. Build a structured JSON block at the TOP of the prompt:
+## Fix Plan
+
+### Fix 1: DIRECT-mode Intent Bypass (in orchestrator.ts)
+
+After loading `intentMetaFromDB` (line 2336) and BEFORE the understanding checker (line 2729), add a check:
 
 ```
-AUTHORITATIVE_CONTEXT (IMMUTABLE -- DO NOT MODIFY):
-{
-  "crop_canonical": "Sugarcane",
-  "crop_local_name": "oos",
-  "farmer_language": "mr",
-  "growth_stage": "TILLERING",
-  "days_after_sowing": 68
-}
+If intentMetaFromDB.clarification_mode === 'DIRECT'
+  AND landContext has crop + stage
+THEN:
+  - Set understandingResult.clarification_required = false
+  - Set bypassClarification = true
+  - Log: "[DIRECT_MODE] Intent {code} has clarification_mode=DIRECT, skipping symptom clarification"
+  - Let the query flow directly to the symbolic rule engine
 ```
 
-3. Replace the loose "CONTEXT (for localization only)" block with this structured authoritative block
-4. The local name is resolved from ICAR_CALENDARS using the crop code and language
+This means fertilizer/irrigation/harvest queries with known crop context skip the "What symptoms do you see?" flow and go straight to the rule engine which has rules for these intents.
 
-### Change 3: Add Post-Render Crop Integrity Validation
+### Fix 2: Separate symptom-based intents from advisory intents (in orchestrator.ts)
 
-Enhance `validateNarrationOutput()` (lines 162-229) to add crop mismatch detection:
+Split the `agriculturalProblemIntents` array (line 2941) into two lists:
 
-1. Build a set of ALL known crop names (English, Marathi, Hindi) from ICAR_CALENDARS
-2. Remove the expected crop names from the set (the correct crop)
-3. Scan the LLM output for any remaining (wrong) crop names
-4. If a wrong crop is found AND the correct crop local name is NOT in the output: flag as violation
-5. Log the mismatch event with crop details for forensic audit
+**Symptom-based intents** (need diagnosis):
+- `PEST_PRESENCE_VISIBLE`, `DISEASE_LIKE_PATTERN`, `WILTING_OR_DROOPING`, `COLOR_CHANGE`
+- `LEAF_DAMAGE_VISIBLE`, `LEAF_MARKS_OR_SPOTS`, `STEM_DAMAGE`, `ROOT_OR_BASE_PROBLEM`
+- `GROWTH_ANOMALY`, `WATER_STRESS_SIGNAL`, `NUTRIENT_STRESS_SIGNAL`
+- `EMERGENCE_FAILURE`, `UNEVEN_FIELD_PATTERN`, `YIELD_OR_OUTPUT_ISSUE`, `WEED_PROBLEM`
 
-This catches cases like: LLM says "gahu" (wheat) when the crop is "oos" (sugarcane).
+**Advisory intents** (need rule engine directly, NOT diagnosis):
+- `FERTILIZER_SCHEDULE`, `IRRIGATION_QUERY`, `HARVEST_TIMING`, `GENERAL_CROP_INFO`
+
+Only symptom-based intents get the fallback symptom injection. Advisory intents skip diagnosis mode entirely and go to the rule engine directly with the intent code as context.
+
+### Fix 3: Intent-aware rule engine query path (in orchestrator.ts)
+
+After the clarification gate at line 3580, when `bypassClarification = true` due to DIRECT mode intent, ensure the rule engine evaluator receives the intent code (e.g., `FERTILIZER_SCHEDULE`) as context so it can query `decision_rules` for fertilizer-schedule rules for the specific crop and stage.
+
+This means adding the intent code to the `SymbolicFact` or passing it to the layered rule evaluator so it can filter rules by `action_type` matching the intent (e.g., `fertilizer_schedule` action_type rules for Sugarcane at TILLERING stage).
+
+---
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `orchestrator.ts` | Add DIRECT-mode bypass before understanding checker; split intent lists; pass intent to rule engine |
 
 ## What Does NOT Change
 
-- `SymbolicNarrationInput` interface (no schema change)
-- `fallback-response-generator.ts` (separate file, not in scope)
-- `base-identity.ts` (prompt-factory identity, not used by narration layer)
-- `prompt-factory.ts` (used for general chat, not narration)
-- Decision rules, symbolic reasoner, orchestrator, ontology
-- Database schema
-- Rule evaluation engine
+- Decision rules table schema
+- Symbolic reasoner evaluation logic
+- Understanding completeness checker logic (it still works correctly for symptom queries)
+- Clarification renderer templates
+- LLM narration layer
+- Authority hierarchy
+- Observation ontology
 
-## Expected Result
+## Expected Result After Fix
 
-For Sugarcane land with `language: 'mr'`:
-
-| Before | After |
-|--------|-------|
-| LLM may say "gahu pikat..." (wheat) | LLM MUST say "oos pikat..." (sugarcane) |
-| No crop validation | Post-render gate catches wrong crop, uses fallback |
-| Loose "Context for localization" | Structured AUTHORITATIVE_CONTEXT with immutable crop lock |
-| Identity: "narration engine" | Identity: "language adapter" with crop lock rules |
+| Query | Before (Bug) | After (Fixed) |
+|-------|-------------|---------------|
+| "उसाला सध्या काय खत द्यावे" (What fertilizer for sugarcane now?) | Shows: "Color change / Holes / Drying" clarification | Goes directly to rule engine, returns fertilizer schedule for Sugarcane at TILLERING stage |
+| "ऊसाला पाणी कधी द्यावे" (When to water sugarcane?) | Shows: same 3 symptom options | Goes directly to irrigation rules for Sugarcane |
+| "कापूस कधी काढावा" (When to harvest cotton?) | Shows: same 3 symptom options | Goes directly to harvest timing rules |
+| "कापसावर किड दिसतेय" (I see pest on cotton) | Shows symptom clarification options | Still shows symptom clarification (correct behavior) |
 
 ## Technical Detail
 
 | Item | Detail |
 |------|--------|
-| File | `llm-response-generator.ts` |
-| Changes | 3 (system prompt, narration prompt builder, output validator) |
-| New imports | `ICAR_CALENDARS` from `crop-calendar-lookup.ts` |
-| Risk | Zero -- only hardens existing layer, fallback_text always available |
+| Primary file | `orchestrator.ts` |
+| Bug location | Lines 2729-2749 (understanding checker forces symptoms for ALL intents) |
+| Root cause | `clarification_mode: 'DIRECT'` from DB is loaded but never acted upon |
+| Fix type | Conditional bypass based on DB-defined intent metadata |
+| Risk | Low - only affects intents explicitly marked as DIRECT in database |
