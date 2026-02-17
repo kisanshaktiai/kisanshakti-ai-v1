@@ -139,17 +139,19 @@ function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string
   const translated = translateCause(cause, language);
   
   // CRITICAL FIX: Detect if translation is still English for non-English language
-  // Uses script-aware detection instead of Devanagari-only check
+  // Uses script-aware detection (inline, no dynamic import)
   if (language !== 'en' && translated) {
-    const { isTranslatedForLanguage } = await import('../i18n/language-types.ts').catch(() => ({
-      isTranslatedForLanguage: (text: string, lang: string) => {
-        // Inline fallback: check for any non-ASCII content
-        const nonAscii = text.replace(/[\s\d\p{P}\p{S}a-zA-Z]/gu, '');
-        return nonAscii.length > 0;
-      }
-    }));
+    const SCRIPT_RANGES: Record<string, RegExp> = {
+      mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
+      ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
+      ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
+      pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
+    };
+    const scriptRegex = SCRIPT_RANGES[language];
+    const hasNativeScript = scriptRegex ? scriptRegex.test(translated) : 
+      (translated.replace(/[\s\d\p{P}\p{S}a-zA-Z]/gu, '').length > 0);
     
-    if (!isTranslatedForLanguage(translated, language)) {
+    if (!hasNativeScript) {
       console.warn(`   ⚠️ [getCauseLabelDB] No ${language} translation for "${cause}" - will use observation label`);
       return '';
     }
