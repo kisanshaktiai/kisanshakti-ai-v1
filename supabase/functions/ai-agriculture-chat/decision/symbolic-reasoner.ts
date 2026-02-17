@@ -24,6 +24,7 @@ import type { CanonicalState } from '../agents/canonical-state-builder.ts';
 // ═══════════════════════════════════════════════════════════════════════════
 import {
   passesZincSpecificityGate,
+  passesMicronutrientSpecificityGate,
   checkWaterStressDominance,
   checkMacronutrientDominance,
   auditNutritionRuleSpecificity,
@@ -298,6 +299,17 @@ export class SymbolicReasoner {
           );
           if (!zincGate.passes) {
             console.log(`   🚫 [ZincGate] ${rule.rule_id} blocked: ${zincGate.reason}`);
+            continue;
+          }
+          
+          // Micronutrient specificity gate: blocks Fe/Mn/S rules without specific evidence
+          const microGate = passesMicronutrientSpecificityGate(
+            rule.rule_id,
+            [],
+            { all_observations: facts.all_observations }
+          );
+          if (!microGate.passes) {
+            console.log(`   🚫 [MicronutrientGate] ${rule.rule_id} blocked: ${microGate.reason}`);
             continue;
           }
         }

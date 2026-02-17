@@ -229,6 +229,134 @@ export function passesZincSpecificityGate(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MICRONUTRIENT SPECIFICITY GATE (Fe, Mn, S, and generic MICRO rules)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Symptoms that are specific to micronutrient deficiency.
+ * A micronutrient rule MUST have at least one of these OR soil evidence to fire.
+ */
+export const MICRONUTRIENT_SPECIFIC_MARKERS = new Set([
+  'INTERVEINAL_CHLOROSIS',
+  'YOUNG_LEAF_YELLOWING',
+  'YOUNG_LEAF_CHLOROSIS',
+  'BRONZING',
+  'WHITE_PATCHES_YOUNG_LEAVES',
+  'ROSETTING',
+  'SHORT_INTERNODES',
+  'KHAIRA_DISEASE',
+  'SMALL_LEAVES',
+  'IRON_DEFICIENCY_CONFIRMED',
+  'FE_DEFICIENCY_CONFIRMED',
+  'MANGANESE_DEFICIENCY_CONFIRMED',
+  'MN_DEFICIENCY_CONFIRMED',
+  'SULPHUR_DEFICIENCY_CONFIRMED',
+  'S_DEFICIENCY_CONFIRMED',
+  'ZINC_DEFICIENCY_CONFIRMED',
+  'MICRONUTRIENT_DEFICIENCY_CONFIRMED',
+  'NUTRIENT_STRESS_SIGNAL',
+]);
+
+/**
+ * Observations that have NO biological relationship to micronutrient deficiency.
+ * If ONLY these are present, micronutrient rules MUST NOT fire.
+ */
+const NON_NUTRIENT_OBSERVATIONS = new Set([
+  'GAPS_IN_FIELD',
+  'HOLES_VISIBLE',
+  'BORE_HOLES',
+  'DEAD_HEART',
+  'FRASS',
+  'DRYING_WILTING',
+  'PLANT_DEATH',
+  'RED_ROT',
+  'SMUT',
+  'WILT',
+  'ROOT_DAMAGE',
+  'TERMITE_DAMAGE',
+  'STEM_DAMAGE',
+  'CHEWED_LEAVES',
+  'WEBBING',
+  'INSECT_PRESENT',
+]);
+
+/**
+ * Micronutrient Specificity Gate: Blocks Fe/Mn/S/generic MICRO deficiency rules
+ * when there is no specific nutrient-deficiency evidence.
+ * 
+ * PRINCIPLE: Absence of soil test data is NOT evidence of deficiency.
+ * Micronutrient rules MUST require positive evidence before firing as URGENT treatments.
+ */
+export function passesMicronutrientSpecificityGate(
+  ruleId: string,
+  matchedObservations: string[],
+  facts: { 
+    soil_zn_deficient?: boolean; 
+    soil_fe_deficient?: boolean;
+    soil_mn_deficient?: boolean;
+    soil_s_deficient?: boolean;
+    all_observations?: string[];
+  }
+): { passes: boolean; reason: string } {
+  const ruleIdUpper = ruleId.toUpperCase();
+  
+  // Only applies to micronutrient deficiency rules (Fe, Mn, S, generic MICRO)
+  // Zinc is handled separately by passesZincSpecificityGate
+  const isMicroRule = (
+    ruleIdUpper.includes('FE_DEFICIENCY') ||
+    ruleIdUpper.includes('MN_DEFICIENCY') ||
+    ruleIdUpper.includes('S_DEFICIENCY') ||
+    (ruleIdUpper.includes('MICRO') && ruleIdUpper.includes('DEFICIENCY'))
+  );
+  
+  if (!isMicroRule) {
+    return { passes: true, reason: 'not_micronutrient_deficiency_rule' };
+  }
+
+  const allObs = [
+    ...matchedObservations,
+    ...(facts.all_observations || []),
+  ].map(o => o.toUpperCase().replace(/[\s-]/g, '_'));
+
+  // Gate 1: If farmer reports pest/disease-specific observations, BLOCK nutrient rule
+  const hasNonNutrientEvidence = allObs.some(o => NON_NUTRIENT_OBSERVATIONS.has(o));
+  if (hasNonNutrientEvidence && !allObs.some(o => MICRONUTRIENT_SPECIFIC_MARKERS.has(o))) {
+    return {
+      passes: false,
+      reason: `micronutrient_blocked:non_nutrient_observations_present(${allObs.filter(o => NON_NUTRIENT_OBSERVATIONS.has(o)).join(',')})`
+    };
+  }
+
+  // Gate 2: Check for micronutrient-specific symptom markers
+  const hasMicroMarker = allObs.some(o => MICRONUTRIENT_SPECIFIC_MARKERS.has(o));
+  if (hasMicroMarker) {
+    return { passes: true, reason: `micronutrient_marker_found:${allObs.filter(o => MICRONUTRIENT_SPECIFIC_MARKERS.has(o)).join(',')}` };
+  }
+
+  // Gate 3: Check for soil evidence
+  if (ruleIdUpper.includes('FE') && facts.soil_fe_deficient === true) {
+    return { passes: true, reason: 'soil_fe_deficiency_confirmed' };
+  }
+  if (ruleIdUpper.includes('MN') && facts.soil_mn_deficient === true) {
+    return { passes: true, reason: 'soil_mn_deficiency_confirmed' };
+  }
+  if (ruleIdUpper.includes('S_DEF') && facts.soil_s_deficient === true) {
+    return { passes: true, reason: 'soil_s_deficiency_confirmed' };
+  }
+  // Generic MICRO rule - any soil micronutrient deficiency
+  if (facts.soil_fe_deficient === true || facts.soil_mn_deficient === true || 
+      facts.soil_s_deficient === true || facts.soil_zn_deficient === true) {
+    return { passes: true, reason: 'soil_micronutrient_deficiency_confirmed' };
+  }
+
+  // No specific evidence → BLOCK
+  return { 
+    passes: false, 
+    reason: 'micronutrient_rule_blocked:no_specific_marker_or_soil_evidence' 
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DOMINANCE BLOCKING RULES
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -556,8 +684,10 @@ export default {
   NUTRITION_ARBITRATOR_VERSION,
   GENERIC_SYMPTOM_KEYS,
   ZINC_SPECIFIC_MARKERS,
+  MICRONUTRIENT_SPECIFIC_MARKERS,
   calculateDiagnosticSpecificity,
   passesZincSpecificityGate,
+  passesMicronutrientSpecificityGate,
   checkWaterStressDominance,
   checkMacronutrientDominance,
   arbitrateNutritionRules,

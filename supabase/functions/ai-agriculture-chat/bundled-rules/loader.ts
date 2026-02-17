@@ -553,6 +553,43 @@ export function evaluateConditionsJson(
     return false; // Cannot evaluate = do not match
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ENHANCED FIX: Fail-closed when skipped objects exist AND only stage matched
+  // If stage matched (hasAnyCondition=true) but ALL remaining conditions were
+  // skipped objects/numbers, the rule matched on stage alone — NOT enough.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (skippedObjectConditions > 0 && evaluatedUnknownConditions === 0 && hasAnyCondition) {
+    // Only stage/crop matched, all domain-specific conditions were skipped
+    // This prevents rules with only roi_by_region + roi_modifier from firing on stage match alone
+    const onlyStageOrCropMatched = conditionKeys.every(k => 
+      RECOGNIZED_KEYS.has(k) || 
+      (conditions[k] !== null && typeof conditions[k] === 'object') ||
+      typeof conditions[k] === 'number' ||
+      conditions[k] === false || conditions[k] === 'false'
+    );
+    if (onlyStageOrCropMatched) {
+      return false; // Stage match + all domain conditions skipped = fail-closed
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SOIL THRESHOLD FAIL-CLOSED: When soil_* keys exist but input has no data
+  // Conditions like {soil_fe_ppm: "<4.5"} must NOT match when soil data is missing.
+  // The evaluatedUnknownConditions count includes these, but they failed because
+  // parseFloat(undefined) = NaN, not because the threshold wasn't met.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const SOIL_THRESHOLD_KEYS = ['soil_fe_ppm', 'soil_zn_ppm', 'soil_mn_ppm', 'soil_s_ppm', 
+    'soil_b_ppm', 'soil_cu_ppm', 'soil_ph', 'soil_oc', 'soil_ec'];
+  const hasSoilThresholdConditions = conditionKeys.some(k => SOIL_THRESHOLD_KEYS.includes(k));
+  if (hasSoilThresholdConditions) {
+    const allSoilUnevaluable = conditionKeys
+      .filter(k => SOIL_THRESHOLD_KEYS.includes(k))
+      .every(k => (input as any)[k] === undefined || (input as any)[k] === null);
+    if (allSoilUnevaluable) {
+      return false; // Cannot evaluate soil thresholds without soil data
+    }
+  }
+  
   // If no specific conditions were defined (truly empty object), match by default
   if (!hasAnyCondition && conditionKeys.length === 0) {
     return true;

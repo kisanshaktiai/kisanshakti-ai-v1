@@ -69,6 +69,7 @@ import {
 // Fix 1: Import nutrition conflict arbitration gates
 import {
   passesZincSpecificityGate,
+  passesMicronutrientSpecificityGate,
   checkWaterStressDominance,
   checkMacronutrientDominance
 } from '../decision/nutrition-conflict-arbitrator.ts';
@@ -576,6 +577,13 @@ export function evaluateRulesLayered(
       const zincGate = passesZincSpecificityGate(r.rule_id, [], { all_observations: currentSymptoms });
       if (!zincGate.passes) {
         console.log(`🚫 [ArbitrationGate] ${r.rule_id} blocked: ${zincGate.reason}`);
+        return false;
+      }
+      
+      // Micronutrient specificity gate (Fe/Mn/S)
+      const microGate = passesMicronutrientSpecificityGate(r.rule_id, [], { all_observations: currentSymptoms });
+      if (!microGate.passes) {
+        console.log(`🚫 [ArbitrationGate] ${r.rule_id} blocked by micronutrient gate: ${microGate.reason}`);
         return false;
       }
       
