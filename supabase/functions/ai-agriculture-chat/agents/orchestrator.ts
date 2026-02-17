@@ -2335,6 +2335,21 @@ export class AIAgentOrchestrator {
         console.warn(`   ⚠️ [PATCH 2] Failed to load intent metadata: ${metaErr}`);
       }
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // FIX 1: DIRECT-MODE INTENT BYPASS
+      // If intent metadata says clarification_mode='DIRECT' AND we have crop context,
+      // skip the understanding checker entirely. Advisory intents (fertilizer, irrigation,
+      // harvest) don't need symptom clarification — they go straight to the rule engine.
+      // ═══════════════════════════════════════════════════════════════════════════
+      let directModeBypass = false;
+      if (intentMetaFromDB?.clarification_mode === 'DIRECT' && landContext?.current_crop) {
+        directModeBypass = true;
+        bypassClarification = true;
+        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} has clarification_mode=DIRECT, skipping symptom clarification`);
+        console.log(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage || 'UNKNOWN'}`);
+        agentsUsed.push('DIRECT_MODE_BYPASS');
+      }
+      
       // PATCH 2: Stage context guard - ask farmer for crop stage if required
       if (intentMetaFromDB?.requires_stage_context && !landContext?.growth_stage) {
         console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
@@ -2938,7 +2953,12 @@ export class AIAgentOrchestrator {
         const intentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN_OBSERVATION';
         
         // Define agricultural problem intents that should trigger diagnosis
-        const agriculturalProblemIntents = [
+        // ═══════════════════════════════════════════════════════════════════════════
+        // FIX 2: SPLIT SYMPTOM-BASED vs ADVISORY INTENTS
+        // Only symptom-based intents get fake symptom injection for diagnosis.
+        // Advisory intents (DIRECT-mode) skip this entirely and go to rule engine.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const symptomBasedIntents = [
           'PEST_PRESENCE_VISIBLE',
           'DISEASE_LIKE_PATTERN', 
           'WILTING_OR_DROOPING',
@@ -2953,19 +2973,21 @@ export class AIAgentOrchestrator {
           'EMERGENCE_FAILURE',
           'UNEVEN_FIELD_PATTERN',
           'YIELD_OR_OUTPUT_ISSUE',
-          // ═══════════════════════════════════════════════════════════════════════════
-          // CRITICAL FIX: These valid intent codes were missing from fallback list
-          // causing weed/fertilizer/irrigation queries to get 0 observations
-          // ═══════════════════════════════════════════════════════════════════════════
-          'WEED_PROBLEM',
+          'WEED_PROBLEM'
+        ];
+        
+        // Advisory intents: these go DIRECTLY to rule engine, no fake symptom injection
+        const advisoryIntents = [
           'FERTILIZER_SCHEDULE',
           'IRRIGATION_QUERY',
           'HARVEST_TIMING',
-          'GENERAL_CROP_INFO'
+          'GENERAL_CROP_INFO',
+          'SOIL_TESTING_QUERY',
+          'SEED_SELECTION'
         ];
         
-        if (agriculturalProblemIntents.includes(intentCode)) {
-          console.log(`\n🔧 [LLM-First Fallback] Intent ${intentCode} indicates agricultural problem`);
+        if (symptomBasedIntents.includes(intentCode)) {
+          console.log(`\n🔧 [LLM-First Fallback] Intent ${intentCode} indicates agricultural problem (symptom-based)`);
           console.log(`   Injecting symptom based on LLM-detected intent (language-agnostic)`);
           
           // Map intent to appropriate symptom code
@@ -2984,18 +3006,19 @@ export class AIAgentOrchestrator {
             'EMERGENCE_FAILURE': 'POOR_GERMINATION',
             'UNEVEN_FIELD_PATTERN': 'PATCHY_DEATH',
             'YIELD_OR_OUTPUT_ISSUE': 'POOR_YIELD',
-            // CRITICAL FIX: Missing intent-to-symptom mappings
-            'WEED_PROBLEM': 'WEED_PRESENT',
-            'FERTILIZER_SCHEDULE': 'NUTRIENT_QUERY',
-            'IRRIGATION_QUERY': 'WATER_MANAGEMENT',
-            'HARVEST_TIMING': 'HARVEST_READINESS',
-            'GENERAL_CROP_INFO': 'GENERAL_QUERY'
+            'WEED_PROBLEM': 'WEED_PRESENT'
           };
           
           const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
           allObservationsForPreAuth.add(fallbackSymptom);
           agentsUsed.push('LLM_INTENT_FALLBACK');
           console.log(`   Injected: ${fallbackSymptom} (from LLM intent: ${intentCode})`);
+        } else if (advisoryIntents.includes(intentCode) && directModeBypass) {
+          // FIX 3: For advisory intents with DIRECT mode, inject the INTENT CODE itself
+          // as an observation so the rule engine can match by action_type
+          console.log(`\n🎯 [ADVISORY DIRECT] Intent ${intentCode} is advisory — injecting intent as observation for rule engine`);
+          allObservationsForPreAuth.add(intentCode);
+          agentsUsed.push('ADVISORY_DIRECT_ROUTE');
         }
       }
       
@@ -4542,9 +4565,14 @@ export class AIAgentOrchestrator {
         console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (core + bundled)`);
         
         // CRITICAL: Pass user_query to canonical state for keyword-based matching
+        // FIX 3: For DIRECT-mode advisory intents, prepend intent code to user_query
+        // so rule engine can match by action_type (e.g., FERTILIZER_SCHEDULE rules)
+        const queryForRuleEngine = directModeBypass 
+          ? `[INTENT:${intentCode}] ${farmerMessage}` 
+          : farmerMessage;
         const canonicalStateWithQuery = {
           ...canonicalState,
-          user_query: farmerMessage
+          user_query: queryForRuleEngine
         };
         
         layeredRuleResult = evaluateRulesLayered(allRulesWithBundled, canonicalStateWithQuery as any);
