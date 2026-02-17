@@ -69,7 +69,7 @@ interface PerceptionResult {
 }
 
 interface AIPerceptionResult {
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   /** Raw observations - EXACT farmer words */
   observations: string[];
   /** Perception confidence 0.0 - 1.0 */
@@ -337,49 +337,77 @@ ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:
 // ═══════════════════════════════════════════════════════════════════════════
 
 function detectLanguage(text: string): LanguageDetectionResult {
+  const SCRIPT_RANGES: Record<string, RegExp> = {
+    ta: /[\u0B80-\u0BFF]/g,
+    te: /[\u0C00-\u0C7F]/g,
+    kn: /[\u0C80-\u0CFF]/g,
+    ml: /[\u0D00-\u0D7F]/g,
+    bn: /[\u0980-\u09FF]/g,
+    gu: /[\u0A80-\u0AFF]/g,
+    pa: /[\u0A00-\u0A7F]/g,
+    or: /[\u0B00-\u0B7F]/g,
+    en: /[a-zA-Z]/g,
+  };
+  
+  // Devanagari disambiguation (mr vs hi)
   const devanagariPattern = /[\u0900-\u097F]/g;
   const hindiWords = /है|हैं|का|की|के|में|से|को|पर|और|था|थी|थे|हूँ|हो/g;
   const marathiWords = /आहे|आहेत|चे|ची|च्या|मध्ये|वर|आणि|होते|होती|असे/g;
-  const englishPattern = /[a-zA-Z]/g;
-  
+
+  // Count all scripts
+  const scriptCounts: Record<string, number> = {};
   const devanagariCount = (text.match(devanagariPattern) || []).length;
-  const englishCount = (text.match(englishPattern) || []).length;
-  const marathiWordCount = (text.match(marathiWords) || []).length;
-  const hindiWordCount = (text.match(hindiWords) || []).length;
   
-  let primaryLanguage: 'mr' | 'hi' | 'en' = 'en';
+  for (const [lang, regex] of Object.entries(SCRIPT_RANGES)) {
+    scriptCounts[lang] = (text.match(regex) || []).length;
+  }
+  
+  // Find dominant non-Latin script
+  const nonLatinScripts = Object.entries(scriptCounts)
+    .filter(([k]) => k !== 'en')
+    .sort((a, b) => b[1] - a[1]);
+  
+  let primaryLanguage: string = 'en';
   let confidence = 0.5;
   let isCodeSwitched = false;
   
-  if (devanagariCount > englishCount) {
-    if (marathiWordCount > hindiWordCount) {
-      primaryLanguage = 'mr';
-      confidence = Math.min(0.95, 0.7 + (marathiWordCount * 0.05));
-    } else {
-      primaryLanguage = 'hi';
-      confidence = Math.min(0.95, 0.7 + (hindiWordCount * 0.05));
+  const englishCount = scriptCounts['en'] || 0;
+  
+  // Check if a non-Latin script dominates
+  if (devanagariCount > englishCount || (nonLatinScripts[0] && nonLatinScripts[0][1] > englishCount)) {
+    if (devanagariCount > 0 && devanagariCount >= (nonLatinScripts[0]?.[1] || 0)) {
+      // Devanagari dominant - disambiguate mr vs hi
+      const marathiWordCount = (text.match(marathiWords) || []).length;
+      const hindiWordCount = (text.match(hindiWords) || []).length;
+      primaryLanguage = marathiWordCount > hindiWordCount ? 'mr' : 'hi';
+      confidence = Math.min(0.95, 0.7 + (Math.max(marathiWordCount, hindiWordCount) * 0.05));
+    } else if (nonLatinScripts[0] && nonLatinScripts[0][1] > 0) {
+      // Other script dominant
+      primaryLanguage = nonLatinScripts[0][0];
+      confidence = Math.min(0.95, 0.7 + (nonLatinScripts[0][1] * 0.03));
     }
     
-    if (englishCount > 2) {
-      isCodeSwitched = true;
-    }
+    if (englishCount > 2) isCodeSwitched = true;
   } else if (englishCount > 0) {
     primaryLanguage = 'en';
     confidence = Math.min(0.95, 0.7 + (englishCount * 0.02));
-    
-    if (devanagariCount > 0) {
+    if (devanagariCount > 0 || (nonLatinScripts[0] && nonLatinScripts[0][1] > 0)) {
       isCodeSwitched = true;
     }
   }
   
+  // ISO validation
+  const VALID_ISO639 = new Set(['en','hi','mr','ta','te','kn','ml','bn','gu','pa','or','as','ur','sd','ne','si']);
+  if (!VALID_ISO639.has(primaryLanguage)) primaryLanguage = 'en';
+  
   const tokens = text.split(/\s+/).filter(t => t.length > 0);
   
   return {
-    primary_language: primaryLanguage,
+    primary_language: primaryLanguage as any,
     confidence,
     is_code_switched: isCodeSwitched,
-    secondary_language: isCodeSwitched ? (primaryLanguage === 'en' ? 'hi' : 'en') : undefined,
-    dialect_detected: primaryLanguage === 'mr' ? 'STANDARD_MARATHI' : primaryLanguage === 'hi' ? 'STANDARD_HINDI' : 'STANDARD_ENGLISH',
+    secondary_language: isCodeSwitched ? (primaryLanguage === 'en' ? 'hi' : 'en') as any : undefined,
+    dialect_detected: `STANDARD_${primaryLanguage.toUpperCase()}`,
     normalized_text: text.trim(),
     tokens
   };
