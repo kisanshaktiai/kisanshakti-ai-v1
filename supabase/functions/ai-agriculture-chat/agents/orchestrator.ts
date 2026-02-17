@@ -2301,6 +2301,190 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // PATCH 2: STAGE CONTEXT GUARD
+      // If intent metadata requires stage context and we don't have it, ask farmer
+      // ═══════════════════════════════════════════════════════════════════════════
+      let intentMetaFromDB: { requires_stage_context?: boolean; routing_target?: string; requires_crop_context?: boolean; clarification_mode?: string } | null = null;
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const supabaseClient = createClient(supabaseUrl, supabaseServiceKey);
+        
+        const { data: intentRow } = await supabaseClient
+          .from('observation_intent_master')
+          .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode')
+          .eq('intent_code', intentCode)
+          .eq('is_active', true)
+          .maybeSingle();
+        
+        if (intentRow) {
+          intentMetaFromDB = intentRow;
+          console.log(`   📋 [PATCH 2] Intent metadata loaded: stage_required=${intentRow.requires_stage_context}, routing=${intentRow.routing_target}`);
+        }
+      } catch (metaErr) {
+        console.warn(`   ⚠️ [PATCH 2] Failed to load intent metadata: ${metaErr}`);
+      }
+      
+      // PATCH 2: Stage context guard - ask farmer for crop stage if required
+      if (intentMetaFromDB?.requires_stage_context && !landContext?.growth_stage) {
+        console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
+        agentsUsed.push('STAGE_CONTEXT_GUARD');
+        
+        const lang = options.language || 'mr';
+        const stageQuestion = lang === 'mr' 
+          ? 'तुमच्या पिकाची सध्याची अवस्था कोणती आहे? (उदा. रोपे, फुटवे, वाढ, फुलोरा, फळधारणा)'
+          : lang === 'hi'
+          ? 'आपकी फसल की वर्तमान अवस्था क्या है? (जैसे अंकुरण, कल्ले, बढ़वार, फूल, फल)'
+          : 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
+        
+        return {
+          type: 'CLARIFICATION_QUESTION',
+          session_id: sessionId,
+          question: {
+            text: stageQuestion,
+            options: [],
+            reason: 'STAGE_CONTEXT_REQUIRED'
+          },
+          metadata: {
+            confidence: intentConf,
+            safety_status: 'SAFE',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId
+          }
+        } as any;
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PATCH 6: HYBRID ROUTING LOGIC
+      // Route INFO_MODULE intents to LLM direct response, HYBRID based on crop context
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (intentMetaFromDB?.routing_target === 'INFO_MODULE') {
+        console.log(`   📚 [PATCH 6] INFO_MODULE route: Intent ${intentCode} → LLM direct response (no rule engine)`);
+        agentsUsed.push('INFO_MODULE_ROUTE');
+        
+        // Generate direct LLM response for info-only queries
+        const infoResponse = await generateLLMResponse({
+          farmer_message: safeFarmerMessage,
+          language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+          land_context: landContext ? {
+            current_crop: landContext.current_crop,
+            crop_stage: landContext.growth_stage,
+            days_since_sowing: landContext.days_since_sowing
+          } : undefined
+        });
+        
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `info_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: options.language || 'mr',
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: { full_text: { mr: infoResponse.response_text, hi: infoResponse.response_text, en: infoResponse.response_text } },
+            quick_actions: [],
+            metadata: {
+              word_count: infoResponse.response_text.split(/\s+/).length,
+              reading_time_seconds: 10,
+              confidence_score: 0.7,
+              source: 'INFO_MODULE',
+              response_type: 'INFORMATION'
+            }
+          } as any,
+          decision_output: {
+            decision_id: `info_${Date.now()}`,
+            session_id: sessionId,
+            status: 'INFORMATION_PROVIDED',
+            decision_brain_source: false,
+            actions_returned: [],
+            metadata: {
+              confidence: 0.7,
+              trace_id: traceId,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              routing_target: 'INFO_MODULE'
+            }
+          } as any,
+          metadata: {
+            confidence: 0.7,
+            safety_status: 'SAFE',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId
+          }
+        };
+      }
+      
+      if (intentMetaFromDB?.routing_target === 'HYBRID') {
+        if (landContext?.current_crop) {
+          console.log(`   🔀 [PATCH 6] HYBRID route with active crop → continuing to symbolic engine`);
+          agentsUsed.push('HYBRID_ROUTE_SYMBOLIC');
+          // Continue to symbolic pipeline below
+        } else {
+          console.log(`   🔀 [PATCH 6] HYBRID route without crop → routing to LLM info response`);
+          agentsUsed.push('HYBRID_ROUTE_INFO');
+          
+          const hybridResponse = await generateLLMResponse({
+            farmer_message: safeFarmerMessage,
+            language: (options.language || 'mr') as 'mr' | 'hi' | 'en'
+          });
+          
+          return {
+            type: 'DECISION_PROVIDED',
+            session_id: sessionId,
+            communication: {
+              message_id: crypto.randomUUID(),
+              decision_id: `hybrid_info_${Date.now()}`,
+              session_id: sessionId,
+              farmer_id: farmerId,
+              language: options.language || 'mr',
+              format: 'RICH_TEXT',
+              tone: 'FRIENDLY',
+              created_at: new Date().toISOString(),
+              main_message: { full_text: { mr: hybridResponse.response_text, hi: hybridResponse.response_text, en: hybridResponse.response_text } },
+              quick_actions: [],
+              metadata: {
+                word_count: hybridResponse.response_text.split(/\s+/).length,
+                reading_time_seconds: 10,
+                confidence_score: 0.7,
+                source: 'HYBRID_INFO_MODULE',
+                response_type: 'INFORMATION'
+              }
+            } as any,
+            decision_output: {
+              decision_id: `hybrid_info_${Date.now()}`,
+              session_id: sessionId,
+              status: 'INFORMATION_PROVIDED',
+              decision_brain_source: false,
+              actions_returned: [],
+              metadata: {
+                confidence: 0.7,
+                trace_id: traceId,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed,
+                routing_target: 'HYBRID'
+              }
+            } as any,
+            metadata: {
+              confidence: 0.7,
+              safety_status: 'SAFE',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              trace_id: traceId
+            }
+          };
+        }
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // LANGUAGE INDUCTION GATE: Determine if symbolic brain should run
       // Based on symbol_coverage and aggregated_confidence, NOT intent confidence
       // ═══════════════════════════════════════════════════════════════════════════

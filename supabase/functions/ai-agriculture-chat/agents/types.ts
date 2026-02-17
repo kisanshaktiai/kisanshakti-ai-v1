@@ -24,7 +24,7 @@ export interface NLUAgentInput {
 }
 
 export interface InputMetadata {
-  language_detected: 'mr' | 'hi' | 'en' | 'mixed';
+  language_detected: string;
   input_method: 'TEXT' | 'VOICE' | 'IMAGE_CAPTION';
   timestamp: string; // ISO_8601
   farmer_id?: string;
@@ -127,12 +127,12 @@ export interface UnderstandingMetadata {
 }
 
 export interface LanguageAnalysis {
-  detected_language: 'mr' | 'hi' | 'en' | 'mixed';
+  detected_language: string;
   language_confidence: number;
   dialect: string;
   code_switching_present: boolean;
   normalization_applied: boolean;
-  original_script?: 'DEVANAGARI' | 'LATIN' | 'MIXED';
+  original_script?: string;
 }
 
 export interface IntentClassification {
@@ -380,10 +380,10 @@ export interface AgriculturalTerm {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface LanguageDetectionResult {
-  primary_language: 'mr' | 'hi' | 'en';
+  primary_language: string;
   confidence: number;
   is_code_switched: boolean;
-  secondary_language?: 'mr' | 'hi' | 'en';
+  secondary_language?: string;
   dialect_detected?: string;
   normalized_text: string;
   tokens: string[];

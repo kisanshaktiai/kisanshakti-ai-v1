@@ -151,12 +151,15 @@ export async function classifyFarmerIntent(
 ): Promise<IntentClassification> {
   console.log(`\n🎯 [IntentClassifier v${INTENT_CLASSIFIER_VERSION}] Classifying...`);
   
+  let modelLatency: number | undefined;
+  
   try {
     const { provider, model, apiKey } = getBestAvailableProvider();
     const endpoint = getAPIEndpoint(provider);
     
     const prompt = INTENT_CLASSIFICATION_PROMPT.replace('{farmer_message}', farmerMessage);
     
+    const llmStartTime = Date.now();
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
@@ -174,6 +177,7 @@ export async function classifyFarmerIntent(
         response_format: { type: 'json_object' }
       })
     });
+    modelLatency = Date.now() - llmStartTime;
     
     if (!response.ok) {
       throw new Error(`LLM API returned ${response.status}`);
@@ -190,12 +194,6 @@ export async function classifyFarmerIntent(
     const parsed = safeExtractJson(content);
     
     if (!parsed) {
-      // ═══════════════════════════════════════════════════════════════════════════
-      // LANGUAGE-AGNOSTIC ARCHITECTURE: No hardcoded keywords
-      // If LLM fails to return valid JSON, we return UNKNOWN and let downstream
-      // layers (hypothesis-evaluator, clarification-generator) handle it.
-      // This ensures scalability to ANY language without code changes.
-      // ═══════════════════════════════════════════════════════════════════════════
       console.warn(`   ⚠️ LLM JSON extraction failed - returning UNKNOWN_OBSERVATION`);
       console.log(`   📋 Architecture: LLM-first design means no hardcoded keyword fallbacks`);
       console.log(`   📋 Downstream clarification layer will ask farmer for more details`);
@@ -227,22 +225,14 @@ export async function classifyFarmerIntent(
   } catch (error) {
     console.error(`   ❌ Classification error: ${error}`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
     // PRODUCTION FIX: Emergency keyword-based fallback when LLM is unavailable
-    // This is a CRASH RECOVERY path, not primary classification.
-    // Without this, 429 errors cause the entire pipeline to return 0% confidence
-    // and the farmer gets a useless generic clarification instead of help.
-    // ═══════════════════════════════════════════════════════════════════════════
     const emergencyResult = emergencyKeywordFallback(farmerMessage);
     if (emergencyResult) {
       console.log(`   🚑 [EmergencyFallback] Recovered: ${emergencyResult.intent_code} (${(emergencyResult.confidence * 100).toFixed(0)}%)`);
       return emergencyResult;
     }
     
-    return {
-      intent_code: 'UNKNOWN_OBSERVATION',
-      confidence: 0.0
-    };
+    return emergencyFallbackWithTelemetry(null, modelLatency);
   }
 }
 
@@ -305,6 +295,23 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
   }
   
   return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PATCH 7: ENRICHED TELEMETRY FALLBACK
+// Structured logging for fallback monitoring with latency + registry version
+// ═══════════════════════════════════════════════════════════════════════════
+
+function emergencyFallbackWithTelemetry(rawLLMOutput: string | null, modelLatency?: number): IntentClassification {
+  console.error(JSON.stringify({
+    event: 'INTENT_CLASSIFIER_FALLBACK',
+    timestamp: new Date().toISOString(),
+    model_response_time_ms: modelLatency || null,
+    raw_output_preview: rawLLMOutput?.substring(0, 200) || null,
+    fallback_intent: 'UNKNOWN_OBSERVATION',
+    fallback_confidence: 0.15
+  }));
+  return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.15 };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
