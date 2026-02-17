@@ -1,96 +1,99 @@
 
+# Fix: Authoritative Crop Lock + Local Name Enforcement in LLM Narration Layer
 
-# Fix: Dead Dynamic Clarification Generator Causing Empty Responses
+## Problem
 
-## Root Cause (Confirmed)
+The LLM narration layer can hallucinate wrong crop names (e.g., "Wheat" instead of "Sugarcane") because:
+1. The system prompt gives LLM an "agronomist" identity that implies decision-making authority
+2. The narration prompt passes crop name as loose "context for localization" with no enforcement
+3. No crop local name (e.g., "oos" in Marathi) is provided -- LLM guesses translations
+4. No post-render validation checks whether the LLM output mentions the correct crop
 
-The `generateDynamicClarification()` function in `dynamic-clarification-generator.ts` (line 366-381) is a **deprecated stub** that returns empty data:
+## Data Sources Already Available
 
-```text
-question: ''        (empty string)
-options: []         (empty array)
-generated_by: 'SYMBOLIC_RULES'
+The `ICAR_CALENDARS` in `crop-calendar-lookup.ts` already contains crop local names:
+- Sugarcane: `crop_name_mr: 'oos'`, `crop_name_hi: 'ganna'`, `crop_name_en: 'Sugarcane'`
+- Wheat: `crop_name_mr: 'gahu'`, `crop_name_hi: 'gehun'`
+- Cotton: `crop_name_mr: 'kapus'`, `crop_name_hi: 'kapas'`
+- etc.
+
+The `land_context` in `SymbolicNarrationInput` already has `current_crop` and `crop_stage`.
+
+## Changes (3 modifications in 1 file)
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/llm-response-generator.ts`
+
+### Change 1: Replace System Prompt Identity
+
+Replace `NARRATION_SYSTEM_PROMPT` (lines 110-148) to change the LLM identity from "NARRATION ENGINE for agricultural decisions" to "multilingual agricultural language adapter". Add explicit crop lock enforcement rules:
+
+- "You MUST use crop_local_name when writing in the farmer's language"
+- "You MUST NOT translate or replace crop_local_name"
+- "You MUST NOT infer any crop"
+- "You MUST NOT mention any crop other than the one in AUTHORITATIVE_CONTEXT"
+- "You are a language adapter only -- all biological information comes from AUTHORITATIVE_CONTEXT"
+
+Keep all existing prohibitions (no diagnosing, no products, no dosages, etc.).
+
+### Change 2: Inject AUTHORITATIVE_CONTEXT into Narration Prompt
+
+Modify `buildNarrationPrompt()` (lines 286-340) to:
+
+1. Import `ICAR_CALENDARS` from `crop-calendar-lookup.ts` to resolve crop local name
+2. Build a structured JSON block at the TOP of the prompt:
+
 ```
-
-In `clarification-generator.ts` line 211-277, when land context exists and scope is `REFINE_OBSERVATION`, the code calls this stub. It "succeeds" without throwing, so the catch block (line 278) is never hit, and the working template-based renderer (`renderClarificationAsync` at line 305) is never reached.
-
-The result: the farmer sees "Understood." with no clarification question and no options -- a dead end.
-
-## Data Flow
-
-```text
-Farmer: "kahi thikani us mela aahe"
-   |
-   v
-Induction Gate: run_symbolic=true (PASS)
-   |
-   v
-Understanding Check: clarification_required=true
-   |
-   v
-clarification-generator.ts line 211:
-  effectiveHasLandContext=true, scope=REFINE_OBSERVATION
-   |
-   v
-generateDynamicClarification() [DEPRECATED STUB]
-  -> returns { question: '', options: [] }
-   |
-   v
-optionLabels = [] (empty)
-validateClarificationOptions([]) -> valid (nothing to leak)
-   |
-   v
-RETURNS: "Understood.\n\n" + options: []
-   |
-   NEVER REACHES: renderClarificationAsync() at line 305
-```
-
-## Fix (Single change in one file)
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/clarification-generator.ts`
-
-**Change:** After calling `generateDynamicClarification()` at line 243, add a validation check: if the dynamic result returns zero options OR an empty question, throw an error to trigger the fallback to the template-based renderer.
-
-The change is at line 244, right after:
-```typescript
-const dynamicResult = await generateDynamicClarification({...});
-```
-
-Add:
-```typescript
-// CRITICAL FIX: Detect deprecated stub returning empty data
-if (!dynamicResult.question && dynamicResult.options.length === 0) {
-  console.warn('   [DynamicClarification] Empty result detected (deprecated stub) - falling back to template renderer');
-  throw new Error('Dynamic clarification returned empty result');
+AUTHORITATIVE_CONTEXT (IMMUTABLE -- DO NOT MODIFY):
+{
+  "crop_canonical": "Sugarcane",
+  "crop_local_name": "oos",
+  "farmer_language": "mr",
+  "growth_stage": "TILLERING",
+  "days_after_sowing": 68
 }
 ```
 
-This makes the code fall through to the `catch` block at line 278, which then continues to `renderClarificationAsync()` at line 305 -- the working DB-driven template renderer that generates actual clarification questions with options based on the crop/stage context.
+3. Replace the loose "CONTEXT (for localization only)" block with this structured authoritative block
+4. The local name is resolved from ICAR_CALENDARS using the crop code and language
+
+### Change 3: Add Post-Render Crop Integrity Validation
+
+Enhance `validateNarrationOutput()` (lines 162-229) to add crop mismatch detection:
+
+1. Build a set of ALL known crop names (English, Marathi, Hindi) from ICAR_CALENDARS
+2. Remove the expected crop names from the set (the correct crop)
+3. Scan the LLM output for any remaining (wrong) crop names
+4. If a wrong crop is found AND the correct crop local name is NOT in the output: flag as violation
+5. Log the mismatch event with crop details for forensic audit
+
+This catches cases like: LLM says "gahu" (wheat) when the crop is "oos" (sugarcane).
 
 ## What Does NOT Change
 
-- No architectural changes
-- No new files
-- No schema changes
-- No dependency changes
-- The deprecated `generateDynamicClarification` function is left as-is (other code may reference it)
-- The template-based renderer (`renderClarificationAsync`) is already working and battle-tested
+- `SymbolicNarrationInput` interface (no schema change)
+- `fallback-response-generator.ts` (separate file, not in scope)
+- `base-identity.ts` (prompt-factory identity, not used by narration layer)
+- `prompt-factory.ts` (used for general chat, not narration)
+- Decision rules, symbolic reasoner, orchestrator, ontology
+- Database schema
+- Rule evaluation engine
 
-## Expected Result After Fix
+## Expected Result
 
-When "kahi thikani us mela aahe" is sent:
-1. Dynamic clarification stub returns empty data
-2. New guard detects empty result, throws error
-3. Catch block triggers, falls through to `renderClarificationAsync()`
-4. Template renderer generates crop/stage-aware clarification question with options
-5. Farmer sees a meaningful question like "What part of the sugarcane is affected?" with selectable options
+For Sugarcane land with `language: 'mr'`:
+
+| Before | After |
+|--------|-------|
+| LLM may say "gahu pikat..." (wheat) | LLM MUST say "oos pikat..." (sugarcane) |
+| No crop validation | Post-render gate catches wrong crop, uses fallback |
+| Loose "Context for localization" | Structured AUTHORITATIVE_CONTEXT with immutable crop lock |
+| Identity: "narration engine" | Identity: "language adapter" with crop lock rules |
 
 ## Technical Detail
 
 | Item | Detail |
 |------|--------|
-| File | `clarification-generator.ts` |
-| Location | Line 244 (after `generateDynamicClarification` call) |
-| Type | Guard clause (3 lines of code) |
-| Risk | Zero -- only activates when result is empty |
-
+| File | `llm-response-generator.ts` |
+| Changes | 3 (system prompt, narration prompt builder, output validator) |
+| New imports | `ICAR_CALENDARS` from `crop-calendar-lookup.ts` |
+| Risk | Zero -- only hardens existing layer, fallback_text always available |
