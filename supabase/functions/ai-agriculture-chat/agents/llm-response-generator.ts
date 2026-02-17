@@ -24,6 +24,7 @@
  */
 
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
+import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STRICT INPUT CONTRACT - Symbolic Decision Payload
@@ -107,7 +108,27 @@ export interface NarrationOutput {
 // NARRATION-ONLY SYSTEM PROMPT v1.0
 // ═══════════════════════════════════════════════════════════════════════════
 
-const NARRATION_SYSTEM_PROMPT = `You are a NARRATION ENGINE for agricultural decisions.
+const NARRATION_SYSTEM_PROMPT = `You are a MULTILINGUAL AGRICULTURAL LANGUAGE ADAPTER for rural Indian farmers.
+
+═══════════════════════════════════════════════════════════════════════════
+🔒 YOUR IDENTITY: LANGUAGE ADAPTER ONLY (NOT AN AGRONOMIST)
+═══════════════════════════════════════════════════════════════════════════
+
+Your role:
+- Convert structured symbolic agricultural decisions into natural, farmer-friendly language.
+- Use the EXACT crop_local_name provided in AUTHORITATIVE_CONTEXT.
+- Maintain local dialect and culturally appropriate terminology.
+- You are a rendering engine ONLY — all biological information comes from AUTHORITATIVE_CONTEXT.
+
+═══════════════════════════════════════════════════════════════════════════
+🔒 CROP LOCK ENFORCEMENT (VIOLATING = IMMEDIATE REJECTION):
+═══════════════════════════════════════════════════════════════════════════
+
+1. You MUST use crop_local_name from AUTHORITATIVE_CONTEXT when writing in the farmer's language
+2. You MUST NOT translate or replace crop_local_name with any other word
+3. You MUST NOT infer any crop — the crop is ALREADY DECIDED for you
+4. You MUST NOT mention any crop other than the one in AUTHORITATIVE_CONTEXT
+5. You MUST NOT substitute crop names (e.g., writing "गहू" when crop_local_name is "ऊस")
 
 ═══════════════════════════════════════════════════════════════════════════
 🚫 ABSOLUTE PROHIBITIONS (VIOLATING = IMMEDIATE REJECTION):
@@ -119,6 +140,7 @@ const NARRATION_SYSTEM_PROMPT = `You are a NARRATION ENGINE for agricultural dec
 4. You CANNOT infer new causes - only narrate the causes GIVEN to you
 5. You CANNOT ask follow-up questions - only clarifications from the input
 6. You CANNOT modify, adjust, or "improve" the decision in ANY way
+7. You CANNOT modify biological entities — they originate ONLY from the symbolic brain
 
 ═══════════════════════════════════════════════════════════════════════════
 ✅ YOUR ONLY TASK:
@@ -127,6 +149,7 @@ const NARRATION_SYSTEM_PROMPT = `You are a NARRATION ENGINE for agricultural dec
 Take the EXACT decision payload and render it as warm, farmer-friendly text.
 
 RENDER RULES:
+- Use the EXACT crop_local_name from AUTHORITATIVE_CONTEXT
 - Use the EXACT action_text, product_name, dosage from the payload
 - Use the EXACT cause_name from the payload
 - Use the EXACT reason_text from the payload
@@ -145,7 +168,8 @@ FORBIDDEN IN OUTPUT:
 - ❌ Modified dosages or percentages
 - ❌ Additional recommendations
 - ❌ Alternative treatments
-- ❌ New diagnostic questions`;
+- ❌ New diagnostic questions
+- ❌ Crop names not matching AUTHORITATIVE_CONTEXT`;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION GATE - Ensures LLM didn't add unauthorized content
@@ -165,6 +189,64 @@ function validateNarrationOutput(
 ): ValidationResult {
   const errors: string[] = [];
   const output = llmOutput.toLowerCase();
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CROP INTEGRITY VALIDATION - Detect wrong crop names in LLM output
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  const expectedCrop = symbolicInput.land_context?.current_crop?.toLowerCase() || '';
+  
+  if (expectedCrop) {
+    // Build set of ALL known crop names from ICAR_CALENDARS
+    const allCropNames = new Set<string>();
+    const expectedCropNames = new Set<string>();
+    
+    for (const [cropCode, calendar] of Object.entries(ICAR_CALENDARS)) {
+      const names = [
+        calendar.crop_name_en.toLowerCase(),
+        calendar.crop_name_mr.toLowerCase(),
+        calendar.crop_name_hi.toLowerCase(),
+        cropCode.toLowerCase()
+      ];
+      
+      // Check if this is the expected crop
+      const isExpectedCrop = names.some(n => 
+        expectedCrop.includes(n) || n.includes(expectedCrop)
+      );
+      
+      if (isExpectedCrop) {
+        names.forEach(n => expectedCropNames.add(n));
+      } else {
+        names.forEach(n => allCropNames.add(n));
+      }
+    }
+    
+    // Remove expected crop names from the "wrong crops" set
+    expectedCropNames.forEach(n => allCropNames.delete(n));
+    
+    // Scan LLM output for wrong crop names
+    const outputLower = llmOutput.toLowerCase();
+    for (const wrongCrop of allCropNames) {
+      if (wrongCrop.length < 3) continue; // Skip very short names to avoid false positives
+      
+      if (outputLower.includes(wrongCrop)) {
+        // Check if the expected crop local name IS in the output
+        const hasExpectedCrop = [...expectedCropNames].some(n => outputLower.includes(n));
+        
+        if (!hasExpectedCrop) {
+          errors.push(`CROP_MISMATCH: LLM mentioned wrong crop "${wrongCrop}" — expected one of [${[...expectedCropNames].join(', ')}]`);
+          console.error(`🚨 [CROP_MISMATCH_IN_FORMATTER] expected_crop="${expectedCrop}" expected_local=[${[...expectedCropNames].join(',')}] detected_wrong="${wrongCrop}" output_preview="${llmOutput.substring(0, 100)}"`);
+        } else {
+          // Wrong crop mentioned BUT expected crop is also there — log warning but don't block
+          console.warn(`⚠️ [CROP_MENTION_WARNING] LLM mentioned "${wrongCrop}" alongside expected crop — monitoring`);
+        }
+      }
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EXISTING VALIDATIONS - Products, dosages, efficacy claims, questions
+  // ═══════════════════════════════════════════════════════════════════════════
   
   // Common pesticide/fungicide names that should only appear if in payload
   const KNOWN_PRODUCTS = [
@@ -198,7 +280,6 @@ function validateNarrationOutput(
   
   for (const match of outputDosages) {
     if (!payloadDosage.includes(match[1])) {
-      // Dosage number not in payload - potential hallucination
       errors.push(`LLM introduced unauthorized dosage: ${match[0]}`);
     }
   }
@@ -216,7 +297,6 @@ function validateNarrationOutput(
   
   for (const pattern of questionPatterns) {
     if (pattern.test(llmOutput)) {
-      // Only flag if clarification wasn't in the input
       if (!symbolicInput.symbolic_decision.clarification) {
         errors.push(`LLM added unauthorized diagnostic question`);
       }
@@ -287,7 +367,49 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   const { symbolic_decision, language, land_context } = input;
   const langName = language === 'mr' ? 'Marathi' : language === 'hi' ? 'Hindi' : 'English';
   
-  let prompt = `Convert this symbolic decision to farmer-friendly ${langName} text.\n\n`;
+  let prompt = '';
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AUTHORITATIVE_CONTEXT — Structured crop lock block (IMMUTABLE)
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  if (land_context?.current_crop) {
+    const cropCode = land_context.current_crop.toLowerCase();
+    const langKey = language === 'mr' ? 'crop_name_mr' : language === 'hi' ? 'crop_name_hi' : 'crop_name_en';
+    
+    // Resolve local name from ICAR_CALENDARS
+    let cropLocalName = land_context.current_crop; // fallback to raw name
+    let cropCanonical = land_context.current_crop;
+    
+    // Search ICAR_CALENDARS for matching crop
+    for (const [code, calendar] of Object.entries(ICAR_CALENDARS)) {
+      if (code === cropCode || 
+          calendar.crop_name_en.toLowerCase() === cropCode ||
+          calendar.crop_name_mr.toLowerCase() === cropCode ||
+          calendar.crop_name_hi.toLowerCase() === cropCode) {
+        cropLocalName = calendar[langKey];
+        cropCanonical = calendar.crop_name_en;
+        break;
+      }
+    }
+    
+    const authContext = {
+      crop_canonical: cropCanonical,
+      crop_local_name: cropLocalName,
+      farmer_language: language,
+      growth_stage: land_context.crop_stage || 'UNKNOWN'
+    };
+    
+    prompt += `AUTHORITATIVE_CONTEXT (IMMUTABLE — DO NOT MODIFY):\n`;
+    prompt += JSON.stringify(authContext, null, 2) + '\n\n';
+    prompt += `CRITICAL: You MUST use "${cropLocalName}" as the crop name. DO NOT use any other crop name.\n\n`;
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SYMBOLIC DECISION PAYLOAD
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  prompt += `Convert this symbolic decision to farmer-friendly ${langName} text.\n\n`;
   prompt += `DECISION STATUS: ${symbolic_decision.status}\n\n`;
   
   // Add causes if present
@@ -324,17 +446,9 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
     prompt += '\n';
   }
   
-  // Add context for localization only
-  if (land_context?.current_crop) {
-    prompt += `CONTEXT (for localization only, NOT for decision):\n`;
-    prompt += `- Crop: ${land_context.current_crop}\n`;
-    if (land_context.village) prompt += `- Village: ${land_context.village}\n`;
-    prompt += '\n';
-  }
-  
   prompt += `RISK LEVEL: ${symbolic_decision.risk_level || 'medium'}\n\n`;
   prompt += `OUTPUT LANGUAGE: ${langName}\n`;
-  prompt += `RENDER: Create warm, farmer-friendly narration using ONLY the data above.`;
+  prompt += `RENDER: Create warm, farmer-friendly narration using ONLY the data above. Use the crop_local_name from AUTHORITATIVE_CONTEXT.`;
   
   return prompt;
 }
