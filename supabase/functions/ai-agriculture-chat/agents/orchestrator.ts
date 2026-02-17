@@ -4602,13 +4602,15 @@ export class AIAgentOrchestrator {
         // FIX: Also runs when visual_symptom is NONE but query has strong agri keywords
         // This prevents infinite clarification loops for germination/stand failure queries
         // ═══════════════════════════════════════════════════════════════════════════
-        const { hasStrongAgriKeywords } = await import('./layered-rule-evaluator.ts');
+        const { hasStrongAgriObservations } = await import('./layered-rule-evaluator.ts');
+        // LANGUAGE-AGNOSTIC: Check canonical observations, NOT raw user text
+        const extractedObservations = canonicalState.visual_symptoms || [];
         const shouldTryKeywordFallback = layeredRuleResult.rules_matched === 0 && 
-          (canonicalState.visual_symptom !== 'NONE' || hasStrongAgriKeywords(farmerMessage));
+          (canonicalState.visual_symptom !== 'NONE' || hasStrongAgriObservations(extractedObservations));
         
         if (shouldTryKeywordFallback) {
           console.log('   🔄 No enum rules matched, trying keyword-based bundled rules...');
-          console.log(`      (visual_symptom=${canonicalState.visual_symptom}, has_strong_keywords=${hasStrongAgriKeywords(farmerMessage)})`);
+          console.log(`      (visual_symptom=${canonicalState.visual_symptom}, has_strong_observations=${hasStrongAgriObservations(extractedObservations)})`);
           
           const keywordMatches = await evaluateBundledKeywordRules(farmerMessage, canonicalState);
           
