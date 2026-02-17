@@ -241,6 +241,12 @@ export async function generateScopedClarification(
         max_options: 3
       });
       
+      // CRITICAL FIX: Detect deprecated stub returning empty data
+      if (!dynamicResult.question && dynamicResult.options.length === 0) {
+        console.warn('   ⚠️ [DynamicClarification] Empty result detected (deprecated stub) - falling back to template renderer');
+        throw new Error('Dynamic clarification returned empty result');
+      }
+      
       console.log(`   ✅ Dynamic options generated: ${dynamicResult.options.length} (${dynamicResult.generated_by})`);
       
       // ═══════════════════════════════════════════════════════════════════════════
