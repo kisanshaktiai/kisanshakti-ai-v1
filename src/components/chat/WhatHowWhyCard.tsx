@@ -77,7 +77,7 @@ export interface WhatHowWhyResponse {
 
 export interface WhatHowWhyCardProps {
   response: WhatHowWhyResponse;
-  language?: 'en' | 'hi' | 'mr';
+  language?: string;
   isExpanded?: boolean;
   onPhotoRequest?: () => void;
 }

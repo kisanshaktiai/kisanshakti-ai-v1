@@ -1299,15 +1299,36 @@ serve(async (req) => {
           llm_formatter_used: !!llmFormatterOutput,
           llm_formatter_source: llmFormatterOutput?.source,
           llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
-          tokens_used: tokensUsed,  // Also in metadata for easier querying
-          // VALIDATION GATE: Track whether response passed validation
+          tokens_used: tokensUsed,
+          // VALIDATION GATE
           response_validation_passed: validationResult.passed,
           validation_errors: validationResult.passed ? undefined : validationResult.errors,
           language_pipeline: {
             input_language: detectedLanguage,
             output_language: detectedLanguage,
             translation_applied: !responseHasTargetLanguage
-          }
+          },
+          // P0 FIX: Persist clarification options for reload after app restart
+          clarification_options: (orchestratorResponse.type === 'CLARIFICATION_QUESTION' || orchestratorResponse.type === 'CLARIFICATION_NEEDED')
+            ? {
+                question: responseContent,
+                options: orchestratorResponse.question?.options || [],
+                selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
+              }
+            : undefined,
+          // P0 FIX: Persist structured decision data for rich card reload
+          decision_brain_data: orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output
+            ? {
+                primary_decision: orchestratorResponse.decision_output.primary_decision,
+                secondary_decisions: orchestratorResponse.decision_output.secondary_decisions,
+                blocked_actions: orchestratorResponse.decision_output.blocked_actions,
+                land_context: orchestratorResponse.dataAudit?.land,
+                confidence: orchestratorResponse.metadata?.confidence,
+                risk_level: orchestratorResponse.decision_output.risk_level
+              }
+            : undefined,
+          // P0 FIX: Persist diagnostic escalation data
+          diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
         }
       });
       
