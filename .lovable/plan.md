@@ -1,76 +1,118 @@
 
-# Forensic Audit: Critical Bug - Same Clarification for All Queries
 
-## Root Cause Analysis (3 Critical Bugs Found)
+# Forensic Audit: Critical Bugs Causing Wrong Recommendations
 
-### Bug 1: DIRECT-mode intents forced through symptom clarification (P0)
+## Root Cause Analysis
 
-The `observation_intent_master` table defines `clarification_mode: 'DIRECT'` for intents like:
-- `FERTILIZER_SCHEDULE` ("What fertilizer to give sugarcane now?")
-- `IRRIGATION_QUERY` ("When to water?")
-- `HARVEST_TIMING` ("When to harvest?")
-- `GENERAL_CROP_INFO` ("How to manage sugarcane?")
-- `SOIL_TESTING_QUERY`
-- `SEED_SELECTION`
+After tracing every evaluation path, I found **3 critical bugs** that cause nutrition rules (like `SC_MICRO_FE_DEFICIENCY_URGENT_001`) to dominate over pest/disease rules for ALL symptoms.
 
-**The Problem:** The orchestrator reads `intentMetaFromDB.clarification_mode` (line 2317-2336) but **NEVER uses it to bypass the understanding checker**. Every query, regardless of intent type, flows through `checkUnderstandingCompleteness()` (line 2736) which always demands `raw_symptom_text`, `affected_part`, `severity_words`, and `time_reference`.
+### Bug 1 (P0): Micronutrient Rules with Soil-Only Conditions Match When Soil Data is Missing
 
-For "What fertilizer to give sugarcane now?", the farmer provides ZERO symptoms (because it's not a symptom query), so the understanding checker returns `clarification_required: true` with score below 70%. The system then shows the SAME 3 generic symptom options: "Color change", "Holes visible", "Drying/wilting".
+**The Rule:** `SC_MICRO_FE_DEFICIENCY_URGENT_001` has `conditions_json: {"soil_fe_ppm": "<4.5"}`
 
-**Location:** `orchestrator.ts` lines 2729-2749, 3360
+**What Happens in `loader.ts` `evaluateConditionsJson()` (line 516-537):**
+1. Key `soil_fe_ppm` is not in RECOGNIZED_KEYS, so it goes to unknown key processing
+2. Value `"<4.5"` is a string -- tries numeric path first
+3. `(input as any)['soil_fe_ppm']` returns `undefined` -- no soil Fe data exists
+4. `parseFloat(String(undefined))` = `NaN` -- fails numeric check
+5. Falls to string matching: checks if `"<4.5"` matches symptom/query -- it doesn't
+6. `allMatch = false` -- **BUT** `hasAnyCondition = true`, `evaluatedUnknownConditions = 1`
 
-### Bug 2: Non-symptom intents routed into DIAGNOSIS path (P0)
+**So the rule SHOULD return false.** But the problem is elsewhere:
 
-The `agriculturalProblemIntents` list (line 2941-2964) includes `FERTILIZER_SCHEDULE`, `IRRIGATION_QUERY`, `HARVEST_TIMING`, and `GENERAL_CROP_INFO`. This means fertilizer schedule queries get injected with a fake `NUTRIENT_QUERY` symptom (line 2989), triggering crop damage detection and diagnosis-first hypothesis evaluation -- completely wrong for "when to give fertilizer."
+### Bug 2 (P0): `evaluateConditionsJson` in `loader.ts` Returns `true` for Rules with ONLY Complex Object Conditions
 
-**Location:** `orchestrator.ts` lines 2941-2999
+Many nutrition rules like `SC_NUTRITION_NITROGEN_028` have conditions like:
+```json
+{
+  "context": "nutrient_application",
+  "weather": {"context": "fertilizer_timing"},   // complex object -> SKIPPED
+  "roi_basis": "red_soil_micronutrient_lockup",
+  "roi_modifier": 0.90,                          // number -> SKIPPED
+  "roi_by_region": {...}                          // complex object -> SKIPPED
+}
+```
 
-### Bug 3: renderClarificationAsync always returns same 3 options (P1)
+In `loader.ts` line 498-501: complex objects are silently skipped (`skippedObjectConditions++`).
+In line 541: numbers with `typeof condValue === 'number'` are skipped.
 
-The template-based renderer in `clarification-renderer.ts` has a fixed set of `REFINE_OBSERVATION` templates. When the dynamic clarification generator (deprecated stub) returns empty and falls back to templates, the templates always show the same 3 symptom-observation options regardless of the farmer's actual question.
+For `SC_NUTRITION_NITROGEN_028`:
+- `context` = "nutrient_application" -> string -> evaluatedUnknownConditions++, allMatch = false (no match)
+- `weather` = {...} -> object -> skippedObjectConditions++
+- `roi_basis` = string -> evaluatedUnknownConditions++, allMatch = false
+- `roi_modifier` = 0.90 -> number -> SKIPPED (line 541)
+- `roi_by_region` = {...} -> object -> skippedObjectConditions++
 
-**Location:** `clarification-renderer.ts` templates, `clarification-generator.ts` fallback path
+Result: `allMatch = false` -> returns false. OK, this one is handled.
+
+**BUT** rules with ONLY `roi_by_region` (object) + `roi_modifier` (number) conditions would have:
+- `skippedObjectConditions > 0`, `evaluatedUnknownConditions = 0`
+- The fail-closed gate at line 552 checks `!hasAnyCondition` -- but if crop_stage or observations matched earlier, `hasAnyCondition = true`
+- This means: **stage match + all remaining conditions skipped = RULE FIRES**
+
+### Bug 3 (P0 - THE ACTUAL ROOT CAUSE): Nutrition Rules Mapped as DIAGNOSIS Category Win Primary Selection
+
+In `layered-rule-evaluator.ts` line 931: `'nutrition': RuleCategory.DIAGNOSIS`
+
+This means ALL nutrition rules are evaluated in PHASE 2 (DIAGNOSIS), not PHASE 5 (PRESCRIPTION). Nutrition diagnosis rules that match go directly into `matched_responses` at line 332-352.
+
+When multiple nutrition rules fire (because their conditions are loose or only need stage match), they populate `matched_responses`. The primary selection at line 560-668 then picks the one with highest ACTION_TYPE_PRIORITY. `URGENT_ACTION` has priority 2 (very high), so `SC_MICRO_FE_DEFICIENCY_URGENT_001` with `action_type: URGENT_ACTION` wins over `RECOMMEND` (priority 4) or `MONITOR` (priority 6) pest/disease rules.
+
+**Combined Effect:**
+1. Many nutrition rules match because their unique conditions (soil thresholds, roi_by_region objects) are skipped
+2. They go into DIAGNOSIS phase, populating matched_responses
+3. FE/Zn/Mn URGENT_ACTION rules have the highest action_type priority
+4. They win primary selection regardless of what the farmer actually reported
+
+### Bug 4 (P1): Zinc Gate Does NOT Cover Iron/Manganese/Sulphur Rules
+
+The `passesZincSpecificityGate()` only checks rules with "ZN" or "ZINC" in the rule_id (line 204 of nutrition-conflict-arbitrator.ts). It does NOT gate:
+- `SC_MICRO_FE_DEFICIENCY_URGENT_001` (Iron)
+- `SC_MICRO_MN_DEFICIENCY_URGENT_001` (Manganese)  
+- `SC_NUTRITION_S_DEFICIENCY_URGENT_001` (Sulphur)
+
+These rules have NO observation requirement and only need a soil threshold that can never be evaluated (no soil Fe/Mn/S data in SymbolicFact).
 
 ---
 
-## Fix Plan
+## Fix Plan (4 Changes in 3 Files)
 
-### Fix 1: DIRECT-mode Intent Bypass (in orchestrator.ts)
+### Fix 1: Add Micronutrient Specificity Gate (nutrition-conflict-arbitrator.ts)
 
-After loading `intentMetaFromDB` (line 2336) and BEFORE the understanding checker (line 2729), add a check:
+Extend the zinc gate concept to ALL micronutrient deficiency rules. Create a new `passesMicronutrientSpecificityGate()` function:
 
 ```
-If intentMetaFromDB.clarification_mode === 'DIRECT'
-  AND landContext has crop + stage
-THEN:
-  - Set understandingResult.clarification_required = false
-  - Set bypassClarification = true
-  - Log: "[DIRECT_MODE] Intent {code} has clarification_mode=DIRECT, skipping symptom clarification"
-  - Let the query flow directly to the symbolic rule engine
+If rule_id contains 'MICRO' or 'FE_DEFICIENCY' or 'MN_DEFICIENCY' or 'S_DEFICIENCY':
+  AND no specific nutrient-deficiency symptom is present (e.g., INTERVEINAL_CHLOROSIS, YOUNG_LEAF_YELLOWING)
+  AND no soil test confirms deficiency
+  THEN: BLOCK the rule
 ```
 
-This means fertilizer/irrigation/harvest queries with known crop context skip the "What symptoms do you see?" flow and go straight to the rule engine which has rules for these intents.
+This ensures micronutrient rules ONLY fire when there is specific evidence, not just a stage match.
 
-### Fix 2: Separate symptom-based intents from advisory intents (in orchestrator.ts)
+### Fix 2: Fail-Closed for Soil-Threshold-Only Rules (loader.ts)
 
-Split the `agriculturalProblemIntents` array (line 2941) into two lists:
+In `evaluateConditionsJson()`, after processing unknown keys (around line 544), add a check:
 
-**Symptom-based intents** (need diagnosis):
-- `PEST_PRESENCE_VISIBLE`, `DISEASE_LIKE_PATTERN`, `WILTING_OR_DROOPING`, `COLOR_CHANGE`
-- `LEAF_DAMAGE_VISIBLE`, `LEAF_MARKS_OR_SPOTS`, `STEM_DAMAGE`, `ROOT_OR_BASE_PROBLEM`
-- `GROWTH_ANOMALY`, `WATER_STRESS_SIGNAL`, `NUTRIENT_STRESS_SIGNAL`
-- `EMERGENCE_FAILURE`, `UNEVEN_FIELD_PATTERN`, `YIELD_OR_OUTPUT_ISSUE`, `WEED_PROBLEM`
+```
+If a rule has ONLY soil/numeric threshold conditions (soil_fe_ppm, soil_zn_ppm, etc.)
+  AND none of those thresholds could be evaluated (input value was undefined)
+  THEN: return false (fail-closed)
+```
 
-**Advisory intents** (need rule engine directly, NOT diagnosis):
-- `FERTILIZER_SCHEDULE`, `IRRIGATION_QUERY`, `HARVEST_TIMING`, `GENERAL_CROP_INFO`
+Specifically: when `evaluatedUnknownConditions > 0` but ALL evaluated conditions failed because the input values were undefined/missing (not because they didn't match the threshold), the rule should NOT match.
 
-Only symptom-based intents get the fallback symptom injection. Advisory intents skip diagnosis mode entirely and go to the rule engine directly with the intent code as context.
+### Fix 3: Apply Micronutrient Gate in Both Evaluation Paths
 
-### Fix 3: Intent-aware rule engine query path (in orchestrator.ts)
+**In `symbolic-reasoner.ts` (line 258-303):** After the existing zinc gate, add the new micronutrient specificity gate check for Fe/Mn/S rules.
 
-After the clarification gate at line 3580, when `bypassClarification = true` due to DIRECT mode intent, ensure the rule engine evaluator receives the intent code (e.g., `FERTILIZER_SCHEDULE`) as context so it can query `decision_rules` for fertilizer-schedule rules for the specific crop and stage.
+**In `layered-rule-evaluator.ts` (line 565-597):** Extend the arbitration filter to also block Fe/Mn/S rules that lack specific evidence, not just Zn rules.
 
-This means adding the intent code to the `SymbolicFact` or passing it to the layered rule evaluator so it can filter rules by `action_type` matching the intent (e.g., `fertilizer_schedule` action_type rules for Sugarcane at TILLERING stage).
+### Fix 4: Observation-Required Gate for URGENT Nutrition Rules (loader.ts)
+
+In `evaluateConditionsJson()`, add a gate: if a rule's `action_type` is `URGENT_ACTION` or `URGENT_TREATMENT` AND category is `nutrition`, require at least ONE matching observation from `conditions_json.observations` or from the farmer's reported symptoms. If no observation overlap exists, return false.
+
+This prevents urgent nutrition treatments from firing on generic symptoms like GAPS_IN_FIELD, HOLES_VISIBLE, or DRYING_WILTING that have no biological relationship to nutrient deficiency.
 
 ---
 
@@ -78,33 +120,33 @@ This means adding the intent code to the `SymbolicFact` or passing it to the lay
 
 | File | Change |
 |------|--------|
-| `orchestrator.ts` | Add DIRECT-mode bypass before understanding checker; split intent lists; pass intent to rule engine |
+| `nutrition-conflict-arbitrator.ts` | Add `passesMicronutrientSpecificityGate()` for Fe/Mn/S rules |
+| `loader.ts` | Fail-closed for unevaluable soil thresholds; observation gate for urgent nutrition |
+| `symbolic-reasoner.ts` | Apply micronutrient gate in executeRules loop |
+| `layered-rule-evaluator.ts` | Extend arbitration filter to cover Fe/Mn/S rules |
 
 ## What Does NOT Change
 
-- Decision rules table schema
-- Symbolic reasoner evaluation logic
-- Understanding completeness checker logic (it still works correctly for symptom queries)
-- Clarification renderer templates
+- decision_rules table schema or data
+- Observation ontology
+- Induction logic
+- Clarification templates
 - LLM narration layer
 - Authority hierarchy
-- Observation ontology
+- Intent routing (DIRECT mode bypass from previous fix)
 
 ## Expected Result After Fix
 
-| Query | Before (Bug) | After (Fixed) |
-|-------|-------------|---------------|
-| "उसाला सध्या काय खत द्यावे" (What fertilizer for sugarcane now?) | Shows: "Color change / Holes / Drying" clarification | Goes directly to rule engine, returns fertilizer schedule for Sugarcane at TILLERING stage |
-| "ऊसाला पाणी कधी द्यावे" (When to water sugarcane?) | Shows: same 3 symptom options | Goes directly to irrigation rules for Sugarcane |
-| "कापूस कधी काढावा" (When to harvest cotton?) | Shows: same 3 symptom options | Goes directly to harvest timing rules |
-| "कापसावर किड दिसतेय" (I see pest on cotton) | Shows symptom clarification options | Still shows symptom clarification (correct behavior) |
+| Farmer Query | Before (Bug) | After (Fixed) |
+|---|---|---|
+| "Drying/wilting" at TILLERING | FeSO4 spray (WRONG) | Clarification: "Is center leaf dry? Pull test? Termites visible?" |
+| "Holes visible" at TILLERING | FeSO4 spray (WRONG) | Shoot borer / stem borer diagnosis rules fire |
+| "Gaps in field" at TILLERING | FeSO4 spray (WRONG) | Gap filling / germination failure / termite rules fire |
+| "Red rot selected" | FeSO4 spray (WRONG) | Red rot disease rules fire (already have correct rules in DB) |
+| "Interveinal chlorosis on young leaves" + soil Fe low | FeSO4 spray (CORRECT) | FeSO4 spray (still fires correctly with evidence) |
 
-## Technical Detail
+## Architectural Principle Enforced
 
-| Item | Detail |
-|------|--------|
-| Primary file | `orchestrator.ts` |
-| Bug location | Lines 2729-2749 (understanding checker forces symptoms for ALL intents) |
-| Root cause | `clarification_mode: 'DIRECT'` from DB is loaded but never acted upon |
-| Fix type | Conditional bypass based on DB-defined intent metadata |
-| Risk | Low - only affects intents explicitly marked as DIRECT in database |
+**Absence of soil test data is NOT evidence of deficiency.**
+Micronutrient rules MUST require positive evidence (specific symptoms OR soil test confirmation) before firing as URGENT treatments.
+
