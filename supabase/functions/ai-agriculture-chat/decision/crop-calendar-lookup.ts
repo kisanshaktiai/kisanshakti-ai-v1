@@ -59,7 +59,7 @@ export interface StageCalculationResult {
 // ICAR CROP CALENDARS - COMPREHENSIVE
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ICAR_CALENDARS: Record<string, CropCalendar> = {
+export const ICAR_CALENDARS: Record<string, CropCalendar> = {
   'sugarcane': {
     crop_code: 'sugarcane',
     crop_name_mr: 'ऊस',
