@@ -6521,6 +6521,7 @@ export type Database = {
           labor_cost_per_acre_max: number | null
           labor_cost_per_acre_min: number | null
           labor_hours_per_acre: number | null
+          last_backup_at: string | null
           match_explanation_template: string | null
           material_cost_per_acre_max: number | null
           material_cost_per_acre_min: number | null
@@ -6673,6 +6674,7 @@ export type Database = {
           labor_cost_per_acre_max?: number | null
           labor_cost_per_acre_min?: number | null
           labor_hours_per_acre?: number | null
+          last_backup_at?: string | null
           match_explanation_template?: string | null
           material_cost_per_acre_max?: number | null
           material_cost_per_acre_min?: number | null
@@ -6825,6 +6827,7 @@ export type Database = {
           labor_cost_per_acre_max?: number | null
           labor_cost_per_acre_min?: number | null
           labor_hours_per_acre?: number | null
+          last_backup_at?: string | null
           match_explanation_template?: string | null
           material_cost_per_acre_max?: number | null
           material_cost_per_acre_min?: number | null
