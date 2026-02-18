@@ -392,7 +392,7 @@ export class SymbolicReasoner {
       // 3. Rank hypotheses
       const rankedHypotheses = this.rankHypotheses(hypotheses, facts);
       
-    // 4. Sort recommendations by CATEGORY PRIORITY then rule priority (Bug 4 Fix)
+    // 4. Sort recommendations by CATEGORY PRIORITY → data_authority_rank → priority (P2-1 Fix)
       const CATEGORY_PRIORITY: Record<string, number> = {
         pest: 1, disease: 2, ipm: 2, water_stress: 3, stress: 3, irrigation: 3, nutrition: 4, general: 5
       };
@@ -400,6 +400,10 @@ export class SymbolicReasoner {
         const catA = CATEGORY_PRIORITY[a.category?.toLowerCase()] || 3;
         const catB = CATEGORY_PRIORITY[b.category?.toLowerCase()] || 3;
         if (catA !== catB) return catA - catB; // Lower = higher priority
+        // P2-1: data_authority_rank DESC (higher rank = higher authority)
+        const rankA = (a as any).data_authority_rank ?? 50;
+        const rankB = (b as any).data_authority_rank ?? 50;
+        if (rankA !== rankB) return rankB - rankA;
         return b.priority - a.priority;
       });
       
@@ -521,11 +525,14 @@ export class SymbolicReasoner {
     console.log(`   🔄 [Cache MISS] Loading rules for crop=${dbCode} (variants: ${[...variants].join(',')}) from DB`);
     const variantArr = [...variants];
     const orFilter = variantArr.map(v => `crop_code.eq.${v}`).join(',');
+    // P2-4: Filter deprecated rules + order by authority rank then priority
     const { data, error } = await this.supabase
       .from('decision_rules')
       .select('*')
       .eq('is_active', true)
       .or(orFilter)
+      .is('deprecated_at', null)
+      .order('data_authority_rank', { ascending: false })
       .order('priority', { ascending: false })
       .limit(500);
     
@@ -657,12 +664,22 @@ export class SymbolicReasoner {
       totalConditions++;
       const obsList = Array.isArray(obsValue) ? obsValue : [obsValue];
       if (obsList.length > 0) {
-        // Bug 2 Fix: Match against ALL observations, not just primary_symptom
+        // P1-3 Fix: Exact token match instead of substring containment
         const obsMatch = obsList.some((obs: string) => {
           const upperObs = String(obs).toUpperCase().replace(/[\s-]/g, '_');
-          return factSymptom.includes(upperObs) || upperObs.includes(factSymptom) ||
-                 factQuery.includes(upperObs) ||
-                 allObsUpper.some(ao => ao.includes(upperObs) || upperObs.includes(ao));
+          // Exact match OR token-boundary match (not substring containment)
+          const exactMatch = (s: string) => s === upperObs;
+          const tokenMatch = (s: string) => {
+            // Match if tokens share at least 2 common segments when split by underscore
+            const obsTokens = upperObs.split('_').filter(t => t.length > 1);
+            const sTokens = s.split('_').filter(t => t.length > 1);
+            if (obsTokens.length === 0 || sTokens.length === 0) return s === upperObs;
+            const commonTokens = obsTokens.filter(t => sTokens.includes(t));
+            return commonTokens.length >= Math.min(2, obsTokens.length);
+          };
+          return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
+                 exactMatch(factQuery) || tokenMatch(factQuery) ||
+                 allObsUpper.some(ao => exactMatch(ao) || tokenMatch(ao));
         });
         if (obsMatch) {
           metConditions++;

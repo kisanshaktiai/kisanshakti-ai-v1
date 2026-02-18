@@ -465,6 +465,31 @@ export async function formatRecommendationsWithLLM(
   const cropType = input.land_context?.current_crop;
   const outputValidation = validateLLMOutput(formattedResponse, allowedProducts, allowedDosages, cropType, input);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P4-1 + P6-3: WHAT-WHY-HOW STRUCTURAL VALIDATOR
+  // Ensures LLM output contains all 3 mandatory sections
+  // ═══════════════════════════════════════════════════════════════════════════
+  const whatWhyHowResult = validateWhatWhyHow(formattedResponse, input);
+  if (!whatWhyHowResult.valid) {
+    console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${whatWhyHowResult.missing_sections.join(', ')}`);
+    // Don't block — append violations to output validation for logging
+    outputValidation.violations.push(...whatWhyHowResult.violations);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P5-1: CROP NAME CONSISTENCY CHECK
+  // Verify LLM output does not mention wrong crop names
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (cropType) {
+    const cropConsistencyResult = validateCropNameConsistency(formattedResponse, cropType);
+    if (!cropConsistencyResult.valid) {
+      console.error(`🚫 [CROP CONSISTENCY] ${cropConsistencyResult.violation}`);
+      outputValidation.violations.push(cropConsistencyResult.violation);
+      // Crop name mismatch is a hard failure — use template fallback
+      return buildTemplateFallback(input, startTime);
+    }
+  }
+  
   if (!outputValidation.valid) {
     console.error(`
 🚫 [OUTPUT VALIDATION GATE] LLM added unauthorized content:
@@ -850,6 +875,24 @@ You are a TRANSLATOR/FORMATTER ONLY. The SYMBOLIC DECISION BRAIN has already mad
 You CANNOT add, remove, or modify product names, dosages, timing, actions, priorities, or safety instructions. Copy them EXACTLY.
 Your ONLY job: translate symbolic brain output to ${langName}, format for readability, add empathetic tone.
 
+MANDATORY RESPONSE STRUCTURE (WHAT → WHY → HOW):
+Your output MUST contain ALL THREE sections in this order:
+
+🔍 WHAT (समस्या/Problem):
+- What is happening to the crop (cause, pest/disease/stress identification)
+- Severity level
+
+📖 WHY (कारण/Reason):
+- Scientific basis for why this is happening
+- Environmental factors contributing
+- Use ONLY the REASON and KNOWLEDGE texts provided below
+
+💊 HOW (उपाय/Treatment):
+- Exact action to take (from ACTION text)
+- Product name, dosage, method (EXACTLY as provided)
+- Timing, precautions, PHI days
+- NEVER invent new treatments
+
 FORBIDDEN: ❌ Invent products/dosages ❌ Add effectiveness claims ❌ Recommend harvest for young crops ❌ Add actions not in recommendations ❌ Modify PHI values ❌ Mention unreported pests/diseases
 
 DIAGNOSTIC HIERARCHY:
@@ -860,7 +903,6 @@ DIAGNOSTIC HIERARCHY:
 - ONLY respond to what farmer asked. If NO pest/disease in recommendations → NO pest products
 - If symbolic brain output is empty → answer farmer's question directly, NEVER invent pest problems
 
-OUTPUT: 1.Greeting 2.What to do 3.When 4.How much 5.What to avoid + closing
 OUTPUT LANGUAGE: ${langName}
 ${ruralRules}
 
@@ -1763,3 +1805,128 @@ function extractSections(text: string): string[] {
 }
 
 export default formatRecommendationsWithLLM;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P4-1 + P6-3: WHAT-WHY-HOW STRUCTURAL VALIDATOR
+// Validates that LLM output contains all 3 mandatory response sections
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface WhatWhyHowValidationResult {
+  valid: boolean;
+  missing_sections: string[];
+  violations: string[];
+}
+
+function validateWhatWhyHow(
+  llmOutput: string,
+  input: any
+): WhatWhyHowValidationResult {
+  const missing: string[] = [];
+  const violations: string[] = [];
+  
+  // Only validate for treatment responses (not clarification/observation)
+  const actionType = input?.decision_output?.primary_decision?.action_type?.toUpperCase() || '';
+  const isObservationOnly = ['MONITOR', 'MONITOR_ONLY', 'NO_ACTION_REQUIRED', 'DIAGNOSIS'].includes(actionType);
+  if (isObservationOnly) {
+    return { valid: true, missing_sections: [], violations: [] };
+  }
+  
+  const lower = llmOutput.toLowerCase();
+  
+  // WHAT detection: problem/cause identification markers
+  const hasWhat = lower.includes('🔍') || 
+    lower.includes('समस्या') || lower.includes('problem') ||
+    lower.includes('कारण ओळख') || lower.includes('cause') ||
+    lower.includes('identified') || lower.includes('detected') ||
+    lower.includes('आढळले') || lower.includes('पहचान') ||
+    lower.includes('what') || lower.includes('diagnosis');
+  
+  // WHY detection: scientific reasoning markers
+  const hasWhy = lower.includes('📖') ||
+    lower.includes('कारण') || lower.includes('reason') || lower.includes('why') ||
+    lower.includes('because') || lower.includes('scientific') ||
+    lower.includes('वैज्ञानिक') || lower.includes('म्हणून') ||
+    lower.includes('इसलिए') || lower.includes('क्योंकि');
+  
+  // HOW detection: treatment/action markers
+  const hasHow = lower.includes('💊') || lower.includes('🌿') ||
+    lower.includes('उपाय') || lower.includes('treatment') || lower.includes('how') ||
+    lower.includes('apply') || lower.includes('spray') ||
+    lower.includes('फवारणी') || lower.includes('छिड़काव') ||
+    lower.includes('dosage') || lower.includes('ml') || lower.includes('per acre') ||
+    lower.includes('प्रति एकर');
+  
+  if (!hasWhat) {
+    missing.push('WHAT');
+    violations.push('WHAT-WHY-HOW: Missing WHAT section (problem identification)');
+  }
+  if (!hasWhy) {
+    missing.push('WHY');
+    violations.push('WHAT-WHY-HOW: Missing WHY section (scientific reasoning)');
+  }
+  if (!hasHow) {
+    missing.push('HOW');
+    violations.push('WHAT-WHY-HOW: Missing HOW section (treatment instructions)');
+  }
+  
+  return {
+    valid: missing.length === 0,
+    missing_sections: missing,
+    violations
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// P5-1: CROP NAME CONSISTENCY VALIDATOR
+// Ensures LLM output doesn't mention wrong/unauthorized crop names
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CROP_NAME_ALIASES: Record<string, string[]> = {
+  'SUGARCANE': ['sugarcane', 'ऊस', 'गन्ना', 'sugar cane', 'cane'],
+  'COTTON': ['cotton', 'कापूस', 'कपास', 'kapas'],
+  'RICE': ['rice', 'भात', 'धान', 'paddy', 'चावल'],
+  'WHEAT': ['wheat', 'गहू', 'गेहूं', 'gehun'],
+  'MAIZE': ['maize', 'मका', 'मक्का', 'corn'],
+  'SOYBEAN': ['soybean', 'soya', 'सोयाबीन', 'सोयाबिन'],
+  'GROUNDNUT': ['groundnut', 'भुईमूग', 'मूंगफली', 'peanut'],
+  'ONION': ['onion', 'कांदा', 'प्याज', 'pyaj'],
+  'TOMATO': ['tomato', 'टोमॅटो', 'टमाटर'],
+  'CHILLI': ['chilli', 'मिरची', 'मिर्च', 'chili', 'pepper'],
+  'GRAM': ['gram', 'हरभरा', 'चना', 'chickpea'],
+  'TUR': ['tur', 'तूर', 'अरहर', 'pigeon pea', 'toor']
+};
+
+function validateCropNameConsistency(
+  llmOutput: string,
+  authorizedCrop: string
+): { valid: boolean; violation: string } {
+  const normalizedCrop = authorizedCrop.toUpperCase().replace(/[_\s-]+/g, '');
+  const lower = llmOutput.toLowerCase();
+  
+  // Check that the output doesn't prominently mention a DIFFERENT crop
+  for (const [cropKey, aliases] of Object.entries(CROP_NAME_ALIASES)) {
+    if (cropKey === normalizedCrop || cropKey === authorizedCrop.toUpperCase()) continue;
+    
+    // Check if another crop is mentioned as the main subject (not incidental)
+    for (const alias of aliases) {
+      // Look for patterns like "your [crop]" or "[crop] crop" that indicate main subject
+      const subjectPatterns = [
+        new RegExp(`your\\s+${alias}`, 'i'),
+        new RegExp(`${alias}\\s+crop`, 'i'),
+        new RegExp(`${alias}\\s+field`, 'i'),
+        new RegExp(`in\\s+${alias}`, 'i'),
+      ];
+      
+      for (const pattern of subjectPatterns) {
+        if (pattern.test(llmOutput)) {
+          return {
+            valid: false,
+            violation: `Crop mismatch: LLM mentions "${alias}" (${cropKey}) but authorized crop is ${authorizedCrop}`
+          };
+        }
+      }
+    }
+  }
+  
+  return { valid: true, violation: '' };
+}
