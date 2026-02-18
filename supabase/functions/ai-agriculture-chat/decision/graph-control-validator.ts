@@ -221,6 +221,86 @@ export function logGraphValidation(
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// P2-3: MUTUAL EXCLUSION ENFORCEMENT
+// If rule A fired and rule B is in A's mutually_exclusive_with, block B
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface MutualExclusionInput {
+  rule_id: string;
+  mutually_exclusive_with: string[];
+}
+
+/**
+ * Check if a rule is blocked by mutual exclusion constraints
+ * 
+ * @param ruleId - The rule being evaluated
+ * @param firedRuleMutexMap - Map of fired rule_id -> mutually_exclusive_with[]
+ * @param firedRuleIds - Set of rule IDs that have already fired
+ * @returns Object with blocked status and the blocking rule ID
+ */
+export function checkMutualExclusion(
+  ruleId: string,
+  firedRuleMutexMap: Map<string, string[]>,
+  firedRuleIds: Set<string>
+): { blocked: boolean; blocked_by: string | null; reason: string } {
+  // Check 1: Has a fired rule declared this rule as mutually exclusive?
+  for (const [firedRuleId, mutexList] of firedRuleMutexMap.entries()) {
+    if (mutexList && mutexList.includes(ruleId)) {
+      return {
+        blocked: true,
+        blocked_by: firedRuleId,
+        reason: `Rule ${ruleId} is mutually exclusive with already-fired rule ${firedRuleId}`
+      };
+    }
+  }
+  
+  // Check 2: Does this rule's mutex list contain any already-fired rule?
+  // (This requires the caller to pass the current rule's mutex list separately)
+  return { blocked: false, blocked_by: null, reason: '' };
+}
+
+/**
+ * Full mutual exclusion validation including bidirectional check
+ */
+export function validateMutualExclusion(
+  rule: MutualExclusionInput,
+  firedRuleMutexMap: Map<string, string[]>,
+  firedRuleIds: Set<string>
+): { blocked: boolean; blocked_by: string | null; reason: string } {
+  // Direction 1: A fired rule lists this rule in its mutex
+  const check1 = checkMutualExclusion(rule.rule_id, firedRuleMutexMap, firedRuleIds);
+  if (check1.blocked) return check1;
+  
+  // Direction 2: This rule lists a fired rule in its mutex
+  if (rule.mutually_exclusive_with && rule.mutually_exclusive_with.length > 0) {
+    for (const mutexId of rule.mutually_exclusive_with) {
+      if (firedRuleIds.has(mutexId)) {
+        return {
+          blocked: true,
+          blocked_by: mutexId,
+          reason: `Rule ${rule.rule_id} declares mutual exclusion with already-fired rule ${mutexId}`
+        };
+      }
+    }
+  }
+  
+  return { blocked: false, blocked_by: null, reason: '' };
+}
+
+/**
+ * Register a fired rule's mutual exclusion list for future checks
+ */
+export function registerMutualExclusion(
+  mutexMap: Map<string, string[]>,
+  ruleId: string,
+  mutuallyExclusiveWith: string[]
+): void {
+  if (mutuallyExclusiveWith && mutuallyExclusiveWith.length > 0) {
+    mutexMap.set(ruleId, mutuallyExclusiveWith);
+  }
+}
+
 export default {
   GRAPH_CONTROL_VERSION,
   checkRuleBlocking,
@@ -229,5 +309,8 @@ export default {
   createFiredRuleContext,
   registerFiredRule,
   isRuleBlocked,
-  logGraphValidation
+  logGraphValidation,
+  checkMutualExclusion,
+  validateMutualExclusion,
+  registerMutualExclusion
 };

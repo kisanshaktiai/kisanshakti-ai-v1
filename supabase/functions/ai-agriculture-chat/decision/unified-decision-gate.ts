@@ -236,6 +236,18 @@ export interface UnifiedGateInput {
   
   /** Observation certainty from prior clarification */
   observation_certainty?: number;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P3-1: Weather safety gate result (BLOCKING for spray/treatment actions)
+  // ═══════════════════════════════════════════════════════════════════════════
+  weather_safety?: {
+    safe_to_spray: boolean;
+    risk_level?: string;
+    blocking_factors?: string[];
+    rain_probability?: number;
+    wind_speed_kmph?: number;
+    temperature_celsius?: number;
+  } | null;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -702,6 +714,44 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
       reason: 'Symbolic brain returned treatment action but no products/dosages - blocking LLM',
       confidence_level: 'MEDIUM',
       decision_confidence: 60,
+      has_symptoms: hasSymptoms,
+      has_visual_ambiguity: false,
+      clarification_options: [],
+      gate_version: UNIFIED_GATE_VERSION,
+      checked_at: checkedAt
+    };
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GATE 7 (P3-1): WEATHER SAFETY GATE - BLOCKING for spray/treatment
+  // If weather is unsafe for spraying, block treatment and advise waiting
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  if (input.weather_safety && !input.weather_safety.safe_to_spray && hasTreatmentActions) {
+    const blockingFactors = input.weather_safety.blocking_factors || [];
+    console.log(`   🌧️ WEATHER SAFETY BLOCK - Spray not safe: ${blockingFactors.join(', ')}`);
+    
+    return {
+      gate_status: GateStatus.FAIL,
+      gate_action: GateAction.PROVIDE_OBSERVATION_ONLY,
+      treatments_allowed: false,
+      allowed_actions: ['MONITOR', 'PROVIDE_INFO', 'RESCHEDULE_SPRAY'],
+      blocked_actions: [...TREATMENT_ACTIONS],
+      allowed_products: products,
+      allowed_dosages: dosages,
+      response_mode: ResponseMode.OBSERVATION,
+      authority_decision,
+      criteria_results: {
+        authority_resolved: { passed: authorityResolved, reason: authority_decision.reason },
+        crop_identified: { passed: !!input.crop_name, reason: input.crop_name ? `Crop: ${input.crop_name}` : 'Unknown' },
+        stage_determined: { passed: !!input.growth_stage, reason: input.growth_stage ? `Stage: ${input.growth_stage}` : 'Unknown' },
+        symptom_specific: { passed: true, reason: 'Diagnosis available but weather blocks spray' },
+        symbolic_decision_valid: { passed: false, reason: `Weather unsafe: ${blockingFactors.join(', ')}` }
+      },
+      missing_criteria: ['SAFE_WEATHER_CONDITIONS'],
+      reason: `Weather conditions unsafe for spray application: ${blockingFactors.join(', ')}. Rain=${input.weather_safety.rain_probability ?? '?'}%, Wind=${input.weather_safety.wind_speed_kmph ?? '?'}km/h, Temp=${input.weather_safety.temperature_celsius ?? '?'}°C`,
+      confidence_level: 'HIGH',
+      decision_confidence: 80,
       has_symptoms: hasSymptoms,
       has_visual_ambiguity: false,
       clarification_options: [],

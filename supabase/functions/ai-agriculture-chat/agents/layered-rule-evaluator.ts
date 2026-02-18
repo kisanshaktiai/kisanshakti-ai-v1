@@ -657,8 +657,14 @@ export function evaluateRulesLayered(
       return s;
     });
     
-    // Sort by priority (lower = higher priority)
-    finalScored.sort((a, b) => a.priority - b.priority);
+    // P2-2: Sort by action_type priority, then data_authority_rank DESC, then rule priority
+    finalScored.sort((a, b) => {
+      if (a.priority !== b.priority) return a.priority - b.priority;
+      // Higher data_authority_rank wins (tiebreaker)
+      const rankA = (a.response as any).data_authority_rank ?? 50;
+      const rankB = (b.response as any).data_authority_rank ?? 50;
+      return rankB - rankA;
+    });
     const best = finalScored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -717,7 +723,13 @@ function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
     grouped.get(rule.category)?.push(rule);
   }
   for (const [cat, catRules] of grouped) {
-    catRules.sort((a, b) => b.priority - a.priority);
+    // P2-2: Sort by data_authority_rank DESC then priority DESC
+    catRules.sort((a, b) => {
+      const rankA = (a as any).data_authority_rank ?? 50;
+      const rankB = (b as any).data_authority_rank ?? 50;
+      if (rankA !== rankB) return rankB - rankA;
+      return b.priority - a.priority;
+    });
   }
   return grouped;
 }
