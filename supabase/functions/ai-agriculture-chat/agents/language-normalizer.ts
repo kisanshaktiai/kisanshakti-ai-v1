@@ -125,34 +125,58 @@ function detectLanguageFromText(text: string): 'mr' | 'hi' | 'en' {
   const devanagariMatches = text.match(devanagariPattern) || [];
   const hasDevanagari = devanagariMatches.length > 0;
   
-  if (!hasDevanagari) {
-    return 'en';
-  }
-  
-  // Marathi-specific characters and patterns
-  const marathiSpecific = /ळ|ऱ|ॲ|ॅ/g;
-  if (marathiSpecific.test(text)) {
+  if (hasDevanagari) {
+    // Marathi-specific characters and patterns
+    const marathiSpecific = /ळ|ऱ|ॲ|ॅ/g;
+    if (marathiSpecific.test(text)) {
+      return 'mr';
+    }
+    
+    // Common Marathi words
+    const marathiWords = ['आहे', 'आहेत', 'होते', 'होत', 'झाले', 'झाली', 'करा', 'पाहिजे', 'नाही', 'तुम्ही', 'माझे', 'माझी', 'माझ्या'];
+    for (const word of marathiWords) {
+      if (text.includes(word)) {
+        return 'mr';
+      }
+    }
+    
+    // Common Hindi words
+    const hindiWords = ['है', 'हैं', 'था', 'थी', 'थे', 'करें', 'चाहिए', 'नहीं', 'आप', 'मेरा', 'मेरी', 'मेरे'];
+    for (const word of hindiWords) {
+      if (text.includes(word)) {
+        return 'hi';
+      }
+    }
+    
+    // Default to Marathi for Devanagari text (most farmers in our target area)
     return 'mr';
   }
   
-  // Common Marathi words
-  const marathiWords = ['आहे', 'आहेत', 'होते', 'होत', 'झाले', 'झाली', 'करा', 'पाहिजे', 'नाही', 'तुम्ही', 'माझे', 'माझी', 'माझ्या'];
-  for (const word of marathiWords) {
-    if (text.includes(word)) {
-      return 'mr';
-    }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ROMANIZED REGIONAL LANGUAGE DETECTION
+  // Detect Marathi/Hindi written in Latin script (Roman Marathi/Hindi)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const lowerText = text.toLowerCase();
+  
+  // Romanized Marathi markers (common words/phrases unique to Marathi)
+  const romanMarathiWords = /\b(aahe|ahet|zale|zali|nahi|mala|mazya|tumhi|kara|pahije|hoye|karun|ushala|usala|kapus|pik|kidi|kida|ali|fawaarni|nindani|pivla|pivli|pivle|sukla|sukle|mela|meli|khod|paan|pane|rog|lagla|lagli|udya|aaila|ala|bagha|sangha|ya|kara|jhale|jhali|ch[ae]|ch[yi]|madhe|var|aani)\b/i;
+  
+  // Romanized Hindi markers (common words/phrases unique to Hindi)
+  const romanHindiWords = /\b(hai|hain|tha|thi|kya|kaise|kab|kahan|mera|meri|mere|aapka|fasal|ganna|keeda|khaad|tana|patta|lagana|dena|karna|batao|bataiye|chahiye|nahi|aur|ka|ki|ke|mein|se|ko|par|raha|rahi|rahe)\b/i;
+  
+  // Count matches for each language
+  const mrMatches = (lowerText.match(romanMarathiWords) || []).length;
+  const hiMatches = (lowerText.match(romanHindiWords) || []).length;
+  
+  // If significant romanized markers detected, return the dominant language
+  if (mrMatches > hiMatches && mrMatches >= 1) {
+    return 'mr';
+  }
+  if (hiMatches > mrMatches && hiMatches >= 1) {
+    return 'hi';
   }
   
-  // Common Hindi words
-  const hindiWords = ['है', 'हैं', 'था', 'थी', 'थे', 'करें', 'चाहिए', 'नहीं', 'आप', 'मेरा', 'मेरी', 'मेरे'];
-  for (const word of hindiWords) {
-    if (text.includes(word)) {
-      return 'hi';
-    }
-  }
-  
-  // Default to Marathi for Devanagari text (most farmers in our target area)
-  return 'mr';
+  return 'en';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -174,6 +198,22 @@ function removePatterns(text: string, patterns: string[]): { cleaned: string; re
   return { cleaned, removed };
 }
 
+// Romanized agricultural keywords (Marathi/Hindi in Latin script)
+const ROMANIZED_AGRI_KEYWORDS = [
+  'us', 'oos', 'uss', 'kapus', 'kapas', 'pik', 'peek', 'shet', 'khet',
+  'paan', 'pan', 'patta', 'patte', 'kidi', 'kida', 'keeda', 'keede',
+  'rog', 'roga', 'pani', 'paani', 'khat', 'khaad', 'khata',
+  'fawaarni', 'favarani', 'spray', 'dawaa', 'dawa',
+  'pivla', 'pivli', 'pivle', 'pila', 'pili', 'pile',
+  'sukla', 'sukle', 'sukha', 'mela', 'meli', 'marat',
+  'ali', 'alu', 'alli', 'borer', 'khod', 'khoda', 'tana',
+  'ganna', 'gannya', 'soybean', 'tur', 'gehu', 'bhaat',
+  'kapni', 'kapani', 'katai', 'nindani', 'nindan',
+  'dag', 'dhabbe', 'thipke', 'tambera', 'karpa',
+  'valvi', 'valavi', 'dimak', 'dimaka',
+  'gawat', 'tan', 'gavat', 'fasal', 'fasla'
+];
+
 function checkAgriculturalContent(text: string, language: 'mr' | 'hi' | 'en'): boolean {
   const lowerText = text.toLowerCase();
   const keywords = AGRICULTURAL_KEYWORDS[language];
@@ -190,6 +230,15 @@ function checkAgriculturalContent(text: string, language: 'mr' | 'hi' | 'en'): b
       if (lowerText.includes(keyword.toLowerCase())) {
         return true;
       }
+    }
+  }
+  
+  // CRITICAL: Check romanized agricultural keywords for ALL languages
+  // Farmers often type in Roman Marathi/Hindi regardless of detected script
+  for (const keyword of ROMANIZED_AGRI_KEYWORDS) {
+    const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+    if (regex.test(lowerText)) {
+      return true;
     }
   }
   
