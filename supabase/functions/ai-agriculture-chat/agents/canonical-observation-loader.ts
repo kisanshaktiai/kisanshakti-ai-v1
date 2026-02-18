@@ -17,7 +17,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { ObservationKey } from '../decision/observation-ontology.ts';
 
 export const CANONICAL_LOADER_VERSION = '1.0.0';

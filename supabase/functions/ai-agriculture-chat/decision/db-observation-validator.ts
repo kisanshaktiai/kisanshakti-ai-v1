@@ -17,7 +17,7 @@
  * @version 1.0.0
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.9';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export const DB_VALIDATOR_VERSION = '1.0.0';
 

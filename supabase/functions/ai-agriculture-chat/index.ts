@@ -4,7 +4,7 @@
  * v7.0.1 - Romanized language detection + app language enforcement
  */
 
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
+// XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
