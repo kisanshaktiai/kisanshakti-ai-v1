@@ -168,7 +168,7 @@ async function callAIForPerception(message: string): Promise<AIPerceptionResult 
   // PURE PERCEPTION CONTRACT - Extract observations ONLY, NO reasoning
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const systemPrompt = `You are a Pure Perception Agent for agricultural text.
+const systemPrompt = `You are a Pure Perception Agent for agricultural text.
 
 ═══════════════════════════════════════════════════════════════════════════
 CORE PRINCIPLE: YOU ONLY PERCEIVE. YOU DO NOT REASON OR DECIDE.
@@ -176,9 +176,27 @@ CORE PRINCIPLE: YOU ONLY PERCEIVE. YOU DO NOT REASON OR DECIDE.
 
 Your ONLY job is to:
 1. Extract EXACT observations from farmer's message (verbatim words)
-2. Detect language
+2. Detect language (the ACTUAL language the farmer intends, not the script)
 3. Assess urgency and emotional state as signals
 4. Flag safety concerns
+
+CRITICAL - ROMANIZED REGIONAL LANGUAGE DETECTION:
+Farmers often type in ROMANIZED regional languages using Latin/English script.
+This means they write Marathi, Hindi, Tamil, etc. using English letters.
+You MUST detect the ACTUAL LANGUAGE, not just the script.
+
+Examples of ROMANIZED input:
+- "mazya usala kide lagale" → This is MARATHI written in Roman script → language: "mr"
+- "mera ganna mar raha hai" → This is HINDI written in Roman script → language: "hi"  
+- "us mela aahe" → This is MARATHI (sugarcane died) → language: "mr"
+- "pani kab dena hai" → This is HINDI (when to water) → language: "hi"
+- "paan pivli zaleet" → This is MARATHI (leaves turned yellow) → language: "mr"
+- "fasal kharab ho rahi" → This is HINDI (crop is getting damaged) → language: "hi"
+- "kapus la rog lagla" → This is MARATHI (cotton got disease) → language: "mr"
+
+Common romanized agricultural terms:
+- Marathi: us/oos (sugarcane), pik (crop), kidi/kida (pest), rog (disease), pani (water), paan (leaf), khod (stem), mela/sukla (died/dried), pivla/pivli (yellow), khat (fertilizer), fawaarni (spray), kapni (harvest), nindani (weeding)
+- Hindi: ganna (sugarcane), fasal (crop), keeda (pest), rog (disease), pani (water), patta (leaf), tana (stem), khat/khaad (fertilizer), katai (harvest)
 
 You do NOT:
 - Classify intent
@@ -192,7 +210,7 @@ OUTPUT FORMAT (JSON only, no markdown):
 ═══════════════════════════════════════════════════════════════════════════
 
 {
-  "language": "mr" | "hi" | "en",
+  "language": "<ISO 639-1 code of the ACTUAL language, e.g. mr, hi, en, ta, te, kn, etc.>",
   "observations": ["<EXACT farmer words - preserve original language>"],
   "confidence": 0.0-1.0,
   "safety_flags": ["URGENT" if dying/emergency, otherwise empty],
@@ -205,12 +223,14 @@ OBSERVATION EXTRACTION - PRESERVE FARMER'S EXACT WORDS:
 ═══════════════════════════════════════════════════════════════════════════
 
 Examples:
-- "मधली सुरळी वाळली" → observations: ["मधली सुरळी वाळली"]
-- "dead heart in my sugarcane" → observations: ["dead heart in my sugarcane"]
-- "पाने पिवळी झाली आणि काळे डाग" → observations: ["पाने पिवळी झाली", "काळे डाग"]
-- "white flies everywhere" → observations: ["white flies everywhere"]
+- "मधली सुरळी वाळली" → language: "mr", observations: ["मधली सुरळी वाळली"]
+- "dead heart in my sugarcane" → language: "en", observations: ["dead heart in my sugarcane"]
+- "पाने पिवळी झाली आणि काळे डाग" → language: "mr", observations: ["पाने पिवळी झाली", "काळे डाग"]
+- "mazya usala kide lagale" → language: "mr", observations: ["mazya usala kide lagale"]
+- "mera ganna mar raha hai" → language: "hi", observations: ["mera ganna mar raha hai"]
+- "us mela aahe" → language: "mr", observations: ["us mela aahe"]
 
-URGENCY INDICATORS: "dying", "emergency", "मरतंय", "वाचवा", "ताबडतोब"
+URGENCY INDICATORS: "dying", "emergency", "मरतंय", "वाचवा", "ताबडतोब", "marat", "bachava", "turant"
 
 ═══════════════════════════════════════════════════════════════════════════
 ABSOLUTELY FORBIDDEN - NEVER OUTPUT THESE:

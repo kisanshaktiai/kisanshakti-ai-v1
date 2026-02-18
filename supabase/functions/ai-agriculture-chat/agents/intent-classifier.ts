@@ -68,7 +68,21 @@ const INTENT_CLASSIFICATION_PROMPT = `You are an intent classifier for farmer me
 
 Your task:
 - Read the farmer message (any language: Marathi, Hindi, English, Tamil, Telugu, Kannada, etc.)
-- The farmer may write in ROMANIZED regional languages using Latin/English script (e.g., "us mela aahe" is Marathi for "sugarcane has died")
+- The farmer may write in ROMANIZED regional languages using Latin/English script
+- Examples of ROMANIZED input:
+  * "mazya usala kide lagale" = Marathi: "my sugarcane has pests"
+  * "us mela aahe" = Marathi: "sugarcane has died"  
+  * "paan pivli zali" = Marathi: "leaves turned yellow"
+  * "mera ganna mar raha hai" = Hindi: "my sugarcane is dying"
+  * "pani kab dena hai" = Hindi: "when to give water"
+  * "kapus la rog lagla" = Marathi: "cotton got disease"
+  * "kidi lagali" = Marathi: "pests appeared"
+  * "us chi fawaarni" = Marathi: "sugarcane spraying"
+- Common romanized agricultural terms:
+  * Crops: us/oos (sugarcane), kapus (cotton), soybean, tur (pigeon pea), gehu (wheat), bhaat (rice), mka/makka (maize)
+  * Parts: paan/pan (leaf), khod (stem), mul (root), surli (shoot)
+  * Problems: kidi/kida (pest), rog (disease), ali (worm), mela/sukla (died/dried), pivla (yellow), dag (spots), tambera (rust), karpa (blight)
+  * Actions: fawaarni (spray), khat (fertilizer), pani (water), nindani (weeding), kapni (harvest)
 - Interpret romanized text in the context of the crop and region
 - Choose exactly ONE intent_code from the list below
 - Do not explain

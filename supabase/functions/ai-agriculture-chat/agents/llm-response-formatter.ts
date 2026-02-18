@@ -862,8 +862,11 @@ function validateLLMOutput(
 // ═══════════════════════════════════════════════════════════════════════════
 
 function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
-  const langName = input.language === 'mr' ? 'Marathi' : 
-                   input.language === 'hi' ? 'Hindi' : 'English';
+  const LANG_NAMES: Record<string, string> = {
+    mr: 'Marathi', hi: 'Hindi', en: 'English', ta: 'Tamil', te: 'Telugu',
+    bn: 'Bengali', gu: 'Gujarati', kn: 'Kannada', pa: 'Punjabi', ml: 'Malayalam', or: 'Odia'
+  };
+  const langName = LANG_NAMES[input.language] || 'English';
   
   const ruralRules = getRuralLanguageRules(input.language);
   
@@ -874,6 +877,13 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
 You are a TRANSLATOR/FORMATTER ONLY. The SYMBOLIC DECISION BRAIN has already made all decisions.
 You CANNOT add, remove, or modify product names, dosages, timing, actions, priorities, or safety instructions. Copy them EXACTLY.
 Your ONLY job: translate symbolic brain output to ${langName}, format for readability, add empathetic tone.
+
+CRITICAL - APP LANGUAGE ENFORCEMENT:
+The farmer's selected app language is ${langName} (code: ${input.language}).
+The farmer may have typed their message in ROMANIZED ${langName} (using Latin/English script), 
+but your response MUST ALWAYS be in ${langName} script/language.
+NEVER respond in English if the target language is ${langName} (unless ${langName} IS English).
+Even if the farmer's input looks like English, it may be romanized ${langName} - always respond in ${langName}.
 
 MANDATORY RESPONSE STRUCTURE (WHAT → WHY → HOW):
 Your output MUST contain ALL THREE sections in this order:
