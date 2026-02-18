@@ -1,6 +1,7 @@
 /**
  * AI Agriculture Chat - Orchestrator-Based Entry Point
  * Full migration to 9-agent orchestrator system
+ * v7.0.1 - Romanized language detection + app language enforcement
  */
 
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
