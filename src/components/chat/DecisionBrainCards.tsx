@@ -39,10 +39,21 @@ export interface LandContextDisplay {
   daysAfterSowing?: number;
 }
 
+// Safe helper to flatten objects to string (prevents React error #31)
+function safeString(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') return val;
+  if (typeof val === 'object') {
+    const obj = val as Record<string, unknown>;
+    return obj.reason as string || obj.recommended_start as string || obj.fallback_text as string || JSON.stringify(val);
+  }
+  return String(val);
+}
+
 export interface ActionItem {
   action: string;
   reason: string;
-  timing?: string;
+  timing?: string | Record<string, unknown>;
   ruleSources: string[];
   priority: number;
 }
@@ -259,14 +270,14 @@ export function PrimaryActionCard({ action, index, language }: PrimaryActionCard
       <div className="flex items-start gap-2">
         <CheckCircle className="h-5 w-5 text-success shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm text-foreground">{action.action}</div>
-          <p className="text-xs text-muted-foreground mt-1">{action.reason}</p>
+          <div className="font-semibold text-sm text-foreground">{safeString(action.action)}</div>
+          <p className="text-xs text-muted-foreground mt-1">{safeString(action.reason)}</p>
           
           <div className="flex flex-wrap items-center gap-2 mt-2">
             {action.timing && (
               <Badge variant="outline" className="text-xs gap-1">
                 <Timer className="h-3 w-3" />
-                {action.timing}
+                {safeString(action.timing)}
               </Badge>
             )}
             <Badge variant="secondary" className="text-xs gap-1 bg-success/20 text-success">
@@ -299,14 +310,14 @@ export function SecondaryActionCard({ action, index, language }: SecondaryAction
       <div className="flex items-start gap-2">
         <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-sm text-foreground">{action.action}</div>
-          <p className="text-xs text-muted-foreground mt-1">{action.reason}</p>
+          <div className="font-semibold text-sm text-foreground">{safeString(action.action)}</div>
+          <p className="text-xs text-muted-foreground mt-1">{safeString(action.reason)}</p>
           
           <div className="flex flex-wrap items-center gap-2 mt-2">
             {action.timing && (
               <Badge variant="outline" className="text-xs gap-1">
                 <Timer className="h-3 w-3" />
-                {action.timing}
+                {safeString(action.timing)}
               </Badge>
             )}
             <Badge variant="secondary" className="text-xs gap-1 bg-warning/20 text-warning">

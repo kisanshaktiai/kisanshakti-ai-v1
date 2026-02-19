@@ -141,7 +141,7 @@ export function InteractiveScheduleTable({
                     "text-sm",
                     row.completed && "text-muted-foreground line-through"
                   )}>
-                    {row.timing}
+                    {typeof row.timing === 'object' ? ((row.timing as any)?.reason || (row.timing as any)?.recommended_start || '') : row.timing}
                   </TableCell>
                   <TableCell className={cn(
                     "text-sm",
