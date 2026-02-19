@@ -2144,18 +2144,62 @@ export class AIAgentOrchestrator {
           das: landContext.days_since_sowing
         } : null;
         
-        const clarificationMessage = clarificationLandCtx
-          ? `I understand you're reporting an issue with your ${clarificationLandCtx.crop} crop (${clarificationLandCtx.stage} stage). Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`
-          : `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+        // CRITICAL FIX: Generate language-aware clarification message
+        const userLang = (options.language || 'mr') as 'mr' | 'hi' | 'en';
+        let clarificationMr: string;
+        let clarificationHi: string;
+        let clarificationEn: string;
         
+        if (clarificationLandCtx) {
+          const cropName = clarificationLandCtx.crop || 'पीक';
+          const stageName = clarificationLandCtx.stage || '';
+          const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिवस)` : '';
+          clarificationMr = `तुमच्या ${cropName} पिकाबद्दल${dasStr} समजले. कृपया नेमकी समस्या सांगा:\n• पानांचा रंग बदलला?\n• पानांवर डाग/छिद्र?\n• किडे दिसतात?\n• खोड/मूळ समस्या?\n• वाढ मंदावली?`;
+          clarificationHi = `आपके ${cropName} फसल${dasStr} के बारे में समझा। कृपया सटीक समस्या बताएं:\n• पत्तों का रंग बदला?\n• पत्तों पर धब्बे/छेद?\n• कीड़े दिखते हैं?\n• तना/जड़ समस्या?\n• बढ़वार रुकी?`;
+          clarificationEn = `I understand you're reporting an issue with your ${clarificationLandCtx.crop} crop (${clarificationLandCtx.stage} stage). Could you describe the specific symptoms? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+        } else {
+          clarificationMr = `कृपया तुमच्या पिकाची नेमकी समस्या सांगा:\n• पानांचा रंग बदलला?\n• पानांवर डाग/छिद्र?\n• किडे दिसतात?\n• वाढ मंदावली?`;
+          clarificationHi = `कृपया अपनी फसल की सटीक समस्या बताएं:\n• पत्तों का रंग बदला?\n• पत्तों पर धब्बे/छेद?\n• कीड़े दिखते हैं?\n• बढ़वार रुकी?`;
+          clarificationEn = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+        }
+        
+        const clarificationMessage = userLang === 'hi' ? clarificationHi : userLang === 'en' ? clarificationEn : clarificationMr;
+        
+        // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
+        // and correct `communication.main_message.full_text` structure
         return {
-          success: true,
+          type: 'CLARIFICATION_QUESTION' as OrchestratorResponseType,
+          session_id: sessionId,
           response: clarificationMessage,
+          question: {
+            question_id: `zero_code_clarification_${Date.now()}`,
+            text_mr: clarificationMr,
+            text_hi: clarificationHi,
+            text_en: clarificationEn,
+            options: [],
+            scope: 'SYMPTOM_DESCRIPTION'
+          },
           communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `zero_code_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: userLang,
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: {
+                mr: clarificationMr,
+                hi: clarificationHi,
+                en: clarificationEn
+              }
+            },
             farmer_message: clarificationMessage,
             message_type: 'CLARIFICATION_QUESTION',
             decision_brain_source: false,
             actions_returned: [],
+            quick_actions: [],
             metadata: {
               confidence: 0.3,
               trace_id: traceId,
