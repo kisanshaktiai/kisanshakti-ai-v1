@@ -114,9 +114,12 @@ import {
   normalizeDiseaseCode, 
   normalizeSeverity,
   normalizeCropStage,
-  normalizeCropCodeForDB,  // NEW: DB-compatible crop code normalizer
-  getCropCodeVariants      // NEW: Get all possible crop code variants for matching
+  normalizeCropCodeForDB,  // Delegates to unified normalizer
+  getCropCodeVariants      // Delegates to unified normalizer
 } from './type-mappers.ts';
+
+// UNIFIED: Import canonical crop code normalizer
+import { normalizeCropCode as unifiedNormalizeCropCode } from '../utils/crop-code-normalizer.ts';
 
 // P0-C: Import entity code mapper for unified code normalization before rule engine
 import {
@@ -6951,6 +6954,9 @@ export class AIAgentOrchestrator {
     const basicDiseaseCode = normalizeDiseaseCode(rawDiseaseCode);
     const severity = normalizeSeverity(rawSeverity);
     const cropStage = normalizeCropStage(rawCropStage);
+    
+    // UNIFIED: Normalize crop code to DB short code ONCE via single source of truth
+    const canonicalCropShortCode = unifiedNormalizeCropCode(basicCropCode);
     
     // P0-C: Apply decision graph normalization (strip crop prefixes for rule matching)
     const cropCode = toDecisionGraphCropCode(basicCropCode);
