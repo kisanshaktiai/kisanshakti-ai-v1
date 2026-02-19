@@ -39,8 +39,8 @@ export const AI_ENDPOINTS = {
 } as const;
 
 export const AI_CONFIG = {
-  // Default provider - Gemini preferred for rural agriculture content
-  DEFAULT_PROVIDER: "gemini" as AIProvider,
+  // Default provider - OpenAI preferred for reliable JSON structured output
+  DEFAULT_PROVIDER: "openai" as AIProvider,
   
   // PRODUCTION: Gemini 2.5 Flash - best for agriculture schedules
   MODEL: "gemini-2.5-flash",
@@ -144,23 +144,25 @@ export function getBestAvailableProvider(): {
   model: string; 
   apiKey: string 
 } {
-  // Check Gemini first (preferred for agriculture)
-  if (hasGeminiKey()) {
-    console.log("✅ [AIConfig] getBestAvailableProvider: Using Gemini (has valid key)");
-    return { 
-      provider: "gemini", 
-      model: AI_MODELS.gemini.default,
-      apiKey: Deno.env.get("GEMINI_API_KEY")!
-    };
-  }
-  
-  // Fallback to OpenAI if available
+  // CRITICAL FIX: OpenAI FIRST - Gemini's OpenAI-compatible endpoint returns
+  // truncated/malformed JSON that breaks intent classification and cascades to fallback.
+  // OpenAI was the working provider before the Gemini switch.
   if (hasOpenAIKey()) {
-    console.log("✅ [AIConfig] getBestAvailableProvider: Using OpenAI (has valid key)");
+    console.log("✅ [AIConfig] getBestAvailableProvider: Using OpenAI (primary - reliable JSON)");
     return { 
       provider: "openai", 
       model: AI_MODELS.openai.default,
       apiKey: Deno.env.get("OPENAI_API_KEY")!
+    };
+  }
+  
+  // Fallback to Gemini if OpenAI not available
+  if (hasGeminiKey()) {
+    console.log("✅ [AIConfig] getBestAvailableProvider: Using Gemini (fallback)");
+    return { 
+      provider: "gemini", 
+      model: AI_MODELS.gemini.default,
+      apiKey: Deno.env.get("GEMINI_API_KEY")!
     };
   }
   
@@ -222,17 +224,16 @@ export function getProviderFromModel(model: string): AIProvider {
  * PRODUCTION: Prioritizes Gemini 2.5 Flash for rural agriculture language support
  */
 export function getBestScheduleProvider(): { provider: AIProvider; model: string } {
-  // Check for Gemini API key first (preferred for schedule generation)
-  if (hasGeminiKey()) {
-    console.log("🚀 [AIConfig] Using Gemini 2.5 Flash for schedule generation");
-    return { provider: "gemini", model: AI_MODELS.gemini.default };
+  // CRITICAL FIX: OpenAI FIRST for schedule generation (reliable structured output)
+  if (hasOpenAIKey()) {
+    console.log("🚀 [AIConfig] Using OpenAI for schedule generation (primary)");
+    return { provider: "openai", model: AI_MODELS.openai.default };
   }
   
-  // Fallback to OpenAI if available
-  const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  if (openaiKey && openaiKey.trim() !== "") {
-    console.log("🔄 [AIConfig] Falling back to OpenAI for schedule generation");
-    return { provider: "openai", model: AI_MODELS.openai.default };
+  // Fallback to Gemini if OpenAI not available
+  if (hasGeminiKey()) {
+    console.log("🔄 [AIConfig] Falling back to Gemini for schedule generation");
+    return { provider: "gemini", model: AI_MODELS.gemini.default };
   }
   
   throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
