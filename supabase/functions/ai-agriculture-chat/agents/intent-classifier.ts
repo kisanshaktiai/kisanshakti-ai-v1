@@ -285,11 +285,57 @@ export async function classifyFarmerIntent(
       throw new Error('Empty response from LLM');
     }
     
-    const parsed = safeExtractJson(content);
+    let parsed = safeExtractJson(content);
     
     if (!parsed) {
-      console.warn(`   ⚠️ LLM JSON extraction failed - returning UNKNOWN_OBSERVATION`);
-      return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.0 };
+      console.warn(`   ⚠️ LLM JSON extraction failed on first attempt. Retrying with stricter prompt...`);
+      
+      // RETRY: One more attempt with a strict JSON-only prompt
+      try {
+        const retryStartTime = Date.now();
+        const retryResponse = await callLLMWithRetry(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              { role: 'system', content: 'Return ONLY valid JSON with intent_code and confidence fields. No explanation. No markdown. No additional text.' },
+              { role: 'user', content: `Classify this agricultural query into an intent. Query: "${farmerMessage}"\n\nReturn JSON: {"intent_code": "...", "confidence": 0.0-1.0}` }
+            ],
+            temperature: 0,
+            max_tokens: 80,
+            response_format: { type: 'json_object' }
+          })
+        });
+        const retryLatency = Date.now() - retryStartTime;
+        
+        if (retryResponse.ok) {
+          const retryData = await retryResponse.json();
+          const retryContent = retryData.choices?.[0]?.message?.content;
+          if (retryContent) {
+            parsed = safeExtractJson(retryContent);
+            if (parsed) {
+              console.log(`   🔄 [Retry] JSON extraction succeeded on retry [${retryLatency}ms]`);
+            }
+          }
+        }
+      } catch (retryError) {
+        console.warn(`   ⚠️ [Retry] Second attempt also failed: ${retryError}`);
+      }
+      
+      if (!parsed) {
+        console.error(`   ❌ LLM JSON extraction failed after retry - falling back to emergency keyword matcher`);
+        // Try emergency keyword fallback before returning UNKNOWN
+        const emergencyResult = emergencyKeywordFallback(farmerMessage);
+        if (emergencyResult) {
+          console.log(`   🚑 [EmergencyFallback] Recovered after JSON failure: ${emergencyResult.intent_code}`);
+          return emergencyResult;
+        }
+        return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.0 };
+      }
     }
     
     // Validate intent code against allowed list
