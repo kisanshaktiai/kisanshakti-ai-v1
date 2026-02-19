@@ -157,38 +157,38 @@ interface PatternMapping {
 }
 
 const VISUAL_CHANGE_MAPPINGS: PatternMapping[] = [
-  // Leaf color changes
-  { patterns: ['yellow', 'yellowing', 'turning yellow', 'turned yellow'], code: ObservationKey.LEAF_YELLOWING },
+  // Leaf color changes (English + Marathi + Hindi)
+  { patterns: ['yellow', 'yellowing', 'turning yellow', 'turned yellow', 'पिवळे', 'pivle', 'पीला पड़ना', 'peela padna', 'peela', 'pivla'], code: ObservationKey.LEAF_YELLOWING },
   { patterns: ['brown', 'browning', 'turning brown'], code: ObservationKey.LEAF_BROWN_TIPS },
   { patterns: ['red', 'reddish', 'turning red', 'reddening'], code: ObservationKey.LEAF_REDDENING },
   { patterns: ['pale', 'pale green', 'light green'], code: ObservationKey.LEAF_PALE_GREEN },
   
-  // Leaf texture/shape changes
+  // Leaf texture/shape changes (English + Marathi + Hindi)
   { patterns: ['curling', 'curled', 'curl'], code: ObservationKey.LEAF_CURLING },
-  { patterns: ['wilting', 'wilted', 'wilt', 'drooping'], code: ObservationKey.LEAF_WILTING },
-  { patterns: ['drying', 'dried', 'drying out', 'dry'], code: ObservationKey.LEAF_DRYING },
+  { patterns: ['wilting', 'wilted', 'wilt', 'drooping', 'वाळणे', 'valne', 'murjhana', 'मुरझाना'], code: ObservationKey.LEAF_WILTING },
+  { patterns: ['drying', 'dried', 'drying out', 'dry', 'वाळणे', 'valne', 'sukh', 'सूखना'], code: ObservationKey.LEAF_DRYING },
   { patterns: ['rolling', 'rolled'], code: ObservationKey.LEAF_ROLLING },
   { patterns: ['twisting', 'twisted'], code: ObservationKey.LEAF_TWISTING },
-  { patterns: ['scorching', 'scorched', 'burnt'], code: ObservationKey.LEAF_SCORCHING },
+  { patterns: ['scorching', 'scorched', 'burnt', 'करपा', 'karpa', 'jhulsa', 'झुलसा'], code: ObservationKey.LEAF_SCORCHING },
   
-  // Leaf markings
+  // Leaf markings (English + Marathi + Hindi)
   { patterns: ['spots', 'spotted', 'spots appearing', 'lesions'], code: ObservationKey.LEAF_SPOTS_PRESENT },
-  { patterns: ['holes', 'chewed', 'eaten', 'bite marks'], code: ObservationKey.LEAF_CHEWING },
+  { patterns: ['holes', 'chewed', 'eaten', 'bite marks', 'छिद्र', 'chhidra', 'भोक', 'bhok', 'छेद', 'chhed'], code: ObservationKey.LEAF_CHEWING },
   { patterns: ['stripes', 'striped', 'streaks'], code: ObservationKey.LEAF_STRIPES_PRESENT },
   { patterns: ['white patches', 'white powder', 'powdery'], code: ObservationKey.LEAF_WHITE_PATCHES },
   { patterns: ['black patches', 'black spots'], code: ObservationKey.LEAF_BLACK_PATCHES },
   { patterns: ['mosaic', 'mottled'], code: ObservationKey.LEAF_MOSAIC_PATTERN },
   
-  // Stem/shoot symptoms
+  // Stem/shoot symptoms (English + Marathi + Hindi)
   { patterns: ['dead heart', 'central shoot dried', 'central shoot dead'], code: ObservationKey.DEAD_HEART_PRESENT },
-  { patterns: ['stem boring', 'borer holes', 'holes in stem'], code: ObservationKey.STEM_BORING_MARKS },
+  { patterns: ['stem boring', 'borer holes', 'holes in stem', 'छिद्र', 'chhidra', 'भोक', 'bhok', 'छेद', 'chhed', 'boring'], code: ObservationKey.STEM_BORING_MARKS },
   { patterns: ['stem rot', 'rotting stem'], code: ObservationKey.STEM_ROT_PRESENT },
   { patterns: ['stem soft', 'softening'], code: ObservationKey.STEM_SOFTENING },
   { patterns: ['stem split', 'splitting'], code: ObservationKey.STEM_SPLITTING },
   
-  // Plant-level symptoms
+  // Plant-level symptoms (English + Marathi + Hindi)
   { patterns: ['plant death', 'died', 'dead plants', 'plants dying'], code: ObservationKey.SEEDLING_DIED },
-  { patterns: ['stunted', 'not growing', 'poor growth', 'slow growth'], code: ObservationKey.STUNTED_PLANTS },
+  { patterns: ['stunted', 'not growing', 'poor growth', 'slow growth', 'poor tillering', 'stunting', 'फुट कमी', 'fut kami', 'वाढ कमी', 'vadh kami', 'फुट कम', 'phut kam', 'बढ़वार कम', 'badhwar kam'], code: ObservationKey.STUNTED_PLANTS },
   { patterns: ['lodging', 'fallen', 'bent over'], code: ObservationKey.PLANTS_LODGING },
   { patterns: ['pulled out easily', 'easily pulled', 'loose roots'], code: ObservationKey.SETT_EASILY_PULLED_OUT },
   

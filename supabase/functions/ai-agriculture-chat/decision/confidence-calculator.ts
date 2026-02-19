@@ -171,7 +171,7 @@ export class ConfidenceCalculator {
    * Calculate confidence from rule matching
    */
   private calculateRuleConfidence(firedRules: FiredRule[], diagnosis: Hypothesis | null): number {
-    if (firedRules.length === 0) {
+    if (!firedRules || firedRules.length === 0) {
       return 0.3; // No rules = low confidence
     }
     
@@ -184,13 +184,13 @@ export class ConfidenceCalculator {
     }
     
     // Boost from high-priority rules
-    const highPriorityRules = firedRules.filter(r => r.priority >= 80);
+    const highPriorityRules = (firedRules || []).filter(r => r.priority >= 80);
     if (highPriorityRules.length > 0) {
       confidence += 0.1;
     }
     
     // Boost from multiple rules supporting same cause
-    if (diagnosis && diagnosis.supporting_rules.length > 1) {
+    if (diagnosis?.supporting_rules?.length > 1) {
       confidence += 0.05 * (diagnosis.supporting_rules.length - 1);
     }
     
