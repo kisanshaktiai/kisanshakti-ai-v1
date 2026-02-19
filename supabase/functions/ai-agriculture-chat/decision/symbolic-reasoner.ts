@@ -301,7 +301,7 @@ export class SymbolicReasoner {
         // ═══════════════════════════════════════════════════════════════════════
         // NUTRITION CONFLICT ARBITRATION: Water stress & macro dominance gates
         // ═══════════════════════════════════════════════════════════════════════
-        const ruleCategory = rule.category?.toLowerCase() || '';
+        // ruleCategory already declared above
         const isNutritionRule = ruleCategory.includes('nutrition') || ruleCategory.includes('deficiency');
         
         if (isNutritionRule) {
