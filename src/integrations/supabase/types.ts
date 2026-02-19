@@ -23178,6 +23178,7 @@ export type Database = {
           canonical_group: string | null
           created_at: string | null
           description: string
+          is_active: boolean
           is_diagnostic: boolean | null
           observation_category: string | null
           observation_code: string
@@ -23189,6 +23190,7 @@ export type Database = {
           canonical_group?: string | null
           created_at?: string | null
           description: string
+          is_active?: boolean
           is_diagnostic?: boolean | null
           observation_category?: string | null
           observation_code: string
@@ -23200,6 +23202,7 @@ export type Database = {
           canonical_group?: string | null
           created_at?: string | null
           description?: string
+          is_active?: boolean
           is_diagnostic?: boolean | null
           observation_category?: string | null
           observation_code?: string

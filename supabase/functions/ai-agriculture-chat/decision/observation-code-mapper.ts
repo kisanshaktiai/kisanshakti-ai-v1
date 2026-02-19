@@ -25,6 +25,7 @@
 
 import { ObservationKey } from './observation-ontology.ts';
 import type { SemanticExtraction } from '../agents/semantic-extractor.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export const OBSERVATION_CODE_MAPPER_VERSION = '2.0.0';
 
@@ -465,6 +466,118 @@ export function mapToObservationCodes(semantic: SemanticExtraction): MappedObser
   console.log(`      Patterns matched: ${patternsMatched.length}`);
   
   return result;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// VOCABULARY BRIDGE: ALIAS EXPANSION (DB-Driven)
+// ═══════════════════════════════════════════════════════════════════════════
+
+type ObservationAliasRow = { alias_code: string; canonical_code: string };
+
+type AliasCache = {
+  fetched_at_ms: number;
+  rows: ObservationAliasRow[];
+};
+
+const OBS_ALIAS_CACHE_TTL_MS = 5 * 60 * 1000;
+let OBS_ALIAS_CACHE: AliasCache | null = null;
+
+function normalizeObsCode(code: string): string {
+  return (code || '').toUpperCase().replace(/[\s-]+/g, '_').trim();
+}
+
+function getSupabaseClient(existingClient?: any) {
+  if (existingClient) return existingClient;
+
+  const url = Deno.env.get('SUPABASE_URL');
+  const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key) {
+    throw new Error('[ObservationCodeMapper] Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+  }
+  return createClient(url, key);
+}
+
+async function loadObservationAliases(supabaseClient?: any): Promise<ObservationAliasRow[]> {
+  const now = Date.now();
+  if (OBS_ALIAS_CACHE && now - OBS_ALIAS_CACHE.fetched_at_ms < OBS_ALIAS_CACHE_TTL_MS) {
+    return OBS_ALIAS_CACHE.rows;
+  }
+
+  const supabase = getSupabaseClient(supabaseClient);
+
+  const { data, error } = await supabase
+    .from('observation_aliases')
+    .select('alias_code, canonical_code');
+
+  if (error) {
+    console.warn(`[ObservationCodeMapper] Failed to load observation_aliases: ${error.message}`);
+    return [];
+  }
+
+  const rows: ObservationAliasRow[] = (data || []).map((r: any) => ({
+    alias_code: normalizeObsCode(r.alias_code),
+    canonical_code: normalizeObsCode(r.canonical_code),
+  }));
+
+  OBS_ALIAS_CACHE = { fetched_at_ms: now, rows };
+  return rows;
+}
+
+/**
+ * Expand observation vocabulary so the rule engine sees BOTH generic + specific codes.
+ *
+ * - If a code is an alias_code: add its canonical_code(s)
+ * - If a code is a canonical_code: add all alias_code(s)
+ */
+export async function expandObservationVocabularyViaAliases(
+  inputCodes: string[],
+  supabaseClient?: any
+): Promise<{ expanded_codes: string[]; trace: string[] }> {
+  const normalized = inputCodes.map(normalizeObsCode).filter(Boolean);
+  const base = new Set<string>(normalized);
+
+  if (base.size === 0) return { expanded_codes: [], trace: [] };
+
+  const rows = await loadObservationAliases(supabaseClient);
+  if (rows.length === 0) return { expanded_codes: Array.from(base), trace: [] };
+
+  const aliasToCanonical = new Map<string, Set<string>>();
+  const canonicalToAlias = new Map<string, Set<string>>();
+
+  for (const r of rows) {
+    if (!aliasToCanonical.has(r.alias_code)) aliasToCanonical.set(r.alias_code, new Set());
+    aliasToCanonical.get(r.alias_code)!.add(r.canonical_code);
+
+    if (!canonicalToAlias.has(r.canonical_code)) canonicalToAlias.set(r.canonical_code, new Set());
+    canonicalToAlias.get(r.canonical_code)!.add(r.alias_code);
+  }
+
+  const expanded = new Set<string>(base);
+  const trace: string[] = [];
+
+  for (const code of base) {
+    const canonicals = aliasToCanonical.get(code);
+    if (canonicals) {
+      for (const c of canonicals) {
+        if (!expanded.has(c)) {
+          expanded.add(c);
+          trace.push(`alias:${code}→${c}`);
+        }
+      }
+    }
+
+    const aliases = canonicalToAlias.get(code);
+    if (aliases) {
+      for (const a of aliases) {
+        if (!expanded.has(a)) {
+          expanded.add(a);
+          trace.push(`canonical:${code}→${a}`);
+        }
+      }
+    }
+  }
+
+  return { expanded_codes: Array.from(expanded), trace };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
