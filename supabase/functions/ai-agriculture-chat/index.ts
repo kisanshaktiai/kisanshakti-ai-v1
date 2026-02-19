@@ -2490,11 +2490,28 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       return generateNoRecommendationsFallback(response, lang);
       
     case 'CLARIFICATION_QUESTION':
+    case 'CLARIFICATION_NEEDED':
+      // Priority 1: question object with language-specific text
       const questionText = lang === 'mr' ? (response.question?.text_mr || '') :
                           lang === 'hi' ? (response.question?.text_hi || '') :
                           (response.question?.text_en || '');
-      // Never silent - if no question text, generate clarification prompt
-      return questionText || generateClarificationPrompt(response, lang);
+      if (questionText) return questionText;
+      
+      // Priority 2: communication.main_message.full_text (ZERO_CODE_GATE path)
+      const commFullText = response.communication?.main_message?.full_text;
+      if (commFullText) {
+        const commText = commFullText[lang] || commFullText['mr'] || commFullText['en'] || '';
+        if (commText) return commText;
+      }
+      
+      // Priority 3: communication.farmer_message (legacy path)
+      if (response.communication?.farmer_message) return response.communication.farmer_message;
+      
+      // Priority 4: response.response (direct response field)
+      if (response.response) return response.response;
+      
+      // Fallback: generate clarification prompt
+      return generateClarificationPrompt(response, lang);
       
     case 'PHOTO_REQUEST':
       return lang === 'mr' ? (response.photo_instructions?.text_mr || '') :
