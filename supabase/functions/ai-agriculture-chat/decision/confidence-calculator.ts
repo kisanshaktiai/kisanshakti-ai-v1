@@ -190,8 +190,8 @@ export class ConfidenceCalculator {
     }
     
     // Boost from multiple rules supporting same cause
-    if (diagnosis?.supporting_rules?.length > 1) {
-      confidence += 0.05 * (diagnosis.supporting_rules.length - 1);
+    if ((diagnosis?.supporting_rules?.length ?? 0) > 1) {
+      confidence += 0.05 * (diagnosis!.supporting_rules!.length - 1);
     }
     
     return Math.min(confidence, 0.95);
