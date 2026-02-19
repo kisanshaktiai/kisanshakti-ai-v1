@@ -211,7 +211,7 @@ function RecommendationCard({ category, language }: { category: RecommendationCa
                 {product.timing && (
                   <div>
                     <span className="text-muted-foreground">{labels.timing}:</span>
-                    <span className="ml-1">{product.timing}</span>
+                    <span className="ml-1">{typeof product.timing === 'object' ? ((product.timing as any)?.reason || (product.timing as any)?.recommended_start || '') : product.timing}</span>
                   </div>
                 )}
                 

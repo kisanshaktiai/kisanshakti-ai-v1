@@ -374,7 +374,7 @@ export function WhatHowWhyCard({
               {how.timing && (
                 <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
                   <Clock className="h-3.5 w-3.5 text-primary" />
-                  <span className="font-medium">{how.timing}</span>
+                  <span className="font-medium">{typeof how.timing === 'object' ? ((how.timing as any)?.reason || (how.timing as any)?.recommended_start || '') : how.timing}</span>
                 </div>
               )}
             </div>
