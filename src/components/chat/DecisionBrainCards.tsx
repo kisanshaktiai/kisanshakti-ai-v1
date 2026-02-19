@@ -39,16 +39,7 @@ export interface LandContextDisplay {
   daysAfterSowing?: number;
 }
 
-// Safe helper to flatten objects to string (prevents React error #31)
-function safeString(val: unknown): string {
-  if (val === null || val === undefined) return '';
-  if (typeof val === 'string') return val;
-  if (typeof val === 'object') {
-    const obj = val as Record<string, unknown>;
-    return obj.reason as string || obj.recommended_start as string || obj.fallback_text as string || JSON.stringify(val);
-  }
-  return String(val);
-}
+import { safeString } from './utils/safe-render';
 
 export interface ActionItem {
   action: string;
@@ -452,7 +443,7 @@ export function DecisionBrainCards({ response }: DecisionBrainCardsProps) {
           animate={{ opacity: 1 }}
           className="text-sm text-foreground leading-relaxed bg-card/50 rounded-xl p-3 border border-border/30 break-words"
         >
-          {response.farmerMessage}
+          {safeString(response.farmerMessage)}
         </motion.div>
       )}
       

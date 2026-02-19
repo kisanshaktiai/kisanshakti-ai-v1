@@ -13,6 +13,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
+import { safeString } from './utils/safe-render';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
@@ -314,7 +315,7 @@ export function WhatHowWhyCard({
         
         <div className="px-4 py-3 bg-card">
           <h3 className="font-bold text-lg text-foreground leading-tight">
-            {what.cause_name}
+            {safeString(what.cause_name)}
           </h3>
           
           {what.symptoms_observed && what.symptoms_observed.length > 0 && (
@@ -325,7 +326,7 @@ export function WhatHowWhyCard({
                   variant="outline" 
                   className="text-xs bg-muted/50"
                 >
-                  {symptom}
+                  {safeString(symptom)}
                 </Badge>
               ))}
               {what.symptoms_observed.length > 4 && (
@@ -359,7 +360,7 @@ export function WhatHowWhyCard({
         <div className="px-4 py-3 bg-card space-y-3">
           {/* Main Action Text */}
           <p className="text-sm font-medium text-foreground leading-relaxed">
-            {how.action_text || 'Monitor the situation and report any changes.'}
+            {safeString(how.action_text) || 'Monitor the situation and report any changes.'}
           </p>
           
           {/* Dosage & Timing Grid */}
@@ -368,13 +369,13 @@ export function WhatHowWhyCard({
               {how.dosage && (
                 <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
                   <Beaker className="h-3.5 w-3.5 text-secondary-foreground" />
-                  <span className="font-medium">{how.dosage}</span>
+                  <span className="font-medium">{safeString(how.dosage)}</span>
                 </div>
               )}
               {how.timing && (
                 <div className="flex items-center gap-2 bg-muted/50 rounded-lg px-3 py-2">
                   <Clock className="h-3.5 w-3.5 text-primary" />
-                  <span className="font-medium">{typeof how.timing === 'object' ? ((how.timing as any)?.reason || (how.timing as any)?.recommended_start || '') : how.timing}</span>
+                  <span className="font-medium">{safeString(how.timing)}</span>
                 </div>
               )}
             </div>
@@ -388,7 +389,7 @@ export function WhatHowWhyCard({
                 <span className="font-semibold text-success">
                   {labels.organicOption}:
                 </span>
-                <span className="ml-1 text-foreground">{how.organic_alternative}</span>
+                <span className="ml-1 text-foreground">{safeString(how.organic_alternative)}</span>
               </div>
             </div>
           )}
@@ -440,7 +441,7 @@ export function WhatHowWhyCard({
               <div className="px-4 py-3 bg-card space-y-3 text-sm">
                 {/* Reason Text */}
                 <p className="text-muted-foreground leading-relaxed">
-                  {why.reason_text}
+                  {safeString(why.reason_text)}
                 </p>
                 
                 {/* Knowledge Text */}
@@ -450,7 +451,7 @@ export function WhatHowWhyCard({
                       <BookOpen className="h-3.5 w-3.5" />
                       <span className="font-semibold">Scientific Basis</span>
                     </div>
-                    <p className="text-muted-foreground">{why.knowledge_text}</p>
+                    <p className="text-muted-foreground">{safeString(why.knowledge_text)}</p>
                   </div>
                 )}
                 
@@ -458,7 +459,7 @@ export function WhatHowWhyCard({
                 {(why.scientific_source || why.icar_package_ref) && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Info className="h-3.5 w-3.5" />
-                    <span>{labels.source}: {why.icar_package_ref || why.scientific_source}</span>
+                    <span>{labels.source}: {safeString(why.icar_package_ref || why.scientific_source)}</span>
                   </div>
                 )}
               </div>

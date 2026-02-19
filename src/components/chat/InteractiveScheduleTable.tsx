@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Save, Edit2, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { safeString } from './utils/safe-render';
 
 export interface ScheduleRow {
   id: string;
@@ -141,7 +142,7 @@ export function InteractiveScheduleTable({
                     "text-sm",
                     row.completed && "text-muted-foreground line-through"
                   )}>
-                    {typeof row.timing === 'object' ? ((row.timing as any)?.reason || (row.timing as any)?.recommended_start || '') : row.timing}
+                    {safeString(row.timing)}
                   </TableCell>
                   <TableCell className={cn(
                     "text-sm",

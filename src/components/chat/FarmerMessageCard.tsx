@@ -26,6 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { safeString, safeStringArray } from './utils/safe-render';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -164,7 +165,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
       <div className="flex items-center gap-2">
         <Leaf className="h-5 w-5 text-primary" />
         <span className="text-lg font-semibold text-foreground">
-          {message.greeting}
+          {safeString(message.greeting)}
         </span>
       </div>
       
@@ -188,12 +189,12 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
           </div>
           <div className="flex-1 space-y-2">
             <p className="text-base font-medium text-foreground leading-relaxed">
-              {message.problem_summary.text}
+              {safeString(message.problem_summary.text)}
             </p>
             {hasProblem && message.problem_summary.severity_indication && (
               <div className="flex flex-wrap gap-2">
                 <SeverityBadge 
-                  severity={message.problem_summary.severity_indication} 
+                  severity={safeString(message.problem_summary.severity_indication)} 
                   language={message.language} 
                 />
               </div>
@@ -201,7 +202,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
             {message.problem_summary.urgency && (
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
-                {message.problem_summary.urgency}
+                {safeString(message.problem_summary.urgency)}
               </div>
             )}
           </div>
@@ -216,21 +217,21 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
             {message.language === 'mr' ? 'कारण' : message.language === 'hi' ? 'कारण' : 'Cause'}
           </h4>
           <p className="text-base text-foreground leading-relaxed">
-            {message.cause_explanation.text}
+            {safeString(message.cause_explanation.text)}
           </p>
           {message.cause_explanation.contributing_factors.length > 0 && (
             <ul className="mt-2 space-y-1">
               {message.cause_explanation.contributing_factors.map((factor, idx) => (
                 <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
                   <span className="text-primary">•</span>
-                  {factor}
+                  {safeString(factor)}
                 </li>
               ))}
             </ul>
           )}
           {message.cause_explanation.why_now && (
             <p className="mt-2 text-sm text-primary/80 italic">
-              {message.cause_explanation.why_now}
+              {safeString(message.cause_explanation.why_now)}
             </p>
           )}
         </div>
@@ -250,7 +251,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                 1
               </span>
               <span className="font-semibold text-foreground">
-                {message.recommended_solution.main_action.title}
+                {safeString(message.recommended_solution.main_action.title)}
               </span>
             </div>
             
@@ -260,14 +261,14 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                   <span className="text-muted-foreground">
                     {message.language === 'mr' ? 'काय वापरावे: ' : message.language === 'hi' ? 'क्या इस्तेमाल करें: ' : 'What to use: '}
                   </span>
-                  {message.recommended_solution.main_action.what_to_use}
+                  {safeString(message.recommended_solution.main_action.what_to_use)}
                 </p>
                 {message.recommended_solution.main_action.how_much_land && (
                   <p className="text-foreground">
                     <span className="text-muted-foreground">
                       {message.language === 'mr' ? 'किती जमीन: ' : message.language === 'hi' ? 'कितनी जमीन: ' : 'For area: '}
                     </span>
-                    {message.recommended_solution.main_action.how_much_land}
+                    {safeString(message.recommended_solution.main_action.how_much_land)}
                   </p>
                 )}
                 {message.recommended_solution.main_action.when && (
@@ -275,7 +276,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                     <span className="text-muted-foreground">
                       {message.language === 'mr' ? 'कधी: ' : message.language === 'hi' ? 'कब: ' : 'When: '}
                     </span>
-                    {message.recommended_solution.main_action.when}
+                    {safeString(message.recommended_solution.main_action.when)}
                   </p>
                 )}
                 {message.recommended_solution.main_action.how_to_apply && (
@@ -283,7 +284,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                     <span className="text-muted-foreground">
                       {message.language === 'mr' ? 'कसे: ' : message.language === 'hi' ? 'कैसे: ' : 'How: '}
                     </span>
-                    {message.recommended_solution.main_action.how_to_apply}
+                    {safeString(message.recommended_solution.main_action.how_to_apply)}
                   </p>
                 )}
               </div>
@@ -296,10 +297,10 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                   <span className="bg-muted text-muted-foreground text-xs px-2 py-0.5 rounded-full font-medium">
                     {idx + 2}
                   </span>
-                  <span className="font-medium text-foreground">{action.action}</span>
+                  <span className="font-medium text-foreground">{safeString(action.action)}</span>
                 </div>
                 {action.details && (
-                  <p className="text-sm text-muted-foreground ml-6">{action.details}</p>
+                  <p className="text-sm text-muted-foreground ml-6">{safeString(action.details)}</p>
                 )}
               </div>
             ))}
@@ -328,11 +329,11 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
           <CollapsibleContent className="mt-2">
             <div className="p-3 rounded-xl bg-destructive/5 border border-destructive/20 space-y-2">
               {message.safety_precautions.mandatory.map((item, idx) => (
-                <p key={idx} className="text-sm text-foreground">{item}</p>
+                <p key={idx} className="text-sm text-foreground">{safeString(item)}</p>
               ))}
               {message.safety_precautions.emergency && (
                 <p className="text-sm text-destructive font-medium mt-2 pt-2 border-t border-destructive/20">
-                  ⚠️ {message.safety_precautions.emergency}
+                  ⚠️ {safeString(message.safety_precautions.emergency)}
                 </p>
               )}
             </div>
@@ -360,11 +361,11 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-2">
             <div className="p-3 rounded-xl bg-muted/30 border border-border space-y-1 text-sm">
-              {message.follow_up.day_3 && <p><strong>Day 3:</strong> {message.follow_up.day_3}</p>}
-              {message.follow_up.day_5 && <p><strong>Day 5:</strong> {message.follow_up.day_5}</p>}
-              {message.follow_up.day_7 && <p><strong>Day 7:</strong> {message.follow_up.day_7}</p>}
+              {message.follow_up.day_3 && <p><strong>Day 3:</strong> {safeString(message.follow_up.day_3)}</p>}
+              {message.follow_up.day_5 && <p><strong>Day 5:</strong> {safeString(message.follow_up.day_5)}</p>}
+              {message.follow_up.day_7 && <p><strong>Day 7:</strong> {safeString(message.follow_up.day_7)}</p>}
               {message.follow_up.alert_condition && (
-                <p className="text-destructive mt-2">{message.follow_up.alert_condition}</p>
+                <p className="text-destructive mt-2">{safeString(message.follow_up.alert_condition)}</p>
               )}
             </div>
           </CollapsibleContent>
@@ -375,13 +376,13 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
       <div className="flex items-center justify-between pt-2 border-t border-border">
         <ConfidenceBadge label={message.confidence_disclosure.confidence_label} />
         <p className="text-xs text-muted-foreground max-w-[60%] text-right">
-          {message.confidence_disclosure.message}
+          {safeString(message.confidence_disclosure.message)}
         </p>
       </div>
       
       {/* Closing */}
       <p className="text-sm text-muted-foreground italic text-center pt-2">
-        {message.closing}
+        {safeString(message.closing)}
       </p>
     </motion.div>
   );
