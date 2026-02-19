@@ -88,6 +88,7 @@ import {
   mapToObservationCodes,
   toObservationKeySet,
   hasMeaningfulCodes,
+  expandObservationVocabularyViaAliases,
   OBSERVATION_CODE_MAPPER_VERSION,
   type MappedObservationCodes
 } from '../decision/observation-code-mapper.ts';
@@ -2118,6 +2119,22 @@ export class AIAgentOrchestrator {
       // STEP 2: Deterministic mapper converts English → ObservationKeys
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
+
+      // STEP 2b: Vocabulary bridge expansion (generic ↔ specific)
+      // Adds canonical codes for any aliases and also adds aliases for any canonical codes.
+      let expandedObservationCodes: string[] = (mappedCodes?.observation_codes || []) as unknown as string[];
+      try {
+        const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase);
+        if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
+          console.log(`      🔁 Alias expansion: ${expandedObservationCodes.length} → ${expanded.expanded_codes.length} codes`);
+        }
+        expandedObservationCodes = expanded.expanded_codes;
+        if (expanded.trace.length > 0) {
+          agentsUsed.push('OBSERVATION_ALIAS_EXPANDER');
+        }
+      } catch (e) {
+        console.warn(`      ⚠️ Alias expansion failed, continuing without it: ${(e as Error)?.message || String(e)}`);
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // FIX 3: ZERO-CODE CLARIFICATION GATE
@@ -2223,7 +2240,7 @@ export class AIAgentOrchestrator {
       const intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
       const intentConf = typeof semanticExtraction?.intent_confidence === 'number' 
         ? semanticExtraction.intent_confidence : 0;
-      const obsCodesList = mappedCodes?.observation_codes || [];
+      const obsCodesList = expandedObservationCodes || [];
       
       console.log(`      Intent: ${intentCode} (${(intentConf * 100).toFixed(0)}% confidence)`);
       console.log(`      Codes: [${obsCodesList.slice(0, 5).join(', ')}${obsCodesList.length > 5 ? '...' : ''}]`);
@@ -2258,11 +2275,11 @@ export class AIAgentOrchestrator {
         ? semanticExtraction.intent_confidence
         : (typeof semanticExtraction?.confidence === 'number' ? semanticExtraction.confidence : 0.5);
       
-      if (mappedCodes.observation_codes.length > 0) {
-        console.log(`      🔄 MERGING ${mappedCodes.observation_codes.length} LLM-extracted codes into induction result`);
+      if (expandedObservationCodes.length > 0) {
+        console.log(`      🔄 MERGING ${expandedObservationCodes.length} LLM+alias-expanded codes into induction result`);
         
-        // Convert ObservationKey codes to symptom symbols for the induction result
-        for (const code of mappedCodes.observation_codes) {
+        // Convert codes to symptom symbols for the induction result
+        for (const code of expandedObservationCodes) {
           // Check if symptom already exists in inductionResult
           const existingSymptom = inductionResult.symptoms.find(s => s.symbol === code);
           if (!existingSymptom) {
