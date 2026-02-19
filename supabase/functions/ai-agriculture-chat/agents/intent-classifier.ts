@@ -187,6 +187,9 @@ async function callLLMWithRetry(
 function safeExtractJson(content: string): { intent_code: string; confidence: number } | null {
   if (!content || typeof content !== 'string') return null;
   
+  // Log raw response for debugging (first 300 chars)
+  console.log(`   🔍 [SafeExtract] Raw LLM response (${content.length} chars): "${content.substring(0, 300)}"`);
+  
   let cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
   
   // Strategy 1: Direct parse
@@ -207,8 +210,8 @@ function safeExtractJson(content: string): { intent_code: string; confidence: nu
     } catch { /* continue */ }
   }
   
-  // Strategy 3: Any valid JSON object
-  const anyJsonMatch = cleaned.match(/\{[\s\S]*?\}/);
+  // Strategy 3: Any valid JSON object with greedy match
+  const anyJsonMatch = cleaned.match(/\{[\s\S]*\}/);
   if (anyJsonMatch) {
     try {
       const extracted = JSON.parse(anyJsonMatch[0]);
@@ -217,6 +220,16 @@ function safeExtractJson(content: string): { intent_code: string; confidence: nu
         return extracted;
       }
     } catch { /* continue */ }
+  }
+  
+  // Strategy 4: Extract intent_code from unstructured text (Gemini sometimes returns plain text)
+  const intentMatch = cleaned.match(/intent_code["\s:]*["']?([A-Z_]+)["']?/i);
+  const confMatch = cleaned.match(/confidence["\s:]*([0-9.]+)/i);
+  if (intentMatch) {
+    const code = intentMatch[1].toUpperCase();
+    const conf = confMatch ? parseFloat(confMatch[1]) : 0.5;
+    console.log(`   📋 [SafeExtract] Extracted intent from unstructured text: ${code} (${conf})`);
+    return { intent_code: code, confidence: Math.min(1, Math.max(0, conf)) };
   }
   
   console.warn(`   ⚠️ [SafeExtract] No valid JSON found in LLM response`);
@@ -254,6 +267,30 @@ export async function classifyFarmerIntent(
       .replace('{land_context_block}', landContextBlock)
       .replace('{farmer_message}', farmerMessage);
     
+    // CRITICAL FIX: Gemini's OpenAI-compatible endpoint does NOT reliably support
+    // response_format: { type: 'json_object' }. It returns truncated/non-JSON responses.
+    // Only use response_format for OpenAI provider. For Gemini, rely on prompt instructions.
+    const isGemini = provider === 'gemini' || provider === 'google';
+    const requestBody: any = {
+      model,
+      messages: [
+        { 
+          role: 'system', 
+          content: 'You are an intent classifier for agricultural queries. Return ONLY valid JSON. No explanation. No markdown. The farmer may use romanized regional languages (Latin script for Marathi, Hindi, etc.). Output format: {"intent_code": "...", "confidence": 0.0-1.0}' 
+        },
+        { role: 'user', content: prompt }
+      ],
+      temperature: 0.1,
+      max_tokens: 1024,  // Gemini 2.5 Flash uses "thinking" tokens internally, needs headroom
+    };
+    
+    // Only add response_format for OpenAI - Gemini breaks with it
+    if (!isGemini) {
+      requestBody.response_format = { type: 'json_object' };
+    }
+    
+    console.log(`   🔧 [IntentClassifier] Provider: ${provider}, Model: ${model}, JSON mode: ${!isGemini}`);
+    
     const llmStartTime = Date.now();
     const response = await callLLMWithRetry(endpoint, {
       method: 'POST',
@@ -261,16 +298,7 @@ export async function classifyFarmerIntent(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: 'You are an intent classifier for agricultural queries. Return ONLY valid JSON. The farmer may use romanized regional languages (Latin script for Marathi, Hindi, etc.).' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.1,
-        max_tokens: 100,
-        response_format: { type: 'json_object' }
-      })
+      body: JSON.stringify(requestBody)
     });
     modelLatency = Date.now() - llmStartTime;
     
@@ -290,25 +318,29 @@ export async function classifyFarmerIntent(
     if (!parsed) {
       console.warn(`   ⚠️ LLM JSON extraction failed on first attempt. Retrying with stricter prompt...`);
       
-      // RETRY: One more attempt with a strict JSON-only prompt
+      // RETRY: One more attempt with a very strict prompt
       try {
         const retryStartTime = Date.now();
+        const retryBody: any = {
+          model,
+          messages: [
+            { role: 'system', content: 'You are a JSON-only classifier. Output MUST be valid JSON. Nothing else. Format: {"intent_code": "CATEGORY", "confidence": 0.8}' },
+            { role: 'user', content: `Classify this agricultural query. Query: "${farmerMessage}"\n\nValid intent_codes: EMERGENCE_FAILURE, GROWTH_ANOMALY, COLOR_CHANGE, WILTING_OR_DROOPING, LEAF_DAMAGE_VISIBLE, LEAF_MARKS_OR_SPOTS, STEM_DAMAGE, ROOT_OR_BASE_PROBLEM, PEST_PRESENCE_VISIBLE, DISEASE_LIKE_PATTERN, WATER_STRESS_SIGNAL, NUTRIENT_STRESS_SIGNAL, WEED_PROBLEM, FERTILIZER_SCHEDULE, IRRIGATION_QUERY, HARVEST_TIMING, GENERAL_CROP_INFO, UNKNOWN_OBSERVATION\n\nJSON:` }
+          ],
+          temperature: 0,
+          max_tokens: 1024,
+        };
+        if (!isGemini) {
+          retryBody.response_format = { type: 'json_object' };
+        }
+        
         const retryResponse = await callLLMWithRetry(endpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`
           },
-          body: JSON.stringify({
-            model,
-            messages: [
-              { role: 'system', content: 'Return ONLY valid JSON with intent_code and confidence fields. No explanation. No markdown. No additional text.' },
-              { role: 'user', content: `Classify this agricultural query into an intent. Query: "${farmerMessage}"\n\nReturn JSON: {"intent_code": "...", "confidence": 0.0-1.0}` }
-            ],
-            temperature: 0,
-            max_tokens: 80,
-            response_format: { type: 'json_object' }
-          })
+          body: JSON.stringify(retryBody)
         });
         const retryLatency = Date.now() - retryStartTime;
         
@@ -374,65 +406,85 @@ export async function classifyFarmerIntent(
 
 function emergencyKeywordFallback(message: string): IntentClassification | null {
   const msg = message.toLowerCase();
+  // Also keep original case for Devanagari matching (toLowerCase may not affect it, but be safe)
+  const original = message;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL: Death/dying patterns - MUST come early (high urgency)
+  // मेला/मेले/मेलं = died, सुकला/सुकले = dried, मरतो/मरत = dying
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (/मेला|मेले|मेलं|मरत|मरून|सुकल|सुकत|सुकून|वाळल|वाळत|मर\s*गया|मर\s*रहा|सूख|जळ|dried|dead|dying/i.test(original)) {
+    return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.6 };
+  }
+  
+  // Wilting/drooping (Devanagari + Romanized)
+  if (/मळमळ|मुरझ|wilt|droop|कोमेज|लोळ|झुक|\bmel[ae]\b|\bsukl[ae]\b|\bsukle\b|\bmela\b/i.test(original)) {
+    return { intent_code: 'WILTING_OR_DROOPING' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Growth anomaly - फुट कमी (poor tillering), वाढ कमी/नाही (poor growth)
+  if (/फुट.*कमी|फुट.*नाही|वाढ.*कमी|वाढ.*नाही|वाढ.*मंद|वाढ.*थांब|बढ़.*कम|बढ़.*रुक|stunted|slow.*growth|poor.*growth|फुटवा|tillering/i.test(original)) {
+    return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.6 };
+  }
   
   // Weed-related (Devanagari + English + Romanized)
-  if (/तण|खरपतवार|weed|गवत.*वाढ|घास|निंदणी|निराई|आंतरमशागत|களை|కలుపు|আগাছা|નીંદણ|ಕಳೆ|ਨਦੀਨ|\btan\b|nindani|gawat/i.test(msg)) {
+  if (/तण|खरपतवार|weed|गवत.*वाढ|घास|निंदणी|निराई|आंतरमशागत|களை|కలుపు|আগাছা|નીંદણ|ಕಳೆ|ਨਦੀਨ|\btan\b|nindani|gawat/i.test(original)) {
     return { intent_code: 'WEED_PROBLEM' as IntentCode, confidence: 0.6 };
   }
   
   // Fertilizer/nutrition (Devanagari + English + Romanized)
-  if (/खत|उर्वरक|खाद|fertiliz|nutrient|पोषण|\bkhat\b|\bkhaad\b/i.test(msg)) {
+  if (/खत|उर्वरक|खाद|fertiliz|nutrient|पोषण|\bkhat\b|\bkhaad\b/i.test(original)) {
     return { intent_code: 'FERTILIZER_SCHEDULE' as IntentCode, confidence: 0.6 };
   }
   
   // Irrigation/water (Devanagari + English + Romanized)
-  if (/पाणी|सिंचन|सिंचाई|irrigat|water|\bpani\b|\bpaani\b/i.test(msg)) {
+  if (/पाणी|सिंचन|सिंचाई|irrigat|water|\bpani\b|\bpaani\b/i.test(original)) {
     return { intent_code: 'IRRIGATION_QUERY' as IntentCode, confidence: 0.6 };
   }
   
   // Pest/insect (Devanagari + English + Romanized)
-  if (/किडा|किडे|कीट|कीड़|insect|pest|बोंड|अळी|\bkidi\b|\bkida\b|\bali\b|\balu\b/i.test(msg)) {
+  if (/किडा|किडे|कीट|कीड़|insect|pest|बोंड|अळी|हुमणी|खोडकिडा|\bkidi\b|\bkida\b|\bali\b|\balu\b/i.test(original)) {
     return { intent_code: 'PEST_PRESENCE_VISIBLE' as IntentCode, confidence: 0.5 };
   }
   
   // Disease (Devanagari + English + Romanized)
-  if (/रोग|बीमारी|disease|fungus|करपा|तांबेरा|\brog\b/i.test(msg)) {
+  if (/रोग|बीमारी|disease|fungus|करपा|तांबेरा|\brog\b/i.test(original)) {
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.5 };
   }
   
-  // Leaf spots/marks (Romanized: thimaki, thipke, dag, dhabbe)
-  if (/thim[ae]ki|thipke|ठिपके|dag\b|dhabbe|spots?.*leaf|leaf.*spots?/i.test(msg)) {
+  // Leaf spots/marks
+  if (/thim[ae]ki|thipke|ठिपके|डाग|धब्बे|dag\b|dhabbe|spots?.*leaf|leaf.*spots?/i.test(original)) {
     return { intent_code: 'LEAF_MARKS_OR_SPOTS' as IntentCode, confidence: 0.55 };
   }
   
   // Yellowing (Devanagari + Romanized)
-  if (/पिवळ|पीला|yellow|सुक|\bpival[ae]?\b|\bpivla\b|\bpila\b/i.test(msg)) {
+  if (/पिवळ|पीला|yellow|पान.*रंग|\bpival[ae]?\b|\bpivla\b|\bpila\b/i.test(original)) {
     return { intent_code: 'COLOR_CHANGE' as IntentCode, confidence: 0.5 };
   }
   
-  // Wilting/dying (Devanagari + Romanized: mela, sukla = died/wilted)
-  if (/मळमळ|मुरझ|wilt|droop|सुकत|\bmel[ae]\b|\bsukl[ae]\b|\bsukle\b/i.test(msg)) {
-    return { intent_code: 'WILTING_OR_DROOPING' as IntentCode, confidence: 0.5 };
-  }
-  
-  // Combined romanized: crop affected/died (e.g., "us mela" = sugarcane died)
+  // Combined romanized: crop affected/died
   if (/\b(us|oos|kapus|soybean|tur)\b/i.test(msg) && /\b(mel[ae]|sukl[ae]|dead|marat?|affect)/i.test(msg)) {
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.5 };
   }
   
+  // Combined Devanagari: उस/ऊस (sugarcane) + problem indicator
+  if (/उस|ऊस/i.test(original) && /मेला|सुक|कमी|रोग|किडा|वाळ|जळ|करावे|उपाय/i.test(original)) {
+    return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.55 };
+  }
+  
   // Stem damage / borer
-  if (/खोड|तना|stem|borer|छेदक|\bkhod\b/i.test(msg)) {
+  if (/खोड|तना|stem|borer|छेदक|\bkhod\b/i.test(original)) {
     return { intent_code: 'STEM_DAMAGE' as IntentCode, confidence: 0.5 };
   }
   
   // Harvest
-  if (/कापणी|काटाई|harvest|तोड|\bkapni\b|\bkapani\b/i.test(msg)) {
+  if (/कापणी|काटाई|harvest|तोड|\bkapni\b|\bkapani\b/i.test(original)) {
     return { intent_code: 'HARVEST_TIMING' as IntentCode, confidence: 0.5 };
   }
   
-  // Growth issues
-  if (/वाढ.*कमी|वाढ.*नाही|stunted|slow.*growth/i.test(msg)) {
-    return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.5 };
+  // Generic "what to do" / "remedy" with any crop mention (catch-all for treatment queries)
+  if (/काय करावे|उपाय|इलाज|क्या करें|kya kare|upay|remedy|treatment/i.test(original)) {
+    return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.3 };
   }
   
   return null;
