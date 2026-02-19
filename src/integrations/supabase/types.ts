@@ -23098,6 +23098,32 @@ export type Database = {
           },
         ]
       }
+      observation_aliases: {
+        Row: {
+          alias_code: string
+          canonical_code: string
+          created_at: string | null
+        }
+        Insert: {
+          alias_code: string
+          canonical_code: string
+          created_at?: string | null
+        }
+        Update: {
+          alias_code?: string
+          canonical_code?: string
+          created_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "observation_aliases_canonical_code_fkey"
+            columns: ["canonical_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
+          },
+        ]
+      }
       observation_intent_master: {
         Row: {
           allowed_observation_groups: string[] | null
@@ -23148,25 +23174,34 @@ export type Database = {
       }
       observation_master: {
         Row: {
+          affected_plant_part: string | null
+          canonical_group: string | null
           created_at: string | null
           description: string
           is_diagnostic: boolean | null
+          observation_category: string | null
           observation_code: string
           symptom_category: string | null
           updated_at: string | null
         }
         Insert: {
+          affected_plant_part?: string | null
+          canonical_group?: string | null
           created_at?: string | null
           description: string
           is_diagnostic?: boolean | null
+          observation_category?: string | null
           observation_code: string
           symptom_category?: string | null
           updated_at?: string | null
         }
         Update: {
+          affected_plant_part?: string | null
+          canonical_group?: string | null
           created_at?: string | null
           description?: string
           is_diagnostic?: boolean | null
+          observation_category?: string | null
           observation_code?: string
           symptom_category?: string | null
           updated_at?: string | null
