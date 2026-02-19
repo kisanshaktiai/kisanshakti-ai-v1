@@ -255,8 +255,45 @@ export class SymbolicReasoner {
       for (const rule of rules) {
         rulesEvaluated++;
         
+        // ═══════════════════════════════════════════════════════════════════════
+        // FIX 1: NDVI/ABIOTIC STRESS RULE GUARD
+        // Skip abiotic rules when biotic (pest/disease) evidence exists
+        // ═══════════════════════════════════════════════════════════════════════
+        const ruleCategory = rule.category?.toLowerCase() || '';
+        const isAbioticRule = ['water_stress', 'irrigation', 'stress', 'ndvi'].includes(ruleCategory);
+        
+        if (isAbioticRule && facts.has_pest_evidence) {
+          console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} (category=${ruleCategory}) - pest evidence present`);
+          continue;
+        }
+        
+        // Check if biotic observations exist in all_observations
+        const BIOTIC_OBS_KEYS = ['BORE_HOLES', 'DEAD_HEART', 'INSECT_PRESENCE', 'FRASS', 'WEBBING', 
+          'STEM_BORING_MARKS', 'LEAF_CHEWING', 'DEAD_HEART_PRESENT', 'INSECT_PRESENCE_CONFIRMED',
+          'FRASS_VISIBLE', 'WEBBING_PRESENT', 'BORER_SUSPECTED'];
+        const hasBioticObs = (facts.all_observations || []).some(obs => 
+          BIOTIC_OBS_KEYS.some(key => obs.includes(key))
+        );
+        
+        if (isAbioticRule && hasBioticObs) {
+          console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} - biotic observations detected in all_observations`);
+          continue;
+        }
+        
+        // Block NDVI-only rules unless intent explicitly indicates stress/irrigation
+        const conditionsStr = JSON.stringify(rule.conditions_json || {}).toLowerCase();
+        const isNdviOnlyRule = (conditionsStr.includes('ndvi_level') || conditionsStr.includes('ndvi_trend')) && 
+                               !conditionsStr.includes('primary_symptom') && !conditionsStr.includes('observation');
+        const stressIntents = ['WATER_STRESS_SIGNAL', 'IRRIGATION_QUERY', 'IRRIGATION_SCHEDULING'];
+        const currentIntent = facts.user_query?.match(/\[INTENT:([^\]]+)\]/)?.[1] || '';
+        
+        if (isNdviOnlyRule && !stressIntents.includes(currentIntent)) {
+          console.log(`   🚫 [NDVIGuard] Skipping NDVI-only rule ${rule.rule_id} - intent ${currentIntent || 'NONE'} is not stress/irrigation`);
+          continue;
+        }
+        
         // Bug 1 Fix: Category-based exclusion - skip nutrition rules when pest evidence exists
-        if (facts.has_pest_evidence && rule.category?.toLowerCase() === 'nutrition') {
+        if (facts.has_pest_evidence && ruleCategory === 'nutrition') {
           console.log(`   🚫 [PestExclusion] Skipping nutrition rule ${rule.rule_id} - pest evidence present`);
           continue;
         }
@@ -392,9 +429,10 @@ export class SymbolicReasoner {
       // 3. Rank hypotheses
       const rankedHypotheses = this.rankHypotheses(hypotheses, facts);
       
-    // 4. Sort recommendations by CATEGORY PRIORITY → data_authority_rank → priority (P2-1 Fix)
+    // 4. Sort by AUTHORITY HIERARCHY: SAFETY > BIOTIC > ABIOTIC > WEATHER > NDVI
       const CATEGORY_PRIORITY: Record<string, number> = {
-        pest: 1, disease: 2, ipm: 2, water_stress: 3, stress: 3, irrigation: 3, nutrition: 4, general: 5
+        safety: 0, pest: 1, disease: 2, ipm: 2, nutrition: 4, deficiency: 4,
+        water_stress: 5, stress: 5, irrigation: 5, weather: 6, ndvi: 7, general: 8
       };
       firedRules.sort((a, b) => {
         const catA = CATEGORY_PRIORITY[a.category?.toLowerCase()] || 3;

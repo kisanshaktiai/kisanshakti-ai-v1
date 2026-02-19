@@ -1759,7 +1759,7 @@ export class AIAgentOrchestrator {
                   reason: 'Built from layered_rule_result.primary_decision in OPTION_SELECTED path'
                 },
                 application_details: {
-                  product_name: layeredPrimaryDecision.action_text?.includes('Apply') ? 'See action text' : 'Cultural practice',
+                  product_name: layeredPrimaryDecision.active_ingredient || (layeredPrimaryDecision.action_text?.split(' ').slice(1, 3).join(' ')) || 'IPM',
                   product_type: 'IPM',
                   action_text: layeredPrimaryDecision.action_text,
                   reason_text: layeredPrimaryDecision.reason_text,
@@ -1796,7 +1796,7 @@ export class AIAgentOrchestrator {
                     reason: 'Built from matched_responses fallback in OPTION_SELECTED path'
                   },
                   application_details: {
-                    product_name: 'See action text',
+                    product_name: (firstMatch as any).active_ingredient || (firstMatch.action_text?.split(' ').slice(1, 3).join(' ')) || 'IPM',
                     product_type: 'IPM',
                     action_text: firstMatch.action_text,
                     reason_text: firstMatch.reason_text,
@@ -2118,6 +2118,62 @@ export class AIAgentOrchestrator {
       // STEP 2: Deterministic mapper converts English → ObservationKeys
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // FIX 3: ZERO-CODE CLARIFICATION GATE
+      // If mapper returns zero meaningful codes AND intent is symptom-based,
+      // force clarification — do NOT enter symbolic brain with empty observations
+      // ═══════════════════════════════════════════════════════════════════════════
+      const symptomBasedIntents = [
+        'EMERGENCE_FAILURE', 'GROWTH_ANOMALY', 'COLOR_CHANGE', 'WILTING_OR_DROOPING',
+        'LEAF_DAMAGE_VISIBLE', 'LEAF_MARKS_OR_SPOTS', 'STEM_DAMAGE', 'ROOT_OR_BASE_PROBLEM',
+        'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN', 'UNKNOWN_OBSERVATION'
+      ];
+      const currentIntentForGate = semanticExtraction?.intent_code || 'UNKNOWN';
+      const isSymptomBasedIntent = symptomBasedIntents.includes(currentIntentForGate);
+      
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent) {
+        console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
+        console.log(`   → Forcing CLARIFICATION path, will NOT enter symbolic brain`);
+        agentsUsed.push('ZERO_CODE_CLARIFICATION_GATE');
+        
+        // Generate clarification using crop/stage context
+        const clarificationLandCtx = landContext ? {
+          crop: landContext.current_crop || landContext.crop,
+          stage: landContext.growth_stage || landContext.stage,
+          das: landContext.days_since_sowing
+        } : null;
+        
+        const clarificationMessage = clarificationLandCtx
+          ? `I understand you're reporting an issue with your ${clarificationLandCtx.crop} crop (${clarificationLandCtx.stage} stage). Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`
+          : `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+        
+        return {
+          success: true,
+          response: clarificationMessage,
+          communication: {
+            farmer_message: clarificationMessage,
+            message_type: 'CLARIFICATION_QUESTION',
+            decision_brain_source: false,
+            actions_returned: [],
+            metadata: {
+              confidence: 0.3,
+              trace_id: traceId,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              gate_triggered: 'ZERO_CODE_CLARIFICATION'
+            }
+          } as any,
+          metadata: {
+            confidence: 0.3,
+            safety_status: 'SAFE',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId
+          }
+        };
+      }
       
       // CRASH-PROOF LOGGING: Use safe accessors for all fields (v5.1.0 SemanticExtraction)
       const intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
@@ -2510,35 +2566,19 @@ export class AIAgentOrchestrator {
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // LLM FAILSAFE: When LLM failed but land context exists, force symbolic path
-      // This prevents dead-end responses when we have crop/stage data available
+      // FIX 4: REMOVED LLM_FAILSAFE — replaced with clarification-only path
+      // When LLM fails but land context exists, force clarification instead of
+      // artificially boosting coverage to allow ungrounded symbolic execution
       // ═══════════════════════════════════════════════════════════════════════════
       const llmFailedForFailsafe = intentCode === 'UNKNOWN_OBSERVATION' && intentConf < 0.2;
       const hasLandContextForFailsafe = landContext && landContext.current_crop && landContext.growth_stage;
       
       if (llmFailedForFailsafe && hasLandContextForFailsafe) {
-        console.log(`\n🚑 [LLM_FAILSAFE] LLM failed (intent=${intentCode}, conf=${(intentConf * 100).toFixed(0)}%) but land context available:`);
+        console.log(`\n🚑 [LLM_FAILED_CLARIFICATION] LLM failed (intent=${intentCode}, conf=${(intentConf * 100).toFixed(0)}%) — forcing clarification path`);
         console.log(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, DAS: ${landContext.days_since_sowing || '?'}`);
-        console.log(`   → Boosting induction coverage to allow symbolic evaluation`);
-        
-        // Boost coverage minimums so induction gate opens
-        if (inductionResult.symbol_coverage < 0.25) {
-          inductionResult.symbol_coverage = 0.25;
-        }
-        if (inductionResult.aggregated_confidence < 0.4) {
-          inductionResult.aggregated_confidence = 0.4;
-        }
-        // Ensure crop symbol is present
-        if (!inductionResult.crop || inductionResult.crop.symbol === 'UNKNOWN_CROP') {
-          inductionResult.crop = {
-            symbol: landContext.current_crop.toUpperCase(),
-            source: 'LAND_CONTEXT_FAILSAFE'
-          };
-        }
-        if (inductionResult.total_symbols_extracted < 1) {
-          inductionResult.total_symbols_extracted = 1;
-        }
-        agentsUsed.push('LLM_FAILSAFE_OVERRIDE');
+        console.log(`   → Will NOT boost coverage. Generating crop-stage-aware clarification instead.`);
+        agentsUsed.push('LLM_FAILED_CLARIFICATION');
+        // Do NOT boost inductionResult — let shouldRunSymbolicBrain remain false
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -2552,8 +2592,6 @@ export class AIAgentOrchestrator {
       // FIX: HARD BLOCK SYMBOLIC BRAIN WHEN ZERO SYMPTOMS EXTRACTED
       // A crop symbol alone (e.g., SUGARCANE) is NOT sufficient for PEST/DISEASE rules
       // BUT: Irrigation, crop health, and weather queries DON'T need symptoms
-      // LLM FAILSAFE: When LLM failed with land context, allow symptom-free symbolic
-      // to generate clarification questions
       // ═══════════════════════════════════════════════════════════════════════════
       const hasSymptoms = inductionResult.symptoms.length > 0;
       
@@ -2561,27 +2599,34 @@ export class AIAgentOrchestrator {
       const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'GENERAL_INFO', 'GREETING'];
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
-      // LLM failsafe allows symbolic brain even without symptoms to generate clarification
-      const llmFailsafeActive = llmFailedForFailsafe && hasLandContextForFailsafe;
-      const shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute || llmFailsafeActive);
+      // FIX 4: LLM failsafe NO LONGER allows symbolic brain — clarification only
+      let shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute);
       
-      if (!hasSymptoms && !isSymptomFreeRoute && !llmFailsafeActive && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // FIX 7: HARD INVARIANT — Block rule firing when zero observations + UNKNOWN intent
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (shouldRunSymbolicBrain && !hasSymptoms && !isSymptomFreeRoute) {
+        const gateIntentCode = semanticExtraction?.intent_code || inductionResult?.intent_code || 'UNKNOWN';
+        if (gateIntentCode === 'UNKNOWN_OBSERVATION' || gateIntentCode === 'UNKNOWN') {
+          console.log(`\n🚫 [INVARIANT_GATE] Blocking symbolic brain: zero observations + intent=${gateIntentCode}`);
+          shouldRunSymbolicBrain = false;
+          agentsUsed.push('INVARIANT_GATE_BLOCKED');
+        }
+      }
+      
+      if (!hasSymptoms && !isSymptomFreeRoute && (inductionCoverageSufficient || inductionConfidenceSufficient)) {
         console.log(`\n⚠️ [INDUCTION_GATE] Blocking symbolic brain: coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}% but symptoms=0`);
         console.log(`   → Crop detected: ${inductionResult.crop?.symbol || 'NONE'}`);
         console.log(`   → Total symbols: ${inductionResult.total_symbols_extracted} (but none are symptoms)`);
         console.log(`   → Route: ${queryRoute.route} (requires symptoms)`);
         console.log(`   → Forcing CLARIFICATION path instead of empty rule matching`);
         agentsUsed.push('SYMPTOM_GATE_BLOCKED');
-      } else if (llmFailsafeActive && !hasSymptoms) {
-        console.log(`\n🚑 [LLM_FAILSAFE] Allowing symbolic brain WITHOUT symptoms (LLM failed, land context available)`);
-        console.log(`   → Will generate clarification question based on crop/stage context`);
-        agentsUsed.push('LLM_FAILSAFE_SYMBOLIC');
       } else if (isSymptomFreeRoute && !hasSymptoms) {
         console.log(`\n✅ [INDUCTION_GATE] Allowing symbolic brain for ${queryRoute.route} route WITHOUT symptoms (uses crop/stage/NDVI rules)`);
         agentsUsed.push('SYMPTOM_FREE_ROUTE');
       }
       
-      console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}${llmFailsafeActive ? ' [LLM_FAILSAFE]' : ''}`);
+      console.log(`      📊 Induction Gate: coverage_ok=${inductionCoverageSufficient}, confidence_ok=${inductionConfidenceSufficient}, has_symptoms=${hasSymptoms}, run_symbolic=${shouldRunSymbolicBrain}`);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 2: OBSERVATION EXTRACTION (LLM, STRICT)
@@ -4806,6 +4851,50 @@ export class AIAgentOrchestrator {
                 authoritativeLandState || {}
               );
               layeredRuleResult.confidence_in_result = confidenceScore.overall;
+              
+              // ═══════════════════════════════════════════════════════════════════════════
+              // FIX 8B: POST-DECISION VALIDATION — Block misrouted biotic→abiotic decisions
+              // If farmer observations contain biotic indicators but top rule is abiotic,
+              // filter out abiotic rules and re-select from biotic-only rules
+              // ═══════════════════════════════════════════════════════════════════════════
+              const BIOTIC_INDICATORS = new Set([
+                'BORE', 'HOLES', 'DEAD_HEART', 'INSECT', 'FRASS', 'WEBBING',
+                'CHEWING', 'LARVAE', 'BORING', 'STEM_BORING_MARKS', 'DEAD_HEART_PRESENT',
+                'INSECT_PRESENCE_CONFIRMED', 'FRASS_VISIBLE', 'WEBBING_PRESENT', 'LEAF_CHEWING',
+                'BORER_SUSPECTED'
+              ]);
+              const ABIOTIC_CATEGORIES = new Set(['irrigation', 'nutrition', 'ndvi', 'water_stress', 'stress', 'weather']);
+              
+              const allObsFlat = symbolicFacts?.all_observations || [];
+              const hasBioticEvidence = allObsFlat.some((obs: string) => 
+                [...BIOTIC_INDICATORS].some(indicator => obs.toUpperCase().includes(indicator))
+              );
+              
+              if (hasBioticEvidence && symbolicResult.recommendations.length > 0) {
+                const topRule = symbolicResult.recommendations[0];
+                const topCategory = (topRule.category || '').toLowerCase();
+                
+                if (ABIOTIC_CATEGORIES.has(topCategory)) {
+                  console.log(`\n🚨 [MISROUTE_DETECTED] Biotic symptoms routed to abiotic rule!`);
+                  console.log(`   Top rule: ${topRule.rule_id} (category=${topCategory})`);
+                  console.log(`   Farmer observations include biotic indicators`);
+                  console.log(`   → Filtering to biotic-only rules`);
+                  
+                  const bioticRules = symbolicResult.recommendations.filter((r: any) => {
+                    const cat = (r.category || '').toLowerCase();
+                    return !ABIOTIC_CATEGORIES.has(cat);
+                  });
+                  
+                  if (bioticRules.length > 0) {
+                    symbolicResult.recommendations = bioticRules;
+                    console.log(`   → Re-selected ${bioticRules.length} biotic rules, top: ${bioticRules[0].rule_id}`);
+                    agentsUsed.push('POST_DECISION_MISROUTE_CORRECTED');
+                  } else {
+                    console.log(`   → No biotic rules available, keeping original (needs clarification)`);
+                    agentsUsed.push('POST_DECISION_MISROUTE_NO_BIOTIC_RULES');
+                  }
+                }
+              }
               
               agentsUsed.push('SYMBOLIC_REASONER', 'FACT_EXTRACTOR', 'CONFIDENCE_CALCULATOR');
               
