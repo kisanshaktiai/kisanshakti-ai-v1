@@ -534,23 +534,16 @@ export class SymbolicReasoner {
    * PHASE 3 FIX: Uses in-memory cache with 5-minute TTL per crop_code
    * to eliminate 200-500ms DB hits on every request.
    */
-   private async loadRulesForContext(facts: SymbolicFact): Promise<any[]> {
+ private async loadRulesForContext(facts: SymbolicFact): Promise<any[]> {
     const cropCode = facts.crop_code?.toLowerCase() || '';
     const stage = facts.growth_stage?.toLowerCase() || '';
     
     // ═══════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Use crop code variants to match DB short codes
-    // DB uses SC, CTN, ALL - not sugarcane, cotton, etc.
+    // UNIFIED: Use crop-code-normalizer instead of inline CROP_TO_DB map
     // ═══════════════════════════════════════════════════════════════════════
-    const CROP_TO_DB: Record<string, string> = {
-      'sugarcane': 'SC', 'cotton': 'CTN', 'soybean': 'SOY',
-      'rice': 'RICE', 'paddy': 'RICE', 'wheat': 'WHT',
-      'maize': 'MZ', 'corn': 'MZ', 'tomato': 'TOM',
-      'onion': 'ONI', 'chilli': 'CHI', 'groundnut': 'GN',
-      'banana': 'BAN', 'grape': 'GRP', 'pomegranate': 'POM',
-    };
-    const dbCode = CROP_TO_DB[cropCode] || cropCode.toUpperCase();
-    const variants = new Set([cropCode, cropCode.toUpperCase(), dbCode, 'ALL', 'all', '*', 'universal']);
+    const { normalizeCropCode: normCrop, getCropCodeVariants: getVariants } = await import('../utils/crop-code-normalizer.ts');
+    const dbCode = normCrop(cropCode);
+    const variants = new Set(getVariants(cropCode));
     const cacheKey = `rules_${dbCode}`;
     
     // Check cache first
@@ -582,7 +575,7 @@ export class SymbolicReasoner {
     const allRules = data || [];
     // Cache the full crop rule set (before stage filtering)
     setCachedRules(cacheKey, allRules);
-    console.log(`   💾 [Cache SET] ${allRules.length} rules cached for crop=${cropCode} (TTL=5min)`);
+    console.log(`   💾 [Cache SET] ${allRules.length} rules cached for crop=${dbCode} (TTL=5min)`);
     
     return this.filterByStage(allRules, stage);
   }

@@ -133,15 +133,16 @@ export async function getValidObservationCodes(
   
   console.log(`📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropCode}, DAS=${das}`);
   
-  // Query intent_observation_mapping - CODES ONLY, NO translation joins
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HOTFIX: Query by intent_code + is_active ONLY
+  // The crop_code, das_min, das_max columns do not exist yet in this table.
+  // Once migration adds them, re-enable crop/DAS filtering.
+  // ═══════════════════════════════════════════════════════════════════════════
   const { data: mappings, error: mapError } = await supabase
     .from('intent_observation_mapping')
     .select('observation_code, confidence_rank')
     .eq('intent_code', intentCode)
-    .eq('crop_code', cropCode.toUpperCase())
     .eq('is_active', true)
-    .lte('das_min', das)
-    .gte('das_max', das)
     .order('confidence_rank', { ascending: true });
   
   if (mapError) {
@@ -150,11 +151,11 @@ export async function getValidObservationCodes(
   }
   
   if (!mappings || mappings.length === 0) {
-    console.log(`[IntentResolver] No mappings found for ${intentCode}/${cropCode}/${das}`);
+    console.log(`[IntentResolver] No mappings found for intent=${intentCode}`);
     return [];
   }
   
-  console.log(`✅ [IntentResolver] Found ${mappings.length} valid observation codes`);
+  console.log(`✅ [IntentResolver] Found ${mappings.length} observation codes for intent=${intentCode}`);
   
   return mappings;
 }
@@ -236,30 +237,29 @@ export async function isObservationValidForCropStage(
 ): Promise<{ valid: boolean; reason_code: string }> {
   const supabase = getSupabaseClient();
   
-  // Check if this observation exists in mapping for this crop/DAS
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HOTFIX: Query by observation_code + is_active ONLY
+  // crop_code/das_min/das_max columns don't exist yet. Re-enable after migration.
+  // ═══════════════════════════════════════════════════════════════════════════
   const { data, error } = await supabase
     .from('intent_observation_mapping')
     .select('id')
     .eq('observation_code', observationCode)
-    .eq('crop_code', cropCode.toUpperCase())
-    .lte('das_min', das)
-    .gte('das_max', das)
     .eq('is_active', true)
     .limit(1);
   
   if (error) {
-    // FAIL-CLOSED: Database errors must not allow unsafe recommendations
     console.error(`[IntentResolver] Validation DB error: ${error.message}`);
     return { valid: false, reason_code: 'VALIDATION_UNAVAILABLE' };
   }
   
   if (data && data.length > 0) {
-    return { valid: true, reason_code: 'VALID_FOR_CROP_DAS' };
+    return { valid: true, reason_code: 'VALID_FOR_OBSERVATION' };
   }
   
   return {
     valid: false,
-    reason_code: 'INVALID_FOR_CROP_DAS'
+    reason_code: 'OBSERVATION_NOT_MAPPED'
   };
 }
 
