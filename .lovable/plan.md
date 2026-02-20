@@ -1,216 +1,492 @@
 
 
-# Unified Confidence Authority & Production Hardening Refactor
+# Causal Hypothesis Arbitration Layer -- Production-Hardened Implementation
 
-## Problem
+## Architecture Context
 
-The symbolic ledger evaluator correctly computes `normalized_score` (e.g., 1.0 = 100% match) and stores it in `primary_decision.confidence_score`. However, when `index.ts` builds the `UnifiedGateInput` (line 961-978), it **never passes** `decision_confidence`. The field is simply absent from the object.
+The codebase has a mature symbolic decision pipeline:
 
-The UnifiedGate then defaults: `const baseConfidence = input.decision_confidence ?? 0` (line 374), producing `calculatedConfidence = 0`. This causes the gate to resolve to `INFORMATION` or `CLARIFICATION` mode, even when the symbolic layer selected a perfect-match rule.
+1. **ConditionLedger** in `loader.ts` (lines 303-330) -- strict fail-closed evaluator with `PASSED/FAILED/SKIPPED_NO_DATA/UNEVALUABLE` tracking
+2. **LayeredRuleEvaluator** in `layered-rule-evaluator.ts` (lines 289-800) -- density-weighted scoring with 0.60 confidence gate
+3. **Hypothesis Evaluator** in `decision/hypothesis-evaluator.ts` (1112 lines) -- partial-match rule grouping for clarification (NOT causal reasoning)
+4. **UnifiedDecisionGate** in `decision/unified-decision-gate.ts` -- SSOT confidence passthrough from symbolic layer
+5. **Orchestrator** in `agents/orchestrator.ts` (8233 lines) -- currently calls `evaluateCandidateHypotheses` for diagnosis-first clarification at line 3376, then `evaluateRulesLayered` at line 4724
 
-### Confidence Flow (Current - Broken)
+The existing hypothesis evaluator groups `decision_rules` by cause using partial matching. It has NO dedicated hypothesis tables, NO contradiction checking, NO strict ledger, and NO fail-closed semantics. It is a **clarification helper**, not a causal reasoner.
 
-```text
-LayeredRuleEvaluator
-  -> primary_decision.confidence_score = 0.85 (from ledger)
-  -> Orchestrator receives it correctly
-  -> index.ts builds UnifiedGateInput WITHOUT decision_confidence
-  -> UnifiedGate defaults to 0
-  -> calculatedConfidence = (0 * 0.4) + (50 * 0.3) + (50 * 0.3) = 30
-  -> Mode = CLARIFICATION (wrong!)
+---
+
+## What This Plan Adds
+
+A **strict causal hypothesis layer** between observation assembly and rule evaluation that:
+
+- Uses dedicated database tables (not `decision_rules` metadata)
+- Mirrors the ConditionLedger's fail-closed semantics exactly
+- Includes density weighting, minimum thresholds, contradiction elimination
+- Narrows rule evaluation scope via hypothesis-to-rule mapping
+- Replaces generic clarification with discriminator-targeted questions when hypotheses compete
+- Falls back cleanly to full-scope rule evaluation when no hypotheses exist
+
+---
+
+## Phase 1: Database Schema (5 tables + seed data)
+
+### Table 1: `hypothesis_master`
+
+```sql
+CREATE TABLE hypothesis_master (
+  hypothesis_id TEXT PRIMARY KEY,
+  crop_group TEXT NOT NULL,
+  hypothesis_type TEXT NOT NULL CHECK (hypothesis_type IN ('PEST','DISEASE','DEFICIENCY','STRESS','WEED','ENVIRONMENTAL')),
+  canonical_group TEXT NOT NULL,
+  cause_name_en TEXT NOT NULL,
+  cause_name_mr TEXT,
+  cause_name_hi TEXT,
+  biological_basis TEXT,
+  severity_model TEXT DEFAULT 'SIMPLE' CHECK (severity_model IN ('SIMPLE','ETL_BASED','ECONOMIC_MODEL')),
+  version TEXT DEFAULT '1.0.0',
+  engine_min_version TEXT DEFAULT '1.0.0',
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_hypothesis_crop ON hypothesis_master(crop_group);
+CREATE INDEX idx_hypothesis_type ON hypothesis_master(hypothesis_type);
+CREATE INDEX idx_hypothesis_active ON hypothesis_master(is_active) WHERE is_active = TRUE;
 ```
 
-### Confidence Flow (Target - Fixed)
+### Table 2: `hypothesis_conditions`
+
+```sql
+CREATE TABLE hypothesis_conditions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hypothesis_id TEXT NOT NULL REFERENCES hypothesis_master(hypothesis_id),
+  condition_type TEXT NOT NULL CHECK (condition_type IN ('OBSERVATION','DAS_RANGE','STAGE','NDVI_PATTERN','WEATHER','SOIL','BOOLEAN_GATE')),
+  condition_key TEXT NOT NULL,
+  operator TEXT NOT NULL CHECK (operator IN ('EQUALS','CONTAINS','BETWEEN','GT','LT','GTE','LTE','EXISTS','NOT_EXISTS')),
+  value_json JSONB NOT NULL,
+  is_required BOOLEAN DEFAULT TRUE,
+  is_discriminator BOOLEAN DEFAULT FALSE,
+  weight NUMERIC DEFAULT 1.0 CHECK (weight > 0),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_hyp_cond_hypothesis ON hypothesis_conditions(hypothesis_id);
+```
+
+### Table 3: `hypothesis_contradictions`
+
+```sql
+CREATE TABLE hypothesis_contradictions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hypothesis_id TEXT NOT NULL REFERENCES hypothesis_master(hypothesis_id),
+  contradiction_type TEXT NOT NULL CHECK (contradiction_type IN ('OBSERVATION','STAGE','WEATHER','PATTERN')),
+  contradiction_key TEXT NOT NULL,
+  contradiction_value TEXT NOT NULL,
+  explanation TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_hyp_contra_hypothesis ON hypothesis_contradictions(hypothesis_id);
+```
+
+### Table 4: `hypothesis_rule_mapping`
+
+```sql
+CREATE TABLE hypothesis_rule_mapping (
+  hypothesis_id TEXT NOT NULL REFERENCES hypothesis_master(hypothesis_id),
+  rule_id TEXT NOT NULL,
+  priority INTEGER DEFAULT 1,
+  context_notes TEXT,
+  PRIMARY KEY (hypothesis_id, rule_id)
+);
+```
+
+### Table 5: `hypothesis_metrics`
+
+```sql
+CREATE TABLE hypothesis_metrics (
+  hypothesis_id TEXT NOT NULL REFERENCES hypothesis_master(hypothesis_id) PRIMARY KEY,
+  times_triggered INTEGER DEFAULT 0,
+  times_contradicted INTEGER DEFAULT 0,
+  times_confirmed INTEGER DEFAULT 0,
+  times_eliminated_missing_data INTEGER DEFAULT 0,
+  avg_confidence NUMERIC DEFAULT 0,
+  last_triggered TIMESTAMPTZ
+);
+```
+
+### RLS: All tables read-only via service role (edge function uses service key).
+
+```sql
+ALTER TABLE hypothesis_master ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hypothesis_conditions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hypothesis_contradictions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hypothesis_rule_mapping ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hypothesis_metrics ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Allow read for authenticated" ON hypothesis_master FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow read for authenticated" ON hypothesis_conditions FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow read for authenticated" ON hypothesis_contradictions FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow read for authenticated" ON hypothesis_rule_mapping FOR SELECT TO authenticated USING (true);
+CREATE POLICY "Allow read for authenticated" ON hypothesis_metrics FOR SELECT TO authenticated USING (true);
+
+CREATE POLICY "Allow anon read" ON hypothesis_master FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon read" ON hypothesis_conditions FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon read" ON hypothesis_contradictions FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon read" ON hypothesis_rule_mapping FOR SELECT TO anon USING (true);
+CREATE POLICY "Allow anon read" ON hypothesis_metrics FOR SELECT TO anon USING (true);
+```
+
+### Seed Data: 5 Sugarcane Pilot Hypotheses
+
+Insert rows for:
+1. `SC_EARLY_SHOOT_BORER` -- observations: DEAD_HEART, BORE_HOLES_IN_STEM; stage: tillering/grand_growth; contradiction: UNIFORM_FIELD_DAMAGE
+2. `SC_TOP_BORER` -- observations: DEAD_HEART, TOP_SHOOT_DAMAGE; DAS > 120; contradiction: ROOT_DAMAGE
+3. `SC_WHITEFLY` -- observations: WHITEFLY_PRESENT, HONEYDEW; contradiction: DEAD_HEART
+4. `SC_RED_ROT` -- observations: RED_DISCOLORATION, STEM_ROT; stage: grand_growth+; contradiction: BORE_HOLES
+5. `SC_NITROGEN_DEFICIENCY` -- observations: YELLOWING, STUNTED_GROWTH; soil_nitrogen: LOW; contradiction: BORE_HOLES
+
+Each linked to 1-3 existing `decision_rules` via `hypothesis_rule_mapping`.
+
+---
+
+## Phase 2: Engine Implementation
+
+### File 1: NEW `supabase/functions/ai-agriculture-chat/decision/causal-hypothesis-engine.ts`
+
+Core engine (~500 lines) with:
+
+**A. HypothesisLedger (mirrors ConditionLedger exactly)**
 
 ```text
-LayeredRuleEvaluator
-  -> primary_decision.confidence_score = 0.85 (SSOT)
-  -> primary_decision.weighted_confidence = 0.72 (density-adjusted)
-  -> index.ts passes weighted_confidence as decision_confidence
-  -> UnifiedGate reads it directly (no recomputation)
-  -> Mode = TREATMENT (correct!)
+enum HypothesisConditionStatus {
+  PASSED = 'PASSED',
+  FAILED = 'FAILED',
+  SKIPPED_NO_DATA = 'SKIPPED_NO_DATA',
+  CONTRADICTED = 'CONTRADICTED'
+}
+
+interface HypothesisLedgerEntry {
+  key: string;
+  status: HypothesisConditionStatus;
+  required: boolean;
+  weight: number;
+  inputValue?: unknown;
+  ruleValue?: unknown;
+}
+```
+
+**Match rule (strict fail-closed, identical to rule ConditionLedger):**
+- Zero required entries with status FAILED
+- Zero required entries with status SKIPPED_NO_DATA
+- Zero entries with status CONTRADICTED
+- At least one entry with status PASSED
+
+**B. Data Loader (cached, indexed by crop_group)**
+
+```text
+interface CachedHypothesisData {
+  hypotheses: HypothesisMaster[];
+  conditions: Map<string, HypothesisCondition[]>;
+  contradictions: Map<string, HypothesisContradiction[]>;
+  ruleMappings: Map<string, string[]>;
+  loadedAt: number;
+}
+
+const hypothesisCache = new Map<string, CachedHypothesisData>();
+const HYPOTHESIS_CACHE_TTL = 300000; // 5 minutes
+
+// Precompiled in-memory structure indexed by crop_group
+async function loadHypothesesForCrop(cropGroup: string, supabase: any): Promise<CachedHypothesisData>
+```
+
+Single query with joins to populate full structure. Cache by crop_group.
+
+**C. Hypothesis Scorer with Density Weighting**
+
+```text
+interface HypothesisScore {
+  hypothesis_id: string;
+  cause_name_en: string;
+  hypothesis_type: string;
+  canonical_group: string;
+  passed_required: number;
+  total_required: number;
+  base_score: number;           // passed_weight / total_weight
+  density_weight: number;        // log(total_required + 1) / log(10)
+  weighted_score: number;        // base_score * (0.5 + 0.5 * density_weight)
+  ledger: HypothesisLedgerEntry[];
+  contradictions_found: string[];
+  elimination_reason: 'NONE' | 'FAILED_REQUIRED' | 'MISSING_DATA' | 'CONTRADICTION' | 'LOW_SCORE';
+  is_eliminated: boolean;
+  matched_conditions: string[];
+  discriminators_available: string[];
+  mapped_rule_ids: string[];
+}
+```
+
+Density weight formula (same as rule evaluator):
+```text
+densityWeight = Math.min(1.0, Math.log(total_required + 1) / Math.log(10))
+weighted_score = Math.min(1.0, base_score * (0.5 + 0.5 * densityWeight))
+```
+
+**D. Condition Evaluator**
+
+Each `hypothesis_conditions` row evaluated against `CanonicalState`:
+
+| condition_type | Evaluation method |
+|---|---|
+| OBSERVATION | Check if `value_json.code` exists in canonical observations |
+| DAS_RANGE | Compare `value_json.min/max` against `state.days_since_sowing` |
+| STAGE | Check if `value_json.stages[]` contains current stage |
+| NDVI_PATTERN | Compare against `state.ndvi_trend` or `state.ndvi_level` |
+| WEATHER | Extract temp/humidity/rain from `state.weather`, compare with operator |
+| SOIL | Compare `value_json.field/threshold` against soil data |
+| BOOLEAN_GATE | Check `value_json.key` against state boolean fields |
+
+Missing input data for required condition = `SKIPPED_NO_DATA` (fail-closed).
+
+**E. Contradiction Checker**
+
+For each `hypothesis_contradictions` row:
+- Check if `contradiction_key` + `contradiction_value` matches canonical state or observations
+- If match found: status = `CONTRADICTED`, hypothesis eliminated
+
+All contradictions come from the table. Zero hardcoded biological rules in engine code.
+
+**F. Competing Arbitration**
+
+```text
+const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
+const DISCRIMINATOR_DELTA = 0.10;
+
+interface ArbitrationResult {
+  best_hypothesis: HypothesisScore | null;
+  competing: HypothesisScore[];
+  needs_clarification: boolean;
+  clarification_reason?: 'COMPETING_HYPOTHESES' | 'BELOW_THRESHOLD';
+  discriminator_question?: DiscriminatorQuestion;
+  decision_path: 'HYPOTHESIS_SCOPED' | 'FULL_RULE_SCOPE' | 'CLARIFICATION_REQUIRED';
+  eliminated_hypotheses: Array<{ id: string; reason: string }>;
+}
+```
+
+Logic:
+1. Remove all eliminated hypotheses
+2. If zero survive AND crop has hypotheses defined: `needs_clarification = true` (do NOT fall back silently)
+3. If zero survive AND crop has NO hypotheses: `decision_path = 'FULL_RULE_SCOPE'` (backward compat fallback)
+4. If best hypothesis < `MIN_HYPOTHESIS_CONFIDENCE`: `needs_clarification = true`
+5. If top 2 within `DISCRIMINATOR_DELTA`: build discriminator question
+6. Otherwise: return best hypothesis with `decision_path = 'HYPOTHESIS_SCOPED'`
+
+**G. Discriminator Question Builder**
+
+Find conditions marked `is_discriminator = true` that differ between top-2 hypotheses.
+Build trilingual question targeting the highest-weight discriminator.
+Return as structured clarification matching existing `DecisionBrainClarificationOutput` contract.
+
+Guard: Only ask discriminator if BOTH hypotheses >= `MIN_HYPOTHESIS_CONFIDENCE`.
+
+**H. Observability Block**
+
+Before returning arbitration result:
+```text
+console.log(`🧠 [CausalHypothesis] Arbitration Result:`);
+console.log(`   hypotheses_evaluated: ${allScores.length}`);
+console.log(`   hypotheses_eliminated: ${eliminated.length}`);
+console.log(`   hypotheses_survived: ${survived.length}`);
+console.log(`   best_hypothesis: ${best?.hypothesis_id || 'NONE'}`);
+console.log(`   best_score: ${best?.weighted_score.toFixed(3) || '0'}`);
+console.log(`   decision_path: ${result.decision_path}`);
+eliminated.forEach(e => console.log(`   eliminated: ${e.id} reason=${e.reason}`));
+```
+
+**I. Metrics Update (fire-and-forget)**
+
+```text
+// Non-blocking, catch errors silently
+supabase.from('hypothesis_metrics').upsert({...}).then(() => {}).catch(() => {});
 ```
 
 ---
 
-## Changes
+## Phase 3: Integration into Pipeline
 
-### FILE 1: MODIFY `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+### File 2: MODIFY `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
 
-**A. Extend PrimaryDecision interface** (around line 173)
+**Integration point: After observation assembly, before `evaluateRulesLayered` call (~line 4700)**
 
-Add fields to carry ledger metadata:
+Insert causal hypothesis arbitration:
 
-```
-interface PrimaryDecision {
-  rule_id: string;
-  action_type: string;
-  priority: number;
-  confidence_score: number;
-  // NEW: Ledger-derived authority fields
-  normalized_score: number;      // raw ledger ratio (0-1)
-  total_required: number;        // denominator from ledger
-  passed_required: number;       // numerator from ledger
-  weighted_confidence: number;   // density-adjusted final confidence
-  action_text?: string;
-  reason_text?: string;
-  knowledge_text?: string;
-  i18n_key?: string;
+```text
+// NEW: Run causal hypothesis arbitration (between PHASE 2.5 and PHASE 2.6)
+console.log('\n🧠 PHASE 2.5.5: Causal Hypothesis Arbitration...');
+let hypothesisRuleScope: string[] | undefined = undefined;
+let hypothesisResult: ArbitrationResult | undefined = undefined;
+
+try {
+  const { runCausalHypothesisArbitration } = await import('../decision/causal-hypothesis-engine.ts');
+  hypothesisResult = await runCausalHypothesisArbitration({
+    crop_group: cropCode,
+    canonical_state: canonicalState,
+    observations: [...allObservationsForPreAuth],
+    supabase_client: this.supabase,
+    trace_id: traceId
+  });
+
+  if (hypothesisResult.needs_clarification) {
+    // Return discriminator question immediately
+    // (format matches existing clarification response structure)
+    return formatHypothesisClarification(hypothesisResult, sessionId, farmerId, options, traceId, startTime, agentsUsed);
+  }
+
+  if (hypothesisResult.decision_path === 'HYPOTHESIS_SCOPED' && hypothesisResult.best_hypothesis) {
+    hypothesisRuleScope = hypothesisResult.best_hypothesis.mapped_rule_ids;
+    console.log(`   🎯 Hypothesis scoped to ${hypothesisRuleScope.length} rules: ${hypothesisRuleScope.join(', ')}`);
+  }
+  // else: FULL_RULE_SCOPE -- proceed normally
+} catch (hypothesisError) {
+  console.error(`   ⚠️ Hypothesis arbitration failed, falling back to full scope:`, hypothesisError);
+  // Safe fallback: continue with full rule evaluation
 }
 ```
 
-**B. Implement density-weighted confidence** (around line 740-760)
+**At line 4724 (evaluateRulesLayered call):**
 
-After selecting the best candidate, compute weighted confidence:
+Pass hypothesis scope to filter rules:
 
-```
-const baseScore = scored[0].matchedConditions / scored[0].totalConditions;
-const densityWeight = Math.min(1.0, Math.log(scored[0].totalConditions + 1) / Math.log(10));
-const weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
-```
+```text
+// If hypothesis narrowed scope, filter allRulesWithBundled
+let rulesToEvaluate = allRulesWithBundled;
+if (hypothesisRuleScope && hypothesisRuleScope.length > 0) {
+  const scopedRules = allRulesWithBundled.filter(r => hypothesisRuleScope!.includes(r.id));
+  if (scopedRules.length > 0) {
+    rulesToEvaluate = scopedRules;
+    console.log(`   🎯 [HypothesisScope] Narrowed from ${allRulesWithBundled.length} to ${scopedRules.length} rules`);
+  } else {
+    console.warn(`   ⚠️ [HypothesisScope] No rules matched scope, falling back to full set`);
+  }
+}
 
-Rationale: A 2-condition rule matching 2/2 (score=1.0) should not equal a 7-condition rule matching 7/7. The density weight rewards richer constraint sets while keeping the score bounded 0-1.
-
-Populate `primary_decision` with all new fields:
-
-```
-result.primary_decision = {
-  rule_id: best.rule_id,
-  action_type: best.action_type,
-  priority: best.priority ?? 50,
-  confidence_score: weightedConfidence,
-  normalized_score: scored[0].evidenceScore,
-  total_required: scored[0].totalConditions,
-  passed_required: scored[0].matchedConditions,
-  weighted_confidence: weightedConfidence,
-  action_text: best.action_text,
-  reason_text: best.reason_text,
-  knowledge_text: best.knowledge_text,
-  i18n_key: best.i18n_key
-};
+layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any);
 ```
 
-**C. Enhanced logging** (same area)
+**Propagate hypothesis metadata to decision_output:**
 
-Replace current logging with authority-style log:
+Add `hypothesis_result` to `decisionOutput` so `index.ts` can access it:
 
-```
-console.log(`📊 Decision Authority:`);
-console.log(`   rule_id: ${best.rule_id}`);
-console.log(`   base_score: ${scored[0].evidenceScore.toFixed(3)}`);
-console.log(`   total_required: ${scored[0].totalConditions}`);
-console.log(`   passed_required: ${scored[0].matchedConditions}`);
-console.log(`   density_weight: ${densityWeight.toFixed(3)}`);
-console.log(`   weighted_confidence: ${weightedConfidence.toFixed(3)}`);
-```
-
-### FILE 2: MODIFY `supabase/functions/ai-agriculture-chat/index.ts`
-
-**A. Pass symbolic confidence to UnifiedGateInput** (around line 961-978)
-
-The critical missing link. Add `decision_confidence` sourced from the symbolic layer:
-
-```
-const symbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
-  ?.primary_decision?.weighted_confidence
-  ?? orchestratorResponse.decision_output?.layered_rule_result
-    ?.primary_decision?.confidence_score
-  ?? 0;
-
-const unifiedGateInput: UnifiedGateInput = {
-  // ... existing fields ...
-  decision_confidence: Math.round(symbolicConfidence * 100),  // Convert 0-1 to 0-100
-  // Remove semantic_confidence and observation_certainty
-  // to prevent competing confidence sources
-};
+```text
+decisionOutput.hypothesis_result = hypothesisResult ? {
+  best_hypothesis_id: hypothesisResult.best_hypothesis?.hypothesis_id,
+  hypothesis_score: hypothesisResult.best_hypothesis?.weighted_score,
+  decision_path: hypothesisResult.decision_path,
+  eliminated_count: hypothesisResult.eliminated_hypotheses.length
+} : undefined;
 ```
 
-**B. Log the confidence bridge** (after building input)
+### File 3: MODIFY `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts`
 
-Add trace log showing confidence source:
+**Extend `UnifiedGateInput` (~line 239):**
 
+```text
+/** Hypothesis layer confidence (0-1, optional) */
+hypothesis_confidence?: number;
 ```
-console.log(`   📊 [ConfidenceBridge] symbolic_confidence=${symbolicConfidence.toFixed(3)} -> decision_confidence=${Math.round(symbolicConfidence * 100)}`);
-```
 
-### FILE 3: MODIFY `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts`
+**Composite confidence (~line 377):**
 
-**A. Simplify confidence calculation** (around line 371-383)
-
-Replace the multi-source weighted calculation with direct passthrough:
-
-```
-// SSOT: Confidence comes from symbolic layer only
+```text
 const calculatedConfidence = input.decision_confidence ?? 0;
-```
-
-Remove the weighted formula that mixed `baseConfidence`, `semanticConfidence`, and `observationCertainty`. The symbolic ledger score IS the confidence -- no recomputation.
-
-**B. Keep semantic/observation fields for backward compat** but mark as deprecated in comments and do not use them in mode resolution.
-
-### FILE 4: MODIFY `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-**A. Ensure immediate return path uses weighted_confidence** (around line 5451)
-
-Update the metadata confidence to use the new field:
-
-```
-metadata: {
-  confidence: layeredRuleResult?.primary_decision?.weighted_confidence ||
-              layeredRuleResult?.primary_decision?.confidence_score ||
-              decisionOutput.confidence_score || 0.7,
-  // ...
+// If hypothesis layer provided causal confidence, compute composite
+const hypothesisConf = input.hypothesis_confidence;
+if (hypothesisConf !== undefined && hypothesisConf > 0 && calculatedConfidence > 0) {
+  const compositeConfidence = Math.round(hypothesisConf * (calculatedConfidence / 100) * 100);
+  console.log(`   📊 [CausalConfidence] hypothesis=${hypothesisConf.toFixed(3)} * rule=${calculatedConfidence}% = composite=${compositeConfidence}%`);
+  // Use composite only if it's higher (hypothesis should boost, not reduce)
+  // calculatedConfidence remains unchanged -- hypothesis is additive context
 }
 ```
 
-**B. Propagate weighted_confidence through PRIMARY_DECISION RECOVERY** (around line 5369-5401)
+### File 4: MODIFY `supabase/functions/ai-agriculture-chat/index.ts`
 
-When recovering `primary_decision` from `layeredRuleResult`, also copy the new fields:
+**Pass hypothesis confidence to UnifiedGateInput (~line 988):**
 
-```
-decisionOutput.primary_decision = {
-  // ... existing fields ...
-  weighted_confidence: layeredRuleResult.primary_decision.weighted_confidence,
-  normalized_score: layeredRuleResult.primary_decision.normalized_score,
-  total_required: layeredRuleResult.primary_decision.total_required,
-  passed_required: layeredRuleResult.primary_decision.passed_required,
-};
+```text
+const hypothesisConfidence = orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined;
+
+// Add to unifiedGateInput:
+hypothesis_confidence: hypothesisConfidence,
 ```
 
-### FILE 5: Add Invariant Guard
+### File 5: MODIFY `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts`
 
-**MODIFY `supabase/functions/ai-agriculture-chat/index.ts`** (after line 983, before suppression guard)
+**Prefer discriminator clarification over generic (~around line 360):**
 
-Add a confidence consistency check:
+Before calling `evaluateCandidateHypotheses`, check if a discriminator question was already produced:
 
-```
-// INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
-const primaryDecisionExists = !!(orchestratorResponse.decision_output?.primary_decision?.rule_id ||
-  orchestratorResponse.decision_output?.layered_rule_result?.primary_decision?.rule_id);
-
-if (primaryDecisionExists && symbolicConfidence === 0) {
-  console.error(`🚨 [INVARIANT] Confidence pipeline inconsistency: primary_decision exists but symbolic_confidence=0`);
-  console.error(`   Forcing minimum confidence of 0.5 to prevent decision suppression`);
-  unifiedGateInput.decision_confidence = 50;  // Safe floor
+```text
+// If hypothesis arbitration already produced a targeted discriminator question,
+// use it instead of running generic hypothesis evaluation
+if (options?.discriminatorQuestion) {
+  console.log(`   🎯 [Clarification] Using discriminator question from hypothesis arbitration`);
+  return formatDiscriminatorAsClarification(options.discriminatorQuestion, language);
 }
+// Otherwise, fall through to existing evaluateCandidateHypotheses path
 ```
 
 ---
 
-## Expected Behavior After Fix
+## Phase 4: Logging to `ai_decision_log`
 
-| Scenario | Before | After |
-|---|---|---|
-| Ledger score = 1.0, 2 conditions | confidence=0, mode=INFORMATION | weighted=0.65, mode=TREATMENT |
-| Ledger score = 1.0, 7 conditions | confidence=0, mode=INFORMATION | weighted=0.92, mode=TREATMENT |
-| Ledger score = 0.5, 4 conditions | confidence=0, mode=INFORMATION | weighted=0.38, mode=CLARIFICATION |
-| No primary decision | confidence=0, mode=INFORMATION | confidence=0, mode=INFORMATION (correct) |
+In orchestrator, when saving to `ai_decision_log`, add hypothesis fields:
 
-## Files Modified (Summary)
+```text
+hypothesis_id: hypothesisResult?.best_hypothesis?.hypothesis_id || null,
+hypothesis_score: hypothesisResult?.best_hypothesis?.weighted_score || null,
+hypothesis_decision_path: hypothesisResult?.decision_path || 'NO_HYPOTHESIS',
+hypotheses_evaluated: hypothesisResult?.eliminated_hypotheses?.length || 0,
+```
 
-1. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` -- Extend PrimaryDecision, add density-weighted confidence, enhanced logging
-2. **MODIFY**: `supabase/functions/ai-agriculture-chat/index.ts` -- Pass symbolic confidence to UnifiedGate, add invariant guard
-3. **MODIFY**: `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts` -- Use symbolic confidence directly, remove multi-source recomputation
-4. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` -- Propagate weighted_confidence through recovery path
-5. **DEPLOY**: Redeploy `ai-agriculture-chat` edge function
+This requires adding nullable columns to `ai_decision_log`:
+```sql
+ALTER TABLE ai_decision_log ADD COLUMN IF NOT EXISTS hypothesis_id TEXT;
+ALTER TABLE ai_decision_log ADD COLUMN IF NOT EXISTS hypothesis_score NUMERIC;
+ALTER TABLE ai_decision_log ADD COLUMN IF NOT EXISTS hypothesis_decision_path TEXT;
+```
+
+---
+
+## Architecture Invariants Enforced
+
+| Invariant | How Enforced |
+|---|---|
+| Fail-closed on missing data | `SKIPPED_NO_DATA` on required condition blocks hypothesis |
+| No soft-pass | Ledger-based, identical to rule ConditionLedger |
+| Density weighting | Same formula as `layered-rule-evaluator.ts` line 750 |
+| Minimum threshold | `MIN_HYPOTHESIS_CONFIDENCE = 0.55` enforced before rule scoping |
+| No hardcoded biology | All contradictions from `hypothesis_contradictions` table |
+| Explicit elimination reasons | `FAILED_REQUIRED / MISSING_DATA / CONTRADICTION / LOW_SCORE` |
+| Strict fallback logic | Crop has hypotheses but none survives = clarification, not fallback |
+| Crop has no hypotheses = full rule scope (backward compat) | Checked via empty result from loader |
+| Versioning | `version` and `engine_min_version` in `hypothesis_master` |
+| Full observability | Per-request log of evaluated/eliminated/survived/best/path |
+| No infinite clarification | Discriminator only asked if both hypotheses >= threshold |
+| Non-blocking metrics | Fire-and-forget upsert to `hypothesis_metrics` |
+
+---
+
+## Files Summary
+
+1. **DB MIGRATION**: Create 5 tables + RLS + indexes
+2. **DB SEED**: 5 sugarcane hypotheses + conditions + contradictions + rule mappings
+3. **DB MIGRATION**: Add 3 nullable columns to `ai_decision_log`
+4. **NEW**: `supabase/functions/ai-agriculture-chat/decision/causal-hypothesis-engine.ts` -- HypothesisLedger, loader, scorer, arbitrator, discriminator builder, metrics
+5. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` -- Wire hypothesis arbitration at PHASE 2.5.5, pass scope to rule evaluator
+6. **MODIFY**: `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts` -- Add `hypothesis_confidence` to input, composite scoring
+7. **MODIFY**: `supabase/functions/ai-agriculture-chat/index.ts` -- Pass hypothesis confidence to gate
+8. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` -- Prefer discriminator questions
+9. **DEPLOY**: Redeploy `ai-agriculture-chat` edge function
 
