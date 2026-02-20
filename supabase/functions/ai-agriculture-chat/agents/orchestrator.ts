@@ -430,6 +430,7 @@ import {
   logDiagnosisOnlyActivation,
   detectTerminalDamageForAuthority,
   detectCropDamageForDiagnosis, // v4.0: Enhanced crop damage detection
+  detectCropDamageWithAuthority, // v5.0: Authority-aware terminal detection
   createEnforcedCropAuthority,
   assertTerminalDamageAuthority,
   resolveDiagnosticAuthorityFromObservations, // v3.0: Pre-authority gate
@@ -441,6 +442,12 @@ import {
   type CropDamageDetectionResult, // v4.0: Enhanced result type
   type PreAuthorityGateResult // v3.0: Pre-authority gate result type
 } from '../decision/diagnosis-only-mode.ts';
+
+import {
+  AuthoredObservationSet,
+  ObservationAuthority,
+  TERMINAL_CODES_BLOCKED_FROM_INJECTION
+} from '../utils/observation-authority.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-22.5: DIAGNOSIS-FIRST GENERATOR
@@ -1563,20 +1570,21 @@ export class AIAgentOrchestrator {
           console.log(`   📋 Treatments allowed: ${authorityDecision.treatments_allowed}, Response mode: ${authorityDecision.response_mode}`);
           
           // Build canonical state with the clarification answer
-          // FIX: Pass full landContext to preserve DAS, NDVI, soil data
-          // CRITICAL FIX: Include BOTH visualSymptom AND mappedObservationKey in observations
+          // v5.0: Tag clarification selection as CONFIRMED, expansions as INFERRED
           const allObservations: string[] = [];
-          if (visualSymptom && visualSymptom !== 'UNKNOWN') {
+          
+          // The selected observation key is CONFIRMED (farmer explicitly chose it)
+          if (mappedObservationKey) {
+            allObservations.push(mappedObservationKey);
+            console.log(`   ✅ [ObservationAuthority] ${mappedObservationKey} tagged as CONFIRMED (clarification selection)`);
+          }
+          if (visualSymptom && visualSymptom !== 'UNKNOWN' && visualSymptom !== mappedObservationKey) {
             allObservations.push(visualSymptom);
           }
-          // CRITICAL: Also add the embedded observation_key for rule matching
-          if (mappedObservationKey && mappedObservationKey !== visualSymptom) {
-            allObservations.push(mappedObservationKey);
-          }
-          // Add symptom keywords based on mappedObservationKey to improve rule matching
+          
           // ═══════════════════════════════════════════════════════════════════════════
           // OBSERVATION KEY EXPANSION - Maps clarification selections to rule-matchable symbols
-          // This is CRITICAL for matching farmer selections to decision_rules
+          // v5.0: Expansion results are tagged INFERRED (not CONFIRMED)
           // ═══════════════════════════════════════════════════════════════════════════
           const obsKeyExpansion: Record<string, string[]> = {
             // Nutrient issues
@@ -1613,7 +1621,9 @@ export class AIAgentOrchestrator {
             'PHOTO_UPLOAD': ['PHOTO_SUBMITTED', 'VISUAL_EVIDENCE']
           };
           if (mappedObservationKey && obsKeyExpansion[mappedObservationKey]) {
-            allObservations.push(...obsKeyExpansion[mappedObservationKey]);
+            const expansionCodes = obsKeyExpansion[mappedObservationKey];
+            allObservations.push(...expansionCodes);
+            console.log(`   🔍 [ObservationExpansion] Added ${expansionCodes.length} INFERRED expansion codes: [${expansionCodes.join(', ')}]`);
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
           
@@ -2978,22 +2988,23 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       
       // Collect all observations for crop damage detection
-      const allObservationsForPreAuth = new Set<string>();
+      const authoredObservations = new AuthoredObservationSet();
+      const allObservationsForPreAuth = new Set<string>(); // backward-compat flat set
       
       // BUG-3 FIX: Canonical code filter - only UPPERCASE_CODE symbols enter rule engine
-      // Raw Marathi/Hindi text must be excluded to prevent diluting confidence and rule matching
       function isCanonicalCode(s: string): boolean {
         return /^[A-Z][A-Z0-9_]+$/.test(s);
       }
       
       let filteredOutCount = 0;
       
-      // Add from observation keys (filter non-canonical)
+      // Add from observation keys - tagged as EXTRACTED (pattern-matched from farmer text)
       if (observationKeys) {
         observationKeys.forEach(key => {
           const strKey = String(key);
           if (isCanonicalCode(strKey)) {
             allObservationsForPreAuth.add(strKey);
+            authoredObservations.add(strKey, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical observation key: "${strKey.substring(0, 30)}"`);
@@ -3001,11 +3012,12 @@ export class AIAgentOrchestrator {
         });
       }
       
-      // Add from mapped codes (filter non-canonical)
+      // Add from mapped codes - tagged as INFERRED (LLM semantic extraction)
       if (mappedCodes?.observation_codes) {
         mappedCodes.observation_codes.forEach((code: string) => {
           if (isCanonicalCode(code)) {
             allObservationsForPreAuth.add(code);
+            authoredObservations.add(code, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical mapped code: "${code.substring(0, 30)}"`);
@@ -3013,11 +3025,16 @@ export class AIAgentOrchestrator {
         });
       }
       
-      // Add from induction result symptoms (filter non-canonical)
+      // Add from induction result symptoms - authority depends on source
       if (inductionResult?.symptoms) {
         inductionResult.symptoms.forEach((s: any) => {
           if (s.symbol && isCanonicalCode(s.symbol)) {
             allObservationsForPreAuth.add(s.symbol);
+            // Tag based on induction source
+            const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
+              ? ObservationAuthority.INFERRED 
+              : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
+            authoredObservations.add(s.symbol, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical symptom: "${String(s.symbol).substring(0, 30)}"`);
@@ -3029,14 +3046,14 @@ export class AIAgentOrchestrator {
         console.log(`   📊 [CANONICAL FILTER] Total filtered out: ${filteredOutCount} non-canonical entries`);
       }
       
-      // PHASE-19 v2.0: Add photo-mapped codes to allObservationsForPreAuth
-      // Photo codes are already canonical from the photo analyzer
+      // PHASE-19 v2.0: Add photo-mapped codes - tagged as CONFIRMED (photo-verified)
       if (photoMappedCodes?.observation_codes) {
-        console.log(`   📸 Adding ${photoMappedCodes.observation_codes.length} photo codes to allObservationsForPreAuth`);
+        console.log(`   📸 Adding ${photoMappedCodes.observation_codes.length} photo codes as CONFIRMED`);
         photoMappedCodes.observation_codes.forEach((code: any) => {
           const strCode = String(code);
           if (isCanonicalCode(strCode)) {
             allObservationsForPreAuth.add(strCode);
+            authoredObservations.add(strCode, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
           }
         });
       }
@@ -3120,13 +3137,14 @@ export class AIAgentOrchestrator {
           
           const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
           allObservationsForPreAuth.add(fallbackSymptom);
+          authoredObservations.add(fallbackSymptom, ObservationAuthority.INFERRED, 'LLM_INTENT_FALLBACK');
           agentsUsed.push('LLM_INTENT_FALLBACK');
-          console.log(`   Injected: ${fallbackSymptom} (from LLM intent: ${intentCode})`);
+          console.log(`   Injected: ${fallbackSymptom} (from LLM intent: ${intentCode}) [authority: INFERRED]`);
         } else if (advisoryIntents.includes(intentCode) && directModeBypass) {
           // FIX 3: For advisory intents with DIRECT mode, inject the INTENT CODE itself
-          // as an observation so the rule engine can match by action_type
           console.log(`\n🎯 [ADVISORY DIRECT] Intent ${intentCode} is advisory — injecting intent as observation for rule engine`);
           allObservationsForPreAuth.add(intentCode);
+          authoredObservations.add(intentCode, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
           agentsUsed.push('ADVISORY_DIRECT_ROUTE');
         }
       }
@@ -3135,18 +3153,37 @@ export class AIAgentOrchestrator {
       const crossCropSymptomsList = crossCropSymptoms ? [...crossCropSymptoms] : [];
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CRITICAL BUG FIX: Cross-crop symptoms MUST flow into allObservationsForPreAuth
-      // Previously, SPREADING_PATTERN etc. were detected but never reached the
-      // hypothesis evaluator, causing "Known observations: none" even when symptoms exist.
+      // v5.0: Cross-crop symptoms injection with TERMINAL CODE GUARD
+      // Cross-crop symptoms are tagged SYNTHETIC and terminal codes are BLOCKED
+      // from injection to prevent false terminal gate triggers.
       // ═══════════════════════════════════════════════════════════════════════════
       if (crossCropSymptomsList.length > 0) {
-        crossCropSymptomsList.forEach(sym => allObservationsForPreAuth.add(sym));
-        console.log(`   🔗 [CrossCropFix] Injected ${crossCropSymptomsList.length} cross-crop symptoms into observations: ${crossCropSymptomsList.join(', ')}`);
+        const injected: string[] = [];
+        const blocked: string[] = [];
+        crossCropSymptomsList.forEach(sym => {
+          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(sym)) {
+            blocked.push(sym);
+            console.log(`   🛡️ [TERMINAL GUARD] Blocked cross-crop terminal code: ${sym}`);
+          } else {
+            allObservationsForPreAuth.add(sym);
+            authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
+            injected.push(sym);
+          }
+        });
+        if (injected.length > 0) {
+          console.log(`   🔗 [CrossCropFix] Injected ${injected.length} cross-crop symptoms (SYNTHETIC): ${injected.join(', ')}`);
+        }
+        if (blocked.length > 0) {
+          console.log(`   🛡️ [CrossCropFix] BLOCKED ${blocked.length} terminal codes from injection: ${blocked.join(', ')}`);
+        }
       }
       
-      // v4.0: Use enhanced crop damage detection (includes non-terminal damage)
-      const cropDamageResult = detectCropDamageForDiagnosis(
-        allObservationsForPreAuth,
+      // Log authority breakdown
+      console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
+      
+      // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
+      const cropDamageResult = detectCropDamageWithAuthority(
+        authoredObservations,
         crossCropSymptomsList
       );
       
