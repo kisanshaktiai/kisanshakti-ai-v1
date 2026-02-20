@@ -19,8 +19,8 @@ export interface DecisionInput {
   crop_stage?: string;
   user_query?: string;
   observations?: string[];
-  weather?: { temp?: number; humidity?: number; rain_mm?: number };
-  soil?: { ph?: number; organic_carbon?: number };
+  weather?: { temp?: number; humidity?: number; rain_mm?: number; temp_min?: number; temp_max?: number; humidity_min?: number };
+  soil?: { ph?: number; organic_carbon?: number; ec?: number };
   // CanonicalState properties for observation-based rules
   visual_symptoms?: string[];
   soil_nitrogen?: string;
@@ -30,6 +30,21 @@ export interface DecisionInput {
   ndvi_trend?: string;
   water_stress?: string;
   severity?: string;
+  // Extended context fields for strict constraint evaluation
+  days_since_sowing?: number;
+  ratoon_number?: number;
+  soil_ph?: number;
+  soil_organic_carbon?: number;
+  soil_ec?: number;
+  soil_moisture_status?: string;
+  ndvi_pattern?: string;
+  pest_count?: number;
+  disease_confirmed?: boolean;
+  irrigation_method?: string;
+  region?: string;
+  crop_cycle?: string;
+  soil_type_name?: string;
+  farming_mode?: string;
   [key: string]: unknown;
 }
 
@@ -283,53 +298,280 @@ function reconstructCondition(code: string): ((input: DecisionInput) => boolean)
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CONDITION LEDGER - Strict Constraint-Based Evaluation
+// ═══════════════════════════════════════════════════════════════════════════
+
+export enum ConditionStatus {
+  PASSED = 'PASSED',
+  FAILED = 'FAILED',
+  SKIPPED_NO_DATA = 'SKIPPED_NO_DATA',
+  UNEVALUABLE = 'UNEVALUABLE'
+}
+
+export interface ConditionEntry {
+  key: string;
+  status: ConditionStatus;
+  required: boolean;
+  inputValue?: unknown;
+  ruleValue?: unknown;
+}
+
+// Module-level ledger cache for downstream scoring
+const conditionLedgerCache = new Map<string, ConditionEntry[]>();
+
+export function getConditionLedger(ruleId: string): ConditionEntry[] | undefined {
+  return conditionLedgerCache.get(ruleId);
+}
+
+export function clearLedgerCache(): void {
+  conditionLedgerCache.clear();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KEY CATEGORY CLASSIFICATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+const STRUCTURAL_KEYS = new Set(['all', 'any', 'fact', 'operator', 'value']);
+
+// Category C: Numeric threshold (required)
+const CATEGORY_C_KEYS = new Set([
+  'duration_days', 'days_after_planting_min', 'days_after_planting_max',
+  'days_after_sowing', 'days_after_harvest',
+  'temp_max_celsius', 'temp_min_celsius', 'temperature_c',
+  'soil_ph', 'max_ratoon', 'ratoon_number',
+  'soil_fe_ppm', 'soil_zn_ppm', 'soil_mn_ppm', 'soil_s_ppm',
+  'soil_b_ppm', 'soil_cu_ppm', 'soil_oc', 'soil_ec',
+  'ec_dsm', 'soc_pct', 'applied_n_kg_ha'
+]);
+
+// Category E: Weather objects (required)
+const CATEGORY_E_KEYS = new Set(['weather', 'rain_forecast']);
+
+// Category F: ETL objects (required)
+const CATEGORY_F_KEYS = new Set(['etl', 'etl_range']);
+
+// Category G: Informational/context (NOT required - don't block matching)
+const CATEGORY_G_KEYS = new Set([
+  'context', 'roi_basis', 'roi_modifier', 'roi_by_region',
+  'timing', 'method', 'operation', 'action', 'assessment_timing',
+  'soil_test', 'irrigation_system'
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NUMERIC CONDITION EVALUATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function evaluateNumericCondition(key: string, condValue: any, input: DecisionInput): ConditionEntry {
+  const keyToInput: Record<string, () => number | undefined | null> = {
+    'duration_days': () => input.days_since_sowing,
+    'days_after_planting_min': () => input.days_since_sowing,
+    'days_after_planting_max': () => input.days_since_sowing,
+    'days_after_sowing': () => input.days_since_sowing,
+    'days_after_harvest': () => input.days_since_sowing,
+    'temp_max_celsius': () => input.weather?.temp,
+    'temp_min_celsius': () => input.weather?.temp,
+    'temperature_c': () => input.weather?.temp,
+    'soil_ph': () => input.soil_ph ?? input.soil?.ph,
+    'max_ratoon': () => input.ratoon_number,
+    'ratoon_number': () => input.ratoon_number,
+    'ec_dsm': () => input.soil_ec ?? input.soil?.ec,
+    'soc_pct': () => input.soil_organic_carbon ?? input.soil?.organic_carbon,
+    'applied_n_kg_ha': () => (input as any).applied_n_kg_ha,
+  };
+
+  let inputValue: number | undefined | null;
+  if (keyToInput[key]) {
+    inputValue = keyToInput[key]();
+  } else {
+    inputValue = (input as any)[key];
+  }
+
+  if (inputValue === undefined || inputValue === null || isNaN(Number(inputValue))) {
+    return { key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+  }
+
+  const numInput = Number(inputValue);
+
+  if (typeof condValue === 'string') {
+    const match = condValue.match(/^([<>]=?)\s*(-?\d+\.?\d*)$/);
+    if (match) {
+      const op = match[1];
+      const threshold = parseFloat(match[2]);
+      let passes = false;
+      if (op === '<') passes = numInput < threshold;
+      else if (op === '<=') passes = numInput <= threshold;
+      else if (op === '>') passes = numInput > threshold;
+      else if (op === '>=') passes = numInput >= threshold;
+      return { key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: numInput, ruleValue: condValue };
+    }
+  }
+
+  if (typeof condValue === 'number') {
+    let passes = false;
+    if (key === 'days_after_planting_min') passes = numInput >= condValue;
+    else if (key === 'days_after_planting_max') passes = numInput <= condValue;
+    else if (key === 'temp_max_celsius') passes = numInput <= condValue;
+    else if (key === 'temp_min_celsius') passes = numInput >= condValue;
+    else if (key === 'max_ratoon') passes = numInput <= condValue;
+    else passes = Math.abs(numInput - condValue) < (condValue * 0.1 + 1);
+    return { key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: numInput, ruleValue: condValue };
+  }
+
+  return { key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WEATHER CONDITION EVALUATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function evaluateWeatherCondition(condWeather: any, inputWeather: DecisionInput['weather']): boolean {
+  if (!inputWeather) return false;
+  if (condWeather.temp_min !== undefined && inputWeather.temp !== undefined && inputWeather.temp < condWeather.temp_min) return false;
+  if (condWeather.temp_max !== undefined && inputWeather.temp !== undefined && inputWeather.temp > condWeather.temp_max) return false;
+  if (condWeather.humidity_min !== undefined && inputWeather.humidity !== undefined && inputWeather.humidity < condWeather.humidity_min) return false;
+  if (condWeather.rain_mm !== undefined && inputWeather.rain_mm !== undefined && inputWeather.rain_mm < condWeather.rain_mm) return false;
+  return true;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ETL CONDITION EVALUATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function evaluateETLCondition(condETL: any, pestCount: number): boolean {
+  const min = condETL.min ?? condETL.threshold_min ?? 0;
+  const max = condETL.max ?? condETL.threshold_max ?? Infinity;
+  return pestCount >= min && pestCount <= max;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BOOLEAN GATE EVALUATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, expandedObs: Set<string>, inputQuery: string): ConditionEntry {
+  const expected = condValue === true || condValue === 'true';
+
+  // Severity as string value
+  if (key === 'severity' && typeof condValue === 'string') {
+    if (!input.severity) return { key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+    const match = condValue.toUpperCase() === (input.severity || '').toUpperCase();
+    return { key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.severity, ruleValue: condValue };
+  }
+
+  // Stress as string value
+  if (key === 'stress' && typeof condValue === 'string') {
+    if (!input.water_stress) return { key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+    const match = condValue.toUpperCase() === (input.water_stress || '').toUpperCase();
+    return { key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.water_stress, ruleValue: condValue };
+  }
+
+  // leaf_n_status as string value
+  if (key === 'leaf_n_status' && typeof condValue === 'string') {
+    if (!input.soil_nitrogen) return { key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+    const match = condValue.toUpperCase() === (input.soil_nitrogen || '').toUpperCase();
+    return { key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.soil_nitrogen, ruleValue: condValue };
+  }
+
+  // Negative assertions (no_pest_visible, no_visible_deficiency, normal_growth)
+  if (key.startsWith('no_') || key.startsWith('normal_')) {
+    if (expected) {
+      const contradicted = key === 'no_pest_visible' ?
+        expandedObs.has('INSECT_PRESENCE') || expandedObs.has('PEST_DAMAGE') || expandedObs.has('BORE_HOLES') :
+        key === 'no_visible_deficiency' ?
+        expandedObs.has('NUTRIENT_DEFICIENCY') || expandedObs.has('CHLOROSIS') :
+        false;
+      return { key, status: contradicted ? ConditionStatus.FAILED : ConditionStatus.PASSED, required: false, ruleValue: condValue };
+    }
+  }
+
+  // Mapped boolean evaluators
+  const booleanEvaluators: Record<string, () => boolean | null> = {
+    'disease_confirmed': () => input.disease_confirmed ?? null,
+    'pest_present': () => {
+      const pestObs = ['INSECT_PRESENCE', 'PEST_DAMAGE', 'BORE_HOLES', 'FRASS', 'WEBBING'];
+      return pestObs.some(p => expandedObs.has(p)) ? true : null;
+    },
+    'soil_moisture_low': () => input.soil_moisture_status === 'LOW' || input.soil_moisture_status === 'DRY' ? true : (input.soil_moisture_status ? false : null),
+    'soil_moisture_high': () => input.soil_moisture_status === 'HIGH' || input.soil_moisture_status === 'WET' ? true : (input.soil_moisture_status ? false : null),
+    'recent_rain': () => input.weather?.rain_mm !== undefined ? (input.weather.rain_mm > 0) : null,
+    'high_humidity': () => input.weather?.humidity !== undefined ? (input.weather.humidity > 80) : null,
+    'high_temperature': () => input.weather?.temp !== undefined ? (input.weather.temp > 38) : null,
+    'low_temperature': () => input.weather?.temp !== undefined ? (input.weather.temp < 15) : null,
+    'critical_stage': () => {
+      const criticalStages = ['FLOWERING', 'FRUITING', 'GRAND_GROWTH', 'MATURITY'];
+      return criticalStages.some(s => (input.crop_stage || '').toUpperCase().includes(s));
+    },
+    'ndvi_decline': () => input.ndvi_trend === 'DECLINING' ? true : (input.ndvi_trend ? false : null),
+    'ndvi_improving': () => input.ndvi_trend === 'IMPROVING' ? true : (input.ndvi_trend ? false : null),
+    'ndvi_triggered': () => input.ndvi_level ? true : null,
+    'lodging_risk': () => expandedObs.has('LODGING') || expandedObs.has('LODGING_RISK') ? true : null,
+    'etl_exceeded': () => input.pest_count !== undefined ? true : null,
+    'etl_below': () => input.pest_count !== undefined ? false : null,
+  };
+
+  const evaluator = booleanEvaluators[key];
+  if (evaluator) {
+    const actual = evaluator();
+    if (actual === null) return { key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+    const passes = expected === actual;
+    return { key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: actual, ruleValue: condValue };
+  }
+
+  // Generic observation-based boolean flags
+  const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+  if (expected) {
+    const obsMatch = expandedObs.has(keySymbol) ||
+      [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
+      inputQuery.includes(keySymbol);
+    return { key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+  }
+  return { key, status: ConditionStatus.PASSED, required: false, ruleValue: condValue };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN EVALUATOR: Strict fail-closed with condition ledger
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
- * CRITICAL FIX: Evaluate conditions_json from database
- * Supports compound conditions (all/any), atomic conditions, AND simple object format
+ * STRICT CONSTRAINT-BASED EVALUATOR
  * 
- * DATABASE FORMAT: {crop_stage: [...], observations: [...], trigger_keywords: [...]}
- * COMPOUND FORMAT: {all: [...], any: [...]}
- * ATOMIC FORMAT: {fact: 'X', operator: 'Y', value: 'Z'}
+ * Decision rule: A rule matches ONLY if:
+ * 1. Zero entries have status FAILED
+ * 2. Zero REQUIRED entries have status SKIPPED_NO_DATA or UNEVALUABLE
+ * 3. At least one entry has status PASSED
  */
 export function evaluateConditionsJson(
   conditions: any,
-  input: DecisionInput
+  input: DecisionInput,
+  ruleId?: string
 ): boolean {
   if (!conditions || Object.keys(conditions).length === 0) {
-    return true; // No conditions = always match
+    return true;
   }
-  
-  // Handle 'all' compound condition
+
+  // Handle compound conditions (recursive)
   if (conditions.all && Array.isArray(conditions.all)) {
-    return conditions.all.every((c: any) => evaluateConditionsJson(c, input));
+    return conditions.all.every((c: any) => evaluateConditionsJson(c, input, ruleId));
   }
-  
-  // Handle 'any' compound condition
   if (conditions.any && Array.isArray(conditions.any)) {
-    return conditions.any.some((c: any) => evaluateConditionsJson(c, input));
+    return conditions.any.some((c: any) => evaluateConditionsJson(c, input, ruleId));
   }
-  
-  // Evaluate atomic condition (fact/operator/value format)
+
+  // Handle atomic condition (fact/operator/value)
   if (conditions.fact && conditions.operator) {
     const factValue = input[conditions.fact as keyof DecisionInput];
     if (factValue === undefined || factValue === null) return false;
-    
     const op = conditions.operator.toLowerCase();
     const val = conditions.value;
-    
     switch (op) {
-      case 'equal':
-      case 'equals':
+      case 'equal': case 'equals':
         return String(factValue).toLowerCase() === String(val).toLowerCase();
       case 'contains':
         return String(factValue).toLowerCase().includes(String(val).toLowerCase());
       case 'in':
-        return Array.isArray(val) && val.some((v: any) => 
-          String(v).toLowerCase() === String(factValue).toLowerCase()
-        );
+        return Array.isArray(val) && val.some((v: any) => String(v).toLowerCase() === String(factValue).toLowerCase());
       case 'between':
-        return Array.isArray(val) && val.length === 2 && 
-               Number(factValue) >= val[0] && Number(factValue) <= val[1];
+        return Array.isArray(val) && val.length === 2 && Number(factValue) >= val[0] && Number(factValue) <= val[1];
       case 'lessthan':
         return Number(factValue) < Number(val);
       case 'greaterthan':
@@ -338,362 +580,268 @@ export function evaluateConditionsJson(
         return false;
     }
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // CRITICAL FIX: Handle SIMPLE OBJECT FORMAT from database
-  // This is the actual format used: {crop_stage: [...], observations: [...], trigger_keywords: [...]}
+  // FLAT DB FORMAT: Ledger-based strict evaluation
   // ═══════════════════════════════════════════════════════════════════════════
-  
-  let allMatch = true;
-  let hasAnyCondition = false;
-  
-  // Check crop_stage match
-  if (conditions.crop_stage && Array.isArray(conditions.crop_stage) && conditions.crop_stage.length > 0) {
-    hasAnyCondition = true;
-    const inputStage = input.crop_stage?.toUpperCase() || '';
-    const stageMatch = conditions.crop_stage.some((s: string) => {
-      const normalizedS = s.toUpperCase();
-      return normalizedS === inputStage || 
-             normalizedS === '*' || 
-             normalizedS === 'ALL' ||
-             normalizedS === 'ANY' ||
-             inputStage.includes(normalizedS);
-    });
-    if (!stageMatch && inputStage) {
-      allMatch = false;
-    }
-  }
-  
-  // Check observations match (if input has visual_symptoms)
-  if (conditions.observations && Array.isArray(conditions.observations) && conditions.observations.length > 0) {
-    hasAnyCondition = true;
-    const inputSymptoms = input.visual_symptoms || [];
-    const inputSymptom = (input as any).primary_symptom || '';
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Expand observation aliases for better matching
-    // Maps high-level observation codes to their symptoms
-    // ═══════════════════════════════════════════════════════════════════════════
-    const observationAliases: Record<string, string[]> = {
-      'NUTRIENT_DEFICIENCY': ['leaf_yellowing', 'chlorosis', 'stunted_growth', 'purple_leaves', 'interveinal_chlorosis', 'nutrient_check'],
-      'NUTRIENT_CHECK': ['nutrient_deficiency', 'leaf_yellowing', 'chlorosis', 'stunted_growth', 'fertilizer'],
-      'STUNTED_GROWTH': ['stunted', 'slow_growth', 'poor_growth', 'stunted_plants'],
-      'LEAF_YELLOWING': ['yellowing', 'yellow_leaves', 'chlorosis', 'general_yellowing'],
-      'WATER_STRESS': ['wilting', 'drought', 'dry', 'moisture_stress'],
-      'PEST_DAMAGE': ['insect_present', 'holes_in_leaves', 'damaged_leaves', 'chewed_leaves']
-    };
-    
-    // Build expanded symptom list
-    const expandedSymptoms: string[] = [...inputSymptoms.map(s => s.toLowerCase())];
-    if (inputSymptom) {
-      expandedSymptoms.push(inputSymptom.toLowerCase());
-    }
-    // Add aliases for each input symptom
-    for (const sym of inputSymptoms) {
-      const symUpper = sym.toUpperCase().replace(/[\s-]/g, '_');
-      if (observationAliases[symUpper]) {
-        expandedSymptoms.push(...observationAliases[symUpper]);
-      }
-    }
-    
-    // Match if ANY observation in conditions matches ANY symptom (including aliases)
-    if (expandedSymptoms.length > 0) {
-      const obsMatch = conditions.observations.some((obs: string) => {
-        const obsLower = obs.toLowerCase().replace(/[\s-]/g, '_');
-        const obsNorm = obs.toUpperCase().replace(/[\s-]/g, '_');
-        
-        // Direct match
-        if (expandedSymptoms.some((sym: string) => {
-          const symNorm = sym.replace(/[\s-]/g, '_');
-          return symNorm.includes(obsLower) || obsLower.includes(symNorm);
-        })) {
-          return true;
-        }
-        
-        // Check if any input symptom is an alias of the rule observation
-        if (observationAliases[obsNorm]) {
-          return expandedSymptoms.some((sym: string) => 
-            observationAliases[obsNorm].some(alias => sym.includes(alias) || alias.includes(sym))
-          );
-        }
-        
-        return false;
-      });
-      if (!obsMatch) {
-        allMatch = false;
-      }
-    }
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SSOT FIX: trigger_keywords are DEPRECATED per language-independence architecture.
-  // They MUST NOT override other condition checks (soil thresholds, safety gates).
-  // Keyword matching is now handled by the Neuro-Symbolic Bridge upstream.
-  // If trigger_keywords exist in conditions_json, treat them as soft observation hints
-  // that contribute to allMatch but do NOT bypass other conditions.
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (conditions.trigger_keywords && Array.isArray(conditions.trigger_keywords) && conditions.trigger_keywords.length > 0) {
-    // Log deprecation warning but do NOT override other conditions
-    console.warn(`⚠️ [evaluateConditionsJson] trigger_keywords found but DEPRECATED - not overriding conditions`);
-    // trigger_keywords are ignored — observation matching handles this upstream
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CRITICAL FIX: Handle UNKNOWN KEYS in conditions_json
-  // Instead of rejecting on unknown keys, gracefully skip complex/contextual
-  // conditions we can't evaluate, and match boolean/string observation flags
-  // against user symptoms/query
-  // ═══════════════════════════════════════════════════════════════════════════
-  const RECOGNIZED_KEYS = new Set([
-    // Core structural keys
-    'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
-    'trigger_keywords', 'all', 'any', 'fact', 'operator', 'value',
-    'crop_code', 'crop_type',
-    // Soil & nutrition keys
-    'soil_test', 'soil_fe_ppm', 'soil_zn_ppm', 'soil_mn_ppm', 'soil_s_ppm',
-    'soil_b_ppm', 'soil_cu_ppm', 'soil_ph', 'soil_oc', 'soil_ec',
-    'leaf_n_status', 'no_visible_deficiency',
-    // Environmental/weather keys
-    'context', 'stress', 'weather', 'temperature_c', 'duration_days',
-    'irrigation_system', 'water_deficit_visible', 'high_water_bills',
-    // NDVI & growth keys
-    'ndvi_trend', 'ndvi_improving', 'ndvi_level',
-    'normal_growth', 'uneven_growth', 'symptoms_mild',
-    // ROI/economic keys
-    'roi_basis', 'roi_modifier', 'roi_by_region', 'lodging_risk',
-    // Pest/disease observation keys
-    'no_pest_visible', 'salesman_recommendation',
-    // Boolean flags already handled by BOOLEAN_FLAG_MAP equivalent
-    'soil_moisture_low', 'soil_moisture_high', 'recent_rain',
-    'critical_stage', 'high_humidity', 'high_temperature', 'low_temperature',
-    'severity',
-  ]);
-  
+  const ledger: ConditionEntry[] = [];
   const conditionKeys = Object.keys(conditions);
+
+  // Precompute input values
+  const inputStage = (input.crop_stage || '').toUpperCase();
+  const inputSymptoms = (input.visual_symptoms || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
   const inputSymptom = ((input as any).primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
-  const inputQuery = ((input as any).user_query || (input as any).query || '').toUpperCase();
-  
-  // Handle stage aliases (stage, growth_stage -> crop_stage)
-  const stageAlias = conditions.stage || conditions.growth_stage;
-  if (stageAlias && !conditions.crop_stage) {
-    const stageArr = Array.isArray(stageAlias) ? stageAlias : [stageAlias];
-    const inputStage = (input.crop_stage || '').toUpperCase();
-    hasAnyCondition = true;
-    const stageMatch = stageArr.some((s: any) => {
-      const upper = String(s).toUpperCase();
-      return upper === inputStage || upper === '*' || upper === 'ALL';
-    });
-    if (!stageMatch && inputStage) allMatch = false;
+  const inputQuery = ((input as any).user_query || '').toUpperCase();
+  const inputObservations = (input.observations || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
+
+  // Combined observation set
+  const allInputObs = new Set([...inputSymptoms, ...inputObservations]);
+  if (inputSymptom) allInputObs.add(inputSymptom);
+
+  // Observation aliases
+  const observationAliases: Record<string, string[]> = {
+    'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH', 'PURPLE_LEAVES', 'INTERVEINAL_CHLOROSIS'],
+    'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH'],
+    'STUNTED_GROWTH': ['STUNTED', 'SLOW_GROWTH', 'POOR_GROWTH'],
+    'LEAF_YELLOWING': ['YELLOWING', 'YELLOW_LEAVES', 'CHLOROSIS', 'GENERAL_YELLOWING'],
+    'WATER_STRESS': ['WILTING', 'DROUGHT', 'DRY', 'MOISTURE_STRESS'],
+    'PEST_DAMAGE': ['INSECT_PRESENT', 'HOLES_IN_LEAVES', 'DAMAGED_LEAVES', 'CHEWED_LEAVES']
+  };
+
+  // Expand with aliases
+  const expandedObs = new Set(allInputObs);
+  for (const obs of allInputObs) {
+    if (observationAliases[obs]) {
+      observationAliases[obs].forEach(a => expandedObs.add(a));
+    }
   }
-  
-  // Handle symptom alias -> observations
-  const symptomAlias = conditions.symptom || conditions.primary_symptom;
-  if (symptomAlias && !conditions.observations) {
-    const symArr = Array.isArray(symptomAlias) ? symptomAlias : [symptomAlias];
-    hasAnyCondition = true;
-    const symMatch = symArr.some((s: any) => {
-      const upper = String(s).toUpperCase().replace(/[\s-]/g, '_');
-      return inputSymptom.includes(upper) || upper.includes(inputSymptom) || inputQuery.includes(upper);
-    });
-    if (!symMatch) allMatch = false;
-  }
-  
-  // Process remaining unknown keys
-  // Fix 2: Track skipped (unevaluable) conditions to prevent false matches
-  let skippedObjectConditions = 0;
-  let evaluatedUnknownConditions = 0;
-  
+
   for (const key of conditionKeys) {
-    if (RECOGNIZED_KEYS.has(key)) {
-      // Handle newly recognized keys with proper evaluation
-      const condValue = conditions[key];
-      
-      // ═══════════════════════════════════════════════════════════════════
-      // EXPANDED EVALUATION: Handle all keys from RECOGNIZED_KEYS
-      // ═══════════════════════════════════════════════════════════════════
-      
-      // Boolean observation flags (no_pest_visible, symptoms_mild, etc.)
-      if (typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false') {
-        // These are soft constraints - if true, check against input observations
-        if (condValue === true || condValue === 'true') {
-          const keyUpper = key.toUpperCase().replace(/[\s-]/g, '_');
-          hasAnyCondition = true;
-          if (inputSymptom === keyUpper || inputSymptom.includes(keyUpper) || inputQuery.includes(keyUpper)) {
-            // Matches
-          } else {
-            // For negative-assertion flags like no_pest_visible, no_visible_deficiency:
-            // these mean "this condition is true" - we can't disprove them without data
-            if (key.startsWith('no_') || key.startsWith('normal_')) {
-              // Soft pass - don't penalize if we can't verify
-            } else {
-              allMatch = false;
-            }
-          }
-        }
-        continue;
-      }
-      
-      // String value keys (context, stress, irrigation_system, etc.)
-      if (typeof condValue === 'string' && !['crop_stage', 'stage', 'growth_stage', 'observations', 
-          'symptom', 'primary_symptom', 'crop_code', 'crop_type'].includes(key)) {
-        hasAnyCondition = true;
-        const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
-        if (!(inputSymptom.includes(valUpper) || valUpper.includes(inputSymptom) || inputQuery.includes(valUpper))) {
-          // For contextual keys like roi_basis, context, stress - soft match
-          if (['roi_basis', 'roi_modifier', 'context', 'stress', 'irrigation_system'].includes(key)) {
-            // Soft constraint - don't fail hard without context data
-          } else {
-            allMatch = false;
-          }
-        }
-        continue;
-      }
-      
-      // Numeric value keys (temperature_c, duration_days, etc.)
-      if (typeof condValue === 'number') {
-        // Skip - can't evaluate without proper thresholds
-        continue;
-      }
-      
-      // Nested objects (weather, roi_by_region, etc.)
-      if (condValue !== null && typeof condValue === 'object') {
-        // Weather object: {weather: {temp_min: 25, humidity_min: 80}}
-        if (key === 'weather' && typeof condValue === 'object') {
-          hasAnyCondition = true;
-          // Soft match - we don't have weather data in this evaluator path
-          continue;
-        }
-        // ROI objects - economic data, skip gracefully
-        if (key === 'roi_by_region' || key === 'roi_modifier') {
-          continue;
-        }
-        skippedObjectConditions++;
-        continue;
-      }
-      
-      continue; // Already handled by existing crop_stage/observations logic above
-    }
-    
+    if (STRUCTURAL_KEYS.has(key)) continue;
+
     const condValue = conditions[key];
-    
-    // Track complex object/array conditions as unevaluable instead of silently skipping
-    if (condValue !== null && typeof condValue === 'object') {
-      skippedObjectConditions++;
-      continue;
-    }
-    
-    // Boolean observation flags: {dead_heart: true, black_whip_like_structure: true}
-    if (condValue === true || condValue === 'true') {
-      hasAnyCondition = true;
-      evaluatedUnknownConditions++;
-      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
-      if (!(inputSymptom === keySymbol || inputSymptom.includes(keySymbol) || 
-            keySymbol.includes(inputSymptom) || inputQuery.includes(keySymbol))) {
-        allMatch = false;
+
+    // ─── Category H: Deprecated/Ignored ───
+    if (key === 'trigger_keywords') continue;
+    if (key === 'always_applicable') {
+      if (condValue === true || condValue === 'true') {
+        ledger.push({ key, status: ConditionStatus.PASSED, required: false, ruleValue: condValue });
       }
       continue;
     }
-    
-    // String value conditions: {pest: "termite", disease: "smut"}
+
+    // ─── Category A: Stage Keys ───
+    if (key === 'crop_stage' || key === 'stage' || key === 'growth_stage') {
+      const stages = Array.isArray(condValue) ? condValue : [condValue];
+      if (stages.length > 0) {
+        const stageMatch = stages.some((s: any) => {
+          const upper = String(s).toUpperCase();
+          return upper === inputStage || upper === '*' || upper === 'ALL' || upper === 'ANY' || inputStage.includes(upper);
+        });
+        ledger.push({
+          key, status: stageMatch || !inputStage ? ConditionStatus.PASSED : ConditionStatus.FAILED,
+          required: true, inputValue: inputStage, ruleValue: stages
+        });
+      }
+      continue;
+    }
+
+    // ─── Category A: Observation Keys ───
+    if (key === 'observations' || key === 'symptom' || key === 'primary_symptom') {
+      const obsList = Array.isArray(condValue) ? condValue : [condValue];
+      if (obsList.length > 0) {
+        if (expandedObs.size > 0) {
+          const obsMatch = obsList.some((obs: string) => {
+            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+            for (const inputObs of expandedObs) {
+              if (inputObs === obsUpper || inputObs.includes(obsUpper) || obsUpper.includes(inputObs)) return true;
+            }
+            return false;
+          });
+          ledger.push({
+            key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.FAILED,
+            required: true, inputValue: [...expandedObs].slice(0, 5), ruleValue: obsList
+          });
+        } else {
+          ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: obsList });
+        }
+      }
+      continue;
+    }
+
+    // ─── Category B: Identity Keys ───
+    if (key === 'crop_code' || key === 'crop_type' || key === 'variety') {
+      const inputCrop = (input.crop_code || '').toLowerCase();
+      const ruleVal = String(condValue).toLowerCase();
+      if (!inputCrop) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+      } else {
+        const match = ruleVal === inputCrop || ruleVal === '*' || ruleVal === 'all' || ruleVal === 'universal';
+        ledger.push({
+          key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED,
+          required: true, inputValue: inputCrop, ruleValue: condValue
+        });
+      }
+      continue;
+    }
+
+    // ─── Category C: Numeric Threshold Keys ───
+    if (CATEGORY_C_KEYS.has(key)) {
+      ledger.push(evaluateNumericCondition(key, condValue, input));
+      continue;
+    }
+
+    // ─── Category G: Informational/Context Keys (NOT required) ───
+    if (CATEGORY_G_KEYS.has(key)) {
+      if (typeof condValue === 'string') {
+        const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+        const matches = inputQuery.includes(valUpper) || [...expandedObs].some(o => o.includes(valUpper));
+        ledger.push({
+          key, status: matches ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA,
+          required: false, ruleValue: condValue
+        });
+      } else {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      }
+      continue;
+    }
+
+    // ─── Category E: Weather Objects ───
+    if (CATEGORY_E_KEYS.has(key)) {
+      if (!input.weather || (!input.weather.temp && !input.weather.humidity && !input.weather.rain_mm)) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+      } else if (typeof condValue === 'object' && condValue !== null) {
+        const weatherResult = evaluateWeatherCondition(condValue, input.weather);
+        ledger.push({ key, status: weatherResult ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.weather, ruleValue: condValue });
+      } else {
+        ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue });
+      }
+      continue;
+    }
+
+    // ─── Category F: ETL Objects ───
+    if (CATEGORY_F_KEYS.has(key)) {
+      if (input.pest_count === undefined || input.pest_count === null) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+      } else if (typeof condValue === 'object' && condValue !== null) {
+        const etlResult = evaluateETLCondition(condValue, input.pest_count);
+        ledger.push({ key, status: etlResult ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.pest_count, ruleValue: condValue });
+      } else {
+        ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue });
+      }
+      continue;
+    }
+
+    // ─── Category D: Boolean Gate Keys (severity, stress, leaf_n_status, etc.) ───
+    if (typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false' ||
+        key === 'severity' || key === 'stress' || key === 'leaf_n_status' ||
+        key === 'disease_confirmed' || key === 'pest_present' || key === 'etl_exceeded' || key === 'etl_below' ||
+        key === 'lodging_risk' || key === 'soil_moisture_low' || key === 'soil_moisture_high' ||
+        key === 'ndvi_decline' || key === 'ndvi_triggered' || key === 'ndvi_improving' ||
+        key === 'recovery_absent' || key === 'organic_failed' || key === 'bio_control_failed' ||
+        key === 'recent_rain' || key === 'critical_stage' || key === 'high_humidity' ||
+        key === 'high_temperature' || key === 'low_temperature' ||
+        key === 'water_deficit_visible' || key === 'high_water_bills' ||
+        key === 'no_pest_visible' || key === 'no_visible_deficiency' || key === 'normal_growth' ||
+        key === 'uneven_growth' || key === 'symptoms_mild' || key === 'salesman_recommendation') {
+      ledger.push(evaluateBooleanGate(key, condValue, input, expandedObs, inputQuery));
+      continue;
+    }
+
+    // ─── Unrecognized keys: Domain-specific observation flags ───
+    if (condValue === true || condValue === 'true') {
+      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const match = expandedObs.has(keySymbol) ||
+        [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
+        inputQuery.includes(keySymbol);
+      ledger.push({
+        key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED,
+        required: true, ruleValue: condValue
+      });
+      continue;
+    }
+
     if (typeof condValue === 'string') {
-      evaluatedUnknownConditions++;
-      // Try numeric comparator first
+      // Try numeric threshold
       const inputValue = (input as any)[key];
       const numericInput = typeof inputValue === 'number' ? inputValue : parseFloat(String(inputValue));
-      
+
       if (!isNaN(numericInput) && inputValue !== undefined) {
         const ltMatch = condValue.match(/^<\s*(\d+\.?\d*)$/);
         const gteMatch = condValue.match(/^>=\s*(\d+\.?\d*)$/);
-        if (ltMatch && !(numericInput < parseFloat(ltMatch[1]))) { allMatch = false; hasAnyCondition = true; continue; }
-        if (gteMatch && !(numericInput >= parseFloat(gteMatch[1]))) { allMatch = false; hasAnyCondition = true; continue; }
-        hasAnyCondition = true;
+        const gtMatch = condValue.match(/^>\s*(\d+\.?\d*)$/);
+        const lteMatch = condValue.match(/^<=\s*(\d+\.?\d*)$/);
+        let passes = true;
+        if (ltMatch) passes = numericInput < parseFloat(ltMatch[1]);
+        else if (gteMatch) passes = numericInput >= parseFloat(gteMatch[1]);
+        else if (gtMatch) passes = numericInput > parseFloat(gtMatch[1]);
+        else if (lteMatch) passes = numericInput <= parseFloat(lteMatch[1]);
+        ledger.push({ key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: numericInput, ruleValue: condValue });
         continue;
       }
-      
-      // Match string value against symptom/query
-      hasAnyCondition = true;
+
+      // String match against observations/query
       const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
-      if (!(inputSymptom.includes(valUpper) || valUpper.includes(inputSymptom) || inputQuery.includes(valUpper))) {
-        allMatch = false;
+      const match = [...expandedObs].some(o => o.includes(valUpper) || valUpper.includes(o)) || inputQuery.includes(valUpper);
+      ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, ruleValue: condValue });
+      continue;
+    }
+
+    if (condValue === false || condValue === 'false') {
+      // Negative assertion - passes unless contradicted
+      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const present = expandedObs.has(keySymbol) || [...expandedObs].some(o => o.includes(keySymbol));
+      ledger.push({ key, status: present ? ConditionStatus.FAILED : ConditionStatus.PASSED, required: false, ruleValue: condValue });
+      continue;
+    }
+
+    if (typeof condValue === 'number') {
+      const inputValue = (input as any)[key];
+      if (inputValue === undefined || inputValue === null) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+      } else {
+        const passes = Math.abs(Number(inputValue) - condValue) < 0.01;
+        ledger.push({ key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue, ruleValue: condValue });
       }
       continue;
     }
-    
-    // false booleans, numbers - skip gracefully
-    if (condValue === false || condValue === 'false' || typeof condValue === 'number') {
+
+    if (condValue !== null && typeof condValue === 'object') {
+      // Unknown object condition - cannot evaluate
+      ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: '[object]' });
       continue;
     }
+
+    // Anything else
+    ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue });
   }
-  
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // Fix 2: FAIL-CLOSED for rules with ONLY unevaluable conditions
-  // If ALL non-recognized conditions were complex objects (soil thresholds, 
-  // weather maps, ETL objects) and NO conditions were actually evaluated,
-  // the rule should NOT match — we lack the data to validate it.
+  // DECISION RULE: Strict fail-closed
+  // 1. Zero FAILED entries
+  // 2. Zero REQUIRED entries with SKIPPED_NO_DATA or UNEVALUABLE
+  // 3. At least one PASSED entry
   // ═══════════════════════════════════════════════════════════════════════════
-  if (skippedObjectConditions > 0 && evaluatedUnknownConditions === 0 && !hasAnyCondition) {
-    return false; // Cannot evaluate = do not match
+  const requiredFailed = ledger.filter(e => e.required &&
+    (e.status === ConditionStatus.FAILED || e.status === ConditionStatus.SKIPPED_NO_DATA || e.status === ConditionStatus.UNEVALUABLE));
+  const anyPassed = ledger.some(e => e.status === ConditionStatus.PASSED);
+  const matches = requiredFailed.length === 0 && anyPassed;
+
+  // Cache ledger for downstream scoring
+  if (ruleId) {
+    conditionLedgerCache.set(ruleId, ledger);
   }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ENHANCED FIX: Fail-closed when skipped objects exist AND only stage matched
-  // If stage matched (hasAnyCondition=true) but ALL remaining conditions were
-  // skipped objects/numbers, the rule matched on stage alone — NOT enough.
-  // ═══════════════════════════════════════════════════════════════════════════
-  if (skippedObjectConditions > 0 && evaluatedUnknownConditions === 0 && hasAnyCondition) {
-    // Only stage/crop matched, all domain-specific conditions were skipped
-    // This prevents rules with only roi_by_region + roi_modifier from firing on stage match alone
-    const onlyStageOrCropMatched = conditionKeys.every(k => 
-      RECOGNIZED_KEYS.has(k) || 
-      (conditions[k] !== null && typeof conditions[k] === 'object') ||
-      typeof conditions[k] === 'number' ||
-      conditions[k] === false || conditions[k] === 'false'
-    );
-    if (onlyStageOrCropMatched) {
-      return false; // Stage match + all domain conditions skipped = fail-closed
-    }
-  }
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // SOIL THRESHOLD FAIL-CLOSED: When soil_* keys exist but input has no data
-  // Conditions like {soil_fe_ppm: "<4.5"} must NOT match when soil data is missing.
-  // The evaluatedUnknownConditions count includes these, but they failed because
-  // parseFloat(undefined) = NaN, not because the threshold wasn't met.
-  // ═══════════════════════════════════════════════════════════════════════════
-  const SOIL_THRESHOLD_KEYS = ['soil_fe_ppm', 'soil_zn_ppm', 'soil_mn_ppm', 'soil_s_ppm', 
-    'soil_b_ppm', 'soil_cu_ppm', 'soil_ph', 'soil_oc', 'soil_ec'];
-  const hasSoilThresholdConditions = conditionKeys.some(k => SOIL_THRESHOLD_KEYS.includes(k));
-  if (hasSoilThresholdConditions) {
-    const allSoilUnevaluable = conditionKeys
-      .filter(k => SOIL_THRESHOLD_KEYS.includes(k))
-      .every(k => (input as any)[k] === undefined || (input as any)[k] === null);
-    if (allSoilUnevaluable) {
-      return false; // Cannot evaluate soil thresholds without soil data
-    }
-  }
-  
-  // If no specific conditions were defined (truly empty object), match by default
-  if (!hasAnyCondition && conditionKeys.length === 0) {
-    return true;
-  }
-  
-  // If we had conditions but none matched, fail
-  if (!hasAnyCondition) {
-    return false;
-  }
-  
-  return allMatch;
+
+  return matches;
 }
 
 function makeExecutable(rule: BundledRule): ExecutableRule {
   return {
     ...rule,
     conditions: (input: DecisionInput) => {
-      // CRITICAL FIX: First try conditions_json, then fallback to conditionCode
       if (rule.conditions_json && Object.keys(rule.conditions_json).length > 0) {
-        return evaluateConditionsJson(rule.conditions_json, input);
+        return evaluateConditionsJson(rule.conditions_json, input, rule.rule_id);
       }
-      // Fallback to legacy conditionCode
       return reconstructCondition(rule.conditionCode)(input);
     }
   };
@@ -816,6 +964,7 @@ export function getBundleVersion(): string {
 export function clearCaches(): void {
   cachedRules = null;
   cacheExpiry = 0;
+  conditionLedgerCache.clear();
   console.log('🧹 [RuleLoader] Caches cleared');
 }
 

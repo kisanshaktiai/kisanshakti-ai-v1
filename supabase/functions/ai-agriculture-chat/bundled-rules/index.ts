@@ -28,12 +28,16 @@ export {
   getBundleMetadata,
   getBundleVersion,
   clearCaches,
+  getConditionLedger,
+  clearLedgerCache,
+  ConditionStatus,
 } from './loader.ts';
 
 export type {
   ExecutableRule,
   DecisionInput,
   BundledRule,
+  ConditionEntry,
 } from './loader.ts';
 
 // Types from all-rules

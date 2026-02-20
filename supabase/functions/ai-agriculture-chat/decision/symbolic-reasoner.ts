@@ -835,19 +835,22 @@ export class SymbolicReasoner {
           }
           continue;
         }
-        // Objects/numbers - skip gracefully
+        // Objects/numbers in contextual keys - count in denominator
+        totalConditions++;
         continue;
       }
       
       const val = cond[key];
       
-      // Skip complex object/array conditions we can't evaluate (etl thresholds, etc.)
-      // These are contextual constraints we don't have data for - DON'T reject the rule
+      // FAIL-CLOSED: Object/array conditions count as required but unmet
+      // Cannot evaluate without structured data → drags down score
       if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-        continue; // Gracefully skip, don't count as failed condition
+        totalConditions++;
+        continue;
       }
       if (Array.isArray(val)) {
-        continue; // Skip unknown array conditions gracefully
+        totalConditions++;
+        continue;
       }
       
       // Boolean flags: {dead_heart: true, black_whip_like_structure: true}
@@ -899,7 +902,11 @@ export class SymbolicReasoner {
       
       // false boolean: {etl_exceeded: false, no_match: false}
       if (val === false || val === 'false') {
-        // These are negative conditions - skip gracefully, don't penalize
+        // Negative assertion: count and verify not contradicted
+        totalConditions++;
+        const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+        const contradicted = allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol));
+        if (!contradicted) metConditions++;
         continue;
       }
       
