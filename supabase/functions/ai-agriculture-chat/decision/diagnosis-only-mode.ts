@@ -58,6 +58,12 @@ import {
   type AuthorityDecision
 } from './authority-types.ts';
 
+import {
+  AuthoredObservationSet,
+  ObservationAuthority,
+  TERMINAL_CODES_BLOCKED_FROM_INJECTION
+} from '../utils/observation-authority.ts';
+
 export const DIAGNOSIS_ONLY_MODE_VERSION = '4.0.0'; // v4: Crop damage triggers diagnosis mode
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -486,6 +492,68 @@ export function detectCropDamageForDiagnosis(
     nlu_gating_disabled: false,
     reason: 'NO_CROP_DAMAGE_DETECTED'
   };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// v5.0: AUTHORITY-AWARE CROP DAMAGE DETECTION
+// Only checks CONFIRMED + EXTRACTED observations for terminal indicators.
+// Inferred/Synthetic codes are IGNORED for terminal gate decisions.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Detect crop damage using ONLY farmer-confirmed or directly extracted evidence.
+ * 
+ * This is the CORRECT entry point for terminal damage detection.
+ * It filters the AuthoredObservationSet to only CONFIRMED + EXTRACTED
+ * authority levels before checking for terminal indicators.
+ * 
+ * INFERRED codes (alias expansion) and SYNTHETIC codes (cross-crop injection)
+ * are EXCLUDED from terminal gate evaluation.
+ */
+export function detectCropDamageWithAuthority(
+  authoredObservations: AuthoredObservationSet,
+  crossCropSymptoms?: string[]
+): CropDamageDetectionResult {
+  // Get only CONFIRMED + EXTRACTED codes for terminal gate
+  const terminalGateCodes = authoredObservations.getCodesForTerminalGate();
+  
+  console.log(`\n🔬 [CropDamageDetector v5.0 AUTHORITY-AWARE]`);
+  console.log(`   Total observations: ${authoredObservations.size}`);
+  console.log(`   Terminal gate codes (CONFIRMED+EXTRACTED only): ${terminalGateCodes.length}`);
+  console.log(`   Terminal gate codes: [${terminalGateCodes.join(', ')}]`);
+  console.log(`   Authority breakdown: ${authoredObservations.toSummary()}`);
+  
+  // NOTE: We do NOT pass crossCropSymptoms to the terminal gate.
+  // Cross-crop symptoms are SYNTHETIC and must not trigger terminal mode.
+  const terminalGateSet = new Set(terminalGateCodes);
+  
+  // Run the detection on ONLY the filtered codes (no cross-crop injection)
+  const result = detectCropDamageForDiagnosis(terminalGateSet);
+  
+  // Log the authority-filtered result
+  if (result.detected) {
+    console.log(`   ✅ [AUTHORITY-FILTERED] Damage detected: ${result.damage_type}`);
+    console.log(`   Triggering observations (all CONFIRMED/EXTRACTED): ${result.damage_observations.join(', ')}`);
+  } else {
+    // Check if unfiltered set WOULD have triggered (for logging only)
+    const unfilteredResult = detectCropDamageForDiagnosis(
+      authoredObservations.toFlatSet(),
+      crossCropSymptoms
+    );
+    if (unfilteredResult.detected) {
+      console.log(`   🛡️ [AUTHORITY-GUARD] Terminal gate BLOCKED`);
+      console.log(`   Unfiltered would have triggered: ${unfilteredResult.damage_type}`);
+      console.log(`   Blocked codes (INFERRED/SYNTHETIC): ${
+        unfilteredResult.damage_observations
+          .filter(code => !terminalGateSet.has(code))
+          .join(', ')
+      }`);
+    } else {
+      console.log(`   ℹ️ No crop damage detected at any authority level`);
+    }
+  }
+  
+  return result;
 }
 
 /**
