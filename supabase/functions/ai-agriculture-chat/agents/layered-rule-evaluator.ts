@@ -29,7 +29,10 @@ import {
   loadAllRules,
   loadRulesForCrop,
   getRuleCount,
-  type ExecutableRule
+  getConditionLedger,
+  ConditionStatus,
+  type ExecutableRule,
+  type ConditionEntry
 } from '../bundled-rules/loader.ts';
 
 // PHASE-16: Import SymbolicReasoner for proper JSON condition evaluation
@@ -675,19 +678,27 @@ export function evaluateRulesLayered(
     const currentSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
     
     const scored = candidatesForPrimary.map(r => {
+      // ═══════════════════════════════════════════════════════════════════
+      // LEDGER-BASED SCORING: Use condition ledger for accurate scoring
+      // Only counts REQUIRED conditions in denominator
+      // ═══════════════════════════════════════════════════════════════════
+      const ledger = getConditionLedger(r.rule_id);
+      if (ledger && ledger.length > 0) {
+        const requiredEntries = ledger.filter(e => e.required);
+        const passedRequired = requiredEntries.filter(e => e.status === ConditionStatus.PASSED).length;
+        const totalRequired = requiredEntries.length;
+        const normalizedScore = totalRequired > 0 ? Math.min(1.0, passedRequired / totalRequired) : (r.confidence_score ?? 0.5);
+        const contentBonus = ((r.action_text ? 0.02 : 0) + (r.reason_text ? 0.015 : 0) + (r.knowledge_text ? 0.015 : 0));
+        const finalScore = Math.min(1.0, normalizedScore + contentBonus);
+        return { response: r, evidenceScore: finalScore, matchedConditions: passedRequired, totalConditions: totalRequired };
+      }
+      
+      // Fallback: legacy scoring if no ledger available
       const ruleConditions = r.conditions_json || {};
       const ruleObs: string[] = Array.isArray(ruleConditions.observations) ? ruleConditions.observations : [];
-      
-      // Count total required conditions from the rule
-      const conditionKeys = Object.keys(ruleConditions).filter(k => 
-        k !== 'trigger_keywords' && k !== 'observations'
-      );
+      const conditionKeys = Object.keys(ruleConditions).filter(k => k !== 'trigger_keywords' && k !== 'observations');
       const totalConditions = ruleObs.length + conditionKeys.length;
-      
-      // Count matched conditions
       let matchedConditions = 0;
-      
-      // Observation overlap
       if (ruleObs.length > 0 && currentSymptoms.length > 0) {
         for (const o of ruleObs) {
           const oNorm = String(o).toUpperCase().replace(/[\s-]/g, '_');
@@ -695,27 +706,14 @@ export function evaluateRulesLayered(
             matchedConditions++;
           }
         }
-      } else if (ruleObs.length === 0) {
-        // No observation requirement = not penalized
       }
-      
-      // Context condition matches (boolean/string keys present in state)
       for (const key of conditionKeys) {
         const stateVal = (state as any)[key];
         if (isDataPresent(stateVal)) matchedConditions++;
       }
-      
-      // NORMALIZED SCORE: ratio of matched to total, capped at 1.0
-      const normalizedScore = totalConditions > 0 
-        ? Math.min(1.0, matchedConditions / totalConditions) 
-        : (r.confidence_score ?? 0.5);
-      
-      // Content completeness bonus (small, max 0.05)
+      const normalizedScore = totalConditions > 0 ? Math.min(1.0, matchedConditions / totalConditions) : (r.confidence_score ?? 0.5);
       const contentBonus = ((r.action_text ? 0.02 : 0) + (r.reason_text ? 0.015 : 0) + (r.knowledge_text ? 0.015 : 0));
-      
-      // Final score: normalized evidence + small content bonus, CAPPED at 1.0
       const finalScore = Math.min(1.0, normalizedScore + contentBonus);
-      
       return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
     
@@ -921,7 +919,22 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             // Weather context
             weather: state.weather || {},
             // Data confidence
-            data_confidence: state.data_confidence || ''
+            data_confidence: state.data_confidence || '',
+            // Extended context for strict constraint evaluation
+            days_since_sowing: (state as any).days_since_sowing,
+            soil_ph: (state as any).soil_ph,
+            soil_type_name: (state as any).soil_type_name,
+            soil_moisture_status: (state as any).soil_moisture_status,
+            pest_count: (state as any).pest_count,
+            region: (state as any).region,
+            ndvi_pattern: (state as any).ndvi_pattern,
+            ratoon_number: (state as any).ratoon_number,
+            soil_organic_carbon: (state as any).soil_organic_carbon,
+            soil_ec: (state as any).soil_ec,
+            disease_confirmed: (state as any).disease_confirmed,
+            irrigation_method: (state as any).irrigation_method,
+            crop_cycle: (state as any).crop_cycle,
+            farming_mode: (state as any).farming_mode,
           };
           return bundled.conditions(input);
         } catch (e) { 
