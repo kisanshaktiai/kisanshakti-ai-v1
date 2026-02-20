@@ -759,8 +759,12 @@ export function evaluateRulesLayered(
       // MANDATORY: Build complete PrimaryDecision with density-weighted confidence
       // SSOT ARCHITECTURE: weighted_confidence is the authoritative confidence score
       // ═══════════════════════════════════════════════════════════════════════════
-      const baseScore = scored[0].matchedConditions / scored[0].totalConditions;
-      const densityWeight = Math.min(1.0, Math.log(scored[0].totalConditions + 1) / Math.log(10));
+      // BUG FIX: Guard against division by zero when totalConditions = 0
+      // This happens for fallback rules like SC_DIAG_GENERAL_015 with {no_matching_diagnosis: true}
+      const totalConds = scored[0].totalConditions;
+      const matchedConds = scored[0].matchedConditions;
+      const baseScore = totalConds > 0 ? matchedConds / totalConds : (scored[0].response.confidence_score ?? 0.5);
+      const densityWeight = totalConds > 0 ? Math.min(1.0, Math.log(totalConds + 1) / Math.log(10)) : 0.3;
       const weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
       
       result.primary_decision = {

@@ -961,11 +961,13 @@ serve(async (req) => {
         // ═══════════════════════════════════════════════════════════════════════════
         // CONFIDENCE BRIDGE: Extract symbolic confidence as SSOT for decision_confidence
         // ═══════════════════════════════════════════════════════════════════════════
-        const symbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
+        const rawSymbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
           ?.primary_decision?.weighted_confidence
           ?? orchestratorResponse.decision_output?.layered_rule_result
             ?.primary_decision?.confidence_score
           ?? 0;
+        // BUG FIX: Guard against NaN from division-by-zero in rule evaluator
+        const symbolicConfidence = isNaN(rawSymbolicConfidence) ? 0.5 : rawSymbolicConfidence;
         
         const unifiedGateInput: UnifiedGateInput = {
           authority_decision: orchestratorResponse.decision_output?.authority_decision || {
