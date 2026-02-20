@@ -374,7 +374,18 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   // SSOT: Confidence comes from symbolic layer only (via decision_confidence)
   // DEPRECATED: semantic_confidence and observation_certainty are kept for backward compat
   // but are NOT used in mode resolution. The symbolic ledger score IS the confidence.
-  const calculatedConfidence = input.decision_confidence ?? 0;
+  let calculatedConfidence = input.decision_confidence ?? 0;
+  
+  // Composite confidence: hypothesis causal certainty × rule treatment suitability
+  const hypothesisConf = (input as any).hypothesis_confidence;
+  if (hypothesisConf !== undefined && hypothesisConf > 0 && calculatedConfidence > 0) {
+    const compositeConfidence = Math.round(hypothesisConf * (calculatedConfidence / 100) * 100);
+    console.log(`   📊 [CausalConfidence] hypothesis=${hypothesisConf.toFixed(3)} * rule=${calculatedConfidence}% = composite=${compositeConfidence}%`);
+    // Use composite if it boosts confidence (hypothesis confirms rule match)
+    if (compositeConfidence > calculatedConfidence) {
+      calculatedConfidence = compositeConfidence;
+    }
+  }
   
   // Detect symptom presence from input
   const hasSymptoms = !!(input.symptom_keys && input.symptom_keys.length > 0);

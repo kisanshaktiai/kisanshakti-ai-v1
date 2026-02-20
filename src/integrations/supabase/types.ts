@@ -1455,6 +1455,9 @@ export type Database = {
           farmer_id: string | null
           feedback_comment: string | null
           feedback_score: number | null
+          hypothesis_decision_path: string | null
+          hypothesis_id: string | null
+          hypothesis_score: number | null
           id: string
           input_data: Json
           land_id: string | null
@@ -1481,6 +1484,9 @@ export type Database = {
           farmer_id?: string | null
           feedback_comment?: string | null
           feedback_score?: number | null
+          hypothesis_decision_path?: string | null
+          hypothesis_id?: string | null
+          hypothesis_score?: number | null
           id?: string
           input_data: Json
           land_id?: string | null
@@ -1507,6 +1513,9 @@ export type Database = {
           farmer_id?: string | null
           feedback_comment?: string | null
           feedback_score?: number | null
+          hypothesis_decision_path?: string | null
+          hypothesis_id?: string | null
+          hypothesis_score?: number | null
           id?: string
           input_data?: Json
           land_id?: string | null
@@ -18957,6 +18966,209 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "ndvi_full_view"
             referencedColumns: ["farmer_id"]
+          },
+        ]
+      }
+      hypothesis_conditions: {
+        Row: {
+          condition_key: string
+          condition_type: string
+          created_at: string | null
+          hypothesis_id: string
+          id: string
+          is_discriminator: boolean | null
+          is_required: boolean | null
+          operator: string
+          value_json: Json
+          weight: number | null
+        }
+        Insert: {
+          condition_key: string
+          condition_type: string
+          created_at?: string | null
+          hypothesis_id: string
+          id?: string
+          is_discriminator?: boolean | null
+          is_required?: boolean | null
+          operator: string
+          value_json: Json
+          weight?: number | null
+        }
+        Update: {
+          condition_key?: string
+          condition_type?: string
+          created_at?: string | null
+          hypothesis_id?: string
+          id?: string
+          is_discriminator?: boolean | null
+          is_required?: boolean | null
+          operator?: string
+          value_json?: Json
+          weight?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
+      hypothesis_contradictions: {
+        Row: {
+          contradiction_key: string
+          contradiction_type: string
+          contradiction_value: string
+          created_at: string | null
+          explanation: string | null
+          hypothesis_id: string
+          id: string
+        }
+        Insert: {
+          contradiction_key: string
+          contradiction_type: string
+          contradiction_value: string
+          created_at?: string | null
+          explanation?: string | null
+          hypothesis_id: string
+          id?: string
+        }
+        Update: {
+          contradiction_key?: string
+          contradiction_type?: string
+          contradiction_value?: string
+          created_at?: string | null
+          explanation?: string | null
+          hypothesis_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
+      hypothesis_master: {
+        Row: {
+          biological_basis: string | null
+          canonical_group: string
+          cause_name_en: string
+          cause_name_hi: string | null
+          cause_name_mr: string | null
+          created_at: string | null
+          crop_group: string
+          engine_min_version: string | null
+          hypothesis_id: string
+          hypothesis_type: string
+          is_active: boolean | null
+          severity_model: string | null
+          updated_at: string | null
+          version: string | null
+        }
+        Insert: {
+          biological_basis?: string | null
+          canonical_group: string
+          cause_name_en: string
+          cause_name_hi?: string | null
+          cause_name_mr?: string | null
+          created_at?: string | null
+          crop_group: string
+          engine_min_version?: string | null
+          hypothesis_id: string
+          hypothesis_type: string
+          is_active?: boolean | null
+          severity_model?: string | null
+          updated_at?: string | null
+          version?: string | null
+        }
+        Update: {
+          biological_basis?: string | null
+          canonical_group?: string
+          cause_name_en?: string
+          cause_name_hi?: string | null
+          cause_name_mr?: string | null
+          created_at?: string | null
+          crop_group?: string
+          engine_min_version?: string | null
+          hypothesis_id?: string
+          hypothesis_type?: string
+          is_active?: boolean | null
+          severity_model?: string | null
+          updated_at?: string | null
+          version?: string | null
+        }
+        Relationships: []
+      }
+      hypothesis_metrics: {
+        Row: {
+          avg_confidence: number | null
+          hypothesis_id: string
+          last_triggered: string | null
+          times_confirmed: number | null
+          times_contradicted: number | null
+          times_eliminated_missing_data: number | null
+          times_triggered: number | null
+        }
+        Insert: {
+          avg_confidence?: number | null
+          hypothesis_id: string
+          last_triggered?: string | null
+          times_confirmed?: number | null
+          times_contradicted?: number | null
+          times_eliminated_missing_data?: number | null
+          times_triggered?: number | null
+        }
+        Update: {
+          avg_confidence?: number | null
+          hypothesis_id?: string
+          last_triggered?: string | null
+          times_confirmed?: number | null
+          times_contradicted?: number | null
+          times_eliminated_missing_data?: number | null
+          times_triggered?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_metrics_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: true
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
+      hypothesis_rule_mapping: {
+        Row: {
+          context_notes: string | null
+          hypothesis_id: string
+          priority: number | null
+          rule_id: string
+        }
+        Insert: {
+          context_notes?: string | null
+          hypothesis_id: string
+          priority?: number | null
+          rule_id: string
+        }
+        Update: {
+          context_notes?: string | null
+          hypothesis_id?: string
+          priority?: number | null
+          rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "hypothesis_rule_mapping_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypothesis_master"
+            referencedColumns: ["hypothesis_id"]
           },
         ]
       }
