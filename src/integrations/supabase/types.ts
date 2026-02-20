@@ -23214,6 +23214,7 @@ export type Database = {
       observation_translations: {
         Row: {
           created_at: string | null
+          crop_code: string
           description_text: string | null
           display_text: string
           id: string
@@ -23222,6 +23223,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          crop_code?: string
           description_text?: string | null
           display_text: string
           id?: string
@@ -23230,6 +23232,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          crop_code?: string
           description_text?: string | null
           display_text?: string
           id?: string
