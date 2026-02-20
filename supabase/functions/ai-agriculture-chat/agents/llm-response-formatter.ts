@@ -414,7 +414,13 @@ export async function formatRecommendationsWithLLM(
   
   // If no API keys available, use template fallback immediately
   if (!GEMINI_API_KEY && !OPENAI_API_KEY && !LOVABLE_API_KEY) {
-    console.log(`   ⚠️ No LLM API keys - using template fallback`);
+    // STABILIZATION v4.0 ISSUE 6: Structured SYMBOLIC_FAILURE logging
+    console.error(`[SYMBOLIC_FAILURE] Falling back to template - no LLM API keys`);
+    console.error(`   Gate failed: NO_API_KEYS`);
+    console.error(`   Observations present: ${input.decision_output?.matched_responses?.length || 0}`);
+    console.error(`   Hypotheses evaluated: ${input.decision_output?.hypothesis_result?.eliminated_count || 0}`);
+    console.error(`   Decision confidence: ${input.decision_output?.primary_decision?.weighted_confidence || 0}`);
+    console.error(`   Primary rule: ${input.decision_output?.primary_decision?.rule_id || 'NONE'}`);
     return buildTemplateFallback(input, startTime);
   }
   
@@ -479,7 +485,13 @@ export async function formatRecommendationsWithLLM(
   
   // If LLM formatting failed, use template fallback
   if (!formattedResponse || formattedResponse.length < 50) {
-    console.log(`   ⚠️ LLM response empty/short - using template fallback`);
+    // STABILIZATION v4.0 ISSUE 6: Structured SYMBOLIC_FAILURE logging
+    console.error(`[SYMBOLIC_FAILURE] Falling back to template - LLM response empty/short`);
+    console.error(`   Gate failed: LLM_RESPONSE_EMPTY`);
+    console.error(`   Observations present: ${input.decision_output?.matched_responses?.length || 0}`);
+    console.error(`   Hypotheses evaluated: ${input.decision_output?.hypothesis_result?.eliminated_count || 0}`);
+    console.error(`   Decision confidence: ${input.decision_output?.primary_decision?.weighted_confidence || 0}`);
+    console.error(`   Primary rule: ${input.decision_output?.primary_decision?.rule_id || 'NONE'}`);
     return buildTemplateFallback(input, startTime);
   }
   
