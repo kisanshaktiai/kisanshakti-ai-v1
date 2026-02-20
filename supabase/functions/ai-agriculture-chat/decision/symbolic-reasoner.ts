@@ -784,10 +784,60 @@ export class SymbolicReasoner {
       'all', 'any', 'fact', 'operator', 'value',
       'crop_code', 'crop_type', // Already filtered at query level
       ...Object.keys(BOOLEAN_FLAG_MAP),
+      // ═══════════════════════════════════════════════════════════════════
+      // EXPANDED: All condition keys from decision_rules conditions_json
+      // These are handled as soft/contextual constraints below
+      // ═══════════════════════════════════════════════════════════════════
+    ]);
+    
+    // Extended keys that need special handling (not just skip)
+    const CONTEXTUAL_KEYS = new Set([
+      'soil_test', 'context', 'stress', 'duration_days', 'irrigation_system',
+      'weather', 'temperature_c', 'roi_basis', 'roi_modifier', 'roi_by_region',
+      'lodging_risk', 'leaf_n_status', 'no_visible_deficiency',
+      'ndvi_improving', 'symptoms_mild', 'no_pest_visible',
+      'uneven_growth', 'high_water_bills', 'water_deficit_visible',
+      'normal_growth', 'salesman_recommendation',
     ]);
     
     for (const key of Object.keys(cond)) {
       if (SKIP_KEYS.has(key)) continue;
+      
+      // Handle contextual/expanded keys with soft evaluation
+      if (CONTEXTUAL_KEYS.has(key)) {
+        const ctxVal = cond[key];
+        // Boolean contextual flags (no_pest_visible, symptoms_mild, normal_growth, etc.)
+        if (ctxVal === true || ctxVal === 'true') {
+          // Negative assertions (no_*, normal_*) - soft pass, can't disprove without data
+          if (key.startsWith('no_') || key.startsWith('normal_')) {
+            continue; // Don't penalize
+          }
+          // Positive assertions - check against observations
+          totalConditions++;
+          const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+          if (factSymptom === keySymbol || allObsUpper.some(ao => ao === keySymbol || ao.includes(keySymbol))) {
+            metConditions++;
+            matchedConditions.push(key);
+          }
+          continue;
+        }
+        // String contextual values (context, stress, irrigation_system)
+        if (typeof ctxVal === 'string') {
+          // Soft constraints - match against query if possible
+          if (['roi_basis', 'roi_modifier', 'context', 'stress', 'irrigation_system'].includes(key)) {
+            continue; // Soft - don't penalize without context data
+          }
+          totalConditions++;
+          const valUpper = ctxVal.toUpperCase().replace(/[\s-]/g, '_');
+          if (factQuery.includes(valUpper) || allObsUpper.some(ao => ao.includes(valUpper))) {
+            metConditions++;
+            matchedConditions.push(key);
+          }
+          continue;
+        }
+        // Objects/numbers - skip gracefully
+        continue;
+      }
       
       const val = cond[key];
       

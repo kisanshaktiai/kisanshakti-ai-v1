@@ -445,9 +445,28 @@ export function evaluateConditionsJson(
   // against user symptoms/query
   // ═══════════════════════════════════════════════════════════════════════════
   const RECOGNIZED_KEYS = new Set([
+    // Core structural keys
     'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
     'trigger_keywords', 'all', 'any', 'fact', 'operator', 'value',
-    'crop_code', 'crop_type'
+    'crop_code', 'crop_type',
+    // Soil & nutrition keys
+    'soil_test', 'soil_fe_ppm', 'soil_zn_ppm', 'soil_mn_ppm', 'soil_s_ppm',
+    'soil_b_ppm', 'soil_cu_ppm', 'soil_ph', 'soil_oc', 'soil_ec',
+    'leaf_n_status', 'no_visible_deficiency',
+    // Environmental/weather keys
+    'context', 'stress', 'weather', 'temperature_c', 'duration_days',
+    'irrigation_system', 'water_deficit_visible', 'high_water_bills',
+    // NDVI & growth keys
+    'ndvi_trend', 'ndvi_improving', 'ndvi_level',
+    'normal_growth', 'uneven_growth', 'symptoms_mild',
+    // ROI/economic keys
+    'roi_basis', 'roi_modifier', 'roi_by_region', 'lodging_risk',
+    // Pest/disease observation keys
+    'no_pest_visible', 'salesman_recommendation',
+    // Boolean flags already handled by BOOLEAN_FLAG_MAP equivalent
+    'soil_moisture_low', 'soil_moisture_high', 'recent_rain',
+    'critical_stage', 'high_humidity', 'high_temperature', 'low_temperature',
+    'severity',
   ]);
   
   const conditionKeys = Object.keys(conditions);
@@ -485,7 +504,75 @@ export function evaluateConditionsJson(
   let evaluatedUnknownConditions = 0;
   
   for (const key of conditionKeys) {
-    if (RECOGNIZED_KEYS.has(key)) continue;
+    if (RECOGNIZED_KEYS.has(key)) {
+      // Handle newly recognized keys with proper evaluation
+      const condValue = conditions[key];
+      
+      // ═══════════════════════════════════════════════════════════════════
+      // EXPANDED EVALUATION: Handle all keys from RECOGNIZED_KEYS
+      // ═══════════════════════════════════════════════════════════════════
+      
+      // Boolean observation flags (no_pest_visible, symptoms_mild, etc.)
+      if (typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false') {
+        // These are soft constraints - if true, check against input observations
+        if (condValue === true || condValue === 'true') {
+          const keyUpper = key.toUpperCase().replace(/[\s-]/g, '_');
+          hasAnyCondition = true;
+          if (inputSymptom === keyUpper || inputSymptom.includes(keyUpper) || inputQuery.includes(keyUpper)) {
+            // Matches
+          } else {
+            // For negative-assertion flags like no_pest_visible, no_visible_deficiency:
+            // these mean "this condition is true" - we can't disprove them without data
+            if (key.startsWith('no_') || key.startsWith('normal_')) {
+              // Soft pass - don't penalize if we can't verify
+            } else {
+              allMatch = false;
+            }
+          }
+        }
+        continue;
+      }
+      
+      // String value keys (context, stress, irrigation_system, etc.)
+      if (typeof condValue === 'string' && !['crop_stage', 'stage', 'growth_stage', 'observations', 
+          'symptom', 'primary_symptom', 'crop_code', 'crop_type'].includes(key)) {
+        hasAnyCondition = true;
+        const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+        if (!(inputSymptom.includes(valUpper) || valUpper.includes(inputSymptom) || inputQuery.includes(valUpper))) {
+          // For contextual keys like roi_basis, context, stress - soft match
+          if (['roi_basis', 'roi_modifier', 'context', 'stress', 'irrigation_system'].includes(key)) {
+            // Soft constraint - don't fail hard without context data
+          } else {
+            allMatch = false;
+          }
+        }
+        continue;
+      }
+      
+      // Numeric value keys (temperature_c, duration_days, etc.)
+      if (typeof condValue === 'number') {
+        // Skip - can't evaluate without proper thresholds
+        continue;
+      }
+      
+      // Nested objects (weather, roi_by_region, etc.)
+      if (condValue !== null && typeof condValue === 'object') {
+        // Weather object: {weather: {temp_min: 25, humidity_min: 80}}
+        if (key === 'weather' && typeof condValue === 'object') {
+          hasAnyCondition = true;
+          // Soft match - we don't have weather data in this evaluator path
+          continue;
+        }
+        // ROI objects - economic data, skip gracefully
+        if (key === 'roi_by_region' || key === 'roi_modifier') {
+          continue;
+        }
+        skippedObjectConditions++;
+        continue;
+      }
+      
+      continue; // Already handled by existing crop_stage/observations logic above
+    }
     
     const condValue = conditions[key];
     
