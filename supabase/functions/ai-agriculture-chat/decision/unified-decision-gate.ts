@@ -371,16 +371,10 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   // ═══════════════════════════════════════════════════════════════════════════
   // CALCULATE DECISION CONFIDENCE (CRITICAL FOR MODE RESOLUTION)
   // ═══════════════════════════════════════════════════════════════════════════
-  const baseConfidence = input.decision_confidence ?? 0;
-  const semanticConfidence = input.semantic_confidence ?? 50;
-  const observationCertainty = input.observation_certainty ?? 50;
-  
-  // Weighted confidence calculation
-  const calculatedConfidence = Math.round(
-    (baseConfidence * 0.4) + 
-    (semanticConfidence * 0.3) + 
-    (observationCertainty * 0.3)
-  );
+  // SSOT: Confidence comes from symbolic layer only (via decision_confidence)
+  // DEPRECATED: semantic_confidence and observation_certainty are kept for backward compat
+  // but are NOT used in mode resolution. The symbolic ledger score IS the confidence.
+  const calculatedConfidence = input.decision_confidence ?? 0;
   
   // Detect symptom presence from input
   const hasSymptoms = !!(input.symptom_keys && input.symptom_keys.length > 0);
