@@ -201,6 +201,12 @@ export class ConfidenceCalculator {
    * Calculate data quality score
    */
   private calculateDataQuality(facts: SymbolicFact, landState: AuthoritativeLandState | null): number {
+    // BUG 1 FIX: Defensive null safety - prevent crash when facts is undefined/empty
+    if (!facts || !facts.crop) {
+      console.warn('[ConfidenceCalculator] Missing facts/crop, returning 0');
+      return 0;
+    }
+    
     let score = 0;
     let maxScore = 0;
     
@@ -277,7 +283,7 @@ export class ConfidenceCalculator {
     
     // Crop schedule presence
     totalPoints += 20;
-    if (landState.crop.schedule_status === 'active') {
+    if (landState?.crop?.schedule_status === 'active') {
       freshnessPoints += 20;
     }
     
@@ -288,6 +294,12 @@ export class ConfidenceCalculator {
    * Calculate symptom specificity score
    */
   private calculateSymptomSpecificity(facts: SymbolicFact): number {
+    // Defensive null safety
+    if (!facts) {
+      console.warn('[ConfidenceCalculator] Missing facts for symptom specificity, returning 0.3');
+      return 0.3;
+    }
+    
     let score = 0.3; // Base score
     
     // Primary symptom specified and not UNKNOWN

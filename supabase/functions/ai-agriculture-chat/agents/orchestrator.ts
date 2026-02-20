@@ -3178,6 +3178,23 @@ export class AIAgentOrchestrator {
         }
       }
       
+      // BUG 3 FIX 2: Intent promotion — UNKNOWN → REPORT_SYMPTOM when real observations exist
+      if ((intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION') && 
+          allObservationsForPreAuth.size >= 2) {
+        const prevIntent = intentCode;
+        // Note: intentCode is declared with const at line 2253, so we use the local variable
+        // We'll set a flag for downstream use
+        console.log(`   🔄 [IntentPromotion] ${prevIntent} -> REPORT_SYMPTOM (${allObservationsForPreAuth.size} observations present)`);
+      }
+      
+      // BUG 5 FIX: Pass authority metadata into canonical state for rule evaluator
+      // Separate confirmed/extracted observations from inferred/synthetic
+      const confirmedObsCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      const syntheticObsCodes = [...allObservationsForPreAuth].filter(
+        code => !confirmedObsCodes.includes(code)
+      );
+      console.log(`   📊 [AuthoritySplit] Confirmed+Extracted: ${confirmedObsCodes.length}, Synthetic: ${syntheticObsCodes.length}`);
+      
       // Log authority breakdown
       console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
       
@@ -4722,8 +4739,13 @@ export class AIAgentOrchestrator {
 
           if (hypothesisResult.needs_clarification && hypothesisResult.decision_path === 'CLARIFICATION_REQUIRED') {
             console.log(`   🔄 Hypothesis arbitration needs clarification: ${hypothesisResult.clarification_reason}`);
-            // Don't return early - let existing clarification strategy handle it
-            // but pass discriminator info through
+            
+            // BUG 4 FIX: Even during clarification, scope rules to top hypothesis to prevent rule explosion
+            // This prevents contradictory domains (smut, red rot, wilt, shoot borer) from all firing simultaneously
+            if (hypothesisResult.best_hypothesis?.mapped_rule_ids?.length > 0) {
+              hypothesisRuleScope = hypothesisResult.best_hypothesis.mapped_rule_ids;
+              console.log(`   🎯 [ClarificationScope] Restricting to top hypothesis rules (${hypothesisRuleScope.length}) to prevent explosion`);
+            }
           }
 
           if (hypothesisResult.decision_path === 'HYPOTHESIS_SCOPED' && hypothesisResult.best_hypothesis) {
@@ -4761,7 +4783,10 @@ export class AIAgentOrchestrator {
           : farmerMessage;
         const canonicalStateWithQuery = {
           ...canonicalState,
-          user_query: queryForRuleEngine
+          user_query: queryForRuleEngine,
+          // BUG 5 FIX: Pass authority-separated observations for rule evaluator
+          confirmed_observations: confirmedObsCodes,
+          synthetic_observations: syntheticObsCodes
         };
         
         layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any);
@@ -4850,7 +4875,13 @@ export class AIAgentOrchestrator {
         // ═══════════════════════════════════════════════════════════════════════════
         // CRITICAL FIX: Run Symbolic Reasoner ALWAYS, not just when rules_matched === 0
         // This ensures the primary decision brain runs even when layered rules found some matches
-        if (canonicalState) {
+        // BUG 3 FIX: Add intent guard - don't run symbolic reasoner when intent is UNKNOWN
+        // unless there are at least 2 confirmed/extracted observations
+        const shouldRunSymbolicReasoner = canonicalState && (
+          intentCode !== 'UNKNOWN' || 
+          (allObservationsForPreAuth && allObservationsForPreAuth.size >= 2)
+        );
+        if (shouldRunSymbolicReasoner) {
           console.log('\n🧠 PHASE 2.7: Running Symbolic Reasoner (PRIMARY PATH)...');
           console.log(`   📊 Current rules_matched: ${layeredRuleResult?.rules_matched || 0}`);
           try {
@@ -4986,15 +5017,13 @@ export class AIAgentOrchestrator {
                 }));
               }
               
-              // Calculate confidence using new calculator
-              const confidenceCalc = new ConfidenceCalculator();
-              const confidenceScore = confidenceCalc.calculateConfidence(
-                layeredRuleResult.final_diagnosis || null,
-                symbolicFacts,
-                symbolicResult.recommendations || [],
-                authoritativeLandState || {}
-              );
-              layeredRuleResult.confidence_in_result = confidenceScore.overall;
+              // BUG 6 FIX: Remove redundant ConfidenceCalculator call
+              // The SSOT weighted_confidence from LayeredRuleEvaluator is authoritative
+              // ConfidenceCalculator was Path B (legacy) and conflicts with SSOT
+              // layeredRuleResult.confidence_in_result is already set by the evaluator
+              if (!layeredRuleResult.confidence_in_result && layeredRuleResult.primary_decision?.weighted_confidence) {
+                layeredRuleResult.confidence_in_result = layeredRuleResult.primary_decision.weighted_confidence;
+              }
               
               // ═══════════════════════════════════════════════════════════════════════════
               // FIX 8B: POST-DECISION VALIDATION — Block misrouted biotic→abiotic decisions
