@@ -181,6 +181,33 @@ async function callLLMWithRetry(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// BALANCED BRACKET JSON EXTRACTION - Replaces greedy regex to prevent
+// grabbing multiple JSON objects or trailing text
+// ═══════════════════════════════════════════════════════════════════════════
+
+function extractFirstBalancedJSON(str: string): string | null {
+  let depth = 0, start = -1;
+  for (let i = 0; i < str.length; i++) {
+    if (str[i] === '{') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (str[i] === '}') {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const candidate = str.slice(start, i + 1);
+        try {
+          JSON.parse(candidate);
+          return candidate;
+        } catch {
+          start = -1; // Reset and keep scanning
+        }
+      }
+    }
+  }
+  return null;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SAFE JSON EXTRACTION - Multi-strategy parsing for resilient LLM output
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -210,13 +237,13 @@ function safeExtractJson(content: string): { intent_code: string; confidence: nu
     } catch { /* continue */ }
   }
   
-  // Strategy 3: Any valid JSON object with greedy match
-  const anyJsonMatch = cleaned.match(/\{[\s\S]*\}/);
-  if (anyJsonMatch) {
+// Strategy 3: Balanced bracket extraction (replaces greedy regex)
+  const balancedJson = extractFirstBalancedJSON(cleaned);
+  if (balancedJson) {
     try {
-      const extracted = JSON.parse(anyJsonMatch[0]);
+      const extracted = JSON.parse(balancedJson);
       if (extracted && typeof extracted.intent_code === 'string') {
-        console.log(`   📋 [SafeExtract] Extracted JSON via fallback regex`);
+        console.log(`   📋 [SafeExtract] Extracted JSON via balanced bracket extraction`);
         return extracted;
       }
     } catch { /* continue */ }
@@ -467,9 +494,14 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.5 };
   }
   
-  // Combined Devanagari: उस/ऊस (sugarcane) + problem indicator
-  if (/उस|ऊस/i.test(original) && /मेला|सुक|कमी|रोग|किडा|वाळ|जळ|करावे|उपाय/i.test(original)) {
+  // Combined Devanagari: उस/ऊस (sugarcane) + specific problem indicator
+  // NOTE: करावे/उपाय alone = "what to do" (generic query), NOT disease. Only match with actual symptom words.
+  if (/उस|ऊस/i.test(original) && /मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.55 };
+  }
+  // उस/ऊस + करावे/उपाय (generic "what to do" without specific symptom) → UNKNOWN
+  if (/उस|ऊस/i.test(original) && /करावे|उपाय/i.test(original) && !/मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
+    return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.3 };
   }
   
   // Stem damage / borer
