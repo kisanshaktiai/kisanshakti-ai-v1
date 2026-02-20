@@ -121,6 +121,12 @@ import {
 // UNIFIED: Import canonical crop code normalizer
 import { normalizeCropCode as unifiedNormalizeCropCode } from '../utils/crop-code-normalizer.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// STABILIZATION v4.0: LLM Output Validator + Crop Vocabulary Cache
+// ═══════════════════════════════════════════════════════════════════════════
+import { validateLLMOutputAgainstDB } from '../utils/llm-output-validator.ts';
+import { getCropVocabulary, buildVocabularyPromptBlock } from '../utils/crop-vocabulary-cache.ts';
+
 // P0-C: Import entity code mapper for unified code normalization before rule engine
 import {
   toDecisionGraphPestCode,
@@ -2112,6 +2118,21 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔮 Stage 1.5: Universal Semantic Extractor (v${SEMANTIC_EXTRACTOR_VERSION})...`);
       
+      // STABILIZATION v4.0 ISSUE 8: Crop Vocabulary Prompt Enrichment
+      // Fetch crop-specific vocabulary for LLM prompt enrichment (cached, 5-min TTL)
+      let cropVocabularyBlock = '';
+      if (canonicalContext?.crop_code && canonicalContext.crop_code !== 'UNKNOWN') {
+        try {
+          const vocabEntries = await getCropVocabulary(canonicalContext.crop_code, this.supabase);
+          cropVocabularyBlock = buildVocabularyPromptBlock(canonicalContext.crop_code, vocabEntries);
+          if (cropVocabularyBlock) {
+            console.log(`      📚 Loaded ${vocabEntries.length} crop vocabulary entries for ${canonicalContext.crop_code}`);
+          }
+        } catch (vocabError) {
+          console.warn(`      ⚠️ Crop vocabulary load failed: ${(vocabError as Error)?.message || String(vocabError)}`);
+        }
+      }
+      
       // STEP 1: LLM extracts semantic meaning (any language → English)
       // v3.0.0: Pass land context so LLM can interpret romanized regional language
       const intentLandContext = landContext ? {
@@ -2119,8 +2140,10 @@ export class AIAgentOrchestrator {
         growth_stage: landContext.growth_stage,
         days_since_sowing: landContext.days_since_sowing,
         ndvi_value: landContext.ndvi_value,
-        soil_type: landContext.soil_type
-      } : undefined;
+        soil_type: landContext.soil_type,
+        // STABILIZATION v4.0: Inject crop vocabulary for romanized input enrichment
+        crop_vocabulary_hint: cropVocabularyBlock || undefined
+      } : (cropVocabularyBlock ? { crop_vocabulary_hint: cropVocabularyBlock } as any : undefined);
       
       const semanticExtraction: SemanticExtraction = await extractSemanticMeaning(
         processedFarmerMessage, 
@@ -2250,14 +2273,46 @@ export class AIAgentOrchestrator {
       }
       
       // CRASH-PROOF LOGGING: Use safe accessors for all fields (v5.1.0 SemanticExtraction)
-      const intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
+      let intentCode = semanticExtraction?.intent_code || 'UNKNOWN';
       const intentConf = typeof semanticExtraction?.intent_confidence === 'number' 
         ? semanticExtraction.intent_confidence : 0;
       const obsCodesList = expandedObservationCodes || [];
       
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STABILIZATION v4.0 ISSUE 4: Intent Confidence Tiering with Hard Override Guard
+      // ═══════════════════════════════════════════════════════════════════════════
+      const intentTier = intentConf >= 0.65 ? 'HIGH' : intentConf >= 0.35 ? 'TENTATIVE' : 'LOW';
+      console.log(`      [IntentTier] ${intentTier} confidence (${(intentConf * 100).toFixed(0)}%) - intent: ${intentCode}`);
+      
       console.log(`      Intent: ${intentCode} (${(intentConf * 100).toFixed(0)}% confidence)`);
       console.log(`      Codes: [${obsCodesList.slice(0, 5).join(', ')}${obsCodesList.length > 5 ? '...' : ''}]`);
       console.log(`      Mapping: ${mappedCodes?.mapping_method || 'UNKNOWN'}, Patterns: ${(mappedCodes?.patterns_matched || []).length}`);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STABILIZATION v4.0 ISSUE 7: LLM Output Validation Against Database
+      // Validate intent codes and observation codes before they enter the symbolic engine
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const llmValidation = await validateLLMOutputAgainstDB({
+          intent_code: intentCode,
+          observation_codes: expandedObservationCodes,
+          canonical_crop: canonicalContext?.crop_code,
+          supabase: this.supabase
+        });
+        
+        if (!llmValidation.valid) {
+          console.warn(`      ⚠️ [LLM_VALIDATION] Rejected: ${llmValidation.reason}`);
+          // Remove rejected observation codes
+          if (llmValidation.rejected_observations.length > 0 || llmValidation.crop_applicable_rejections.length > 0) {
+            const allRejectedObs = new Set([...llmValidation.rejected_observations, ...llmValidation.crop_applicable_rejections]);
+            expandedObservationCodes = expandedObservationCodes.filter(c => !allRejectedObs.has(c));
+            console.log(`      ⚠️ [LLM_VALIDATION] Filtered to ${expandedObservationCodes.length} valid observation codes`);
+          }
+          agentsUsed.push('LLM_OUTPUT_VALIDATOR');
+        }
+      } catch (validationError) {
+        console.warn(`      ⚠️ [LLM_VALIDATION] Validation failed, continuing without it: ${(validationError as Error)?.message || String(validationError)}`);
+      }
       
       // ═══════════════════════════════════════════════════════════════════════════
       // LEGACY FALLBACK: Language Induction Layer (for backward compatibility)
@@ -3178,13 +3233,31 @@ export class AIAgentOrchestrator {
         }
       }
       
-      // BUG 3 FIX 2: Intent promotion — UNKNOWN → REPORT_SYMPTOM when real observations exist
+      // STABILIZATION v4.0 ISSUE 4 Part C: Intent promotion respects confidence tiers
       if ((intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION') && 
-          allObservationsForPreAuth.size >= 2) {
+          allObservationsForPreAuth.size >= 2 && intentConf >= 0.35) {
         const prevIntent = intentCode;
-        // Note: intentCode is declared with const at line 2253, so we use the local variable
-        // We'll set a flag for downstream use
-        console.log(`   🔄 [IntentPromotion] ${prevIntent} -> REPORT_SYMPTOM (${allObservationsForPreAuth.size} observations present)`);
+        console.log(`   🔄 [IntentPromotion] ${prevIntent} -> REPORT_SYMPTOM (${allObservationsForPreAuth.size} observations present, conf=${(intentConf * 100).toFixed(0)}%)`);
+      } else if ((intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION') && 
+          allObservationsForPreAuth.size >= 2) {
+        console.log(`   ⚠️ [IntentPromotion] BLOCKED: confidence too low (${(intentConf * 100).toFixed(0)}%) for promotion`);
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
+      // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage
+      // ═══════════════════════════════════════════════════════════════════════════
+      const authorityBasedCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      const evidenceCoverage = authorityBasedCodes.length > 0 
+        ? Math.min(1.0, authorityBasedCodes.length / 8) 
+        : 0;
+      console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED only): ${(evidenceCoverage * 100).toFixed(0)}% (${authorityBasedCodes.length} codes)`);
+      
+      // REFINEMENT 3: Functional coverage gate - blocks diagnosis if evidence too low
+      let shouldBlockDiagnosis = false;
+      if (evidenceCoverage < 0.25 && !isSymptomFreeRoute && !bypassClarification) {
+        console.log(`   [COVERAGE_GATE] Evidence coverage too low (${(evidenceCoverage * 100).toFixed(0)}%) -- blocking diagnosis, forcing clarification`);
+        shouldBlockDiagnosis = true;
       }
       
       // BUG 5 FIX: Pass authority metadata into canonical state for rule evaluator
@@ -4040,7 +4113,8 @@ export class AIAgentOrchestrator {
       const inductionBasedBypass = shouldRunSymbolicBrain || inductionResult.symptoms.length > 0;
       
       if (inductionBasedBypass) {
-        console.log(`   🌾 INDUCTION BYPASS ACTIVE - symbol coverage (${(inductionResult.symbol_coverage * 100).toFixed(0)}%) or symptoms (${inductionResult.symptoms.length}) sufficient`);
+        // STABILIZATION v4.0 ISSUE 3: Demote induction log - enrichment only, not routing authority
+        console.log(`   🌾 Induction enrichment: ${inductionResult.symptoms.length} supplementary symbols (coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%)`);
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -4538,10 +4612,15 @@ export class AIAgentOrchestrator {
           nluOutput: nluOutput
         });
         
-        // ENHANCEMENT: If canonical state has UNKNOWN crop, try induction crop
+        // STABILIZATION v4.0 ISSUE 2: Seal Crop Lock Leak via Induction Layer
         if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && inductionCrop !== 'UNKNOWN_CROP') {
-          console.log(`   📝 Enriching canonical state crop from induction: ${inductionCrop}`);
-          canonicalState.crop_type = inductionCrop as any;
+          if (canonicalContext && canonicalContext.is_locked) {
+            console.log(`   🔒 Crop locked from canonical context (${canonicalContext.crop_code}) -- ignoring induction crop: ${inductionCrop}`);
+            canonicalState.crop_type = canonicalContext.crop_code as any;
+          } else {
+            console.log(`   📝 Enriching canonical state crop from induction: ${inductionCrop}`);
+            canonicalState.crop_type = inductionCrop as any;
+          }
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -4727,10 +4806,22 @@ export class AIAgentOrchestrator {
         let hypothesisRuleScope: string[] | undefined = undefined;
         let hypothesisResult: any = undefined;
 
+        // STABILIZATION v4.0 ISSUE 5 REFINEMENT 3: Coverage gate blocks diagnosis
+        if (shouldBlockDiagnosis) {
+          console.log(`   [COVERAGE_GATE] Skipping hypothesis arbitration and rule evaluation -- insufficient evidence`);
+          console.log(`   Evidence coverage: ${(evidenceCoverage * 100).toFixed(0)}% (need >= 25%)`);
+          // Skip arbitration entirely - will trigger clarification path downstream
+        } else {
         try {
+          // STABILIZATION v4.0 ISSUE 1: Fix cropCode crash + REFINEMENT 2 (fail hard)
+          const hypothesisCrop = canonicalContext?.crop_code;
+          if (!hypothesisCrop || hypothesisCrop === 'UNKNOWN') {
+            throw new Error('FATAL_CANONICAL_CONTEXT_CORRUPTION: crop_code missing or UNKNOWN before hypothesis arbitration');
+          }
+          
           const { runCausalHypothesisArbitration } = await import('../decision/causal-hypothesis-engine.ts');
           hypothesisResult = await runCausalHypothesisArbitration({
-            crop_group: cropCode,
+            crop_group: hypothesisCrop,
             canonical_state: canonicalState,
             observations: [...(allObservationsForPreAuth || [])],
             supabase_client: this.supabase,
@@ -4755,6 +4846,7 @@ export class AIAgentOrchestrator {
         } catch (hypothesisError) {
           console.error(`   ⚠️ Hypothesis arbitration failed, falling back to full scope:`, hypothesisError);
         }
+        } // end of coverage gate else block
 
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
         console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');

@@ -5566,6 +5566,42 @@ export type Database = {
         }
         Relationships: []
       }
+      crop_vocabulary: {
+        Row: {
+          created_at: string | null
+          crop_code: string
+          id: string
+          is_active: boolean | null
+          language_hint: string | null
+          phrase_pattern: string
+          recommended_intent_bias: string | null
+          recommended_observation_bias: string | null
+          semantic_hint: string
+        }
+        Insert: {
+          created_at?: string | null
+          crop_code: string
+          id?: string
+          is_active?: boolean | null
+          language_hint?: string | null
+          phrase_pattern: string
+          recommended_intent_bias?: string | null
+          recommended_observation_bias?: string | null
+          semantic_hint: string
+        }
+        Update: {
+          created_at?: string | null
+          crop_code?: string
+          id?: string
+          is_active?: boolean | null
+          language_hint?: string | null
+          phrase_pattern?: string
+          recommended_intent_bias?: string | null
+          recommended_observation_bias?: string | null
+          semantic_hint?: string
+        }
+        Relationships: []
+      }
       crops: {
         Row: {
           created_at: string | null
