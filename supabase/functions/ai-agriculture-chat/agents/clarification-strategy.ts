@@ -747,21 +747,36 @@ export function calculateConfidenceWithTiming(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Map selected clarification option to canonical observation keys.
+ * MERGE selected clarification observation into existing symbols.
+ * 
+ * CRITICAL: This MERGES, not replaces. The selected observation is added
+ * to the existing symbol set, preserving all previously gathered evidence.
+ * This ensures incremental evidence accumulation across clarification turns.
  */
 export function mapClarificationSelectionToSymbols(
   selectedOption: RuleDrivenOption,
   existingSymbols: string[]
 ): string[] {
-  const newSymbols = [...existingSymbols];
+  // MERGE: Start with ALL existing symbols (never discard)
+  const mergedSymbols = [...existingSymbols];
   
-  // Add the observation key from the selected option
-  if (selectedOption.observation_key && !newSymbols.includes(selectedOption.observation_key)) {
-    newSymbols.push(selectedOption.observation_key);
-    console.log(`   ➕ [ClarificationRebuild] Added symbol: ${selectedOption.observation_key}`);
+  // Add the observation key from the selected option if not already present
+  if (selectedOption.observation_key) {
+    const normalizedKey = selectedOption.observation_key.toUpperCase().replace(/[\s-]/g, '_');
+    const alreadyExists = mergedSymbols.some(s => 
+      s.toUpperCase().replace(/[\s-]/g, '_') === normalizedKey
+    );
+    
+    if (!alreadyExists) {
+      mergedSymbols.push(selectedOption.observation_key);
+      console.log(`   ➕ [ClarificationMerge] Merged symbol: ${selectedOption.observation_key} (total: ${mergedSymbols.length})`);
+    } else {
+      console.log(`   ℹ️ [ClarificationMerge] Symbol already exists: ${selectedOption.observation_key}`);
+    }
   }
   
-  return newSymbols;
+  console.log(`   📊 [ClarificationMerge] Final symbol set: [${mergedSymbols.join(', ')}]`);
+  return mergedSymbols;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

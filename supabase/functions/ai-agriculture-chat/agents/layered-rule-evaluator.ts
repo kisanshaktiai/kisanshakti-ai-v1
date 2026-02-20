@@ -214,7 +214,20 @@ export const CORE_RULES: Rule[] = [];
 
 export const ALL_RULES: Rule[] = [];
 
-// ==================== CONDITION MATCHING ====================
+// ==================== CONDITION MATCHING (STRICT AND-BASED VALIDATION) ====================
+
+/**
+ * STRICT AND-BASED CONDITION VALIDATION
+ * 
+ * CRITICAL CHANGE: If a rule requires contextual data (ndvi_trend, soil_nitrogen, 
+ * water_stress, etc.) and that data is undefined, null, or 'UNKNOWN', the rule FAILS.
+ * Missing data must NOT be treated as a passing condition.
+ */
+function isDataPresent(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string' && (value === '' || value.toUpperCase() === 'UNKNOWN')) return false;
+  return true;
+}
 
 function matchesConditions(rule: Rule, state: CanonicalState): boolean {
   const conditions = rule.when;
@@ -223,12 +236,35 @@ function matchesConditions(rule: Rule, state: CanonicalState): boolean {
   if (conditions.crop_type?.length && !conditions.crop_type.includes(state.crop_type as CropType)) return false;
   if (conditions.crop_stage?.length && !conditions.crop_stage.includes(state.crop_stage as CropStage)) return false;
   if (conditions.visual_symptom?.length && !conditions.visual_symptom.includes(state.visual_symptom as VisualSymptom)) return false;
-  if (conditions.ndvi_level?.length && !conditions.ndvi_level.includes(state.ndvi_level as NDVILevel)) return false;
-  if (conditions.ndvi_trend?.length && !conditions.ndvi_trend.includes(state.ndvi_trend as NDVITrend)) return false;
-  if (conditions.soil_nitrogen?.length && !conditions.soil_nitrogen.includes(state.soil_nitrogen as SoilNitrogen)) return false;
-  if (conditions.soil_phosphorus?.length && !conditions.soil_phosphorus.includes(state.soil_phosphorus as SoilPhosphorus)) return false;
-  if (conditions.soil_potassium?.length && !conditions.soil_potassium.includes(state.soil_potassium as SoilPotassium)) return false;
-  if (conditions.water_stress?.length && !conditions.water_stress.includes(state.water_stress as WaterStress)) return false;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STRICT: Contextual data conditions FAIL if data is missing/UNKNOWN
+  // This prevents rules requiring NDVI/soil/weather from matching without evidence
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (conditions.ndvi_level?.length) {
+    if (!isDataPresent(state.ndvi_level)) return false;
+    if (!conditions.ndvi_level.includes(state.ndvi_level as NDVILevel)) return false;
+  }
+  if (conditions.ndvi_trend?.length) {
+    if (!isDataPresent(state.ndvi_trend)) return false;
+    if (!conditions.ndvi_trend.includes(state.ndvi_trend as NDVITrend)) return false;
+  }
+  if (conditions.soil_nitrogen?.length) {
+    if (!isDataPresent(state.soil_nitrogen)) return false;
+    if (!conditions.soil_nitrogen.includes(state.soil_nitrogen as SoilNitrogen)) return false;
+  }
+  if (conditions.soil_phosphorus?.length) {
+    if (!isDataPresent(state.soil_phosphorus)) return false;
+    if (!conditions.soil_phosphorus.includes(state.soil_phosphorus as SoilPhosphorus)) return false;
+  }
+  if (conditions.soil_potassium?.length) {
+    if (!isDataPresent(state.soil_potassium)) return false;
+    if (!conditions.soil_potassium.includes(state.soil_potassium as SoilPotassium)) return false;
+  }
+  if (conditions.water_stress?.length) {
+    if (!isDataPresent(state.water_stress)) return false;
+    if (!conditions.water_stress.includes(state.water_stress as WaterStress)) return false;
+  }
   if (conditions.severity?.length && !conditions.severity.includes(state.severity as SeverityLevel)) return false;
   
   return true;
@@ -611,82 +647,86 @@ export function evaluateRulesLayered(
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // ACTION_TYPE_PRIORITY for deterministic selection (BLOCK > URGENT > etc.)
+    // EVIDENCE-BASED RANKING: No urgency bias, rank by evidence strength ONLY
+    // action_type is used ONLY for safety blocks, NOT for priority boosting
     // ═══════════════════════════════════════════════════════════════════════════
-    const ACTION_TYPE_PRIORITY: Record<string, number> = {
-      'BLOCK': 1, 'URGENT_BLOCK': 1,
-      'URGENT_ACTION': 2, 'URGENT_TREATMENT': 2, 'urgent_treatment': 2,
-      'IMMEDIATE_ACTION': 3, 'IMMEDIATE_TREATMENT': 3,
-      'TREATMENT': 4, 'treatment': 4, 'RECOMMEND': 4,
-      'PREVENTION': 5, 'prevention': 5,
-      'MONITOR': 6, 'MONITOR_ONLY': 6, 'advisory': 6,
-      'DIAGNOSIS': 7, 'diagnosis': 7,
-      'NO_ACTION_REQUIRED': 9
-    };
+    const SAFETY_BLOCK_TYPES = new Set(['BLOCK', 'URGENT_BLOCK']);
     
-    const scored = responsesForSelection.map(r => ({
-      response: r,
-      priority: ACTION_TYPE_PRIORITY[r.action_type || ''] ?? 50
-    }));
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // Fix 3: DIAGNOSTIC RELEVANCE - penalize rules with no observation overlap
-    // Rules whose conditions_json observations don't match farmer's reported symptom
-    // get a +100 priority penalty, pushing them below more relevant rules
-    // ═══════════════════════════════════════════════════════════════════════════
     const currentSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
     
-    const finalScored = scored.map(s => {
-      const ruleConditions = s.response.conditions_json || {};
-      const ruleObs: string[] = Array.isArray(ruleConditions.observations) ? ruleConditions.observations : [];
+    const scored = responsesForSelection.map(r => {
+      let evidenceScore = 0;
       
-      // If rule has observations defined, check overlap with current symptoms
+      // 1. Base confidence score from rule engine (primary signal)
+      evidenceScore += (r.confidence_score ?? 0.5) * 100;
+      
+      // 2. Observation overlap: rules matching farmer's symptoms score higher
+      const ruleConditions = r.conditions_json || {};
+      const ruleObs: string[] = Array.isArray(ruleConditions.observations) ? ruleConditions.observations : [];
       if (ruleObs.length > 0 && currentSymptoms.length > 0) {
-        const hasObservationOverlap = ruleObs.some((o: string) => {
+        const overlapCount = ruleObs.filter((o: string) => {
           const oNorm = String(o).toUpperCase().replace(/[\s-]/g, '_');
-          return currentSymptoms.some((sym: string) => 
-            sym.includes(oNorm) || oNorm.includes(sym)
-          );
-        });
-        
-        if (!hasObservationOverlap) {
-          return { ...s, priority: s.priority + 100 }; // Push irrelevant rules down
-        }
+          return currentSymptoms.some((sym: string) => sym.includes(oNorm) || oNorm.includes(sym));
+        }).length;
+        evidenceScore += overlapCount * 20; // +20 per matched observation
+        if (overlapCount === 0) evidenceScore -= 50; // Penalize zero overlap
       }
       
-      return s;
+      // 3. Content completeness: rules with action_text + reason_text are better grounded
+      if (r.action_text) evidenceScore += 10;
+      if (r.reason_text) evidenceScore += 5;
+      if (r.knowledge_text) evidenceScore += 5;
+      
+      // 4. Safety blocks always win (but NOT urgency boosting)
+      if (SAFETY_BLOCK_TYPES.has(r.action_type)) evidenceScore += 500;
+      
+      return { response: r, evidenceScore };
     });
     
-    // P2-2: Sort by action_type priority, then data_authority_rank DESC, then rule priority
-    finalScored.sort((a, b) => {
-      if (a.priority !== b.priority) return a.priority - b.priority;
-      // Higher data_authority_rank wins (tiebreaker)
+    // Sort by evidence score DESC (higher = better evidence), then data_authority_rank
+    scored.sort((a, b) => {
+      if (a.evidenceScore !== b.evidenceScore) return b.evidenceScore - a.evidenceScore;
       const rankA = (a.response as any).data_authority_rank ?? 50;
       const rankB = (b.response as any).data_authority_rank ?? 50;
       return rankB - rankA;
     });
-    const best = finalScored[0].response;
+    const best = scored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // MANDATORY: Build complete PrimaryDecision object with ALL required fields
-    // SSOT ARCHITECTURE: No language-specific response columns
+    // CONFIDENCE GATE: If computed confidence < 40%, DO NOT select primary decision
+    // Instead, trigger clarification or request additional data
     // ═══════════════════════════════════════════════════════════════════════════
-    result.primary_decision = {
-      rule_id: best.rule_id,
-      action_type: best.action_type,
-      priority: best.priority ?? scored[0].priority * 10,
-      confidence_score: best.confidence_score ?? result.confidence_in_result,
-      action_text: best.action_text,
-      reason_text: best.reason_text,
-      knowledge_text: best.knowledge_text,
-      i18n_key: best.i18n_key
-    };
+    const CONFIDENCE_GATE_THRESHOLD = 0.40;
+    const computedConfidence = best.confidence_score ?? result.confidence_in_result;
     
-    console.log(`✅ [LayeredRuleEvaluator] PRIMARY_DECISION built successfully:`);
-    console.log(`   rule_id=${result.primary_decision.rule_id}`);
-    console.log(`   action_type=${result.primary_decision.action_type}`);
-    console.log(`   has_action_text=${!!result.primary_decision.action_text}`);
-    console.log(`   has_i18n_key=${!!result.primary_decision.i18n_key}`);
+    if (computedConfidence < CONFIDENCE_GATE_THRESHOLD) {
+      console.warn(`⚠️ [ConfidenceGate] Confidence ${(computedConfidence * 100).toFixed(0)}% < ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% threshold`);
+      console.warn(`   Best candidate: ${best.rule_id} (evidence_score=${scored[0].evidenceScore})`);
+      console.warn(`   ACTION: Skipping primary selection → triggering clarification`);
+      // primary_decision remains null — orchestrator will route to clarification
+    } else {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // MANDATORY: Build complete PrimaryDecision object with ALL required fields
+      // SSOT ARCHITECTURE: No language-specific response columns
+      // ═══════════════════════════════════════════════════════════════════════════
+      result.primary_decision = {
+        rule_id: best.rule_id,
+        action_type: best.action_type,
+        priority: best.priority ?? 50,
+        confidence_score: computedConfidence,
+        action_text: best.action_text,
+        reason_text: best.reason_text,
+        knowledge_text: best.knowledge_text,
+        i18n_key: best.i18n_key
+      };
+      
+      console.log(`✅ [LayeredRuleEvaluator] PRIMARY_DECISION built (confidence=${(computedConfidence * 100).toFixed(0)}%):`);
+      console.log(`   rule_id=${result.primary_decision.rule_id}`);
+      console.log(`   action_type=${result.primary_decision.action_type}`);
+      console.log(`   evidence_score=${scored[0].evidenceScore}`);
+      console.log(`   has_action_text=${!!result.primary_decision.action_text}`);
+      console.log(`   has_i18n_key=${!!result.primary_decision.i18n_key}`);
+    }
   } else {
     // ═══════════════════════════════════════════════════════════════════════════
     // FAIL-FAST LOGGING: Log detailed error when no eligible responses found
