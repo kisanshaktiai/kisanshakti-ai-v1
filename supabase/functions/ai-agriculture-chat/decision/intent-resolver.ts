@@ -192,6 +192,27 @@ export async function resolveIntentToObservations(
       days_since_sowing
     );
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // MANDATORY MAPPING GATE: If no mapping found, HALT pipeline
+    // Do NOT proceed with empty mapping — log explicit error
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (!mappings || mappings.length === 0) {
+      const errorMsg = `MANDATORY_MAPPING_FAILED: No observation mappings found for intent=${intent_code}, crop=${crop_code}, DAS=${days_since_sowing}`;
+      console.error(`🚨 [IntentResolver] ${errorMsg}`);
+      console.error(`   Pipeline HALTED — cannot proceed without observation mappings`);
+      console.error(`   Check intent_observation_mapping table for intent_code=${intent_code}`);
+      
+      return {
+        success: false,
+        intent_code,
+        crop_code: crop_code.toUpperCase(),
+        growth_stage: growthStage,
+        observation_codes: [],
+        confidence_ranks: [],
+        error: errorMsg
+      };
+    }
+    
     // 3. Extract codes and ranks into parallel arrays
     const observation_codes = mappings.map(m => m.observation_code);
     const confidence_ranks = mappings.map(m => m.confidence_rank);

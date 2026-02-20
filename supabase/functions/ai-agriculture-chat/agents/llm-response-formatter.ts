@@ -345,33 +345,47 @@ export async function formatRecommendationsWithLLM(
     `);
   }
   
-  // VALIDATION GATE 2: Check product details are present when actions exist
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STRUCTURED PRODUCT VALIDATION - Use decision.products[] array, NOT string parsing
+  // Products are validated from structured symbolic output, not parsed from action_text
+  // ═══════════════════════════════════════════════════════════════════════════
   const allowedProducts: string[] = [];
   const allowedDosages: string[] = [];
   
-  if (actions && actions.length > 0) {
+  // PRIMARY SOURCE: Structured products array from decision output
+  const structuredProducts: any[] = input.decision_output?.products || 
+                                     input.decision_output?.recommended_products || [];
+  
+  if (structuredProducts.length > 0) {
+    for (const product of structuredProducts) {
+      const name = product.product_name || product.name;
+      const dosage = product.dosage || product.dosage_per_acre;
+      if (name && name !== 'N/A' && name !== 'Not specified') allowedProducts.push(name.toLowerCase());
+      if (dosage && dosage !== 'N/A') allowedDosages.push(String(dosage).toLowerCase());
+    }
+    console.log(`   📋 [StructuredValidation] ${structuredProducts.length} products from decision.products[]`);
+  }
+  
+  // FALLBACK: Extract from actions_returned if no structured products
+  if (allowedProducts.length === 0 && actions && actions.length > 0) {
     for (const action of actions) {
       const productName = action.application_details?.product_name || action.product_name;
       const dosage = action.application_details?.dosage || action.dosage;
-      
-      if (productName) allowedProducts.push(productName.toLowerCase());
+      if (productName && productName !== 'N/A') allowedProducts.push(productName.toLowerCase());
       if (dosage) allowedDosages.push(dosage.toLowerCase());
     }
-    
-    const primaryAction = actions.find((a: any) => a.type === 'primary');
-    if (primaryAction) {
-      const hasProductName = !!primaryAction.application_details?.product_name || !!primaryAction.product_name;
-      const hasDosage = !!primaryAction.application_details?.dosage || !!primaryAction.dosage;
-      
-      if (!hasProductName || !hasDosage) {
-        console.warn(`
-⚠️ [INPUT VALIDATION GATE] WARNING: Incomplete product details
-   Product Name: ${hasProductName ? 'Present' : 'MISSING'}
-   Dosage: ${hasDosage ? 'Present' : 'MISSING'}
-   
-   LLM will be constrained to ONLY mention products from symbolic output.
-        `);
-      }
+  }
+  
+  // ALSO: Extract from primary_decision structured fields
+  const primaryProduct = primary?.product_details || primary?.application_details;
+  if (primaryProduct) {
+    const pName = primaryProduct.product_name || primaryProduct.name;
+    const pDosage = primaryProduct.dosage || primaryProduct.dosage_per_acre;
+    if (pName && pName !== 'N/A' && !allowedProducts.includes(pName.toLowerCase())) {
+      allowedProducts.push(pName.toLowerCase());
+    }
+    if (pDosage && !allowedDosages.includes(String(pDosage).toLowerCase())) {
+      allowedDosages.push(String(pDosage).toLowerCase());
     }
   }
   
