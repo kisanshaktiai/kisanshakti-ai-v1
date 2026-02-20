@@ -985,8 +985,9 @@ serve(async (req) => {
           pending_clarification: orchestratorResponse.decision_output?.clarification_needed || false,
           has_emergency_indicators: orchestratorResponse.metadata?.isEmergency || false,
           land_id: landId,
-          decision_confidence: Math.round(symbolicConfidence * 100)  // Convert 0-1 to 0-100
-        };
+          decision_confidence: Math.round(symbolicConfidence * 100),  // Convert 0-1 to 0-100
+          hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined
+        } as any;
         
         // INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
         const primaryDecisionExists = !!(orchestratorResponse.decision_output?.primary_decision?.rule_id ||

@@ -4703,12 +4703,55 @@ export class AIAgentOrchestrator {
           console.log(`   ✅ Prescription Gate PASSED`);
         }
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 2.5.5: CAUSAL HYPOTHESIS ARBITRATION (NEW)
+        // ═══════════════════════════════════════════════════════════════════════════
+        console.log('\n🧠 PHASE 2.5.5: Causal Hypothesis Arbitration...');
+        let hypothesisRuleScope: string[] | undefined = undefined;
+        let hypothesisResult: any = undefined;
+
+        try {
+          const { runCausalHypothesisArbitration } = await import('../decision/causal-hypothesis-engine.ts');
+          hypothesisResult = await runCausalHypothesisArbitration({
+            crop_group: cropCode,
+            canonical_state: canonicalState,
+            observations: [...(allObservationsForPreAuth || [])],
+            supabase_client: this.supabase,
+            trace_id: traceId
+          });
+
+          if (hypothesisResult.needs_clarification && hypothesisResult.decision_path === 'CLARIFICATION_REQUIRED') {
+            console.log(`   🔄 Hypothesis arbitration needs clarification: ${hypothesisResult.clarification_reason}`);
+            // Don't return early - let existing clarification strategy handle it
+            // but pass discriminator info through
+          }
+
+          if (hypothesisResult.decision_path === 'HYPOTHESIS_SCOPED' && hypothesisResult.best_hypothesis) {
+            hypothesisRuleScope = hypothesisResult.best_hypothesis.mapped_rule_ids;
+            console.log(`   🎯 Hypothesis scoped to ${hypothesisRuleScope.length} rules: ${hypothesisRuleScope.join(', ')}`);
+          }
+        } catch (hypothesisError) {
+          console.error(`   ⚠️ Hypothesis arbitration failed, falling back to full scope:`, hypothesisError);
+        }
+
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
         console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');
         
         // PHASE-13: Use getAllRulesWithBundled() to include all 2000+ bundled ICAR rules (ASYNC)
         const allRulesWithBundled = await getAllRulesWithBundled();
         console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (core + bundled)`);
+        
+        // If hypothesis narrowed scope, filter rules
+        let rulesToEvaluate = allRulesWithBundled;
+        if (hypothesisRuleScope && hypothesisRuleScope.length > 0) {
+          const scopedRules = allRulesWithBundled.filter((r: any) => hypothesisRuleScope!.includes(r.id || r.rule_id));
+          if (scopedRules.length > 0) {
+            rulesToEvaluate = scopedRules;
+            console.log(`   🎯 [HypothesisScope] Narrowed from ${allRulesWithBundled.length} to ${scopedRules.length} rules`);
+          } else {
+            console.warn(`   ⚠️ [HypothesisScope] No rules matched scope, falling back to full set`);
+          }
+        }
         
         // CRITICAL: Pass user_query to canonical state for keyword-based matching
         // FIX 3: For DIRECT-mode advisory intents, prepend intent code to user_query
@@ -4721,7 +4764,7 @@ export class AIAgentOrchestrator {
           user_query: queryForRuleEngine
         };
         
-        layeredRuleResult = evaluateRulesLayered(allRulesWithBundled, canonicalStateWithQuery as any);
+        layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any);
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
         
         // PHASE-16: Safe array access with null checks

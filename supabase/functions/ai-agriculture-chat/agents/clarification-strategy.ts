@@ -361,6 +361,45 @@ export async function fetchRuleDrivenClarificationOptions(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 0.5: CHECK FOR DISCRIMINATOR QUESTION FROM CAUSAL HYPOTHESIS ENGINE
+  // If the causal engine already produced a targeted question, prefer it
+  // ═══════════════════════════════════════════════════════════════════════════
+  if ((input as any).discriminatorQuestion) {
+    const dq = (input as any).discriminatorQuestion;
+    console.log(`   🎯 [Clarification] Using discriminator question from causal hypothesis engine`);
+    console.log(`      Comparing: ${dq.hypothesis_a_name} vs ${dq.hypothesis_b_name}`);
+    // Format as existing clarification output structure
+    return {
+      clarification_type: 'DISCRIMINATOR',
+      options: [
+        {
+          code: dq.discriminator_key + '_YES',
+          label_en: 'Yes',
+          label_mr: 'होय',
+          label_hi: 'हाँ',
+          description_en: dq.question_text_en,
+          description_mr: dq.question_text_mr,
+          description_hi: dq.question_text_hi
+        },
+        {
+          code: dq.discriminator_key + '_NO',
+          label_en: 'No',
+          label_mr: 'नाही',
+          label_hi: 'नहीं',
+          description_en: `No, I haven't noticed ${dq.discriminator_key.toLowerCase().replace(/_/g, ' ')}`,
+          description_mr: `नाही, मला ${dq.discriminator_key.toLowerCase().replace(/_/g, ' ')} दिसले नाही`,
+          description_hi: `नहीं, मैंने ${dq.discriminator_key.toLowerCase().replace(/_/g, ' ')} नहीं देखा`
+        }
+      ],
+      question_text: dq.question_text_en,
+      question_text_mr: dq.question_text_mr,
+      question_text_hi: dq.question_text_hi,
+      competing_hypotheses: [dq.hypothesis_a_name, dq.hypothesis_b_name],
+      source: 'CAUSAL_HYPOTHESIS_ENGINE'
+    } as any;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // STEP 1: PRE-EVALUATE RULES TO BUILD CANDIDATE HYPOTHESIS SET
   // This MUST happen BEFORE scope selection to ensure rule-awareness
   // ═══════════════════════════════════════════════════════════════════════════
