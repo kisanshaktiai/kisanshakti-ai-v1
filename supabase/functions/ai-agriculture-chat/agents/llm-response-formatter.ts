@@ -346,47 +346,55 @@ export async function formatRecommendationsWithLLM(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // STRUCTURED PRODUCT VALIDATION - Use decision.products[] array, NOT string parsing
-  // Products are validated from structured symbolic output, not parsed from action_text
+  // STRUCTURED PRODUCT VALIDATION - Use decision.products[] array ONLY
+  // Products validated from structured symbolic output, not parsed from action_text
+  // SKIP validation entirely for safety_gate rules (they have no products)
   // ═══════════════════════════════════════════════════════════════════════════
+  const SAFETY_GATE_TYPES = new Set(['safety_gate', 'SAFETY_GATE', 'BLOCK', 'URGENT_BLOCK', 'weather_block', 'WEATHER_BLOCK']);
+  const isSafetyGateRule = primary?.action_type ? SAFETY_GATE_TYPES.has(primary.action_type) : false;
+  
   const allowedProducts: string[] = [];
   const allowedDosages: string[] = [];
   
-  // PRIMARY SOURCE: Structured products array from decision output
-  const structuredProducts: any[] = input.decision_output?.products || 
-                                     input.decision_output?.recommended_products || [];
-  
-  if (structuredProducts.length > 0) {
-    for (const product of structuredProducts) {
-      const name = product.product_name || product.name;
-      const dosage = product.dosage || product.dosage_per_acre;
-      if (name && name !== 'N/A' && name !== 'Not specified') allowedProducts.push(name.toLowerCase());
-      if (dosage && dosage !== 'N/A') allowedDosages.push(String(dosage).toLowerCase());
+  if (!isSafetyGateRule) {
+    // PRIMARY SOURCE: Structured products array from decision output
+    const structuredProducts: any[] = input.decision_output?.products || 
+                                       input.decision_output?.recommended_products || [];
+    
+    if (structuredProducts.length > 0) {
+      for (const product of structuredProducts) {
+        const name = product.product_name || product.name;
+        const dosage = product.dosage || product.dosage_per_acre;
+        if (name && name !== 'N/A' && name !== 'Not specified') allowedProducts.push(name.toLowerCase());
+        if (dosage && dosage !== 'N/A') allowedDosages.push(String(dosage).toLowerCase());
+      }
+      console.log(`   📋 [StructuredValidation] ${structuredProducts.length} products from decision.products[]`);
     }
-    console.log(`   📋 [StructuredValidation] ${structuredProducts.length} products from decision.products[]`);
-  }
-  
-  // FALLBACK: Extract from actions_returned if no structured products
-  if (allowedProducts.length === 0 && actions && actions.length > 0) {
-    for (const action of actions) {
-      const productName = action.application_details?.product_name || action.product_name;
-      const dosage = action.application_details?.dosage || action.dosage;
-      if (productName && productName !== 'N/A') allowedProducts.push(productName.toLowerCase());
-      if (dosage) allowedDosages.push(dosage.toLowerCase());
+    
+    // FALLBACK: Extract from actions_returned if no structured products
+    if (allowedProducts.length === 0 && actions && actions.length > 0) {
+      for (const action of actions) {
+        const productName = action.application_details?.product_name || action.product_name;
+        const dosage = action.application_details?.dosage || action.dosage;
+        if (productName && productName !== 'N/A') allowedProducts.push(productName.toLowerCase());
+        if (dosage) allowedDosages.push(dosage.toLowerCase());
+      }
     }
-  }
-  
-  // ALSO: Extract from primary_decision structured fields
-  const primaryProduct = primary?.product_details || primary?.application_details;
-  if (primaryProduct) {
-    const pName = primaryProduct.product_name || primaryProduct.name;
-    const pDosage = primaryProduct.dosage || primaryProduct.dosage_per_acre;
-    if (pName && pName !== 'N/A' && !allowedProducts.includes(pName.toLowerCase())) {
-      allowedProducts.push(pName.toLowerCase());
+    
+    // ALSO: Extract from primary_decision structured fields
+    const primaryProduct = (primary as any)?.product_details || (primary as any)?.application_details;
+    if (primaryProduct) {
+      const pName = primaryProduct.product_name || primaryProduct.name;
+      const pDosage = primaryProduct.dosage || primaryProduct.dosage_per_acre;
+      if (pName && pName !== 'N/A' && !allowedProducts.includes(pName.toLowerCase())) {
+        allowedProducts.push(pName.toLowerCase());
+      }
+      if (pDosage && !allowedDosages.includes(String(pDosage).toLowerCase())) {
+        allowedDosages.push(String(pDosage).toLowerCase());
+      }
     }
-    if (pDosage && !allowedDosages.includes(String(pDosage).toLowerCase())) {
-      allowedDosages.push(String(pDosage).toLowerCase());
-    }
+  } else {
+    console.log(`   🛡️ [ProductValidation] SKIPPED - safety_gate rule (${primary?.action_type})`);
   }
   
   console.log(`   📋 Allowed Products: ${allowedProducts.length > 0 ? allowedProducts.join(', ') : 'NONE'}`);
