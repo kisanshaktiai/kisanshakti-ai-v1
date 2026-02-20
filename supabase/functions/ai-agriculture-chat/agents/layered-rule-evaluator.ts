@@ -175,6 +175,11 @@ export interface PrimaryDecision {
   action_type: string;
   priority: number;
   confidence_score: number;
+  // LEDGER-DERIVED AUTHORITY FIELDS (SSOT for confidence)
+  normalized_score: number;      // raw ledger ratio (0-1)
+  total_required: number;        // denominator from ledger
+  passed_required: number;       // numerator from ledger
+  weighted_confidence: number;   // density-adjusted final confidence
   // RESPONSE CONTRACT (language-independent)
   action_text?: string;
   reason_text?: string;
@@ -738,26 +743,35 @@ export function evaluateRulesLayered(
       // primary_decision remains null — orchestrator will route to clarification
     } else {
       // ═══════════════════════════════════════════════════════════════════════════
-      // MANDATORY: Build complete PrimaryDecision object with ALL required fields
-      // SSOT ARCHITECTURE: No language-specific response columns
+      // MANDATORY: Build complete PrimaryDecision with density-weighted confidence
+      // SSOT ARCHITECTURE: weighted_confidence is the authoritative confidence score
       // ═══════════════════════════════════════════════════════════════════════════
+      const baseScore = scored[0].matchedConditions / scored[0].totalConditions;
+      const densityWeight = Math.min(1.0, Math.log(scored[0].totalConditions + 1) / Math.log(10));
+      const weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
+      
       result.primary_decision = {
         rule_id: best.rule_id,
         action_type: best.action_type,
         priority: best.priority ?? 50,
-        confidence_score: computedConfidence,
+        confidence_score: weightedConfidence,
+        normalized_score: scored[0].evidenceScore,
+        total_required: scored[0].totalConditions,
+        passed_required: scored[0].matchedConditions,
+        weighted_confidence: weightedConfidence,
         action_text: best.action_text,
         reason_text: best.reason_text,
         knowledge_text: best.knowledge_text,
         i18n_key: best.i18n_key
       };
       
-      console.log(`✅ [LayeredRuleEvaluator] PRIMARY_DECISION built (score=${(computedConfidence * 100).toFixed(0)}%):`);
-      console.log(`   rule_id=${result.primary_decision.rule_id}`);
-      console.log(`   action_type=${result.primary_decision.action_type}`);
-      console.log(`   normalized_score=${scored[0].evidenceScore.toFixed(3)} (${scored[0].matchedConditions}/${scored[0].totalConditions})`);
-      console.log(`   has_action_text=${!!result.primary_decision.action_text}`);
-      console.log(`   has_i18n_key=${!!result.primary_decision.i18n_key}`);
+      console.log(`📊 Decision Authority:`);
+      console.log(`   rule_id: ${best.rule_id}`);
+      console.log(`   base_score: ${scored[0].evidenceScore.toFixed(3)}`);
+      console.log(`   total_required: ${scored[0].totalConditions}`);
+      console.log(`   passed_required: ${scored[0].matchedConditions}`);
+      console.log(`   density_weight: ${densityWeight.toFixed(3)}`);
+      console.log(`   weighted_confidence: ${weightedConfidence.toFixed(3)}`);
     }
   } else {
     // ═══════════════════════════════════════════════════════════════════════════

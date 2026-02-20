@@ -5373,6 +5373,11 @@ export class AIAgentOrchestrator {
               target: {},
               urgency: 'WITHIN_24H',
               priority: layeredRuleResult.primary_decision.priority,
+              // SSOT: Propagate ledger-derived confidence fields
+              weighted_confidence: layeredRuleResult.primary_decision.weighted_confidence,
+              normalized_score: layeredRuleResult.primary_decision.normalized_score,
+              total_required: layeredRuleResult.primary_decision.total_required,
+              passed_required: layeredRuleResult.primary_decision.passed_required,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
@@ -5392,9 +5397,11 @@ export class AIAgentOrchestrator {
                 rule_id: layeredRuleResult.primary_decision.rule_id
               },
               expected_outcomes: {
-                efficacy_percent: layeredRuleResult.primary_decision.confidence_score 
-                  ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100) 
-                  : 75,
+                efficacy_percent: layeredRuleResult.primary_decision.weighted_confidence 
+                  ? Math.round(layeredRuleResult.primary_decision.weighted_confidence * 100) 
+                  : layeredRuleResult.primary_decision.confidence_score
+                    ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100)
+                    : 75,
                 time_to_visible_effect_days: '3-5',
                 success_indicators: []
               }
@@ -5448,7 +5455,8 @@ export class AIAgentOrchestrator {
           communication: immediateResponse,
           dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
           metadata: {
-            confidence: layeredRuleResult?.primary_decision?.confidence_score || 
+            confidence: layeredRuleResult?.primary_decision?.weighted_confidence ||
+                        layeredRuleResult?.primary_decision?.confidence_score || 
                         decisionOutput.confidence_score || 0.7,
             safety_status: 'PENDING_VALIDATION',
             rules_applied: decisionOutput.rules_applied?.length || 0,

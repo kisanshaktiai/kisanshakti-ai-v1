@@ -958,6 +958,15 @@ serve(async (req) => {
         const symptomKeysFromMetadata = orchestratorResponse.metadata?.symptomKeys || [];
         const mergedSymptomKeys = [...new Set([...symptomKeysFromDecision, ...symptomKeysFromMetadata])];
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CONFIDENCE BRIDGE: Extract symbolic confidence as SSOT for decision_confidence
+        // ═══════════════════════════════════════════════════════════════════════════
+        const symbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
+          ?.primary_decision?.weighted_confidence
+          ?? orchestratorResponse.decision_output?.layered_rule_result
+            ?.primary_decision?.confidence_score
+          ?? 0;
+        
         const unifiedGateInput: UnifiedGateInput = {
           authority_decision: orchestratorResponse.decision_output?.authority_decision || {
             authority: 'NONE',
@@ -970,14 +979,26 @@ serve(async (req) => {
           growth_stage: finalGrowthStage,
           days_since_sowing: finalDaysSinceSowing,
           stage_source: orchestratorResponse.metadata?.stageSource || 'UNKNOWN',
-          symptom_keys: mergedSymptomKeys,  // Use merged symptoms from both sources
+          symptom_keys: mergedSymptomKeys,
           is_specific_symptom: !!orchestratorResponse.decision_output?.primary_decision?.target,
           clarification_turn_count: orchestratorResponse.metadata?.clarificationTurnCount || 0,
           pending_clarification: orchestratorResponse.decision_output?.clarification_needed || false,
           has_emergency_indicators: orchestratorResponse.metadata?.isEmergency || false,
-          land_id: landId
+          land_id: landId,
+          decision_confidence: Math.round(symbolicConfidence * 100)  // Convert 0-1 to 0-100
         };
         
+        // INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
+        const primaryDecisionExists = !!(orchestratorResponse.decision_output?.primary_decision?.rule_id ||
+          orchestratorResponse.decision_output?.layered_rule_result?.primary_decision?.rule_id);
+        
+        if (primaryDecisionExists && symbolicConfidence === 0) {
+          console.error(`🚨 [INVARIANT] Confidence pipeline inconsistency: primary_decision exists but symbolic_confidence=0`);
+          console.error(`   Forcing minimum confidence of 0.5 to prevent decision suppression`);
+          unifiedGateInput.decision_confidence = 50;  // Safe floor
+        }
+        
+        console.log(`   📊 [ConfidenceBridge] symbolic_confidence=${symbolicConfidence.toFixed(3)} -> decision_confidence=${unifiedGateInput.decision_confidence}`);
         console.log(`   🔍 [UnifiedGate] Input: crop=${finalCropName}, stage=${finalGrowthStage}, DAS=${finalDaysSinceSowing}, symptoms=${mergedSymptomKeys.length}`);
         
         const rawGateResult = evaluateUnifiedGate(unifiedGateInput);
