@@ -337,12 +337,16 @@ export async function formatRecommendationsWithLLM(
   }
   
   // VALIDATION GATE 2: If no primary decision and no actions, restrict to information
+  // BUG 7 FIX: Also flag that HOW section must be suppressed when actions = 0
+  let suppressHowSection = false;
   if (!hasPrimaryDecision && (!actions || actions.length === 0)) {
     console.warn(`
 ⚠️ [SYMBOLIC-ONLY GATE] No primary decision and no actions
    LLM restricted to rendering general information only.
    TREATMENT RECOMMENDATIONS ARE BLOCKED.
+   HOW section will be suppressed.
     `);
+    suppressHowSection = true;
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -493,9 +497,20 @@ export async function formatRecommendationsWithLLM(
   // ═══════════════════════════════════════════════════════════════════════════
   const whatWhyHowResult = validateWhatWhyHow(formattedResponse, input);
   if (!whatWhyHowResult.valid) {
-    console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${whatWhyHowResult.missing_sections.join(', ')}`);
-    // Don't block — append violations to output validation for logging
-    outputValidation.violations.push(...whatWhyHowResult.violations);
+    // BUG 7 FIX: If HOW is missing but we have no actions, that's expected — don't flag it
+    if (suppressHowSection && whatWhyHowResult.missing_sections.includes('HOW')) {
+      console.log(`   ℹ️ [WHAT-WHY-HOW] HOW section missing but suppressed (no actions returned)`);
+      // Remove HOW violation - it's expected
+      const filteredViolations = whatWhyHowResult.violations.filter(v => !v.includes('HOW'));
+      const filteredMissing = whatWhyHowResult.missing_sections.filter(s => s !== 'HOW');
+      if (filteredMissing.length > 0) {
+        console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${filteredMissing.join(', ')}`);
+        outputValidation.violations.push(...filteredViolations);
+      }
+    } else {
+      console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${whatWhyHowResult.missing_sections.join(', ')}`);
+      outputValidation.violations.push(...whatWhyHowResult.violations);
+    }
   }
   
   // ═══════════════════════════════════════════════════════════════════════════

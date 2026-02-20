@@ -598,6 +598,14 @@ export function evaluateRulesLayered(
   // PRIMARY_ACTION_ELIGIBILITY: rule_id EXISTS + action_type NOT NULL + content NOT NULL
   // NOTE: response_en/hi/mr were DROPPED - content = action_text OR i18n_key
   // ═══════════════════════════════════════════════════════════════════════════
+  // BUG 2 FIX: Deduplicate matched_responses by rule_id (keep first occurrence)
+  const seenRuleIds = new Set<string>();
+  result.matched_responses = result.matched_responses.filter(r => {
+    if (!r.rule_id || seenRuleIds.has(r.rule_id)) return false;
+    seenRuleIds.add(r.rule_id);
+    return true;
+  });
+  
   const eligibleResponses = result.matched_responses.filter(r => 
     r.rule_id && 
     r.action_type && 
@@ -680,7 +688,12 @@ export function evaluateRulesLayered(
     // No urgency bias, no action_type boosting. Pure evidence ratio.
     // ═══════════════════════════════════════════════════════════════════════════
     
-    const currentSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
+    // BUG 5 FIX: Use confirmed observations for primary scoring when available
+    const confirmedObs = (state as any).confirmed_observations;
+    const primarySymptomSource = (confirmedObs && confirmedObs.length > 0) 
+      ? confirmedObs 
+      : (state.visual_symptoms || []);
+    const currentSymptoms = primarySymptomSource.map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
     
     const scored = candidatesForPrimary.map(r => {
       // ═══════════════════════════════════════════════════════════════════
