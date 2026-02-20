@@ -643,6 +643,15 @@ function validateLLMOutput(
   // CRITICAL FIX: Generic action types like "Cultural practice", "Monitoring", 
   // "Mechanical control" are NOT product names and should NOT require verbatim matching
   // ═══════════════════════════════════════════════════════════════════════════
+  // BUG FIX: For MONITOR/monitoring rules, skip product validation entirely
+  // These rules have action_text like "Monitor pest population..." which is NOT a product
+  const primaryActionType = (decisionInput?.decision_output?.primary_decision?.action_type || '').toLowerCase();
+  const MONITOR_ACTION_TYPES = ['monitor', 'monitoring', 'observation', 'scouting', 'monitoring_advice'];
+  if (MONITOR_ACTION_TYPES.includes(primaryActionType)) {
+    console.log(`   ℹ️ [VALIDATION] Skipping product check for MONITOR action type: ${primaryActionType}`);
+    return { valid: true, violations: [] };
+  }
+  
   const primaryProductName = decisionInput?.decision_output?.primary_decision?.product_details?.product_name ||
                              decisionInput?.decision_output?.primary_decision?.application_details?.product_name;
   
@@ -651,7 +660,7 @@ function validateLLMOutput(
     'cultural practice', 'cultural practices', 'cultural control',
     'mechanical control', 'mechanical removal',
     'biological control', 'biocontrol',
-    'monitoring', 'observation', 'scouting',
+    'monitoring', 'observation', 'scouting', 'monitor',
     'integrated pest management', 'ipm',
     'general advice', 'preventive measure',
     'water management', 'irrigation adjustment',
@@ -661,7 +670,10 @@ function validateLLMOutput(
     'see action text', 'see structured response', 'see concentration',
     'not specified', 'n/a', 'as per label', 'follow label',
     'continue monitoring', 'standard application', 'not applicable',
-    'see label', 'refer label', 'cultural method'
+    'see label', 'refer label', 'cultural method',
+    // BUG FIX: action_text phrases from monitoring/diagnostic rules that are NOT product names
+    'pest population', 'monitor pest', 'no treatment required',
+    'regularly', 'at this stage', 'continue observation'
   ];
   
   const isGenericActionType = primaryProductName && 
