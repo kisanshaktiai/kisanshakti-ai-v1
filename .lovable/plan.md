@@ -1,159 +1,190 @@
 
-# Fix: Observation Authority Levels and Terminal Damage Gate Protection
+
+# Strict Constraint-Based Rule Evaluator Refactor
 
 ## Problem Statement
-The Terminal Damage Gate fires on **inferred/expanded symbols** (alias expansion, cross-crop injection, legacy induction) instead of only farmer-confirmed evidence. This causes the entire decision brain to shift into emergency DIAGNOSIS_ONLY mode based on synthetic codes like `PLANT_DEATH` that were never explicitly reported by the farmer.
+`evaluateConditionsJson()` in `loader.ts` is fail-open: 200+ of ~518 active rules have conditions that are soft-passed, silently skipped, or evaluated with wrong semantics. The evaluator defaults to `allMatch = true` and only flips it on explicit failures, meaning unevaluable conditions (weather objects, numeric thresholds, ETL, ROI, soil_type, etc.) are invisible to the match decision.
 
-**Example failure**: Farmer selects "Early shoot borer" (obs_key: `DEAD_HEART_PRESENT`) -> alias expansion adds `PLANT_DEATH` -> Terminal Damage Gate fires -> DIAGNOSIS_ONLY mode activates -> all downstream reasoning shifts to emergency mode.
-
----
-
-## Root Causes
-
-1. **No epistemic separation**: All observation sources (farmer-confirmed, alias-expanded, cross-crop injected, LLM-inferred) are merged into one flat `Set<string>` (`allObservationsForPreAuth`) with no source tracking
-2. **Terminal Damage Gate operates on merged set**: `detectCropDamageForDiagnosis()` receives the full merged set including synthetic codes
-3. **Cross-crop mapper injects terminal indicators**: `PLANT_DEATH`, `SEEDLING_DEATH` from pattern matching on farmer text get injected directly
-4. **Clarification selection path runs full expansion**: When farmer selects a clarification option, `obsKeyExpansion` can add terminal codes like `DEAD_HEART` which then flow into expanded set
-5. **Inconsistent symbol handling**: Pipeline sometimes expands aggressively (18 codes), sometimes collapses to single symbol (HARD GATE), creating unstable rule matching
+## Root Cause
+The evaluator tracks `hasAnyCondition`, `skippedObjectConditions`, and `evaluatedUnknownConditions` as separate counters, with fail-closed guards (L634/L643) that only catch the narrow case where ALL conditions are unevaluable objects. Numeric keys, weather objects marked `hasAnyCondition=true`, and soft-pass string keys all bypass these guards.
 
 ---
 
-## Solution Architecture
+## Solution: Replace Counter-Based Logic with Explicit Condition Ledger
 
-### Layer A: Observation Authority Metadata
+### Core Architecture Change
 
-Create a typed observation wrapper that tracks the source and authority level of each symbol.
+Replace the current `allMatch` / `hasAnyCondition` / `skippedObjectConditions` pattern with an **explicit condition ledger** that tracks every condition's evaluation result:
 
 ```text
-ObservationWithAuthority {
-  code: string            // e.g., "DEAD_HEART_PRESENT"
-  authority: CONFIRMED | EXTRACTED | INFERRED | SYNTHETIC
-  source: string          // e.g., "CLARIFICATION_SELECTION", "ALIAS_EXPANSION"
+ConditionLedger {
+  entries: Array<{
+    key: string
+    status: PASSED | FAILED | SKIPPED_NO_DATA | UNEVALUABLE
+    required: boolean     // true = must pass; false = informational
+    inputValue: any       // what canonical state had
+    ruleValue: any        // what the rule required
+  }>
 }
 ```
 
-Authority hierarchy:
-- **CONFIRMED**: Clarification selection, explicit farmer statement, photo-verified
-- **EXTRACTED**: Pattern match from farmer's raw text (induction layer, cross-crop mapper on raw text)
-- **INFERRED**: Alias expansion, LLM semantic extraction, intent-to-observation mapping
-- **SYNTHETIC**: Cross-crop injection, obsKeyExpansion, router fallback injection
+**Decision rule**: A rule matches ONLY if:
+1. Zero entries have status `FAILED`
+2. Zero REQUIRED entries have status `SKIPPED_NO_DATA` or `UNEVALUABLE`
+3. At least one entry has status `PASSED`
 
-### Layer B: Terminal Damage Gate Filter
+This is strict fail-closed: any required condition that cannot be evaluated blocks the rule.
 
-The Terminal Damage Gate (`detectCropDamageForDiagnosis` and `detectTerminalDamageForAuthority`) must only check symbols with authority `CONFIRMED` or `EXTRACTED`.
+### File 1: MODIFY `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
 
-### Layer C: Cross-Crop Injection Guard
+#### Section A: Replace evaluateConditionsJson() internals (L294-686)
 
-The cross-crop symptom mapper must never inject terminal-level symbols (`PLANT_DEATH`, `SEEDLING_DEATH`, `GERMINATION_FAILURE`, `CROP_FAILURE`) into the authority set. These codes are tagged `SYNTHETIC` and excluded from terminal gate evaluation.
+1. **Remove** `allMatch`, `hasAnyCondition`, `skippedObjectConditions`, `evaluatedUnknownConditions` variables.
 
-### Layer D: Clarification Selection Isolation
+2. **Add** condition ledger tracking:
+   - Each condition key produces a ledger entry with `PASSED`, `FAILED`, `SKIPPED_NO_DATA`, or `UNEVALUABLE` status.
 
-When a clarification option is selected, disable alias expansion and legacy induction. Use only the selected observation key with controlled (not recursive) expansion.
+3. **Classify all 140+ database keys** into evaluation categories:
+
+   **Category A -- Array Match Keys** (existing logic works, keep):
+   - `crop_stage`, `stage`, `growth_stage`, `observations`, `symptom`, `primary_symptom`
+
+   **Category B -- Identity Keys** (new: strict match against input):
+   - `crop_code`, `crop_type` -- match against `input.crop_code`
+   - `variety` -- match against input variety if available, else `SKIPPED_NO_DATA`
+
+   **Category C -- Numeric Threshold Keys** (new: compare against input values):
+   - `duration_days`, `days_after_planting_min`, `days_after_planting_max`, `days_after_sowing`, `days_after_harvest` -- compare against DAS from input
+   - `temp_max_celsius`, `temp_min_celsius` -- compare against `input.weather.temp`
+   - `soil_ph` -- compare against `input.soil.ph` (or `input.soil_ph`)
+   - `max_ratoon`, `ratoon_number` -- compare against ratoon context if available
+   - `soil_fe_ppm`, `soil_zn_ppm`, `soil_mn_ppm`, `soil_s_ppm`, `soil_b_ppm`, `soil_cu_ppm` -- existing soil threshold logic (keep)
+   - `ec_dsm` -- compare against input EC
+   - `soc_pct` -- compare against soil organic carbon
+   - `applied_n_kg_ha` -- compare against input nitrogen application
+   - If input value is missing: `SKIPPED_NO_DATA` (required = true)
+
+   **Category D -- Boolean Gate Keys** (new: check against canonical state/observations):
+   - `disease_confirmed`, `pest_present`, `etl_exceeded`, `etl_below` -- check if relevant evidence exists in observations
+   - `requires_diagnosis_confidence`, `requires_confirmation`, `requires_identification` -- mark as gate conditions, check against pipeline state
+   - `lodging_risk`, `soil_moisture_low`, `ndvi_decline`, `ndvi_triggered`, `recovery_absent`, `organic_failed`, `bio_control_failed` -- check observations/state
+   - If data not available: `SKIPPED_NO_DATA` (required = true)
+
+   **Category E -- Weather Object Keys** (new: evaluate sub-fields):
+   - `weather` -- extract `temp_min`, `temp_max`, `humidity_min`, `rain_mm` from value object, compare against `input.weather`
+   - `rain_forecast` -- check against weather data
+   - If `input.weather` is empty/null: `SKIPPED_NO_DATA` (required = true)
+
+   **Category F -- ETL Object Keys** (new: evaluate threshold structure):
+   - `etl` -- extract `min`, `max`, `unit` from value, compare against observed pest count
+   - `etl_range` -- same
+   - If pest count not available: `SKIPPED_NO_DATA` (required = true)
+
+   **Category G -- Context/Informational Keys** (mark as NOT required):
+   - `context`, `roi_basis`, `roi_modifier`, `roi_by_region`, `timing`, `method`, `operation`, `action`, `assessment_timing` -- these are metadata/advisory
+   - Status: `PASSED` if matches query, `SKIPPED_NO_DATA` if not (but `required = false`)
+   - These do NOT block rule matching but DO contribute to scoring
+
+   **Category H -- Deprecated/Ignored Keys**:
+   - `trigger_keywords` -- ignore entirely (already handled)
+   - `always_applicable` -- if true, `PASSED`
+
+4. **Final decision logic**:
+   ```text
+   const requiredFailed = ledger.filter(e => e.required && 
+     (e.status === 'FAILED' || e.status === 'SKIPPED_NO_DATA' || e.status === 'UNEVALUABLE'));
+   const anyPassed = ledger.some(e => e.status === 'PASSED');
+   return requiredFailed.length === 0 && anyPassed;
+   ```
+
+5. **Export ledger** for scoring: The ledger array is returned alongside the boolean result so the scoring system in `layered-rule-evaluator.ts` can compute:
+   ```text
+   score = passed_required_count / total_required_count
+   ```
+   This fixes the denominator inflation bug where unevaluable keys were counted.
+
+#### Section B: Expand DecisionInput interface (L17-34)
+
+Add missing fields to `DecisionInput` so that input data can be matched:
+- `days_since_sowing?: number`
+- `ratoon_number?: number`
+- `soil_ph?: number`
+- `soil_organic_carbon?: number`
+- `soil_ec?: number`
+- `soil_moisture_status?: string`
+- `ndvi_pattern?: string`
+- `pest_count?: number`
+- `disease_confirmed?: boolean`
+- `irrigation_method?: string`
+- `region?: string`
+- `crop_cycle?: string`
+- `soil_type_name?: string`
+- `farming_mode?: string`
+
+#### Section C: Update makeExecutable() (L688-700)
+
+No structural change needed -- the `conditions` function signature stays the same. But the internal call changes to use the new ledger-based evaluator.
+
+### File 2: MODIFY `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+
+#### Section A: Fix scoring formula (L677-720)
+
+Replace the current scoring that counts ALL `conditions_json` keys with ledger-based scoring:
+
+```text
+// Before (buggy):
+totalConditions = ruleObs.length + conditionKeys.length  // includes unevaluable keys
+
+// After (correct):
+totalConditions = ledger.filter(e => e.required).length
+matchedConditions = ledger.filter(e => e.required && e.status === 'PASSED').length
+score = matchedConditions / totalConditions
+```
+
+This requires `evaluateConditionsJson` to return or cache the ledger alongside the boolean. Two options:
+- Option A: Add a ledger cache (Map keyed by rule_id) populated during evaluation, read during scoring
+- Option B: Change `evaluateConditionsJson` signature to return `{ matches: boolean; ledger: ConditionEntry[] }`
+
+**Recommended**: Option A (ledger cache) to avoid breaking the `conditions: (input) => boolean` interface.
+
+#### Section B: Pass additional canonical state fields to input (L903-925)
+
+In `convertBundledToRule()`, expand the input object passed to `bundled.conditions(input)`:
+- `days_since_sowing`: from `state.days_since_sowing` or computed from state
+- `soil_ph`: from state soil data
+- `soil_type_name`: from state
+- `soil_moisture_status`: from state
+- `pest_count`: from state or options
+- `region`: from state
+- `ndvi_pattern`: from state
+
+### File 3: MODIFY `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts`
+
+Apply the same category classification to `evaluateConditions()` (PATH B) if it handles any of the 140+ keys. Ensure numeric and object keys follow the same fail-closed ledger logic.
 
 ---
 
-## Technical Implementation
+## Expected Impact
 
-### File 1: NEW `supabase/functions/ai-agriculture-chat/utils/observation-authority.ts`
-
-Create the observation authority system:
-
-- `ObservationAuthority` enum: `CONFIRMED`, `EXTRACTED`, `INFERRED`, `SYNTHETIC`
-- `AuthoredObservation` interface: `{ code: string; authority: ObservationAuthority; source: string }`
-- `AuthoredObservationSet` class:
-  - `add(code, authority, source)` -- stores highest authority if duplicate
-  - `getConfirmedCodes(): string[]` -- returns only CONFIRMED codes
-  - `getConfirmedAndExtractedCodes(): string[]` -- returns CONFIRMED + EXTRACTED
-  - `getAllCodes(): string[]` -- returns all codes (for rule evaluation)
-  - `getCodesForTerminalGate(): string[]` -- returns only CONFIRMED codes
-  - `toFlatSet(): Set<string>` -- backward-compatible flat set for rule engine
-
-### File 2: MODIFY `supabase/functions/ai-agriculture-chat/decision/diagnosis-only-mode.ts`
-
-- Add new function `detectCropDamageWithAuthority(authoredObservations: AuthoredObservationSet, crossCropSymptoms?: string[])`
-- This function filters to only CONFIRMED + EXTRACTED observations before checking terminal indicators
-- The existing `detectCropDamageForDiagnosis` remains for backward compatibility but logs a deprecation warning
-
-### File 3: MODIFY `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-**Section 1: Replace flat Set with AuthoredObservationSet (around line 2981)**
-
-Replace `allObservationsForPreAuth = new Set<string>()` with `AuthoredObservationSet`.
-
-Tag each source:
-- `observationKeys` from induction: `EXTRACTED`
-- `mappedCodes.observation_codes` from LLM semantic extractor: `INFERRED`
-- `inductionResult.symptoms` with `source === 'LLM_SEMANTIC_EXTRACTOR'`: `INFERRED`
-- `inductionResult.symptoms` with `source === 'LANGUAGE_INDUCTION'`: `EXTRACTED`
-- `photoMappedCodes`: `CONFIRMED` (photo-verified)
-- Cross-crop symptoms: `SYNTHETIC`
-- LLM-intent fallback injections (line 3098-3124): `INFERRED`
-- `obsKeyExpansion` entries (line 1581-1614): `INFERRED`
-
-**Section 2: Terminal Gate uses filtered codes (around line 3148)**
-
-Change:
-```
-detectCropDamageForDiagnosis(allObservationsForPreAuth, crossCropSymptomsList)
-```
-To call the new authority-aware version that only checks CONFIRMED + EXTRACTED codes for terminal indicators.
-
-Pass the full set to the rule engine (all authority levels participate in rule matching).
-
-**Section 3: Clarification selection path (around line 1440-1620)**
-
-When processing a clarification option selection:
-- Tag the embedded observation key as `CONFIRMED`
-- Tag `obsKeyExpansion` results as `INFERRED`
-- Do NOT run alias expansion or legacy induction on the selected option
-- Pass only the CONFIRMED key + controlled expansion to rule evaluation
-
-**Section 4: Cross-crop injection guard (around line 3142)**
-
-Before injecting cross-crop symptoms, filter out terminal indicators:
-```
-const TERMINAL_CODES_BLOCKED_FROM_INJECTION = new Set([
-  'PLANT_DEATH', 'SEEDLING_DEATH', 'GERMINATION_FAILURE', 
-  'CROP_FAILURE', 'ESTABLISHMENT_FAILURE'
-]);
-```
-Only inject non-terminal cross-crop codes. Terminal codes require explicit farmer confirmation.
-
-### File 4: MODIFY `supabase/functions/ai-agriculture-chat/agents/cross-crop-symptom-mapper.ts`
-
-No structural changes needed. The guard is applied at injection point in orchestrator.ts, not at the mapper level, to preserve the mapper's role as a pure observation extractor.
-
-### File 5: MODIFY `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts`
-
-- In `mapClarificationSelectionToSymbols`: tag the selected observation as `CONFIRMED`
-- Verify merge logic (already fixed) preserves existing symbols
-
----
+| Metric | Before | After |
+|--------|--------|-------|
+| Rules with unevaluable conditions that match | ~200+ | 0 |
+| Weather conditions enforced | 0/45 | 45/45 (or SKIPPED_NO_DATA = no match) |
+| Numeric thresholds enforced | 0/22 | 22/22 |
+| ETL object conditions enforced | 0/17 | 17/17 |
+| Scoring denominator accuracy | Inflated by unevaluable keys | Only counts required+evaluated |
+| Context/ROI keys | Block rules on miss | Informational only (don't block, don't inflate score) |
 
 ## Backward Compatibility
 
-- The flat `Set<string>` interface is preserved via `toFlatSet()` for the rule engine, canonical state builder, and all downstream consumers
-- Only the terminal damage gate and diagnosis-only mode activation change behavior
-- Rule evaluation continues to use ALL observations (all authority levels)
-- The `AuthoredObservationSet` degrades gracefully -- if any consumer needs a plain `Set<string>`, `toFlatSet()` provides it
-
----
-
-## Expected Behavior After Fix
-
-| Scenario | Before | After |
-|---|---|---|
-| Farmer selects "Early shoot borer" (DEAD_HEART_PRESENT) | PLANT_DEATH injected via cross-crop -> DIAGNOSIS_ONLY fires | DEAD_HEART_PRESENT is CONFIRMED, PLANT_DEATH is SYNTHETIC -> Terminal gate ignores PLANT_DEATH -> Normal rule evaluation runs |
-| Farmer says "my plants are all dead" | PLANT_DEATH from cross-crop mapper on raw text -> DIAGNOSIS_ONLY fires | PLANT_DEATH is EXTRACTED (from raw text pattern match) -> Terminal gate fires correctly |
-| Alias expansion adds PLANT_DEATH from LEAF_WILTING | Terminal gate fires incorrectly | PLANT_DEATH is INFERRED -> Terminal gate ignores it |
-| Photo shows dead plants | Terminal gate may not fire | PLANT_DEATH is CONFIRMED (photo-verified) -> Terminal gate fires correctly |
-
----
+- Rules with ONLY `observations` and `crop_stage` conditions are unaffected (Category A, already working)
+- Rules with weather/ETL/numeric conditions that previously soft-passed will now require data to match -- this is the intended strict behavior
+- The `conditions: (input) => boolean` interface is preserved; ledger is internal
 
 ## Files Modified (Summary)
 
-1. **NEW**: `supabase/functions/ai-agriculture-chat/utils/observation-authority.ts` -- Authority tracking system
-2. **MODIFY**: `supabase/functions/ai-agriculture-chat/decision/diagnosis-only-mode.ts` -- Authority-aware terminal detection
-3. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` -- Tag observations with authority, filter terminal gate, guard cross-crop injection, isolate clarification path
-4. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` -- Tag clarification selections as CONFIRMED
-5. **DEPLOY**: Redeploy `ai-agriculture-chat` edge function
+1. **MODIFY**: `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` -- Ledger-based evaluator, expanded DecisionInput, key categorization
+2. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` -- Ledger-based scoring, expanded canonical state passthrough
+3. **MODIFY**: `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts` -- Align PATH B with same fail-closed logic
+4. **DEPLOY**: Redeploy `ai-agriculture-chat` edge function
+
