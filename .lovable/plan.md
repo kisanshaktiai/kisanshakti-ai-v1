@@ -1,178 +1,290 @@
 
-# Critical P0 Fix: Symbolic Decision Brain Data Flow Audit & Repair
 
-## Issues Found (7 Critical, All Confirmed in Code)
+# Symbolic Decision Brain Stabilization v4.0 (Refined)
 
-### BUG 1: ConfidenceCalculator Crash (P0)
-**File**: `orchestrator.ts` line 4990-4996
-**Root Cause**: `calculateConfidence()` expects a single `ConfidenceInput` object `{ diagnosis, firedRules, facts, landState }` but is called with 4 positional arguments in wrong order:
-```
-confidenceCalc.calculateConfidence(
-  layeredRuleResult.final_diagnosis || null,   // -> diagnosis (OK)
-  symbolicFacts,                                // -> firedRules (WRONG - should be facts)
-  symbolicResult.recommendations || [],         // -> facts (WRONG - should be landState)
-  authoritativeLandState || {}                  // -> landState (WRONG - becomes facts)
-)
-```
-When `authoritativeLandState` is null, `{}` is passed as `facts`. The calculator accesses `facts.crop` on `{}`, causing the `TypeError: Cannot read properties of undefined (reading 'crop')`.
+## Summary of Changes from Previous Plan
 
-**Fix**: Pass a proper `ConfidenceInput` object:
-```
-confidenceCalc.calculateConfidence({
-  diagnosis: layeredRuleResult.final_diagnosis || null,
-  firedRules: symbolicResult.recommendations || [],
-  facts: symbolicFacts,
-  landState: authoritativeLandState
-})
-```
+Three critical architectural refinements have been added based on expert review. These elevate the system from "good" to "world-class" by ensuring no silent skips, no inflated coverage, and no per-request DB overhead.
 
-**Also add defensive null check** in `confidence-calculator.ts` line 203:
-```
-private calculateDataQuality(facts: SymbolicFact, landState: ...): number {
-  if (!facts || !facts.crop) {
-    console.warn('[ConfidenceCalculator] Missing facts/crop, returning 0');
-    return 0;
-  }
-  // ... existing logic
+---
+
+## ISSUE 1: Arbitration Crash (`cropCode is not defined`) -- P0
+
+**File**: `orchestrator.ts` line 4733
+**Root Cause**: `cropCode` is block-scoped to a different `try` block (line 3374-3538). At line 4733 (Phase 2.5.5), it does not exist in scope.
+**Fix**: Replace `cropCode` with `canonicalContext?.crop_code`.
+
+**REFINEMENT 2 APPLIED**: Instead of `console.warn` + skip, throw a hard error:
+
+```text
+const hypothesisCrop = canonicalContext?.crop_code;
+if (!hypothesisCrop || hypothesisCrop === 'UNKNOWN') {
+  throw new Error('FATAL_CANONICAL_CONTEXT_CORRUPTION: crop_code missing or UNKNOWN before hypothesis arbitration');
 }
+// Then use crop_group: hypothesisCrop
 ```
 
-And in `calculateDataFreshness` line 280 for `landState.crop.schedule_status`:
-```
-if (landState?.crop?.schedule_status === 'active') {
+Rationale: Skipping arbitration silently creates reasoning gaps and confidence inconsistencies. World-class engines fail explicitly. The outer orchestrator catch block will handle this as a proper symbolic failure, not a silent degradation.
+
+---
+
+## ISSUE 2: Crop Lock Leak via Induction Layer -- P1
+
+**File**: `orchestrator.ts` lines 4541-4544
+**Root Cause**: When `canonicalContext.is_locked === true`, induction crop can still override `canonicalState.crop_type`.
+**Fix**: Guard with `canonicalContext.is_locked` check:
+
+```text
+if (canonicalContext && canonicalContext.is_locked) {
+  console.log(`   Crop locked from canonical context (${canonicalContext.crop_code}) -- ignoring induction crop: ${inductionCrop}`);
+  canonicalState.crop_type = canonicalContext.crop_code as any;
+} else if (inductionCrop !== 'UNKNOWN_CROP') {
+  console.log(`   Enriching canonical state crop from induction: ${inductionCrop}`);
+  canonicalState.crop_type = inductionCrop as any;
+}
 ```
 
 ---
 
-### BUG 2: Rule Deduplication Missing in LayeredRuleEvaluator (P1)
-**File**: `layered-rule-evaluator.ts` lines 521-553
-**Root Cause**: `matched_responses` array is populated without checking for duplicate `rule_id`. If the same rule matches in multiple evaluation phases, it gets added twice. The `diagnosis-conflict-resolver.ts` has `deduplicateRules()` but it's only used for diagnosis candidates, not for `matched_responses`.
+## ISSUE 3: Demote Induction Bypass Log -- P1
 
-**Fix**: Add deduplication to `matched_responses` before primary selection (around line 601):
+**File**: `orchestrator.ts` line 4043
+**Fix**: Replace `INDUCTION BYPASS ACTIVE` with enrichment-only log:
+
+```text
+console.log(`   Induction enrichment: ${inductionResult.symptoms.length} supplementary symbols (coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%)`);
 ```
-// Deduplicate matched_responses by rule_id (keep first occurrence)
-const seenRuleIds = new Set<string>();
-result.matched_responses = result.matched_responses.filter(r => {
-  if (!r.rule_id || seenRuleIds.has(r.rule_id)) return false;
-  seenRuleIds.add(r.rule_id);
-  return true;
-});
-```
+
+The `inductionBasedBypass` variable continues to function but the log no longer implies routing authority.
 
 ---
 
-### BUG 3: Intent UNKNOWN Allows Diagnosis Mode (P1)
-**File**: `orchestrator.ts` lines 2680-2686
-**Root Cause**: There IS a gate at line 2682 that blocks symbolic brain when `zero observations + UNKNOWN intent`. However, the gate checks `hasSymptoms` which is true when cross-crop/synthetic observations have been injected (even without real farmer input). Also, the Symbolic Reasoner at Phase 2.7 (line 4853) runs unconditionally with `if (canonicalState)` -- no intent check.
+## ISSUE 4: Intent Lock Cannot Downgrade High-Confidence Intent -- P1
 
-**Fix 1**: In Phase 2.7 (line 4853), add intent guard before symbolic reasoner:
+**File**: `orchestrator.ts` after line 2253, and `intent-lock.ts`
+
+Current `lockIntent()` at line 3952 blindly locks whatever intent is passed. If downstream logic overwrites `intentCode` to `UNKNOWN` after the LLM returned >= 0.65 confidence, the system loses valid classification.
+
+**Fix Part A** -- Confidence tiering (after line 2253):
+
+```text
+const intentTier = intentConf >= 0.65 ? 'HIGH' : intentConf >= 0.35 ? 'TENTATIVE' : 'LOW';
+console.log(`   [IntentTier] ${intentTier} confidence (${(intentConf * 100).toFixed(0)}%) - intent: ${intentCode}`);
 ```
-const shouldRunSymbolicReasoner = canonicalState && (
-  intentCode !== 'UNKNOWN' || 
-  (allObservationsForPreAuth && allObservationsForPreAuth.size >= 2)
-);
-if (shouldRunSymbolicReasoner) {
-  // ... existing symbolic reasoner code
+
+**Fix Part B** -- Hard override guard (enforce, not just log):
+
+```text
+// Before any downstream UNKNOWN promotion/override:
+if (intentTier === 'HIGH' && (newIntent === 'UNKNOWN' || newIntent === 'UNKNOWN_OBSERVATION')) {
+  console.log(`   BLOCKED: Cannot overwrite HIGH-confidence intent ${intentCode} with ${newIntent}`);
+  // Keep original intentCode
+} else {
+  intentCode = newIntent;
 }
 ```
 
-**Fix 2**: Add UNKNOWN-to-REPORT_SYMPTOM promotion when observations exist (after intent extraction, around line 2253):
-```
-if ((intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION') && 
-    allObservationsForPreAuth.size >= 2) {
+**Fix Part C** -- Modify UNKNOWN-to-REPORT_SYMPTOM promotion to respect tiers:
+
+```text
+if ((intentCode === 'UNKNOWN' || intentCode === 'UNKNOWN_OBSERVATION') &&
+    allObservationsForPreAuth.size >= 2 && intentConf >= 0.35) {
   intentCode = 'REPORT_SYMPTOM';
-  console.log(`   🔄 [IntentPromotion] UNKNOWN -> REPORT_SYMPTOM (${allObservationsForPreAuth.size} observations present)`);
 }
+```
+
+This ensures `lockIntent()` at line 3952 receives the correct, non-downgraded intent.
+
+---
+
+## ISSUE 5: Authority-Based Coverage Calculation -- P1
+
+**File**: `orchestrator.ts` around line 2346
+
+**REFINEMENT 1 (from expert review) APPLIED**: The previous plan used string-based `s.source` filtering which is wrong -- `LLM_SEMANTIC_EXTRACTOR` may include INFERRED expansions, and `LANGUAGE_INDUCTION` may include alias expansions. Must use the actual `ObservationAuthority` enum via `AuthoredObservationSet`.
+
+**Fix**: Use `getConfirmedAndExtractedCodes()` from `AuthoredObservationSet` (already exists at line 94 of `observation-authority.ts`):
+
+```text
+// Authority-based coverage: use ONLY CONFIRMED + EXTRACTED observations
+const authorityBasedCodes = authoredObservations?.getConfirmedAndExtractedCodes() || [];
+const evidenceCoverage = authorityBasedCodes.length > 0 
+  ? Math.min(1.0, authorityBasedCodes.length / 8) 
+  : 0;
+console.log(`   Evidence coverage (CONFIRMED+EXTRACTED only): ${(evidenceCoverage * 100).toFixed(0)}% (${authorityBasedCodes.length} codes)`);
+```
+
+**REFINEMENT 3 APPLIED**: Coverage gate must actually block diagnosis entry, not just log:
+
+```text
+if (evidenceCoverage < 0.25 && !isSymptomFreeRoute && !bypassClarification) {
+  console.log(`   [COVERAGE_GATE] Evidence coverage too low (${(evidenceCoverage * 100).toFixed(0)}%) -- blocking diagnosis, forcing clarification`);
+  shouldBlockDiagnosis = true;
+  // Set flag that will be checked before hypothesis engine and rule evaluation
+}
+```
+
+Then before Phase 2.5.5 (hypothesis arbitration):
+
+```text
+if (shouldBlockDiagnosis) {
+  console.log(`   [COVERAGE_GATE] Skipping hypothesis arbitration and rule evaluation -- insufficient evidence`);
+  // Trigger clarification path directly
+}
+```
+
+This makes the gate functional, not observational.
+
+---
+
+## ISSUE 6: Remove Silent Template Fallback -- P1
+
+**File**: `llm-response-formatter.ts` lines 416-418 and 481-483
+
+Before every `buildTemplateFallback` call, add structured `SYMBOLIC_FAILURE` logging:
+
+```text
+console.error(`[SYMBOLIC_FAILURE] Falling back to template`);
+console.error(`   Gate failed: ${failureReason}`);
+console.error(`   Observations present: ${input.decision_output?.matched_responses?.length || 0}`);
+console.error(`   Hypotheses evaluated: ${input.decision_output?.hypothesis_result?.eliminated_count || 0}`);
+console.error(`   Decision confidence: ${input.decision_output?.primary_decision?.weighted_confidence || 0}`);
+console.error(`   Primary rule: ${input.decision_output?.primary_decision?.rule_id || 'NONE'}`);
 ```
 
 ---
 
-### BUG 4: Hypothesis Arbitration Not Blocking Contradictory Rules (P0)
-**File**: `orchestrator.ts` lines 4723-4754
-**Root Cause**: When hypothesis arbitration returns `CLARIFICATION_REQUIRED` (line 4723), the code says `// Don't return early - let existing clarification strategy handle it`. This means contradictory rules (smut, red rot, wilt, shoot borer all firing simultaneously) are NOT blocked by hypothesis scoping. The hypothesis layer is effectively bypassed when it demands clarification.
+## ISSUE 7: LLM Output Validation Against Database -- P0
 
-**Fix**: When hypothesis returns `CLARIFICATION_REQUIRED` AND has competing hypotheses, enforce scope to ONLY the top hypothesis's rules (not all rules). This prevents contradictory domains from all firing:
-```
-if (hypothesisResult.needs_clarification && hypothesisResult.decision_path === 'CLARIFICATION_REQUIRED') {
-  console.log(`   🔄 Hypothesis arbitration needs clarification: ${hypothesisResult.clarification_reason}`);
-  
-  // CRITICAL: Even during clarification, scope rules to top hypothesis to prevent rule explosion
-  if (hypothesisResult.best_hypothesis?.mapped_rule_ids?.length > 0) {
-    hypothesisRuleScope = hypothesisResult.best_hypothesis.mapped_rule_ids;
-    console.log(`   🎯 [ClarificationScope] Restricting to top hypothesis rules to prevent explosion`);
+**File**: NEW `supabase/functions/ai-agriculture-chat/utils/llm-output-validator.ts`
+
+Validates LLM-extracted intents and observations against DB tables with cached lookups (15-min TTL).
+
+**Expert refinement applied**: Add crop-applicability check. Even if an observation exists in `observation_master`, reject it if it does not apply to the current crop. Use `crop_group` from `decision_rules` or `intent_observation_mapping` to validate applicability.
+
+```text
+// Crop-applicability validation
+// Example: BOLL_DAMAGE exists in observation_master but is invalid for SUGARCANE
+const applicableObs = await getCropApplicableObservations(canonicalCrop);
+for (const code of observationCodes) {
+  if (!applicableObs.has(code)) {
+    rejected.push(code);
+    reasons.push(`${code} not applicable to crop ${canonicalCrop}`);
   }
 }
 ```
 
----
+Cache structure:
 
-### BUG 5: Synthetic Observation Inflation (P1)
-**File**: `orchestrator.ts` lines 3077-3139
-**Root Cause**: When observations are empty but land context exists, the system injects fallback symptoms from intent mapping (line 3138). These INFERRED/SYNTHETIC observations then trigger the biotic indicator detector, terminal damage gate, and cross-crop mapper, inflating the observation set. The observation authority system exists (`observation-authority.ts`) but the rule evaluator does NOT filter by authority level.
-
-**Fix**: In the layered rule evaluator, when counting matched observations for scoring, only count CONFIRMED and EXTRACTED authority observations. Add authority-aware filtering:
-
-In `orchestrator.ts`, before passing observations to rule evaluator, tag synthetic ones:
-```
-// Before rule evaluation, separate confirmed vs synthetic observations
-const confirmedObservations = authoredObservations.getByAuthority(
-  ObservationAuthority.CONFIRMED, ObservationAuthority.EXTRACTED
-);
-const syntheticObservations = authoredObservations.getByAuthority(
-  ObservationAuthority.INFERRED, ObservationAuthority.SYNTHETIC
-);
-
-// Pass authority metadata into canonical state for rule evaluator
-canonicalState.confirmed_observations = confirmedObservations;
-canonicalState.synthetic_observations = syntheticObservations;
+```text
+const validatorCache = new Map<string, { data: Set<string>; loadedAt: number }>();
+const VALIDATOR_CACHE_TTL = 900000; // 15 minutes
 ```
 
-In `layered-rule-evaluator.ts`, use confirmed observations for primary scoring and only use full set for fallback:
-```
-// Use confirmed observations for primary scoring
-const primarySymptoms = state.confirmed_observations?.length > 0 
-  ? state.confirmed_observations 
-  : state.visual_symptoms || [];
-```
+Functions:
+- `validateLLMOutputAgainstDB({ intent_code, observation_codes, canonical_crop, supabase })` -- returns `{ valid, rejected_intents, rejected_observations, reason }`
+- `loadValidIntentCodes(supabase)` -- cached lookup from `observation_intent_master`
+- `loadValidObservationCodes(supabase)` -- cached lookup from `observation_master`
+- `loadCropApplicableObservations(supabase, cropCode)` -- cached lookup filtering by crop applicability
+
+Wire into `orchestrator.ts` after semantic extraction.
 
 ---
 
-### BUG 6: Confidence Model Inconsistency (P0)
-**Root Cause**: Two competing confidence systems produce contradictory scores:
-- `ConfidenceCalculator` (Path B, symbolic reasoner) produces 95% aggregate
-- Understanding completeness checker produces 53%
-These are independent, unsynchronized systems. The SSOT `weighted_confidence` from the `LayeredRuleEvaluator` should be the sole authority.
+## ISSUE 8: Crop Vocabulary Table for Romanized Input -- Enhancement
 
-**Fix**: Skip the `ConfidenceCalculator` entirely in the symbolic reasoner path. The SSOT `weighted_confidence` from `layered-rule-evaluator.ts` is already the authoritative confidence. Remove the redundant confidence calculation at line 4990-4997:
-```
-// REMOVED: Redundant confidence calculation
-// The SSOT weighted_confidence from LayeredRuleEvaluator is authoritative
-// ConfidenceCalculator was Path B (legacy) and conflicts with SSOT
-// layeredRuleResult.confidence_in_result is already set by the evaluator
-if (!layeredRuleResult.confidence_in_result && layeredRuleResult.primary_decision?.weighted_confidence) {
-  layeredRuleResult.confidence_in_result = layeredRuleResult.primary_decision.weighted_confidence;
+**Phase 1: DB Migration**
+
+Create `crop_vocabulary` table + seed sugarcane entries.
+
+**REFINEMENT 1 APPLIED**: Do NOT query Supabase per request. Use in-memory cache with 5-minute TTL:
+
+```text
+const vocabCache = new Map<string, { entries: VocabEntry[]; loadedAt: number }>();
+const VOCAB_CACHE_TTL = 300000; // 5 minutes
+
+async function getCropVocabulary(cropCode: string, supabase: any): Promise<VocabEntry[]> {
+  const cached = vocabCache.get(cropCode);
+  if (cached && Date.now() - cached.loadedAt < VOCAB_CACHE_TTL) {
+    return cached.entries;
+  }
+  
+  const { data } = await supabase
+    .from('crop_vocabulary')
+    .select('phrase_pattern, semantic_hint')
+    .eq('crop_code', cropCode)
+    .eq('is_active', true);
+  
+  const entries = data || [];
+  vocabCache.set(cropCode, { entries, loadedAt: Date.now() });
+  return entries;
 }
 ```
 
----
+Inject into LLM prompt as contextual knowledge block:
 
-### BUG 7: HOW Section Shows When Actions = 0
-**File**: LLM formatter / response construction
-**Root Cause**: The response includes a HOW section even when `actions_returned = 0`. This is a formatting inconsistency.
+```text
+CROP-SPECIFIC VOCABULARY (Sugarcane):
+- "surali valali" refers to central whorl drying (dead heart symptom)
+- "khod pokharla" indicates stem borer damage
+- "pandhrya muli" refers to white grub root damage
+```
 
-**Fix**: In the LLM narration layer, add guard:
-```
-if (!decision.products || decision.products.length === 0) {
-  // Remove HOW section entirely - no actions to recommend
-  formattedResponse = formattedResponse.replace(/HOW:[\s\S]*?((?=WHY:|$))/i, '');
-}
-```
+Seed data (10 entries for sugarcane romanized Marathi phrases).
 
 ---
 
-## Files Modified (Summary)
+## Summary of Expert Refinements Applied
 
-1. **MODIFY**: `supabase/functions/ai-agriculture-chat/decision/confidence-calculator.ts` -- Add null safety to `calculateDataQuality` and `calculateDataFreshness`
-2. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` -- Fix ConfidenceCalculator call signature (Bug 1), add intent UNKNOWN guard for Phase 2.7 (Bug 3), enforce hypothesis scope during clarification (Bug 4), separate confirmed vs synthetic observations (Bug 5), remove redundant confidence calculation (Bug 6)
-3. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` -- Add rule deduplication for matched_responses (Bug 2), authority-aware symptom filtering (Bug 5)
-4. **DEPLOY**: Redeploy `ai-agriculture-chat` edge function
+| Refinement | Previous Plan | Refined Plan |
+|---|---|---|
+| Vocabulary fetching | Per-request Supabase query | In-memory cache with 5-min TTL |
+| Arbitration on missing crop | `console.warn` + skip | `throw new Error('FATAL_CANONICAL_CONTEXT_CORRUPTION')` |
+| Coverage gate | Log-only warning | Functional gate that blocks diagnosis entry |
+
+Additionally:
+- Coverage calculation uses `ObservationAuthority` enum via `getConfirmedAndExtractedCodes()` instead of string-based `s.source` filtering
+- LLM output validator includes crop-applicability check (not just existence in `observation_master`)
+- Intent tiering includes hard override guard (enforcement, not just logging)
+
+---
+
+## Files Modified (Complete)
+
+1. **DB MIGRATION**: Create `crop_vocabulary` table + seed sugarcane entries
+2. **NEW**: `supabase/functions/ai-agriculture-chat/utils/llm-output-validator.ts` -- DB-validated LLM output gate with cached lookups and crop-applicability check
+3. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`:
+   - Fix `cropCode` crash with `throw` on corruption (Issue 1)
+   - Seal crop lock leak (Issue 2)
+   - Demote induction bypass log (Issue 3)
+   - Intent confidence tiering with hard override guard (Issue 4)
+   - Authority-based coverage with functional gate (Issue 5)
+   - Wire LLM output validator (Issue 7)
+   - Wire crop vocabulary prompt enrichment with cache (Issue 8)
+4. **MODIFY**: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` -- Structured `SYMBOLIC_FAILURE` logging (Issue 6)
+5. **DEPLOY**: Redeploy `ai-agriculture-chat` edge function
+
+---
+
+## Pipeline After Fix
+
+```text
+1. CanonicalContext lock (crop immutable)
+2. LLM semantic extraction (perception layer)
+3. LLM output validation (DB-enforced, crop-applicable)
+4. Intent confidence tiering (HIGH/TENTATIVE/LOW with hard guard)
+5. Observation authority filtering (CONFIRMED + EXTRACTED only)
+6. Evidence coverage gate (functional, blocks diagnosis if < 25%)
+7. Hypothesis arbitration (deterministic, fails hard on missing crop)
+8. Decision rules evaluation (hypothesis-scoped)
+9. Response formatting (validated, no silent fallback)
+```
+
+## Edge Logs Must NOT Contain (Post-Fix)
+
+- `INDUCTION BYPASS ACTIVE`
+- `ReferenceError: cropCode is not defined`
+- `Intent LOCKED: UNKNOWN` after >= 65% confidence
+- `Decision confidence: 0` unless genuine symbolic failure
+- `Template fallback generated` without preceding `[SYMBOLIC_FAILURE]` log
+
