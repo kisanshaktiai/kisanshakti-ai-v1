@@ -217,15 +217,17 @@ export const ALL_RULES: Rule[] = [];
 // ==================== CONDITION MATCHING (STRICT AND-BASED VALIDATION) ====================
 
 /**
- * STRICT AND-BASED CONDITION VALIDATION
+ * STRICT CONSTRAINT-BASED CONDITION VALIDATION
  * 
- * CRITICAL CHANGE: If a rule requires contextual data (ndvi_trend, soil_nitrogen, 
- * water_stress, etc.) and that data is undefined, null, or 'UNKNOWN', the rule FAILS.
- * Missing data must NOT be treated as a passing condition.
+ * CRITICAL: Any condition requiring contextual data FAILS if canonical context 
+ * value is UNKNOWN, NOT_TESTED, null, or undefined.
+ * Missing/indeterminate data NEVER passes a condition check.
  */
+const INDETERMINATE_VALUES = new Set(['', 'UNKNOWN', 'NOT_TESTED', 'N/A', 'UNDEFINED', 'NULL']);
+
 function isDataPresent(value: unknown): boolean {
   if (value === undefined || value === null) return false;
-  if (typeof value === 'string' && (value === '' || value.toUpperCase() === 'UNKNOWN')) return false;
+  if (typeof value === 'string' && INDETERMINATE_VALUES.has(value.toUpperCase().trim())) return false;
   return true;
 }
 
@@ -647,61 +649,93 @@ export function evaluateRulesLayered(
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // EVIDENCE-BASED RANKING: No urgency bias, rank by evidence strength ONLY
-    // action_type is used ONLY for safety blocks, NOT for priority boosting
+    // SAFETY_GATE EXCLUSION: safety_gate rules must NEVER be primary decision
+    // They are applied post-selection as overlays, not competing candidates
     // ═══════════════════════════════════════════════════════════════════════════
-    const SAFETY_BLOCK_TYPES = new Set(['BLOCK', 'URGENT_BLOCK']);
+    const SAFETY_GATE_ACTION_TYPES = new Set([
+      'safety_gate', 'SAFETY_GATE', 'BLOCK', 'URGENT_BLOCK',
+      'weather_block', 'WEATHER_BLOCK'
+    ]);
+    
+    const nonSafetyResponses = responsesForSelection.filter(r => 
+      !SAFETY_GATE_ACTION_TYPES.has(r.action_type)
+    );
+    
+    const candidatesForPrimary = nonSafetyResponses.length > 0 ? nonSafetyResponses : responsesForSelection;
+    
+    if (nonSafetyResponses.length < responsesForSelection.length) {
+      console.log(`🛡️ [SafetyGateExclusion] Excluded ${responsesForSelection.length - nonSafetyResponses.length} safety_gate rules from primary arbitration`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NORMALIZED SCORING: score = matched_conditions / total_required_conditions
+    // No urgency bias, no action_type boosting. Pure evidence ratio.
+    // ═══════════════════════════════════════════════════════════════════════════
     
     const currentSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
     
-    const scored = responsesForSelection.map(r => {
-      let evidenceScore = 0;
-      
-      // 1. Base confidence score from rule engine (primary signal)
-      evidenceScore += (r.confidence_score ?? 0.5) * 100;
-      
-      // 2. Observation overlap: rules matching farmer's symptoms score higher
+    const scored = candidatesForPrimary.map(r => {
       const ruleConditions = r.conditions_json || {};
       const ruleObs: string[] = Array.isArray(ruleConditions.observations) ? ruleConditions.observations : [];
+      
+      // Count total required conditions from the rule
+      const conditionKeys = Object.keys(ruleConditions).filter(k => 
+        k !== 'trigger_keywords' && k !== 'observations'
+      );
+      const totalConditions = ruleObs.length + conditionKeys.length;
+      
+      // Count matched conditions
+      let matchedConditions = 0;
+      
+      // Observation overlap
       if (ruleObs.length > 0 && currentSymptoms.length > 0) {
-        const overlapCount = ruleObs.filter((o: string) => {
+        for (const o of ruleObs) {
           const oNorm = String(o).toUpperCase().replace(/[\s-]/g, '_');
-          return currentSymptoms.some((sym: string) => sym.includes(oNorm) || oNorm.includes(sym));
-        }).length;
-        evidenceScore += overlapCount * 20; // +20 per matched observation
-        if (overlapCount === 0) evidenceScore -= 50; // Penalize zero overlap
+          if (currentSymptoms.some((sym: string) => sym.includes(oNorm) || oNorm.includes(sym))) {
+            matchedConditions++;
+          }
+        }
+      } else if (ruleObs.length === 0) {
+        // No observation requirement = not penalized
       }
       
-      // 3. Content completeness: rules with action_text + reason_text are better grounded
-      if (r.action_text) evidenceScore += 10;
-      if (r.reason_text) evidenceScore += 5;
-      if (r.knowledge_text) evidenceScore += 5;
+      // Context condition matches (boolean/string keys present in state)
+      for (const key of conditionKeys) {
+        const stateVal = (state as any)[key];
+        if (isDataPresent(stateVal)) matchedConditions++;
+      }
       
-      // 4. Safety blocks always win (but NOT urgency boosting)
-      if (SAFETY_BLOCK_TYPES.has(r.action_type)) evidenceScore += 500;
+      // NORMALIZED SCORE: ratio of matched to total, capped at 1.0
+      const normalizedScore = totalConditions > 0 
+        ? Math.min(1.0, matchedConditions / totalConditions) 
+        : (r.confidence_score ?? 0.5);
       
-      return { response: r, evidenceScore };
+      // Content completeness bonus (small, max 0.05)
+      const contentBonus = ((r.action_text ? 0.02 : 0) + (r.reason_text ? 0.015 : 0) + (r.knowledge_text ? 0.015 : 0));
+      
+      // Final score: normalized evidence + small content bonus, CAPPED at 1.0
+      const finalScore = Math.min(1.0, normalizedScore + contentBonus);
+      
+      return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
     
-    // Sort by evidence score DESC (higher = better evidence), then data_authority_rank
+    // Sort by evidence score DESC
     scored.sort((a, b) => {
       if (a.evidenceScore !== b.evidenceScore) return b.evidenceScore - a.evidenceScore;
-      const rankA = (a.response as any).data_authority_rank ?? 50;
-      const rankB = (b.response as any).data_authority_rank ?? 50;
-      return rankB - rankA;
+      return (b.response.confidence_score ?? 0) - (a.response.confidence_score ?? 0);
     });
     const best = scored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CONFIDENCE GATE: If computed confidence < 40%, DO NOT select primary decision
-    // Instead, trigger clarification or request additional data
+    // PRE-SELECTION CONFIDENCE GATE: If best rule score < 0.6, trigger clarification
+    // This ensures only well-evidenced rules become primary decisions
     // ═══════════════════════════════════════════════════════════════════════════
-    const CONFIDENCE_GATE_THRESHOLD = 0.40;
-    const computedConfidence = best.confidence_score ?? result.confidence_in_result;
+    const CONFIDENCE_GATE_THRESHOLD = 0.60;
+    const computedConfidence = Math.min(1.0, scored[0].evidenceScore);
     
     if (computedConfidence < CONFIDENCE_GATE_THRESHOLD) {
-      console.warn(`⚠️ [ConfidenceGate] Confidence ${(computedConfidence * 100).toFixed(0)}% < ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% threshold`);
-      console.warn(`   Best candidate: ${best.rule_id} (evidence_score=${scored[0].evidenceScore})`);
+      console.warn(`⚠️ [ConfidenceGate] Score ${(computedConfidence * 100).toFixed(0)}% < ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% threshold`);
+      console.warn(`   Best candidate: ${best.rule_id} (score=${scored[0].evidenceScore.toFixed(3)}, matched=${scored[0].matchedConditions}/${scored[0].totalConditions})`);
       console.warn(`   ACTION: Skipping primary selection → triggering clarification`);
       // primary_decision remains null — orchestrator will route to clarification
     } else {
@@ -720,10 +754,10 @@ export function evaluateRulesLayered(
         i18n_key: best.i18n_key
       };
       
-      console.log(`✅ [LayeredRuleEvaluator] PRIMARY_DECISION built (confidence=${(computedConfidence * 100).toFixed(0)}%):`);
+      console.log(`✅ [LayeredRuleEvaluator] PRIMARY_DECISION built (score=${(computedConfidence * 100).toFixed(0)}%):`);
       console.log(`   rule_id=${result.primary_decision.rule_id}`);
       console.log(`   action_type=${result.primary_decision.action_type}`);
-      console.log(`   evidence_score=${scored[0].evidenceScore}`);
+      console.log(`   normalized_score=${scored[0].evidenceScore.toFixed(3)} (${scored[0].matchedConditions}/${scored[0].totalConditions})`);
       console.log(`   has_action_text=${!!result.primary_decision.action_text}`);
       console.log(`   has_i18n_key=${!!result.primary_decision.i18n_key}`);
     }
