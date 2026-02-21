@@ -86,17 +86,18 @@ export async function loadObservationLabels(
   
   try {
     const upperCodes = observationCodes.map(c => c.toUpperCase());
-    
+    const normalizedLanguage = (language || 'en').toLowerCase();
+
     const { data: translations, error } = await supabaseClient
       .from('observation_translations')
       .select('observation_code, display_text, description_text')
       .in('observation_code', upperCodes)
-      .eq('language_code', language);
-    
+      .eq('language_code', normalizedLanguage);
+
     if (error) {
       console.error(`   ❌ DB error: ${error.message}`);
     }
-    
+
     // Build map from database results
     // CRITICAL FIX: Prefer description_text (farmer-friendly) over display_text (technical term)
     // when description_text is available and substantive (>10 chars)
@@ -106,14 +107,14 @@ export async function loadObservationLabels(
         (t: any) => t.observation_code?.toUpperCase() === upperCode
       );
       const icon = OBSERVATION_ICONS[upperCode] || '❓';
-      
+
       if (translation) {
         // Use description_text as display if it's more descriptive (farmer-friendly)
         // description_text describes WHAT FARMER SEES, display_text is often a technical term
-        const hasGoodDescription = translation.description_text && 
+        const hasGoodDescription = translation.description_text &&
           translation.description_text.length > 10 &&
           translation.description_text.length > (translation.display_text?.length || 0);
-        
+
         labelMap.set(upperCode, {
           observation_code: upperCode,
           display_text: hasGoodDescription ? translation.description_text : translation.display_text,
@@ -121,42 +122,48 @@ export async function loadObservationLabels(
           icon
         });
       } else {
-        // Fallback: Format code as English words (NOT hardcoded regional text)
+        // Fallback: DO NOT generate English phrase for non-English UI.
+        // This avoids mixed-language symptom lists (e.g., Marathi UI + "Dead Heart").
         labelMap.set(upperCode, {
           observation_code: upperCode,
-          display_text: formatCodeAsLabel(upperCode),
+          display_text: formatCodeAsLabel(upperCode, normalizedLanguage),
           description_text: '',
           icon
         });
-        console.warn(`   ⚠️ No translation found for ${upperCode} in ${language} - using formatted code`);
+        console.warn(`   ⚠️ No translation found for ${upperCode} in ${normalizedLanguage} - using code fallback`);
       }
     }
-    
+
     console.log(`   ✅ Loaded ${labelMap.size} labels from database`);
-    
+
   } catch (err) {
     console.error(`   ❌ Exception in loadObservationLabels: ${err}`);
-    
-    // On error, still return formatted codes so UI doesn't break
+
+    // On error, still return a safe fallback so UI doesn't break
     for (const code of observationCodes) {
       const upperCode = code.toUpperCase();
       labelMap.set(upperCode, {
         observation_code: upperCode,
-        display_text: formatCodeAsLabel(upperCode),
+        display_text: formatCodeAsLabel(upperCode, (language || 'en').toLowerCase()),
         description_text: '',
         icon: OBSERVATION_ICONS[upperCode] || '❓'
       });
     }
   }
-  
+
   return labelMap;
 }
 
 /**
  * Format observation code as human-readable label
- * STUNTED_GROWTH → Stunted Growth (English only - SSOT compliant)
+ * - en: STUNTED_GROWTH → Stunted Growth
+ * - non-en: STUNTED_GROWTH → STUNTED GROWTH (avoid mixing English into Marathi/Hindi UI)
  */
-function formatCodeAsLabel(code: string): string {
+function formatCodeAsLabel(code: string, language: string): string {
+  if (language !== 'en') {
+    return code.replace(/_/g, ' ');
+  }
+
   return code
     .replace(/_/g, ' ')
     .split(' ')
