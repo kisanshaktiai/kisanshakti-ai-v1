@@ -1120,10 +1120,15 @@ serve(async (req) => {
             }
           }
         
+          // Ensure decision_output includes rich SSOT fields (action_text/reason_text/knowledge_text)
+          // so narration can always be generated from decision_rules, not templates.
+          const decisionOutputForFormatting = orchestratorResponse.decision_output;
+          hydrateDecisionOutputRichText(decisionOutputForFormatting);
+
           const formatterInput: LLMFormatterInput = {
             farmer_message: userMessageContent,
             language: detectedLanguage as 'mr' | 'hi' | 'en',
-            decision_output: orchestratorResponse.decision_output,
+            decision_output: decisionOutputForFormatting,
             land_context: landContext,
             data_audit: orchestratorResponse.dataAudit,
             trace_id: traceId
@@ -1648,7 +1653,7 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
  */
 function forceTranslateResponse(content: string, targetLang: 'mr' | 'hi' | 'en'): string {
   if (targetLang === 'en') return content;
-  
+
   // Basic translation templates for common phrases
   const translations: Record<string, Record<string, string>> = {
     'Hello farmer friend!': {
@@ -1680,13 +1685,46 @@ function forceTranslateResponse(content: string, targetLang: 'mr' | 'hi' | 'en')
       hi: 'लगाएं'
     }
   };
-  
+
   let translated = content;
   for (const [english, langs] of Object.entries(translations)) {
     translated = translated.replace(new RegExp(english, 'gi'), langs[targetLang] || english);
   }
-  
+
   return translated;
+}
+
+/**
+ * Ensure primary_decision contains the SSOT rich texts from decision_rules.
+ * This prevents "missing reason/knowledge/action" when some pipeline paths
+ * populate primary_decision but omit application_details fields.
+ */
+function hydrateDecisionOutputRichText(decisionOutput: any): void {
+  if (!decisionOutput?.primary_decision) return;
+
+  const primary = decisionOutput.primary_decision;
+  primary.application_details = primary.application_details || {};
+
+  const app = primary.application_details as Record<string, any>;
+
+  // 1) Prefer direct fields on primary_decision (some executors place them here)
+  app.action_text ??= (primary as any).action_text;
+  app.reason_text ??= (primary as any).reason_text;
+  app.knowledge_text ??= (primary as any).knowledge_text;
+  app.i18n_key ??= (primary as any).i18n_key;
+  app.rule_id ??= primary.rule_id;
+
+  // 2) If still missing, hydrate from matched_responses by rule_id
+  const ruleId = primary.rule_id || app.rule_id;
+  if (ruleId && Array.isArray(decisionOutput.matched_responses)) {
+    const resp = decisionOutput.matched_responses.find((r: any) => r?.rule_id === ruleId);
+    if (resp) {
+      app.action_text ??= resp.action_text;
+      app.reason_text ??= resp.reason_text;
+      app.knowledge_text ??= resp.knowledge_text;
+      app.i18n_key ??= resp.i18n_key;
+    }
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2680,14 +2718,32 @@ function buildFormattedRecommendationsList(decision: any, lang: 'mr' | 'hi' | 'e
     return parts.join('\n\n');
   }
   
-  // Action type - NO ACTION
+  // Action type - NO ACTION / MONITOR
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
     const monitorMessages: Record<string, string> = {
       mr: '👀 **सध्या कोणतीही कृती आवश्यक नाही.** निरीक्षण सुरू ठेवा.',
       hi: '👀 **अभी कोई कार्रवाई आवश्यक नहीं।** निगरानी जारी रखें।',
       en: '👀 **No action required at this time.** Continue monitoring.'
     };
+
     parts.push(monitorMessages[lang]);
+
+    // If decision_rules provided rich text, include it so response stays SSOT-based
+    const app = primary?.application_details || {};
+    const actionText = app.action_text as string | undefined;
+    const reasonText = app.reason_text as string | undefined;
+    const knowledgeText = app.knowledge_text as string | undefined;
+
+    const labels = {
+      action: { mr: 'काय करावे:', hi: 'क्या करें:', en: 'Action:' },
+      reason: { mr: 'कारण:', hi: 'कारण:', en: 'Reason:' },
+      knowledge: { mr: 'माहिती:', hi: 'जानकारी:', en: 'Knowledge:' }
+    } as const;
+
+    if (actionText) parts.push(`\n🧾 **${labels.action[lang]}** ${actionText}`);
+    if (reasonText) parts.push(`\n🔍 **${labels.reason[lang]}** ${reasonText}`);
+    if (knowledgeText) parts.push(`\n📚 **${labels.knowledge[lang]}** ${knowledgeText}`);
+
     return parts.join('\n\n');
   }
   
@@ -2707,23 +2763,35 @@ function buildFormattedRecommendationsList(decision: any, lang: 'mr' | 'hi' | 'e
     const rawProductName = primary.application_details?.product_name || '';
     // Use translation dictionary for farmer-friendly names
     const productName = rawProductName ? getProductName(rawProductName, lang) : (
-      lang === 'mr' ? 'शिफारस केलेले उत्पादन' : 
-      lang === 'hi' ? 'सिफारिश किया गया उत्पाद' : 
+      lang === 'mr' ? 'शिफारस केलेले उत्पादन' :
+      lang === 'hi' ? 'सिफारिश किया गया उत्पाद' :
       'Recommended product'
     );
     const dosage = primary.application_details?.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
     const method = primary.application_details?.method || primary.application_details?.application_method || '';
-    
+
+    // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
+    const app = primary.application_details || {};
+    const actionText = app.action_text as string | undefined;
+    const reasonText = app.reason_text as string | undefined;
+    const knowledgeText = app.knowledge_text as string | undefined;
+
+    const richLabels = {
+      action: { mr: 'काय करावे', hi: 'क्या करें', en: 'Action' },
+      reason: { mr: 'कारण', hi: 'कारण', en: 'Reason' },
+      knowledge: { mr: 'माहिती', hi: 'जानकारी', en: 'Knowledge' }
+    } as const;
+
     let primaryText = `**${recNumber}. ${productName}**`;
     if (dosage) primaryText += ` @ ${dosage}`;
-    
+
     // Add method - translated
     if (method) {
       const methodText = getMethodTranslation(method, lang);
       primaryText += `\n   📍 ${methodText}`;
     }
-    
+
     // Add timing
     const timingLabels: Record<string, Record<string, string>> = {
       MORNING: { mr: 'सकाळी 6-10 वाजता', hi: 'सुबह 6-10 बजे', en: 'Morning 6-10 AM' },
@@ -2732,14 +2800,19 @@ function buildFormattedRecommendationsList(decision: any, lang: 'mr' | 'hi' | 'e
     };
     const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
     primaryText += `\n   ⏰ ${timingText}`;
-    
+
+    // Rich texts (from decision_rules)
+    if (actionText) primaryText += `\n   🧾 **${richLabels.action[lang]}:** ${actionText}`;
+    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason[lang]}:** ${reasonText}`;
+    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge[lang]}:** ${knowledgeText}`;
+
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
     if (efficacy) {
       const efficacyLabel = lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective';
       primaryText += ` | 📊 ${efficacy}% ${efficacyLabel}`;
     }
-    
+
     recParts.push(primaryText);
     recNumber++;
     
