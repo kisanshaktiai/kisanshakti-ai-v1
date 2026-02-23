@@ -841,13 +841,29 @@ function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
 
 let cachedConvertedRules: Rule[] | null = null;
 
-export async function getAllRulesWithBundled(): Promise<Rule[]> {
-  if (cachedConvertedRules) return cachedConvertedRules;
+/**
+ * Load rules with optional crop code filtering.
+ * CRITICAL FIX: Without cropCode, loads ALL rules (517+) causing rule explosion.
+ * Always pass cropCode when available to narrow candidates.
+ */
+export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]> {
+  // If crop-specific, don't use global cache - filter from loaded rules
+  const allRules = await loadAllRules();
   
-  const bundledRules = await loadAllRules();
-  console.log(`📦 Loaded ${bundledRules.length} bundled rules from database`);
-  cachedConvertedRules = bundledRules.map(convertBundledToRule);
-  return cachedConvertedRules;
+  let rulesToConvert: ExecutableRule[];
+  if (cropCode) {
+    const normalizedCrop = cropCode.toLowerCase();
+    rulesToConvert = allRules.filter(r => {
+      const ruleCrop = r.crop_code?.toLowerCase() || '';
+      return ruleCrop === normalizedCrop || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
+    });
+    console.log(`📦 Loaded ${rulesToConvert.length}/${allRules.length} crop-filtered rules for ${cropCode}`);
+  } else {
+    rulesToConvert = allRules;
+    console.log(`📦 Loaded ${rulesToConvert.length} bundled rules from database (NO crop filter - consider passing cropCode)`);
+  }
+  
+  return rulesToConvert.map(convertBundledToRule);
 }
 
 function convertBundledToRule(bundled: ExecutableRule): Rule {
