@@ -51,7 +51,7 @@ export interface LandContext {
 
 export interface StaticDataGateInput {
   farmer_message: string;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   land_context: LandContext | null;
 }
 

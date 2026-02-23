@@ -520,7 +520,7 @@ serve(async (req) => {
       finalTenantId,
       {
         photoUrl: imageUrl,
-        language: detectedLanguage as 'mr' | 'hi' | 'en',
+        language: detectedLanguage,
         landId: landId,
         traceId: traceId,
         // CRITICAL FIX: Pass conversation history for context continuity
@@ -861,13 +861,13 @@ serve(async (req) => {
     if (isStaticGateResponse) {
       // Static Gate already generated the response - use it directly
       console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
-      responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage as 'mr' | 'hi' | 'en'] ||
+      responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage] ||
                         orchestratorResponse.communication?.main_message?.full_text?.mr ||
                         'माहिती उपलब्ध नाही';
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
-      responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage as 'mr' | 'hi' | 'en');
+      responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage);
     } else if (orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output) {
       // ═══════════════════════════════════════════════════════════════════════════
       // PHASE-14: Check for Stage Fallback Response first
@@ -1045,7 +1045,7 @@ serve(async (req) => {
             console.log(`   🔬 DIAGNOSTIC_ESCALATION - generating expert response with hypotheses`);
             
             const escalationInput: DiagnosticEscalationInput = {
-              language: detectedLanguage as 'mr' | 'hi' | 'en',
+              language: detectedLanguage,
               crop_name: finalCropName || 'Unknown',
               growth_stage: finalGrowthStage || 'Unknown',
               days_since_sowing: finalDaysSinceSowing,
@@ -1070,7 +1070,7 @@ serve(async (req) => {
           } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // Young crop - use monitoring response with authority-reconciled values
             responseContent = generateYoungCropMonitoringResponse(
-              detectedLanguage as 'mr' | 'hi' | 'en',
+              detectedLanguage,
               finalCropName,
               finalGrowthStage,
               finalDaysSinceSowing
@@ -1078,7 +1078,7 @@ serve(async (req) => {
           } else {
             // No confirmed diagnosis or authority block - use observation response
             responseContent = generateObservationOnlyResponse(
-              detectedLanguage as 'mr' | 'hi' | 'en',
+              detectedLanguage,
               finalCropName,
               unifiedGateResult.reason
             );
@@ -1127,7 +1127,7 @@ serve(async (req) => {
 
           const formatterInput: LLMFormatterInput = {
             farmer_message: userMessageContent,
-            language: detectedLanguage as 'mr' | 'hi' | 'en',
+            language: detectedLanguage,
             decision_output: decisionOutputForFormatting,
             land_context: landContext,
             data_audit: orchestratorResponse.dataAudit,
@@ -1161,7 +1161,7 @@ serve(async (req) => {
             if (orchestratorResponse.decision_output?.primary_decision) {
               responseContent = buildFormattedRecommendationsList(
                 orchestratorResponse.decision_output, 
-                detectedLanguage as 'mr' | 'hi' | 'en'
+                detectedLanguage
               );
             } else {
               responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
@@ -1180,7 +1180,7 @@ serve(async (req) => {
           console.log(`   📋 Using buildFormattedRecommendationsList for complete response`);
           responseContent = buildFormattedRecommendationsList(
             orchestratorResponse.decision_output, 
-            detectedLanguage as 'mr' | 'hi' | 'en'
+            detectedLanguage
           );
         } else {
           responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
@@ -1198,7 +1198,7 @@ serve(async (req) => {
     
     if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
       console.log(`   🔄 Response not in target language, applying translation`);
-      responseContent = forceTranslateResponse(responseContent, detectedLanguage as 'mr' | 'hi' | 'en');
+      responseContent = forceTranslateResponse(responseContent, detectedLanguage);
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1228,7 +1228,7 @@ serve(async (req) => {
         responseContent,
         orchestratorResponse,
         traceId,
-        language: detectedLanguage as 'mr' | 'hi' | 'en'
+        language: detectedLanguage
       });
     } else if (isClarificationOrPhotoResponse) {
       // CRITICAL FIX: Skip validation for clarification/photo responses
@@ -1261,7 +1261,7 @@ serve(async (req) => {
       // Generate fallback response if validation fails
       // CRITICAL FIX: Pass actions_returned so we can use them in fallback
       responseContent = generateValidationFailureFallback(
-        detectedLanguage as 'mr' | 'hi' | 'en',
+        detectedLanguage,
         validationResult.errors,
         orchestratorResponse,
         actions_returned  // Pass actions so fallback can use them
@@ -1651,7 +1651,7 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
 /**
  * Force translate response to target language using templates
  */
-function forceTranslateResponse(content: string, targetLang: 'mr' | 'hi' | 'en'): string {
+function forceTranslateResponse(content: string, targetLang: string): string {
   if (targetLang === 'en') return content;
 
   // Basic translation templates for common phrases
@@ -1746,7 +1746,7 @@ function validateResponseBeforeSave(params: {
   responseContent: string;
   orchestratorResponse: OrchestratorResponse;
   traceId: string;
-  language: 'mr' | 'hi' | 'en';  // CRITICAL FIX: Accept explicit language instead of inferring
+  language: string;  // Language-agnostic: accepts any language code
 }): ValidationResult {
   const { decision_brain_source, actions_returned, responseContent, orchestratorResponse, traceId, language } = params;
   const errors: string[] = [];
@@ -1955,7 +1955,7 @@ function validateResponseBeforeSave(params: {
  * Ensures user always gets helpful feedback even on failures
  */
 function generateValidationFailureFallback(
-  lang: 'mr' | 'hi' | 'en',
+  lang: string,
   validationErrors: string[],
   orchestratorResponse: OrchestratorResponse,
   actionsReturned?: any[] | null
@@ -2120,7 +2120,7 @@ With this information, I can provide you proper guidance.
  */
 function generateAllActionsFilteredResponse(
   filteredActions: any[], 
-  lang: 'mr' | 'hi' | 'en'
+  lang: string
 ): string {
   const parts: string[] = [];
   
@@ -2516,7 +2516,7 @@ function generateActionDescription(primary: any, lang: string): string {
  * 5. NEVER returns empty - always reflects decision brain output
  */
 function getResponseContent(response: OrchestratorResponse, language: string): string {
-  const lang = language as 'mr' | 'hi' | 'en';
+  const lang = language;
   console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
   console.log(`📝 [PostProcessor] Response assembly:`, {
     has_communication: !!response.communication,
