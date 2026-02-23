@@ -11,7 +11,7 @@
 // INPUT TYPES
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type SupportedLanguage = 'mr' | 'hi' | 'en';
+export type SupportedLanguage = string;
 export type LiteracyLevel = 'LOW' | 'MODERATE' | 'HIGH';
 export type TechnicalKnowledge = 'BASIC' | 'MODERATE' | 'ADVANCED';
 export type EmotionalState = 'STRESSED' | 'FRUSTRATED' | 'NEUTRAL' | 'CONFIDENT' | 'PANICKED';
@@ -316,13 +316,13 @@ export interface ScenarioContext {
 // LANGUAGE TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const GREETINGS: Record<SupportedLanguage, string[]> = {
+export const GREETINGS: Record<string, string[]> = {
   mr: ['नमस्कार शेतकरी मित्र,', 'नमस्कार,', 'शेतकरी बंधू/भगिनी,'],
   hi: ['नमस्कार किसान मित्र,', 'नमस्कार,', 'किसान भाई/बहन,'],
   en: ['Dear Farmer,', 'Hello,', 'Greetings,']
 };
 
-export const CLOSINGS: Record<SupportedLanguage, string[]> = {
+export const CLOSINGS: Record<string, string[]> = {
   mr: ['शुभेच्छा! 🌾', 'यशस्वी हो! 💪', 'पुढील हंगामासाठी शुभेच्छा!'],
   hi: ['शुभकामनाएं! 🌾', 'सफलता मिले! 💪', 'अगले सीजन के लिए शुभकामनाएं!'],
   en: ['Best wishes! 🌾', 'Wishing you success! 💪', 'Good luck with your crops!']

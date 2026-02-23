@@ -17,7 +17,7 @@ export const DIAGNOSTIC_OPTIONS_VERSION = '1.0.0';
 export interface DiagnosticOption {
   i18n_key: string;
   observation_key: string;
-  label: Record<'mr' | 'hi' | 'en', string>;
+  label: Record<string, string>;
   icon: string;
   diagnostic_power: 'HIGH' | 'MEDIUM' | 'LOW';
 }
@@ -153,7 +153,7 @@ export const GENERIC_TERMINAL_DAMAGE_OPTIONS: DiagnosticOption[] = [
 export function getDiagnosticOptionsForCropStage(
   cropCode: string,
   stage: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): Array<{ label: string; observation_key: string; i18n_key: string; diagnostic_power: string }> {
   const normalizedCrop = cropCode?.toUpperCase() || '';
   const normalizedStage = stage?.toUpperCase()?.replace(/[\s-]/g, '_') || '';
@@ -168,9 +168,9 @@ export function getDiagnosticOptionsForCropStage(
     optionSet = GENERIC_TERMINAL_DAMAGE_OPTIONS;
   }
   
-  // Convert to language-specific labels
+  // Convert to language-specific labels (with fallback to 'en')
   return optionSet.map(opt => ({
-    label: opt.label[language],
+    label: opt.label[language] || opt.label['en'],
     observation_key: opt.observation_key,
     i18n_key: opt.i18n_key,
     diagnostic_power: opt.diagnostic_power

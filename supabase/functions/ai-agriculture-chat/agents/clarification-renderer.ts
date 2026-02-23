@@ -112,7 +112,7 @@ export interface SafetyValidationResult {
  */
 
 // Base templates - used when no context-specific template exists
-const BASE_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | 'en', {
+const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   question: string;
   options: string[];
 }>> = {
@@ -326,8 +326,8 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<'mr' | 'hi' | 'en', {
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface CropSpecificTemplate {
-  [ClarificationScope.IDENTIFY_LOCATION]?: Record<'mr' | 'hi' | 'en', { question: string; options: string[] }>;
-  [ClarificationScope.REFINE_OBSERVATION]?: Record<'mr' | 'hi' | 'en', { question: string; options: string[] }>;
+  [ClarificationScope.IDENTIFY_LOCATION]?: Record<string, { question: string; options: string[] }>;
+  [ClarificationScope.REFINE_OBSERVATION]?: Record<string, { question: string; options: string[] }>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -336,7 +336,7 @@ interface CropSpecificTemplate {
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface StageSpecificTemplates {
-  [stage: string]: Partial<Record<ClarificationScope, Record<'mr' | 'hi' | 'en', { question: string; options: string[] }>>>;
+  [stage: string]: Partial<Record<ClarificationScope, Record<string, { question: string; options: string[] }>>>;
 }
 
 interface CropStageSpecificTemplate {
@@ -633,7 +633,7 @@ function getContextAwareTemplate(
           const stageTemplates = cropTemplates.stages[stageKey];
           
           if (stageTemplates && stageTemplates[scope]) {
-            const template = stageTemplates[scope]![language];
+            const template = stageTemplates[scope]![language] || stageTemplates[scope]!['en'];
             if (template) {
               console.log(`   📋 Using stage-specific template for ${cropKey}/${stageKey}/${scope}`);
               return template;
@@ -643,7 +643,7 @@ function getContextAwareTemplate(
         
         // 2. Try crop default template
         if (cropTemplates.default && cropTemplates.default[scope]) {
-          const template = cropTemplates.default[scope]![language];
+          const template = cropTemplates.default[scope]![language] || cropTemplates.default[scope]!['en'];
           if (template) {
             console.log(`   📋 Using crop-default template for ${cropKey}/${scope}`);
             return template;
@@ -652,9 +652,9 @@ function getContextAwareTemplate(
         
         // 3. Check if crop has flat structure (WHEAT, COTTON, RICE don't have default wrapper)
         const flatTemplate = (cropTemplates as any)[scope];
-        if (flatTemplate && flatTemplate[language]) {
+        if (flatTemplate && (flatTemplate[language] || flatTemplate['en'])) {
           console.log(`   📋 Using flat crop template for ${cropKey}/${scope}`);
-          return flatTemplate[language];
+          return flatTemplate[language] || flatTemplate['en'];
         }
       }
     }
@@ -663,13 +663,13 @@ function getContextAwareTemplate(
   }
   
   // 4. Fall back to base template
-  const baseTemplate = BASE_TEMPLATES[scope]?.[language];
+  const baseTemplate = BASE_TEMPLATES[scope]?.[language] || BASE_TEMPLATES[scope]?.['en'];
   if (baseTemplate) {
     return baseTemplate;
   }
   
   // 5. Final fallback to English
-  return BASE_TEMPLATES[scope]?.en || {
+  return BASE_TEMPLATES[scope]?.['en'] || {
     question: 'Please provide more details about your crop issue.',
     options: []
   };
@@ -794,7 +794,7 @@ export function renderClarification(
   
   if (cropContext && cropContext.crop_name && scope !== ClarificationScope.IDENTIFY_CROP) {
     // Prepend crop context frame (e.g., "🌾 तुमच्या गव्हामध्ये (Tillering अवस्था)")
-    const cropFrame = formatCropContextFrame(cropContext, language_code);
+    const cropFrame = formatCropContextFrame(cropContext, language_code as string);
     
     // Format: "{CropFrame}\n\n{Question}"
     finalQuestion = `${cropFrame}\n\n${template.question}`;
@@ -830,7 +830,7 @@ export function getMonitoringAdvice(language: string): string {
     en: '🌱 Please monitor your crop carefully for now. If the problem increases:\n\n• Take a clear photo of the affected area\n• Contact us again\n• Or visit your nearest agriculture service center\n\nTake care of your crop! 🙏'
   };
   
-  return advice[language] || advice.en;
+  return advice[language] || advice['en'];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -908,11 +908,18 @@ function getTemplateQuestion(
           if (stageTemplates?.[scope]?.[language]?.question) {
             return stageTemplates[scope]![language].question;
           }
+          // Fallback to English
+          if (stageTemplates?.[scope]?.['en']?.question) {
+            return stageTemplates[scope]!['en'].question;
+          }
         }
         
         // Crop default question
         if (cropTemplates.default?.[scope]?.[language]?.question) {
           return cropTemplates.default[scope]![language].question;
+        }
+        if (cropTemplates.default?.[scope]?.['en']?.question) {
+          return cropTemplates.default[scope]!['en'].question;
         }
         
         // Flat structure
@@ -953,7 +960,7 @@ export async function renderClarificationAsync(
   let cropFramingApplied = false;
   
   if (cropContext && cropContext.crop_name && scope !== ClarificationScope.IDENTIFY_CROP) {
-    const cropFrame = formatCropContextFrame(cropContext, language_code);
+    const cropFrame = formatCropContextFrame(cropContext, language_code as string);
     finalQuestion = `${cropFrame}\n\n${template.question}`;
     cropFramingApplied = true;
   }
