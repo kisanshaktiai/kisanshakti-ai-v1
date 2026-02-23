@@ -16,11 +16,12 @@
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
-
+ 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { ObservationKey } from '../decision/observation-ontology.ts';
+import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
 
-export const CANONICAL_LOADER_VERSION = '1.0.0';
+export const CANONICAL_LOADER_VERSION = '2.0.0'; // v2: DB-driven labels, language-agnostic
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -31,6 +32,8 @@ export interface ObservationKeyWithLabels {
   label_en: string;
   label_hi: string;
   label_mr: string;
+  /** Language-resolved label (set by DB query at runtime) */
+  label: string;
   category: string;
   stage: string[];
   visual_priority: number;
@@ -308,18 +311,26 @@ const STAGE_KEY_PRIORITIES: Record<string, string[]> = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Get observation key with trilingual labels
+ * Get observation key with label for any language.
+ * Priority: hardcoded dict (for en/hi/mr) → raw code fallback.
+ * For DB-driven labels in any language, use loadObservationKeysFromDB with language param.
  */
 export function getObservationKeyLabel(
   key: string,
-  language: 'en' | 'hi' | 'mr'
+  language: string
 ): string {
   const labels = OBSERVATION_KEY_LABELS[key];
   if (!labels) {
     console.warn(`[CanonicalLoader] No label found for key: ${key}`);
-    return key; // Return key itself as fallback
+    // For non-English, return raw code to avoid English leakage
+    return language === 'en' ? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : key.replace(/_/g, ' ');
   }
-  return labels[language];
+  // For known languages, use hardcoded; for unknown, avoid English leakage
+  if (language === 'en' || language === 'hi' || language === 'mr') {
+    return labels[language as 'en' | 'hi' | 'mr'];
+  }
+  // Unknown language: return raw code (not English text)
+  return key.replace(/_/g, ' ');
 }
 
 /**
@@ -334,6 +345,7 @@ export function getObservationKeyLabels(key: string): ObservationKeyWithLabels |
     label_en: labels.en,
     label_hi: labels.hi,
     label_mr: labels.mr,
+    label: labels.en, // Default; overridden by DB query at runtime
     category: labels.category,
     stage: [], // Will be populated from DB
     visual_priority: labels.priority
@@ -345,7 +357,7 @@ export function getObservationKeyLabels(key: string): ObservationKeyWithLabels |
  */
 export function getStageObservationKeys(
   stage: string,
-  language: 'en' | 'hi' | 'mr',
+  language: string,
   maxKeys: number = 4
 ): { key: string; label: string }[] {
   const normalizedStage = stage.toLowerCase().replace(/[\s-]/g, '_');
@@ -358,10 +370,14 @@ export function getStageObservationKeys(
     
     const labels = OBSERVATION_KEY_LABELS[key];
     if (labels) {
-      result.push({
-        key,
-        label: labels[language]
-      });
+      // Use known language label or raw code for unknown languages
+      let label: string;
+      if (language === 'en' || language === 'hi' || language === 'mr') {
+        label = labels[language as 'en' | 'hi' | 'mr'];
+      } else {
+        label = key.replace(/_/g, ' '); // Avoid English leakage
+      }
+      result.push({ key, label });
     }
   }
   
@@ -373,7 +389,7 @@ export function getStageObservationKeys(
  */
 export function getCategoryObservationKeys(
   category: string,
-  language: 'en' | 'hi' | 'mr',
+  language: string,
   maxKeys: number = 4
 ): { key: string; label: string }[] {
   const result: { key: string; label: string }[] = [];
@@ -382,10 +398,13 @@ export function getCategoryObservationKeys(
     if (result.length >= maxKeys) break;
     
     if (labels.category === category) {
-      result.push({
-        key,
-        label: labels[language]
-      });
+      let label: string;
+      if (language === 'en' || language === 'hi' || language === 'mr') {
+        label = labels[language as 'en' | 'hi' | 'mr'];
+      } else {
+        label = key.replace(/_/g, ' ');
+      }
+      result.push({ key, label });
     }
   }
   
@@ -429,7 +448,8 @@ function normalizeStageForDB(stage: string): string {
 
 export async function loadObservationKeysFromDB(
   cropCode: string,
-  stage: string
+  stage: string,
+  language: string = 'en'
 ): Promise<LoadedObservationKeys> {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -437,17 +457,15 @@ export async function loadObservationKeysFromDB(
     
     if (!supabaseUrl || !supabaseKey) {
       console.warn('[CanonicalLoader] Missing Supabase credentials, using fallback');
-      return getFallbackKeys(cropCode, stage);
+      return getFallbackKeys(cropCode, stage, language);
     }
     
     const supabase = createClient(supabaseUrl, supabaseKey);
     
     // Normalize stage for DB lookup (e.g., SEEDLING → germination)
     const dbStage = normalizeStageForDB(stage);
-    console.log(`[CanonicalLoader] Stage normalization: ${stage} → ${dbStage}`);
+    console.log(`[CanonicalLoader v${CANONICAL_LOADER_VERSION}] Stage normalization: ${stage} → ${dbStage}, language=${language}`);
     
-    // Query decision_rules for observable_characteristics matching crop and stage.
-    // Use normalized stage (dbStage) and also include 'all' stage rules.
     const crop = cropCode.toLowerCase();
     const stageVariants = Array.from(
       new Set([dbStage, 'all'].filter(Boolean))
@@ -472,7 +490,6 @@ export async function loadObservationKeysFromDB(
         continue;
       }
 
-      // Accumulate results from both stage-specific and 'all' rules
       if (res.data && res.data.length > 0) {
         data = data ? [...data, ...res.data] : res.data;
       }
@@ -480,12 +497,12 @@ export async function loadObservationKeysFromDB(
 
     if (lastError && (!data || data.length === 0)) {
       console.error('[CanonicalLoader] DB query error:', lastError);
-      return getFallbackKeys(cropCode, stage);
+      return getFallbackKeys(cropCode, stage, language);
     }
 
     if (!data || data.length === 0) {
       console.warn(`[CanonicalLoader] No matching rules for ${cropCode}/${dbStage}`);
-      return getFallbackKeys(cropCode, stage);
+      return getFallbackKeys(cropCode, stage, language);
     }
 
     console.log(`[CanonicalLoader] Found ${data.length} rules with observable_characteristics`);
@@ -497,26 +514,47 @@ export async function loadObservationKeysFromDB(
       if (Array.isArray(chars)) {
         for (const key of chars) {
           if (typeof key === 'string') {
-            uniqueKeys.add(key);
+            uniqueKeys.add(key.toUpperCase());
           }
         }
       }
     }
     
-    // Convert to ObservationKeyWithLabels
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DB-DRIVEN LABELS: Query observation_translations for the target language
+    // This replaces the hardcoded OBSERVATION_KEY_LABELS lookup for label resolution
+    // ═══════════════════════════════════════════════════════════════════════════
+    const keysArray = Array.from(uniqueKeys);
+    const dbLabels = await loadObservationLabels(supabase, keysArray, language);
+    
+    // Convert to ObservationKeyWithLabels with DB-resolved labels
     const keys: ObservationKeyWithLabels[] = [];
     for (const key of uniqueKeys) {
-      const labels = getObservationKeyLabels(key);
-      if (labels) {
-        labels.stage = [stage];
-        keys.push(labels);
-      }
+      const dbLabel = dbLabels.get(key);
+      const hardcodedLabels = OBSERVATION_KEY_LABELS[key];
+      
+      // DB label takes priority; fallback to hardcoded for en/hi/mr; raw code for others
+      const resolvedLabel = dbLabel?.display_text || 
+        (hardcodedLabels && (language === 'en' || language === 'hi' || language === 'mr') 
+          ? hardcodedLabels[language as 'en' | 'hi' | 'mr'] 
+          : key.replace(/_/g, ' '));
+      
+      keys.push({
+        key,
+        label_en: hardcodedLabels?.en || key.replace(/_/g, ' '),
+        label_hi: hardcodedLabels?.hi || key.replace(/_/g, ' '),
+        label_mr: hardcodedLabels?.mr || key.replace(/_/g, ' '),
+        label: resolvedLabel, // Language-specific resolved label
+        category: hardcodedLabels?.category || dbLabel?.icon || 'unknown',
+        stage: [stage],
+        visual_priority: hardcodedLabels?.priority || 99
+      });
     }
     
     // Sort by priority
     keys.sort((a, b) => a.visual_priority - b.visual_priority);
     
-    console.log(`[CanonicalLoader] Loaded ${keys.length} keys for ${cropCode}/${stage} from DB`);
+    console.log(`[CanonicalLoader] Loaded ${keys.length} keys for ${cropCode}/${stage} from DB with ${language} labels`);
     
     return {
       keys,
@@ -528,23 +566,24 @@ export async function loadObservationKeysFromDB(
     
   } catch (err) {
     console.error('[CanonicalLoader] Error loading from DB:', err);
-    return getFallbackKeys(cropCode, stage);
+    return getFallbackKeys(cropCode, stage, language);
   }
 }
 
 /**
  * Fallback function when DB is unavailable
  */
-function getFallbackKeys(cropCode: string, stage: string): LoadedObservationKeys {
-  const stageKeys = getStageObservationKeys(stage, 'en', 20);
+function getFallbackKeys(cropCode: string, stage: string, language: string = 'en'): LoadedObservationKeys {
+  const stageKeys = getStageObservationKeys(stage, language, 20);
   
   const keys: ObservationKeyWithLabels[] = stageKeys.map(k => {
     const labels = getObservationKeyLabels(k.key);
-    return labels || {
+    return labels ? { ...labels, label: k.label, stage: [stage] } : {
       key: k.key,
       label_en: k.label,
       label_hi: k.label,
       label_mr: k.label,
+      label: k.label,
       category: 'unknown',
       stage: [stage],
       visual_priority: 99
@@ -567,16 +606,13 @@ function getFallbackKeys(cropCode: string, stage: string): LoadedObservationKeys
 export function getClarificationOptions(
   cropCode: string,
   stage: string,
-  language: 'en' | 'hi' | 'mr',
+  language: string,
   category?: string,
   maxOptions: number = 3
 ): { key: string; label: string }[] {
-  // If category specified, use category-based keys
   if (category) {
     return getCategoryObservationKeys(category, language, maxOptions);
   }
-  
-  // Otherwise use stage-based keys
   return getStageObservationKeys(stage, language, maxOptions);
 }
 
