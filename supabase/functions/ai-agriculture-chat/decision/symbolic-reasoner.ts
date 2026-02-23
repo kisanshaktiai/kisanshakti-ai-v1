@@ -405,10 +405,28 @@ export class SymbolicReasoner {
         
         // SSOT: Only conditions_json or partial matching - NO keyword matching
         const matches = match.matches || (partialMatch?.matches ?? false);
-        const matchConfidence = Math.max(
+        let matchConfidence = Math.max(
           match.confidence, 
           partialMatch?.confidence ?? 0
         );
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // DIAGNOSTIC CONFIDENCE BOOST (1.4x multiplicative, capped at 1.0)
+        // If any matched observation has is_diagnostic=true in observation_master
+        // ═══════════════════════════════════════════════════════════════════════
+        if (matches) {
+          const obsMeta = (this as any)._currentObsMetadata as Map<string, ObservationMetadata> | undefined;
+          if (obsMeta && obsMeta.size > 0) {
+            const hasDiagnostic = (facts.all_observations || []).some(obs => {
+              const meta = obsMeta.get(obs);
+              return meta?.is_diagnostic === true;
+            });
+            if (hasDiagnostic) {
+              matchConfidence = Math.min(1.0, matchConfidence * 1.4);
+              console.log(`   🔬 [DiagBoost] Diagnostic observation detected → confidence boosted to ${(matchConfidence * 100).toFixed(0)}%`);
+            }
+          }
+        }
         
         if (matches) {
           const matchType = match.matches ? 'EXACT' : 'PARTIAL';
