@@ -4852,9 +4852,11 @@ export class AIAgentOrchestrator {
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
         console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');
         
-        // PHASE-13: Use getAllRulesWithBundled() to include all 2000+ bundled ICAR rules (ASYNC)
-        const allRulesWithBundled = await getAllRulesWithBundled();
-        console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (core + bundled)`);
+        // CRITICAL FIX: Use crop-filtered rules to prevent rule explosion
+        const cropForRules = canonicalContext?.crop_code?.toLowerCase() || lockedCropContext?.crop_name?.toLowerCase() || '';
+        const cropCodeForFilter = cropForRules === 'sugarcane' ? 'sc' : cropForRules;
+        const allRulesWithBundled = await getAllRulesWithBundled(cropCodeForFilter || undefined);
+        console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (crop=${cropCodeForFilter || 'ALL'})`);
         
         // If hypothesis narrowed scope, filter rules
         let rulesToEvaluate = allRulesWithBundled;
