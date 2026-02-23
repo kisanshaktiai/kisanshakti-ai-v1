@@ -252,6 +252,12 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         resistance_group: row.resistance_group,
         mode_of_action: row.mode_of_action,
         
+        // ═══════════════════════════════════════════════════════════════════════
+        // OBSERVATION LAYER: Pre-filter columns
+        // ═══════════════════════════════════════════════════════════════════════
+        required_observation_category: row.required_observation_category || null,
+        required_plant_part: row.required_plant_part || null,
+        
         is_active: row.is_active
       };
     });

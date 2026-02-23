@@ -322,10 +322,16 @@ export class ConfidenceCalculator {
       score += 0.10;
     }
     
-    // Highly specific symptoms get extra boost
+    // NOTE: Diagnostic confidence boost (1.4x multiplicative) is applied
+    // in SymbolicReasoner.executeRules() using observation_master.is_diagnostic
+    // from the database, not hardcoded here. The highlySpecificSymptoms list
+    // below is a fallback for when observation_master metadata is not available.
     const highlySpecificSymptoms = [
       'DEAD_HEART', 'HONEYDEW', 'WEBBING', 'GALLS', 'TUNNELS_IN_STEM',
-      'TERMITE_SUSPECTED', 'BORER_SUSPECTED'
+      'TERMITE_SUSPECTED', 'BORER_SUSPECTED',
+      'BORE_HOLES', 'FRASS_EXTRUSION', 'MUD_TUBES_PRESENT',
+      'RED_ROT_SYMPTOMS', 'BLACK_WHIP_STRUCTURE', 'BACTERIAL_OOZE',
+      'RUST_PUSTULES', 'SOOTY_MOLD'
     ];
     if (highlySpecificSymptoms.includes(facts.primary_symptom)) {
       score += 0.15;

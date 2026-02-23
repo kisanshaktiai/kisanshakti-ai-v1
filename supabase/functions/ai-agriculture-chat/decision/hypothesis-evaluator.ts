@@ -224,18 +224,8 @@ function evaluatePartialConditionMatch(
     }
   }
   
-  // Check trigger_keywords in user_query
-  if (conditionsJson.trigger_keywords && Array.isArray(conditionsJson.trigger_keywords)) {
-    totalConditions++;
-    const queryLower = input.user_query.toLowerCase();
-    const keywordMatch = conditionsJson.trigger_keywords.some((kw: string) => 
-      queryLower.includes(kw.toLowerCase())
-    );
-    if (keywordMatch) {
-      matchedCount += 2; // Higher weight for keyword match
-      matchedConditions.push('trigger_keywords');
-    }
-  }
+  // SSOT: trigger_keywords column was DROPPED per architecture audit
+  // No keyword matching - conditions_json.observations is the sole source
   
   // Check NDVI conditions if available
   if (conditionsJson.ndvi_level && input.ndvi_level) {
@@ -278,7 +268,7 @@ function calculateStageRelevance(
  * - Single object: {observation_key: "DEAD_HEART"}
  * - Empty/null: returns empty array safely
  */
-function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] {
+function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, any>): ObservableCharacteristic[] {
   if (!raw) return [];
   
   // CRITICAL FIX: Handle edge cases where observable_characteristics is {} or invalid
@@ -318,7 +308,14 @@ function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] 
   // Moved inline to avoid circular deps, aligned with diagnostic-weight-registry.ts
   const getDiagnosticPower = (key: string): 'HIGH' | 'MEDIUM' | 'LOW' => {
     const normalized = key.toUpperCase().replace(/[\s-]/g, '_');
-    // HIGH: Pathognomonic (unique to specific pest/disease)
+    
+    // PRIORITY: Check observation_master.is_diagnostic from database
+    if (obsMetadata && obsMetadata.size > 0) {
+      const meta = obsMetadata.get(normalized) || obsMetadata.get(key);
+      if (meta?.is_diagnostic === true) return 'HIGH';
+    }
+    
+    // FALLBACK: Hardcoded pathognomonic indicators
     const HIGH_POWER = [
       'DEAD_HEART', 'DEADHEART', 'DEAD_HEART_PRESENT',
       'TUNNELS_IN_STEM', 'TUNNELING', 'BORE_HOLE',
@@ -328,7 +325,6 @@ function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] 
       'PINK_LARVAE', 'LARVAE_PRESENT', 'LARVAE_VISIBLE',
       'WHITE_POWDER', 'WOOLLY_MASS', 'COTTONY_MASS'
     ];
-    // LOW: Non-specific (common to many causes)
     const LOW_POWER = [
       'YELLOWING', 'LEAF_YELLOWING', 'GENERAL_YELLOWING',
       'WILTING', 'LEAF_WILTING', 'PLANT_WILTING',
@@ -513,7 +509,9 @@ export async function evaluateCandidateHypotheses(
         differentiating_questions,
         action_text,
         crop_age_days_min,
-        crop_age_days_max
+        crop_age_days_max,
+        required_observation_category,
+        required_plant_part
       `)
       .eq('is_active', true)
       .or(cropFilter)
@@ -576,7 +574,68 @@ export async function evaluateCandidateHypotheses(
     }
     
     // Use stage-filtered rules if available, otherwise use all rules
-    const rulesToEvaluate = stageFilteredRules.length > 0 ? stageFilteredRules : rulesRaw;
+    let rulesToEvaluate = stageFilteredRules.length > 0 ? stageFilteredRules : rulesRaw;
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 1.7: OBSERVATION LAYER PRE-FILTER (category + plant-part)
+    // Uses observation_master metadata + canonical_group_mapping ontology bridge
+    // ═══════════════════════════════════════════════════════════════════════
+    let obsMetadataMap = new Map<string, any>();
+    
+    if (input.known_observations.length > 0) {
+      try {
+        // Load observation metadata
+        const { data: obsMetaData } = await supabaseClient
+          .from('observation_master')
+          .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+          .in('observation_code', input.known_observations);
+        
+        if (obsMetaData && obsMetaData.length > 0) {
+          for (const obs of obsMetaData) {
+            obsMetadataMap.set(obs.observation_code, obs);
+          }
+          
+          const obsCategories = new Set(obsMetaData.map((o: any) => o.observation_category).filter(Boolean));
+          const obsPlantParts = new Set(obsMetaData.map((o: any) => o.affected_plant_part).filter(Boolean));
+          
+          console.log(`   🔬 [HypObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}]`);
+          
+          const beforeCount = rulesToEvaluate.length;
+          rulesToEvaluate = rulesToEvaluate.filter((rule: any) => {
+            // Category filter
+            const reqCat = rule.required_observation_category;
+            if (reqCat && Array.isArray(reqCat) && reqCat.length > 0) {
+              const hasMatch = reqCat.some((cat: string) => obsCategories.has(cat));
+              if (!hasMatch) return false;
+            }
+            
+            // Plant part filter with WHOLE wildcard
+            const reqPart = rule.required_plant_part;
+            if (reqPart && Array.isArray(reqPart) && reqPart.length > 0) {
+              const hasMatch = 
+                obsPlantParts.has('WHOLE') ||
+                reqPart.includes('WHOLE') ||
+                reqPart.some((part: string) => obsPlantParts.has(part));
+              if (!hasMatch) return false;
+            }
+            
+            return true;
+          });
+          
+          const removedCount = beforeCount - rulesToEvaluate.length;
+          if (removedCount > 0) {
+            console.log(`   🎯 [HypObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${rulesToEvaluate.length})`);
+          }
+        }
+      } catch (obsErr) {
+        console.warn(`   ⚠️ [HypObsFilter] Failed to load observation metadata:`, obsErr);
+      }
+    }
+    
+    // Candidate explosion warning
+    if (rulesToEvaluate.length > 25) {
+      console.warn(`   ⚠️ [RULE_EXPLOSION] ${rulesToEvaluate.length} candidate rules for ${input.known_observations.length} observations`);
+    }
     
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 2: PHASE-17 - Filter by temporal constraints (crop_age_days_min/max)
@@ -661,7 +720,7 @@ export async function evaluateCandidateHypotheses(
       );
       
       // Extract observable characteristics
-      const observableChars = extractObservableCharacteristics(rule.observable_characteristics);
+      const observableChars = extractObservableCharacteristics(rule.observable_characteristics, obsMetadataMap);
       
       // ═══════════════════════════════════════════════════════════════════════
       // CRITICAL BUG FIX: Do NOT skip rules with empty observable_characteristics

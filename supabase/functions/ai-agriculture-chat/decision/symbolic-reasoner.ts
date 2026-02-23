@@ -199,6 +199,47 @@ function setCachedRules(cacheKey: string, rules: any[]): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION METADATA CACHE - For ontology bridge + pre-filtering
+// Caches observation_master metadata with canonical_group_mapping join
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ObservationMetadata {
+  observation_code: string;
+  observation_category: string | null;
+  affected_plant_part: string | null;
+  canonical_group: string | null;
+  is_diagnostic: boolean;
+  engine_groups: { engine_group: string; confidence: number }[];
+}
+
+interface CachedObsMetadata {
+  data: Map<string, ObservationMetadata>;
+  expiresAt: number;
+}
+
+const obsMetadataCache = new Map<string, CachedObsMetadata>();
+
+function getCachedObsMetadata(cacheKey: string): Map<string, ObservationMetadata> | null {
+  const entry = obsMetadataCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    obsMetadataCache.delete(cacheKey);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCachedObsMetadata(cacheKey: string, data: Map<string, ObservationMetadata>): void {
+  if (obsMetadataCache.size > 30) {
+    const now = Date.now();
+    for (const [key, val] of obsMetadataCache) {
+      if (now > val.expiresAt) obsMetadataCache.delete(key);
+    }
+  }
+  obsMetadataCache.set(cacheKey, { data, expiresAt: Date.now() + RULE_CACHE_TTL_MS });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SYMBOLIC REASONER CLASS
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -364,10 +405,28 @@ export class SymbolicReasoner {
         
         // SSOT: Only conditions_json or partial matching - NO keyword matching
         const matches = match.matches || (partialMatch?.matches ?? false);
-        const matchConfidence = Math.max(
+        let matchConfidence = Math.max(
           match.confidence, 
           partialMatch?.confidence ?? 0
         );
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // DIAGNOSTIC CONFIDENCE BOOST (1.4x multiplicative, capped at 1.0)
+        // If any matched observation has is_diagnostic=true in observation_master
+        // ═══════════════════════════════════════════════════════════════════════
+        if (matches) {
+          const obsMeta = (this as any)._currentObsMetadata as Map<string, ObservationMetadata> | undefined;
+          if (obsMeta && obsMeta.size > 0) {
+            const hasDiagnostic = (facts.all_observations || []).some(obs => {
+              const meta = obsMeta.get(obs);
+              return meta?.is_diagnostic === true;
+            });
+            if (hasDiagnostic) {
+              matchConfidence = Math.min(1.0, matchConfidence * 1.4);
+              console.log(`   🔬 [DiagBoost] Diagnostic observation detected → confidence boosted to ${(matchConfidence * 100).toFixed(0)}%`);
+            }
+          }
+        }
         
         if (matches) {
           const matchType = match.matches ? 'EXACT' : 'PARTIAL';
@@ -550,7 +609,9 @@ export class SymbolicReasoner {
     const cached = getCachedRules(cacheKey);
     if (cached) {
       console.log(`   ♻️ [Cache HIT] ${cached.length} rules for crop=${dbCode}`);
-      return this.filterByStage(cached, stage);
+      const stageFiltered = this.filterByStage(cached, stage);
+      // Apply observation layer filtering
+      return await this.applyObservationLayerFilter(stageFiltered, facts);
     }
     
     console.log(`   🔄 [Cache MISS] Loading rules for crop=${dbCode} (variants: ${[...variants].join(',')}) from DB`);
@@ -577,7 +638,153 @@ export class SymbolicReasoner {
     setCachedRules(cacheKey, allRules);
     console.log(`   💾 [Cache SET] ${allRules.length} rules cached for crop=${dbCode} (TTL=5min)`);
     
-    return this.filterByStage(allRules, stage);
+    const stageFiltered = this.filterByStage(allRules, stage);
+    // Apply observation layer filtering
+    return await this.applyObservationLayerFilter(stageFiltered, facts);
+  }
+  
+  /**
+   * OBSERVATION LAYER: Load observation metadata from observation_master + canonical_group_mapping
+   * Caches results with same TTL as rule cache.
+   */
+  private async loadObservationMetadata(observationCodes: string[]): Promise<Map<string, ObservationMetadata>> {
+    if (!observationCodes || observationCodes.length === 0) {
+      return new Map();
+    }
+    
+    const cacheKey = `obs_meta_${observationCodes.sort().join(',')}`;
+    const cached = getCachedObsMetadata(cacheKey);
+    if (cached) {
+      console.log(`   ♻️ [ObsMeta Cache HIT] ${cached.size} observations`);
+      return cached;
+    }
+    
+    try {
+      // Query observation_master for metadata
+      const { data: obsData, error: obsError } = await this.supabase
+        .from('observation_master')
+        .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+        .in('observation_code', observationCodes);
+      
+      if (obsError) {
+        console.error('❌ [ObsMeta] Failed to load observation metadata:', obsError.message);
+        return new Map();
+      }
+      
+      // Query canonical_group_mapping for ontology bridge
+      const bioGroups = [...new Set((obsData || []).map((o: any) => o.canonical_group).filter(Boolean))];
+      let mappingData: any[] = [];
+      
+      if (bioGroups.length > 0) {
+        const { data: mapData, error: mapError } = await this.supabase
+          .from('canonical_group_mapping')
+          .select('biological_group, engine_group, confidence')
+          .in('biological_group', bioGroups);
+        
+        if (!mapError && mapData) {
+          mappingData = mapData;
+        }
+      }
+      
+      // Build metadata map
+      const result = new Map<string, ObservationMetadata>();
+      for (const obs of (obsData || [])) {
+        const engineGroups = mappingData
+          .filter((m: any) => m.biological_group === obs.canonical_group)
+          .map((m: any) => ({ engine_group: m.engine_group, confidence: m.confidence }));
+        
+        result.set(obs.observation_code, {
+          observation_code: obs.observation_code,
+          observation_category: obs.observation_category,
+          affected_plant_part: obs.affected_plant_part,
+          canonical_group: obs.canonical_group,
+          is_diagnostic: obs.is_diagnostic === true,
+          engine_groups: engineGroups
+        });
+      }
+      
+      console.log(`   📋 [ObsMeta] Loaded ${result.size} observation metadata entries, ${mappingData.length} ontology mappings`);
+      setCachedObsMetadata(cacheKey, result);
+      return result;
+      
+    } catch (e) {
+      console.error('❌ [ObsMeta] Exception:', e);
+      return new Map();
+    }
+  }
+  
+  /**
+   * OBSERVATION LAYER: Apply category + plant-part pre-filtering to candidate rules
+   * Uses ontology bridge (canonical_group_mapping) for narrowing.
+   * Implements WHOLE wildcard logic per SQL architecture.
+   */
+  private async applyObservationLayerFilter(rules: any[], facts: SymbolicFact): Promise<any[]> {
+    const observations = facts.all_observations || [];
+    if (observations.length === 0) {
+      console.log(`   ⏭️ [ObsFilter] No observations - skipping pre-filter`);
+      return rules;
+    }
+    
+    const obsMeta = await this.loadObservationMetadata(observations);
+    if (obsMeta.size === 0) {
+      console.log(`   ⏭️ [ObsFilter] No observation metadata found - skipping pre-filter`);
+      return rules;
+    }
+    
+    // Store metadata for later use in confidence boosting
+    (this as any)._currentObsMetadata = obsMeta;
+    
+    // Collect observation categories and plant parts
+    const obsCategories = new Set<string>();
+    const obsPlantParts = new Set<string>();
+    const obsEngineGroups = new Set<string>();
+    
+    for (const [, meta] of obsMeta) {
+      if (meta.observation_category) obsCategories.add(meta.observation_category);
+      if (meta.affected_plant_part) obsPlantParts.add(meta.affected_plant_part);
+      for (const eg of meta.engine_groups) {
+        obsEngineGroups.add(eg.engine_group);
+      }
+    }
+    
+    console.log(`   🔬 [ObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}], EngineGroups: [${[...obsEngineGroups].join(',')}]`);
+    
+    const beforeCount = rules.length;
+    const filtered = rules.filter(rule => {
+      // Category filter
+      const reqCat = rule.required_observation_category;
+      if (reqCat && Array.isArray(reqCat) && reqCat.length > 0) {
+        const hasMatch = reqCat.some((cat: string) => obsCategories.has(cat));
+        if (!hasMatch) return false;
+      }
+      
+      // Plant part filter with WHOLE wildcard
+      const reqPart = rule.required_plant_part;
+      if (reqPart && Array.isArray(reqPart) && reqPart.length > 0) {
+        const hasMatch = 
+          // If observation is WHOLE → matches ANY rule
+          obsPlantParts.has('WHOLE') ||
+          // If rule allows WHOLE → matches ANY observation
+          reqPart.includes('WHOLE') ||
+          // Direct match
+          reqPart.some((part: string) => obsPlantParts.has(part));
+        if (!hasMatch) return false;
+      }
+      
+      return true;
+    });
+    
+    const removedCount = beforeCount - filtered.length;
+    if (removedCount > 0) {
+      console.log(`   🎯 [ObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${filtered.length})`);
+    }
+    
+    // Candidate explosion warning
+    if (filtered.length > 25) {
+      console.warn(`   ⚠️ [RULE_EXPLOSION] ${filtered.length} candidate rules for ${observations.length} observations - consider tighter required_observation_category/required_plant_part constraints`);
+    }
+    
+    return filtered;
   }
   
   /**
