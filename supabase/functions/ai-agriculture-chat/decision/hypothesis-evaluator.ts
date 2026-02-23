@@ -720,7 +720,7 @@ export async function evaluateCandidateHypotheses(
       );
       
       // Extract observable characteristics
-      const observableChars = extractObservableCharacteristics(rule.observable_characteristics);
+      const observableChars = extractObservableCharacteristics(rule.observable_characteristics, obsMetadataMap);
       
       // ═══════════════════════════════════════════════════════════════════════
       // CRITICAL BUG FIX: Do NOT skip rules with empty observable_characteristics
