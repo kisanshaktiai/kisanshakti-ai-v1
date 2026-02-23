@@ -199,6 +199,47 @@ function setCachedRules(cacheKey: string, rules: any[]): void {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION METADATA CACHE - For ontology bridge + pre-filtering
+// Caches observation_master metadata with canonical_group_mapping join
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ObservationMetadata {
+  observation_code: string;
+  observation_category: string | null;
+  affected_plant_part: string | null;
+  canonical_group: string | null;
+  is_diagnostic: boolean;
+  engine_groups: { engine_group: string; confidence: number }[];
+}
+
+interface CachedObsMetadata {
+  data: Map<string, ObservationMetadata>;
+  expiresAt: number;
+}
+
+const obsMetadataCache = new Map<string, CachedObsMetadata>();
+
+function getCachedObsMetadata(cacheKey: string): Map<string, ObservationMetadata> | null {
+  const entry = obsMetadataCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    obsMetadataCache.delete(cacheKey);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCachedObsMetadata(cacheKey: string, data: Map<string, ObservationMetadata>): void {
+  if (obsMetadataCache.size > 30) {
+    const now = Date.now();
+    for (const [key, val] of obsMetadataCache) {
+      if (now > val.expiresAt) obsMetadataCache.delete(key);
+    }
+  }
+  obsMetadataCache.set(cacheKey, { data, expiresAt: Date.now() + RULE_CACHE_TTL_MS });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // SYMBOLIC REASONER CLASS
 // ═══════════════════════════════════════════════════════════════════════════
 
