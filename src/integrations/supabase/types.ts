@@ -3071,6 +3071,36 @@ export type Database = {
         }
         Relationships: []
       }
+      canonical_group_mapping: {
+        Row: {
+          biological_group: string
+          confidence: number | null
+          created_at: string | null
+          description: string | null
+          engine_group: string
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          biological_group: string
+          confidence?: number | null
+          created_at?: string | null
+          description?: string | null
+          engine_group: string
+          id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          biological_group?: string
+          confidence?: number | null
+          created_at?: string | null
+          description?: string | null
+          engine_group?: string
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       canonical_hint_mapping: {
         Row: {
           canonical_hint: string
@@ -6591,6 +6621,8 @@ export type Database = {
           reason_text: string | null
           reentry_interval_hours: number | null
           regulatory_status: string | null
+          required_observation_category: string[] | null
+          required_plant_part: string[] | null
           requires_field_action: boolean | null
           research_paper_ref: string | null
           resistance_group: string | null
@@ -6744,6 +6776,8 @@ export type Database = {
           reason_text?: string | null
           reentry_interval_hours?: number | null
           regulatory_status?: string | null
+          required_observation_category?: string[] | null
+          required_plant_part?: string[] | null
           requires_field_action?: boolean | null
           research_paper_ref?: string | null
           resistance_group?: string | null
@@ -6897,6 +6931,8 @@ export type Database = {
           reason_text?: string | null
           reentry_interval_hours?: number | null
           regulatory_status?: string | null
+          required_observation_category?: string[] | null
+          required_plant_part?: string[] | null
           requires_field_action?: boolean | null
           research_paper_ref?: string | null
           resistance_group?: string | null
@@ -34534,6 +34570,17 @@ export type Database = {
           stage_applicable?: string[] | null
           updated_at?: string | null
           version?: string | null
+        }
+        Relationships: []
+      }
+      v_missing_translations: {
+        Row: {
+          description: string | null
+          has_en: string | null
+          has_hi: string | null
+          has_mr: string | null
+          obs_code: string | null
+          observation_category: string | null
         }
         Relationships: []
       }
