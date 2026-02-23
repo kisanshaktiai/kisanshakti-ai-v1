@@ -929,17 +929,90 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           if (ruleCropCode && stateCropCode) {
             const isUniversalRule = ruleCropCode === '*' || ruleCropCode === 'ALL' || ruleCropCode === 'UNIVERSAL';
             if (!isUniversalRule) {
-              // Check direct match first
               if (ruleCropCode === stateCropCode) {
                 // Direct match - OK
               } else if (cropCodeAliases[ruleCropCode]?.includes(stateCropCode)) {
-                // Rule code (SC) matches state code (SUGARCANE) via alias - OK
+                // Alias match - OK
               } else if (Object.entries(cropCodeAliases).some(([code, aliases]) => 
                 aliases.includes(stateCropCode) && code === ruleCropCode
               )) {
                 // Reverse alias match - OK
               } else {
-                return false; // Rule is for different crop
+                return false;
+              }
+            }
+          }
+          
+          // ═══════════════════════════════════════════════════════════════════════════
+          // OBSERVATION LAYER FILTER: required_observation_category + required_plant_part
+          // Prevents cross-domain rule matching (e.g., nutrient rules for pest symptoms)
+          // ═══════════════════════════════════════════════════════════════════════════
+          const visualSymptoms = (state.visual_symptoms || []).map((s: string) => s.toUpperCase().replace(/[\s-]/g, '_'));
+          
+          if (visualSymptoms.length > 0) {
+            // Infer observation categories from symptom codes using keyword patterns
+            const inferredCategories = new Set<string>();
+            const inferredPlantParts = new Set<string>();
+            
+            const CATEGORY_PATTERNS: Record<string, string[]> = {
+              'PEST': ['BORE', 'BORER', 'INSECT', 'LARVAE', 'GRUB', 'TERMITE', 'APHID', 'WHITEFLY', 
+                       'MEALYBUG', 'MITE', 'THRIPS', 'CATERPILLAR', 'FRASS', 'WEBBING', 'HONEYDEW',
+                       'SCALE', 'WOOLLY', 'CRAWLING', 'EGG_MASS', 'DEAD_HEART', 'MUD_TUBE', 'GNAW',
+                       'RAT', 'RODENT', 'SOOTY_MOLD', 'EXIT_HOLE', 'TUNNEL'],
+              'DISEASE': ['ROT', 'RUST', 'SMUT', 'WILT', 'BLIGHT', 'MOSAIC', 'STREAK', 'LESION',
+                          'PUSTULE', 'OOZE', 'GUMMOSIS', 'MILDEW', 'SCALD', 'POKKAH', 'GRASSY_SHOOT',
+                          'RED_INTERNAL', 'BLACK_WHIP', 'BACTERIAL', 'FUNGAL', 'VIRAL', 'WHIP_SMUT',
+                          'RED_PITH', 'ALCOHOL_SMELL', 'SOUR_SMELL', 'SPORE'],
+              'NUTRIENT': ['CHLOROSIS', 'INTERVEINAL', 'PURPLE_LEAVES', 'NUTRIENT', 'DEFICIENCY',
+                           'YELLOWING', 'REDDISH_PURPLE', 'CORKY', 'WHITE_BUD', 'KHAIRA'],
+              'ABIOTIC': ['WATERLOGGING', 'FROST', 'SALT', 'DROUGHT', 'HAIL', 'WIND_DAMAGE',
+                          'STANDING_WATER', 'FROZEN', 'ICE_CRYSTAL', 'SALINE'],
+              'PHYSIOLOGY': ['STUNTED', 'POOR_GROWTH', 'LODGING', 'GAPS', 'UNEVEN', 'DRYING',
+                             'WILTING', 'CURLING', 'BROWNING', 'TIP_BURN'],
+              'MANAGEMENT': ['WEED', 'SPACING', 'PLANTING', 'HARVEST']
+            };
+            
+            const PLANT_PART_PATTERNS: Record<string, string[]> = {
+              'STEM': ['STEM', 'INTERNODE', 'CANE', 'STALK', 'BORE_HOLE', 'TUNNEL', 'BORED'],
+              'LEAF': ['LEAF', 'FOLIAR', 'CHLOROSIS', 'YELLOWING', 'SPOT', 'RUST', 'CURL', 'SCALD'],
+              'ROOT': ['ROOT', 'BASAL', 'UNDERGROUND', 'TERMITE', 'GRUB'],
+              'WHOLE': ['WHOLE', 'PLANT_DEATH', 'WILT', 'STUNTED', 'DEATH', 'LODGING', 'GENERAL'],
+              'FRUIT': ['FRUIT', 'BOLL', 'GRAIN', 'SEED', 'POD'],
+              'FLOWER': ['FLOWER', 'PANICLE', 'TASSEL'],
+              'SOIL': ['SOIL', 'MUD_TUBE', 'SALT_CRUST', 'WATERLOGGING']
+            };
+            
+            for (const symptom of visualSymptoms) {
+              for (const [category, patterns] of Object.entries(CATEGORY_PATTERNS)) {
+                if (patterns.some(p => symptom.includes(p))) {
+                  inferredCategories.add(category);
+                }
+              }
+              for (const [part, patterns] of Object.entries(PLANT_PART_PATTERNS)) {
+                if (patterns.some(p => symptom.includes(p))) {
+                  inferredPlantParts.add(part);
+                }
+              }
+            }
+            
+            // Apply category filter
+            const reqCat = bundled.required_observation_category;
+            if (reqCat && Array.isArray(reqCat) && reqCat.length > 0 && inferredCategories.size > 0) {
+              const hasMatch = reqCat.some((cat: string) => inferredCategories.has(cat.toUpperCase()));
+              if (!hasMatch) {
+                return false; // Category mismatch
+              }
+            }
+            
+            // Apply plant part filter with WHOLE wildcard
+            const reqPart = bundled.required_plant_part;
+            if (reqPart && Array.isArray(reqPart) && reqPart.length > 0 && inferredPlantParts.size > 0) {
+              const hasMatch = 
+                inferredPlantParts.has('WHOLE') ||
+                reqPart.includes('WHOLE') ||
+                reqPart.some((part: string) => inferredPlantParts.has(part.toUpperCase()));
+              if (!hasMatch) {
+                return false; // Plant part mismatch
               }
             }
           }

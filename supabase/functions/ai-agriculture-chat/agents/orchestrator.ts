@@ -1658,9 +1658,10 @@ export class AIAgentOrchestrator {
           
           console.log(`   📊 Canonical state built, running layered rule evaluation...`);
           
-          // PHASE-13: Use getAllRulesWithBundled() for complete rule coverage (ASYNC)
-          const allRulesForOption = await getAllRulesWithBundled();
-          console.log(`   📦 Total rules for option selection: ${allRulesForOption.length}`);
+          // CRITICAL FIX: Use crop-filtered rules to prevent rule explosion (517 → ~200)
+          const cropCodeForRules = cropName?.toUpperCase() === 'SUGARCANE' ? 'sc' : cropName?.toLowerCase() || '';
+          const allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
+          console.log(`   📦 Total rules for option selection: ${allRulesForOption.length} (crop=${cropCodeForRules})`);
           
           // Pass user_query AND visual_symptoms for rule matching
           // CRITICAL: visual_symptoms array is what evaluateConditionsJson checks!
