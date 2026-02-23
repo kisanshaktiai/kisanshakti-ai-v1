@@ -1,138 +1,158 @@
 
+# Observation Layer Architecture Integration
 
-# Symbolic Decision Brain: Mixed-Language & Hardcoded Data Elimination
+## Summary
 
-## Problem Summary
+The database has been updated with 5 architectural changes that the codebase does NOT currently use:
 
-The codebase has **5 critical sources of hardcoded multilingual data** that bypass the `observation_translations` database table, causing mixed-language output (English labels appearing in Marathi/Hindi UI).
+1. **`canonical_group_mapping` table** (29 rows) - Bridges biological groups (`observation_master.canonical_group`) to engine groups (`decision_rules.canonical_group`)
+2. **`decision_rules.required_observation_category`** column (TEXT[]) - Already populated (~335 rules)
+3. **`decision_rules.required_plant_part`** column (TEXT[]) - Already populated (~73 rules)
+4. **`observation_master.is_diagnostic`** flag - Updated (66 diagnostic observations, 10.9% coverage)
+5. **`v_missing_translations` view** - For monitoring translation gaps
 
----
-
-## Bug #1: Giant Hardcoded Dictionary in `canonical-observation-loader.ts`
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/canonical-observation-loader.ts` (lines 55-257)
-
-The `OBSERVATION_KEY_LABELS` dictionary contains ~200 hardcoded trilingual entries (`en`, `hi`, `mr`). Multiple functions read directly from this dictionary instead of the DB:
-
-- `getObservationKeyLabel()` (line 318) -- reads ONLY from hardcoded dict
-- `getObservationKeyLabels()` (line 339) -- reads ONLY from hardcoded dict
-- `getStageObservationKeys()` (line 358) -- reads ONLY from hardcoded dict
-- `getCategoryObservationKeys()` (line 390) -- reads ONLY from hardcoded dict
-- `getClarificationOptions()` (line 606) -- calls the above functions
-- `getFallbackKeys()` (line 576) -- uses hardcoded dict as fallback
-- `loadObservationKeysFromDB()` (line 534) -- STILL falls back to hardcoded dict when DB label is missing
-
-**Additionally**, there's a code mismatch: the hardcoded dict uses codes like `LEAF_SPOTS_PRESENT`, `WILT_SYMPTOM`, `FUNGAL_GROWTH_VISIBLE` but the DB table uses `LEAF_SPOTS`, `WILT_SYMPTOMS`, `FUNGAL_GROWTH`. When the DB lookup fails to find the hardcoded code, it falls back to the English hardcoded label, causing mixed language.
-
-**Fix:** Refactor ALL sync functions (`getObservationKeyLabel`, `getStageObservationKeys`, `getCategoryObservationKeys`, `getClarificationOptions`) to become `async` and query `observation_translations` via the existing `loadObservationLabels()` utility. Remove the `OBSERVATION_KEY_LABELS` dictionary entirely. The `STAGE_KEY_PRIORITIES` mapping (which is just a list of code names, not labels) can remain since it's language-neutral.
+The codebase currently ignores all 5. The symbolic reasoner and hypothesis evaluator load rules by crop_code + stage only, with no category/plant-part pre-filtering and no ontology bridge. This causes candidate explosion and false-positive rule matches.
 
 ---
 
-## Bug #2: Hardcoded Clarification Templates in `clarification-renderer.ts`
+## Changes Required
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/clarification-renderer.ts` (lines 115-590)
+### Change 1: Add `required_observation_category` and `required_plant_part` to BundledRule type
 
-`BASE_TEMPLATES` and `CROP_STAGE_SPECIFIC_TEMPLATES` contain ~500 lines of hardcoded trilingual question/option strings. These templates are typed as `Record<'mr' | 'hi' | 'en', ...>`, making them fail silently for any other language (Tamil, Telugu, etc.) -- the system falls back to English.
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
 
-**Fix:** This is a larger structural issue. For now:
-1. Widen the type from `'mr' | 'hi' | 'en'` to `string` and add a fallback chain: `templates[language] || templates['en']`
-2. For the `getContextAwareTemplate()` function (line 596), ensure it always tries the language key first, then falls back to `'en'`, never returns undefined.
-3. The DB-driven path (`getContextAwareTemplateFromDB`, line 844) already works correctly for `REFINE_OBSERVATION` scope -- extend this pattern to other scopes over time.
+Add two new optional fields to the `BundledRule` interface:
+- `required_observation_category?: string[]`
+- `required_plant_part?: string[]`
+
+### Change 2: Load new columns from database in rule loader
+
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+
+In the `loadRulesFromDatabase()` function (line ~91), the rule mapping already does `select('*')` so the columns are loaded. However, the mapper (lines 190-256) does NOT pass them through to the `BundledRule` object. Add:
+```
+required_observation_category: row.required_observation_category || null,
+required_plant_part: row.required_plant_part || null,
+```
+
+### Change 3: Add ontology bridge + category/plant-part pre-filter to SymbolicReasoner
+
+**File:** `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts`
+
+This is the core change. In the `loadRulesForContext()` method (line 537), the system currently loads rules only by `crop_code` + `stage`. After loading, add:
+
+1. **Load observation metadata from `observation_master`** for the current `facts.all_observations`:
+   - Query `observation_master` for `observation_category`, `affected_plant_part`, `canonical_group`, `is_diagnostic`
+   - Cache results (same TTL as rules)
+
+2. **Ontology bridge**: Use `canonical_group_mapping` to resolve `observation_master.canonical_group` (biological, e.g., `PEST_BORER`) to `decision_rules.canonical_group` (engine, e.g., `03_pest`). This narrows candidate rules.
+
+3. **Category filter**: After loading candidate rules, filter using:
+   ```
+   if (rule.required_observation_category && rule.required_observation_category.length > 0) {
+     const obsCategories = observationMetadata.map(o => o.observation_category);
+     const hasMatch = obsCategories.some(cat => 
+       rule.required_observation_category.includes(cat)
+     );
+     if (!hasMatch) skip rule;
+   }
+   ```
+
+4. **Plant part filter with WHOLE wildcard**:
+   ```
+   if (rule.required_plant_part && rule.required_plant_part.length > 0) {
+     const obsParts = observationMetadata.map(o => o.affected_plant_part);
+     const hasMatch = obsParts.some(part => 
+       part === 'WHOLE' ||
+       rule.required_plant_part.includes(part) ||
+       rule.required_plant_part.includes('WHOLE')
+     );
+     if (!hasMatch) skip rule;
+   }
+   ```
+
+5. **Diagnostic confidence boost (multiplicative)**: In `evaluateConditionsJson`, if any matched observation has `is_diagnostic = true` in `observation_master`, apply a 1.4x confidence multiplier (capped at 1.0).
+
+### Change 4: Add ontology bridge to HypothesisEvaluator
+
+**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
+
+In `evaluateCandidateHypotheses()` (line 461):
+1. Load `observation_master` metadata for `input.known_observations`
+2. Use `canonical_group_mapping` to resolve biological groups to engine groups
+3. Add the `required_observation_category` and `required_plant_part` columns to the SELECT query (line 501)
+4. Apply category + plant-part pre-filtering before scoring (between steps 1.6 and 2)
+5. Replace hardcoded `getDiagnosticPower()` function (lines 319-343) with a lookup against `observation_master.is_diagnostic`
+6. Log candidate explosion warning if count exceeds 25
+
+### Change 5: Update ConditionLedger evaluator in loader.ts
+
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+
+The `evaluateConditionsJson()` function (line 543) does not use `required_observation_category` or `required_plant_part` because those are rule-level filters, not condition-level. No change needed here - the filtering happens at rule selection time (Change 3 and 4).
+
+### Change 6: Add observation metadata cache
+
+**File:** `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts`
+
+Add a new helper method to `SymbolicReasoner`:
+```
+private observationMetadataCache = new Map<string, any>();
+
+private async loadObservationMetadata(observationCodes: string[]): Promise<Map<string, any>> {
+  // Check cache, query observation_master + canonical_group_mapping join, cache result
+}
+```
+
+This method:
+1. Queries `observation_master` for `observation_category`, `affected_plant_part`, `canonical_group`, `is_diagnostic`
+2. Joins with `canonical_group_mapping` to get `engine_group` and `confidence`
+3. Returns a Map keyed by observation_code
+4. Uses in-memory cache with 5-min TTL (same as rule cache)
+
+### Change 7: Remove hardcoded `trigger_keywords` matching from hypothesis evaluator
+
+**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
+
+Lines 228-238 still check `conditions_json.trigger_keywords`. Per the architecture audit, `trigger_keywords` column was DROPPED. Remove this block from `evaluatePartialConditionMatch()`.
 
 ---
 
-## Bug #3: Hardcoded Labels in `context-manager.ts`
+## Technical Details
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/context-manager.ts` (lines 47-146)
+### New observation metadata flow
 
-`QUESTION_BANK` contains 6 questions with hardcoded `{ mr, hi, en }` labels for questions and options. Also, context switch detection (lines 231-268) has hardcoded trilingual clarification questions.
+```text
+Farmer input
+  -> NLU extracts observation codes (e.g., BORE_HOLES, LEAF_YELLOWING)
+  -> Load observation_master metadata:
+       BORE_HOLES: category=PEST, plant_part=STEM, canonical_group=PEST_BORER, is_diagnostic=true
+       LEAF_YELLOWING: category=PHYSIOLOGY, plant_part=LEAF, canonical_group=PHYSIOLOGY_LEAF, is_diagnostic=false
+  -> Ontology bridge (canonical_group_mapping):
+       PEST_BORER -> 03_pest (confidence=1.0)
+       PHYSIOLOGY_LEAF -> 07_diagnosis (confidence=0.7)
+  -> Load decision_rules WHERE canonical_group IN ('03_pest', '07_diagnosis')
+  -> Pre-filter by required_observation_category (PEST matches rules with required_observation_category containing 'PEST')
+  -> Pre-filter by required_plant_part (STEM matches rules with required_plant_part containing 'STEM' or 'WHOLE')
+  -> Evaluate conditions_json as before (ledger system unchanged)
+  -> Apply diagnostic confidence boost: BORE_HOLES is_diagnostic=true -> 1.4x multiplier
+```
 
-**Fix:** Widen the type to `Record<string, string>` and add fallback to `'en'` when the language key is missing. These are structural UI questions (not observation labels) so they're acceptable as code constants, but must not break for unsupported languages.
+### Candidate explosion prevention
 
----
+After ontology bridge + category + plant-part filtering, log a warning if candidate count exceeds 25. This catches rules that need tighter `required_observation_category` or `required_plant_part` constraints.
 
-## Bug #4: Hardcoded Labels in `context-authority.ts`
+### Files changed (7 total)
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/context-authority.ts` (lines 148-178)
+1. `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts` - Add 2 fields to BundledRule
+2. `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` - Pass through new columns
+3. `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts` - Ontology bridge + filters + diagnostic boost
+4. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` - Ontology bridge + filters + remove trigger_keywords
+5. `supabase/functions/ai-agriculture-chat/decision/confidence-calculator.ts` - Use is_diagnostic for confidence scoring
 
-`formatCropContextFrame()` has hardcoded stage translations and template strings typed as `Record<'mr' | 'hi' | 'en', string>`. For any language not in `{mr, hi, en}`, this will throw or return `undefined`.
+### No changes to
 
-**Fix:** Widen type to `string`, add fallback: `templates[language] || templates['en']`.
-
----
-
-## Bug #5: Hardcoded Labels in `diagnostic-signal-detector.ts`
-
-**File:** `supabase/functions/ai-agriculture-chat/decision/diagnostic-signal-detector.ts` (lines 225-236)
-
-`CROSS_STAGE_DISCLAIMER` and `getCrossStageDisclaimer()` are typed as `{ mr: string; hi: string; en: string }` and accept `language: 'mr' | 'hi' | 'en'`. Will fail for other languages.
-
-**Fix:** Widen type, add `'en'` fallback.
-
----
-
-## Bug #6: Hardcoded Labels in `diagnostic-options-i18n.ts`
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/diagnostic-options-i18n.ts` (lines 1-160)
-
-`DiagnosticOption.label` is typed as `Record<'mr' | 'hi' | 'en', string>`. `getDiagnosticOptionsForCropStage()` accepts `language: 'mr' | 'hi' | 'en'`.
-
-**Fix:** Widen type, add fallback.
-
----
-
-## Bug #7: Restricted Language Types Across 47 Files
-
-Many function signatures use `'mr' | 'hi' | 'en'` instead of `string`, causing TypeScript errors or silent `undefined` when other languages are used. Key files:
-
-- `communication-translation-dictionary.ts` -- already uses `string` (good)
-- `llm-response-formatter.ts` (line 93) -- uses extended union but still restricted
-- `response-mode-renderer.ts` (line 340) -- `'mr' | 'hi' | 'en'`
-- `diagnosis-only-mode.ts` (lines 274, 1075, 1127) -- `'mr' | 'hi' | 'en'`
-- `photo-analyzer.ts` (line 34) -- `'mr' | 'hi' | 'en'`
-- `static-data-gate.ts` (line 54) -- `'mr' | 'hi' | 'en'`
-- `communication-types.ts` (line 14) -- `type SupportedLanguage = 'mr' | 'hi' | 'en'`
-
-**Fix:** Update `communication-types.ts` to `type SupportedLanguage = string` and ensure all code using language keys has English fallback.
-
----
-
-## Implementation Plan
-
-### Step 1: Remove `OBSERVATION_KEY_LABELS` dictionary (Bug #1 -- Critical)
-
-- Delete the ~200-line hardcoded dictionary from `canonical-observation-loader.ts`
-- Make `getObservationKeyLabel()` async, querying `observation_translations` via `loadObservationLabels()`
-- Make `getStageObservationKeys()` async, using DB labels
-- Make `getClarificationOptions()` async
-- Update `getFallbackKeys()` to return raw codes instead of English labels for non-English
-- Update `loadObservationKeysFromDB()` to remove the hardcoded fallback at line 534-540
-- Keep `STAGE_KEY_PRIORITIES` (language-neutral code lists)
-
-### Step 2: Widen Language Types (Bugs #3-7)
-
-- Update `communication-types.ts`: `SupportedLanguage = string`
-- Update `context-authority.ts`: widen `formatCropContextFrame` parameter and add `|| templates['en']` fallback
-- Update `diagnostic-signal-detector.ts`: widen `getCrossStageDisclaimer` and add fallback
-- Update `diagnostic-options-i18n.ts`: widen types, add fallback
-- Update `clarification-renderer.ts`: widen `BASE_TEMPLATES` type access with fallback
-- Update `context-manager.ts`: widen question bank access with fallback
-
-### Step 3: Fix Template Fallback Chain (Bug #2)
-
-- In `getContextAwareTemplate()` (line 596 of clarification-renderer.ts), add safe fallback:
-  ```
-  const template = stageTemplates[scope]?.[language] || stageTemplates[scope]?.['en'];
-  ```
-- Apply same pattern at all template lookup points (lines 636, 646, 655, 666)
-
-### Step 4: Update Callers
-
-- Update `clarification-renderer.ts` imports and calls to use async versions of the canonical loader functions
-- Update any other callers that reference `OBSERVATION_KEY_LABELS` directly
-
-### Step 5: Deploy and Verify
-
-- Redeploy `ai-agriculture-chat` edge function
-- Test with Marathi query to verify no English leakage in observation labels
-
+- Database tables (already migrated)
+- Frontend code
+- Translation layer
+- Narration/LLM layer
