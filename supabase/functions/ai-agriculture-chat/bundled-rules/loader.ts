@@ -854,7 +854,9 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
       if (rule.conditions_json && Object.keys(rule.conditions_json).length > 0) {
         return evaluateConditionsJson(rule.conditions_json, input, rule.rule_id);
       }
-      return reconstructCondition(rule.conditionCode)(input);
+      // CRITICAL FIX: Rules with NO conditions_json should NOT auto-match
+      // They are catch-all rules that prevent specific rules from winning
+      return false;
     }
   };
 }
