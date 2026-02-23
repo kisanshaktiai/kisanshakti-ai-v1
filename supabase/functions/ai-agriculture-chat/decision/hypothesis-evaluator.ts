@@ -503,7 +503,9 @@ export async function evaluateCandidateHypotheses(
         differentiating_questions,
         action_text,
         crop_age_days_min,
-        crop_age_days_max
+        crop_age_days_max,
+        required_observation_category,
+        required_plant_part
       `)
       .eq('is_active', true)
       .or(cropFilter)
