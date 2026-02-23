@@ -85,6 +85,12 @@ export interface BundledRule {
   resistance_group?: string;       // Resistance management group (e.g., IRAC Group 1B)
   mode_of_action?: string;         // Chemical mode of action for rotation
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // OBSERVATION LAYER: Pre-filter fields from decision_rules table
+  // ═══════════════════════════════════════════════════════════════════════════
+  required_observation_category?: string[] | null;  // PEST, DISEASE, NUTRIENT, etc.
+  required_plant_part?: string[] | null;            // STEM, LEAF, ROOT, WHOLE, etc.
+  
   is_active?: boolean;
 }
 
