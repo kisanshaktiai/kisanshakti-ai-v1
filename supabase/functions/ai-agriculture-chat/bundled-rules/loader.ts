@@ -552,7 +552,13 @@ export function evaluateConditionsJson(
   ruleId?: string
 ): boolean {
   if (!conditions || Object.keys(conditions).length === 0) {
-    return true;
+    // CRITICAL FIX: Empty conditions rules should NOT match by default
+    // They are catch-all rules that win over specific rules with real conditions
+    // Only match if there are observations present (prevents SC_DIAG_GENERAL_015 from always winning)
+    if (ruleId) {
+      conditionLedgerCache.set(ruleId, [{ key: 'EMPTY_CONDITIONS', status: ConditionStatus.PASSED, required: false }]);
+    }
+    return false;
   }
 
   // Handle compound conditions (recursive)
@@ -848,7 +854,9 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
       if (rule.conditions_json && Object.keys(rule.conditions_json).length > 0) {
         return evaluateConditionsJson(rule.conditions_json, input, rule.rule_id);
       }
-      return reconstructCondition(rule.conditionCode)(input);
+      // CRITICAL FIX: Rules with NO conditions_json should NOT auto-match
+      // They are catch-all rules that prevent specific rules from winning
+      return false;
     }
   };
 }
