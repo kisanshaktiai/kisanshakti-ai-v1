@@ -69,7 +69,7 @@ export interface RenderInput {
   growth_stage?: string;
   pest_name?: string;
   disease_name?: string;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   requires_clarification?: boolean;
   clarification_text?: string;
 }
@@ -93,7 +93,7 @@ export function renderSymbolicResponse(_input: RenderInput): string {
 export function validateRenderedResponse(
   _rendered: string,
   _symbolicOutput: SymbolicAction[],
-  _language: 'mr' | 'hi' | 'en'
+  _language: string
 ): { valid: boolean; violations: string[] } {
   console.error('[DEPRECATED] validateRenderedResponse called - validation now in narration layer');
   return { valid: false, violations: ['DEPRECATED_FUNCTION_CALLED'] };
@@ -104,7 +104,7 @@ export function validateRenderedResponse(
  */
 export function generateClarificationResponse(
   _question: string,
-  _language: 'mr' | 'hi' | 'en'
+  _language: string
 ): string {
   console.error('[DEPRECATED] generateClarificationResponse called - use narration layer');
   throw new Error('DEPRECATED: generateClarificationResponse has been removed. Use narration layer.');
@@ -114,7 +114,7 @@ export function generateClarificationResponse(
  * @deprecated This function is deprecated and should not be used
  */
 export function generateNoMatchResponse(
-  _language: 'mr' | 'hi' | 'en',
+  _language: string,
   _crop_name?: string
 ): string {
   console.error('[DEPRECATED] generateNoMatchResponse called - use narration layer');

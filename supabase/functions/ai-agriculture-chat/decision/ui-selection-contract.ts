@@ -245,7 +245,7 @@ export function handleSelectAllBehavior(
  */
 export function buildConflictResolutionQuestion(
   conflicts: Array<{ key1: string; key2: string }>,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): {
   question: string;
   options: ClarificationOption[];

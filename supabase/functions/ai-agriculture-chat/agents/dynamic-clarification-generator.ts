@@ -87,7 +87,7 @@ export interface AgronomicContext {
 export interface ClarificationInput {
   scope: ClarificationScope;
   farmer_message: string;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   agronomic_context: AgronomicContext;
   
   // Pre-computed by symbolic brain - NOT calculated here
@@ -325,7 +325,7 @@ export function buildAgronomicContext(authoritativeState: AuthoritativeLandState
 export interface DynamicClarificationInput {
   scope: ClarificationScope;
   farmer_message: string;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   agronomic_context: {
     crop_name?: string;
     crop_code?: string;

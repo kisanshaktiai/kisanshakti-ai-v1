@@ -139,7 +139,7 @@ export interface LanguageIssue {
 
 export function validateLanguageQuality(
   text: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): LanguageValidationResult {
   const issues: LanguageIssue[] = [];
   let confidenceScore = 1.0;
@@ -281,7 +281,7 @@ export function validateLanguageQuality(
 
 export function enforceTermConsistency(
   text: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   if (language === 'en') return text;
   
@@ -306,7 +306,7 @@ export function enforceTermConsistency(
 // SAFE FALLBACK MESSAGE
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function getSafeAskMoreInfoMessage(language: 'mr' | 'hi' | 'en'): string {
+export function getSafeAskMoreInfoMessage(language: string): string {
   const messages: Record<string, string> = {
     mr: '🙏 कृपया तुमच्या समस्येबद्दल अधिक माहिती द्या किंवा फोटो पाठवा. मी योग्य सल्ला देईन.',
     hi: '🙏 कृपया अपनी समस्या के बारे में अधिक जानकारी दें या फोटो भेजें। मैं सही सलाह दूंगा।',

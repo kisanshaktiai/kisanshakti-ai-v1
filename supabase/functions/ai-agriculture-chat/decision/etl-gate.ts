@@ -233,7 +233,7 @@ function getMonitoringAdvice(observedValue: number, threshold: number): string {
  */
 export function getETLAdvice(
   result: ETLValidationResult,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   if (result.spray_allowed) {
     const templates: Record<string, string> = {

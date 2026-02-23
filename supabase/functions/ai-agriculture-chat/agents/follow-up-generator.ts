@@ -290,7 +290,7 @@ export function generateFollowUpPlan(
 
 export function formatFollowUpPlan(
   plan: FollowUpPlan,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const headers: Record<string, string> = {
     mr: '📅 पाठपुरावा योजना (Follow-up Plan):',
@@ -304,7 +304,7 @@ export function formatFollowUpPlan(
     en: 'Day'
   };
   
-  let output = `\n${headers[language]}\n`;
+  const output = `\n${headers[language] || headers['en']}\n`;
   output += '─'.repeat(40) + '\n';
   
   for (const action of plan.actions) {
@@ -313,7 +313,7 @@ export function formatFollowUpPlan(
                        action.action_en;
     
     const critical = action.is_critical ? ' ⚠️' : '';
-    output += `| ${dayLabels[language]} ${action.day}:`.padEnd(12) + `| ${actionText}${critical}\n`;
+    output += `| ${dayLabels[language] || dayLabels['en']} ${action.day}:`.padEnd(12) + `| ${actionText}${critical}\n`;
   }
   
   output += '─'.repeat(40);
@@ -327,7 +327,7 @@ export function formatFollowUpPlan(
 
 export function formatRealisticExpectations(
   pestOrDisease: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const normalizedPest = pestOrDisease.toUpperCase().replace(/[_-]/g, '_');
   const expectations = REALISTIC_EXPECTATIONS[normalizedPest];
@@ -357,7 +357,7 @@ export function formatRealisticExpectations(
     }
   };
   
-  const h = headers[language];
+  const h = headers[language] || headers['en'];
   
   let output = `\n${h.title}\n`;
   output += `${h.yes}\n`;
@@ -380,7 +380,7 @@ export function formatRealisticExpectations(
 export function generateCompleteFollowUp(
   pestOrDisease: string,
   treatmentApplied: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const plan = generateFollowUpPlan(pestOrDisease, treatmentApplied);
   

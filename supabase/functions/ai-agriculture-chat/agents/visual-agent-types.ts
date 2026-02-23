@@ -442,7 +442,7 @@ export interface ImageAnalysisRequest {
   cropStage: string;
   textContext: string;
   suspectedIssues: SuspectedIssue[];
-  language: 'mr' | 'hi' | 'en';
+  language: string;
 }
 
 export interface RawAIAnalysisResult {

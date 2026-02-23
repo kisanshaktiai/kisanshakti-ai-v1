@@ -194,7 +194,7 @@ export interface UIResponseContext {
   rules_applied?: string[];
   
   /** Detected language */
-  detected_language?: 'mr' | 'hi' | 'en';
+  detected_language?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -257,7 +257,7 @@ export interface UIResponseContract {
 
 export interface UIResponseBuilderInput {
   response_mode: UIResponseMode;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   trace_id: string;
   
   // Content (all optional - mode drives what's needed)

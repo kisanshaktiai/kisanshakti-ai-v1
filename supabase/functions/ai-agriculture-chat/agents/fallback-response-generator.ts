@@ -31,7 +31,7 @@ import { AI_CONFIG, getBestAvailableProvider, buildAIRequest } from '../../../_s
  */
 export interface CanonicalFallbackNarrationPayload {
   /** Target language for narration (text already in this language) */
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   
   /** Pre-localized header text (greeting or section title) */
   header_text: string;
@@ -73,7 +73,7 @@ export interface NarrationOutput {
   message: string;
   
   /** Language used */
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   
   /** Clarification questions (passed through from payload) */
   clarification_questions: string[];
@@ -472,7 +472,7 @@ export interface FallbackContext {
  */
 export interface FallbackResponse {
   message: string;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   clarification_questions: string[];
   confidence: number;
   source: 'observation_only' | 'monitoring_only' | 'clarification_required';
@@ -484,7 +484,7 @@ export interface FallbackResponse {
  */
 export function generateFallbackResponse(
   context: FallbackContext,
-  language: 'mr' | 'hi' | 'en' = 'mr'
+  language: string = 'mr'
 ): FallbackResponse {
   console.warn('[DEPRECATED] generateFallbackResponse is deprecated. Migrate to narrateFallbackResponse with CanonicalFallbackNarrationPayload');
   
@@ -496,7 +496,7 @@ export function generateFallbackResponse(
   };
   
   return {
-    message: fallbackMessages[language],
+    message: fallbackMessages[language] || fallbackMessages['en'],
     language,
     clarification_questions: [],
     confidence: 0.3,
@@ -510,7 +510,7 @@ export function generateFallbackResponse(
 export function generatePartialResponse(
   farmerMessage: string,
   landContext: any,
-  language: 'mr' | 'hi' | 'en' = 'mr'
+  language: string = 'mr'
 ): FallbackResponse {
   console.warn('[DEPRECATED] generatePartialResponse is deprecated. Migrate to narrateFallbackResponse');
   return generateFallbackResponse({}, language);
@@ -527,14 +527,14 @@ export function hasUsableContext(context: FallbackContext | null | undefined): b
 /**
  * @deprecated Use narrateFallbackResponse with fallback_text
  */
-export function getHelpfulErrorMessage(language: 'mr' | 'hi' | 'en'): string {
+export function getHelpfulErrorMessage(language: string): string {
   console.warn('[DEPRECATED] getHelpfulErrorMessage is deprecated');
   const messages = {
     mr: '🙏 कृपया पुन्हा प्रयत्न करा.',
     hi: '🙏 कृपया फिर से प्रयास करें।',
     en: '🙏 Please try again.'
   };
-  return messages[language];
+  return messages[language] || messages['en'];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -550,7 +550,7 @@ export class FallbackResponseGenerator {
   }
   
   /** @deprecated */
-  generateSync(context: FallbackContext, language: 'mr' | 'hi' | 'en' = 'mr'): FallbackResponse {
+  generateSync(context: FallbackContext, language: string = 'mr'): FallbackResponse {
     return generateFallbackResponse(context, language);
   }
 }

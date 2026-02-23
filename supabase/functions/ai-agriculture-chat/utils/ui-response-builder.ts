@@ -140,7 +140,7 @@ export interface DecisionToUIInput {
   };
   
   // Context
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   trace_id: string;
   
   // Land context (optional)
@@ -282,7 +282,7 @@ export function buildUIResponseFromDecision(input: DecisionToUIInput): UIRespons
 
 function buildContent(
   mode: UIResponseMode,
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   details: {
     action_text?: string;
     reason_text?: string;
@@ -337,7 +337,7 @@ function buildContent(
 
 function buildActions(
   mode: UIResponseMode,
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   details: {
     options?: Array<{
       label?: string;

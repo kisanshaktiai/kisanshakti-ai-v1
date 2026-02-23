@@ -169,7 +169,7 @@ export function filterRulesByAge<T extends TemporalValidationInput>(
  */
 export function getAgeViolationReason(
   result: TemporalValidationResult,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   if (result.valid) {
     return '';

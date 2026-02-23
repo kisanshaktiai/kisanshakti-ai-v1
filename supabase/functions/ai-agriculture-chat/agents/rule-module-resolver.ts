@@ -409,7 +409,7 @@ export function generateRuleRequiredQuestions(
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function buildNLUOutputWithRuleMapping(
-  language: 'mr' | 'hi' | 'en' | 'mixed',
+  language: string,
   intent: NLUIntent,
   entities: ExtractedEntities,
   safetyAlerts: SafetyAlerts,

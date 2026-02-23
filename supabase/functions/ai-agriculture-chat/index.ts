@@ -2611,7 +2611,7 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
  * FALLBACK: When decision brain runs but produces no recommendations
  * Generates explanatory message asking for more information
  */
-function generateNoRecommendationsFallback(response: OrchestratorResponse, lang: 'mr' | 'hi' | 'en'): string {
+function generateNoRecommendationsFallback(response: OrchestratorResponse, lang: string): string {
   const parts: string[] = [];
   
   // Greeting
@@ -2683,7 +2683,7 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
 /**
  * Build formatted numbered list from decision output
  */
-function buildFormattedRecommendationsList(decision: any, lang: 'mr' | 'hi' | 'en'): string {
+function buildFormattedRecommendationsList(decision: any, lang: string): string {
   const parts: string[] = [];
   
   // Greeting
@@ -2847,7 +2847,7 @@ function buildFormattedRecommendationsList(decision: any, lang: 'mr' | 'hi' | 'e
 /**
  * Generate clarification prompt when question text is missing
  */
-function generateClarificationPrompt(response: OrchestratorResponse, lang: 'mr' | 'hi' | 'en'): string {
+function generateClarificationPrompt(response: OrchestratorResponse, lang: string): string {
   const messages: Record<string, string> = {
     mr: 'कृपया तुमच्या प्रश्नाबद्दल अधिक माहिती द्या. पिकाचे नाव, समस्या आणि लक्षणे सांगा.',
     hi: 'कृपया अपने प्रश्न के बारे में अधिक जानकारी दें। फसल का नाम, समस्या और लक्षण बताएं।',
@@ -2860,7 +2860,7 @@ function generateClarificationPrompt(response: OrchestratorResponse, lang: 'mr' 
  * Generic acknowledgment for unknown response types
  * @deprecated Use generateHelpfulErrorResponse instead
  */
-function generateGenericAcknowledgment(lang: 'mr' | 'hi' | 'en'): string {
+function generateGenericAcknowledgment(lang: string): string {
   return generateHelpfulErrorResponse(lang, '');
 }
 
@@ -2868,7 +2868,7 @@ function generateGenericAcknowledgment(lang: 'mr' | 'hi' | 'en'): string {
  * PRODUCTION FIX: Generate helpful error response with actionable guidance
  * Instead of "we will respond shortly", provide immediate value
  */
-function generateHelpfulErrorResponse(lang: 'mr' | 'hi' | 'en', fallbackAdvice: string): string {
+function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
   // ✅ FIX: Remove numbered emojis - use bullet points instead for instructional text
   const messages: Record<string, string> = {
     mr: `🙏 नमस्कार शेतकरी मित्र!
@@ -2933,7 +2933,7 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
   }
   
   const parts: string[] = [];
-  const lang = language as 'mr' | 'hi' | 'en';
+  const lang = language;
   
   // Greeting
   const greetings: Record<string, string> = {
@@ -3077,7 +3077,7 @@ function getGenericMonitoringMessage(language: string): string {
 function flattenCommunicationToText(comm: any, language: string, requires?: any): string {
   if (!comm) return '';
   
-  const lang = language as 'mr' | 'hi' | 'en';
+  const lang = language;
   const parts: string[] = [];
   
   // Helper to get text from TrilingualText object
@@ -3536,7 +3536,7 @@ function generateQuickRepliesFromCommunication(
   actionsReturned?: any[],
   dataAudit?: any
 ): string[] {
-  const lang = language as 'mr' | 'hi' | 'en';
+  const lang = language;
   
   // If communication has explicit follow-up options, use them
   if (comm?.follow_up_options && Array.isArray(comm.follow_up_options) && comm.follow_up_options.length > 0) {

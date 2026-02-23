@@ -27,7 +27,7 @@ export const LANGUAGE_NORMALIZER_VERSION = '1.0.0';
 export interface NormalizedInput {
   original_text: string;
   normalized_text: string;
-  detected_language: 'mr' | 'hi' | 'en';
+  detected_language: string;
   removed_elements: string[];
   word_count: number;
   has_agricultural_content: boolean;
@@ -120,7 +120,7 @@ const AGRICULTURAL_KEYWORDS: Record<string, string[]> = {
 // LANGUAGE DETECTION
 // ═══════════════════════════════════════════════════════════════════════════
 
-function detectLanguageFromText(text: string): 'mr' | 'hi' | 'en' {
+function detectLanguageFromText(text: string): string {
   const devanagariPattern = /[\u0900-\u097F]/g;
   const devanagariMatches = text.match(devanagariPattern) || [];
   const hasDevanagari = devanagariMatches.length > 0;
@@ -214,7 +214,7 @@ const ROMANIZED_AGRI_KEYWORDS = [
   'gawat', 'tan', 'gavat', 'fasal', 'fasla'
 ];
 
-function checkAgriculturalContent(text: string, language: 'mr' | 'hi' | 'en'): boolean {
+function checkAgriculturalContent(text: string, language: string): boolean {
   const lowerText = text.toLowerCase();
   const keywords = AGRICULTURAL_KEYWORDS[language];
   

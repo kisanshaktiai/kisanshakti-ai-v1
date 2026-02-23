@@ -577,7 +577,7 @@ export class FeedbackLearningEngine {
   /**
    * Get follow-up questions for a specific day
    */
-  getFollowUpQuestions(day: 3 | 7 | 14, language: 'mr' | 'hi' | 'en'): FollowUpQuestion[] {
+  getFollowUpQuestions(day: 3 | 7 | 14, language: string): FollowUpQuestion[] {
     return FOLLOW_UP_QUESTIONS[day] || [];
   }
   

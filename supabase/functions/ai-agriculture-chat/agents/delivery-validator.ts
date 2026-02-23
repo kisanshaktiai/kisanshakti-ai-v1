@@ -314,7 +314,7 @@ export function validateDelivery(
 export function generateMustIncludeConstraint(
   decisionOutput: any,
   severity: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const recommendations = extractRecommendations(decisionOutput);
   
