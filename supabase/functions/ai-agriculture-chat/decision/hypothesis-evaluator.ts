@@ -224,18 +224,8 @@ function evaluatePartialConditionMatch(
     }
   }
   
-  // Check trigger_keywords in user_query
-  if (conditionsJson.trigger_keywords && Array.isArray(conditionsJson.trigger_keywords)) {
-    totalConditions++;
-    const queryLower = input.user_query.toLowerCase();
-    const keywordMatch = conditionsJson.trigger_keywords.some((kw: string) => 
-      queryLower.includes(kw.toLowerCase())
-    );
-    if (keywordMatch) {
-      matchedCount += 2; // Higher weight for keyword match
-      matchedConditions.push('trigger_keywords');
-    }
-  }
+  // SSOT: trigger_keywords column was DROPPED per architecture audit
+  // No keyword matching - conditions_json.observations is the sole source
   
   // Check NDVI conditions if available
   if (conditionsJson.ndvi_level && input.ndvi_level) {
