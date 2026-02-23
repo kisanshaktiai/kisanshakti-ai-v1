@@ -591,7 +591,9 @@ export class SymbolicReasoner {
     const cached = getCachedRules(cacheKey);
     if (cached) {
       console.log(`   ♻️ [Cache HIT] ${cached.length} rules for crop=${dbCode}`);
-      return this.filterByStage(cached, stage);
+      const stageFiltered = this.filterByStage(cached, stage);
+      // Apply observation layer filtering
+      return await this.applyObservationLayerFilter(stageFiltered, facts);
     }
     
     console.log(`   🔄 [Cache MISS] Loading rules for crop=${dbCode} (variants: ${[...variants].join(',')}) from DB`);
@@ -618,7 +620,153 @@ export class SymbolicReasoner {
     setCachedRules(cacheKey, allRules);
     console.log(`   💾 [Cache SET] ${allRules.length} rules cached for crop=${dbCode} (TTL=5min)`);
     
-    return this.filterByStage(allRules, stage);
+    const stageFiltered = this.filterByStage(allRules, stage);
+    // Apply observation layer filtering
+    return await this.applyObservationLayerFilter(stageFiltered, facts);
+  }
+  
+  /**
+   * OBSERVATION LAYER: Load observation metadata from observation_master + canonical_group_mapping
+   * Caches results with same TTL as rule cache.
+   */
+  private async loadObservationMetadata(observationCodes: string[]): Promise<Map<string, ObservationMetadata>> {
+    if (!observationCodes || observationCodes.length === 0) {
+      return new Map();
+    }
+    
+    const cacheKey = `obs_meta_${observationCodes.sort().join(',')}`;
+    const cached = getCachedObsMetadata(cacheKey);
+    if (cached) {
+      console.log(`   ♻️ [ObsMeta Cache HIT] ${cached.size} observations`);
+      return cached;
+    }
+    
+    try {
+      // Query observation_master for metadata
+      const { data: obsData, error: obsError } = await this.supabase
+        .from('observation_master')
+        .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+        .in('observation_code', observationCodes);
+      
+      if (obsError) {
+        console.error('❌ [ObsMeta] Failed to load observation metadata:', obsError.message);
+        return new Map();
+      }
+      
+      // Query canonical_group_mapping for ontology bridge
+      const bioGroups = [...new Set((obsData || []).map((o: any) => o.canonical_group).filter(Boolean))];
+      let mappingData: any[] = [];
+      
+      if (bioGroups.length > 0) {
+        const { data: mapData, error: mapError } = await this.supabase
+          .from('canonical_group_mapping')
+          .select('biological_group, engine_group, confidence')
+          .in('biological_group', bioGroups);
+        
+        if (!mapError && mapData) {
+          mappingData = mapData;
+        }
+      }
+      
+      // Build metadata map
+      const result = new Map<string, ObservationMetadata>();
+      for (const obs of (obsData || [])) {
+        const engineGroups = mappingData
+          .filter((m: any) => m.biological_group === obs.canonical_group)
+          .map((m: any) => ({ engine_group: m.engine_group, confidence: m.confidence }));
+        
+        result.set(obs.observation_code, {
+          observation_code: obs.observation_code,
+          observation_category: obs.observation_category,
+          affected_plant_part: obs.affected_plant_part,
+          canonical_group: obs.canonical_group,
+          is_diagnostic: obs.is_diagnostic === true,
+          engine_groups: engineGroups
+        });
+      }
+      
+      console.log(`   📋 [ObsMeta] Loaded ${result.size} observation metadata entries, ${mappingData.length} ontology mappings`);
+      setCachedObsMetadata(cacheKey, result);
+      return result;
+      
+    } catch (e) {
+      console.error('❌ [ObsMeta] Exception:', e);
+      return new Map();
+    }
+  }
+  
+  /**
+   * OBSERVATION LAYER: Apply category + plant-part pre-filtering to candidate rules
+   * Uses ontology bridge (canonical_group_mapping) for narrowing.
+   * Implements WHOLE wildcard logic per SQL architecture.
+   */
+  private async applyObservationLayerFilter(rules: any[], facts: SymbolicFact): Promise<any[]> {
+    const observations = facts.all_observations || [];
+    if (observations.length === 0) {
+      console.log(`   ⏭️ [ObsFilter] No observations - skipping pre-filter`);
+      return rules;
+    }
+    
+    const obsMeta = await this.loadObservationMetadata(observations);
+    if (obsMeta.size === 0) {
+      console.log(`   ⏭️ [ObsFilter] No observation metadata found - skipping pre-filter`);
+      return rules;
+    }
+    
+    // Store metadata for later use in confidence boosting
+    (this as any)._currentObsMetadata = obsMeta;
+    
+    // Collect observation categories and plant parts
+    const obsCategories = new Set<string>();
+    const obsPlantParts = new Set<string>();
+    const obsEngineGroups = new Set<string>();
+    
+    for (const [, meta] of obsMeta) {
+      if (meta.observation_category) obsCategories.add(meta.observation_category);
+      if (meta.affected_plant_part) obsPlantParts.add(meta.affected_plant_part);
+      for (const eg of meta.engine_groups) {
+        obsEngineGroups.add(eg.engine_group);
+      }
+    }
+    
+    console.log(`   🔬 [ObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}], EngineGroups: [${[...obsEngineGroups].join(',')}]`);
+    
+    const beforeCount = rules.length;
+    const filtered = rules.filter(rule => {
+      // Category filter
+      const reqCat = rule.required_observation_category;
+      if (reqCat && Array.isArray(reqCat) && reqCat.length > 0) {
+        const hasMatch = reqCat.some((cat: string) => obsCategories.has(cat));
+        if (!hasMatch) return false;
+      }
+      
+      // Plant part filter with WHOLE wildcard
+      const reqPart = rule.required_plant_part;
+      if (reqPart && Array.isArray(reqPart) && reqPart.length > 0) {
+        const hasMatch = 
+          // If observation is WHOLE → matches ANY rule
+          obsPlantParts.has('WHOLE') ||
+          // If rule allows WHOLE → matches ANY observation
+          reqPart.includes('WHOLE') ||
+          // Direct match
+          reqPart.some((part: string) => obsPlantParts.has(part));
+        if (!hasMatch) return false;
+      }
+      
+      return true;
+    });
+    
+    const removedCount = beforeCount - filtered.length;
+    if (removedCount > 0) {
+      console.log(`   🎯 [ObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${filtered.length})`);
+    }
+    
+    // Candidate explosion warning
+    if (filtered.length > 25) {
+      console.warn(`   ⚠️ [RULE_EXPLOSION] ${filtered.length} candidate rules for ${observations.length} observations - consider tighter required_observation_category/required_plant_part constraints`);
+    }
+    
+    return filtered;
   }
   
   /**
