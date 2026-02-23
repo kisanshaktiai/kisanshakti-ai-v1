@@ -271,7 +271,7 @@ export interface DiagnosisOnlyInput {
   canonicalContext: CanonicalContext;
   observations: Set<string> | string[];
   matched_rules: MatchedRule[];
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   trace_id?: string;
 }
 
@@ -1072,7 +1072,7 @@ export function generateDiagnosisOnlyOutput(
 function createUnknownDiagnosis(
   terminalDamage: string[],
   canonicalContext: CanonicalContext,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): DiagnosisResult {
   const unknownTranslations = {
     mr: 'अज्ञात कारण - तपासणी आवश्यक',
@@ -1124,7 +1124,7 @@ function createUnknownDiagnosis(
  */
 export function formatDiagnosisForLLM(
   output: DiagnosisOnlyOutput,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const diagnoses = output.diagnoses;
   

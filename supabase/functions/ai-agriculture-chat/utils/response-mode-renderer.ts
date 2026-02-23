@@ -337,7 +337,7 @@ export function assertResponseModeInvariant(
 
 export function renderByMode(
   mode: ResponseMode | string,
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   content: {
     primary_text?: string;
     options?: ClarificationOption[];
@@ -357,8 +357,8 @@ export function renderByMode(
       response_mode: modeStr,
       primary_message: hasTextContent(content.monitoring_message) 
         ? content.monitoring_message 
-        : MODE_TEMPLATES.MONITORING_ADVISED[lang],
-      monitoring_note: MODE_TEMPLATES.MONITORING_ADVISED[lang],
+        : (MODE_TEMPLATES.MONITORING_ADVISED[lang] || MODE_TEMPLATES.MONITORING_ADVISED['en']),
+      monitoring_note: MODE_TEMPLATES.MONITORING_ADVISED[lang] || MODE_TEMPLATES.MONITORING_ADVISED['en'],
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -371,7 +371,7 @@ export function renderByMode(
     const options = content.options || [];
     const headerText = hasTextContent(content.primary_text) 
       ? content.primary_text 
-      : MODE_TEMPLATES.CLARIFICATION_REQUIRED[lang];
+      : (MODE_TEMPLATES.CLARIFICATION_REQUIRED[lang] || MODE_TEMPLATES.CLARIFICATION_REQUIRED['en']);
     
     return {
       response_mode: ResponseMode.CLARIFICATION,
@@ -388,9 +388,9 @@ export function renderByMode(
   if (modeStr === 'PHOTO_REQUIRED' || modeStr === 'PHOTO') {
     return {
       response_mode: 'PHOTO_REQUIRED',
-      primary_message: MODE_TEMPLATES.PHOTO_REQUIRED[lang],
+      primary_message: MODE_TEMPLATES.PHOTO_REQUIRED[lang] || MODE_TEMPLATES.PHOTO_REQUIRED['en'],
       request_photo: true,
-      photo_guidance: PHOTO_GUIDANCE_TEMPLATES[lang],
+      photo_guidance: PHOTO_GUIDANCE_TEMPLATES[lang] || PHOTO_GUIDANCE_TEMPLATES['en'],
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -404,8 +404,8 @@ export function renderByMode(
       response_mode: ResponseMode.OBSERVATION,
       primary_message: hasTextContent(content.primary_text) 
         ? content.primary_text 
-        : MODE_TEMPLATES.OBSERVATION[lang],
-      monitoring_note: MODE_TEMPLATES.OBSERVATION[lang],
+        : (MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en']),
+      monitoring_note: MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en'],
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -439,7 +439,7 @@ export function renderByMode(
         ? content.primary_text 
         : hasTextContent(content.custom_message)
         ? content.custom_message
-        : MODE_TEMPLATES.INFORMATION[lang],
+        : (MODE_TEMPLATES.INFORMATION[lang] || MODE_TEMPLATES.INFORMATION['en']),
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -451,7 +451,7 @@ export function renderByMode(
   console.warn(`[ResponseModeRenderer] Unknown mode '${modeStr}', defaulting to OBSERVATION`);
   return {
     response_mode: ResponseMode.OBSERVATION,
-    primary_message: MODE_TEMPLATES.OBSERVATION[lang],
+    primary_message: MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en'],
     is_valid: true,
     render_source: 'FALLBACK'
   };
@@ -463,7 +463,7 @@ export function renderByMode(
 
 function buildTreatmentMessage(
   treatment: TreatmentDetails,
-  lang: 'mr' | 'hi' | 'en'
+  lang: string
 ): string {
   const parts: string[] = [];
   
@@ -511,7 +511,7 @@ function buildTreatmentMessage(
     parts.push(`${knowledgeLabels[lang]} ${treatment.knowledge_text}`);
   }
   
-  return parts.length > 0 ? parts.join('\n') : MODE_TEMPLATES.TREATMENT[lang];
+  return parts.length > 0 ? parts.join('\n') : (MODE_TEMPLATES.TREATMENT[lang] || MODE_TEMPLATES.TREATMENT['en']);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

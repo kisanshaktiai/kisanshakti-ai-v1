@@ -31,7 +31,7 @@ export interface PhotoAnalysisInput {
     growth_stage?: string;
     days_since_sowing?: number;
   };
-  language?: 'mr' | 'hi' | 'en';
+  language?: string;
 }
 
 export interface PhotoAnalysisOutput {
