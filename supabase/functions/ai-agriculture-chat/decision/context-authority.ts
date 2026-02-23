@@ -147,13 +147,13 @@ export function hasCropContextAuthority(authority: CropContextAuthority | null |
  */
 export function formatCropContextFrame(
   authority: CropContextAuthority,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const crop = authority.crop_name;
   const stage = authority.growth_stage;
   
   // Stage translations (basic - no inference)
-  const stageTranslations: Record<string, Record<'mr' | 'hi' | 'en', string>> = {
+  const stageTranslations: Record<string, Record<string, string>> = {
     'GERMINATION': { mr: 'उगवण', hi: 'अंकुरण', en: 'Germination' },
     'SEEDLING': { mr: 'रोपे', hi: 'अंकुर', en: 'Seedling' },
     'TILLERING': { mr: 'फुटवे', hi: 'कल्ले', en: 'Tillering' },
@@ -166,16 +166,18 @@ export function formatCropContextFrame(
   };
   
   const stageText = stageTranslations[stage]?.[language] || 
-                    stageTranslations['UNKNOWN'][language];
+                    stageTranslations[stage]?.['en'] ||
+                    stageTranslations['UNKNOWN'][language] ||
+                    stageTranslations['UNKNOWN']['en'];
   
   // Format: "🌾 Your {crop} ({stage} stage)"
-  const templates: Record<'mr' | 'hi' | 'en', string> = {
+  const templates: Record<string, string> = {
     mr: `🌾 तुमच्या ${crop} मध्ये (${stageText} अवस्था)`,
     hi: `🌾 आपके ${crop} में (${stageText} अवस्था)`,
     en: `🌾 In your ${crop} (${stageText} stage)`
   };
   
-  return templates[language];
+  return templates[language] || templates['en'];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

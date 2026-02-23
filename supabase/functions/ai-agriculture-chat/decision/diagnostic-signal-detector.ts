@@ -222,7 +222,7 @@ export function getSignalCategory(observationKey: string): SignalCategory {
 // TRILINGUAL OVERRIDE DISCLAIMER MESSAGES
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const CROSS_STAGE_DISCLAIMER: { mr: string; hi: string; en: string } = {
+export const CROSS_STAGE_DISCLAIMER: Record<string, string> = {
   mr: '⚠️ टीप: हे लक्षण सामान्यतः नंतरच्या टप्प्यात दिसते, परंतु शेतातील परिस्थितीवरून लवकर सुरुवात दिसते.',
   hi: '⚠️ नोट: यह लक्षण आमतौर पर बाद के चरण में दिखाई देता है, लेकिन क्षेत्र की स्थिति जल्दी शुरुआत का संकेत देती है।',
   en: '⚠️ Note: This symptom typically appears at a later stage, but field conditions suggest early onset.'
@@ -231,6 +231,6 @@ export const CROSS_STAGE_DISCLAIMER: { mr: string; hi: string; en: string } = {
 /**
  * Get disclaimer message for cross-stage diagnosis
  */
-export function getCrossStageDisclaimer(language: 'mr' | 'hi' | 'en'): string {
-  return CROSS_STAGE_DISCLAIMER[language];
+export function getCrossStageDisclaimer(language: string): string {
+  return CROSS_STAGE_DISCLAIMER[language] || CROSS_STAGE_DISCLAIMER['en'];
 }
