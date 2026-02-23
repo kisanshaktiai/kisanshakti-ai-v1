@@ -36,7 +36,7 @@ export interface MultiModalInput {
 
 export interface TextUnderstanding {
   farmer_message: string;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   intent: string;
   entities: {
     crop_code?: string;

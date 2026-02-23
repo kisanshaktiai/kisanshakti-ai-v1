@@ -32,7 +32,7 @@ import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
 
 export interface SymbolicNarrationInput {
   /** Language for narration output */
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   
   /** The symbolic decision from Rule Engine - REQUIRED */
   symbolic_decision: {
@@ -668,7 +668,7 @@ export type { SymbolicNarrationInput, NarrationOutput, ValidationResult };
  */
 export interface LLMResponseInput {
   farmer_message: string;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   intent?: string;
   land_context?: {
     current_crop?: string;

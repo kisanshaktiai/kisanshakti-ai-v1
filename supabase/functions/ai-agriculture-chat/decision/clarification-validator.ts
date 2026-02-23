@@ -209,7 +209,7 @@ export class ClarificationValidator {
     scope: string,
     crop: string,
     growthStage: string,
-    language: 'mr' | 'hi' | 'en'
+    language: string
   ): string[] {
     // These are OBSERVATION-ONLY options - NO diagnosis names
     const safeOptions: Record<string, Record<string, string[]>> = {
@@ -289,7 +289,7 @@ export class ClarificationValidator {
   /**
    * Sanitize LLM-generated options by removing any with diagnosis leakage
    */
-  sanitizeOptions(options: DynamicOption[], fallbackScope: string, language: 'mr' | 'hi' | 'en'): DynamicOption[] {
+  sanitizeOptions(options: DynamicOption[], fallbackScope: string, language: string): DynamicOption[] {
     const result = this.validateOptions(options);
     
     if (result.valid) {
@@ -362,7 +362,7 @@ export interface SanitizedClarificationResult {
 export function validateAndSanitizeClarification(
   options: DynamicOption[],
   scope: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): SanitizedClarificationResult {
   const validator = getClarificationValidator();
   

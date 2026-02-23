@@ -485,7 +485,7 @@ export interface InducedSymbol {
   category: 'SYMPTOM' | 'CROP' | 'AFFECTED_PART' | 'SEVERITY' | 'DISTRIBUTION';
   confidence: number;
   source_text: string;
-  source_language: 'mr' | 'hi' | 'en';
+  source_language: string;
 }
 
 export interface LanguageInductionResult {
@@ -509,7 +509,7 @@ export interface LanguageInductionResult {
   max_confidence: number;
   
   // Metadata
-  detected_language: 'mr' | 'hi' | 'en';
+  detected_language: string;
   original_text: string;
   processing_time_ms: number;
 }
@@ -518,7 +518,7 @@ export interface LanguageInductionResult {
 // LANGUAGE DETECTION
 // ============================================================================
 
-function detectLanguage(text: string): 'mr' | 'hi' | 'en' {
+function detectLanguage(text: string): string {
   const marathiPattern = /[\u0900-\u097F]/; // Devanagari
   const hindiCommonWords = ['है', 'हैं', 'और', 'का', 'की', 'को', 'में', 'से', 'पर'];
   const marathiCommonWords = ['आहे', 'आहेत', 'आणि', 'चे', 'ची', 'ला', 'मध्ये', 'वर'];

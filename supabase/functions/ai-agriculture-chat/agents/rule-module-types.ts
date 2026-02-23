@@ -80,7 +80,7 @@ export type AdvancedLayerModule =
 
 export interface NLUOutputWithRuleMapping {
   // Language & Intent
-  language: 'mr' | 'hi' | 'en' | 'mixed';
+  language: string;
   intent: NLUIntent;
   
   // Rule Module Identifiers - Maps to .ts files

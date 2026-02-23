@@ -527,7 +527,7 @@ export function buildPrescriptionGateAudit(
  * Generate observation-only response when treatments are blocked
  */
 export function generateObservationOnlyResponse(
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   cropName?: string,
   reason?: string
 ): string {
@@ -539,14 +539,14 @@ export function generateObservationOnlyResponse(
     en: `🌾 Hello!\n\nUnderstood about your ${cropName || 'crop'}.\n\n📋 **What to do now:**\n• Carefully observe the crop\n• Take photos of affected areas\n• Watch if symptoms are spreading\n\n🔍 We'll suggest proper treatment once we have more information.\n\n👉 Please send a photo if possible.`
   };
   
-  return templates[language];
+  return templates[language] || templates['en'];
 }
 
 /**
  * Generate monitoring-only response for young crops
  */
 export function generateYoungCropMonitoringResponse(
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   cropName?: string,
   cropStage?: string,
   daysSinceSowing?: number

@@ -121,7 +121,7 @@ const FUNGICIDE_GROUPS: Record<string, string[]> = {
  */
 export function getSafetyWarning(
   safetyLevel: SafetyLevel | undefined,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): SafetyWarning | null {
   if (!safetyLevel || safetyLevel === 1) {
     return null; // No warning needed for level 1
@@ -135,7 +135,7 @@ export function getSafetyWarning(
  */
 export function formatSafetyWarning(
   warning: SafetyWarning,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const warningText = language === 'mr' ? warning.warning_mr :
                       language === 'hi' ? warning.warning_hi :
@@ -211,7 +211,7 @@ function getAlternativeGroups(currentGroup: string): string[] {
  */
 export function getRotationAdvice(
   result: ResistanceCheckResult,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   if (result.rotation_allowed) {
     return '';
@@ -238,7 +238,7 @@ export function getRotationAdvice(
 export function validateSafety(
   rule: SafetyInput,
   recentTreatments: string[],
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): SafetyValidationResult {
   const messages: string[] = [];
   let passed = true;

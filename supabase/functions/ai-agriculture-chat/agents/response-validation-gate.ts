@@ -58,7 +58,7 @@ export function validateResponseBeforeSend(
     farmer_message: string;
     detected_intent: EnhancedIntent;
     response_type: ResponseType;
-    language: 'mr' | 'hi' | 'en';
+    language: string;
     land_context?: {
       current_crop?: string;
       growth_stage?: string;

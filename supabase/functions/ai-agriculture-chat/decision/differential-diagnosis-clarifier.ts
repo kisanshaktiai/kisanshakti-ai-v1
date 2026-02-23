@@ -83,7 +83,7 @@ export interface DifferentialClarificationInput {
     temperature_extreme: boolean;
   };
   questions_asked: number;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -598,7 +598,7 @@ export function generateDifferentialClarification(
 export function getBestDifferentialQuestion(
   symptoms: string[],
   questionsAsked: number,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): DifferentialQuestion | null {
   const result = generateDifferentialClarification({
     crop_code: 'unknown',

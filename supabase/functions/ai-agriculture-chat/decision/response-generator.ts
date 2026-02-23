@@ -23,7 +23,7 @@ export interface ResponseInput {
   confidenceScore: ConfidenceScore;
   facts: SymbolicFact;
   landState: AuthoritativeLandState | null;
-  language: 'mr' | 'hi' | 'en';
+  language: string;
 }
 
 export interface GeneratedResponse {
@@ -387,7 +387,7 @@ export class ResponseGenerator {
   /**
    * Localize crop name
    */
-  private localizeCrop(crop: string, language: 'mr' | 'hi' | 'en'): string {
+  private localizeCrop(crop: string, language: string): string {
     const cropNames: Record<string, Record<string, string>> = {
       'SUGARCANE': { mr: 'ऊस', hi: 'गन्ना', en: 'Sugarcane' },
       'COTTON': { mr: 'कापूस', hi: 'कपास', en: 'Cotton' },
@@ -395,13 +395,13 @@ export class ResponseGenerator {
       'RICE': { mr: 'भात', hi: 'धान', en: 'Rice' },
       'SOYBEAN': { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'Soybean' }
     };
-    return cropNames[crop.toUpperCase()]?.[language] || crop;
+    return cropNames[crop.toUpperCase()]?.[language] || cropNames[crop.toUpperCase()]?.['en'] || crop;
   }
   
   /**
    * Localize stage name
    */
-  private localizeStage(stage: string, language: 'mr' | 'hi' | 'en'): string {
+  private localizeStage(stage: string, language: string): string {
     const stageNames: Record<string, Record<string, string>> = {
       'GERMINATION': { mr: 'उगवण', hi: 'अंकुरण', en: 'Germination' },
       'TILLERING': { mr: 'फुटवे', hi: 'टिलरिंग', en: 'Tillering' },
@@ -410,13 +410,13 @@ export class ResponseGenerator {
       'MATURITY': { mr: 'पक्वता', hi: 'परिपक्वता', en: 'Maturity' },
       'VEGETATIVE': { mr: 'वनस्पती वाढ', hi: 'वनस्पति वृद्धि', en: 'Vegetative' }
     };
-    return stageNames[stage.toUpperCase()]?.[language] || stage;
+    return stageNames[stage.toUpperCase()]?.[language] || stageNames[stage.toUpperCase()]?.['en'] || stage;
   }
   
   /**
    * Localize symptom
    */
-  private localizeSymptom(symptom: string, language: 'mr' | 'hi' | 'en'): string {
+  private localizeSymptom(symptom: string, language: string): string {
     const symptomNames: Record<string, Record<string, string>> = {
       'LEAF_YELLOWING': { mr: 'पाने पिवळी होणे', hi: 'पत्ते पीले होना', en: 'Leaf yellowing' },
       'LEAF_DRYING': { mr: 'पाने वाळणे', hi: 'पत्ते सूखना', en: 'Leaf drying' },
@@ -424,13 +424,13 @@ export class ResponseGenerator {
       'GAPS_IN_FIELD': { mr: 'शेतात गॅप', hi: 'खेत में गैप', en: 'Gaps in field' },
       'WILTING': { mr: 'मर जाणे', hi: 'मुरझाना', en: 'Wilting' }
     };
-    return symptomNames[symptom.toUpperCase()]?.[language] || symptom;
+    return symptomNames[symptom.toUpperCase()]?.[language] || symptomNames[symptom.toUpperCase()]?.['en'] || symptom;
   }
   
   /**
    * Format recommendations
    */
-  private formatRecommendations(recommendations: FiredRule[], language: 'mr' | 'hi' | 'en'): string {
+  private formatRecommendations(recommendations: FiredRule[], language: string): string {
     if (recommendations.length === 0) {
       return language === 'mr' ? 'सध्या निरीक्षण करा' : 
              language === 'hi' ? 'अभी निगरानी करें' : 
@@ -448,7 +448,7 @@ export class ResponseGenerator {
   /**
    * Format reasoning steps
    */
-  private formatReasoning(reasoning: string[], language: 'mr' | 'hi' | 'en'): string {
+  private formatReasoning(reasoning: string[], language: string): string {
     if (reasoning.length === 0) return '';
     return reasoning.slice(0, 3).map(r => `• ${r}`).join('\n');
   }
@@ -456,7 +456,7 @@ export class ResponseGenerator {
   /**
    * Format alternative diagnoses
    */
-  private formatAlternatives(alternatives: Hypothesis[], language: 'mr' | 'hi' | 'en'): string {
+  private formatAlternatives(alternatives: Hypothesis[], language: string): string {
     if (alternatives.length === 0) return '';
     return alternatives.slice(0, 2).map(alt => 
       `• ${alt.cause_name} (${Math.round(alt.confidence * 100)}%)`
@@ -466,7 +466,7 @@ export class ResponseGenerator {
   /**
    * Format data used
    */
-  private formatDataUsed(facts: SymbolicFact, landState: AuthoritativeLandState | null, language: 'mr' | 'hi' | 'en'): string {
+  private formatDataUsed(facts: SymbolicFact, landState: AuthoritativeLandState | null, language: string): string {
     const data: string[] = [];
     if (facts.ndvi !== null) data.push(`NDVI: ${facts.ndvi.toFixed(2)}`);
     if (facts.soil_n !== null) data.push(`N: ${facts.soil_n}`);
@@ -485,7 +485,7 @@ export class ResponseGenerator {
   /**
    * Get timing advice
    */
-  private getTimingAdvice(facts: SymbolicFact, language: 'mr' | 'hi' | 'en'): string {
+  private getTimingAdvice(facts: SymbolicFact, language: string): string {
     if (facts.recent_rain) {
       return language === 'mr' ? 'पाऊस थांबल्यावर' : 
              language === 'hi' ? 'बारिश रुकने के बाद' : 
@@ -499,7 +499,7 @@ export class ResponseGenerator {
   /**
    * Get acknowledgment
    */
-  private getAcknowledgment(language: 'mr' | 'hi' | 'en'): string {
+  private getAcknowledgment(language: string): string {
     return language === 'mr' ? '🌾 समजले.' : 
            language === 'hi' ? '🌾 समझ गया.' : 
            '🌾 Understood.';
@@ -508,7 +508,7 @@ export class ResponseGenerator {
   /**
    * Get next steps based on confidence
    */
-  private getNextSteps(level: ConfidenceLevel, language: 'mr' | 'hi' | 'en'): string {
+  private getNextSteps(level: ConfidenceLevel, language: string): string {
     if (level === 'LOW' || level === 'VERY_LOW') {
       return language === 'mr' ? 'फोटो पाठवा किंवा तज्ञाशी बोला' :
              language === 'hi' ? 'फोटो भेजें या विशेषज्ञ से बात करें' :
@@ -522,7 +522,7 @@ export class ResponseGenerator {
   /**
    * Get caveats based on confidence
    */
-  private getCaveats(level: ConfidenceLevel, language: 'mr' | 'hi' | 'en'): string {
+  private getCaveats(level: ConfidenceLevel, language: string): string {
     if (level === 'MODERATE' || level === 'LOW') {
       return language === 'mr' ? '⚠️ हे प्राथमिक निदान आहे. पुष्टी आवश्यक.' :
              language === 'hi' ? '⚠️ यह प्रारंभिक निदान है। पुष्टि आवश्यक.' :
@@ -534,7 +534,7 @@ export class ResponseGenerator {
   /**
    * Get clarification questions
    */
-  private getClarificationQuestions(facts: SymbolicFact, language: 'mr' | 'hi' | 'en'): string {
+  private getClarificationQuestions(facts: SymbolicFact, language: string): string {
     const questions: string[] = [];
     
     if (facts.distribution === 'unknown') {

@@ -1266,7 +1266,7 @@ export function extractProductRecommendation(
   severity: SeverityLevel,
   ipmLevel: number,
   organicOnly: boolean = false,
-  language: 'mr' | 'hi' | 'en' = 'mr'
+  language: string = 'mr'
 ): ProductDetails | null {
   const cropNorm = normalizeForMatching(crop);
   const pestNorm = pest ? normalizeForMatching(pest) : null;

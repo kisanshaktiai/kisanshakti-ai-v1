@@ -87,7 +87,7 @@ export type { CanonicalContext };
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface ClarificationInput {
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   farmer_message: string;
   observations: string[];
   crop_code?: string;
@@ -96,7 +96,7 @@ export interface ClarificationInput {
 }
 
 export interface ScopedClarificationInput {
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   observations: ObservationExtraction;
   understandingResult: UnderstandingCheckResult;
   diagnosisRulesFired: boolean;

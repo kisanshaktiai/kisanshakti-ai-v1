@@ -101,7 +101,7 @@ export interface RuleDrivenClarificationInput {
   crop_code: string;
   stage: string;
   current_symptoms: string[];
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   supabaseClient: any;
   user_query?: string;
   days_since_sowing?: number | null;
@@ -615,7 +615,7 @@ export async function fetchRuleDrivenClarificationOptions(
 function getHypothesisAwareQuestion(
   candidates: CandidateHypothesis[],
   stage: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   // If single candidate, ask specifically about it
   if (candidates.length === 1) {
@@ -645,7 +645,7 @@ function getHypothesisAwareQuestion(
 function useHypothesisFallback(
   failureResult: FailureClassResult,
   stage: string,
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   traceId: string,
   reason: string
 ): RuleDrivenClarificationOutput {
@@ -701,7 +701,7 @@ function useHypothesisFallback(
 function getFailureClassQuestion(
   failureClass: FailureClass,
   stage: string,
-  language: 'mr' | 'hi' | 'en'
+  language: string
 ): string {
   const questions: Record<FailureClass, Record<string, string>> = {
     ESTABLISHMENT_FAILURE: {

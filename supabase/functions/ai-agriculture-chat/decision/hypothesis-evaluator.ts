@@ -963,7 +963,7 @@ const OBSERVATION_ICONS_FALLBACK: Record<string, string> = {
  */
 export function generateDiagnosticConfirmationOptions(
   candidates: CandidateHypothesis[],
-  language: 'mr' | 'hi' | 'en' = 'mr',
+  language: string = 'mr',
   maxOptions: number = 5
 ): DiagnosticConfirmationResult {
   console.log(`   🔬 [DiagnosticConfirmation] Generating trust-first options from ${candidates.length} hypotheses`);

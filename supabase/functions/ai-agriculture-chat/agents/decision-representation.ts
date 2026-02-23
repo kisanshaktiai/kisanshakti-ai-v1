@@ -80,7 +80,7 @@ export interface NLUDecisionGraphInput {
   /**
    * Detected input language for response matching
    */
-  language_detected: 'mr' | 'hi' | 'en';
+  language_detected: string;
   
   /**
    * Urgency assessment
@@ -242,7 +242,7 @@ export interface LLMRenderInput {
   /**
    * Target language
    */
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   
   /**
    * Symbolic decision - LLM can ONLY render this, not modify
@@ -385,7 +385,7 @@ export function validateLLMOutputIntegrity(
  * Create empty decision graph input (when NLU confidence is low)
  */
 export function createEmptyNLUInput(
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   message: string
 ): NLUDecisionGraphInput {
   return {

@@ -80,7 +80,7 @@ export function buildExplanationChain(
   decisionId: string,
   matchedRules: RuleMatchInfo[],
   landState: AuthoritativeLandState | null,
-  language: 'mr' | 'hi' | 'en' = 'mr'
+  language: string = 'mr'
 ): ExplanationChain {
   console.log(`📝 [ExplanationChain] Building chain for decision: ${decisionId}`);
   console.log(`   Rules to process: ${matchedRules.length}`);

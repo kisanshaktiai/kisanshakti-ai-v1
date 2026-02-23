@@ -27,7 +27,7 @@ export const DIAGNOSTIC_ESCALATION_GENERATOR_VERSION = '1.0.0';
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface DiagnosticEscalationInput {
-  language: 'mr' | 'hi' | 'en';
+  language: string;
   crop_name: string;
   crop_name_local?: string;
   growth_stage: string;

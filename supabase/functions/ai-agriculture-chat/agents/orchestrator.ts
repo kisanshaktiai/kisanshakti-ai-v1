@@ -861,7 +861,7 @@ export class AIAgentOrchestrator {
     stage: string,
     symptomContext: string,
     daysSinceSowing: number,
-    language: 'mr' | 'hi' | 'en' = 'mr'
+    language: string = 'mr'
   ): { i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> } {
     console.log(`[STAGE_FALLBACK] ${cropCode}/${stage} (${daysSinceSowing} DAS)`);
     
@@ -900,7 +900,7 @@ export class AIAgentOrchestrator {
   private generateGenericFallback(
     cropCode: string,
     daysSinceSowing: number,
-    _language: 'mr' | 'hi' | 'en'
+    _language: string
   ): { i18n_key: string; action_codes: string[]; photoRequested: boolean; metadata: Record<string, any> } {
     // Return symbolic structure only - NO hardcoded language text
     return {
@@ -924,7 +924,7 @@ export class AIAgentOrchestrator {
     tenantId: string,
     options: {
       photoUrl?: string;
-      language?: 'mr' | 'hi' | 'en';
+      language?: string;
       landId?: string;
       traceId?: string;  // PHASE A: Accept trace_id for observability
       // PHASE 8: Session context for follow-up awareness
@@ -1306,7 +1306,7 @@ export class AIAgentOrchestrator {
       
       const staticGateResult = checkStaticDataGate({
         farmer_message: farmerMessage,
-        language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+        language: options.language || 'mr',
         land_context: landContext ? {
           land_id: landContext.land_id,
           land_name: landContext.land_name,
@@ -2198,7 +2198,7 @@ export class AIAgentOrchestrator {
         } : null;
         
         // CRITICAL FIX: Generate language-aware clarification message
-        const userLang = (options.language || 'mr') as 'mr' | 'hi' | 'en';
+        const userLang = options.language || 'mr';
         let clarificationMr: string;
         let clarificationHi: string;
         let clarificationEn: string;
@@ -2577,7 +2577,7 @@ export class AIAgentOrchestrator {
         // Generate direct LLM response for info-only queries
         const infoResponse = await generateLLMResponse({
           farmer_message: safeFarmerMessage,
-          language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+           language: options.language || 'mr',
           land_context: landContext ? {
             current_crop: landContext.current_crop,
             crop_stage: landContext.growth_stage,
@@ -2643,7 +2643,7 @@ export class AIAgentOrchestrator {
           
           const hybridResponse = await generateLLMResponse({
             farmer_message: safeFarmerMessage,
-            language: (options.language || 'mr') as 'mr' | 'hi' | 'en'
+            language: options.language || 'mr'
           });
           
           return {
@@ -3487,7 +3487,7 @@ export class AIAgentOrchestrator {
             state: landContext.state || 'Maharashtra',
             district: landContext.district || 'Pune',
             tehsil: landContext.tehsil || undefined,
-            language: (options.language || 'mr') as 'mr' | 'hi' | 'en'
+            language: options.language || 'mr'
           } : undefined;
           
           if (farmerLocation) {
@@ -3501,7 +3501,7 @@ export class AIAgentOrchestrator {
               crop_code: cropCode,
               growth_stage: growthStage,
               current_observations: currentObservations,
-              language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+               language: options.language || 'mr',
               damage_observations: cropDamageResult.damage_observations,
               trace_id: traceId,
               farmer_location: farmerLocation,
@@ -3514,7 +3514,7 @@ export class AIAgentOrchestrator {
               cropCode,
               growthStage,
               cropDamageResult.damage_observations,
-              (options.language || 'mr') as 'mr' | 'hi' | 'en',
+              options.language || 'mr',
               traceId
             );
           }
@@ -3658,7 +3658,7 @@ export class AIAgentOrchestrator {
           const sanitizationResult = validateAndSanitizeClarification(
             originalOptions,
             clarificationResponse.scope || 'REFINE_OBSERVATION',
-            normalizedInput.detected_language as 'mr' | 'hi' | 'en'
+            normalizedInput.detected_language
           );
           
           if (sanitizationResult.usedFallback) {
@@ -4191,7 +4191,7 @@ export class AIAgentOrchestrator {
             crop_code: lockedStage.crop_code,
             stage: lockedStage.growth_stage,
             current_symptoms: inductionResult.symptoms.map(s => s.symbol),
-            language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+            language: options.language || 'mr',
             supabaseClient: this.supabase
           };
           
@@ -4249,7 +4249,7 @@ export class AIAgentOrchestrator {
         
         // Generate farmer-friendly clarification (use rule-driven if available)
         const clarificationInput: ClarificationInput = {
-          language: (options.language || 'mr') as 'mr' | 'hi' | 'en',
+          language: options.language || 'mr',
           farmer_message: farmerMessage,
           observations: nluOutput?.symptom_extraction?.visual_symptoms?.map(s => s.symptom_code) || [],
           crop_code: inductionResult.crop?.symbol || landContext?.current_crop?.toUpperCase(),
@@ -4307,7 +4307,7 @@ export class AIAgentOrchestrator {
         
         const llmInput: LLMResponseInput = {
           farmer_message: farmerMessage,
-          language: (options.language || 'en') as 'mr' | 'hi' | 'en',
+          language: options.language || 'en',
           intent: detectedIntent,
           land_context: landContext ? {
             current_crop: landContext.current_crop,
@@ -5195,7 +5195,7 @@ export class AIAgentOrchestrator {
                   canonicalContext: canonicalContext!,
                   observations: allObservationsForDiagCheck,
                   matched_rules: matchedRulesForDiagnosis,
-                  language: (options.language as 'mr' | 'hi' | 'en') || 'mr',
+                  language: options.language || 'mr',
                   trace_id: traceId
                 });
                 
@@ -5206,7 +5206,7 @@ export class AIAgentOrchestrator {
                 // Format diagnosis for farmer communication
                 const diagnosisMessage = formatDiagnosisForLLM(
                   diagnosisOnlyOutput,
-                  (options.language as 'mr' | 'hi' | 'en') || 'mr'
+                  options.language || 'mr'
                 );
                 
                 // Complete audit logging
@@ -5689,7 +5689,7 @@ export class AIAgentOrchestrator {
         
         const cropCode = landContext?.current_crop?.toUpperCase() || landContext?.crop_code?.toUpperCase() || 'SC';
         const growthStage = (landContext?.growth_stage || 'TILLERING').toUpperCase();
-        const userLanguage = (options.language as 'mr' | 'hi' | 'en') || 'mr';
+        const userLanguage = options.language || 'mr';
         
         // SSOT: Load top observable_characteristics for this crop/stage from decision_rules
         const { data: topRules } = await this.supabase
@@ -6236,7 +6236,7 @@ export class AIAgentOrchestrator {
         session_state: 'NEW'
       },
       input_metadata: {
-        language_detected: (language as 'mr' | 'hi' | 'en') || 'en',
+        language_detected: language || 'en',
         input_method: 'TEXT',
         timestamp: new Date().toISOString(),
         session_id: sessionId
@@ -7292,7 +7292,7 @@ export class AIAgentOrchestrator {
         .single();
       
       return {
-        preferred_language: (preferredLanguage || data?.language_preference || 'mr') as 'mr' | 'hi' | 'en',
+        preferred_language: preferredLanguage || data?.language_preference || 'mr',
         name: data?.farmer_name || 'शेतकरी',
         literacy_level: (data?.education_level || 'MODERATE') as any,
         technical_knowledge: 'MODERATE',
@@ -7300,7 +7300,7 @@ export class AIAgentOrchestrator {
       };
     } catch {
       return {
-        preferred_language: (preferredLanguage || 'mr') as 'mr' | 'hi' | 'en',
+        preferred_language: preferredLanguage || 'mr',
         name: 'शेतकरी',
         literacy_level: 'MODERATE',
         technical_knowledge: 'MODERATE',
@@ -7550,7 +7550,7 @@ export class AIAgentOrchestrator {
    */
   private createFallbackNLUOutput(
     message: string, 
-    language?: 'mr' | 'hi' | 'en',
+    language?: string,
     landContext?: any
   ): NLUOutput {
     console.log('   📋 Creating fallback NLU output for message:', message.substring(0, 30));
@@ -7761,7 +7761,7 @@ export class AIAgentOrchestrator {
     farmerMessage: string,
     agentsUsed: string[],
     startTime: number,
-    language: 'mr' | 'hi' | 'en' = 'mr',
+    language: string = 'mr',
     landContext?: any
   ): OrchestratorResponse {
     console.error('❌ Orchestration error:', error.message);
@@ -8128,7 +8128,7 @@ export class AIAgentOrchestrator {
   
   private generateCropHealthResponse(
     landContext: any,
-    _language: 'mr' | 'hi' | 'en' // Kept for backward compat but NOT used for text
+    _language: string // Kept for backward compat but NOT used for text
   ): { 
     message: string;  // DEPRECATED: Narration layer fills this
     confidence: number; 
@@ -8291,7 +8291,7 @@ export class AIAgentOrchestrator {
   
   private generateGreetingResponse(
     sessionId: string,
-    language: 'mr' | 'hi' | 'en',
+    language: string,
     startTime: number,
     agentsUsed: string[],
     traceId: string

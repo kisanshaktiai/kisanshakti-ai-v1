@@ -393,7 +393,7 @@ export function canSprayNow(
  */
 export function getSprayTimingAdvice(
   analysis: SprayWindowAnalysis,
-  language: 'mr' | 'hi' | 'en' = 'en'
+  language: string = 'en'
 ): string {
   const messages: Record<string, Record<string, string>> = {
     good: {

@@ -20,7 +20,7 @@ export interface ObservationMapperInput {
   observations: string[];
   crop_code?: string;
   growth_stage?: string;
-  language?: 'mr' | 'hi' | 'en';
+  language?: string;
 }
 
 export interface CauseMappingResult {
@@ -505,7 +505,7 @@ export function mapObservationsToCauses(
 // CLARIFICATION QUESTION GENERATORS
 // ═══════════════════════════════════════════════════════════════════════════
 
-function generateNoCauseQuestion(language?: 'mr' | 'hi' | 'en'): string {
+function generateNoCauseQuestion(language?: string): string {
   const questions = {
     mr: 'पिकात नक्की काय दिसतंय? कृपया अधिक तपशील द्या - किडे, डाग, पानांचा रंग बदल इत्यादी.',
     hi: 'फसल में क्या दिख रहा है? कृपया अधिक विवरण दें - कीड़े, धब्बे, पत्तों का रंग बदलाव आदि.',
@@ -514,7 +514,7 @@ function generateNoCauseQuestion(language?: 'mr' | 'hi' | 'en'): string {
   return questions[language || 'en'];
 }
 
-function generateAmbiguityQuestion(cause_codes: string[], language?: 'mr' | 'hi' | 'en'): string {
+function generateAmbiguityQuestion(cause_codes: string[], language?: string): string {
   const questions = {
     mr: `आम्हाला अनेक समस्या दिसत आहेत. तुमची मुख्य समस्या कोणती आहे?`,
     hi: `हमें कई समस्याएं दिख रही हैं। आपकी मुख्य समस्या कौन सी है?`,
