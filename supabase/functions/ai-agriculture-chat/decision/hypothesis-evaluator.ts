@@ -268,7 +268,7 @@ function calculateStageRelevance(
  * - Single object: {observation_key: "DEAD_HEART"}
  * - Empty/null: returns empty array safely
  */
-function extractObservableCharacteristics(raw: any): ObservableCharacteristic[] {
+function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, any>): ObservableCharacteristic[] {
   if (!raw) return [];
   
   // CRITICAL FIX: Handle edge cases where observable_characteristics is {} or invalid
