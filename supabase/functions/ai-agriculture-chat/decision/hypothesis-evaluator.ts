@@ -568,7 +568,68 @@ export async function evaluateCandidateHypotheses(
     }
     
     // Use stage-filtered rules if available, otherwise use all rules
-    const rulesToEvaluate = stageFilteredRules.length > 0 ? stageFilteredRules : rulesRaw;
+    let rulesToEvaluate = stageFilteredRules.length > 0 ? stageFilteredRules : rulesRaw;
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // STEP 1.7: OBSERVATION LAYER PRE-FILTER (category + plant-part)
+    // Uses observation_master metadata + canonical_group_mapping ontology bridge
+    // ═══════════════════════════════════════════════════════════════════════
+    let obsMetadataMap = new Map<string, any>();
+    
+    if (input.known_observations.length > 0) {
+      try {
+        // Load observation metadata
+        const { data: obsMetaData } = await supabaseClient
+          .from('observation_master')
+          .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+          .in('observation_code', input.known_observations);
+        
+        if (obsMetaData && obsMetaData.length > 0) {
+          for (const obs of obsMetaData) {
+            obsMetadataMap.set(obs.observation_code, obs);
+          }
+          
+          const obsCategories = new Set(obsMetaData.map((o: any) => o.observation_category).filter(Boolean));
+          const obsPlantParts = new Set(obsMetaData.map((o: any) => o.affected_plant_part).filter(Boolean));
+          
+          console.log(`   🔬 [HypObsFilter] Categories: [${[...obsCategories].join(',')}], Parts: [${[...obsPlantParts].join(',')}]`);
+          
+          const beforeCount = rulesToEvaluate.length;
+          rulesToEvaluate = rulesToEvaluate.filter((rule: any) => {
+            // Category filter
+            const reqCat = rule.required_observation_category;
+            if (reqCat && Array.isArray(reqCat) && reqCat.length > 0) {
+              const hasMatch = reqCat.some((cat: string) => obsCategories.has(cat));
+              if (!hasMatch) return false;
+            }
+            
+            // Plant part filter with WHOLE wildcard
+            const reqPart = rule.required_plant_part;
+            if (reqPart && Array.isArray(reqPart) && reqPart.length > 0) {
+              const hasMatch = 
+                obsPlantParts.has('WHOLE') ||
+                reqPart.includes('WHOLE') ||
+                reqPart.some((part: string) => obsPlantParts.has(part));
+              if (!hasMatch) return false;
+            }
+            
+            return true;
+          });
+          
+          const removedCount = beforeCount - rulesToEvaluate.length;
+          if (removedCount > 0) {
+            console.log(`   🎯 [HypObsFilter] Filtered ${removedCount} rules by category/plant-part (${beforeCount} → ${rulesToEvaluate.length})`);
+          }
+        }
+      } catch (obsErr) {
+        console.warn(`   ⚠️ [HypObsFilter] Failed to load observation metadata:`, obsErr);
+      }
+    }
+    
+    // Candidate explosion warning
+    if (rulesToEvaluate.length > 25) {
+      console.warn(`   ⚠️ [RULE_EXPLOSION] ${rulesToEvaluate.length} candidate rules for ${input.known_observations.length} observations`);
+    }
     
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 2: PHASE-17 - Filter by temporal constraints (crop_age_days_min/max)
