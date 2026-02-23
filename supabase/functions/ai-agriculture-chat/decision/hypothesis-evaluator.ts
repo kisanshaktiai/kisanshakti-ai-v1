@@ -308,7 +308,14 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
   // Moved inline to avoid circular deps, aligned with diagnostic-weight-registry.ts
   const getDiagnosticPower = (key: string): 'HIGH' | 'MEDIUM' | 'LOW' => {
     const normalized = key.toUpperCase().replace(/[\s-]/g, '_');
-    // HIGH: Pathognomonic (unique to specific pest/disease)
+    
+    // PRIORITY: Check observation_master.is_diagnostic from database
+    if (obsMetadata && obsMetadata.size > 0) {
+      const meta = obsMetadata.get(normalized) || obsMetadata.get(key);
+      if (meta?.is_diagnostic === true) return 'HIGH';
+    }
+    
+    // FALLBACK: Hardcoded pathognomonic indicators
     const HIGH_POWER = [
       'DEAD_HEART', 'DEADHEART', 'DEAD_HEART_PRESENT',
       'TUNNELS_IN_STEM', 'TUNNELING', 'BORE_HOLE',
@@ -318,7 +325,6 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
       'PINK_LARVAE', 'LARVAE_PRESENT', 'LARVAE_VISIBLE',
       'WHITE_POWDER', 'WOOLLY_MASS', 'COTTONY_MASS'
     ];
-    // LOW: Non-specific (common to many causes)
     const LOW_POWER = [
       'YELLOWING', 'LEAF_YELLOWING', 'GENERAL_YELLOWING',
       'WILTING', 'LEAF_WILTING', 'PLANT_WILTING',
