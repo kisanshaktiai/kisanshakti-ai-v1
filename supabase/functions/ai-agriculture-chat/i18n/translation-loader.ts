@@ -149,11 +149,20 @@ export function getTranslation(
   // Check fallback translations
   if (FALLBACK_TRANSLATIONS[normalizedKey]) {
     const translation = FALLBACK_TRANSLATIONS[normalizedKey];
-    return translation[language] || translation.en || normalizedKey;
+    const value = translation[language];
+    // For non-English: only return if we have a genuine translation (not English)
+    if (value && (language === 'en' || value !== translation.en)) {
+      return value;
+    }
+    // If non-English and value equals English (no real translation), return raw code
+    if (language !== 'en') {
+      return normalizedKey.replace(/_/g, ' ');
+    }
+    return translation.en || normalizedKey;
   }
   
-  // Format key for display (SHOOT_BORER → Shoot Borer)
-  return formatKeyForDisplay(normalizedKey);
+  // Format key for display - language-aware to prevent English leakage
+  return formatKeyForDisplay(normalizedKey, language);
 }
 
 /**
@@ -196,9 +205,15 @@ export function normalizeI18nKey(key: string): string {
 }
 
 /**
- * Format key for human-readable display
+ * Format key for human-readable display.
+ * For English: SHOOT_BORER → Shoot Borer
+ * For non-English: return raw code to avoid English leakage in regional UI
  */
-function formatKeyForDisplay(key: string): string {
+function formatKeyForDisplay(key: string, language?: string): string {
+  // If language is specified and not English, return raw code (avoid English title-case)
+  if (language && language !== 'en') {
+    return key.replace(/_/g, ' ');
+  }
   return key
     .replace(/_/g, ' ')
     .split(' ')

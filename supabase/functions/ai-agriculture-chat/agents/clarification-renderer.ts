@@ -67,7 +67,7 @@ export enum ClarificationScope {
 export interface ClarificationRenderInput {
   scope: ClarificationScope;
   target_observation_keys: ObservationKey[];
-  language_code: 'mr' | 'hi' | 'en';
+  language_code: string; // Language-agnostic: any BCP-47 code
   max_options: number;  // 2-4
   turn_count: number;
   constraints: {
@@ -595,7 +595,7 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
 
 function getContextAwareTemplate(
   scope: ClarificationScope,
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   cropContext?: CropContextAuthority | null,
   landData?: { soil_n?: string; ndvi_trend?: string } | null
 ): { question: string; options: string[] } {
@@ -822,7 +822,7 @@ export function renderClarification(
 /**
  * Get monitoring advice for when clarification limit is reached (STOP_ESCALATE).
  */
-export function getMonitoringAdvice(language: 'mr' | 'hi' | 'en'): string {
+export function getMonitoringAdvice(language: string): string {
   // ✅ FIX: Remove numbered emojis - use bullet points for clear instructions
   const advice: Record<string, string> = {
     mr: '🌱 सध्या पिकाचे काळजीपूर्वक निरीक्षण करा. जर समस्या वाढली तर:\n\n• प्रभावित भागाचा स्पष्ट फोटो काढा\n• परत आमच्याशी संपर्क करा\n• किंवा जवळच्या कृषी सेवा केंद्राला भेट द्या\n\nतुमच्या पिकाची काळजी घ्या! 🙏',
@@ -843,7 +843,7 @@ export function getMonitoringAdvice(language: 'mr' | 'hi' | 'en'): string {
  */
 export async function getContextAwareTemplateFromDB(
   scope: ClarificationScope,
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   cropContext?: CropContextAuthority | null
 ): Promise<{ question: string; options: string[] }> {
   const cropCode = cropContext?.crop_name?.toUpperCase() || '';
@@ -854,24 +854,24 @@ export async function getContextAwareTemplateFromDB(
   // Try to get options from decision_rules table for REFINE_OBSERVATION scope
   if (cropCode && stage && scope === ClarificationScope.REFINE_OBSERVATION) {
     try {
-      const loaded = await loadObservationKeysFromDB(cropCode, stage);
+      // Pass language to get DB-resolved labels in the correct language
+      const loaded = await loadObservationKeysFromDB(cropCode, stage, language);
       const top = (loaded.keys || []).slice(0, 3).map((k) => {
-        const label = language === 'mr' ? k.label_mr : language === 'hi' ? k.label_hi : k.label_en;
-        return { key: k.key, label: label || k.key };
+        // Use the language-resolved 'label' field (set by DB query)
+        return { key: k.key, label: k.label || k.key.replace(/_/g, ' ') };
       });
 
       if (top.length > 0) {
         console.log(
-          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage} (source=${loaded.loaded_from})`
+          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage}/${language} (source=${loaded.loaded_from})`
         );
 
-        // Get the question from templates but options from DB
         const templateQuestion = getTemplateQuestion(scope, language, cropContext);
         const optionLabels = top.map((opt) => opt.label);
 
         return {
           question: templateQuestion,
-          options: optionLabels.slice(0, 3) // Enforce max 3 options
+          options: optionLabels.slice(0, 3)
         };
       } else {
         console.log(
@@ -892,7 +892,7 @@ export async function getContextAwareTemplateFromDB(
  */
 function getTemplateQuestion(
   scope: ClarificationScope,
-  language: 'mr' | 'hi' | 'en',
+  language: string,
   cropContext?: CropContextAuthority | null
 ): string {
   try {
