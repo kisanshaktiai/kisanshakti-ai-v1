@@ -125,8 +125,8 @@ export function getSafetyWarning(
   safetyLevel: SafetyLevel | undefined,
   language: string
 ): SafetyWarning | null {
-  if (!safetyLevel || safetyLevel === 1) {
-    return null; // No warning needed for level 1
+  if (!safetyLevel || safetyLevel === 'SAFE') {
+    return null; // No warning needed for SAFE level
   }
   
   return SAFETY_WARNINGS[safetyLevel] || null;

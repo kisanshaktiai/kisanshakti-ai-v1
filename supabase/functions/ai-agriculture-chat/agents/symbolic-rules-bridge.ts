@@ -253,28 +253,17 @@ export function convertToRuleResult(
   rule: SymbolicRule | ExecutableRule,
   inputOrLanguage: any
 ): RuleResult {
-  const language = typeof inputOrLanguage === 'string' 
-    ? inputOrLanguage 
-    : (inputOrLanguage?.language || 'en');
-  
-  const getResponse = () => {
-    const r = rule as any;
-    switch (language) {
-      case 'mr': return r.response_mr || r.response_en || r.scientific_basis;
-      case 'hi': return r.response_hi || r.response_en || r.scientific_basis;
-      default: return r.response_en || r.scientific_basis;
-    }
-  };
+  // AUDIT FIX: Use action_text/reason_text instead of dropped response_mr/hi/en
+  const r = rule as any;
+  const reason = r.action_text || r.reason_text || r.scientific_basis || rule.cause;
   
   return {
     rule_id: rule.rule_id,
     priority: normalizePriority(rule.priority as any),
     action: rule.action_type || 'RECOMMEND',
     cause: rule.cause,
-    reason: getResponse(),
-    reason_mr: (rule as any).response_mr,
-    reason_hi: (rule as any).response_hi,
-    alternatives: (rule as any).alternatives,
+    reason: reason,
+    alternatives: r.alternatives,
     confidence: 0.85,
     scientific_source: rule.scientific_source,
     scientific_basis: rule.scientific_basis

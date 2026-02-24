@@ -73,7 +73,7 @@ export interface BundledRule {
   // Safety fields
   phi_days?: number;
   bee_toxicity?: 'HIGH' | 'MODERATE' | 'LOW' | 'SAFE';
-  ipm_level?: 1 | 2 | 3 | 4;
+  ipm_level?: 1 | 2 | 3 | 4 | 5;
   etl_threshold?: string;          // Legacy text-based threshold (deprecated)
   active_ingredient?: string;
   organic_alternative?: string;

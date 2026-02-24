@@ -177,19 +177,20 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         return mapping[g] || (g.match(/^\d{2}_/) ? g : '12_monitoring');
       };
       
-      // Normalize stage_applicable to lowercase
+      // AUDIT FIX: Preserve UPPERCASE stages from DB, normalize synonyms only
+      // DB stores UPPERCASE (TILLERING, GRAND_GROWTH) - comparisons must be case-insensitive at match time
       const normalizeStages = (stages: string[] | null): string[] => {
-        if (!stages || !Array.isArray(stages)) return ['all'];
+        if (!stages || !Array.isArray(stages)) return ['ALL'];
         const stageMapping: Record<string, string> = {
-          'PLANTING': 'germination',
-          'RATOON': 'post_harvest',
-          'CANE_FORMATION': 'grand_growth',
-          'EARLY_GROWTH': 'seedling',
-          'RATOON_INIT': 'post_harvest',
+          'PLANTING': 'GERMINATION',
+          'RATOON': 'POST_HARVEST',
+          'CANE_FORMATION': 'GRAND_GROWTH',
+          'EARLY_GROWTH': 'SEEDLING',
+          'RATOON_INIT': 'POST_HARVEST',
         };
         return stages.map(s => {
           const upper = s.toUpperCase();
-          return stageMapping[upper] || s.toLowerCase();
+          return stageMapping[upper] || upper;
         });
       };
       

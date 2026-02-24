@@ -148,26 +148,12 @@ const IPM_URGENCY_LABELS: Record<string, Record<string, string>> = {
 // TECHNICAL TERM TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-const PEST_TRANSLATIONS: Record<string, Record<string, string>> = {
-  'SHOOT_BORER': { mr: 'अंकुर बेधक (खोड किडा)', hi: 'अंकुर बेधक (तना छेदक)', en: 'Shoot Borer' },
-  'STEM_BORER': { mr: 'खोड किडा', hi: 'तना छेदक', en: 'Stem Borer' },
-  'BOLLWORM': { mr: 'बोंड अळी', hi: 'बॉलवर्म', en: 'Bollworm' },
-  'APHID': { mr: 'मावा', hi: 'माहूं', en: 'Aphid' },
-  'WHITEFLY': { mr: 'पांढरी माशी', hi: 'सफेद मक्खी', en: 'Whitefly' },
-  'THRIPS': { mr: 'तुडतुडे', hi: 'थ्रिप्स', en: 'Thrips' },
-  'JASSID': { mr: 'तुडतुडा', hi: 'जैसिड', en: 'Jassid' },
-  'MEALYBUG': { mr: 'पिठ्या ढेकूण', hi: 'मिलीबग', en: 'Mealybug' },
-};
-
-const DISEASE_TRANSLATIONS: Record<string, Record<string, string>> = {
-  'RUST': { mr: 'तांबेरा', hi: 'रतुआ', en: 'Rust' },
-  'WILT': { mr: 'मर रोग', hi: 'उकठा', en: 'Wilt' },
-  'BLAST': { mr: 'करपा', hi: 'ब्लास्ट', en: 'Blast' },
-  'BLIGHT': { mr: 'करपा', hi: 'झुलसा', en: 'Blight' },
-  'LEAF_SPOT': { mr: 'पान ठिपके', hi: 'पत्ती धब्बा', en: 'Leaf Spot' },
-  'POWDERY_MILDEW': { mr: 'भुरी', hi: 'चूर्णिल आसिता', en: 'Powdery Mildew' },
-  'DOWNY_MILDEW': { mr: 'केवडा', hi: 'मृदुरोमिल आसिता', en: 'Downy Mildew' },
-};
+// AUDIT FIX: PEST_TRANSLATIONS and DISEASE_TRANSLATIONS removed
+// These hardcoded dictionaries violated SSOT - translations come from observation_translations table
+// Use loadObservationLabels() from i18n/observation-label-loader.ts at runtime
+// Kept as empty fallback maps for any remaining references
+const PEST_TRANSLATIONS: Record<string, Record<string, string>> = {};
+const DISEASE_TRANSLATIONS: Record<string, Record<string, string>> = {};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN LLM FORMATTER FUNCTION - RENDER-ONLY MODE (WITH MODE-DRIVEN FALLBACK)

@@ -946,11 +946,8 @@ export function generateDiagnosisOnlyOutput(
     // Convert matched rules to diagnosis results
     diagnoses = topRules.map(rule => {
       const causeKey = rule.cause.toUpperCase().replace(/\s+/g, '_');
-      const translations = CAUSE_TRANSLATIONS[causeKey] || {
-        mr: rule.cause,
-        hi: rule.cause,
-        en: rule.cause
-      };
+      // AUDIT FIX: Use DB-driven translation instead of hardcoded dict
+      const translations = getCauseTranslation(causeKey);
       
       // Determine action type based on confidence and severity
       let actionType: 'TREAT' | 'WAIT' | 'MONITOR' | 'ESCALATE' = 'MONITOR';
