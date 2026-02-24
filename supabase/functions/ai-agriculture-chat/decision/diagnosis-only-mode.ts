@@ -848,28 +848,19 @@ export function shouldActivateDiagnosisOnlyMode(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CAUSE NAME TRANSLATIONS
+// AUDIT FIX: CAUSE_TRANSLATIONS removed - hardcoded dict violated SSOT
+// Use translateCause() from i18n/translation-loader.ts for DB-driven translations
 // ═══════════════════════════════════════════════════════════════════════════
+import { translateCause as dbTranslateCause } from '../i18n/translation-loader.ts';
 
-const CAUSE_TRANSLATIONS: Record<string, { mr: string; hi: string; en: string }> = {
-  'SHOOT_BORER': { mr: 'खोड किडा (अंकुर बेधक)', hi: 'तना छेदक', en: 'Shoot Borer' },
-  'STEM_BORER': { mr: 'खोड किडा', hi: 'तना छेदक', en: 'Stem Borer' },
-  'EARLY_SHOOT_BORER': { mr: 'सुरुवातीचा खोड किडा', hi: 'प्रारंभिक तना छेदक', en: 'Early Shoot Borer' },
-  'TERMITE': { mr: 'वाळवी', hi: 'दीमक', en: 'Termite' },
-  'TERMITE_ATTACK': { mr: 'वाळवी हल्ला', hi: 'दीमक का हमला', en: 'Termite Attack' },
-  'ROOT_ROT': { mr: 'मूळ कुज', hi: 'जड़ सड़न', en: 'Root Rot' },
-  'SETT_ROT': { mr: 'बेणे कुज', hi: 'बीज सड़न', en: 'Sett Rot' },
-  'WATER_STRESS': { mr: 'पाण्याचा ताण', hi: 'पानी की कमी', en: 'Water Stress' },
-  'WATERLOGGING': { mr: 'पाणी साचणे', hi: 'जलभराव', en: 'Waterlogging' },
-  'POOR_SEED_QUALITY': { mr: 'खराब बियाणे', hi: 'खराब बीज गुणवत्ता', en: 'Poor Seed Quality' },
-  'NUTRIENT_DEFICIENCY': { mr: 'पोषक तत्वांची कमतरता', hi: 'पोषक तत्वों की कमी', en: 'Nutrient Deficiency' },
-  'WHITEFLY': { mr: 'पांढरी माशी', hi: 'सफेद मक्खी', en: 'Whitefly' },
-  'APHID': { mr: 'मावा', hi: 'माहूं', en: 'Aphid' },
-  'PYRILLA': { mr: 'पायरिला', hi: 'पायरिला', en: 'Pyrilla' },
-  'RED_ROT': { mr: 'तांबेरा रोग', hi: 'लाल सड़न', en: 'Red Rot' },
-  'WILT': { mr: 'मर रोग', hi: 'उकठा', en: 'Wilt' },
-  'SMUT': { mr: 'काणी रोग', hi: 'कंडुआ', en: 'Smut' },
-};
+// Thin wrapper that returns {mr, hi, en} object from DB-driven translateCause
+function getCauseTranslation(causeKey: string): { mr: string; hi: string; en: string } {
+  return {
+    mr: dbTranslateCause(causeKey, 'mr'),
+    hi: dbTranslateCause(causeKey, 'hi'),
+    en: dbTranslateCause(causeKey, 'en'),
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ACTION GUIDANCE TEMPLATES
