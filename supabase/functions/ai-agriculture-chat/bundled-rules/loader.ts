@@ -61,6 +61,23 @@ let cacheExpiry: number = 0;
 const CACHE_TTL = 3600000; // 1 hour
 
 // ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION ALIAS CACHE - Loaded from observation_aliases table
+// Replaces hardcoded alias dictionaries with DB-sourced SSOT
+// ═══════════════════════════════════════════════════════════════════════════
+let cachedObservationAliases: Record<string, string[]> | null = null;
+let aliasesCacheExpiry: number = 0;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// META/RUNTIME KEYS - Require explicit runtime context, NOT observation matching
+// These keys control rule flow (e.g., fallback rules) and must be set by orchestrator
+// ═══════════════════════════════════════════════════════════════════════════
+const META_RUNTIME_KEYS = new Set([
+  'no_matching_diagnosis', 'no_confirmed_pest', 'block_rule_triggered',
+  'fallback', 'chemical_attempt', 'diagnosis_method', 'bio_control_failed',
+  'organic_failed', 'recovery_absent', 'salesman_recommendation'
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DATABASE LOADING
 // ═══════════════════════════════════════════════════════════════════════════
 
