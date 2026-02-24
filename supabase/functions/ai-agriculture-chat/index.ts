@@ -1202,6 +1202,25 @@ serve(async (req) => {
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
+    // If the symbolic engine returned zero products but the LLM output contains
+    // dosage patterns, strip the unauthorized content and log NARRATION_BREACH.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const symbolicProducts = actions_returned?.filter((a: any) => a.product_name && a.product_name !== 'N/A') || [];
+    if (symbolicProducts.length === 0 && responseContent) {
+      const dosagePattern = /\d+\s*(ml|g|kg|l|gm|gram|liter|litre|मिली|ग्रॅम|किलो|लिटर)\b/gi;
+      const dosageMatches = responseContent.match(dosagePattern);
+      if (dosageMatches && dosageMatches.length > 0) {
+        console.error(`🚨 [NARRATION_BREACH] LLM injected ${dosageMatches.length} dosage(s) without symbolic product authorization!`);
+        console.error(`   Unauthorized dosages: ${dosageMatches.join(', ')}`);
+        console.error(`   Symbolic products count: 0`);
+        console.error(`   Action: Stripping unauthorized dosage content`);
+        // Strip dosage patterns from response
+        responseContent = responseContent.replace(dosagePattern, '[dosage removed]');
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATION GATE: Prevent silent failures before saving response
     // CRITICAL FIX: SKIP validation for non-decision response types
     // Clarification and photo requests should NOT be validated as treatment outputs
