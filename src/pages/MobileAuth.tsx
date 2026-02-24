@@ -81,30 +81,49 @@ export default function MobileAuth() {
         return;
       }
       
-      // ONLINE: Check Supabase
+      // ONLINE: Check Supabase with retry for flaky networks
       console.log('🌐 [MobileAuth] Online mode - checking Supabase');
-      try {
-        let query = supabase
-          .from('farmers')
-          .select('id, mobile_number, pin, pin_hash, tenant_id')
-          .eq('mobile_number', mobile);
-        
-        // Only add tenant filter if tenant exists
-        if (tenant?.id) {
-          query = query.eq('tenant_id', tenant.id);
-        }
-        
-        const { data: farmerData, error: fetchError } = await query.maybeSingle();
+      const maxRetries = 2;
+      let lastNetworkError: any = null;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          let query = supabase
+            .from('farmers')
+            .select('id, mobile_number, farmer_code, tenant_id')
+            .eq('mobile_number', mobile);
+          
+          // Only add tenant filter if tenant exists
+          if (tenant?.id) {
+            query = query.eq('tenant_id', tenant.id);
+          }
+          
+          const { data: farmerData, error: fetchError } = await query.maybeSingle();
 
-        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = no rows returned
-          console.error('Error fetching farmer:', fetchError);
-          throw fetchError;
+          if (fetchError && fetchError.code !== 'PGRST116') {
+            console.error('Error fetching farmer:', fetchError);
+            throw fetchError;
+          }
+          
+          farmer = farmerData;
+          lastNetworkError = null;
+          break; // Success, exit retry loop
+        } catch (networkError: any) {
+          lastNetworkError = networkError;
+          const isNetworkErr = networkError.message?.includes('Failed to fetch') || 
+                               networkError.message === 'Load failed' ||
+                               networkError.name === 'TypeError';
+          
+          console.warn(`⚠️ [MobileAuth] Attempt ${attempt}/${maxRetries} failed:`, networkError.message);
+          
+          if (!isNetworkErr || attempt >= maxRetries) break;
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
-        
-        farmer = farmerData;
-      } catch (networkError: any) {
-        // Network error during online check - treat as offline
-        console.log('⚠️ [MobileAuth] Network error during Supabase query, treating as offline:', networkError.message);
+      }
+      
+      // If all online attempts failed, fallback to offline
+      if (lastNetworkError) {
+        console.log('⚠️ [MobileAuth] All online attempts failed, checking offline cache');
         if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
           farmer = cachedAuth.farmerData;
           localStorage.setItem('authMobile', mobile);
@@ -113,7 +132,7 @@ export default function MobileAuth() {
           navigate('/pin-auth');
           return;
         }
-        setError('Network error. Please check your connection and try again.');
+        setError('Network connection is weak. Please move to an area with better signal and try again.');
         setIsLoading(false);
         return;
       }
