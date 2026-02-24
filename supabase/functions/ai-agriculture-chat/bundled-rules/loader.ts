@@ -61,6 +61,23 @@ let cacheExpiry: number = 0;
 const CACHE_TTL = 3600000; // 1 hour
 
 // ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION ALIAS CACHE - Loaded from observation_aliases table
+// Replaces hardcoded alias dictionaries with DB-sourced SSOT
+// ═══════════════════════════════════════════════════════════════════════════
+let cachedObservationAliases: Record<string, string[]> | null = null;
+let aliasesCacheExpiry: number = 0;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// META/RUNTIME KEYS - Require explicit runtime context, NOT observation matching
+// These keys control rule flow (e.g., fallback rules) and must be set by orchestrator
+// ═══════════════════════════════════════════════════════════════════════════
+const META_RUNTIME_KEYS = new Set([
+  'no_matching_diagnosis', 'no_confirmed_pest', 'block_rule_triggered',
+  'fallback', 'chemical_attempt', 'diagnosis_method', 'bio_control_failed',
+  'organic_failed', 'recovery_absent', 'salesman_recommendation'
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DATABASE LOADING
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -97,22 +114,23 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       // ═══════════════════════════════════════════════════════════════════════
       
       // Normalize action_type to standard enums
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE 3: Strict action_type alignment - preserve DB canonical values
+      // Database uses 5 canonical types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
+      // ═══════════════════════════════════════════════════════════════════════
       const normalizeActionType = (action: string | null): string => {
-        const mapping: Record<string, string> = {
-          'RECOMMEND': 'treatment',
-          'MONITOR': 'monitoring',
-          'BLOCK': 'safety_gate',
-          'NO_ACTION_REQUIRED': 'advisory',
-          'URGENT_ACTION': 'urgent_treatment',
-          'APPLY_TREATMENT': 'treatment',
-          'recommend': 'treatment',
-          'monitor': 'monitoring',
-          'block': 'safety_gate',
+        if (!action) return 'RECOMMEND';
+        const upper = action.toUpperCase().trim();
+        const VALID_DB_TYPES = ['RECOMMEND', 'MONITOR', 'BLOCK', 'NO_ACTION_REQUIRED', 'URGENT_ACTION'];
+        if (VALID_DB_TYPES.includes(upper)) return upper;
+        // Legacy reverse mapping for any old data still using lowercase types
+        const legacyMapping: Record<string, string> = {
+          'treatment': 'RECOMMEND', 'monitoring': 'MONITOR', 'safety_gate': 'BLOCK',
+          'advisory': 'NO_ACTION_REQUIRED', 'urgent_treatment': 'URGENT_ACTION',
+          'APPLY_TREATMENT': 'RECOMMEND', 'prevention': 'RECOMMEND',
+          'diagnosis': 'MONITOR', 'clarification': 'MONITOR',
         };
-        const normalized = action ? mapping[action] || action.toLowerCase() : 'advisory';
-        const validTypes = ['treatment', 'urgent_treatment', 'prevention', 'advisory', 
-                           'safety_gate', 'monitoring', 'clarification', 'diagnosis'];
-        return validTypes.includes(normalized) ? normalized : 'advisory';
+        return legacyMapping[action] || legacyMapping[upper] || 'RECOMMEND';
       };
       
       // Normalize canonical_group to 13-group system
@@ -478,24 +496,54 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
     return { key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.soil_nitrogen, ruleValue: condValue };
   }
 
-  // Negative assertions (no_pest_visible, no_visible_deficiency, normal_growth)
-  if (key.startsWith('no_') || key.startsWith('normal_')) {
-    if (expected) {
-      const contradicted = key === 'no_pest_visible' ?
-        expandedObs.has('INSECT_PRESENCE') || expandedObs.has('PEST_DAMAGE') || expandedObs.has('BORE_HOLES') :
-        key === 'no_visible_deficiency' ?
-        expandedObs.has('NUTRIENT_DEFICIENCY') || expandedObs.has('CHLOROSIS') :
-        false;
-      return { key, status: contradicted ? ConditionStatus.FAILED : ConditionStatus.PASSED, required: false, ruleValue: condValue };
-    }
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 1 FIX: REMOVED no_/normal_ prefix auto-pass shortcut
+  // Every key must now be evaluated explicitly. Meta/runtime keys that lack
+  // runtime context will return SKIPPED_NO_DATA (required=true) → rule fails.
+  // ═══════════════════════════════════════════════════════════════════════════
 
-  // Mapped boolean evaluators
+  // Mapped boolean evaluators (includes negative assertion keys)
   const booleanEvaluators: Record<string, () => boolean | null> = {
     'disease_confirmed': () => input.disease_confirmed ?? null,
     'pest_present': () => {
       const pestObs = ['INSECT_PRESENCE', 'PEST_DAMAGE', 'BORE_HOLES', 'FRASS', 'WEBBING'];
       return pestObs.some(p => expandedObs.has(p)) ? true : null;
+    },
+    // ═══════════════════════════════════════════════════════════════════════
+    // PHASE 1: Explicit negative assertion evaluators (were auto-pass before)
+    // These now have proper runtime evaluation logic with required=true
+    // ═══════════════════════════════════════════════════════════════════════
+    'no_matching_diagnosis': () => {
+      // Runtime flag set by orchestrator when no specific rule matched
+      // Without explicit flag, returns null → SKIPPED_NO_DATA → rule fails
+      return (input as any).no_matching_diagnosis ?? null;
+    },
+    'no_confirmed_pest': () => {
+      const pestObs = ['INSECT_PRESENCE', 'PEST_DAMAGE', 'BORE_HOLES', 'FRASS', 'WEBBING'];
+      const hasPest = pestObs.some(p => expandedObs.has(p));
+      if (hasPest) return false; // Pest IS confirmed → no_confirmed_pest = false
+      return expandedObs.size > 0 ? true : null; // Has other obs but no pest → true
+    },
+    'no_pest_visible': () => {
+      const pestObs = ['INSECT_PRESENCE', 'PEST_DAMAGE', 'BORE_HOLES', 'FRASS', 'WEBBING',
+                       'CRAWLING_INSECTS', 'FLYING_INSECTS', 'HONEYDEW', 'EGG_MASS'];
+      const hasPest = pestObs.some(p => expandedObs.has(p));
+      if (hasPest) return false; // Pest IS visible → no_pest_visible = false
+      return expandedObs.size > 0 ? true : null;
+    },
+    'no_visible_deficiency': () => {
+      const defObs = ['NUTRIENT_DEFICIENCY', 'CHLOROSIS', 'INTERVEINAL_CHLOROSIS',
+                      'PURPLE_LEAVES', 'LEAF_EDGE_BURN', 'WHITE_BUD'];
+      const hasDef = defObs.some(d => expandedObs.has(d));
+      if (hasDef) return false; // Deficiency IS visible → false
+      return expandedObs.size > 0 ? true : null;
+    },
+    'normal_growth': () => {
+      const abnormalObs = ['STUNTED_GROWTH', 'WILTING', 'LODGING', 'POOR_GROWTH',
+                           'UNEVEN_GROWTH', 'DRYING', 'DEAD_HEART'];
+      const hasAbnormal = abnormalObs.some(a => expandedObs.has(a));
+      if (hasAbnormal) return false; // Growth is NOT normal → false
+      return expandedObs.size > 0 ? true : null;
     },
     'soil_moisture_low': () => input.soil_moisture_status === 'LOW' || input.soil_moisture_status === 'DRY' ? true : (input.soil_moisture_status ? false : null),
     'soil_moisture_high': () => input.soil_moisture_status === 'HIGH' || input.soil_moisture_status === 'WET' ? true : (input.soil_moisture_status ? false : null),
@@ -523,13 +571,29 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
     return { key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: actual, ruleValue: condValue };
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 2: Meta/runtime keys that lack evaluators FAIL (not SKIPPED)
+  // This prevents rules with meta-conditions from firing without orchestrator context
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (META_RUNTIME_KEYS.has(key)) {
+    // Check if orchestrator explicitly set this flag on the input
+    const runtimeValue = (input as any)[key];
+    if (runtimeValue === undefined || runtimeValue === null) {
+      return { key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+    }
+    const passes = expected === (runtimeValue === true);
+    return { key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: runtimeValue, ruleValue: condValue };
+  }
+
   // Generic observation-based boolean flags
   const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
   if (expected) {
     const obsMatch = expandedObs.has(keySymbol) ||
       [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
       inputQuery.includes(keySymbol);
-    return { key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue };
+    // PHASE 2 FIX: Return FAILED (not SKIPPED_NO_DATA) for unmatched observation flags
+    // This prevents rules with unrecognized condition keys from silently passing
+    return { key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, ruleValue: condValue };
   }
   return { key, status: ConditionStatus.PASSED, required: false, ruleValue: condValue };
 }
@@ -611,11 +675,13 @@ export function evaluateConditionsJson(
   if (inputSymptom) allInputObs.add(inputSymptom);
 
   // Observation aliases
-  const observationAliases: Record<string, string[]> = {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
+  // Falls back to minimal hardcoded set only if DB cache is not loaded
+  // ═══════════════════════════════════════════════════════════════════════════
+  const observationAliases: Record<string, string[]> = cachedObservationAliases || {
+    // Minimal fallback - will be replaced by DB data after first loadAllRules()
     'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH', 'PURPLE_LEAVES', 'INTERVEINAL_CHLOROSIS'],
-    'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH'],
-    'STUNTED_GROWTH': ['STUNTED', 'SLOW_GROWTH', 'POOR_GROWTH'],
-    'LEAF_YELLOWING': ['YELLOWING', 'YELLOW_LEAVES', 'CHLOROSIS', 'GENERAL_YELLOWING'],
     'WATER_STRESS': ['WILTING', 'DROUGHT', 'DRY', 'MOISTURE_STRESS'],
     'PEST_DAMAGE': ['INSECT_PRESENT', 'HOLES_IN_LEAVES', 'DAMAGED_LEAVES', 'CHEWED_LEAVES']
   };
@@ -875,6 +941,41 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
   const bundled = await loadRulesFromDatabase();
   cachedRules = bundled.map(makeExecutable);
   cacheExpiry = now + CACHE_TTL;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 4: Load observation aliases from DB (same TTL as rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (!cachedObservationAliases || now >= aliasesCacheExpiry) {
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (supabaseUrl && serviceRoleKey) {
+        const supabase = createClient(supabaseUrl, serviceRoleKey);
+        const { data: aliases } = await supabase
+          .from('observation_aliases')
+          .select('alias_code, canonical_code')
+          .eq('is_active', true);
+        
+        if (aliases && aliases.length > 0) {
+          const aliasMap: Record<string, string[]> = {};
+          for (const row of aliases) {
+            if (!aliasMap[row.alias_code]) aliasMap[row.alias_code] = [];
+            aliasMap[row.alias_code].push(row.canonical_code);
+            // Also add reverse mapping
+            if (!aliasMap[row.canonical_code]) aliasMap[row.canonical_code] = [];
+            if (!aliasMap[row.canonical_code].includes(row.alias_code)) {
+              aliasMap[row.canonical_code].push(row.alias_code);
+            }
+          }
+          cachedObservationAliases = aliasMap;
+          aliasesCacheExpiry = now + CACHE_TTL;
+          console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB`);
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ [RuleLoader] Failed to load observation aliases:', e);
+    }
+  }
   
   console.log(`✅ [RuleLoader] Cached ${cachedRules.length} executable rules`);
   return cachedRules;

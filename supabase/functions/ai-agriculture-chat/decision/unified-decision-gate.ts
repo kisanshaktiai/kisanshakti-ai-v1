@@ -256,52 +256,35 @@ export interface UnifiedGateInput {
 
 // CRITICAL FIX: Include new symbolic action_types that indicate treatment/prescription
 // These come from the decision_rules table action_type column
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 3: Strict action_type classification using DB canonical types
+// Database uses 5 types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
+// Legacy types kept for backward compatibility during transition
+// ═══════════════════════════════════════════════════════════════════════════
 const TREATMENT_ACTIONS = new Set([
-  // Legacy action types (application method based)
-  'APPLY_PESTICIDE',
-  'APPLY_FUNGICIDE',
-  'APPLY_INSECTICIDE',
-  'APPLY_HERBICIDE',
-  'APPLY_BIOLOGICAL',
-  'APPLY_SPRAY',
-  'APPLY_FERTILIZER',
-  'FOLIAR_SPRAY',
-  'SOIL_APPLICATION',
-  'DRENCH_APPLICATION',
-  'SEED_TREATMENT',
-  'GRANULAR_APPLICATION',
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // NEW: Dominance action types from decision_rules.action_type column
-  // These indicate a rule has prescription-level content
-  // ═══════════════════════════════════════════════════════════════════════════
-  'BLOCK',           // Urgent action required (e.g., rogue smutted plants)
-  'URGENT_BLOCK',    // Emergency action
-  'URGENT_ACTION',   // Time-critical intervention
-  'URGENT_TREATMENT',// Immediate treatment required
-  'urgent_treatment',// Lowercase variant
-  'IMMEDIATE_ACTION',// Must act now
-  'IMMEDIATE_TREATMENT',
-  'TREATMENT',       // Standard treatment recommendation
-  'treatment',       // Lowercase variant
-  'RECOMMEND',       // Recommended action with products
-  'PREVENTION',      // Preventive treatment
-  'prevention'       // Lowercase variant
+  // DB canonical types that indicate treatment/prescription
+  'RECOMMEND',
+  'URGENT_ACTION',
+  'BLOCK',
+  // Legacy lowercase variants (backward compatibility)
+  'treatment', 'urgent_treatment', 'safety_gate', 'prevention',
+  'TREATMENT', 'URGENT_TREATMENT', 'PREVENTION',
+  // Legacy application method types
+  'APPLY_PESTICIDE', 'APPLY_FUNGICIDE', 'APPLY_INSECTICIDE',
+  'APPLY_HERBICIDE', 'APPLY_BIOLOGICAL', 'APPLY_SPRAY',
+  'APPLY_FERTILIZER', 'FOLIAR_SPRAY', 'SOIL_APPLICATION',
+  'SEED_TREATMENT', 'IMMEDIATE_ACTION',
 ]);
 
 // Actions that are observation/monitoring only (NOT treatment)
 const OBSERVATION_ACTIONS = new Set([
+  // DB canonical types
   'MONITOR',
-  'MONITOR_ONLY',
-  'OBSERVE',
-  'SCOUT',
-  'INSPECT',
-  'CHECK',
-  'WATCH',
-  'advisory',        // General advisory without treatment
-  'DIAGNOSIS',       // Diagnosis only, not treatment
-  'diagnosis',
-  'NO_ACTION_REQUIRED'
+  'NO_ACTION_REQUIRED',
+  // Legacy variants
+  'monitoring', 'advisory', 'diagnosis', 'clarification',
+  'MONITOR_ONLY', 'OBSERVE', 'SCOUT', 'INSPECT',
+  'DIAGNOSIS',
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════

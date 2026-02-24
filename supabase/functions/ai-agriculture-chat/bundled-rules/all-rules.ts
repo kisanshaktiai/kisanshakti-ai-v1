@@ -48,8 +48,8 @@ export interface BundledRule {
   
   alternatives?: string[];
   // Standard 8 action types per Jan 2026 Audit
-  action_type?: 'treatment' | 'urgent_treatment' | 'prevention' | 'advisory' | 
-                'safety_gate' | 'monitoring' | 'clarification' | 'diagnosis';
+  // PHASE 3: Strict 5-type enum aligned with database canonical values
+  action_type?: 'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION';
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 1: Graph Control Fields
