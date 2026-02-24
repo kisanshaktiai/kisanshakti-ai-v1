@@ -6567,7 +6567,7 @@ export type Database = {
           cause: string
           chemical_class: string | null
           climate_zone_applicable: string[] | null
-          condition_code: string | null
+          condition_code: string
           conditions_json: Json
           confidence_score: number | null
           contraindications: string[] | null
@@ -6722,7 +6722,7 @@ export type Database = {
           cause: string
           chemical_class?: string | null
           climate_zone_applicable?: string[] | null
-          condition_code?: string | null
+          condition_code: string
           conditions_json: Json
           confidence_score?: number | null
           contraindications?: string[] | null
@@ -6877,7 +6877,7 @@ export type Database = {
           cause?: string
           chemical_class?: string | null
           climate_zone_applicable?: string[] | null
-          condition_code?: string | null
+          condition_code?: string
           conditions_json?: Json
           confidence_score?: number | null
           contraindications?: string[] | null
