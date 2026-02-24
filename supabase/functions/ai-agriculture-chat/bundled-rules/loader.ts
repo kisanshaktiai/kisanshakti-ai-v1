@@ -735,6 +735,19 @@ export function evaluateConditionsJson(
     if (key === 'observations' || key === 'symptom' || key === 'primary_symptom') {
       const obsList = Array.isArray(condValue) ? condValue : [condValue];
       if (obsList.length > 0) {
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE 7: Validate observation codes against observation_master cache
+        // Log warnings for invalid codes that may indicate stale rule data
+        // ═══════════════════════════════════════════════════════════════════
+        if (cachedObservationCodes && ruleId) {
+          for (const obs of obsList) {
+            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+            if (!cachedObservationCodes.has(obsUpper)) {
+              console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsUpper}`);
+            }
+          }
+        }
+        
         if (expandedObs.size > 0) {
           const obsMatch = obsList.some((obs: string) => {
             const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
