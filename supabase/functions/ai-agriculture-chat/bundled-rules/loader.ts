@@ -68,6 +68,13 @@ let cachedObservationAliases: Record<string, string[]> | null = null;
 let aliasesCacheExpiry: number = 0;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE 7: Observation validation cache - loaded from observation_master
+// Used to validate that condition keys are valid observation codes
+// ═══════════════════════════════════════════════════════════════════════════
+let cachedObservationCodes: Set<string> | null = null;
+let obsCacheExpiry: number = 0;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // META/RUNTIME KEYS - Require explicit runtime context, NOT observation matching
 // These keys control rule flow (e.g., fallback rules) and must be set by orchestrator
 // ═══════════════════════════════════════════════════════════════════════════
@@ -677,14 +684,9 @@ export function evaluateConditionsJson(
   // Observation aliases
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
-  // Falls back to minimal hardcoded set only if DB cache is not loaded
+  // Empty fallback is intentional - safer than hardcoded phantom matches
   // ═══════════════════════════════════════════════════════════════════════════
-  const observationAliases: Record<string, string[]> = cachedObservationAliases || {
-    // Minimal fallback - will be replaced by DB data after first loadAllRules()
-    'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH', 'PURPLE_LEAVES', 'INTERVEINAL_CHLOROSIS'],
-    'WATER_STRESS': ['WILTING', 'DROUGHT', 'DRY', 'MOISTURE_STRESS'],
-    'PEST_DAMAGE': ['INSECT_PRESENT', 'HOLES_IN_LEAVES', 'DAMAGED_LEAVES', 'CHEWED_LEAVES']
-  };
+  const observationAliases: Record<string, string[]> = cachedObservationAliases || {};
 
   // Expand with aliases
   const expandedObs = new Set(allInputObs);
@@ -728,6 +730,19 @@ export function evaluateConditionsJson(
     if (key === 'observations' || key === 'symptom' || key === 'primary_symptom') {
       const obsList = Array.isArray(condValue) ? condValue : [condValue];
       if (obsList.length > 0) {
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE 7: Validate observation codes against observation_master cache
+        // Log warnings for invalid codes that may indicate stale rule data
+        // ═══════════════════════════════════════════════════════════════════
+        if (cachedObservationCodes && ruleId) {
+          for (const obs of obsList) {
+            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+            if (!cachedObservationCodes.has(obsUpper)) {
+              console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsUpper}`);
+            }
+          }
+        }
+        
         if (expandedObs.size > 0) {
           const obsMatch = obsList.some((obs: string) => {
             const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
@@ -951,6 +966,8 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
       const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
       if (supabaseUrl && serviceRoleKey) {
         const supabase = createClient(supabaseUrl, serviceRoleKey);
+        
+        // Load observation aliases
         const { data: aliases } = await supabase
           .from('observation_aliases')
           .select('alias_code, canonical_code')
@@ -970,6 +987,22 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           cachedObservationAliases = aliasMap;
           aliasesCacheExpiry = now + CACHE_TTL;
           console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB`);
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE 7: Load observation_master codes for validation
+        // ═══════════════════════════════════════════════════════════════════
+        if (!cachedObservationCodes || now >= obsCacheExpiry) {
+          const { data: obsCodes } = await supabase
+            .from('observation_master')
+            .select('observation_code')
+            .eq('is_active', true);
+          
+          if (obsCodes && obsCodes.length > 0) {
+            cachedObservationCodes = new Set(obsCodes.map(r => r.observation_code.toUpperCase()));
+            obsCacheExpiry = now + CACHE_TTL;
+            console.log(`✅ [RuleLoader] Cached ${obsCodes.length} observation_master codes for validation`);
+          }
         }
       }
     } catch (e) {

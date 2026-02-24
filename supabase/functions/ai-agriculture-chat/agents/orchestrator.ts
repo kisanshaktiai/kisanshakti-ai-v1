@@ -477,165 +477,41 @@ import {
  * Uses ENGLISH canonical keywords ONLY - no hardcoded Marathi/Hindi
  * Matching uses standardized English keywords embedded in option IDs
  */
-function mapDistributionToSymptom(optionText: string, scope: ClarificationScope): string {
-  const optionLower = optionText.toLowerCase();
-  
+/**
+ * PHASE 5 REWRITE: mapDistributionToSymptom
+ * 
+ * REMOVED: 100+ hardcoded English/Marathi/Hindi string mappings that acted
+ * as a parallel decision layer outside the symbolic engine.
+ * 
+ * NEW LOGIC: 
+ * 1. Extract embedded observation_key from option metadata ([obs_keys:KEY])
+ * 2. If no embedded key found, return the raw text as-is for the NLU + 
+ *    observation code mapper to handle via DB-sourced lookups.
+ * 
+ * The symbolic engine (decision_rules + observation_master) is the SSOT
+ * for symptom-to-diagnosis mapping. This function must NOT duplicate that logic.
+ */
+function mapDistributionToSymptom(optionText: string, _scope: ClarificationScope): string {
   // ═══════════════════════════════════════════════════════════════════════════
-  // CRITICAL FIX: FIRST check for embedded observation_key in option text
+  // STEP 1: Check for embedded observation_key in option text
   // Options are formatted as: "Label text [obs_keys:KEY1,KEY2]"
+  // This is the AUTHORITATIVE path - keys come from observation_master
   // ═══════════════════════════════════════════════════════════════════════════
   const obsKeyMatch = optionText.match(/\[obs_keys?:([^\]]+)\]/i);
   if (obsKeyMatch) {
     const embeddedKey = obsKeyMatch[1].split(',')[0].trim().toUpperCase();
-    // Map common embedded keys to proper visual symptoms for rule matching
-    const obsKeyToSymptom: Record<string, string> = {
-      // Nutrient-related keys
-      'NUTRIENT_CHECK': 'NUTRIENT_DEFICIENCY',
-      'NUTRIENT_DEFICIENCY': 'NUTRIENT_DEFICIENCY',
-      'NITROGEN_DEFICIENCY': 'GENERAL_YELLOWING',
-      'PHOSPHORUS_DEFICIENCY': 'PURPLE_LEAVES',
-      'POTASSIUM_DEFICIENCY': 'LEAF_EDGE_BURN',
-      // Pest-related keys
-      'INSECT_PRESENT': 'SMALL_INSECTS_VISIBLE',
-      'PEST_DAMAGE': 'HOLES_IN_LEAVES',
-      'BORER_DAMAGE': 'DEAD_HEART',
-      'WHITEFLY_INFESTATION': 'SOOTY_MOLD',
-      // Disease-related keys
-      'DISEASE_SYMPTOMS': 'SPOTS_IRREGULAR',
-      'FUNGAL_INFECTION': 'POWDERY_COATING',
-      'SMUT': 'SMUT_WHIP',
-      // Stress-related keys
-      'WATER_STRESS': 'WILTING',
-      'WATERLOGGING': 'ROOT_DAMAGE',
-      'DROUGHT_STRESS': 'LEAF_CURLING',
-      // General observations
-      'YELLOWING': 'GENERAL_YELLOWING',
-      'WILTING': 'WILTING',
-      'STUNTED': 'STUNTED_GROWTH',
-      'STUNTED_GROWTH': 'STUNTED_GROWTH',
-      'LEAF_DAMAGE': 'CURLED_LEAVES'
-    };
-    
-    if (obsKeyToSymptom[embeddedKey]) {
-      console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key detected: ${embeddedKey} → ${obsKeyToSymptom[embeddedKey]}`);
-      return obsKeyToSymptom[embeddedKey];
-    }
-    // Return the embedded key itself as the symptom code
-    console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key as-is: ${embeddedKey}`);
+    console.log(`   🔑 [mapDistributionToSymptom] Embedded obs_key: ${embeddedKey}`);
     return embeddedKey;
   }
   
-  switch (scope) {
-    case ClarificationScope.IDENTIFY_DISTRIBUTION:
-      // Distribution → symptom mapping (English canonical keywords)
-      if (optionLower.includes('uniform') || optionLower.includes('everywhere') || optionLower.includes('entire field')) {
-        return 'GENERAL_YELLOWING'; // Uniform = likely nutrient issue
-      }
-      if (optionLower.includes('patch') || optionLower.includes('scattered') || optionLower.includes('random')) {
-        return 'SPOTS_IRREGULAR'; // Patchy = likely pest/disease
-      }
-      if (optionLower.includes('edge') || optionLower.includes('border') || optionLower.includes('margin')) {
-        return 'LEAF_EDGE_BURN'; // Edge = water/wind/salinity stress
-      }
-      if (optionLower.includes('center') || optionLower.includes('middle')) {
-        return 'SPOTS_CIRCULAR'; // Center = localized damage
-      }
-      // CRITICAL: Check for nutrient/fertilizer keywords in Marathi/Hindi
-      if (optionLower.includes('पोषण') || optionLower.includes('खत') || optionLower.includes('nutrient') || optionLower.includes('fertilizer')) {
-        return 'NUTRIENT_DEFICIENCY';
-      }
-      return 'UNKNOWN';
-      
-    case ClarificationScope.IDENTIFY_SEVERITY:
-      // Severity doesn't change symptom type, return based on intensity keywords
-      if (optionLower.includes('severe') || optionLower.includes('critical') || optionLower.includes('complete')) {
-        return 'WILTING'; // Severe = significant stress response
-      }
-      return 'UNKNOWN';
-      
-    case ClarificationScope.IDENTIFY_LOCATION:
-      // Plant part → symptom mapping (English canonical keywords)
-      if (optionLower.includes('leaf') || optionLower.includes('leaves') || optionLower.includes('foliage') || optionLower.includes('पान')) {
-        return 'CURLED_LEAVES';
-      }
-      if (optionLower.includes('stem') || optionLower.includes('stalk') || optionLower.includes('trunk') || optionLower.includes('खोड')) {
-        return 'STEM_DISCOLORATION';
-      }
-      if (optionLower.includes('root') || optionLower.includes('underground') || optionLower.includes('मूळ')) {
-        return 'ROOT_DAMAGE';
-      }
-      if (optionLower.includes('fruit') || optionLower.includes('pod') || optionLower.includes('grain') || optionLower.includes('फळ')) {
-        return 'FRUIT_DAMAGE';
-      }
-      if (optionLower.includes('flower') || optionLower.includes('blossom') || optionLower.includes('फूल')) {
-        return 'ROSETTE_FLOWER';
-      }
-      return 'UNKNOWN';
-      
-    case ClarificationScope.IDENTIFY_INSECT_TYPE:
-      // Pest type → symptom mapping (English canonical keywords)
-      if (optionLower.includes('aphid') || optionLower.includes('aphis') || optionLower.includes('माव')) {
-        return 'CURLED_LEAVES'; // Aphid symptoms
-      }
-      if (optionLower.includes('borer') || optionLower.includes('stem borer') || optionLower.includes('खोडकिडा')) {
-        return 'DEAD_HEART'; // Borer symptoms
-      }
-      if (optionLower.includes('caterpillar') || optionLower.includes('worm') || optionLower.includes('अळी')) {
-        return 'HOLES_IN_LEAVES'; // Caterpillar symptoms
-      }
-      if (optionLower.includes('mite') || optionLower.includes('spider')) {
-        return 'SILVERING'; // Mite symptoms
-      }
-      if (optionLower.includes('whitefly') || optionLower.includes('white fly') || optionLower.includes('पांढरी माशी')) {
-        return 'SOOTY_MOLD'; // Whitefly symptoms
-      }
-      if (optionLower.includes('hopper') || optionLower.includes('leafhopper')) {
-        return 'LEAF_TIP_BURN'; // Hopper symptoms
-      }
-      return 'SMALL_INSECTS_VISIBLE';
-      
-    case ClarificationScope.IDENTIFY_INSECT_BEHAVIOR:
-      // Behavior → symptom mapping (English canonical keywords)
-      if (optionLower.includes('flying') || optionLower.includes('fly')) {
-        return 'FLYING_INSECTS_VISIBLE';
-      }
-      if (optionLower.includes('crawling') || optionLower.includes('crawl')) {
-        return 'CRAWLING_INSECTS_VISIBLE';
-      }
-      if (optionLower.includes('jumping') || optionLower.includes('jump') || optionLower.includes('hopping')) {
-        return 'JUMPING_INSECTS_VISIBLE';
-      }
-      return 'SMALL_INSECTS_VISIBLE';
-      
-    case ClarificationScope.IDENTIFY_PLANT_RESPONSE:
-      // Plant response → symptom mapping (English canonical keywords)
-      if (optionLower.includes('wilting') || optionLower.includes('wilt') || optionLower.includes('droop') || optionLower.includes('मळमळ')) {
-        return 'WILTING';
-      }
-      if (optionLower.includes('yellow') || optionLower.includes('chlorosis') || optionLower.includes('पिवळे')) {
-        return 'GENERAL_YELLOWING';
-      }
-      if (optionLower.includes('drying') || optionLower.includes('dry') || optionLower.includes('necrosis') || optionLower.includes('सुकणे')) {
-        return 'LEAF_TIP_BURN';
-      }
-      if (optionLower.includes('stunted') || optionLower.includes('poor growth') || optionLower.includes('वाढ कमी')) {
-        return 'STUNTED_GROWTH';
-      }
-      return 'UNKNOWN';
-      
-    default:
-      // FALLBACK: Check common symptom keywords across all scopes
-      if (optionLower.includes('पोषण') || optionLower.includes('खत') || optionLower.includes('nutrient')) {
-        return 'NUTRIENT_DEFICIENCY';
-      }
-      if (optionLower.includes('किडे') || optionLower.includes('किड') || optionLower.includes('insect') || optionLower.includes('pest')) {
-        return 'SMALL_INSECTS_VISIBLE';
-      }
-      if (optionLower.includes('रोग') || optionLower.includes('disease')) {
-        return 'SPOTS_IRREGULAR';
-      }
-      return 'UNKNOWN';
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2: No embedded key found - return UNKNOWN
+  // The NLU semantic extractor + observation code mapper (DB-sourced) will
+  // handle language-agnostic mapping. DO NOT hardcode symptom mappings here.
+  // ═══════════════════════════════════════════════════════════════════════════
+  console.log(`   ⚠️ [mapDistributionToSymptom] No embedded obs_key in option text, returning UNKNOWN`);
+  console.log(`   📋 Option text: "${optionText.substring(0, 80)}"`);
+  return 'UNKNOWN';
 }
 
 // Response types

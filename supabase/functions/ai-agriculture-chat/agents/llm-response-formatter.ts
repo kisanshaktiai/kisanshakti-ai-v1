@@ -336,15 +336,26 @@ export async function formatRecommendationsWithLLM(
     };
   }
   
-  // VALIDATION GATE 2: If no primary decision and no actions, restrict to information
-  // BUG 7 FIX: Also flag that HOW section must be suppressed when actions = 0
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 6: PRE-LLM GATE - If action_list is empty, force INFORMATION_ONLY mode
+  // The LLM must NEVER generate treatment content when symbolic engine has no actions
+  // ═══════════════════════════════════════════════════════════════════════════
   let suppressHowSection = false;
   if (!hasPrimaryDecision && (!actions || actions.length === 0)) {
     console.warn(`
-⚠️ [SYMBOLIC-ONLY GATE] No primary decision and no actions
-   LLM restricted to rendering general information only.
-   TREATMENT RECOMMENDATIONS ARE BLOCKED.
-   HOW section will be suppressed.
+⚠️ [PHASE 6 PRE-LLM GATE] No primary decision and no actions
+   response_mode = INFORMATION_ONLY (forced)
+   HOW section SUPPRESSED - LLM cannot generate treatment recommendations
+   LLM restricted to WHAT (observation) and WHY (explanation) sections only.
+    `);
+    suppressHowSection = true;
+  }
+  
+  // ADDITIONAL GATE: If decision_brain_source but no actions → INFORMATION_ONLY
+  if (isDecisionBrain && (!actions || actions.length === 0) && !hasPrimaryDecision) {
+    console.warn(`
+⚠️ [PHASE 6 GATE-2] Decision brain invoked with ZERO actions → INFORMATION_ONLY
+   LLM will render observation summary only. No treatments, products, or dosages.
     `);
     suppressHowSection = true;
   }

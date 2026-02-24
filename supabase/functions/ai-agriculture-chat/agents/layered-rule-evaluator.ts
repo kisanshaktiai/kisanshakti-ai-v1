@@ -792,15 +792,23 @@ export function evaluateRulesLayered(
     }
   } else {
     // ═══════════════════════════════════════════════════════════════════════════
-    // FAIL-FAST LOGGING: Log detailed error when no eligible responses found
+    // PHASE 7: RULE_DATA_INTEGRITY_ERROR - Fail-fast when rules matched but
+    // no primary action can be resolved. This indicates data quality issues
+    // in the decision_rules table (missing action_text/i18n_key).
     // ═══════════════════════════════════════════════════════════════════════════
-    console.error(`🚨 [LayeredRuleEvaluator] PRIMARY_ACTION_INVALID:`);
-    console.error(`   matched_responses.length=${result.matched_responses.length}`);
+    const matchedRuleIds = result.matched_responses.map(r => r.rule_id);
+    console.error(`🚨 [RULE_DATA_INTEGRITY_ERROR] matched_responses=${result.matched_responses.length} but 0 eligible for primary!`);
+    console.error(`   Matched rule IDs: [${matchedRuleIds.join(', ')}]`);
     console.error(`   source=layered-rule-evaluator.ts`);
     result.matched_responses.forEach((r, i) => {
       console.error(`   ${i + 1}. rule_id=${r.rule_id}, action_type=${r.action_type || 'MISSING'}, has_content=${!!(r.action_text || r.i18n_key)}`);
     });
     
+    // PHASE 7: If matched_responses > 0 but zero are eligible, this is a data integrity error.
+    // DO NOT silently continue - log the error for DB fixes.
+    if (result.matched_responses.length > 0) {
+      console.error(`🚨 [RULE_DATA_INTEGRITY_ERROR] ${result.matched_responses.length} rules matched but NONE have action_text or i18n_key. Fix these rules in decision_rules table.`);
+    }
     // primary_decision remains null - orchestrator.ts will handle fallback
   }
   
