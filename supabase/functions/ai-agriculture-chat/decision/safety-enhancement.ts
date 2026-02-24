@@ -21,7 +21,8 @@ export const SAFETY_ENHANCEMENT_VERSION = '1.0.0';
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-export type SafetyLevel = 1 | 2 | 3;
+// AUDIT FIX: DB stores farmer_safety_level as TEXT (SAFE/CAUTION/EXPERT_ONLY), not integer
+export type SafetyLevel = 'SAFE' | 'CAUTION' | 'EXPERT_ONLY';
 
 export interface SafetyInput {
   rule_id: string;
