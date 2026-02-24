@@ -114,22 +114,23 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       // ═══════════════════════════════════════════════════════════════════════
       
       // Normalize action_type to standard enums
+      // ═══════════════════════════════════════════════════════════════════════
+      // PHASE 3: Strict action_type alignment - preserve DB canonical values
+      // Database uses 5 canonical types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
+      // ═══════════════════════════════════════════════════════════════════════
       const normalizeActionType = (action: string | null): string => {
-        const mapping: Record<string, string> = {
-          'RECOMMEND': 'treatment',
-          'MONITOR': 'monitoring',
-          'BLOCK': 'safety_gate',
-          'NO_ACTION_REQUIRED': 'advisory',
-          'URGENT_ACTION': 'urgent_treatment',
-          'APPLY_TREATMENT': 'treatment',
-          'recommend': 'treatment',
-          'monitor': 'monitoring',
-          'block': 'safety_gate',
+        if (!action) return 'RECOMMEND';
+        const upper = action.toUpperCase().trim();
+        const VALID_DB_TYPES = ['RECOMMEND', 'MONITOR', 'BLOCK', 'NO_ACTION_REQUIRED', 'URGENT_ACTION'];
+        if (VALID_DB_TYPES.includes(upper)) return upper;
+        // Legacy reverse mapping for any old data still using lowercase types
+        const legacyMapping: Record<string, string> = {
+          'treatment': 'RECOMMEND', 'monitoring': 'MONITOR', 'safety_gate': 'BLOCK',
+          'advisory': 'NO_ACTION_REQUIRED', 'urgent_treatment': 'URGENT_ACTION',
+          'APPLY_TREATMENT': 'RECOMMEND', 'prevention': 'RECOMMEND',
+          'diagnosis': 'MONITOR', 'clarification': 'MONITOR',
         };
-        const normalized = action ? mapping[action] || action.toLowerCase() : 'advisory';
-        const validTypes = ['treatment', 'urgent_treatment', 'prevention', 'advisory', 
-                           'safety_gate', 'monitoring', 'clarification', 'diagnosis'];
-        return validTypes.includes(normalized) ? normalized : 'advisory';
+        return legacyMapping[action] || legacyMapping[upper] || 'RECOMMEND';
       };
       
       // Normalize canonical_group to 13-group system
