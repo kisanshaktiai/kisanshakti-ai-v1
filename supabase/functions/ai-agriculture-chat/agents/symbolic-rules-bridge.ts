@@ -225,7 +225,7 @@ export function matchRulesByKeywords(
   console.log(`   📋 Symbolic Bridge: ${filteredRules.length} rules matched for ${targetCategory || 'all'}`);
   
   // Convert ExecutableRule to SymbolicRule format
-  // CRITICAL FIX: Map conditions_json instead of trigger_keywords column
+  // AUDIT FIX: Removed dropped response_mr/hi/en, use action_text/reason_text/i18n_key
   return filteredRules.map(r => ({
     rule_id: r.rule_id,
     category: r.category as RuleCategory,
@@ -236,9 +236,10 @@ export function matchRulesByKeywords(
     scientific_basis: r.scientific_basis || '',
     icar_package: r.icar_package_ref,
     conditions_json: (r as any).conditions_json || {},
-    response_mr: r.response_mr,
-    response_hi: r.response_hi,
-    response_en: r.response_en,
+    action_text: (r as any).action_text,
+    reason_text: (r as any).reason_text,
+    knowledge_text: (r as any).knowledge_text,
+    i18n_key: (r as any).i18n_key,
     alternatives: r.alternatives || [],
     action_type: r.action_type as any
   }));
