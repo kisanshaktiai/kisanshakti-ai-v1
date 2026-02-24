@@ -686,17 +686,10 @@ export function evaluateConditionsJson(
   // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
   // Falls back to minimal hardcoded set only if DB cache is not loaded
   // ═══════════════════════════════════════════════════════════════════════════
-  const observationAliases: Record<string, string[]> = cachedObservationAliases || {
-    // Minimal fallback - will be replaced by DB data after first loadAllRules()
-    'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH', 'PURPLE_LEAVES', 'INTERVEINAL_CHLOROSIS'],
-    'WATER_STRESS': ['WILTING', 'DROUGHT', 'DRY', 'MOISTURE_STRESS'],
-    'PEST_DAMAGE': ['INSECT_PRESENT', 'HOLES_IN_LEAVES', 'DAMAGED_LEAVES', 'CHEWED_LEAVES']
-  };
-
-  // Expand with aliases
-  const expandedObs = new Set(allInputObs);
-  for (const obs of allInputObs) {
-    if (observationAliases[obs]) {
+  const observationAliases: Record<string, string[]> = cachedObservationAliases || {};
+  // NOTE: Empty fallback is intentional. If DB cache hasn't loaded yet,
+  // aliases won't expand. This is safer than hardcoded fallbacks that
+  // create phantom matches outside the observation_master SSOT.
       observationAliases[obs].forEach(a => expandedObs.add(a));
     }
   }
