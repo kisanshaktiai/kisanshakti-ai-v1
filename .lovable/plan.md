@@ -1,174 +1,246 @@
 
+# Deep Forensic Audit Report: AI Chat & Symbolic Decision Brain
 
-# Forensic Audit & Symbolic Engine Rewrite
+## EXECUTIVE SUMMARY
 
-## Critical Bug Found
-
-### Root Cause: `no_` prefix auto-pass in condition evaluator
-
-In `loader.ts` line 482-491, any condition key starting with `no_` or `normal_` is treated as a **non-required, auto-passing** negative assertion. This means `SC_DIAG_GENERAL_015` with condition `{"no_matching_diagnosis": true}` is evaluated as:
-
-```
-key = "no_matching_diagnosis"
-key.startsWith('no_') => TRUE
-expected = true
-contradicted = false (key is not 'no_pest_visible' or 'no_visible_deficiency')
-returns: { status: PASSED, required: false }
-```
-
-Result: The rule ALWAYS passes with `total_required: 0, passed_required: 0, base_score: 1.000`. This catch-all generic diagnostic rule wins over specific Red Rot rules like `SC_DISEASE_RED_ROT_005` which require multiple observations.
-
-### Secondary Issue: `condition_code` column is completely ignored
-
-Every single rule in the database has `condition_code = 'STAGE_GENERAL'` (all 517 rules). The loader maps it to `conditionCode` but it is never used in matching logic. The field name `conditionCode` even still contains `'() => true'` as default value (line 197 in loader.ts), a relic from when conditions were JavaScript code strings.
-
-### Additional Issues Found
-
-1. **All 517 rules loaded for every query** -- Despite crop filtering in `getAllRulesWithBundled`, the edge log shows `Rules evaluated: 517` because the crop code `sc` doesn't match lowercase `sc` against rules stored as `SC` (case mismatch in some paths).
-
-2. **`action_type` enum mismatch** -- Database uses `RECOMMEND`, `MONITOR`, `BLOCK`, `NO_ACTION_REQUIRED`, `URGENT_ACTION`. Loader normalizes these to `treatment`, `monitoring`, `safety_gate`, `advisory`, `urgent_treatment`. The `UnifiedGate` then checks against a third set: `TREATMENT`, `RECOMMEND`, `PREVENTION`, etc. Three different enum systems compete.
-
-3. **Observation aliases are hardcoded** in `evaluateConditionsJson` (lines 614-621) -- `NUTRIENT_DEFICIENCY`, `STUNTED_GROWTH`, `WATER_STRESS`, etc. are hardcoded alias expansions rather than coming from `observation_aliases` table.
-
-4. **LLM still has diagnostic authority** -- `mapDistributionToSymptom` in orchestrator.ts (lines 480-610) hardcodes symptom-to-diagnosis mappings in English/Marathi, acting as a parallel decision layer outside the symbolic engine.
-
-5. **Generic boolean gate keys** evaluated at lines 762-773 allow ANY unrecognized boolean condition key to pass as a weak observation match, creating false positives for rules like `wilting_without_rot`, `ndvi_recovery`, `excessive_tillering`, etc.
+After analyzing all database tables, their schemas, and tracing every column reference through the codebase, I identified **14 critical issues**, **8 data gaps**, and **6 type mismatches** that collectively degrade the symbolic engine's accuracy and language integrity.
 
 ---
 
-## Phase-by-Phase Implementation
+## SECTION 1: DATABASE vs CODEBASE COLUMN ALIGNMENT
 
-### PHASE 1: Fix the `no_` prefix auto-pass bug (CRITICAL)
+### 1.1 CRITICAL: Columns DROPPED from DB but still referenced in code
 
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+| Column | Status in DB | Files Still Referencing |
+|--------|-------------|------------------------|
+| `response_mr` | **DROPPED** (not in schema) | `all-rules.ts` (line 45), `symbolic-rules-bridge.ts` (lines 48, 236, 271) |
+| `response_hi` | **DROPPED** (not in schema) | `all-rules.ts` (line 46), `symbolic-rules-bridge.ts` (lines 49, 237, 272) |
+| `response_en` | **DROPPED** (not in schema) | `all-rules.ts` (line 47), `symbolic-rules-bridge.ts` (lines 50, 238, 261) |
+| `trigger_keywords` | **DROPPED** (not in schema) | `symbolic-rules-bridge.ts` (lines 202-207), `layered-rule-evaluator.ts` (lines 1237-1241), `symbolic-reasoner.ts` (line 990, 1139) |
 
-The `evaluateBooleanGate` function (lines 482-491) treats all `no_*` keys as auto-pass non-required assertions. Fix: Remove the `no_`/`normal_` prefix shortcut. Every boolean key must be evaluated against actual observation data. If the key has no registered evaluator and is not in the observation set, it must return `SKIPPED_NO_DATA` with `required: true`.
+**Impact**: Code attempts to read fields that return `undefined` from DB rows. `symbolic-rules-bridge.ts` still does `r.response_mr || r.response_en` to build responses -- this always returns `undefined`, falling back to `r.scientific_basis`. Meanwhile `trigger_keywords` matching in `layered-rule-evaluator.ts` (line 1239) reads `conditions_json.trigger_keywords` which was also cleaned from DB (0 rules have it).
 
-Specifically:
-- Remove lines 482-491 (the `no_`/`normal_` prefix handler)
-- Add `no_matching_diagnosis`, `no_confirmed_pest`, `no_pest_visible`, `no_visible_deficiency`, `normal_growth` to the explicit `booleanEvaluators` map with proper evaluation logic
-- `no_matching_diagnosis: true` should evaluate against a runtime flag set by the orchestrator, NOT against the observation set
+### 1.2 CRITICAL: Type Mismatches Between DB and Code
 
-### PHASE 2: Fix generic boolean gate fallthrough (CRITICAL)
+| Field | DB Type/Values | Code Type | Mismatch |
+|-------|---------------|-----------|----------|
+| `farmer_safety_level` | TEXT: `SAFE`, `CAUTION`, `EXPERT_ONLY` | `1 \| 2 \| 3` (integer) in `all-rules.ts` | **Complete mismatch** -- integer checks will always fail |
+| `ipm_level` | INTEGER: 1,2,3,4,**5** | `1 \| 2 \| 3 \| 4` in `all-rules.ts` | Missing value `5` (36 rules affected) |
+| `condition_code` | TEXT: all `STAGE_GENERAL` (517/517) | Used as FK to `observation_master` per architecture | **Dead column** -- never participates in matching |
+| `stage_applicable` | UPPERCASE array: `TILLERING`, `GRAND_GROWTH` | Loader normalizes to lowercase: `tillering`, `grand_growth` | Case mismatch risk in downstream comparisons |
 
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+### 1.3 `observation_aliases` Table Missing `is_active` Column
 
-Lines 526-534: Unrecognized boolean keys with `expected=true` currently return `SKIPPED_NO_DATA` (not `FAILED`), but with `required: true`. This is correct for observation flags but wrong for meta-conditions like `no_matching_diagnosis`, `block_rule_triggered`, `fallback`, `chemical_attempt`, `diagnosis_method`.
+The `observation_aliases` table has only 3 columns: `alias_code`, `canonical_code`, `created_at`.
 
-Fix: Classify condition keys into three categories:
-- **Observation keys** -- Matched against the observation set (observation_master codes)
-- **Meta/runtime keys** -- Require explicit runtime context (e.g., `no_matching_diagnosis`, `disease_confirmed`, `chemical_attempt`)
-- **Informational keys** -- Non-required context (already handled by Category G)
-
-Unknown boolean keys that are NOT valid observation codes in `observation_master` must return `FAILED` (not `SKIPPED_NO_DATA`), preventing rules with meta-conditions from firing without the proper runtime context.
-
-### PHASE 3: Strict `action_type` enum alignment
-
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
-
-The database stores 5 canonical action types: `RECOMMEND`, `MONITOR`, `BLOCK`, `NO_ACTION_REQUIRED`, `URGENT_ACTION`.
-
-Remove the `normalizeActionType` function (lines 100-116) that maps these to a second enum. Instead, use the database values directly. Update all downstream consumers:
-
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
-
-Update `action_type` union to:
+**But `loader.ts` line 974 queries:**
 ```
-action_type?: 'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION';
+.eq('is_active', true)
 ```
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts`
-
-Update `TREATMENT_ACTIONS` and `OBSERVATION_ACTIONS` sets to use the 5 canonical types instead of the 30+ variants currently listed.
-
-### PHASE 4: Remove hardcoded observation aliases
-
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
-
-Remove the hardcoded `observationAliases` dictionary (lines 614-621). Instead, load aliases from `observation_aliases` table at cache time (same TTL as rules). The `evaluateConditionsJson` function should expand observations using the DB-sourced alias map.
-
-Add a new cache:
-```
-let cachedObservationAliases: Map<string, string[]> | null = null;
-```
-
-Load from database:
-```
-SELECT alias_code, canonical_code FROM observation_aliases WHERE is_active = true
-```
-
-### PHASE 5: Remove hardcoded symptom mapping from orchestrator
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-The `mapDistributionToSymptom` function (lines 480-610) contains 100+ hardcoded mappings including Marathi strings (`पोषण`, `खोड`, `अळी`). This is a parallel decision layer that bypasses the symbolic engine.
-
-Replace with: When a clarification option is selected, the system already extracts the `observation_key` from the option metadata (line 487-526 handles `[obs_keys:KEY]` pattern). The remaining hardcoded fallback mappings (lines 528-610) should be removed. If no embedded key is found, return the raw option text as-is and let the NLU + observation code mapper handle it.
-
-### PHASE 6: LLM hard boundary enforcement
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
-
-Add a pre-LLM gate: If the symbolic decision has `actions_returned.length === 0`, force `response_mode = INFORMATION_ONLY` and suppress the HOW section in the LLM prompt. The LLM must never generate treatment content when the symbolic engine returned no actions.
-
-**File:** `supabase/functions/ai-agriculture-chat/index.ts`
-
-Add post-LLM validation: If the LLM output contains dosage patterns (`\d+\s*(ml|g|kg|l)`) but the symbolic decision has zero products, strip the unauthorized content and log a `NARRATION_BREACH` error.
-
-### PHASE 7: Runtime assertions
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-
-Add post-evaluation assertion: If `matched_responses.length > 0` but `primary_decision` is null, throw `RULE_DATA_INTEGRITY_ERROR` with the list of matched rule IDs, instead of silently continuing.
-
-**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
-
-Add observation validation: Before evaluating conditions, validate that observation codes in `conditions_json.observations[]` exist in a cached set of `observation_master.observation_code`. Log warnings for invalid codes.
+This query **silently returns 0 rows** because the column doesn't exist (Supabase returns empty result for non-existent column filters). **ALL 155 observation aliases are being ignored**, completely defeating the PHASE 4 alias expansion.
 
 ---
 
-## Technical Details
+## SECTION 2: HARDCODED LANGUAGE STRINGS (SSOT VIOLATIONS)
 
-### Data flow after fix
+### 2.1 Files with hardcoded Marathi/Hindi/English dictionaries
 
-```text
-Farmer input
-  -> Language normalization
-  -> Semantic extraction (LLM for NLU only)
-  -> Observation code mapping (observation_master)
-  -> Alias expansion (observation_aliases table, NOT hardcoded)
-  -> Canonical state build
-  -> Rule loading (crop-filtered from decision_rules)
-  -> Condition evaluation:
-       1. Stage gate (stage_applicable)
-       2. Crop gate (crop_code)
-       3. Observation layer filter (required_observation_category + required_plant_part)
-       4. Condition ledger evaluation:
-          - Observation keys matched against expanded observation set
-          - Meta/runtime keys evaluated against runtime context (NOT observation set)
-          - Numeric thresholds evaluated against sensor data
-          - Unknown keys FAIL (not skip)
-       5. Strict ledger decision: 0 FAILED + 0 SKIPPED(required) + 1+ PASSED
-  -> Primary decision selection (evidence-ratio scoring)
-  -> Unified gate validation
-  -> LLM formatting (render-only, zero decision authority)
-  -> Post-LLM validation (product/dosage integrity check)
-  -> Response delivery
-```
+| File | Issue | Approx Lines |
+|------|-------|-------------|
+| `decision-graph-bridge.ts` | **185 product entries** with hardcoded mr/hi/en names, dosages, prices | ~2600 lines of hardcoded data |
+| `communication-translation-dictionary.ts` | CAUSE_TRANSLATIONS: ~60 entries with mr/hi/en | ~700 lines |
+| `diagnostic-escalation-generator.ts` | CAUSE_LABELS, EXPLANATIONS, PHOTO_GUIDANCE: ~30 entries each with mr/hi/en | ~450 lines |
+| `llm-response-formatter.ts` | PEST_TRANSLATIONS (8 entries), DISEASE_TRANSLATIONS (5 entries) | ~30 lines |
+| `diagnosis-only-mode.ts` | CAUSE_TRANSLATIONS duplicate: ~20 entries with mr/hi/en | ~100 lines |
+| `clarification-validator.ts` | DIAGNOSIS_KEYWORDS_MR, DIAGNOSIS_KEYWORDS_HI: hardcoded keyword lists | ~40 lines |
+| `followup-generator.ts` | Regex patterns with Marathi/Hindi words for topic detection | ~10 lines |
+| `regional-translator.ts` | Full translation entries with mr/hi/en/kn | ~200 lines |
+| `farmer-message-builder.ts` | Symptom label dictionaries with mr/hi/en | ~50 lines |
+| `rural-language-dictionary.ts` | marathiTermMappings, hindiTermMappings, instaScanCTAs | ~290 lines |
 
-### Files to be modified
+**Total: ~4,470 lines of hardcoded multilingual content** that should come from database tables (`observation_translations`, `master_products`, or a new `cause_translations` table).
 
-1. `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` -- Fix `no_` prefix bug, generic boolean fallthrough, observation alias loading, action_type normalization removal
-2. `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts` -- Update `action_type` union to match DB enum
-3. `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` -- Add post-evaluation integrity assertion, update action_type references
-4. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` -- Remove hardcoded `mapDistributionToSymptom` mappings
-5. `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts` -- Align `TREATMENT_ACTIONS`/`OBSERVATION_ACTIONS` to 5-type DB enum
-6. `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` -- Add pre-LLM action count gate
-7. `supabase/functions/ai-agriculture-chat/index.ts` -- Add post-LLM narration breach validation
+### 2.2 Files claiming "no hardcoded text" but containing it
 
-### No changes to
+Several files have SSOT compliance comments but still have hardcoded dictionaries:
+- `diagnostic-escalation-generator.ts`: Has `// SSOT compliant` header but contains 150+ hardcoded translations
+- `decision-graph-bridge.ts`: Contains entire chemical product catalog hardcoded
 
-- Database tables (already correct)
+---
+
+## SECTION 3: CRITICAL DATA GAPS IN TABLES
+
+### 3.1 Translation Coverage Crisis
+
+| Metric | Count |
+|--------|-------|
+| Active observations in `observation_master` | 608 |
+| With English translations | 604 (99.3%) |
+| With Marathi translations | 127 (20.9%) |
+| With Hindi translations | 124 (20.4%) |
+| **Missing mr/hi translations** | **484 (79.6%)** |
+
+**Impact**: When the system tries to show observation options in Marathi/Hindi (the primary farmer languages), 80% of observations will either show English codes or fall back to hardcoded dictionaries.
+
+### 3.2 `condition_code` Dead Column
+
+All 517 active rules have `condition_code = 'STAGE_GENERAL'`. The architecture mandates that `condition_code` should be a FK to `observation_master.observation_code`, serving as the primary matching key. Currently this column is meaningless.
+
+### 3.3 Treatment Rules Missing Observation Anchors
+
+| Category | Rules without `observations` in `conditions_json` |
+|----------|--------------------------------------------------|
+| RECOMMEND | 144 / 251 (57%) |
+| URGENT_ACTION | 11 / 12 (92%) |
+| MONITOR | 45 / 115 (39%) |
+| BLOCK | 39 / 100 (39%) |
+| NO_ACTION_REQUIRED | 21 / 39 (54%) |
+
+260 out of 517 rules (50.3%) have no observation array in their conditions. These rules can only match via boolean/numeric conditions in `conditions_json`, making them prone to the generic fallthrough bug.
+
+### 3.4 `master_products` Table Nearly Empty
+
+The `master_products` table has a comprehensive schema (80+ columns including `translations`, `pest_targets`, `active_ingredients`, `dosage_instructions`) but contains only **3 rows**. Meanwhile `decision-graph-bridge.ts` has **185 hardcoded product definitions** that should live in this table.
+
+### 3.5 `required_observation_category` and `required_plant_part` Coverage
+
+| Field | Rules Populated | Total Active | Coverage |
+|-------|----------------|-------------|----------|
+| `required_observation_category` | 272 | 517 | 52.6% |
+| `required_plant_part` | 73 | 517 | 14.1% |
+
+245 rules have no observation category constraint and 444 rules have no plant part constraint, reducing the effectiveness of the observation layer filter.
+
+---
+
+## SECTION 4: STRUCTURAL BUGS
+
+### 4.1 BUG: `observation_aliases` query returns 0 rows (CRITICAL)
+
+**Location**: `loader.ts` line 974
+**Cause**: Queries `.eq('is_active', true)` on a table that has no `is_active` column
+**Effect**: `cachedObservationAliases` is never populated. All 155 aliases are ignored.
+**Fix**: Remove `.eq('is_active', true)` from the query, OR add `is_active` column to `observation_aliases` table.
+
+### 4.2 BUG: `symbolic-rules-bridge.ts` uses dropped columns
+
+**Location**: Lines 236-262
+**Cause**: Accesses `r.response_mr`, `r.response_hi`, `r.response_en` which no longer exist
+**Effect**: `convertToRuleResult()` always falls back to `r.scientific_basis` for the reason text
+**Fix**: Use `r.action_text` / `r.reason_text` / `r.i18n_key` instead
+
+### 4.3 BUG: `symbolic-rules-bridge.ts` still has wrong `action_type` enum
+
+**Location**: Line 52
+**Code**: `action_type?: 'BLOCK' | 'WARN' | 'RECOMMEND' | 'DELAY' | 'MONITOR'`
+**DB values**: `RECOMMEND | MONITOR | BLOCK | NO_ACTION_REQUIRED | URGENT_ACTION`
+**Missing**: `NO_ACTION_REQUIRED`, `URGENT_ACTION`
+**Invalid**: `WARN`, `DELAY`
+
+### 4.4 BUG: `layered-rule-evaluator.ts` trigger_keywords matching
+
+**Location**: Lines 1237-1241
+**Code**: Still matches rules by `conditions_json.trigger_keywords`
+**DB**: 0 rules have `trigger_keywords` in conditions_json (confirmed: `has_trigger_kw = 0`)
+**Effect**: Dead code path that never matches anything
+
+### 4.5 BUG: Stage normalization creates mismatch
+
+**Location**: `loader.ts` lines 181-194
+**DB stages**: UPPERCASE (`TILLERING`, `GRAND_GROWTH`, `MATURITY`)
+**Code normalizes to**: lowercase (`tillering`, `grand_growth`, `maturity`)
+**Risk**: If any downstream comparison is case-sensitive, stage matching fails
+
+---
+
+## SECTION 5: IMPLEMENTATION PLAN
+
+### Change 1: Fix `observation_aliases` query (CRITICAL - immediate)
+
+**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+
+Remove `.eq('is_active', true)` from line 974. The `observation_aliases` table has no `is_active` column, so this filter returns 0 rows, defeating all alias expansion.
+
+### Change 2: Fix `farmer_safety_level` type mismatch
+
+**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
+
+Change `farmer_safety_level?: 1 | 2 | 3` to `farmer_safety_level?: 'SAFE' | 'CAUTION' | 'EXPERT_ONLY'` to match DB values.
+
+**File**: `supabase/functions/ai-agriculture-chat/decision/safety-enhancement.ts`
+
+Update `SafetyLevel` type and `getSafetyWarning()` to use string values instead of integers.
+
+### Change 3: Fix `ipm_level` type to include 5
+
+**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
+
+Change `ipm_level?: 1 | 2 | 3 | 4` to `ipm_level?: 1 | 2 | 3 | 4 | 5`.
+
+### Change 4: Clean `symbolic-rules-bridge.ts` dropped columns and enum
+
+**File**: `supabase/functions/ai-agriculture-chat/agents/symbolic-rules-bridge.ts`
+
+- Remove `response_mr`, `response_hi`, `response_en` from interface and mappings
+- Update `action_type` union to `'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION'`
+- Update `convertToRuleResult()` to use `action_text` / `reason_text` / `i18n_key`
+
+### Change 5: Remove dead `trigger_keywords` matching from `layered-rule-evaluator.ts`
+
+**File**: `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+
+Remove lines 1235-1241 that match by `conditions_json.trigger_keywords` (0 rules have this).
+
+### Change 6: Remove hardcoded PEST/DISEASE translations from `llm-response-formatter.ts`
+
+**File**: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
+
+Replace `PEST_TRANSLATIONS` and `DISEASE_TRANSLATIONS` dictionaries with lookups from `observation_translations` table (already has a loader: `observation-label-loader.ts`).
+
+### Change 7: Remove duplicate CAUSE_TRANSLATIONS from `diagnosis-only-mode.ts`
+
+**File**: `supabase/functions/ai-agriculture-chat/decision/diagnosis-only-mode.ts`
+
+Replace hardcoded `CAUSE_TRANSLATIONS` (lines 854-900) with the DB-driven `translateCause()` function already available from `translation-loader.ts`.
+
+### Change 8: Fix stage normalization to preserve DB case
+
+**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+
+In `normalizeStages()` (lines 181-194), preserve original case instead of lowercasing. The DB stores UPPERCASE stages and comparisons should be case-insensitive at match time, not at load time.
+
+---
+
+## SECTION 6: DATA GAPS REQUIRING DB POPULATION (No code changes)
+
+These gaps require database INSERT operations (not code fixes):
+
+1. **484 missing Marathi/Hindi observation translations** in `observation_translations` table
+2. **182 hardcoded products** in `decision-graph-bridge.ts` should be migrated to `master_products` table
+3. **260 rules** need `observations` arrays populated in `conditions_json`
+4. **444 rules** need `required_plant_part` populated
+5. **245 rules** need `required_observation_category` populated
+6. **517 rules** have `condition_code = 'STAGE_GENERAL'` instead of specific observation codes
+
+---
+
+## SECTION 7: FILES TO BE MODIFIED (Code Changes Only)
+
+| # | File | Changes |
+|---|------|---------|
+| 1 | `bundled-rules/loader.ts` | Fix alias query (remove `is_active`), preserve stage case |
+| 2 | `bundled-rules/all-rules.ts` | Fix `farmer_safety_level` type, add `ipm_level: 5` |
+| 3 | `agents/symbolic-rules-bridge.ts` | Remove dropped columns, fix action_type enum |
+| 4 | `agents/layered-rule-evaluator.ts` | Remove dead trigger_keywords matching |
+| 5 | `agents/llm-response-formatter.ts` | Replace hardcoded PEST/DISEASE translations with DB loader |
+| 6 | `decision/diagnosis-only-mode.ts` | Replace hardcoded CAUSE_TRANSLATIONS with DB-driven function |
+| 7 | `decision/safety-enhancement.ts` | Update SafetyLevel to match DB text values |
+
+### Files NOT changed (require separate data migration)
+
+- Database tables (need INSERT migrations for translations, products, observations)
+- `decision-graph-bridge.ts` (185 products need `master_products` table populated first)
+- `communication-translation-dictionary.ts` (needs cause_translations table first)
+- `diagnostic-escalation-generator.ts` (needs observation_translations populated first)
 - Frontend code
-- Translation tables
-
