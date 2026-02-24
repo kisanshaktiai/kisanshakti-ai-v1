@@ -968,10 +968,11 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
         const supabase = createClient(supabaseUrl, serviceRoleKey);
         
         // Load observation aliases
+        // AUDIT FIX: observation_aliases table has NO is_active column
+        // Removed .eq('is_active', true) which silently returned 0 rows
         const { data: aliases } = await supabase
           .from('observation_aliases')
-          .select('alias_code, canonical_code')
-          .eq('is_active', true);
+          .select('alias_code, canonical_code');
         
         if (aliases && aliases.length > 0) {
           const aliasMap: Record<string, string[]> = {};
