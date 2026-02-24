@@ -684,12 +684,14 @@ export function evaluateConditionsJson(
   // Observation aliases
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
-  // Falls back to minimal hardcoded set only if DB cache is not loaded
+  // Empty fallback is intentional - safer than hardcoded phantom matches
   // ═══════════════════════════════════════════════════════════════════════════
   const observationAliases: Record<string, string[]> = cachedObservationAliases || {};
-  // NOTE: Empty fallback is intentional. If DB cache hasn't loaded yet,
-  // aliases won't expand. This is safer than hardcoded fallbacks that
-  // create phantom matches outside the observation_master SSOT.
+
+  // Expand with aliases
+  const expandedObs = new Set(allInputObs);
+  for (const obs of allInputObs) {
+    if (observationAliases[obs]) {
       observationAliases[obs].forEach(a => expandedObs.add(a));
     }
   }
