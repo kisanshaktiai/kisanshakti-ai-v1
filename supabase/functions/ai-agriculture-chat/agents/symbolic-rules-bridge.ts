@@ -45,11 +45,14 @@ export interface SymbolicRule {
   icar_package?: string;
   // REMOVED: trigger_keywords - column was DROPPED, use conditions_json.trigger_keywords
   conditions_json?: Record<string, unknown>;
-  response_mr?: string;
-  response_hi?: string;
-  response_en?: string;
+  // AUDIT FIX: response_mr/hi/en columns DROPPED - use action_text/reason_text/i18n_key
+  action_text?: string;
+  reason_text?: string;
+  knowledge_text?: string;
+  i18n_key?: string;
   alternatives?: string[];
-  action_type?: 'BLOCK' | 'WARN' | 'RECOMMEND' | 'DELAY' | 'MONITOR';
+  // AUDIT FIX: Aligned to 5-type DB canonical enum
+  action_type?: 'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
