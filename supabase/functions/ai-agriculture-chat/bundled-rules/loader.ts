@@ -958,6 +958,8 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
       const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
       if (supabaseUrl && serviceRoleKey) {
         const supabase = createClient(supabaseUrl, serviceRoleKey);
+        
+        // Load observation aliases
         const { data: aliases } = await supabase
           .from('observation_aliases')
           .select('alias_code, canonical_code')
@@ -977,6 +979,22 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           cachedObservationAliases = aliasMap;
           aliasesCacheExpiry = now + CACHE_TTL;
           console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB`);
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE 7: Load observation_master codes for validation
+        // ═══════════════════════════════════════════════════════════════════
+        if (!cachedObservationCodes || now >= obsCacheExpiry) {
+          const { data: obsCodes } = await supabase
+            .from('observation_master')
+            .select('observation_code')
+            .eq('is_active', true);
+          
+          if (obsCodes && obsCodes.length > 0) {
+            cachedObservationCodes = new Set(obsCodes.map(r => r.observation_code.toUpperCase()));
+            obsCacheExpiry = now + CACHE_TTL;
+            console.log(`✅ [RuleLoader] Cached ${obsCodes.length} observation_master codes for validation`);
+          }
         }
       }
     } catch (e) {
