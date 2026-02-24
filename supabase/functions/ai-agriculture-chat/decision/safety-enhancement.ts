@@ -62,25 +62,26 @@ export interface SafetyValidationResult {
 // Based on WHO/FAO pesticide classification
 // ═══════════════════════════════════════════════════════════════════════════
 
+// AUDIT FIX: SafetyLevel is now TEXT from DB (SAFE/CAUTION/EXPERT_ONLY)
 const SAFETY_WARNINGS: Record<SafetyLevel, SafetyWarning> = {
-  1: {
-    level: 1,
+  'SAFE': {
+    level: 'SAFE' as any,
     icon: '✅',
     warning_mr: 'सुरक्षित - विशेष काळजी आवश्यक नाही',
     warning_hi: 'सुरक्षित - विशेष सावधानी आवश्यक नहीं',
     warning_en: 'Safe - No special precautions needed',
     ppe_required: []
   },
-  2: {
-    level: 2,
+  'CAUTION': {
+    level: 'CAUTION' as any,
     icon: '⚠️',
     warning_mr: 'हातमोजे घाला. डोळ्यांपासून दूर ठेवा. फवारणीनंतर हात धुवा.',
     warning_hi: 'दस्ताने पहनें। आंखों से दूर रखें। स्प्रे के बाद हाथ धोएं।',
     warning_en: 'Wear gloves. Keep away from eyes. Wash hands after spraying.',
     ppe_required: ['gloves', 'eye_protection']
   },
-  3: {
-    level: 3,
+  'EXPERT_ONLY': {
+    level: 'EXPERT_ONLY' as any,
     icon: '🔴',
     warning_mr: '⚠️ सावधान! मास्क आणि हातमोजे अवश्य घाला. मुले आणि गर्भवती स्त्रियांना दूर ठेवा. फवारणीनंतर कपडे बदला आणि आंघोळ करा.',
     warning_hi: '⚠️ सावधान! मास्क और दस्ताने अवश्य पहनें। बच्चों और गर्भवती महिलाओं को दूर रखें। स्प्रे के बाद कपड़े बदलें और नहाएं।',
