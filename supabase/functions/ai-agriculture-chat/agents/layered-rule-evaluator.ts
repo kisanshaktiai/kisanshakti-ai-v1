@@ -1233,27 +1233,31 @@ export async function evaluateBundledKeywordRules(
   const stateStageLower = state.crop_stage?.toLowerCase() || '';
   const matches: any[] = [];
   
+  // AUDIT FIX: trigger_keywords column was DROPPED and 0 rules have it in conditions_json
+  // This function now matches by cause and observations in conditions_json instead
   for (const rule of allBundled) {
-    // CRITICAL FIX: trigger_keywords column was DROPPED - use conditions_json.trigger_keywords
-    const conditionsJson = (rule as any).conditions_json || {};
-    const triggerKeywords: string[] = conditionsJson.trigger_keywords || [];
+    const ruleCause = (rule.cause || '').toLowerCase();
+    const ruleId = (rule.rule_id || '').toLowerCase();
     
-    if (triggerKeywords.some(kw => queryLower.includes(kw.toLowerCase()))) {
+    // Match by cause or rule_id against query
+    const causeMatch = ruleCause && queryLower.includes(ruleCause);
+    const idMatch = ruleId && queryLower.includes(ruleId);
+    
+    if (causeMatch || idMatch) {
       const ruleCropLower = rule.crop_code?.toLowerCase() || '';
       const cropMatch = ruleCropLower === 'all' || ruleCropLower === '*' || 
                        ruleCropLower === 'universal' || ruleCropLower === stateCropLower;
       
-      // PHASE-14: Also check stage match for higher relevance
-      const ruleStages = rule.stage_applicable?.map((s: string) => s.toLowerCase()) || [];
-      const stageMatch = ruleStages.length === 0 || ruleStages.includes(stateStageLower);
+      // Stage match with case-insensitive comparison (stages now UPPERCASE from loader)
+      const ruleStages = rule.stage_applicable?.map((s: string) => s.toUpperCase()) || [];
+      const stageMatch = ruleStages.length === 0 || ruleStages.includes(stateStageLower.toUpperCase());
       
       if (cropMatch) {
         matches.push({
           ruleId: rule.rule_id,
           cause: rule.cause,
-          // PHASE-14: Boost confidence if stage also matches
           confidence: (rule.cause_confidence || 0.7) + (stageMatch ? 0.1 : 0),
-          response: { mr: rule.response_mr, hi: rule.response_hi, en: rule.response_en }
+          response: {} // AUDIT FIX: response_mr/hi/en columns DROPPED - LLM renders responses
         });
       }
     }

@@ -73,7 +73,7 @@ export interface BundledRule {
   // Safety fields
   phi_days?: number;
   bee_toxicity?: 'HIGH' | 'MODERATE' | 'LOW' | 'SAFE';
-  ipm_level?: 1 | 2 | 3 | 4;
+  ipm_level?: 1 | 2 | 3 | 4 | 5;
   etl_threshold?: string;          // Legacy text-based threshold (deprecated)
   active_ingredient?: string;
   organic_alternative?: string;
@@ -81,7 +81,7 @@ export interface BundledRule {
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 6: Safety Enhancement Fields
   // ═══════════════════════════════════════════════════════════════════════════
-  farmer_safety_level?: 1 | 2 | 3; // Safety warning level for farmer
+  farmer_safety_level?: 'SAFE' | 'CAUTION' | 'EXPERT_ONLY'; // DB stores TEXT, not integer
   resistance_group?: string;       // Resistance management group (e.g., IRAC Group 1B)
   mode_of_action?: string;         // Chemical mode of action for rotation
   

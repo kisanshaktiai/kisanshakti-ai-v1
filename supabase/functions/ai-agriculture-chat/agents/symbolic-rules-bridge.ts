@@ -45,11 +45,14 @@ export interface SymbolicRule {
   icar_package?: string;
   // REMOVED: trigger_keywords - column was DROPPED, use conditions_json.trigger_keywords
   conditions_json?: Record<string, unknown>;
-  response_mr?: string;
-  response_hi?: string;
-  response_en?: string;
+  // AUDIT FIX: response_mr/hi/en columns DROPPED - use action_text/reason_text/i18n_key
+  action_text?: string;
+  reason_text?: string;
+  knowledge_text?: string;
+  i18n_key?: string;
   alternatives?: string[];
-  action_type?: 'BLOCK' | 'WARN' | 'RECOMMEND' | 'DELAY' | 'MONITOR';
+  // AUDIT FIX: Aligned to 5-type DB canonical enum
+  action_type?: 'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION';
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -222,7 +225,7 @@ export function matchRulesByKeywords(
   console.log(`   📋 Symbolic Bridge: ${filteredRules.length} rules matched for ${targetCategory || 'all'}`);
   
   // Convert ExecutableRule to SymbolicRule format
-  // CRITICAL FIX: Map conditions_json instead of trigger_keywords column
+  // AUDIT FIX: Removed dropped response_mr/hi/en, use action_text/reason_text/i18n_key
   return filteredRules.map(r => ({
     rule_id: r.rule_id,
     category: r.category as RuleCategory,
@@ -233,9 +236,10 @@ export function matchRulesByKeywords(
     scientific_basis: r.scientific_basis || '',
     icar_package: r.icar_package_ref,
     conditions_json: (r as any).conditions_json || {},
-    response_mr: r.response_mr,
-    response_hi: r.response_hi,
-    response_en: r.response_en,
+    action_text: (r as any).action_text,
+    reason_text: (r as any).reason_text,
+    knowledge_text: (r as any).knowledge_text,
+    i18n_key: (r as any).i18n_key,
     alternatives: r.alternatives || [],
     action_type: r.action_type as any
   }));
@@ -249,28 +253,17 @@ export function convertToRuleResult(
   rule: SymbolicRule | ExecutableRule,
   inputOrLanguage: any
 ): RuleResult {
-  const language = typeof inputOrLanguage === 'string' 
-    ? inputOrLanguage 
-    : (inputOrLanguage?.language || 'en');
-  
-  const getResponse = () => {
-    const r = rule as any;
-    switch (language) {
-      case 'mr': return r.response_mr || r.response_en || r.scientific_basis;
-      case 'hi': return r.response_hi || r.response_en || r.scientific_basis;
-      default: return r.response_en || r.scientific_basis;
-    }
-  };
+  // AUDIT FIX: Use action_text/reason_text instead of dropped response_mr/hi/en
+  const r = rule as any;
+  const reason = r.action_text || r.reason_text || r.scientific_basis || rule.cause;
   
   return {
     rule_id: rule.rule_id,
     priority: normalizePriority(rule.priority as any),
     action: rule.action_type || 'RECOMMEND',
     cause: rule.cause,
-    reason: getResponse(),
-    reason_mr: (rule as any).response_mr,
-    reason_hi: (rule as any).response_hi,
-    alternatives: (rule as any).alternatives,
+    reason: reason,
+    alternatives: r.alternatives,
     confidence: 0.85,
     scientific_source: rule.scientific_source,
     scientific_basis: rule.scientific_basis
