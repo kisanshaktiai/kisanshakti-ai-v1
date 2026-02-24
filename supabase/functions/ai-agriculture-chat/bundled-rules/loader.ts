@@ -675,11 +675,13 @@ export function evaluateConditionsJson(
   if (inputSymptom) allInputObs.add(inputSymptom);
 
   // Observation aliases
-  const observationAliases: Record<string, string[]> = {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
+  // Falls back to minimal hardcoded set only if DB cache is not loaded
+  // ═══════════════════════════════════════════════════════════════════════════
+  const observationAliases: Record<string, string[]> = cachedObservationAliases || {
+    // Minimal fallback - will be replaced by DB data after first loadAllRules()
     'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH', 'PURPLE_LEAVES', 'INTERVEINAL_CHLOROSIS'],
-    'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'CHLOROSIS', 'STUNTED_GROWTH'],
-    'STUNTED_GROWTH': ['STUNTED', 'SLOW_GROWTH', 'POOR_GROWTH'],
-    'LEAF_YELLOWING': ['YELLOWING', 'YELLOW_LEAVES', 'CHLOROSIS', 'GENERAL_YELLOWING'],
     'WATER_STRESS': ['WILTING', 'DROUGHT', 'DRY', 'MOISTURE_STRESS'],
     'PEST_DAMAGE': ['INSECT_PRESENT', 'HOLES_IN_LEAVES', 'DAMAGED_LEAVES', 'CHEWED_LEAVES']
   };
