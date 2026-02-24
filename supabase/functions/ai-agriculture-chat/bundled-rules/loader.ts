@@ -942,6 +942,41 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
   cachedRules = bundled.map(makeExecutable);
   cacheExpiry = now + CACHE_TTL;
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 4: Load observation aliases from DB (same TTL as rules)
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (!cachedObservationAliases || now >= aliasesCacheExpiry) {
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL');
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+      if (supabaseUrl && serviceRoleKey) {
+        const supabase = createClient(supabaseUrl, serviceRoleKey);
+        const { data: aliases } = await supabase
+          .from('observation_aliases')
+          .select('alias_code, canonical_code')
+          .eq('is_active', true);
+        
+        if (aliases && aliases.length > 0) {
+          const aliasMap: Record<string, string[]> = {};
+          for (const row of aliases) {
+            if (!aliasMap[row.alias_code]) aliasMap[row.alias_code] = [];
+            aliasMap[row.alias_code].push(row.canonical_code);
+            // Also add reverse mapping
+            if (!aliasMap[row.canonical_code]) aliasMap[row.canonical_code] = [];
+            if (!aliasMap[row.canonical_code].includes(row.alias_code)) {
+              aliasMap[row.canonical_code].push(row.alias_code);
+            }
+          }
+          cachedObservationAliases = aliasMap;
+          aliasesCacheExpiry = now + CACHE_TTL;
+          console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB`);
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ [RuleLoader] Failed to load observation aliases:', e);
+    }
+  }
+  
   console.log(`✅ [RuleLoader] Cached ${cachedRules.length} executable rules`);
   return cachedRules;
 }
