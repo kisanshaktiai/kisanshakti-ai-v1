@@ -1,158 +1,174 @@
 
-# Observation Layer Architecture Integration
 
-## Summary
+# Forensic Audit & Symbolic Engine Rewrite
 
-The database has been updated with 5 architectural changes that the codebase does NOT currently use:
+## Critical Bug Found
 
-1. **`canonical_group_mapping` table** (29 rows) - Bridges biological groups (`observation_master.canonical_group`) to engine groups (`decision_rules.canonical_group`)
-2. **`decision_rules.required_observation_category`** column (TEXT[]) - Already populated (~335 rules)
-3. **`decision_rules.required_plant_part`** column (TEXT[]) - Already populated (~73 rules)
-4. **`observation_master.is_diagnostic`** flag - Updated (66 diagnostic observations, 10.9% coverage)
-5. **`v_missing_translations` view** - For monitoring translation gaps
+### Root Cause: `no_` prefix auto-pass in condition evaluator
 
-The codebase currently ignores all 5. The symbolic reasoner and hypothesis evaluator load rules by crop_code + stage only, with no category/plant-part pre-filtering and no ontology bridge. This causes candidate explosion and false-positive rule matches.
+In `loader.ts` line 482-491, any condition key starting with `no_` or `normal_` is treated as a **non-required, auto-passing** negative assertion. This means `SC_DIAG_GENERAL_015` with condition `{"no_matching_diagnosis": true}` is evaluated as:
+
+```
+key = "no_matching_diagnosis"
+key.startsWith('no_') => TRUE
+expected = true
+contradicted = false (key is not 'no_pest_visible' or 'no_visible_deficiency')
+returns: { status: PASSED, required: false }
+```
+
+Result: The rule ALWAYS passes with `total_required: 0, passed_required: 0, base_score: 1.000`. This catch-all generic diagnostic rule wins over specific Red Rot rules like `SC_DISEASE_RED_ROT_005` which require multiple observations.
+
+### Secondary Issue: `condition_code` column is completely ignored
+
+Every single rule in the database has `condition_code = 'STAGE_GENERAL'` (all 517 rules). The loader maps it to `conditionCode` but it is never used in matching logic. The field name `conditionCode` even still contains `'() => true'` as default value (line 197 in loader.ts), a relic from when conditions were JavaScript code strings.
+
+### Additional Issues Found
+
+1. **All 517 rules loaded for every query** -- Despite crop filtering in `getAllRulesWithBundled`, the edge log shows `Rules evaluated: 517` because the crop code `sc` doesn't match lowercase `sc` against rules stored as `SC` (case mismatch in some paths).
+
+2. **`action_type` enum mismatch** -- Database uses `RECOMMEND`, `MONITOR`, `BLOCK`, `NO_ACTION_REQUIRED`, `URGENT_ACTION`. Loader normalizes these to `treatment`, `monitoring`, `safety_gate`, `advisory`, `urgent_treatment`. The `UnifiedGate` then checks against a third set: `TREATMENT`, `RECOMMEND`, `PREVENTION`, etc. Three different enum systems compete.
+
+3. **Observation aliases are hardcoded** in `evaluateConditionsJson` (lines 614-621) -- `NUTRIENT_DEFICIENCY`, `STUNTED_GROWTH`, `WATER_STRESS`, etc. are hardcoded alias expansions rather than coming from `observation_aliases` table.
+
+4. **LLM still has diagnostic authority** -- `mapDistributionToSymptom` in orchestrator.ts (lines 480-610) hardcodes symptom-to-diagnosis mappings in English/Marathi, acting as a parallel decision layer outside the symbolic engine.
+
+5. **Generic boolean gate keys** evaluated at lines 762-773 allow ANY unrecognized boolean condition key to pass as a weak observation match, creating false positives for rules like `wilting_without_rot`, `ndvi_recovery`, `excessive_tillering`, etc.
 
 ---
 
-## Changes Required
+## Phase-by-Phase Implementation
 
-### Change 1: Add `required_observation_category` and `required_plant_part` to BundledRule type
+### PHASE 1: Fix the `no_` prefix auto-pass bug (CRITICAL)
+
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+
+The `evaluateBooleanGate` function (lines 482-491) treats all `no_*` keys as auto-pass non-required assertions. Fix: Remove the `no_`/`normal_` prefix shortcut. Every boolean key must be evaluated against actual observation data. If the key has no registered evaluator and is not in the observation set, it must return `SKIPPED_NO_DATA` with `required: true`.
+
+Specifically:
+- Remove lines 482-491 (the `no_`/`normal_` prefix handler)
+- Add `no_matching_diagnosis`, `no_confirmed_pest`, `no_pest_visible`, `no_visible_deficiency`, `normal_growth` to the explicit `booleanEvaluators` map with proper evaluation logic
+- `no_matching_diagnosis: true` should evaluate against a runtime flag set by the orchestrator, NOT against the observation set
+
+### PHASE 2: Fix generic boolean gate fallthrough (CRITICAL)
+
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+
+Lines 526-534: Unrecognized boolean keys with `expected=true` currently return `SKIPPED_NO_DATA` (not `FAILED`), but with `required: true`. This is correct for observation flags but wrong for meta-conditions like `no_matching_diagnosis`, `block_rule_triggered`, `fallback`, `chemical_attempt`, `diagnosis_method`.
+
+Fix: Classify condition keys into three categories:
+- **Observation keys** -- Matched against the observation set (observation_master codes)
+- **Meta/runtime keys** -- Require explicit runtime context (e.g., `no_matching_diagnosis`, `disease_confirmed`, `chemical_attempt`)
+- **Informational keys** -- Non-required context (already handled by Category G)
+
+Unknown boolean keys that are NOT valid observation codes in `observation_master` must return `FAILED` (not `SKIPPED_NO_DATA`), preventing rules with meta-conditions from firing without the proper runtime context.
+
+### PHASE 3: Strict `action_type` enum alignment
+
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+
+The database stores 5 canonical action types: `RECOMMEND`, `MONITOR`, `BLOCK`, `NO_ACTION_REQUIRED`, `URGENT_ACTION`.
+
+Remove the `normalizeActionType` function (lines 100-116) that maps these to a second enum. Instead, use the database values directly. Update all downstream consumers:
 
 **File:** `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
 
-Add two new optional fields to the `BundledRule` interface:
-- `required_observation_category?: string[]`
-- `required_plant_part?: string[]`
+Update `action_type` union to:
+```
+action_type?: 'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION';
+```
 
-### Change 2: Load new columns from database in rule loader
+**File:** `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts`
+
+Update `TREATMENT_ACTIONS` and `OBSERVATION_ACTIONS` sets to use the 5 canonical types instead of the 30+ variants currently listed.
+
+### PHASE 4: Remove hardcoded observation aliases
 
 **File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
 
-In the `loadRulesFromDatabase()` function (line ~91), the rule mapping already does `select('*')` so the columns are loaded. However, the mapper (lines 190-256) does NOT pass them through to the `BundledRule` object. Add:
+Remove the hardcoded `observationAliases` dictionary (lines 614-621). Instead, load aliases from `observation_aliases` table at cache time (same TTL as rules). The `evaluateConditionsJson` function should expand observations using the DB-sourced alias map.
+
+Add a new cache:
 ```
-required_observation_category: row.required_observation_category || null,
-required_plant_part: row.required_plant_part || null,
+let cachedObservationAliases: Map<string, string[]> | null = null;
 ```
 
-### Change 3: Add ontology bridge + category/plant-part pre-filter to SymbolicReasoner
+Load from database:
+```
+SELECT alias_code, canonical_code FROM observation_aliases WHERE is_active = true
+```
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts`
+### PHASE 5: Remove hardcoded symptom mapping from orchestrator
 
-This is the core change. In the `loadRulesForContext()` method (line 537), the system currently loads rules only by `crop_code` + `stage`. After loading, add:
+**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
 
-1. **Load observation metadata from `observation_master`** for the current `facts.all_observations`:
-   - Query `observation_master` for `observation_category`, `affected_plant_part`, `canonical_group`, `is_diagnostic`
-   - Cache results (same TTL as rules)
+The `mapDistributionToSymptom` function (lines 480-610) contains 100+ hardcoded mappings including Marathi strings (`पोषण`, `खोड`, `अळी`). This is a parallel decision layer that bypasses the symbolic engine.
 
-2. **Ontology bridge**: Use `canonical_group_mapping` to resolve `observation_master.canonical_group` (biological, e.g., `PEST_BORER`) to `decision_rules.canonical_group` (engine, e.g., `03_pest`). This narrows candidate rules.
+Replace with: When a clarification option is selected, the system already extracts the `observation_key` from the option metadata (line 487-526 handles `[obs_keys:KEY]` pattern). The remaining hardcoded fallback mappings (lines 528-610) should be removed. If no embedded key is found, return the raw option text as-is and let the NLU + observation code mapper handle it.
 
-3. **Category filter**: After loading candidate rules, filter using:
-   ```
-   if (rule.required_observation_category && rule.required_observation_category.length > 0) {
-     const obsCategories = observationMetadata.map(o => o.observation_category);
-     const hasMatch = obsCategories.some(cat => 
-       rule.required_observation_category.includes(cat)
-     );
-     if (!hasMatch) skip rule;
-   }
-   ```
+### PHASE 6: LLM hard boundary enforcement
 
-4. **Plant part filter with WHOLE wildcard**:
-   ```
-   if (rule.required_plant_part && rule.required_plant_part.length > 0) {
-     const obsParts = observationMetadata.map(o => o.affected_plant_part);
-     const hasMatch = obsParts.some(part => 
-       part === 'WHOLE' ||
-       rule.required_plant_part.includes(part) ||
-       rule.required_plant_part.includes('WHOLE')
-     );
-     if (!hasMatch) skip rule;
-   }
-   ```
+**File:** `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
 
-5. **Diagnostic confidence boost (multiplicative)**: In `evaluateConditionsJson`, if any matched observation has `is_diagnostic = true` in `observation_master`, apply a 1.4x confidence multiplier (capped at 1.0).
+Add a pre-LLM gate: If the symbolic decision has `actions_returned.length === 0`, force `response_mode = INFORMATION_ONLY` and suppress the HOW section in the LLM prompt. The LLM must never generate treatment content when the symbolic engine returned no actions.
 
-### Change 4: Add ontology bridge to HypothesisEvaluator
+**File:** `supabase/functions/ai-agriculture-chat/index.ts`
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
+Add post-LLM validation: If the LLM output contains dosage patterns (`\d+\s*(ml|g|kg|l)`) but the symbolic decision has zero products, strip the unauthorized content and log a `NARRATION_BREACH` error.
 
-In `evaluateCandidateHypotheses()` (line 461):
-1. Load `observation_master` metadata for `input.known_observations`
-2. Use `canonical_group_mapping` to resolve biological groups to engine groups
-3. Add the `required_observation_category` and `required_plant_part` columns to the SELECT query (line 501)
-4. Apply category + plant-part pre-filtering before scoring (between steps 1.6 and 2)
-5. Replace hardcoded `getDiagnosticPower()` function (lines 319-343) with a lookup against `observation_master.is_diagnostic`
-6. Log candidate explosion warning if count exceeds 25
+### PHASE 7: Runtime assertions
 
-### Change 5: Update ConditionLedger evaluator in loader.ts
+**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
+
+Add post-evaluation assertion: If `matched_responses.length > 0` but `primary_decision` is null, throw `RULE_DATA_INTEGRITY_ERROR` with the list of matched rule IDs, instead of silently continuing.
 
 **File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
 
-The `evaluateConditionsJson()` function (line 543) does not use `required_observation_category` or `required_plant_part` because those are rule-level filters, not condition-level. No change needed here - the filtering happens at rule selection time (Change 3 and 4).
-
-### Change 6: Add observation metadata cache
-
-**File:** `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts`
-
-Add a new helper method to `SymbolicReasoner`:
-```
-private observationMetadataCache = new Map<string, any>();
-
-private async loadObservationMetadata(observationCodes: string[]): Promise<Map<string, any>> {
-  // Check cache, query observation_master + canonical_group_mapping join, cache result
-}
-```
-
-This method:
-1. Queries `observation_master` for `observation_category`, `affected_plant_part`, `canonical_group`, `is_diagnostic`
-2. Joins with `canonical_group_mapping` to get `engine_group` and `confidence`
-3. Returns a Map keyed by observation_code
-4. Uses in-memory cache with 5-min TTL (same as rule cache)
-
-### Change 7: Remove hardcoded `trigger_keywords` matching from hypothesis evaluator
-
-**File:** `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts`
-
-Lines 228-238 still check `conditions_json.trigger_keywords`. Per the architecture audit, `trigger_keywords` column was DROPPED. Remove this block from `evaluatePartialConditionMatch()`.
+Add observation validation: Before evaluating conditions, validate that observation codes in `conditions_json.observations[]` exist in a cached set of `observation_master.observation_code`. Log warnings for invalid codes.
 
 ---
 
 ## Technical Details
 
-### New observation metadata flow
+### Data flow after fix
 
 ```text
 Farmer input
-  -> NLU extracts observation codes (e.g., BORE_HOLES, LEAF_YELLOWING)
-  -> Load observation_master metadata:
-       BORE_HOLES: category=PEST, plant_part=STEM, canonical_group=PEST_BORER, is_diagnostic=true
-       LEAF_YELLOWING: category=PHYSIOLOGY, plant_part=LEAF, canonical_group=PHYSIOLOGY_LEAF, is_diagnostic=false
-  -> Ontology bridge (canonical_group_mapping):
-       PEST_BORER -> 03_pest (confidence=1.0)
-       PHYSIOLOGY_LEAF -> 07_diagnosis (confidence=0.7)
-  -> Load decision_rules WHERE canonical_group IN ('03_pest', '07_diagnosis')
-  -> Pre-filter by required_observation_category (PEST matches rules with required_observation_category containing 'PEST')
-  -> Pre-filter by required_plant_part (STEM matches rules with required_plant_part containing 'STEM' or 'WHOLE')
-  -> Evaluate conditions_json as before (ledger system unchanged)
-  -> Apply diagnostic confidence boost: BORE_HOLES is_diagnostic=true -> 1.4x multiplier
+  -> Language normalization
+  -> Semantic extraction (LLM for NLU only)
+  -> Observation code mapping (observation_master)
+  -> Alias expansion (observation_aliases table, NOT hardcoded)
+  -> Canonical state build
+  -> Rule loading (crop-filtered from decision_rules)
+  -> Condition evaluation:
+       1. Stage gate (stage_applicable)
+       2. Crop gate (crop_code)
+       3. Observation layer filter (required_observation_category + required_plant_part)
+       4. Condition ledger evaluation:
+          - Observation keys matched against expanded observation set
+          - Meta/runtime keys evaluated against runtime context (NOT observation set)
+          - Numeric thresholds evaluated against sensor data
+          - Unknown keys FAIL (not skip)
+       5. Strict ledger decision: 0 FAILED + 0 SKIPPED(required) + 1+ PASSED
+  -> Primary decision selection (evidence-ratio scoring)
+  -> Unified gate validation
+  -> LLM formatting (render-only, zero decision authority)
+  -> Post-LLM validation (product/dosage integrity check)
+  -> Response delivery
 ```
 
-### Candidate explosion prevention
+### Files to be modified
 
-After ontology bridge + category + plant-part filtering, log a warning if candidate count exceeds 25. This catches rules that need tighter `required_observation_category` or `required_plant_part` constraints.
-
-### Files changed (7 total)
-
-1. `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts` - Add 2 fields to BundledRule
-2. `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` - Pass through new columns
-3. `supabase/functions/ai-agriculture-chat/decision/symbolic-reasoner.ts` - Ontology bridge + filters + diagnostic boost
-4. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` - Ontology bridge + filters + remove trigger_keywords
-5. `supabase/functions/ai-agriculture-chat/decision/confidence-calculator.ts` - Use is_diagnostic for confidence scoring
+1. `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` -- Fix `no_` prefix bug, generic boolean fallthrough, observation alias loading, action_type normalization removal
+2. `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts` -- Update `action_type` union to match DB enum
+3. `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` -- Add post-evaluation integrity assertion, update action_type references
+4. `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` -- Remove hardcoded `mapDistributionToSymptom` mappings
+5. `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts` -- Align `TREATMENT_ACTIONS`/`OBSERVATION_ACTIONS` to 5-type DB enum
+6. `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` -- Add pre-LLM action count gate
+7. `supabase/functions/ai-agriculture-chat/index.ts` -- Add post-LLM narration breach validation
 
 ### No changes to
 
-- Database tables (already migrated)
+- Database tables (already correct)
 - Frontend code
-- Translation layer
-- Narration/LLM layer
+- Translation tables
+
