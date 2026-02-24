@@ -68,6 +68,13 @@ let cachedObservationAliases: Record<string, string[]> | null = null;
 let aliasesCacheExpiry: number = 0;
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE 7: Observation validation cache - loaded from observation_master
+// Used to validate that condition keys are valid observation codes
+// ═══════════════════════════════════════════════════════════════════════════
+let cachedObservationCodes: Set<string> | null = null;
+let obsCacheExpiry: number = 0;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // META/RUNTIME KEYS - Require explicit runtime context, NOT observation matching
 // These keys control rule flow (e.g., fallback rules) and must be set by orchestrator
 // ═══════════════════════════════════════════════════════════════════════════
