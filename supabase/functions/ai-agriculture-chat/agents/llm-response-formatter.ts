@@ -1179,9 +1179,15 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
            'No action required at this time. Continue regular monitoring.');
         console.log(`   ℹ️ [LLM Formatter] NO_ACTION_REQUIRED: Using fallback text for rule ${primary.rule_id}`);
       } else {
-        // Try i18n_key lookup (placeholder - would need i18n loader)
+        // Wire up i18n_key resolver: try getTranslation() from translation-loader
         if (appDetails.i18n_key) {
-          console.warn(`⚠️ [LLM Formatter] action_text missing, i18n_key=${appDetails.i18n_key} - i18n lookup not implemented`);
+          const { getTranslation: resolveI18n } = await import('../i18n/translation-loader.ts');
+          const resolved = resolveI18n(appDetails.i18n_key, 'en');
+          if (resolved && !resolved.includes('_')) {
+            // Got a real English translation from cache - use it
+            actionText = resolved;
+            console.log(`   ✅ [LLM Formatter] Resolved action_text via i18n_key=${appDetails.i18n_key}`);
+          }
         }
         // Final fallback - use knowledge/reason text before error placeholder
         actionText = knowledgeText || reasonText || '[Action text unavailable — data error. Please consult agricultural expert.]';
