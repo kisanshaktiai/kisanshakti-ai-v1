@@ -3266,6 +3266,39 @@ export type Database = {
         }
         Relationships: []
       }
+      chemical_regulatory_status: {
+        Row: {
+          alternatives: Json | null
+          ban_date: string | null
+          chemical_name: string
+          created_at: string | null
+          id: string
+          reason: string | null
+          regulatory_body: string | null
+          status: string
+        }
+        Insert: {
+          alternatives?: Json | null
+          ban_date?: string | null
+          chemical_name: string
+          created_at?: string | null
+          id?: string
+          reason?: string | null
+          regulatory_body?: string | null
+          status: string
+        }
+        Update: {
+          alternatives?: Json | null
+          ban_date?: string | null
+          chemical_name?: string
+          created_at?: string | null
+          id?: string
+          reason?: string | null
+          regulatory_body?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       collaborative_notes: {
         Row: {
           assigned_to: string | null
