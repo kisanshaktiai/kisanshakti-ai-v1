@@ -9,20 +9,15 @@
  * 
  * ARCHITECTURE:
  * - i18n_key is the only multilingual anchor
- * - Translations loaded from database at runtime
- * - Fallback chain: i18n_key → action_text → response_en → key itself
+ * - Translations loaded from database (observation_translations) at runtime
+ * - Fallback chain: DB translation → action_text (English) → key itself
  * - Caching for performance
- * 
- * REPLACES:
- * - Hardcoded PEST_TRANSLATIONS in llm-response-formatter.ts
- * - Hardcoded DISEASE_TRANSLATIONS in llm-response-formatter.ts
- * - Hardcoded CAUSE_TRANSLATIONS in diagnosis-first-generator.ts
- * - All other inline translation dictionaries
+ * - NO hardcoded multilingual dictionaries (SSOT compliant)
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const I18N_LOADER_VERSION = '1.0.0';
+export const I18N_LOADER_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -44,59 +39,6 @@ export interface TranslationCache {
 export type SupportedLanguage = string;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// FALLBACK TRANSLATIONS (Critical terms that must always be available)
-// ═══════════════════════════════════════════════════════════════════════════
-
-const FALLBACK_TRANSLATIONS: Record<string, Translation> = {
-  // Pests - English is mandatory, mr/hi kept as known fallbacks
-  'SHOOT_BORER': { key: 'SHOOT_BORER', en: 'Shoot Borer', mr: 'अंकुर बेधक (खोड किडा)', hi: 'अंकुर बेधक (तना छेदक)', category: 'pest' },
-  'STEM_BORER': { key: 'STEM_BORER', en: 'Stem Borer', mr: 'खोड किडा', hi: 'तना छेदक', category: 'pest' },
-  'TOP_BORER': { key: 'TOP_BORER', en: 'Top Borer', mr: 'शेंडा बेधक', hi: 'शीर्ष बेधक', category: 'pest' },
-  'INTERNODE_BORER': { key: 'INTERNODE_BORER', en: 'Internode Borer', mr: 'कांडी बेधक', hi: 'गांठ बेधक', category: 'pest' },
-  'ROOT_BORER': { key: 'ROOT_BORER', en: 'Root Borer', mr: 'मूळ बेधक', hi: 'जड़ बेधक', category: 'pest' },
-  'EARLY_SHOOT_BORER': { key: 'EARLY_SHOOT_BORER', en: 'Early Shoot Borer', mr: 'लवकर खोड किडा', hi: 'शुरुआती तना छेदक', category: 'pest' },
-  'TERMITE': { key: 'TERMITE', en: 'Termite', mr: 'वाळवी (उधई)', hi: 'दीमक', category: 'pest' },
-  'WHITE_GRUB': { key: 'WHITE_GRUB', en: 'White Grub', mr: 'पांढरी अळी', hi: 'सफेद गिडार', category: 'pest' },
-  'APHID': { key: 'APHID', en: 'Aphid', mr: 'मावा', hi: 'माहूं', category: 'pest' },
-  'WHITEFLY': { key: 'WHITEFLY', en: 'Whitefly', mr: 'पांढरी माशी', hi: 'सफेद मक्खी', category: 'pest' },
-  'THRIPS': { key: 'THRIPS', en: 'Thrips', mr: 'तुडतुडे', hi: 'थ्रिप्स', category: 'pest' },
-  'MEALYBUG': { key: 'MEALYBUG', en: 'Mealybug', mr: 'पिठ्या ढेकूण', hi: 'मिलीबग', category: 'pest' },
-  'PYRILLA': { key: 'PYRILLA', en: 'Pyrilla (Leaf Hopper)', mr: 'पायरिला (तुडतुडा)', hi: 'पायरिला', category: 'pest' },
-  'WOOLLY_APHID': { key: 'WOOLLY_APHID', en: 'Woolly Aphid', mr: 'लोकरी मावा', hi: 'ऊनी माहूं', category: 'pest' },
-  'SCALE_INSECT': { key: 'SCALE_INSECT', en: 'Scale Insect', mr: 'खवले किडा', hi: 'स्केल कीट', category: 'pest' },
-  'BOLLWORM': { key: 'BOLLWORM', en: 'Bollworm', mr: 'बोंड अळी', hi: 'बॉलवर्म', category: 'pest' },
-  'JASSID': { key: 'JASSID', en: 'Jassid', mr: 'तुडतुडा', hi: 'जैसिड', category: 'pest' },
-  
-  // Diseases
-  'RED_ROT': { key: 'RED_ROT', en: 'Red Rot', mr: 'तांबडा कूज (रेड रॉट)', hi: 'लाल सड़न', category: 'disease' },
-  'SMUT': { key: 'SMUT', en: 'Smut (Whip Smut)', mr: 'काणी (स्मट)', hi: 'कंडुआ', category: 'disease' },
-  'WILT': { key: 'WILT', en: 'Wilt', mr: 'मर रोग', hi: 'उकठा', category: 'disease' },
-  'RUST': { key: 'RUST', en: 'Rust', mr: 'तांबेरा', hi: 'रतुआ', category: 'disease' },
-  'BLAST': { key: 'BLAST', en: 'Blast', mr: 'करपा', hi: 'ब्लास्ट', category: 'disease' },
-  'BLIGHT': { key: 'BLIGHT', en: 'Blight', mr: 'करपा', hi: 'झुलसा', category: 'disease' },
-  'LEAF_SPOT': { key: 'LEAF_SPOT', en: 'Leaf Spot', mr: 'पान ठिपके', hi: 'पत्ती धब्बा', category: 'disease' },
-  'LEAF_SCALD': { key: 'LEAF_SCALD', en: 'Leaf Scald', mr: 'पान भाजणे', hi: 'पत्ती झुलसा', category: 'disease' },
-  'GRASSY_SHOOT': { key: 'GRASSY_SHOOT', en: 'Grassy Shoot Disease', mr: 'गवती फुटवे', hi: 'घासी शूट', category: 'disease' },
-  'RATOON_STUNTING': { key: 'RATOON_STUNTING', en: 'Ratoon Stunting Disease', mr: 'खोडवा खुंटणे', hi: 'रेटून स्टंटिंग', category: 'disease' },
-  'POWDERY_MILDEW': { key: 'POWDERY_MILDEW', en: 'Powdery Mildew', mr: 'भुरी', hi: 'चूर्णिल आसिता', category: 'disease' },
-  'DOWNY_MILDEW': { key: 'DOWNY_MILDEW', en: 'Downy Mildew', mr: 'केवडा', hi: 'मृदुरोमिल आसिता', category: 'disease' },
-  
-  // Symptoms
-  'DEAD_HEART': { key: 'DEAD_HEART', en: 'Dead Heart', mr: 'मेलेला गाभा (डेड हार्ट)', hi: 'मृत गभा', category: 'symptom' },
-  'YELLOWING': { key: 'YELLOWING', en: 'Yellowing', mr: 'पानं पिवळी पडणे', hi: 'पत्तियां पीली पड़ना', category: 'symptom' },
-  'WILTING': { key: 'WILTING', en: 'Wilting', mr: 'सुकणे / मलूल होणे', hi: 'मुरझाना', category: 'symptom' },
-  'STUNTED_GROWTH': { key: 'STUNTED_GROWTH', en: 'Stunted Growth', mr: 'वाढ खुंटणे', hi: 'बौनापन', category: 'symptom' },
-  'DRYING': { key: 'DRYING', en: 'Drying', mr: 'वाळणे', hi: 'सूखना', category: 'symptom' },
-  
-  // Actions
-  'MONITOR': { key: 'MONITOR', en: 'Monitor', mr: 'निरीक्षण करा', hi: 'निगरानी करें', category: 'action' },
-  'SPRAY': { key: 'SPRAY', en: 'Spray', mr: 'फवारणी करा', hi: 'स्प्रे करें', category: 'action' },
-  'APPLY': { key: 'APPLY', en: 'Apply', mr: 'वापरा', hi: 'लगाएं', category: 'action' },
-  'REMOVE': { key: 'REMOVE', en: 'Remove', mr: 'काढून टाका', hi: 'हटाएं', category: 'action' },
-  'IRRIGATE': { key: 'IRRIGATE', en: 'Irrigate', mr: 'पाणी द्या', hi: 'सिंचाई करें', category: 'action' }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
 // CACHE
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -111,8 +53,8 @@ const CACHE_TTL = 3600000; // 1 hour
  * Get translation for a given i18n_key
  * 
  * Fallback chain:
- * 1. Cached database translation
- * 2. Fallback translations
+ * 1. Cached database translation (from observation_translations)
+ * 2. English action_text from decision_rules cache
  * 3. Key itself (formatted for display)
  * 
  * @param i18nKey - The translation key
@@ -130,35 +72,20 @@ export function getTranslation(
   // Normalize key
   const normalizedKey = normalizeI18nKey(i18nKey);
   
-  // Check cache first
+  // Check cache
   if (translationCache?.translations.has(normalizedKey)) {
     const translation = translationCache.translations.get(normalizedKey)!;
     const value = translation[language];
-    // CRITICAL FIX: Don't return English placeholder text for non-English languages
-    // The cache stores English action_text as placeholder for mr/hi - detect and skip
+    
+    // For English, return directly
     if (value && language === 'en') {
       return value;
     }
+    // For non-English: only return if genuinely different from English (real translation)
     if (value && language !== 'en' && value !== translation.en) {
-      // Genuine translation exists (different from English) - use it
       return value;
     }
-    // For non-English where value equals English (placeholder), fall through to fallbacks
-  }
-  
-  // Check fallback translations
-  if (FALLBACK_TRANSLATIONS[normalizedKey]) {
-    const translation = FALLBACK_TRANSLATIONS[normalizedKey];
-    const value = translation[language];
-    // For non-English: only return if we have a genuine translation (not English)
-    if (value && (language === 'en' || value !== translation.en)) {
-      return value;
-    }
-    // If non-English and value equals English (no real translation), return raw code
-    if (language !== 'en') {
-      return normalizedKey.replace(/_/g, ' ');
-    }
-    return translation.en || normalizedKey;
+    // Fall through - no genuine translation available
   }
   
   // Format key for display - language-aware to prevent English leakage
@@ -173,10 +100,6 @@ export function getTranslationObject(i18nKey: string): Translation | null {
   
   if (translationCache?.translations.has(normalizedKey)) {
     return translationCache.translations.get(normalizedKey)!;
-  }
-  
-  if (FALLBACK_TRANSLATIONS[normalizedKey]) {
-    return FALLBACK_TRANSLATIONS[normalizedKey];
   }
   
   return null;
@@ -270,7 +193,9 @@ export function translateCause(
 
 /**
  * Initialize translation cache from database
- * Called once at startup or when cache expires
+ * Loads from TWO sources:
+ * 1. observation_translations → genuine multilingual labels (SSOT)
+ * 2. decision_rules i18n_key → English action_text only (LLM translates at runtime)
  */
 export async function initializeTranslationCache(
   supabaseClient: any
@@ -283,42 +208,76 @@ export async function initializeTranslationCache(
   }
   
   try {
-    // Load translations from decision_rules i18n_key + action_text fields
-    // NOTE: response_mr/hi/en columns were DROPPED per SSOT architecture
-    const { data, error } = await supabaseClient
+    const translations = new Map<string, Translation>();
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // SOURCE 1: observation_translations (genuine multilingual labels)
+    // This is the SSOT for pest/disease/symptom/action display names
+    // ═══════════════════════════════════════════════════════════════════
+    const { data: obsTranslations, error: obsError } = await supabaseClient
+      .from('observation_translations')
+      .select('observation_code, language_code, display_text, description_text')
+      .limit(5000);
+    
+    if (obsError) {
+      console.warn('⚠️ [I18N] Failed to load observation_translations:', obsError.message);
+    } else if (obsTranslations) {
+      // Group by observation_code and build Translation objects
+      const grouped = new Map<string, Translation>();
+      for (const row of obsTranslations) {
+        const code = (row.observation_code || '').toUpperCase();
+        if (!code) continue;
+        
+        if (!grouped.has(code)) {
+          grouped.set(code, { key: code });
+        }
+        const entry = grouped.get(code)!;
+        const lang = (row.language_code || 'en').toLowerCase();
+        // Prefer description_text (farmer-friendly) over display_text (technical)
+        const hasGoodDescription = row.description_text && 
+          row.description_text.length > 10 && 
+          row.description_text.length > (row.display_text?.length || 0);
+        entry[lang] = hasGoodDescription ? row.description_text : row.display_text;
+      }
+      
+      // Merge into main translations map
+      for (const [code, translation] of grouped) {
+        translations.set(code, translation);
+      }
+      console.log(`   ✅ [I18N] Loaded ${grouped.size} observation translations from DB`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════
+    // SOURCE 2: decision_rules i18n_key → English action_text ONLY
+    // LLM narration layer handles translation at runtime
+    // ═══════════════════════════════════════════════════════════════════
+    const { data: ruleData, error: ruleError } = await supabaseClient
       .from('decision_rules')
       .select('i18n_key, action_text, reason_text, cause, category')
       .not('i18n_key', 'is', null)
       .limit(2000);
     
-    if (error) {
-      console.warn('⚠️ [I18N] Failed to load translations:', error.message);
-      return;
-    }
-    
-    const translations = new Map<string, Translation>();
-    
-    // Add database translations - using action_text as source for all languages
-    // LLM narration layer handles actual translation
-    for (const row of data || []) {
-      if (row.i18n_key) {
-        const key = normalizeI18nKey(row.i18n_key);
-        const text = row.action_text || row.reason_text || row.cause || '';
-        translations.set(key, {
-          key,
-          mr: text,  // Placeholder - LLM translates at runtime
-          hi: text,  // Placeholder - LLM translates at runtime
-          en: text,  // Base English text
-          category: row.category
-        });
+    if (ruleError) {
+      console.warn('⚠️ [I18N] Failed to load decision_rules:', ruleError.message);
+    } else {
+      let ruleCount = 0;
+      for (const row of ruleData || []) {
+        if (row.i18n_key) {
+          const key = normalizeI18nKey(row.i18n_key);
+          const text = row.action_text || row.reason_text || row.cause || '';
+          // Store ONLY English text for rule-level content
+          // mr/hi translation happens via LLM narration layer at runtime
+          if (!translations.has(key)) {
+            translations.set(key, {
+              key,
+              en: text,  // English only - LLM translates at runtime
+              category: row.category
+            });
+            ruleCount++;
+          }
+        }
       }
-    }
-    
-    // Add fallbacks
-    for (const [key, translation] of Object.entries(FALLBACK_TRANSLATIONS)) {
-      if (!translations.has(key)) {
-        translations.set(key, translation);
-      }
+      console.log(`   ✅ [I18N] Loaded ${ruleCount} rule i18n_keys (English only)`);
     }
     
     translationCache = {
@@ -327,7 +286,7 @@ export async function initializeTranslationCache(
       version: I18N_LOADER_VERSION
     };
     
-    console.log(`✅ [I18N] Loaded ${translations.size} translations`);
+    console.log(`✅ [I18N v${I18N_LOADER_VERSION}] Total cache: ${translations.size} entries`);
   } catch (e) {
     console.error('❌ [I18N] Cache initialization failed:', e);
   }
