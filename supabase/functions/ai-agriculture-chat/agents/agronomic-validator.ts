@@ -62,55 +62,19 @@ export const ALLOWED_METHODS_BY_BIOLOGY: Record<string, string[]> = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// IPM DEFAULT PRODUCTS (when rule engine returns null)
+// IPM DEFAULT PRODUCTS - DB-DRIVEN LOOKUP
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE 1 FIX: Removed hardcoded IPM_DEFAULTS dictionary.
+// Product recommendations MUST come from decision_rules table via the
+// symbolic rule engine. The validator now only validates pest biology
+// compatibility (boring vs sucking vs chewing) without injecting products.
+// If the rule engine returns no product, the system asks for clarification
+// rather than inventing recommendations from hardcoded data.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export const IPM_DEFAULTS: Record<string, {
-  chemical: { name: string; dosage: string; method: string; phi_days: number };
-  biological: { name: string; dosage: string; method: string };
-  mechanical: { action: string; frequency: string };
-}> = {
-  SHOOT_BORER: {
-    chemical: { name: 'Chlorantraniliprole 18.5 SC', dosage: '3ml/10L', method: 'SOIL_DRENCH', phi_days: 21 },
-    biological: { name: 'Trichogramma chilonis', dosage: '50,000/acre (6 releases)', method: 'RELEASE' },
-    mechanical: { action: 'Remove and destroy dead hearts weekly', frequency: 'Weekly inspection' }
-  },
-  STEM_BORER: {
-    chemical: { name: 'Fipronil 5 SC', dosage: '30ml/10L', method: 'SOIL_DRENCH', phi_days: 30 },
-    biological: { name: 'Cotesia flavipes', dosage: '5000 cocoons/acre', method: 'RELEASE' },
-    mechanical: { action: 'Collect and destroy egg masses', frequency: 'Every 3 days' }
-  },
-  BOLLWORM: {
-    chemical: { name: 'Emamectin benzoate 5 SG', dosage: '4g/10L', method: 'FOLIAR_SPRAY', phi_days: 7 },
-    biological: { name: 'NPV (HaNPV)', dosage: '250 LE/acre', method: 'EVENING_SPRAY' },
-    mechanical: { action: 'Pheromone traps + bird perches', frequency: '5 traps/acre' }
-  },
-  WHITEFLY: {
-    chemical: { name: 'Diafenthiuron 50 WP', dosage: '12g/10L', method: 'FOLIAR_SPRAY', phi_days: 14 },
-    biological: { name: 'Verticillium lecanii', dosage: '5g/L', method: 'EVENING_SPRAY' },
-    mechanical: { action: 'Yellow sticky traps', frequency: '12 traps/acre' }
-  },
-  APHID: {
-    chemical: { name: 'Thiamethoxam 25 WG', dosage: '4g/10L', method: 'FOLIAR_SPRAY', phi_days: 14 },
-    biological: { name: 'Chrysoperla carnea', dosage: '5000/acre', method: 'RELEASE' },
-    mechanical: { action: 'Remove heavily infested shoots', frequency: 'As needed' }
-  },
-  THRIPS: {
-    chemical: { name: 'Fipronil 5 SC', dosage: '15ml/10L', method: 'FOLIAR_SPRAY', phi_days: 14 },
-    biological: { name: 'Beauveria bassiana', dosage: '5g/L', method: 'EVENING_SPRAY' },
-    mechanical: { action: 'Blue sticky traps', frequency: '10 traps/acre' }
-  },
-  FRUIT_BORER: {
-    chemical: { name: 'Chlorantraniliprole 18.5 SC', dosage: '3ml/10L', method: 'FOLIAR_SPRAY', phi_days: 3 },
-    biological: { name: 'Trichogramma pretiosum', dosage: '1 lakh/acre', method: 'WEEKLY_RELEASE' },
-    mechanical: { action: 'Pheromone traps + early picking of infested fruits', frequency: 'Every 3 days' }
-  },
-  MEALYBUG: {
-    chemical: { name: 'Buprofezin 25 SC', dosage: '20ml/10L', method: 'FOLIAR_SPRAY', phi_days: 21 },
-    biological: { name: 'Cryptolaemus montrouzieri', dosage: '10 beetles/plant', method: 'RELEASE' },
-    mechanical: { action: 'Destroy ant colonies + remove infested parts', frequency: 'Weekly' }
-  }
-};
+// Legacy compatibility: empty object so existing references don't crash
+export const IPM_DEFAULTS: Record<string, any> = {};
+// NOTE: All product recommendations now come exclusively from decision_rules table
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PEST-STAGE COMPATIBILITY MATRIX
@@ -292,67 +256,43 @@ export function validateAgronomicAccuracy(
   // VALIDATION 3: Product Detail Completion
   // ═══════════════════════════════════════════════════════════════════════════
   
+  // VALIDATION 3: Product Detail Completion
+  // PHASE 1 FIX: No longer auto-fills products from hardcoded defaults.
+  // Products MUST come from decision_rules table via symbolic brain.
+  // If missing, we flag it as a warning (not auto-correct with hardcoded data).
   if (recommendation.pest_code) {
     const pestCode = recommendation.pest_code.toUpperCase();
-    const defaults = IPM_DEFAULTS[pestCode];
     
-    // If product_name is missing or null, fill from IPM defaults
     if (!recommendation.product_name || recommendation.product_name.toLowerCase().includes('null')) {
-      if (defaults) {
-        const ipmLevel = recommendation.ipm_level || 5;
-        if (ipmLevel >= 5) {
-          corrections.push({
-            field: 'product_name',
-            original_value: recommendation.product_name || 'null',
-            corrected_value: defaults.chemical.name,
-            reason: 'Filled from IPM database for high infestation'
-          });
-          console.log(`   📦 Auto-filled product: ${defaults.chemical.name}`);
-        } else if (ipmLevel >= 3) {
-          corrections.push({
-            field: 'product_name',
-            original_value: recommendation.product_name || 'null',
-            corrected_value: defaults.biological.name,
-            reason: 'Filled from IPM database for moderate infestation'
-          });
-        }
-      }
-    }
-    
-    // If dosage is missing
-    if (!recommendation.dosage || recommendation.dosage.toLowerCase().includes('label')) {
-      if (defaults) {
-        const ipmLevel = recommendation.ipm_level || 5;
-        const source = ipmLevel >= 5 ? defaults.chemical : defaults.biological;
-        corrections.push({
-          field: 'dosage',
-          original_value: recommendation.dosage || 'As per label',
-          corrected_value: source.dosage,
-          reason: 'Filled from IPM database'
-        });
-        console.log(`   📏 Auto-filled dosage: ${source.dosage}`);
-      }
+      warnings.push({
+        code: 'MISSING_PRODUCT_FROM_RULES',
+        message_en: `No product recommendation from rule engine for ${pestCode}. Check decision_rules table.`,
+        message_mr: `${pestCode} साठी नियम इंजिनमधून उत्पादन शिफारस नाही.`,
+        message_hi: `${pestCode} के लिए नियम इंजन से उत्पाद अनुशंसा नहीं है।`,
+        field: 'product_name',
+        suggestion: 'Ensure decision_rules has matching rule with structured_dosage for this pest'
+      });
+      console.log(`   ⚠️ No product from rule engine for ${pestCode} - DB gap detected`);
     }
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // VALIDATION 4: Method Completion for Boring Pests
-  // ═══════════════════════════════════════════════════════════════════════════
-  
+  // VALIDATION 4: Method Completion for Boring Pests (biology-only, no product injection)
   if (recommendation.pest_code && !recommendation.application_method) {
     const pestCode = recommendation.pest_code.toUpperCase();
-    const defaults = IPM_DEFAULTS[pestCode];
     
-    if (defaults) {
-      const method = PEST_BIOLOGY.BORING_PESTS.includes(pestCode) 
-        ? defaults.chemical.method 
-        : 'FOLIAR_SPRAY';
-        
+    if (PEST_BIOLOGY.BORING_PESTS.includes(pestCode)) {
       corrections.push({
         field: 'application_method',
         original_value: 'undefined',
-        corrected_value: method,
-        reason: `Default method for ${pestCode} based on pest biology`
+        corrected_value: 'SOIL_APPLICATION',
+        reason: `Default method for ${pestCode} based on boring pest biology`
+      });
+    } else if (PEST_BIOLOGY.SUCKING_PESTS.includes(pestCode)) {
+      corrections.push({
+        field: 'application_method',
+        original_value: 'undefined',
+        corrected_value: 'FOLIAR_SPRAY',
+        reason: `Default method for ${pestCode} based on sucking pest biology`
       });
     }
   }
@@ -397,35 +337,23 @@ export function applyAgronomicCorrections<T extends Record<string, any>>(
 export function getIPMDefaultRecommendation(
   pestCode: string,
   ipmLevel: number = 5
+/**
+ * PHASE 1 FIX: This function now returns null always.
+ * Product recommendations MUST come from the decision_rules table,
+ * not from hardcoded defaults. The rule engine is the SSOT.
+ */
+export function getIPMDefaultRecommendation(
+  pestCode: string,
+  ipmLevel: number = 5
 ): {
   product_name: string;
   dosage: string;
   application_method: string;
   phi_days?: number;
 } | null {
-  const defaults = IPM_DEFAULTS[pestCode.toUpperCase()];
-  if (!defaults) return null;
-  
-  if (ipmLevel >= 5) {
-    return {
-      product_name: defaults.chemical.name,
-      dosage: defaults.chemical.dosage,
-      application_method: defaults.chemical.method,
-      phi_days: defaults.chemical.phi_days
-    };
-  } else if (ipmLevel >= 3) {
-    return {
-      product_name: defaults.biological.name,
-      dosage: defaults.biological.dosage,
-      application_method: defaults.biological.method
-    };
-  } else {
-    return {
-      product_name: defaults.mechanical.action,
-      dosage: defaults.mechanical.frequency,
-      application_method: 'MECHANICAL'
-    };
-  }
+  // DEPRECATED: All product data must come from decision_rules table
+  console.log(`⚠️ [AgronomicValidator] getIPMDefaultRecommendation() called for ${pestCode} - returning null (DB-only policy)`);
+  return null;
 }
 
 export default validateAgronomicAccuracy;
