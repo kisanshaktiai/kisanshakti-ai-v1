@@ -110,15 +110,6 @@ export class DiagnosticFlowController {
       pending_questions: []
     };
     this.supabaseClient = supabaseClient;
-      farmer_id: farmerId,
-      land_id: landId,
-      started_at: new Date().toISOString(),
-      nlu_output: {} as NLUOutputWithRuleMapping,
-      context: {} as RuleEvaluationContext,
-      loaded_modules: [],
-      status: 'AWAITING_NLU',
-      pending_questions: []
-    };
   }
   
   // ═══════════════════════════════════════════════════════════════════════
