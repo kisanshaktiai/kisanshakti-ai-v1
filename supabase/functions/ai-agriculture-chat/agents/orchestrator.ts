@@ -695,7 +695,7 @@ export class AIAgentOrchestrator {
    * Create a per-request DiagnosticFlowController
    */
   private createDiagnosticController(sessionId: string, farmerId: string, landId?: string): DiagnosticFlowController {
-    return new DiagnosticFlowController(sessionId, farmerId, landId);
+    return new DiagnosticFlowController(sessionId, farmerId, this.supabase, landId);
   }
   
   /**
@@ -5383,6 +5383,7 @@ export class AIAgentOrchestrator {
         landContext,  // CRITICAL FIX: Pass landContext directly
         canonicalState  // CRITICAL FIX: Pass enriched canonical state for crop fallback
       );
+      ruleEngineInput.supabaseClient = this.supabase;
       
       let decisionOutput = await this.ruleEngine.execute(ruleEngineInput);
       agentsUsed.push('RuleEngine');
