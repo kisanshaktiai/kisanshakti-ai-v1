@@ -74,6 +74,9 @@ import {
   resolveActionCodes
 } from '../utils/safe-string.ts';
 
+// Static import for i18n resolution (replaces dynamic await import)
+import { getTranslation as resolveI18nFromCache } from '../i18n/translation-loader.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // RESPONSE MODE RENDERER - Mode-driven output generation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1179,20 +1182,21 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
            'No action required at this time. Continue regular monitoring.');
         console.log(`   ℹ️ [LLM Formatter] NO_ACTION_REQUIRED: Using fallback text for rule ${primary.rule_id}`);
       } else {
-        // Wire up i18n_key resolver: try getTranslation() from translation-loader
+        // Wire up i18n_key resolver: try getTranslation() from translation-loader (static import)
         if (appDetails.i18n_key) {
-          const { getTranslation: resolveI18n } = await import('../i18n/translation-loader.ts');
-          const resolved = resolveI18n(appDetails.i18n_key, 'en');
+          const resolved = resolveI18nFromCache(appDetails.i18n_key, 'en');
           if (resolved && !resolved.includes('_')) {
             // Got a real English translation from cache - use it
             actionText = resolved;
             console.log(`   ✅ [LLM Formatter] Resolved action_text via i18n_key=${appDetails.i18n_key}`);
           }
         }
-        // Final fallback - use knowledge/reason text before error placeholder
-        actionText = knowledgeText || reasonText || '[Action text unavailable — data error. Please consult agricultural expert.]';
-        if (!knowledgeText && !reasonText) {
-          console.error(`🚨 [LLM Formatter] FALLBACK TRIGGERED: action_text unavailable for rule ${primary.rule_id}`);
+        // Final fallback - ONLY if i18n didn't resolve
+        if (!actionText) {
+          actionText = knowledgeText || reasonText || '[Action text unavailable — data error. Please consult agricultural expert.]';
+          if (!knowledgeText && !reasonText) {
+            console.error(`🚨 [LLM Formatter] FALLBACK TRIGGERED: action_text unavailable for rule ${primary.rule_id}`);
+          }
         }
       }
     }
