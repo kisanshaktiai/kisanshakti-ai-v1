@@ -1,246 +1,212 @@
 
-# Deep Forensic Audit Report: AI Chat & Symbolic Decision Brain
 
-## EXECUTIVE SUMMARY
+# Deep Audit Report: `i18n_key` Logic in the Symbolic Decision Brain
 
-After analyzing all database tables, their schemas, and tracing every column reference through the codebase, I identified **14 critical issues**, **8 data gaps**, and **6 type mismatches** that collectively degrade the symbolic engine's accuracy and language integrity.
+## HOW THE i18n_key SYSTEM IS DESIGNED TO WORK
 
----
+The `i18n_key` field in the `decision_rules` table is the **multilingual anchor** for the symbolic engine. The architecture intends:
 
-## SECTION 1: DATABASE vs CODEBASE COLUMN ALIGNMENT
-
-### 1.1 CRITICAL: Columns DROPPED from DB but still referenced in code
-
-| Column | Status in DB | Files Still Referencing |
-|--------|-------------|------------------------|
-| `response_mr` | **DROPPED** (not in schema) | `all-rules.ts` (line 45), `symbolic-rules-bridge.ts` (lines 48, 236, 271) |
-| `response_hi` | **DROPPED** (not in schema) | `all-rules.ts` (line 46), `symbolic-rules-bridge.ts` (lines 49, 237, 272) |
-| `response_en` | **DROPPED** (not in schema) | `all-rules.ts` (line 47), `symbolic-rules-bridge.ts` (lines 50, 238, 261) |
-| `trigger_keywords` | **DROPPED** (not in schema) | `symbolic-rules-bridge.ts` (lines 202-207), `layered-rule-evaluator.ts` (lines 1237-1241), `symbolic-reasoner.ts` (line 990, 1139) |
-
-**Impact**: Code attempts to read fields that return `undefined` from DB rows. `symbolic-rules-bridge.ts` still does `r.response_mr || r.response_en` to build responses -- this always returns `undefined`, falling back to `r.scientific_basis`. Meanwhile `trigger_keywords` matching in `layered-rule-evaluator.ts` (line 1239) reads `conditions_json.trigger_keywords` which was also cleaned from DB (0 rules have it).
-
-### 1.2 CRITICAL: Type Mismatches Between DB and Code
-
-| Field | DB Type/Values | Code Type | Mismatch |
-|-------|---------------|-----------|----------|
-| `farmer_safety_level` | TEXT: `SAFE`, `CAUTION`, `EXPERT_ONLY` | `1 \| 2 \| 3` (integer) in `all-rules.ts` | **Complete mismatch** -- integer checks will always fail |
-| `ipm_level` | INTEGER: 1,2,3,4,**5** | `1 \| 2 \| 3 \| 4` in `all-rules.ts` | Missing value `5` (36 rules affected) |
-| `condition_code` | TEXT: all `STAGE_GENERAL` (517/517) | Used as FK to `observation_master` per architecture | **Dead column** -- never participates in matching |
-| `stage_applicable` | UPPERCASE array: `TILLERING`, `GRAND_GROWTH` | Loader normalizes to lowercase: `tillering`, `grand_growth` | Case mismatch risk in downstream comparisons |
-
-### 1.3 `observation_aliases` Table Missing `is_active` Column
-
-The `observation_aliases` table has only 3 columns: `alias_code`, `canonical_code`, `created_at`.
-
-**But `loader.ts` line 974 queries:**
-```
-.eq('is_active', true)
-```
-
-This query **silently returns 0 rows** because the column doesn't exist (Supabase returns empty result for non-existent column filters). **ALL 155 observation aliases are being ignored**, completely defeating the PHASE 4 alias expansion.
+1. Store **only English text** in the database (`action_text`, `reason_text`, `knowledge_text`)
+2. Assign each rule a unique `i18n_key` (e.g., `SC_PEST_SCALE_MEALYBUG_001_ACTION`)
+3. At runtime, the translation loader resolves the key to a translated label
+4. The LLM narration layer translates the English `action_text` into the farmer's language
 
 ---
 
-## SECTION 2: HARDCODED LANGUAGE STRINGS (SSOT VIOLATIONS)
+## DATABASE STATUS
 
-### 2.1 Files with hardcoded Marathi/Hindi/English dictionaries
-
-| File | Issue | Approx Lines |
-|------|-------|-------------|
-| `decision-graph-bridge.ts` | **185 product entries** with hardcoded mr/hi/en names, dosages, prices | ~2600 lines of hardcoded data |
-| `communication-translation-dictionary.ts` | CAUSE_TRANSLATIONS: ~60 entries with mr/hi/en | ~700 lines |
-| `diagnostic-escalation-generator.ts` | CAUSE_LABELS, EXPLANATIONS, PHOTO_GUIDANCE: ~30 entries each with mr/hi/en | ~450 lines |
-| `llm-response-formatter.ts` | PEST_TRANSLATIONS (8 entries), DISEASE_TRANSLATIONS (5 entries) | ~30 lines |
-| `diagnosis-only-mode.ts` | CAUSE_TRANSLATIONS duplicate: ~20 entries with mr/hi/en | ~100 lines |
-| `clarification-validator.ts` | DIAGNOSIS_KEYWORDS_MR, DIAGNOSIS_KEYWORDS_HI: hardcoded keyword lists | ~40 lines |
-| `followup-generator.ts` | Regex patterns with Marathi/Hindi words for topic detection | ~10 lines |
-| `regional-translator.ts` | Full translation entries with mr/hi/en/kn | ~200 lines |
-| `farmer-message-builder.ts` | Symptom label dictionaries with mr/hi/en | ~50 lines |
-| `rural-language-dictionary.ts` | marathiTermMappings, hindiTermMappings, instaScanCTAs | ~290 lines |
-
-**Total: ~4,470 lines of hardcoded multilingual content** that should come from database tables (`observation_translations`, `master_products`, or a new `cause_translations` table).
-
-### 2.2 Files claiming "no hardcoded text" but containing it
-
-Several files have SSOT compliance comments but still have hardcoded dictionaries:
-- `diagnostic-escalation-generator.ts`: Has `// SSOT compliant` header but contains 150+ hardcoded translations
-- `decision-graph-bridge.ts`: Contains entire chemical product catalog hardcoded
-
----
-
-## SECTION 3: CRITICAL DATA GAPS IN TABLES
-
-### 3.1 Translation Coverage Crisis
-
-| Metric | Count |
+| Metric | Value |
 |--------|-------|
-| Active observations in `observation_master` | 608 |
-| With English translations | 604 (99.3%) |
-| With Marathi translations | 127 (20.9%) |
-| With Hindi translations | 124 (20.4%) |
-| **Missing mr/hi translations** | **484 (79.6%)** |
+| Total active rules | 517 |
+| Rules with `i18n_key` populated | **517 (100%)** |
+| Rules with `action_text` populated | 517 (100%) |
+| Rules with `reason_text` populated | 517 (100%) |
+| Rules with `knowledge_text` populated | 517 (100%) |
 
-**Impact**: When the system tries to show observation options in Marathi/Hindi (the primary farmer languages), 80% of observations will either show English codes or fall back to hardcoded dictionaries.
+All `i18n_key` values follow the pattern: `{RULE_ID}_ACTION` (e.g., `SUGARCANE_ESB_CHEM_BLOCK_002_ACTION`, `SC_DIAG_TERMITE_001_ACTION`).
 
-### 3.2 `condition_code` Dead Column
+The English content in `action_text` is the authoritative agronomic instruction. Example:
 
-All 517 active rules have `condition_code = 'STAGE_GENERAL'`. The architecture mandates that `condition_code` should be a FK to `observation_master.observation_code`, serving as the primary matching key. Currently this column is meaningless.
-
-### 3.3 Treatment Rules Missing Observation Anchors
-
-| Category | Rules without `observations` in `conditions_json` |
-|----------|--------------------------------------------------|
-| RECOMMEND | 144 / 251 (57%) |
-| URGENT_ACTION | 11 / 12 (92%) |
-| MONITOR | 45 / 115 (39%) |
-| BLOCK | 39 / 100 (39%) |
-| NO_ACTION_REQUIRED | 21 / 39 (54%) |
-
-260 out of 517 rules (50.3%) have no observation array in their conditions. These rules can only match via boolean/numeric conditions in `conditions_json`, making them prone to the generic fallthrough bug.
-
-### 3.4 `master_products` Table Nearly Empty
-
-The `master_products` table has a comprehensive schema (80+ columns including `translations`, `pest_targets`, `active_ingredients`, `dosage_instructions`) but contains only **3 rows**. Meanwhile `decision-graph-bridge.ts` has **185 hardcoded product definitions** that should live in this table.
-
-### 3.5 `required_observation_category` and `required_plant_part` Coverage
-
-| Field | Rules Populated | Total Active | Coverage |
-|-------|----------------|-------------|----------|
-| `required_observation_category` | 272 | 517 | 52.6% |
-| `required_plant_part` | 73 | 517 | 14.1% |
-
-245 rules have no observation category constraint and 444 rules have no plant part constraint, reducing the effectiveness of the observation layer filter.
+```
+i18n_key: SUGARCANE_ESB_CHEM_BLOCK_002_ACTION
+action_text: "Early Shoot Borer below ETL (10% dead hearts). No chemical spray needed.
+              Continue monitoring weekly. Remove and destroy dead hearts manually.
+              Release Trichogramma chilonis as preventive biocontrol."
+```
 
 ---
 
-## SECTION 4: STRUCTURAL BUGS
+## HOW i18n_key IS ACTUALLY USED IN THE CODEBASE
 
-### 4.1 BUG: `observation_aliases` query returns 0 rows (CRITICAL)
+### Step 1: Database → Loader (WORKS)
 
-**Location**: `loader.ts` line 974
-**Cause**: Queries `.eq('is_active', true)` on a table that has no `is_active` column
-**Effect**: `cachedObservationAliases` is never populated. All 155 aliases are ignored.
-**Fix**: Remove `.eq('is_active', true)` from the query, OR add `is_active` column to `observation_aliases` table.
+**File:** `bundled-rules/loader.ts` (line 238)
 
-### 4.2 BUG: `symbolic-rules-bridge.ts` uses dropped columns
+The loader correctly fetches `i18n_key` from the `decision_rules` table and maps it onto the `ExecutableRule` object:
+```
+i18n_key: row.i18n_key
+```
 
-**Location**: Lines 236-262
-**Cause**: Accesses `r.response_mr`, `r.response_hi`, `r.response_en` which no longer exist
-**Effect**: `convertToRuleResult()` always falls back to `r.scientific_basis` for the reason text
-**Fix**: Use `r.action_text` / `r.reason_text` / `r.i18n_key` instead
+This field is available to all downstream consumers.
 
-### 4.3 BUG: `symbolic-rules-bridge.ts` still has wrong `action_type` enum
+### Step 2: Loader → Symbolic Reasoner (WORKS)
 
-**Location**: Line 52
-**Code**: `action_type?: 'BLOCK' | 'WARN' | 'RECOMMEND' | 'DELAY' | 'MONITOR'`
-**DB values**: `RECOMMEND | MONITOR | BLOCK | NO_ACTION_REQUIRED | URGENT_ACTION`
-**Missing**: `NO_ACTION_REQUIRED`, `URGENT_ACTION`
-**Invalid**: `WARN`, `DELAY`
+**File:** `decision/symbolic-reasoner.ts` (lines 113, 450, 467-477)
 
-### 4.4 BUG: `layered-rule-evaluator.ts` trigger_keywords matching
+When a rule fires, its `i18n_key` is included in the `FiredRule` interface and in `matched_responses[]`:
+```
+i18n_key: rule.i18n_key
+```
 
-**Location**: Lines 1237-1241
-**Code**: Still matches rules by `conditions_json.trigger_keywords`
-**DB**: 0 rules have `trigger_keywords` in conditions_json (confirmed: `has_trigger_kw = 0`)
-**Effect**: Dead code path that never matches anything
+### Step 3: Symbolic Reasoner → Translation Loader (PARTIALLY WORKS)
 
-### 4.5 BUG: Stage normalization creates mismatch
+**File:** `i18n/translation-loader.ts` (lines 275-334)
 
-**Location**: `loader.ts` lines 181-194
-**DB stages**: UPPERCASE (`TILLERING`, `GRAND_GROWTH`, `MATURITY`)
-**Code normalizes to**: lowercase (`tillering`, `grand_growth`, `maturity`)
-**Risk**: If any downstream comparison is case-sensitive, stage matching fails
+`initializeTranslationCache()` loads all `i18n_key` + `action_text` pairs from `decision_rules` and builds a cache. **However, there is a critical design flaw:**
 
----
+```typescript
+// Line 307-313
+translations.set(key, {
+  key,
+  mr: text,  // Placeholder - LLM translates at runtime
+  hi: text,  // Placeholder - LLM translates at runtime
+  en: text,  // Base English text
+  category: row.category
+});
+```
 
-## SECTION 5: IMPLEMENTATION PLAN
+The cache stores **the same English `action_text` for ALL languages** (mr, hi, en). This means `getTranslation('SC_PEST_SCALE_MEALYBUG_001_ACTION', 'mr')` returns the English text, not Marathi. The comment says "LLM translates at runtime" but the `getTranslation()` function itself has logic to **detect and reject** this:
 
-### Change 1: Fix `observation_aliases` query (CRITICAL - immediate)
+```typescript
+// Line 142
+if (value && language !== 'en' && value !== translation.en) {
+  return value;  // Only returns if different from English
+}
+// Falls through to FALLBACK_TRANSLATIONS
+```
 
-**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
+So for non-English languages, the cache is effectively **useless** for all 517 rule translations. It always falls through to `FALLBACK_TRANSLATIONS`, which only covers ~45 pest/disease/symptom terms, not the 517 rule-specific `action_text` values.
 
-Remove `.eq('is_active', true)` from line 974. The `observation_aliases` table has no `is_active` column, so this filter returns 0 rows, defeating all alias expansion.
+### Step 4: Translation Loader → LLM Formatter (BROKEN)
 
-### Change 2: Fix `farmer_safety_level` type mismatch
+**File:** `agents/llm-response-formatter.ts` (lines 1182-1184)
 
-**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
+When `action_text` is missing from a rule, the formatter tries `i18n_key` lookup but **explicitly logs it as NOT IMPLEMENTED**:
 
-Change `farmer_safety_level?: 1 | 2 | 3` to `farmer_safety_level?: 'SAFE' | 'CAUTION' | 'EXPERT_ONLY'` to match DB values.
+```typescript
+// Try i18n_key lookup (placeholder - would need i18n loader)
+if (appDetails.i18n_key) {
+  console.warn(`⚠️ [LLM Formatter] action_text missing, i18n_key=${appDetails.i18n_key} - i18n lookup not implemented`);
+}
+```
 
-**File**: `supabase/functions/ai-agriculture-chat/decision/safety-enhancement.ts`
+This is the critical disconnect. The formatter has the `i18n_key` but never calls `getTranslation()` to resolve it.
 
-Update `SafetyLevel` type and `getSafetyWarning()` to use string values instead of integers.
+### Step 5: LLM Formatting (THE ACTUAL TRANSLATION MECHANISM)
 
-### Change 3: Fix `ipm_level` type to include 5
+**File:** `agents/llm-response-formatter.ts` (lines 1200+)
 
-**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/all-rules.ts`
+The **actual** translation happens via the LLM prompt, not via the `i18n_key` resolver. The formatter passes the English `action_text` to the LLM with an instruction like:
 
-Change `ipm_level?: 1 | 2 | 3 | 4` to `ipm_level?: 1 | 2 | 3 | 4 | 5`.
+```
+═══ REFERENCE TEXTS (TRANSLATE TO MARATHI) ═══
+```
 
-### Change 4: Clean `symbolic-rules-bridge.ts` dropped columns and enum
-
-**File**: `supabase/functions/ai-agriculture-chat/agents/symbolic-rules-bridge.ts`
-
-- Remove `response_mr`, `response_hi`, `response_en` from interface and mappings
-- Update `action_type` union to `'RECOMMEND' | 'MONITOR' | 'BLOCK' | 'NO_ACTION_REQUIRED' | 'URGENT_ACTION'`
-- Update `convertToRuleResult()` to use `action_text` / `reason_text` / `i18n_key`
-
-### Change 5: Remove dead `trigger_keywords` matching from `layered-rule-evaluator.ts`
-
-**File**: `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-
-Remove lines 1235-1241 that match by `conditions_json.trigger_keywords` (0 rules have this).
-
-### Change 6: Remove hardcoded PEST/DISEASE translations from `llm-response-formatter.ts`
-
-**File**: `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts`
-
-Replace `PEST_TRANSLATIONS` and `DISEASE_TRANSLATIONS` dictionaries with lookups from `observation_translations` table (already has a loader: `observation-label-loader.ts`).
-
-### Change 7: Remove duplicate CAUSE_TRANSLATIONS from `diagnosis-only-mode.ts`
-
-**File**: `supabase/functions/ai-agriculture-chat/decision/diagnosis-only-mode.ts`
-
-Replace hardcoded `CAUSE_TRANSLATIONS` (lines 854-900) with the DB-driven `translateCause()` function already available from `translation-loader.ts`.
-
-### Change 8: Fix stage normalization to preserve DB case
-
-**File**: `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts`
-
-In `normalizeStages()` (lines 181-194), preserve original case instead of lowercasing. The DB stores UPPERCASE stages and comparisons should be case-insensitive at match time, not at load time.
+The LLM then translates the English `action_text` into the farmer's language. This is the **real** i18n mechanism — the LLM is the translator.
 
 ---
 
-## SECTION 6: DATA GAPS REQUIRING DB POPULATION (No code changes)
+## COMPLETE DATA FLOW TRACE
 
-These gaps require database INSERT operations (not code fixes):
-
-1. **484 missing Marathi/Hindi observation translations** in `observation_translations` table
-2. **182 hardcoded products** in `decision-graph-bridge.ts` should be migrated to `master_products` table
-3. **260 rules** need `observations` arrays populated in `conditions_json`
-4. **444 rules** need `required_plant_part` populated
-5. **245 rules** need `required_observation_category` populated
-6. **517 rules** have `condition_code = 'STAGE_GENERAL'` instead of specific observation codes
+```text
+Database (decision_rules)
+  │
+  │  i18n_key: "SC_PEST_SCALE_MEALYBUG_001_ACTION"
+  │  action_text: "Apply Buprofezin 25 SC @ 2ml/L..."  (English only)
+  │
+  ▼
+Loader (loader.ts)
+  │  Maps i18n_key onto ExecutableRule
+  │
+  ▼
+Symbolic Reasoner (symbolic-reasoner.ts)
+  │  Includes i18n_key in FiredRule + matched_responses
+  │
+  ▼
+Translation Cache (translation-loader.ts)
+  │  Caches i18n_key → {en: action_text, mr: action_text, hi: action_text}
+  │  ❌ mr/hi are just COPIES of English text (placeholder)
+  │  ❌ getTranslation() detects this and rejects it for non-English
+  │  Falls through to FALLBACK_TRANSLATIONS (only 45 terms)
+  │
+  ▼
+LLM Formatter (llm-response-formatter.ts)
+  │  ❌ i18n_key lookup logged as "not implemented"
+  │  ✅ BUT: English action_text IS passed to LLM prompt
+  │  ✅ LLM translates action_text to target language
+  │
+  ▼
+Farmer sees: Marathi/Hindi response (translated by LLM from English action_text)
+```
 
 ---
 
-## SECTION 7: FILES TO BE MODIFIED (Code Changes Only)
+## CRITICAL FINDINGS
 
-| # | File | Changes |
-|---|------|---------|
-| 1 | `bundled-rules/loader.ts` | Fix alias query (remove `is_active`), preserve stage case |
-| 2 | `bundled-rules/all-rules.ts` | Fix `farmer_safety_level` type, add `ipm_level: 5` |
-| 3 | `agents/symbolic-rules-bridge.ts` | Remove dropped columns, fix action_type enum |
-| 4 | `agents/layered-rule-evaluator.ts` | Remove dead trigger_keywords matching |
-| 5 | `agents/llm-response-formatter.ts` | Replace hardcoded PEST/DISEASE translations with DB loader |
-| 6 | `decision/diagnosis-only-mode.ts` | Replace hardcoded CAUSE_TRANSLATIONS with DB-driven function |
-| 7 | `decision/safety-enhancement.ts` | Update SafetyLevel to match DB text values |
+### Finding 1: i18n_key is STORED but NEVER RESOLVED for rule-level translations
 
-### Files NOT changed (require separate data migration)
+The `i18n_key` field exists on all 517 rules and flows through the pipeline, but:
+- The translation cache stores English for all languages
+- `getTranslation()` correctly rejects same-as-English values for non-English
+- The LLM formatter explicitly logs "i18n lookup not implemented"
+- **Net effect:** `i18n_key` is carried as metadata but never produces a translated string
 
-- Database tables (need INSERT migrations for translations, products, observations)
-- `decision-graph-bridge.ts` (185 products need `master_products` table populated first)
-- `communication-translation-dictionary.ts` (needs cause_translations table first)
-- `diagnostic-escalation-generator.ts` (needs observation_translations populated first)
-- Frontend code
+### Finding 2: The LLM IS the actual translator (by design)
+
+The system works despite the broken i18n resolver because:
+- `action_text` (English) is always available (517/517 rules)
+- The LLM formatter passes English `action_text` to the LLM with "TRANSLATE TO {language}" instructions
+- The LLM generates the Marathi/Hindi response
+
+This is **architecturally intentional** — the plan header states "store only English, translate via codebase." The "codebase" here is the LLM, not a static lookup table.
+
+### Finding 3: FALLBACK_TRANSLATIONS still has ~96 hardcoded multilingual entries
+
+**File:** `translation-loader.ts` (lines 50-96)
+
+Despite the SSOT mandate to remove all hardcoded translations, this file contains 45+ entries with hardcoded Marathi/Hindi text for pests, diseases, symptoms, and actions. These serve as fallbacks when the cache cannot resolve a key.
+
+### Finding 4: `diagnostic-options-i18n.ts` has hardcoded labels contradicting SSOT
+
+**File:** `agents/diagnostic-options-i18n.ts`
+
+Contains 10 diagnostic options with hardcoded `label: { mr: '...', hi: '...', en: '...' }` dictionaries. These use `i18n_key` as a field name but the actual label resolution uses the hardcoded `label[language]` map, not a DB lookup.
+
+### Finding 5: `translateCause()` wrapper partially works
+
+**File:** `translation-loader.ts` (lines 247-265)
+
+This function tries `getTranslation()` first, then strips suffixes like `_INFESTATION` or `_ATTACK` and retries. For non-English, it will only return a real translation if the cause matches one of the 45 `FALLBACK_TRANSLATIONS` entries. For the other 472+ causes, it returns the raw key formatted as `SHOOT BORER INFESTATION`.
+
+---
+
+## SUMMARY: IS i18n_key WORKING?
+
+| Aspect | Status | Details |
+|--------|--------|---------|
+| `i18n_key` stored in DB | ✅ 100% | All 517 rules have it |
+| `i18n_key` loaded into runtime | ✅ Works | `loader.ts` maps it correctly |
+| `i18n_key` flows to reasoner | ✅ Works | Included in `FiredRule` |
+| `i18n_key` resolves to non-English text | ❌ Broken | Cache stores English for all languages; `getTranslation()` rejects it |
+| `i18n_key` used by LLM formatter | ❌ Not implemented | Logged as "would need i18n loader" |
+| English `action_text` translated by LLM | ✅ Works | LLM prompt includes "TRANSLATE TO {language}" |
+| `FALLBACK_TRANSLATIONS` hardcoded | ⚠️ SSOT violation | 45+ entries with mr/hi/en |
+| `diagnostic-options-i18n.ts` hardcoded | ⚠️ SSOT violation | 10 options with hardcoded labels |
+| `translateCause()` for non-English | ⚠️ Partial | Only works for 45 fallback terms |
+
+### Bottom Line
+
+The `i18n_key` field is **metadata infrastructure** that is fully populated and flowing through the pipeline, but **never actually resolves translations** at the code level. The real translation mechanism is the LLM narration layer, which takes English `action_text` and translates it in-prompt. The `i18n_key` resolver (`translation-loader.ts`) is structurally present but functionally inert for rule-level content because it stores English text as placeholder for all languages.
+
+No code or data changes have been made per your instruction.
+
