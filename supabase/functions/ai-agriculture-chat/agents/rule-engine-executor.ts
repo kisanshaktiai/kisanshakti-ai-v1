@@ -140,7 +140,7 @@ export class RuleEngineExecutor {
       };
       
       console.log(`  Executing Decision Graph Bridge...`);
-      const bridgeEvaluation = await evaluateDecisionGraph(bridgeContext);
+      const bridgeEvaluation = await evaluateDecisionGraph(input.supabaseClient, bridgeContext);
       
       if (bridgeEvaluation.recommendations?.length > 0) {
         bridgeResults = bridgeEvaluation.recommendations.map(rec => {

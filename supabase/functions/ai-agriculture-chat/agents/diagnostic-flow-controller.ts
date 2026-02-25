@@ -90,14 +90,26 @@ export interface LoadedModule {
 
 export class DiagnosticFlowController {
   private session: DiagnosticSession;
+  private supabaseClient: any;
   
   constructor(
     sessionId: string,
     farmerId: string,
+    supabaseClient: any,
     landId?: string
   ) {
     this.session = {
       session_id: sessionId,
+      farmer_id: farmerId,
+      land_id: landId,
+      started_at: new Date().toISOString(),
+      nlu_output: {} as NLUOutputWithRuleMapping,
+      context: {} as RuleEvaluationContext,
+      loaded_modules: [],
+      status: 'AWAITING_NLU',
+      pending_questions: []
+    };
+    this.supabaseClient = supabaseClient;
       farmer_id: farmerId,
       land_id: landId,
       started_at: new Date().toISOString(),
@@ -396,7 +408,7 @@ export class DiagnosticFlowController {
     console.log('🔬 [DiagnosticFlow] Evaluating decision graph ONCE for all modules');
     
     try {
-      const graphResult = await evaluateDecisionGraph(context, this.session.session_id);
+      const graphResult = await evaluateDecisionGraph(this.supabaseClient, context, this.session.session_id);
       
       // Record which modules were referenced (for traceability)
       for (const moduleRef of nlu.requiredRuleModules) {
@@ -457,7 +469,7 @@ export class DiagnosticFlowController {
     console.log(`🔬 [DiagnosticFlow] Evaluating module: ${moduleRef.moduleFile}`);
     
     try {
-      const result = await evaluateDecisionGraph(context, this.session.session_id);
+      const result = await evaluateDecisionGraph(this.supabaseClient, context, this.session.session_id);
       
       this.session.loaded_modules.push({
         reference: moduleRef,

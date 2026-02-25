@@ -168,7 +168,17 @@ export interface DecisionOutput {
   contingency_planning: ContingencyPlan;
   
   /** Follow-up schedule */
-  follow_up_schedule: FollowUpSchedule;
+export interface RuleExecutionInput {
+  session_id: string;
+  farmer_context: FarmerContext;
+  pest_disease_state: PestDiseaseState;
+  field_conditions: FieldConditions;
+  environmental_context: EnvironmentalContext;
+  farmer_constraints: FarmerConstraints;
+  land_id?: string;
+  farmer_id: string;
+  supabaseClient?: any;
+}
   
   /** Audit trail */
   audit_trail: AuditTrail;
