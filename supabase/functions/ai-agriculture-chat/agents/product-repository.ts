@@ -2,7 +2,7 @@
 // Queries master_products table instead of hardcoded arrays
 // ════════════════════════════════════════════════════════
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
 
 export interface ProductRecommendation {
   id: string;

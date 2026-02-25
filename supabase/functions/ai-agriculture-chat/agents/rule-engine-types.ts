@@ -168,17 +168,7 @@ export interface DecisionOutput {
   contingency_planning: ContingencyPlan;
   
   /** Follow-up schedule */
-export interface RuleExecutionInput {
-  session_id: string;
-  farmer_context: FarmerContext;
-  pest_disease_state: PestDiseaseState;
-  field_conditions: FieldConditions;
-  environmental_context: EnvironmentalContext;
-  farmer_constraints: FarmerConstraints;
-  land_id?: string;
-  farmer_id: string;
-  supabaseClient?: any;
-}
+  follow_up_schedule: FollowUpSchedule;
   
   /** Audit trail */
   audit_trail: AuditTrail;
@@ -236,6 +226,18 @@ export interface RuleExecutionInput {
     response_hi?: string;
     response_en?: string;
   }>;
+}
+
+export interface RuleExecutionInput {
+  session_id: string;
+  farmer_context: FarmerContext;
+  pest_disease_state: PestDiseaseState;
+  field_conditions: FieldConditions;
+  environmental_context: EnvironmentalContext;
+  farmer_constraints: FarmerConstraints;
+  land_id?: string;
+  farmer_id: string;
+  supabaseClient?: any;
 }
 
 export type DecisionStatus = 
