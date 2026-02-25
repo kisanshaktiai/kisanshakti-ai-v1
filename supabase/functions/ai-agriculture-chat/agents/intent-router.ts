@@ -421,7 +421,7 @@ export function classifyEnhancedIntent(
   // Problem reporting takes highest priority
   else if (isProblemReport && !isProgressUpdate) {
     // Determine if it's pest, disease, or general problem
-    if (/किडी|कीड़|pest|insect|bug|अळी|इल्ली/i.test(message)) {
+    if (/किडी|किडे|किड|कीड़|कीड|pest|insect|bug|अळी|इल्ली|कीटक/i.test(message)) {
       primaryIntent = 'PEST_PROBLEM';
     } else if (/रोग|disease|बीमारी|बुरशी/i.test(message)) {
       primaryIntent = 'DISEASE_PROBLEM';

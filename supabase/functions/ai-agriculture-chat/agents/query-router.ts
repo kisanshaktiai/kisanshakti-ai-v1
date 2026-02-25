@@ -84,7 +84,7 @@ const PEST_DISEASE_PATTERNS = [
   /जळालेल|जळून|करपले/i,                    // "burned/scorched"
   
   // Pest mentions
-  /किडी|कीड़|माशी|मावा|इल्ली|अळी|pest|insect|bug|कीट/i,
+  /किडी|किडे|किड|कीड़|कीड|माशी|मावा|इल्ली|अळी|pest|insect|bug|कीट|कीटक/i,
   /whitefly|aphid|borer|thrips|mealybug|jassid/i,
   /पांढर्या?\s*माशी|मावा|तेला|बोरर/i,
   /shoot\s*borer|stem\s*borer|fruit\s*borer|bollworm/i,
