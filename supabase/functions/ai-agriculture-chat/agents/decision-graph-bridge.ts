@@ -87,50 +87,8 @@ const NEONICOTINOIDS = [
   'thiacloprid', 'dinotefuran', 'nitenpyram'
 ];
 
-// ═══════════════════════════════════════════════════════════════════════════
-// CULTURAL FALLBACK STRATEGIES
-// ═══════════════════════════════════════════════════════════════════════════
-
-const CULTURAL_STRATEGIES = {
-  'SUGARCANE': [
-    'Remove and destroy dead hearts immediately',
-    'Do NOT harvest young crop for pest control',
-    'Earthing up to cover root zone',
-    'Detrashing lower dried leaves',
-    'Install pheromone traps @ 5/acre'
-  ],
-  'COTTON': [
-    'Install yellow sticky traps @ 12/acre',
-    'Remove alternate hosts like parthenium',
-    'Install pheromone traps @ 5/acre',
-    'Destroy crop residue after harvest'
-  ],
-  'RICE': [
-    'Alternate wetting and drying irrigation',
-    'Avoid excess nitrogen application',
-    'Use resistant varieties',
-    'Clip leaf tips before transplanting'
-  ],
-  'VEGETABLES': [
-    'Install pheromone traps @ 5/acre',
-    'Use bird perches @ 20/acre',
-    'Collect and destroy affected fruits'
-  ],
-  'GENERAL': [
-    'Deep summer ploughing',
-    'Regular crop monitoring',
-    'Balanced fertilization',
-    'Protect beneficial insects'
-  ]
-};
-
-function getCulturalAdvice(crop: string): string[] {
-  const normCrop = crop.toUpperCase();
-  for (const [key, strategies] of Object.entries(CULTURAL_STRATEGIES)) {
-    if (normCrop.includes(key)) return strategies;
-  }
-  return CULTURAL_STRATEGIES.GENERAL;
-}
+// Cultural strategies imported from bridge-data (was orphaned)
+import { getCulturalAdvice } from './decision-graph-bridge-data.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN EVALUATION FUNCTION

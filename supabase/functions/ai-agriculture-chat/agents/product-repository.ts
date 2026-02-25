@@ -130,10 +130,9 @@ export async function findProductForPest(
 
   if (organicOnly) {
     query = query.eq('organic_certified', true);
-  } else {
-    // If not strict organic, filter by IPM level cap
-    query = query.lte('ai_metadata->ipm_level', maxIPMLevel);
   }
+  // NOTE: IPM level filtering is done in-memory below because
+  // PostgREST .lte() on JSONB arrow path uses text comparison, not numeric.
 
   const { data, error } = await query;
   
@@ -142,9 +141,14 @@ export async function findProductForPest(
     return null;
   }
 
-  // Filter in memory for fuzzy matching on array elements
-  // (Postgres JSONB contains is exact match)
+  // Filter in memory for fuzzy matching on array elements + numeric IPM level
   const matched = data.filter((p: any) => {
+    // IPM level check (numeric, in-memory to avoid JSONB text comparison bug)
+    if (!organicOnly) {
+      const ipmLevel = Number(p.ai_metadata?.ipm_level);
+      if (!isNaN(ipmLevel) && ipmLevel > maxIPMLevel) return false;
+    }
+    
     // Check crop
     const crops = p.suitable_crops || [];
     const hasCrop = crops.includes('ALL_CROPS') || 
@@ -268,12 +272,16 @@ export async function getProductsByIPMLevel(
     .eq('status', 'active')
     // We can't filter by array content efficiently with fuzzy match in SQL without exact codes
     // So we fetch broader set and filter in JS
-    .in('ai_metadata->ipm_level', allowedLevels) // This works if ai_metadata is jsonb
+    // IPM level filtering done in-memory below (JSONB arrow path uses text comparison)
     .order('effectiveness_rating', { ascending: false });
 
   if (error || !data) return [];
 
   const matched = data.filter((p: any) => {
+    // IPM level check (numeric, in-memory to avoid JSONB text comparison bug)
+    const ipmLevel = Number(p.ai_metadata?.ipm_level);
+    if (!isNaN(ipmLevel) && !allowedLevels.includes(ipmLevel)) return false;
+    
     // Crop check
     const crops = p.suitable_crops || [];
     const hasCrop = crops.includes('ALL_CROPS') || 

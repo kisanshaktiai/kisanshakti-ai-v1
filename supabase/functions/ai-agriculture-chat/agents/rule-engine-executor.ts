@@ -467,6 +467,8 @@ export class RuleEngineExecutor {
   
   private generateDefaultDecision(input: RuleExecutionInput, startTime: number): DecisionOutput {
     return {
+      decision_id: `default_${Date.now().toString(36)}`,
+      timestamp: new Date().toISOString(),
       session_id: input.session_id,
       status: 'MONITORING',
       confidence: 0.5,
@@ -511,6 +513,8 @@ export class RuleEngineExecutor {
     console.error('[RuleEngine] Fallback:', error.message);
     
     return {
+      decision_id: `fallback_${Date.now().toString(36)}`,
+      timestamp: new Date().toISOString(),
       session_id: input.session_id,
       status: 'ERROR_FALLBACK',
       confidence: 0.3,
@@ -561,6 +565,8 @@ export class RuleEngineExecutor {
     startTime: number
   ): DecisionOutput {
     return {
+      decision_id: `blocked_${Date.now().toString(36)}`,
+      timestamp: new Date().toISOString(),
       session_id: input.session_id,
       status: 'BLOCKED',
       confidence: 1.0,
@@ -600,6 +606,8 @@ export class RuleEngineExecutor {
     startTime: number
   ): DecisionOutput {
     return {
+      decision_id: `weather_${Date.now().toString(36)}`,
+      timestamp: new Date().toISOString(),
       session_id: input.session_id,
       status: 'WEATHER_DELAYED',
       confidence: 0.7,
@@ -636,6 +644,8 @@ export class RuleEngineExecutor {
     const primary = resolved.primary_decision;
     
     return {
+      decision_id: `decision_${Date.now().toString(36)}`,
+      timestamp: new Date().toISOString(),
       session_id: input.session_id,
       status: resolved.status as any,
       confidence: resolved.confidence || 0.7,

@@ -28,6 +28,9 @@ export interface RuleExecutionInput {
   farmer_id?: string;
   land_id?: string;
   
+  /** Supabase client for DB-driven product lookups */
+  supabaseClient?: any;
+  
   /** Confirmed hypotheses from Diagnostic Flow Controller */
   confirmed_hypotheses: DiagnosticHypothesis[];
   
@@ -228,17 +231,8 @@ export interface DecisionOutput {
   }>;
 }
 
-export interface RuleExecutionInput {
-  session_id: string;
-  farmer_context: FarmerContext;
-  pest_disease_state: PestDiseaseState;
-  field_conditions: FieldConditions;
-  environmental_context: EnvironmentalContext;
-  farmer_constraints: FarmerConstraints;
-  land_id?: string;
-  farmer_id: string;
-  supabaseClient?: any;
-}
+// RuleExecutionInput is defined once at the top of this file (line 26)
+// with supabaseClient included. No duplicate needed.
 
 export type DecisionStatus = 
   | 'SUCCESS'
