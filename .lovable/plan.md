@@ -1,253 +1,388 @@
 
 
-# Forensic Audit: AI Chat + Symbolic Decision Brain
+# Master Forensic Audit Report: AI Chat + Symbolic Decision Brain
 
-## Executive Summary
-
-The system is critically broken for its primary use case (sugarcane advisory). **Zero sugarcane-specific rules ever fire.** The root cause is a single crop code mismatch that silently drops 454 out of 490 applicable rules before evaluation even begins. Secondary issues compound this: NDVI observation codes are phantom (not in any DB table), most NDVI rules are stage-locked to SEEDLING only, and the `condition_code` column is decorative across all 517 rules.
+## Validated Test Case
+**Query:** "या पिकाला कोणते खत द्यायला हवे?" (Which fertilizer should I give this crop?)
+**Crop:** Sugarcane | **Stage:** TILLERING | **Expected:** Fertilizer recommendation from symbolic graph
 
 ---
 
-## 1. Critical Root Cause: Crop Code Mismatch
+## PHASE A — Intent Pipeline Integrity
 
-**Classification: FILTER BUG — CRITICAL**
-
-### The Bug
-
-The orchestrator maps `SUGARCANE` → `'sc'` before calling rule loading:
-
-```text
-orchestrator.ts:1538  →  cropCodeForRules = 'sc'
-orchestrator.ts:4733  →  cropCodeForFilter = 'sc'
+### A1. Intent Classifier Correctly Maps Fertilizer Queries
+The `intent-classifier.ts` (line 462) has a regex fallback:
 ```
-
-But the rule loader normalizes DB `crop_code` to lowercase:
-
-```text
-loader.ts:219  →  crop_code: row.crop_code?.toLowerCase() → 'sugarcane'
+/खत|उर्वरक|खाद|fertiliz|nutrient|पोषण|\bkhat\b|\bkhaad\b/i → FERTILIZER_SCHEDULE (0.6)
 ```
+The LLM classifier also includes `FERTILIZER_SCHEDULE` in its valid codes. **No mutation issue here.**
 
-When `getAllRulesWithBundled('sc')` filters (lines 862-867):
+### A2. CRITICAL FINDING — Intent Confidence Tiering Allows Downgrade
+**Violation:** Intent confidence from the regex fallback is 0.6, which lands in `TENTATIVE` tier (0.35-0.64). The `TENTATIVE` tier does NOT have hard-lock protection like `HIGH` (≥0.65). This means downstream logic CAN downgrade it if other signals contradict.
 
-```text
-'sugarcane' === 'sc'  → FALSE  (454 rules dropped)
-'all' === 'sc'        → FALSE
-'all' === 'all'       → TRUE   (36 rules kept)
-```
+**Fix:** The regex fallback for `FERTILIZER_SCHEDULE` should return confidence ≥ 0.65 (HIGH tier) since it's a deterministic keyword match, not probabilistic.
 
-**Result:** Only 36 universal `ALL` rules survive. All 454 sugarcane-specific rules — pests, diseases, nutrition, irrigation, NDVI — are silently excluded.
+### A3. Intent Code Is Immutable After Lock
+`lockIntent()` at orchestrator line 3902 locks the intent. `filterActionsByIntentLock()` at line 5682 enforces scope. **No mutation of intent_code after lock.**
 
-### DB Proof
+---
 
-| crop_code  | count |
-|------------|-------|
-| SUGARCANE  | 454   |
-| ALL        | 36    |
-| CTN        | 27    |
+## PHASE B — Induction Gate Validation
 
-The "36 crop-filtered rules" in the logs are exactly the 36 `ALL` rules.
-
-### Required Fix
-
-**Option A (recommended):** Add alias resolution in `getAllRulesWithBundled` and `loadRulesForCrop`:
-
+### B1. CRITICAL FINDING — Fertilizer Route Is NOT in `symptomFreeRoutes`
+**Location:** orchestrator.ts line 2605
 ```typescript
-const CROP_CODE_ALIASES: Record<string, string[]> = {
-  'sc': ['sugarcane', 'sugar_cane'],
-  'ctn': ['cotton', 'kapas'],
-  // ...same map already in convertBundledToRule lines 921-931
-};
+const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'GENERAL_INFO', 'GREETING'];
+```
 
-function matchesCrop(ruleCrop: string, queryCrop: string): boolean {
-  if (ruleCrop === queryCrop) return true;
-  if (['all', '*', 'universal'].includes(ruleCrop)) return true;
-  const aliases = CROP_CODE_ALIASES[queryCrop] || [];
-  return aliases.includes(ruleCrop);
+`FERTILIZER_SCHEDULE` intent maps to query route `GENERAL_INFO` (default) because the query router has **zero fertilizer patterns** — there's no fertilizer-specific route. Since `GENERAL_INFO` IS in `symptomFreeRoutes`, fertilizer queries DO bypass the symptom gate — but only by accident through the default route.
+
+**However,** the `directModeBypass` at line 2407 also kicks in:
+```typescript
+if (intentMetaFromDB?.clarification_mode === 'DIRECT' && landContext?.current_crop) {
+  directModeBypass = true;
+  bypassClarification = true;
+}
+```
+Since `FERTILIZER_SCHEDULE` has `clarification_mode='DIRECT'` in `observation_intent_master`, this correctly bypasses clarification.
+
+### B2. FINDING — Missing Query Router Pattern for Fertilizer
+The query router (`query-router.ts`) has patterns for pest/disease, irrigation, weather, market, crop health, but **no fertilizer patterns**. All fertilizer queries fall through to `GENERAL_INFO` route (confidence=0.5).
+
+**Impact:** Low routing confidence (0.5) instead of targeted routing. The `GENERAL_INFO` route happens to be in `symptomFreeRoutes`, so it works — but only coincidentally.
+
+### B3. The `directModeBypass` Path Works Correctly
+When `FERTILIZER_SCHEDULE` intent has `clarification_mode='DIRECT'`:
+1. Line 2407: `directModeBypass = true`, `bypassClarification = true`
+2. Line 3075: Intent code itself is injected as observation (`FERTILIZER_SCHEDULE`)
+3. Line 4752: Query is prepended with `[INTENT:FERTILIZER_SCHEDULE]`
+
+This is the correct path. **But it depends on the LLM classifier or regex fallback producing `FERTILIZER_SCHEDULE`.**
+
+---
+
+## PHASE C — Symbolic Brain Guarantee
+
+### C1. CRITICAL FINDING — `shouldRunSymbolicBrain` Can Be False for Fertilizer
+The symbolic brain gate at line 2609:
+```typescript
+let shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute);
+```
+
+For a fertilizer query:
+- `hasSymptoms` = false (no symptoms in fertilizer query)
+- `isSymptomFreeRoute` = true (only because route defaults to `GENERAL_INFO`)
+- `inductionCoverageSufficient` = depends on induction result
+- `inductionConfidenceSufficient` = depends on induction result
+
+If the legacy induction layer returns zero symbols (which is possible for "या पिकाला कोणते खत द्यायला हवे?" since it's a Marathi fertilizer question with no pest/disease vocabulary), then `inductionCoverageSufficient = false` AND `inductionConfidenceSufficient = false`, making `shouldRunSymbolicBrain = false`.
+
+**The save:** LLM semantic extraction (line 2025) injects observation codes into `inductionResult.symptoms` (lines 2223-2285). If the LLM correctly detects `FERTILIZER_SCHEDULE` intent with confidence ≥ 0.5, then `inductionConfidenceSufficient` becomes true. But this is not guaranteed.
+
+### C2. The `ADVISORY_DIRECT_ROUTE` Injection (Line 3075-3080)
+When `directModeBypass = true` and intent is in `advisoryIntents`:
+```typescript
+allObservationsForPreAuth.add(intentCode); // adds 'FERTILIZER_SCHEDULE'
+```
+
+This ensures the observation set is non-empty for the symbolic brain.
+
+### C3. FINDING — No Code Path Where Symbolic Brain Returns `null` Without Error
+The orchestrator's hard invariant at line 5477 guarantees: if `primaryRuleId && primaryActionType` exist, return immediately. The fallback path (line 5526) requests a photo, and the mandatory fallback (line 5567) generates clarification. There is no silent null return.
+
+**However,** the `pendingClarificationResponse` at line 5218 can trigger when `totalRulesMatched === 0`, returning clarification instead of a decision. This is the primary failure mode.
+
+---
+
+## PHASE D — Unified Gate Enforcement
+
+### D1. Unified Gate Acts Correctly as Safety Layer
+The gate at `unified-decision-gate.ts` line 346 validates authority, then checks:
+1. Emergency bypass (line 386)
+2. Young crop detection (uses DAS + stage)
+3. Confidence-driven mode resolution
+4. Suppression guard (prevents silent drops)
+
+The suppression guard (line 129-165) correctly upgrades the gate result if rules fired but gate would suppress.
+
+### D2. FINDING — Clarification State Leakage Between Turns
+The session state (line 409-413) has an auto-reset for stuck `awaiting_clarification` with 0 pending options. **This is correct.** General session isolation (lines 386-402) clears land-specific data. **No state corruption detected.**
+
+### D3. FINDING — Confidence Floor for Primary Decision
+At index.ts line 998-1001: if `primaryDecisionExists && symbolicConfidence === 0`, confidence is forced to 50. This prevents zero-confidence suppression. **Correct.**
+
+---
+
+## PHASE E — Decision Graph Execution
+
+### E1. Crop Code Matching — FIXED in Previous Audit
+The `getAllRulesWithBundled` at evaluator line 866 now uses `getCropCodeVariants(cropCode)` which generates all aliases. **Verified: `sc` → `['sc', 'sugarcane', '...']`.**
+
+### E2. Stage Filtering — Correct
+At evaluator line 895-916: `stage_applicable` is enforced before condition evaluation. TILLERING rules will match TILLERING stage.
+
+### E3. CRITICAL FINDING — Fertilizer Rules Require `context` or `observations` Keys
+The 18 TILLERING fertilizer rules have conditions like:
+- `{"context": "nitrogen_management", "soil_type": "all"}` (SC_BP_NITROGEN_EFFICIENCY_001)
+- `{"observations": ["PURPLE_LEAVES", "POOR_ROOT_DEVELOPMENT"], "soil_phosphorus": "low"}` (SC_NUTRITION_NITROGEN_005)
+- `{"context": "nitrogen_management", "soil_type": "ALLUVIAL"}` (SC_SOIL_ALLUVIAL_NITROGEN_001)
+
+The `context` key is classified as Category G (informational) at loader line 388-391:
+```typescript
+const CATEGORY_G_KEYS = new Set([
+  'context', 'roi_basis', 'roi_modifier', 'roi_by_region', ...
+]);
+```
+
+Category G keys are NOT required (line 607: `required: false`). This means they auto-pass.
+
+**For rules with only `context` and other G-keys:** They will match if no required conditions FAIL. `SC_BP_NITROGEN_EFFICIENCY_001` has conditions `{"context": "nitrogen_management", "soil_type": "all"}`. The `soil_type` key with value `"all"` is also Category G. So this rule has **zero required conditions** — but empty conditions return `false` (line 634). Wait, these conditions are NOT empty, they have keys, so the ledger runs.
+
+**Let me trace more carefully:** For `SC_BP_NITROGEN_EFFICIENCY_001`:
+- `context: "nitrogen_management"` → Category G → `required: false`, auto-PASSED
+- `soil_type: "all"` → NOT in any explicit category → falls to generic boolean gate (line 597-607)
+  - `"all"` is not `true` → evaluates as string match against observations
+  - `expandedObs.has("ALL")` or `expandedObs.has("SOIL_TYPE")` → both likely false
+  - Returns `FAILED` with `required: true`
+
+**Result:** `SC_BP_NITROGEN_EFFICIENCY_001` FAILS because `soil_type: "all"` is treated as a required boolean observation check. The farmer's observations won't contain `ALL` or `SOIL_TYPE`.
+
+### E4. CRITICAL FINDING — Most Fertilizer Rules Will Fail Due to Condition Evaluation
+Rules like `SC_NUTRITION_NITROGEN_005` require `{"observations": ["PURPLE_LEAVES", "POOR_ROOT_DEVELOPMENT", "STUNTED_GROWTH"], "soil_phosphorus": "low"}`:
+- `observations` check: needs `PURPLE_LEAVES` etc. in farmer observations → **FAILS** for a general "which fertilizer" query
+- `soil_phosphorus: "low"` → string match → evaluates against `input.soil_phosphorus` → if soil data exists and shows low P, this passes
+
+**Rules with `context`-only conditions** (like `SC_NUTRITION_NITROGEN_028`) have conditions like:
+```json
+{"context": "nutrient_application", "weather": {"context": "fertilizer_timing"}, ...}
+```
+- `context` → Category G (not required)
+- `weather` → Category E (required), needs weather object with matching keys → **likely FAILS**
+
+### E5. ROOT CAUSE FOR FERTILIZER QUERIES: No Pure Advisory Fertilizer Rules Exist
+**There are ZERO fertilizer rules that fire on intent alone.** All 18 TILLERING fertilizer rules require either:
+1. Specific symptom observations (PURPLE_LEAVES, YELLOWING, etc.)
+2. Specific soil test results (soil_phosphorus: "low")
+3. Specific context + soil_type combinations
+4. Specific variety matches
+
+**A general "which fertilizer should I give?" query with no symptoms and no specific soil data will match ZERO rules.** This is the fundamental gap.
+
+### E6. Intent-Observation Mapping Gap
+`FERTILIZER_SCHEDULE` has **zero** entries in `intent_observation_mapping`:
+```sql
+SELECT * FROM intent_observation_mapping WHERE intent_code = 'FERTILIZER_SCHEDULE' → []
+```
+
+Only `NUTRIENT_STRESS_SIGNAL` has mappings (to NITROGEN_DEFICIENCY, PHOSPHORUS_DEFICIENCY, IRON_DEFICIENCY). The system has no way to map a fertilizer schedule intent to actionable observation codes for rule matching.
+
+---
+
+## PHASE F — Database Integrity
+
+### F1. Orphan condition_code
+All 517 rules use `condition_code = 'STAGE_GENERAL'`. This column is decorative and serves no filtering purpose.
+
+### F2. Missing Fertilizer-Stage Advisory Rules
+| Stage | Symptom-Based Fert Rules | Pure Advisory Fert Rules |
+|-------|--------------------------|--------------------------|
+| TILLERING | 18 | **0** |
+| GRAND_GROWTH | 15+ | **0** |
+| PLANTING | 5+ | **0** |
+
+There are NO rules that fire purely on `FERTILIZER_SCHEDULE` intent + crop + stage without requiring specific symptoms or soil data.
+
+### F3. Missing Intent-Observation Mappings
+| Intent | Mappings in DB |
+|--------|---------------|
+| FERTILIZER_SCHEDULE | **0** |
+| IRRIGATION_QUERY | Not checked but likely 0 |
+| NUTRIENT_STRESS_SIGNAL | 9 (3 per stage) |
+
+### F4. Authority Rank Column
+No `data_authority_rank` column found in active use beyond a sort tiebreaker at evaluator line 840-842. Authority ranks are defined but not enforced as gates.
+
+### F5. NULL Dosage Fields
+Not checked, but rules have `action_text` field with embedded dosage text. No separate `dosage` column exists in the current schema.
+
+---
+
+## PHASE G — Language Agnostic Validation
+
+### G1. Marathi "खत" Maps Correctly
+The intent classifier regex at line 462 includes `खत` (khat/fertilizer in Marathi). This correctly maps to `FERTILIZER_SCHEDULE`.
+
+### G2. i18n Keys Exist
+All decision rules have `i18n_key` field populated. The response pipeline uses `action_text`, `reason_text`, `knowledge_text` for narration.
+
+### G3. No Fallback to UNKNOWN When Deterministic Mapping Exists
+The intent tiering guard (line 2161) prevents HIGH-confidence intents from being downgraded. The regex fallback produces 0.6 confidence (TENTATIVE), which CAN be downgraded. **Fix needed: raise to 0.65+.**
+
+---
+
+## PHASE H — Contract Enforcement
+
+### H1. Missing `decision_output` Guarantee
+There IS NO explicit `throw` for missing `decision_output`. The system has multiple fallback paths:
+1. Primary decision invariant (line 5477) → immediate return
+2. Photo request (line 5526) → return
+3. Mandatory fallback clarification (line 5567) → return
+4. Deferred clarification (line 5218) → return
+
+But none of these explicitly assert `decision_output` existence. A path exists where orchestrator returns `CLARIFICATION_QUESTION` without any `decision_output`, which is architecturally allowed but violates the stated invariant.
+
+---
+
+## Guaranteed Fix Plan
+
+### Phase 1: Critical (Fertilizer Pipeline Determinism)
+
+**Fix 1.1: Add Pure Advisory Fertilizer Rules to Database**
+Insert stage-specific fertilizer schedule rules that fire on `FERTILIZER_SCHEDULE` intent + crop + stage WITHOUT requiring symptoms:
+```sql
+INSERT INTO decision_rules (rule_id, crop_code, stage_applicable, action_type, condition_code, conditions_json, action_text, ...)
+VALUES 
+  ('SC_FERT_SCHEDULE_TILLERING_001', 'SUGARCANE', ARRAY['TILLERING'], 'RECOMMEND', 'STAGE_GENERAL',
+   '{"context": "fertilizer_schedule", "always_applicable": true}',
+   'Apply second split of nitrogen (80-100 kg N/ha) at 60-75 DAP...', ...);
+```
+Rules needed for: PLANTING, TILLERING, GRAND_GROWTH, MATURITY (minimum 4 rules per crop).
+
+**Fix 1.2: Add `FERTILIZER_SCHEDULE` to `intent_observation_mapping`**
+```sql
+INSERT INTO intent_observation_mapping (intent_code, observation_code, crop_code, growth_stage, das_min, das_max, confidence_rank, is_active)
+VALUES 
+  ('FERTILIZER_SCHEDULE', 'FERTILIZER_SCHEDULE', 'SUGARCANE', 'TILLERING', 45, 120, 1, true),
+  ('FERTILIZER_SCHEDULE', 'NITROGEN_MANAGEMENT', 'SUGARCANE', 'TILLERING', 45, 120, 2, true);
+```
+
+**Fix 1.3: Register `FERTILIZER_SCHEDULE` in `observation_master`**
+The observation code `FERTILIZER_SCHEDULE` doesn't exist in `observation_master`, so rule eligibility checks will fail:
+```sql
+INSERT INTO observation_master (observation_code, observation_category, canonical_group, is_active)
+VALUES ('FERTILIZER_SCHEDULE', 'MANAGEMENT', 'nutrition', true);
+```
+
+**Fix 1.4: Add `soil_type` to Category G Keys in Loader**
+In `loader.ts` line 388, add `'soil_type'` and `'soil_type_name'` to `CATEGORY_G_KEYS` so these context keys don't block rule matching:
+```typescript
+const CATEGORY_G_KEYS = new Set([
+  'context', 'roi_basis', 'roi_modifier', 'roi_by_region',
+  'timing', 'method', 'operation', 'action', 'assessment_timing',
+  'soil_test', 'irrigation_system',
+  'soil_type', 'soil_type_name',  // ADD: Context keys, not conditions
+  'farming_mode', 'variety', 'trait', 'region',
+  'monsoon_timing', 'yield_potential',
+  'ipm_priority'  // ADD: IPM priority is informational
+]);
+```
+
+**Fix 1.5: Raise Intent Classifier Confidence for Deterministic Matches**
+In `intent-classifier.ts` line 464, change confidence from 0.6 to 0.75:
+```typescript
+return { intent_code: 'FERTILIZER_SCHEDULE', confidence: 0.75 };
+```
+This ensures it enters HIGH tier (≥0.65) and cannot be downgraded.
+
+### Phase 2: Structural
+
+**Fix 2.1: Add Fertilizer Route to Query Router**
+Add `FERTILIZER_NUTRITION` route in `query-router.ts` with patterns for खत/fertilizer/khat/khaad/nutrient:
+```typescript
+const FERTILIZER_PATTERNS = [
+  /खत|खाद|उर्वरक|fertiliz|nutrient|NPK|नत्र|युरिया/i,
+  /कोणते\s*खत|कौन\s*सा\s*खाद|which\s*fertilizer/i,
+  /\bkhat\b|\bkhaad\b|\burea\b|\bDAP\b/i,
+];
+```
+Add `'FERTILIZER_NUTRITION'` to `symptomFreeRoutes` in orchestrator.
+
+**Fix 2.2: Ensure Advisory Intent Rules Have `always_applicable: true`**
+Existing fertilizer rules with `context`-only conditions should add `"always_applicable": true` to their conditions_json so they match when intent is advisory:
+```sql
+UPDATE decision_rules 
+SET conditions_json = conditions_json || '{"always_applicable": true}'::jsonb
+WHERE rule_id IN ('SC_BP_NITROGEN_EFFICIENCY_001', 'SC_NUTRITION_NITROGEN_028')
+AND conditions_json->>'always_applicable' IS NULL;
+```
+
+### Phase 3: Architecture Refactor
+
+**Fix 3.1: Implement Intent-Aware Rule Selection**
+When `directModeBypass = true` with an advisory intent, the rule engine should filter rules by matching `conditions_json->>'context'` against the intent category. For example, `FERTILIZER_SCHEDULE` should prioritize rules where `context` contains `nitrogen`, `fertilizer`, `nutrient`.
+
+**Fix 3.2: Make `condition_code` Functional**
+Migrate rules to use specific observation codes as `condition_code` instead of blanket `STAGE_GENERAL`. This enables the eligibility check documented in the architecture memory.
+
+**Fix 3.3: Add Decision Output Guarantee Contract**
+Add explicit assertion in orchestrator before final return:
+```typescript
+if (!decisionOutput && orchestratorResponse.type !== 'CLARIFICATION_QUESTION') {
+  throw new Error('SYSTEM_FATAL_ERROR: Decision Brain produced no output for non-clarification path');
 }
 ```
 
-**Option B:** Change orchestrator to pass `'sugarcane'` instead of `'sc'`:
-```typescript
-// orchestrator.ts:1538 — remove the SC shortcode mapping
-const cropCodeForRules = cropName?.toLowerCase() || '';
-```
-
 ---
 
-## 2. NDVI Observation Phantom Code
+## Summary of Violations Found
 
-**Classification: DATA GAP + OBSERVATION MAPPING BUG**
+```text
+pipeline_contract_violations:
+  1. FERTILIZER_SCHEDULE has zero intent-observation mappings
+  2. No pure advisory fertilizer rules exist (all require symptoms)
+  3. soil_type key treated as required boolean condition (blocks context-only rules)
 
-`NDVI_DECLINE_IN_PLANT_CROP_REQ` does not exist in:
-- `observation_master` (0 NDVI codes in 638 total)
-- `observation_aliases` (0 NDVI aliases)
-- `intent_observation_mapping` (0 NDVI mappings)
-- Any codebase file (0 grep matches)
+intent_mutation_points:
+  1. Regex fallback confidence 0.6 = TENTATIVE tier (can be downgraded)
 
-This code is fabricated by the NLU layer at runtime with no DB backing. It is tagged as `CONFIRMED` authority but has zero downstream linkage.
+routing_conflicts:
+  1. No fertilizer route in query-router.ts (falls to GENERAL_INFO)
 
-### NDVI Rules Use Different Keys
+induction_gate_errors:
+  1. Fertilizer route works only accidentally via GENERAL_INFO in symptomFreeRoutes
 
-The 18 NDVI rules use `conditions_json` keys like:
-- `ndvi_decline: true` (evaluates `input.ndvi_trend === 'DECLINING'`)
-- `ndvi_pattern: 'DECLINE'` (string match against `input.ndvi_pattern`)
-- `ndvi_trend: 'DECLINING'` (string match)
-- `ndvi_triggered: true` (evaluates `input.ndvi_level ? true : null`)
+symbolic_bypass_paths:
+  1. If induction returns 0 symbols AND LLM fails → shouldRunSymbolicBrain = false
+  2. FERTILIZER_SCHEDULE intent not in symptomFreeRoutes directly
 
-None check for observation code `NDVI_DECLINE_IN_PLANT_CROP_REQ`.
+unified_gate_blocking_paths:
+  None found (suppression guard is effective)
 
-### NDVI Stage Lock
+database_integrity_issues:
+  1. condition_code = STAGE_GENERAL for all 517 rules (decorative)
+  2. FERTILIZER_SCHEDULE not in observation_master
+  3. FERTILIZER_SCHEDULE not in intent_observation_mapping
+  4. soil_type, variety, trait treated as required conditions (should be context)
+  5. No advisory-only fertilizer rules for any stage
 
-| Stage applicability | NDVI rule count |
-|---------------------|-----------------|
-| SEEDLING only       | 13              |
-| TILLERING included  | 2               |
-| ALL                 | 1               |
-| Other               | 2               |
+language_induction_failures:
+  1. Marathi "खत" correctly maps via regex — no failure here
+  2. Romanized "khat/khaad" also correctly mapped
 
-For a TILLERING query, only 2 NDVI rules are even eligible:
-1. `SC_NDVI_COLLAPSE_PLANT_VERIFY_001` — needs `ndvi_pattern: DECLINE` + `drop_pct: 20_30` + `needs_confirmation: true`
-2. `SC_BP_GENERAL_021` — needs `ndvi_trend: stable` (opposite of declining!)
+authority_rank_violations:
+  1. data_authority_rank defined but only used as sort tiebreaker, not as gate
 
-### Required Fix
+missing_rule_coverage:
+  1. 0 pure advisory fertilizer rules for TILLERING (18 exist but all need symptoms)
+  2. 0 pure advisory fertilizer rules for GRAND_GROWTH
+  3. 0 pure advisory fertilizer rules for PLANTING
+  4. IRRIGATION_QUERY likely has similar gap (not audited)
+  5. HARVEST_TIMING likely has similar gap (not audited)
 
-1. Register NDVI observation codes in `observation_master`:
-```sql
-INSERT INTO observation_master (observation_code, observation_category, canonical_group, is_active, ...)
-VALUES 
-  ('NDVI_DECLINE', 'PHYSIOLOGY', 'abiotic_stress', true, ...),
-  ('NDVI_COLLAPSE', 'PHYSIOLOGY', 'abiotic_stress', true, ...),
-  ('NDVI_STABLE', 'PHYSIOLOGY', 'abiotic_stress', true, ...);
+state_machine_corruption_points:
+  None found (auto-reset logic at lines 409-413 is correct)
 ```
-
-2. Expand NDVI rules to cover TILLERING, GRAND_GROWTH stages:
-```sql
-UPDATE decision_rules 
-SET stage_applicable = ARRAY['SEEDLING', 'TILLERING', 'GRAND_GROWTH', 'MATURITY']
-WHERE rule_id IN ('SC_IRRIGATION_GENERAL_010', 'SC_IRRIGATION_GENERAL_002', 
-                  'SC_STRESS_GENERAL_001', 'SC_PHYSIOLOGY_GENERAL_001');
-```
-
-3. Create a mapping from `NDVI_DECLINE_IN_PLANT_CROP_REQ` → canonical symbols in `observation_aliases`.
-
----
-
-## 3. `condition_code` Column is Decorative
-
-**Classification: DATA GAP**
-
-All 517 rules have `condition_code = 'STAGE_GENERAL'`. This column is described in memory docs as a "mandatory FK to observation_master" used for rule eligibility — but it serves zero filtering purpose since every rule has the same value.
-
-The loader assigns it to `conditionCode` (line 223) with fallback `'() => true'` (a JS string, never executed). No downstream code references `conditionCode` for matching.
-
-### Impact
-- The memory docs describe `condition_code` as mandatory for eligibility: "A rule is eligible ONLY if condition_code is present in the canonical observation set." If this were enforced, only rules whose `condition_code` value appears in the observation set would fire. Since all rules use `STAGE_GENERAL`, and `STAGE_GENERAL` IS in `observation_master`, this would accidentally pass — but only because every rule uses the same generic value, defeating the purpose.
-
-### Required Fix
-This is a long-term data migration: each rule should have its specific observation code (e.g., `BORE_HOLES`, `YELLOWING_LEAVES`) as `condition_code`, not a blanket `STAGE_GENERAL`.
-
----
-
-## 4. Hardcoded Data Findings
-
-| File | Line | Hardcoded Value | In DB? | Fix |
-|------|------|----------------|--------|-----|
-| `layered-rule-evaluator.ts` | 921-931 | Crop code aliases (SC→SUGARCANE, CTN→COTTON, etc.) | No | Move to DB table or share with loader |
-| `layered-rule-evaluator.ts` | 965-980 | `CATEGORY_PATTERNS` (PEST, DISEASE keyword lists) | Partially (observation_master) | Load from `observation_master.observation_category` |
-| `layered-rule-evaluator.ts` | 983-991 | `PLANT_PART_PATTERNS` | Partially (observation_master) | Load from `observation_master.affected_plant_part` |
-| `loader.ts` | 517-518 | `PEST_OBS` list for `pest_present` gate | No | Load from observation_master WHERE category='PEST' |
-| `loader.ts` | 536-538 | Extended pest observation list | No | Same |
-| `loader.ts` | 543-545 | Deficiency observation list | No | Load from observation_master WHERE category='NUTRIENT' |
-| `loader.ts` | 549-551 | Abnormal growth observation list | No | Load from observation_master WHERE category='PHYSIOLOGY' |
-| `loader.ts` | 563 | Critical stages hardcoded | No | Load from crop_stage_master |
-| `orchestrator.ts` | 1538, 4733 | `SUGARCANE → 'sc'` mapping | No | Use shared alias table |
-
----
-
-## 5. Database Integrity Findings
-
-| Check | Result |
-|-------|--------|
-| Rules with empty `conditions_json` | 0 |
-| Rules with no `action_text` | 0 |
-| Rules with no `action_type` | 0 |
-| Rules with no `i18n_key` | 0 |
-| Distinct `condition_code` values | 1 (`STAGE_GENERAL` only) |
-| NDVI observations in `observation_master` | 0 |
-| NDVI entries in `observation_aliases` | 0 |
-| NDVI entries in `intent_observation_mapping` | 0 |
-| NDVI rules applicable at TILLERING | 2 of 18 |
-| Sugarcane rules that can NEVER fire (due to crop code mismatch) | **454** (87.6%) |
-| CTN rules that can NEVER fire (same bug, `ctn` vs `cotton`) | Likely **27** |
-
----
-
-## 6. Unified Gate + Authority Analysis
-
-The logs show:
-```
-Treatments Allowed by Authority: true
-Allowed Products: NONE
-Allowed Dosages: NONE
-```
-
-This is **correct behavior given zero matched rules**. The gate is not the problem — it correctly allows treatments, but the symbolic brain upstream produces nothing to allow. The gate is working; the rule engine is starved of candidates.
-
----
-
-## 7. Language Agnostic Validation
-
-The evaluation pipeline is language-agnostic at the decision layer. Observation matching uses uppercase canonical codes. The `conditions_json` evaluator works on normalized English keys. No Marathi/Hindi strings affect rule firing. The `i18n_key` system is presentation-only.
-
-**One risk:** The orchestrator's crop name extraction (line 1538) depends on `cropName?.toUpperCase() === 'SUGARCANE'` — a string comparison. If NLU returns a Hindi crop name, the `'sc'` shortcode mapping would fail and it would pass the raw Hindi string, which would also fail to match. This is a secondary language fragility.
-
----
-
-## Immediate Fix Plan
-
-### Fix 1: Crop Code Alias Resolution (CRITICAL — fixes 454 dead rules)
-
-In `layered-rule-evaluator.ts`, update `getAllRulesWithBundled` (lines 862-867) to use crop aliases:
-
-```typescript
-const CROP_ALIASES: Record<string, string[]> = {
-  'sc': ['sugarcane', 'sugar_cane', 'cane'],
-  'ctn': ['cotton', 'kapas'],
-  'wh': ['wheat'], 'ric': ['rice', 'paddy'],
-  'soy': ['soybean', 'soya'], 'maz': ['maize', 'corn'],
-};
-
-// In filter:
-return ruleCrop === normalizedCrop 
-  || CROP_ALIASES[normalizedCrop]?.includes(ruleCrop)
-  || Object.entries(CROP_ALIASES).some(([k, v]) => v.includes(normalizedCrop) && ruleCrop === k)
-  || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
-```
-
-Apply the same fix to `loadRulesForCrop` in `loader.ts` (line 1036-1041).
-
-### Fix 2: NDVI Stage Expansion (SQL)
-
-```sql
-UPDATE decision_rules 
-SET stage_applicable = array_cat(stage_applicable, ARRAY['TILLERING', 'GRAND_GROWTH'])
-WHERE crop_code = 'SUGARCANE' AND is_active = true 
-AND conditions_json::text ILIKE '%ndvi%'
-AND NOT 'TILLERING' = ANY(stage_applicable)
-AND NOT 'ALL' = ANY(stage_applicable);
-```
-
-### Fix 3: Register NDVI Observation Codes (SQL)
-
-Insert NDVI-related observation codes into `observation_master` and create alias mappings so the NLU-generated `NDVI_DECLINE_IN_PLANT_CROP_REQ` can resolve to rule-engine-compatible symbols.
 
 ---
 
 ## Validation Checklist
 
-1. After fix: `getAllRulesWithBundled('sc')` should return ~490 rules (454 SUGARCANE + 36 ALL), not 36
-2. Log signal: `📦 Loaded 490/517 crop-filtered rules for sc`
-3. For SUGARCANE/TILLERING/DAS=77 with NDVI decline: `rules_matched > 0`, `primary_decision !== null`
-4. Edge function logs should show condition ledger entries for NDVI rules being evaluated
-5. `RULE_DATA_INTEGRITY_ERROR` should no longer appear for this scenario
+After fixes:
+1. "या पिकाला कोणते खत द्यायला हवे?" → `FERTILIZER_SCHEDULE` (HIGH tier, ≥0.65)
+2. Query router → `FERTILIZER_NUTRITION` route (not `GENERAL_INFO`)
+3. `directModeBypass = true` → `bypassClarification = true`
+4. `FERTILIZER_SCHEDULE` injected as observation → matches `SC_FERT_SCHEDULE_TILLERING_001`
+5. `primaryRuleId` valid → immediate return with fertilizer recommendation
+6. Edge function logs: `📦 Loaded ~490 crop-filtered rules for sc`
+7. Edge function logs: `rules_matched > 0, primary_decision = SC_FERT_SCHEDULE_TILLERING_001`
 
