@@ -9,6 +9,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
+import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -1034,10 +1035,10 @@ export function loadIntelligenceRules(): ExecutableRule[] {
 }
 
 export function loadRulesForCrop(cropCode: string): ExecutableRule[] {
-  const normalizedCrop = cropCode?.toLowerCase() || '';
+  const variants = getCropCodeVariants(cropCode).map(v => v.toLowerCase());
   return cachedRules?.filter(r => {
     const ruleCrop = r.crop_code?.toLowerCase() || '';
-    return ruleCrop === normalizedCrop || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
+    return variants.includes(ruleCrop) || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
   }) || [];
 }
 

@@ -35,6 +35,8 @@ import {
   type ConditionEntry
 } from '../bundled-rules/loader.ts';
 
+import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+
 // PHASE-16: Import SymbolicReasoner for proper JSON condition evaluation
 import {
   SymbolicReasoner,
@@ -860,12 +862,13 @@ export async function getAllRulesWithBundled(cropCode?: string): Promise<Rule[]>
   
   let rulesToConvert: ExecutableRule[];
   if (cropCode) {
-    const normalizedCrop = cropCode.toLowerCase();
+    // Use crop-code-normalizer to get all valid variants for matching
+    const variants = getCropCodeVariants(cropCode).map(v => v.toLowerCase());
     rulesToConvert = allRules.filter(r => {
       const ruleCrop = r.crop_code?.toLowerCase() || '';
-      return ruleCrop === normalizedCrop || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
+      return variants.includes(ruleCrop) || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
     });
-    console.log(`📦 Loaded ${rulesToConvert.length}/${allRules.length} crop-filtered rules for ${cropCode}`);
+    console.log(`📦 Loaded ${rulesToConvert.length}/${allRules.length} crop-filtered rules for ${cropCode} (variants: ${variants.join(',')})`);
   } else {
     rulesToConvert = allRules;
     console.log(`📦 Loaded ${rulesToConvert.length} bundled rules from database (NO crop filter - consider passing cropCode)`);

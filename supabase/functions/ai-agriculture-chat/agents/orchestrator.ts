@@ -1534,8 +1534,8 @@ export class AIAgentOrchestrator {
           
           console.log(`   📊 Canonical state built, running layered rule evaluation...`);
           
-          // CRITICAL FIX: Use crop-filtered rules to prevent rule explosion (517 → ~200)
-          const cropCodeForRules = cropName?.toUpperCase() === 'SUGARCANE' ? 'sc' : cropName?.toLowerCase() || '';
+          // Use unified crop code normalizer for consistent rule filtering
+          const cropCodeForRules = unifiedNormalizeCropCode(cropName).toLowerCase();
           const allRulesForOption = await getAllRulesWithBundled(cropCodeForRules);
           console.log(`   📦 Total rules for option selection: ${allRulesForOption.length} (crop=${cropCodeForRules})`);
           
@@ -4728,9 +4728,9 @@ export class AIAgentOrchestrator {
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
         console.log('\n📊 PHASE 2.6: Layered Rule Evaluation (OBSERVATION → DIAGNOSIS → SAFETY → PRESCRIPTION)...');
         
-        // CRITICAL FIX: Use crop-filtered rules to prevent rule explosion
-        const cropForRules = canonicalContext?.crop_code?.toLowerCase() || lockedCropContext?.crop_name?.toLowerCase() || '';
-        const cropCodeForFilter = cropForRules === 'sugarcane' ? 'sc' : cropForRules;
+        // Use unified crop code normalizer for consistent rule filtering
+        const cropForRules = canonicalContext?.crop_code || lockedCropContext?.crop_name || '';
+        const cropCodeForFilter = unifiedNormalizeCropCode(cropForRules).toLowerCase();
         const allRulesWithBundled = await getAllRulesWithBundled(cropCodeForFilter || undefined);
         console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (crop=${cropCodeForFilter || 'ALL'})`);
         
