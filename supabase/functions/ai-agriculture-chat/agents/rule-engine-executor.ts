@@ -531,12 +531,10 @@ export class RuleEngineExecutor {
         overall_decision_confidence: 0.5
       },
 
-      // Backward-compatible fields consumed by some validators
-      confidence: 0.5 as any,
-      economic_analysis: undefined as any,
-      contingency_plan: undefined as any,
-      alternative_decisions: [] as any
-    } as any;
+      // Backward-compatible fields
+      confidence: 0.5,
+      alternative_decisions: []
+    };
   }
 
   private generateFallbackDecision(input: RuleExecutionInput, error: Error, startTime: number): DecisionOutput {
@@ -609,8 +607,8 @@ export class RuleEngineExecutor {
         overall_decision_confidence: 0.3
       },
 
-      confidence: 0.3 as any
-    } as any;
+      confidence: 0.3
+    };
   }
 
   private formatBlockedDecision(
@@ -681,9 +679,9 @@ export class RuleEngineExecutor {
         reason: blockingRule.reason,
         i18n_key: (blockingRule as any).i18n_key || `rule.${blockingRule.rule_id}.block`,
         alternatives: blockingRule.alternatives
-      } as any,
-      confidence: 1.0 as any
-    } as any;
+      },
+      confidence: 1.0
+    };
   }
 
   private formatWeatherDelayedDecision(
@@ -741,8 +739,8 @@ export class RuleEngineExecutor {
       audit_trail: this.generateAuditTrail(decisions, input, startTime),
       confidence_metrics: this.generateConfidenceMetrics(decisions, input),
 
-      confidence: 0.7 as any
-    } as any;
+      confidence: 0.7
+    };
   }
 
   private formatDecisionOutput(
@@ -813,11 +811,9 @@ export class RuleEngineExecutor {
       audit_trail: this.generateAuditTrail(decisions, input, startTime),
       confidence_metrics: this.generateConfidenceMetrics(decisions, input),
 
-      confidence: (resolved.confidence || 0.7) as any,
-      alternative_decisions: (resolved.alternative_decisions || []) as any,
-      economic_analysis: undefined as any,
-      contingency_plan: undefined as any
-    } as any;
+      confidence: resolved.confidence || 0.7,
+      alternative_decisions: resolved.alternative_decisions || []
+    };
   }
 
   private extractRecommendation(decision: any): RecommendationDetails {

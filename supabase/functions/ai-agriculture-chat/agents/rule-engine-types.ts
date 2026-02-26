@@ -229,6 +229,23 @@ export interface DecisionOutput {
     response_hi?: string;
     response_en?: string;
   }>;
+  
+  // ── Backward-compatible fields consumed by validators/narration ──
+  /** Overall confidence shorthand */
+  confidence?: number;
+  /** Legacy alias for economic_assessment */
+  economic_analysis?: EconomicAssessment;
+  /** Legacy alias for contingency_planning */
+  contingency_plan?: ContingencyPlan;
+  /** Alternative decisions from conflict resolution */
+  alternative_decisions?: PrimaryDecision[];
+  /** Blocking rule details (set when status === 'BLOCKED') */
+  blocking_rule?: {
+    rule_id: string;
+    reason: string;
+    i18n_key?: string;
+    alternatives?: string[];
+  };
 }
 
 // RuleExecutionInput is defined once at the top of this file (line 26)
