@@ -29,6 +29,7 @@ import type {
   DecisionsByPriority,
   RuleResult,
   PrimaryDecision,
+  EconomicAssessment,
   AuditTrail,
   ConfidenceMetrics,
   ContingencyPlan,
@@ -466,30 +467,53 @@ export class RuleEngineExecutor {
   // ═══════════════════════════════════════════════════════════════════════════
   
   private generateDefaultDecision(input: RuleExecutionInput, startTime: number): DecisionOutput {
+    const now = new Date().toISOString();
+
     return {
       decision_id: `default_${Date.now().toString(36)}`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       session_id: input.session_id,
-      status: 'MONITORING',
-      confidence: 0.5,
+      status: 'FALLBACK_MODE',
+
       primary_decision: {
-        action_type: 'MONITORING',
-        i18n_key: 'decision.default.monitoring',
-        application_details: {
-          product_name: null,
-          concentration: null,
-          total_quantity: null,
-          timing_window: null
+        action_type: 'MONITOR_ONLY',
+        specific_action: 'Monitor field and reassess with clearer symptoms/photos',
+        target: {
+          pest_code: input.pest_disease_state.pest_code,
+          disease_code: input.pest_disease_state.disease_code
         },
-        safety_warnings: [],
-        phi_days: 0
+        urgency: 'NON_URGENT',
+        timing: {
+          recommended_start: now,
+          recommended_end: now,
+          weather_dependency: false,
+          reason: 'No eligible rules matched; monitoring is safest.'
+        },
+        application_details: {
+          product_name: '',
+          product_type: 'ORGANIC',
+          concentration: '',
+          quantity_per_acre: '',
+          total_quantity: '',
+          water_requirement: '',
+          application_method: 'FOLIAR_SPRAY',
+          coverage_instructions: ''
+        },
+        expected_outcomes: {
+          efficacy_percent: 0,
+          time_to_visible_effect_days: 'N/A',
+          success_indicators: []
+        },
+        ipm_level: 1
       },
-      alternative_decisions: [],
-      economic_analysis: this.createDefaultEconomicAnalysis(),
-      contingency_plan: this.generateContingencyPlan(input),
-      follow_up_schedule: this.generateFollowUpSchedule(input),
+
+      secondary_actions: [],
+      blocked_actions: [],
+      economic_assessment: this.createDefaultEconomicAssessment(input),
       scientific_justification: [],
       rules_applied: [],
+      contingency_planning: this.generateContingencyPlan(input),
+      follow_up_schedule: this.generateFollowUpSchedule(input),
       audit_trail: this.generateAuditTrail({
         P0_emergency: [],
         P1_regulatory: [],
@@ -505,37 +529,66 @@ export class RuleEngineExecutor {
         weather_forecast_confidence: 0.8,
         hypothesis_confidence: 0.5,
         overall_decision_confidence: 0.5
-      }
-    };
+      },
+
+      // Backward-compatible fields consumed by some validators
+      confidence: 0.5 as any,
+      economic_analysis: undefined as any,
+      contingency_plan: undefined as any,
+      alternative_decisions: [] as any
+    } as any;
   }
-  
+
   private generateFallbackDecision(input: RuleExecutionInput, error: Error, startTime: number): DecisionOutput {
     console.error('[RuleEngine] Fallback:', error.message);
-    
+
+    const now = new Date().toISOString();
+
     return {
       decision_id: `fallback_${Date.now().toString(36)}`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       session_id: input.session_id,
-      status: 'ERROR_FALLBACK',
-      confidence: 0.3,
+      status: 'FALLBACK_MODE',
+
       primary_decision: {
-        action_type: 'MONITORING',
-        i18n_key: 'decision.error.fallback',
-        application_details: {
-          product_name: null,
-          concentration: null,
-          total_quantity: null,
-          timing_window: null
+        action_type: 'MONITOR_ONLY',
+        specific_action: 'Temporary fallback: monitor and retry',
+        target: {
+          pest_code: input.pest_disease_state.pest_code,
+          disease_code: input.pest_disease_state.disease_code
         },
-        safety_warnings: [],
-        phi_days: 0
+        urgency: 'NON_URGENT',
+        timing: {
+          recommended_start: now,
+          recommended_end: now,
+          weather_dependency: false,
+          reason: `Rule engine fallback: ${error.message}`
+        },
+        application_details: {
+          product_name: '',
+          product_type: 'ORGANIC',
+          concentration: '',
+          quantity_per_acre: '',
+          total_quantity: '',
+          water_requirement: '',
+          application_method: 'FOLIAR_SPRAY',
+          coverage_instructions: ''
+        },
+        expected_outcomes: {
+          efficacy_percent: 0,
+          time_to_visible_effect_days: 'N/A',
+          success_indicators: []
+        },
+        ipm_level: 1
       },
-      alternative_decisions: [],
-      economic_analysis: this.createDefaultEconomicAnalysis(),
-      contingency_plan: this.generateContingencyPlan(input),
-      follow_up_schedule: this.generateFollowUpSchedule(input),
+
+      secondary_actions: [],
+      blocked_actions: [],
+      economic_assessment: this.createDefaultEconomicAssessment(input),
       scientific_justification: [],
       rules_applied: [],
+      contingency_planning: this.generateContingencyPlan(input),
+      follow_up_schedule: this.generateFollowUpSchedule(input),
       audit_trail: {
         input_hash: this.hashInput(input),
         rules_loaded: [],
@@ -554,128 +607,223 @@ export class RuleEngineExecutor {
         weather_forecast_confidence: 0.5,
         hypothesis_confidence: 0.3,
         overall_decision_confidence: 0.3
-      }
-    };
+      },
+
+      confidence: 0.3 as any
+    } as any;
   }
-  
+
   private formatBlockedDecision(
     blockingRule: RuleResult,
     decisions: DecisionsByPriority,
     input: RuleExecutionInput,
     startTime: number
   ): DecisionOutput {
+    const now = new Date().toISOString();
+
     return {
       decision_id: `blocked_${Date.now().toString(36)}`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       session_id: input.session_id,
       status: 'BLOCKED',
-      confidence: 1.0,
+
+      primary_decision: {
+        action_type: 'NO_ACTION',
+        specific_action: 'Do not proceed due to safety/regulatory block',
+        target: {
+          pest_code: input.pest_disease_state.pest_code,
+          disease_code: input.pest_disease_state.disease_code
+        },
+        urgency: 'IMMEDIATE',
+        timing: {
+          recommended_start: now,
+          recommended_end: now,
+          weather_dependency: false,
+          reason: blockingRule.reason
+        },
+        application_details: {
+          product_name: '',
+          product_type: 'ORGANIC',
+          concentration: '',
+          quantity_per_acre: '',
+          total_quantity: '',
+          water_requirement: '',
+          application_method: 'FOLIAR_SPRAY',
+          coverage_instructions: ''
+        },
+        expected_outcomes: {
+          efficacy_percent: 0,
+          time_to_visible_effect_days: 'N/A',
+          success_indicators: []
+        }
+      },
+
+      secondary_actions: [],
+      blocked_actions: [
+        {
+          action: 'BLOCKED_ACTION',
+          blocked_by_rule: blockingRule.rule_id,
+          priority: String(blockingRule.priority),
+          reason: blockingRule.reason,
+          alternatives: blockingRule.alternatives || []
+        }
+      ],
+      economic_assessment: this.createDefaultEconomicAssessment(input),
+      scientific_justification: [],
+      rules_applied: this.generateAppliedRules(decisions),
+      contingency_planning: this.generateContingencyPlan(input),
+      follow_up_schedule: this.generateFollowUpSchedule(input),
+      audit_trail: this.generateAuditTrail(decisions, input, startTime),
+      confidence_metrics: this.generateConfidenceMetrics(decisions, input),
+
       blocking_rule: {
         rule_id: blockingRule.rule_id,
         reason: blockingRule.reason,
         i18n_key: (blockingRule as any).i18n_key || `rule.${blockingRule.rule_id}.block`,
         alternatives: blockingRule.alternatives
-      },
-      primary_decision: {
-        action_type: 'BLOCK',
-        i18n_key: `rule.${blockingRule.rule_id}`,
-        application_details: {
-          product_name: null,
-          concentration: null,
-          total_quantity: null,
-          timing_window: null
-        },
-        safety_warnings: [blockingRule.reason],
-        phi_days: 0
-      },
-      alternative_decisions: [],
-      economic_analysis: this.createDefaultEconomicAnalysis(),
-      contingency_plan: this.generateContingencyPlan(input),
-      follow_up_schedule: this.generateFollowUpSchedule(input),
-      scientific_justification: [],
-      rules_applied: this.generateAppliedRules(decisions),
-      audit_trail: this.generateAuditTrail(decisions, input, startTime),
-      confidence_metrics: this.generateConfidenceMetrics(decisions, input)
-    };
+      } as any,
+      confidence: 1.0 as any
+    } as any;
   }
-  
+
   private formatWeatherDelayedDecision(
     resolved: ReturnType<typeof resolveConflicts>,
     decisions: DecisionsByPriority,
     input: RuleExecutionInput,
     startTime: number
   ): DecisionOutput {
+    const now = new Date().toISOString();
+
     return {
       decision_id: `weather_${Date.now().toString(36)}`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       session_id: input.session_id,
       status: 'WEATHER_DELAYED',
-      confidence: 0.7,
+
       primary_decision: {
-        action_type: 'DELAY',
-        i18n_key: 'decision.weather_delayed',
-        application_details: {
-          product_name: null,
-          concentration: null,
-          total_quantity: null,
-          timing_window: null
+        action_type: 'MONITOR_ONLY',
+        specific_action: 'Delay treatment due to unsafe weather; monitor until safe window',
+        target: {
+          pest_code: input.pest_disease_state.pest_code,
+          disease_code: input.pest_disease_state.disease_code
         },
-        safety_warnings: [],
-        phi_days: 0
+        urgency: 'WITHIN_48H',
+        timing: {
+          recommended_start: now,
+          recommended_end: now,
+          weather_dependency: true,
+          reason: 'Weather safety delay'
+        },
+        application_details: {
+          product_name: '',
+          product_type: 'ORGANIC',
+          concentration: '',
+          quantity_per_acre: '',
+          total_quantity: '',
+          water_requirement: '',
+          application_method: 'FOLIAR_SPRAY',
+          coverage_instructions: ''
+        },
+        expected_outcomes: {
+          efficacy_percent: 0,
+          time_to_visible_effect_days: 'N/A',
+          success_indicators: []
+        }
       },
-      alternative_decisions: [],
-      economic_analysis: this.createDefaultEconomicAnalysis(),
-      contingency_plan: this.generateContingencyPlan(input),
-      follow_up_schedule: this.generateFollowUpSchedule(input),
+
+      secondary_actions: [],
+      blocked_actions: [],
+      economic_assessment: this.createDefaultEconomicAssessment(input),
       scientific_justification: [],
       rules_applied: this.generateAppliedRules(decisions),
+      contingency_planning: this.generateContingencyPlan(input),
+      follow_up_schedule: this.generateFollowUpSchedule(input),
       audit_trail: this.generateAuditTrail(decisions, input, startTime),
-      confidence_metrics: this.generateConfidenceMetrics(decisions, input)
-    };
+      confidence_metrics: this.generateConfidenceMetrics(decisions, input),
+
+      confidence: 0.7 as any
+    } as any;
   }
-  
+
   private formatDecisionOutput(
     resolved: ReturnType<typeof resolveConflicts>,
-    economicAssessment: any,
+    economicAssessment: EconomicAssessment | null,
     decisions: DecisionsByPriority,
     input: RuleExecutionInput,
     startTime: number
   ): DecisionOutput {
-    const primary = resolved.primary_decision;
-    
+    const now = new Date().toISOString();
+    const primaryLegacy = resolved.primary_decision as any;
+
+    const productName = primaryLegacy?.application_details?.product_name || '';
+    const productDosage = primaryLegacy?.application_details?.concentration || '';
+
+    const primary: PrimaryDecision = {
+      action_type: (primaryLegacy?.action_type || 'MONITOR_ONLY') as any,
+      specific_action: productName ? `Apply ${productName}` : 'Monitor and reassess',
+      target: {
+        pest_code: input.pest_disease_state.pest_code,
+        disease_code: input.pest_disease_state.disease_code
+      },
+      urgency: input.pest_disease_state.severity === 'CRITICAL'
+        ? 'IMMEDIATE'
+        : input.pest_disease_state.severity === 'HIGH'
+          ? 'WITHIN_24H'
+          : input.pest_disease_state.severity === 'MODERATE'
+            ? 'WITHIN_48H'
+            : 'NON_URGENT',
+      timing: {
+        recommended_start: now,
+        recommended_end: now,
+        weather_dependency: true,
+        reason: 'As soon as conditions permit'
+      },
+      application_details: {
+        product_name: productName,
+        product_type: 'CHEMICAL',
+        active_ingredient: '',
+        concentration: productDosage,
+        quantity_per_acre: primaryLegacy?.application_details?.total_quantity || '',
+        total_quantity: primaryLegacy?.application_details?.total_quantity || '',
+        water_requirement: '',
+        application_method: (primaryLegacy?.application_details?.application_method || 'FOLIAR_SPRAY') as any,
+        coverage_instructions: primaryLegacy?.application_details?.timing_window || ''
+      },
+      expected_outcomes: {
+        efficacy_percent: 80,
+        time_to_visible_effect_days: '3-7',
+        success_indicators: []
+      }
+    };
+
     return {
       decision_id: `decision_${Date.now().toString(36)}`,
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       session_id: input.session_id,
-      status: resolved.status as any,
-      confidence: resolved.confidence || 0.7,
-      primary_decision: {
-        action_type: primary?.action_type || 'MONITORING',
-        i18n_key: primary?.i18n_key || 'decision.primary',
-        application_details: primary?.application_details || {
-          product_name: null,
-          concentration: null,
-          total_quantity: null,
-          timing_window: null
-        },
-        safety_warnings: primary?.safety_warnings || [],
-        phi_days: primary?.phi_days || 0
-      },
-      alternative_decisions: resolved.alternative_decisions || [],
-      economic_analysis: economicAssessment || this.createDefaultEconomicAnalysis(),
-      contingency_plan: this.generateContingencyPlan(input),
-      follow_up_schedule: this.generateFollowUpSchedule(input),
+      status: 'SUCCESS',
+
+      primary_decision: primary,
+      secondary_actions: [],
+      blocked_actions: [],
+      economic_assessment: economicAssessment || this.createDefaultEconomicAssessment(input),
       scientific_justification: this.generateScientificJustification(decisions),
       rules_applied: this.generateAppliedRules(decisions),
+      contingency_planning: this.generateContingencyPlan(input),
+      follow_up_schedule: this.generateFollowUpSchedule(input),
       audit_trail: this.generateAuditTrail(decisions, input, startTime),
-      confidence_metrics: this.generateConfidenceMetrics(decisions, input)
-    };
+      confidence_metrics: this.generateConfidenceMetrics(decisions, input),
+
+      confidence: (resolved.confidence || 0.7) as any,
+      alternative_decisions: (resolved.alternative_decisions || []) as any,
+      economic_analysis: undefined as any,
+      contingency_plan: undefined as any
+    } as any;
   }
-  
+
   private extractRecommendation(decision: any): RecommendationDetails {
     return {
       product_name: decision?.application_details?.product_name || null,
-      product_type: 'INTEGRATED',
+      product_type: 'INTEGRATED' as any,
       dosage: decision?.application_details?.concentration || null,
       application_method: 'FOLIAR_SPRAY',
       ipm_level: 3,
@@ -683,20 +831,29 @@ export class RuleEngineExecutor {
       cost_per_acre_inr: 0
     };
   }
-  
-  private createDefaultEconomicAnalysis() {
+
+  private createDefaultEconomicAssessment(input: RuleExecutionInput): EconomicAssessment {
     return {
-      estimated_cost: 0,
-      expected_benefit: 0,
+      treatment_cost_inr: 0,
+      treatment_cost_per_acre_inr: 0,
+      expected_loss_without_treatment_inr: 0,
+      expected_loss_prevented_inr: 0,
+      net_benefit_inr: 0,
       benefit_cost_ratio: 0,
       roi_percent: 0,
       affordability: {
         ratio: 0,
-        assessment: 'AFFORDABLE' as const,
-        farmer_can_afford: true
+        assessment: 'AFFORDABLE',
+        farmer_can_afford: true,
+        budget_remaining_after_treatment_inr: input.farmer_constraints?.budget_available_inr || 0
       },
-      viability_decision: 'VIABLE' as const,
-      recommendation: 'RECOMMENDED' as const
+      viability_decision: 'VIABLE',
+      recommendation: 'RECOMMENDED',
+      breakdown: {
+        product_cost_inr: 0,
+        labor_cost_inr: 0,
+        equipment_cost_inr: 0
+      }
     };
   }
   
@@ -745,30 +902,26 @@ export class RuleEngineExecutor {
     return {
       if_no_improvement: {
         check_after_days: 5,
-        next_action: 'ESCALATE_CHEMICAL',
-        i18n_key: 'contingency.no_improvement'
+        next_action: 'ESCALATE_TO_EXPERT'
       },
       if_weather_delays: {
-        alternative: 'SYSTEMIC_WITH_STICKER',
-        i18n_key: 'contingency.weather_delay',
+        alternative: 'MONITOR_AND_WAIT',
         risk_level: 'MEDIUM',
         max_delay_days: 3
       }
     };
   }
-  
+
   private generateFollowUpSchedule(input: RuleExecutionInput): FollowUpSchedule {
     return {
       day_3: {
         check: 'OBSERVE_PEST_POPULATION',
-        i18n_key: 'followup.day3',
         method: 'VISUAL_10_PLANTS',
         success_criteria: 'REDUCTION_50_PERCENT',
         decision_if_unsuccessful: 'REPEAT_OR_ESCALATE'
       },
       day_7: {
         check: 'ASSESS_EFFECTIVENESS',
-        i18n_key: 'followup.day7',
         method: 'COUNT_20_LEAVES',
         success_criteria: 'REDUCTION_80_PERCENT',
         decision_if_unsuccessful: 'SWITCH_MOA'
