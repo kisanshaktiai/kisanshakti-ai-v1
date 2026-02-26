@@ -38,6 +38,8 @@ import {
   type ProductRecommendation as RepoProduct 
 } from './product-repository.ts';
 
+import { getCulturalAdvice } from './decision-graph-bridge-data.ts';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // RULE EVALUATION INTERFACE
 // ═══════════════════════════════════════════════════════════════════════════
@@ -87,8 +89,6 @@ const NEONICOTINOIDS = [
   'thiacloprid', 'dinotefuran', 'nitenpyram'
 ];
 
-// Cultural strategies imported from bridge-data (was orphaned)
-import { getCulturalAdvice } from './decision-graph-bridge-data.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN EVALUATION FUNCTION
