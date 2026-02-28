@@ -4596,10 +4596,15 @@ export class AIAgentOrchestrator {
         }
         
         // Update stage from deterministic calculation if available
+        // v5.1 BUG 3 FIX: Stage immutability guard — canonical stage MUST NOT be overridden
         if (contextValidation.reconciled_stage && contextValidation.stage_source !== 'DEFAULT') {
-          console.log(`   📊 G2 Growth Stage: ${contextValidation.reconciled_stage} (source: ${contextValidation.stage_source})`);
-          if (landContext) {
-            landContext.growth_stage = contextValidation.reconciled_stage;
+          if (canonicalContext?.is_locked && canonicalContext.growth_stage) {
+            console.log(`   🔒 [STAGE IMMUTABILITY] Stage override BLOCKED — canonical stage locked: ${canonicalContext.growth_stage} (attempted: ${contextValidation.reconciled_stage} from ${contextValidation.stage_source})`);
+          } else {
+            console.log(`   📊 G2 Growth Stage: ${contextValidation.reconciled_stage} (source: ${contextValidation.stage_source})`);
+            if (landContext) {
+              landContext.growth_stage = contextValidation.reconciled_stage;
+            }
           }
         }
         
