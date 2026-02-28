@@ -1247,11 +1247,15 @@ export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateRe
   }
   
   if (state.data_confidence === DataConfidence.LOW) {
-    // CRITICAL FIX v5.2: Override when strong symptom evidence exists
-    // Missing optional environmental data (soil NPK, weather) should NOT block
-    // prescriptions when we have overwhelming biotic symptom evidence
-    const symptomCount = (state as any).symptom_count || 0;
-    const dataCompleteness = (state as any).data_completeness || 0;
+    // CRITICAL FIX v5.3: Read evidence from canonical metrics + symptom enums fallback
+    const directSymptomCount = Number((state as any).symptom_count ?? 0);
+    const inferredSymptomCount = [state.visual_symptom, ...(state.secondary_symptoms || [])]
+      .filter((s: any) => s && s !== 'UNKNOWN' && s !== 'NONE').length;
+    const symptomCount = Math.max(directSymptomCount, inferredSymptomCount);
+
+    const directCompleteness = Number((state as any).data_completeness ?? 0);
+    const inferredCompleteness = Math.min(1, symptomCount / 8);
+    const dataCompleteness = Math.max(directCompleteness, inferredCompleteness);
     const hasStrongEvidence = symptomCount >= 5 || dataCompleteness >= 0.7;
     
     if (hasStrongEvidence) {
