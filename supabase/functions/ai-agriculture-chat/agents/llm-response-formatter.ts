@@ -1405,7 +1405,7 @@ async function callGeminiWithTimeout(
           }],
           generationConfig: {
             temperature: 0.5,    // LOWER: More consistent for safety
-            maxOutputTokens: 900  // INCREASED: Devanagari (Marathi/Hindi) uses ~1.5x more tokens
+            maxOutputTokens: 3000  // FIX 5: Increased for Devanagari languages (Marathi/Hindi use ~2x more tokens)
           }
         })
       }
