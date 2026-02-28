@@ -3277,11 +3277,10 @@ export class AIAgentOrchestrator {
         diagnosisWithOptionalClarification = true;
       }
       
-      // v4.0: HARD INVARIANT CHECK - crop damage MUST have CROP authority
-      if (shouldActivateDiagnosisMode && (cropDamageResult.enforced_authority || diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority)) {
+      // v5.1: HARD INVARIANT CHECK - crop damage MUST have CROP authority
+      if (shouldActivateDiagnosisMode && (cropDamageResult.enforced_authority || diagnosisOnlyCheck.enforced_authority)) {
         const resolvedAuthority = cropDamageResult.enforced_authority || 
-          diagnosisOnlyCheck.enforced_authority || 
-          preAuthorityResult.authority;
+          diagnosisOnlyCheck.enforced_authority;
         
         if (cropDamageResult.damage_type === 'TERMINAL' || cropDamageResult.severity_level === 'CRITICAL') {
           assertTerminalDamageAuthority(true, resolvedAuthority);
