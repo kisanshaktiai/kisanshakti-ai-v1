@@ -1041,6 +1041,13 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     ...(input.farmerObservations || []),
     ...(input.imageAnalysisSymptoms || [])
   ];
+  const normalizedObservationSet = new Set(
+    allObservations
+      .map(obs => String(obs || '').trim().toUpperCase())
+      .filter(Boolean)
+  );
+  const symptomCount = normalizedObservationSet.size;
+  const symptomDataCompleteness = Math.min(1, symptomCount / 8); // 8+ symbols ≈ high completeness
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
   
   // Calculate data ages
