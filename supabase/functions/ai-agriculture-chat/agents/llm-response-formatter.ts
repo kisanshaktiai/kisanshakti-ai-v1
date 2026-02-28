@@ -1191,11 +1191,13 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
             console.log(`   ✅ [LLM Formatter] Resolved action_text via i18n_key=${appDetails.i18n_key}`);
           }
         }
-        // Final fallback - ONLY if i18n didn't resolve
+        // FIX 4: Replace error string with immediate template fallback
         if (!actionText) {
-          actionText = knowledgeText || reasonText || '[Action text unavailable — data error. Please consult agricultural expert.]';
-          if (!knowledgeText && !reasonText) {
-            console.error(`🚨 [LLM Formatter] FALLBACK TRIGGERED: action_text unavailable for rule ${primary.rule_id}`);
+          actionText = knowledgeText || reasonText;
+          if (!actionText) {
+            console.error(`🚨 [LLM Formatter] action_text unavailable for rule ${primary.rule_id} — returning template fallback`);
+            // CRITICAL: Return template fallback immediately — never send error string to LLM
+            return buildTemplateFallback(input, startTime);
           }
         }
       }
