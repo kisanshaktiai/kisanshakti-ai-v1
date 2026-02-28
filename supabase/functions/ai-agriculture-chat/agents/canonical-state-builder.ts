@@ -1234,7 +1234,24 @@ export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateRe
   }
   
   if (state.data_confidence === DataConfidence.LOW) {
-    // Allow diagnosis but not prescription
+    // CRITICAL FIX v5.2: Override when strong symptom evidence exists
+    // Missing optional environmental data (soil NPK, weather) should NOT block
+    // prescriptions when we have overwhelming biotic symptom evidence
+    const symptomCount = (state as any).symptom_count || 0;
+    const dataCompleteness = (state as any).data_completeness || 0;
+    const hasStrongEvidence = symptomCount >= 5 || dataCompleteness >= 0.7;
+    
+    if (hasStrongEvidence) {
+      console.log(`   ✅ [PrescriptionGate] LOW confidence OVERRIDDEN — strong symptom evidence (symptoms=${symptomCount}, completeness=${(dataCompleteness * 100).toFixed(0)}%)`);
+      return {
+        allowed: true,
+        reason: 'Low data confidence overridden by strong symptom evidence.',
+        requiredData: getRequiredDataForConfidence(state)
+      };
+    }
+    
+    // Original block remains for cases with no/weak symptom evidence
+    console.log(`   ⚠️ [PrescriptionGate] BLOCKED — LOW confidence, weak evidence (symptoms=${symptomCount}, completeness=${(dataCompleteness * 100).toFixed(0)}%)`);
     return {
       allowed: false,
       reason: 'Can diagnose but cannot prescribe treatment with low confidence.',

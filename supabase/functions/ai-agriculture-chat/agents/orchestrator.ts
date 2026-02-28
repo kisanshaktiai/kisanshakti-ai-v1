@@ -3896,8 +3896,13 @@ export class AIAgentOrchestrator {
       
       // Static imports at top of file
       
-      const detectedIntent = nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY';
-      const intentConfidence = nluOutput?.intent_classification?.intent_confidence || 0.5;
+      // CRITICAL FIX v5.2: Prioritize SemanticExtractor intent (which correctly classifies via LLM)
+      // over NLU Agent's primary_intent (which always returns UNKNOWN as it's a perception-only layer)
+      const detectedIntent = semanticExtraction?.intent_code || 
+                              nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY';
+      const intentConfidence = semanticExtraction?.intent_confidence || 
+                                nluOutput?.intent_classification?.intent_confidence || 0.5;
+      console.log(`   🔗 [IntentPropagation] semantic=${semanticExtraction?.intent_code}, nlu=${nluOutput?.intent_classification?.primary_intent}, final=${detectedIntent} (${(intentConfidence * 100).toFixed(0)}%)`);
       
       // Lock the intent for this turn
       const intentLock = lockIntent(detectedIntent, intentConfidence);
@@ -5300,56 +5305,72 @@ export class AIAgentOrchestrator {
       
       // ========================================
       // PHASE 3: DIAGNOSTIC FLOW MANAGEMENT
+      // CRITICAL FIX v5.2: Skip when symbolic brain already produced results
+      // to prevent GATHERING_INFO from overriding valid diagnoses
       // ========================================
-      console.log('\n🧠 PHASE 3: Managing Diagnostic Flow...');
-
       
-      // Create per-request diagnostic controller with required parameters
-      const diagnosticController = this.createDiagnosticController(sessionId, farmerId, options.landId);
+      const symbolicAlreadyProduced = (totalRulesMatched > 0) || 
+        (layeredRuleResult && (layeredRuleResult as any).rules_matched > 0);
       
-      // Build NLU output with rule mapping for diagnostic controller
-      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
+      let diagnosticState: any;
       
-      // Process through diagnostic flow
-      const diagnosticResponse = await diagnosticController.processNLUOutput(nluWithRuleMapping);
-      
-      // Extract the first question with full details for clarification
-      const firstQuestion = diagnosticResponse.questions?.[0];
-
-      // CRITICAL FIX: Ensure the Rule Engine always receives the resolved rule modules.
-      // The DiagnosticFlowController keeps requiredRuleModules on the NLU mapping object,
-      // and does not echo them back in the response.
-      const diagnosticState = {
-        mode: this.mapDiagnosticAction(diagnosticResponse.action),
-        next_question: firstQuestion ? {
-          question_id: firstQuestion.question_id,
-          text_mr: firstQuestion.question_text_mr || 'अधिक माहिती द्या',
-          text_hi: firstQuestion.question_text_hi || 'अधिक जानकारी दें',
-          text_en: firstQuestion.question_text_en || 'Please provide more details',
-          options: firstQuestion.options
-        } : null,
-        hypotheses: diagnosticResponse.evaluation_result ? [{ confidence: 0.7 }] : [],
-        rule_modules_required: nluWithRuleMapping.requiredRuleModules || [],
-        session_state: diagnosticResponse.session_state
-      };
-      
-      agentsUsed.push('Diagnostic');
-      console.log('   ✅ Diagnostic mode:', diagnosticState.mode);
-      
-      // Check if we need more information - CRITICAL FIX: Ensure question has text
-      if (diagnosticState.mode === 'GATHERING_INFO' && diagnosticState.next_question) {
-        return {
-          type: 'CLARIFICATION_QUESTION',
-          session_id: sessionId,
-          question: diagnosticState.next_question,
-          metadata: {
-            confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
-            safety_status: 'PENDING',
-            rules_applied: 0,
-            processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed
-          }
+      if (symbolicAlreadyProduced) {
+        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic brain already produced ${totalRulesMatched} matched rules`);
+        diagnosticState = {
+          mode: 'READY_FOR_DECISION',
+          next_question: null,
+          hypotheses: [],
+          rule_modules_required: [],
+          session_state: null
         };
+        agentsUsed.push('Diagnostic_SKIPPED');
+      } else {
+        console.log('\n🧠 PHASE 3: Managing Diagnostic Flow...');
+        
+        // Create per-request diagnostic controller with required parameters
+        const diagnosticController = this.createDiagnosticController(sessionId, farmerId, options.landId);
+        
+        // Build NLU output with rule mapping for diagnostic controller
+        const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
+        
+        // Process through diagnostic flow
+        const diagnosticResponse = await diagnosticController.processNLUOutput(nluWithRuleMapping);
+        
+        // Extract the first question with full details for clarification
+        const firstQuestion = diagnosticResponse.questions?.[0];
+
+        diagnosticState = {
+          mode: this.mapDiagnosticAction(diagnosticResponse.action),
+          next_question: firstQuestion ? {
+            question_id: firstQuestion.question_id,
+            text_mr: firstQuestion.question_text_mr || 'अधिक माहिती द्या',
+            text_hi: firstQuestion.question_text_hi || 'अधिक जानकारी दें',
+            text_en: firstQuestion.question_text_en || 'Please provide more details',
+            options: firstQuestion.options
+          } : null,
+          hypotheses: diagnosticResponse.evaluation_result ? [{ confidence: 0.7 }] : [],
+          rule_modules_required: nluWithRuleMapping.requiredRuleModules || [],
+          session_state: diagnosticResponse.session_state
+        };
+        
+        agentsUsed.push('Diagnostic');
+        console.log('   ✅ Diagnostic mode:', diagnosticState.mode);
+        
+        // Check if we need more information
+        if (diagnosticState.mode === 'GATHERING_INFO' && diagnosticState.next_question) {
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: diagnosticState.next_question,
+            metadata: {
+              confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
+              safety_status: 'PENDING',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed
+            }
+          };
+        }
       }
       
       if (diagnosticState.mode === 'WAITING_FOR_PHOTO') {

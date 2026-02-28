@@ -123,6 +123,78 @@ const INTENT_SCOPE_MAP: Record<string, {
     allowed_scopes: ['GREETING', 'GENERAL'],
     allowed_actions: ['GREET', 'INFORM'],
     forbidden_actions: ['SPRAY', 'IRRIGATE', 'FERTILIZE', 'HARVEST', 'SELL']
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SYMPTOM-BASED INTENTS (v5.2) — from SemanticExtractor intent_code
+  // These allow full diagnostic + treatment actions since the farmer
+  // is describing actual crop damage symptoms.
+  // ═══════════════════════════════════════════════════════════════════════════
+  'STEM_DAMAGE': {
+    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'LEAF_DAMAGE_VISIBLE': {
+    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'LEAF_MARKS_OR_SPOTS': {
+    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'ROOT_OR_BASE_PROBLEM': {
+    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'CULTURAL', 'SOIL_AMENDMENT', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'MONITOR', 'REMOVE', 'CULTURAL_PRACTICE', 'SOIL_TEST', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'GROWTH_ANOMALY': {
+    allowed_scopes: ['PEST', 'DISEASE', 'NUTRIENT', 'FERTILIZER', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'FERTILIZE', 'MONITOR', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'COLOR_CHANGE': {
+    allowed_scopes: ['PEST', 'DISEASE', 'NUTRIENT', 'FERTILIZER', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'FERTILIZE', 'MONITOR', 'CULTURAL_PRACTICE', 'SOIL_TEST', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'WILTING_OR_DROOPING': {
+    allowed_scopes: ['PEST', 'DISEASE', 'IRRIGATION', 'WATER_MANAGEMENT', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'IRRIGATE', 'MONITOR', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'PEST_PRESENCE_VISIBLE': {
+    allowed_scopes: ['PEST', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'DISEASE_LIKE_PATTERN': {
+    allowed_scopes: ['DISEASE', 'FUNGICIDE', 'BACTERICIDE', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'REMOVE', 'MONITOR', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'EMERGENCE_FAILURE': {
+    allowed_scopes: ['PEST', 'DISEASE', 'SOIL_AMENDMENT', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['APPLY', 'MONITOR', 'CULTURAL_PRACTICE', 'SOIL_TEST', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  'UNKNOWN_OBSERVATION': {
+    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'NUTRIENT', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
+  // Fertilizer/nutrition specific intents
+  'FERTILIZER_SCHEDULE': {
+    allowed_scopes: ['FERTILIZER', 'NUTRIENT', 'SOIL_AMENDMENT', 'GENERAL'],
+    allowed_actions: ['FERTILIZE', 'APPLY', 'APPLY_FERTILIZER', 'SOIL_TEST', 'MONITOR', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['SPRAY_PESTICIDE', 'HARVEST', 'SELL']
+  },
+  'FERTILIZER_NUTRITION': {
+    allowed_scopes: ['FERTILIZER', 'NUTRIENT', 'SOIL_AMENDMENT', 'GENERAL'],
+    allowed_actions: ['FERTILIZE', 'APPLY', 'APPLY_FERTILIZER', 'SOIL_TEST', 'MONITOR', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['SPRAY_PESTICIDE', 'HARVEST', 'SELL']
   }
 };
 
