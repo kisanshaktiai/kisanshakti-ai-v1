@@ -3161,11 +3161,14 @@ export class AIAgentOrchestrator {
         crossCropSymptomsList
       );
       
-      // v4.0: Also run the legacy pre-authority gate for backward compatibility
-      const preAuthorityResult = resolveDiagnosticAuthorityFromObservations(allObservationsForPreAuth);
+      // v5.1: REMOVED legacy v4 resolveDiagnosticAuthorityFromObservations — dual detector caused
+      // INFERRED/SYNTHETIC codes to incorrectly trigger terminal damage via the flat allObservationsForPreAuth set.
+      // cropDamageResult (v5, authority-aware) is now the SOLE authority source.
       
-      // v4.0: Enforced authority from either path
-      let enforcedAuthorityDecision = preAuthorityResult.enforced_decision;
+      // v5.1: Enforced authority derived ONLY from authority-aware v5 detector
+      let enforcedAuthorityDecision = cropDamageResult.enforced_authority 
+        ? createEnforcedCropAuthority(cropDamageResult.damage_observations, allObservationsForPreAuth)
+        : undefined;
       
       // v4.0: If crop damage detected (any level that requires diagnosis), enforce CROP authority
       if (cropDamageResult.requires_diagnosis) {
