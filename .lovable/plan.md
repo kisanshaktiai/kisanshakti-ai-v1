@@ -1,35 +1,40 @@
 
-# Pipeline Stability Fixes v5.1 — Completed
+# Pipeline Stability Fixes v5.2 — Completed
 
 ## Fixes Applied (2026-02-28)
 
-### BUG 1: `allObservationsForDiagCheck` ReferenceError — FIXED
-- **File:** `orchestrator.ts:5082`
-- **Fix:** Replaced undefined `allObservationsForDiagCheck` with `[...allObservationsForPreAuth]`
+### v5.1 Fixes (Previous)
+1. `allObservationsForDiagCheck` ReferenceError → replaced with `[...allObservationsForPreAuth]`
+2. Dual CropDamageDetector (v4+v5) → removed legacy v4, v5 sole authority
+3. Stage drift (3 competing calculators) → stage immutability guard when locked
+4. DiagnosisOnlyMode redundant execution → guard on symbolic reasoner confidence
+5. Authority resolver blocks CROP → enforced_decision override before shouldSkipCropRules
 
-### BUG 2: Dual CropDamageDetector (v4+v5) — FIXED
-- **File:** `orchestrator.ts:3164-3168`
-- **Fix:** Removed legacy `resolveDiagnosticAuthorityFromObservations()` call from orchestrator. v5 `cropDamageResult` is now sole authority source. Removed import, all `preAuthorityResult.*` references replaced with v5 equivalents.
+### v5.2 Fixes (Current)
 
-### BUG 3: Stage drift (3 competing calculators) — FIXED
-- **File:** `orchestrator.ts:4607-4613`
-- **Fix:** Added stage immutability guard: if `canonicalContext.is_locked && canonicalContext.growth_stage`, stage override is BLOCKED with log.
+#### BUG 6: Intent Disconnection — SemanticExtractor→IntentLock — FIXED
+- **File:** `orchestrator.ts:3899`
+- **Root cause:** `detectedIntent` read from `nluOutput.intent_classification.primary_intent` (always UNKNOWN) instead of `semanticExtraction.intent_code` (correctly classified as STEM_DAMAGE at 90%)
+- **Fix:** Priority chain: `semanticExtraction.intent_code` → `nluOutput.intent_classification.primary_intent` → `'GENERAL_QUERY'`
 
-### BUG 4: DiagnosisOnlyMode redundant execution — FIXED
-- **File:** `orchestrator.ts:5061`
-- **Fix:** Added guard: DiagnosisOnly reformatting only runs when symbolic reasoner did NOT produce a primary decision with confidence > 0.6.
+#### BUG 7: Missing symptom-based intent scopes — FIXED
+- **File:** `intent-lock.ts:121-200`
+- **Root cause:** `INTENT_SCOPE_MAP` had no entries for symptom intents (STEM_DAMAGE, LEAF_DAMAGE_VISIBLE, etc.), causing fallback to DEFAULT_SCOPE which only allowed INFORM/CLARIFY
+- **Fix:** Added 13 symptom-based intent mappings with full PEST/DISEASE/IPM scopes and treatment actions
 
-### BUG 5: Authority resolver blocks CROP when observations exist — FIXED
-- **File:** `diagnostic-flow-controller.ts:369-377`
-- **Fix:** Added enforced crop damage override check BEFORE `shouldSkipCropRules()`. If `preAuthorityResult.enforced_decision` exists, it overrides the standard authority path.
+#### BUG 8: Prescription Gate blocks despite strong evidence — FIXED
+- **File:** `canonical-state-builder.ts:1236`
+- **Root cause:** `checkPrescriptionGate()` blocked on `DataConfidence.LOW` from missing optional soil/weather data, even with 10 observations at 88% coverage
+- **Fix:** Added evidence override: if `symptom_count >= 5` OR `data_completeness >= 0.7`, allow prescription with warning
 
-### Observation Pipeline Checkpoint — ADDED
-- **File:** `orchestrator.ts:3129`
-- **Fix:** Added `[OBSERVATION_CHECKPOINT]` log after collection phase showing count and first 10 codes.
+#### BUG 9: Phase 3 DiagnosticFlow overrides symbolic brain — FIXED
+- **File:** `orchestrator.ts:5301-5352`
+- **Root cause:** DiagnosticFlowController ran with UNKNOWN intent even after symbolic brain matched rules, returning GATHERING_INFO → clarification instead of diagnosis
+- **Fix:** Skip Phase 3 entirely when `totalRulesMatched > 0`
 
-## Guaranteed Invariants (v5.1)
-1. `allObservationsForPreAuth` is the single flat observation set — no undefined variables
-2. Only ONE authority detector (v5 authority-aware) executes per request
-3. Canonical stage is immutable when locked — no drift from generic calculators
-4. DiagnosisOnlyMode does not duplicate symbolic reasoner results
-5. Crop damage observations prevent authority blocking even when NLU returns NONE
+## Guaranteed Invariants (v5.2)
+1. `semanticExtraction.intent_code` is the primary intent source for IntentLock
+2. All 11 symptom-based intents have proper scope mappings with treatment actions
+3. Strong symptom evidence (≥5 observations or ≥70% coverage) overrides LOW data_confidence
+4. DiagnosticFlowController does not run when symbolic brain already matched rules
+5. All v5.1 invariants remain in effect
