@@ -1906,8 +1906,13 @@ function validateWhatWhyHow(
   
   // Only validate for treatment responses (not clarification/observation)
   const actionType = input?.decision_output?.primary_decision?.action_type?.toUpperCase() || '';
-  const isObservationOnly = ['MONITOR', 'MONITOR_ONLY', 'NO_ACTION_REQUIRED', 'DIAGNOSIS'].includes(actionType);
-  if (isObservationOnly) {
+  // FIX 7: Expanded monitoring-only action types that don't require HOW section
+  const MONITORING_ONLY_ACTION_TYPES = new Set([
+    'MONITOR', 'MONITOR_CLOSELY', 'MONITOR_ONLY', 'OBSERVE', 'OBSERVATION',
+    'NO_ACTION', 'NO_ACTION_REQUIRED', 'WAIT_AND_WATCH', 'NONE', 'DIAGNOSIS',
+    'MONITORING_ADVISED', 'SCOUTING'
+  ]);
+  if (MONITORING_ONLY_ACTION_TYPES.has(actionType)) {
     return { valid: true, missing_sections: [], violations: [] };
   }
   
