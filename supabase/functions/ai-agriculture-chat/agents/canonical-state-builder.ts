@@ -360,6 +360,10 @@ export interface CanonicalState {
     historical_data: boolean;
   };
   
+  // Evidence Metrics (for prescription safety override)
+  symptom_count?: number;
+  data_completeness?: number; // 0-1 symptom evidence completeness
+  
   // Timestamps
   state_built_at: string;
   land_id?: string;
