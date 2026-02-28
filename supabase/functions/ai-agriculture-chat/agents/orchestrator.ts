@@ -3243,9 +3243,10 @@ export class AIAgentOrchestrator {
       }
       
       // If Diagnosis-Only Mode is activated, SKIP CLARIFICATION entirely
+      // v5.1: Removed preAuthorityResult.nlu_bypassed — using only v5 authority-aware detector
       let diagnosisOnlyModeActive = cropDamageResult.diagnosis_mode === 'DIAGNOSIS_ONLY' || 
         diagnosisOnlyCheck.activate || 
-        preAuthorityResult.nlu_bypassed;
+        cropDamageResult.nlu_gating_disabled;
       let bypassClarificationForTerminalDamage = diagnosisOnlyModeActive;
       
       // v4.0: For DIAGNOSIS_WITH_CLARIFICATION, allow optional confirmation but still run rules
