@@ -439,7 +439,7 @@ import {
   detectCropDamageWithAuthority, // v5.0: Authority-aware terminal detection
   createEnforcedCropAuthority,
   assertTerminalDamageAuthority,
-  resolveDiagnosticAuthorityFromObservations, // v3.0: Pre-authority gate
+  // v5.1: resolveDiagnosticAuthorityFromObservations REMOVED (legacy v4 dual detector)
   DIAGNOSIS_ONLY_MODE_VERSION,
   CROP_DAMAGE_OBSERVATION_KEYS, // v4.0: Crop damage triggers
   type DiagnosisOnlyOutput,
@@ -3127,6 +3127,9 @@ export class AIAgentOrchestrator {
         console.log(`   ⚠️ [IntentPromotion] BLOCKED: confidence too low (${(intentConf * 100).toFixed(0)}%) for promotion`);
       }
       
+      // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
+      console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
+      
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
       // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage
@@ -3161,11 +3164,14 @@ export class AIAgentOrchestrator {
         crossCropSymptomsList
       );
       
-      // v4.0: Also run the legacy pre-authority gate for backward compatibility
-      const preAuthorityResult = resolveDiagnosticAuthorityFromObservations(allObservationsForPreAuth);
+      // v5.1: REMOVED legacy v4 resolveDiagnosticAuthorityFromObservations — dual detector caused
+      // INFERRED/SYNTHETIC codes to incorrectly trigger terminal damage via the flat allObservationsForPreAuth set.
+      // cropDamageResult (v5, authority-aware) is now the SOLE authority source.
       
-      // v4.0: Enforced authority from either path
-      let enforcedAuthorityDecision = preAuthorityResult.enforced_decision;
+      // v5.1: Enforced authority derived ONLY from authority-aware v5 detector
+      let enforcedAuthorityDecision = cropDamageResult.enforced_authority 
+        ? createEnforcedCropAuthority(cropDamageResult.damage_observations, allObservationsForPreAuth)
+        : undefined;
       
       // v4.0: If crop damage detected (any level that requires diagnosis), enforce CROP authority
       if (cropDamageResult.requires_diagnosis) {
@@ -3189,21 +3195,9 @@ export class AIAgentOrchestrator {
         }
         
         agentsUsed.push('CROP_DAMAGE_GATE_V4');
-      } else if (preAuthorityResult.nlu_bypassed) {
-        // Legacy terminal damage path
-        console.log(`\n🚨 [PRE-AUTHORITY GATE] Terminal damage detected - NLU gating DISABLED`);
-        console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
-        console.log(`   Authority=CROP`);
-        console.log(`   Mode=DIAGNOSIS`);
-        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
-        console.log(`   RulesExecuted=DIAGNOSIS`);
-        console.log(`   Terminal indicators: ${preAuthorityResult.terminal_indicators.join(', ')}`);
-        console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
-        console.log(`   Source=DECISION_RULES`);
-        
-        // v3.0: Assert invariant immediately
-        assertTerminalDamageAuthority(true, preAuthorityResult.authority);
       }
+      // v5.1: Removed legacy v4 terminal damage path (preAuthorityResult.nlu_bypassed)
+      // Authority-aware v5 detector handles all terminal detection with proper authority filtering.
       
       // Check if Diagnosis-Only Mode should be activated
       // v4.0: Now also activated by non-terminal crop damage
@@ -3246,15 +3240,16 @@ export class AIAgentOrchestrator {
         console.log(`   Damage type: ${cropDamageResult.damage_type}`);
         console.log(`   Diagnosis mode: ${cropDamageResult.diagnosis_mode}`);
         console.log(`   Severity: ${cropDamageResult.severity_level}`);
-        console.log(`   NLU_GATING=${cropDamageResult.nlu_gating_disabled || preAuthorityResult.nlu_bypassed ? 'DISABLED' : 'ENABLED'}`);
+        console.log(`   NLU_GATING=${cropDamageResult.nlu_gating_disabled ? 'DISABLED' : 'ENABLED'}`);
         console.log(`   Clarification=${cropDamageResult.diagnosis_mode === 'DIAGNOSIS_ONLY' ? 'SKIPPED' : 'OPTIONAL'}`);
         console.log(`════════════════════════════════════════════════════════════════\n`);
       }
       
       // If Diagnosis-Only Mode is activated, SKIP CLARIFICATION entirely
+      // v5.1: Removed preAuthorityResult.nlu_bypassed — using only v5 authority-aware detector
       let diagnosisOnlyModeActive = cropDamageResult.diagnosis_mode === 'DIAGNOSIS_ONLY' || 
         diagnosisOnlyCheck.activate || 
-        preAuthorityResult.nlu_bypassed;
+        cropDamageResult.nlu_gating_disabled;
       let bypassClarificationForTerminalDamage = diagnosisOnlyModeActive;
       
       // v4.0: For DIAGNOSIS_WITH_CLARIFICATION, allow optional confirmation but still run rules
@@ -3285,11 +3280,10 @@ export class AIAgentOrchestrator {
         diagnosisWithOptionalClarification = true;
       }
       
-      // v4.0: HARD INVARIANT CHECK - crop damage MUST have CROP authority
-      if (shouldActivateDiagnosisMode && (cropDamageResult.enforced_authority || diagnosisOnlyCheck.enforced_authority || preAuthorityResult.authority)) {
+      // v5.1: HARD INVARIANT CHECK - crop damage MUST have CROP authority
+      if (shouldActivateDiagnosisMode && (cropDamageResult.enforced_authority || diagnosisOnlyCheck.enforced_authority)) {
         const resolvedAuthority = cropDamageResult.enforced_authority || 
-          diagnosisOnlyCheck.enforced_authority || 
-          preAuthorityResult.authority;
+          diagnosisOnlyCheck.enforced_authority;
         
         if (cropDamageResult.damage_type === 'TERMINAL' || cropDamageResult.severity_level === 'CRITICAL') {
           assertTerminalDamageAuthority(true, resolvedAuthority);
@@ -4605,10 +4599,15 @@ export class AIAgentOrchestrator {
         }
         
         // Update stage from deterministic calculation if available
+        // v5.1 BUG 3 FIX: Stage immutability guard — canonical stage MUST NOT be overridden
         if (contextValidation.reconciled_stage && contextValidation.stage_source !== 'DEFAULT') {
-          console.log(`   📊 G2 Growth Stage: ${contextValidation.reconciled_stage} (source: ${contextValidation.stage_source})`);
-          if (landContext) {
-            landContext.growth_stage = contextValidation.reconciled_stage;
+          if (canonicalContext?.is_locked && canonicalContext.growth_stage) {
+            console.log(`   🔒 [STAGE IMMUTABILITY] Stage override BLOCKED — canonical stage locked: ${canonicalContext.growth_stage} (attempted: ${contextValidation.reconciled_stage} from ${contextValidation.stage_source})`);
+          } else {
+            console.log(`   📊 G2 Growth Stage: ${contextValidation.reconciled_stage} (source: ${contextValidation.stage_source})`);
+            if (landContext) {
+              landContext.growth_stage = contextValidation.reconciled_stage;
+            }
           }
         }
         
@@ -5058,8 +5057,13 @@ export class AIAgentOrchestrator {
               // PHASE-22: DIAGNOSIS-ONLY MODE - Skip multi-match clarification
               // When terminal damage detected, present diagnoses directly instead of asking
               // ═══════════════════════════════════════════════════════════════════════════
-              if (diagnosisOnlyModeActive && symbolicResult.recommendations && symbolicResult.recommendations.length > 0) {
-                console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Generating direct diagnosis output...`);
+              // v5.1 BUG 4 FIX: Guard DiagnosisOnlyMode against redundant execution
+              // Skip reformatting if symbolic reasoner already produced a high-confidence primary decision
+              const symbolicHasPrimaryDecision = symbolicResult.primary_decision && 
+                (symbolicResult.confidence || 0) > 0.6;
+              
+              if (diagnosisOnlyModeActive && symbolicResult.recommendations && symbolicResult.recommendations.length > 0 && !symbolicHasPrimaryDecision) {
+                console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Generating direct diagnosis output (no primary decision from symbolic)...`);
                 console.log(`   Mode=DIAGNOSIS_ONLY, Clarification=SKIPPED, Source=DECISION_RULES`);
                 
                 // Convert fired rules to MatchedRule format
@@ -5079,7 +5083,7 @@ export class AIAgentOrchestrator {
                 // Generate Diagnosis-Only output
                 const diagnosisOnlyOutput = generateDiagnosisOnlyOutput({
                   canonicalContext: canonicalContext!,
-                  observations: allObservationsForDiagCheck,
+                  observations: [...allObservationsForPreAuth],
                   matched_rules: matchedRulesForDiagnosis,
                   language: options.language || 'mr',
                   trace_id: traceId
