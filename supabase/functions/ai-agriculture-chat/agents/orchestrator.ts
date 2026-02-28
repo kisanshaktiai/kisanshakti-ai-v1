@@ -3127,6 +3127,9 @@ export class AIAgentOrchestrator {
         console.log(`   ⚠️ [IntentPromotion] BLOCKED: confidence too low (${(intentConf * 100).toFixed(0)}%) for promotion`);
       }
       
+      // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
+      console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
+      
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
       // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage

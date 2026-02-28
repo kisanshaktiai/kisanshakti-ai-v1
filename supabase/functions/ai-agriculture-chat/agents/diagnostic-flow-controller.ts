@@ -366,14 +366,25 @@ export class DiagnosticFlowController {
       assertTerminalDamageAuthority(true, authorityDecision.authority);
     }
     
+    // v5.1 BUG 5 FIX: Check for crop damage enforcement BEFORE shouldSkipCropRules
+    // If preAuthorityResult has an enforced_decision (from terminal/crop damage), use it
+    // to prevent the standard authority resolver from incorrectly blocking CROP domain
+    if (preAuthorityResult.enforced_decision && !authorityDecision.authority) {
+      console.log('🔄 [DiagnosticFlow v5.1] Overriding authority with enforced crop damage decision');
+      authorityDecision = preAuthorityResult.enforced_decision;
+    }
+    
     // Check if crop rules should be skipped
     const skipCropRules = shouldSkipCropRules(authorityDecision);
     
-    if (skipCropRules) {
+    if (skipCropRules && !preAuthorityResult.enforced_decision) {
+      // v5.1: Only block if there's NO enforced crop damage override
       console.log('🚫 [DiagnosticFlow] Crop rules BLOCKED by higher authority:', authorityDecision.authority);
       this.session.status = 'AUTHORITY_BLOCKED';
       
       return this.handleAuthorityBlock(authorityDecision, context);
+    } else if (skipCropRules && preAuthorityResult.enforced_decision) {
+      console.log('✅ [DiagnosticFlow v5.1] Crop rules ALLOWED despite authority block — enforced crop damage override active');
     }
     
     this.session.status = 'EVALUATING_RULES';
