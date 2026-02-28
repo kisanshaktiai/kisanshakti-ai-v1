@@ -1168,6 +1168,8 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
     data_confidence: dataConfidence,
     advisory_risk_level: advisoryRisk,
     data_sources: dataSources,
+    symptom_count: symptomCount,
+    data_completeness: symptomDataCompleteness,
     
     // Meta
     state_built_at: now.toISOString(),
