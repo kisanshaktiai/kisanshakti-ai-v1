@@ -5079,7 +5079,7 @@ export class AIAgentOrchestrator {
                 // Generate Diagnosis-Only output
                 const diagnosisOnlyOutput = generateDiagnosisOnlyOutput({
                   canonicalContext: canonicalContext!,
-                  observations: allObservationsForDiagCheck,
+                  observations: [...allObservationsForPreAuth],
                   matched_rules: matchedRulesForDiagnosis,
                   language: options.language || 'mr',
                   trace_id: traceId
