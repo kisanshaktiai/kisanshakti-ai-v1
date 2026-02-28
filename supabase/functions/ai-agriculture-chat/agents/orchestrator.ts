@@ -3896,8 +3896,13 @@ export class AIAgentOrchestrator {
       
       // Static imports at top of file
       
-      const detectedIntent = nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY';
-      const intentConfidence = nluOutput?.intent_classification?.intent_confidence || 0.5;
+      // CRITICAL FIX v5.2: Prioritize SemanticExtractor intent (which correctly classifies via LLM)
+      // over NLU Agent's primary_intent (which always returns UNKNOWN as it's a perception-only layer)
+      const detectedIntent = semanticExtraction?.intent_code || 
+                              nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY';
+      const intentConfidence = semanticExtraction?.intent_confidence || 
+                                nluOutput?.intent_classification?.intent_confidence || 0.5;
+      console.log(`   🔗 [IntentPropagation] semantic=${semanticExtraction?.intent_code}, nlu=${nluOutput?.intent_classification?.primary_intent}, final=${detectedIntent} (${(intentConfidence * 100).toFixed(0)}%)`);
       
       // Lock the intent for this turn
       const intentLock = lockIntent(detectedIntent, intentConfidence);
