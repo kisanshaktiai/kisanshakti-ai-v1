@@ -1,253 +1,98 @@
 
 
-# Forensic Audit: AI Chat + Symbolic Decision Brain
+# Deterministic Audit & Fix Plan: Observation Pipeline + Authority + Stage Integrity
 
-## Executive Summary
+## Critical Bugs Found
 
-The system is critically broken for its primary use case (sugarcane advisory). **Zero sugarcane-specific rules ever fire.** The root cause is a single crop code mismatch that silently drops 454 out of 490 applicable rules before evaluation even begins. Secondary issues compound this: NDVI observation codes are phantom (not in any DB table), most NDVI rules are stage-locked to SEEDLING only, and the `condition_code` column is decorative across all 517 rules.
+### BUG 1: `allObservationsForDiagCheck` — ReferenceError (RUNTIME CRASH)
+**File:** `orchestrator.ts:5082`
+**Issue:** Variable `allObservationsForDiagCheck` is referenced but never defined. It should be `allObservationsForPreAuth` (defined at line 2931, same scope).
+**Fix:** Replace `allObservationsForDiagCheck` with `[...allObservationsForPreAuth]` at line 5082.
+
+### BUG 2: Dual CropDamageDetector execution (v4 + v5)
+**File:** `orchestrator.ts:3159-3165`
+**Issue:** Both `detectCropDamageWithAuthority()` (v5, authority-aware) AND `resolveDiagnosticAuthorityFromObservations()` (v4 legacy) run on EVERY request. The v4 result at line 3165 uses the flat `allObservationsForPreAuth` set which includes INFERRED/SYNTHETIC codes, bypassing the authority filtering that v5 enforces. The v4 result then feeds into `enforcedAuthorityDecision` (line 3168) and `diagnosisOnlyModeActive` (line 3257), creating a path where INFERRED codes trigger terminal damage mode.
+**Fix:** Remove the legacy v4 `resolveDiagnosticAuthorityFromObservations` call. Use v5 `cropDamageResult` as sole authority source. Update all downstream references to `preAuthorityResult`.
+
+### BUG 3: Stage drift — 3 competing stage calculators
+**Files:**
+- `orchestrator.ts:6537` — private `calculateGrowthStage()` (ICAR tables, sugarcane-aware)
+- `crop-calendar-lookup.ts:529` — `calculateGenericStage()` (generic, maps 70-100 DAS → FLOWERING for ALL crops)
+- `data-validator.ts:291` — `calculateGrowthStage()` (another set of ICAR tables)
+- `agronomic-observation-validator.ts:250` — `getStageFromDAS()`
+
+The generic fallback in `crop-calendar-lookup.ts:546` maps DAS 71-100 → `FLOWERING` for ANY crop, including sugarcane (where DAS 71-100 is TILLERING). If this function is invoked as fallback (when ICAR calendar not found for a crop variant), TILLERING shifts to FLOWERING.
+
+Additionally, `contextValidation.reconciled_stage` at line 4608-4612 can override `landContext.growth_stage` with a recalculated value.
+
+**Fix:** 
+1. In orchestrator, after canonical state is built, add a stage immutability guard: if `canonicalContext.growth_stage` is set and locked, reject any recalculation.
+2. Remove the `landContext.growth_stage = contextValidation.reconciled_stage` override at lines 4608-4612 when canonical context is locked.
+
+### BUG 4: DiagnosisOnlyMode activates AFTER symbolic reasoning already executed
+**File:** `orchestrator.ts:5061`
+**Issue:** `diagnosisOnlyModeActive` is checked at line 5061 inside the symbolic reasoner result block (after rules already fired). If `diagnosisOnlyModeActive=true`, it generates a separate `diagnosisOnlyOutput` using `generateDiagnosisOnlyOutput()` — but this calls the crashed `allObservationsForDiagCheck`. Even after fixing the variable name, this path duplicates work: the symbolic reasoner already produced recommendations, and `generateDiagnosisOnlyOutput` reformats them into a different shape. This is redundant and can produce inconsistent outputs.
+**Fix:** After fixing BUG 1, add a guard: if symbolic reasoner already produced a primary decision with confidence > 0.6, skip the DiagnosisOnly reformatting and use the symbolic result directly.
+
+### BUG 5: Authority resolver blocks CROP domain when observations exist
+**File:** `authority-resolver.ts:462-469`
+**Issue:** `shouldSkipCropRules()` returns `true` when `authority === DecisionAuthority.NONE`. But `NONE` can be set by the standard authority resolver when no pest/disease causes are detected — even when crop damage observations exist. The v5 CropDamageDetector sets `enforced_authority: DecisionAuthority.CROP`, but this enforcement happens AFTER the diagnostic-flow-controller's authority check at line 370.
+**Fix:** In `diagnostic-flow-controller.ts`, check for crop damage enforcement BEFORE calling `shouldSkipCropRules`. If `preAuthorityResult.enforced_decision` exists, use it instead of the standard authority path.
 
 ---
 
-## 1. Critical Root Cause: Crop Code Mismatch
+## Implementation Steps
 
-**Classification: FILTER BUG — CRITICAL**
+### Step 1: Fix runtime crash — `allObservationsForDiagCheck`
+In `orchestrator.ts` line 5082, replace `allObservationsForDiagCheck` with `[...allObservationsForPreAuth]`.
 
-### The Bug
+### Step 2: Remove dual detector execution
+In `orchestrator.ts`:
+- Remove the v4 legacy call at line 3164-3165 (`resolveDiagnosticAuthorityFromObservations`)
+- Replace all `preAuthorityResult.*` references (lines 3167-3206, 3233, 3249, 3255-3257, 3289-3296) with equivalent fields from `cropDamageResult`
+- Map: `preAuthorityResult.nlu_bypassed` → `cropDamageResult.nlu_gating_disabled`
+- Map: `preAuthorityResult.enforced_decision` → derive from `cropDamageResult.enforced_authority`
+- Map: `preAuthorityResult.authority` → `cropDamageResult.enforced_authority`
+- Map: `preAuthorityResult.terminal_indicators` → `cropDamageResult.damage_observations`
 
-The orchestrator maps `SUGARCANE` → `'sc'` before calling rule loading:
-
-```text
-orchestrator.ts:1538  →  cropCodeForRules = 'sc'
-orchestrator.ts:4733  →  cropCodeForFilter = 'sc'
-```
-
-But the rule loader normalizes DB `crop_code` to lowercase:
-
-```text
-loader.ts:219  →  crop_code: row.crop_code?.toLowerCase() → 'sugarcane'
-```
-
-When `getAllRulesWithBundled('sc')` filters (lines 862-867):
-
-```text
-'sugarcane' === 'sc'  → FALSE  (454 rules dropped)
-'all' === 'sc'        → FALSE
-'all' === 'all'       → TRUE   (36 rules kept)
-```
-
-**Result:** Only 36 universal `ALL` rules survive. All 454 sugarcane-specific rules — pests, diseases, nutrition, irrigation, NDVI — are silently excluded.
-
-### DB Proof
-
-| crop_code  | count |
-|------------|-------|
-| SUGARCANE  | 454   |
-| ALL        | 36    |
-| CTN        | 27    |
-
-The "36 crop-filtered rules" in the logs are exactly the 36 `ALL` rules.
-
-### Required Fix
-
-**Option A (recommended):** Add alias resolution in `getAllRulesWithBundled` and `loadRulesForCrop`:
-
+### Step 3: Add stage immutability guard
+In `orchestrator.ts` lines 4607-4613, wrap the `landContext.growth_stage` override in a guard:
 ```typescript
-const CROP_CODE_ALIASES: Record<string, string[]> = {
-  'sc': ['sugarcane', 'sugar_cane'],
-  'ctn': ['cotton', 'kapas'],
-  // ...same map already in convertBundledToRule lines 921-931
-};
-
-function matchesCrop(ruleCrop: string, queryCrop: string): boolean {
-  if (ruleCrop === queryCrop) return true;
-  if (['all', '*', 'universal'].includes(ruleCrop)) return true;
-  const aliases = CROP_CODE_ALIASES[queryCrop] || [];
-  return aliases.includes(ruleCrop);
+if (contextValidation.reconciled_stage && contextValidation.stage_source !== 'DEFAULT') {
+  if (canonicalContext?.is_locked && canonicalContext.growth_stage) {
+    console.log(`   🔒 Stage override BLOCKED — canonical stage locked: ${canonicalContext.growth_stage}`);
+  } else {
+    landContext.growth_stage = contextValidation.reconciled_stage;
+  }
 }
 ```
 
-**Option B:** Change orchestrator to pass `'sugarcane'` instead of `'sc'`:
+### Step 4: Add observation pipeline checkpoint logging
+After each observation collection phase (lines 2931-3128), add a checkpoint log:
 ```typescript
-// orchestrator.ts:1538 — remove the SC shortcode mapping
-const cropCodeForRules = cropName?.toLowerCase() || '';
+console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0,10).join(',')}]`);
 ```
 
----
-
-## 2. NDVI Observation Phantom Code
-
-**Classification: DATA GAP + OBSERVATION MAPPING BUG**
-
-`NDVI_DECLINE_IN_PLANT_CROP_REQ` does not exist in:
-- `observation_master` (0 NDVI codes in 638 total)
-- `observation_aliases` (0 NDVI aliases)
-- `intent_observation_mapping` (0 NDVI mappings)
-- Any codebase file (0 grep matches)
-
-This code is fabricated by the NLU layer at runtime with no DB backing. It is tagged as `CONFIRMED` authority but has zero downstream linkage.
-
-### NDVI Rules Use Different Keys
-
-The 18 NDVI rules use `conditions_json` keys like:
-- `ndvi_decline: true` (evaluates `input.ndvi_trend === 'DECLINING'`)
-- `ndvi_pattern: 'DECLINE'` (string match against `input.ndvi_pattern`)
-- `ndvi_trend: 'DECLINING'` (string match)
-- `ndvi_triggered: true` (evaluates `input.ndvi_level ? true : null`)
-
-None check for observation code `NDVI_DECLINE_IN_PLANT_CROP_REQ`.
-
-### NDVI Stage Lock
-
-| Stage applicability | NDVI rule count |
-|---------------------|-----------------|
-| SEEDLING only       | 13              |
-| TILLERING included  | 2               |
-| ALL                 | 1               |
-| Other               | 2               |
-
-For a TILLERING query, only 2 NDVI rules are even eligible:
-1. `SC_NDVI_COLLAPSE_PLANT_VERIFY_001` — needs `ndvi_pattern: DECLINE` + `drop_pct: 20_30` + `needs_confirmation: true`
-2. `SC_BP_GENERAL_021` — needs `ndvi_trend: stable` (opposite of declining!)
-
-### Required Fix
-
-1. Register NDVI observation codes in `observation_master`:
-```sql
-INSERT INTO observation_master (observation_code, observation_category, canonical_group, is_active, ...)
-VALUES 
-  ('NDVI_DECLINE', 'PHYSIOLOGY', 'abiotic_stress', true, ...),
-  ('NDVI_COLLAPSE', 'PHYSIOLOGY', 'abiotic_stress', true, ...),
-  ('NDVI_STABLE', 'PHYSIOLOGY', 'abiotic_stress', true, ...);
-```
-
-2. Expand NDVI rules to cover TILLERING, GRAND_GROWTH stages:
-```sql
-UPDATE decision_rules 
-SET stage_applicable = ARRAY['SEEDLING', 'TILLERING', 'GRAND_GROWTH', 'MATURITY']
-WHERE rule_id IN ('SC_IRRIGATION_GENERAL_010', 'SC_IRRIGATION_GENERAL_002', 
-                  'SC_STRESS_GENERAL_001', 'SC_PHYSIOLOGY_GENERAL_001');
-```
-
-3. Create a mapping from `NDVI_DECLINE_IN_PLANT_CROP_REQ` → canonical symbols in `observation_aliases`.
-
----
-
-## 3. `condition_code` Column is Decorative
-
-**Classification: DATA GAP**
-
-All 517 rules have `condition_code = 'STAGE_GENERAL'`. This column is described in memory docs as a "mandatory FK to observation_master" used for rule eligibility — but it serves zero filtering purpose since every rule has the same value.
-
-The loader assigns it to `conditionCode` (line 223) with fallback `'() => true'` (a JS string, never executed). No downstream code references `conditionCode` for matching.
-
-### Impact
-- The memory docs describe `condition_code` as mandatory for eligibility: "A rule is eligible ONLY if condition_code is present in the canonical observation set." If this were enforced, only rules whose `condition_code` value appears in the observation set would fire. Since all rules use `STAGE_GENERAL`, and `STAGE_GENERAL` IS in `observation_master`, this would accidentally pass — but only because every rule uses the same generic value, defeating the purpose.
-
-### Required Fix
-This is a long-term data migration: each rule should have its specific observation code (e.g., `BORE_HOLES`, `YELLOWING_LEAVES`) as `condition_code`, not a blanket `STAGE_GENERAL`.
-
----
-
-## 4. Hardcoded Data Findings
-
-| File | Line | Hardcoded Value | In DB? | Fix |
-|------|------|----------------|--------|-----|
-| `layered-rule-evaluator.ts` | 921-931 | Crop code aliases (SC→SUGARCANE, CTN→COTTON, etc.) | No | Move to DB table or share with loader |
-| `layered-rule-evaluator.ts` | 965-980 | `CATEGORY_PATTERNS` (PEST, DISEASE keyword lists) | Partially (observation_master) | Load from `observation_master.observation_category` |
-| `layered-rule-evaluator.ts` | 983-991 | `PLANT_PART_PATTERNS` | Partially (observation_master) | Load from `observation_master.affected_plant_part` |
-| `loader.ts` | 517-518 | `PEST_OBS` list for `pest_present` gate | No | Load from observation_master WHERE category='PEST' |
-| `loader.ts` | 536-538 | Extended pest observation list | No | Same |
-| `loader.ts` | 543-545 | Deficiency observation list | No | Load from observation_master WHERE category='NUTRIENT' |
-| `loader.ts` | 549-551 | Abnormal growth observation list | No | Load from observation_master WHERE category='PHYSIOLOGY' |
-| `loader.ts` | 563 | Critical stages hardcoded | No | Load from crop_stage_master |
-| `orchestrator.ts` | 1538, 4733 | `SUGARCANE → 'sc'` mapping | No | Use shared alias table |
-
----
-
-## 5. Database Integrity Findings
-
-| Check | Result |
-|-------|--------|
-| Rules with empty `conditions_json` | 0 |
-| Rules with no `action_text` | 0 |
-| Rules with no `action_type` | 0 |
-| Rules with no `i18n_key` | 0 |
-| Distinct `condition_code` values | 1 (`STAGE_GENERAL` only) |
-| NDVI observations in `observation_master` | 0 |
-| NDVI entries in `observation_aliases` | 0 |
-| NDVI entries in `intent_observation_mapping` | 0 |
-| NDVI rules applicable at TILLERING | 2 of 18 |
-| Sugarcane rules that can NEVER fire (due to crop code mismatch) | **454** (87.6%) |
-| CTN rules that can NEVER fire (same bug, `ctn` vs `cotton`) | Likely **27** |
-
----
-
-## 6. Unified Gate + Authority Analysis
-
-The logs show:
-```
-Treatments Allowed by Authority: true
-Allowed Products: NONE
-Allowed Dosages: NONE
-```
-
-This is **correct behavior given zero matched rules**. The gate is not the problem — it correctly allows treatments, but the symbolic brain upstream produces nothing to allow. The gate is working; the rule engine is starved of candidates.
-
----
-
-## 7. Language Agnostic Validation
-
-The evaluation pipeline is language-agnostic at the decision layer. Observation matching uses uppercase canonical codes. The `conditions_json` evaluator works on normalized English keys. No Marathi/Hindi strings affect rule firing. The `i18n_key` system is presentation-only.
-
-**One risk:** The orchestrator's crop name extraction (line 1538) depends on `cropName?.toUpperCase() === 'SUGARCANE'` — a string comparison. If NLU returns a Hindi crop name, the `'sc'` shortcode mapping would fail and it would pass the raw Hindi string, which would also fail to match. This is a secondary language fragility.
-
----
-
-## Immediate Fix Plan
-
-### Fix 1: Crop Code Alias Resolution (CRITICAL — fixes 454 dead rules)
-
-In `layered-rule-evaluator.ts`, update `getAllRulesWithBundled` (lines 862-867) to use crop aliases:
-
+### Step 5: Guard DiagnosisOnlyMode against redundant execution
+At line 5061, add a condition:
 ```typescript
-const CROP_ALIASES: Record<string, string[]> = {
-  'sc': ['sugarcane', 'sugar_cane', 'cane'],
-  'ctn': ['cotton', 'kapas'],
-  'wh': ['wheat'], 'ric': ['rice', 'paddy'],
-  'soy': ['soybean', 'soya'], 'maz': ['maize', 'corn'],
-};
+if (diagnosisOnlyModeActive && symbolicResult.recommendations?.length > 0 && !symbolicResult.primary_decision) {
+```
+This ensures DiagnosisOnly reformatting only runs when symbolic reasoner didn't already produce a clean primary decision.
 
-// In filter:
-return ruleCrop === normalizedCrop 
-  || CROP_ALIASES[normalizedCrop]?.includes(ruleCrop)
-  || Object.entries(CROP_ALIASES).some(([k, v]) => v.includes(normalizedCrop) && ruleCrop === k)
-  || ruleCrop === 'all' || ruleCrop === '*' || ruleCrop === 'universal';
+### Step 6: Fix authority blocking in diagnostic-flow-controller
+In `diagnostic-flow-controller.ts` line 369-377, add crop damage override before `shouldSkipCropRules`:
+```typescript
+if (preAuthorityResult.enforced_decision) {
+  authorityDecision = preAuthorityResult.enforced_decision;
+}
+const skipCropRules = shouldSkipCropRules(authorityDecision);
 ```
 
-Apply the same fix to `loadRulesForCrop` in `loader.ts` (line 1036-1041).
-
-### Fix 2: NDVI Stage Expansion (SQL)
-
-```sql
-UPDATE decision_rules 
-SET stage_applicable = array_cat(stage_applicable, ARRAY['TILLERING', 'GRAND_GROWTH'])
-WHERE crop_code = 'SUGARCANE' AND is_active = true 
-AND conditions_json::text ILIKE '%ndvi%'
-AND NOT 'TILLERING' = ANY(stage_applicable)
-AND NOT 'ALL' = ANY(stage_applicable);
-```
-
-### Fix 3: Register NDVI Observation Codes (SQL)
-
-Insert NDVI-related observation codes into `observation_master` and create alias mappings so the NLU-generated `NDVI_DECLINE_IN_PLANT_CROP_REQ` can resolve to rule-engine-compatible symbols.
-
----
-
-## Validation Checklist
-
-1. After fix: `getAllRulesWithBundled('sc')` should return ~490 rules (454 SUGARCANE + 36 ALL), not 36
-2. Log signal: `📦 Loaded 490/517 crop-filtered rules for sc`
-3. For SUGARCANE/TILLERING/DAS=77 with NDVI decline: `rules_matched > 0`, `primary_decision !== null`
-4. Edge function logs should show condition ledger entries for NDVI rules being evaluated
-5. `RULE_DATA_INTEGRITY_ERROR` should no longer appear for this scenario
+### Step 7: Deploy and verify
+Deploy the edge function and verify via logs that:
+- No `ReferenceError` for `allObservationsForDiagCheck`
+- Only one `[CropDamageDetector v5.0]` log appears (no v4)
+- Stage remains constant through pipeline (no TILLERING→FLOWERING drift)
+- `shouldSkipCropRules` returns `false` when crop damage observations exist
 
