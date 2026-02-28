@@ -1017,29 +1017,40 @@ serve(async (req) => {
         console.log(`   📊 [ConfidenceBridge] symbolic_confidence=${symbolicConfidence.toFixed(3)} -> decision_confidence=${unifiedGateInput.decision_confidence}`);
         console.log(`   🔍 [UnifiedGate] Input: crop=${finalCropName}, stage=${finalGrowthStage}, DAS=${finalDaysSinceSowing}, symptoms=${mergedSymptomKeys.length}`);
         
-        const rawGateResult = evaluateUnifiedGate(unifiedGateInput);
+        // FIX 1: Read gate result from orchestrator if already evaluated there (avoid duplicate gate)
+        const orchestratorGateResult = orchestratorResponse.metadata?.gate_result;
+        let unifiedGateResult: any;
         
-        // Apply suppression guard to prevent silent recommendation drops
-        // ═══════════════════════════════════════════════════════════════════════════
-        // CRITICAL FIX: Use decision_output as SSOT, not metadata
-        // decision_output contains the actual rules/actions from symbolic brain
-        // ═══════════════════════════════════════════════════════════════════════════
-        const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
-        const symbolicDecisionForGuard = {
-          decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
-          // SSOT: Use decision_output fields first, fallback to metadata
-          rules_fired: decisionOutputSsot.rules_applied || 
-                       decisionOutputSsot.layered_rule_result?.rules_applied || 
-                       orchestratorResponse.metadata?.rulesFired || [],
-          actions_returned: decisionOutputSsot.actions_returned || 
-                            orchestratorResponse.metadata?.actionsReturned || [],
-          matched_responses: decisionOutputSsot.matched_responses || 
-                             orchestratorResponse.metadata?.matchedResponses || []
-        };
-        
-        console.log(`   🔍 [SuppressionGuard] SSOT check: rules=${symbolicDecisionForGuard.rules_fired?.length || 0}, actions=${symbolicDecisionForGuard.actions_returned?.length || 0}, responses=${symbolicDecisionForGuard.matched_responses?.length || 0}`);
-        
-        const unifiedGateResult = applySuppressionGuard(rawGateResult, symbolicDecisionForGuard);
+        if (orchestratorGateResult && orchestratorGateResult.gate_status) {
+          // Gate already evaluated in orchestrator — use that result
+          console.log(`   🔄 [UnifiedGate] Using pre-evaluated gate from orchestrator`);
+          unifiedGateResult = orchestratorGateResult;
+        } else {
+          // Backward compat: evaluate gate here if orchestrator didn't provide it
+          const rawGateResult = evaluateUnifiedGate(unifiedGateInput);
+          
+          // Apply suppression guard to prevent silent recommendation drops
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL FIX: Use decision_output as SSOT, not metadata
+          // decision_output contains the actual rules/actions from symbolic brain
+          // ═══════════════════════════════════════════════════════════════════════════
+          const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
+          const symbolicDecisionForGuard = {
+            decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
+            // SSOT: Use decision_output fields first, fallback to metadata
+            rules_fired: decisionOutputSsot.rules_applied || 
+                         decisionOutputSsot.layered_rule_result?.rules_applied || 
+                         orchestratorResponse.metadata?.rulesFired || [],
+            actions_returned: decisionOutputSsot.actions_returned || 
+                              orchestratorResponse.metadata?.actionsReturned || [],
+            matched_responses: decisionOutputSsot.matched_responses || 
+                               orchestratorResponse.metadata?.matchedResponses || []
+          };
+          
+          console.log(`   🔍 [SuppressionGuard] SSOT check: rules=${symbolicDecisionForGuard.rules_fired?.length || 0}, actions=${symbolicDecisionForGuard.actions_returned?.length || 0}, responses=${symbolicDecisionForGuard.matched_responses?.length || 0}`);
+          
+          unifiedGateResult = applySuppressionGuard(rawGateResult, symbolicDecisionForGuard);
+        }
         
         console.log(`   🚦 [UnifiedGate] ${unifiedGateResult.gate_status === 'PASS' ? '✅ PASS' : unifiedGateResult.gate_status === 'EMERGENCY_BYPASS' ? '🚨 EMERGENCY' : '🚫 ' + unifiedGateResult.gate_status}`);
         console.log(`      Response Mode: ${unifiedGateResult.response_mode}`);

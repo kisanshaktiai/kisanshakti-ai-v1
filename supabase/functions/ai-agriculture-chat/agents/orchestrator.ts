@@ -1984,9 +1984,16 @@ export class AIAgentOrchestrator {
       const normalizedInput = normalizeLanguage(processedFarmerMessage);
       agentsUsed.push('LANGUAGE_NORMALIZER');
       
+      // FIX 8: Canonical language enforcement — options.language (from app) is SSOT
+      const canonicalLang = options.language || 'mr';
+      if (normalizedInput.detected_language !== canonicalLang) {
+        console.warn(`   ⚠️ [FIX8] Language mismatch: normalizer=${normalizedInput.detected_language}, canonical=${canonicalLang} → using canonical`);
+        normalizedInput.detected_language = canonicalLang;
+      }
+      
       console.log(`      Original: "${safePreviewText(normalizedInput.original_text)}"...`);
       console.log(`      Normalized: "${safePreviewText(normalizedInput.normalized_text)}"...`);
-      console.log(`      Language: ${normalizedInput.detected_language}, Removed: ${normalizedInput.removed_elements.length} elements`);
+      console.log(`      Language: ${normalizedInput.detected_language} (canonical=${canonicalLang}), Removed: ${normalizedInput.removed_elements.length} elements`);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 1.5: UNIVERSAL SEMANTIC EXTRACTION (Phase 21 - LLM-Based)

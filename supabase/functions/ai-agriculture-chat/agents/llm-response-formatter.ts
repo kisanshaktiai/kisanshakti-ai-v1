@@ -1993,7 +1993,17 @@ function validateCropNameConsistency(
   authorizedCrop: string
 ): { valid: boolean; violation: string } {
   const normalizedCrop = authorizedCrop.toUpperCase().replace(/[_\s-]+/g, '');
-  const lower = llmOutput.toLowerCase();
+  
+  // FIX 6: Strip technical terms before checking crop names
+  const cleanedOutput = llmOutput
+    .replace(/\b[A-Z][A-Z0-9]+\b/g, '')           // Remove all-caps (product names like CHLORPYRIFOS)
+    .replace(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g, '') // Remove CamelCase
+    .replace(/\d+\s*(ml|g|kg|l|%)/gi, '')          // Remove dosages
+    .replace(/\([^)]+\)/g, '');                     // Remove parenthetical content
+  
+  // Check if the expected crop IS present in the output
+  const expectedAliases = CROP_NAME_ALIASES[normalizedCrop] || CROP_NAME_ALIASES[authorizedCrop.toUpperCase()] || [];
+  const expectedCropPresentInOutput = expectedAliases.some(a => llmOutput.toLowerCase().includes(a.toLowerCase()));
   
   // Check that the output doesn't prominently mention a DIFFERENT crop
   for (const [cropKey, aliases] of Object.entries(CROP_NAME_ALIASES)) {
@@ -2010,7 +2020,12 @@ function validateCropNameConsistency(
       ];
       
       for (const pattern of subjectPatterns) {
-        if (pattern.test(llmOutput)) {
+        if (pattern.test(cleanedOutput)) {
+          // FIX 6: Downgrade from hard-block to warning if expected crop IS also present
+          if (expectedCropPresentInOutput) {
+            console.warn(`⚠️ [CROP_CONSISTENCY] Wrong crop "${alias}" mentioned alongside correct crop "${authorizedCrop}" — warning only, not blocking`);
+            return { valid: true, violation: '' };  // Allow response through
+          }
           return {
             valid: false,
             violation: `Crop mismatch: LLM mentions "${alias}" (${cropKey}) but authorized crop is ${authorizedCrop}`

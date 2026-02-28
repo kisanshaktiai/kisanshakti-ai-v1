@@ -224,21 +224,29 @@ function validateNarrationOutput(
     // Remove expected crop names from the "wrong crops" set
     expectedCropNames.forEach(n => allCropNames.delete(n));
     
-    // Scan LLM output for wrong crop names
+    // FIX 6: Strip technical terms before scanning for wrong crops
+    const cleanedOutput = llmOutput
+      .replace(/\b[A-Z][A-Z0-9]+\b/g, '')           // Remove all-caps (product names)
+      .replace(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g, '') // Remove CamelCase
+      .replace(/\d+\s*(ml|g|kg|l|%)/gi, '')          // Remove dosages
+      .replace(/\([^)]+\)/g, '');                     // Remove parenthetical content
+    const cleanedOutputLower = cleanedOutput.toLowerCase();
+    
+    // Also check original output for expected crop presence
     const outputLower = llmOutput.toLowerCase();
+    const hasExpectedCrop = [...expectedCropNames].some(n => outputLower.includes(n));
+    
+    // Scan cleaned LLM output for wrong crop names
     for (const wrongCrop of allCropNames) {
       if (wrongCrop.length < 3) continue; // Skip very short names to avoid false positives
       
-      if (outputLower.includes(wrongCrop)) {
-        // Check if the expected crop local name IS in the output
-        const hasExpectedCrop = [...expectedCropNames].some(n => outputLower.includes(n));
-        
+      if (cleanedOutputLower.includes(wrongCrop)) {
         if (!hasExpectedCrop) {
           errors.push(`CROP_MISMATCH: LLM mentioned wrong crop "${wrongCrop}" — expected one of [${[...expectedCropNames].join(', ')}]`);
           console.error(`🚨 [CROP_MISMATCH_IN_FORMATTER] expected_crop="${expectedCrop}" expected_local=[${[...expectedCropNames].join(',')}] detected_wrong="${wrongCrop}" output_preview="${llmOutput.substring(0, 100)}"`);
         } else {
-          // Wrong crop mentioned BUT expected crop is also there — log warning but don't block
-          console.warn(`⚠️ [CROP_MENTION_WARNING] LLM mentioned "${wrongCrop}" alongside expected crop — monitoring`);
+          // FIX 6: Wrong crop mentioned alongside correct crop — warning only, not blocking
+          console.warn(`⚠️ [CROP_MENTION_WARNING] LLM mentioned "${wrongCrop}" alongside expected crop — warning only, not blocking`);
         }
       }
     }
