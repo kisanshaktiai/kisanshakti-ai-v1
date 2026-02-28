@@ -5309,6 +5309,8 @@ export class AIAgentOrchestrator {
       // to prevent GATHERING_INFO from overriding valid diagnoses
       // ========================================
       
+      // Build once so it's available for both diagnostic and rule-engine paths
+      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
       const symbolicAlreadyProduced = (totalRulesMatched > 0) || 
         (layeredRuleResult && (layeredRuleResult as any).rules_matched > 0);
       
