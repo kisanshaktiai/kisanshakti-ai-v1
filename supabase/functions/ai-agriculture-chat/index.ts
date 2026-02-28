@@ -890,10 +890,12 @@ serve(async (req) => {
         // Priority 1: From dataAudit (normal path)
         // Priority 2: From decision_output metadata lockedCropContext (OPTION_SELECTED path)
         // Priority 3: From metadata lockedCropContext (fallback)
+        // FIX 3: Complete lockedCropContext propagation chain — 4-priority fallback
         const lockedCropCtx = orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
                               orchestratorResponse.metadata?.lockedCropContext;
         
         const landContext = orchestratorResponse.dataAudit?.land?.found ? {
+          // Priority 1: From dataAudit (normal land-linked path)
           current_crop: orchestratorResponse.dataAudit.land.current_crop,
           growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
           area_acres: orchestratorResponse.dataAudit.land.area_acres,
@@ -909,14 +911,22 @@ serve(async (req) => {
             trend: orchestratorResponse.dataAudit.ndvi.trend
           } : undefined
         } : lockedCropCtx ? {
-          // FIX: Fallback to lockedCropContext when dataAudit is missing (OPTION_SELECTED path)
+          // Priority 2: From lockedCropContext (OPTION_SELECTED path)
           current_crop: lockedCropCtx.crop_name,
           growth_stage: lockedCropCtx.growth_stage,
           days_since_sowing: lockedCropCtx.days_since_sowing,
           area_acres: lockedCropCtx.area_acres
+        } : sessionState?.last_crop ? {
+          // Priority 3: From sessionState (multi-turn continuity)
+          current_crop: sessionState.last_crop,
+          growth_stage: (sessionState as any)?.last_growth_stage || 'VEGETATIVE',
+          days_since_sowing: 0,
         } : undefined;
         
-        console.log(`   📊 [LandContext] Built from ${orchestratorResponse.dataAudit?.land?.found ? 'dataAudit' : lockedCropCtx ? 'lockedCropContext' : 'NONE'}`);
+        const landContextSource = orchestratorResponse.dataAudit?.land?.found ? 'dataAudit' 
+          : lockedCropCtx ? 'lockedCropContext' 
+          : sessionState?.last_crop ? 'sessionState' : 'NONE';
+        console.log(`   📊 [LandContext] Built from ${landContextSource}`);
         if (landContext) {
           console.log(`      Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, Days: ${landContext.days_since_sowing}`);
         }
