@@ -439,7 +439,7 @@ import {
   detectCropDamageWithAuthority, // v5.0: Authority-aware terminal detection
   createEnforcedCropAuthority,
   assertTerminalDamageAuthority,
-  resolveDiagnosticAuthorityFromObservations, // v3.0: Pre-authority gate
+  // v5.1: resolveDiagnosticAuthorityFromObservations REMOVED (legacy v4 dual detector)
   DIAGNOSIS_ONLY_MODE_VERSION,
   CROP_DAMAGE_OBSERVATION_KEYS, // v4.0: Crop damage triggers
   type DiagnosisOnlyOutput,
