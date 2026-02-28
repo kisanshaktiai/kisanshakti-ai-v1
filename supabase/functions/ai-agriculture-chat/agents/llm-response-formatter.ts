@@ -554,29 +554,36 @@ export async function formatRecommendationsWithLLM(
   // Post-process: Apply rural language replacements
   formattedResponse = replaceFormalsWithRural(formattedResponse, input.language);
   
-  // BUG-5 FIX: Language consistency check - detect translation failures
-   // FIX 9: Improved language detection using Devanagari Unicode range
-   if (input.language !== 'en') {
-     const totalChars = formattedResponse.length;
-     // For Devanagari-script languages (mr, hi, etc.), check Unicode range ratio
-     const isDevanagariLang = ['mr', 'hi', 'gu', 'pa'].includes(input.language);
-     if (isDevanagariLang && totalChars > 50) {
-       const devanagariChars = (formattedResponse.match(/[\u0900-\u097F]/g) || []).length;
-       const devanagariRatio = devanagariChars / totalChars;
-       if (devanagariRatio < 0.3) {
-         const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
-         console.warn(`⚠️ [LANGUAGE CHECK] Only ${(devanagariRatio*100).toFixed(0)}% Devanagari in ${langName} response - possible translation failure.`);
-         console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
-       }
-     } else if (!isDevanagariLang) {
-       // Fallback for non-Devanagari regional languages (ta, te, bn, kn)
-       const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
-       const asciiRatio = totalChars > 0 ? asciiChars / totalChars : 0;
-       if (asciiRatio > 0.4) {
-         console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${input.language} response - possible translation failure.`);
-         console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
-       }
-     }
+   // BUG-5 FIX: Language consistency check - detect translation failures
+    // FIX H5: Improved Devanagari ratio threshold + exclude technical terms
+    if (input.language !== 'en') {
+      const totalChars = formattedResponse.length;
+      // For Devanagari-script languages (mr, hi, etc.), check Unicode range ratio
+      const isDevanagariLang = ['mr', 'hi', 'gu', 'pa'].includes(input.language);
+      if (isDevanagariLang && totalChars > 50) {
+        // FIX H5: Strip technical terms before calculating ratio
+        const textForRatioCheck = formattedResponse
+          .replace(/\b[A-Z][A-Z0-9%/-]+\b/g, '')   // Remove product names (CHLORPYRIFOS, NPK)
+          .replace(/\d+\s*(ml|g|kg|l|%|acres?)/gi, '') // Remove measurements
+          .replace(/[a-z]{2,8}\d+[a-z]*/gi, '');   // Remove technical codes
+        const cleanedTotalChars = textForRatioCheck.length;
+        const devanagariChars = (textForRatioCheck.match(/[\u0900-\u097F]/g) || []).length;
+        const devanagariRatio = cleanedTotalChars > 0 ? devanagariChars / cleanedTotalChars : 0;
+        // FIX H5: Lowered threshold from 0.3 to 0.22 — too aggressive for technical agri content
+        if (devanagariRatio < 0.22) {
+          const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
+          console.warn(`⚠️ [LANGUAGE CHECK] Only ${(devanagariRatio*100).toFixed(0)}% Devanagari in ${langName} response - possible translation failure.`);
+          console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
+        }
+      } else if (!isDevanagariLang) {
+        // Fallback for non-Devanagari regional languages (ta, te, bn, kn)
+        const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
+        const asciiRatio = totalChars > 0 ? asciiChars / totalChars : 0;
+        if (asciiRatio > 0.4) {
+          console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${input.language} response - possible translation failure.`);
+          console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
+        }
+      }
   }
   
   const processingTime = Date.now() - startTime;
@@ -1191,11 +1198,13 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
             console.log(`   ✅ [LLM Formatter] Resolved action_text via i18n_key=${appDetails.i18n_key}`);
           }
         }
-        // Final fallback - ONLY if i18n didn't resolve
+        // FIX 4: Replace error string with immediate template fallback
         if (!actionText) {
-          actionText = knowledgeText || reasonText || '[Action text unavailable — data error. Please consult agricultural expert.]';
-          if (!knowledgeText && !reasonText) {
-            console.error(`🚨 [LLM Formatter] FALLBACK TRIGGERED: action_text unavailable for rule ${primary.rule_id}`);
+          actionText = knowledgeText || reasonText;
+          if (!actionText) {
+            console.error(`🚨 [LLM Formatter] action_text unavailable for rule ${primary.rule_id} — returning template fallback`);
+            // CRITICAL: Return template fallback immediately — never send error string to LLM
+            return buildTemplateFallback(input, startTime);
           }
         }
       }
@@ -1403,7 +1412,7 @@ async function callGeminiWithTimeout(
           }],
           generationConfig: {
             temperature: 0.5,    // LOWER: More consistent for safety
-            maxOutputTokens: 900  // INCREASED: Devanagari (Marathi/Hindi) uses ~1.5x more tokens
+            maxOutputTokens: 3000  // FIX 5: Increased for Devanagari languages (Marathi/Hindi use ~2x more tokens)
           }
         })
       }
@@ -1460,7 +1469,7 @@ async function callOpenAIWithTimeout(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 900,  // INCREASED: Devanagari (Marathi/Hindi) uses ~1.5x more tokens
+        max_tokens: 1800,  // FIX 5: Increased for Devanagari languages (Marathi/Hindi use ~2x more tokens)
         temperature: 0.5   // LOWER: More consistent, less creative for safety
       })
     });
@@ -1904,8 +1913,13 @@ function validateWhatWhyHow(
   
   // Only validate for treatment responses (not clarification/observation)
   const actionType = input?.decision_output?.primary_decision?.action_type?.toUpperCase() || '';
-  const isObservationOnly = ['MONITOR', 'MONITOR_ONLY', 'NO_ACTION_REQUIRED', 'DIAGNOSIS'].includes(actionType);
-  if (isObservationOnly) {
+  // FIX 7: Expanded monitoring-only action types that don't require HOW section
+  const MONITORING_ONLY_ACTION_TYPES = new Set([
+    'MONITOR', 'MONITOR_CLOSELY', 'MONITOR_ONLY', 'OBSERVE', 'OBSERVATION',
+    'NO_ACTION', 'NO_ACTION_REQUIRED', 'WAIT_AND_WATCH', 'NONE', 'DIAGNOSIS',
+    'MONITORING_ADVISED', 'SCOUTING'
+  ]);
+  if (MONITORING_ONLY_ACTION_TYPES.has(actionType)) {
     return { valid: true, missing_sections: [], violations: [] };
   }
   
@@ -1979,7 +1993,17 @@ function validateCropNameConsistency(
   authorizedCrop: string
 ): { valid: boolean; violation: string } {
   const normalizedCrop = authorizedCrop.toUpperCase().replace(/[_\s-]+/g, '');
-  const lower = llmOutput.toLowerCase();
+  
+  // FIX 6: Strip technical terms before checking crop names
+  const cleanedOutput = llmOutput
+    .replace(/\b[A-Z][A-Z0-9]+\b/g, '')           // Remove all-caps (product names like CHLORPYRIFOS)
+    .replace(/\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b/g, '') // Remove CamelCase
+    .replace(/\d+\s*(ml|g|kg|l|%)/gi, '')          // Remove dosages
+    .replace(/\([^)]+\)/g, '');                     // Remove parenthetical content
+  
+  // Check if the expected crop IS present in the output
+  const expectedAliases = CROP_NAME_ALIASES[normalizedCrop] || CROP_NAME_ALIASES[authorizedCrop.toUpperCase()] || [];
+  const expectedCropPresentInOutput = expectedAliases.some(a => llmOutput.toLowerCase().includes(a.toLowerCase()));
   
   // Check that the output doesn't prominently mention a DIFFERENT crop
   for (const [cropKey, aliases] of Object.entries(CROP_NAME_ALIASES)) {
@@ -1996,7 +2020,12 @@ function validateCropNameConsistency(
       ];
       
       for (const pattern of subjectPatterns) {
-        if (pattern.test(llmOutput)) {
+        if (pattern.test(cleanedOutput)) {
+          // FIX 6: Downgrade from hard-block to warning if expected crop IS also present
+          if (expectedCropPresentInOutput) {
+            console.warn(`⚠️ [CROP_CONSISTENCY] Wrong crop "${alias}" mentioned alongside correct crop "${authorizedCrop}" — warning only, not blocking`);
+            return { valid: true, violation: '' };  // Allow response through
+          }
           return {
             valid: false,
             violation: `Crop mismatch: LLM mentions "${alias}" (${cropKey}) but authorized crop is ${authorizedCrop}`

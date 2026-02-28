@@ -1984,9 +1984,16 @@ export class AIAgentOrchestrator {
       const normalizedInput = normalizeLanguage(processedFarmerMessage);
       agentsUsed.push('LANGUAGE_NORMALIZER');
       
+      // FIX 8: Canonical language enforcement — options.language (from app) is SSOT
+      const canonicalLang = options.language || 'mr';
+      if (normalizedInput.detected_language !== canonicalLang) {
+        console.warn(`   ⚠️ [FIX8] Language mismatch: normalizer=${normalizedInput.detected_language}, canonical=${canonicalLang} → using canonical`);
+        normalizedInput.detected_language = canonicalLang;
+      }
+      
       console.log(`      Original: "${safePreviewText(normalizedInput.original_text)}"...`);
       console.log(`      Normalized: "${safePreviewText(normalizedInput.normalized_text)}"...`);
-      console.log(`      Language: ${normalizedInput.detected_language}, Removed: ${normalizedInput.removed_elements.length} elements`);
+      console.log(`      Language: ${normalizedInput.detected_language} (canonical=${canonicalLang}), Removed: ${normalizedInput.removed_elements.length} elements`);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STAGE 1.5: UNIVERSAL SEMANTIC EXTRACTION (Phase 21 - LLM-Based)
@@ -8176,8 +8183,7 @@ export class AIAgentOrchestrator {
     agentsUsed: string[],
     traceId: string
   ): OrchestratorResponse {
-    // SYMBOLIC OUTPUT: Return i18n_key and action codes, NOT hardcoded text
-    // Narration layer will convert these to farmer-friendly language
+    // FIX H1: Populate full_text directly so greeting always renders
     return {
       type: 'DECISION_PROVIDED',
       session_id: sessionId,
@@ -8190,10 +8196,14 @@ export class AIAgentOrchestrator {
         format: 'RICH_TEXT',
         tone: 'FRIENDLY',
         created_at: new Date().toISOString(),
-        // SYMBOLIC: i18n_key for narration layer
+        // FIX H1: Direct full_text population instead of i18n_key-only approach
         main_message: {
           i18n_key: 'greeting.welcome',
-          // fallback_text is ONLY for narration layer failure - not displayed directly
+          full_text: {
+            mr: '🙏 नमस्कार! मी साथी आहे - तुमचा शेती सल्लागार. तुम्हाला आज कसली मदत हवी आहे?',
+            hi: '🙏 नमस्कार! मैं साथी हूँ - आपका कृषि सलाहकार। आज आपको क्या सहायता चाहिए?',
+            en: '🙏 Hello! I am SATHI - your agricultural advisor. How can I help you today?'
+          },
           fallback_text: ''
         },
         // SYMBOLIC: action_codes instead of hardcoded labels
