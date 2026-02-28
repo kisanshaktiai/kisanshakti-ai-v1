@@ -5309,6 +5309,8 @@ export class AIAgentOrchestrator {
       // to prevent GATHERING_INFO from overriding valid diagnoses
       // ========================================
       
+      // Build once so it's available for both diagnostic and rule-engine paths
+      const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
       const symbolicAlreadyProduced = (totalRulesMatched > 0) || 
         (layeredRuleResult && (layeredRuleResult as any).rules_matched > 0);
       
@@ -5330,8 +5332,7 @@ export class AIAgentOrchestrator {
         // Create per-request diagnostic controller with required parameters
         const diagnosticController = this.createDiagnosticController(sessionId, farmerId, options.landId);
         
-        // Build NLU output with rule mapping for diagnostic controller
-        const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
+        // nluWithRuleMapping already built above for deterministic downstream usage
         
         // Process through diagnostic flow
         const diagnosticResponse = await diagnosticController.processNLUOutput(nluWithRuleMapping);
