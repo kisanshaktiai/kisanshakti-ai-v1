@@ -1462,7 +1462,7 @@ async function callOpenAIWithTimeout(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 900,  // INCREASED: Devanagari (Marathi/Hindi) uses ~1.5x more tokens
+        max_tokens: 1800,  // FIX 5: Increased for Devanagari languages (Marathi/Hindi use ~2x more tokens)
         temperature: 0.5   // LOWER: More consistent, less creative for safety
       })
     });
