@@ -463,7 +463,10 @@ serve(async (req) => {
     // LANGUAGE DETECTION & CONSISTENCY CHECK
     // Detect user's language and prepare for translation pipeline
     // ═══════════════════════════════════════════════════════════════════════════
-    const detectedLanguage = detectLanguage(userMessageContent, language);
+    // FIX 8: Canonical language detection — single source of truth
+    // App language from client is the canonical language. Script detection only disambiguates.
+    const canonicalLanguage = detectLanguage(userMessageContent, language);
+    const detectedLanguage = canonicalLanguage;
     
     // BUG-4 FIX: DEPRECATED - normalizeToEnglish only had ~23 hardcoded mappings,
     // creating half-translated hybrid strings. LLM Semantic Extractor (Stage 1.5) 
