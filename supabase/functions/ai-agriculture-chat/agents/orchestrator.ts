@@ -3192,21 +3192,9 @@ export class AIAgentOrchestrator {
         }
         
         agentsUsed.push('CROP_DAMAGE_GATE_V4');
-      } else if (preAuthorityResult.nlu_bypassed) {
-        // Legacy terminal damage path
-        console.log(`\n🚨 [PRE-AUTHORITY GATE] Terminal damage detected - NLU gating DISABLED`);
-        console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
-        console.log(`   Authority=CROP`);
-        console.log(`   Mode=DIAGNOSIS`);
-        console.log(`   Stage=${canonicalContext?.growth_stage || 'UNKNOWN'}`);
-        console.log(`   RulesExecuted=DIAGNOSIS`);
-        console.log(`   Terminal indicators: ${preAuthorityResult.terminal_indicators.join(', ')}`);
-        console.log(`   NLU_ROLE=OBSERVATION_ONLY`);
-        console.log(`   Source=DECISION_RULES`);
-        
-        // v3.0: Assert invariant immediately
-        assertTerminalDamageAuthority(true, preAuthorityResult.authority);
       }
+      // v5.1: Removed legacy v4 terminal damage path (preAuthorityResult.nlu_bypassed)
+      // Authority-aware v5 detector handles all terminal detection with proper authority filtering.
       
       // Check if Diagnosis-Only Mode should be activated
       // v4.0: Now also activated by non-terminal crop damage
