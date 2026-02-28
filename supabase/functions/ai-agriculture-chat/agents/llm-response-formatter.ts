@@ -554,29 +554,36 @@ export async function formatRecommendationsWithLLM(
   // Post-process: Apply rural language replacements
   formattedResponse = replaceFormalsWithRural(formattedResponse, input.language);
   
-  // BUG-5 FIX: Language consistency check - detect translation failures
-   // FIX 9: Improved language detection using Devanagari Unicode range
-   if (input.language !== 'en') {
-     const totalChars = formattedResponse.length;
-     // For Devanagari-script languages (mr, hi, etc.), check Unicode range ratio
-     const isDevanagariLang = ['mr', 'hi', 'gu', 'pa'].includes(input.language);
-     if (isDevanagariLang && totalChars > 50) {
-       const devanagariChars = (formattedResponse.match(/[\u0900-\u097F]/g) || []).length;
-       const devanagariRatio = devanagariChars / totalChars;
-       if (devanagariRatio < 0.3) {
-         const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
-         console.warn(`⚠️ [LANGUAGE CHECK] Only ${(devanagariRatio*100).toFixed(0)}% Devanagari in ${langName} response - possible translation failure.`);
-         console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
-       }
-     } else if (!isDevanagariLang) {
-       // Fallback for non-Devanagari regional languages (ta, te, bn, kn)
-       const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
-       const asciiRatio = totalChars > 0 ? asciiChars / totalChars : 0;
-       if (asciiRatio > 0.4) {
-         console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${input.language} response - possible translation failure.`);
-         console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
-       }
-     }
+   // BUG-5 FIX: Language consistency check - detect translation failures
+    // FIX H5: Improved Devanagari ratio threshold + exclude technical terms
+    if (input.language !== 'en') {
+      const totalChars = formattedResponse.length;
+      // For Devanagari-script languages (mr, hi, etc.), check Unicode range ratio
+      const isDevanagariLang = ['mr', 'hi', 'gu', 'pa'].includes(input.language);
+      if (isDevanagariLang && totalChars > 50) {
+        // FIX H5: Strip technical terms before calculating ratio
+        const textForRatioCheck = formattedResponse
+          .replace(/\b[A-Z][A-Z0-9%/-]+\b/g, '')   // Remove product names (CHLORPYRIFOS, NPK)
+          .replace(/\d+\s*(ml|g|kg|l|%|acres?)/gi, '') // Remove measurements
+          .replace(/[a-z]{2,8}\d+[a-z]*/gi, '');   // Remove technical codes
+        const cleanedTotalChars = textForRatioCheck.length;
+        const devanagariChars = (textForRatioCheck.match(/[\u0900-\u097F]/g) || []).length;
+        const devanagariRatio = cleanedTotalChars > 0 ? devanagariChars / cleanedTotalChars : 0;
+        // FIX H5: Lowered threshold from 0.3 to 0.22 — too aggressive for technical agri content
+        if (devanagariRatio < 0.22) {
+          const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
+          console.warn(`⚠️ [LANGUAGE CHECK] Only ${(devanagariRatio*100).toFixed(0)}% Devanagari in ${langName} response - possible translation failure.`);
+          console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
+        }
+      } else if (!isDevanagariLang) {
+        // Fallback for non-Devanagari regional languages (ta, te, bn, kn)
+        const asciiChars = (formattedResponse.match(/[a-zA-Z]/g) || []).length;
+        const asciiRatio = totalChars > 0 ? asciiChars / totalChars : 0;
+        if (asciiRatio > 0.4) {
+          console.warn(`⚠️ [LANGUAGE CHECK] ${(asciiRatio*100).toFixed(0)}% ASCII in ${input.language} response - possible translation failure.`);
+          console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
+        }
+      }
   }
   
   const processingTime = Date.now() - startTime;
