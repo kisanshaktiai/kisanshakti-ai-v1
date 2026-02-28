@@ -5054,8 +5054,13 @@ export class AIAgentOrchestrator {
               // PHASE-22: DIAGNOSIS-ONLY MODE - Skip multi-match clarification
               // When terminal damage detected, present diagnoses directly instead of asking
               // ═══════════════════════════════════════════════════════════════════════════
-              if (diagnosisOnlyModeActive && symbolicResult.recommendations && symbolicResult.recommendations.length > 0) {
-                console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Generating direct diagnosis output...`);
+              // v5.1 BUG 4 FIX: Guard DiagnosisOnlyMode against redundant execution
+              // Skip reformatting if symbolic reasoner already produced a high-confidence primary decision
+              const symbolicHasPrimaryDecision = symbolicResult.primary_decision && 
+                (symbolicResult.confidence || 0) > 0.6;
+              
+              if (diagnosisOnlyModeActive && symbolicResult.recommendations && symbolicResult.recommendations.length > 0 && !symbolicHasPrimaryDecision) {
+                console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Generating direct diagnosis output (no primary decision from symbolic)...`);
                 console.log(`   Mode=DIAGNOSIS_ONLY, Clarification=SKIPPED, Source=DECISION_RULES`);
                 
                 // Convert fired rules to MatchedRule format
