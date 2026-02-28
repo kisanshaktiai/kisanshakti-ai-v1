@@ -3237,7 +3237,7 @@ export class AIAgentOrchestrator {
         console.log(`   Damage type: ${cropDamageResult.damage_type}`);
         console.log(`   Diagnosis mode: ${cropDamageResult.diagnosis_mode}`);
         console.log(`   Severity: ${cropDamageResult.severity_level}`);
-        console.log(`   NLU_GATING=${cropDamageResult.nlu_gating_disabled || preAuthorityResult.nlu_bypassed ? 'DISABLED' : 'ENABLED'}`);
+        console.log(`   NLU_GATING=${cropDamageResult.nlu_gating_disabled ? 'DISABLED' : 'ENABLED'}`);
         console.log(`   Clarification=${cropDamageResult.diagnosis_mode === 'DIAGNOSIS_ONLY' ? 'SKIPPED' : 'OPTIONAL'}`);
         console.log(`════════════════════════════════════════════════════════════════\n`);
       }
