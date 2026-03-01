@@ -5103,8 +5103,12 @@ export class AIAgentOrchestrator {
               // ═══════════════════════════════════════════════════════════════════════════
               // v5.1 BUG 4 FIX: Guard DiagnosisOnlyMode against redundant execution
               // Skip reformatting if symbolic reasoner already produced a high-confidence primary decision
-              const symbolicHasPrimaryDecision = symbolicResult.primary_decision && 
-                (symbolicResult.confidence || 0) > 0.6;
+              // v5.3 FIX: Check BOTH symbolicResult AND layeredRuleResult for primary_decision
+              // The v5.3 merge block builds primary_decision on layeredRuleResult (line ~5022),
+              // NOT on symbolicResult. Without this, DiagnosisOnlyMode always activates and
+              // overrides valid symbolic treatment recommendations with a diagnosis-only response.
+              const symbolicHasPrimaryDecision = layeredRuleResult?.primary_decision || 
+                (symbolicResult.primary_decision && (symbolicResult.confidence || 0) > 0.6);
               
               if (diagnosisOnlyModeActive && symbolicResult.recommendations && symbolicResult.recommendations.length > 0 && !symbolicHasPrimaryDecision) {
                 console.log(`\n🔬 [DIAGNOSIS-ONLY MODE] Generating direct diagnosis output (no primary decision from symbolic)...`);
