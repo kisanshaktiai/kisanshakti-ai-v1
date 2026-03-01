@@ -934,11 +934,63 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
   return {
     ...rule,
     conditions: (input: DecisionInput) => {
+      // Primary path: evaluate conditions_json
       if (rule.conditions_json && Object.keys(rule.conditions_json).length > 0) {
-        return evaluateConditionsJson(rule.conditions_json, input, rule.rule_id);
+        const result = evaluateConditionsJson(rule.conditions_json, input, rule.rule_id);
+        if (result) return true;
       }
-      // CRITICAL FIX: Rules with NO conditions_json should NOT auto-match
-      // They are catch-all rules that prevent specific rules from winning
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // AUDIT FIX: Secondary path - observable_characteristics matching
+      // When condition_code is STAGE_GENERAL and conditions_json fails (due to 
+      // diagnostic-level codes like ORANGE_RED_DOTS_AT_NODES not matching farmer-
+      // facing codes like POOR_TILLERING), check observable_characteristics which
+      // contains farmer-facing symptom codes that match NLU extraction output.
+      // ═══════════════════════════════════════════════════════════════════════════
+      const obsChars = (rule as any).observable_characteristics;
+      if (obsChars && Array.isArray(obsChars) && obsChars.length > 0) {
+        const inputSymptoms = (input.visual_symptoms || []).map(s =>
+          s.toUpperCase().replace(/[\s-]/g, '_')
+        );
+        if (inputSymptoms.length > 0) {
+          const obsSet = new Set(obsChars.map((o: any) => String(o).toUpperCase().replace(/[\s-]/g, '_')));
+          const matched: string[] = [];
+          for (const sym of inputSymptoms) {
+            for (const obs of obsSet) {
+              // Exact match or root-word containment (STUNTED_PLANTS ↔ STUNTED_GROWTH)
+              if (sym === obs || sym.includes(obs) || obs.includes(sym)) {
+                matched.push(obs);
+                break;
+              }
+              // Root word matching: share significant words (>3 chars)
+              const symWords = sym.split('_');
+              const obsWords = obs.split('_');
+              const sharedWords = symWords.filter(w => obsWords.includes(w) && w.length > 3);
+              if (sharedWords.length > 0) {
+                matched.push(obs);
+                break;
+              }
+            }
+          }
+          if (matched.length > 0) {
+            // Populate condition ledger for downstream scoring
+            const ledger: ConditionEntry[] = matched.map(m => ({
+              key: m, status: ConditionStatus.PASSED, required: false, ruleValue: m
+            }));
+            // Add unmatched observations as non-required context
+            for (const obs of obsSet) {
+              if (!matched.includes(obs)) {
+                ledger.push({ key: obs, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: obs });
+              }
+            }
+            conditionLedgerCache.set(rule.rule_id, ledger);
+            console.log(`✅ [ObsChars] Rule ${rule.rule_id} matched ${matched.length}/${obsChars.length} via observable_characteristics: [${matched.join(', ')}]`);
+            return true;
+          }
+        }
+      }
+
+      // Rules with NO conditions_json AND NO observable_characteristics should NOT auto-match
       return false;
     }
   };
