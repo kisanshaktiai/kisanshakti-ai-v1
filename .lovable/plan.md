@@ -4,6 +4,11 @@
 
 ### v5.3 Fixes (Current)
 
+#### BUG 11: DiagnosisOnlyMode guard checks wrong object — FIXED
+- **File:** `orchestrator.ts:5106`
+- **Root cause:** `symbolicHasPrimaryDecision` only checked `symbolicResult.primary_decision`, but the v5.3 merge block (line ~5022) builds `primary_decision` on `layeredRuleResult`, NOT on `symbolicResult`. This meant the guard always evaluated to `false`, causing DiagnosisOnlyMode to activate and return a diagnosis-only response instead of the full treatment recommendation.
+- **Fix:** Updated guard to `layeredRuleResult?.primary_decision || (symbolicResult.primary_decision && confidence > 0.6)`.
+
 #### BUG 10: Symbolic Recommendations Never Reach primary_decision — FIXED
 - **File:** `orchestrator.ts:4989`
 - **Root cause:** Symbolic reasoner merged `rules_matched`, `diagnoses`, and `prescriptions` into `layeredRuleResult`, but NEVER merged into `matched_responses` or built a `primary_decision`. This caused `eligibleResponses = 0` → `RULE_DATA_INTEGRITY_ERROR` → clarification fallback.
