@@ -1,9 +1,15 @@
+# Pipeline Stability Fixes v5.3 — In Progress
 
-# Pipeline Stability Fixes v5.2 — Completed
+## Fixes Applied (2026-03-01)
 
-## Fixes Applied (2026-02-28)
+### v5.3 Fixes (Current)
 
-### v5.1 Fixes (Previous)
+#### BUG 10: Symbolic Recommendations Never Reach primary_decision — FIXED
+- **File:** `orchestrator.ts:4989`
+- **Root cause:** Symbolic reasoner merged `rules_matched`, `diagnoses`, and `prescriptions` into `layeredRuleResult`, but NEVER merged into `matched_responses` or built a `primary_decision`. This caused `eligibleResponses = 0` → `RULE_DATA_INTEGRITY_ERROR` → clarification fallback.
+- **Fix:** After merging prescriptions, also push symbolic recommendations into `matched_responses` with full `action_text`/`i18n_key`, and build `primary_decision` from the best recommendation.
+
+### Previous Fixes (v5.1-v5.2)
 1. `allObservationsForDiagCheck` ReferenceError → replaced with `[...allObservationsForPreAuth]`
 2. Dual CropDamageDetector (v4+v5) → removed legacy v4, v5 sole authority
 3. Stage drift (3 competing calculators) → stage immutability guard when locked

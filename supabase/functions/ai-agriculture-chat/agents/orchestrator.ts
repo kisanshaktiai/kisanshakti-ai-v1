@@ -4997,6 +4997,45 @@ export class AIAgentOrchestrator {
                   },
                   product_reference: r.rule_id || 'SYMBOLIC'
                 }));
+                
+                // ═══════════════════════════════════════════════════════════════════════════
+                // CRITICAL FIX v5.3: Merge symbolic recommendations into matched_responses
+                // AND build primary_decision so the pipeline doesn't hit RULE_DATA_INTEGRITY_ERROR.
+                // Without this, pest rules fire but never become eligible for primary decision.
+                // ═══════════════════════════════════════════════════════════════════════════
+                for (const rec of symbolicResult.recommendations) {
+                  layeredRuleResult.matched_responses.push({
+                    rule_id: rec.rule_id || 'SYMBOLIC',
+                    cause: rec.cause || symbolicResult.diagnosis?.cause_name || 'DIAGNOSIS',
+                    action_type: rec.action || 'RECOMMEND',
+                    priority: rec.priority || 80,
+                    confidence_score: symbolicResult.confidence || 0.8,
+                    action_text: rec.description || rec.action_text || null,
+                    reason_text: rec.reason_text || null,
+                    knowledge_text: rec.knowledge_text || null,
+                    i18n_key: rec.i18n_key || null
+                  });
+                }
+                
+                // Build primary_decision from best symbolic recommendation
+                const bestRec = symbolicResult.recommendations[0];
+                if (bestRec && !layeredRuleResult.primary_decision) {
+                  console.log(`   🔧 [SymbolicMerge] Building primary_decision from symbolic: ${bestRec.rule_id}`);
+                  layeredRuleResult.primary_decision = {
+                    rule_id: bestRec.rule_id || 'SYMBOLIC',
+                    action_type: bestRec.action || 'RECOMMEND',
+                    priority: bestRec.priority || 80,
+                    confidence_score: symbolicResult.confidence || 0.8,
+                    normalized_score: symbolicResult.confidence || 0.8,
+                    total_required: 1,
+                    passed_required: 1,
+                    weighted_confidence: symbolicResult.confidence || 0.8,
+                    action_text: bestRec.description || bestRec.action_text || null,
+                    reason_text: bestRec.reason_text || null,
+                    knowledge_text: bestRec.knowledge_text || null,
+                    i18n_key: bestRec.i18n_key || null
+                  };
+                }
               }
               
               // BUG 6 FIX: Remove redundant ConfidenceCalculator call
