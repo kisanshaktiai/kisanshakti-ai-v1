@@ -4789,6 +4789,21 @@ export class AIAgentOrchestrator {
         console.log(`      Final Diagnosis: ${layeredRuleResult.final_diagnosis?.cause || 'none'}`);
         console.log(`      Prescription Allowed: ${layeredRuleResult.prescription_allowed}`);
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // AUDIT FIX: Pipeline health monitoring - detect rule match failures
+        // Logs critical warning when symptoms exist but zero rules matched,
+        // enabling fast identification of condition_code/observable_characteristics gaps
+        // ═══════════════════════════════════════════════════════════════════════════
+        const pipelineSymptoms = canonicalState.visual_symptoms || [];
+        if (layeredRuleResult.rules_matched === 0 && pipelineSymptoms.length >= 3) {
+          console.error(`🚨 [PIPELINE_HEALTH] ZERO RULES MATCHED despite ${pipelineSymptoms.length} symptoms!`);
+          console.error(`   Crop: ${canonicalState.crop_type}, Stage: ${canonicalState.crop_stage}`);
+          console.error(`   Symptoms: [${pipelineSymptoms.join(', ')}]`);
+          console.error(`   Rules Evaluated: ${layeredRuleResult.rules_evaluated}`);
+          console.error(`   Matched Responses: ${layeredRuleResult.matched_responses?.length || 0}`);
+          console.error(`   ACTION: Check condition_code and observable_characteristics in decision_rules table`);
+        }
+        
         if (safeSafetyBlocks.length > 0) {
           console.warn(`   ⚠️ Safety Blocks: ${safeSafetyBlocks.map(b => b?.message || 'unknown').join(', ')}`);
         }
