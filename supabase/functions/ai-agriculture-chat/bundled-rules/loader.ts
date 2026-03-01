@@ -750,6 +750,15 @@ export function evaluateConditionsJson(
             const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
             for (const inputObs of expandedObs) {
               if (inputObs === obsUpper || inputObs.includes(obsUpper) || obsUpper.includes(inputObs)) return true;
+              // ═══════════════════════════════════════════════════════════════
+              // AUDIT FIX: Root-word matching for related codes
+              // STUNTED_PLANTS ↔ STUNTED_GROWTH (share root word 'STUNTED')
+              // POOR_TILLERING ↔ POOR_RATOONING (share root word 'POOR')
+              // ═══════════════════════════════════════════════════════════════
+              const obsWords = obsUpper.split('_');
+              const inputWords = inputObs.split('_');
+              const sharedWords = obsWords.filter(w => inputWords.includes(w) && w.length > 3);
+              if (sharedWords.length > 0) return true;
             }
             return false;
           });

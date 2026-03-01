@@ -737,9 +737,23 @@ export function evaluateRulesLayered(
       return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
     
-    // Sort by evidence score DESC
+    // ═══════════════════════════════════════════════════════════════════════════
+    // AUDIT FIX: Sort by data_authority_rank DESC first, then evidence score
+    // data_authority_rank: 95 = highest authority (ICAR/research validated)
+    //                      55 = lowest authority (generic advisory)
+    // ═══════════════════════════════════════════════════════════════════════════
     scored.sort((a, b) => {
+      // P1: data_authority_rank (higher = better)
+      const rankA = (a.response as any).data_authority_rank ?? 50;
+      const rankB = (b.response as any).data_authority_rank ?? 50;
+      if (rankA !== rankB) return rankB - rankA;
+      // P2: evidence score
       if (a.evidenceScore !== b.evidenceScore) return b.evidenceScore - a.evidenceScore;
+      // P3: priority field from rule
+      const priA = a.response.priority ?? 50;
+      const priB = b.response.priority ?? 50;
+      if (priA !== priB) return priB - priA;
+      // P4: confidence_score
       return (b.response.confidence_score ?? 0) - (a.response.confidence_score ?? 0);
     });
     const best = scored[0].response;
