@@ -1943,6 +1943,51 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       
       parts.push(recText);
       
+      // RICH DATA: Add organic alternative, success indicators, bee safety from rule data
+      const appDetails = primary.application_details || {};
+      if (appDetails.organic_alternative) {
+        const orgHeaders: Record<string, string> = {
+          mr: '🌿 **सेंद्रिय पर्याय:**',
+          hi: '🌿 **जैविक विकल्प:**',
+          en: '🌿 **Organic Alternative:**'
+        };
+        parts.push(`${orgHeaders[lang]} ${appDetails.organic_alternative}`);
+      }
+      if (appDetails.success_indicators) {
+        const indicators = Array.isArray(appDetails.success_indicators) ? appDetails.success_indicators.join(', ') : String(appDetails.success_indicators);
+        const successHeaders: Record<string, string> = {
+          mr: '✅ **यश चिन्हे (५-७ दिवसांनी तपासा):**',
+          hi: '✅ **सफलता के संकेत (5-7 दिन बाद जांचें):**',
+          en: '✅ **Success Signs (check after 5-7 days):**'
+        };
+        parts.push(`${successHeaders[lang]} ${indicators}`);
+      }
+      if (appDetails.failure_indicators) {
+        const indicators = Array.isArray(appDetails.failure_indicators) ? appDetails.failure_indicators.join(', ') : String(appDetails.failure_indicators);
+        const failHeaders: Record<string, string> = {
+          mr: '❌ **अपयश चिन्हे (दिसल्यास पुन्हा फवारणी):**',
+          hi: '❌ **विफलता संकेत (दिखे तो दोबारा छिड़काव):**',
+          en: '❌ **Failure Signs (re-treat if seen):**'
+        };
+        parts.push(`${failHeaders[lang]} ${indicators}`);
+      }
+      if (appDetails.bee_toxicity && appDetails.bee_toxicity !== 'SAFE' && appDetails.bee_toxicity !== 'LOW') {
+        const beeWarnings: Record<string, string> = {
+          mr: `🐝 **मधमाशी सुरक्षा:** ${appDetails.bee_toxicity} विषाक्तता — फुलोऱ्याच्या वेळी फवारणी टाळा`,
+          hi: `🐝 **मधुमक्खी सुरक्षा:** ${appDetails.bee_toxicity} विषाक्तता — फूल आने पर छिड़काव न करें`,
+          en: `🐝 **Bee Safety:** ${appDetails.bee_toxicity} toxicity — avoid spraying during flowering`
+        };
+        parts.push(beeWarnings[lang]);
+      }
+      if (appDetails.roi_yield_gain_pct) {
+        const roiHeaders: Record<string, string> = {
+          mr: `📈 **अपेक्षित उत्पादन वाढ:** ${appDetails.roi_yield_gain_pct}%`,
+          hi: `📈 **अपेक्षित उपज वृद्धि:** ${appDetails.roi_yield_gain_pct}%`,
+          en: `📈 **Expected Yield Gain:** ${appDetails.roi_yield_gain_pct}%`
+        };
+        parts.push(roiHeaders[lang]);
+      }
+      
       // IPM urgency indicator
       const ipmLevel = primary.ipm_level || 'LEVEL_3';
       const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[lang] || '';
