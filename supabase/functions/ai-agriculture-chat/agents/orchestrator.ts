@@ -1793,9 +1793,9 @@ export class AIAgentOrchestrator {
                 ? safeMatchedResponses.slice(0, 3).filter(r => r != null).map(r => ({
                     action_type: 'OBSERVATION_ADVICE',
                     action_details: {
-                      response_mr: r.response_mr,
-                      response_hi: r.response_hi,
-                      response_en: r.response_en
+                      action_text: r.action_text,
+                      reason_text: r.reason_text,
+                      knowledge_text: r.knowledge_text
                     },
                     product_reference: r.rule_id,
                     rule_id: r.rule_id
