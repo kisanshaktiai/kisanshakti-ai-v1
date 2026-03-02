@@ -1,8 +1,8 @@
-# Pipeline Stability Fixes v5.4 — GROWTH_ANOMALY Pipeline Fix
+# Pipeline Stability Fixes v5.5 — Architectural Correction Specification
 
-## Fixes Applied (2026-03-01)
+## Fixes Applied (2026-03-02)
 
-### v5.4 Fixes (Current)
+### v5.5 Fixes (Current) — Supreme Law + Response Format Types
 
 #### BUG 12: Observable Characteristics Never Used for Rule Matching — FIXED
 - **File:** `bundled-rules/loader.ts:933` (`makeExecutable`)
