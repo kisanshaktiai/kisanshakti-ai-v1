@@ -5641,6 +5641,20 @@ export class AIAgentOrchestrator {
           traceId
         );
         
+        // FIX 2 (v6.1): Wire symptomKeys + isEmergency into IMMEDIATE return path
+        const EMERGENCY_OBS_CODES = new Set([
+          'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
+          'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
+          'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
+        ]);
+        const obsArray = Array.from(allObservationsForPreAuth || []);
+        const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
+        
+        // FIX 3 (v6.1): Wire matched_responses into IMMEDIATE return path
+        if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {
+          decisionOutput.matched_responses = layeredRuleResult.matched_responses;
+        }
+        
         return {
           type: 'DECISION_PROVIDED',
           session_id: sessionId,
@@ -5658,7 +5672,9 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             response_source: 'IMMEDIATE_PRIMARY_DECISION',
-            layer_timings: layerTimings
+            layer_timings: layerTimings,
+            symptomKeys: obsArray,
+            isEmergency: isEmergencyImmediate
           }
         };
       }
