@@ -2,7 +2,29 @@
 
 ## Fixes Applied (2026-03-02)
 
-### v6.1 Fixes (Current) — Forensic Audit Critical Pipeline Fixes
+### v6.2 Fixes (Current) — SSOT Data Alignment + Hardcoded Data Removal
+
+#### FIX 33: `diag_first` Path Translation Bypass + Emoji Prefix Detection — FIXED
+- **File:** `agents/orchestrator.ts` (lines 3575, 540-554)
+- **Root cause:** `diag_first` clarification path NEVER called `translateClarificationOptions()` → raw English codes like `🔍 GAPS IN FIELD` shown in Marathi UI. `RAW_CODE_PATTERN` regex failed on emoji prefixes.
+- **Fix:** Added `translateClarificationOptions()` call in `diag_first` return path. Updated pattern detection to strip emoji prefixes and detect ALL_CAPS text with spaces (e.g., `🔍 GAPS IN FIELD` → derives `GAPS_IN_FIELD` for DB lookup).
+
+#### FIX 34: Dropped `response_mr/hi/en` Column References Removed — FIXED
+- **Files:** `orchestrator.ts` (6 locations), `llm-response-formatter.ts` (2 locations), `rule-evaluation-layer.ts`, `all-rules.ts`, `response-generator.ts`
+- **Root cause:** Code referenced `response_mr/hi/en` columns that were dropped from DB — always returned `null/undefined`
+- **Fix:** Removed all references. Use `action_text/reason_text/knowledge_text` (SSOT columns).
+
+#### FIX 35: Hardcoded Translation Dictionaries Removed — FIXED
+- **Files:** `response-generator.ts` (symptomNames, cropNames, stageNames), `failure-class-detector.ts` (28 English labels)
+- **Root cause:** Hardcoded translation dicts violated SSOT — only covered 5 crops, 6 stages, 5 symptoms
+- **Fix:** Response-generator now returns formatted codes (LLM narration layer handles localization). Failure-class-detector now uses observation_key as label (translated via `translateClarificationOptions()` at render time).
+
+#### FIX 36: 46 Missing Observation Codes + Translations Inserted — FIXED (DB)
+- **Table:** `observation_master` + `observation_translations`
+- **Root cause:** 46 codes referenced in `decision_rules.observable_characteristics` were missing from `observation_master` and had no translations
+- **Fix:** Inserted all 46 codes with proper `observation_category`, `affected_plant_part`, `is_diagnostic`, `canonical_group`. Added Marathi + Hindi translations for all 46.
+
+### v6.1 Fixes (Previous) — Forensic Audit Critical Pipeline Fixes
 
 #### FIX 26: `blocksCtopTreatments()` No Longer Blocks on NONE Authority — FIXED
 - **File:** `decision/authority-types.ts`
