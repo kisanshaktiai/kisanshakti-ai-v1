@@ -5931,7 +5931,9 @@ export class AIAgentOrchestrator {
               rules_applied: decisionOutput.rules_applied?.length || 0,
               processing_time_ms: Date.now() - startTime,
               agents_used: agentsUsed,
-              trace_id: traceId
+              trace_id: traceId,
+              symptomKeys: Array.from(allObservationsForPreAuth || []),
+              isEmergency: false
             }
           };
         }
