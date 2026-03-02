@@ -5410,6 +5410,8 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             pendingClarificationOptions: safeOptionsForLog,
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false,
             // Language Induction Layer metrics (independent of intent confidence)
             induction_coverage: inductionCoverage,
             induction_confidence: inductionConfidence,
