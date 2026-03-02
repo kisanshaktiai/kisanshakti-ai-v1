@@ -514,6 +514,152 @@ function mapDistributionToSymptom(optionText: string, _scope: ClarificationScope
   return 'UNKNOWN';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CLARIFICATION OPTION TRANSLATION HELPER
+// Translates raw observation codes to farmer-friendly local language
+// Priority: 1) observation_translations DB table, 2) LLM translation fallback
+// ═══════════════════════════════════════════════════════════════════════════
+async function translateClarificationOptions(
+  options: Array<string | { label: string; observation_key?: string; [key: string]: any }>,
+  language: string,
+  supabaseClient: any
+): Promise<Array<string | { label: string; observation_key?: string; [key: string]: any }>> {
+  if (!options || options.length === 0) return options;
+  
+  const lang = (language || 'en').toLowerCase();
+  
+  // Extract all labels and observation keys
+  const optionEntries = options.map((opt, idx) => ({
+    idx,
+    isString: typeof opt === 'string',
+    label: typeof opt === 'string' ? opt : (opt.label || ''),
+    obsKey: typeof opt === 'string' ? null : (opt.observation_key || null),
+    original: opt
+  }));
+  
+  // Check which labels look like raw codes (ALL_CAPS_WITH_UNDERSCORES)
+  const RAW_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,}$/;
+  const needsTranslation = optionEntries.filter(e => 
+    RAW_CODE_PATTERN.test(e.label) || RAW_CODE_PATTERN.test(e.obsKey || '')
+  );
+  
+  if (needsTranslation.length === 0) {
+    // All labels are already human-readable
+    return options;
+  }
+  
+  console.log(`🌐 [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
+  
+  // Step 1: Try observation_translations DB lookup (SSOT)
+  const codesToLookup = needsTranslation.map(e => e.obsKey || e.label);
+  const labelMap = new Map<string, string>();
+  
+  try {
+    const { data, error } = await supabaseClient
+      .from('observation_translations')
+      .select('observation_code, display_text, description_text')
+      .in('observation_code', codesToLookup)
+      .eq('language_code', lang);
+    
+    if (!error && data) {
+      for (const row of data) {
+        const code = (row.observation_code || '').toUpperCase();
+        // Prefer description_text (farmer-friendly) when substantive
+        const hasGoodDesc = row.description_text && 
+          row.description_text.length > 10 &&
+          row.description_text.length > (row.display_text?.length || 0);
+        labelMap.set(code, hasGoodDesc ? row.description_text : row.display_text);
+      }
+    }
+  } catch (err) {
+    console.warn(`⚠️ [ClarificationTranslation] DB lookup failed: ${err}`);
+  }
+  
+  // Step 2: For codes without DB translation, use LLM translation
+  const untranslated = needsTranslation.filter(e => !labelMap.has((e.obsKey || e.label).toUpperCase()));
+  
+  if (untranslated.length > 0 && lang !== 'en') {
+    try {
+      const openAIKey = Deno.env.get('OPENAI_API_KEY');
+      if (openAIKey) {
+        const langName = lang === 'mr' ? 'Marathi' : lang === 'hi' ? 'Hindi' : 'English';
+        const codesToTranslate = untranslated.map(e => e.obsKey || e.label);
+        
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openAIKey}` 
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: `You translate agricultural observation codes to simple farmer-friendly ${langName}. Output ONLY a JSON object mapping each code to its translation. Use local rural agricultural vocabulary that farmers understand. No technical terms.`
+              },
+              {
+                role: 'user',
+                content: `Translate these agricultural observation codes to simple ${langName} that a rural farmer would understand:\n${codesToTranslate.join('\n')}\n\nOutput JSON like: {"CODE": "translation"}`
+              }
+            ],
+            max_tokens: 300,
+            temperature: 0.3
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          const content = result.choices?.[0]?.message?.content || '';
+          // Extract JSON from response
+          const jsonMatch = content.match(/\{[^{}]*\}/s);
+          if (jsonMatch) {
+            const translations = JSON.parse(jsonMatch[0]);
+            for (const [code, translation] of Object.entries(translations)) {
+              if (typeof translation === 'string' && translation.length > 0) {
+                labelMap.set(code.toUpperCase(), translation);
+              }
+            }
+            console.log(`✅ [ClarificationTranslation] LLM translated ${Object.keys(translations).length} codes to ${langName}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️ [ClarificationTranslation] LLM translation failed: ${err}`);
+    }
+  }
+  
+  // Step 3: Apply translations to options
+  let translatedCount = 0;
+  const result = options.map((opt, idx) => {
+    const entry = optionEntries[idx];
+    const lookupKey = (entry.obsKey || entry.label).toUpperCase();
+    const translated = labelMap.get(lookupKey);
+    
+    if (translated) {
+      translatedCount++;
+      if (entry.isString) {
+        return translated;
+      } else {
+        return { ...(opt as any), label: translated };
+      }
+    }
+    
+    // Fallback: humanize the code if still raw
+    if (RAW_CODE_PATTERN.test(entry.label)) {
+      const humanized = entry.label.replace(/_/g, ' ').split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      if (entry.isString) return humanized;
+      return { ...(opt as any), label: humanized };
+    }
+    
+    return opt;
+  });
+  
+  console.log(`✅ [ClarificationTranslation] Translated ${translatedCount}/${options.length} option labels`);
+  return result;
+}
+
 // Response types
 export type OrchestratorResponseType = 
   | 'DECISION_PROVIDED'
