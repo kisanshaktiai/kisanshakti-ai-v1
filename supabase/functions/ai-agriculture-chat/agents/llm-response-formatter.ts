@@ -2070,12 +2070,16 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       parts.push(ipmHeader[lang]);
       
       matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        // FIX 34: Use action_text/reason_text (SSOT) and avoid leaking raw table cause labels
-        const actionContent = resp.action_text || resp.reason_text || '';
+        // SSOT + leakage guard: never show raw technical/placeholder table text to farmer
+        const actionContentRaw = resp.action_text || resp.reason_text || '';
+        const fallbackAction = lang === 'mr'
+          ? 'पिकाचे निरीक्षण करा आणि गरज असल्यास फोटो पाठवा'
+          : lang === 'hi'
+            ? 'फसल की निगरानी करें और ज़रूरत हो तो फोटो भेजें'
+            : 'Monitor crop and share a photo if needed';
+        const actionContent = shouldRenderRawFarmerText(actionContentRaw) ? actionContentRaw : fallbackAction;
         const genericCauseLabel = lang === 'mr' ? 'उपाय' : lang === 'hi' ? 'उपाय' : 'Recommendation';
-        if (actionContent) {
-          parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
-        }
+        parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
       });
     } else {
       // No valid recommendation from rule engine - provide safe fallback
