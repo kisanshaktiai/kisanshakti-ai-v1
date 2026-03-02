@@ -3831,10 +3831,21 @@ export class AIAgentOrchestrator {
             text_mr: responseText,
             text_hi: responseText,
             text_en: responseText,
-            options: safeOptions.map((opt, idx) => ({
-              value: String(idx + 1),
-              label: typeof opt === 'string' ? opt : (opt.label || String(opt))
-            }))
+            options: await Promise.all(safeOptions.map(async (opt, idx) => {
+              const rawLabel = typeof opt === 'string' ? opt : (opt.label || String(opt));
+              return {
+                value: String(idx + 1),
+                label: rawLabel
+              };
+            })).then(async (opts) => {
+              // Translate raw observation codes to farmer language
+              const translated = await translateClarificationOptions(
+                opts.map(o => o.label), 
+                options.language || 'mr', 
+                this.supabase
+              );
+              return opts.map((o, i) => ({ ...o, label: typeof translated[i] === 'string' ? translated[i] as string : (translated[i] as any).label || o.label }));
+            })
           },
           // ✅ CRITICAL FIX: Always include communication object with safe options
           communication: {
