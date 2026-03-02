@@ -1835,9 +1835,6 @@ export class AIAgentOrchestrator {
                   reason_text: layeredPrimaryDecision.reason_text,
                   knowledge_text: layeredPrimaryDecision.knowledge_text,
                   i18n_key: layeredPrimaryDecision.i18n_key,
-                  response_mr: layeredPrimaryDecision.response_mr,
-                  response_hi: layeredPrimaryDecision.response_hi,
-                  response_en: layeredPrimaryDecision.response_en,
                   rule_id: layeredPrimaryDecision.rule_id
                 },
                 expected_outcomes: {
