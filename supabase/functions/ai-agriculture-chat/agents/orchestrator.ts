@@ -514,6 +514,152 @@ function mapDistributionToSymptom(optionText: string, _scope: ClarificationScope
   return 'UNKNOWN';
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CLARIFICATION OPTION TRANSLATION HELPER
+// Translates raw observation codes to farmer-friendly local language
+// Priority: 1) observation_translations DB table, 2) LLM translation fallback
+// ═══════════════════════════════════════════════════════════════════════════
+async function translateClarificationOptions(
+  options: Array<string | { label: string; observation_key?: string; [key: string]: any }>,
+  language: string,
+  supabaseClient: any
+): Promise<Array<string | { label: string; observation_key?: string; [key: string]: any }>> {
+  if (!options || options.length === 0) return options;
+  
+  const lang = (language || 'en').toLowerCase();
+  
+  // Extract all labels and observation keys
+  const optionEntries = options.map((opt, idx) => ({
+    idx,
+    isString: typeof opt === 'string',
+    label: typeof opt === 'string' ? opt : (opt.label || ''),
+    obsKey: typeof opt === 'string' ? null : (opt.observation_key || null),
+    original: opt
+  }));
+  
+  // Check which labels look like raw codes (ALL_CAPS_WITH_UNDERSCORES)
+  const RAW_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,}$/;
+  const needsTranslation = optionEntries.filter(e => 
+    RAW_CODE_PATTERN.test(e.label) || RAW_CODE_PATTERN.test(e.obsKey || '')
+  );
+  
+  if (needsTranslation.length === 0) {
+    // All labels are already human-readable
+    return options;
+  }
+  
+  console.log(`🌐 [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
+  
+  // Step 1: Try observation_translations DB lookup (SSOT)
+  const codesToLookup = needsTranslation.map(e => e.obsKey || e.label);
+  const labelMap = new Map<string, string>();
+  
+  try {
+    const { data, error } = await supabaseClient
+      .from('observation_translations')
+      .select('observation_code, display_text, description_text')
+      .in('observation_code', codesToLookup)
+      .eq('language_code', lang);
+    
+    if (!error && data) {
+      for (const row of data) {
+        const code = (row.observation_code || '').toUpperCase();
+        // Prefer description_text (farmer-friendly) when substantive
+        const hasGoodDesc = row.description_text && 
+          row.description_text.length > 10 &&
+          row.description_text.length > (row.display_text?.length || 0);
+        labelMap.set(code, hasGoodDesc ? row.description_text : row.display_text);
+      }
+    }
+  } catch (err) {
+    console.warn(`⚠️ [ClarificationTranslation] DB lookup failed: ${err}`);
+  }
+  
+  // Step 2: For codes without DB translation, use LLM translation
+  const untranslated = needsTranslation.filter(e => !labelMap.has((e.obsKey || e.label).toUpperCase()));
+  
+  if (untranslated.length > 0 && lang !== 'en') {
+    try {
+      const openAIKey = Deno.env.get('OPENAI_API_KEY');
+      if (openAIKey) {
+        const langName = lang === 'mr' ? 'Marathi' : lang === 'hi' ? 'Hindi' : 'English';
+        const codesToTranslate = untranslated.map(e => e.obsKey || e.label);
+        
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${openAIKey}` 
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              {
+                role: 'system',
+                content: `You translate agricultural observation codes to simple farmer-friendly ${langName}. Output ONLY a JSON object mapping each code to its translation. Use local rural agricultural vocabulary that farmers understand. No technical terms.`
+              },
+              {
+                role: 'user',
+                content: `Translate these agricultural observation codes to simple ${langName} that a rural farmer would understand:\n${codesToTranslate.join('\n')}\n\nOutput JSON like: {"CODE": "translation"}`
+              }
+            ],
+            max_tokens: 300,
+            temperature: 0.3
+          })
+        });
+        
+        if (response.ok) {
+          const result = await response.json();
+          const content = result.choices?.[0]?.message?.content || '';
+          // Extract JSON from response
+          const jsonMatch = content.match(/\{[^{}]*\}/s);
+          if (jsonMatch) {
+            const translations = JSON.parse(jsonMatch[0]);
+            for (const [code, translation] of Object.entries(translations)) {
+              if (typeof translation === 'string' && translation.length > 0) {
+                labelMap.set(code.toUpperCase(), translation);
+              }
+            }
+            console.log(`✅ [ClarificationTranslation] LLM translated ${Object.keys(translations).length} codes to ${langName}`);
+          }
+        }
+      }
+    } catch (err) {
+      console.warn(`⚠️ [ClarificationTranslation] LLM translation failed: ${err}`);
+    }
+  }
+  
+  // Step 3: Apply translations to options
+  let translatedCount = 0;
+  const result = options.map((opt, idx) => {
+    const entry = optionEntries[idx];
+    const lookupKey = (entry.obsKey || entry.label).toUpperCase();
+    const translated = labelMap.get(lookupKey);
+    
+    if (translated) {
+      translatedCount++;
+      if (entry.isString) {
+        return translated;
+      } else {
+        return { ...(opt as any), label: translated };
+      }
+    }
+    
+    // Fallback: humanize the code if still raw
+    if (RAW_CODE_PATTERN.test(entry.label)) {
+      const humanized = entry.label.replace(/_/g, ' ').split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      if (entry.isString) return humanized;
+      return { ...(opt as any), label: humanized };
+    }
+    
+    return opt;
+  });
+  
+  console.log(`✅ [ClarificationTranslation] Translated ${translatedCount}/${options.length} option labels`);
+  return result;
+}
+
 // Response types
 export type OrchestratorResponseType = 
   | 'DECISION_PROVIDED'
@@ -3685,10 +3831,21 @@ export class AIAgentOrchestrator {
             text_mr: responseText,
             text_hi: responseText,
             text_en: responseText,
-            options: safeOptions.map((opt, idx) => ({
-              value: String(idx + 1),
-              label: typeof opt === 'string' ? opt : (opt.label || String(opt))
-            }))
+            options: await Promise.all(safeOptions.map(async (opt, idx) => {
+              const rawLabel = typeof opt === 'string' ? opt : (opt.label || String(opt));
+              return {
+                value: String(idx + 1),
+                label: rawLabel
+              };
+            })).then(async (opts) => {
+              // Translate raw observation codes to farmer language
+              const translated = await translateClarificationOptions(
+                opts.map(o => o.label), 
+                options.language || 'mr', 
+                this.supabase
+              );
+              return opts.map((o, i) => ({ ...o, label: typeof translated[i] === 'string' ? translated[i] as string : (translated[i] as any).label || o.label }));
+            })
           },
           // ✅ CRITICAL FIX: Always include communication object with safe options
           communication: {
@@ -4116,7 +4273,13 @@ export class AIAgentOrchestrator {
         if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
           console.log(`   ✅ Using ${ruleDrivenClarification.options.length} RULE-DRIVEN options (Source=DECISION_RULES)`);
           console.log(`      Options sourced from: hypothesis-first candidate rules`);
-          finalClarificationOptions = ruleDrivenClarification.options.map(o => o.label);
+          // Translate rule-driven option labels to farmer language
+          const translatedRuleOptions = await translateClarificationOptions(
+            ruleDrivenClarification.options.map(o => ({ label: o.label, observation_key: o.observation_key })),
+            options.language || 'mr',
+            this.supabase
+          );
+          finalClarificationOptions = translatedRuleOptions.map(o => typeof o === 'string' ? o : o.label);
           clarificationSource = 'DECISION_RULES';
           
           // Log the rule-driven options for audit
@@ -4591,10 +4754,18 @@ export class AIAgentOrchestrator {
               text_mr: clarificationPrompt,
               text_hi: clarificationPrompt,
               text_en: clarificationPrompt,
-              options: contextValidation.clarification_options?.map((opt, idx) => ({
-                value: String(idx + 1),
-                label: opt.label
-              })) || []
+              options: await (async () => {
+                const rawOpts = contextValidation.clarification_options || [];
+                const translated = await translateClarificationOptions(
+                  rawOpts.map(o => ({ label: o.label, observation_key: (o as any).observation_key })),
+                  lang,
+                  this.supabase
+                );
+                return translated.map((opt, idx) => ({
+                  value: String(idx + 1),
+                  label: typeof opt === 'string' ? opt : opt.label
+                }));
+              })()
             },
             metadata: {
               confidence: 0.5,
@@ -5627,7 +5798,21 @@ export class AIAgentOrchestrator {
                 response_mr: layeredRuleResult.primary_decision.response_mr,
                 response_hi: layeredRuleResult.primary_decision.response_hi,
                 response_en: layeredRuleResult.primary_decision.response_en,
-                rule_id: layeredRuleResult.primary_decision.rule_id
+                rule_id: layeredRuleResult.primary_decision.rule_id,
+                // RICH DATA: Propagate all agronomic fields for response generation
+                organic_alternative: layeredRuleResult.primary_decision.organic_alternative || null,
+                phi_days: layeredRuleResult.primary_decision.phi_days || null,
+                bee_toxicity: layeredRuleResult.primary_decision.bee_toxicity || null,
+                application_method: layeredRuleResult.primary_decision.application_method || null,
+                water_volume_per_acre: layeredRuleResult.primary_decision.water_volume_per_acre || null,
+                mode_of_action: layeredRuleResult.primary_decision.mode_of_action || null,
+                chemical_class: layeredRuleResult.primary_decision.chemical_class || null,
+                resistance_group: layeredRuleResult.primary_decision.resistance_group || null,
+                target_pest_stage: layeredRuleResult.primary_decision.target_pest_stage || null,
+                success_indicators: layeredRuleResult.primary_decision.success_indicators || null,
+                failure_indicators: layeredRuleResult.primary_decision.failure_indicators || null,
+                roi_yield_gain_pct: layeredRuleResult.primary_decision.roi_yield_gain_pct || null,
+                reentry_interval_hours: layeredRuleResult.primary_decision.reentry_interval_hours || null,
               },
               expected_outcomes: {
                 efficacy_percent: layeredRuleResult.primary_decision.weighted_confidence 
@@ -5636,7 +5821,7 @@ export class AIAgentOrchestrator {
                     ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100)
                     : 75,
                 time_to_visible_effect_days: '3-5',
-                success_indicators: []
+                success_indicators: layeredRuleResult.primary_decision.success_indicators || []
               }
             };
           }
