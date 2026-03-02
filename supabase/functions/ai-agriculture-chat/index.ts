@@ -1557,23 +1557,98 @@ serve(async (req) => {
     console.log(`   unified_gate_mode: ${computedDecisionState === 'awaiting_clarification' ? 'BLOCKED (awaiting)' : 'ALLOW'}`);
     console.log(`   ═══════════════════════════════════════════`);
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PART 10: SESSION CONTINUITY — Update problems_discussed list
+    // ═══════════════════════════════════════════════════════════════════════════
+    const currentProblems = sessionState?.problems_discussed || [];
+    const currentTurn = (sessionState?.turn_count || 0) + 1;
+    const now = new Date().toISOString();
+    
+    // Extract current problem code from orchestrator response
+    const currentIntentCode = orchestratorResponse.metadata?.intent_code || 
+                              orchestratorResponse.decision_output?.metadata?.intent_code || '';
+    const currentDiagnosis = lastPest || lastDisease || 
+                              orchestratorResponse.decision_output?.primary_decision?.target?.pest_code ||
+                              orchestratorResponse.decision_output?.primary_decision?.target?.disease_code || '';
+    
+    // Build simple query hash for repeat detection (normalize: lowercase, remove spaces/punctuation)
+    const queryHash = userMessageContent.toLowerCase()
+      .replace(/[^\u0900-\u097F\u0A00-\u0A7Fa-z0-9]/g, '')
+      .substring(0, 100);
+    
+    // REPEAT CONCERN DETECTION: Same semantic query within 30 minutes
+    const lastQueryHash = sessionState?.last_query_hash || '';
+    const lastQueryTs = sessionState?.last_query_timestamp;
+    let isRepeatConcern = false;
+    
+    if (lastQueryHash && queryHash) {
+      // Check similarity: exact match or >70% overlap
+      const overlap = queryHash.length > 0 && lastQueryHash.length > 0 
+        ? [...queryHash].filter((c, i) => lastQueryHash[i] === c).length / Math.max(queryHash.length, lastQueryHash.length)
+        : 0;
+      const withinTimeWindow = lastQueryTs 
+        ? (Date.now() - new Date(lastQueryTs).getTime()) < 30 * 60 * 1000 
+        : false;
+      isRepeatConcern = overlap > 0.7 && withinTimeWindow;
+      
+      if (isRepeatConcern) {
+        console.log(`\n🔄 [SESSION_CONTINUITY] REPEAT CONCERN detected!`);
+        console.log(`   Query similarity: ${(overlap * 100).toFixed(0)}%`);
+        console.log(`   Time since last: ${lastQueryTs ? Math.round((Date.now() - new Date(lastQueryTs).getTime()) / 60000) : 'N/A'} min`);
+        console.log(`   → Escalating to more specific response`);
+      }
+    }
+    
+    // CAUSAL CHAINING: Check if current issue might be consequence of previous diagnosis
+    // e.g., poor growth after stem holes → likely consequence of Shoot Borer
+    const previousBorerDiagnosis = currentProblems.find(p => 
+      p.diagnosis && (p.diagnosis.includes('BORER') || p.diagnosis.includes('SHOOT') || p.diagnosis.includes('STEM'))
+    );
+    const isGrowthIssue = currentIntentCode === 'GROWTH_ANOMALY' || 
+                           currentIntentCode === 'INPUT_RECOMMENDATION' ||
+                           queryHash.includes('वाढ') || queryHash.includes('फुट');
+    
+    if (previousBorerDiagnosis && isGrowthIssue) {
+      console.log(`\n🔗 [SESSION_CONTINUITY] CAUSAL CHAIN detected!`);
+      console.log(`   Previous: ${previousBorerDiagnosis.diagnosis} (turn ${previousBorerDiagnosis.turn_number})`);
+      console.log(`   Current: ${currentIntentCode} — may be consequence of borer damage`);
+    }
+    
+    // Add current problem to the list (keep last 10)
+    const updatedProblems = [
+      ...currentProblems,
+      ...(currentIntentCode || currentDiagnosis ? [{
+        problem_code: currentIntentCode || 'GENERAL',
+        turn_number: currentTurn,
+        timestamp: now,
+        diagnosis: currentDiagnosis || undefined,
+        intent_code: currentIntentCode || undefined
+      }] : [])
+    ].slice(-10); // Keep last 10 problems
+    
     const decisionTracking = {
       decision_state: computedDecisionState,
       last_pest: lastPest,
       last_disease: lastDisease,
       last_crop: lastCrop,
       pending_user_action: recommendationsProvided, // User should act on recommendations
-      turn_count: (sessionState?.turn_count || 0) + 1,
+      turn_count: currentTurn,
       recommendations_count: actions_returned?.length || 0,
       last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       // CRITICAL FIX: Clear pending options when clarification is answered
       pending_clarification_options: (isClarificationResponse && !clarificationAnswered) ? clarificationOptions : [],
       // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
       lockedCropContext: lockedCropContextForSession,
       // Track clarification resolution
       clarification_answered: clarificationAnswered,
-      clarification_resolved_at: sessionStateUpdateFromOrchestrator?.clarification_resolved_at
+      clarification_resolved_at: sessionStateUpdateFromOrchestrator?.clarification_resolved_at,
+      // PART 10: Session continuity data
+      problems_discussed: updatedProblems,
+      last_query_hash: queryHash,
+      last_query_timestamp: now,
+      is_repeat_concern: isRepeatConcern,
+      causal_chain_detected: !!(previousBorerDiagnosis && isGrowthIssue)
     };
     
     try {
