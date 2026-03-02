@@ -385,10 +385,16 @@ const CATEGORY_E_KEYS = new Set(['weather', 'rain_forecast']);
 const CATEGORY_F_KEYS = new Set(['etl', 'etl_range']);
 
 // Category G: Informational/context (NOT required - don't block matching)
+// FORENSIC FIX 1B: Added all orphan keys that are informational/economic context
 const CATEGORY_G_KEYS = new Set([
   'context', 'roi_basis', 'roi_modifier', 'roi_by_region',
   'timing', 'method', 'operation', 'action', 'assessment_timing',
-  'soil_test', 'irrigation_system'
+  'soil_test', 'irrigation_system',
+  // FORENSIC AUDIT: These keys provide context but must NEVER block rule firing
+  'ipm_priority', 'duration_days_info', 'diagnosis_method',
+  'requires_identification', 'soil_type', 'soil_type_name',
+  'variety', 'trait', 'region', 'farming_mode', 'monsoon_timing',
+  'yield_potential', 'crop_cycle',
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
