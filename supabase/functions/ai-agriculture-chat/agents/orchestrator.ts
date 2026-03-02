@@ -1869,9 +1869,6 @@ export class AIAgentOrchestrator {
                     reason_text: firstMatch.reason_text,
                     knowledge_text: firstMatch.knowledge_text,
                     i18n_key: firstMatch.i18n_key,
-                    response_mr: firstMatch.response_mr,
-                    response_hi: firstMatch.response_hi,
-                    response_en: firstMatch.response_en,
                     rule_id: firstMatch.rule_id
                   },
                   expected_outcomes: {
