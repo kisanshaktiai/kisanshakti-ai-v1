@@ -3590,13 +3590,24 @@ export class AIAgentOrchestrator {
             // CRITICAL FIX: Use snake_case fields and `question.options` for proper 
             // mapping in transformOrchestratorResponse (index.ts)
             // ═══════════════════════════════════════════════════════════════════════════
-            const diagnosisOptions = clarificationFormat.options.map((opt: any) => ({
+            let diagnosisOptions = clarificationFormat.options.map((opt: any) => ({
               label: opt.label,
               value: opt.value || opt.label,
               observation_key: opt.observation_key || opt.value,
               description: opt.description,
               diagnostic_power: opt.diagnostic_power || 'MEDIUM'
             }));
+            
+            // FIX 33: Translate diagnosis-first options (was skipped - caused raw English codes in Marathi UI)
+            try {
+              diagnosisOptions = await translateClarificationOptions(
+                diagnosisOptions, 
+                options.language || 'mr', 
+                supabase
+              );
+            } catch (transErr) {
+              console.warn(`⚠️ [DIAG_FIRST] Translation failed, using raw labels: ${transErr}`);
+            }
             
             return {
               type: 'CLARIFICATION_QUESTION',
