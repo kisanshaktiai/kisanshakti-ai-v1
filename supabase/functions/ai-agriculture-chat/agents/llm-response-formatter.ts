@@ -185,10 +185,14 @@ export async function formatRecommendationsWithLLM(
   // ═══════════════════════════════════════════════════════════════════════════
   
   // CRASH-PROOF: Extract confidence data with safe defaults
+  // BUG-D FIX: Add weighted_confidence fallback from primary_decision
   const decisionConfidence = input.decision_output?.metadata?.decision_confidence ?? 
+                              input.decision_output?.primary_decision?.weighted_confidence ??
                               input.decision_output?.confidence ?? 0;
+  // BUG-C FIX: Also check symptom_keys on decision_output directly
   const hasSymptoms = input.decision_output?.metadata?.has_symptoms ?? 
-                       !!(input.decision_output?.symptom_keys?.length);
+                       !!(input.decision_output?.symptom_keys?.length) ??
+                       !!(input.metadata?.symptomKeys?.length);
   const hasVisualAmbiguity = input.decision_output?.metadata?.has_visual_ambiguity ?? 
                               input.decision_output?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = input.decision_output?.clarification_options ?? [];
