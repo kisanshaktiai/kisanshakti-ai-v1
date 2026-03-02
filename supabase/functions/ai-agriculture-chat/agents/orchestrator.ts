@@ -5262,7 +5262,7 @@ export class AIAgentOrchestrator {
                 layeredRuleResult.prescriptions = symbolicResult.recommendations.map((r: any) => ({
                   action_type: r.action || 'RECOMMEND',
                   action_details: {
-                    response_en: r.description,
+                    action_text: r.description,
                     product: r.product,
                     dosage: r.dosage
                   },
