@@ -2028,13 +2028,14 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     } else if (rawActionText || isNonProductAction || rawActionType) {
       // Use action semantics when product is absent/placeholder
       const translatedActionType = rawActionType ? (getActionTranslation(rawActionType, lang) || rawActionType) : '';
+      const safeActionTypeText = !isLikelyRawEnglish(translatedActionType) ? translatedActionType : '';
       const translatedCause = templatePestCode
         ? getCauseTranslation(templatePestCode, lang)
         : templateDiseaseCode
           ? getCauseTranslation(templateDiseaseCode, lang)
           : '';
 
-      const actionLine = translatedActionType ||
+      const actionLine = safeActionTypeText ||
         (shouldRenderRawFarmerText(rawActionText) ? rawActionText : (lang === 'mr' ? 'पिकाचे निरीक्षण करा' : lang === 'hi' ? 'फसल की निगरानी करें' : 'Monitor closely'));
 
       const actionHeader: Record<string, string> = {
