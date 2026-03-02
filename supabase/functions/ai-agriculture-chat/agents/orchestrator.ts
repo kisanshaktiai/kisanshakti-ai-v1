@@ -7432,9 +7432,11 @@ export class AIAgentOrchestrator {
             console.error(`   ⚠️ [${traceId}] Follow-up scheduling failed:`, followUpError);
           });
         }
-      } catch (error) {
-        // Log error to database for debugging - NEVER throw
-        console.error(`   ❌ [${traceId}] Decision flow save FAILED:`, error);
+      } catch (error: any) {
+        // FIX 7 (v6.1): Log actual error details instead of empty {}
+        const errMsg = error?.message || error?.details || error?.hint || JSON.stringify(error);
+        const errCode = error?.code || 'UNKNOWN';
+        console.error(`   ❌ [${traceId}] Decision flow save FAILED [${errCode}]: ${errMsg}`);
         
         // Store error in system_errors table for debugging
         this.logDecisionSaveError(traceId, data.session_id, data.farmer_id, error)
