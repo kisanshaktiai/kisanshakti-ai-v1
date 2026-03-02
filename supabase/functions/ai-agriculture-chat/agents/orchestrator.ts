@@ -5392,9 +5392,9 @@ export class AIAgentOrchestrator {
                   canonical_group: r.canonical_group || r.category || 'pest',
                   confidence: r.confidence || symbolicResult.confidence || 0.6,
                   priority: r.priority || 50,
-                  response_mr: r.response_mr || r.response?.mr,
-                  response_hi: r.response_hi || r.response?.hi,
-                  response_en: r.response_en || r.response?.en,
+                  action_text: r.action_text || r.description,
+                  reason_text: r.reason_text,
+                  knowledge_text: r.knowledge_text,
                   actions: r.actions || [],
                   evidence_matched: r.evidence_matched || r.matched_conditions || []
                 }));
