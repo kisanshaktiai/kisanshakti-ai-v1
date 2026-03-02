@@ -864,12 +864,21 @@ export class AIAgentOrchestrator {
     const pendingOptionsCount = options.sessionState?.pendingClarificationOptions?.length || 0;
     const clarificationActive = incomingDecisionState === 'awaiting_clarification';
     
+    // PART 10: Session continuity data
+    const problemsDiscussed = (options.sessionState as any)?.problems_discussed || [];
+    const isRepeatConcern = !!(options.sessionState as any)?.is_repeat_concern;
+    const lastQueryHash = (options.sessionState as any)?.last_query_hash || '';
+    const causalChainDetected = !!(options.sessionState as any)?.causal_chain_detected;
+    
     console.log(`\n📊 [${traceId}] ═══ DECISION STATE TRACKING (Turn Start) ═══`);
     console.log(`   session_decision_state: ${incomingDecisionState}`);
     console.log(`   clarification_active: ${clarificationActive}`);
     console.log(`   pending_options_count: ${pendingOptionsCount}`);
     console.log(`   option_selected: ${clarificationActive && pendingOptionsCount > 0 && hasTextInput ? 'LIKELY' : 'NO'}`);
     console.log(`   unified_gate_mode: ${clarificationActive ? 'BLOCKED (awaiting clarification)' : 'ALLOW'}`);
+    console.log(`   problems_discussed: ${problemsDiscussed.length} (${problemsDiscussed.map((p: any) => p.problem_code).join(', ') || 'none'})`);
+    console.log(`   repeat_concern: ${isRepeatConcern}`);
+    console.log(`   causal_chain: ${causalChainDetected}`);
     console.log(`   ═════════════════════════════════════════════════════════`);
     
     // PHASE 8: Log session context for debugging
