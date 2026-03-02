@@ -798,7 +798,11 @@ export function evaluateRulesLayered(
         action_text: best.action_text,
         reason_text: best.reason_text,
         knowledge_text: best.knowledge_text,
-        i18n_key: best.i18n_key
+        i18n_key: best.i18n_key,
+        // BUG-B FIX: Propagate product fields from DB rule for downstream validation
+        active_ingredient: best.active_ingredient || null,
+        dosage_per_acre: best.dosage_per_acre || null,
+        cause: best.cause || null,
       };
       
       console.log(`📊 Decision Authority:`);

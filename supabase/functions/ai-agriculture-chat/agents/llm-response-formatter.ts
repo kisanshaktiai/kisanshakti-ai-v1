@@ -663,8 +663,14 @@ function validateLLMOutput(
     return { valid: true, violations: [] };
   }
   
-  const primaryProductName = decisionInput?.decision_output?.primary_decision?.product_details?.product_name ||
-                             decisionInput?.decision_output?.primary_decision?.application_details?.product_name;
+  // BUG-B FIX: Also fallback to active_ingredient when product_name is placeholder
+  const rawProductName = decisionInput?.decision_output?.primary_decision?.product_details?.product_name ||
+                         decisionInput?.decision_output?.primary_decision?.application_details?.product_name;
+  const primaryProductName = (rawProductName && rawProductName !== 'See structured response')
+    ? rawProductName
+    : (decisionInput?.decision_output?.primary_decision?.product_details?.active_ingredient ||
+       decisionInput?.decision_output?.primary_decision?.application_details?.active_ingredient ||
+       rawProductName);
   
   // List of generic action types that are NOT specific products
   const GENERIC_ACTION_TYPES = [

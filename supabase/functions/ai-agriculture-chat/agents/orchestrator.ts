@@ -5584,6 +5584,11 @@ export class AIAgentOrchestrator {
             console.log(`      rule_id=${layeredRuleResult.primary_decision.rule_id}`);
             console.log(`      action_type=${layeredRuleResult.primary_decision.action_type}`);
             
+            // BUG-B FIX: Extract actual product info from rule for validation
+            const ruleActiveIngredient = layeredRuleResult.primary_decision.active_ingredient || null;
+            const ruleDosage = layeredRuleResult.primary_decision.dosage_per_acre || null;
+            const ruleCause = layeredRuleResult.primary_decision.cause || null;
+            
             decisionOutput.primary_decision = {
               action_type: layeredRuleResult.primary_decision.action_type,
               rule_id: layeredRuleResult.primary_decision.rule_id,
@@ -5596,6 +5601,12 @@ export class AIAgentOrchestrator {
               normalized_score: layeredRuleResult.primary_decision.normalized_score,
               total_required: layeredRuleResult.primary_decision.total_required,
               passed_required: layeredRuleResult.primary_decision.passed_required,
+              // BUG-B FIX: Propagate product_details with actual active_ingredient
+              product_details: ruleActiveIngredient ? {
+                product_name: ruleActiveIngredient,
+                active_ingredient: ruleActiveIngredient,
+                dosage_per_acre: ruleDosage,
+              } : undefined,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
@@ -5603,8 +5614,12 @@ export class AIAgentOrchestrator {
                 reason: 'Recovered from layered_rule_result.primary_decision in orchestrator'
               },
               application_details: {
-                product_name: 'See structured response',
+                // BUG-B FIX: Use actual active_ingredient instead of placeholder
+                product_name: ruleActiveIngredient || 'See structured response',
                 product_type: 'BOTANICAL',
+                active_ingredient: ruleActiveIngredient,
+                dosage_per_acre: ruleDosage,
+                cause: ruleCause,
                 action_text: layeredRuleResult.primary_decision.action_text,
                 reason_text: layeredRuleResult.primary_decision.reason_text,
                 knowledge_text: layeredRuleResult.primary_decision.knowledge_text,
