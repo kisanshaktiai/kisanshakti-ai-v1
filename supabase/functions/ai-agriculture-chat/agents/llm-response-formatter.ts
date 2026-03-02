@@ -1847,15 +1847,37 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   // Primary recommendation - EXTRACT ONLY FROM CURRENT decision_output
   const primary = decision?.primary_decision;
   
-  // VALIDATION: Check if template data matches current session
+  // VALIDATION: sanitize placeholder/technical table text before showing to farmer
   const templatePestCode = primary?.target?.pest_code;
   const templateDiseaseCode = primary?.target?.disease_code;
-  const hasValidRecommendation = primary && 
-    primary.action_type && 
+  const rawProductName = primary?.application_details?.product_name;
+  const rawActionType = primary?.action_type;
+  const rawActionText = primary?.action_text;
+
+  const isPlaceholderText = (value?: string) => {
+    const v = (value || '').trim().toLowerCase();
+    if (!v) return true;
+    return v.includes('blocking rule is active') ||
+           v.includes('see structured response') ||
+           v.includes('see matched response') ||
+           v.includes('recommended treatment') ||
+           v.includes('monitor and reassess') ||
+           v.includes('continue monitoring');
+  };
+
+  const NON_PRODUCT_ACTIONS = new Set([
+    'NO_ACTION', 'NO_ACTION_REQUIRED', 'MONITOR_ONLY', 'MONITOR',
+    'CULTURAL_PRACTICE', 'CULTURAL_CONTROL', 'MECHANICAL_CONTROL',
+    'BIOLOGICAL_RELEASE', 'OBSERVATION', 'WAIT_AND_WATCH'
+  ]);
+
+  const hasValidProductName = !!rawProductName && !isPlaceholderText(rawProductName);
+  const isNonProductAction = NON_PRODUCT_ACTIONS.has(String(rawActionType || '').toUpperCase());
+
+  const hasValidRecommendation = !!primary &&
+    !!primary.action_type &&
     primary.action_type !== 'NO_ACTION' &&
-    (primary.application_details?.product_name || 
-     primary.application_details?.concentration ||
-     templatePestCode || templateDiseaseCode);
+    (isNonProductAction || hasValidProductName || !!rawActionText || !!templatePestCode || !!templateDiseaseCode);
   
   if (hasValidRecommendation) {
     const headers: Record<string, string> = {
