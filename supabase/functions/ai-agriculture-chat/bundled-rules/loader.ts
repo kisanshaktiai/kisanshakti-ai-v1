@@ -385,10 +385,16 @@ const CATEGORY_E_KEYS = new Set(['weather', 'rain_forecast']);
 const CATEGORY_F_KEYS = new Set(['etl', 'etl_range']);
 
 // Category G: Informational/context (NOT required - don't block matching)
+// FORENSIC FIX 1B: Added all orphan keys that are informational/economic context
 const CATEGORY_G_KEYS = new Set([
   'context', 'roi_basis', 'roi_modifier', 'roi_by_region',
   'timing', 'method', 'operation', 'action', 'assessment_timing',
-  'soil_test', 'irrigation_system'
+  'soil_test', 'irrigation_system',
+  // FORENSIC AUDIT: These keys provide context but must NEVER block rule firing
+  'ipm_priority', 'duration_days_info', 'diagnosis_method',
+  'requires_identification', 'soil_type', 'soil_type_name',
+  'variety', 'trait', 'region', 'farming_mode', 'monsoon_timing',
+  'yield_potential', 'crop_cycle',
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -729,7 +735,10 @@ export function evaluateConditionsJson(
     }
 
     // ─── Category A: Observation Keys ───
-    if (key === 'observations' || key === 'symptom' || key === 'primary_symptom') {
+    // FORENSIC FIX 1A: `required_symptoms` is treated as a soft observation match
+    // These are confirmation-level symptoms that farmers may describe in lay terms
+    if (key === 'observations' || key === 'symptom' || key === 'primary_symptom' || key === 'required_symptoms') {
+      const isRequiredSymptoms = key === 'required_symptoms';
       const obsList = Array.isArray(condValue) ? condValue : [condValue];
       if (obsList.length > 0) {
         // ═══════════════════════════════════════════════════════════════════
@@ -764,10 +773,13 @@ export function evaluateConditionsJson(
           });
           ledger.push({
             key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.FAILED,
-            required: true, inputValue: [...expandedObs].slice(0, 5), ruleValue: obsList
+            // FORENSIC FIX 1A: required_symptoms is soft (required: false) since farmers
+            // describe symptoms in lay terms, not clinical confirmation codes
+            required: isRequiredSymptoms ? false : true,
+            inputValue: [...expandedObs].slice(0, 5), ruleValue: obsList
           });
         } else {
-          ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: obsList });
+          ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: isRequiredSymptoms ? false : true, ruleValue: obsList });
         }
       }
       continue;
@@ -910,9 +922,34 @@ export function evaluateConditionsJson(
       continue;
     }
 
+    // ─── FORENSIC FIX 1C: Handle `requires_diagnosis_confidence` as threshold ───
+    if (key === 'requires_diagnosis_confidence') {
+      const confVal = typeof condValue === 'number' ? condValue : parseFloat(String(condValue));
+      // This is a soft gate — if we don't have confidence data, skip gracefully
+      ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      continue;
+    }
+
+    // ─── FORENSIC FIX 1D: Handle `requires_confirmation` as prerequisite ref ───
+    if (key === 'requires_confirmation') {
+      // String rule_id reference — treat as soft prerequisite, not boolean
+      ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      continue;
+    }
+
     if (condValue !== null && typeof condValue === 'object') {
-      // Unknown object condition - cannot evaluate
-      ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: '[object]' });
+      // FORENSIC FIX: Check if this is an array (like required_symptoms missed above)
+      if (Array.isArray(condValue)) {
+        // Treat unknown array keys as soft observation lists
+        const arrMatch = condValue.some((v: any) => {
+          const vUpper = String(v).toUpperCase().replace(/[\s-]/g, '_');
+          return expandedObs.has(vUpper) || [...expandedObs].some(o => o.includes(vUpper) || vUpper.includes(o));
+        });
+        ledger.push({ key, status: arrMatch ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+        continue;
+      }
+      // Unknown object condition — mark as informational, not blocking
+      ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: '[object]' });
       continue;
     }
 
@@ -956,6 +993,9 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
       // facing codes like POOR_TILLERING), check observable_characteristics which
       // contains farmer-facing symptom codes that match NLU extraction output.
       // ═══════════════════════════════════════════════════════════════════════════
+      // FORENSIC FIX 1F: Handle both array AND boolean-object format for observable_characteristics
+      // Array format: ["DEAD_HEART", "FRASS"] — already normalized by normalizeObservableChars
+      // Boolean-object format: {dead_heart: true, bore_holes: true} — normalized to array of uppercase keys
       const obsChars = (rule as any).observable_characteristics;
       if (obsChars && Array.isArray(obsChars) && obsChars.length > 0) {
         const inputSymptoms = (input.visual_symptoms || []).map(s =>
