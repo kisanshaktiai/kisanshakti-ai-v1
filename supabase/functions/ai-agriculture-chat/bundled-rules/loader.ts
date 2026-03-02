@@ -735,7 +735,10 @@ export function evaluateConditionsJson(
     }
 
     // ─── Category A: Observation Keys ───
-    if (key === 'observations' || key === 'symptom' || key === 'primary_symptom') {
+    // FORENSIC FIX 1A: `required_symptoms` is treated as a soft observation match
+    // These are confirmation-level symptoms that farmers may describe in lay terms
+    if (key === 'observations' || key === 'symptom' || key === 'primary_symptom' || key === 'required_symptoms') {
+      const isRequiredSymptoms = key === 'required_symptoms';
       const obsList = Array.isArray(condValue) ? condValue : [condValue];
       if (obsList.length > 0) {
         // ═══════════════════════════════════════════════════════════════════
