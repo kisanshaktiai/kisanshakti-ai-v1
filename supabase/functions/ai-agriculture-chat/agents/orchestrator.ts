@@ -4499,8 +4499,11 @@ export class AIAgentOrchestrator {
           weatherData: fusedIntelligence.weather_data,
           // PHASE 2.5 FIX: Pass GDD result for authoritative stage
           gddResult: gddResultForCanonical,
-          // CRITICAL FIX: Use ALL symptom sources, not just visual_symptoms
-          farmerObservations: uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms,
+          // BUG-A FIX: Pass FULL observation set (20+ codes) to canonical state builder
+          // so PrescriptionGate sees symptom_count >= 5 and overrides LOW confidence block
+          farmerObservations: allObservationsForPreAuth && allObservationsForPreAuth.size > 0
+            ? Array.from(allObservationsForPreAuth) 
+            : (uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms),
           nluOutput: nluOutput
         });
         
