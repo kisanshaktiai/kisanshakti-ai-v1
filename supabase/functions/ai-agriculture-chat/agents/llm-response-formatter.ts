@@ -2010,20 +2010,29 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       if (urgencyLabel) {
         parts.push(`\n${urgencyLabel}`);
       }
-    } else if (rawActionText) {
-      // Use action_text as fallback - translate generic terms
-      let translatedActionText = rawActionText;
-      for (const [key, translations] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
-        if (rawActionText.toLowerCase().includes(key)) {
-          translatedActionText = rawActionText.replace(new RegExp(key, 'gi'), translations[lang] || translations.en);
-        }
-      }
+    } else if (rawActionText || isNonProductAction || rawActionType) {
+      // Use action semantics when product is absent/placeholder
+      const translatedActionType = rawActionType ? (getActionTranslation(rawActionType, lang) || rawActionType) : '';
+      const translatedCause = templatePestCode
+        ? getCauseTranslation(templatePestCode, lang)
+        : templateDiseaseCode
+          ? getCauseTranslation(templateDiseaseCode, lang)
+          : '';
+
+      const actionLine = translatedActionType ||
+        (rawActionText && !isPlaceholderText(rawActionText) ? rawActionText : (lang === 'mr' ? 'निरीक्षण करा' : lang === 'hi' ? 'निगरानी करें' : 'Monitor closely'));
+
       const actionHeader: Record<string, string> = {
         mr: '📋 **कृती:**',
         hi: '📋 **कार्रवाई:**',
         en: '📋 **Action:**'
       };
-      parts.push(`${actionHeader[lang]}\n${translatedActionText}`);
+      parts.push(`${actionHeader[lang]}\n1. ${actionLine}`);
+
+      if (translatedCause && translatedCause !== 'UNKNOWN') {
+        const causePrefix = lang === 'mr' ? '🔎 कारण:' : lang === 'hi' ? '🔎 कारण:' : '🔎 Cause:';
+        parts.push(`${causePrefix} ${translatedCause}`);
+      }
     } else {
       // No valid product - ask for more info instead of giving wrong advice
       const askMore: Record<string, string> = {
