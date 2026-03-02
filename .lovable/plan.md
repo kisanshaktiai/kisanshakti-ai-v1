@@ -1,119 +1,86 @@
+# Pipeline Stability Fixes v5.5 — Architectural Correction Specification
 
+## Fixes Applied (2026-03-02)
 
-# Implementation Plan: Fix 7 Critical Bugs in Symbolic Decision Brain
+### v6.0 Fixes (Current) — Deep Forensic Audit Critical Code Fixes
 
-## Problem Summary
+#### FIX 20: `required_symptoms` Orphan Key Unblocked — FIXED
+- **File:** `bundled-rules/loader.ts` (evaluateConditionsJson)
+- **Root cause:** `required_symptoms` key (array) in 17 rules hit generic object fallback → UNEVALUABLE with required=true → permanently blocked ALL shoot borer treatment rules (SC_PEST_EARLY_SHOOT_BORER_004, SC_PEST_TOP_BORER_004)
+- **Fix:** Added `required_symptoms` to observation key handler (alongside `observations`, `symptom`, `primary_symptom`). Marked as `required: false` (soft requirement) since farmers describe symptoms in lay terms, not clinical confirmation codes. Array values are matched against expandedObs using exact, containment, and root-word matching.
 
-Forensic logs show that a farmer reporting "holes in sugarcane stem + top leaves drying" (textbook shoot borer emergency) received generic "continue monitoring" advice. Root cause: 5 interacting bugs in the authority gate, symptom wiring, response propagation, and observation authority system.
+#### FIX 21: `roi_by_region`/`roi_modifier` Object Keys Unblocked — FIXED
+- **File:** `bundled-rules/loader.ts` (CATEGORY_G_KEYS + generic object fallback)
+- **Root cause:** 29 soil/nitrogen rules had `roi_by_region` (nested JSON object) → UNEVALUABLE → required=true → permanently blocked
+- **Fix:** Already in CATEGORY_G_KEYS. Additionally, the generic object/array fallback at end of evaluator now marks unknown objects/arrays as `required: false` with SKIPPED_NO_DATA instead of UNEVALUABLE with required=true. This prevents any remaining orphan object keys from blocking rules.
 
-## Bug-by-Bug Fix Plan
+#### FIX 22: `requires_diagnosis_confidence` Threshold Key — FIXED
+- **File:** `bundled-rules/loader.ts`
+- **Root cause:** 9 rules had numeric threshold with no evaluator → UNEVALUABLE → blocked
+- **Fix:** Explicit handler marks as SKIPPED_NO_DATA with required=false (soft gate).
 
-### FIX 1 — `blocksCtopTreatments()` blocks when authority is NONE (CRITICAL)
+#### FIX 23: `requires_confirmation` String Key — FIXED
+- **File:** `bundled-rules/loader.ts`
+- **Root cause:** 7 rules had string rule_id treated as boolean → wrong result
+- **Fix:** Explicit handler marks as SKIPPED_NO_DATA with required=false (soft prerequisite).
 
-**File:** `supabase/functions/ai-agriculture-chat/decision/authority-types.ts`
+#### FIX 24: Expanded CATEGORY_G Informational Keys — FIXED
+- **File:** `bundled-rules/loader.ts` (CATEGORY_G_KEYS set)
+- **Root cause:** `ipm_priority`, `crop_cycle`, `diagnosis_method`, `requires_identification`, and other context keys were falling through to generic handlers → FAILED or UNEVALUABLE → blocked rules
+- **Fix:** Added 13 additional keys to CATEGORY_G_KEYS: `ipm_priority`, `duration_days_info`, `diagnosis_method`, `requires_identification`, `soil_type`, `soil_type_name`, `variety`, `trait`, `region`, `farming_mode`, `monsoon_timing`, `yield_potential`, `crop_cycle`.
 
-Line 359-367: `blocksCtopTreatments()` includes `DecisionAuthority.NONE` in the blocking set. When authority is NONE (unresolved), this incorrectly blocks ALL treatments. NONE means "no authority established" — it should not block.
+#### FIX 25: Generic Object/Array Fallback Made Non-Blocking — FIXED
+- **File:** `bundled-rules/loader.ts` (end of evaluateConditionsJson)
+- **Root cause:** Any unrecognized object/array condition value hit `UNEVALUABLE, required: true` → permanent block
+- **Fix:** Unknown arrays are now treated as soft observation lists (matched against expandedObs, required: false). Unknown objects are marked SKIPPED_NO_DATA with required: false.
 
-**Change:** Remove `DecisionAuthority.NONE` from the blocking array. Only SAFETY, LAND, CLIMATE, SYSTEM should block.
+#### BUG-003 Boolean-Object observable_characteristics — ALREADY FIXED
+- **File:** `bundled-rules/loader.ts` (normalizeObservableChars)
+- `normalizeObservableChars` already converts `{dead_heart: true}` → `["DEAD_HEART"]` at load time. The 64 rules with boolean-object format were already being normalized to arrays before reaching makeExecutable.
 
-**Also fix:** `unified-decision-gate.ts` line 431 already has a guard `&& authority_decision.authority !== DecisionAuthority.NONE` but the function still logs `Authority Blocks Crop: true` because `blocksCtopTreatments()` returns true BEFORE the guard is checked. Fix the function itself so the log is correct.
+### Impact Summary
+- **17 shoot borer treatment rules** — UNBLOCKED (were permanently blocked)
+- **29 soil/nitrogen management rules** — UNBLOCKED
+- **9 diagnosis confidence rules** — UNBLOCKED
+- **7 confirmation prerequisite rules** — UNBLOCKED
+- **~16 IPM priority rules** — UNBLOCKED
+- **~14 crop cycle rules** — UNBLOCKED
+- **Total rules unblocked: ~92 rules** previously permanently blocked by orphan condition keys
 
----
+### Remaining DB Data Gaps (require manual data population)
+- 450 rules missing `active_ingredient` (14% coverage)
+- 479 rules missing `application_method` (8% coverage)
+- 490 rules missing `roi_cost_saved_min/max` (6% coverage)
+- 5 FERT_SCHEDULE rules with NULL action_text
+- 45 orphan observation codes not in observation_master
+- ~484 observation codes missing Marathi translations
+- 184 rules with empty observable_characteristics
 
-### FIX 2 — `symptom_keys` not wired from orchestrator to index.ts (CRITICAL)
+### Forward Chaining (enables_rule_ids, triggers_rule_ids) — DEFERRED
+- Columns populated in DB but not evaluated in code
+- Requires separate implementation sprint
 
-**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
+## Guaranteed Invariants (v6.0)
+1. `required_symptoms` array keys are evaluated as soft observation matches, never block rules
+2. Unknown object/array condition values are non-blocking (required: false)
+3. All informational/context keys in CATEGORY_G never block rule firing
+4. `requires_diagnosis_confidence` and `requires_confirmation` are soft gates
+5. Boolean-object observable_characteristics normalized to arrays at load time
+6. All v5.1-v5.6 invariants remain in effect
 
-The orchestrator assembles 20+ observations in `allObservationsForPreAuth` but does NOT pass them in the response metadata. The `index.ts` reads `orchestratorResponse.metadata?.symptomKeys` (line 990) but NO return path in the orchestrator sets `symptomKeys`. The `decision_output` also doesn't carry `symptom_keys`, `observation_keys`, or `canonical_observations`.
+## Previous Fixes
 
-**Change:** In every return block that builds the metadata object (there are ~6 return paths, at approximately lines 5651, 6216, 5887, and others), add:
-- `symptomKeys: Array.from(allObservationsForPreAuth || [])` to the metadata
-- `symptom_keys: Array.from(allObservationsForPreAuth || [])` to the `decisionOutput` object
+### v5.5-v5.6
+- FIX 15-19: Intent classification, LLM formatter formats, diagnostic pre-filter, dual confidence, session continuity
 
-Also add `isEmergency: boolean` to metadata, computed from whether emergency observation codes (DEAD_HEART_PRESENT, STEM_BORING_MARKS, BORER_DAMAGE, BORE_HOLES_AT_BASE, LARVAE_PRESENT, PLANT_DEATH_PATCHES, SEVERITY_HIGH) are present in `allObservationsForPreAuth`.
+### v5.4
+- BUG 12-14: Observable characteristics matching, root-word matching, data_authority_rank sorting
 
-**Affected return paths:**
-1. `IMMEDIATE_PRIMARY_DECISION` return (~line 5644)
-2. Main `DECISION_PROVIDED` return (~line 6208)
-3. `PHOTO_REQUEST` return (~line 5684)
-4. All `CLARIFICATION_QUESTION` returns
+### v5.3
+- BUG 10-11: Symbolic recommendations reach primary_decision, DiagnosisOnlyMode guard
 
----
+### v5.2
+- BUG 6-9: Intent disconnection, missing scopes, prescription gate, Phase 3 override
 
-### FIX 3 — matched_responses count=0 despite rules firing (CRITICAL)
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-The `matched_responses` are already wired at line 5607-5609. The issue is upstream: the `layered-rule-evaluator.ts` requires both `action_type` AND (`action_text` OR `i18n_key`) for a response to be "eligible" (line 611-615). Rules that have `action_type` but null `action_text` AND null `i18n_key` are excluded from the eligible set and thus from `primary_decision`.
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts`
-
-**Change:** In the eligibility filter (~line 611), relax the requirement: if a rule has `action_type` and either `action_text`, `i18n_key`, `reason_text`, OR `knowledge_text`, it should be eligible. Many rules have `reason_text` and `knowledge_text` but null `action_text`. The formatter can build a response from `reason_text` + `knowledge_text` when `action_text` is missing.
-
-Also: ensure `matched_responses` is populated in the `decisionOutput` object sent from orchestrator (already done at line 5607-5609, but verify it flows through the `IMMEDIATE_PRIMARY_DECISION` early return path at line 5644 which currently does NOT include `matched_responses`).
-
----
-
-### FIX 4 — "A blocking rule is active" string in product field
-
-**Files:** Search across `supabase/functions/ai-agriculture-chat/` for this string. If not found in codebase, it's generated by the LLM formatter or by graph-control logic at runtime. The most likely source is `decision-graph-bridge.ts` where `blockingRule` sets a reason string that gets misrouted into a product field.
-
-**Change in `decision-graph-bridge.ts`:** When `isBlocked = true`, the function returns a `blockingRule` with `reason` field. Ensure no code path places this `reason` into a `product` or `product_name` field. In the `evaluateDecisionGraph()` return at line ~162, when `blocked=true`, the `recommendations` array should be EMPTY — no fake recommendation objects should be created.
-
----
-
-### FIX 5 — INFERRED emergency codes blocked from damage detection (HIGH)
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-The CropDamageDetector and terminal gate use only CONFIRMED+EXTRACTED codes. But LLM-inferred codes like DEAD_HEART_PRESENT and STEM_BORING_MARKS are tagged INFERRED (from semantic extractor) and thus excluded from damage severity calculation.
-
-**Change:** Where damage level is calculated (in the crop damage detection section), promote INFERRED codes that match a set of emergency-level observation codes to EXTRACTED authority for damage calculation purposes only. Define:
-
-```
-EMERGENCY_OBSERVATION_CODES = {DEAD_HEART_PRESENT, STEM_BORING_MARKS, BORER_DAMAGE, BORE_HOLES_AT_BASE, FRASS_VISIBLE, LARVAE_PRESENT, PLANT_DEATH_PATCHES, WILTING_SEVERE, SEVERITY_HIGH}
-```
-
-For damage severity calculation, use `confirmedExtractedCodes ∪ (inferredCodes ∩ EMERGENCY_OBSERVATION_CODES)`.
-
----
-
-### FIX 6 — Add missing columns to `treatment_outcomes` table (DB Migration)
-
-**Table:** `treatment_outcomes`
-
-Add columns: `crop_code TEXT`, `crop_stage TEXT`, `rule_id TEXT`, `days_since_sowing INTEGER`.
-
----
-
-### FIX 7 — Decision flow save failing silently (MEDIUM)
-
-**File:** `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-
-The `saveDecisionFlowNonBlocking` method likely fails because it references fields that don't exist on the target table. Add error logging with the actual error message instead of empty `{}`.
-
-**Change:** In the catch block of `saveDecisionFlowNonBlocking`, log `error.message` and `error.details` (Supabase errors have a `details` field) instead of just `error`.
-
----
-
-## Implementation Order
-
-1. **FIX 1** (authority-types.ts) — 1 line change, highest impact
-2. **FIX 6** (DB migration) — prerequisite for FIX 7
-3. **FIX 2** (orchestrator.ts) — wire symptomKeys + isEmergency to metadata
-4. **FIX 5** (orchestrator.ts) — promote emergency INFERRED codes
-5. **FIX 3** (layered-rule-evaluator.ts + orchestrator.ts) — relax eligibility, wire matched_responses in early return
-6. **FIX 4** (decision-graph-bridge.ts) — prevent error string in product field
-7. **FIX 7** (orchestrator.ts) — improve error logging
-
-## Verification
-
-After all fixes, test with: "उसाच्या खोडात छिद्र पडली आहेत आणि वरची पानं सुकतायत" (SUGARCANE, TILLERING, 81 DAS)
-
-Expected logs:
-- `Authority Blocks Crop: false`
-- `Has Symptoms: true`, `symptoms=7+`
-- `matched_responses count: 3+`
-- No `PRIMARY_ACTION_CONTRACT_VIOLATION`
-- Response type: PRESCRIPTION/TREATMENT, not MONITOR
-
+### v5.1
+- BUG 1-5: ReferenceError, dual detector, stage drift, redundant execution, authority blocks

@@ -608,10 +608,13 @@ export function evaluateRulesLayered(
     return true;
   });
   
+  // FIX 3 (v6.1): Relaxed eligibility — accept rules with reason_text or knowledge_text
+  // when action_text is null. Many DB rules have valid reason/knowledge but null action_text.
+  // The formatter can build a response from reason_text + knowledge_text.
   const eligibleResponses = result.matched_responses.filter(r => 
     r.rule_id && 
     r.action_type && 
-    (r.action_text || r.i18n_key)
+    (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text)
   );
   
   if (eligibleResponses.length > 0) {

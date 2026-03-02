@@ -514,26 +514,53 @@ export function detectCropDamageWithAuthority(
   authoredObservations: AuthoredObservationSet,
   crossCropSymptoms?: string[]
 ): CropDamageDetectionResult {
-  // Get only CONFIRMED + EXTRACTED codes for terminal gate
+  // FIX 5 (v6.1): Promote INFERRED emergency codes to terminal gate
+  // Rationale: When LLM correctly identifies DEAD_HEART_PRESENT or STEM_BORING_MARKS
+  // from farmer's description, these are agronomically valid emergency indicators
+  // even if tagged INFERRED rather than EXTRACTED.
+  const EMERGENCY_PROMOTION_CODES = new Set([
+    'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
+    'FRASS_VISIBLE', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES', 'WILTING_SEVERE',
+    'STEM_ROT_PRESENT', 'CROWN_ROT', 'SEVERITY_HIGH', 'MUD_TUBES'
+  ]);
+  
+  // Get CONFIRMED + EXTRACTED codes for terminal gate
   const terminalGateCodes = authoredObservations.getCodesForTerminalGate();
   
-  console.log(`\n🔬 [CropDamageDetector v5.0 AUTHORITY-AWARE]`);
+  // Also get INFERRED codes that are emergency-level and promote them
+  const allCodes = authoredObservations.toFlatSet();
+  const confirmedSet = new Set(terminalGateCodes);
+  const promotedCodes: string[] = [];
+  
+  for (const code of allCodes) {
+    if (!confirmedSet.has(code) && EMERGENCY_PROMOTION_CODES.has(code)) {
+      promotedCodes.push(code);
+    }
+  }
+  
+  // Merge: terminal gate codes + promoted emergency INFERRED codes
+  const enhancedTerminalCodes = [...terminalGateCodes, ...promotedCodes];
+  
+  console.log(`\n🔬 [CropDamageDetector v5.1 AUTHORITY-AWARE + EMERGENCY PROMOTION]`);
   console.log(`   Total observations: ${authoredObservations.size}`);
-  console.log(`   Terminal gate codes (CONFIRMED+EXTRACTED only): ${terminalGateCodes.length}`);
-  console.log(`   Terminal gate codes: [${terminalGateCodes.join(', ')}]`);
+  console.log(`   Terminal gate codes (CONFIRMED+EXTRACTED): ${terminalGateCodes.length}`);
+  console.log(`   Emergency INFERRED promoted: ${promotedCodes.length} [${promotedCodes.join(', ')}]`);
+  console.log(`   Enhanced terminal codes: ${enhancedTerminalCodes.length}`);
   console.log(`   Authority breakdown: ${authoredObservations.toSummary()}`);
   
-  // NOTE: We do NOT pass crossCropSymptoms to the terminal gate.
-  // Cross-crop symptoms are SYNTHETIC and must not trigger terminal mode.
-  const terminalGateSet = new Set(terminalGateCodes);
+  // NOTE: Cross-crop symptoms are SYNTHETIC and must not trigger terminal mode.
+  const terminalGateSet = new Set(enhancedTerminalCodes);
   
-  // Run the detection on ONLY the filtered codes (no cross-crop injection)
+  // Run the detection on enhanced codes (CONFIRMED + EXTRACTED + emergency INFERRED)
   const result = detectCropDamageForDiagnosis(terminalGateSet);
   
   // Log the authority-filtered result
   if (result.detected) {
-    console.log(`   ✅ [AUTHORITY-FILTERED] Damage detected: ${result.damage_type}`);
-    console.log(`   Triggering observations (all CONFIRMED/EXTRACTED): ${result.damage_observations.join(', ')}`);
+    console.log(`   ✅ [AUTHORITY-FILTERED+PROMOTED] Damage detected: ${result.damage_type}`);
+    console.log(`   Triggering observations: ${result.damage_observations.join(', ')}`);
+    if (promotedCodes.length > 0) {
+      console.log(`   🚨 [EMERGENCY_PROMOTION] ${promotedCodes.length} INFERRED codes promoted for damage detection`);
+    }
   } else {
     // Check if unfiltered set WOULD have triggered (for logging only)
     const unfilteredResult = detectCropDamageForDiagnosis(
@@ -541,9 +568,9 @@ export function detectCropDamageWithAuthority(
       crossCropSymptoms
     );
     if (unfilteredResult.detected) {
-      console.log(`   🛡️ [AUTHORITY-GUARD] Terminal gate BLOCKED`);
+      console.log(`   🛡️ [AUTHORITY-GUARD] Terminal gate BLOCKED even after emergency promotion`);
       console.log(`   Unfiltered would have triggered: ${unfilteredResult.damage_type}`);
-      console.log(`   Blocked codes (INFERRED/SYNTHETIC): ${
+      console.log(`   Blocked codes (non-emergency INFERRED/SYNTHETIC): ${
         unfilteredResult.damage_observations
           .filter(code => !terminalGateSet.has(code))
           .join(', ')

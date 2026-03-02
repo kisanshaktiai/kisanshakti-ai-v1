@@ -357,12 +357,15 @@ export function isTreatmentAuthority(authority: DecisionAuthority): boolean {
  * Check if authority blocks crop-level treatments
  */
 export function blocksCtopTreatments(authority: DecisionAuthority): boolean {
+  // FIX 1 (v6.1): NONE and UNCONFIRMED must NEVER block crop treatments.
+  // They mean "no authority decision made yet" — the farmer should still get
+  // symptom-driven prescriptions. Only explicit blocking authorities block.
   return [
     DecisionAuthority.SAFETY,
     DecisionAuthority.LAND,
     DecisionAuthority.CLIMATE,
     DecisionAuthority.SYSTEM,
-    DecisionAuthority.NONE
+    // REMOVED: DecisionAuthority.NONE — was blocking ALL treatments when authority unresolved
   ].includes(authority);
 }
 
