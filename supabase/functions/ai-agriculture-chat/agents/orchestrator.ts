@@ -4754,10 +4754,18 @@ export class AIAgentOrchestrator {
               text_mr: clarificationPrompt,
               text_hi: clarificationPrompt,
               text_en: clarificationPrompt,
-              options: contextValidation.clarification_options?.map((opt, idx) => ({
-                value: String(idx + 1),
-                label: opt.label
-              })) || []
+              options: await (async () => {
+                const rawOpts = contextValidation.clarification_options || [];
+                const translated = await translateClarificationOptions(
+                  rawOpts.map(o => ({ label: o.label, observation_key: (o as any).observation_key })),
+                  lang,
+                  this.supabase
+                );
+                return translated.map((opt, idx) => ({
+                  value: String(idx + 1),
+                  label: typeof opt === 'string' ? opt : opt.label
+                }));
+              })()
             },
             metadata: {
               confidence: 0.5,
