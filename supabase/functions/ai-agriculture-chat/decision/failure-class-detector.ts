@@ -513,46 +513,47 @@ export function getFailureClassFallbackOptions(
   // NOTE: Language parameter retained for interface compatibility
   // Actual localization uses i18n keys at render time
   
+  // FIX 34: Labels are observation_keys only — localization happens via translateClarificationOptions() at render time
   const optionsByClass: Record<FailureClass, FallbackOption[]> = {
     ESTABLISHMENT_FAILURE: [
-      { observation_key: 'GERMINATION_FAILURE', label: 'Seeds not sprouting', category: 'establishment' },
-      { observation_key: 'SEEDLING_DEATH', label: 'Seedlings dying', category: 'establishment' },
-      { observation_key: 'GAPS_IN_FIELD', label: 'Gaps in the field', category: 'establishment' },
-      { observation_key: 'ROOT_ROT', label: 'Root rotting', category: 'establishment' }
+      { observation_key: 'GERMINATION_FAILURE', label: 'GERMINATION_FAILURE', category: 'establishment' },
+      { observation_key: 'SEEDLING_DEATH', label: 'SEEDLING_DEATH', category: 'establishment' },
+      { observation_key: 'GAPS_IN_FIELD', label: 'GAPS_IN_FIELD', category: 'establishment' },
+      { observation_key: 'ROOT_ROT', label: 'ROOT_ROT', category: 'establishment' }
     ],
     VEGETATIVE_STRESS: [
-      { observation_key: 'STUNTED_GROWTH', label: 'Stunted growth', category: 'stress' },
-      { observation_key: 'WILTING', label: 'Plant wilting', category: 'stress' },
-      { observation_key: 'LEAF_CURLING', label: 'Leaf curling', category: 'stress' },
-      { observation_key: 'YELLOWING', label: 'Yellowing leaves', category: 'stress' }
+      { observation_key: 'STUNTED_GROWTH', label: 'STUNTED_GROWTH', category: 'stress' },
+      { observation_key: 'WILTING', label: 'WILTING', category: 'stress' },
+      { observation_key: 'LEAF_CURLING', label: 'LEAF_CURLING', category: 'stress' },
+      { observation_key: 'LEAF_YELLOWING', label: 'LEAF_YELLOWING', category: 'stress' }
     ],
     PEST_DAMAGE: [
-      { observation_key: 'INSECT_VISIBLE', label: 'Insects visible', category: 'pest' },
-      { observation_key: 'HOLES_VISIBLE', label: 'Holes in leaves', category: 'pest' },
-      { observation_key: 'DEAD_HEART', label: 'Dead heart (central shoot dry)', category: 'pest' },
-      { observation_key: 'CATERPILLAR_VISIBLE', label: 'Caterpillars visible', category: 'pest' }
+      { observation_key: 'INSECTS_VISIBLE', label: 'INSECTS_VISIBLE', category: 'pest' },
+      { observation_key: 'HOLES_VISIBLE', label: 'HOLES_VISIBLE', category: 'pest' },
+      { observation_key: 'DEAD_HEART', label: 'DEAD_HEART', category: 'pest' },
+      { observation_key: 'CATERPILLAR_VISIBLE', label: 'CATERPILLAR_VISIBLE', category: 'pest' }
     ],
     DISEASE_SYMPTOM: [
-      { observation_key: 'LEAF_SPOTS', label: 'Spots on leaves', category: 'disease' },
-      { observation_key: 'FUNGAL_GROWTH', label: 'Fungal growth visible', category: 'disease' },
-      { observation_key: 'WILT_DISEASE', label: 'Plant wilting (disease)', category: 'disease' },
-      { observation_key: 'RUST_PRESENT', label: 'Rust on leaves', category: 'disease' }
+      { observation_key: 'LEAF_SPOTS', label: 'LEAF_SPOTS', category: 'disease' },
+      { observation_key: 'FUNGAL_GROWTH', label: 'FUNGAL_GROWTH', category: 'disease' },
+      { observation_key: 'WILT_DISEASE', label: 'WILT_DISEASE', category: 'disease' },
+      { observation_key: 'RUST_PRESENT', label: 'RUST_PRESENT', category: 'disease' }
     ],
     NUTRIENT_DEFICIENCY: [
-      { observation_key: 'LEAF_YELLOWING', label: 'Yellowing leaves', category: 'nutrient' },
-      { observation_key: 'CHLOROSIS', label: 'Chlorosis (pale leaves)', category: 'nutrient' },
-      { observation_key: 'PURPLE_LEAVES', label: 'Purple coloration', category: 'nutrient' },
-      { observation_key: 'STUNTED_GROWTH', label: 'Stunted plants', category: 'nutrient' }
+      { observation_key: 'LEAF_YELLOWING', label: 'LEAF_YELLOWING', category: 'nutrient' },
+      { observation_key: 'CHLOROSIS', label: 'CHLOROSIS', category: 'nutrient' },
+      { observation_key: 'PURPLISH_LEAVES', label: 'PURPLISH_LEAVES', category: 'nutrient' },
+      { observation_key: 'STUNTED_GROWTH', label: 'STUNTED_GROWTH', category: 'nutrient' }
     ],
     WEED_COMPETITION: [
-      { observation_key: 'WEED_PRESENT', label: 'Weeds growing in field', category: 'weed' },
-      { observation_key: 'WEED_HEAVY', label: 'Heavy weed infestation', category: 'weed' },
-      { observation_key: 'WEED_ABOVE_CROP', label: 'Weeds taller than crop', category: 'weed' },
-      { observation_key: 'GRASS_WEEDS', label: 'Grass weeds dominating', category: 'weed' }
+      { observation_key: 'WEED_PRESENT', label: 'WEED_PRESENT', category: 'weed' },
+      { observation_key: 'WEED_HEAVY', label: 'WEED_HEAVY', category: 'weed' },
+      { observation_key: 'WEED_ABOVE_CROP', label: 'WEED_ABOVE_CROP', category: 'weed' },
+      { observation_key: 'GRASS_WEEDS', label: 'GRASS_WEEDS', category: 'weed' }
     ],
     UNKNOWN: [
-      { observation_key: 'GENERAL_PROBLEM', label: 'General problem', category: 'general' },
-      { observation_key: 'NEED_PHOTO', label: 'Need to see photo', category: 'general' }
+      { observation_key: 'UNKNOWN_SYMPTOM', label: 'UNKNOWN_SYMPTOM', category: 'general' },
+      { observation_key: 'PHOTO_REQUEST', label: 'PHOTO_REQUEST', category: 'general' }
     ]
   };
   

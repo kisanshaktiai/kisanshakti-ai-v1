@@ -5818,9 +5818,6 @@ export class AIAgentOrchestrator {
                 reason_text: layeredRuleResult.primary_decision.reason_text,
                 knowledge_text: layeredRuleResult.primary_decision.knowledge_text,
                 i18n_key: layeredRuleResult.primary_decision.i18n_key,
-                response_mr: layeredRuleResult.primary_decision.response_mr,
-                response_hi: layeredRuleResult.primary_decision.response_hi,
-                response_en: layeredRuleResult.primary_decision.response_en,
                 rule_id: layeredRuleResult.primary_decision.rule_id,
                 // RICH DATA: Propagate all agronomic fields for response generation
                 organic_alternative: layeredRuleResult.primary_decision.organic_alternative || null,

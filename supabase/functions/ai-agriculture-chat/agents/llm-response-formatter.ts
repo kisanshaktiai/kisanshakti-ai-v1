@@ -2024,10 +2024,10 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       parts.push(ipmHeader[lang]);
       
       matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        // Use the response in farmer's preferred language
-        const localizedResponse = resp[`response_${lang}`] || resp.response_en || resp.response_mr || '';
-        if (localizedResponse) {
-          parts.push(`\n${idx + 1}. **${resp.cause || 'उपचार'}:**\n${localizedResponse}`);
+        // FIX 34: Use action_text/reason_text (SSOT) instead of dropped response_mr/hi/en
+        const actionContent = resp.action_text || resp.reason_text || '';
+        if (actionContent) {
+          parts.push(`\n${idx + 1}. **${resp.cause || 'उपचार'}:**\n${actionContent}`);
         }
       });
     } else {

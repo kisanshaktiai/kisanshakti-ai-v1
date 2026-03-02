@@ -417,11 +417,10 @@ export class ResponseGenerator {
              'Continue monitoring';
     }
     
+    // FIX 34: Use action_text (SSOT) instead of dropped response_mr/hi/en
     return recommendations.slice(0, 3).map((rec, i) => {
-      const response = language === 'mr' ? rec.actions.response_mr :
-                       language === 'hi' ? rec.actions.response_hi :
-                       rec.actions.response_en;
-      return `${i + 1}. ${response || rec.cause}`;
+      const response = rec.actions.action_text || rec.actions.reason_text || rec.cause;
+      return `${i + 1}. ${response}`;
     }).join('\n');
   }
   
