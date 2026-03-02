@@ -457,8 +457,9 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
   }
   
   // Growth anomaly - फुट कमी (poor tillering), वाढ कमी/नाही (poor growth)
+  // PART 2 FIX: These are ACTIONABLE problems — never route to UNKNOWN
   if (/फुट.*कमी|फुट.*नाही|वाढ.*कमी|वाढ.*नाही|वाढ.*मंद|वाढ.*थांब|बढ़.*कम|बढ़.*रुक|stunted|slow.*growth|poor.*growth|फुटवा|tillering/i.test(original)) {
-    return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.6 };
+    return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.7 };
   }
   
   // Weed-related (Devanagari + English + Romanized)
@@ -506,10 +507,6 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
   if (/उस|ऊस/i.test(original) && /मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.55 };
   }
-  // उस/ऊस + करावे/उपाय (generic "what to do" without specific symptom) → UNKNOWN
-  if (/उस|ऊस/i.test(original) && /करावे|उपाय/i.test(original) && !/मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
-    return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.3 };
-  }
   
   // Stem damage / borer
   if (/खोड|तना|stem|borer|छेदक|\bkhod\b/i.test(original)) {
@@ -521,9 +518,25 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
     return { intent_code: 'HARVEST_TIMING' as IntentCode, confidence: 0.5 };
   }
   
-  // Generic "what to do" / "remedy" with any crop mention (catch-all for treatment queries)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PART 2 FIX: "काय टाकू" / "काय द्यायचं" / "काय मारू" = INPUT_RECOMMENDATION
+  // This is a DIRECT PRESCRIPTION REQUEST — farmer wants specific product recommendation
+  // Must NEVER be classified as GENERAL_INFO or UNKNOWN_OBSERVATION
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (/काय\s*(टाकू|टाक|द्यायचं|द्या|मारू|मार|द्यावं|द्यावे|करू|करायचं)|क्या\s*(डालें|डालू|दें|दूं|मारें|करें)|what\s*(to\s*)?(apply|use|give|spray|put)/i.test(original)) {
+    // उस/ऊस + काय टाकू with problem context → route to problem-specific intent (already handled above)
+    // Pure "काय टाकू" without problem description → INPUT_RECOMMENDATION
+    return { intent_code: 'INPUT_RECOMMENDATION' as IntentCode, confidence: 0.65 };
+  }
+  
+  // उस/ऊस + करावे/उपाय (generic "what to do" without specific symptom) → INPUT_RECOMMENDATION (not UNKNOWN)
+  if (/उस|ऊस/i.test(original) && /करावे|उपाय/i.test(original) && !/मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
+    return { intent_code: 'INPUT_RECOMMENDATION' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Generic "what to do" / "remedy" with any crop mention
   if (/काय करावे|उपाय|इलाज|क्या करें|kya kare|upay|remedy|treatment/i.test(original)) {
-    return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.3 };
+    return { intent_code: 'INPUT_RECOMMENDATION' as IntentCode, confidence: 0.45 };
   }
   
   return null;
