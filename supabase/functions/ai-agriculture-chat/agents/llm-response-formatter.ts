@@ -2035,7 +2035,7 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
           : '';
 
       const actionLine = translatedActionType ||
-        (rawActionText && !isPlaceholderText(rawActionText) ? rawActionText : (lang === 'mr' ? 'निरीक्षण करा' : lang === 'hi' ? 'निगरानी करें' : 'Monitor closely'));
+        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : (lang === 'mr' ? 'पिकाचे निरीक्षण करा' : lang === 'hi' ? 'फसल की निगरानी करें' : 'Monitor closely'));
 
       const actionHeader: Record<string, string> = {
         mr: '📋 **कृती:**',
