@@ -5529,7 +5529,9 @@ export class AIAgentOrchestrator {
             safety_status: 'PENDING',
             rules_applied: 0,
             processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed
+            agents_used: agentsUsed,
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
           }
         };
       }
