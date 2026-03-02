@@ -1858,11 +1858,25 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     const v = (value || '').trim().toLowerCase();
     if (!v) return true;
     return v.includes('blocking rule is active') ||
+           v.includes('a blocking rule has been triggered') ||
            v.includes('see structured response') ||
            v.includes('see matched response') ||
            v.includes('recommended treatment') ||
            v.includes('monitor and reassess') ||
-           v.includes('continue monitoring');
+           v.includes('continue monitoring') ||
+           v.includes('no treatment required at this stage') ||
+           v.includes('monitor pest population regularly') ||
+           v.includes('current information is insufficient');
+  };
+
+  const isLikelyRawEnglish = (value?: string) => {
+    const v = (value || '').trim();
+    if (!v || lang === 'en') return false;
+    return /[A-Za-z]/.test(v);
+  };
+
+  const shouldRenderRawFarmerText = (value?: string) => {
+    return !!value && !isPlaceholderText(value) && !isLikelyRawEnglish(value);
   };
 
   const NON_PRODUCT_ACTIONS = new Set([
@@ -1871,13 +1885,16 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     'BIOLOGICAL_RELEASE', 'OBSERVATION', 'WAIT_AND_WATCH'
   ]);
 
-  const hasValidProductName = !!rawProductName && !isPlaceholderText(rawProductName);
+  const PRODUCT_AS_CAUSE_PATTERN = /\b(pest|disease|deficiency|borer|infestation|population|symptom)\b/i;
+  const hasValidProductName = !!rawProductName &&
+    !isPlaceholderText(rawProductName) &&
+    !PRODUCT_AS_CAUSE_PATTERN.test(rawProductName);
   const isNonProductAction = NON_PRODUCT_ACTIONS.has(String(rawActionType || '').toUpperCase());
 
   const hasValidRecommendation = !!primary &&
     !!primary.action_type &&
     primary.action_type !== 'NO_ACTION' &&
-    (isNonProductAction || hasValidProductName || !!rawActionText || !!templatePestCode || !!templateDiseaseCode);
+    (isNonProductAction || hasValidProductName || shouldRenderRawFarmerText(rawActionText) || !!templatePestCode || !!templateDiseaseCode);
   
   if (hasValidRecommendation) {
     const headers: Record<string, string> = {
@@ -1889,8 +1906,6 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     
     // CRITICAL: Extract from current decision_output ONLY
     const safeProductName = hasValidProductName ? rawProductName : '';
-    const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
-    const method = primary.application_details?.method || primary.application_details?.application_method;
     const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
     const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
@@ -1931,8 +1946,8 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
         recText += ` @ ${dosage}`;
       }
 
-      // For generic actions, include action text only when present and not placeholder
-      if (isGenericAction && rawActionText && !isPlaceholderText(rawActionText)) {
+      // For generic actions, include action text only when localized/safe for farmer display
+      if (isGenericAction && shouldRenderRawFarmerText(rawActionText)) {
         recText += `\n   🔧 ${rawActionText}`;
       }
       
@@ -2013,14 +2028,15 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     } else if (rawActionText || isNonProductAction || rawActionType) {
       // Use action semantics when product is absent/placeholder
       const translatedActionType = rawActionType ? (getActionTranslation(rawActionType, lang) || rawActionType) : '';
+      const safeActionTypeText = !isLikelyRawEnglish(translatedActionType) ? translatedActionType : '';
       const translatedCause = templatePestCode
         ? getCauseTranslation(templatePestCode, lang)
         : templateDiseaseCode
           ? getCauseTranslation(templateDiseaseCode, lang)
           : '';
 
-      const actionLine = translatedActionType ||
-        (rawActionText && !isPlaceholderText(rawActionText) ? rawActionText : (lang === 'mr' ? 'निरीक्षण करा' : lang === 'hi' ? 'निगरानी करें' : 'Monitor closely'));
+      const actionLine = safeActionTypeText ||
+        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : (lang === 'mr' ? 'पिकाचे निरीक्षण करा' : lang === 'hi' ? 'फसल की निगरानी करें' : 'Monitor closely'));
 
       const actionHeader: Record<string, string> = {
         mr: '📋 **कृती:**',
@@ -2055,12 +2071,16 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       parts.push(ipmHeader[lang]);
       
       matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        // FIX 34: Use action_text/reason_text (SSOT) and avoid leaking raw table cause labels
-        const actionContent = resp.action_text || resp.reason_text || '';
+        // SSOT + leakage guard: never show raw technical/placeholder table text to farmer
+        const actionContentRaw = resp.action_text || resp.reason_text || '';
+        const fallbackAction = lang === 'mr'
+          ? 'पिकाचे निरीक्षण करा आणि गरज असल्यास फोटो पाठवा'
+          : lang === 'hi'
+            ? 'फसल की निगरानी करें और ज़रूरत हो तो फोटो भेजें'
+            : 'Monitor crop and share a photo if needed';
+        const actionContent = shouldRenderRawFarmerText(actionContentRaw) ? actionContentRaw : fallbackAction;
         const genericCauseLabel = lang === 'mr' ? 'उपाय' : lang === 'hi' ? 'उपाय' : 'Recommendation';
-        if (actionContent) {
-          parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
-        }
+        parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
       });
     } else {
       // No valid recommendation from rule engine - provide safe fallback
