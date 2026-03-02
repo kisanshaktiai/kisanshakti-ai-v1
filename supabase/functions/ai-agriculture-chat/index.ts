@@ -359,6 +359,21 @@ serve(async (req) => {
         growth_stage?: string;
         days_since_sowing?: number;
       };
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PART 10: SESSION CONTINUITY — problems_discussed tracking
+      // Maintains a list of problems discussed in this session for:
+      // 1. Repeat-concern detection (same query within 30 min → escalate)
+      // 2. Causal chaining (poor growth after stem holes → likely consequence of borer)
+      // ═══════════════════════════════════════════════════════════════════════════
+      problems_discussed?: Array<{
+        problem_code: string;      // e.g., 'STEM_DAMAGE', 'GROWTH_ANOMALY', 'PEST_BORER'
+        turn_number: number;
+        timestamp: string;
+        diagnosis?: string;        // e.g., 'SHOOT_BORER', 'NITROGEN_DEFICIENCY'
+        intent_code?: string;
+      }>;
+      last_query_hash?: string;    // For repeat-concern detection
+      last_query_timestamp?: string;
     } | null = null;
     
     // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
