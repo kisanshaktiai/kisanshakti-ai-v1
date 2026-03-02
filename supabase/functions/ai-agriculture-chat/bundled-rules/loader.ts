@@ -773,10 +773,13 @@ export function evaluateConditionsJson(
           });
           ledger.push({
             key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.FAILED,
-            required: true, inputValue: [...expandedObs].slice(0, 5), ruleValue: obsList
+            // FORENSIC FIX 1A: required_symptoms is soft (required: false) since farmers
+            // describe symptoms in lay terms, not clinical confirmation codes
+            required: isRequiredSymptoms ? false : true,
+            inputValue: [...expandedObs].slice(0, 5), ruleValue: obsList
           });
         } else {
-          ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: obsList });
+          ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: isRequiredSymptoms ? false : true, ruleValue: obsList });
         }
       }
       continue;
