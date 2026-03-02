@@ -385,46 +385,26 @@ export class ResponseGenerator {
   }
   
   /**
-   * Localize crop name
+   * Localize crop name — FIX 34: Use code formatting, LLM handles translation at render time
    */
-  private localizeCrop(crop: string, language: string): string {
-    const cropNames: Record<string, Record<string, string>> = {
-      'SUGARCANE': { mr: 'ऊस', hi: 'गन्ना', en: 'Sugarcane' },
-      'COTTON': { mr: 'कापूस', hi: 'कपास', en: 'Cotton' },
-      'WHEAT': { mr: 'गहू', hi: 'गेहूं', en: 'Wheat' },
-      'RICE': { mr: 'भात', hi: 'धान', en: 'Rice' },
-      'SOYBEAN': { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'Soybean' }
-    };
-    return cropNames[crop.toUpperCase()]?.[language] || cropNames[crop.toUpperCase()]?.['en'] || crop;
+  private localizeCrop(crop: string, _language: string): string {
+    // Crop name localization is handled by the LLM narration layer at response generation time
+    // Return formatted code as fallback — the LLM system prompt instructs it to use local names
+    return crop.charAt(0).toUpperCase() + crop.slice(1).toLowerCase().replace(/_/g, ' ');
   }
   
   /**
-   * Localize stage name
+   * Localize stage name — FIX 34: Use code formatting, LLM handles translation at render time
    */
-  private localizeStage(stage: string, language: string): string {
-    const stageNames: Record<string, Record<string, string>> = {
-      'GERMINATION': { mr: 'उगवण', hi: 'अंकुरण', en: 'Germination' },
-      'TILLERING': { mr: 'फुटवे', hi: 'टिलरिंग', en: 'Tillering' },
-      'GRAND_GROWTH': { mr: 'वाढीचा काळ', hi: 'बढ़वार', en: 'Grand Growth' },
-      'FLOWERING': { mr: 'फुलोरा', hi: 'फूल', en: 'Flowering' },
-      'MATURITY': { mr: 'पक्वता', hi: 'परिपक्वता', en: 'Maturity' },
-      'VEGETATIVE': { mr: 'वनस्पती वाढ', hi: 'वनस्पति वृद्धि', en: 'Vegetative' }
-    };
-    return stageNames[stage.toUpperCase()]?.[language] || stageNames[stage.toUpperCase()]?.['en'] || stage;
+  private localizeStage(stage: string, _language: string): string {
+    return stage.charAt(0).toUpperCase() + stage.slice(1).toLowerCase().replace(/_/g, ' ');
   }
   
   /**
-   * Localize symptom
+   * Localize symptom — FIX 34: Use code formatting, LLM handles translation at render time
    */
-  private localizeSymptom(symptom: string, language: string): string {
-    const symptomNames: Record<string, Record<string, string>> = {
-      'LEAF_YELLOWING': { mr: 'पाने पिवळी होणे', hi: 'पत्ते पीले होना', en: 'Leaf yellowing' },
-      'LEAF_DRYING': { mr: 'पाने वाळणे', hi: 'पत्ते सूखना', en: 'Leaf drying' },
-      'DEAD_HEART': { mr: 'सुरळी वाळणे', hi: 'गोभ सूखना', en: 'Dead heart' },
-      'GAPS_IN_FIELD': { mr: 'शेतात गॅप', hi: 'खेत में गैप', en: 'Gaps in field' },
-      'WILTING': { mr: 'मर जाणे', hi: 'मुरझाना', en: 'Wilting' }
-    };
-    return symptomNames[symptom.toUpperCase()]?.[language] || symptomNames[symptom.toUpperCase()]?.['en'] || symptom;
+  private localizeSymptom(symptom: string, _language: string): string {
+    return symptom.charAt(0).toUpperCase() + symptom.slice(1).toLowerCase().replace(/_/g, ' ');
   }
   
   /**
@@ -437,11 +417,10 @@ export class ResponseGenerator {
              'Continue monitoring';
     }
     
+    // FIX 34: Use action_text (SSOT) instead of dropped response_mr/hi/en
     return recommendations.slice(0, 3).map((rec, i) => {
-      const response = language === 'mr' ? rec.actions.response_mr :
-                       language === 'hi' ? rec.actions.response_hi :
-                       rec.actions.response_en;
-      return `${i + 1}. ${response || rec.cause}`;
+      const response = rec.actions.action_text || rec.actions.reason_text || rec.cause;
+      return `${i + 1}. ${response}`;
     }).join('\n');
   }
   

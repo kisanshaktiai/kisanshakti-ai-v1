@@ -538,10 +538,21 @@ async function translateClarificationOptions(
   }));
   
   // Check which labels look like raw codes (ALL_CAPS_WITH_UNDERSCORES)
+  // FIX 33: Also detect codes with emoji prefixes like "🔍 GAPS IN FIELD"
   const RAW_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,}$/;
-  const needsTranslation = optionEntries.filter(e => 
-    RAW_CODE_PATTERN.test(e.label) || RAW_CODE_PATTERN.test(e.obsKey || '')
-  );
+  const EMOJI_PREFIX_PATTERN = /^[\p{Emoji}\p{Emoji_Presentation}\s🔍]+\s*/u;
+  
+  const needsTranslation = optionEntries.filter(e => {
+    const label = e.label || '';
+    // Direct raw code match
+    if (RAW_CODE_PATTERN.test(label)) return true;
+    // observation_key is always a raw code
+    if (e.obsKey && RAW_CODE_PATTERN.test(e.obsKey)) return true;
+    // Strip emoji prefix and check if remaining text is ALL CAPS (e.g., "🔍 GAPS IN FIELD")
+    const stripped = label.replace(EMOJI_PREFIX_PATTERN, '').trim();
+    if (stripped.length > 3 && stripped === stripped.toUpperCase() && /^[A-Z\s_]+$/.test(stripped)) return true;
+    return false;
+  });
   
   if (needsTranslation.length === 0) {
     // All labels are already human-readable
@@ -551,7 +562,14 @@ async function translateClarificationOptions(
   console.log(`🌐 [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
   
   // Step 1: Try observation_translations DB lookup (SSOT)
-  const codesToLookup = needsTranslation.map(e => e.obsKey || e.label);
+  // FIX 33: Also derive code from emoji-prefixed labels like "🔍 GAPS IN FIELD" → "GAPS_IN_FIELD"
+  const codesToLookup = needsTranslation.map(e => {
+    if (e.obsKey && RAW_CODE_PATTERN.test(e.obsKey)) return e.obsKey;
+    if (RAW_CODE_PATTERN.test(e.label)) return e.label;
+    // Strip emoji prefix and convert spaces to underscores for DB lookup
+    const stripped = (e.label || '').replace(EMOJI_PREFIX_PATTERN, '').trim().replace(/\s+/g, '_');
+    return stripped || e.label;
+  });
   const labelMap = new Map<string, string>();
   
   try {
@@ -1775,9 +1793,9 @@ export class AIAgentOrchestrator {
                 ? safeMatchedResponses.slice(0, 3).filter(r => r != null).map(r => ({
                     action_type: 'OBSERVATION_ADVICE',
                     action_details: {
-                      response_mr: r.response_mr,
-                      response_hi: r.response_hi,
-                      response_en: r.response_en
+                      action_text: r.action_text,
+                      reason_text: r.reason_text,
+                      knowledge_text: r.knowledge_text
                     },
                     product_reference: r.rule_id,
                     rule_id: r.rule_id
@@ -1817,9 +1835,6 @@ export class AIAgentOrchestrator {
                   reason_text: layeredPrimaryDecision.reason_text,
                   knowledge_text: layeredPrimaryDecision.knowledge_text,
                   i18n_key: layeredPrimaryDecision.i18n_key,
-                  response_mr: layeredPrimaryDecision.response_mr,
-                  response_hi: layeredPrimaryDecision.response_hi,
-                  response_en: layeredPrimaryDecision.response_en,
                   rule_id: layeredPrimaryDecision.rule_id
                 },
                 expected_outcomes: {
@@ -1854,9 +1869,6 @@ export class AIAgentOrchestrator {
                     reason_text: firstMatch.reason_text,
                     knowledge_text: firstMatch.knowledge_text,
                     i18n_key: firstMatch.i18n_key,
-                    response_mr: firstMatch.response_mr,
-                    response_hi: firstMatch.response_hi,
-                    response_en: firstMatch.response_en,
                     rule_id: firstMatch.rule_id
                   },
                   expected_outcomes: {
@@ -3572,13 +3584,24 @@ export class AIAgentOrchestrator {
             // CRITICAL FIX: Use snake_case fields and `question.options` for proper 
             // mapping in transformOrchestratorResponse (index.ts)
             // ═══════════════════════════════════════════════════════════════════════════
-            const diagnosisOptions = clarificationFormat.options.map((opt: any) => ({
+            let diagnosisOptions = clarificationFormat.options.map((opt: any) => ({
               label: opt.label,
               value: opt.value || opt.label,
               observation_key: opt.observation_key || opt.value,
               description: opt.description,
               diagnostic_power: opt.diagnostic_power || 'MEDIUM'
             }));
+            
+            // FIX 33: Translate diagnosis-first options (was skipped - caused raw English codes in Marathi UI)
+            try {
+              diagnosisOptions = await translateClarificationOptions(
+                diagnosisOptions, 
+                options.language || 'mr', 
+                supabase
+              );
+            } catch (transErr) {
+              console.warn(`⚠️ [DIAG_FIRST] Translation failed, using raw labels: ${transErr}`);
+            }
             
             return {
               type: 'CLARIFICATION_QUESTION',
@@ -5239,7 +5262,7 @@ export class AIAgentOrchestrator {
                 layeredRuleResult.prescriptions = symbolicResult.recommendations.map((r: any) => ({
                   action_type: r.action || 'RECOMMEND',
                   action_details: {
-                    response_en: r.description,
+                    action_text: r.description,
                     product: r.product,
                     dosage: r.dosage
                   },
@@ -5369,9 +5392,9 @@ export class AIAgentOrchestrator {
                   canonical_group: r.canonical_group || r.category || 'pest',
                   confidence: r.confidence || symbolicResult.confidence || 0.6,
                   priority: r.priority || 50,
-                  response_mr: r.response_mr || r.response?.mr,
-                  response_hi: r.response_hi || r.response?.hi,
-                  response_en: r.response_en || r.response?.en,
+                  action_text: r.action_text || r.description,
+                  reason_text: r.reason_text,
+                  knowledge_text: r.knowledge_text,
                   actions: r.actions || [],
                   evidence_matched: r.evidence_matched || r.matched_conditions || []
                 }));
@@ -5795,9 +5818,6 @@ export class AIAgentOrchestrator {
                 reason_text: layeredRuleResult.primary_decision.reason_text,
                 knowledge_text: layeredRuleResult.primary_decision.knowledge_text,
                 i18n_key: layeredRuleResult.primary_decision.i18n_key,
-                response_mr: layeredRuleResult.primary_decision.response_mr,
-                response_hi: layeredRuleResult.primary_decision.response_hi,
-                response_en: layeredRuleResult.primary_decision.response_en,
                 rule_id: layeredRuleResult.primary_decision.rule_id,
                 // RICH DATA: Propagate all agronomic fields for response generation
                 organic_alternative: layeredRuleResult.primary_decision.organic_alternative || null,

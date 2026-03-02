@@ -41,10 +41,7 @@ export interface BundledRule {
   knowledge_text?: string;   // Agronomic / scientific basis
   i18n_key?: string;         // Centralized i18n key for translations
   
-  // Legacy response fields (deprecated - use action_text/reason_text/knowledge_text)
-  response_mr?: string;
-  response_hi?: string;
-  response_en?: string;
+  // FIX 34: response_mr/hi/en REMOVED — columns dropped from DB per SSOT architecture
   
   alternatives?: string[];
   // Standard 8 action types per Jan 2026 Audit

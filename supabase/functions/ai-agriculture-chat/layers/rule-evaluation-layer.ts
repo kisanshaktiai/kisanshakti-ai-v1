@@ -189,12 +189,17 @@ export interface RuleEvaluationOutput {
   recommendations: Recommendation[];
   
   // Matched responses for LLM formatting
+  // FIX 34: Removed dropped response_mr/hi/en — use action_text/reason_text/knowledge_text
   matched_responses: Array<{
     rule_id: string;
     cause: string;
-    response_mr?: string;
-    response_hi?: string;
-    response_en?: string;
+    action_text?: string;
+    reason_text?: string;
+    knowledge_text?: string;
+    i18n_key?: string;
+    action_type?: string;
+    priority?: number;
+    confidence_score?: number;
   }>;
   
   // Overall confidence
