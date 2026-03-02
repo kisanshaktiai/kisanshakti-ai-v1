@@ -22,10 +22,24 @@
 - **Dosage calculation:** Total = dosage_per_acre × land_area, shown as total not per-acre.
 - **Rural language:** भाऊ/दादा addressing, फवारणी not छिडकाव, मेलेला गाभा not डेड हार्ट.
 
-## Remaining Work (Next Session)
-- Session continuity: problems_discussed list, repeat-concern detection
-- Diagnostic pre-filter: pest evidence (DEAD_HEART, BORER) forces PEST_MANAGEMENT rules first
-- Independent confidence: separate data_quality_confidence from symptom_diagnosis_confidence
+## Fixes Applied (v5.6) — Remaining 3 Parts
+
+#### FIX 17: Diagnostic Pre-filter (PART 7) — IMPLEMENTED
+- **File:** `agents/orchestrator.ts` (Phase 2.6 rule loading)
+- **Root cause:** DEAD_HEART/BORER evidence present but irrigation/nutrition rules ranked higher
+- **Fix:** When PEST_EVIDENCE_CODES detected in observations, pest-category rules are prepended at top priority before general rule evaluation. Prevents irrigation rules from being primary when dead heart evidence is present.
+
+#### FIX 18: Dual Independent Confidence (PART 8) — IMPLEMENTED
+- **File:** `decision/confidence-calculator.ts`
+- **Root cause:** data_quality_confidence (38.5%) merged with symptom confidence, producing falsely low combined score that blocked prescriptions
+- **Fix:** `ConfidenceScore` now includes `data_quality_confidence` and `symptom_diagnosis_confidence` as independent signals. Symptom confidence (rule_matching + symptom_specificity) drives diagnosis; data quality (completeness + freshness) drives dosage precision. Overall weights rebalanced: data_quality reduced 0.20→0.15, symptom_specificity increased 0.20→0.30.
+
+#### FIX 19: Session Continuity (PART 10) — IMPLEMENTED
+- **File:** `index.ts` (session state tracking)
+- **Fix:** Session state now tracks `problems_discussed` array (last 10 problems with codes, diagnoses, timestamps), `last_query_hash` for repeat-concern detection (>70% similarity within 30 min → escalate), and causal chain detection (previous borer diagnosis + current growth issue → likely consequence). Data passed to orchestrator for logging.
+
+## Remaining Work
+- All 11 PARTS from architectural spec are now implemented (v5.1-v5.6)
 
 ## Previous Fixes
 
