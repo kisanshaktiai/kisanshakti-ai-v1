@@ -31,9 +31,10 @@
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
-import { 
-  getProductName, 
-  getActionTranslation 
+import {
+  getProductName,
+  getActionTranslation,
+  getCauseTranslation
 } from './communication-translation-dictionary.ts';
 
 // Import validation from decision representation
@@ -1846,15 +1847,37 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   // Primary recommendation - EXTRACT ONLY FROM CURRENT decision_output
   const primary = decision?.primary_decision;
   
-  // VALIDATION: Check if template data matches current session
+  // VALIDATION: sanitize placeholder/technical table text before showing to farmer
   const templatePestCode = primary?.target?.pest_code;
   const templateDiseaseCode = primary?.target?.disease_code;
-  const hasValidRecommendation = primary && 
-    primary.action_type && 
+  const rawProductName = primary?.application_details?.product_name;
+  const rawActionType = primary?.action_type;
+  const rawActionText = primary?.action_text;
+
+  const isPlaceholderText = (value?: string) => {
+    const v = (value || '').trim().toLowerCase();
+    if (!v) return true;
+    return v.includes('blocking rule is active') ||
+           v.includes('see structured response') ||
+           v.includes('see matched response') ||
+           v.includes('recommended treatment') ||
+           v.includes('monitor and reassess') ||
+           v.includes('continue monitoring');
+  };
+
+  const NON_PRODUCT_ACTIONS = new Set([
+    'NO_ACTION', 'NO_ACTION_REQUIRED', 'MONITOR_ONLY', 'MONITOR',
+    'CULTURAL_PRACTICE', 'CULTURAL_CONTROL', 'MECHANICAL_CONTROL',
+    'BIOLOGICAL_RELEASE', 'OBSERVATION', 'WAIT_AND_WATCH'
+  ]);
+
+  const hasValidProductName = !!rawProductName && !isPlaceholderText(rawProductName);
+  const isNonProductAction = NON_PRODUCT_ACTIONS.has(String(rawActionType || '').toUpperCase());
+
+  const hasValidRecommendation = !!primary &&
+    !!primary.action_type &&
     primary.action_type !== 'NO_ACTION' &&
-    (primary.application_details?.product_name || 
-     primary.application_details?.concentration ||
-     templatePestCode || templateDiseaseCode);
+    (isNonProductAction || hasValidProductName || !!rawActionText || !!templatePestCode || !!templateDiseaseCode);
   
   if (hasValidRecommendation) {
     const headers: Record<string, string> = {
@@ -1865,9 +1888,9 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     parts.push(headers[lang]);
     
     // CRITICAL: Extract from current decision_output ONLY
-    const rawProductName = primary.application_details?.product_name;
-    const rawActionType = primary.action_type;
-    const rawActionText = primary.action_text;
+    const safeProductName = hasValidProductName ? rawProductName : '';
+    const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
+    const method = primary.application_details?.method || primary.application_details?.application_method;
     const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
     const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
@@ -1901,16 +1924,15 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       translatedProductName = getProductName(rawProductName, lang);
     }
     
-    // If product_name is null/empty, try to use action_text
-    if (rawProductName && rawProductName !== 'Recommended treatment') {
+    if (safeProductName && safeProductName !== 'Recommended treatment') {
       let recText = `1. **${translatedProductName}**`;
       // Only add dosage if not already included and it's not a generic action
       if (!isGenericAction && dosage && dosage !== 'As per label' && dosage !== 'N/A' && !translatedProductName.includes('/')) {
         recText += ` @ ${dosage}`;
       }
-      
-      // For generic actions, include the action text in farmer's language
-      if (isGenericAction && rawActionText) {
+
+      // For generic actions, include action text only when present and not placeholder
+      if (isGenericAction && rawActionText && !isPlaceholderText(rawActionText)) {
         recText += `\n   🔧 ${rawActionText}`;
       }
       
@@ -1988,20 +2010,29 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       if (urgencyLabel) {
         parts.push(`\n${urgencyLabel}`);
       }
-    } else if (rawActionText) {
-      // Use action_text as fallback - translate generic terms
-      let translatedActionText = rawActionText;
-      for (const [key, translations] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
-        if (rawActionText.toLowerCase().includes(key)) {
-          translatedActionText = rawActionText.replace(new RegExp(key, 'gi'), translations[lang] || translations.en);
-        }
-      }
+    } else if (rawActionText || isNonProductAction || rawActionType) {
+      // Use action semantics when product is absent/placeholder
+      const translatedActionType = rawActionType ? (getActionTranslation(rawActionType, lang) || rawActionType) : '';
+      const translatedCause = templatePestCode
+        ? getCauseTranslation(templatePestCode, lang)
+        : templateDiseaseCode
+          ? getCauseTranslation(templateDiseaseCode, lang)
+          : '';
+
+      const actionLine = translatedActionType ||
+        (rawActionText && !isPlaceholderText(rawActionText) ? rawActionText : (lang === 'mr' ? 'निरीक्षण करा' : lang === 'hi' ? 'निगरानी करें' : 'Monitor closely'));
+
       const actionHeader: Record<string, string> = {
         mr: '📋 **कृती:**',
         hi: '📋 **कार्रवाई:**',
         en: '📋 **Action:**'
       };
-      parts.push(`${actionHeader[lang]}\n${translatedActionText}`);
+      parts.push(`${actionHeader[lang]}\n1. ${actionLine}`);
+
+      if (translatedCause && translatedCause !== 'UNKNOWN') {
+        const causePrefix = lang === 'mr' ? '🔎 कारण:' : lang === 'hi' ? '🔎 कारण:' : '🔎 Cause:';
+        parts.push(`${causePrefix} ${translatedCause}`);
+      }
     } else {
       // No valid product - ask for more info instead of giving wrong advice
       const askMore: Record<string, string> = {
@@ -2024,10 +2055,11 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       parts.push(ipmHeader[lang]);
       
       matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        // FIX 34: Use action_text/reason_text (SSOT) instead of dropped response_mr/hi/en
+        // FIX 34: Use action_text/reason_text (SSOT) and avoid leaking raw table cause labels
         const actionContent = resp.action_text || resp.reason_text || '';
+        const genericCauseLabel = lang === 'mr' ? 'उपाय' : lang === 'hi' ? 'उपाय' : 'Recommendation';
         if (actionContent) {
-          parts.push(`\n${idx + 1}. **${resp.cause || 'उपचार'}:**\n${actionContent}`);
+          parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
         }
       });
     } else {
