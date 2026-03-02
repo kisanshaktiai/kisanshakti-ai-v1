@@ -562,7 +562,14 @@ async function translateClarificationOptions(
   console.log(`🌐 [ClarificationTranslation] ${needsTranslation.length}/${options.length} options need translation to ${lang}`);
   
   // Step 1: Try observation_translations DB lookup (SSOT)
-  const codesToLookup = needsTranslation.map(e => e.obsKey || e.label);
+  // FIX 33: Also derive code from emoji-prefixed labels like "🔍 GAPS IN FIELD" → "GAPS_IN_FIELD"
+  const codesToLookup = needsTranslation.map(e => {
+    if (e.obsKey && RAW_CODE_PATTERN.test(e.obsKey)) return e.obsKey;
+    if (RAW_CODE_PATTERN.test(e.label)) return e.label;
+    // Strip emoji prefix and convert spaces to underscores for DB lookup
+    const stripped = (e.label || '').replace(EMOJI_PREFIX_PATTERN, '').trim().replace(/\s+/g, '_');
+    return stripped || e.label;
+  });
   const labelMap = new Map<string, string>();
   
   try {
