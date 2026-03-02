@@ -5820,7 +5820,9 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             fallback_reason: 'ZERO_RULES_WITH_PHOTO',
-            ssot_source: 'decision_rules.observable_characteristics'
+            ssot_source: 'decision_rules.observable_characteristics',
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
           }
         };
       }
