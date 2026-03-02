@@ -132,12 +132,32 @@ export class ConfidenceCalculator {
     // 5. Historical success (placeholder - would query from feedback table)
     const historicalSuccess = 0.7; // Default 70% when no historical data
     
-    // Weighted combination
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PART 8: DUAL INDEPENDENT CONFIDENCE COMPUTATION
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    // Signal 1: Symptom Diagnosis Confidence (can we NAME the cause?)
+    // Based on rule matching + symptom specificity (NOT data quality)
+    const symptomDiagnosisConfidence = Math.min(0.98,
+      ruleMatching * 0.55 + symptomSpecificity * 0.35 + historicalSuccess * 0.10
+    );
+    
+    // Signal 2: Data Quality Confidence (can we recommend specific DOSES?)
+    // Based on data quality + data freshness (NOT symptoms)
+    const dataQualityConfidence = Math.min(0.98,
+      dataQuality * 0.50 + dataFreshness * 0.35 + historicalSuccess * 0.15
+    );
+    
+    console.log(`   🔬 Symptom Diagnosis Confidence: ${(symptomDiagnosisConfidence * 100).toFixed(0)}% (drives cause identification)`);
+    console.log(`   📋 Data Quality Confidence: ${(dataQualityConfidence * 100).toFixed(0)}% (drives dosage precision)`);
+    
+    // Overall: Weighted combination (symptom confidence drives the decision)
+    // CRITICAL: symptom_diagnosis dominates — low data quality should NOT block diagnosis
     const weights = {
       rule_matching: 0.35,
-      data_quality: 0.20,
-      data_freshness: 0.15,
-      symptom_specificity: 0.20,
+      data_quality: 0.15, // REDUCED from 0.20 — data gaps should NOT block diagnosis
+      data_freshness: 0.10, // REDUCED from 0.15
+      symptom_specificity: 0.30, // INCREASED from 0.20 — symptoms are primary signal
       historical_success: 0.10
     };
     
@@ -172,7 +192,9 @@ export class ConfidenceCalculator {
         historical_success: historicalSuccess
       },
       level,
-      explanation
+      explanation,
+      data_quality_confidence: dataQualityConfidence,
+      symptom_diagnosis_confidence: symptomDiagnosisConfidence
     };
   }
   
