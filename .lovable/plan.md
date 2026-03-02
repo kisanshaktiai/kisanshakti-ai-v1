@@ -2,64 +2,85 @@
 
 ## Fixes Applied (2026-03-02)
 
-### v5.5 Fixes (Current) — Supreme Law + Response Format Types
+### v6.0 Fixes (Current) — Deep Forensic Audit Critical Code Fixes
 
-#### FIX 15: Intent Classification for Prescription Requests — FIXED
-- **Files:** `decision/intent-resolver.ts`, `agents/intent-classifier.ts`
-- **Root cause:** "काय टाकू" / "काय द्यायचं" (what to apply) was classified as UNKNOWN_OBSERVATION, routing to no-action path
-- **Fix:** Added `INPUT_RECOMMENDATION` intent code. Emergency keyword fallback now routes prescription requests (काय टाकू, काय मारू, उपाय) to INPUT_RECOMMENDATION instead of UNKNOWN. Problem+prescription queries (फुट कमी + काय टाकू) route to the problem intent (GROWTH_ANOMALY).
+#### FIX 20: `required_symptoms` Orphan Key Unblocked — FIXED
+- **File:** `bundled-rules/loader.ts` (evaluateConditionsJson)
+- **Root cause:** `required_symptoms` key (array) in 17 rules hit generic object fallback → UNEVALUABLE with required=true → permanently blocked ALL shoot borer treatment rules (SC_PEST_EARLY_SHOOT_BORER_004, SC_PEST_TOP_BORER_004)
+- **Fix:** Added `required_symptoms` to observation key handler (alongside `observations`, `symptom`, `primary_symptom`). Marked as `required: false` (soft requirement) since farmers describe symptoms in lay terms, not clinical confirmation codes. Array values are matched against expandedObs using exact, containment, and root-word matching.
 
-#### FIX 16: LLM Formatter 5 Response Format Types — IMPLEMENTED
-- **File:** `agents/llm-response-formatter.ts` (buildFormattingSystemPrompt)
-- **Root cause:** Single generic WHAT-WHY-HOW template for all scenarios. LLM invented HOW sections when no actions existed.
-- **Fix:** System prompt now selects from 5 mandatory format types based on action_type:
-  - FORMAT 1: Direct Prescription (RECOMMEND + product fields populated)
-  - FORMAT 2: Clarification Needed (partial symptoms)
-  - FORMAT 3: Monitoring Advisory (MONITOR action)
-  - FORMAT 4: Stage Advisory Fallback (zero rules fired)
-  - FORMAT 5: Pest Emergency (URGENT_ACTION + HIGH/CRITICAL risk)
-- **Supreme Law enforced:** Generic phrases like "कीड मारायची दवा वापरा" forbidden. Missing dosage triggers "मला अधिक माहिती हवी आहे" instead.
-- **Dosage calculation:** Total = dosage_per_acre × land_area, shown as total not per-acre.
-- **Rural language:** भाऊ/दादा addressing, फवारणी not छिडकाव, मेलेला गाभा not डेड हार्ट.
+#### FIX 21: `roi_by_region`/`roi_modifier` Object Keys Unblocked — FIXED
+- **File:** `bundled-rules/loader.ts` (CATEGORY_G_KEYS + generic object fallback)
+- **Root cause:** 29 soil/nitrogen rules had `roi_by_region` (nested JSON object) → UNEVALUABLE → required=true → permanently blocked
+- **Fix:** Already in CATEGORY_G_KEYS. Additionally, the generic object/array fallback at end of evaluator now marks unknown objects/arrays as `required: false` with SKIPPED_NO_DATA instead of UNEVALUABLE with required=true. This prevents any remaining orphan object keys from blocking rules.
 
-## Fixes Applied (v5.6) — Remaining 3 Parts
+#### FIX 22: `requires_diagnosis_confidence` Threshold Key — FIXED
+- **File:** `bundled-rules/loader.ts`
+- **Root cause:** 9 rules had numeric threshold with no evaluator → UNEVALUABLE → blocked
+- **Fix:** Explicit handler marks as SKIPPED_NO_DATA with required=false (soft gate).
 
-#### FIX 17: Diagnostic Pre-filter (PART 7) — IMPLEMENTED
-- **File:** `agents/orchestrator.ts` (Phase 2.6 rule loading)
-- **Root cause:** DEAD_HEART/BORER evidence present but irrigation/nutrition rules ranked higher
-- **Fix:** When PEST_EVIDENCE_CODES detected in observations, pest-category rules are prepended at top priority before general rule evaluation. Prevents irrigation rules from being primary when dead heart evidence is present.
+#### FIX 23: `requires_confirmation` String Key — FIXED
+- **File:** `bundled-rules/loader.ts`
+- **Root cause:** 7 rules had string rule_id treated as boolean → wrong result
+- **Fix:** Explicit handler marks as SKIPPED_NO_DATA with required=false (soft prerequisite).
 
-#### FIX 18: Dual Independent Confidence (PART 8) — IMPLEMENTED
-- **File:** `decision/confidence-calculator.ts`
-- **Root cause:** data_quality_confidence (38.5%) merged with symptom confidence, producing falsely low combined score that blocked prescriptions
-- **Fix:** `ConfidenceScore` now includes `data_quality_confidence` and `symptom_diagnosis_confidence` as independent signals. Symptom confidence (rule_matching + symptom_specificity) drives diagnosis; data quality (completeness + freshness) drives dosage precision. Overall weights rebalanced: data_quality reduced 0.20→0.15, symptom_specificity increased 0.20→0.30.
+#### FIX 24: Expanded CATEGORY_G Informational Keys — FIXED
+- **File:** `bundled-rules/loader.ts` (CATEGORY_G_KEYS set)
+- **Root cause:** `ipm_priority`, `crop_cycle`, `diagnosis_method`, `requires_identification`, and other context keys were falling through to generic handlers → FAILED or UNEVALUABLE → blocked rules
+- **Fix:** Added 13 additional keys to CATEGORY_G_KEYS: `ipm_priority`, `duration_days_info`, `diagnosis_method`, `requires_identification`, `soil_type`, `soil_type_name`, `variety`, `trait`, `region`, `farming_mode`, `monsoon_timing`, `yield_potential`, `crop_cycle`.
 
-#### FIX 19: Session Continuity (PART 10) — IMPLEMENTED
-- **File:** `index.ts` (session state tracking)
-- **Fix:** Session state now tracks `problems_discussed` array (last 10 problems with codes, diagnoses, timestamps), `last_query_hash` for repeat-concern detection (>70% similarity within 30 min → escalate), and causal chain detection (previous borer diagnosis + current growth issue → likely consequence). Data passed to orchestrator for logging.
+#### FIX 25: Generic Object/Array Fallback Made Non-Blocking — FIXED
+- **File:** `bundled-rules/loader.ts` (end of evaluateConditionsJson)
+- **Root cause:** Any unrecognized object/array condition value hit `UNEVALUABLE, required: true` → permanent block
+- **Fix:** Unknown arrays are now treated as soft observation lists (matched against expandedObs, required: false). Unknown objects are marked SKIPPED_NO_DATA with required: false.
 
-## Remaining Work
-- All 11 PARTS from architectural spec are now implemented (v5.1-v5.6)
+#### BUG-003 Boolean-Object observable_characteristics — ALREADY FIXED
+- **File:** `bundled-rules/loader.ts` (normalizeObservableChars)
+- `normalizeObservableChars` already converts `{dead_heart: true}` → `["DEAD_HEART"]` at load time. The 64 rules with boolean-object format were already being normalized to arrays before reaching makeExecutable.
+
+### Impact Summary
+- **17 shoot borer treatment rules** — UNBLOCKED (were permanently blocked)
+- **29 soil/nitrogen management rules** — UNBLOCKED
+- **9 diagnosis confidence rules** — UNBLOCKED
+- **7 confirmation prerequisite rules** — UNBLOCKED
+- **~16 IPM priority rules** — UNBLOCKED
+- **~14 crop cycle rules** — UNBLOCKED
+- **Total rules unblocked: ~92 rules** previously permanently blocked by orphan condition keys
+
+### Remaining DB Data Gaps (require manual data population)
+- 450 rules missing `active_ingredient` (14% coverage)
+- 479 rules missing `application_method` (8% coverage)
+- 490 rules missing `roi_cost_saved_min/max` (6% coverage)
+- 5 FERT_SCHEDULE rules with NULL action_text
+- 45 orphan observation codes not in observation_master
+- ~484 observation codes missing Marathi translations
+- 184 rules with empty observable_characteristics
+
+### Forward Chaining (enables_rule_ids, triggers_rule_ids) — DEFERRED
+- Columns populated in DB but not evaluated in code
+- Requires separate implementation sprint
+
+## Guaranteed Invariants (v6.0)
+1. `required_symptoms` array keys are evaluated as soft observation matches, never block rules
+2. Unknown object/array condition values are non-blocking (required: false)
+3. All informational/context keys in CATEGORY_G never block rule firing
+4. `requires_diagnosis_confidence` and `requires_confirmation` are soft gates
+5. Boolean-object observable_characteristics normalized to arrays at load time
+6. All v5.1-v5.6 invariants remain in effect
 
 ## Previous Fixes
 
+### v5.5-v5.6
+- FIX 15-19: Intent classification, LLM formatter formats, diagnostic pre-filter, dual confidence, session continuity
+
 ### v5.4
-- BUG 12-14: Observable characteristics matching, root-word matching, data_authority_rank sorting — FIXED
-- Pipeline health monitoring — ADDED
+- BUG 12-14: Observable characteristics matching, root-word matching, data_authority_rank sorting
 
 ### v5.3
-- BUG 10-11: Symbolic recommendations reach primary_decision, DiagnosisOnlyMode guard — FIXED
+- BUG 10-11: Symbolic recommendations reach primary_decision, DiagnosisOnlyMode guard
 
 ### v5.2
-- BUG 6-9: Intent disconnection, missing scopes, prescription gate, Phase 3 override — FIXED
+- BUG 6-9: Intent disconnection, missing scopes, prescription gate, Phase 3 override
 
 ### v5.1
-- BUG 1-5: ReferenceError, dual detector, stage drift, redundant execution, authority blocks — FIXED
-
-## Guaranteed Invariants (v5.5)
-1. "काय टाकू" patterns classify as INPUT_RECOMMENDATION, never UNKNOWN_OBSERVATION
-2. LLM formatter selects response format type from action_type, not its own judgment
-3. Generic pesticide phrases without specific product from rules are FORBIDDEN
-4. Missing dosage/active_ingredient → HOW section replaced with clarification request
-5. Total dosage calculated as dosage_per_acre × land_area for farmer's specific field
-6. All v5.1-v5.4 invariants remain in effect
+- BUG 1-5: ReferenceError, dual detector, stage drift, redundant execution, authority blocks
