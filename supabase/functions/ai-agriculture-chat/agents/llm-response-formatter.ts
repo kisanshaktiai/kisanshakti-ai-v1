@@ -1908,8 +1908,6 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     const safeProductName = hasValidProductName ? rawProductName : '';
     const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
     const method = primary.application_details?.method || primary.application_details?.application_method;
-    const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
-    const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
     
     // CRITICAL FIX: Translate generic action types to farmer-friendly language
