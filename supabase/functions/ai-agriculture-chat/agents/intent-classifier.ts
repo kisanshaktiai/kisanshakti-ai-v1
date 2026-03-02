@@ -93,12 +93,12 @@ Your task:
 
 INTENT CODES:
 - EMERGENCE_FAILURE: Seed didn't sprout, gaps in field
-- GROWTH_ANOMALY: Slow growth, stunted plants
+- GROWTH_ANOMALY: Slow growth, stunted plants, poor tillering
 - COLOR_CHANGE: Yellowing, browning, pale, color changes
 - WILTING_OR_DROOPING: Plants wilting, drooping, dying, drying
 - LEAF_DAMAGE_VISIBLE: Holes, chewing damage on leaves
 - LEAF_MARKS_OR_SPOTS: Spots, patches, lesions, marks on leaves
-- STEM_DAMAGE: Stem holes, tunnels, breakage, boring
+- STEM_DAMAGE: Stem holes, tunnels, breakage, boring, dead heart
 - ROOT_OR_BASE_PROBLEM: Root rot, base issues
 - PEST_PRESENCE_VISIBLE: Insects or pests physically seen
 - DISEASE_LIKE_PATTERN: Spreading pattern, fungal signs, plant death/decay
@@ -107,15 +107,22 @@ INTENT CODES:
 - UNEVEN_FIELD_PATTERN: Patchy, uneven growth in field
 - YIELD_OR_OUTPUT_ISSUE: Poor yield, harvest concerns
 - WEED_PROBLEM: Weeds growing, weed competition, unwanted plants
+- INPUT_RECOMMENDATION: Farmer asks "what to apply/use/give" (काय टाकू, काय द्यायचं, काय मारू, क्या डालें, क्या दें). This is a DIRECT PRESCRIPTION REQUEST — farmer wants specific product/dosage/timing. NEVER classify as GENERAL_CROP_INFO.
 - FERTILIZER_SCHEDULE: When/how much fertilizer, nutrient schedule
 - IRRIGATION_QUERY: Water schedule, irrigation timing
 - HARVEST_TIMING: When to harvest, maturity signs
-- GENERAL_CROP_INFO: General crop management, planting info
+- GENERAL_CROP_INFO: General crop management, planting info (NOT for "what to apply" questions)
 - SOIL_TESTING_QUERY: Soil testing, soil health questions
 - SEED_SELECTION: Seed variety, seed selection questions
 - MARKET_PRICE_QUERY: Market prices, selling, mandi rates
 - WEATHER_QUERY: Weather forecast, rain prediction
 - UNKNOWN_OBSERVATION: Cannot classify
+
+CRITICAL RULE: If the farmer describes a problem AND asks "what to apply/use/give" (काय टाकू, काय द्यायचं, उपाय सांगा, क्या डालें), classify by the PROBLEM described, NOT as INPUT_RECOMMENDATION. For example:
+- "फुट कमी पडतायत, काय टाकू?" → GROWTH_ANOMALY (problem is poor tillering)
+- "पान पिवळे झाले, काय मारू?" → COLOR_CHANGE (problem is yellowing)
+- "खोडात छिद्र पडली, काय करू?" → STEM_DAMAGE (problem is stem boring)
+- "काय टाकू?" (no problem described) → INPUT_RECOMMENDATION
 
 Return JSON only:
 {"intent_code": "...", "confidence": 0.0-1.0}
