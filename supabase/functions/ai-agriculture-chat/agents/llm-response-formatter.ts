@@ -1370,8 +1370,26 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     parts.push(`═══════════════════════════════════════════════════`);
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // LEGACY: Extract and pass product details (fallback when new contract empty)
+    // RICH AGRONOMIC CONTEXT — from decision_rules DB (formatting/translation only)
     // ═══════════════════════════════════════════════════════════════════════════
+    if (appDetails.organic_alternative) parts.push(`\n🌿 Organic Alternative: ${appDetails.organic_alternative}`);
+    if (appDetails.mode_of_action) parts.push(`🔬 Mode of Action (How it works): ${appDetails.mode_of_action}`);
+    if (appDetails.target_pest_stage) parts.push(`🎯 Target Pest Stage: ${appDetails.target_pest_stage}`);
+    if (appDetails.success_indicators) {
+      const indicators = Array.isArray(appDetails.success_indicators) ? appDetails.success_indicators.join(', ') : String(appDetails.success_indicators);
+      parts.push(`✅ Success Signs (check after 5-7 days): ${indicators}`);
+    }
+    if (appDetails.failure_indicators) {
+      const indicators = Array.isArray(appDetails.failure_indicators) ? appDetails.failure_indicators.join(', ') : String(appDetails.failure_indicators);
+      parts.push(`❌ Failure Signs (re-treat if seen): ${indicators}`);
+    }
+    if (appDetails.roi_yield_gain_pct) parts.push(`📈 Expected Yield Gain: ${appDetails.roi_yield_gain_pct}%`);
+    if (appDetails.bee_toxicity && appDetails.bee_toxicity !== 'SAFE' && appDetails.bee_toxicity !== 'LOW') {
+      parts.push(`🐝 Bee Safety Warning: ${appDetails.bee_toxicity} toxicity — avoid spraying during flowering/bee activity hours`);
+    }
+    if (appDetails.reentry_interval_hours) parts.push(`⏳ Re-entry Interval: ${appDetails.reentry_interval_hours} hours after spraying`);
+    if (appDetails.resistance_group) parts.push(`🔄 Resistance Group: ${appDetails.resistance_group} — rotate with different group next application`);
+    
     // ═══════════════════════════════════════════════════════════════════════════
     // v2.0.0: ACTION TYPE GUARD - Skip product/dosage for non-treatment rules
     // BLOCK rules: Explicitly instruct LLM NOT to recommend treatment

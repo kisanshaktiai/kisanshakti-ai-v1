@@ -5627,7 +5627,21 @@ export class AIAgentOrchestrator {
                 response_mr: layeredRuleResult.primary_decision.response_mr,
                 response_hi: layeredRuleResult.primary_decision.response_hi,
                 response_en: layeredRuleResult.primary_decision.response_en,
-                rule_id: layeredRuleResult.primary_decision.rule_id
+                rule_id: layeredRuleResult.primary_decision.rule_id,
+                // RICH DATA: Propagate all agronomic fields for response generation
+                organic_alternative: layeredRuleResult.primary_decision.organic_alternative || null,
+                phi_days: layeredRuleResult.primary_decision.phi_days || null,
+                bee_toxicity: layeredRuleResult.primary_decision.bee_toxicity || null,
+                application_method: layeredRuleResult.primary_decision.application_method || null,
+                water_volume_per_acre: layeredRuleResult.primary_decision.water_volume_per_acre || null,
+                mode_of_action: layeredRuleResult.primary_decision.mode_of_action || null,
+                chemical_class: layeredRuleResult.primary_decision.chemical_class || null,
+                resistance_group: layeredRuleResult.primary_decision.resistance_group || null,
+                target_pest_stage: layeredRuleResult.primary_decision.target_pest_stage || null,
+                success_indicators: layeredRuleResult.primary_decision.success_indicators || null,
+                failure_indicators: layeredRuleResult.primary_decision.failure_indicators || null,
+                roi_yield_gain_pct: layeredRuleResult.primary_decision.roi_yield_gain_pct || null,
+                reentry_interval_hours: layeredRuleResult.primary_decision.reentry_interval_hours || null,
               },
               expected_outcomes: {
                 efficacy_percent: layeredRuleResult.primary_decision.weighted_confidence 
@@ -5636,7 +5650,7 @@ export class AIAgentOrchestrator {
                     ? Math.round(layeredRuleResult.primary_decision.confidence_score * 100)
                     : 75,
                 time_to_visible_effect_days: '3-5',
-                success_indicators: []
+                success_indicators: layeredRuleResult.primary_decision.success_indicators || []
               }
             };
           }

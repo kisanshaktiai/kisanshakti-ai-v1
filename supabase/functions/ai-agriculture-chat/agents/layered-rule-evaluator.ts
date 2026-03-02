@@ -803,6 +803,23 @@ export function evaluateRulesLayered(
         active_ingredient: best.active_ingredient || null,
         dosage_per_acre: best.dosage_per_acre || null,
         cause: best.cause || null,
+        // RICH DATA: Propagate all agronomic fields for world-class response generation
+        organic_alternative: best.organic_alternative || null,
+        phi_days: best.phi_days || null,
+        bee_toxicity: best.bee_toxicity || null,
+        application_method: best.application_method || null,
+        water_volume_per_acre: best.water_volume_per_acre || null,
+        mode_of_action: best.mode_of_action || null,
+        chemical_class: best.chemical_class || null,
+        resistance_group: best.resistance_group || null,
+        target_pest_stage: (best as any).target_pest_stage || null,
+        success_indicators: (best as any).success_indicators || null,
+        failure_indicators: (best as any).failure_indicators || null,
+        roi_yield_gain_pct: (best as any).roi_yield_gain_pct || null,
+        reentry_interval_hours: best.reentry_interval_hours || null,
+        response_mr: best.response_mr || null,
+        response_hi: best.response_hi || null,
+        response_en: best.response_en || null,
       };
       
       console.log(`📊 Decision Authority:`);
