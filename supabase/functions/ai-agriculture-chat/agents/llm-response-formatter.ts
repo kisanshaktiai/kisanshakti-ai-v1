@@ -1517,13 +1517,7 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
          parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
       }
       
-      // Fallback to legacy response fields ONLY if no action_text
-      if (!resp.action_text) {
-        const localizedResponse = resp[`response_${input.language}`] || resp.response_en || resp.response_mr || '';
-        if (localizedResponse) {
-          parts.push(`   Response: ${localizedResponse}`);
-        }
-      }
+      // FIX 34: Removed legacy response_mr/hi/en fallback (columns dropped from DB)
     });
   }
   
