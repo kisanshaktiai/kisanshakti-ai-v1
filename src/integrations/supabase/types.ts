@@ -32081,9 +32081,12 @@ export type Database = {
           cost_actual_inr: number | null
           cost_predicted_inr: number | null
           created_at: string | null
+          crop_code: string | null
+          crop_stage: string | null
           day_14_check: Json | null
           day_3_check: Json | null
           day_7_check: Json | null
+          days_since_sowing: number | null
           decision_id: string | null
           deviations: string[] | null
           efficacy_predicted_percent: number | null
@@ -32102,6 +32105,7 @@ export type Database = {
           land_id: string | null
           predicted_pest_disease: string | null
           prediction_confidence: number | null
+          rule_id: string | null
           session_id: string | null
           tenant_id: string | null
           treatment_applied: string | null
@@ -32115,9 +32119,12 @@ export type Database = {
           cost_actual_inr?: number | null
           cost_predicted_inr?: number | null
           created_at?: string | null
+          crop_code?: string | null
+          crop_stage?: string | null
           day_14_check?: Json | null
           day_3_check?: Json | null
           day_7_check?: Json | null
+          days_since_sowing?: number | null
           decision_id?: string | null
           deviations?: string[] | null
           efficacy_predicted_percent?: number | null
@@ -32136,6 +32143,7 @@ export type Database = {
           land_id?: string | null
           predicted_pest_disease?: string | null
           prediction_confidence?: number | null
+          rule_id?: string | null
           session_id?: string | null
           tenant_id?: string | null
           treatment_applied?: string | null
@@ -32149,9 +32157,12 @@ export type Database = {
           cost_actual_inr?: number | null
           cost_predicted_inr?: number | null
           created_at?: string | null
+          crop_code?: string | null
+          crop_stage?: string | null
           day_14_check?: Json | null
           day_3_check?: Json | null
           day_7_check?: Json | null
+          days_since_sowing?: number | null
           decision_id?: string | null
           deviations?: string[] | null
           efficacy_predicted_percent?: number | null
@@ -32170,6 +32181,7 @@ export type Database = {
           land_id?: string | null
           predicted_pest_disease?: string | null
           prediction_confidence?: number | null
+          rule_id?: string | null
           session_id?: string | null
           tenant_id?: string | null
           treatment_applied?: string | null
