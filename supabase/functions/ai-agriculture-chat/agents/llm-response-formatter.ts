@@ -1888,9 +1888,9 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     parts.push(headers[lang]);
     
     // CRITICAL: Extract from current decision_output ONLY
-    const rawProductName = primary.application_details?.product_name;
-    const rawActionType = primary.action_type;
-    const rawActionText = primary.action_text;
+    const safeProductName = hasValidProductName ? rawProductName : '';
+    const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
+    const method = primary.application_details?.method || primary.application_details?.application_method;
     const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
     const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
