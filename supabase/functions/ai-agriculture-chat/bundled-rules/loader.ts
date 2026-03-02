@@ -993,6 +993,9 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
       // facing codes like POOR_TILLERING), check observable_characteristics which
       // contains farmer-facing symptom codes that match NLU extraction output.
       // ═══════════════════════════════════════════════════════════════════════════
+      // FORENSIC FIX 1F: Handle both array AND boolean-object format for observable_characteristics
+      // Array format: ["DEAD_HEART", "FRASS"] — already normalized by normalizeObservableChars
+      // Boolean-object format: {dead_heart: true, bore_holes: true} — normalized to array of uppercase keys
       const obsChars = (rule as any).observable_characteristics;
       if (obsChars && Array.isArray(obsChars) && obsChars.length > 0) {
         const inputSymptoms = (input.visual_symptoms || []).map(s =>
