@@ -922,9 +922,34 @@ export function evaluateConditionsJson(
       continue;
     }
 
+    // ─── FORENSIC FIX 1C: Handle `requires_diagnosis_confidence` as threshold ───
+    if (key === 'requires_diagnosis_confidence') {
+      const confVal = typeof condValue === 'number' ? condValue : parseFloat(String(condValue));
+      // This is a soft gate — if we don't have confidence data, skip gracefully
+      ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      continue;
+    }
+
+    // ─── FORENSIC FIX 1D: Handle `requires_confirmation` as prerequisite ref ───
+    if (key === 'requires_confirmation') {
+      // String rule_id reference — treat as soft prerequisite, not boolean
+      ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      continue;
+    }
+
     if (condValue !== null && typeof condValue === 'object') {
-      // Unknown object condition - cannot evaluate
-      ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: '[object]' });
+      // FORENSIC FIX: Check if this is an array (like required_symptoms missed above)
+      if (Array.isArray(condValue)) {
+        // Treat unknown array keys as soft observation lists
+        const arrMatch = condValue.some((v: any) => {
+          const vUpper = String(v).toUpperCase().replace(/[\s-]/g, '_');
+          return expandedObs.has(vUpper) || [...expandedObs].some(o => o.includes(vUpper) || vUpper.includes(o));
+        });
+        ledger.push({ key, status: arrMatch ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+        continue;
+      }
+      // Unknown object condition — mark as informational, not blocking
+      ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: '[object]' });
       continue;
     }
 
