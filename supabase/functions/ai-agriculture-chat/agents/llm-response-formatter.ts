@@ -1946,8 +1946,8 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
         recText += ` @ ${dosage}`;
       }
 
-      // For generic actions, include action text only when present and not placeholder
-      if (isGenericAction && rawActionText && !isPlaceholderText(rawActionText)) {
+      // For generic actions, include action text only when localized/safe for farmer display
+      if (isGenericAction && shouldRenderRawFarmerText(rawActionText)) {
         recText += `\n   🔧 ${rawActionText}`;
       }
       
