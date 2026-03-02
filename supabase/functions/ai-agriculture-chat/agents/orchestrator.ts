@@ -5428,6 +5428,21 @@ export class AIAgentOrchestrator {
       
       // Build once so it's available for both diagnostic and rule-engine paths
       const nluWithRuleMapping = this.buildNLUOutputWithRuleMapping(nluOutput, fusedIntelligence);
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // CRITICAL FIX (Forensic Audit): Wire orchestrator's assembled observations
+      // into nluWithRuleMapping.entities.symptom_codes so DiagnosticFlowController
+      // and authority-resolver can see them. Without this, observations=0 in the
+      // diagnostic flow despite 20+ observations being assembled in the orchestrator.
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (allObservationsForPreAuth && allObservationsForPreAuth.size > 0) {
+        const existingSymptomCodes = new Set<string>(nluWithRuleMapping.entities?.symptom_codes || []);
+        for (const obs of allObservationsForPreAuth) {
+          existingSymptomCodes.add(obs);
+        }
+        nluWithRuleMapping.entities.symptom_codes = Array.from(existingSymptomCodes);
+        console.log(`   🔗 [OBSERVATION_WIRING] Injected ${allObservationsForPreAuth.size} observations into nluWithRuleMapping.entities.symptom_codes (total: ${nluWithRuleMapping.entities.symptom_codes.length})`);
+      }
       const symbolicAlreadyProduced = (totalRulesMatched > 0) || 
         (layeredRuleResult && (layeredRuleResult as any).rules_matched > 0);
       
