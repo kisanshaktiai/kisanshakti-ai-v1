@@ -554,7 +554,11 @@ serve(async (req) => {
           // CRITICAL FIX 2: Pass pending clarification options for option matching
           pendingClarificationOptions: sessionState.pending_clarification_options || [],
           // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
-          lockedCropContext: sessionState.lockedCropContext
+          lockedCropContext: sessionState.lockedCropContext,
+          // PART 10: Pass problems_discussed for session continuity
+          problems_discussed: sessionState.problems_discussed || [],
+          last_query_hash: sessionState.last_query_hash,
+          last_query_timestamp: sessionState.last_query_timestamp
         } : undefined
       }
     );
