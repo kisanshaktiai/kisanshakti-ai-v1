@@ -4745,9 +4745,59 @@ export class AIAgentOrchestrator {
         const allRulesWithBundled = await getAllRulesWithBundled(cropCodeForFilter || undefined);
         console.log(`   📦 Total rules loaded: ${allRulesWithBundled.length} (crop=${cropCodeForFilter || 'ALL'})`);
         
-        // If hypothesis narrowed scope, filter rules
+        // ═══════════════════════════════════════════════════════════════════════════
+        // DIAGNOSTIC PRE-FILTER (PART 7): When pest evidence is present, 
+        // filter to PEST_MANAGEMENT rules first and rank above all others.
+        // This prevents irrigation/nutrition rules from being primary when
+        // DEAD_HEART, BORE_HOLES, or BORER evidence is detected.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const PEST_EVIDENCE_CODES = new Set([
+          'DEAD_HEART', 'DEAD_HEART_PRESENT', 'DEADHEART', 'DEAD_HEART_VISIBLE',
+          'STEM_BORING_MARKS', 'BORE_HOLES', 'BORER_DAMAGE', 'STEM_BORING',
+          'BORER_SUSPECTED', 'TUNNELS_IN_STEM', 'INTERNAL_TUNNEL',
+          'FRASS_VISIBLE', 'FRASS', 'LARVAE_IN_STEM', 'BORER_LARVAE_VISIBLE',
+          'INSECT_PRESENCE_CONFIRMED', 'PINK_LARVAE_VISIBLE'
+        ]);
+        const PEST_RULE_CATEGORIES = new Set([
+          'pest', 'pest_management', '03_pest', 'ipm', 'borer', 'insect',
+          'pest_control', 'biological_control'
+        ]);
+        
+        const allObsForPreFilter = [...(allObservationsForPreAuth || [])];
+        const hasPestPreFilterEvidence = allObsForPreFilter.some(obs => 
+          PEST_EVIDENCE_CODES.has(String(obs).toUpperCase())
+        );
+        
         let rulesToEvaluate = allRulesWithBundled;
-        if (hypothesisRuleScope && hypothesisRuleScope.length > 0) {
+        let diagnosticPreFilterApplied = false;
+        
+        if (hasPestPreFilterEvidence) {
+          console.log(`\n🎯 [DIAGNOSTIC_PRE_FILTER] Pest evidence detected in observations!`);
+          console.log(`   Evidence: ${allObsForPreFilter.filter(o => PEST_EVIDENCE_CODES.has(String(o).toUpperCase())).join(', ')}`);
+          
+          // Filter to pest management rules
+          const pestRules = allRulesWithBundled.filter((r: any) => {
+            const cat = (r.category || r.canonical_group || r.required_observation_category || '').toLowerCase();
+            const condCode = (r.condition_code || '').toLowerCase();
+            return PEST_RULE_CATEGORIES.has(cat) || 
+                   condCode.includes('borer') || condCode.includes('pest') ||
+                   condCode.includes('shoot') || condCode.includes('insect');
+          });
+          
+          if (pestRules.length > 0) {
+            // Prepend pest rules at high priority, then keep remaining rules as fallback
+            const nonPestRules = allRulesWithBundled.filter((r: any) => !pestRules.includes(r));
+            rulesToEvaluate = [...pestRules, ...nonPestRules];
+            diagnosticPreFilterApplied = true;
+            console.log(`   ✅ [DIAGNOSTIC_PRE_FILTER] Prioritized ${pestRules.length} pest rules above ${nonPestRules.length} others`);
+            agentsUsed.push('DIAGNOSTIC_PRE_FILTER_PEST');
+          } else {
+            console.warn(`   ⚠️ [DIAGNOSTIC_PRE_FILTER] No pest-category rules found, using full set`);
+          }
+        }
+        
+        // If hypothesis narrowed scope, filter rules (only if pre-filter didn't already apply)
+        if (!diagnosticPreFilterApplied && hypothesisRuleScope && hypothesisRuleScope.length > 0) {
           const scopedRules = allRulesWithBundled.filter((r: any) => hypothesisRuleScope!.includes(r.id || r.rule_id));
           if (scopedRules.length > 0) {
             rulesToEvaluate = scopedRules;

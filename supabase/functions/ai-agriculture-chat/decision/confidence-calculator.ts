@@ -31,6 +31,15 @@ export interface ConfidenceScore {
   };
   level: ConfidenceLevel;
   explanation: string;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PART 8: DUAL INDEPENDENT CONFIDENCE SIGNALS
+  // data_quality_confidence: Affects dosage precision (soil test, weather, NDVI)
+  // symptom_diagnosis_confidence: Affects cause identification (symptom specificity + rule matching)
+  // These are computed INDEPENDENTLY — low data quality must NOT block high symptom confidence
+  // ═══════════════════════════════════════════════════════════════════════════
+  data_quality_confidence: number;      // 0-1: How well we can recommend specific doses
+  symptom_diagnosis_confidence: number; // 0-1: How confidently we can name the cause
 }
 
 export type ConfidenceLevel = 'VERY_HIGH' | 'HIGH' | 'MODERATE' | 'LOW' | 'VERY_LOW';
