@@ -1924,16 +1924,15 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       translatedProductName = getProductName(rawProductName, lang);
     }
     
-    // If product_name is null/empty, try to use action_text
-    if (rawProductName && rawProductName !== 'Recommended treatment') {
+    if (safeProductName && safeProductName !== 'Recommended treatment') {
       let recText = `1. **${translatedProductName}**`;
       // Only add dosage if not already included and it's not a generic action
       if (!isGenericAction && dosage && dosage !== 'As per label' && dosage !== 'N/A' && !translatedProductName.includes('/')) {
         recText += ` @ ${dosage}`;
       }
-      
-      // For generic actions, include the action text in farmer's language
-      if (isGenericAction && rawActionText) {
+
+      // For generic actions, include action text only when present and not placeholder
+      if (isGenericAction && rawActionText && !isPlaceholderText(rawActionText)) {
         recText += `\n   🔧 ${rawActionText}`;
       }
       
