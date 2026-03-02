@@ -5410,6 +5410,8 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             pendingClarificationOptions: safeOptionsForLog,
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false,
             // Language Induction Layer metrics (independent of intent confidence)
             induction_coverage: inductionCoverage,
             induction_confidence: inductionConfidence,
@@ -5495,13 +5497,15 @@ export class AIAgentOrchestrator {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
             question: diagnosticState.next_question,
-            metadata: {
-              confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
-              safety_status: 'PENDING',
-              rules_applied: 0,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed
-            }
+          metadata: {
+            confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
+            safety_status: 'PENDING',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
+          }
           };
         }
       }
@@ -5525,7 +5529,9 @@ export class AIAgentOrchestrator {
             safety_status: 'PENDING',
             rules_applied: 0,
             processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed
+            agents_used: agentsUsed,
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
           }
         };
       }
@@ -5735,7 +5741,9 @@ export class AIAgentOrchestrator {
             trace_id: traceId,
             layer_timings: layerTimings,
             reason: 'LOW_CONFIDENCE_NO_RULES',
-            ssot_source: 'observation_translations'
+            ssot_source: 'observation_translations',
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
           }
         };
       }
@@ -5812,7 +5820,9 @@ export class AIAgentOrchestrator {
             agents_used: agentsUsed,
             trace_id: traceId,
             fallback_reason: 'ZERO_RULES_WITH_PHOTO',
-            ssot_source: 'decision_rules.observable_characteristics'
+            ssot_source: 'decision_rules.observable_characteristics',
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
           }
         };
       }
@@ -5921,7 +5931,9 @@ export class AIAgentOrchestrator {
               rules_applied: decisionOutput.rules_applied?.length || 0,
               processing_time_ms: Date.now() - startTime,
               agents_used: agentsUsed,
-              trace_id: traceId
+              trace_id: traceId,
+              symptomKeys: Array.from(allObservationsForPreAuth || []),
+              isEmergency: false
             }
           };
         }
