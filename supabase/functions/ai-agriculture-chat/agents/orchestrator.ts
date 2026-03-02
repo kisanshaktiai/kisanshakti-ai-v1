@@ -4499,8 +4499,11 @@ export class AIAgentOrchestrator {
           weatherData: fusedIntelligence.weather_data,
           // PHASE 2.5 FIX: Pass GDD result for authoritative stage
           gddResult: gddResultForCanonical,
-          // CRITICAL FIX: Use ALL symptom sources, not just visual_symptoms
-          farmerObservations: uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms,
+          // BUG-A FIX: Pass FULL observation set (20+ codes) to canonical state builder
+          // so PrescriptionGate sees symptom_count >= 5 and overrides LOW confidence block
+          farmerObservations: allObservationsForPreAuth && allObservationsForPreAuth.size > 0
+            ? Array.from(allObservationsForPreAuth) 
+            : (uniqueSymptomCodes.length > 0 ? uniqueSymptomCodes : inductionSymptoms),
           nluOutput: nluOutput
         });
         
@@ -5581,6 +5584,11 @@ export class AIAgentOrchestrator {
             console.log(`      rule_id=${layeredRuleResult.primary_decision.rule_id}`);
             console.log(`      action_type=${layeredRuleResult.primary_decision.action_type}`);
             
+            // BUG-B FIX: Extract actual product info from rule for validation
+            const ruleActiveIngredient = layeredRuleResult.primary_decision.active_ingredient || null;
+            const ruleDosage = layeredRuleResult.primary_decision.dosage_per_acre || null;
+            const ruleCause = layeredRuleResult.primary_decision.cause || null;
+            
             decisionOutput.primary_decision = {
               action_type: layeredRuleResult.primary_decision.action_type,
               rule_id: layeredRuleResult.primary_decision.rule_id,
@@ -5593,6 +5601,12 @@ export class AIAgentOrchestrator {
               normalized_score: layeredRuleResult.primary_decision.normalized_score,
               total_required: layeredRuleResult.primary_decision.total_required,
               passed_required: layeredRuleResult.primary_decision.passed_required,
+              // BUG-B FIX: Propagate product_details with actual active_ingredient
+              product_details: ruleActiveIngredient ? {
+                product_name: ruleActiveIngredient,
+                active_ingredient: ruleActiveIngredient,
+                dosage_per_acre: ruleDosage,
+              } : undefined,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
@@ -5600,8 +5614,12 @@ export class AIAgentOrchestrator {
                 reason: 'Recovered from layered_rule_result.primary_decision in orchestrator'
               },
               application_details: {
-                product_name: 'See structured response',
+                // BUG-B FIX: Use actual active_ingredient instead of placeholder
+                product_name: ruleActiveIngredient || 'See structured response',
                 product_type: 'BOTANICAL',
+                active_ingredient: ruleActiveIngredient,
+                dosage_per_acre: ruleDosage,
+                cause: ruleCause,
                 action_text: layeredRuleResult.primary_decision.action_text,
                 reason_text: layeredRuleResult.primary_decision.reason_text,
                 knowledge_text: layeredRuleResult.primary_decision.knowledge_text,
@@ -5670,6 +5688,15 @@ export class AIAgentOrchestrator {
         ]);
         const obsArray = Array.from(allObservationsForPreAuth || []);
         const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
+        
+        // BUG-C FIX: Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
+        // so the formatter can read them from decision_output.metadata directly
+        decisionOutput.symptom_keys = obsArray;
+        if (!decisionOutput.metadata) decisionOutput.metadata = {};
+        decisionOutput.metadata.has_symptoms = obsArray.length > 0;
+        decisionOutput.metadata.symptomKeys = obsArray;
+        decisionOutput.metadata.decision_confidence = layeredRuleResult?.primary_decision?.weighted_confidence || 0;
+        decisionOutput.metadata.isEmergency = isEmergencyImmediate;
         
         // FIX 3 (v6.1): Wire matched_responses into IMMEDIATE return path
         if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {

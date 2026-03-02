@@ -185,10 +185,14 @@ export async function formatRecommendationsWithLLM(
   // ═══════════════════════════════════════════════════════════════════════════
   
   // CRASH-PROOF: Extract confidence data with safe defaults
+  // BUG-D FIX: Add weighted_confidence fallback from primary_decision
   const decisionConfidence = input.decision_output?.metadata?.decision_confidence ?? 
+                              input.decision_output?.primary_decision?.weighted_confidence ??
                               input.decision_output?.confidence ?? 0;
+  // BUG-C FIX: Also check symptom_keys on decision_output directly
   const hasSymptoms = input.decision_output?.metadata?.has_symptoms ?? 
-                       !!(input.decision_output?.symptom_keys?.length);
+                       !!(input.decision_output?.symptom_keys?.length) ??
+                       !!(input.metadata?.symptomKeys?.length);
   const hasVisualAmbiguity = input.decision_output?.metadata?.has_visual_ambiguity ?? 
                               input.decision_output?.needs_photo_for_diagnosis ?? false;
   const clarificationOptions = input.decision_output?.clarification_options ?? [];
@@ -659,8 +663,14 @@ function validateLLMOutput(
     return { valid: true, violations: [] };
   }
   
-  const primaryProductName = decisionInput?.decision_output?.primary_decision?.product_details?.product_name ||
-                             decisionInput?.decision_output?.primary_decision?.application_details?.product_name;
+  // BUG-B FIX: Also fallback to active_ingredient when product_name is placeholder
+  const rawProductName = decisionInput?.decision_output?.primary_decision?.product_details?.product_name ||
+                         decisionInput?.decision_output?.primary_decision?.application_details?.product_name;
+  const primaryProductName = (rawProductName && rawProductName !== 'See structured response')
+    ? rawProductName
+    : (decisionInput?.decision_output?.primary_decision?.product_details?.active_ingredient ||
+       decisionInput?.decision_output?.primary_decision?.application_details?.active_ingredient ||
+       rawProductName);
   
   // List of generic action types that are NOT specific products
   const GENERIC_ACTION_TYPES = [
