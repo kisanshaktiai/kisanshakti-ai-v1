@@ -31,9 +31,10 @@
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
-import { 
-  getProductName, 
-  getActionTranslation 
+import {
+  getProductName,
+  getActionTranslation,
+  getCauseTranslation
 } from './communication-translation-dictionary.ts';
 
 // Import validation from decision representation
