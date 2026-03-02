@@ -1,33 +1,40 @@
-# Pipeline Stability Fixes v5.4 — GROWTH_ANOMALY Pipeline Fix
+# Pipeline Stability Fixes v5.5 — Architectural Correction Specification
 
-## Fixes Applied (2026-03-01)
+## Fixes Applied (2026-03-02)
 
-### v5.4 Fixes (Current)
+### v5.5 Fixes (Current) — Supreme Law + Response Format Types
 
-#### BUG 12: Observable Characteristics Never Used for Rule Matching — FIXED
-- **File:** `bundled-rules/loader.ts:933` (`makeExecutable`)
-- **Root cause:** All 459 SUGARCANE rules have `condition_code = 'STAGE_GENERAL'`. The `conditions_json.observations` contain diagnostic-level codes (e.g., `ORANGE_RED_DOTS_AT_NODES`) that don't match farmer-facing NLU codes (e.g., `POOR_TILLERING`). The `observable_characteristics` column DOES contain matching farmer-facing codes, but `makeExecutable()` only called `evaluateConditionsJson()` — never checking `observable_characteristics`.
-- **Fix:** Added secondary matching path in `makeExecutable()`: when `evaluateConditionsJson()` fails, check `observable_characteristics` array for symptom matches using exact, containment, and root-word matching. Populates condition ledger for downstream scoring.
+#### FIX 15: Intent Classification for Prescription Requests — FIXED
+- **Files:** `decision/intent-resolver.ts`, `agents/intent-classifier.ts`
+- **Root cause:** "काय टाकू" / "काय द्यायचं" (what to apply) was classified as UNKNOWN_OBSERVATION, routing to no-action path
+- **Fix:** Added `INPUT_RECOMMENDATION` intent code. Emergency keyword fallback now routes prescription requests (काय टाकू, काय मारू, उपाय) to INPUT_RECOMMENDATION instead of UNKNOWN. Problem+prescription queries (फुट कमी + काय टाकू) route to the problem intent (GROWTH_ANOMALY).
 
-#### BUG 13: Observation Matching Too Strict (No Root-Word Matching) — FIXED
-- **File:** `bundled-rules/loader.ts:748` (`evaluateConditionsJson` observations section)
-- **Root cause:** `conditions_json.observations` matching only used exact string match and substring containment. Codes like `STUNTED_PLANTS` vs `STUNTED_GROWTH` (sharing root word `STUNTED`) never matched.
-- **Fix:** Added root-word matching: split both observation codes into words, check for shared words with length > 3 characters.
+#### FIX 16: LLM Formatter 5 Response Format Types — IMPLEMENTED
+- **File:** `agents/llm-response-formatter.ts` (buildFormattingSystemPrompt)
+- **Root cause:** Single generic WHAT-WHY-HOW template for all scenarios. LLM invented HOW sections when no actions existed.
+- **Fix:** System prompt now selects from 5 mandatory format types based on action_type:
+  - FORMAT 1: Direct Prescription (RECOMMEND + product fields populated)
+  - FORMAT 2: Clarification Needed (partial symptoms)
+  - FORMAT 3: Monitoring Advisory (MONITOR action)
+  - FORMAT 4: Stage Advisory Fallback (zero rules fired)
+  - FORMAT 5: Pest Emergency (URGENT_ACTION + HIGH/CRITICAL risk)
+- **Supreme Law enforced:** Generic phrases like "कीड मारायची दवा वापरा" forbidden. Missing dosage triggers "मला अधिक माहिती हवी आहे" instead.
+- **Dosage calculation:** Total = dosage_per_acre × land_area, shown as total not per-acre.
+- **Rural language:** भाऊ/दादा addressing, फवारणी not छिडकाव, मेलेला गाभा not डेड हार्ट.
 
-#### BUG 14: data_authority_rank Not Used in Primary Decision Scoring — FIXED
-- **File:** `agents/layered-rule-evaluator.ts:740`
-- **Root cause:** Scoring sort only used `evidenceScore` then `confidence_score`. The `data_authority_rank` field (values 55-95 in DB) was loaded but never used for selection, making ICAR-validated rules no different from generic advisories.
-- **Fix:** Sort now uses: authority_rank DESC → evidenceScore DESC → priority DESC → confidence_score DESC.
-
-#### Pipeline Health Monitoring — ADDED
-- **File:** `agents/orchestrator.ts:4783`
-- **Fix:** Added critical warning log when `rules_matched === 0` but `visual_symptoms.length >= 3`, logging crop, stage, symptoms, and evaluation count for fast diagnosis of future gaps.
+## Remaining Work (Next Session)
+- Session continuity: problems_discussed list, repeat-concern detection
+- Diagnostic pre-filter: pest evidence (DEAD_HEART, BORER) forces PEST_MANAGEMENT rules first
+- Independent confidence: separate data_quality_confidence from symptom_diagnosis_confidence
 
 ## Previous Fixes
 
+### v5.4
+- BUG 12-14: Observable characteristics matching, root-word matching, data_authority_rank sorting — FIXED
+- Pipeline health monitoring — ADDED
+
 ### v5.3
-- BUG 11: DiagnosisOnlyMode guard checks wrong object — FIXED
-- BUG 10: Symbolic Recommendations Never Reach primary_decision — FIXED
+- BUG 10-11: Symbolic recommendations reach primary_decision, DiagnosisOnlyMode guard — FIXED
 
 ### v5.2
 - BUG 6-9: Intent disconnection, missing scopes, prescription gate, Phase 3 override — FIXED
@@ -35,9 +42,10 @@
 ### v5.1
 - BUG 1-5: ReferenceError, dual detector, stage drift, redundant execution, authority blocks — FIXED
 
-## Guaranteed Invariants (v5.4)
-1. `observable_characteristics` is used as secondary matching path when `conditions_json` matching fails
-2. Root-word matching enables related symptom codes to match (e.g., STUNTED_PLANTS ↔ STUNTED_GROWTH)
-3. `data_authority_rank` is the primary sort criterion for rule selection
-4. Pipeline health anomalies (0 matches with 3+ symptoms) are logged as errors
-5. All v5.1-v5.3 invariants remain in effect
+## Guaranteed Invariants (v5.5)
+1. "काय टाकू" patterns classify as INPUT_RECOMMENDATION, never UNKNOWN_OBSERVATION
+2. LLM formatter selects response format type from action_type, not its own judgment
+3. Generic pesticide phrases without specific product from rules are FORBIDDEN
+4. Missing dosage/active_ingredient → HOW section replaced with clarification request
+5. Total dosage calculated as dosage_per_acre × land_area for farmer's specific field
+6. All v5.1-v5.4 invariants remain in effect

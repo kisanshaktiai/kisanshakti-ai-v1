@@ -93,12 +93,12 @@ Your task:
 
 INTENT CODES:
 - EMERGENCE_FAILURE: Seed didn't sprout, gaps in field
-- GROWTH_ANOMALY: Slow growth, stunted plants
+- GROWTH_ANOMALY: Slow growth, stunted plants, poor tillering
 - COLOR_CHANGE: Yellowing, browning, pale, color changes
 - WILTING_OR_DROOPING: Plants wilting, drooping, dying, drying
 - LEAF_DAMAGE_VISIBLE: Holes, chewing damage on leaves
 - LEAF_MARKS_OR_SPOTS: Spots, patches, lesions, marks on leaves
-- STEM_DAMAGE: Stem holes, tunnels, breakage, boring
+- STEM_DAMAGE: Stem holes, tunnels, breakage, boring, dead heart
 - ROOT_OR_BASE_PROBLEM: Root rot, base issues
 - PEST_PRESENCE_VISIBLE: Insects or pests physically seen
 - DISEASE_LIKE_PATTERN: Spreading pattern, fungal signs, plant death/decay
@@ -107,15 +107,22 @@ INTENT CODES:
 - UNEVEN_FIELD_PATTERN: Patchy, uneven growth in field
 - YIELD_OR_OUTPUT_ISSUE: Poor yield, harvest concerns
 - WEED_PROBLEM: Weeds growing, weed competition, unwanted plants
+- INPUT_RECOMMENDATION: Farmer asks "what to apply/use/give" (काय टाकू, काय द्यायचं, काय मारू, क्या डालें, क्या दें). This is a DIRECT PRESCRIPTION REQUEST — farmer wants specific product/dosage/timing. NEVER classify as GENERAL_CROP_INFO.
 - FERTILIZER_SCHEDULE: When/how much fertilizer, nutrient schedule
 - IRRIGATION_QUERY: Water schedule, irrigation timing
 - HARVEST_TIMING: When to harvest, maturity signs
-- GENERAL_CROP_INFO: General crop management, planting info
+- GENERAL_CROP_INFO: General crop management, planting info (NOT for "what to apply" questions)
 - SOIL_TESTING_QUERY: Soil testing, soil health questions
 - SEED_SELECTION: Seed variety, seed selection questions
 - MARKET_PRICE_QUERY: Market prices, selling, mandi rates
 - WEATHER_QUERY: Weather forecast, rain prediction
 - UNKNOWN_OBSERVATION: Cannot classify
+
+CRITICAL RULE: If the farmer describes a problem AND asks "what to apply/use/give" (काय टाकू, काय द्यायचं, उपाय सांगा, क्या डालें), classify by the PROBLEM described, NOT as INPUT_RECOMMENDATION. For example:
+- "फुट कमी पडतायत, काय टाकू?" → GROWTH_ANOMALY (problem is poor tillering)
+- "पान पिवळे झाले, काय मारू?" → COLOR_CHANGE (problem is yellowing)
+- "खोडात छिद्र पडली, काय करू?" → STEM_DAMAGE (problem is stem boring)
+- "काय टाकू?" (no problem described) → INPUT_RECOMMENDATION
 
 Return JSON only:
 {"intent_code": "...", "confidence": 0.0-1.0}
@@ -450,8 +457,9 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
   }
   
   // Growth anomaly - फुट कमी (poor tillering), वाढ कमी/नाही (poor growth)
+  // PART 2 FIX: These are ACTIONABLE problems — never route to UNKNOWN
   if (/फुट.*कमी|फुट.*नाही|वाढ.*कमी|वाढ.*नाही|वाढ.*मंद|वाढ.*थांब|बढ़.*कम|बढ़.*रुक|stunted|slow.*growth|poor.*growth|फुटवा|tillering/i.test(original)) {
-    return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.6 };
+    return { intent_code: 'GROWTH_ANOMALY' as IntentCode, confidence: 0.7 };
   }
   
   // Weed-related (Devanagari + English + Romanized)
@@ -499,10 +507,6 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
   if (/उस|ऊस/i.test(original) && /मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.55 };
   }
-  // उस/ऊस + करावे/उपाय (generic "what to do" without specific symptom) → UNKNOWN
-  if (/उस|ऊस/i.test(original) && /करावे|उपाय/i.test(original) && !/मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
-    return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.3 };
-  }
   
   // Stem damage / borer
   if (/खोड|तना|stem|borer|छेदक|\bkhod\b/i.test(original)) {
@@ -514,9 +518,25 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
     return { intent_code: 'HARVEST_TIMING' as IntentCode, confidence: 0.5 };
   }
   
-  // Generic "what to do" / "remedy" with any crop mention (catch-all for treatment queries)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PART 2 FIX: "काय टाकू" / "काय द्यायचं" / "काय मारू" = INPUT_RECOMMENDATION
+  // This is a DIRECT PRESCRIPTION REQUEST — farmer wants specific product recommendation
+  // Must NEVER be classified as GENERAL_INFO or UNKNOWN_OBSERVATION
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (/काय\s*(टाकू|टाक|द्यायचं|द्या|मारू|मार|द्यावं|द्यावे|करू|करायचं)|क्या\s*(डालें|डालू|दें|दूं|मारें|करें)|what\s*(to\s*)?(apply|use|give|spray|put)/i.test(original)) {
+    // उस/ऊस + काय टाकू with problem context → route to problem-specific intent (already handled above)
+    // Pure "काय टाकू" without problem description → INPUT_RECOMMENDATION
+    return { intent_code: 'INPUT_RECOMMENDATION' as IntentCode, confidence: 0.65 };
+  }
+  
+  // उस/ऊस + करावे/उपाय (generic "what to do" without specific symptom) → INPUT_RECOMMENDATION (not UNKNOWN)
+  if (/उस|ऊस/i.test(original) && /करावे|उपाय/i.test(original) && !/मेला|सुक|कमी|रोग|किडा|वाळ|जळ/i.test(original)) {
+    return { intent_code: 'INPUT_RECOMMENDATION' as IntentCode, confidence: 0.5 };
+  }
+  
+  // Generic "what to do" / "remedy" with any crop mention
   if (/काय करावे|उपाय|इलाज|क्या करें|kya kare|upay|remedy|treatment/i.test(original)) {
-    return { intent_code: 'UNKNOWN_OBSERVATION' as IntentCode, confidence: 0.3 };
+    return { intent_code: 'INPUT_RECOMMENDATION' as IntentCode, confidence: 0.45 };
   }
   
   return null;

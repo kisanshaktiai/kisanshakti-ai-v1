@@ -312,6 +312,15 @@ export const VALID_INTENT_CODES = [
   'IRRIGATION_QUERY',
   'HARVEST_TIMING',
   'GENERAL_CROP_INFO',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PART 2 FIX: INPUT_RECOMMENDATION and SOIL_TESTING_QUERY intents
+  // "काय टाकू" / "काय द्यायचं" = direct prescription request, NOT general info
+  // ═══════════════════════════════════════════════════════════════════════════
+  'INPUT_RECOMMENDATION',
+  'SOIL_TESTING_QUERY',
+  'SEED_SELECTION',
+  'MARKET_PRICE_QUERY',
+  'WEATHER_QUERY',
   'UNKNOWN_OBSERVATION'
 ] as const;
 
