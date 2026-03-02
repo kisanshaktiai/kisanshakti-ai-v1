@@ -72,12 +72,23 @@ export function extractProductDetails(decision: DecisionOutput): ExtractedProduc
 function sanitizeProductName(name: any): string | null {
   if (!name) return null;
   const strName = String(name).trim();
-  if (strName === '' || 
-      strName.toLowerCase() === 'none' || 
-      strName.toLowerCase() === 'undefined' || 
-      strName.toLowerCase() === 'null') {
+  const lower = strName.toLowerCase();
+
+  if (
+    strName === '' ||
+    lower === 'none' ||
+    lower === 'undefined' ||
+    lower === 'null' ||
+    lower.includes('blocking rule is active') ||
+    lower.includes('see structured response') ||
+    lower.includes('see matched response') ||
+    lower.includes('recommended treatment') ||
+    lower.includes('monitor and reassess') ||
+    lower.includes('continue monitoring')
+  ) {
     return null;
   }
+
   return strName;
 }
 

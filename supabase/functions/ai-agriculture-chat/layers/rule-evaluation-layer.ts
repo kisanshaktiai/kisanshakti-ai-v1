@@ -428,9 +428,9 @@ function mapToRecommendation(rule: any): Recommendation {
     priority: rule.priority || 50,
     confidence: rule.confidence || 0.5,
     response: {
-      mr: rule.actions?.response_mr,
-      hi: rule.actions?.response_hi,
-      en: rule.actions?.response_en
+      mr: rule.actions?.action_text || rule.actions?.reason_text || '',
+      hi: rule.actions?.action_text || rule.actions?.reason_text || '',
+      en: rule.actions?.action_text || rule.actions?.reason_text || ''
     },
     product_details: {
       product_reference: rule.actions?.product_reference,

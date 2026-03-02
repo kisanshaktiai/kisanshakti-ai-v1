@@ -2055,10 +2055,11 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       parts.push(ipmHeader[lang]);
       
       matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        // FIX 34: Use action_text/reason_text (SSOT) instead of dropped response_mr/hi/en
+        // FIX 34: Use action_text/reason_text (SSOT) and avoid leaking raw table cause labels
         const actionContent = resp.action_text || resp.reason_text || '';
+        const genericCauseLabel = lang === 'mr' ? 'उपाय' : lang === 'hi' ? 'उपाय' : 'Recommendation';
         if (actionContent) {
-          parts.push(`\n${idx + 1}. **${resp.cause || 'उपचार'}:**\n${actionContent}`);
+          parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
         }
       });
     } else {
