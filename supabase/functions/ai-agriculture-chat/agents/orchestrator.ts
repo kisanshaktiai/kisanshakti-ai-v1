@@ -6221,14 +6221,23 @@ export class AIAgentOrchestrator {
         // Don't fail the request for audit issues
       }
       
+      // FIX 2 (v6.1): Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
+      const EMERGENCY_OBS_CODES_MAIN = new Set([
+        'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
+        'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
+        'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
+      ]);
+      const obsArrayMain = Array.from(allObservationsForPreAuth || []);
+      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES_MAIN.has(code));
+      
       return {
         type: 'DECISION_PROVIDED',
         session_id: sessionId,
         decision_id: decisionOutput.decision_id,
         communication: farmerCommunication,
-        decision_output: safetyVerification.modified_decision || decisionOutput,  // CRITICAL FIX: Include decision output
-        question_classification: questionClassification,  // Include in response
-        dataAudit,  // NEW: Include data audit for debugging
+        decision_output: safetyVerification.modified_decision || decisionOutput,
+        question_classification: questionClassification,
+        dataAudit,
         metadata: {
           confidence: diagnosticState.hypotheses?.[0]?.confidence || 0.7,
           safety_status: safetyVerification.safety_check.overall_safety_status,
@@ -6237,7 +6246,9 @@ export class AIAgentOrchestrator {
           agents_used: agentsUsed,
           template_type: questionClassification.template_type,
           sections_count: farmerCommunication.metadata?.sections_count || 0,
-          trace_id: traceId
+          trace_id: traceId,
+          symptomKeys: obsArrayMain,
+          isEmergency: isEmergencyMain
         }
       };
       
