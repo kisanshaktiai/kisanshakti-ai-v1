@@ -1858,11 +1858,25 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     const v = (value || '').trim().toLowerCase();
     if (!v) return true;
     return v.includes('blocking rule is active') ||
+           v.includes('a blocking rule has been triggered') ||
            v.includes('see structured response') ||
            v.includes('see matched response') ||
            v.includes('recommended treatment') ||
            v.includes('monitor and reassess') ||
-           v.includes('continue monitoring');
+           v.includes('continue monitoring') ||
+           v.includes('no treatment required at this stage') ||
+           v.includes('monitor pest population regularly') ||
+           v.includes('current information is insufficient');
+  };
+
+  const isLikelyRawEnglish = (value?: string) => {
+    const v = (value || '').trim();
+    if (!v || lang === 'en') return false;
+    return /[A-Za-z]/.test(v) && v.length > 18;
+  };
+
+  const shouldRenderRawFarmerText = (value?: string) => {
+    return !!value && !isPlaceholderText(value) && !isLikelyRawEnglish(value);
   };
 
   const NON_PRODUCT_ACTIONS = new Set([
@@ -1871,13 +1885,16 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     'BIOLOGICAL_RELEASE', 'OBSERVATION', 'WAIT_AND_WATCH'
   ]);
 
-  const hasValidProductName = !!rawProductName && !isPlaceholderText(rawProductName);
+  const PRODUCT_AS_CAUSE_PATTERN = /\b(pest|disease|deficiency|borer|infestation|population|symptom)\b/i;
+  const hasValidProductName = !!rawProductName &&
+    !isPlaceholderText(rawProductName) &&
+    !PRODUCT_AS_CAUSE_PATTERN.test(rawProductName);
   const isNonProductAction = NON_PRODUCT_ACTIONS.has(String(rawActionType || '').toUpperCase());
 
   const hasValidRecommendation = !!primary &&
     !!primary.action_type &&
     primary.action_type !== 'NO_ACTION' &&
-    (isNonProductAction || hasValidProductName || !!rawActionText || !!templatePestCode || !!templateDiseaseCode);
+    (isNonProductAction || hasValidProductName || shouldRenderRawFarmerText(rawActionText) || !!templatePestCode || !!templateDiseaseCode);
   
   if (hasValidRecommendation) {
     const headers: Record<string, string> = {
