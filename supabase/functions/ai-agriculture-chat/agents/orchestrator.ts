@@ -538,10 +538,21 @@ async function translateClarificationOptions(
   }));
   
   // Check which labels look like raw codes (ALL_CAPS_WITH_UNDERSCORES)
+  // FIX 33: Also detect codes with emoji prefixes like "🔍 GAPS IN FIELD"
   const RAW_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,}$/;
-  const needsTranslation = optionEntries.filter(e => 
-    RAW_CODE_PATTERN.test(e.label) || RAW_CODE_PATTERN.test(e.obsKey || '')
-  );
+  const EMOJI_PREFIX_PATTERN = /^[\p{Emoji}\p{Emoji_Presentation}\s🔍]+\s*/u;
+  
+  const needsTranslation = optionEntries.filter(e => {
+    const label = e.label || '';
+    // Direct raw code match
+    if (RAW_CODE_PATTERN.test(label)) return true;
+    // observation_key is always a raw code
+    if (e.obsKey && RAW_CODE_PATTERN.test(e.obsKey)) return true;
+    // Strip emoji prefix and check if remaining text is ALL CAPS (e.g., "🔍 GAPS IN FIELD")
+    const stripped = label.replace(EMOJI_PREFIX_PATTERN, '').trim();
+    if (stripped.length > 3 && stripped === stripped.toUpperCase() && /^[A-Z\s_]+$/.test(stripped)) return true;
+    return false;
+  });
   
   if (needsTranslation.length === 0) {
     // All labels are already human-readable
