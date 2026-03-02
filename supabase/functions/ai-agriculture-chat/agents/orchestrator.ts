@@ -5741,7 +5741,9 @@ export class AIAgentOrchestrator {
             trace_id: traceId,
             layer_timings: layerTimings,
             reason: 'LOW_CONFIDENCE_NO_RULES',
-            ssot_source: 'observation_translations'
+            ssot_source: 'observation_translations',
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
           }
         };
       }
