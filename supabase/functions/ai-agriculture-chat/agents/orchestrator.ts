@@ -5689,6 +5689,15 @@ export class AIAgentOrchestrator {
         const obsArray = Array.from(allObservationsForPreAuth || []);
         const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
         
+        // BUG-C FIX: Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
+        // so the formatter can read them from decision_output.metadata directly
+        decisionOutput.symptom_keys = obsArray;
+        if (!decisionOutput.metadata) decisionOutput.metadata = {};
+        decisionOutput.metadata.has_symptoms = obsArray.length > 0;
+        decisionOutput.metadata.symptomKeys = obsArray;
+        decisionOutput.metadata.decision_confidence = layeredRuleResult?.primary_decision?.weighted_confidence || 0;
+        decisionOutput.metadata.isEmergency = isEmergencyImmediate;
+        
         // FIX 3 (v6.1): Wire matched_responses into IMMEDIATE return path
         if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
