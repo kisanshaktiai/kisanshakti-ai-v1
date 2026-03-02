@@ -4273,7 +4273,13 @@ export class AIAgentOrchestrator {
         if (ruleDrivenClarification && ruleDrivenClarification.options.length > 0) {
           console.log(`   ✅ Using ${ruleDrivenClarification.options.length} RULE-DRIVEN options (Source=DECISION_RULES)`);
           console.log(`      Options sourced from: hypothesis-first candidate rules`);
-          finalClarificationOptions = ruleDrivenClarification.options.map(o => o.label);
+          // Translate rule-driven option labels to farmer language
+          const translatedRuleOptions = await translateClarificationOptions(
+            ruleDrivenClarification.options.map(o => ({ label: o.label, observation_key: o.observation_key })),
+            options.language || 'mr',
+            this.supabase
+          );
+          finalClarificationOptions = translatedRuleOptions.map(o => typeof o === 'string' ? o : o.label);
           clarificationSource = 'DECISION_RULES';
           
           // Log the rule-driven options for audit
