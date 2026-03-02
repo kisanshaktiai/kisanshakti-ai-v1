@@ -1872,7 +1872,7 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   const isLikelyRawEnglish = (value?: string) => {
     const v = (value || '').trim();
     if (!v || lang === 'en') return false;
-    return /[A-Za-z]/.test(v) && v.length > 18;
+    return /[A-Za-z]/.test(v);
   };
 
   const shouldRenderRawFarmerText = (value?: string) => {
