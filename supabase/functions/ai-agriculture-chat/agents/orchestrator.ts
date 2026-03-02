@@ -5497,13 +5497,15 @@ export class AIAgentOrchestrator {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
             question: diagnosticState.next_question,
-            metadata: {
-              confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
-              safety_status: 'PENDING',
-              rules_applied: 0,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed
-            }
+          metadata: {
+            confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
+            safety_status: 'PENDING',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
+          }
           };
         }
       }
