@@ -627,8 +627,23 @@ serve(async (req) => {
           // This is built by layered-rule-evaluator.ts from eligible matched_responses
           // ═══════════════════════════════════════════════════════════════════════════
           const layeredPrimaryDecision = rawDecisionOutput.layered_rule_result?.primary_decision;
-          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type) {
+          
+          // ═══════════════════════════════════════════════════════════════
+          // BUG-1/BUG-6 FIX: Safety gate rules must NEVER be selected as
+          // primary decision. They belong in warnings/blocked_actions only.
+          // ═══════════════════════════════════════════════════════════════
+          const SAFETY_GATE_RULE_PATTERN = /^GLOBAL_SAFETY/i;
+          const isSafetyGateRule = (ruleId?: string) => 
+            !!(ruleId && SAFETY_GATE_RULE_PATTERN.test(ruleId));
+          
+          const isLayeredSafetyGate = isSafetyGateRule(layeredPrimaryDecision?.rule_id);
+          
+          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type && !isLayeredSafetyGate) {
             console.log(`   🔄 RECOVERY: Using layered_rule_result.primary_decision`);
+            
+            // BUG-1 FIX: Never set placeholder product_name — leave null for formatter
+            const recoveredProductName = layeredPrimaryDecision.product_name || null;
+            const recoveredProductType = layeredPrimaryDecision.product_type || null;
             
             rawDecisionOutput.primary_decision = {
               action_type: layeredPrimaryDecision.action_type,
@@ -644,8 +659,8 @@ serve(async (req) => {
                 reason: 'Recovered from layered_rule_result.primary_decision'
               },
               application_details: {
-                product_name: 'See structured response',
-                product_type: 'BOTANICAL',
+                product_name: recoveredProductName,
+                product_type: recoveredProductType,
                 // SSOT: Language-independent response fields only
                 action_text: layeredPrimaryDecision.action_text,
                 reason_text: layeredPrimaryDecision.reason_text,
@@ -662,11 +677,23 @@ serve(async (req) => {
             };
             
             console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
+          } else if (isLayeredSafetyGate) {
+            console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping GLOBAL_SAFETY rule ${layeredPrimaryDecision?.rule_id} as primary — moving to warnings`);
+            // Move safety gate rule to warnings instead
+            if (!rawDecisionOutput.warnings) rawDecisionOutput.warnings = [];
+            rawDecisionOutput.warnings.push({
+              type: 'SAFETY_GATE',
+              rule_id: layeredPrimaryDecision?.rule_id,
+              message: layeredPrimaryDecision?.action_text || 'Safety precaution applies',
+              source: 'safety_gate_filter'
+            });
           }
           // PRIORITY 2: Check for primary_matched_response (LEGACY)
           else {
             const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
-            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type) {
+            const isPrimaryMatchSafetyGate = isSafetyGateRule(primaryMatchedResponse?.rule_id);
+            
+            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type && !isPrimaryMatchSafetyGate) {
               console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
               
               rawDecisionOutput.primary_decision = {
@@ -682,8 +709,8 @@ serve(async (req) => {
                   reason: 'Recovered from primary_matched_response'
                 },
                 application_details: {
-                  product_name: 'See structured response',
-                  product_type: 'BOTANICAL',
+                  product_name: primaryMatchedResponse.product_name || null,
+                  product_type: primaryMatchedResponse.product_type || null,
                   action_text: primaryMatchedResponse.action_text,
                   reason_text: primaryMatchedResponse.reason_text,
                   knowledge_text: primaryMatchedResponse.knowledge_text,
@@ -697,7 +724,9 @@ serve(async (req) => {
               };
               
               console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${primaryMatchedResponse.action_type}`);
-            } 
+            } else if (isPrimaryMatchSafetyGate) {
+              console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping safety rule ${primaryMatchedResponse?.rule_id} from primary_matched_response`);
+            }
             // PRIORITY 3: Check matched_responses array
             else {
               const matchedResponses = rawDecisionOutput.matched_responses || 
@@ -705,8 +734,9 @@ serve(async (req) => {
               
               // SSOT: Filter for eligible responses using action_text or i18n_key
               // NOTE: response_mr/hi/en were DROPPED per SSOT architecture
+              // BUG-6 FIX: Also filter out GLOBAL_SAFETY rules from eligible responses
               const eligibleResponses = matchedResponses.filter((r: any) => 
-                r.rule_id && r.action_type && (r.action_text || r.i18n_key)
+                r.rule_id && r.action_type && (r.action_text || r.i18n_key) && !isSafetyGateRule(r.rule_id)
               );
               
               if (eligibleResponses.length > 0) {
@@ -727,8 +757,8 @@ serve(async (req) => {
                     reason: 'Recovered from matched responses'
                   },
                   application_details: {
-                    product_name: 'See matched response',
-                    product_type: 'BOTANICAL',
+                    product_name: firstMatch.product_name || null,
+                    product_type: firstMatch.product_type || null,
                     // SSOT: Language-independent response fields only
                     action_text: firstMatch.action_text,
                     reason_text: firstMatch.reason_text,

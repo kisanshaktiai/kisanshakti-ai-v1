@@ -140,12 +140,13 @@ export interface LLMFormatterOutput {
 // IPM LEVEL TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// BUG-4 FIX: IPM labels moved to DB-driven resolution. English-only fallback map.
 const IPM_URGENCY_LABELS: Record<string, Record<string, string>> = {
-  'LEVEL_1': { mr: 'निरीक्षण करा', hi: 'निगरानी करें', en: 'Monitor' },
-  'LEVEL_2': { mr: 'सांस्कृतिक पद्धत वापरा', hi: 'सांस्कृतिक तरीके अपनाएं', en: 'Use cultural practices' },
-  'LEVEL_3': { mr: 'यांत्रिक नियंत्रण करा', hi: 'यांत्रिक नियंत्रण करें', en: 'Mechanical control' },
-  'LEVEL_4': { mr: 'जैविक नियंत्रण करा', hi: 'जैविक नियंत्रण करें', en: 'Biological control' },
-  'LEVEL_5': { mr: '⚠️ तुरंत करा', hi: '⚠️ तुरंत करें', en: '⚠️ Do immediately' },
+  'LEVEL_1': { en: 'Monitor' },
+  'LEVEL_2': { en: 'Use cultural practices' },
+  'LEVEL_3': { en: 'Mechanical control' },
+  'LEVEL_4': { en: 'Biological control' },
+  'LEVEL_5': { en: 'Do immediately' },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1371,25 +1372,25 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     parts.push(`═══════════════════════════════════════════════════`);
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // RICH AGRONOMIC CONTEXT — from decision_rules DB (formatting/translation only)
+    // BUG-5 FIX: Rich agronomic context ONLY for FORMAT_1 (direct prescription)
+    // For other formats, these fields inflate tokens without adding value
     // ═══════════════════════════════════════════════════════════════════════════
-    if (appDetails.organic_alternative) parts.push(`\n🌿 Organic Alternative: ${appDetails.organic_alternative}`);
-    if (appDetails.mode_of_action) parts.push(`🔬 Mode of Action (How it works): ${appDetails.mode_of_action}`);
-    if (appDetails.target_pest_stage) parts.push(`🎯 Target Pest Stage: ${appDetails.target_pest_stage}`);
-    if (appDetails.success_indicators) {
-      const indicators = Array.isArray(appDetails.success_indicators) ? appDetails.success_indicators.join(', ') : String(appDetails.success_indicators);
-      parts.push(`✅ Success Signs (check after 5-7 days): ${indicators}`);
+    const actionTypeUpper2 = (primary.action_type || '').toUpperCase();
+    const isDirectPrescription = ['RECOMMEND', 'TREATMENT', 'SPRAY', 'APPLY', 'CHEMICAL_CONTROL', 'BIOLOGICAL_CONTROL', 'URGENT_ACTION']
+      .some(t => actionTypeUpper2.includes(t));
+    
+    if (isDirectPrescription) {
+      if (appDetails.organic_alternative) parts.push(`\n🌿 Organic Alternative: ${appDetails.organic_alternative}`);
+      if (appDetails.mode_of_action) parts.push(`🔬 Mode of Action: ${appDetails.mode_of_action}`);
+      if (appDetails.success_indicators) {
+        const indicators = Array.isArray(appDetails.success_indicators) ? appDetails.success_indicators.join(', ') : String(appDetails.success_indicators);
+        parts.push(`✅ Success Signs (5-7 days): ${indicators}`);
+      }
+      if (appDetails.bee_toxicity && appDetails.bee_toxicity !== 'SAFE' && appDetails.bee_toxicity !== 'LOW') {
+        parts.push(`🐝 Bee Safety: ${appDetails.bee_toxicity} toxicity — avoid during flowering`);
+      }
+      if (appDetails.roi_yield_gain_pct) parts.push(`📈 Yield Gain: ${appDetails.roi_yield_gain_pct}%`);
     }
-    if (appDetails.failure_indicators) {
-      const indicators = Array.isArray(appDetails.failure_indicators) ? appDetails.failure_indicators.join(', ') : String(appDetails.failure_indicators);
-      parts.push(`❌ Failure Signs (re-treat if seen): ${indicators}`);
-    }
-    if (appDetails.roi_yield_gain_pct) parts.push(`📈 Expected Yield Gain: ${appDetails.roi_yield_gain_pct}%`);
-    if (appDetails.bee_toxicity && appDetails.bee_toxicity !== 'SAFE' && appDetails.bee_toxicity !== 'LOW') {
-      parts.push(`🐝 Bee Safety Warning: ${appDetails.bee_toxicity} toxicity — avoid spraying during flowering/bee activity hours`);
-    }
-    if (appDetails.reentry_interval_hours) parts.push(`⏳ Re-entry Interval: ${appDetails.reentry_interval_hours} hours after spraying`);
-    if (appDetails.resistance_group) parts.push(`🔄 Resistance Group: ${appDetails.resistance_group} — rotate with different group next application`);
     
     // ═══════════════════════════════════════════════════════════════════════════
     // v2.0.0: ACTION TYPE GUARD - Skip product/dosage for non-treatment rules
@@ -1470,20 +1471,14 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     }
   }
   
-  // Secondary recommendations with product details
+  // BUG-5 FIX: Cap secondary actions to 1 in LLM prompt (token optimization)
   const secondary = decision.secondary_actions || decision.secondary_recommendations;
   if (secondary && secondary.length > 0) {
-    parts.push(`\n═══ ADDITIONAL RECOMMENDATIONS (Include ALL in response): ═══`);
-    secondary.forEach((sec: any, idx: number) => {
-      parts.push(`\n${idx + 1}. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
-      if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
-      if (sec.dosage) parts.push(`   Dosage: ${sec.dosage}`);
-      if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
-      if (sec.timing) parts.push(`   Timing: ${sec.timing}`);
-      if (sec.phi_days) parts.push(`   PHI: ${sec.phi_days} days`);
-      if (sec.priority) parts.push(`   Priority: ${sec.priority}`);
-      if (sec.names?.mr) parts.push(`   Name (MR): ${sec.names.mr}`);
-    });
+    parts.push(`\n═══ ADDITIONAL RECOMMENDATION: ═══`);
+    const sec = secondary[0];
+    parts.push(`1. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
+    if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
+    if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
   }
   
    // FIX 2: Removed hardcoded biocontrol dosages (Trichogramma/Cotesia).
@@ -1492,8 +1487,6 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
   
   // ═══════════════════════════════════════════════════════════════════════════
   // MATCHED RESPONSES - TOKEN OPTIMIZED: Filter to max 3 relevant responses
-  // Previously sent ALL 73 matched responses (~8,000 tokens). Now sends only
-  // the primary + top 2 high-priority alternatives (~450 tokens).
   // ═══════════════════════════════════════════════════════════════════════════
   const matchedResponses = decision.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
@@ -1505,38 +1498,28 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
       const isPrimary = resp.rule_id === primaryRuleId;
       parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
       
-      // Use structured response contract fields (skip legacy when action_text exists)
       if (resp.action_text) {
         parts.push(`   Action: ${resp.action_text}`);
       }
       if (resp.reason_text) {
         parts.push(`   Reason: ${resp.reason_text}`);
       }
-      // Only include knowledge_text for PRIMARY response (biggest token consumer)
-       // FIX 5: Cap knowledge_text for matched responses too
-       if (isPrimary && resp.knowledge_text) {
-         parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
+      if (isPrimary && resp.knowledge_text) {
+        parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
       }
-      
-      // FIX 34: Removed legacy response_mr/hi/en fallback (columns dropped from DB)
     });
   }
   
-  // Warnings
+  // Warnings — keep only critical ones, cap at 2
   if (decision.warnings && decision.warnings.length > 0) {
     parts.push(`\nWARNINGS:`);
-    decision.warnings.forEach((warning: any) => {
+    decision.warnings.slice(0, 2).forEach((warning: any) => {
       parts.push(`⚠️ ${typeof warning === 'string' ? warning : warning.message || warning.text}`);
     });
   }
   
-  // Blocked actions (explain why some actions were filtered)
-  if (decision.blocked_actions && decision.blocked_actions.length > 0) {
-    parts.push(`\nBLOCKED ACTIONS (explain these to farmer):`);
-    decision.blocked_actions.forEach((blocked: any) => {
-      parts.push(`- ${blocked.action}: ${blocked.reason}`);
-    });
-  }
+  // BUG-5 FIX: REMOVED blocked_actions from LLM prompt entirely
+  // Safety gate information is handled separately via warnings, not sent to LLM
   
   return parts.join('\n');
 }
@@ -1825,23 +1808,15 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
-  // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang]);
+  // BUG-4 FIX: Language-agnostic greeting/ack — LLM template uses English only,
+  // actual localization happens via LLM narration layer (not hardcoded strings)
+  const greeting = lang === 'en' ? 'Hello farmer friend! 🌾' : '🌾';
+  parts.push(greeting);
   
   // Acknowledgment - from CURRENT land_context only
   const currentCrop = input.land_context?.current_crop;
-  if (currentCrop) {
-    const acks: Record<string, string> = {
-      mr: `तुमच्या ${currentCrop} पिकाबद्दलचा प्रश्न समजला.`,
-      hi: `आपकी ${currentCrop} फसल के बारे में प्रश्न समझा।`,
-      en: `I understand your question about ${currentCrop}.`
-    };
-    parts.push(acks[lang]);
+  if (currentCrop && lang === 'en') {
+    parts.push(`I understand your question about ${currentCrop}.`);
   }
   
   // Primary recommendation - EXTRACT ONLY FROM CURRENT decision_output
@@ -1866,13 +1841,25 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
            v.includes('continue monitoring') ||
            v.includes('no treatment required at this stage') ||
            v.includes('monitor pest population regularly') ||
-           v.includes('current information is insufficient');
+           v.includes('current information is insufficient') ||
+           v.includes('global_safety') ||
+           v.includes('safety_gate') ||
+           v.includes('action text unavailable') ||
+           v.includes('invariant_fallback');
   };
 
+  // BUG-7 FIX: Use ratio-based check instead of single-char detection
+  // Product names like "Chlorpyrifos 20 EC" are valid in non-English responses
   const isLikelyRawEnglish = (value?: string) => {
     const v = (value || '').trim();
     if (!v || lang === 'en') return false;
-    return /[A-Za-z]/.test(v);
+    // Allow short strings (product codes, trade names)
+    if (v.length < 15) return false;
+    const asciiLetters = (v.match(/[a-zA-Z]/g) || []).length;
+    const totalChars = v.replace(/\s/g, '').length;
+    if (totalChars === 0) return false;
+    // Only flag as raw English if >60% ASCII letters
+    return (asciiLetters / totalChars) > 0.6;
   };
 
   const shouldRenderRawFarmerText = (value?: string) => {
@@ -1897,12 +1884,8 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     (isNonProductAction || hasValidProductName || shouldRenderRawFarmerText(rawActionText) || !!templatePestCode || !!templateDiseaseCode);
   
   if (hasValidRecommendation) {
-    const headers: Record<string, string> = {
-      mr: '📌 **शिफारस:**',
-      hi: '📌 **सिफारिश:**',
-      en: '📌 **Recommendation:**'
-    };
-    parts.push(headers[lang]);
+    const recHeader = '📌 **Recommendation:**';
+    parts.push(recHeader);
     
     // CRITICAL: Extract from current decision_output ONLY
     const safeProductName = hasValidProductName ? rawProductName : '';
@@ -1910,15 +1893,15 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
     
-    // CRITICAL FIX: Translate generic action types to farmer-friendly language
-    const GENERIC_ACTION_TRANSLATIONS: Record<string, Record<string, string>> = {
-      'cultural practice': { mr: 'सांस्कृतिक पद्धती', hi: 'सांस्कृतिक तरीके', en: 'Cultural practice' },
-      'cultural control': { mr: 'सांस्कृतिक नियंत्रण', hi: 'सांस्कृतिक नियंत्रण', en: 'Cultural control' },
-      'mechanical control': { mr: 'यांत्रिक नियंत्रण', hi: 'यांत्रिक नियंत्रण', en: 'Mechanical control' },
-      'biological control': { mr: 'जैविक नियंत्रण', hi: 'जैविक नियंत्रण', en: 'Biological control' },
-      'monitoring': { mr: 'निरीक्षण', hi: 'निगरानी', en: 'Monitoring' },
-      'treatment': { mr: 'उपचार', hi: 'उपचार', en: 'Treatment' },
-      'prevention': { mr: 'प्रतिबंध', hi: 'रोकथाम', en: 'Prevention' }
+    // BUG-4 FIX: English-only action type labels. Localization via LLM narration.
+    const GENERIC_ACTION_TRANSLATIONS: Record<string, string> = {
+      'cultural practice': 'Cultural practice',
+      'cultural control': 'Cultural control',
+      'mechanical control': 'Mechanical control',
+      'biological control': 'Biological control',
+      'monitoring': 'Monitoring',
+      'treatment': 'Treatment',
+      'prevention': 'Prevention'
     };
     
     // Check if this is a generic action type and translate
@@ -1926,9 +1909,9 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     let translatedProductName = rawProductName || '';
     let isGenericAction = false;
     
-    for (const [key, translations] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
+    for (const [key, label] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
       if (lowerProductName.includes(key)) {
-        translatedProductName = translations[lang] || translations.en;
+        translatedProductName = label;
         isGenericAction = true;
         break;
       }
@@ -1952,71 +1935,40 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       }
       
       if (method) {
-        // CRITICAL FIX: Translate method name
-        const methodLabel = getActionTranslation(method, lang) || 
-          (lang === 'mr' ? 
-            (method === 'SOIL_APPLICATION' ? 'जमिनीत द्या' : method === 'FOLIAR_SPRAY' ? 'पर्णीय फवारणी' : method) :
-          lang === 'hi' ? 
-            (method === 'SOIL_APPLICATION' ? 'मिट्टी में डालें' : method === 'FOLIAR_SPRAY' ? 'पत्ते पर छिड़काव' : method) :
-          method);
+        // BUG-4 FIX: Use getActionTranslation only, no hardcoded mr/hi fallbacks
+        const methodLabel = getActionTranslation(method, lang) || method;
         recText += `\n   📍 ${methodLabel}`;
       }
       if (timing) {
-        const timingLabel = timing === 'MORNING' ? 
-          (lang === 'mr' ? 'सकाळी' : lang === 'hi' ? 'सुबह' : 'Morning') :
-          (lang === 'mr' ? 'संध्याकाळी' : lang === 'hi' ? 'शाम को' : 'Evening');
+        const timingLabel = timing === 'MORNING' ? 'Morning' : 'Evening';
         recText += `\n   ⏰ ${timingLabel}`;
       }
       
       if (primary.expected_outcomes?.efficacy_percent) {
-        recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% ${lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective'}`;
+        recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% effective`;
       }
       
       parts.push(recText);
       
       // RICH DATA: Add organic alternative, success indicators, bee safety from rule data
+      // BUG-4 FIX: English-only headers in template fallback (LLM narration handles localization)
       const appDetails = primary.application_details || {};
       if (appDetails.organic_alternative) {
-        const orgHeaders: Record<string, string> = {
-          mr: '🌿 **सेंद्रिय पर्याय:**',
-          hi: '🌿 **जैविक विकल्प:**',
-          en: '🌿 **Organic Alternative:**'
-        };
-        parts.push(`${orgHeaders[lang]} ${appDetails.organic_alternative}`);
+        parts.push(`🌿 **Organic Alternative:** ${appDetails.organic_alternative}`);
       }
       if (appDetails.success_indicators) {
         const indicators = Array.isArray(appDetails.success_indicators) ? appDetails.success_indicators.join(', ') : String(appDetails.success_indicators);
-        const successHeaders: Record<string, string> = {
-          mr: '✅ **यश चिन्हे (५-७ दिवसांनी तपासा):**',
-          hi: '✅ **सफलता के संकेत (5-7 दिन बाद जांचें):**',
-          en: '✅ **Success Signs (check after 5-7 days):**'
-        };
-        parts.push(`${successHeaders[lang]} ${indicators}`);
+        parts.push(`✅ **Success Signs (check after 5-7 days):** ${indicators}`);
       }
       if (appDetails.failure_indicators) {
         const indicators = Array.isArray(appDetails.failure_indicators) ? appDetails.failure_indicators.join(', ') : String(appDetails.failure_indicators);
-        const failHeaders: Record<string, string> = {
-          mr: '❌ **अपयश चिन्हे (दिसल्यास पुन्हा फवारणी):**',
-          hi: '❌ **विफलता संकेत (दिखे तो दोबारा छिड़काव):**',
-          en: '❌ **Failure Signs (re-treat if seen):**'
-        };
-        parts.push(`${failHeaders[lang]} ${indicators}`);
+        parts.push(`❌ **Failure Signs (re-treat if seen):** ${indicators}`);
       }
       if (appDetails.bee_toxicity && appDetails.bee_toxicity !== 'SAFE' && appDetails.bee_toxicity !== 'LOW') {
-        const beeWarnings: Record<string, string> = {
-          mr: `🐝 **मधमाशी सुरक्षा:** ${appDetails.bee_toxicity} विषाक्तता — फुलोऱ्याच्या वेळी फवारणी टाळा`,
-          hi: `🐝 **मधुमक्खी सुरक्षा:** ${appDetails.bee_toxicity} विषाक्तता — फूल आने पर छिड़काव न करें`,
-          en: `🐝 **Bee Safety:** ${appDetails.bee_toxicity} toxicity — avoid spraying during flowering`
-        };
-        parts.push(beeWarnings[lang]);
+        parts.push(`🐝 **Bee Safety:** ${appDetails.bee_toxicity} toxicity — avoid spraying during flowering`);
       }
       if (appDetails.roi_yield_gain_pct) {
-        const roiHeaders: Record<string, string> = {
-          mr: `📈 **अपेक्षित उत्पादन वाढ:** ${appDetails.roi_yield_gain_pct}%`,
-          hi: `📈 **अपेक्षित उपज वृद्धि:** ${appDetails.roi_yield_gain_pct}%`,
-          en: `📈 **Expected Yield Gain:** ${appDetails.roi_yield_gain_pct}%`
-        };
-        parts.push(roiHeaders[lang]);
+        parts.push(`📈 **Expected Yield Gain:** ${appDetails.roi_yield_gain_pct}%`);
       }
       
       // IPM urgency indicator
@@ -2036,60 +1988,31 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
           : '';
 
       const actionLine = safeActionTypeText ||
-        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : (lang === 'mr' ? 'पिकाचे निरीक्षण करा' : lang === 'hi' ? 'फसल की निगरानी करें' : 'Monitor closely'));
+        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : 'Monitor closely');
 
-      const actionHeader: Record<string, string> = {
-        mr: '📋 **कृती:**',
-        hi: '📋 **कार्रवाई:**',
-        en: '📋 **Action:**'
-      };
-      parts.push(`${actionHeader[lang]}\n1. ${actionLine}`);
+      parts.push(`📋 **Action:**\n1. ${actionLine}`);
 
       if (translatedCause && translatedCause !== 'UNKNOWN') {
-        const causePrefix = lang === 'mr' ? '🔎 कारण:' : lang === 'hi' ? '🔎 कारण:' : '🔎 Cause:';
-        parts.push(`${causePrefix} ${translatedCause}`);
+        parts.push(`🔎 Cause: ${translatedCause}`);
       }
     } else {
       // No valid product - ask for more info instead of giving wrong advice
-      const askMore: Record<string, string> = {
-        mr: '📋 **अधिक माहिती आवश्यक:**\nकृपया तुमच्या समस्येबद्दल अधिक तपशील द्या किंवा फोटो पाठवा.',
-        hi: '📋 **अधिक जानकारी आवश्यक:**\nकृपया अपनी समस्या के बारे में अधिक विवरण दें या फोटो भेजें।',
-        en: '📋 **More information needed:**\nPlease provide more details about your problem or send a photo.'
-      };
-      parts.push(askMore[lang]);
+      parts.push('📋 **More information needed:**\nPlease provide more details about your problem or send a photo.');
     }
   } else {
     // Check for matched_responses (IPM treatment responses from rule database)
     const matchedResponses = decision?.matched_responses;
     if (matchedResponses && matchedResponses.length > 0) {
-      // Use pre-formatted responses from the rule database in farmer's language
-      const ipmHeader: Record<string, string> = {
-        mr: '📌 **शिफारस (IPM):**',
-        hi: '📌 **सिफारिश (IPM):**',
-        en: '📌 **Recommendation (IPM):**'
-      };
-      parts.push(ipmHeader[lang]);
+      parts.push('📌 **Recommendation (IPM):**');
       
       matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        // SSOT + leakage guard: never show raw technical/placeholder table text to farmer
         const actionContentRaw = resp.action_text || resp.reason_text || '';
-        const fallbackAction = lang === 'mr'
-          ? 'पिकाचे निरीक्षण करा आणि गरज असल्यास फोटो पाठवा'
-          : lang === 'hi'
-            ? 'फसल की निगरानी करें और ज़रूरत हो तो फोटो भेजें'
-            : 'Monitor crop and share a photo if needed';
+        const fallbackAction = 'Monitor crop and share a photo if needed';
         const actionContent = shouldRenderRawFarmerText(actionContentRaw) ? actionContentRaw : fallbackAction;
-        const genericCauseLabel = lang === 'mr' ? 'उपाय' : lang === 'hi' ? 'उपाय' : 'Recommendation';
-        parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
+        parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
       });
     } else {
-      // No valid recommendation from rule engine - provide safe fallback
-      const safeAdvice: Record<string, string> = {
-        mr: '👀 **विश्लेषण:**\nतुमचा प्रश्न समजला. अचूक शिफारसीसाठी कृपया:\n• पिकाचा फोटो पाठवा\n• किंवा लक्षणांचे अधिक तपशील द्या',
-        hi: '👀 **विश्लेषण:**\nआपका प्रश्न समझा। सटीक सिफारिश के लिए कृपया:\n• फसल का फोटो भेजें\n• या लक्षणों का अधिक विवरण दें',
-        en: '👀 **Analysis:**\nI understand your question. For accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms'
-      };
-      parts.push(safeAdvice[lang]);
+      parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
     }
   }
   
@@ -2108,12 +2031,8 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   }
   
   // Supportive closing
-  const closings: Record<string, string> = {
-    mr: '\n🙏 काही शंका असल्यास विचारा. शुभेच्छा!',
-    hi: '\n🙏 कोई सवाल हो तो पूछें। शुभकामनाएं!',
-    en: '\n🙏 Feel free to ask if you need clarification. Best wishes!'
-  };
-  parts.push(closings[lang]);
+  // BUG-4 FIX: English-only closing in template (LLM narration handles localization)
+  parts.push('\n🙏 Feel free to ask if you need clarification. Best wishes!');
   
   const finalResponse = parts.join('\n\n');
   console.log(`   📋 Template fallback generated: ${finalResponse.length} chars`);
