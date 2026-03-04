@@ -1927,9 +1927,9 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     let translatedProductName = rawProductName || '';
     let isGenericAction = false;
     
-    for (const [key, translations] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
+    for (const [key, label] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
       if (lowerProductName.includes(key)) {
-        translatedProductName = translations[lang] || translations.en;
+        translatedProductName = label;
         isGenericAction = true;
         break;
       }
