@@ -1911,15 +1911,15 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     const method = primary.application_details?.method || primary.application_details?.application_method;
     const timing = primary.timing?.best_time_of_day;
     
-    // CRITICAL FIX: Translate generic action types to farmer-friendly language
-    const GENERIC_ACTION_TRANSLATIONS: Record<string, Record<string, string>> = {
-      'cultural practice': { mr: 'सांस्कृतिक पद्धती', hi: 'सांस्कृतिक तरीके', en: 'Cultural practice' },
-      'cultural control': { mr: 'सांस्कृतिक नियंत्रण', hi: 'सांस्कृतिक नियंत्रण', en: 'Cultural control' },
-      'mechanical control': { mr: 'यांत्रिक नियंत्रण', hi: 'यांत्रिक नियंत्रण', en: 'Mechanical control' },
-      'biological control': { mr: 'जैविक नियंत्रण', hi: 'जैविक नियंत्रण', en: 'Biological control' },
-      'monitoring': { mr: 'निरीक्षण', hi: 'निगरानी', en: 'Monitoring' },
-      'treatment': { mr: 'उपचार', hi: 'उपचार', en: 'Treatment' },
-      'prevention': { mr: 'प्रतिबंध', hi: 'रोकथाम', en: 'Prevention' }
+    // BUG-4 FIX: English-only action type labels. Localization via LLM narration.
+    const GENERIC_ACTION_TRANSLATIONS: Record<string, string> = {
+      'cultural practice': 'Cultural practice',
+      'cultural control': 'Cultural control',
+      'mechanical control': 'Mechanical control',
+      'biological control': 'Biological control',
+      'monitoring': 'Monitoring',
+      'treatment': 'Treatment',
+      'prevention': 'Prevention'
     };
     
     // Check if this is a generic action type and translate
