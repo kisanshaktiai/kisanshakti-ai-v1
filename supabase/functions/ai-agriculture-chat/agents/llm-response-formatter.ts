@@ -140,12 +140,13 @@ export interface LLMFormatterOutput {
 // IPM LEVEL TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// BUG-4 FIX: IPM labels moved to DB-driven resolution. English-only fallback map.
 const IPM_URGENCY_LABELS: Record<string, Record<string, string>> = {
-  'LEVEL_1': { mr: 'निरीक्षण करा', hi: 'निगरानी करें', en: 'Monitor' },
-  'LEVEL_2': { mr: 'सांस्कृतिक पद्धत वापरा', hi: 'सांस्कृतिक तरीके अपनाएं', en: 'Use cultural practices' },
-  'LEVEL_3': { mr: 'यांत्रिक नियंत्रण करा', hi: 'यांत्रिक नियंत्रण करें', en: 'Mechanical control' },
-  'LEVEL_4': { mr: 'जैविक नियंत्रण करा', hi: 'जैविक नियंत्रण करें', en: 'Biological control' },
-  'LEVEL_5': { mr: '⚠️ तुरंत करा', hi: '⚠️ तुरंत करें', en: '⚠️ Do immediately' },
+  'LEVEL_1': { en: 'Monitor' },
+  'LEVEL_2': { en: 'Use cultural practices' },
+  'LEVEL_3': { en: 'Mechanical control' },
+  'LEVEL_4': { en: 'Biological control' },
+  'LEVEL_5': { en: 'Do immediately' },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
