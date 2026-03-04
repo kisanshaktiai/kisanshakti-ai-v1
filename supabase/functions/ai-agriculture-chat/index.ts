@@ -734,8 +734,9 @@ serve(async (req) => {
               
               // SSOT: Filter for eligible responses using action_text or i18n_key
               // NOTE: response_mr/hi/en were DROPPED per SSOT architecture
+              // BUG-6 FIX: Also filter out GLOBAL_SAFETY rules from eligible responses
               const eligibleResponses = matchedResponses.filter((r: any) => 
-                r.rule_id && r.action_type && (r.action_text || r.i18n_key)
+                r.rule_id && r.action_type && (r.action_text || r.i18n_key) && !isSafetyGateRule(r.rule_id)
               );
               
               if (eligibleResponses.length > 0) {
