@@ -757,8 +757,8 @@ serve(async (req) => {
                     reason: 'Recovered from matched responses'
                   },
                   application_details: {
-                    product_name: 'See matched response',
-                    product_type: 'BOTANICAL',
+                    product_name: firstMatch.product_name || null,
+                    product_type: firstMatch.product_type || null,
                     // SSOT: Language-independent response fields only
                     action_text: firstMatch.action_text,
                     reason_text: firstMatch.reason_text,
