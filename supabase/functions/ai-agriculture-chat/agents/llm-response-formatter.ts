@@ -2006,18 +2006,12 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
           : '';
 
       const actionLine = safeActionTypeText ||
-        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : (lang === 'mr' ? 'पिकाचे निरीक्षण करा' : lang === 'hi' ? 'फसल की निगरानी करें' : 'Monitor closely'));
+        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : 'Monitor closely');
 
-      const actionHeader: Record<string, string> = {
-        mr: '📋 **कृती:**',
-        hi: '📋 **कार्रवाई:**',
-        en: '📋 **Action:**'
-      };
-      parts.push(`${actionHeader[lang]}\n1. ${actionLine}`);
+      parts.push(`📋 **Action:**\n1. ${actionLine}`);
 
       if (translatedCause && translatedCause !== 'UNKNOWN') {
-        const causePrefix = lang === 'mr' ? '🔎 कारण:' : lang === 'hi' ? '🔎 कारण:' : '🔎 Cause:';
-        parts.push(`${causePrefix} ${translatedCause}`);
+        parts.push(`🔎 Cause: ${translatedCause}`);
       }
     } else {
       // No valid product - ask for more info instead of giving wrong advice
