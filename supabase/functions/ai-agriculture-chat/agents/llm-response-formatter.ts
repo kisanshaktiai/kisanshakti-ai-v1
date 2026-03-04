@@ -1471,20 +1471,14 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     }
   }
   
-  // Secondary recommendations with product details
+  // BUG-5 FIX: Cap secondary actions to 1 in LLM prompt (token optimization)
   const secondary = decision.secondary_actions || decision.secondary_recommendations;
   if (secondary && secondary.length > 0) {
-    parts.push(`\n═══ ADDITIONAL RECOMMENDATIONS (Include ALL in response): ═══`);
-    secondary.forEach((sec: any, idx: number) => {
-      parts.push(`\n${idx + 1}. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
-      if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
-      if (sec.dosage) parts.push(`   Dosage: ${sec.dosage}`);
-      if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
-      if (sec.timing) parts.push(`   Timing: ${sec.timing}`);
-      if (sec.phi_days) parts.push(`   PHI: ${sec.phi_days} days`);
-      if (sec.priority) parts.push(`   Priority: ${sec.priority}`);
-      if (sec.names?.mr) parts.push(`   Name (MR): ${sec.names.mr}`);
-    });
+    parts.push(`\n═══ ADDITIONAL RECOMMENDATION: ═══`);
+    const sec = secondary[0];
+    parts.push(`1. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
+    if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
+    if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
   }
   
    // FIX 2: Removed hardcoded biocontrol dosages (Trichogramma/Cotesia).
@@ -1493,8 +1487,6 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
   
   // ═══════════════════════════════════════════════════════════════════════════
   // MATCHED RESPONSES - TOKEN OPTIMIZED: Filter to max 3 relevant responses
-  // Previously sent ALL 73 matched responses (~8,000 tokens). Now sends only
-  // the primary + top 2 high-priority alternatives (~450 tokens).
   // ═══════════════════════════════════════════════════════════════════════════
   const matchedResponses = decision.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
@@ -1506,38 +1498,28 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
       const isPrimary = resp.rule_id === primaryRuleId;
       parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
       
-      // Use structured response contract fields (skip legacy when action_text exists)
       if (resp.action_text) {
         parts.push(`   Action: ${resp.action_text}`);
       }
       if (resp.reason_text) {
         parts.push(`   Reason: ${resp.reason_text}`);
       }
-      // Only include knowledge_text for PRIMARY response (biggest token consumer)
-       // FIX 5: Cap knowledge_text for matched responses too
-       if (isPrimary && resp.knowledge_text) {
-         parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
+      if (isPrimary && resp.knowledge_text) {
+        parts.push(`   Knowledge: ${resp.knowledge_text.substring(0, 600)}`);
       }
-      
-      // FIX 34: Removed legacy response_mr/hi/en fallback (columns dropped from DB)
     });
   }
   
-  // Warnings
+  // Warnings — keep only critical ones, cap at 2
   if (decision.warnings && decision.warnings.length > 0) {
     parts.push(`\nWARNINGS:`);
-    decision.warnings.forEach((warning: any) => {
+    decision.warnings.slice(0, 2).forEach((warning: any) => {
       parts.push(`⚠️ ${typeof warning === 'string' ? warning : warning.message || warning.text}`);
     });
   }
   
-  // Blocked actions (explain why some actions were filtered)
-  if (decision.blocked_actions && decision.blocked_actions.length > 0) {
-    parts.push(`\nBLOCKED ACTIONS (explain these to farmer):`);
-    decision.blocked_actions.forEach((blocked: any) => {
-      parts.push(`- ${blocked.action}: ${blocked.reason}`);
-    });
-  }
+  // BUG-5 FIX: REMOVED blocked_actions from LLM prompt entirely
+  // Safety gate information is handled separately via warnings, not sent to LLM
   
   return parts.join('\n');
 }
