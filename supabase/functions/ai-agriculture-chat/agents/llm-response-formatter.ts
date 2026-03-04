@@ -1866,13 +1866,25 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
            v.includes('continue monitoring') ||
            v.includes('no treatment required at this stage') ||
            v.includes('monitor pest population regularly') ||
-           v.includes('current information is insufficient');
+           v.includes('current information is insufficient') ||
+           v.includes('global_safety') ||
+           v.includes('safety_gate') ||
+           v.includes('action text unavailable') ||
+           v.includes('invariant_fallback');
   };
 
+  // BUG-7 FIX: Use ratio-based check instead of single-char detection
+  // Product names like "Chlorpyrifos 20 EC" are valid in non-English responses
   const isLikelyRawEnglish = (value?: string) => {
     const v = (value || '').trim();
     if (!v || lang === 'en') return false;
-    return /[A-Za-z]/.test(v);
+    // Allow short strings (product codes, trade names)
+    if (v.length < 15) return false;
+    const asciiLetters = (v.match(/[a-zA-Z]/g) || []).length;
+    const totalChars = v.replace(/\s/g, '').length;
+    if (totalChars === 0) return false;
+    // Only flag as raw English if >60% ASCII letters
+    return (asciiLetters / totalChars) > 0.6;
   };
 
   const shouldRenderRawFarmerText = (value?: string) => {
