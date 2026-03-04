@@ -2021,34 +2021,16 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     // Check for matched_responses (IPM treatment responses from rule database)
     const matchedResponses = decision?.matched_responses;
     if (matchedResponses && matchedResponses.length > 0) {
-      // Use pre-formatted responses from the rule database in farmer's language
-      const ipmHeader: Record<string, string> = {
-        mr: '📌 **शिफारस (IPM):**',
-        hi: '📌 **सिफारिश (IPM):**',
-        en: '📌 **Recommendation (IPM):**'
-      };
-      parts.push(ipmHeader[lang]);
+      parts.push('📌 **Recommendation (IPM):**');
       
       matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        // SSOT + leakage guard: never show raw technical/placeholder table text to farmer
         const actionContentRaw = resp.action_text || resp.reason_text || '';
-        const fallbackAction = lang === 'mr'
-          ? 'पिकाचे निरीक्षण करा आणि गरज असल्यास फोटो पाठवा'
-          : lang === 'hi'
-            ? 'फसल की निगरानी करें और ज़रूरत हो तो फोटो भेजें'
-            : 'Monitor crop and share a photo if needed';
+        const fallbackAction = 'Monitor crop and share a photo if needed';
         const actionContent = shouldRenderRawFarmerText(actionContentRaw) ? actionContentRaw : fallbackAction;
-        const genericCauseLabel = lang === 'mr' ? 'उपाय' : lang === 'hi' ? 'उपाय' : 'Recommendation';
-        parts.push(`\n${idx + 1}. **${genericCauseLabel}:**\n${actionContent}`);
+        parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
       });
     } else {
-      // No valid recommendation from rule engine - provide safe fallback
-      const safeAdvice: Record<string, string> = {
-        mr: '👀 **विश्लेषण:**\nतुमचा प्रश्न समजला. अचूक शिफारसीसाठी कृपया:\n• पिकाचा फोटो पाठवा\n• किंवा लक्षणांचे अधिक तपशील द्या',
-        hi: '👀 **विश्लेषण:**\nआपका प्रश्न समझा। सटीक सिफारिश के लिए कृपया:\n• फसल का फोटो भेजें\n• या लक्षणों का अधिक विवरण दें',
-        en: '👀 **Analysis:**\nI understand your question. For accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms'
-      };
-      parts.push(safeAdvice[lang]);
+      parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
     }
   }
   
