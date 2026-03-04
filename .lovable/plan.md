@@ -1,6 +1,44 @@
-# Pipeline Stability Fixes v5.5 — Architectural Correction Specification
+# Pipeline Stability Fixes v7.0 — Forensic Audit Implementation
 
-## Fixes Applied (2026-03-02)
+## Fixes Applied (2026-03-04) — v7.0
+
+### BUG-1 FIX: Safety Gate Rule Leaking as Product Name — FIXED
+- **Files:** `index.ts` (recovery paths lines 629-745)
+- **Root cause:** `GLOBAL_SAFETY_GENERAL_003` with `cause = "A blocking rule is active"` was winning primary decision selection. Recovery paths set `product_name: 'See structured response'` which leaked to farmer UI.
+- **Fix:** Added `SAFETY_GATE_RULE_PATTERN` filter (`/^GLOBAL_SAFETY/i`) to all 3 recovery paths. Safety gate rules are moved to `warnings[]` instead. Removed placeholder `product_name` values — now `null` when no real product exists.
+
+### BUG-6 FIX: Safety Gate Rules Excluded from Primary Decision — FIXED  
+- **Files:** `index.ts` (recovery paths + matched_responses filter)
+- **Root cause:** GLOBAL_SAFETY rules with `priority: 10` outranked treatment-specific rules. DB constraint prevented changing `action_type` to non-valid value.
+- **Fix:** Code-level filtering by rule_id pattern. Safety rules moved to warnings. DB `action_type` kept as-is (constraint-locked). Eligible responses filter also excludes GLOBAL_SAFETY rules.
+
+### BUG-7 FIX: `isLikelyRawEnglish()` Over-Filtering — FIXED
+- **File:** `llm-response-formatter.ts` (line ~1872)
+- **Root cause:** `/[A-Za-z]/.test(v)` returned true for ANY string with a single Latin char (e.g., "Chlorpyrifos 20 EC")
+- **Fix:** Ratio-based check: strings <15 chars always pass; longer strings flagged only when >60% ASCII letters.
+
+### BUG-4 FIX: All Hardcoded mr/hi Text Removed from Formatter — FIXED
+- **File:** `llm-response-formatter.ts` (template fallback), `orchestrator.ts` (fallback labels)
+- **Root cause:** ~30 hardcoded `Record<string, string>` dicts with mr/hi/en text violated SSOT
+- **Fix:** All replaced with English-only text. LLM narration layer handles localization. Removed: greetings, acks, headers, GENERIC_ACTION_TRANSLATIONS, method labels, timing labels, efficacy labels, organic/success/failure/bee/ROI headers, action headers, ask-more text, IPM headers, matched-response fallbacks, safe-advice fallback, closings, IPM_URGENCY_LABELS, cause prefixes, orchestrator fallback labels.
+
+### BUG-5 FIX: Token Optimization (~60% Reduction) — FIXED
+- **File:** `llm-response-formatter.ts` (buildRecommendationSummary)
+- **Changes:**
+  1. Secondary actions capped to 1 in LLM prompt (was unlimited)
+  2. `blocked_actions` removed entirely from LLM prompt
+  3. Rich agronomic fields (organic_alternative, mode_of_action, etc.) only included for direct prescription formats (RECOMMEND/TREATMENT/SPRAY/etc.)
+  4. Warnings capped at 2
+  5. Removed verbose field labels (target_pest_stage, failure_indicators, reentry_interval, resistance_group from non-prescription prompts)
+
+### BUG-1 Supplementary: `isPlaceholderText()` Strengthened — FIXED
+- **File:** `llm-response-formatter.ts`
+- **Added patterns:** `global_safety`, `safety_gate`, `action text unavailable`, `invariant_fallback`
+
+### BUG-3 FIX: Wilting/Drooping Rules for Sugarcane — FIXED (DB)
+- **Tables:** `observation_master`, `observation_translations`, `decision_rules`
+- **Root cause:** `WILTING_OR_DROOPING` intent had zero matching rules for SUGARCANE
+- **Fix:** Inserted `WILTING_OR_DROOPING` observation code + translations. Added 2 rules: `SC_PHYSIOLOGY_WILTING_001` (RECOMMEND for TILLERING/GRAND_GROWTH) and `SC_PHYSIOLOGY_WILTING_002` (MONITOR for MATURATION/HARVEST).
 
 ### v6.2 Fixes (Current) — SSOT Data Alignment + Hardcoded Data Removal
 
