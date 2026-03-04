@@ -627,8 +627,23 @@ serve(async (req) => {
           // This is built by layered-rule-evaluator.ts from eligible matched_responses
           // ═══════════════════════════════════════════════════════════════════════════
           const layeredPrimaryDecision = rawDecisionOutput.layered_rule_result?.primary_decision;
-          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type) {
+          
+          // ═══════════════════════════════════════════════════════════════
+          // BUG-1/BUG-6 FIX: Safety gate rules must NEVER be selected as
+          // primary decision. They belong in warnings/blocked_actions only.
+          // ═══════════════════════════════════════════════════════════════
+          const SAFETY_GATE_RULE_PATTERN = /^GLOBAL_SAFETY/i;
+          const isSafetyGateRule = (ruleId?: string) => 
+            !!(ruleId && SAFETY_GATE_RULE_PATTERN.test(ruleId));
+          
+          const isLayeredSafetyGate = isSafetyGateRule(layeredPrimaryDecision?.rule_id);
+          
+          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type && !isLayeredSafetyGate) {
             console.log(`   🔄 RECOVERY: Using layered_rule_result.primary_decision`);
+            
+            // BUG-1 FIX: Never set placeholder product_name — leave null for formatter
+            const recoveredProductName = layeredPrimaryDecision.product_name || null;
+            const recoveredProductType = layeredPrimaryDecision.product_type || null;
             
             rawDecisionOutput.primary_decision = {
               action_type: layeredPrimaryDecision.action_type,
@@ -644,8 +659,8 @@ serve(async (req) => {
                 reason: 'Recovered from layered_rule_result.primary_decision'
               },
               application_details: {
-                product_name: 'See structured response',
-                product_type: 'BOTANICAL',
+                product_name: recoveredProductName,
+                product_type: recoveredProductType,
                 // SSOT: Language-independent response fields only
                 action_text: layeredPrimaryDecision.action_text,
                 reason_text: layeredPrimaryDecision.reason_text,
@@ -662,6 +677,16 @@ serve(async (req) => {
             };
             
             console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
+          } else if (isLayeredSafetyGate) {
+            console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping GLOBAL_SAFETY rule ${layeredPrimaryDecision?.rule_id} as primary — moving to warnings`);
+            // Move safety gate rule to warnings instead
+            if (!rawDecisionOutput.warnings) rawDecisionOutput.warnings = [];
+            rawDecisionOutput.warnings.push({
+              type: 'SAFETY_GATE',
+              rule_id: layeredPrimaryDecision?.rule_id,
+              message: layeredPrimaryDecision?.action_text || 'Safety precaution applies',
+              source: 'safety_gate_filter'
+            });
           }
           // PRIORITY 2: Check for primary_matched_response (LEGACY)
           else {
