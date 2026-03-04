@@ -1953,24 +1953,17 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       }
       
       if (method) {
-        // CRITICAL FIX: Translate method name
-        const methodLabel = getActionTranslation(method, lang) || 
-          (lang === 'mr' ? 
-            (method === 'SOIL_APPLICATION' ? 'जमिनीत द्या' : method === 'FOLIAR_SPRAY' ? 'पर्णीय फवारणी' : method) :
-          lang === 'hi' ? 
-            (method === 'SOIL_APPLICATION' ? 'मिट्टी में डालें' : method === 'FOLIAR_SPRAY' ? 'पत्ते पर छिड़काव' : method) :
-          method);
+        // BUG-4 FIX: Use getActionTranslation only, no hardcoded mr/hi fallbacks
+        const methodLabel = getActionTranslation(method, lang) || method;
         recText += `\n   📍 ${methodLabel}`;
       }
       if (timing) {
-        const timingLabel = timing === 'MORNING' ? 
-          (lang === 'mr' ? 'सकाळी' : lang === 'hi' ? 'सुबह' : 'Morning') :
-          (lang === 'mr' ? 'संध्याकाळी' : lang === 'hi' ? 'शाम को' : 'Evening');
+        const timingLabel = timing === 'MORNING' ? 'Morning' : 'Evening';
         recText += `\n   ⏰ ${timingLabel}`;
       }
       
       if (primary.expected_outcomes?.efficacy_percent) {
-        recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% ${lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective'}`;
+        recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% effective`;
       }
       
       parts.push(recText);
