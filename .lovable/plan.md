@@ -1,150 +1,233 @@
-# Pipeline Stability Fixes v5.5 — Architectural Correction Specification
 
-## Fixes Applied (2026-03-02)
 
-### v6.2 Fixes (Current) — SSOT Data Alignment + Hardcoded Data Removal
+# Forensic Audit Report: KisanShaktiAI Symbolic Decision Brain
 
-#### FIX 33: `diag_first` Path Translation Bypass + Emoji Prefix Detection — FIXED
-- **File:** `agents/orchestrator.ts` (lines 3575, 540-554)
-- **Root cause:** `diag_first` clarification path NEVER called `translateClarificationOptions()` → raw English codes like `🔍 GAPS IN FIELD` shown in Marathi UI. `RAW_CODE_PATTERN` regex failed on emoji prefixes.
-- **Fix:** Added `translateClarificationOptions()` call in `diag_first` return path. Updated pattern detection to strip emoji prefixes and detect ALL_CAPS text with spaces (e.g., `🔍 GAPS IN FIELD` → derives `GAPS_IN_FIELD` for DB lookup).
+## 1. System Architecture Overview
 
-#### FIX 34: Dropped `response_mr/hi/en` Column References Removed — FIXED
-- **Files:** `orchestrator.ts` (6 locations), `llm-response-formatter.ts` (2 locations), `rule-evaluation-layer.ts`, `all-rules.ts`, `response-generator.ts`
-- **Root cause:** Code referenced `response_mr/hi/en` columns that were dropped from DB — always returned `null/undefined`
-- **Fix:** Removed all references. Use `action_text/reason_text/knowledge_text` (SSOT columns).
+The system follows a 5-layer neuro-symbolic architecture:
 
-#### FIX 35: Hardcoded Translation Dictionaries Removed — FIXED
-- **Files:** `response-generator.ts` (symptomNames, cropNames, stageNames), `failure-class-detector.ts` (28 English labels)
-- **Root cause:** Hardcoded translation dicts violated SSOT — only covered 5 crops, 6 stages, 5 symptoms
-- **Fix:** Response-generator now returns formatted codes (LLM narration layer handles localization). Failure-class-detector now uses observation_key as label (translated via `translateClarificationOptions()` at render time).
+```text
+FARMER QUERY (any language)
+       │
+       ▼
+[LAYER 1] Context Loading (index.ts → orchestrator.ts)
+  - Land/Soil/NDVI/Weather fetch
+  - Session state recovery
+  - Canonical language enforcement
+       │
+       ▼
+[LAYER 2] LLM Understanding (orchestrator.ts)
+  - Semantic Extractor (intent_code via LLM)
+  - Language Induction Layer (symbol extraction)
+  - Observation Code Mapper (DB-sourced mapping)
+  - Canonical State Builder
+       │
+       ▼
+[LAYER 3] Symbolic Rule Engine (rule-evaluation-layer.ts → symbolic-reasoner.ts)
+  - Fact Extraction
+  - Hypothesis Evaluation
+  - Condition Ledger matching
+  - Layered Rule Evaluator
+       │
+       ▼
+[LAYER 4] LLM Response Formatter (llm-response-formatter.ts)
+  - System/User prompt construction
+  - LLM call (OpenAI → Gemini → Lovable AI fallback)
+  - Output validation gate
+       │
+       ▼
+[LAYER 5] Safety Validation (index.ts)
+  - Unified Decision Gate
+  - Suppression Guard
+  - Narration Breach Validation
+  - Response save + return
+```
 
-#### FIX 36: 46 Missing Observation Codes + Translations Inserted — FIXED (DB)
-- **Table:** `observation_master` + `observation_translations`
-- **Root cause:** 46 codes referenced in `decision_rules.observable_characteristics` were missing from `observation_master` and had no translations
-- **Fix:** Inserted all 46 codes with proper `observation_category`, `affected_plant_part`, `is_diagnostic`, `canonical_group`. Added Marathi + Hindi translations for all 46.
+**Key Files:**
+- `index.ts` (3,868 lines) — Entry point, session management, gate enforcement
+- `orchestrator.ts` (8,746 lines) — Main pipeline coordination
+- `llm-response-formatter.ts` (2,290 lines) — LLM narration layer
+- `rule-evaluation-layer.ts` (513 lines) — Symbolic brain wrapper
+- `symbolic-reasoner.ts` — Core condition ledger engine
 
-### v6.1 Fixes (Previous) — Forensic Audit Critical Pipeline Fixes
+---
 
-#### FIX 26: `blocksCtopTreatments()` No Longer Blocks on NONE Authority — FIXED
-- **File:** `decision/authority-types.ts`
-- **Root cause:** `DecisionAuthority.NONE` was in the blocking array, causing ALL treatments to be blocked when authority was unresolved (the default state for most queries)
-- **Fix:** Removed `DecisionAuthority.NONE` from the blocking set. Only SAFETY, LAND, CLIMATE, SYSTEM block.
+## 2. Critical Bugs Found (from Audit Logs)
 
-#### FIX 27: `symptomKeys` + `isEmergency` Wired into All Orchestrator Return Paths — FIXED
-- **File:** `agents/orchestrator.ts` (IMMEDIATE_PRIMARY_DECISION + main DECISION_PROVIDED return paths)
-- **Root cause:** `index.ts` reads `metadata.symptomKeys` but no orchestrator return path populated it → UnifiedGate always saw `symptoms=0`
-- **Fix:** Added `symptomKeys: Array.from(allObservationsForPreAuth)` and `isEmergency` flag to both return paths
+### BUG-1: CRITICAL — "A blocking rule is active" Leaking as Product Name
 
-#### FIX 28: `matched_responses` Eligibility Relaxed — FIXED
-- **File:** `agents/layered-rule-evaluator.ts` (line 611)
-- **Root cause:** Rules with `reason_text`/`knowledge_text` but null `action_text` were excluded from eligibility → `matched_responses count: 0`
-- **Fix:** Eligibility now accepts `action_text || i18n_key || reason_text || knowledge_text`
+**Evidence from `ai_chat_audit_logs`:**
+```json
+{
+  "actions_returned": [{
+    "product_name": "A blocking rule is active.",
+    "action_type": "SPRAY_BOTANICAL",
+    "specific_action": "Apply A blocking rule is active."
+  }]
+}
+```
 
-#### FIX 29: `matched_responses` Wired into IMMEDIATE Return Path — FIXED
-- **File:** `agents/orchestrator.ts` (IMMEDIATE_PRIMARY_DECISION return)
-- **Root cause:** Early return path at line 5644 did not carry `matched_responses` from `layeredRuleResult`
-- **Fix:** Added explicit wiring before return
+**Root Cause:** `GLOBAL_SAFETY_GENERAL_003` has `cause = "A blocking rule is active."` and `action_text = "A blocking rule has been triggered..."`. When this rule wins the selection in `index.ts` (recovery path at line ~630), the `cause` field is mapped to `product_name: 'See structured response'` BUT the legacy recovery path doesn't filter safety-gate rules from product rendering.
 
-#### FIX 30: Emergency INFERRED Codes Promoted for Damage Detection — FIXED
-- **File:** `decision/diagnosis-only-mode.ts` (detectCropDamageWithAuthority)
-- **Root cause:** DEAD_HEART_PRESENT and STEM_BORING_MARKS tagged INFERRED were excluded from terminal gate → damage not detected → no DIAGNOSIS mode
-- **Fix:** 12 emergency observation codes are now promoted from INFERRED to terminal gate eligibility
+**File:** `index.ts` lines 630-665, `llm-response-formatter.ts` lines 1850-1870
 
-#### FIX 31: `treatment_outcomes` Table Missing Columns — FIXED (DB Migration)
-- **Table:** `treatment_outcomes`
-- **Root cause:** Code referenced `crop_code`, `crop_stage`, `rule_id`, `days_since_sowing` but columns didn't exist → silent error every turn
-- **Fix:** Added all 4 columns via migration
+**Fix:** 
+1. In `index.ts` recovery path (~line 630): When `layeredPrimaryDecision` is from a GLOBAL_SAFETY rule, set `product_name: null` and `action_type: 'SAFETY_GATE'` instead of `SPRAY_BOTANICAL`.
+2. Strengthen `isPlaceholderText()` to catch "A blocking rule" variants.
 
-#### FIX 32: Decision Flow Save Error Logging Improved — FIXED
-- **File:** `agents/orchestrator.ts` (saveDecisionFlowNonBlocking catch block)
-- **Root cause:** Catch block logged empty `{}` instead of actual error details
-- **Fix:** Now logs `error.message`, `error.details`, `error.code`
+---
 
-#### FIX 4 (Blocking Rule String Leak): NOT IN CODEBASE
-- Searched for "A blocking rule is active" — string not found in codebase
-- Likely generated by LLM formatter at runtime, not a code bug
-- `decision-graph-bridge.ts` already returns `recommendations: []` when blocked (correct behavior)
+### BUG-2: CRITICAL — `llm_model_used` is NULL for ALL recent responses
 
-### v6.0 Fixes (Previous) — Deep Forensic Audit Critical Code Fixes
+**Evidence:** All 10 most recent audit logs show `llm_model_used: null` and `response_source: 'SYMBOLIC_TEMPLATE'` or `null`. This means the LLM formatter is consistently failing/timing out, and ALL farmer responses are served by the template fallback.
 
-#### FIX 20: `required_symptoms` Orphan Key Unblocked — FIXED
-- **File:** `bundled-rules/loader.ts` (evaluateConditionsJson)
-- **Root cause:** `required_symptoms` key (array) in 17 rules hit generic object fallback → UNEVALUABLE with required=true → permanently blocked ALL shoot borer treatment rules (SC_PEST_EARLY_SHOOT_BORER_004, SC_PEST_TOP_BORER_004)
-- **Fix:** Added `required_symptoms` to observation key handler (alongside `observations`, `symptom`, `primary_symptom`). Marked as `required: false` (soft requirement) since farmers describe symptoms in lay terms, not clinical confirmation codes. Array values are matched against expandedObs using exact, containment, and root-word matching.
+**Root Cause:** Either:
+1. API keys are missing/expired (no OPENAI_API_KEY/GEMINI_API_KEY set)
+2. The validation gates are rejecting LLM output (safety-gate product text causes product validation failure)
+3. The `buildTemplateFallback()` function at line 1710 is the primary response path
 
-#### FIX 21: `roi_by_region`/`roi_modifier` Object Keys Unblocked — FIXED
-- **File:** `bundled-rules/loader.ts` (CATEGORY_G_KEYS + generic object fallback)
-- **Root cause:** 29 soil/nitrogen rules had `roi_by_region` (nested JSON object) → UNEVALUABLE → required=true → permanently blocked
-- **Fix:** Already in CATEGORY_G_KEYS. Additionally, the generic object/array fallback at end of evaluator now marks unknown objects/arrays as `required: false` with SKIPPED_NO_DATA instead of UNEVALUABLE with required=true. This prevents any remaining orphan object keys from blocking rules.
+**Impact:** Farmers are getting rigid template responses with raw English text instead of natural Marathi/Hindi responses.
 
-#### FIX 22: `requires_diagnosis_confidence` Threshold Key — FIXED
-- **File:** `bundled-rules/loader.ts`
-- **Root cause:** 9 rules had numeric threshold with no evaluator → UNEVALUABLE → blocked
-- **Fix:** Explicit handler marks as SKIPPED_NO_DATA with required=false (soft gate).
+**Fix:** 
+1. Verify API keys are configured in edge function secrets.
+2. Fix BUG-1 first — the product_name contamination causes validation failures that trigger template fallback.
 
-#### FIX 23: `requires_confirmation` String Key — FIXED
-- **File:** `bundled-rules/loader.ts`
-- **Root cause:** 7 rules had string rule_id treated as boolean → wrong result
-- **Fix:** Explicit handler marks as SKIPPED_NO_DATA with required=false (soft prerequisite).
+---
 
-#### FIX 24: Expanded CATEGORY_G Informational Keys — FIXED
-- **File:** `bundled-rules/loader.ts` (CATEGORY_G_KEYS set)
-- **Root cause:** `ipm_priority`, `crop_cycle`, `diagnosis_method`, `requires_identification`, and other context keys were falling through to generic handlers → FAILED or UNEVALUABLE → blocked rules
-- **Fix:** Added 13 additional keys to CATEGORY_G_KEYS: `ipm_priority`, `duration_days_info`, `diagnosis_method`, `requires_identification`, `soil_type`, `soil_type_name`, `variety`, `trait`, `region`, `farming_mode`, `monsoon_timing`, `yield_potential`, `crop_cycle`.
+### BUG-3: CRITICAL — `validation_passed: false` for WILTING queries with ZERO rules fired
 
-#### FIX 25: Generic Object/Array Fallback Made Non-Blocking — FIXED
-- **File:** `bundled-rules/loader.ts` (end of evaluateConditionsJson)
-- **Root cause:** Any unrecognized object/array condition value hit `UNEVALUABLE, required: true` → permanent block
-- **Fix:** Unknown arrays are now treated as soft observation lists (matched against expandedObs, required: false). Unknown objects are marked SKIPPED_NO_DATA with required: false.
+**Evidence:** All 3 "काही ठिकाणी उस वाळत आहे" queries show `rules_fired: []`, `actions_returned: []`, `validation_passed: false`.
 
-#### BUG-003 Boolean-Object observable_characteristics — ALREADY FIXED
-- **File:** `bundled-rules/loader.ts` (normalizeObservableChars)
-- `normalizeObservableChars` already converts `{dead_heart: true}` → `["DEAD_HEART"]` at load time. The 64 rules with boolean-object format were already being normalized to arrays before reaching makeExecutable.
+**Root Cause:** The `WILTING_OR_DROOPING` intent resolves to observation codes that have NO matching rules in `decision_rules` for SUGARCANE at TILLERING stage. The system produces ZERO output — a RULE_COVERAGE_GAP.
 
-### Impact Summary
-- **17 shoot borer treatment rules** — UNBLOCKED (were permanently blocked)
-- **29 soil/nitrogen management rules** — UNBLOCKED
-- **9 diagnosis confidence rules** — UNBLOCKED
-- **7 confirmation prerequisite rules** — UNBLOCKED
-- **~16 IPM priority rules** — UNBLOCKED
-- **~14 crop cycle rules** — UNBLOCKED
-- **Total rules unblocked: ~92 rules** previously permanently blocked by orphan condition keys
+**Fix:**
+1. Insert wilting/drooping rules for sugarcane in `decision_rules` table (this is a data gap, not code).
+2. Ensure the `STAGE_ADVISORY_FALLBACK` path in orchestrator catches this and returns stage-specific monitoring advice.
 
-### Remaining DB Data Gaps (require manual data population)
-- 450 rules missing `active_ingredient` (14% coverage)
-- 479 rules missing `application_method` (8% coverage)
-- 490 rules missing `roi_cost_saved_min/max` (6% coverage)
-- 5 FERT_SCHEDULE rules with NULL action_text
-- 45 orphan observation codes not in observation_master
-- ~484 observation codes missing Marathi translations
-- 184 rules with empty observable_characteristics
+---
 
-### Forward Chaining (enables_rule_ids, triggers_rule_ids) — DEFERRED
-- Columns populated in DB but not evaluated in code
-- Requires separate implementation sprint
+### BUG-4: HIGH — Hardcoded mr/hi text remains in template fallback
 
-## Guaranteed Invariants (v6.0)
-1. `required_symptoms` array keys are evaluated as soft observation matches, never block rules
-2. Unknown object/array condition values are non-blocking (required: false)
-3. All informational/context keys in CATEGORY_G never block rule firing
-4. `requires_diagnosis_confidence` and `requires_confirmation` are soft gates
-5. Boolean-object observable_characteristics normalized to arrays at load time
-6. All v5.1-v5.6 invariants remain in effect
+**Files affected:** `llm-response-formatter.ts` lines 1829-1834 (greetings), 1839-1844 (acks), 1900-1905 (headers), 1914-1922 (GENERIC_ACTION_TRANSLATIONS), 1957-1968 (method/timing), 1979-1985 (organic headers), 1989-1994 (success headers), 2006-2012 (bee warnings), 2014-2020 (ROI), 2041-2044 (action headers), 2054-2058 (ask more), 2066-2070 (IPM headers), 2076-2083 (IPM fallback), 2087-2092 (safe advice), 2110-2115 (closings).
 
-## Previous Fixes
+Also in `orchestrator.ts` lines 682-690 (localized fallback labels).
 
-### v5.5-v5.6
-- FIX 15-19: Intent classification, LLM formatter formats, diagnostic pre-filter, dual confidence, session continuity
+Also `IPM_URGENCY_LABELS` at lines 143-149 of `llm-response-formatter.ts`.
 
-### v5.4
-- BUG 12-14: Observable characteristics matching, root-word matching, data_authority_rank sorting
+**Impact:** Violates the "no hardcoded mr/hi" directive. These should come from i18n/translation-loader or observation_translations DB.
 
-### v5.3
-- BUG 10-11: Symbolic recommendations reach primary_decision, DiagnosisOnlyMode guard
+**Fix:** Extract all hardcoded translation maps to the `observation_translations` table or a dedicated `ui_strings` table. Use `resolveI18nFromCache()` pattern with DB-first, LLM-fallback strategy.
 
-### v5.2
-- BUG 6-9: Intent disconnection, missing scopes, prescription gate, Phase 3 override
+---
 
-### v5.1
-- BUG 1-5: ReferenceError, dual detector, stage drift, redundant execution, authority blocks
+### BUG-5: HIGH — Token Inflation from matched_responses
+
+**Current:** `filterRelevantResponses()` caps at 3, but `buildRecommendationSummary()` also includes secondary_actions, blocked_actions, warnings, and rich agronomic context (organic_alternative, mode_of_action, success/failure_indicators, ROI). Total prompt can reach 2,500+ tokens.
+
+**Expected:** ~300-500 tokens for the recommendation data.
+
+**Specific inflation points:**
+- `knowledge_text` capped at 600 chars but still included for primary (line 1369)
+- Rich agronomic fields (lines 1376-1392) — 8 optional fields always included when present
+- Secondary actions dump (lines 1474-1487)
+- Blocked actions dump (lines 1534-1539)
+- Format instructions in system prompt (~800 tokens, lines 984-1090)
+- Crop stage constraints (~200 tokens, lines 1166-1184)
+
+**Fix:**
+1. Only include rich agronomic fields when `formatType === 'FORMAT_1'` (direct prescription)
+2. Cap secondary actions to 1 in prompt
+3. Remove blocked_actions from LLM prompt (inform farmer separately)
+4. Compress format instructions to ~200 tokens using a format template ID reference
+
+---
+
+### BUG-6: MEDIUM — Safety Gate Rules Selected as Primary Decision
+
+**Evidence:** `GLOBAL_SAFETY_GENERAL_003` (priority 10, RECOMMEND) is selected as the primary decision for STEM_DAMAGE queries instead of actual pest treatment rules.
+
+**Root Cause:** Safety rules have `condition_code: 'STAGE_GENERAL'` and `priority: 10`, making them match almost any query and outrank treatment-specific rules (typically priority 7-8).
+
+**Fix:**
+1. Change `GLOBAL_SAFETY_GENERAL_003` `action_type` from `RECOMMEND` to `SAFETY_GATE` in DB.
+2. In the rule evaluator, filter safety gate rules from primary decision selection — they should only appear in `blocked_actions` or warnings.
+
+---
+
+### BUG-7: MEDIUM — `isLikelyRawEnglish` is too aggressive
+
+At line 1873: `return /[A-Za-z]/.test(v)` — This returns `true` for ANY string containing a single Latin character. Product names like "Chlorpyrifos 20 EC" or trade names in English are legitimate in Marathi responses.
+
+**Fix:** Use a ratio-based check: `const asciiRatio = (v.match(/[a-zA-Z]/g) || []).length / v.length; return asciiRatio > 0.6;`
+
+---
+
+## 3. Deterministic Architecture Compliance
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| Rule engine is sole decision authority | PASS | LLM only called for narration |
+| LLM cannot generate treatment advice | PASS | Output validation gate blocks unauthorized products |
+| LLM cannot override rules | PASS | Source validation in index.ts |
+| Hypothesis layer supports reasoning only | PASS | No treatment generation |
+| Rule engine runs before response generation | PASS | Layer 3 before Layer 4 |
+| Safety gate rules don't leak as products | FAIL | BUG-1 |
+| All responses come from fired rules | FAIL | BUG-2 (template fallback bypasses LLM) |
+
+---
+
+## 4. Token Cost Optimization Summary
+
+| Component | Current Est. Tokens | Target | Saving |
+|-----------|-------------------|--------|--------|
+| System prompt | ~1,200 | ~500 | 700 |
+| Recommendation data | ~1,500 | ~400 | 1,100 |
+| Land context | ~200 | ~100 | 100 |
+| Format instructions | ~800 | ~200 | 600 |
+| **Total** | **~3,700** | **~1,200** | **~2,500 (68%)** |
+
+---
+
+## 5. Implementation Plan (Priority Order)
+
+### Phase 1: Critical Fixes (Must-do)
+
+**Task 1.1:** Fix safety gate rule leaking as product name
+- Update `GLOBAL_SAFETY_GENERAL_003` `action_type` to `SAFETY_GATE` in DB
+- Add safety gate filter in `index.ts` recovery path
+- Strengthen `isPlaceholderText()` in formatter
+
+**Task 1.2:** Fix `isLikelyRawEnglish()` over-filtering
+- Replace single-char check with ratio-based threshold (>60% ASCII)
+
+**Task 1.3:** Verify LLM API keys and fix LLM formatter pipeline
+- Check if OPENAI_API_KEY/GEMINI_API_KEY are set in edge function secrets
+- Ensure validation gate doesn't reject responses due to safety-gate product contamination
+
+**Task 1.4:** Add wilting/drooping rules for sugarcane
+- Insert WILTING_OR_DROOPING rules for SUGARCANE at relevant stages in `decision_rules`
+
+### Phase 2: Hardcoded Text Removal
+
+**Task 2.1:** Extract all hardcoded mr/hi strings from `llm-response-formatter.ts` template fallback
+- Move greetings, headers, labels, closings to a `ui_strings` table or i18n JSON
+- Use `resolveI18nFromCache()` with DB-first, LLM-fallback pattern
+
+**Task 2.2:** Remove `IPM_URGENCY_LABELS`, `GENERIC_ACTION_TRANSLATIONS` hardcoded dictionaries
+- Move to `observation_translations` or a new `action_type_translations` table
+
+**Task 2.3:** Remove hardcoded fallback labels from `orchestrator.ts` lines 682-690
+
+### Phase 3: Token Optimization
+
+**Task 3.1:** Compress system prompt — remove redundant instructions
+**Task 3.2:** Conditionally include rich agronomic fields based on format type
+**Task 3.3:** Cap secondary actions to 1 in LLM prompt
+**Task 3.4:** Remove blocked_actions from LLM prompt entirely
+
+### Phase 4: Rule Engine Data Gaps
+
+**Task 4.1:** Audit observation_master coverage for all active intents
+**Task 4.2:** Ensure all symptom intents have at least one matching rule per major crop/stage combination
+**Task 4.3:** Add RULE_COVERAGE_GAP alerting in audit logs
+
