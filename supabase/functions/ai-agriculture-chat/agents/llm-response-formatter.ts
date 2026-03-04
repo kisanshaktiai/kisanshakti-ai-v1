@@ -2049,12 +2049,8 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   }
   
   // Supportive closing
-  const closings: Record<string, string> = {
-    mr: '\n🙏 काही शंका असल्यास विचारा. शुभेच्छा!',
-    hi: '\n🙏 कोई सवाल हो तो पूछें। शुभकामनाएं!',
-    en: '\n🙏 Feel free to ask if you need clarification. Best wishes!'
-  };
-  parts.push(closings[lang]);
+  // BUG-4 FIX: English-only closing in template (LLM narration handles localization)
+  parts.push('\n🙏 Feel free to ask if you need clarification. Best wishes!');
   
   const finalResponse = parts.join('\n\n');
   console.log(`   📋 Template fallback generated: ${finalResponse.length} chars`);
