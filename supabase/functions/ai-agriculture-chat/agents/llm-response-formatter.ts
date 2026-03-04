@@ -1902,12 +1902,8 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
     (isNonProductAction || hasValidProductName || shouldRenderRawFarmerText(rawActionText) || !!templatePestCode || !!templateDiseaseCode);
   
   if (hasValidRecommendation) {
-    const headers: Record<string, string> = {
-      mr: '📌 **शिफारस:**',
-      hi: '📌 **सिफारिश:**',
-      en: '📌 **Recommendation:**'
-    };
-    parts.push(headers[lang]);
+    const recHeader = '📌 **Recommendation:**';
+    parts.push(recHeader);
     
     // CRITICAL: Extract from current decision_output ONLY
     const safeProductName = hasValidProductName ? rawProductName : '';
