@@ -1826,23 +1826,15 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
-  // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang]);
+  // BUG-4 FIX: Language-agnostic greeting/ack — LLM template uses English only,
+  // actual localization happens via LLM narration layer (not hardcoded strings)
+  const greeting = lang === 'en' ? 'Hello farmer friend! 🌾' : '🌾';
+  parts.push(greeting);
   
   // Acknowledgment - from CURRENT land_context only
   const currentCrop = input.land_context?.current_crop;
-  if (currentCrop) {
-    const acks: Record<string, string> = {
-      mr: `तुमच्या ${currentCrop} पिकाबद्दलचा प्रश्न समजला.`,
-      hi: `आपकी ${currentCrop} फसल के बारे में प्रश्न समझा।`,
-      en: `I understand your question about ${currentCrop}.`
-    };
-    parts.push(acks[lang]);
+  if (currentCrop && lang === 'en') {
+    parts.push(`I understand your question about ${currentCrop}.`);
   }
   
   // Primary recommendation - EXTRACT ONLY FROM CURRENT decision_output
