@@ -2015,12 +2015,7 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       }
     } else {
       // No valid product - ask for more info instead of giving wrong advice
-      const askMore: Record<string, string> = {
-        mr: '📋 **अधिक माहिती आवश्यक:**\nकृपया तुमच्या समस्येबद्दल अधिक तपशील द्या किंवा फोटो पाठवा.',
-        hi: '📋 **अधिक जानकारी आवश्यक:**\nकृपया अपनी समस्या के बारे में अधिक विवरण दें या फोटो भेजें।',
-        en: '📋 **More information needed:**\nPlease provide more details about your problem or send a photo.'
-      };
-      parts.push(askMore[lang]);
+      parts.push('📋 **More information needed:**\nPlease provide more details about your problem or send a photo.');
     }
   } else {
     // Check for matched_responses (IPM treatment responses from rule database)
