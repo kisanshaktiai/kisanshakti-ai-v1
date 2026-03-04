@@ -691,7 +691,9 @@ serve(async (req) => {
           // PRIORITY 2: Check for primary_matched_response (LEGACY)
           else {
             const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
-            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type) {
+            const isPrimaryMatchSafetyGate = isSafetyGateRule(primaryMatchedResponse?.rule_id);
+            
+            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type && !isPrimaryMatchSafetyGate) {
               console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
               
               rawDecisionOutput.primary_decision = {
@@ -707,8 +709,8 @@ serve(async (req) => {
                   reason: 'Recovered from primary_matched_response'
                 },
                 application_details: {
-                  product_name: 'See structured response',
-                  product_type: 'BOTANICAL',
+                  product_name: primaryMatchedResponse.product_name || null,
+                  product_type: primaryMatchedResponse.product_type || null,
                   action_text: primaryMatchedResponse.action_text,
                   reason_text: primaryMatchedResponse.reason_text,
                   knowledge_text: primaryMatchedResponse.knowledge_text,
@@ -722,7 +724,9 @@ serve(async (req) => {
               };
               
               console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${primaryMatchedResponse.action_type}`);
-            } 
+            } else if (isPrimaryMatchSafetyGate) {
+              console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping safety rule ${primaryMatchedResponse?.rule_id} from primary_matched_response`);
+            }
             // PRIORITY 3: Check matched_responses array
             else {
               const matchedResponses = rawDecisionOutput.matched_responses || 
