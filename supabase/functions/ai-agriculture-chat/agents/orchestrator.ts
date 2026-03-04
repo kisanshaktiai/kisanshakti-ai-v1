@@ -679,15 +679,11 @@ async function translateClarificationOptions(
 
     // Fallback: avoid raw English leakage in non-English UI
     if (normalizedCode) {
-      if (lang !== 'en') {
-        const localizedFallback = lang === 'mr'
-          ? `लक्षण पर्याय ${entry.idx + 1}`
-          : lang === 'hi'
-            ? `लक्षण विकल्प ${entry.idx + 1}`
-            : `Observation option ${entry.idx + 1}`;
+        // BUG-4 FIX: Language-agnostic generic fallback labels
+        // Localization happens via LLM narration, NOT hardcoded strings
+        const localizedFallback = `Observation option ${entry.idx + 1}`;
         if (entry.isString) return localizedFallback;
         return { ...(opt as any), label: localizedFallback };
-      }
 
       const humanized = normalizedCode
         .replace(/_/g, ' ')
