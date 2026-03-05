@@ -20946,33 +20946,6 @@ export type Database = {
           },
         ]
       }
-      intent_observation_mapping_v2: {
-        Row: {
-          confidence_rank: number
-          created_at: string | null
-          id: string
-          intent_code: string
-          is_active: boolean | null
-          observation_code: string
-        }
-        Insert: {
-          confidence_rank?: number
-          created_at?: string | null
-          id?: string
-          intent_code: string
-          is_active?: boolean | null
-          observation_code: string
-        }
-        Update: {
-          confidence_rank?: number
-          created_at?: string | null
-          id?: string
-          intent_code?: string
-          is_active?: boolean | null
-          observation_code?: string
-        }
-        Relationships: []
-      }
       intent_translations: {
         Row: {
           created_at: string | null
@@ -33330,7 +33303,7 @@ export type Database = {
           id: string
           metadata: Json | null
           response_time_ms: number | null
-          session_duration: unknown
+          session_duration: string | null
           status_code: number | null
           tenant_id: string | null
           timestamp: string
@@ -33344,7 +33317,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           response_time_ms?: number | null
-          session_duration?: unknown
+          session_duration?: string | null
           status_code?: number | null
           tenant_id?: string | null
           timestamp?: string
@@ -33358,7 +33331,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           response_time_ms?: number | null
-          session_duration?: unknown
+          session_duration?: string | null
           status_code?: number | null
           tenant_id?: string | null
           timestamp?: string
