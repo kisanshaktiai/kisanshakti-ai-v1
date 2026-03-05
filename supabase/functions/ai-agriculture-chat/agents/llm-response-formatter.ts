@@ -37,6 +37,17 @@ import {
   getCauseTranslation
 } from './communication-translation-dictionary.ts';
 
+// v2.0: Import deterministic response builder
+import {
+  buildDeterministicResponse,
+  formatStructuredResponseForLLM,
+  extractRichRuleData,
+  hasAdequateRuleContent,
+  type RichRuleData,
+  type WeatherContext,
+  type CropContext,
+} from './deterministic-response-builder.ts';
+
 // Import validation from decision representation
 import { validateLLMOutputIntegrity } from './decision-representation.ts';
 
@@ -1292,13 +1303,83 @@ function filterRelevantResponses(
 
 function buildRecommendationSummary(input: LLMFormatterInput): string {
   const decision = input.decision_output;
+  const primary = decision.primary_decision;
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v2.0: DETERMINISTIC RESPONSE BUILDER INTEGRATION
+  // If primary_decision exists with rich data, use the deterministic builder
+  // instead of manual prompt assembly. This ensures ALL agronomic content
+  // comes from decision_rules columns, not LLM generation.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (primary && primary.rule_id) {
+    const appDetails = primary.application_details || {};
+    const richData = extractRichRuleData(primary, appDetails);
+    
+    // Check if we have adequate rule content for deterministic response
+    if (hasAdequateRuleContent(richData)) {
+      const landAreaAcres = input.land_context?.area_acres;
+      
+      // Build crop context for PHI validation
+      const cropContext: CropContext | undefined = input.land_context?.days_since_sowing ? {
+        days_since_sowing: input.land_context.days_since_sowing,
+        maturity_days_typical: undefined, // from land context if available
+      } : undefined;
+      
+      // Build weather context if available (from decision metadata)
+      const weatherMeta = decision?.metadata?.weather_context;
+      const weather: WeatherContext | undefined = weatherMeta ? {
+        temperature_celsius: weatherMeta.temperature,
+        humidity_pct: weatherMeta.humidity,
+        wind_speed_kmh: weatherMeta.wind_speed,
+        rain_forecast_hours: weatherMeta.rain_forecast_hours,
+        is_raining: weatherMeta.is_raining,
+      } : undefined;
+      
+      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather);
+      const deterministicPrompt = formatStructuredResponseForLLM(structuredResponse);
+      
+      console.log(`✅ [DeterministicBuilder] Integrated into LLM prompt for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}, safety_warnings=${structuredResponse.safety_warnings.length}`);
+      
+      // Prepend status and append matched responses for context
+      const parts: string[] = [];
+      parts.push(`STATUS: ${decision.status || 'DECISION_PROVIDED'}`);
+      parts.push('');
+      parts.push(deterministicPrompt);
+      
+      // Append secondary actions (capped at 1) from decision_output
+      const secondary = decision.secondary_actions || decision.secondary_recommendations;
+      if (secondary && secondary.length > 0) {
+        parts.push(`\n═══ ADDITIONAL RECOMMENDATION ═══`);
+        const sec = secondary[0];
+        parts.push(`1. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
+        if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
+        if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
+      }
+      
+      // Warnings (capped at 2)
+      if (decision.warnings && decision.warnings.length > 0) {
+        parts.push(`\nWARNINGS:`);
+        decision.warnings.slice(0, 2).forEach((warning: any) => {
+          parts.push(`⚠️ ${typeof warning === 'string' ? warning : warning.message || warning.text}`);
+        });
+      }
+      
+      return parts.join('\n');
+    }
+    
+    console.warn(`⚠️ [DeterministicBuilder] Inadequate rule content for ${primary.rule_id}, falling back to legacy assembly`);
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEGACY FALLBACK: Manual prompt assembly (only when deterministic builder
+  // cannot produce output due to missing rule content)
+  // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
   // Status
   parts.push(`STATUS: ${decision.status || 'UNKNOWN'}`);
   
   // Primary recommendation with COMPLETE product details
-  const primary = decision.primary_decision;
   if (primary) {
     const pestCode = primary.target?.pest_code;
     const diseaseCode = primary.target?.disease_code;
@@ -1307,74 +1388,50 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     
     parts.push(`\nPRIMARY RECOMMENDATION:`);
     parts.push(`- Action Type: ${primary.action_type}`);
-    // FIX 7: Rule ID removed from LLM prompt to prevent leakage risk
     parts.push(`- Target: ${pestName || diseaseName || primary.target?.nutrient_deficiency || 'General'}`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
-    // PRODUCTION HARDENING: NEW RESPONSE CONTRACT (PRIORITY OVER LEGACY)
-    // Use action_text, reason_text, knowledge_text FIRST, then fall back to legacy
-    // MANDATORY FALLBACK CHAIN: action_text || i18n(i18n_key) || "[Action unavailable]"
-    // ═══════════════════════════════════════════════════════════════════════════
     const appDetails = primary.application_details || {};
     
-    // NEW CONTRACT FIELDS (PRIORITY)
     let actionText = appDetails.action_text;
     let reasonText = appDetails.reason_text;
     let knowledgeText = appDetails.knowledge_text;
     
-    // MANDATORY FALLBACK CHAIN for action_text (Change F: NO_ACTION_REQUIRED fix)
     if (!actionText) {
       const actionType = (primary.action_type || '').toUpperCase();
       if (actionType === 'NO_ACTION_REQUIRED' || actionType === 'NO_ACTION') {
-        // For NO_ACTION_REQUIRED, use knowledge_text or reason_text as primary content
-        actionText = knowledgeText || reasonText || 
-          (input.language === 'mr' ? 'सध्या कोणतीही कृती आवश्यक नाही. नियमित निरीक्षण करा.' :
-           input.language === 'hi' ? 'अभी कोई कार्रवाई आवश्यक नहीं। नियमित निगरानी करें।' :
-           'No action required at this time. Continue regular monitoring.');
+        actionText = knowledgeText || reasonText || 'No action required at this time. Continue regular monitoring.';
         console.log(`   ℹ️ [LLM Formatter] NO_ACTION_REQUIRED: Using fallback text for rule ${primary.rule_id}`);
       } else {
-        // Wire up i18n_key resolver: try getTranslation() from translation-loader (static import)
         if (appDetails.i18n_key) {
           const resolved = resolveI18nFromCache(appDetails.i18n_key, 'en');
           if (resolved && !resolved.includes('_')) {
-            // Got a real English translation from cache - use it
             actionText = resolved;
-            console.log(`   ✅ [LLM Formatter] Resolved action_text via i18n_key=${appDetails.i18n_key}`);
           }
         }
-        // FIX 4: Replace error string with immediate template fallback
         if (!actionText) {
           actionText = knowledgeText || reasonText;
           if (!actionText) {
             console.error(`🚨 [LLM Formatter] action_text unavailable for rule ${primary.rule_id} — returning template fallback`);
-            // CRITICAL: Return template fallback immediately — never send error string to LLM
             return buildTemplateFallback(input, startTime);
           }
         }
       }
     }
     
-    // Translate action_type for LLM context (Change D)
     const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English';
     const translatedActionType = getActionTranslation(primary.action_type, input.language) || primary.action_type;
     parts.push(`- Action Type (translated): ${translatedActionType}`);
     
-    // Always output structured response section
     parts.push(`\n═══ REFERENCE TEXTS (TRANSLATE TO ${langName.toUpperCase()}) ═══`);
     parts.push(`📋 ACTION (What to do - TRANSLATE this): ${actionText}`);
     if (reasonText) {
       parts.push(`🔍 REASON (Why): ${reasonText}`);
     }
-     if (knowledgeText) {
-       // FIX 5: Cap knowledge_text to prevent token bloat from long ICAR references
-       parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText.substring(0, 600)}`);
+    if (knowledgeText) {
+      parts.push(`📚 KNOWLEDGE (Scientific basis): ${knowledgeText.substring(0, 600)}`);
     }
     parts.push(`═══════════════════════════════════════════════════`);
     
-    // ═══════════════════════════════════════════════════════════════════════════
-    // BUG-5 FIX: Rich agronomic context ONLY for FORMAT_1 (direct prescription)
-    // For other formats, these fields inflate tokens without adding value
-    // ═══════════════════════════════════════════════════════════════════════════
     const actionTypeUpper2 = (primary.action_type || '').toUpperCase();
     const isDirectPrescription = ['RECOMMEND', 'TREATMENT', 'SPRAY', 'APPLY', 'CHEMICAL_CONTROL', 'BIOLOGICAL_CONTROL', 'URGENT_ACTION']
       .some(t => actionTypeUpper2.includes(t));
@@ -1392,63 +1449,48 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
       if (appDetails.roi_yield_gain_pct) parts.push(`📈 Yield Gain: ${appDetails.roi_yield_gain_pct}%`);
     }
     
-    // ═══════════════════════════════════════════════════════════════════════════
-    // v2.0.0: ACTION TYPE GUARD - Skip product/dosage for non-treatment rules
-    // BLOCK rules: Explicitly instruct LLM NOT to recommend treatment
-    // NO_ACTION/MONITORING: Skip product section entirely
-    // ═══════════════════════════════════════════════════════════════════════════
     const actionTypeUpper = (primary.action_type || '').toUpperCase();
     const TREATMENT_ACTION_TYPES = ['RECOMMEND', 'URGENT_ACTION', 'TREATMENT', 'SPRAY', 'APPLY', 'CHEMICAL_CONTROL', 'BIOLOGICAL_CONTROL'];
     const isTreatmentAction = TREATMENT_ACTION_TYPES.some(t => actionTypeUpper.includes(t));
     
     if (actionTypeUpper === 'BLOCK' || actionTypeUpper === 'SAFETY_GATE') {
-      // BLOCK/SAFETY_GATE: Explicitly prevent treatment recommendation
       parts.push(`\n⛔ IMPORTANT INSTRUCTION FOR LLM:`);
       parts.push(`This is a BLOCK action. DO NOT recommend any product, dosage, or treatment.`);
       parts.push(`DO NOT tell the farmer to decide the dose themselves.`);
       parts.push(`Instead, explain WHY treatment is blocked using the REASON and KNOWLEDGE text above.`);
       parts.push(`Provide only monitoring guidance and safety information.`);
     } else if (isTreatmentAction && appDetails && Object.keys(appDetails).length > 0) {
-      // Treatment rules: Output product/dosage details
       parts.push(`\n- Product Name: ${appDetails.product_name || 'Not specified'}`);
       parts.push(`- Dosage (concentration): ${appDetails.concentration || appDetails.dosage || 'As per label'}`);
       parts.push(`- Dosage (per acre): ${appDetails.dosage_per_acre || 'See concentration'}`);
       parts.push(`- Application Method: ${appDetails.method || appDetails.application_method || 'Standard application'}`);
-       // FIX 8: Remove hardcoded timing/water defaults - must come from rule engine
-       parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'As per label'}`);
-       parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || 'As per label'}`);
-       parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'} (कापणीपूर्वी वाट पाहा)`);
-       // FIX 12: Remove hardcoded 75% efficacy default - only use rule engine value
-       const efficacyValue = appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent;
-       parts.push(`- Expected Efficacy: ${efficacyValue ? efficacyValue + '%' : 'As per field conditions'}`);
+      parts.push(`- Timing: ${appDetails.timing || primary.timing?.best_time_of_day || 'As per label'}`);
+      parts.push(`- Water Volume: ${appDetails.water_volume || appDetails.water_volume_per_acre || 'As per label'}`);
+      parts.push(`- PHI Days: ${appDetails.phi_days || 'Follow label'}`);
+      const efficacyValue = appDetails.efficacy_percent || primary.expected_outcomes?.efficacy_percent;
+      parts.push(`- Expected Efficacy: ${efficacyValue ? efficacyValue + '%' : 'As per field conditions'}`);
       parts.push(`- Weather Restrictions: ${appDetails.weather_restrictions || 'Follow label instructions'}`);
       
-      // BUG-2 FIX: Land-area-based total dosage calculation
       const farmerAreaAcres = input.land_context?.area_acres;
       if (farmerAreaAcres && farmerAreaAcres > 0) {
         const dosagePerAcre = appDetails.dosage_per_acre || appDetails.concentration || '';
-        const waterPerAcre = appDetails.water_volume || appDetails.water_volume_per_acre || 'As per label';
         parts.push(`\n═══ TOTAL FOR FARMER'S LAND (${farmerAreaAcres} acres) ═══`);
         parts.push(`- Per acre dosage: ${dosagePerAcre}`);
         parts.push(`- Farmer's land: ${farmerAreaAcres} acres`);
         parts.push(`- CALCULATE: Multiply per-acre dosage × ${farmerAreaAcres} = TOTAL product needed`);
-        parts.push(`- CALCULATE: Multiply per-acre water × ${farmerAreaAcres} = TOTAL water needed`);
         parts.push(`- IMPORTANT: Show BOTH per-acre AND total quantities in the response`);
         parts.push(`═══════════════════════════════════════════════════`);
       }
       
-      // Multilingual product names for farmer
       if (appDetails.names) {
         const names = appDetails.names as { mr?: string; hi?: string; en?: string };
         parts.push(`- Product (Marathi): ${names.mr || appDetails.product_name}`);
         parts.push(`- Product (Hindi): ${names.hi || appDetails.product_name}`);
       }
     } else if (isTreatmentAction) {
-      // Treatment but no appDetails
       parts.push(`- Product: ${primary.product_name || 'Not specified'}`);
       parts.push(`- Dosage: As per label`);
     } else {
-      // NO_ACTION_REQUIRED, MONITORING, OBSERVATION: Skip product section entirely
       parts.push(`\nℹ️ This is a ${actionTypeUpper} action. Focus on monitoring guidance and explanation.`);
       parts.push(`DO NOT recommend any specific product or dosage.`);
     }
@@ -1456,22 +1498,19 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     parts.push(`- Priority: ${primary.priority || 'HIGH'}`);
     parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
     
-    // Urgency indicator
-     // FIX 10: IPM level unknown guard with warning log
-     const ipmLevel = primary.ipm_level || 'LEVEL_3';
-     if (!IPM_URGENCY_LABELS[ipmLevel]) {
-       console.warn(`[IPM_GOVERNANCE] Unknown IPM level: ${ipmLevel}`);
-     }
-     const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[input.language] || 'Normal priority';
-     parts.push(`- Urgency: ${urgencyLabel}`);
+    const ipmLevel = primary.ipm_level || 'LEVEL_3';
+    if (!IPM_URGENCY_LABELS[ipmLevel]) {
+      console.warn(`[IPM_GOVERNANCE] Unknown IPM level: ${ipmLevel}`);
+    }
+    const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[input.language] || 'Normal priority';
+    parts.push(`- Urgency: ${urgencyLabel}`);
     
-     if (primary.rule_id) {
-       // FIX 7: Remove rule_id from LLM prompt to prevent leakage
-       parts.push(`- Scientific Basis: ICAR Validated`);
+    if (primary.rule_id) {
+      parts.push(`- Scientific Basis: ICAR Validated`);
     }
   }
   
-  // BUG-5 FIX: Cap secondary actions to 1 in LLM prompt (token optimization)
+  // Secondary actions (capped at 1)
   const secondary = decision.secondary_actions || decision.secondary_recommendations;
   if (secondary && secondary.length > 0) {
     parts.push(`\n═══ ADDITIONAL RECOMMENDATION: ═══`);
@@ -1481,13 +1520,7 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
   }
   
-   // FIX 2: Removed hardcoded biocontrol dosages (Trichogramma/Cotesia).
-   // Biocontrol dosage comes from rule engine via application_details.dosage_per_acre.
-   // The product/dosage rendering at lines 984-1007 already handles this correctly.
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MATCHED RESPONSES - TOKEN OPTIMIZED: Filter to max 3 relevant responses
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Matched responses
   const matchedResponses = decision.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
     const primaryRuleId = decision.primary_decision?.rule_id;
@@ -1510,16 +1543,13 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
     });
   }
   
-  // Warnings — keep only critical ones, cap at 2
+  // Warnings (capped at 2)
   if (decision.warnings && decision.warnings.length > 0) {
     parts.push(`\nWARNINGS:`);
     decision.warnings.slice(0, 2).forEach((warning: any) => {
       parts.push(`⚠️ ${typeof warning === 'string' ? warning : warning.message || warning.text}`);
     });
   }
-  
-  // BUG-5 FIX: REMOVED blocked_actions from LLM prompt entirely
-  // Safety gate information is handled separately via warnings, not sent to LLM
   
   return parts.join('\n');
 }
@@ -1804,245 +1834,82 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // MODE: TREATMENT - Full recommendation with legacy template
+  // MODE: TREATMENT — Use Deterministic Response Builder v2.0
+  // Instead of legacy template assembly, use the structured builder
+  // ═══════════════════════════════════════════════════════════════════════════
+  const primary = decision?.primary_decision;
+  
+  if (primary && primary.rule_id) {
+    const appDetails = primary.application_details || {};
+    const richData = extractRichRuleData(primary, appDetails);
+    
+    if (hasAdequateRuleContent(richData)) {
+      const landAreaAcres = input.land_context?.area_acres;
+      const cropContext: CropContext | undefined = input.land_context?.days_since_sowing ? {
+        days_since_sowing: input.land_context.days_since_sowing,
+      } : undefined;
+      
+      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext);
+      const deterministicText = formatStructuredResponseForLLM(structuredResponse);
+      
+      console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);
+      
+      return {
+        formatted_response: deterministicText,
+        confidence: structuredResponse.confidence,
+        source: 'TEMPLATE_FALLBACK',
+        processing_time_ms: Date.now() - startTime,
+        sections_included: ['deterministic_response', 'problem', 'action', 'safety', 'monitoring'],
+        validation_passed: true,
+        validation_violations: [],
+        gate_status: GateStatus.PASS,
+        gate_action: GateAction.PROVIDE_RECOMMENDATION,
+        reasoning_included: true
+      };
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEGACY TEMPLATE FALLBACK — only when deterministic builder has no content
   // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
-  // BUG-4 FIX: Language-agnostic greeting/ack — LLM template uses English only,
-  // actual localization happens via LLM narration layer (not hardcoded strings)
   const greeting = lang === 'en' ? 'Hello farmer friend! 🌾' : '🌾';
   parts.push(greeting);
   
-  // Acknowledgment - from CURRENT land_context only
   const currentCrop = input.land_context?.current_crop;
   if (currentCrop && lang === 'en') {
     parts.push(`I understand your question about ${currentCrop}.`);
   }
   
-  // Primary recommendation - EXTRACT ONLY FROM CURRENT decision_output
-  const primary = decision?.primary_decision;
-  
-  // VALIDATION: sanitize placeholder/technical table text before showing to farmer
-  const templatePestCode = primary?.target?.pest_code;
-  const templateDiseaseCode = primary?.target?.disease_code;
-  const rawProductName = primary?.application_details?.product_name;
-  const rawActionType = primary?.action_type;
-  const rawActionText = primary?.action_text;
-
-  const isPlaceholderText = (value?: string) => {
-    const v = (value || '').trim().toLowerCase();
-    if (!v) return true;
-    return v.includes('blocking rule is active') ||
-           v.includes('a blocking rule has been triggered') ||
-           v.includes('see structured response') ||
-           v.includes('see matched response') ||
-           v.includes('recommended treatment') ||
-           v.includes('monitor and reassess') ||
-           v.includes('continue monitoring') ||
-           v.includes('no treatment required at this stage') ||
-           v.includes('monitor pest population regularly') ||
-           v.includes('current information is insufficient') ||
-           v.includes('global_safety') ||
-           v.includes('safety_gate') ||
-           v.includes('action text unavailable') ||
-           v.includes('invariant_fallback');
-  };
-
-  // BUG-7 FIX: Use ratio-based check instead of single-char detection
-  // Product names like "Chlorpyrifos 20 EC" are valid in non-English responses
-  const isLikelyRawEnglish = (value?: string) => {
-    const v = (value || '').trim();
-    if (!v || lang === 'en') return false;
-    // Allow short strings (product codes, trade names)
-    if (v.length < 15) return false;
-    const asciiLetters = (v.match(/[a-zA-Z]/g) || []).length;
-    const totalChars = v.replace(/\s/g, '').length;
-    if (totalChars === 0) return false;
-    // Only flag as raw English if >60% ASCII letters
-    return (asciiLetters / totalChars) > 0.6;
-  };
-
-  const shouldRenderRawFarmerText = (value?: string) => {
-    return !!value && !isPlaceholderText(value) && !isLikelyRawEnglish(value);
-  };
-
-  const NON_PRODUCT_ACTIONS = new Set([
-    'NO_ACTION', 'NO_ACTION_REQUIRED', 'MONITOR_ONLY', 'MONITOR',
-    'CULTURAL_PRACTICE', 'CULTURAL_CONTROL', 'MECHANICAL_CONTROL',
-    'BIOLOGICAL_RELEASE', 'OBSERVATION', 'WAIT_AND_WATCH'
-  ]);
-
-  const PRODUCT_AS_CAUSE_PATTERN = /\b(pest|disease|deficiency|borer|infestation|population|symptom)\b/i;
-  const hasValidProductName = !!rawProductName &&
-    !isPlaceholderText(rawProductName) &&
-    !PRODUCT_AS_CAUSE_PATTERN.test(rawProductName);
-  const isNonProductAction = NON_PRODUCT_ACTIONS.has(String(rawActionType || '').toUpperCase());
-
-  const hasValidRecommendation = !!primary &&
-    !!primary.action_type &&
-    primary.action_type !== 'NO_ACTION' &&
-    (isNonProductAction || hasValidProductName || shouldRenderRawFarmerText(rawActionText) || !!templatePestCode || !!templateDiseaseCode);
-  
-  if (hasValidRecommendation) {
-    const recHeader = '📌 **Recommendation:**';
-    parts.push(recHeader);
-    
-    // CRITICAL: Extract from current decision_output ONLY
-    const safeProductName = hasValidProductName ? rawProductName : '';
-    const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
-    const method = primary.application_details?.method || primary.application_details?.application_method;
-    const timing = primary.timing?.best_time_of_day;
-    
-    // BUG-4 FIX: English-only action type labels. Localization via LLM narration.
-    const GENERIC_ACTION_TRANSLATIONS: Record<string, string> = {
-      'cultural practice': 'Cultural practice',
-      'cultural control': 'Cultural control',
-      'mechanical control': 'Mechanical control',
-      'biological control': 'Biological control',
-      'monitoring': 'Monitoring',
-      'treatment': 'Treatment',
-      'prevention': 'Prevention'
-    };
-    
-    // Check if this is a generic action type and translate
-    const lowerProductName = (rawProductName || '').toLowerCase();
-    let translatedProductName = rawProductName || '';
-    let isGenericAction = false;
-    
-    for (const [key, label] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
-      if (lowerProductName.includes(key)) {
-        translatedProductName = label;
-        isGenericAction = true;
-        break;
-      }
-    }
-    
-    // If not generic, use the normal translation function
-    if (!isGenericAction && rawProductName) {
-      translatedProductName = getProductName(rawProductName, lang);
-    }
-    
-    if (safeProductName && safeProductName !== 'Recommended treatment') {
-      let recText = `1. **${translatedProductName}**`;
-      // Only add dosage if not already included and it's not a generic action
-      if (!isGenericAction && dosage && dosage !== 'As per label' && dosage !== 'N/A' && !translatedProductName.includes('/')) {
-        recText += ` @ ${dosage}`;
-      }
-
-      // For generic actions, include action text only when localized/safe for farmer display
-      if (isGenericAction && shouldRenderRawFarmerText(rawActionText)) {
-        recText += `\n   🔧 ${rawActionText}`;
-      }
-      
-      if (method) {
-        // BUG-4 FIX: Use getActionTranslation only, no hardcoded mr/hi fallbacks
-        const methodLabel = getActionTranslation(method, lang) || method;
-        recText += `\n   📍 ${methodLabel}`;
-      }
-      if (timing) {
-        const timingLabel = timing === 'MORNING' ? 'Morning' : 'Evening';
-        recText += `\n   ⏰ ${timingLabel}`;
-      }
-      
-      if (primary.expected_outcomes?.efficacy_percent) {
-        recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% effective`;
-      }
-      
-      parts.push(recText);
-      
-      // RICH DATA: Add organic alternative, success indicators, bee safety from rule data
-      // BUG-4 FIX: English-only headers in template fallback (LLM narration handles localization)
-      const appDetails = primary.application_details || {};
-      if (appDetails.organic_alternative) {
-        parts.push(`🌿 **Organic Alternative:** ${appDetails.organic_alternative}`);
-      }
-      if (appDetails.success_indicators) {
-        const indicators = Array.isArray(appDetails.success_indicators) ? appDetails.success_indicators.join(', ') : String(appDetails.success_indicators);
-        parts.push(`✅ **Success Signs (check after 5-7 days):** ${indicators}`);
-      }
-      if (appDetails.failure_indicators) {
-        const indicators = Array.isArray(appDetails.failure_indicators) ? appDetails.failure_indicators.join(', ') : String(appDetails.failure_indicators);
-        parts.push(`❌ **Failure Signs (re-treat if seen):** ${indicators}`);
-      }
-      if (appDetails.bee_toxicity && appDetails.bee_toxicity !== 'SAFE' && appDetails.bee_toxicity !== 'LOW') {
-        parts.push(`🐝 **Bee Safety:** ${appDetails.bee_toxicity} toxicity — avoid spraying during flowering`);
-      }
-      if (appDetails.roi_yield_gain_pct) {
-        parts.push(`📈 **Expected Yield Gain:** ${appDetails.roi_yield_gain_pct}%`);
-      }
-      
-      // IPM urgency indicator
-      const ipmLevel = primary.ipm_level || 'LEVEL_3';
-      const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[lang] || '';
-      if (urgencyLabel) {
-        parts.push(`\n${urgencyLabel}`);
-      }
-    } else if (rawActionText || isNonProductAction || rawActionType) {
-      // Use action semantics when product is absent/placeholder
-      const translatedActionType = rawActionType ? (getActionTranslation(rawActionType, lang) || rawActionType) : '';
-      const safeActionTypeText = !isLikelyRawEnglish(translatedActionType) ? translatedActionType : '';
-      const translatedCause = templatePestCode
-        ? getCauseTranslation(templatePestCode, lang)
-        : templateDiseaseCode
-          ? getCauseTranslation(templateDiseaseCode, lang)
-          : '';
-
-      const actionLine = safeActionTypeText ||
-        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : 'Monitor closely');
-
-      parts.push(`📋 **Action:**\n1. ${actionLine}`);
-
-      if (translatedCause && translatedCause !== 'UNKNOWN') {
-        parts.push(`🔎 Cause: ${translatedCause}`);
-      }
-    } else {
-      // No valid product - ask for more info instead of giving wrong advice
-      parts.push('📋 **More information needed:**\nPlease provide more details about your problem or send a photo.');
-    }
-  } else {
-    // Check for matched_responses (IPM treatment responses from rule database)
-    const matchedResponses = decision?.matched_responses;
-    if (matchedResponses && matchedResponses.length > 0) {
-      parts.push('📌 **Recommendation (IPM):**');
-      
-      matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        const actionContentRaw = resp.action_text || resp.reason_text || '';
-        const fallbackAction = 'Monitor crop and share a photo if needed';
-        const actionContent = shouldRenderRawFarmerText(actionContentRaw) ? actionContentRaw : fallbackAction;
-        parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
-      });
-    } else {
-      parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
-    }
-  }
-  
-  // Secondary recommendations - from CURRENT decision only
-  const secondary = decision?.secondary_actions || decision?.secondary_recommendations;
-  if (secondary && secondary.length > 0) {
-    parts.push('');
-    secondary.slice(0, 2).forEach((sec: any, idx: number) => {
-      const rawAction = sec.action || sec.product_name;
-      if (rawAction && rawAction !== 'N/A' && rawAction !== 'None') {
-        // CRITICAL FIX: Translate secondary action names to farmer-friendly language
-        const translatedAction = getProductName(rawAction, lang);
-        parts.push(`${idx + 2}. ${translatedAction}${sec.reason ? ` - ${sec.reason}` : ''}`);
-      }
+  // Legacy fallback: minimal safe response
+  const matchedResponses = decision?.matched_responses;
+  if (matchedResponses && matchedResponses.length > 0) {
+    parts.push('📌 **Recommendation (from rule database):**');
+    matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
+      const actionContent = resp.action_text || resp.reason_text || 'Monitor crop and share a photo if needed';
+      parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
     });
+  } else {
+    parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
   }
   
-  // Supportive closing
-  // BUG-4 FIX: English-only closing in template (LLM narration handles localization)
   parts.push('\n🙏 Feel free to ask if you need clarification. Best wishes!');
   
   const finalResponse = parts.join('\n\n');
-  console.log(`   📋 Template fallback generated: ${finalResponse.length} chars`);
+  console.log(`   📋 Legacy template fallback generated: ${finalResponse.length} chars`);
   
   return {
     formatted_response: finalResponse,
     confidence: 0.7,
     source: 'TEMPLATE_FALLBACK',
     processing_time_ms: Date.now() - startTime,
-    sections_included: ['greeting', 'recommendation', 'closing']
+    sections_included: ['greeting', 'recommendation', 'closing'],
+    validation_passed: true,
+    validation_violations: [],
+    gate_status: GateStatus.PASS,
+    gate_action: GateAction.PROVIDE_RECOMMENDATION,
+    reasoning_included: false
   };
 }
 

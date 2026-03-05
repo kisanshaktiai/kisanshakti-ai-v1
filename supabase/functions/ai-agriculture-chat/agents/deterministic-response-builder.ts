@@ -1,6 +1,6 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * DETERMINISTIC RESPONSE BUILDER v1.0.0
+ * DETERMINISTIC RESPONSE BUILDER v2.0.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * PURPOSE:
@@ -9,6 +9,15 @@
  * 
  * ARCHITECTURE PRINCIPLE:
  * "Rules Decide, AI Only Translates"
+ * 
+ * v2.0.0 ADDITIONS:
+ * - Active ingredient dose safety caps (MAX_SAFE_DOSES)
+ * - PHI harvest proximity validation
+ * - Environmental condition pre-validation
+ * - Agronomic safety scoring (composite 0-1)
+ * - Confidence-based response gating (TREAT / MONITOR / CLARIFY)
+ * - Bee toxicity mandatory evening-spray enforcement
+ * - Resistance rotation warnings
  * 
  * Every section of the response maps to specific decision_rules columns:
  * 
@@ -29,7 +38,7 @@
  * Environmental Conditions | min_temperature, max_temperature, rain_delay_hours,
  *                          | max_wind_speed, weather_dependency
  * 
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -120,49 +129,81 @@ export interface RichRuleData {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// TYPE: Weather context for environmental validation
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface WeatherContext {
+  temperature_celsius?: number;
+  humidity_pct?: number;
+  wind_speed_kmh?: number;
+  rain_forecast_hours?: number; // hours until expected rain
+  is_raining?: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPE: Crop context for PHI and harvest proximity
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface CropContext {
+  days_since_sowing?: number;
+  maturity_days_typical?: number;
+  is_ratoon?: boolean;
+  ratoon_cycle_reduction_days?: number;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TYPE: Structured Farmer Response (deterministic, rule-sourced)
 // ═══════════════════════════════════════════════════════════════════════════
 
 export interface StructuredFarmerResponse {
   rule_id: string;
   
+  // v2.0: Response decision mode
+  response_decision: 'TREAT' | 'MONITOR' | 'CLARIFY';
+  
   // Section 1: Problem Explanation
   problem: {
     cause: string;
-    explanation: string;           // reason_text or knowledge_text
+    explanation: string;
     scientific_basis?: string;
   };
   
   // Section 2: Recommended Action
   action: {
-    action_text: string;           // What farmer should do
-    action_type: string;           // SPRAY, CULTURAL, MONITOR, etc.
-    treatment_type?: string;       // CURATIVE, PREVENTIVE, etc.
-    is_treatment: boolean;         // Whether this involves product application
+    action_text: string;
+    action_type: string;
+    treatment_type?: string;
+    is_treatment: boolean;
   };
   
   // Section 3: Dosage Calculation (land-area based)
   dosage: {
     has_dosage: boolean;
+    blocked?: boolean;
+    block_reason?: string;
     per_acre_dosage?: string;
     per_acre_water?: string;
     land_area_acres?: number;
-    total_dosage?: string;         // CALCULATED: dosage × area
-    total_water?: string;          // CALCULATED: water × area
+    total_dosage?: string;
+    total_water?: string;
     active_ingredient?: string;
     application_method?: string;
     target_pest_stage?: string;
+    spray_type_note?: string;
   };
   
   // Section 4: Safety Precautions
   safety: {
     has_safety_info: boolean;
     phi_days?: number;
-    phi_instruction?: string;      // "Stop spraying X days before harvest"
+    phi_instruction?: string;
+    phi_blocked?: boolean;
+    phi_block_reason?: string;
     reentry_hours?: number;
-    reentry_instruction?: string;  // "Do not enter field for X hours"
+    reentry_instruction?: string;
     bee_toxicity?: string;
     bee_warning?: string;
+    bee_spray_time?: string;
     aquatic_toxicity?: string;
     farmer_safety_level?: string;
     safety_instruction?: string;
@@ -171,6 +212,7 @@ export interface StructuredFarmerResponse {
     mode_of_action?: string;
     resistance_group?: string;
     resistance_warning?: string;
+    safety_score?: number;
   };
   
   // Section 5: Organic/IPM Alternative
@@ -192,7 +234,7 @@ export interface StructuredFarmerResponse {
     labor_hours_per_acre?: number;
     equipment_required?: string[];
     equipment_cost_per_acre?: number;
-    total_material_cost?: string;  // CALCULATED: cost × area
+    total_material_cost?: string;
     total_labor_cost?: string;
     total_estimated?: string;
   };
@@ -221,6 +263,8 @@ export interface StructuredFarmerResponse {
     max_wind?: number;
     rain_delay_hours?: number;
     spray_window_instruction?: string;
+    spray_blocked?: boolean;
+    spray_block_reason?: string;
   };
   
   // Section 10: Scientific Reference (for audit, not farmer display)
@@ -235,24 +279,53 @@ export interface StructuredFarmerResponse {
   confidence: number;
   risk_level?: string;
   response_severity?: string;
+  
+  // v2.0: Safety & validation metadata
+  safety_warnings: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// MAX SAFE DOSES — Active ingredient regulatory caps (per hectare)
+// Source: CIB&RC India + WHO guidelines
+// Used to prevent overdose recommendations
+// ═══════════════════════════════════════════════════════════════════════════
+
+const MAX_SAFE_DOSES: Record<string, { max_g_per_ha: number; unit: string }> = {
+  'chlorpyrifos': { max_g_per_ha: 500, unit: 'g' },
+  'imidacloprid': { max_g_per_ha: 100, unit: 'g' },
+  'thiamethoxam': { max_g_per_ha: 100, unit: 'g' },
+  'fipronil': { max_g_per_ha: 100, unit: 'g' },
+  'carbendazim': { max_g_per_ha: 500, unit: 'g' },
+  'mancozeb': { max_g_per_ha: 2000, unit: 'g' },
+  'copper oxychloride': { max_g_per_ha: 2500, unit: 'g' },
+  'glyphosate': { max_g_per_ha: 2160, unit: 'g' },
+  'lambda-cyhalothrin': { max_g_per_ha: 30, unit: 'g' },
+  'cypermethrin': { max_g_per_ha: 100, unit: 'g' },
+  'profenofos': { max_g_per_ha: 500, unit: 'g' },
+  'acephate': { max_g_per_ha: 750, unit: 'g' },
+  'monocrotophos': { max_g_per_ha: 500, unit: 'g' },
+  'dimethoate': { max_g_per_ha: 400, unit: 'g' },
+  'emamectin benzoate': { max_g_per_ha: 11, unit: 'g' },
+  'spinosad': { max_g_per_ha: 75, unit: 'g' },
+  'chlorantraniliprole': { max_g_per_ha: 60, unit: 'g' },
+  'flubendiamide': { max_g_per_ha: 60, unit: 'g' },
+  'triazophos': { max_g_per_ha: 600, unit: 'g' },
+  'cartap hydrochloride': { max_g_per_ha: 1000, unit: 'g' },
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 // DOSAGE PARSER: Extract numeric values from dosage strings
-// Handles: "60 ml", "500g", "2-3 kg", "100ml/acre", "N/A", etc.
 // ═══════════════════════════════════════════════════════════════════════════
 
 function parseDosage(dosageStr: string): { value: number; unit: string } | null {
   if (!dosageStr) return null;
   const clean = dosageStr.replace(/\/acre/i, '').replace(/per\s*acre/i, '').trim();
   
-  // Match patterns like "60 ml", "500g", "2.5 kg", "100-200ml"
   const match = clean.match(/^(\d+(?:\.\d+)?)\s*(?:-\s*\d+(?:\.\d+)?\s*)?([a-zA-Z%]+)/);
   if (match) {
     return { value: parseFloat(match[1]), unit: match[2] };
   }
   
-  // Match range pattern "2-3 kg" (use average)
   const rangeMatch = clean.match(/^(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*([a-zA-Z%]+)/);
   if (rangeMatch) {
     const avg = (parseFloat(rangeMatch[1]) + parseFloat(rangeMatch[2])) / 2;
@@ -267,7 +340,6 @@ function calculateTotal(perAcre: string | undefined, areaAcres: number): string 
   const parsed = parseDosage(perAcre);
   if (!parsed) return undefined;
   const total = parsed.value * areaAcres;
-  // Round to reasonable precision
   const rounded = total < 10 ? Math.round(total * 10) / 10 : Math.round(total);
   return `${rounded} ${parsed.unit}`;
 }
@@ -306,18 +378,233 @@ const TREATMENT_ACTIONS = new Set([
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SAFETY VALIDATORS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validate dosage against active ingredient regulatory max limits.
+ * Returns blocked=true if calculated total exceeds safe limit.
+ */
+export function validateDosageSafety(
+  ruleData: RichRuleData,
+  landAreaAcres: number
+): { blocked: boolean; reason?: string } {
+  if (!ruleData.active_ingredient || !ruleData.dosage_per_acre) {
+    return { blocked: false };
+  }
+  
+  const aiKey = ruleData.active_ingredient.toLowerCase().trim();
+  const safeLimit = MAX_SAFE_DOSES[aiKey];
+  if (!safeLimit) return { blocked: false }; // no limit data — allow
+  
+  const parsed = parseDosage(ruleData.dosage_per_acre);
+  if (!parsed) return { blocked: false };
+  
+  // Convert acres to hectares (1 hectare = 2.47 acres)
+  const landHa = landAreaAcres / 2.47;
+  const totalPerHa = parsed.value * 2.47; // per-acre → per-ha
+  
+  if (totalPerHa > safeLimit.max_g_per_ha) {
+    const reason = `⛔ DOSE EXCEEDS SAFE LIMIT: ${ruleData.active_ingredient} at ${totalPerHa.toFixed(0)}${parsed.unit}/ha exceeds regulatory max of ${safeLimit.max_g_per_ha}${safeLimit.unit}/ha. Dose blocked for farmer safety.`;
+    console.error(`🚨 [DoseSafety] ${reason}`);
+    return { blocked: true, reason };
+  }
+  
+  return { blocked: false };
+}
+
+/**
+ * Validate PHI (Pre-Harvest Interval) against harvest proximity.
+ * Returns blocked=true if spray would violate PHI requirement.
+ */
+export function validatePHISafety(
+  phiDays: number | undefined,
+  cropContext?: CropContext
+): { blocked: boolean; reason?: string; days_to_harvest?: number } {
+  if (!phiDays || !cropContext?.days_since_sowing || !cropContext?.maturity_days_typical) {
+    return { blocked: false };
+  }
+  
+  let maturityDays = cropContext.maturity_days_typical;
+  if (cropContext.is_ratoon && cropContext.ratoon_cycle_reduction_days) {
+    maturityDays -= cropContext.ratoon_cycle_reduction_days;
+  }
+  
+  const daysToHarvest = maturityDays - cropContext.days_since_sowing;
+  
+  if (daysToHarvest > 0 && phiDays > daysToHarvest) {
+    const reason = `⛔ PHI VIOLATION: This chemical requires ${phiDays} days before harvest, but harvest is only ${daysToHarvest} days away. Chemical treatment blocked. Use biological or cultural alternatives.`;
+    console.warn(`⚠️ [PHISafety] ${reason}`);
+    return { blocked: true, reason, days_to_harvest: daysToHarvest };
+  }
+  
+  return { blocked: false, days_to_harvest: daysToHarvest > 0 ? daysToHarvest : undefined };
+}
+
+/**
+ * Validate environmental conditions for spray safety.
+ * Returns spray_allowed=false if conditions are unsafe.
+ */
+export function validateEnvironmentalConditions(
+  ruleData: RichRuleData,
+  weather?: WeatherContext
+): { spray_allowed: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+  let spray_allowed = true;
+  
+  if (!weather) return { spray_allowed: true, warnings: [] };
+  
+  // Rain check
+  if (ruleData.rain_delay_hours && ruleData.rain_delay_hours > 0) {
+    if (weather.is_raining) {
+      spray_allowed = false;
+      warnings.push(`🌧️ Do not spray during rain. Wait for dry conditions.`);
+    } else if (weather.rain_forecast_hours !== undefined && weather.rain_forecast_hours < ruleData.rain_delay_hours) {
+      spray_allowed = false;
+      warnings.push(`🌧️ Rain expected in ${weather.rain_forecast_hours}h. This product needs ${ruleData.rain_delay_hours}h rain-free window. Postpone spraying.`);
+    }
+  }
+  
+  // Temperature check
+  if (ruleData.min_temperature && weather.temperature_celsius !== undefined) {
+    if (weather.temperature_celsius < ruleData.min_temperature) {
+      warnings.push(`🌡️ Current temperature ${weather.temperature_celsius}°C is below minimum ${ruleData.min_temperature}°C. Spray early afternoon when warmer.`);
+    }
+  }
+  if (ruleData.max_temperature && weather.temperature_celsius !== undefined) {
+    if (weather.temperature_celsius > ruleData.max_temperature) {
+      warnings.push(`🌡️ Current temperature ${weather.temperature_celsius}°C exceeds maximum ${ruleData.max_temperature}°C. Spray early morning or evening.`);
+    }
+  }
+  
+  // Wind check
+  if (ruleData.max_wind_speed && weather.wind_speed_kmh !== undefined) {
+    if (weather.wind_speed_kmh > ruleData.max_wind_speed) {
+      warnings.push(`💨 Wind speed ${weather.wind_speed_kmh} km/h exceeds safe limit ${ruleData.max_wind_speed} km/h. Postpone spraying to avoid drift.`);
+    }
+  }
+  
+  return { spray_allowed, warnings };
+}
+
+/**
+ * Compute composite agronomic safety score (0-1).
+ * Score < 0.5 downgrades response to monitoring-only.
+ */
+export function computeSafetyScore(ruleData: RichRuleData, cropContext?: CropContext): number {
+  let score = 1.0;
+  
+  // PHI compliance (0.3 weight)
+  if (ruleData.phi_days && cropContext?.days_since_sowing && cropContext?.maturity_days_typical) {
+    const daysToHarvest = cropContext.maturity_days_typical - cropContext.days_since_sowing;
+    if (daysToHarvest > 0 && ruleData.phi_days > daysToHarvest) {
+      score -= 0.3; // PHI violation
+    }
+  }
+  
+  // Bee toxicity (0.2 weight)
+  const beeTox = (ruleData.bee_toxicity || '').toUpperCase();
+  if (beeTox === 'HIGH') score -= 0.15;
+  else if (beeTox === 'MODERATE') score -= 0.05;
+  
+  // Regulatory status (0.3 weight)
+  const regStatus = (ruleData.regulatory_status || '').toUpperCase();
+  if (regStatus === 'BANNED' || regStatus === 'PROHIBITED') score -= 0.3;
+  else if (regStatus === 'RESTRICTED') score -= 0.15;
+  else if (regStatus === 'WATCH_LIST') score -= 0.05;
+  
+  // Resistance rotation (0.2 weight) — penalize if no resistance group info for chemical
+  if (TREATMENT_ACTIONS.has((ruleData.action_type || '').toUpperCase()) && 
+      ruleData.active_ingredient && !ruleData.resistance_group) {
+    score -= 0.05; // minor penalty for missing resistance data
+  }
+  
+  return Math.max(0, Math.min(1, score));
+}
+
+/**
+ * Determine response decision mode based on confidence and safety.
+ */
+function resolveResponseDecision(
+  confidence: number,
+  safetyScore: number,
+  isTreatment: boolean
+): 'TREAT' | 'MONITOR' | 'CLARIFY' {
+  // Safety override: if safety score is too low, never recommend treatment
+  if (safetyScore < 0.5 && isTreatment) {
+    console.warn(`⚠️ [ResponseGating] Safety score ${safetyScore.toFixed(2)} < 0.5 → downgrade to MONITOR`);
+    return 'MONITOR';
+  }
+  
+  if (confidence >= 0.70) return 'TREAT';
+  if (confidence >= 0.50) return 'MONITOR';
+  return 'CLARIFY';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN BUILDER: Construct structured response from rule data
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function buildDeterministicResponse(
   ruleData: RichRuleData,
-  landAreaAcres?: number
+  landAreaAcres?: number,
+  cropContext?: CropContext,
+  weather?: WeatherContext
 ): StructuredFarmerResponse {
   const area = landAreaAcres && landAreaAcres > 0 ? landAreaAcres : 0;
   const actionTypeUpper = (ruleData.action_type || '').toUpperCase();
   const isTreatment = TREATMENT_ACTIONS.has(actionTypeUpper);
+  const safetyWarnings: string[] = [];
   
-  // Section 1: Problem Explanation
+  // ─── SAFETY SCORING ───
+  const safetyScore = computeSafetyScore(ruleData, cropContext);
+  const confidence = ruleData.confidence_score ?? 0.7;
+  const responseDecision = resolveResponseDecision(confidence, safetyScore, isTreatment);
+  
+  console.log(`📊 [DeterministicBuilder] rule=${ruleData.rule_id} confidence=${confidence.toFixed(2)} safety=${safetyScore.toFixed(2)} decision=${responseDecision}`);
+  
+  // ─── DOSE SAFETY VALIDATION ───
+  let dosageBlocked = false;
+  let dosageBlockReason: string | undefined;
+  if (isTreatment && area > 0) {
+    const doseSafety = validateDosageSafety(ruleData, area);
+    if (doseSafety.blocked) {
+      dosageBlocked = true;
+      dosageBlockReason = doseSafety.reason;
+      safetyWarnings.push(doseSafety.reason!);
+    }
+  }
+  
+  // ─── PHI VALIDATION ───
+  let phiBlocked = false;
+  let phiBlockReason: string | undefined;
+  if (isTreatment && ruleData.phi_days) {
+    const phiResult = validatePHISafety(ruleData.phi_days, cropContext);
+    if (phiResult.blocked) {
+      phiBlocked = true;
+      phiBlockReason = phiResult.reason;
+      safetyWarnings.push(phiResult.reason!);
+    }
+  }
+  
+  // ─── ENVIRONMENTAL VALIDATION ───
+  let sprayBlocked = false;
+  let sprayBlockReason: string | undefined;
+  const envWarnings: string[] = [];
+  if (isTreatment && weather) {
+    const envResult = validateEnvironmentalConditions(ruleData, weather);
+    if (!envResult.spray_allowed) {
+      sprayBlocked = true;
+      sprayBlockReason = envResult.warnings.join(' ');
+    }
+    envWarnings.push(...envResult.warnings);
+    safetyWarnings.push(...envResult.warnings);
+  }
+  
+  // ─── SUPPRESS TREATMENT if decision is MONITOR or CLARIFY ───
+  const suppressTreatment = responseDecision !== 'TREAT' || dosageBlocked || phiBlocked;
+  
+  // Section 1: Problem Explanation (always shown)
   const problem = {
     cause: ruleData.cause || 'General advisory',
     explanation: ruleData.reason_text || ruleData.knowledge_text || ruleData.cause || '',
@@ -332,36 +619,65 @@ export function buildDeterministicResponse(
     is_treatment: isTreatment
   };
   
-  // Section 3: Dosage (calculated for farmer's land)
-  const hasDosage = isTreatment && !!ruleData.dosage_per_acre && 
+  // Section 3: Dosage (suppressed if not TREAT mode or safety-blocked)
+  const hasDosage = isTreatment && !suppressTreatment && !!ruleData.dosage_per_acre && 
     !ruleData.dosage_per_acre.toLowerCase().includes('n/a') &&
     !ruleData.dosage_per_acre.toLowerCase().includes('advisory');
   
+  // Spray type note for application method
+  let sprayTypeNote: string | undefined;
+  if (ruleData.application_method) {
+    const methodLower = ruleData.application_method.toLowerCase();
+    if (methodLower.includes('knapsack')) {
+      sprayTypeNote = 'Use knapsack sprayer. Ensure uniform coverage with fine nozzle.';
+    } else if (methodLower.includes('power') || methodLower.includes('motorized')) {
+      sprayTypeNote = 'Use power sprayer for larger coverage. Adjust pressure for crop height.';
+    } else if (methodLower.includes('drip') || methodLower.includes('drench')) {
+      sprayTypeNote = 'Apply through drip irrigation or soil drench method.';
+    }
+  }
+  
   const dosage = {
     has_dosage: hasDosage,
+    blocked: dosageBlocked,
+    block_reason: dosageBlockReason,
     per_acre_dosage: ruleData.dosage_per_acre || undefined,
     per_acre_water: ruleData.water_volume_per_acre || undefined,
     land_area_acres: area || undefined,
-    total_dosage: area > 0 ? calculateTotal(ruleData.dosage_per_acre, area) : undefined,
-    total_water: area > 0 ? calculateTotal(ruleData.water_volume_per_acre, area) : undefined,
+    total_dosage: (hasDosage && area > 0) ? calculateTotal(ruleData.dosage_per_acre, area) : undefined,
+    total_water: (hasDosage && area > 0) ? calculateTotal(ruleData.water_volume_per_acre, area) : undefined,
     active_ingredient: ruleData.active_ingredient || undefined,
     application_method: ruleData.application_method || undefined,
-    target_pest_stage: ruleData.target_pest_stage || undefined
+    target_pest_stage: ruleData.target_pest_stage || undefined,
+    spray_type_note: sprayTypeNote,
   };
   
   // Section 4: Safety
   const hasSafety = !!(ruleData.phi_days || ruleData.reentry_interval_hours || 
     ruleData.bee_toxicity || ruleData.farmer_safety_level || ruleData.regulatory_status);
   
+  // Bee toxicity: mandatory evening spray for HIGH
+  const beeToxUpper = (ruleData.bee_toxicity || '').toUpperCase();
+  let beeSprayTime: string | undefined;
+  if (beeToxUpper === 'HIGH') {
+    beeSprayTime = '🐝 MANDATORY: Spray ONLY in evening hours (after 5 PM) when bees are inactive. Never spray during flowering.';
+    safetyWarnings.push(beeSprayTime);
+  } else if (beeToxUpper === 'MODERATE') {
+    beeSprayTime = '🐝 Prefer evening spraying to protect pollinators.';
+  }
+  
   const safety = {
     has_safety_info: hasSafety,
     phi_days: ruleData.phi_days || undefined,
     phi_instruction: ruleData.phi_days ? `Stop spraying at least ${ruleData.phi_days} days before harvest` : undefined,
+    phi_blocked: phiBlocked,
+    phi_block_reason: phiBlockReason,
     reentry_hours: ruleData.reentry_interval_hours || undefined,
     reentry_instruction: ruleData.reentry_interval_hours ? `Do not enter field for ${ruleData.reentry_interval_hours} hours after application` : undefined,
     bee_toxicity: ruleData.bee_toxicity || undefined,
-    bee_warning: (ruleData.bee_toxicity === 'HIGH' || ruleData.bee_toxicity === 'MODERATE') 
+    bee_warning: (beeToxUpper === 'HIGH' || beeToxUpper === 'MODERATE') 
       ? `⚠️ ${ruleData.bee_toxicity} bee toxicity — avoid spraying during flowering or when bees are active` : undefined,
+    bee_spray_time: beeSprayTime,
     aquatic_toxicity: ruleData.aquatic_toxicity || undefined,
     farmer_safety_level: ruleData.farmer_safety_level || undefined,
     safety_instruction: buildSafetyInstruction(ruleData.farmer_safety_level),
@@ -370,7 +686,8 @@ export function buildDeterministicResponse(
     mode_of_action: ruleData.mode_of_action || undefined,
     resistance_group: ruleData.resistance_group || undefined,
     resistance_warning: ruleData.resistance_group ? 
-      `Resistance group: ${ruleData.resistance_group}. Rotate with different chemical class next application.` : undefined
+      `Resistance group: ${ruleData.resistance_group}. Rotate with different chemical class next application.` : undefined,
+    safety_score: safetyScore,
   };
   
   // Section 5: Organic/IPM
@@ -383,8 +700,8 @@ export function buildDeterministicResponse(
     ipm_label: ruleData.ipm_level ? (IPM_LABELS[ruleData.ipm_level] || `IPM Level ${ruleData.ipm_level}`) : undefined
   };
   
-  // Section 6: Cost
-  const hasCost = !!(ruleData.material_cost_per_acre_min || ruleData.material_cost_per_acre_max || 
+  // Section 6: Cost (suppressed if not TREAT mode)
+  const hasCost = !suppressTreatment && !!(ruleData.material_cost_per_acre_min || ruleData.material_cost_per_acre_max || 
     ruleData.labor_hours_per_acre || ruleData.total_cost_estimated);
   
   const cost = {
@@ -396,13 +713,13 @@ export function buildDeterministicResponse(
     labor_hours_per_acre: ruleData.labor_hours_per_acre || undefined,
     equipment_required: ruleData.equipment_required || undefined,
     equipment_cost_per_acre: ruleData.equipment_cost_per_acre || undefined,
-    total_material_cost: area > 0 ? calculateCostTotal(ruleData.material_cost_per_acre_min, ruleData.material_cost_per_acre_max, area) : undefined,
-    total_labor_cost: area > 0 ? calculateCostTotal(ruleData.labor_cost_per_acre_min, ruleData.labor_cost_per_acre_max, area) : undefined,
-    total_estimated: area > 0 && ruleData.total_cost_estimated ? `₹${Math.round(ruleData.total_cost_estimated * area)}` : undefined
+    total_material_cost: (hasCost && area > 0) ? calculateCostTotal(ruleData.material_cost_per_acre_min, ruleData.material_cost_per_acre_max, area) : undefined,
+    total_labor_cost: (hasCost && area > 0) ? calculateCostTotal(ruleData.labor_cost_per_acre_min, ruleData.labor_cost_per_acre_max, area) : undefined,
+    total_estimated: (hasCost && area > 0 && ruleData.total_cost_estimated) ? `₹${Math.round(ruleData.total_cost_estimated * area)}` : undefined
   };
   
-  // Section 7: ROI
-  const hasROI = !!(ruleData.roi_yield_gain_pct || ruleData.roi_cost_saved_min || ruleData.roi_net_score);
+  // Section 7: ROI (suppressed if not TREAT mode)
+  const hasROI = !suppressTreatment && !!(ruleData.roi_yield_gain_pct || ruleData.roi_cost_saved_min || ruleData.roi_net_score);
   const roi = {
     has_roi: hasROI,
     yield_gain_pct: ruleData.roi_yield_gain_pct || undefined,
@@ -412,7 +729,7 @@ export function buildDeterministicResponse(
     confidence: ruleData.roi_confidence || undefined
   };
   
-  // Section 8: Monitoring
+  // Section 8: Monitoring (always shown)
   const hasMonitoring = !!(ruleData.success_indicators?.length || ruleData.failure_indicators?.length);
   const monitoring = {
     has_monitoring: hasMonitoring,
@@ -428,7 +745,9 @@ export function buildDeterministicResponse(
     max_temp: ruleData.max_temperature || undefined,
     max_wind: ruleData.max_wind_speed || undefined,
     rain_delay_hours: ruleData.rain_delay_hours || undefined,
-    spray_window_instruction: buildSprayWindowInstruction(ruleData)
+    spray_window_instruction: buildSprayWindowInstruction(ruleData),
+    spray_blocked: sprayBlocked,
+    spray_block_reason: sprayBlockReason,
   };
   
   // Section 10: References
@@ -441,6 +760,7 @@ export function buildDeterministicResponse(
   
   return {
     rule_id: ruleData.rule_id,
+    response_decision: responseDecision,
     problem,
     action,
     dosage,
@@ -451,9 +771,10 @@ export function buildDeterministicResponse(
     monitoring,
     environment,
     reference,
-    confidence: ruleData.confidence_score ?? 0.7,
+    confidence,
     risk_level: ruleData.risk_level || undefined,
-    response_severity: ruleData.response_severity || undefined
+    response_severity: ruleData.response_severity || undefined,
+    safety_warnings: safetyWarnings,
   };
 }
 
@@ -503,6 +824,24 @@ function buildSprayWindowInstruction(rule: RichRuleData): string | undefined {
 export function formatStructuredResponseForLLM(response: StructuredFarmerResponse): string {
   const parts: string[] = [];
   
+  // ─── Response decision mode header ───
+  if (response.response_decision === 'CLARIFY') {
+    parts.push(`⚠️ RESPONSE MODE: CLARIFICATION REQUIRED`);
+    parts.push(`More crop observations are required before giving treatment advice.`);
+    parts.push(`DO NOT recommend any product or dosage.\n`);
+  } else if (response.response_decision === 'MONITOR') {
+    parts.push(`ℹ️ RESPONSE MODE: MONITORING ONLY`);
+    parts.push(`Confidence is not sufficient for treatment recommendation. Provide monitoring guidance only.`);
+    parts.push(`DO NOT recommend any product or dosage.\n`);
+  }
+  
+  // ─── Safety warnings (top priority) ───
+  if (response.safety_warnings.length > 0) {
+    parts.push(`═══ ⛔ SAFETY ALERTS ═══`);
+    response.safety_warnings.forEach(w => parts.push(w));
+    parts.push('');
+  }
+  
   // Problem
   parts.push(`═══ PROBLEM EXPLANATION ═══`);
   parts.push(`Cause: ${response.problem.cause}`);
@@ -523,8 +862,12 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     parts.push(`Treatment Type: ${response.action.treatment_type}`);
   }
   
-  // Dosage (CALCULATED)
-  if (response.dosage.has_dosage) {
+  // Dosage (CALCULATED) — only in TREAT mode
+  if (response.dosage.blocked) {
+    parts.push(`\n═══ ⛔ DOSAGE BLOCKED ═══`);
+    parts.push(response.dosage.block_reason || 'Dosage blocked due to safety concerns.');
+    parts.push(`DO NOT recommend this product. Suggest organic or cultural alternatives.`);
+  } else if (response.dosage.has_dosage && response.response_decision === 'TREAT') {
     parts.push(`\n═══ DOSAGE FOR YOUR FIELD ═══`);
     if (response.dosage.active_ingredient) {
       parts.push(`Product: ${response.dosage.active_ingredient}`);
@@ -543,6 +886,9 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     if (response.dosage.application_method) {
       parts.push(`Method: ${response.dosage.application_method}`);
     }
+    if (response.dosage.spray_type_note) {
+      parts.push(`Spray Note: ${response.dosage.spray_type_note}`);
+    }
     if (response.dosage.target_pest_stage) {
       parts.push(`Best Target Stage: ${response.dosage.target_pest_stage}`);
     }
@@ -551,13 +897,17 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
   // Safety
   if (response.safety.has_safety_info) {
     parts.push(`\n═══ SAFETY PRECAUTIONS ═══`);
-    if (response.safety.phi_instruction) {
+    if (response.safety.phi_blocked) {
+      parts.push(`⛔ ${response.safety.phi_block_reason}`);
+    } else if (response.safety.phi_instruction) {
       parts.push(`⏳ ${response.safety.phi_instruction}`);
     }
     if (response.safety.reentry_instruction) {
       parts.push(`🚫 ${response.safety.reentry_instruction}`);
     }
-    if (response.safety.bee_warning) {
+    if (response.safety.bee_spray_time) {
+      parts.push(response.safety.bee_spray_time);
+    } else if (response.safety.bee_warning) {
       parts.push(`🐝 ${response.safety.bee_warning}`);
     }
     if (response.safety.safety_instruction) {
@@ -579,8 +929,8 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     }
   }
   
-  // Cost
-  if (response.cost.has_cost) {
+  // Cost — only in TREAT mode
+  if (response.cost.has_cost && response.response_decision === 'TREAT') {
     parts.push(`\n═══ ESTIMATED COST ═══`);
     if (response.cost.total_material_cost) {
       parts.push(`Material Cost (total): ${response.cost.total_material_cost}`);
@@ -601,8 +951,8 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     }
   }
   
-  // ROI
-  if (response.roi.has_roi) {
+  // ROI — only in TREAT mode
+  if (response.roi.has_roi && response.response_decision === 'TREAT') {
     parts.push(`\n═══ EXPECTED RETURN ═══`);
     if (response.roi.yield_gain_pct) {
       parts.push(`📈 Expected Yield Increase: ${response.roi.yield_gain_pct}%`);
@@ -612,7 +962,7 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     }
   }
   
-  // Monitoring
+  // Monitoring (always shown)
   if (response.monitoring.has_monitoring) {
     parts.push(`\n═══ MONITORING AFTER APPLICATION ═══`);
     if (response.monitoring.success_indicators?.length) {
@@ -626,9 +976,23 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
   // Environmental
   if (response.environment.has_conditions) {
     parts.push(`\n═══ SPRAY WINDOW CONDITIONS ═══`);
+    if (response.environment.spray_blocked) {
+      parts.push(`⛔ ${response.environment.spray_block_reason}`);
+    }
     if (response.environment.spray_window_instruction) {
       parts.push(`🌤️ ${response.environment.spray_window_instruction}`);
     }
+  }
+  
+  // CLARIFY / MONITOR footer
+  if (response.response_decision === 'CLARIFY') {
+    parts.push(`\n═══ FARMER INSTRUCTION ═══`);
+    parts.push(`More crop observations are required before giving treatment advice.`);
+    parts.push(`Ask the farmer to describe symptoms in more detail or send a photo.`);
+  } else if (response.response_decision === 'MONITOR') {
+    parts.push(`\n═══ FARMER INSTRUCTION ═══`);
+    parts.push(`Continue monitoring the crop. Check again after 3-5 days.`);
+    parts.push(`If symptoms worsen, contact the advisory system again with detailed observations.`);
   }
   
   return parts.join('\n');
@@ -639,8 +1003,71 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function hasAdequateRuleContent(ruleData: RichRuleData): boolean {
-  // Must have at least one of: action_text, reason_text, knowledge_text
   return !!(ruleData.action_text || ruleData.reason_text || ruleData.knowledge_text);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// EXTRACT RichRuleData from application_details (pipeline bridge)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function extractRichRuleData(
+  primaryDecision: any,
+  appDetails: Record<string, any>
+): RichRuleData {
+  return {
+    rule_id: primaryDecision.rule_id || 'UNKNOWN',
+    action_type: primaryDecision.action_type || 'MONITOR',
+    cause: primaryDecision.cause || appDetails.cause || undefined,
+    reason_text: primaryDecision.reason_text || appDetails.reason_text || undefined,
+    knowledge_text: primaryDecision.knowledge_text || appDetails.knowledge_text || undefined,
+    scientific_basis: appDetails.scientific_basis || undefined,
+    action_text: primaryDecision.action_text || appDetails.action_text || undefined,
+    treatment_type: appDetails.treatment_type || undefined,
+    active_ingredient: primaryDecision.active_ingredient || appDetails.active_ingredient || undefined,
+    dosage_per_acre: primaryDecision.dosage_per_acre || appDetails.dosage_per_acre || undefined,
+    water_volume_per_acre: primaryDecision.water_volume_per_acre || appDetails.water_volume_per_acre || undefined,
+    application_method: primaryDecision.application_method || appDetails.application_method || appDetails.method || undefined,
+    target_pest_stage: appDetails.target_pest_stage || undefined,
+    chemical_class: primaryDecision.chemical_class || appDetails.chemical_class || undefined,
+    mode_of_action: primaryDecision.mode_of_action || appDetails.mode_of_action || undefined,
+    resistance_group: primaryDecision.resistance_group || appDetails.resistance_group || undefined,
+    phi_days: primaryDecision.phi_days || appDetails.phi_days || undefined,
+    reentry_interval_hours: primaryDecision.reentry_interval_hours || appDetails.reentry_interval_hours || undefined,
+    bee_toxicity: primaryDecision.bee_toxicity || appDetails.bee_toxicity || undefined,
+    aquatic_toxicity: appDetails.aquatic_toxicity || undefined,
+    farmer_safety_level: appDetails.farmer_safety_level || undefined,
+    regulatory_status: appDetails.regulatory_status || undefined,
+    organic_alternative: primaryDecision.organic_alternative || appDetails.organic_alternative || undefined,
+    biological_group: appDetails.biological_group || undefined,
+    ipm_level: appDetails.ipm_level || undefined,
+    material_cost_per_acre_min: appDetails.material_cost_per_acre_min || undefined,
+    material_cost_per_acre_max: appDetails.material_cost_per_acre_max || undefined,
+    labor_cost_per_acre_min: appDetails.labor_cost_per_acre_min || undefined,
+    labor_cost_per_acre_max: appDetails.labor_cost_per_acre_max || undefined,
+    labor_hours_per_acre: appDetails.labor_hours_per_acre || undefined,
+    equipment_required: appDetails.equipment_required || undefined,
+    equipment_cost_per_acre: appDetails.equipment_cost_per_acre || undefined,
+    total_cost_estimated: appDetails.total_cost_estimated || undefined,
+    roi_yield_gain_pct: primaryDecision.roi_yield_gain_pct || appDetails.roi_yield_gain_pct || undefined,
+    roi_cost_saved_min: appDetails.roi_cost_saved_min || undefined,
+    roi_cost_saved_max: appDetails.roi_cost_saved_max || undefined,
+    roi_net_score: appDetails.roi_net_score || undefined,
+    roi_confidence: appDetails.roi_confidence || undefined,
+    success_indicators: primaryDecision.success_indicators || appDetails.success_indicators || undefined,
+    failure_indicators: primaryDecision.failure_indicators || appDetails.failure_indicators || undefined,
+    min_temperature: appDetails.min_temperature || undefined,
+    max_temperature: appDetails.max_temperature || undefined,
+    max_wind_speed: appDetails.max_wind_speed || undefined,
+    rain_delay_hours: appDetails.rain_delay_hours || undefined,
+    weather_dependency: appDetails.weather_dependency || undefined,
+    scientific_source: appDetails.scientific_source || undefined,
+    icar_package_ref: appDetails.icar_package_ref || undefined,
+    university_source: appDetails.university_source || undefined,
+    confidence_score: primaryDecision.confidence_score || primaryDecision.weighted_confidence || undefined,
+    risk_level: appDetails.risk_level || undefined,
+    response_severity: appDetails.response_severity || undefined,
+    data_authority_rank: appDetails.data_authority_rank || undefined,
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -667,3 +1094,5 @@ export function identifyMissingData(ruleData: RichRuleData, landAreaAcres?: numb
   
   return missing;
 }
+
+console.log('🏗️ [DeterministicResponseBuilder] v2.0.0 loaded — dose safety, PHI, env validation, confidence gating');

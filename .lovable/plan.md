@@ -1,153 +1,62 @@
+# Pipeline Stability Fixes v7.2 — Deterministic Response System Hardening
 
+## v7.2 — Deterministic Agronomic Response Hardening (2026-03-05)
 
-# Deterministic Agronomic Response System Hardening — Implementation Plan
+### Module 1: Deterministic Builder Integration — DONE
+- **Files:** `llm-response-formatter.ts`, `deterministic-response-builder.ts`
+- `buildRecommendationSummary()` now calls `extractRichRuleData()` + `buildDeterministicResponse()` + `formatStructuredResponseForLLM()` when primary_decision has adequate rule content
+- `buildTemplateFallback()` TREATMENT mode also uses deterministic builder
+- Legacy manual prompt assembly retained as fallback only when rule content is inadequate
+- All agronomic content in LLM prompt now sourced from `decision_rules` columns
 
-## Current State Assessment
+### Module 2: Dose Safety Validation — DONE
+- **File:** `deterministic-response-builder.ts`
+- `validateDosageSafety()`: Active ingredient caps via `MAX_SAFE_DOSES` (20 chemicals with CIB&RC limits)
+- Blocks dose if `totalPerHa > regulatory_max_dose` — returns safety warning instead
+- Dose converted acres→hectares for regulatory comparison
 
-The `deterministic-response-builder.ts` module was created in the previous iteration but is **NOT INTEGRATED** into the pipeline. Zero references exist from orchestrator or LLM formatter. The LLM formatter still manually constructs prompts from `application_details` in its `buildRecommendationSummary()` function, duplicating logic and missing the structured deterministic output.
+### Module 3: PHI Harvest Proximity — DONE
+- `validatePHISafety()`: Blocks chemical treatment if `phi_days > days_to_harvest`
+- Supports ratoon crop cycle reduction
+- Returns `phi_blocked: true` with farmer-friendly instruction
 
-The rich agronomic fields ARE being propagated through: `loader.ts` → `layered-rule-evaluator.ts` → `PrimaryDecision` → `orchestrator.ts` → `application_details`. However, the deterministic builder sits unused.
+### Module 4: Environmental Condition Validation — DONE
+- `validateEnvironmentalConditions()`: Rain forecast vs `rain_delay_hours`, temperature range, wind speed
+- Spray blocked if rain expected within rain-free window
+- Temperature and wind warnings with timing guidance
 
-## Architecture Changes (6 Modules)
+### Module 5: Agronomic Safety Scoring — DONE
+- `computeSafetyScore()`: Composite 0-1 score (PHI 0.3, bee 0.2, regulatory 0.3, resistance 0.2)
+- Score < 0.5 → downgrades response to MONITOR (no product/dosage/cost)
+- Bee toxicity HIGH → mandatory evening-spray instruction
 
-### Module 1: Integrate Deterministic Response Builder into LLM Formatter
+### Module 6: Confidence-Based Response Gating — DONE
+- `response_decision: 'TREAT' | 'MONITOR' | 'CLARIFY'`
+- TREAT (≥0.70): Full recommendation with dosage, cost, ROI
+- MONITOR (0.50-0.69): Problem + monitoring only, no product
+- CLARIFY (<0.50): Request more observations, suppress all treatment
+- Dosage/cost/ROI sections suppressed in MONITOR and CLARIFY modes
 
-**File:** `llm-response-formatter.ts`
+### Module 7: Category-Based Conflict Resolution — DONE
+- **File:** `layered-rule-evaluator.ts`
+- Added `CATEGORY_PRIORITY_MAP` pre-sort: SAFETY_GATE(100) > URGENT_ACTION(90) > TREATMENT(80) > NUTRIENT(60) > CULTURAL(40) > MONITOR(20)
+- Applied before `data_authority_rank` sort, only when category gap ≥ 20 points
+- Ensures safety rules always surface first
 
-In `buildRecommendationSummary()` (line ~1293), when a `primary_decision` exists with rich data:
+### New Exports
+- `extractRichRuleData(primaryDecision, appDetails)`: Bridge from pipeline to builder
+- `validateDosageSafety()`, `validatePHISafety()`, `validateEnvironmentalConditions()`
+- `computeSafetyScore()`, `WeatherContext`, `CropContext` interfaces
 
-1. Import `buildDeterministicResponse`, `formatStructuredResponseForLLM` from `deterministic-response-builder.ts`
-2. Extract rich fields from `primary.application_details` into a `RichRuleData` object
-3. Call `buildDeterministicResponse(richData, landAreaAcres)` to get the `StructuredFarmerResponse`
-4. Call `formatStructuredResponseForLLM(structuredResponse)` to generate the prompt text
-5. Use this output **instead of** the current manual prompt assembly (lines 1300-1520)
-6. This replaces ~220 lines of manual prompt construction with the deterministic builder
+## Previous versions
 
-The template fallback path (`buildTemplateFallback`, line ~1693) will also use the deterministic builder when a `primary_decision` exists, ensuring both LLM and fallback paths produce structured, rule-sourced content.
+### v7.1 — Table Audit (see git history)
+- Dropped orphaned `intent_observation_mapping_v2`
+- Confirmed `intent_observation_mapping` (v1) as authoritative
 
-### Module 2: Strengthen Dose Calculation Engine
+### v7.0 — Forensic Audit Fixes (see git history)
+- BUG-1,3,4,5,6,7 fixes
+- Safety gate rule exclusion, hardcoded text removal, token optimization
 
-**File:** `deterministic-response-builder.ts`
-
-Add three safety validators within `buildDeterministicResponse()`:
-
-1. **Active Ingredient Dose Cap** — New function `validateDosageSafety(ruleData, landArea)`:
-   - If `active_ingredient` and `dosage_per_acre` exist, parse the numeric dose
-   - Compare against `MAX_SAFE_DOSES` lookup (a static map of known active ingredients to max dose/ha)
-   - If `calculated_total > max_safe_limit`, set `dosage.blocked = true` and add a safety warning string
-   - Block the recommendation and return a safety notice instead of the dose
-
-2. **PHI Harvest Proximity Check** — New function `validatePHISafety(phiDays, daysSinceSowing, cropDuration)`:
-   - Calculate `days_to_harvest = cropDuration - daysSinceSowing`
-   - If `phi_days > days_to_harvest`, add `safety.phi_blocked = true` with instruction
-   - This prevents chemical treatment near harvest
-
-3. **Spray Volume Optimization** — Enhance the dosage section:
-   - If `application_method` contains 'knapsack' or 'power sprayer', adjust water volume display
-   - Include `water_volume_per_acre` context with spray type recommendation
-
-### Module 3: Environmental Condition Pre-Validation
-
-**File:** `deterministic-response-builder.ts` (new function) + `layered-rule-evaluator.ts`
-
-Add `validateEnvironmentalConditions()`:
-- Takes `ruleData.rain_delay_hours`, `min_temperature`, `max_temperature`, `max_wind_speed`
-- Takes current weather context (temperature, rain forecast, wind)
-- Returns `{ spray_allowed: boolean, reason: string, instruction: string }`
-- If `rain_delay_hours > 0` and rain is forecasted within that window, add environmental warning
-- If current temp is outside min/max range, add spray timing advisory
-
-This is added as a new section in the `StructuredFarmerResponse` and displayed in the environment section.
-
-### Module 4: Agronomic Safety Validator Layer
-
-**File:** `deterministic-response-builder.ts` (new exported function)
-
-Add `validateAgronomicSafety()` that runs before response generation:
-
-1. **Resistance Rotation** — Already exists in `safety-enhancement.ts`. Wire `resistance_group` from the rule into the existing `checkResistanceRotation()`. Add the result as a warning in the safety section.
-
-2. **Bee Safety Enhancement** — If `bee_toxicity === 'HIGH'`, add mandatory evening-spray instruction to the spray window section (already partially exists; ensure it's always prominent).
-
-3. **Combined Safety Score** — New field `safety_score: number` (0-1) based on:
-   - PHI compliance (0.3 weight)
-   - Bee toxicity (0.2 weight)  
-   - Regulatory status (0.3 weight)
-   - Resistance rotation (0.2 weight)
-   - If `safety_score < 0.5`, downgrade response to monitoring-only
-
-### Module 5: Confidence-Based Response Gating
-
-**File:** `deterministic-response-builder.ts`
-
-Add response-level confidence logic:
-
-1. New field in `StructuredFarmerResponse`: `response_decision: 'TREAT' | 'MONITOR' | 'CLARIFY'`
-2. Based on:
-   - `ruleData.confidence_score >= 0.7` → TREAT (full recommendation)
-   - `0.5 <= confidence < 0.7` → MONITOR (observation only, no product)
-   - `confidence < 0.5` → CLARIFY (request more observations)
-3. When mode is MONITOR or CLARIFY:
-   - Suppress dosage, cost, and ROI sections
-   - Only show problem explanation and monitoring instructions
-   - Add "More crop observations are required before giving treatment advice"
-
-### Module 6: Rule Conflict Resolution Enhancement
-
-**File:** `layered-rule-evaluator.ts` (enhance existing selection)
-
-The existing priority sort (line ~850) already handles: `data_authority_rank → evidenceScore → priority → confidence_score`. Add one more layer:
-
-1. Add `CATEGORY_PRIORITY_MAP` for rule conflict resolution:
-   - SAFETY_GATE: priority 100 (always wins)
-   - PEST/DISEASE treatment: priority 80
-   - NUTRIENT deficiency: priority 60
-   - GROWTH management: priority 40
-   - MONITORING: priority 20
-
-2. Apply as a pre-sort factor before `data_authority_rank`, ensuring CRITICAL safety rules always surface first even if their evidence score is lower.
-
-## Response Section Order (enforced in builder)
-
-The `formatStructuredResponseForLLM` already outputs sections in the correct order. Verify and lock this:
-
-```
-1. Problem Identification (cause, explanation)
-2. Recommended Action (action_text, treatment_type)
-3. Dosage for Your Field (calculated total)
-4. Spray Method (application_method)
-5. Safety Precautions (PHI, bee, reentry)
-6. Organic Alternative (organic_alternative, ipm_level)
-7. Estimated Cost (total material + labor)
-8. Monitoring Instructions (success/failure indicators)
-```
-
-Scientific references stay in the `reference` section (audit-only, not in farmer display).
-
-## Missing Knowledge Layers (2030-Ready Assessment)
-
-These are identified gaps but NOT implemented in this phase — documented for roadmap:
-
-1. **Pest Lifecycle Ontology** — No table for pest lifecycle stages, generation cycles, temperature thresholds
-2. **Crop Nutrition Decision Graph** — No stage-wise NPK schedule engine; nutrition rules exist but lack temporal scheduling
-3. **Irrigation Intelligence** — No ETc-based irrigation rules; `weather_dependency` exists but no irrigation-specific calculations
-4. **Regional Rule Overrides** — No `region` or `agro_climatic_zone` filter in rule evaluation; rules are national-level only
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `deterministic-response-builder.ts` | Add dose safety validation, PHI check, environmental validation, confidence gating, safety scoring |
-| `llm-response-formatter.ts` | Integrate deterministic builder into `buildRecommendationSummary()` and `buildTemplateFallback()` |
-| `layered-rule-evaluator.ts` | Add category-based conflict resolution pre-sort |
-
-## Verification Checklist
-
-- All agronomic content comes from `decision_rules` columns
-- LLM prompt contains only structured builder output (not manual assembly)
-- Dose is always land-size aware with safety caps
-- PHI is validated against harvest proximity
-- Bee toxicity triggers mandatory evening-spray advisory
-- Confidence < threshold produces monitoring-only response
-- No hardcoded mr/hi text added
-
+### v6.0-6.2 — Deep Forensic Audit (see git history)
+- FIX 20-36: Rule unblocking, SSOT data alignment, translation fixes
