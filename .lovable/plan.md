@@ -1,3 +1,26 @@
+# Pipeline Stability Fixes v7.1 — Table Audit & Cleanup
+
+## Table Audit (2026-03-05) — v7.1
+
+### `intent_observation_mapping_v2` — DROPPED
+- **Status:** Orphaned legacy table with ZERO code references
+- **Action:** Dropped via migration. Only `intent_observation_mapping` (v1) is used in production (3 files, 6 query sites)
+- **Reason:** v2 lacked `crop_code`, `growth_stage`, `das_min/max` columns required by the decision pipeline
+
+### Confirmed Table Usage
+- `intent_observation_mapping` (v1, 147 rows) — **AUTHORITATIVE** — used by intent-resolver, db-observation-validator, llm-output-validator
+- `observation_master` (802 rows) — STRONG
+- `observation_translations` (1,082 rows) — GOOD
+- `decision_rules` (524 active) — GOOD for sugarcane, GAPS for other crops
+- `hypothesis_conditions` (19 rows for 31 hypotheses) — LOW coverage
+
+### Remaining Data Gaps
+- 522/524 rules use `condition_code = 'STAGE_GENERAL'` — prevents DB-level pre-filtering
+- Only 3 crops have rules (SUGARCANE: 461, ALL: 36, CTN: 27)
+- 78 observation codes in mapping table rely on secondary `observable_characteristics` matching path
+
+## Fixes Applied (2026-03-04) — v7.0
+
 # Pipeline Stability Fixes v7.0 — Forensic Audit Implementation
 
 ## Fixes Applied (2026-03-04) — v7.0
