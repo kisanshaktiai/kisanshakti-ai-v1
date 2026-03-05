@@ -280,6 +280,65 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         mode_of_action: row.mode_of_action,
         
         // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 8: RICH AGRONOMIC RESPONSE FIELDS (v1.0 Deterministic Builder)
+        // These columns are used by deterministic-response-builder.ts
+        // to construct fully rule-sourced farmer advisory responses
+        // ═══════════════════════════════════════════════════════════════════════
+        // Dosage & Application
+        dosage_per_acre: row.dosage_per_acre || null,
+        water_volume_per_acre: row.water_volume_per_acre || null,
+        application_method: row.application_method || null,
+        target_pest_stage: row.target_pest_stage || null,
+        chemical_class: row.chemical_class || null,
+        treatment_type: row.treatment_type || null,
+        biological_group: row.biological_group || null,
+        
+        // Safety & Regulatory
+        reentry_interval_hours: row.reentry_interval_hours || null,
+        aquatic_toxicity: row.aquatic_toxicity || null,
+        regulatory_status: row.regulatory_status || null,
+        
+        // Cost Model
+        material_cost_per_acre_min: row.material_cost_per_acre_min || null,
+        material_cost_per_acre_max: row.material_cost_per_acre_max || null,
+        labor_cost_per_acre_min: row.labor_cost_per_acre_min || null,
+        labor_cost_per_acre_max: row.labor_cost_per_acre_max || null,
+        labor_hours_per_acre: row.labor_hours_per_acre || null,
+        equipment_required: row.equipment_required || null,
+        equipment_cost_per_acre: row.equipment_cost_per_acre || null,
+        total_cost_estimated: row.total_cost_estimated || null,
+        
+        // ROI & Economics
+        roi_yield_gain_pct: row.roi_yield_gain_pct || null,
+        roi_cost_saved_min: row.roi_cost_saved_min || null,
+        roi_cost_saved_max: row.roi_cost_saved_max || null,
+        roi_net_score: row.roi_net_score || null,
+        roi_confidence: row.roi_confidence || null,
+        
+        // Monitoring
+        success_indicators: row.success_indicators || null,
+        failure_indicators: row.failure_indicators || null,
+        
+        // Environmental Thresholds
+        min_temperature: row.min_temperature || null,
+        max_temperature: row.max_temperature || null,
+        max_wind_speed: row.max_wind_speed || null,
+        rain_delay_hours: row.rain_delay_hours || null,
+        weather_dependency: row.weather_dependency || null,
+        
+        // Scientific References
+        university_source: row.university_source || null,
+        
+        // Confidence & Risk
+        risk_level: row.risk_level || null,
+        response_severity: row.response_severity || null,
+        data_authority_rank: row.data_authority_rank || null,
+        
+        // Diagnostic
+        differentiating_questions: row.differentiating_questions || null,
+        visual_markers: row.visual_markers || null,
+        
+        // ═══════════════════════════════════════════════════════════════════════
         // OBSERVATION LAYER: Pre-filter columns
         // ═══════════════════════════════════════════════════════════════════════
         required_observation_category: row.required_observation_category || null,

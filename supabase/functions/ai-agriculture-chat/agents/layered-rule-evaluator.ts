@@ -165,6 +165,63 @@ export interface MatchedResponse {
   i18n_key?: string;
   // Fix 4: conditions_json for downstream arbitration inspection
   conditions_json?: Record<string, unknown>;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 8: Rich agronomic fields for deterministic response builder
+  // ═══════════════════════════════════════════════════════════════════════════
+  active_ingredient?: string;
+  dosage_per_acre?: string;
+  water_volume_per_acre?: string;
+  application_method?: string;
+  target_pest_stage?: string;
+  chemical_class?: string;
+  treatment_type?: string;
+  biological_group?: string;
+  phi_days?: number;
+  reentry_interval_hours?: number;
+  bee_toxicity?: string;
+  aquatic_toxicity?: string;
+  farmer_safety_level?: string;
+  regulatory_status?: string;
+  organic_alternative?: string;
+  ipm_level?: number;
+  mode_of_action?: string;
+  resistance_group?: string;
+  // Cost
+  material_cost_per_acre_min?: number;
+  material_cost_per_acre_max?: number;
+  labor_cost_per_acre_min?: number;
+  labor_cost_per_acre_max?: number;
+  labor_hours_per_acre?: number;
+  equipment_required?: string[];
+  equipment_cost_per_acre?: number;
+  total_cost_estimated?: number;
+  // ROI
+  roi_yield_gain_pct?: number;
+  roi_cost_saved_min?: number;
+  roi_cost_saved_max?: number;
+  roi_net_score?: number;
+  roi_confidence?: number;
+  // Monitoring
+  success_indicators?: string[];
+  failure_indicators?: string[];
+  // Environmental
+  min_temperature?: number;
+  max_temperature?: number;
+  max_wind_speed?: number;
+  rain_delay_hours?: number;
+  weather_dependency?: any;
+  // References
+  scientific_source?: string;
+  icar_package_ref?: string;
+  university_source?: string;
+  // Confidence/Risk
+  risk_level?: string;
+  response_severity?: string;
+  data_authority_rank?: number;
+  // Legacy
+  response_mr?: string;
+  response_hi?: string;
+  response_en?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
