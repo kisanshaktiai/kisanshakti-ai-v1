@@ -165,6 +165,63 @@ export interface MatchedResponse {
   i18n_key?: string;
   // Fix 4: conditions_json for downstream arbitration inspection
   conditions_json?: Record<string, unknown>;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 8: Rich agronomic fields for deterministic response builder
+  // ═══════════════════════════════════════════════════════════════════════════
+  active_ingredient?: string;
+  dosage_per_acre?: string;
+  water_volume_per_acre?: string;
+  application_method?: string;
+  target_pest_stage?: string;
+  chemical_class?: string;
+  treatment_type?: string;
+  biological_group?: string;
+  phi_days?: number;
+  reentry_interval_hours?: number;
+  bee_toxicity?: string;
+  aquatic_toxicity?: string;
+  farmer_safety_level?: string;
+  regulatory_status?: string;
+  organic_alternative?: string;
+  ipm_level?: number;
+  mode_of_action?: string;
+  resistance_group?: string;
+  // Cost
+  material_cost_per_acre_min?: number;
+  material_cost_per_acre_max?: number;
+  labor_cost_per_acre_min?: number;
+  labor_cost_per_acre_max?: number;
+  labor_hours_per_acre?: number;
+  equipment_required?: string[];
+  equipment_cost_per_acre?: number;
+  total_cost_estimated?: number;
+  // ROI
+  roi_yield_gain_pct?: number;
+  roi_cost_saved_min?: number;
+  roi_cost_saved_max?: number;
+  roi_net_score?: number;
+  roi_confidence?: number;
+  // Monitoring
+  success_indicators?: string[];
+  failure_indicators?: string[];
+  // Environmental
+  min_temperature?: number;
+  max_temperature?: number;
+  max_wind_speed?: number;
+  rain_delay_hours?: number;
+  weather_dependency?: any;
+  // References
+  scientific_source?: string;
+  icar_package_ref?: string;
+  university_source?: string;
+  // Confidence/Risk
+  risk_level?: string;
+  response_severity?: string;
+  data_authority_rank?: number;
+  // Legacy
+  response_mr?: string;
+  response_hi?: string;
+  response_en?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -543,7 +600,52 @@ export function evaluateRulesLayered(
           reason_text: prescriptionActionDetails.reason_text,
           knowledge_text: prescriptionActionDetails.knowledge_text,
           i18n_key: prescriptionActionDetails.i18n_key,
-          conditions_json: prescriptionActionDetails.conditions_json || null
+          conditions_json: prescriptionActionDetails.conditions_json || null,
+          // PHASE 8: Rich agronomic fields for deterministic response builder
+          active_ingredient: prescriptionActionDetails.active_ingredient,
+          dosage_per_acre: prescriptionActionDetails.dosage_per_acre,
+          water_volume_per_acre: prescriptionActionDetails.water_volume_per_acre,
+          application_method: prescriptionActionDetails.application_method,
+          target_pest_stage: prescriptionActionDetails.target_pest_stage,
+          chemical_class: prescriptionActionDetails.chemical_class,
+          treatment_type: prescriptionActionDetails.treatment_type,
+          biological_group: prescriptionActionDetails.biological_group,
+          phi_days: prescriptionActionDetails.phi_days,
+          reentry_interval_hours: prescriptionActionDetails.reentry_interval_hours,
+          bee_toxicity: prescriptionActionDetails.bee_toxicity,
+          aquatic_toxicity: prescriptionActionDetails.aquatic_toxicity,
+          farmer_safety_level: prescriptionActionDetails.farmer_safety_level,
+          regulatory_status: prescriptionActionDetails.regulatory_status,
+          organic_alternative: prescriptionActionDetails.organic_alternative,
+          ipm_level: prescriptionActionDetails.ipm_level,
+          mode_of_action: prescriptionActionDetails.mode_of_action,
+          resistance_group: prescriptionActionDetails.resistance_group,
+          material_cost_per_acre_min: prescriptionActionDetails.material_cost_per_acre_min,
+          material_cost_per_acre_max: prescriptionActionDetails.material_cost_per_acre_max,
+          labor_cost_per_acre_min: prescriptionActionDetails.labor_cost_per_acre_min,
+          labor_cost_per_acre_max: prescriptionActionDetails.labor_cost_per_acre_max,
+          labor_hours_per_acre: prescriptionActionDetails.labor_hours_per_acre,
+          equipment_required: prescriptionActionDetails.equipment_required,
+          equipment_cost_per_acre: prescriptionActionDetails.equipment_cost_per_acre,
+          total_cost_estimated: prescriptionActionDetails.total_cost_estimated,
+          roi_yield_gain_pct: prescriptionActionDetails.roi_yield_gain_pct,
+          roi_cost_saved_min: prescriptionActionDetails.roi_cost_saved_min,
+          roi_cost_saved_max: prescriptionActionDetails.roi_cost_saved_max,
+          roi_net_score: prescriptionActionDetails.roi_net_score,
+          roi_confidence: prescriptionActionDetails.roi_confidence,
+          success_indicators: prescriptionActionDetails.success_indicators,
+          failure_indicators: prescriptionActionDetails.failure_indicators,
+          min_temperature: prescriptionActionDetails.min_temperature,
+          max_temperature: prescriptionActionDetails.max_temperature,
+          max_wind_speed: prescriptionActionDetails.max_wind_speed,
+          rain_delay_hours: prescriptionActionDetails.rain_delay_hours,
+          weather_dependency: prescriptionActionDetails.weather_dependency,
+          scientific_source: rule.scientific_basis,
+          icar_package_ref: prescriptionActionDetails.icar_package_ref,
+          university_source: prescriptionActionDetails.university_source,
+          risk_level: prescriptionActionDetails.risk_level,
+          response_severity: prescriptionActionDetails.response_severity,
+          data_authority_rank: prescriptionActionDetails.data_authority_rank,
         });
       } else if (prescriptionActionType) {
         // Rules with action_type but minimal content - still eligible
@@ -1174,6 +1276,45 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
         ipm_level: bundled.ipm_level,
         etl_threshold: bundled.etl_threshold,
         organic_alternative: bundled.organic_alternative,
+        
+        // ═══════════════════════════════════════════════════════════════════════
+        // PHASE 8: Rich agronomic fields for deterministic response builder
+        // ═══════════════════════════════════════════════════════════════════════
+        dosage_per_acre: bundled.dosage_per_acre,
+        water_volume_per_acre: bundled.water_volume_per_acre,
+        application_method: bundled.application_method,
+        target_pest_stage: bundled.target_pest_stage,
+        chemical_class: bundled.chemical_class,
+        treatment_type: bundled.treatment_type,
+        biological_group: bundled.biological_group,
+        reentry_interval_hours: bundled.reentry_interval_hours,
+        aquatic_toxicity: bundled.aquatic_toxicity,
+        regulatory_status: bundled.regulatory_status,
+        material_cost_per_acre_min: bundled.material_cost_per_acre_min,
+        material_cost_per_acre_max: bundled.material_cost_per_acre_max,
+        labor_cost_per_acre_min: bundled.labor_cost_per_acre_min,
+        labor_cost_per_acre_max: bundled.labor_cost_per_acre_max,
+        labor_hours_per_acre: bundled.labor_hours_per_acre,
+        equipment_required: bundled.equipment_required,
+        equipment_cost_per_acre: bundled.equipment_cost_per_acre,
+        total_cost_estimated: bundled.total_cost_estimated,
+        roi_yield_gain_pct: bundled.roi_yield_gain_pct,
+        roi_cost_saved_min: bundled.roi_cost_saved_min,
+        roi_cost_saved_max: bundled.roi_cost_saved_max,
+        roi_net_score: bundled.roi_net_score,
+        roi_confidence: bundled.roi_confidence,
+        success_indicators: bundled.success_indicators,
+        failure_indicators: bundled.failure_indicators,
+        min_temperature: bundled.min_temperature,
+        max_temperature: bundled.max_temperature,
+        max_wind_speed: bundled.max_wind_speed,
+        rain_delay_hours: bundled.rain_delay_hours,
+        weather_dependency: bundled.weather_dependency,
+        university_source: bundled.university_source,
+        risk_level: bundled.risk_level,
+        response_severity: bundled.response_severity,
+        data_authority_rank: bundled.data_authority_rank,
+        icar_package_ref: bundled.icar_package_ref,
         
         // CRITICAL: Include rule_id for traceability within action_details
         rule_id: bundled.rule_id,
