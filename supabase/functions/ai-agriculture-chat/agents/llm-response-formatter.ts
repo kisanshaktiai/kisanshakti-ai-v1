@@ -37,6 +37,17 @@ import {
   getCauseTranslation
 } from './communication-translation-dictionary.ts';
 
+// v2.0: Import deterministic response builder
+import {
+  buildDeterministicResponse,
+  formatStructuredResponseForLLM,
+  extractRichRuleData,
+  hasAdequateRuleContent,
+  type RichRuleData,
+  type WeatherContext,
+  type CropContext,
+} from './deterministic-response-builder.ts';
+
 // Import validation from decision representation
 import { validateLLMOutputIntegrity } from './decision-representation.ts';
 
