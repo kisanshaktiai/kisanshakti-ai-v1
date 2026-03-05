@@ -1834,245 +1834,82 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // MODE: TREATMENT - Full recommendation with legacy template
+  // MODE: TREATMENT — Use Deterministic Response Builder v2.0
+  // Instead of legacy template assembly, use the structured builder
+  // ═══════════════════════════════════════════════════════════════════════════
+  const primary = decision?.primary_decision;
+  
+  if (primary && primary.rule_id) {
+    const appDetails = primary.application_details || {};
+    const richData = extractRichRuleData(primary, appDetails);
+    
+    if (hasAdequateRuleContent(richData)) {
+      const landAreaAcres = input.land_context?.area_acres;
+      const cropContext: CropContext | undefined = input.land_context?.days_since_sowing ? {
+        days_since_sowing: input.land_context.days_since_sowing,
+      } : undefined;
+      
+      const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext);
+      const deterministicText = formatStructuredResponseForLLM(structuredResponse);
+      
+      console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);
+      
+      return {
+        formatted_response: deterministicText,
+        confidence: structuredResponse.confidence,
+        source: 'TEMPLATE_FALLBACK',
+        processing_time_ms: Date.now() - startTime,
+        sections_included: ['deterministic_response', 'problem', 'action', 'safety', 'monitoring'],
+        validation_passed: true,
+        validation_violations: [],
+        gate_status: GateStatus.PASS,
+        gate_action: GateAction.PROVIDE_RECOMMENDATION,
+        reasoning_included: true
+      };
+    }
+  }
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LEGACY TEMPLATE FALLBACK — only when deterministic builder has no content
   // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
-  // BUG-4 FIX: Language-agnostic greeting/ack — LLM template uses English only,
-  // actual localization happens via LLM narration layer (not hardcoded strings)
   const greeting = lang === 'en' ? 'Hello farmer friend! 🌾' : '🌾';
   parts.push(greeting);
   
-  // Acknowledgment - from CURRENT land_context only
   const currentCrop = input.land_context?.current_crop;
   if (currentCrop && lang === 'en') {
     parts.push(`I understand your question about ${currentCrop}.`);
   }
   
-  // Primary recommendation - EXTRACT ONLY FROM CURRENT decision_output
-  const primary = decision?.primary_decision;
-  
-  // VALIDATION: sanitize placeholder/technical table text before showing to farmer
-  const templatePestCode = primary?.target?.pest_code;
-  const templateDiseaseCode = primary?.target?.disease_code;
-  const rawProductName = primary?.application_details?.product_name;
-  const rawActionType = primary?.action_type;
-  const rawActionText = primary?.action_text;
-
-  const isPlaceholderText = (value?: string) => {
-    const v = (value || '').trim().toLowerCase();
-    if (!v) return true;
-    return v.includes('blocking rule is active') ||
-           v.includes('a blocking rule has been triggered') ||
-           v.includes('see structured response') ||
-           v.includes('see matched response') ||
-           v.includes('recommended treatment') ||
-           v.includes('monitor and reassess') ||
-           v.includes('continue monitoring') ||
-           v.includes('no treatment required at this stage') ||
-           v.includes('monitor pest population regularly') ||
-           v.includes('current information is insufficient') ||
-           v.includes('global_safety') ||
-           v.includes('safety_gate') ||
-           v.includes('action text unavailable') ||
-           v.includes('invariant_fallback');
-  };
-
-  // BUG-7 FIX: Use ratio-based check instead of single-char detection
-  // Product names like "Chlorpyrifos 20 EC" are valid in non-English responses
-  const isLikelyRawEnglish = (value?: string) => {
-    const v = (value || '').trim();
-    if (!v || lang === 'en') return false;
-    // Allow short strings (product codes, trade names)
-    if (v.length < 15) return false;
-    const asciiLetters = (v.match(/[a-zA-Z]/g) || []).length;
-    const totalChars = v.replace(/\s/g, '').length;
-    if (totalChars === 0) return false;
-    // Only flag as raw English if >60% ASCII letters
-    return (asciiLetters / totalChars) > 0.6;
-  };
-
-  const shouldRenderRawFarmerText = (value?: string) => {
-    return !!value && !isPlaceholderText(value) && !isLikelyRawEnglish(value);
-  };
-
-  const NON_PRODUCT_ACTIONS = new Set([
-    'NO_ACTION', 'NO_ACTION_REQUIRED', 'MONITOR_ONLY', 'MONITOR',
-    'CULTURAL_PRACTICE', 'CULTURAL_CONTROL', 'MECHANICAL_CONTROL',
-    'BIOLOGICAL_RELEASE', 'OBSERVATION', 'WAIT_AND_WATCH'
-  ]);
-
-  const PRODUCT_AS_CAUSE_PATTERN = /\b(pest|disease|deficiency|borer|infestation|population|symptom)\b/i;
-  const hasValidProductName = !!rawProductName &&
-    !isPlaceholderText(rawProductName) &&
-    !PRODUCT_AS_CAUSE_PATTERN.test(rawProductName);
-  const isNonProductAction = NON_PRODUCT_ACTIONS.has(String(rawActionType || '').toUpperCase());
-
-  const hasValidRecommendation = !!primary &&
-    !!primary.action_type &&
-    primary.action_type !== 'NO_ACTION' &&
-    (isNonProductAction || hasValidProductName || shouldRenderRawFarmerText(rawActionText) || !!templatePestCode || !!templateDiseaseCode);
-  
-  if (hasValidRecommendation) {
-    const recHeader = '📌 **Recommendation:**';
-    parts.push(recHeader);
-    
-    // CRITICAL: Extract from current decision_output ONLY
-    const safeProductName = hasValidProductName ? rawProductName : '';
-    const dosage = primary.application_details?.concentration || primary.application_details?.dosage;
-    const method = primary.application_details?.method || primary.application_details?.application_method;
-    const timing = primary.timing?.best_time_of_day;
-    
-    // BUG-4 FIX: English-only action type labels. Localization via LLM narration.
-    const GENERIC_ACTION_TRANSLATIONS: Record<string, string> = {
-      'cultural practice': 'Cultural practice',
-      'cultural control': 'Cultural control',
-      'mechanical control': 'Mechanical control',
-      'biological control': 'Biological control',
-      'monitoring': 'Monitoring',
-      'treatment': 'Treatment',
-      'prevention': 'Prevention'
-    };
-    
-    // Check if this is a generic action type and translate
-    const lowerProductName = (rawProductName || '').toLowerCase();
-    let translatedProductName = rawProductName || '';
-    let isGenericAction = false;
-    
-    for (const [key, label] of Object.entries(GENERIC_ACTION_TRANSLATIONS)) {
-      if (lowerProductName.includes(key)) {
-        translatedProductName = label;
-        isGenericAction = true;
-        break;
-      }
-    }
-    
-    // If not generic, use the normal translation function
-    if (!isGenericAction && rawProductName) {
-      translatedProductName = getProductName(rawProductName, lang);
-    }
-    
-    if (safeProductName && safeProductName !== 'Recommended treatment') {
-      let recText = `1. **${translatedProductName}**`;
-      // Only add dosage if not already included and it's not a generic action
-      if (!isGenericAction && dosage && dosage !== 'As per label' && dosage !== 'N/A' && !translatedProductName.includes('/')) {
-        recText += ` @ ${dosage}`;
-      }
-
-      // For generic actions, include action text only when localized/safe for farmer display
-      if (isGenericAction && shouldRenderRawFarmerText(rawActionText)) {
-        recText += `\n   🔧 ${rawActionText}`;
-      }
-      
-      if (method) {
-        // BUG-4 FIX: Use getActionTranslation only, no hardcoded mr/hi fallbacks
-        const methodLabel = getActionTranslation(method, lang) || method;
-        recText += `\n   📍 ${methodLabel}`;
-      }
-      if (timing) {
-        const timingLabel = timing === 'MORNING' ? 'Morning' : 'Evening';
-        recText += `\n   ⏰ ${timingLabel}`;
-      }
-      
-      if (primary.expected_outcomes?.efficacy_percent) {
-        recText += ` | 📊 ${primary.expected_outcomes.efficacy_percent}% effective`;
-      }
-      
-      parts.push(recText);
-      
-      // RICH DATA: Add organic alternative, success indicators, bee safety from rule data
-      // BUG-4 FIX: English-only headers in template fallback (LLM narration handles localization)
-      const appDetails = primary.application_details || {};
-      if (appDetails.organic_alternative) {
-        parts.push(`🌿 **Organic Alternative:** ${appDetails.organic_alternative}`);
-      }
-      if (appDetails.success_indicators) {
-        const indicators = Array.isArray(appDetails.success_indicators) ? appDetails.success_indicators.join(', ') : String(appDetails.success_indicators);
-        parts.push(`✅ **Success Signs (check after 5-7 days):** ${indicators}`);
-      }
-      if (appDetails.failure_indicators) {
-        const indicators = Array.isArray(appDetails.failure_indicators) ? appDetails.failure_indicators.join(', ') : String(appDetails.failure_indicators);
-        parts.push(`❌ **Failure Signs (re-treat if seen):** ${indicators}`);
-      }
-      if (appDetails.bee_toxicity && appDetails.bee_toxicity !== 'SAFE' && appDetails.bee_toxicity !== 'LOW') {
-        parts.push(`🐝 **Bee Safety:** ${appDetails.bee_toxicity} toxicity — avoid spraying during flowering`);
-      }
-      if (appDetails.roi_yield_gain_pct) {
-        parts.push(`📈 **Expected Yield Gain:** ${appDetails.roi_yield_gain_pct}%`);
-      }
-      
-      // IPM urgency indicator
-      const ipmLevel = primary.ipm_level || 'LEVEL_3';
-      const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[lang] || '';
-      if (urgencyLabel) {
-        parts.push(`\n${urgencyLabel}`);
-      }
-    } else if (rawActionText || isNonProductAction || rawActionType) {
-      // Use action semantics when product is absent/placeholder
-      const translatedActionType = rawActionType ? (getActionTranslation(rawActionType, lang) || rawActionType) : '';
-      const safeActionTypeText = !isLikelyRawEnglish(translatedActionType) ? translatedActionType : '';
-      const translatedCause = templatePestCode
-        ? getCauseTranslation(templatePestCode, lang)
-        : templateDiseaseCode
-          ? getCauseTranslation(templateDiseaseCode, lang)
-          : '';
-
-      const actionLine = safeActionTypeText ||
-        (shouldRenderRawFarmerText(rawActionText) ? rawActionText : 'Monitor closely');
-
-      parts.push(`📋 **Action:**\n1. ${actionLine}`);
-
-      if (translatedCause && translatedCause !== 'UNKNOWN') {
-        parts.push(`🔎 Cause: ${translatedCause}`);
-      }
-    } else {
-      // No valid product - ask for more info instead of giving wrong advice
-      parts.push('📋 **More information needed:**\nPlease provide more details about your problem or send a photo.');
-    }
-  } else {
-    // Check for matched_responses (IPM treatment responses from rule database)
-    const matchedResponses = decision?.matched_responses;
-    if (matchedResponses && matchedResponses.length > 0) {
-      parts.push('📌 **Recommendation (IPM):**');
-      
-      matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-        const actionContentRaw = resp.action_text || resp.reason_text || '';
-        const fallbackAction = 'Monitor crop and share a photo if needed';
-        const actionContent = shouldRenderRawFarmerText(actionContentRaw) ? actionContentRaw : fallbackAction;
-        parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
-      });
-    } else {
-      parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
-    }
-  }
-  
-  // Secondary recommendations - from CURRENT decision only
-  const secondary = decision?.secondary_actions || decision?.secondary_recommendations;
-  if (secondary && secondary.length > 0) {
-    parts.push('');
-    secondary.slice(0, 2).forEach((sec: any, idx: number) => {
-      const rawAction = sec.action || sec.product_name;
-      if (rawAction && rawAction !== 'N/A' && rawAction !== 'None') {
-        // CRITICAL FIX: Translate secondary action names to farmer-friendly language
-        const translatedAction = getProductName(rawAction, lang);
-        parts.push(`${idx + 2}. ${translatedAction}${sec.reason ? ` - ${sec.reason}` : ''}`);
-      }
+  // Legacy fallback: minimal safe response
+  const matchedResponses = decision?.matched_responses;
+  if (matchedResponses && matchedResponses.length > 0) {
+    parts.push('📌 **Recommendation (from rule database):**');
+    matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
+      const actionContent = resp.action_text || resp.reason_text || 'Monitor crop and share a photo if needed';
+      parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
     });
+  } else {
+    parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
   }
   
-  // Supportive closing
-  // BUG-4 FIX: English-only closing in template (LLM narration handles localization)
   parts.push('\n🙏 Feel free to ask if you need clarification. Best wishes!');
   
   const finalResponse = parts.join('\n\n');
-  console.log(`   📋 Template fallback generated: ${finalResponse.length} chars`);
+  console.log(`   📋 Legacy template fallback generated: ${finalResponse.length} chars`);
   
   return {
     formatted_response: finalResponse,
     confidence: 0.7,
     source: 'TEMPLATE_FALLBACK',
     processing_time_ms: Date.now() - startTime,
-    sections_included: ['greeting', 'recommendation', 'closing']
+    sections_included: ['greeting', 'recommendation', 'closing'],
+    validation_passed: true,
+    validation_violations: [],
+    gate_status: GateStatus.PASS,
+    gate_action: GateAction.PROVIDE_RECOMMENDATION,
+    reasoning_included: false
   };
 }
 

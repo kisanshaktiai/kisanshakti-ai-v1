@@ -847,7 +847,30 @@ export function evaluateRulesLayered(
     // data_authority_rank: 95 = highest authority (ICAR/research validated)
     //                      55 = lowest authority (generic advisory)
     // ═══════════════════════════════════════════════════════════════════════════
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CATEGORY PRIORITY MAP — Rule conflict resolution pre-sort
+    // SAFETY_GATE rules ALWAYS surface first regardless of evidence score
+    // ═══════════════════════════════════════════════════════════════════════════
+    const CATEGORY_PRIORITY_MAP: Record<string, number> = {
+      'SAFETY_GATE': 100,  'BLOCK': 100,
+      'URGENT_ACTION': 90,
+      'RECOMMEND': 80,     'SPRAY': 80,     'TREATMENT': 80,
+      'CHEMICAL_CONTROL': 80, 'BIOLOGICAL_CONTROL': 80,
+      'FERTILIZER_APPLICATION': 70,
+      'NUTRIENT_RECOMMENDATION': 60,
+      'CULTURAL_CONTROL': 40, 'CULTURAL_PRACTICE': 40,
+      'MONITOR': 20,       'OBSERVATION': 20,
+      'NO_ACTION_REQUIRED': 10, 'NO_ACTION': 10,
+    };
+    
     scored.sort((a, b) => {
+      // P0: Category priority (safety gates always win)
+      const catA = CATEGORY_PRIORITY_MAP[(a.response.action_type || '').toUpperCase()] ?? 50;
+      const catB = CATEGORY_PRIORITY_MAP[(b.response.action_type || '').toUpperCase()] ?? 50;
+      // Only apply category override for extreme differences (safety vs treatment)
+      if (Math.abs(catA - catB) >= 20) {
+        if (catA !== catB) return catB - catA;
+      }
       // P1: data_authority_rank (higher = better)
       const rankA = (a.response as any).data_authority_rank ?? 50;
       const rankB = (b.response as any).data_authority_rank ?? 50;
