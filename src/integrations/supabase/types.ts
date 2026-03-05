@@ -33330,7 +33330,7 @@ export type Database = {
           id: string
           metadata: Json | null
           response_time_ms: number | null
-          session_duration: unknown
+          session_duration: string | null
           status_code: number | null
           tenant_id: string | null
           timestamp: string
@@ -33344,7 +33344,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           response_time_ms?: number | null
-          session_duration?: unknown
+          session_duration?: string | null
           status_code?: number | null
           tenant_id?: string | null
           timestamp?: string
@@ -33358,7 +33358,7 @@ export type Database = {
           id?: string
           metadata?: Json | null
           response_time_ms?: number | null
-          session_duration?: unknown
+          session_duration?: string | null
           status_code?: number | null
           tenant_id?: string | null
           timestamp?: string
