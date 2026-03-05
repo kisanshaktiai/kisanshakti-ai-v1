@@ -20946,33 +20946,6 @@ export type Database = {
           },
         ]
       }
-      intent_observation_mapping_v2: {
-        Row: {
-          confidence_rank: number
-          created_at: string | null
-          id: string
-          intent_code: string
-          is_active: boolean | null
-          observation_code: string
-        }
-        Insert: {
-          confidence_rank?: number
-          created_at?: string | null
-          id?: string
-          intent_code: string
-          is_active?: boolean | null
-          observation_code: string
-        }
-        Update: {
-          confidence_rank?: number
-          created_at?: string | null
-          id?: string
-          intent_code?: string
-          is_active?: boolean | null
-          observation_code?: string
-        }
-        Relationships: []
-      }
       intent_translations: {
         Row: {
           created_at: string | null
