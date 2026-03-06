@@ -1,62 +1,104 @@
-# Pipeline Stability Fixes v7.2 — Deterministic Response System Hardening
 
-## v7.2 — Deterministic Agronomic Response Hardening (2026-03-05)
 
-### Module 1: Deterministic Builder Integration — DONE
-- **Files:** `llm-response-formatter.ts`, `deterministic-response-builder.ts`
-- `buildRecommendationSummary()` now calls `extractRichRuleData()` + `buildDeterministicResponse()` + `formatStructuredResponseForLLM()` when primary_decision has adequate rule content
-- `buildTemplateFallback()` TREATMENT mode also uses deterministic builder
-- Legacy manual prompt assembly retained as fallback only when rule content is inadequate
-- All agronomic content in LLM prompt now sourced from `decision_rules` columns
+# Production Bug Fix: Deterministic Response Builder Not Activating
 
-### Module 2: Dose Safety Validation — DONE
-- **File:** `deterministic-response-builder.ts`
-- `validateDosageSafety()`: Active ingredient caps via `MAX_SAFE_DOSES` (20 chemicals with CIB&RC limits)
-- Blocks dose if `totalPerHa > regulatory_max_dose` — returns safety warning instead
-- Dose converted acres→hectares for regulatory comparison
+## Root Cause Analysis
 
-### Module 3: PHI Harvest Proximity — DONE
-- `validatePHISafety()`: Blocks chemical treatment if `phi_days > days_to_harvest`
-- Supports ratoon crop cycle reduction
-- Returns `phi_blocked: true` with farmer-friendly instruction
+The deterministic response builder (`deterministic-response-builder.ts`) exists and is integrated into `llm-response-formatter.ts`, but it receives **empty data** for most rich agronomic fields because of 4 broken data propagation paths.
 
-### Module 4: Environmental Condition Validation — DONE
-- `validateEnvironmentalConditions()`: Rain forecast vs `rain_delay_hours`, temperature range, wind speed
-- Spray blocked if rain expected within rain-free window
-- Temperature and wind warnings with timing guidance
+### Bug Map
 
-### Module 5: Agronomic Safety Scoring — DONE
-- `computeSafetyScore()`: Composite 0-1 score (PHI 0.3, bee 0.2, regulatory 0.3, resistance 0.2)
-- Score < 0.5 → downgrades response to MONITOR (no product/dosage/cost)
-- Bee toxicity HIGH → mandatory evening-spray instruction
+```text
+decision_rules DB (50+ columns loaded)
+       │
+       ▼
+loader.ts ── ExecutableRule (✅ all fields present)
+       │
+       ▼
+convertBundledToRule() ── action_details (✅ all fields mapped)
+       │
+       ├──► DIAGNOSIS phase push (lines 438-448)   ❌ ONLY 4 fields
+       ├──► PRESCRIPTION phase push (lines 594-649) ✅ ALL fields
+       └──► BLOCKED path push (lines 670-678)       ❌ ONLY 4 fields
+       │
+       ▼
+PrimaryDecision interface (lines 232-247)           ❌ Missing 45+ field declarations
+       │
+       ▼
+orchestrator.ts OPTION_SELECTED path (lines 1855-63) ❌ ONLY 5 fields in application_details
+orchestrator.ts recovery path (lines 5834-5860)      ⚠️ Partial (15 fields)
+       │
+       ▼
+extractRichRuleData() reads from primary_decision    ❌ Gets nulls for most fields
+       │
+       ▼
+hasAdequateRuleContent() → passes (needs only action_text/reason_text)
+       │
+       ▼
+buildDeterministicResponse() → dosage/safety/cost sections ALL EMPTY
+       │
+       ▼
+LLM gets skeleton prompt → generates old-format response
+```
 
-### Module 6: Confidence-Based Response Gating — DONE
-- `response_decision: 'TREAT' | 'MONITOR' | 'CLARIFY'`
-- TREAT (≥0.70): Full recommendation with dosage, cost, ROI
-- MONITOR (0.50-0.69): Problem + monitoring only, no product
-- CLARIFY (<0.50): Request more observations, suppress all treatment
-- Dosage/cost/ROI sections suppressed in MONITOR and CLARIFY modes
+## Fixes Required (3 files, 4 bugs)
 
-### Module 7: Category-Based Conflict Resolution — DONE
-- **File:** `layered-rule-evaluator.ts`
-- Added `CATEGORY_PRIORITY_MAP` pre-sort: SAFETY_GATE(100) > URGENT_ACTION(90) > TREATMENT(80) > NUTRIENT(60) > CULTURAL(40) > MONITOR(20)
-- Applied before `data_authority_rank` sort, only when category gap ≥ 20 points
-- Ensures safety rules always surface first
+### Fix 1: `layered-rule-evaluator.ts` — DIAGNOSIS phase push (lines 438-448)
 
-### New Exports
-- `extractRichRuleData(primaryDecision, appDetails)`: Bridge from pipeline to builder
-- `validateDosageSafety()`, `validatePHISafety()`, `validateEnvironmentalConditions()`
-- `computeSafetyScore()`, `WeatherContext`, `CropContext` interfaces
+Add ALL 50+ rich fields from `actionDetails` to the DIAGNOSIS-phase `matched_responses.push()` — identical to how PRESCRIPTION-phase does it (lines 604-648).
 
-## Previous versions
+Currently:
+```typescript
+result.matched_responses.push({
+  rule_id, cause, action_type, priority, confidence_score,
+  action_text, reason_text, knowledge_text, i18n_key, conditions_json
+});
+```
 
-### v7.1 — Table Audit (see git history)
-- Dropped orphaned `intent_observation_mapping_v2`
-- Confirmed `intent_observation_mapping` (v1) as authoritative
+Must add: `active_ingredient`, `dosage_per_acre`, `water_volume_per_acre`, `application_method`, `phi_days`, `bee_toxicity`, `organic_alternative`, `chemical_class`, `mode_of_action`, `resistance_group`, `reentry_interval_hours`, `material_cost_per_acre_min/max`, `roi_yield_gain_pct`, `success_indicators`, `failure_indicators`, and all other rich fields — sourced from `actionDetails` (which comes from `rule.then.action_details`).
 
-### v7.0 — Forensic Audit Fixes (see git history)
-- BUG-1,3,4,5,6,7 fixes
-- Safety gate rule exclusion, hardcoded text removal, token optimization
+### Fix 2: `layered-rule-evaluator.ts` — BLOCKED path push (lines 670-678)
 
-### v6.0-6.2 — Deep Forensic Audit (see git history)
-- FIX 20-36: Rule unblocking, SSOT data alignment, translation fixes
+Same fix as Fix 1: propagate all rich fields from `blockedActionDetails` into the blocked-path `matched_responses.push()`.
+
+### Fix 3: `layered-rule-evaluator.ts` — PrimaryDecision interface (lines 232-247)
+
+Extend the `PrimaryDecision` interface to include all 50+ fields that are already being assigned at lines 927-947. This prevents TypeScript from silently dropping them and ensures downstream consumers can access them with type safety.
+
+### Fix 4: `orchestrator.ts` — OPTION_SELECTED path (lines 1855-1863)
+
+The `application_details` object in the OPTION_SELECTED path only propagates `product_name`, `product_type`, `action_text`, `reason_text`, `knowledge_text`, `i18n_key`, `rule_id`. It must propagate ALL rich fields from `layeredPrimaryDecision` — matching the recovery path pattern at lines 5834-5860 which already does this (partially).
+
+Add to the OPTION_SELECTED `application_details`:
+- `active_ingredient`, `dosage_per_acre`, `cause`
+- `organic_alternative`, `phi_days`, `bee_toxicity`
+- `application_method`, `water_volume_per_acre`
+- `mode_of_action`, `chemical_class`, `resistance_group`
+- `target_pest_stage`, `success_indicators`, `failure_indicators`
+- `roi_yield_gain_pct`, `reentry_interval_hours`
+- `material_cost_per_acre_min/max`, `labor_cost_per_acre_min/max`
+- `scientific_basis`, `aquatic_toxicity`, `regulatory_status`
+
+### Fix 5: `orchestrator.ts` — Recovery path (lines 5834-5860)
+
+Add missing fields that are in `deterministic-response-builder.ts` `RichRuleData` but not in the recovery path's `application_details`:
+- `scientific_basis`, `treatment_type`, `biological_group`
+- `farmer_safety_level`, `aquatic_toxicity`, `regulatory_status`
+- `material_cost_per_acre_min/max`, `labor_cost_per_acre_min/max`
+- `labor_hours_per_acre`, `equipment_required`, `equipment_cost_per_acre`
+- `total_cost_estimated`, `roi_cost_saved_min/max`, `roi_net_score`, `roi_confidence`
+- `min_temperature`, `max_temperature`, `max_wind_speed`, `rain_delay_hours`
+- `weather_dependency`, `icar_package_ref`, `university_source`
+- `risk_level`, `response_severity`, `data_authority_rank`
+
+## Verification
+
+After fixes, the data pipeline will be:
+```text
+DB → loader → action_details (✅) → ALL push paths (✅) → PrimaryDecision (✅)
+→ orchestrator application_details (✅) → extractRichRuleData (✅)
+→ buildDeterministicResponse → structured sections with real data
+```
+
+The edge function will be redeployed after all fixes.
+
