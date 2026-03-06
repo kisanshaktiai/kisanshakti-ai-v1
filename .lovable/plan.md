@@ -1,4 +1,12 @@
-# Pipeline Stability Fixes v7.4 — Confidence Gate Override + False Fallback Fix
+# Pipeline Stability Fixes v7.5 — Category Routing + Confidence Gate Override
+
+## v7.5 — Rule Category Routing Fix (2026-03-06)
+
+### Critical Architectural Bug Fixed: Rules silently lost in OBSERVATION phase
+- **Root Cause:** `mapBundledCategory()` defaulted unknown DB categories (`ipm`, `stage_problems`, `advisory`, `general`) to `RuleCategory.OBSERVATION`. Phase 1 (OBSERVATION) does NOT collect `matched_responses`, so these rules matched conditions but never reached the scoring/selection pipeline.
+- **Fix 1:** `layered-rule-evaluator.ts` — Added explicit mappings: `ipm`→PRESCRIPTION, `stage_problems`→DIAGNOSIS, `advisory`→PRESCRIPTION, `biocontrol`→PRESCRIPTION, `general`→DIAGNOSIS
+- **Fix 2:** `layered-rule-evaluator.ts` — Changed default from OBSERVATION→DIAGNOSIS for unmapped categories, with warning log
+- **Impact:** SC_IPM_LIGHT_TRAP_001, SC_IPM_PHEROMONE_TRAP_001, SC_TILLER_PEST_001 and similar rules now reach matched_responses and compete for primary decision
 
 ## v7.4 — Confidence Gate Override + INVARIANT_FALLBACK Elimination (2026-03-06)
 
