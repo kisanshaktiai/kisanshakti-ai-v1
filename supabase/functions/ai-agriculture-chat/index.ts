@@ -805,14 +805,20 @@ serve(async (req) => {
             }
             // PRIORITY 3: Check matched_responses array
             else {
-              const matchedResponses = rawDecisionOutput.matched_responses || 
-                                       rawDecisionOutput.layered_rule_result?.matched_responses || [];
+              // PRODUCTION FIX: Empty array is truthy — use strict length check
+              const rawMatched = rawDecisionOutput.matched_responses;
+              const layeredMatched = rawDecisionOutput.layered_rule_result?.matched_responses;
+              const matchedResponses = (Array.isArray(rawMatched) && rawMatched.length > 0)
+                ? rawMatched
+                : (Array.isArray(layeredMatched) && layeredMatched.length > 0)
+                  ? layeredMatched
+                  : [];
               
-              // SSOT: Filter for eligible responses using action_text or i18n_key
-              // NOTE: response_mr/hi/en were DROPPED per SSOT architecture
+              // PRODUCTION FIX: Align eligibility with layered-rule-evaluator.ts
+              // Accept action_text OR i18n_key OR reason_text OR knowledge_text
               // BUG-6 FIX: Also filter out GLOBAL_SAFETY rules from eligible responses
               const eligibleResponses = matchedResponses.filter((r: any) => 
-                r.rule_id && r.action_type && (r.action_text || r.i18n_key) && !isSafetyGateRule(r.rule_id)
+                r.rule_id && r.action_type && (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text) && !isSafetyGateRule(r.rule_id)
               );
               
               if (eligibleResponses.length > 0) {
