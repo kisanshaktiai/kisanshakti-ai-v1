@@ -652,27 +652,21 @@ serve(async (req) => {
               target: {},
               urgency: 'WITHIN_24H',
               priority: layeredPrimaryDecision.priority,
+              // SSOT: Propagate ledger-derived confidence
+              weighted_confidence: layeredPrimaryDecision.weighted_confidence,
+              normalized_score: layeredPrimaryDecision.normalized_score,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                 weather_dependency: false,
                 reason: 'Recovered from layered_rule_result.primary_decision'
               },
-              application_details: {
-                product_name: recoveredProductName,
-                product_type: recoveredProductType,
-                // SSOT: Language-independent response fields only
-                action_text: layeredPrimaryDecision.action_text,
-                reason_text: layeredPrimaryDecision.reason_text,
-                knowledge_text: layeredPrimaryDecision.knowledge_text,
-                i18n_key: layeredPrimaryDecision.i18n_key,
-                decision_trace_template: layeredPrimaryDecision.decision_trace_template,
-                rule_id: layeredPrimaryDecision.rule_id
-              },
+              application_details: buildRichApplicationDetails(layeredPrimaryDecision, recoveredProductName, recoveredProductType),
               expected_outcomes: {
-                efficacy_percent: 75,
+                efficacy_percent: layeredPrimaryDecision.weighted_confidence 
+                  ? Math.round(layeredPrimaryDecision.weighted_confidence * 100) : 75,
                 time_to_visible_effect_days: '3-5',
-                success_indicators: []
+                success_indicators: layeredPrimaryDecision.success_indicators || []
               }
             };
             
