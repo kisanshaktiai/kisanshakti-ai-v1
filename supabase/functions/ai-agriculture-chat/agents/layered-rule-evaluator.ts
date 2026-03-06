@@ -244,6 +244,65 @@ export interface PrimaryDecision {
   reason_text?: string;
   knowledge_text?: string;
   i18n_key?: string;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RICH AGRONOMIC FIELDS — Must match MatchedResponse for full propagation
+  // ═══════════════════════════════════════════════════════════════════════════
+  cause?: string | null;
+  active_ingredient?: string | null;
+  dosage_per_acre?: string | null;
+  water_volume_per_acre?: string | null;
+  application_method?: string | null;
+  target_pest_stage?: string | null;
+  chemical_class?: string | null;
+  treatment_type?: string | null;
+  biological_group?: string | null;
+  phi_days?: number | null;
+  reentry_interval_hours?: number | null;
+  bee_toxicity?: string | null;
+  aquatic_toxicity?: string | null;
+  farmer_safety_level?: string | null;
+  regulatory_status?: string | null;
+  organic_alternative?: string | null;
+  ipm_level?: number | null;
+  mode_of_action?: string | null;
+  resistance_group?: string | null;
+  // Cost
+  material_cost_per_acre_min?: number | null;
+  material_cost_per_acre_max?: number | null;
+  labor_cost_per_acre_min?: number | null;
+  labor_cost_per_acre_max?: number | null;
+  labor_hours_per_acre?: number | null;
+  equipment_required?: string[] | null;
+  equipment_cost_per_acre?: number | null;
+  total_cost_estimated?: number | null;
+  // ROI
+  roi_yield_gain_pct?: number | null;
+  roi_cost_saved_min?: number | null;
+  roi_cost_saved_max?: number | null;
+  roi_net_score?: number | null;
+  roi_confidence?: number | null;
+  // Monitoring
+  success_indicators?: string[] | null;
+  failure_indicators?: string[] | null;
+  // Environmental
+  min_temperature?: number | null;
+  max_temperature?: number | null;
+  max_wind_speed?: number | null;
+  rain_delay_hours?: number | null;
+  weather_dependency?: any;
+  // References
+  scientific_source?: string | null;
+  scientific_basis?: string | null;
+  icar_package_ref?: string | null;
+  university_source?: string | null;
+  // Confidence/Risk
+  risk_level?: string | null;
+  response_severity?: string | null;
+  data_authority_rank?: number | null;
+  // Legacy
+  response_mr?: string | null;
+  response_hi?: string | null;
+  response_en?: string | null;
 }
 
 export interface LayeredRuleResult {
