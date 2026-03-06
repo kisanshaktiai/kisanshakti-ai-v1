@@ -5828,6 +5828,14 @@ export class AIAgentOrchestrator {
       agentsUsed.push('RuleEngine');
       
       // ═══════════════════════════════════════════════════════════════════════════
+      // PRODUCTION FIX: Set decision_brain_source = true on all rule engine outputs
+      // Without this flag, the LLM formatter rejects the decision at the
+      // SYMBOLIC-ONLY GATE (llm-response-formatter.ts line ~298) and returns empty,
+      // causing "Continue monitoring" fallback responses even when rules matched.
+      // ═══════════════════════════════════════════════════════════════════════════
+      decisionOutput.decision_brain_source = true;
+      
+      // ═══════════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Attach layered_rule_result to decisionOutput for index.ts recovery
       // This ensures primary_decision from LayeredRuleEvaluator is available for fallback
       // ═══════════════════════════════════════════════════════════════════════════
