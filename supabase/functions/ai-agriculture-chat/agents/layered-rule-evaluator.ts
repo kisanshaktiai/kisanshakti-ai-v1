@@ -1549,7 +1549,6 @@ function mapBundledCategory(category: string): RuleCategory {
     'soil': RuleCategory.OBSERVATION,
     'cropping_system': RuleCategory.OBSERVATION,
     'monitoring': RuleCategory.OBSERVATION,
-    'stage_problems': RuleCategory.OBSERVATION,
     
     // DIAGNOSIS rules - identify causes
     'diagnosis': RuleCategory.DIAGNOSIS,
@@ -1587,6 +1586,19 @@ function mapBundledCategory(category: string): RuleCategory {
     'planting': RuleCategory.PRESCRIPTION,
     'ratoon_management': RuleCategory.PRESCRIPTION,
     
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRODUCTION FIX v7.5: Categories that were falling to OBSERVATION default
+    // causing rules to be evaluated in Phase 1 where matched_responses are NOT
+    // collected. These must route to DIAGNOSIS or PRESCRIPTION to produce output.
+    // ═══════════════════════════════════════════════════════════════════════
+    'ipm': RuleCategory.PRESCRIPTION,           // IPM monitoring/trap rules
+    'stage_problems': RuleCategory.DIAGNOSIS,   // Stage-specific pest/disease alerts
+    'advisory': RuleCategory.PRESCRIPTION,      // General advisory rules
+    'cultural_practice': RuleCategory.PRESCRIPTION,
+    'integrated_management': RuleCategory.PRESCRIPTION,
+    'biocontrol': RuleCategory.PRESCRIPTION,
+    'general': RuleCategory.DIAGNOSIS,          // General diagnostic rules
+    
     // WARNING rules - inform about risks
     'warning': RuleCategory.WARNING,
     'weather': RuleCategory.WARNING,
@@ -1594,11 +1606,19 @@ function mapBundledCategory(category: string): RuleCategory {
     // CLARIFICATION - special handling
     'clarification': RuleCategory.OBSERVATION
   };
-  // ═══════════════════════════════════════════════════════════════════════
-  // CRITICAL FIX: Default to OBSERVATION (lowest phase) not DIAGNOSIS
-  // Unknown categories should NOT compete with pest/disease diagnosis
-  // ═══════════════════════════════════════════════════════════════════════
-  return map[category?.toLowerCase()] || RuleCategory.OBSERVATION;
+  
+  const mapped = map[category?.toLowerCase()];
+  if (!mapped) {
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRODUCTION FIX v7.5: Unknown categories default to DIAGNOSIS (not OBSERVATION)
+    // OBSERVATION phase does NOT collect matched_responses, causing rules to
+    // silently disappear from the decision pipeline. DIAGNOSIS phase collects
+    // responses and allows rules to compete for primary decision selection.
+    // ═══════════════════════════════════════════════════════════════════════
+    console.warn(`⚠️ [mapBundledCategory] Unknown category '${category}' → defaulting to DIAGNOSIS (was OBSERVATION)`);
+    return RuleCategory.DIAGNOSIS;
+  }
+  return mapped;
 }
 
 // ==================== KEYWORD FALLBACK ====================
