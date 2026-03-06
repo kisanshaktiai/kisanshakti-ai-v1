@@ -412,6 +412,9 @@ export function evaluateRulesLayered(
     observedPestCount?: number;
     recentTreatments?: { resistance_group: string; date: string }[];
     traceId?: string;
+    /** When PrescriptionGate overrides LOW confidence due to strong symptom evidence,
+     *  this flag relaxes the pre-selection confidence gate from 0.60 → 0.40 */
+    prescriptionGateOverride?: boolean;
   }
 ): LayeredRuleResult {
   // PHASE-16: Safe initialization - prevent undefined errors
@@ -1036,14 +1039,22 @@ export function evaluateRulesLayered(
     const best = scored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // PRE-SELECTION CONFIDENCE GATE: If best rule score < 0.6, trigger clarification
-    // This ensures only well-evidenced rules become primary decisions
+    // PRE-SELECTION CONFIDENCE GATE: If best rule score < threshold, trigger clarification
+    // PRODUCTION FIX: When PrescriptionGate overrides LOW confidence (strong symptom 
+    // evidence), relax threshold from 0.60 → 0.40 to allow rule selection.
     // ═══════════════════════════════════════════════════════════════════════════
-    const CONFIDENCE_GATE_THRESHOLD = 0.60;
+    const BASE_CONFIDENCE_GATE_THRESHOLD = 0.60;
+    const OVERRIDE_CONFIDENCE_GATE_THRESHOLD = 0.40;
+    const hasOverride = !!options?.prescriptionGateOverride;
+    const CONFIDENCE_GATE_THRESHOLD = hasOverride ? OVERRIDE_CONFIDENCE_GATE_THRESHOLD : BASE_CONFIDENCE_GATE_THRESHOLD;
     const computedConfidence = Math.min(1.0, scored[0].evidenceScore);
     
+    if (hasOverride) {
+      console.log(`   🔓 [ConfidenceGate] PrescriptionGate override ACTIVE — threshold relaxed: ${(BASE_CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% → ${(OVERRIDE_CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}%`);
+    }
+    
     if (computedConfidence < CONFIDENCE_GATE_THRESHOLD) {
-      console.warn(`⚠️ [ConfidenceGate] Score ${(computedConfidence * 100).toFixed(0)}% < ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% threshold`);
+      console.warn(`⚠️ [ConfidenceGate] Score ${(computedConfidence * 100).toFixed(0)}% < ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% threshold${hasOverride ? ' (override active)' : ''}`);
       console.warn(`   Best candidate: ${best.rule_id} (score=${scored[0].evidenceScore.toFixed(3)}, matched=${scored[0].matchedConditions}/${scored[0].totalConditions})`);
       console.warn(`   ACTION: Skipping primary selection → triggering clarification`);
       // primary_decision remains null — orchestrator will route to clarification

@@ -805,14 +805,20 @@ serve(async (req) => {
             }
             // PRIORITY 3: Check matched_responses array
             else {
-              const matchedResponses = rawDecisionOutput.matched_responses || 
-                                       rawDecisionOutput.layered_rule_result?.matched_responses || [];
+              // PRODUCTION FIX: Empty array is truthy — use strict length check
+              const rawMatched = rawDecisionOutput.matched_responses;
+              const layeredMatched = rawDecisionOutput.layered_rule_result?.matched_responses;
+              const matchedResponses = (Array.isArray(rawMatched) && rawMatched.length > 0)
+                ? rawMatched
+                : (Array.isArray(layeredMatched) && layeredMatched.length > 0)
+                  ? layeredMatched
+                  : [];
               
-              // SSOT: Filter for eligible responses using action_text or i18n_key
-              // NOTE: response_mr/hi/en were DROPPED per SSOT architecture
+              // PRODUCTION FIX: Align eligibility with layered-rule-evaluator.ts
+              // Accept action_text OR i18n_key OR reason_text OR knowledge_text
               // BUG-6 FIX: Also filter out GLOBAL_SAFETY rules from eligible responses
               const eligibleResponses = matchedResponses.filter((r: any) => 
-                r.rule_id && r.action_type && (r.action_text || r.i18n_key) && !isSafetyGateRule(r.rule_id)
+                r.rule_id && r.action_type && (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text) && !isSafetyGateRule(r.rule_id)
               );
               
               if (eligibleResponses.length > 0) {
@@ -845,8 +851,21 @@ serve(async (req) => {
                 console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
               } else {
                 // PRIORITY 4: No eligible responses - generate system fallback
-                console.error(`🚨 [${traceId}] No eligible responses found - generating SYSTEM_FALLBACK`);
-                console.error(`   matched_responses count: ${matchedResponses?.length || 0}`);
+                // PRODUCTION OBSERVABILITY: Log full diagnostic context before fallback
+                const rawMatchedCount = Array.isArray(rawDecisionOutput.matched_responses) ? rawDecisionOutput.matched_responses.length : 0;
+                const layeredMatchedCount = Array.isArray(rawDecisionOutput.layered_rule_result?.matched_responses) ? rawDecisionOutput.layered_rule_result.matched_responses.length : 0;
+                const layeredPrimary = rawDecisionOutput.layered_rule_result?.primary_decision;
+                console.error(`🚨 [${traceId}] INVARIANT_FALLBACK DIAGNOSTIC:`);
+                console.error(`   status: ${rawDecisionOutput.status}`);
+                console.error(`   raw matched_responses: ${rawMatchedCount}`);
+                console.error(`   layered matched_responses: ${layeredMatchedCount}`);
+                console.error(`   layered primary_decision: ${layeredPrimary ? `rule_id=${layeredPrimary.rule_id}, action_type=${layeredPrimary.action_type}` : 'NULL'}`);
+                console.error(`   eligible after filter: ${matchedResponses.length} total → 0 eligible`);
+                if (matchedResponses.length > 0) {
+                  console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
+                  console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
+                }
+                console.error(`   generating SYSTEM_FALLBACK`);
                 
                 rawDecisionOutput.status = 'SYSTEM_FALLBACK';
                 rawDecisionOutput.primary_decision = {

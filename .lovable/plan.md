@@ -1,87 +1,90 @@
+# Pipeline Stability Fixes v7.4 — Confidence Gate Override + False Fallback Fix
 
-Audit verdict (from latest logs + code):
-1) Pipeline reaches symbolic path correctly:
-- Intent locked to STEM_DAMAGE
-- Symptoms enriched to 10+ codes (DEAD_HEART, STEM_BORING, BORER_DAMAGE, STEM_HOLES, etc.)
-- Canonical state built (SUGARCANE, TILLERING, DAS 85)
-- Prescription Gate override triggered (strong evidence)
-2) But final response still becomes:
-- rule_id=INVARIANT_FALLBACK
-- action_type=MONITOR_ONLY
-- “Insufficient information…”
-So the break is post-rule-evaluation, during decision recovery/formatting handoff.
+## v7.4 — Confidence Gate Override + INVARIANT_FALLBACK Elimination (2026-03-06)
 
-Critical bug(s) to fix:
-A) Index recovery reads matched responses with an unsafe fallback chain:
-- `rawDecisionOutput.matched_responses || rawDecisionOutput.layered_rule_result?.matched_responses || []`
-- If `matched_responses` is an empty array, it is truthy, so layered responses are ignored.
-- This can produce “no eligible responses” and force INVARIANT_FALLBACK even when rules fired.
+### Critical Bug Fixed: Rules matched but confidence gate blocked primary_decision
+- **Root Cause:** PrescriptionGate override (strong symptom evidence) was NOT wired to layered evaluator's confidence gate (0.60 threshold). Rules matched but primary_decision stayed null, causing INVARIANT_FALLBACK.
+- **Fix 1:** `layered-rule-evaluator.ts` — Added `prescriptionGateOverride` option; when true, relaxes threshold from 0.60 → 0.40
+- **Fix 2:** `orchestrator.ts` — Passes `prescriptionGateOverride: true` when prescriptionGate.allowed && data_confidence=LOW
+- **Fix 3:** `index.ts` — Fixed empty-array truthy bug in matched_responses fallback (empty `[]` was short-circuiting layered responses)
+- **Fix 4:** `index.ts` — Aligned eligibility predicate: now accepts `reason_text || knowledge_text` (matching layered evaluator)
+- **Fix 5:** `index.ts` — Added full diagnostic logging before INVARIANT_FALLBACK for future forensics
 
-B) Eligibility mismatch across modules:
-- `layered-rule-evaluator.ts` allows primary eligibility from action_text OR i18n_key OR reason_text OR knowledge_text.
-- `index.ts` recovery currently checks only action_text OR i18n_key.
-- Result: valid rule content can be dropped in index, causing false fallback.
+## v7.3 — Rich Field Propagation Fix (2026-03-06)
 
-C) Confidence-gate linkage drift:
-- Layered evaluator has static `CONFIDENCE_GATE_THRESHOLD=0.60`.
-- PrescriptionGate override (“LOW confidence overridden due strong symptom evidence”) is not explicitly wired into this threshold in layered primary selection.
-- This can nullify primary decision after safety override is already granted.
+### Critical Bug Fixed: Deterministic Builder Receiving Empty Data
+- **Root Cause:** DIAGNOSIS and BLOCKED push paths in `layered-rule-evaluator.ts` only propagated 4-9 fields instead of 50+
+- **Fix 1:** `layered-rule-evaluator.ts` — DIAGNOSIS phase `matched_responses.push()` now includes all 50+ rich agronomic fields (matching PRESCRIPTION path)
+- **Fix 2:** `layered-rule-evaluator.ts` — BLOCKED path `matched_responses.push()` now includes all 50+ rich agronomic fields
+- **Fix 3:** `layered-rule-evaluator.ts` — `PrimaryDecision` interface expanded from 16 to 65+ fields with full type declarations
+- **Fix 4:** `layered-rule-evaluator.ts` — PrimaryDecision assignment now propagates all fields without `(best as any)` casts
+- **Fix 5:** `orchestrator.ts` — OPTION_SELECTED `application_details` expanded from 7 to 55+ fields
+- **Fix 6:** `orchestrator.ts` — Recovery path `application_details` expanded from 15 to 55+ fields
 
-D) Symptom prioritization bug (diagnostic quality regression):
-- Canonical symptom shown as HOLES_IN_LEAVES while stem-borer-specific evidence exists.
-- This weakens pest-specific scoring/rule ranking in edge cases and contributes to low confidence behavior.
+### Data Flow After Fix
+```
+DB → loader → action_details (✅) → ALL push paths (✅) → PrimaryDecision (✅)
+→ orchestrator application_details (✅) → extractRichRuleData (✅)
+→ buildDeterministicResponse → structured sections with real data
+```
 
-Implementation plan (production hotfix + hardening):
-Phase 1 — Stop false fallback immediately
-1. index.ts:
-- Replace matched response selection with strict helper:
-  - Use `rawDecisionOutput.matched_responses` only if `Array.isArray(...) && length > 0`
-  - Else use `rawDecisionOutput.layered_rule_result?.matched_responses` when non-empty.
-- Align eligibility predicate with layered evaluator:
-  - accept `action_text || i18n_key || reason_text || knowledge_text`.
-- Extend recovery to run for decision statuses beyond SUCCESS/PARTIAL (e.g. DIAGNOSIS_COMPLETE/OBSERVATION_PROVIDED), not only two statuses.
+## v7.2 — Deterministic Agronomic Response Hardening (2026-03-05)
 
-2. index.ts observability:
-- Add structured log block before INVARIANT_FALLBACK:
-  - status, primary decision fields, raw matched count, layered matched count, eligible count, first 5 rule_ids.
-- This makes future forensic debugging deterministic.
+### Module 1: Deterministic Builder Integration — DONE
+- **Files:** `llm-response-formatter.ts`, `deterministic-response-builder.ts`
+- `buildRecommendationSummary()` now calls `extractRichRuleData()` + `buildDeterministicResponse()` + `formatStructuredResponseForLLM()` when primary_decision has adequate rule content
+- `buildTemplateFallback()` TREATMENT mode also uses deterministic builder
+- Legacy manual prompt assembly retained as fallback only when rule content is inadequate
+- All agronomic content in LLM prompt now sourced from `decision_rules` columns
 
-Phase 2 — Restore confidence/prescription consistency
-3. layered-rule-evaluator.ts:
-- Introduce override-aware confidence gate:
-  - pass prescription override signal into evaluator options
-  - when override=true, relax pre-selection threshold (e.g. 0.60 → 0.40) per policy.
-- Log both base threshold and effective threshold for traceability.
+### Module 2: Dose Safety Validation — DONE
+- **File:** `deterministic-response-builder.ts`
+- `validateDosageSafety()`: Active ingredient caps via `MAX_SAFE_DOSES` (20 chemicals with CIB&RC limits)
+- Blocks dose if `totalPerHa > regulatory_max_dose` — returns safety warning instead
+- Dose converted acres→hectares for regulatory comparison
 
-4. orchestrator.ts → layered evaluator call:
-- Pass override context from PrescriptionGate result into `evaluateRulesLayered(...)`.
+### Module 3: PHI Harvest Proximity — DONE
+- `validatePHISafety()`: Blocks chemical treatment if `phi_days > days_to_harvest`
+- Supports ratoon crop cycle reduction
+- Returns `phi_blocked: true` with farmer-friendly instruction
 
-Phase 3 — Improve symbolic diagnosis quality
-5. canonical symptom prioritization:
-- Add ranked symptom selection for biotic stem damage:
-  - STEM_BORING_MARKS / DEAD_HEART / BORER_DAMAGE / STEM_HOLES outrank generic HOLES_IN_LEAVES.
-- Keep full observation set unchanged, but ensure primary symptom used for diagnosis is biologically specific.
+### Module 4: Environmental Condition Validation — DONE
+- `validateEnvironmentalConditions()`: Rain forecast vs `rain_delay_hours`, temperature range, wind speed
+- Spray blocked if rain expected within rain-free window
+- Temperature and wind warnings with timing guidance
 
-Phase 4 — Production-grade validation
-6. Add deterministic regression tests (edge function tests):
-- Case: “ऊसाच्या खोडात छिद्र पडली आहेत”, crop=SUGARCANE, stage=TILLERING, DAS~85.
-- Assertions:
-  - response must NOT use INVARIANT_FALLBACK
-  - primary_decision.rule_id != INVARIANT_FALLBACK
-  - matched_responses count > 0 at index recovery step
-  - response contains structured deterministic sections (problem/action/safety; dosage if confidence gate permits)
-  - no LLM-generated product/dosage outside rule data.
+### Module 5: Agronomic Safety Scoring — DONE
+- `computeSafetyScore()`: Composite 0-1 score (PHI 0.3, bee 0.2, regulatory 0.3, resistance 0.2)
+- Score < 0.5 → downgrades response to MONITOR (no product/dosage/cost)
+- Bee toxicity HIGH → mandatory evening-spray instruction
 
-7. Data validation SQL checks (read-only audit in deployment checklist):
-- confirm active sugarcane stem-borer rule rows have non-empty `action_type` + one of (`action_text`,`reason_text`,`knowledge_text`,`i18n_key`).
-- confirm stage_applicable includes TILLERING for relevant borer rules.
+### Module 6: Confidence-Based Response Gating — DONE
+- `response_decision: 'TREAT' | 'MONITOR' | 'CLARIFY'`
+- TREAT (≥0.70): Full recommendation with dosage, cost, ROI
+- MONITOR (0.50-0.69): Problem + monitoring only, no product
+- CLARIFY (<0.50): Request more observations, suppress all treatment
+- Dosage/cost/ROI sections suppressed in MONITOR and CLARIFY modes
 
-Files to update:
-- supabase/functions/ai-agriculture-chat/index.ts
-- supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts
-- supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
-- (tests) supabase/functions/ai-agriculture-chat/*_test.ts
+### Module 7: Category-Based Conflict Resolution — DONE
+- **File:** `layered-rule-evaluator.ts`
+- Added `CATEGORY_PRIORITY_MAP` pre-sort: SAFETY_GATE(100) > URGENT_ACTION(90) > TREATMENT(80) > NUTRIENT(60) > CULTURAL(40) > MONITOR(20)
+- Applied before `data_authority_rank` sort, only when category gap ≥ 20 points
+- Ensures safety rules always surface first
 
-Expected outcome after fix:
-- Same farmer query should resolve to a symbolic rule-backed recommendation path (or explicit CLARIFY if truly below threshold), not generic monitor fallback.
-- Decision output and displayed response will remain deterministic, database-sourced, and aligned with 2030 safety principles.
+### New Exports
+- `extractRichRuleData(primaryDecision, appDetails)`: Bridge from pipeline to builder
+- `validateDosageSafety()`, `validatePHISafety()`, `validateEnvironmentalConditions()`
+- `computeSafetyScore()`, `WeatherContext`, `CropContext` interfaces
+
+## Previous versions
+
+### v7.1 — Table Audit (see git history)
+- Dropped orphaned `intent_observation_mapping_v2`
+- Confirmed `intent_observation_mapping` (v1) as authoritative
+
+### v7.0 — Forensic Audit Fixes (see git history)
+- BUG-1,3,4,5,6,7 fixes
+- Safety gate rule exclusion, hardcoded text removal, token optimization
+
+### v6.0-6.2 — Deep Forensic Audit (see git history)
+- FIX 20-36: Rule unblocking, SSOT data alignment, translation fixes
