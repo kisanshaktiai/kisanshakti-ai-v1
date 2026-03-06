@@ -93,7 +93,93 @@ function cleanExpiredInflight(): void {
   }
 }
 
-// Initialize orchestrator singleton
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCTION FIX: Rich Application Details Builder
+// Ensures ALL 50+ agronomic fields from decision_rules propagate through
+// recovery paths to the deterministic response builder.
+// Without this, extractRichRuleData() in llm-response-formatter.ts receives
+// empty fields and the deterministic builder produces skeleton responses.
+// ═══════════════════════════════════════════════════════════════════════════
+function buildRichApplicationDetails(source: any, productName: string | null, productType: string | null): Record<string, any> {
+  return {
+    // Identity
+    product_name: productName,
+    product_type: productType,
+    rule_id: source.rule_id,
+    
+    // Narrative
+    action_text: source.action_text || null,
+    reason_text: source.reason_text || null,
+    knowledge_text: source.knowledge_text || null,
+    i18n_key: source.i18n_key || null,
+    decision_trace_template: source.decision_trace_template || null,
+    cause: source.cause || null,
+    
+    // Product & Dosage
+    active_ingredient: source.active_ingredient || null,
+    dosage_per_acre: source.dosage_per_acre || null,
+    water_volume_per_acre: source.water_volume_per_acre || null,
+    application_method: source.application_method || null,
+    target_pest_stage: source.target_pest_stage || null,
+    chemical_class: source.chemical_class || null,
+    mode_of_action: source.mode_of_action || null,
+    resistance_group: source.resistance_group || null,
+    treatment_type: source.treatment_type || null,
+    
+    // Safety
+    phi_days: source.phi_days || null,
+    reentry_interval_hours: source.reentry_interval_hours || null,
+    bee_toxicity: source.bee_toxicity || null,
+    aquatic_toxicity: source.aquatic_toxicity || null,
+    farmer_safety_level: source.farmer_safety_level || null,
+    regulatory_status: source.regulatory_status || null,
+    
+    // IPM / Organic
+    organic_alternative: source.organic_alternative || null,
+    biological_group: source.biological_group || null,
+    ipm_level: source.ipm_level || null,
+    
+    // Cost
+    material_cost_per_acre_min: source.material_cost_per_acre_min || null,
+    material_cost_per_acre_max: source.material_cost_per_acre_max || null,
+    labor_cost_per_acre_min: source.labor_cost_per_acre_min || null,
+    labor_cost_per_acre_max: source.labor_cost_per_acre_max || null,
+    labor_hours_per_acre: source.labor_hours_per_acre || null,
+    equipment_required: source.equipment_required || null,
+    equipment_cost_per_acre: source.equipment_cost_per_acre || null,
+    total_cost_estimated: source.total_cost_estimated || null,
+    
+    // ROI
+    roi_yield_gain_pct: source.roi_yield_gain_pct || null,
+    roi_cost_saved_min: source.roi_cost_saved_min || null,
+    roi_cost_saved_max: source.roi_cost_saved_max || null,
+    roi_net_score: source.roi_net_score || null,
+    roi_confidence: source.roi_confidence || null,
+    
+    // Monitoring
+    success_indicators: source.success_indicators || null,
+    failure_indicators: source.failure_indicators || null,
+    
+    // Environmental
+    min_temperature: source.min_temperature || null,
+    max_temperature: source.max_temperature || null,
+    max_wind_speed: source.max_wind_speed || null,
+    rain_delay_hours: source.rain_delay_hours || null,
+    weather_dependency: source.weather_dependency || null,
+    
+    // Scientific Reference
+    scientific_source: source.scientific_source || null,
+    scientific_basis: source.scientific_basis || null,
+    icar_package_ref: source.icar_package_ref || null,
+    university_source: source.university_source || null,
+    
+    // Metadata
+    risk_level: source.risk_level || null,
+    response_severity: source.response_severity || null,
+    data_authority_rank: source.data_authority_rank || null,
+  };
+}
+
 let orchestrator: AIAgentOrchestrator | null = null;
 
 function getOrchestrator(): AIAgentOrchestrator {
@@ -652,27 +738,21 @@ serve(async (req) => {
               target: {},
               urgency: 'WITHIN_24H',
               priority: layeredPrimaryDecision.priority,
+              // SSOT: Propagate ledger-derived confidence
+              weighted_confidence: layeredPrimaryDecision.weighted_confidence,
+              normalized_score: layeredPrimaryDecision.normalized_score,
               timing: {
                 recommended_start: new Date().toISOString(),
                 recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                 weather_dependency: false,
                 reason: 'Recovered from layered_rule_result.primary_decision'
               },
-              application_details: {
-                product_name: recoveredProductName,
-                product_type: recoveredProductType,
-                // SSOT: Language-independent response fields only
-                action_text: layeredPrimaryDecision.action_text,
-                reason_text: layeredPrimaryDecision.reason_text,
-                knowledge_text: layeredPrimaryDecision.knowledge_text,
-                i18n_key: layeredPrimaryDecision.i18n_key,
-                decision_trace_template: layeredPrimaryDecision.decision_trace_template,
-                rule_id: layeredPrimaryDecision.rule_id
-              },
+              application_details: buildRichApplicationDetails(layeredPrimaryDecision, recoveredProductName, recoveredProductType),
               expected_outcomes: {
-                efficacy_percent: 75,
+                efficacy_percent: layeredPrimaryDecision.weighted_confidence 
+                  ? Math.round(layeredPrimaryDecision.weighted_confidence * 100) : 75,
                 time_to_visible_effect_days: '3-5',
-                success_indicators: []
+                success_indicators: layeredPrimaryDecision.success_indicators || []
               }
             };
             
@@ -702,24 +782,20 @@ serve(async (req) => {
                 specific_action: primaryMatchedResponse.action_type,
                 target: {},
                 urgency: 'WITHIN_24H',
+                priority: primaryMatchedResponse.priority,
+                weighted_confidence: primaryMatchedResponse.weighted_confidence,
                 timing: {
                   recommended_start: new Date().toISOString(),
                   recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                   weather_dependency: false,
                   reason: 'Recovered from primary_matched_response'
                 },
-                application_details: {
-                  product_name: primaryMatchedResponse.product_name || null,
-                  product_type: primaryMatchedResponse.product_type || null,
-                  action_text: primaryMatchedResponse.action_text,
-                  reason_text: primaryMatchedResponse.reason_text,
-                  knowledge_text: primaryMatchedResponse.knowledge_text,
-                  rule_id: primaryMatchedResponse.rule_id
-                },
+                application_details: buildRichApplicationDetails(primaryMatchedResponse, primaryMatchedResponse.product_name || null, primaryMatchedResponse.product_type || null),
                 expected_outcomes: {
-                  efficacy_percent: 75,
+                  efficacy_percent: primaryMatchedResponse.weighted_confidence 
+                    ? Math.round(primaryMatchedResponse.weighted_confidence * 100) : 75,
                   time_to_visible_effect_days: '3-5',
-                  success_indicators: []
+                  success_indicators: primaryMatchedResponse.success_indicators || []
                 }
               };
               
@@ -750,27 +826,19 @@ serve(async (req) => {
                   target: {},
                   urgency: 'WITHIN_24H',
                   priority: firstMatch.priority,
+                  weighted_confidence: firstMatch.weighted_confidence,
                   timing: {
                     recommended_start: new Date().toISOString(),
                     recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                     weather_dependency: false,
                     reason: 'Recovered from matched responses'
                   },
-                  application_details: {
-                    product_name: firstMatch.product_name || null,
-                    product_type: firstMatch.product_type || null,
-                    // SSOT: Language-independent response fields only
-                    action_text: firstMatch.action_text,
-                    reason_text: firstMatch.reason_text,
-                    knowledge_text: firstMatch.knowledge_text,
-                    i18n_key: firstMatch.i18n_key,
-                    decision_trace_template: firstMatch.decision_trace_template,
-                    rule_id: firstMatch.rule_id
-                  },
+                  application_details: buildRichApplicationDetails(firstMatch, firstMatch.product_name || null, firstMatch.product_type || null),
                   expected_outcomes: {
-                    efficacy_percent: 75,
+                    efficacy_percent: firstMatch.weighted_confidence 
+                      ? Math.round(firstMatch.weighted_confidence * 100) : 75,
                     time_to_visible_effect_days: '3-5',
-                    success_indicators: []
+                    success_indicators: firstMatch.success_indicators || []
                   }
                 };
                 
