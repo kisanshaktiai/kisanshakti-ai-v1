@@ -1,4 +1,22 @@
-# Pipeline Stability Fixes v7.2 — Deterministic Response System Hardening
+# Pipeline Stability Fixes v7.3 — Data Propagation Pipeline Fix
+
+## v7.3 — Rich Field Propagation Fix (2026-03-06)
+
+### Critical Bug Fixed: Deterministic Builder Receiving Empty Data
+- **Root Cause:** DIAGNOSIS and BLOCKED push paths in `layered-rule-evaluator.ts` only propagated 4-9 fields instead of 50+
+- **Fix 1:** `layered-rule-evaluator.ts` — DIAGNOSIS phase `matched_responses.push()` now includes all 50+ rich agronomic fields (matching PRESCRIPTION path)
+- **Fix 2:** `layered-rule-evaluator.ts` — BLOCKED path `matched_responses.push()` now includes all 50+ rich agronomic fields
+- **Fix 3:** `layered-rule-evaluator.ts` — `PrimaryDecision` interface expanded from 16 to 65+ fields with full type declarations
+- **Fix 4:** `layered-rule-evaluator.ts` — PrimaryDecision assignment now propagates all fields without `(best as any)` casts
+- **Fix 5:** `orchestrator.ts` — OPTION_SELECTED `application_details` expanded from 7 to 55+ fields
+- **Fix 6:** `orchestrator.ts` — Recovery path `application_details` expanded from 15 to 55+ fields
+
+### Data Flow After Fix
+```
+DB → loader → action_details (✅) → ALL push paths (✅) → PrimaryDecision (✅)
+→ orchestrator application_details (✅) → extractRichRuleData (✅)
+→ buildDeterministicResponse → structured sections with real data
+```
 
 ## v7.2 — Deterministic Agronomic Response Hardening (2026-03-05)
 
