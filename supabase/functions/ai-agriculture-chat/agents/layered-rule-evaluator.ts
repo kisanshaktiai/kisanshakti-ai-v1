@@ -412,6 +412,9 @@ export function evaluateRulesLayered(
     observedPestCount?: number;
     recentTreatments?: { resistance_group: string; date: string }[];
     traceId?: string;
+    /** When PrescriptionGate overrides LOW confidence due to strong symptom evidence,
+     *  this flag relaxes the pre-selection confidence gate from 0.60 → 0.40 */
+    prescriptionGateOverride?: boolean;
   }
 ): LayeredRuleResult {
   // PHASE-16: Safe initialization - prevent undefined errors
