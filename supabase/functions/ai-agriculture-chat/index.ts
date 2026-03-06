@@ -851,8 +851,21 @@ serve(async (req) => {
                 console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
               } else {
                 // PRIORITY 4: No eligible responses - generate system fallback
-                console.error(`🚨 [${traceId}] No eligible responses found - generating SYSTEM_FALLBACK`);
-                console.error(`   matched_responses count: ${matchedResponses?.length || 0}`);
+                // PRODUCTION OBSERVABILITY: Log full diagnostic context before fallback
+                const rawMatchedCount = Array.isArray(rawDecisionOutput.matched_responses) ? rawDecisionOutput.matched_responses.length : 0;
+                const layeredMatchedCount = Array.isArray(rawDecisionOutput.layered_rule_result?.matched_responses) ? rawDecisionOutput.layered_rule_result.matched_responses.length : 0;
+                const layeredPrimary = rawDecisionOutput.layered_rule_result?.primary_decision;
+                console.error(`🚨 [${traceId}] INVARIANT_FALLBACK DIAGNOSTIC:`);
+                console.error(`   status: ${rawDecisionOutput.status}`);
+                console.error(`   raw matched_responses: ${rawMatchedCount}`);
+                console.error(`   layered matched_responses: ${layeredMatchedCount}`);
+                console.error(`   layered primary_decision: ${layeredPrimary ? `rule_id=${layeredPrimary.rule_id}, action_type=${layeredPrimary.action_type}` : 'NULL'}`);
+                console.error(`   eligible after filter: ${matchedResponses.length} total → 0 eligible`);
+                if (matchedResponses.length > 0) {
+                  console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
+                  console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
+                }
+                console.error(`   generating SYSTEM_FALLBACK`);
                 
                 rawDecisionOutput.status = 'SYSTEM_FALLBACK';
                 rawDecisionOutput.primary_decision = {
