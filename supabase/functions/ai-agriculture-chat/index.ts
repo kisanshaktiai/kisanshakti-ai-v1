@@ -696,24 +696,20 @@ serve(async (req) => {
                 specific_action: primaryMatchedResponse.action_type,
                 target: {},
                 urgency: 'WITHIN_24H',
+                priority: primaryMatchedResponse.priority,
+                weighted_confidence: primaryMatchedResponse.weighted_confidence,
                 timing: {
                   recommended_start: new Date().toISOString(),
                   recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                   weather_dependency: false,
                   reason: 'Recovered from primary_matched_response'
                 },
-                application_details: {
-                  product_name: primaryMatchedResponse.product_name || null,
-                  product_type: primaryMatchedResponse.product_type || null,
-                  action_text: primaryMatchedResponse.action_text,
-                  reason_text: primaryMatchedResponse.reason_text,
-                  knowledge_text: primaryMatchedResponse.knowledge_text,
-                  rule_id: primaryMatchedResponse.rule_id
-                },
+                application_details: buildRichApplicationDetails(primaryMatchedResponse, primaryMatchedResponse.product_name || null, primaryMatchedResponse.product_type || null),
                 expected_outcomes: {
-                  efficacy_percent: 75,
+                  efficacy_percent: primaryMatchedResponse.weighted_confidence 
+                    ? Math.round(primaryMatchedResponse.weighted_confidence * 100) : 75,
                   time_to_visible_effect_days: '3-5',
-                  success_indicators: []
+                  success_indicators: primaryMatchedResponse.success_indicators || []
                 }
               };
               
