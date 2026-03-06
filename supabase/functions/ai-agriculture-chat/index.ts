@@ -93,7 +93,93 @@ function cleanExpiredInflight(): void {
   }
 }
 
-// Initialize orchestrator singleton
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCTION FIX: Rich Application Details Builder
+// Ensures ALL 50+ agronomic fields from decision_rules propagate through
+// recovery paths to the deterministic response builder.
+// Without this, extractRichRuleData() in llm-response-formatter.ts receives
+// empty fields and the deterministic builder produces skeleton responses.
+// ═══════════════════════════════════════════════════════════════════════════
+function buildRichApplicationDetails(source: any, productName: string | null, productType: string | null): Record<string, any> {
+  return {
+    // Identity
+    product_name: productName,
+    product_type: productType,
+    rule_id: source.rule_id,
+    
+    // Narrative
+    action_text: source.action_text || null,
+    reason_text: source.reason_text || null,
+    knowledge_text: source.knowledge_text || null,
+    i18n_key: source.i18n_key || null,
+    decision_trace_template: source.decision_trace_template || null,
+    cause: source.cause || null,
+    
+    // Product & Dosage
+    active_ingredient: source.active_ingredient || null,
+    dosage_per_acre: source.dosage_per_acre || null,
+    water_volume_per_acre: source.water_volume_per_acre || null,
+    application_method: source.application_method || null,
+    target_pest_stage: source.target_pest_stage || null,
+    chemical_class: source.chemical_class || null,
+    mode_of_action: source.mode_of_action || null,
+    resistance_group: source.resistance_group || null,
+    treatment_type: source.treatment_type || null,
+    
+    // Safety
+    phi_days: source.phi_days || null,
+    reentry_interval_hours: source.reentry_interval_hours || null,
+    bee_toxicity: source.bee_toxicity || null,
+    aquatic_toxicity: source.aquatic_toxicity || null,
+    farmer_safety_level: source.farmer_safety_level || null,
+    regulatory_status: source.regulatory_status || null,
+    
+    // IPM / Organic
+    organic_alternative: source.organic_alternative || null,
+    biological_group: source.biological_group || null,
+    ipm_level: source.ipm_level || null,
+    
+    // Cost
+    material_cost_per_acre_min: source.material_cost_per_acre_min || null,
+    material_cost_per_acre_max: source.material_cost_per_acre_max || null,
+    labor_cost_per_acre_min: source.labor_cost_per_acre_min || null,
+    labor_cost_per_acre_max: source.labor_cost_per_acre_max || null,
+    labor_hours_per_acre: source.labor_hours_per_acre || null,
+    equipment_required: source.equipment_required || null,
+    equipment_cost_per_acre: source.equipment_cost_per_acre || null,
+    total_cost_estimated: source.total_cost_estimated || null,
+    
+    // ROI
+    roi_yield_gain_pct: source.roi_yield_gain_pct || null,
+    roi_cost_saved_min: source.roi_cost_saved_min || null,
+    roi_cost_saved_max: source.roi_cost_saved_max || null,
+    roi_net_score: source.roi_net_score || null,
+    roi_confidence: source.roi_confidence || null,
+    
+    // Monitoring
+    success_indicators: source.success_indicators || null,
+    failure_indicators: source.failure_indicators || null,
+    
+    // Environmental
+    min_temperature: source.min_temperature || null,
+    max_temperature: source.max_temperature || null,
+    max_wind_speed: source.max_wind_speed || null,
+    rain_delay_hours: source.rain_delay_hours || null,
+    weather_dependency: source.weather_dependency || null,
+    
+    // Scientific Reference
+    scientific_source: source.scientific_source || null,
+    scientific_basis: source.scientific_basis || null,
+    icar_package_ref: source.icar_package_ref || null,
+    university_source: source.university_source || null,
+    
+    // Metadata
+    risk_level: source.risk_level || null,
+    response_severity: source.response_severity || null,
+    data_authority_rank: source.data_authority_rank || null,
+  };
+}
+
 let orchestrator: AIAgentOrchestrator | null = null;
 
 function getOrchestrator(): AIAgentOrchestrator {
