@@ -5098,7 +5098,16 @@ export class AIAgentOrchestrator {
           synthetic_observations: syntheticObsCodes
         };
         
-        layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any);
+        // PRODUCTION FIX: Pass PrescriptionGate override signal to confidence gate
+        // When prescriptionGate.allowed=true despite LOW confidence, this relaxes
+        // the evaluator's pre-selection threshold (0.60→0.40) so rules can fire
+        const isPrescriptionGateOverride = prescriptionGate.allowed && 
+          canonicalState.data_confidence === 'LOW';
+        
+        layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
+          prescriptionGateOverride: isPrescriptionGateOverride,
+          traceId: traceId
+        });
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
         
         // PHASE-16: Safe array access with null checks
