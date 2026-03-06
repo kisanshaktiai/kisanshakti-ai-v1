@@ -1,4 +1,14 @@
-# Pipeline Stability Fixes v7.3 — Data Propagation Pipeline Fix
+# Pipeline Stability Fixes v7.4 — Confidence Gate Override + False Fallback Fix
+
+## v7.4 — Confidence Gate Override + INVARIANT_FALLBACK Elimination (2026-03-06)
+
+### Critical Bug Fixed: Rules matched but confidence gate blocked primary_decision
+- **Root Cause:** PrescriptionGate override (strong symptom evidence) was NOT wired to layered evaluator's confidence gate (0.60 threshold). Rules matched but primary_decision stayed null, causing INVARIANT_FALLBACK.
+- **Fix 1:** `layered-rule-evaluator.ts` — Added `prescriptionGateOverride` option; when true, relaxes threshold from 0.60 → 0.40
+- **Fix 2:** `orchestrator.ts` — Passes `prescriptionGateOverride: true` when prescriptionGate.allowed && data_confidence=LOW
+- **Fix 3:** `index.ts` — Fixed empty-array truthy bug in matched_responses fallback (empty `[]` was short-circuiting layered responses)
+- **Fix 4:** `index.ts` — Aligned eligibility predicate: now accepts `reason_text || knowledge_text` (matching layered evaluator)
+- **Fix 5:** `index.ts` — Added full diagnostic logging before INVARIANT_FALLBACK for future forensics
 
 ## v7.3 — Rich Field Propagation Fix (2026-03-06)
 
