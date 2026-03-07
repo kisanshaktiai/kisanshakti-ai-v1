@@ -12809,6 +12809,45 @@ export type Database = {
         }
         Relationships: []
       }
+      decision_rules_backup_condition_code_20260307: {
+        Row: {
+          action_type: string | null
+          category: string | null
+          condition_code: string | null
+          rule_id: string | null
+          stage_applicable: string[] | null
+        }
+        Insert: {
+          action_type?: string | null
+          category?: string | null
+          condition_code?: string | null
+          rule_id?: string | null
+          stage_applicable?: string[] | null
+        }
+        Update: {
+          action_type?: string | null
+          category?: string | null
+          condition_code?: string | null
+          rule_id?: string | null
+          stage_applicable?: string[] | null
+        }
+        Relationships: []
+      }
+      decision_rules_backup_conditions_json: {
+        Row: {
+          conditions_json: Json | null
+          rule_id: string | null
+        }
+        Insert: {
+          conditions_json?: Json | null
+          rule_id?: string | null
+        }
+        Update: {
+          conditions_json?: Json | null
+          rule_id?: string | null
+        }
+        Relationships: []
+      }
       decision_rules_backup_final_2026: {
         Row: {
           action_text: string | null
