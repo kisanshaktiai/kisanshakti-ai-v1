@@ -12848,6 +12848,27 @@ export type Database = {
         }
         Relationships: []
       }
+      decision_rules_backup_conditions_json_migration: {
+        Row: {
+          category: string | null
+          conditions_json: Json | null
+          is_active: boolean | null
+          rule_id: string | null
+        }
+        Insert: {
+          category?: string | null
+          conditions_json?: Json | null
+          is_active?: boolean | null
+          rule_id?: string | null
+        }
+        Update: {
+          category?: string | null
+          conditions_json?: Json | null
+          is_active?: boolean | null
+          rule_id?: string | null
+        }
+        Relationships: []
+      }
       decision_rules_backup_final_2026: {
         Row: {
           action_text: string | null
