@@ -1983,7 +1983,7 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
       console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);
       
       return {
-        formatted_response: deterministicText,
+        formatted_response: sanitizeFarmerResponse(deterministicText),
         confidence: structuredResponse.confidence,
         source: 'TEMPLATE_FALLBACK',
         processing_time_ms: Date.now() - startTime,
