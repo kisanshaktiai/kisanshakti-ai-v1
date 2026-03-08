@@ -176,6 +176,63 @@ const PEST_TRANSLATIONS: Record<string, Record<string, string>> = {};
 const DISEASE_TRANSLATIONS: Record<string, Record<string, string>> = {};
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RESPONSE SANITIZATION (MODULE SCOPE - exported for use in index.ts fallbacks)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Known agrochemical product names that should NOT be stripped even though
+ * they may appear in ALL_CAPS. Add to this list as needed.
+ */
+const ALLOWED_PRODUCT_NAMES = new Set([
+  'CHLORPYRIFOS', 'FIPRONIL', 'IMIDACLOPRID', 'THIAMETHOXAM', 'CARBENDAZIM',
+  'MANCOZEB', 'PROPICONAZOLE', 'HEXACONAZOLE', 'TRICHODERMA', 'BEAUVERIA',
+  'METARHIZIUM', 'PSEUDOMONAS', 'AZADIRACHTIN', 'NEEM', 'SPINOSAD',
+  'EMAMECTIN', 'CYPERMETHRIN', 'DELTAMETHRIN', 'LAMBDA', 'ACEPHATE',
+  'DIMETHOATE', 'PROFENOFOS', 'QUINALPHOS', 'MONOCROTOPHOS', 'PHORATE',
+  'CARTAP', 'FLUBENDIAMIDE', 'CHLORANTRANILIPROLE', 'TRICHOGRAMMA',
+  'BACILLUS', 'NPV', 'ICAR', 'IPM', 'PHI', 'SC', 'EC', 'WP', 'SL', 'SP', 'WG',
+]);
+
+/**
+ * Sanitize LLM output to remove any leaked technical identifiers,
+ * monitoring codes, confidence scores, and internal metadata.
+ * Runs AFTER LLM call, BEFORE returning to farmer.
+ */
+export function sanitizeFarmerResponse(text: string): string {
+  if (!text) return text;
+  
+  let sanitized = text;
+  
+  // 1. Strip ALL_CAPS_UNDERSCORE patterns (≥2 words) that are NOT product names
+  sanitized = sanitized.replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){2,}\b/g, (match) => {
+    const firstWord = match.split('_')[0];
+    if (ALLOWED_PRODUCT_NAMES.has(firstWord)) return match;
+    console.warn(`🧹 [SANITIZE] Stripped technical code from farmer response: ${match}`);
+    return '';
+  });
+  
+  // 2. Strip rule_id patterns (e.g., SC_PEST_TOP_BORER_004)
+  sanitized = sanitized.replace(/\b[A-Z]{2,4}_[A-Z]+_[A-Z_]+_\d{2,4}\b/g, (match) => {
+    console.warn(`🧹 [SANITIZE] Stripped rule_id from farmer response: ${match}`);
+    return '';
+  });
+  
+  // 3. Strip "X% Confidence" patterns
+  sanitized = sanitized.replace(/\d{1,3}%\s*(?:Confidence|confidence|विश्वास|विश्वसनीयता)/g, '');
+  
+  // 4. Strip internal metadata labels
+  sanitized = sanitized.replace(/\b(?:rule_id|decision_id|ipm_level|data_authority_rank)\s*[:=]\s*\S+/gi, '');
+  
+  // 5. Strip "Priority: HIGH" / "IPM Level: LEVEL_3" patterns
+  sanitized = sanitized.replace(/\b(?:Priority|IPM Level)\s*:\s*\S+/g, '');
+  
+  // 6. Clean up multiple spaces/newlines left by removals
+  sanitized = sanitized.replace(/  +/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  
+  return sanitized;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN LLM FORMATTER FUNCTION - RENDER-ONLY MODE (WITH MODE-DRIVEN FALLBACK)
 // ═══════════════════════════════════════════════════════════════════════════
 
