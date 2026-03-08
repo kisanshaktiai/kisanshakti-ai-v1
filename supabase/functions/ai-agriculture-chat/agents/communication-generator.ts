@@ -1392,11 +1392,11 @@ export class CommunicationGenerator {
     profile: FarmerProfile,
     questionClassification?: QuestionClassification
   ): any {
-    const greeting = GREETINGS[lang][0];
+    const greeting = (GREETINGS[lang] || GREETINGS['en'])?.[0] || 'Hello,';
     const empathyLine = profile.emotional_state !== 'NEUTRAL' 
-      ? EMPATHY_LINES[profile.emotional_state][lang] 
+      ? (EMPATHY_LINES[profile.emotional_state]?.[lang] || EMPATHY_LINES[profile.emotional_state]?.['en'] || '')
       : undefined;
-    const closing = CLOSINGS[lang][0];
+    const closing = (CLOSINGS[lang] || CLOSINGS['en'])?.[0] || 'Best wishes! 🌾';
     
     // Adjust closing based on response style
     const adjustedClosing = questionClassification?.response_style === 'concise'
