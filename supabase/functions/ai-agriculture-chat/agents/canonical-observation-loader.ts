@@ -165,19 +165,18 @@ export async function getObservationKeyLabels(key: string, language: string = 'e
   
   if (!primaryLabel && !enLabel) return null;
   
-  return {
+  const result: any = {
     key: upperKey,
     label_en: enLabel?.display_text || formatCodeFallback(key, 'en'),
-    [`label_${language}`]: primaryLabel?.display_text || formatCodeFallback(key, language),
     label: primaryLabel?.display_text || enLabel?.display_text || formatCodeFallback(key, language),
     category: (enLabel || primaryLabel)?.icon || 'unknown',
     stage: [],
     visual_priority: 99
-  } as ObservationKeyWithLabels;
-    category: en?.icon || 'unknown',
-    stage: [],
-    visual_priority: 99
   };
+  if (language !== 'en') {
+    result[`label_${language}`] = primaryLabel?.display_text || formatCodeFallback(key, language);
+  }
+  return result as ObservationKeyWithLabels;
 }
 
 /**
