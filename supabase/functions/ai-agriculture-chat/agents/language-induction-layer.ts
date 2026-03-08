@@ -5,16 +5,16 @@
  * @deprecated Use semantic-extractor.ts for language understanding
  */
 
-// Re-export enums/types for backward compatibility
+// Re-export enums for backward compatibility
 export {
   CanonicalSymptomSymbol,
   CanonicalCropSymbol,
   CanonicalAffectedPartSymbol,
   CanonicalSeveritySymbol,
   CanonicalDistributionSymbol,
-  type InducedSymbol,
-  type LanguageInductionResult
 } from './symptom-enums.ts';
+
+export type { InducedSymbol, LanguageInductionResult } from './symptom-enums.ts';
 
 import {
   CanonicalSymptomSymbol,
@@ -22,9 +22,9 @@ import {
   CanonicalAffectedPartSymbol,
   CanonicalSeveritySymbol,
   CanonicalDistributionSymbol,
-  type InducedSymbol,
-  type LanguageInductionResult
 } from './symptom-enums.ts';
+
+import type { InducedSymbol, LanguageInductionResult } from './symptom-enums.ts';
 
 export const LANGUAGE_INDUCTION_VERSION = '3.1.0';
 

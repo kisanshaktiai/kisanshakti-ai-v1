@@ -18,7 +18,7 @@ import {
   CanonicalCropSymbol,
   CanonicalAffectedPartSymbol,
   CanonicalSeveritySymbol,
-  CanonicalDistributionSymbol
+  CanonicalDistributionSymbol,
 } from '../agents/symptom-enums.ts';
 
 export const MAPPER_VERSION = '1.0.0';
