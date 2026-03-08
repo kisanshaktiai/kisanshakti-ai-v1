@@ -1,4 +1,23 @@
-# Pipeline Stability Fixes v7.5 — Category Routing + Confidence Gate Override
+# Pipeline Stability Fixes v7.6 — Condition Ledger Unblocking
+
+## v7.6 — Condition Ledger Boolean Gate Fix (2026-03-08)
+
+### Critical Root Cause Fixed: Domain-specific boolean keys blocking ALL pest treatment rules
+
+- **Root Cause:** `conditions_json` keys like `egg_masses_visible: true`, `pink_larvae_inside: true`, `trash_mulch: true`, `bore_holes_at_nodes: true` fell through to the unrecognized-key handler in `loader.ts`. This handler treated them as `required: true` observation flags. Since NLU never extracts these exact codes, EVERY pest rule with such keys FAILED the strict ledger check, causing INVARIANT_FALLBACK ("Continue monitoring").
+
+- **Fix 1 (BUG 1):** `loader.ts` — Added 50+ domain-specific boolean keys to `CATEGORY_G_KEYS` (INFORMATIONAL, `required: false`). These are metadata annotations that duplicate what the `observations` array already captures.
+- **Fix 2 (BUG 1):** `loader.ts` — Changed unrecognized boolean key catch-all from `required: true, FAILED` → `required: false, SKIPPED_NO_DATA`. New/unknown DB keys can no longer kill rules.
+- **Fix 3 (BUG 4):** `loader.ts` — `etl_range` string values (e.g., `"8-10"`) now handled as `required: false` informational metadata instead of `required: true, UNEVALUABLE`.
+- **Fix 4:** `loader.ts` — Unknown string and numeric catch-all handlers changed to `required: false` to prevent any orphan condition key from blocking rule firing.
+- **Fix 5:** `loader.ts` — Final `UNEVALUABLE` catch-all changed to `required: false`.
+- **Alias Direction (BUG 3):** Verified already fixed — alias loader builds bidirectional map (`canonical→alias[]` AND `alias→canonical[]`).
+- **Translation (BUG 5):** Verified already hardened — `forceTranslateResponse` has 70+ phrase dictionary + 8s LLM fallback timeout.
+
+### Impact
+- All ~200 pest treatment rules with domain-specific boolean conditions are now REACHABLE
+- `etl_range` string rules (~54) no longer blocked
+- System should now produce RECOMMEND/TREAT responses instead of INVARIANT_FALLBACK for pest queries
 
 ## v7.5 — Rule Category Routing Fix (2026-03-06)
 
