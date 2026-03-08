@@ -679,17 +679,14 @@ async function translateClarificationOptions(
 
     // Fallback: avoid raw English leakage in non-English UI
     if (normalizedCode) {
-        // BUG-4 FIX: Language-agnostic generic fallback labels
-        // Localization happens via LLM narration, NOT hardcoded strings
-        const localizedFallback = `Observation option ${entry.idx + 1}`;
-        if (entry.isString) return localizedFallback;
-        return { ...(opt as any), label: localizedFallback };
-
+      // CRITICAL FIX: Humanize the code into readable text instead of 
+      // returning opaque "Observation option N" labels that are meaningless to farmers.
+      // The humanized form (e.g., "Gaps In Field") is still better than generic numbering.
       const humanized = normalizedCode
         .replace(/_/g, ' ')
         .toLowerCase()
         .split(' ')
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1))
         .join(' ');
       if (entry.isString) return humanized;
       return { ...(opt as any), label: humanized };
