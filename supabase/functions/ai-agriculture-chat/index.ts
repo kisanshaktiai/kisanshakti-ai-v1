@@ -3400,6 +3400,18 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
     // Product and dosage - with translated product name
     const productLine = dosage ? `${productName} @ ${dosage}` : productName;
     parts.push(productLine);
+
+    // PRODUCT MAPPING: Append market brand names
+    if (richData.active_ingredient && supabaseClient) {
+      try {
+        const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        const marketLine = formatMarketProducts(marketResult.products, lang);
+        if (marketLine) parts.push(marketLine);
+      } catch (err) {
+        console.warn(`[ProductMapping] Lookup failed in fallback builder:`, err);
+      }
+    }
     
     // Application method - translated
     if (method) {
