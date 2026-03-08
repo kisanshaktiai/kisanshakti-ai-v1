@@ -3832,7 +3832,7 @@ ${fallbackAdvice || 'Please ask your question again or provide more details.'}
 • Can you send a photo?`;
       
       return {
-        response: helpfulMessages[language] || helpfulMessages['en'],
+        response: helpfulMessage,
         sessionId: sessionId,
         language: language,
         responseTime: responseTime,
