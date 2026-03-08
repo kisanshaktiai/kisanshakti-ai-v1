@@ -934,13 +934,18 @@ export function evaluateConditionsJson(
 
     // ─── Category F: ETL Objects ───
     if (CATEGORY_F_KEYS.has(key)) {
-      if (input.pest_count === undefined || input.pest_count === null) {
-        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+      if (typeof condValue === 'string') {
+        // v7.6 BUG 4 FIX: etl_range as string (e.g., "8-10") is informational metadata
+        // Cannot be evaluated without pest_count — treat as non-blocking context
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      } else if (input.pest_count === undefined || input.pest_count === null) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       } else if (typeof condValue === 'object' && condValue !== null) {
         const etlResult = evaluateETLCondition(condValue, input.pest_count);
         ledger.push({ key, status: etlResult ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.pest_count, ruleValue: condValue });
       } else {
-        ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue });
+        // v7.6: Unknown ETL format — don't block the rule
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       }
       continue;
     }
