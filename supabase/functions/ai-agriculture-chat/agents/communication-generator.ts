@@ -620,14 +620,10 @@ export class CommunicationGenerator {
           `Add sticker/spreader`
         ]
       },
-      caution: safety.warnings.length > 0 ? {
-        mr: `⚠️ ${safety.warnings[0]}`,
-        hi: `⚠️ ${safety.warnings[0]}`,
-        en: `⚠️ ${safety.warnings[0]}`
-      } : {
-        mr: '⚠️ मिश्रण तयार केल्यानंतर 2 तासांत वापरा',
-        hi: '⚠️ मिश्रण बनाने के 2 घंटे के भीतर उपयोग करें',
-        en: '⚠️ Use within 2 hours of mixing'
+      caution: {
+        en: safety.warnings.length > 0 
+          ? `⚠️ ${safety.warnings[0]}` 
+          : '⚠️ Use within 2 hours of mixing'
       }
     };
   }
