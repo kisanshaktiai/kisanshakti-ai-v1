@@ -20,7 +20,7 @@ import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent
 import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
 
 // PHASE 5: Import LLM Response Formatter for natural language generation
-import { formatRecommendationsWithLLM } from './agents/llm-response-formatter.ts';
+import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
 
 // Legacy helpers removed - dead code cleanup
