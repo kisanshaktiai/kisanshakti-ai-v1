@@ -1568,14 +1568,15 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     }
   }
   
-  // Secondary actions (capped at 1)
+  // Secondary actions (capped at 1) — RULE ATOMICITY: strip product/dosage
   const secondary = decision.secondary_actions || decision.secondary_recommendations;
   if (secondary && secondary.length > 0) {
-    parts.push(`\n═══ ADDITIONAL RECOMMENDATION: ═══`);
+    parts.push(`\n═══ ADDITIONAL OBSERVATION: ═══`);
     const sec = secondary[0];
-    parts.push(`1. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
-    if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
-    if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
+    const secAction = (sec.action || sec.action_type || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
+    parts.push(`1. ${secAction} - ${sec.reason || 'Supporting observation'}`);
+    // REMOVED: sec.product_name and sec.dosage_per_acre — prevents cross-rule contamination
+    if (sec.success_indicators) parts.push(`   Monitor: ${Array.isArray(sec.success_indicators) ? sec.success_indicators.join(', ') : sec.success_indicators}`);
   }
   
   // Matched responses
