@@ -2944,16 +2944,14 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       
     case 'CLARIFICATION_QUESTION':
     case 'CLARIFICATION_NEEDED':
-      // Priority 1: question object with language-specific text
-      const questionText = lang === 'mr' ? (response.question?.text_mr || '') :
-                          lang === 'hi' ? (response.question?.text_hi || '') :
-                          (response.question?.text_en || '');
+      // Priority 1: question object with language-specific text (prefer lang, fallback to en)
+      const questionText = (response.question as any)?.[`text_${lang}`] || response.question?.text_en || '';
       if (questionText) return questionText;
       
       // Priority 2: communication.main_message.full_text (ZERO_CODE_GATE path)
       const commFullText = response.communication?.main_message?.full_text;
       if (commFullText) {
-        const commText = commFullText[lang] || commFullText['mr'] || commFullText['en'] || '';
+        const commText = commFullText[lang] || commFullText['en'] || '';
         if (commText) return commText;
       }
       
@@ -2967,21 +2965,14 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       return generateClarificationPrompt(response, lang);
       
     case 'PHOTO_REQUEST':
-      return lang === 'mr' ? (response.photo_instructions?.text_mr || '') :
-             lang === 'hi' ? (response.photo_instructions?.text_hi || '') :
-             (response.photo_instructions?.text_en || '');
+      return (response.photo_instructions as any)?.[`text_${lang}`] || response.photo_instructions?.text_en || '';
     case 'SAFETY_BLOCKED':
-      return lang === 'mr' ? (response.blocked_reason?.reason_mr || '') :
-             lang === 'hi' ? (response.blocked_reason?.reason_hi || '') :
-             (response.blocked_reason?.reason_en || '');
+      return (response.blocked_reason as any)?.[`reason_${lang}`] || response.blocked_reason?.reason_en || '';
     case 'ESCALATION_REQUIRED':
-      return lang === 'mr' ? (response.escalation?.message_mr || '') :
-             lang === 'hi' ? (response.escalation?.message_hi || '') :
-             (response.escalation?.message_en || '');
+      return (response.escalation as any)?.[`message_${lang}`] || response.escalation?.message_en || '';
     case 'LLM_RESPONSE':
       return response.llm_response || 
-             (response.escalation?.message_mr || '') ||
-             (response.escalation?.message_en || '');
+             response.escalation?.message_en || '';
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Handle SYSTEM_ERROR properly - provide helpful advice
