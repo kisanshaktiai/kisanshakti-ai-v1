@@ -1154,6 +1154,7 @@ Structure your response EXACTLY as:
 CRITICAL RULES:
 - Calculate TOTAL dosage = dosage_per_acre × farmer's land area (${input.land_context?.area_acres || '?'} acres)
 - Show calculated total, NOT per-acre rate
+- If RECOMMENDED_MARKET_PRODUCTS are provided, mention them as "बाजारात उपलब्ध: [product names]" so farmer knows what to buy
 - Use trade name farmer recognizes, put molecule in brackets
 - If dosage_per_acre is null/missing, say "मला अधिक माहिती हवी आहे"
 - NEVER invent products, dosages, or timing not in the data below`;
