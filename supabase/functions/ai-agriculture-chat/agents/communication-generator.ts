@@ -628,28 +628,9 @@ export class CommunicationGenerator {
     };
   }
   
-  private translateMixingStep(step: string, originalName: string, translatedName: string, lang: SupportedLanguage): string {
-    // Replace product name in step
-    let translated = step.replace(originalName, translatedName);
-    
-    // Simple translations for common terms
-    if (lang === 'mr') {
-      translated = translated
-        .replace(/Fill/gi, 'भरा')
-        .replace(/Add/gi, 'घाला')
-        .replace(/Mix/gi, 'मिक्स करा')
-        .replace(/water/gi, 'पाणी')
-        .replace(/tank/gi, 'टँक');
-    } else if (lang === 'hi') {
-      translated = translated
-        .replace(/Fill/gi, 'भरें')
-        .replace(/Add/gi, 'डालें')
-        .replace(/Mix/gi, 'मिलाएं')
-        .replace(/water/gi, 'पानी')
-        .replace(/tank/gi, 'टैंक');
-    }
-    
-    return translated;
+  private translateMixingStep(step: string, originalName: string, translatedName: string, _lang: SupportedLanguage): string {
+    // Replace product name in step — LLM narration layer translates at runtime
+    return step.replace(originalName, translatedName);
   }
   
   /**
