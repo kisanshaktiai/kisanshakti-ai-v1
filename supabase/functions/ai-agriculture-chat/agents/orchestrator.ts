@@ -2655,34 +2655,54 @@ export class AIAgentOrchestrator {
       }
       
       // PATCH 2: Stage context guard - ask farmer for crop stage if required
+      // v7.7 FIX: For DIAGNOSTIC intents (STEM_DAMAGE, LEAF_DAMAGE, PEST_OBSERVATION, etc.)
+      // the farmer is reporting visible damage. Blocking the entire pipeline for stage info
+      // is WRONG — the symptoms alone are sufficient for rule matching.
+      // Instead, use a default stage ('VEGETATIVE') and let the rule engine handle it.
+      const DIAGNOSTIC_INTENTS = new Set([
+        'STEM_DAMAGE', 'LEAF_DAMAGE', 'ROOT_DAMAGE', 'FRUIT_DAMAGE',
+        'PEST_OBSERVATION', 'DISEASE_OBSERVATION', 'REPORT_SYMPTOM',
+        'GROWTH_ANOMALY', 'WILTING_DRYING', 'YELLOWING', 'NUTRIENT_DEFICIENCY',
+        'BORER_DAMAGE', 'DEAD_HEART', 'INSECT_DAMAGE', 'FUNGAL_INFECTION',
+        'UNKNOWN_OBSERVATION'
+      ]);
+      
       if (intentMetaFromDB?.requires_stage_context && !landContext?.growth_stage) {
-        console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
-        agentsUsed.push('STAGE_CONTEXT_GUARD');
-        
-        const lang = options.language || 'mr';
-        const stageQuestion = lang === 'mr' 
-          ? 'तुमच्या पिकाची सध्याची अवस्था कोणती आहे? (उदा. रोपे, फुटवे, वाढ, फुलोरा, फळधारणा)'
-          : lang === 'hi'
-          ? 'आपकी फसल की वर्तमान अवस्था क्या है? (जैसे अंकुरण, कल्ले, बढ़वार, फूल, फल)'
-          : 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
-        
-        return {
-          type: 'CLARIFICATION_QUESTION',
-          session_id: sessionId,
-          question: {
-            text: stageQuestion,
-            options: [],
-            reason: 'STAGE_CONTEXT_REQUIRED'
-          },
-          metadata: {
-            confidence: intentConf,
-            safety_status: 'SAFE',
-            rules_applied: 0,
-            processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
-            trace_id: traceId
-          }
-        } as any;
+        if (DIAGNOSTIC_INTENTS.has(intentCode)) {
+          // v7.7: Diagnostic intents proceed with default stage — symptoms are actionable
+          console.log(`   ✅ [PATCH 2 v7.7] DIAGNOSTIC BYPASS: Intent ${intentCode} is diagnostic — proceeding with default stage VEGETATIVE`);
+          console.log(`   📋 Rationale: Farmer reported visible damage/symptoms. Stage is helpful but NOT required for diagnosis.`);
+          agentsUsed.push('STAGE_GUARD_DIAGNOSTIC_BYPASS');
+          // landContext will be null — rule engine uses 'VEGETATIVE' as default downstream
+        } else {
+          console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
+          agentsUsed.push('STAGE_CONTEXT_GUARD');
+          
+          const lang = options.language || 'mr';
+          const stageQuestion = lang === 'mr' 
+            ? 'तुमच्या पिकाची सध्याची अवस्था कोणती आहे? (उदा. रोपे, फुटवे, वाढ, फुलोरा, फळधारणा)'
+            : lang === 'hi'
+            ? 'आपकी फसल की वर्तमान अवस्था क्या है? (जैसे अंकुरण, कल्ले, बढ़वार, फूल, फल)'
+            : 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
+          
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: {
+              text: stageQuestion,
+              options: [],
+              reason: 'STAGE_CONTEXT_REQUIRED'
+            },
+            metadata: {
+              confidence: intentConf,
+              safety_status: 'SAFE',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              trace_id: traceId
+            }
+          } as any;
+        }
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -2975,7 +2995,48 @@ export class AIAgentOrchestrator {
         // crop_schedules is the ONLY authority for crop identification in land chat
         console.log('      ✅ PATCH 3: crop_schedules is authoritative - observation.crop will NOT override');
       } else {
-        console.log('      ⚠️ No CropContextAuthority available - general chat mode');
+        // v7.7 FIX: Infer crop from farmer message when no land context
+        // The farmer may explicitly mention the crop (e.g., "ऊसाच्या" = sugarcane)
+        const CROP_MENTION_PATTERNS: Record<string, RegExp> = {
+          'SUGARCANE': /ऊस|ऊसा|उस|गन्ना|गन्ने|sugarcane|cane/i,
+          'COTTON': /कापूस|कापस|कपास|cotton/i,
+          'SOYBEAN': /सोयाबीन|सोयबीन|soybean|soya/i,
+          'WHEAT': /गहू|गेहूं|गेहू|wheat/i,
+          'RICE': /भात|धान|चावल|rice|paddy/i,
+          'MAIZE': /मका|मक्का|maize|corn/i,
+          'ONION': /कांदा|प्याज|onion/i,
+          'TOMATO': /टोमॅटो|टमाटर|tomato/i,
+          'GRAPE': /द्राक्ष|अंगूर|grape/i,
+          'POMEGRANATE': /डाळिंब|अनार|pomegranate/i,
+          'TURMERIC': /हळद|हल्दी|turmeric/i,
+          'BANANA': /केळी|केला|banana/i,
+        };
+        
+        let inferredCrop: string | null = null;
+        for (const [cropCode, pattern] of Object.entries(CROP_MENTION_PATTERNS)) {
+          if (pattern.test(safeFarmerMessage)) {
+            inferredCrop = cropCode;
+            break;
+          }
+        }
+        
+        if (inferredCrop) {
+          console.log(`      🌾 [v7.7] CROP INFERRED FROM MESSAGE: ${inferredCrop}`);
+          cropContextAuthority = {
+            crop_name: inferredCrop,
+            growth_stage: 'VEGETATIVE', // Safe default for diagnostic intents
+            days_since_sowing: 60, // Reasonable default
+            source: 'farmer_message' as any
+          };
+          lockedCropContext = {
+            crop_name: inferredCrop,
+            growth_stage: 'VEGETATIVE',
+            days_since_sowing: 60
+          };
+          agentsUsed.push('CROP_INFERENCE_FROM_MESSAGE');
+        } else {
+          console.log('      ⚠️ No CropContextAuthority available - general chat mode');
+        }
       }
       
       // PHASE-8.1: Pass cropContext to ObservationKey mapper
@@ -4762,6 +4823,7 @@ export class AIAgentOrchestrator {
         });
         
         // STABILIZATION v4.0 ISSUE 2: Seal Crop Lock Leak via Induction Layer
+        // v7.7 FIX: Also use cropContextAuthority (from message inference) as fallback
         if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && inductionCrop !== 'UNKNOWN_CROP') {
           if (canonicalContext && canonicalContext.is_locked) {
             console.log(`   🔒 Crop locked from canonical context (${canonicalContext.crop_code}) -- ignoring induction crop: ${inductionCrop}`);
@@ -4769,6 +4831,15 @@ export class AIAgentOrchestrator {
           } else {
             console.log(`   📝 Enriching canonical state crop from induction: ${inductionCrop}`);
             canonicalState.crop_type = inductionCrop as any;
+          }
+        }
+        
+        // v7.7 FIX: If crop is STILL UNKNOWN, use cropContextAuthority from message inference
+        if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && cropContextAuthority?.crop_name) {
+          console.log(`   🌾 [v7.7] Enriching canonical state crop from cropContextAuthority: ${cropContextAuthority.crop_name}`);
+          canonicalState.crop_type = cropContextAuthority.crop_name as any;
+          if (!canonicalState.growth_stage || canonicalState.growth_stage === 'UNKNOWN') {
+            canonicalState.growth_stage = cropContextAuthority.growth_stage as any;
           }
         }
         
