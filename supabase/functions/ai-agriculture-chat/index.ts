@@ -33,6 +33,9 @@ import {
   getUrgencyTranslation
 } from './agents/communication-translation-dictionary.ts';
 
+// PRODUCT MAPPING: Ingredient → Market Product brand names
+import { lookupMarketProducts, formatMarketProducts } from './agents/market-product-lookup.ts';
+
 // SYMBOLIC BRAIN: Import validation from decision representation
 import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
 
