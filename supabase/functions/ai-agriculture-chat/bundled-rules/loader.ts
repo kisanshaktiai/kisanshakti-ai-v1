@@ -1061,8 +1061,8 @@ export function evaluateConditionsJson(
       continue;
     }
 
-    // Anything else
-    ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue });
+    // Anything else — v7.6: non-blocking to prevent orphan keys from killing rules
+    ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: false, ruleValue: condValue });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
