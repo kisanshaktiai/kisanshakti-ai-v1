@@ -1352,7 +1352,7 @@ serve(async (req) => {
             supabase
           ));
         } else {
-          responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+          responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
         }
       }
       } // End of STAGE_FALLBACK else block
