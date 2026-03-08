@@ -5122,8 +5122,9 @@ export class AIAgentOrchestrator {
           
           // Filter to pest management rules
           const pestRules = allRulesWithBundled.filter((r: any) => {
-            const cat = (r.category || r.canonical_group || r.required_observation_category || '').toLowerCase();
-            const condCode = (r.condition_code || '').toLowerCase();
+            // v7.9 FIX: Coerce to string to prevent .toLowerCase() crash on non-string fields
+            const cat = String(r.category || r.canonical_group || r.required_observation_category || '').toLowerCase();
+            const condCode = String(r.condition_code || '').toLowerCase();
             return PEST_RULE_CATEGORIES.has(cat) || 
                    condCode.includes('borer') || condCode.includes('pest') ||
                    condCode.includes('shoot') || condCode.includes('insect');
