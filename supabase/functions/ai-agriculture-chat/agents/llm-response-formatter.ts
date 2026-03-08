@@ -428,7 +428,7 @@ export async function formatRecommendationsWithLLM(
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   
   // Build structured recommendation data for LLM
-  const recommendationData = buildRecommendationSummary(input);
+  const recommendationData = await buildRecommendationSummary(input);
   
   // If no API keys available, use template fallback immediately
   if (!GEMINI_API_KEY && !OPENAI_API_KEY && !LOVABLE_API_KEY) {
