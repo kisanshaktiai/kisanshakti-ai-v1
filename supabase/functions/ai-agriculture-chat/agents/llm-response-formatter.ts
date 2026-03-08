@@ -1687,7 +1687,7 @@ async function callLovableAIWithTimeout(
 // TEMPLATE FALLBACK (when LLM unavailable) - MODE-DRIVEN
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLMFormatterOutput {
+async function buildTemplateFallback(input: LLMFormatterInput, startTime: number): Promise<LLMFormatterOutput> {
   const lang = input.language || 'mr';
   const decision = input.decision_output;
   
