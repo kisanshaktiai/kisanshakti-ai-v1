@@ -38,6 +38,9 @@ import {
   getCauseTranslation
 } from './communication-translation-dictionary.ts';
 
+// PRODUCT MAPPING: Ingredient → Market Product brand names
+import { lookupMarketProducts, formatMarketProducts } from './market-product-lookup.ts';
+
 // v2.0: Import deterministic response builder
 import {
   buildDeterministicResponse,
