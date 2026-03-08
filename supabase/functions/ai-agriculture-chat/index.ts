@@ -33,6 +33,9 @@ import {
   getUrgencyTranslation
 } from './agents/communication-translation-dictionary.ts';
 
+// PRODUCT MAPPING: Ingredient → Market Product brand names
+import { lookupMarketProducts, formatMarketProducts } from './agents/market-product-lookup.ts';
+
 // SYMBOLIC BRAIN: Import validation from decision representation
 import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
 
@@ -1323,12 +1326,13 @@ serve(async (req) => {
             console.log(`   📋 Falling back to template-based response for safety`);
             
             if (orchestratorResponse.decision_output?.primary_decision) {
-              responseContent = sanitizeFarmerResponse(buildFormattedRecommendationsList(
+              responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
                 orchestratorResponse.decision_output, 
-                detectedLanguage
+                detectedLanguage,
+                supabase
               ));
             } else {
-              responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+              responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
             }
           }
         } // End of prescription gate allowed block
@@ -1342,18 +1346,19 @@ serve(async (req) => {
         // instead of relying on potentially incomplete FarmerCommunication
         if (orchestratorResponse.decision_output?.primary_decision) {
           console.log(`   📋 Using buildFormattedRecommendationsList for complete response`);
-          responseContent = sanitizeFarmerResponse(buildFormattedRecommendationsList(
+          responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
             orchestratorResponse.decision_output, 
-            detectedLanguage
+            detectedLanguage,
+            supabase
           ));
         } else {
-          responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+          responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
         }
       }
       } // End of STAGE_FALLBACK else block
     } else {
       // Non-decision responses (clarification, photo request, etc.)
-      responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+      responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
     }
     
     // Verify language consistency
@@ -2910,7 +2915,7 @@ function generateActionDescription(primary: any, lang: string): string {
  * 4. Returns text suitable for ai_chat_messages.content field
  * 5. NEVER returns empty - always reflects decision brain output
  */
-function getResponseContent(response: OrchestratorResponse, language: string): string {
+async function getResponseContent(response: OrchestratorResponse, language: string): Promise<string> {
   const lang = language;
   console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
   console.log(`📝 [PostProcessor] Response assembly:`, {
@@ -2939,7 +2944,7 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       if (decisionOutput?.primary_decision || 
           (decisionOutput?.secondary_actions && decisionOutput.secondary_actions.length > 0)) {
         console.log(`   ✅ Building from decision_output (primary or secondary actions found)`);
-        return buildFormattedRecommendationsList(decisionOutput, lang);
+        return await buildFormattedRecommendationsList(decisionOutput, lang);
       }
       
       // Step 3: Fallback - only when truly no recommendations
@@ -3069,7 +3074,7 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
 /**
  * Build formatted numbered list from decision output
  */
-function buildFormattedRecommendationsList(decision: any, lang: string): string {
+async function buildFormattedRecommendationsList(decision: any, lang: string, supabaseClient?: any): Promise<string> {
   const parts: string[] = [];
   
   // Greeting
@@ -3153,6 +3158,18 @@ function buildFormattedRecommendationsList(decision: any, lang: string): string 
     const timing = primary.timing?.best_time_of_day || 'MORNING';
     const method = appDetails.method || appDetails.application_method || '';
 
+    // PRODUCT MAPPING: Look up market brand names for the active ingredient
+    let marketProductLine = '';
+    if (richData.active_ingredient && supabaseClient) {
+      try {
+        const cropCode = decision.metadata?.crop_code || decision.primary_decision?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        marketProductLine = formatMarketProducts(marketResult.products, lang);
+      } catch (err) {
+        console.warn(`[ProductMapping] Lookup failed, continuing without market products:`, err);
+      }
+    }
+
     // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
     const app = primary.application_details || {};
     const actionText = app.action_text as string | undefined;
@@ -3183,7 +3200,11 @@ function buildFormattedRecommendationsList(decision: any, lang: string): string 
     const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
     primaryText += `\n   ⏰ ${timingText}`;
 
-    // Rich texts (from decision_rules)
+    // PRODUCT MAPPING: Append market product brand names
+    if (marketProductLine) {
+      primaryText += `\n   ${marketProductLine}`;
+    }
+
     if (actionText) primaryText += `\n   🧾 **${richLabels.action[lang]}:** ${actionText}`;
     if (reasonText) primaryText += `\n   🔍 **${richLabels.reason[lang]}:** ${reasonText}`;
     if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge[lang]}:** ${knowledgeText}`;
@@ -3308,7 +3329,7 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please 
  * Fallback: Build natural language response directly from DecisionOutput
  * Used when CommunicationGenerator fails or returns incomplete data
  */
-function buildResponseFromDecisionOutput(decision: any, language: string): string {
+async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
   }
@@ -3379,6 +3400,18 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
     // Product and dosage - with translated product name
     const productLine = dosage ? `${productName} @ ${dosage}` : productName;
     parts.push(productLine);
+
+    // PRODUCT MAPPING: Append market brand names
+    if (richData.active_ingredient && supabaseClient) {
+      try {
+        const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        const marketLine = formatMarketProducts(marketResult.products, lang);
+        if (marketLine) parts.push(marketLine);
+      } catch (err) {
+        console.warn(`[ProductMapping] Lookup failed in fallback builder:`, err);
+      }
+    }
     
     // Application method - translated
     if (method) {

@@ -38,6 +38,9 @@ import {
   getCauseTranslation
 } from './communication-translation-dictionary.ts';
 
+// PRODUCT MAPPING: Ingredient → Market Product brand names
+import { lookupMarketProducts, formatMarketProducts } from './market-product-lookup.ts';
+
 // v2.0: Import deterministic response builder
 import {
   buildDeterministicResponse,
@@ -492,6 +495,31 @@ export async function formatRecommendationsWithLLM(
     // ALSO: Extract from primary_decision structured fields
     addToAllowed((primary as any)?.product_details);
     addToAllowed((primary as any)?.application_details);
+
+    // PRODUCT MAPPING: Add market product brand names to allowed list
+    // so LLM validation gate doesn't reject them as "unauthorized"
+    if (primary?.application_details?.active_ingredient && input.supabase_client) {
+      try {
+        const cropCode = input.decision_output?.metadata?.crop_code || primary?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(input.supabase_client, primary.application_details.active_ingredient, cropCode);
+        if (marketResult.found) {
+          for (const brandName of marketResult.products) {
+            const lower = brandName.toLowerCase();
+            if (!allowedProducts.includes(lower)) {
+              allowedProducts.push(lower);
+            }
+            // Also add individual words for partial matching
+            const words = lower.split(/[\s+@\/,%]+/).filter((w: string) => w.length > 3);
+            for (const w of words) {
+              if (!allowedProducts.includes(w)) allowedProducts.push(w);
+            }
+          }
+          console.log(`   📋 [ProductMapping] Added ${marketResult.products.length} market product brands to allowed list`);
+        }
+      } catch (err) {
+        console.warn(`[ProductMapping] Failed to add market products to allowed list:`, err);
+      }
+    }
   } else {
     console.log(`   🛡️ [ProductValidation] SKIPPED - safety_gate rule (${primary?.action_type})`);
   }
@@ -1151,6 +1179,7 @@ Structure your response EXACTLY as:
 CRITICAL RULES:
 - Calculate TOTAL dosage = dosage_per_acre × farmer's land area (${input.land_context?.area_acres || '?'} acres)
 - Show calculated total, NOT per-acre rate
+- If RECOMMENDED_MARKET_PRODUCTS are provided, mention them as "बाजारात उपलब्ध: [product names]" so farmer knows what to buy
 - Use trade name farmer recognizes, put molecule in brackets
 - If dosage_per_acre is null/missing, say "मला अधिक माहिती हवी आहे"
 - NEVER invent products, dosages, or timing not in the data below`;
@@ -1470,6 +1499,21 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather);
       const deterministicPrompt = await formatStructuredResponseForLLM(structuredResponse, undefined, input.supabase_client);
       
+      // PRODUCT MAPPING: Look up market product names for LLM narration
+      let marketProductsLine = '';
+      if (richData.active_ingredient && input.supabase_client) {
+        try {
+          const cropCode = decision?.metadata?.crop_code || primary?.target?.crop || '';
+          const marketResult = await lookupMarketProducts(input.supabase_client, richData.active_ingredient, cropCode);
+          if (marketResult.found) {
+            marketProductsLine = `\nRECOMMENDED_MARKET_PRODUCTS: ${marketResult.products.join(', ')}`;
+            console.log(`[LLMFormatter] Market products for ${richData.active_ingredient}: ${marketResult.products.join(', ')}`);
+          }
+        } catch (err) {
+          console.warn(`[LLMFormatter] Market product lookup failed:`, err);
+        }
+      }
+      
       console.log(`✅ [DeterministicBuilder] Integrated into LLM prompt for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}, safety_warnings=${structuredResponse.safety_warnings.length}`);
       
       // Prepend status and append matched responses for context
@@ -1477,6 +1521,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push(`STATUS: ${decision.status || 'DECISION_PROVIDED'}`);
       parts.push('');
       parts.push(deterministicPrompt);
+      if (marketProductsLine) parts.push(marketProductsLine);
       
       // ═══ RULE ATOMICITY: Secondary actions stripped of treatment data ═══
       // Secondary rules may ONLY contribute monitoring/context — never
