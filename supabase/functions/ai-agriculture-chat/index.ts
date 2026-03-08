@@ -3198,7 +3198,11 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
     primaryText += `\n   ⏰ ${timingText}`;
 
-    // Rich texts (from decision_rules)
+    // PRODUCT MAPPING: Append market product brand names
+    if (marketProductLine) {
+      primaryText += `\n   ${marketProductLine}`;
+    }
+
     if (actionText) primaryText += `\n   🧾 **${richLabels.action[lang]}:** ${actionText}`;
     if (reasonText) primaryText += `\n   🔍 **${richLabels.reason[lang]}:** ${reasonText}`;
     if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge[lang]}:** ${knowledgeText}`;
