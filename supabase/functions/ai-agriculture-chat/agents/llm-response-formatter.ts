@@ -424,8 +424,67 @@ export async function formatRecommendationsWithLLM(
   
   console.log(`   📋 Allowed Products: ${allowedProducts.length > 0 ? allowedProducts.join(', ') : 'NONE'}`);
   console.log(`   📋 Allowed Dosages: ${allowedDosages.length > 0 ? allowedDosages.join(', ') : 'NONE'}`);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPONSE SANITIZATION GATE — Strips technical data leaks from LLM output
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Known agrochemical product names that should NOT be stripped even though
+ * they may appear in ALL_CAPS. Add to this list as needed.
+ */
+const ALLOWED_PRODUCT_NAMES = new Set([
+  'CHLORPYRIFOS', 'FIPRONIL', 'IMIDACLOPRID', 'THIAMETHOXAM', 'CARBENDAZIM',
+  'MANCOZEB', 'PROPICONAZOLE', 'HEXACONAZOLE', 'TRICHODERMA', 'BEAUVERIA',
+  'METARHIZIUM', 'PSEUDOMONAS', 'AZADIRACHTIN', 'NEEM', 'SPINOSAD',
+  'EMAMECTIN', 'CYPERMETHRIN', 'DELTAMETHRIN', 'LAMBDA', 'ACEPHATE',
+  'DIMETHOATE', 'PROFENOFOS', 'QUINALPHOS', 'MONOCROTOPHOS', 'PHORATE',
+  'CARTAP', 'FLUBENDIAMIDE', 'CHLORANTRANILIPROLE', 'TRICHOGRAMMA',
+  'BACILLUS', 'NPV', 'ICAR', 'IPM', 'PHI', 'SC', 'EC', 'WP', 'SL', 'SP', 'WG',
+]);
+
+/**
+ * Sanitize LLM output to remove any leaked technical identifiers,
+ * monitoring codes, confidence scores, and internal metadata.
+ * Runs AFTER LLM call, BEFORE returning to farmer.
+ */
+function sanitizeFarmerResponse(text: string): string {
+  if (!text) return text;
   
+  let sanitized = text;
   
+  // 1. Strip ALL_CAPS_UNDERSCORE patterns (≥2 words) that are NOT product names
+  //    e.g., DEAD_HEARTS_REDUCED_BELOW_5_PERCENT, SC_PEST_TOP_BORER_004, RESISTANCE_SUSPECTED_NO_MORTALITY
+  sanitized = sanitized.replace(/\b[A-Z][A-Z0-9]*(?:_[A-Z0-9]+){2,}\b/g, (match) => {
+    // Preserve if it's a known product formulation pattern like "CHLORPYRIFOS_20_EC"
+    const firstWord = match.split('_')[0];
+    if (ALLOWED_PRODUCT_NAMES.has(firstWord)) return match;
+    console.warn(`🧹 [SANITIZE] Stripped technical code from farmer response: ${match}`);
+    return '';
+  });
+  
+  // 2. Strip rule_id patterns (e.g., SC_PEST_TOP_BORER_004, SUG_TOP_BORER_003)
+  sanitized = sanitized.replace(/\b[A-Z]{2,4}_[A-Z]+_[A-Z_]+_\d{2,4}\b/g, (match) => {
+    console.warn(`🧹 [SANITIZE] Stripped rule_id from farmer response: ${match}`);
+    return '';
+  });
+  
+  // 3. Strip "X% Confidence" patterns
+  sanitized = sanitized.replace(/\d{1,3}%\s*(?:Confidence|confidence|विश्वास|विश्वसनीयता)/g, '');
+  
+  // 4. Strip internal metadata labels
+  sanitized = sanitized.replace(/\b(?:rule_id|decision_id|ipm_level|data_authority_rank)\s*[:=]\s*\S+/gi, '');
+  
+  // 5. Strip "Priority: HIGH" / "IPM Level: LEVEL_3" patterns
+  sanitized = sanitized.replace(/\b(?:Priority|IPM Level)\s*:\s*\S+/g, '');
+  
+  // 6. Clean up multiple spaces/newlines left by removals
+  sanitized = sanitized.replace(/  +/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  
+  return sanitized;
+}
+
+
   const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
   const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
@@ -639,6 +698,9 @@ export async function formatRecommendationsWithLLM(
       }
   }
   
+  // ═══ SANITIZATION GATE: Strip any leaked technical data from LLM output ═══
+  formattedResponse = sanitizeFarmerResponse(formattedResponse);
+
   const processingTime = Date.now() - startTime;
   console.log(`   ✅ PHASE 5 complete in ${processingTime}ms`);
   
@@ -1554,8 +1616,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push(`DO NOT recommend any specific product or dosage.`);
     }
     
-    parts.push(`- Priority: ${primary.priority || 'HIGH'}`);
-    parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
+    // REMOVED: Priority and IPM Level are internal metadata — never expose to LLM prompt
     
     const ipmLevel = primary.ipm_level || 'LEVEL_3';
     if (!IPM_URGENCY_LABELS[ipmLevel]) {
@@ -1569,26 +1630,31 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     }
   }
   
-  // Secondary actions (capped at 1)
+  // Secondary actions (capped at 1) — RULE ATOMICITY: strip product/dosage
   const secondary = decision.secondary_actions || decision.secondary_recommendations;
   if (secondary && secondary.length > 0) {
-    parts.push(`\n═══ ADDITIONAL RECOMMENDATION: ═══`);
+    parts.push(`\n═══ ADDITIONAL OBSERVATION: ═══`);
     const sec = secondary[0];
-    parts.push(`1. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
-    if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
-    if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
+    const secAction = (sec.action || sec.action_type || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
+    parts.push(`1. ${secAction} - ${sec.reason || 'Supporting observation'}`);
+    // REMOVED: sec.product_name and sec.dosage_per_acre — prevents cross-rule contamination
+    if (sec.success_indicators) parts.push(`   Monitor: ${Array.isArray(sec.success_indicators) ? sec.success_indicators.join(', ') : sec.success_indicators}`);
   }
   
-  // Matched responses
+  // Matched responses — SANITIZED: no rule_ids, codes title-cased
   const matchedResponses = decision.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
     const primaryRuleId = decision.primary_decision?.rule_id;
     const filteredResponses = filterRelevantResponses(matchedResponses, primaryRuleId, 3);
     
-    parts.push(`\nIPM TREATMENT RESPONSES (Use in farmer's language):`);
+    parts.push(`\nAGRICULTURAL RECOMMENDATIONS (Use in farmer's language):`);
     filteredResponses.forEach((resp: any, idx: number) => {
       const isPrimary = resp.rule_id === primaryRuleId;
-      parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
+      // Format cause codes: DEAD_HEART_PRESENT → Dead heart present
+      const causeLabel = resp.cause
+        ? resp.cause.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())
+        : 'Additional observation';
+      parts.push(`\n${idx + 1}. ${causeLabel}:`);
       
       if (resp.action_text) {
         parts.push(`   Action: ${resp.action_text}`);

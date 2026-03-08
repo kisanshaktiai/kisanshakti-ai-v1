@@ -228,7 +228,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
               </Badge>
             )}
           </div>
-          <ConfidenceBadge score={diagnosis.confidence_score} decision={diagnosis.response_decision} />
+          {/* Confidence badge hidden from farmers — available in trace panel below */}
         </div>
       </Card>
 
@@ -405,9 +405,6 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
               <div key={i} className="p-2 bg-foreground/5 rounded-md text-xs">
                 <p className="font-medium text-foreground">{obs.cause}</p>
                 <p className="text-muted-foreground mt-0.5">{obs.action_text}</p>
-                <Badge variant="outline" className="text-[10px] mt-1">
-                  {Math.round(obs.confidence * 100)}% conf
-                </Badge>
               </div>
             ))}
           </div>
@@ -430,15 +427,14 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
       )}
 
       {/* ═══ TRACEABILITY FOOTER ═══ */}
+      {/* ═══ TRACEABILITY — hidden by default, audit-only ═══ */}
       <div className="border-t border-border/30 pt-1">
         <button 
           onClick={() => setShowTrace(!showTrace)}
-          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors w-full"
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors w-full"
         >
           <Microscope className="h-3 w-3" />
-          <span>Rule: {trace.rule_id}</span>
-          <span>•</span>
-          <span>{Math.round(trace.confidence_score * 100)}%</span>
+          <span>Traceability</span>
           {showTrace ? <ChevronUp className="h-2.5 w-2.5 ml-auto" /> : <ChevronDown className="h-2.5 w-2.5 ml-auto" />}
         </button>
         <AnimatePresence>
@@ -449,11 +445,13 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
               exit={{ height: 0, opacity: 0 }}
               className="overflow-hidden"
             >
-              <div className="pt-1.5 space-y-0.5 text-[10px] text-muted-foreground/50">
+              <div className="pt-1.5 space-y-0.5 text-[10px] text-muted-foreground/40">
+                <p>🔗 Rule: {trace.rule_id}</p>
+                <p>📊 Confidence: {Math.round(trace.confidence_score * 100)}%</p>
                 {trace.scientific_source && <p>📚 Source: {trace.scientific_source}</p>}
                 {trace.icar_package && <p>🏛️ ICAR: {trace.icar_package}</p>}
                 {trace.university_source && <p>🎓 Univ: {trace.university_source}</p>}
-                {trace.data_authority_rank != null && <p>📊 Authority Rank: {trace.data_authority_rank}</p>}
+                {trace.data_authority_rank != null && <p>📊 Authority: {trace.data_authority_rank}</p>}
               </div>
             </motion.div>
           )}
