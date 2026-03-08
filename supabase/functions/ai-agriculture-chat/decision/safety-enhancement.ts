@@ -139,9 +139,7 @@ export function formatSafetyWarning(
   warning: SafetyWarning,
   language: string
 ): string {
-  const warningText = language === 'mr' ? warning.warning_mr :
-                      language === 'hi' ? warning.warning_hi :
-                      warning.warning_en;
+  const warningText = (warning as any)[`warning_${language}`] || warning.warning_en;
   
   return `${warning.icon} ${warningText}`;
 }

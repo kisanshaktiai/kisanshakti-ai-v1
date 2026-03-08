@@ -416,7 +416,7 @@ export function formatExplanationForFarmer(
   let output = '';
   
   // Summary first
-  const summary = language === 'mr' ? chain.summary_mr : language === 'hi' ? chain.summary_hi : chain.summary_en;
+  const summary = (chain as any)[`summary_${language}`] || chain.summary_en;
   output += summary + '\n\n';
   
   // Add "why" section for key steps

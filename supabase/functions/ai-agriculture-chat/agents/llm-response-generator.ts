@@ -514,22 +514,15 @@ export async function generateNarratedResponse(
       const status = input.symbolic_decision.status;
       const lang = input.language;
       
+      // English-only fallbacks — LLM narration layer translates at runtime
       if (status === 'OBSERVATION' || status === 'MONITOR_ONLY' || status === 'MONITORING_ADVISED') {
-        fallbackText = lang === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा. समस्या वाढल्यास पुन्हा संपर्क करा.' :
-                       lang === 'hi' ? '🌾 फसल की निगरानी जारी रखें। समस्या बढ़े तो संपर्क करें।' :
-                       '🌾 Continue monitoring your crop. Contact us if the issue worsens.';
+        fallbackText = '🌾 Continue monitoring your crop. Contact us if the issue worsens.';
       } else if (status === 'NO_ACTION_REQUIRED') {
-        fallbackText = lang === 'mr' ? '✅ कोणतीही कृती आवश्यक नाही. पीक निरोगी आहे.' :
-                       lang === 'hi' ? '✅ कोई कार्रवाई आवश्यक नहीं। फसल स्वस्थ है।' :
-                       '✅ No action needed. Your crop is healthy.';
+        fallbackText = '✅ No action needed. Your crop is healthy.';
       } else if (status === 'ERROR') {
-        fallbackText = lang === 'mr' ? '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.' :
-                       lang === 'hi' ? '⚠️ कुछ गलत हुआ। कृपया दोबारा प्रयास करें।' :
-                       '⚠️ Something went wrong. Please try again.';
+        fallbackText = '⚠️ Something went wrong. Please try again.';
       } else {
-        fallbackText = lang === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा.' :
-                       lang === 'hi' ? '🌾 फसल की निगरानी जारी रखें।' :
-                       '🌾 Continue monitoring your crop.';
+        fallbackText = '🌾 Continue monitoring your crop.';
       }
     }
     
