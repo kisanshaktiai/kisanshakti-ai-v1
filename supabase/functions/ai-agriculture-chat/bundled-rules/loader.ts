@@ -967,14 +967,17 @@ export function evaluateConditionsJson(
     }
 
     // ─── Unrecognized keys: Domain-specific observation flags ───
+    // v7.6 BUG 1 FIX: Changed from required:true → required:false
+    // Unknown boolean keys are treated as SOFT observation hints, not hard gates.
+    // This prevents orphan/new DB keys from blocking entire rules.
     if (condValue === true || condValue === 'true') {
       const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
       const match = expandedObs.has(keySymbol) ||
         [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
         inputQuery.includes(keySymbol);
       ledger.push({
-        key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED,
-        required: true, ruleValue: condValue
+        key, status: match ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA,
+        required: false, ruleValue: condValue
       });
       continue;
     }
