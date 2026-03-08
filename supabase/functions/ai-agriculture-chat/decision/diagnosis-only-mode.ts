@@ -1090,14 +1090,10 @@ function createUnknownDiagnosis(
   language: string
 ): DiagnosisResult {
   const unknownTranslations = {
-    mr: 'अज्ञात कारण - तपासणी आवश्यक',
-    hi: 'अज्ञात कारण - जांच आवश्यक',
     en: 'Unknown cause - investigation required'
   };
   
   const unknownGuidance = {
-    mr: '📷 कृपया प्रभावित रोपाचा स्पष्ट फोटो पाठवा जेणेकरून अचूक निदान करता येईल. तोपर्यंत, पाणी व्यवस्थापन आणि वायुवीजन तपासा.',
-    hi: '📷 कृपया प्रभावित पौधे की स्पष्ट फोटो भेजें ताकि सही निदान हो सके। तब तक, पानी प्रबंधन और वायु-संचार जांचें।',
     en: '📷 Please send a clear photo of the affected plant for accurate diagnosis. Meanwhile, check water management and ventilation.'
   };
   
