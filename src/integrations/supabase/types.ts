@@ -20663,6 +20663,20 @@ export type Database = {
             foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
             columns: ["hypothesis_id"]
             isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypothesis_conditions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
             referencedRelation: "hypothesis_master"
             referencedColumns: ["hypothesis_id"]
           },
@@ -20697,6 +20711,20 @@ export type Database = {
           id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "hypothesis_contradictions_hypothesis_id_fkey"
             columns: ["hypothesis_id"]
@@ -20790,6 +20818,20 @@ export type Database = {
             foreignKeyName: "hypothesis_metrics_hypothesis_id_fkey"
             columns: ["hypothesis_id"]
             isOneToOne: true
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_metrics_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: true
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "hypothesis_metrics_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: true
             referencedRelation: "hypothesis_master"
             referencedColumns: ["hypothesis_id"]
           },
@@ -20815,6 +20857,20 @@ export type Database = {
           rule_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "hypothesis_rule_mapping_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["hypothesis_id"]
+          },
+          {
+            foreignKeyName: "hypothesis_rule_mapping_hypothesis_id_fkey"
+            columns: ["hypothesis_id"]
+            isOneToOne: false
+            referencedRelation: "hypotheses"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "hypothesis_rule_mapping_hypothesis_id_fkey"
             columns: ["hypothesis_id"]
@@ -35879,6 +35935,60 @@ export type Database = {
           f_table_schema?: unknown
           srid?: number | null
           type?: string | null
+        }
+        Relationships: []
+      }
+      hypotheses: {
+        Row: {
+          biological_basis: string | null
+          canonical_group: string | null
+          cause_name_en: string | null
+          cause_name_hi: string | null
+          cause_name_mr: string | null
+          created_at: string | null
+          crop_group: string | null
+          engine_min_version: string | null
+          hypothesis_id: string | null
+          hypothesis_type: string | null
+          id: string | null
+          is_active: boolean | null
+          severity_model: string | null
+          updated_at: string | null
+          version: string | null
+        }
+        Insert: {
+          biological_basis?: string | null
+          canonical_group?: string | null
+          cause_name_en?: string | null
+          cause_name_hi?: string | null
+          cause_name_mr?: string | null
+          created_at?: string | null
+          crop_group?: string | null
+          engine_min_version?: string | null
+          hypothesis_id?: string | null
+          hypothesis_type?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          severity_model?: string | null
+          updated_at?: string | null
+          version?: string | null
+        }
+        Update: {
+          biological_basis?: string | null
+          canonical_group?: string | null
+          cause_name_en?: string | null
+          cause_name_hi?: string | null
+          cause_name_mr?: string | null
+          created_at?: string | null
+          crop_group?: string | null
+          engine_min_version?: string | null
+          hypothesis_id?: string | null
+          hypothesis_type?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          severity_model?: string | null
+          updated_at?: string | null
+          version?: string | null
         }
         Relationships: []
       }
