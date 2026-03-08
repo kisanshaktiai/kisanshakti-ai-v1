@@ -3,12 +3,20 @@
  * CROP STAGE ADVISOR - Stage-Specific Decision Trees
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * PHASE 5: Provides stage-specific agronomic advice for each crop
+ * ⚠️ DEPRECATION NOTICE:
+ * This file contains hardcoded agronomic knowledge that should be migrated
+ * to the `decision_rules` database table for SSOT compliance.
  * 
- * Features:
- * - Crop-stage specific water/fertilizer/pest guidance
- * - Critical Period Water Stress (CPWS) indicators
- * - Stage-appropriate action recommendations
+ * CURRENT STATUS: Used as STAGE_ADVISORY_FALLBACK when zero rules fire
+ * from the database for stage-specific queries.
+ * 
+ * MIGRATION TARGET: Create `crop_stage_knowledge` DB table to replace
+ * all hardcoded StageAdvice objects below.
+ * 
+ * Tagged: STAGE_ADVISORY_FALLBACK (documented in memory)
+ * 
+ * PHASE 5: Provides stage-specific agronomic advice for each crop
+ * All text is English-only — LLM narration layer translates at runtime.
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
