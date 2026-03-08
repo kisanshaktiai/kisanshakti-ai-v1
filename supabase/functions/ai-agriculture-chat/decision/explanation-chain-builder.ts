@@ -416,18 +416,17 @@ export function formatExplanationForFarmer(
   let output = '';
   
   // Summary first
-  const summary = language === 'mr' ? chain.summary_mr : language === 'hi' ? chain.summary_hi : chain.summary_en;
+  const summary = (chain as any)[`summary_${language}`] || chain.summary_en;
   output += summary + '\n\n';
   
   // Add "why" section for key steps
   const keySteps = chain.steps.filter(s => s.category === 'DIAGNOSIS' || s.category === 'PRESCRIPTION');
   
   if (keySteps.length > 0) {
-    const whyLabel = language === 'mr' ? '🔍 कारण:' : language === 'hi' ? '🔍 कारण:' : '🔍 Reasoning:';
-    output += whyLabel + '\n';
+    output += '🔍 Reasoning:\n';
     
     for (const step of keySteps.slice(0, 3)) {
-      const why = language === 'mr' ? step.why_mr : language === 'hi' ? step.why_hi : step.why_en;
+      const why = (step as any)[`why_${language}`] || step.why_en;
       output += `• ${why}\n`;
     }
   }
@@ -435,7 +434,7 @@ export function formatExplanationForFarmer(
   // Add data sources used
   if (chain.data_sources_used.length > 0) {
     output += '\n';
-    const dataLabel = language === 'mr' ? '📊 वापरलेला डेटा:' : language === 'hi' ? '📊 उपयोग किया डेटा:' : '📊 Data used:';
+    output += '📊 Data used:\n';
     output += dataLabel + '\n';
     
     for (const source of chain.data_sources_used.slice(0, 4)) {

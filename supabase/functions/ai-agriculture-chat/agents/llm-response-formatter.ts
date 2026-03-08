@@ -31,6 +31,7 @@
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
+import { getLanguageName } from '../utils/language-utils.ts';
 import {
   getProductName,
   getActionTranslation,
@@ -591,7 +592,7 @@ export async function formatRecommendationsWithLLM(
         const devanagariRatio = cleanedTotalChars > 0 ? devanagariChars / cleanedTotalChars : 0;
         // FIX H5: Lowered threshold from 0.3 to 0.22 — too aggressive for technical agri content
         if (devanagariRatio < 0.22) {
-          const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
+          const langName = getLanguageName(input.language);
           console.warn(`⚠️ [LANGUAGE CHECK] Only ${(devanagariRatio*100).toFixed(0)}% Devanagari in ${langName} response - possible translation failure.`);
           console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
         }
@@ -1256,7 +1257,7 @@ ${landInfo}
 RULE ENGINE RECOMMENDATIONS (PRESERVE ALL DOSAGES EXACTLY):
 ${recData}
 
-FORMAT this into natural, empathetic farmer advice in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}.`;
+FORMAT this into natural, empathetic farmer advice in ${getLanguageName(input.language)}.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1421,7 +1422,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       }
     }
     
-    const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English';
+    const langName = getLanguageName(input.language);
     const translatedActionType = getActionTranslation(primary.action_type, input.language) || primary.action_type;
     parts.push(`- Action Type (translated): ${translatedActionType}`);
     

@@ -25,6 +25,7 @@
 
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
 import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
+import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STRICT INPUT CONTRACT - Symbolic Decision Payload
@@ -373,7 +374,7 @@ function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult 
 
 function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   const { symbolic_decision, language, land_context } = input;
-  const langName = language === 'mr' ? 'Marathi' : language === 'hi' ? 'Hindi' : 'English';
+  const langName = getLanguageName(language);
   
   let prompt = '';
   
@@ -383,7 +384,7 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   
   if (land_context?.current_crop) {
     const cropCode = land_context.current_crop.toLowerCase();
-    const langKey = language === 'mr' ? 'crop_name_mr' : language === 'hi' ? 'crop_name_hi' : 'crop_name_en';
+    const langKey = getCropNameKey(language);
     
     // Resolve local name from ICAR_CALENDARS
     let cropLocalName = land_context.current_crop; // fallback to raw name
@@ -513,22 +514,15 @@ export async function generateNarratedResponse(
       const status = input.symbolic_decision.status;
       const lang = input.language;
       
+      // English-only fallbacks — LLM narration layer translates at runtime
       if (status === 'OBSERVATION' || status === 'MONITOR_ONLY' || status === 'MONITORING_ADVISED') {
-        fallbackText = lang === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा. समस्या वाढल्यास पुन्हा संपर्क करा.' :
-                       lang === 'hi' ? '🌾 फसल की निगरानी जारी रखें। समस्या बढ़े तो संपर्क करें।' :
-                       '🌾 Continue monitoring your crop. Contact us if the issue worsens.';
+        fallbackText = '🌾 Continue monitoring your crop. Contact us if the issue worsens.';
       } else if (status === 'NO_ACTION_REQUIRED') {
-        fallbackText = lang === 'mr' ? '✅ कोणतीही कृती आवश्यक नाही. पीक निरोगी आहे.' :
-                       lang === 'hi' ? '✅ कोई कार्रवाई आवश्यक नहीं। फसल स्वस्थ है।' :
-                       '✅ No action needed. Your crop is healthy.';
+        fallbackText = '✅ No action needed. Your crop is healthy.';
       } else if (status === 'ERROR') {
-        fallbackText = lang === 'mr' ? '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.' :
-                       lang === 'hi' ? '⚠️ कुछ गलत हुआ। कृपया दोबारा प्रयास करें।' :
-                       '⚠️ Something went wrong. Please try again.';
+        fallbackText = '⚠️ Something went wrong. Please try again.';
       } else {
-        fallbackText = lang === 'mr' ? '🌾 पिकाचे निरीक्षण करत रहा.' :
-                       lang === 'hi' ? '🌾 फसल की निगरानी जारी रखें।' :
-                       '🌾 Continue monitoring your crop.';
+        fallbackText = '🌾 Continue monitoring your crop.';
       }
     }
     

@@ -10,6 +10,7 @@
  */
 
 import type { DecisionOutput, EconomicAssessment, PrimaryDecision } from './rule-engine-types.ts';
+import { getNarratorVoice } from '../utils/language-utils.ts';
 import type {
   FarmerProfile,
   ConversationContext,
@@ -401,10 +402,9 @@ export class CommunicationGenerator {
     return '📌';
   }
   
-  private translateWeatherNote(note: string, lang: SupportedLanguage): string {
-    if (lang === 'en') return note;
-    if (lang === 'mr') return note.includes('rain') ? '⛈️ पावसामुळे फवारणी टाळा' : note;
-    return note.includes('rain') ? '⛈️ बारिश के कारण छिड़काव टालें' : note;
+  private translateWeatherNote(note: string, _lang: SupportedLanguage): string {
+    // Language-neutral: return English note, LLM narration layer translates at runtime
+    return note;
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -621,40 +621,17 @@ export class CommunicationGenerator {
           `Add sticker/spreader`
         ]
       },
-      caution: safety.warnings.length > 0 ? {
-        mr: `⚠️ ${safety.warnings[0]}`,
-        hi: `⚠️ ${safety.warnings[0]}`,
-        en: `⚠️ ${safety.warnings[0]}`
-      } : {
-        mr: '⚠️ मिश्रण तयार केल्यानंतर 2 तासांत वापरा',
-        hi: '⚠️ मिश्रण बनाने के 2 घंटे के भीतर उपयोग करें',
-        en: '⚠️ Use within 2 hours of mixing'
+      caution: {
+        en: safety.warnings.length > 0 
+          ? `⚠️ ${safety.warnings[0]}` 
+          : '⚠️ Use within 2 hours of mixing'
       }
     };
   }
   
-  private translateMixingStep(step: string, originalName: string, translatedName: string, lang: SupportedLanguage): string {
-    // Replace product name in step
-    let translated = step.replace(originalName, translatedName);
-    
-    // Simple translations for common terms
-    if (lang === 'mr') {
-      translated = translated
-        .replace(/Fill/gi, 'भरा')
-        .replace(/Add/gi, 'घाला')
-        .replace(/Mix/gi, 'मिक्स करा')
-        .replace(/water/gi, 'पाणी')
-        .replace(/tank/gi, 'टँक');
-    } else if (lang === 'hi') {
-      translated = translated
-        .replace(/Fill/gi, 'भरें')
-        .replace(/Add/gi, 'डालें')
-        .replace(/Mix/gi, 'मिलाएं')
-        .replace(/water/gi, 'पानी')
-        .replace(/tank/gi, 'टैंक');
-    }
-    
-    return translated;
+  private translateMixingStep(step: string, originalName: string, translatedName: string, _lang: SupportedLanguage): string {
+    // Replace product name in step — LLM narration layer translates at runtime
+    return step.replace(originalName, translatedName);
   }
   
   /**
@@ -1408,9 +1385,7 @@ export class CommunicationGenerator {
       empathy_line: empathyLine,
       sections,  // ONLY the sections that were generated
       closing: adjustedClosing,
-      signature: lang === 'mr' ? 'किसानशक्ती AI 🌾' : 
-                 lang === 'hi' ? 'किसानशक्ति AI 🌾' : 
-                 'KisanShakti AI 🌾'
+      signature: 'KisanShakti AI 🌾'
     };
   }
   
@@ -1420,32 +1395,23 @@ export class CommunicationGenerator {
   
   private generateNotification(action: ImmediateAction, lang: SupportedLanguage): FarmerNotification {
     return {
-      title: lang === 'mr' ? 'तुमच्या पिकासाठी सल्ला तयार! 🌾' :
-             lang === 'hi' ? 'आपकी फसल के लिए सलाह तैयार! 🌾' :
-             'Advice ready for your crop! 🌾',
-      body: action.action_summary[lang],
+      title: 'Advice ready for your crop! 🌾',
+      body: action.action_summary[lang] || action.action_summary['en'] || '',
       icon: action.emoji,
       priority: action.urgency_indicator.urgency_level === 'IMMEDIATE' ? 'HIGH' : 'NORMAL'
     };
   }
   
-  private generateQuickActions(lang: SupportedLanguage, scenario: CommunicationScenario): QuickAction[] {
+  private generateQuickActions(_lang: SupportedLanguage, scenario: CommunicationScenario): QuickAction[] {
+    // English-only keys — LLM narration layer translates at runtime
     const actions: QuickAction[] = [
       {
-        button_text: {
-          mr: '✅ समजले',
-          hi: '✅ समझ गया',
-          en: '✅ Got it'
-        },
+        button_text: { en: '✅ Got it' },
         action: 'ACKNOWLEDGE',
         icon: '✅'
       },
       {
-        button_text: {
-          mr: '❓ प्रश्न विचारा',
-          hi: '❓ सवाल पूछें',
-          en: '❓ Ask question'
-        },
+        button_text: { en: '❓ Ask question' },
         action: 'ASK_QUESTION',
         icon: '❓'
       }
@@ -1453,22 +1419,14 @@ export class CommunicationGenerator {
     
     if (scenario === 'ESCALATED_TO_EXPERT' || scenario === 'EMERGENCY') {
       actions.push({
-        button_text: {
-          mr: '📞 तज्ञाला कॉल करा',
-          hi: '📞 विशेषज्ञ को कॉल करें',
-          en: '📞 Call expert'
-        },
+        button_text: { en: '📞 Call expert' },
         action: 'CALL_EXPERT',
         icon: '📞'
       });
     }
     
     actions.push({
-      button_text: {
-        mr: '📷 फोटो पाठवा',
-        hi: '📷 फोटो भेजें',
-        en: '📷 Send photo'
-      },
+      button_text: { en: '📷 Send photo' },
       action: 'UPLOAD_PHOTO',
       icon: '📷'
     });
@@ -1495,9 +1453,7 @@ export class CommunicationGenerator {
       text_to_speak: voiceText,
       language: lang,
       estimated_duration_seconds: Math.ceil(voiceText.split(/\s+/).length / 2.5), // ~150 words/min
-      narrator_voice: lang === 'mr' ? 'MARATHI_MALE' : 
-                      lang === 'hi' ? 'HINDI_MALE' : 
-                      'ENGLISH_NEUTRAL'
+      narrator_voice: getNarratorVoice(lang)
     };
   }
   

@@ -308,9 +308,7 @@ export function formatFollowUpPlan(
   output += '─'.repeat(40) + '\n';
   
   for (const action of plan.actions) {
-    const actionText = language === 'mr' ? action.action_mr :
-                       language === 'hi' ? action.action_hi :
-                       action.action_en;
+    const actionText = (action as any)[`action_${language}`] || action.action_en;
     
     const critical = action.is_critical ? ' ⚠️' : '';
     output += `| ${dayLabels[language] || dayLabels['en']} ${action.day}:`.padEnd(12) + `| ${actionText}${critical}\n`;

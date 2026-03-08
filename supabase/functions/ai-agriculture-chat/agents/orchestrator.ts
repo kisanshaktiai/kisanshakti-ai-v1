@@ -8,6 +8,7 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { getLanguageName } from '../utils/language-utils.ts';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
@@ -617,7 +618,7 @@ async function translateClarificationOptions(
     try {
       const openAIKey = Deno.env.get('OPENAI_API_KEY');
       if (openAIKey) {
-        const langName = lang === 'mr' ? 'Marathi' : lang === 'hi' ? 'Hindi' : 'English';
+        const langName = getLanguageName(lang);
 
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -2316,26 +2317,16 @@ export class AIAgentOrchestrator {
           das: landContext.days_since_sowing
         } : null;
         
-        // CRITICAL FIX: Generate language-aware clarification message
-        const userLang = options.language || 'mr';
-        let clarificationMr: string;
-        let clarificationHi: string;
-        let clarificationEn: string;
+        // English-only clarification — LLM narration layer translates at runtime
+        let clarificationMessage: string;
         
         if (clarificationLandCtx) {
-          const cropName = clarificationLandCtx.crop || 'पीक';
-          const stageName = clarificationLandCtx.stage || '';
-          const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिवस)` : '';
-          clarificationMr = `तुमच्या ${cropName} पिकाबद्दल${dasStr} समजले. कृपया नेमकी समस्या सांगा:\n• पानांचा रंग बदलला?\n• पानांवर डाग/छिद्र?\n• किडे दिसतात?\n• खोड/मूळ समस्या?\n• वाढ मंदावली?`;
-          clarificationHi = `आपके ${cropName} फसल${dasStr} के बारे में समझा। कृपया सटीक समस्या बताएं:\n• पत्तों का रंग बदला?\n• पत्तों पर धब्बे/छेद?\n• कीड़े दिखते हैं?\n• तना/जड़ समस्या?\n• बढ़वार रुकी?`;
-          clarificationEn = `I understand you're reporting an issue with your ${clarificationLandCtx.crop} crop (${clarificationLandCtx.stage} stage). Could you describe the specific symptoms? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          const cropName = clarificationLandCtx.crop || 'crop';
+          const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} days)` : '';
+          clarificationMessage = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
         } else {
-          clarificationMr = `कृपया तुमच्या पिकाची नेमकी समस्या सांगा:\n• पानांचा रंग बदलला?\n• पानांवर डाग/छिद्र?\n• किडे दिसतात?\n• वाढ मंदावली?`;
-          clarificationHi = `कृपया अपनी फसल की सटीक समस्या बताएं:\n• पत्तों का रंग बदला?\n• पत्तों पर धब्बे/छेद?\n• कीड़े दिखते हैं?\n• बढ़वार रुकी?`;
-          clarificationEn = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          clarificationMessage = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
         }
-        
-        const clarificationMessage = userLang === 'hi' ? clarificationHi : userLang === 'en' ? clarificationEn : clarificationMr;
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
@@ -2678,12 +2669,8 @@ export class AIAgentOrchestrator {
           console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
           agentsUsed.push('STAGE_CONTEXT_GUARD');
           
-          const lang = options.language || 'mr';
-          const stageQuestion = lang === 'mr' 
-            ? 'तुमच्या पिकाची सध्याची अवस्था कोणती आहे? (उदा. रोपे, फुटवे, वाढ, फुलोरा, फळधारणा)'
-            : lang === 'hi'
-            ? 'आपकी फसल की वर्तमान अवस्था क्या है? (जैसे अंकुरण, कल्ले, बढ़वार, फूल, फल)'
-            : 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
+          const lang = options.language || 'en';
+          const stageQuestion = 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
           
           return {
             type: 'CLARIFICATION_QUESTION',
@@ -4902,11 +4889,9 @@ export class AIAgentOrchestrator {
           agentsUsed.push('G2_CONTEXT_VALIDATION_FAILED');
           
           // Return clarification for crop mismatch or missing context
-          const lang = options.language || 'mr';
+          const lang = options.language || 'en';
           const clarificationPrompt = contextValidation.clarification_prompt || 
-            (lang === 'mr' ? 'कोणत्या पिकाबद्दल विचारत आहात?' :
-             lang === 'hi' ? 'किस फसल के बारे में पूछ रहे हैं?' :
-             'Which crop are you asking about?');
+            'Which crop are you asking about?';
           
           return {
             type: 'CLARIFICATION_QUESTION',
@@ -8331,30 +8316,21 @@ export class AIAgentOrchestrator {
     
     // If no stage advice, detect query type and provide relevant generic advice
     if (!fallbackAdvice) {
+      // English-only fallbacks — LLM narration layer translates at runtime
       if (/खत|खाद|urea|dap|fertilizer|युरिया|डीएपी/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '🌱 खत शिफारस: मातीची तपासणी करा आणि शिफारसीनुसार NPK द्या. पिकाचे नाव आणि वय सांगा.' :
-                         language === 'hi' ? '🌱 खाद सिफारिश: मिट्टी जांच कराएं और सिफारिश के अनुसार NPK दें। फसल का नाम और उम्र बताएं।' :
-                         '🌱 Fertilizer advice: Get soil tested and apply NPK as recommended. Tell me your crop name and age.';
+        fallbackAdvice = '🌱 Fertilizer advice: Get soil tested and apply NPK as recommended. Tell me your crop name and age.';
       } else if (/पाणी|पानी|water|irrigation|सिंचन|सिंचाई/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '💧 पाणी व्यवस्थापन: सकाळी किंवा संध्याकाळी पाणी द्या. पाणी साचणे टाळा. पिकाचे नाव सांगा.' :
-                         language === 'hi' ? '💧 पानी प्रबंधन: सुबह या शाम को पानी दें। पानी का जमाव टालें। फसल का नाम बताएं।' :
-                         '💧 Water management: Irrigate in morning or evening. Avoid waterlogging. Tell me your crop.';
+        fallbackAdvice = '💧 Water management: Irrigate in morning or evening. Avoid waterlogging. Tell me your crop.';
       } else if (/किडी|कीट|कीड|pest|अळी|माशी|insect|बग|कीड़ा/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '🐛 किडी नियंत्रण: निंबोळी अर्क 5% फवारा. अचूक निदानासाठी फोटो पाठवा.' :
-                         language === 'hi' ? '🐛 कीट नियंत्रण: नीम अर्क 5% छिड़काव करें। सटीक निदान के लिए फोटो भेजें।' :
-                         '🐛 Pest control: Spray 5% neem extract. Send a photo for accurate diagnosis.';
+        fallbackAdvice = '🐛 Pest control: Spray 5% neem extract. Send a photo for accurate diagnosis.';
       } else if (/रोग|disease|वाळणे|पिवळे|बुरशी|fungus|wilting|yellow/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '🌿 रोग नियंत्रण: प्रभावित भाग काढा. अचूक निदानासाठी फोटो पाठवा.' :
-                         language === 'hi' ? '🌿 रोग नियंत्रण: प्रभावित भाग हटाएं। सटीक निदान के लिए फोटो भेजें।' :
-                         '🌿 Disease control: Remove affected parts. Send a photo for accurate diagnosis.';
+        fallbackAdvice = '🌿 Disease control: Remove affected parts. Send a photo for accurate diagnosis.';
       }
     }
     
     // Add photo request if no specific advice
     if (!fallbackAdvice) {
-      fallbackAdvice = language === 'mr' ? '📸 अधिक अचूक सल्ला देण्यासाठी कृपया पिकाचा फोटो पाठवा किंवा समस्या सविस्तर सांगा.' :
-                       language === 'hi' ? '📸 अधिक सटीक सलाह के लिए कृपया फसल का फोटो भेजें या समस्या विस्तार से बताएं।' :
-                       '📸 For more accurate advice, please send a photo of your crop or describe the problem in detail.';
+      fallbackAdvice = '📸 For more accurate advice, please send a photo of your crop or describe the problem in detail.';
     }
     
     return {

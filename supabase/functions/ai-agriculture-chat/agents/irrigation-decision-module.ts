@@ -318,29 +318,16 @@ export function formatIrrigationResponse(
   lines.push('');
   
   if (r.irrigation_needed) {
-    if (language === 'mr') {
-      lines.push(`📊 **पाण्याची माहिती:**`);
-      lines.push(`• पाणी: ${r.water_amount_liters_per_acre.toLocaleString()} लिटर/एकर`);
-      lines.push(`• वेळ: ${r.timing}`);
-      lines.push(`• कालावधी: ${r.duration_hours} तास`);
-      lines.push(`• पुढील सिंचाई: ${r.next_irrigation_date}`);
-    } else if (language === 'hi') {
-      lines.push(`📊 **पानी की जानकारी:**`);
-      lines.push(`• पानी: ${r.water_amount_liters_per_acre.toLocaleString()} लीटर/एकड़`);
-      lines.push(`• समय: ${r.timing}`);
-      lines.push(`• अवधि: ${r.duration_hours} घंटे`);
-      lines.push(`• अगली सिंचाई: ${r.next_irrigation_date}`);
-    } else {
-      lines.push(`📊 **Water Details:**`);
-      lines.push(`• Water: ${r.water_amount_liters_per_acre.toLocaleString()} liters/acre`);
-      lines.push(`• Timing: ${r.timing}`);
-      lines.push(`• Duration: ${r.duration_hours} hours`);
-      lines.push(`• Next irrigation: ${r.next_irrigation_date}`);
-    }
+    // English-only structured output — LLM narration layer translates at runtime
+    lines.push(`📊 **Water Details:**`);
+    lines.push(`• Water: ${r.water_amount_liters_per_acre.toLocaleString()} liters/acre`);
+    lines.push(`• Timing: ${r.timing}`);
+    lines.push(`• Duration: ${r.duration_hours} hours`);
+    lines.push(`• Next irrigation: ${r.next_irrigation_date}`);
     
     if (r.warnings.length > 0) {
       lines.push('');
-      lines.push(language === 'mr' ? '⚠️ **सूचना:**' : language === 'hi' ? '⚠️ **सूचना:**' : '⚠️ **Warnings:**');
+      lines.push('⚠️ **Warnings:**');
       r.warnings.forEach(w => lines.push(`• ${w}`));
     }
   }

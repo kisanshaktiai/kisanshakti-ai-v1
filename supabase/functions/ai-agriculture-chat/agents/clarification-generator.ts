@@ -272,7 +272,7 @@ export async function generateScopedClarification(
       });
       
       // Return dynamic result
-      const acknowledgment = language === 'mr' ? '🌾 समजले.' : language === 'hi' ? '🌾 समझ गया.' : '🌾 Understood.';
+      const acknowledgment = '🌾 Understood.';
       return {
         response_text: `${acknowledgment}\n\n${dynamicResult.question}`,
         options: optionLabels,

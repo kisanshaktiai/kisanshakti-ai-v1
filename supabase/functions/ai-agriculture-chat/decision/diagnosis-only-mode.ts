@@ -1090,14 +1090,10 @@ function createUnknownDiagnosis(
   language: string
 ): DiagnosisResult {
   const unknownTranslations = {
-    mr: 'अज्ञात कारण - तपासणी आवश्यक',
-    hi: 'अज्ञात कारण - जांच आवश्यक',
     en: 'Unknown cause - investigation required'
   };
   
   const unknownGuidance = {
-    mr: '📷 कृपया प्रभावित रोपाचा स्पष्ट फोटो पाठवा जेणेकरून अचूक निदान करता येईल. तोपर्यंत, पाणी व्यवस्थापन आणि वायुवीजन तपासा.',
-    hi: '📷 कृपया प्रभावित पौधे की स्पष्ट फोटो भेजें ताकि सही निदान हो सके। तब तक, पानी प्रबंधन और वायु-संचार जांचें।',
     en: '📷 Please send a clear photo of the affected plant for accurate diagnosis. Meanwhile, check water management and ventilation.'
   };
   
@@ -1144,58 +1140,42 @@ export function formatDiagnosisForLLM(
   const diagnoses = output.diagnoses;
   
   if (diagnoses.length === 0) {
-    return language === 'mr' 
-      ? '⚠️ निदान करणे शक्य झाले नाही. कृपया प्रभावित रोपाचा फोटो पाठवा.'
-      : language === 'hi'
-      ? '⚠️ निदान संभव नहीं हो सका। कृपया प्रभावित पौधे की फोटो भेजें।'
-      : '⚠️ Diagnosis not possible. Please send a photo of the affected plant.';
+    return '⚠️ Diagnosis not possible. Please send a photo of the affected plant.';
   }
   
-  // Build structured output for LLM
+  // Build structured output for LLM — English canonical, LLM translates at runtime
   const parts: string[] = [];
   
-  // Header
-  if (language === 'mr') {
-    parts.push('🔬 **निदान अहवाल**\n');
-  } else if (language === 'hi') {
-    parts.push('🔬 **निदान रिपोर्ट**\n');
-  } else {
-    parts.push('🔬 **Diagnosis Report**\n');
-  }
+  parts.push('🔬 **Diagnosis Report**\n');
   
-  // Each diagnosis
+  // Each diagnosis — use dynamic property lookup for DB fields
   diagnoses.forEach((diag, idx) => {
-    const causeName = language === 'mr' ? diag.cause_name_mr 
-                    : language === 'hi' ? diag.cause_name_hi 
-                    : diag.cause_name_en;
+    const causeName = (diag as any)[`cause_name_${language}`] || diag.cause_name_en;
+    const actionGuidance = (diag as any)[`action_guidance_${language}`] || diag.action_guidance_en;
     
-    const actionGuidance = language === 'mr' ? diag.action_guidance_mr
-                         : language === 'hi' ? diag.action_guidance_hi
-                         : diag.action_guidance_en;
-    
-    const confidenceLabel = diag.confidence >= 0.70 ? '🟢 उच्च' 
-                          : diag.confidence >= 0.50 ? '🟡 मध्यम' 
-                          : '🔴 कमी';
+    const confidenceLabel = diag.confidence >= 0.70 ? '🟢 High' 
+                          : diag.confidence >= 0.50 ? '🟡 Medium' 
+                          : '🔴 Low';
     
     if (diagnoses.length === 1) {
-      parts.push(`**संभाव्य कारण:** ${causeName}`);
+      parts.push(`**Probable Cause:** ${causeName}`);
     } else {
-      parts.push(`**${idx + 1}. ${causeName}** (विश्वास: ${(diag.confidence * 100).toFixed(0)}%)`);
+      parts.push(`**${idx + 1}. ${causeName}** (Confidence: ${(diag.confidence * 100).toFixed(0)}%)`);
     }
     
     parts.push(`   ${actionGuidance}`);
     
     if (diag.treatment_summary?.product_name) {
-      parts.push(`   💊 उपचार: ${diag.treatment_summary.product_name}`);
+      parts.push(`   💊 Treatment: ${diag.treatment_summary.product_name}`);
       if (diag.treatment_summary.dosage) {
-        parts.push(`   📏 प्रमाण: ${diag.treatment_summary.dosage}`);
+        parts.push(`   📏 Dosage: ${diag.treatment_summary.dosage}`);
       }
     }
     
     parts.push('');
   });
   
-  // Photo prompt (optional confirmation)
+  // Photo prompt
   parts.push(output.photo_confirmation[`prompt_${language}`] || output.photo_confirmation.prompt_en);
   
   return parts.join('\n');

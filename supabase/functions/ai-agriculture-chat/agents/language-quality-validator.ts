@@ -218,16 +218,15 @@ export function validateLanguageQuality(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // CHECK 4: Sentence Structure (Marathi specific)
+  // CHECK 4: Sentence Structure (Devanagari-script languages)
   // ═══════════════════════════════════════════════════════════════════════════
   
-  if (language === 'mr') {
+  if (language === 'mr' || language === 'hi') {
     const sentences = text.split(/[।\.\n]+/).filter(s => s.trim().length > 10);
     let malformedCount = 0;
     
     for (const sentence of sentences) {
       const trimmed = sentence.trim();
-      // Check if sentence ends with valid Marathi verb form
       const hasValidEnding = MARATHI_SENTENCE_ENDINGS.some(pattern => pattern.test(trimmed));
       
       if (!hasValidEnding && !trimmed.match(/[!?]$/)) {

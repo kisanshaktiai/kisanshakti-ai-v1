@@ -267,14 +267,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.STOP_ESCALATE]: {
-    mr: {
-      question: '🌱 सध्या पिकाचे निरीक्षण करा. जर समस्या वाढली तर परत संपर्क करा किंवा जवळच्या कृषी सेवा केंद्राला भेट द्या.',
-      options: []
-    },
-    hi: {
-      question: '🌱 अभी फसल की निगरानी करें। अगर समस्या बढ़े तो फिर संपर्क करें या नजदीकी कृषि सेवा केंद्र जाएं।',
-      options: []
-    },
     en: {
       question: '🌱 Please monitor your crop for now. If the problem increases, contact us again or visit your nearest agriculture service center.',
       options: []
@@ -825,8 +817,6 @@ export function renderClarification(
 export function getMonitoringAdvice(language: string): string {
   // ✅ FIX: Remove numbered emojis - use bullet points for clear instructions
   const advice: Record<string, string> = {
-    mr: '🌱 सध्या पिकाचे काळजीपूर्वक निरीक्षण करा. जर समस्या वाढली तर:\n\n• प्रभावित भागाचा स्पष्ट फोटो काढा\n• परत आमच्याशी संपर्क करा\n• किंवा जवळच्या कृषी सेवा केंद्राला भेट द्या\n\nतुमच्या पिकाची काळजी घ्या! 🙏',
-    hi: '🌱 अभी फसल की ध्यान से निगरानी करें। अगर समस्या बढ़े तो:\n\n• प्रभावित हिस्से की साफ फोटो लें\n• फिर से हमसे संपर्क करें\n• या नजदीकी कृषि सेवा केंद्र जाएं\n\nअपनी फसल का ख्याल रखें! 🙏',
     en: '🌱 Please monitor your crop carefully for now. If the problem increases:\n\n• Take a clear photo of the affected area\n• Contact us again\n• Or visit your nearest agriculture service center\n\nTake care of your crop! 🙏'
   };
   
