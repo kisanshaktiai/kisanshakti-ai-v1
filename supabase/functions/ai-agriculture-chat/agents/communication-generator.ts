@@ -1384,9 +1384,7 @@ export class CommunicationGenerator {
       empathy_line: empathyLine,
       sections,  // ONLY the sections that were generated
       closing: adjustedClosing,
-      signature: lang === 'mr' ? 'किसानशक्ती AI 🌾' : 
-                 lang === 'hi' ? 'किसानशक्ति AI 🌾' : 
-                 'KisanShakti AI 🌾'
+      signature: 'KisanShakti AI 🌾'
     };
   }
   
