@@ -1002,9 +1002,10 @@ export function evaluateConditionsJson(
       }
 
       // String match against observations/query
+      // v7.6: Unknown string keys are soft — don't block rules
       const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
       const match = [...expandedObs].some(o => o.includes(valUpper) || valUpper.includes(o)) || inputQuery.includes(valUpper);
-      ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, ruleValue: condValue });
+      ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       continue;
     }
 
