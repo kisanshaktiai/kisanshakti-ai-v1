@@ -495,6 +495,31 @@ export async function formatRecommendationsWithLLM(
     // ALSO: Extract from primary_decision structured fields
     addToAllowed((primary as any)?.product_details);
     addToAllowed((primary as any)?.application_details);
+
+    // PRODUCT MAPPING: Add market product brand names to allowed list
+    // so LLM validation gate doesn't reject them as "unauthorized"
+    if (primary?.application_details?.active_ingredient && input.supabase_client) {
+      try {
+        const cropCode = input.decision_output?.metadata?.crop_code || primary?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(input.supabase_client, primary.application_details.active_ingredient, cropCode);
+        if (marketResult.found) {
+          for (const brandName of marketResult.products) {
+            const lower = brandName.toLowerCase();
+            if (!allowedProducts.includes(lower)) {
+              allowedProducts.push(lower);
+            }
+            // Also add individual words for partial matching
+            const words = lower.split(/[\s+@\/,%]+/).filter((w: string) => w.length > 3);
+            for (const w of words) {
+              if (!allowedProducts.includes(w)) allowedProducts.push(w);
+            }
+          }
+          console.log(`   📋 [ProductMapping] Added ${marketResult.products.length} market product brands to allowed list`);
+        }
+      } catch (err) {
+        console.warn(`[ProductMapping] Failed to add market products to allowed list:`, err);
+      }
+    }
   } else {
     console.log(`   🛡️ [ProductValidation] SKIPPED - safety_gate rule (${primary?.action_type})`);
   }
