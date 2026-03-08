@@ -1237,13 +1237,21 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       custom: (state: CanonicalState & { user_query?: string; visual_symptoms?: string[] }) => {
         try {
           // ═══════════════════════════════════════════════════════════════════════════
-          // CRITICAL FIX: ENFORCE stage_applicable BEFORE evaluating other conditions
-          // This prevents rules like SMUT (GRAND_GROWTH/TILLERING/MATURITY) from firing at SEEDLING
+          // ═══════════════════════════════════════════════════════════════════════════
+          // STAGE PRE-FILTER: Enforce stage_applicable BEFORE evaluating other conditions
+          // v7.8 FIX: When stage is a DEFAULT/INFERRED value (VEGETATIVE, UNKNOWN),
+          // SKIP the strict stage gate. Default stages are not authoritative — they
+          // should NOT block pest/disease rules from firing. The conditions_json 
+          // evaluator has softer stage handling that properly skips when data is missing.
           // ═══════════════════════════════════════════════════════════════════════════
           const stageApplicable = bundled.stage_applicable || [];
           const currentStage = state.crop_stage?.toUpperCase()?.replace(/[\s-]/g, '_') || '';
           
-          if (stageApplicable.length > 0 && currentStage) {
+          // v7.8: Default/generic stages should NOT block rules
+          const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
+          const isAuthoritativeStage = currentStage && !DEFAULT_STAGES.has(currentStage);
+          
+          if (stageApplicable.length > 0 && isAuthoritativeStage) {
             // Normalize all stage values for comparison
             const normalizedApplicableStages = stageApplicable.map((s: string) => 
               s.toUpperCase().replace(/[\s-]/g, '_')
@@ -1259,7 +1267,6 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
               const stageMatch = normalizedApplicableStages.includes(currentStage);
               
               if (!stageMatch) {
-                // CRITICAL: Log stage mismatch for debugging but don't spam logs
                 if (bundled.priority && bundled.priority > 70) {
                   console.log(`🚫 [StageGate] Rule ${bundled.rule_id} blocked: stage_applicable=[${normalizedApplicableStages.join(',')}] vs current=${currentStage}`);
                 }
