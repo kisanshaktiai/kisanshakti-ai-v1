@@ -88,147 +88,36 @@ export interface MultiMatchResult {
 // TRANSLATION TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════
 
-const TEMPLATES = {
-  mr: {
-    color: {
-      GREEN: 'हिरवे',
-      BLACK: 'काळे',
-      WHITE: 'पांढरे',
-      BROWN: 'तपकिरी',
-      YELLOW: 'पिवळे',
-      PINK: 'गुलाबी',
-      CREAM: 'मलई रंगाचे',
-      COTTONY: 'कापसासारखे',
-      WOOLLY: 'लोकरीसारखे',
-      YELLOWISH_GREEN: 'पिवळसर हिरवे'
-    } as Record<string, string>,
-    size: {
-      SMALL: 'छोटे',
-      LARGE: 'मोठे',
-      MEDIUM: 'मध्यम',
-      TINY: 'अगदी लहान'
-    } as Record<string, string>,
-    behavior: {
-      FLYING: 'उडणारे',
-      JUMPING: 'उड्या मारणारे',
-      CRAWLING: 'रेंगणारे',
-      STATIC: '',
-      CLUSTERED: 'गुच्छ्यांमध्ये',
-      BORING: 'आत शिरणारे',
-      HIDDEN: 'लपलेले',
-      TUNNELING: 'बोगदे करणारे'
-    } as Record<string, string>,
-    secondary: {
-      STICKY_HONEYDEW: '(चिकट पाणी येतं)',
-      SOOTY_MOLD: '(काळी भुकटी)',
-      LEAF_CURLING: '(पान वळणे)',
-      HOLES: '(भोके दिसतात)',
-      WEBBING: '(जाळी दिसते)',
-      SILVERY_SHEEN: '(चांदीसारखा थर)',
-      HOPPER_BURN: '(पान करपणे)',
-      DEAD_HEART: '(मधली सुरळी वाळणे)',
-      FRASS: '(भुसा बाहेर येतो)',
-      ENTRY_HOLE: '(छिद्र दिसते)',
-      MUD_TUNNELS: '(मातीचे बोगदे)',
-      WILTING: '(मलूल होणे)',
-      WHITE_WOOLLY_MASS: '(पांढरा लोकरीसारखा थर)',
-      HOLES_IN_BOLL: '(बोंडात छिद्रे)',
-      WAXY_COATING: '(मेणासारखा थर)'
-    } as Record<string, string>
-  },
-  hi: {
-    color: {
-      GREEN: 'हरे',
-      BLACK: 'काले',
-      WHITE: 'सफेद',
-      BROWN: 'भूरे',
-      YELLOW: 'पीले',
-      PINK: 'गुलाबी',
-      CREAM: 'क्रीम रंग के',
-      COTTONY: 'रूई जैसे',
-      WOOLLY: 'ऊनी',
-      YELLOWISH_GREEN: 'पीलापन लिए हरे'
-    } as Record<string, string>,
-    size: {
-      SMALL: 'छोटे',
-      LARGE: 'बड़े',
-      MEDIUM: 'मध्यम',
-      TINY: 'बहुत छोटे'
-    } as Record<string, string>,
-    behavior: {
-      FLYING: 'उड़ने वाले',
-      JUMPING: 'कूदने वाले',
-      CRAWLING: 'रेंगने वाले',
-      STATIC: '',
-      CLUSTERED: 'समूह में',
-      BORING: 'अंदर घुसने वाले',
-      HIDDEN: 'छिपे हुए',
-      TUNNELING: 'सुरंग बनाने वाले'
-    } as Record<string, string>,
-    secondary: {
-      STICKY_HONEYDEW: '(चिपचिपा पानी)',
-      SOOTY_MOLD: '(काली फफूंद)',
-      LEAF_CURLING: '(पत्ती मुड़ना)',
-      HOLES: '(छेद दिखते)',
-      WEBBING: '(जाला दिखता)',
-      SILVERY_SHEEN: '(चांदी जैसी चमक)',
-      HOPPER_BURN: '(पत्ती जलना)',
-      DEAD_HEART: '(बीच की पत्ती मुरझाना)',
-      FRASS: '(भूसा निकलता)',
-      ENTRY_HOLE: '(छेद दिखता)',
-      MUD_TUNNELS: '(मिट्टी की सुरंगें)',
-      WILTING: '(मुरझाना)',
-      WHITE_WOOLLY_MASS: '(सफेद रूई जैसा)',
-      HOLES_IN_BOLL: '(बोल में छेद)',
-      WAXY_COATING: '(मोम जैसी परत)'
-    } as Record<string, string>
-  },
+/**
+ * Observable characteristic templates — English-only canonical labels.
+ * LLM narration layer translates at runtime into farmer's language.
+ * Previously contained 140+ lines of hardcoded Marathi/Hindi text.
+ */
+const TEMPLATES: Record<string, Record<string, Record<string, string>>> = {
   en: {
     color: {
-      GREEN: 'green',
-      BLACK: 'black',
-      WHITE: 'white',
-      BROWN: 'brown',
-      YELLOW: 'yellow',
-      PINK: 'pink',
-      CREAM: 'cream-colored',
-      COTTONY: 'cottony',
-      WOOLLY: 'woolly',
-      YELLOWISH_GREEN: 'yellowish-green'
-    } as Record<string, string>,
+      GREEN: 'green', BLACK: 'black', WHITE: 'white', BROWN: 'brown',
+      YELLOW: 'yellow', PINK: 'pink', CREAM: 'cream-colored',
+      COTTONY: 'cottony', WOOLLY: 'woolly', YELLOWISH_GREEN: 'yellowish-green'
+    },
     size: {
-      SMALL: 'small',
-      LARGE: 'large',
-      MEDIUM: 'medium',
-      TINY: 'tiny'
-    } as Record<string, string>,
+      SMALL: 'small', LARGE: 'large', MEDIUM: 'medium', TINY: 'tiny'
+    },
     behavior: {
-      FLYING: 'flying',
-      JUMPING: 'jumping',
-      CRAWLING: 'crawling',
-      STATIC: '',
-      CLUSTERED: 'in clusters',
-      BORING: 'boring',
-      HIDDEN: 'hidden',
-      TUNNELING: 'tunneling'
-    } as Record<string, string>,
+      FLYING: 'flying', JUMPING: 'jumping', CRAWLING: 'crawling',
+      STATIC: '', CLUSTERED: 'in clusters', BORING: 'boring',
+      HIDDEN: 'hidden', TUNNELING: 'tunneling'
+    },
     secondary: {
-      STICKY_HONEYDEW: '(sticky liquid)',
-      SOOTY_MOLD: '(black mold)',
-      LEAF_CURLING: '(leaf curling)',
-      HOLES: '(holes visible)',
-      WEBBING: '(webbing present)',
-      SILVERY_SHEEN: '(silvery sheen)',
-      HOPPER_BURN: '(hopper burn)',
-      DEAD_HEART: '(dead heart symptom)',
-      FRASS: '(frass present)',
-      ENTRY_HOLE: '(entry hole)',
-      MUD_TUNNELS: '(mud tunnels)',
-      WILTING: '(wilting)',
-      WHITE_WOOLLY_MASS: '(white woolly mass)',
-      HOLES_IN_BOLL: '(holes in bolls)',
+      STICKY_HONEYDEW: '(sticky liquid)', SOOTY_MOLD: '(black mold)',
+      LEAF_CURLING: '(leaf curling)', HOLES: '(holes visible)',
+      WEBBING: '(webbing present)', SILVERY_SHEEN: '(silvery sheen)',
+      HOPPER_BURN: '(hopper burn)', DEAD_HEART: '(dead heart symptom)',
+      FRASS: '(frass present)', ENTRY_HOLE: '(entry hole)',
+      MUD_TUNNELS: '(mud tunnels)', WILTING: '(wilting)',
+      WHITE_WOOLLY_MASS: '(white woolly mass)', HOLES_IN_BOLL: '(holes in bolls)',
       WAXY_COATING: '(waxy coating)'
-    } as Record<string, string>
+    }
   }
 };
 
