@@ -373,7 +373,7 @@ function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult 
 
 function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   const { symbolic_decision, language, land_context } = input;
-  const langName = language === 'mr' ? 'Marathi' : language === 'hi' ? 'Hindi' : 'English';
+  const langName = getLanguageName(language);
   
   let prompt = '';
   
