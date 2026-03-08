@@ -4823,6 +4823,7 @@ export class AIAgentOrchestrator {
         });
         
         // STABILIZATION v4.0 ISSUE 2: Seal Crop Lock Leak via Induction Layer
+        // v7.7 FIX: Also use cropContextAuthority (from message inference) as fallback
         if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && inductionCrop !== 'UNKNOWN_CROP') {
           if (canonicalContext && canonicalContext.is_locked) {
             console.log(`   🔒 Crop locked from canonical context (${canonicalContext.crop_code}) -- ignoring induction crop: ${inductionCrop}`);
@@ -4830,6 +4831,15 @@ export class AIAgentOrchestrator {
           } else {
             console.log(`   📝 Enriching canonical state crop from induction: ${inductionCrop}`);
             canonicalState.crop_type = inductionCrop as any;
+          }
+        }
+        
+        // v7.7 FIX: If crop is STILL UNKNOWN, use cropContextAuthority from message inference
+        if ((!canonicalState.crop_type || canonicalState.crop_type === 'UNKNOWN') && cropContextAuthority?.crop_name) {
+          console.log(`   🌾 [v7.7] Enriching canonical state crop from cropContextAuthority: ${cropContextAuthority.crop_name}`);
+          canonicalState.crop_type = cropContextAuthority.crop_name as any;
+          if (!canonicalState.growth_stage || canonicalState.growth_stage === 'UNKNOWN') {
+            canonicalState.growth_stage = cropContextAuthority.growth_stage as any;
           }
         }
         
