@@ -43,9 +43,11 @@ import {
   formatStructuredResponseForLLM,
   extractRichRuleData,
   hasAdequateRuleContent,
-  type RichRuleData,
-  type WeatherContext,
-  type CropContext,
+} from './deterministic-response-builder.ts';
+import type {
+  RichRuleData,
+  WeatherContext,
+  CropContext,
 } from './deterministic-response-builder.ts';
 
 // Import validation from decision representation
@@ -96,8 +98,8 @@ import {
   renderByMode,
   resolveResponseMode,
   assertResponseModeInvariant,
-  type ModeRenderedOutput
 } from '../utils/response-mode-renderer.ts';
+import type { ModeRenderedOutput } from '../utils/response-mode-renderer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -1672,47 +1674,50 @@ async function callOpenAIWithTimeout(
 }
 
 async function callLovableAIWithTimeout(
-  systemPrompt: string, 
-  userPrompt: string, 
-  apiKey: string, 
+  systemPrompt: string,
+  userPrompt: string,
+  apiKey: string,
   timeoutMs: number
 ): Promise<{ success: boolean; text: string }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  
+
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
       signal: controller.signal,
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: 'user', content: userPrompt },
         ],
         max_tokens: 800,
-        temperature: 0.7
-      })
+        temperature: 0.7,
+      }),
     });
-    
+
     clearTimeout(timeoutId);
-    
+
     if (!response.ok) {
       console.warn(`Lovable AI error: ${response.status}`);
       return { success: false, text: '' };
     }
-    
-    const data = await response.json();
-    const text = data.choices?.[0]?.message?.content || '';
-    return { success: !!text, text };
-    
+
+    const data: any = await response.json();
+    const text = data?.choices?.[0]?.message?.content ?? '';
+
+    return {
+      success: typeof text === 'string' && text.length > 0,
+      text: typeof text === 'string' ? text : '',
+    };
   } catch (error) {
     clearTimeout(timeoutId);
-    console.warn(`Lovable AI call failed:`, error);
+    console.warn('Lovable AI call failed:', error);
     return { success: false, text: '' };
   }
 }
@@ -1721,7 +1726,7 @@ async function callLovableAIWithTimeout(
 // TEMPLATE FALLBACK (when LLM unavailable) - MODE-DRIVEN
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLMFormatterOutput {
+async function buildTemplateFallback(input: LLMFormatterInput, startTime: number): Promise<LLMFormatterOutput> {
   const lang = input.language || 'mr';
   const decision = input.decision_output;
   
