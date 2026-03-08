@@ -1579,16 +1579,20 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     if (sec.success_indicators) parts.push(`   Monitor: ${Array.isArray(sec.success_indicators) ? sec.success_indicators.join(', ') : sec.success_indicators}`);
   }
   
-  // Matched responses
+  // Matched responses — SANITIZED: no rule_ids, codes title-cased
   const matchedResponses = decision.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
     const primaryRuleId = decision.primary_decision?.rule_id;
     const filteredResponses = filterRelevantResponses(matchedResponses, primaryRuleId, 3);
     
-    parts.push(`\nIPM TREATMENT RESPONSES (Use in farmer's language):`);
+    parts.push(`\nAGRICULTURAL RECOMMENDATIONS (Use in farmer's language):`);
     filteredResponses.forEach((resp: any, idx: number) => {
       const isPrimary = resp.rule_id === primaryRuleId;
-      parts.push(`\n${idx + 1}. IPM TREATMENT (${resp.cause || resp.rule_id || 'General'}):`);
+      // Format cause codes: DEAD_HEART_PRESENT → Dead heart present
+      const causeLabel = resp.cause
+        ? resp.cause.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())
+        : 'Additional observation';
+      parts.push(`\n${idx + 1}. ${causeLabel}:`);
       
       if (resp.action_text) {
         parts.push(`   Action: ${resp.action_text}`);
