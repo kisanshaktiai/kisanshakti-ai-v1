@@ -1358,7 +1358,7 @@ serve(async (req) => {
       } // End of STAGE_FALLBACK else block
     } else {
       // Non-decision responses (clarification, photo request, etc.)
-      responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+      responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
     }
     
     // Verify language consistency
