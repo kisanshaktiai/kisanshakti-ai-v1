@@ -405,9 +405,6 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
               <div key={i} className="p-2 bg-foreground/5 rounded-md text-xs">
                 <p className="font-medium text-foreground">{obs.cause}</p>
                 <p className="text-muted-foreground mt-0.5">{obs.action_text}</p>
-                <Badge variant="outline" className="text-[10px] mt-1">
-                  {Math.round(obs.confidence * 100)}% conf
-                </Badge>
               </div>
             ))}
           </div>
