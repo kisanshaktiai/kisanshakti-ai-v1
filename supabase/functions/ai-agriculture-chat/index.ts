@@ -3359,13 +3359,15 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
     return parts.join('\n\n');
   }
   
-  // Primary recommendation - CRITICAL FIX: Translate chemical names to farmer language
+  // Primary recommendation - CRITICAL FIX: Use validated rich data, not raw application_details
   if (primary) {
-    const rawProductName = primary.application_details?.product_name || '';
+    const appDetails = primary.application_details || {};
+    const richData = extractRichRuleData(primary, appDetails);
+    const rawProductName = richData.active_ingredient || appDetails.product_name || '';
     const productName = rawProductName ? getProductName(rawProductName, lang) : 'Recommended treatment';
-    const dosage = primary.application_details?.concentration || '';
+    const dosage = richData.dosage_per_acre || appDetails.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
-    const method = primary.application_details?.method || '';
+    const method = richData.application_method || appDetails.method || '';
     
     const actionHeaders: Record<string, string> = {
       mr: '📌 आता काय करावे:',
