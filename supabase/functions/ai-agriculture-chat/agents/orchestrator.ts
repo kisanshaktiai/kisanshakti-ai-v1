@@ -5199,7 +5199,7 @@ export class AIAgentOrchestrator {
         // Logs critical warning when symptoms exist but zero rules matched,
         // enabling fast identification of condition_code/observable_characteristics gaps
         // ═══════════════════════════════════════════════════════════════════════════
-        const pipelineSymptoms = canonicalState.visual_symptoms || [];
+        const pipelineSymptoms = (canonicalStateWithQuery as any).confirmed_observations || (canonicalStateWithQuery as any).visual_symptoms || [];
         if (layeredRuleResult.rules_matched === 0 && pipelineSymptoms.length >= 3) {
           console.error(`🚨 [PIPELINE_HEALTH] ZERO RULES MATCHED despite ${pipelineSymptoms.length} symptoms!`);
           console.error(`   Crop: ${canonicalState.crop_type}, Stage: ${canonicalState.crop_stage}`);
