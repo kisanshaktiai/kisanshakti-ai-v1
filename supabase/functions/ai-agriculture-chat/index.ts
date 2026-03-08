@@ -3759,9 +3759,7 @@ function transformOrchestratorResponse(
     case 'PHOTO_REQUEST':
       // Need photo for diagnosis
       const photoInstr = response.photo_instructions;
-      const photoText = language === 'mr' ? photoInstr?.text_mr :
-                       language === 'hi' ? photoInstr?.text_hi :
-                       photoInstr?.text_en || 'Please send a photo.';
+      const photoText = (photoInstr as any)?.[`text_${language}`] || photoInstr?.text_en || 'Please send a photo.';
       
       return {
         response: photoText,
