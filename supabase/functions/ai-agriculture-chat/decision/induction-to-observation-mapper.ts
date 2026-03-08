@@ -12,14 +12,14 @@
 
 import { ObservationKey } from './observation-ontology.ts';
 import type { SymbolicFact } from './symbolic-reasoner.ts';
-import type { LanguageInductionResult } from '../agents/language-induction-layer.ts';
+import type { LanguageInductionResult } from '../agents/symptom-enums.ts';
 import {
   CanonicalSymptomSymbol,
   CanonicalCropSymbol,
   CanonicalAffectedPartSymbol,
   CanonicalSeveritySymbol,
   CanonicalDistributionSymbol
-} from '../agents/language-induction-layer.ts';
+} from '../agents/symptom-enums.ts';
 
 export const MAPPER_VERSION = '1.0.0';
 

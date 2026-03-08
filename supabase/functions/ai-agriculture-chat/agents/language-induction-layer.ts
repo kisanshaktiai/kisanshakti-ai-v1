@@ -1,144 +1,32 @@
 /**
- * ═══════════════════════════════════════════════════════════════════════════
- * LANGUAGE INDUCTION LAYER v3.0 — DEPRECATED LEGACY FALLBACK
- * ═══════════════════════════════════════════════════════════════════════════
- * 
- * ⚠️  WARNING: THIS MODULE IS DEPRECATED AND SHOULD NOT BE EXTENDED
- * 
- * ARCHITECTURAL DECISION (2024):
- * The system now uses LLM-FIRST architecture for language understanding.
- * The LLM (via semantic-extractor.ts and intent-classifier.ts) is the 
- * PRIMARY source of intent and symptom extraction.
- * 
- * This module is kept ONLY for:
- * 1. Backward compatibility with existing code paths
- * 2. Offline fallback scenarios
- * 3. Symbol enum definitions (CanonicalSymptomSymbol, etc.)
- * 
- * DO NOT:
- * - Add new language keywords to the MARATHI_SYMPTOM_MAP or HINDI_SYMPTOM_MAP
- * - Use this as the primary extraction mechanism
- * - Extend the keyword dictionaries for "coverage"
- * 
- * Instead, ALL language understanding should flow through:
- * semantic-extractor.ts → intent-classifier.ts → intent-resolver.ts
- * 
- * The LLM understands ANY language without hardcoded dictionaries.
- * 
- * PRINCIPLES (still valid for the symbol enums):
- * 1. English-only symbolic core - all output symbols are English enums
- * 2. Symbol coverage tracking - reports what % of input was mapped
- * 3. Aggregated confidence - independent of intent confidence
- * 4. Deterministic mapping - same input always produces same symbols
- * 
- * @version 3.0.0 - Deprecated keyword dictionaries, LLM-first architecture
+ * LANGUAGE INDUCTION LAYER v3.1 — DEPRECATED LEGACY FALLBACK
+ * Enums/types extracted to symptom-enums.ts. This file keeps only
+ * the runtime induction logic (keyword dictionaries + functions).
  * @deprecated Use semantic-extractor.ts for language understanding
  */
 
-export const LANGUAGE_INDUCTION_VERSION = '3.0.0';
+// Re-export enums/types for backward compatibility
+export {
+  CanonicalSymptomSymbol,
+  CanonicalCropSymbol,
+  CanonicalAffectedPartSymbol,
+  CanonicalSeveritySymbol,
+  CanonicalDistributionSymbol,
+  type InducedSymbol,
+  type LanguageInductionResult
+} from './symptom-enums.ts';
 
-// ============================================================================
-// CANONICAL SYMBOL ENUMS (English-only core)
-// ============================================================================
+import {
+  CanonicalSymptomSymbol,
+  CanonicalCropSymbol,
+  CanonicalAffectedPartSymbol,
+  CanonicalSeveritySymbol,
+  CanonicalDistributionSymbol,
+  type InducedSymbol,
+  type LanguageInductionResult
+} from './symptom-enums.ts';
 
-export enum CanonicalSymptomSymbol {
-  // Leaf symptoms
-  LEAF_YELLOWING = 'LEAF_YELLOWING',
-  LEAF_BROWNING = 'LEAF_BROWNING',
-  LEAF_CURLING = 'LEAF_CURLING',
-  LEAF_WILTING = 'LEAF_WILTING',
-  LEAF_SPOTS = 'LEAF_SPOTS',
-  LEAF_HOLES = 'LEAF_HOLES',
-  LEAF_DRYING = 'LEAF_DRYING',
-  LEAF_DROP = 'LEAF_DROP',
-  
-  // Stem symptoms
-  STEM_BORER_DAMAGE = 'STEM_BORER_DAMAGE',
-  STEM_BREAKAGE = 'STEM_BREAKAGE',
-  STEM_DISCOLORATION = 'STEM_DISCOLORATION',
-  DEAD_HEART = 'DEAD_HEART',
-  
-  // Root symptoms
-  ROOT_ROT = 'ROOT_ROT',
-  ROOT_DAMAGE = 'ROOT_DAMAGE',
-  
-  // Pest observations
-  SMALL_INSECTS_VISIBLE = 'SMALL_INSECTS_VISIBLE',
-  FLYING_INSECTS_VISIBLE = 'FLYING_INSECTS_VISIBLE',
-  CRAWLING_INSECTS_VISIBLE = 'CRAWLING_INSECTS_VISIBLE',
-  JUMPING_INSECTS_VISIBLE = 'JUMPING_INSECTS_VISIBLE',
-  CATERPILLAR_VISIBLE = 'CATERPILLAR_VISIBLE',
-  BORER_VISIBLE = 'BORER_VISIBLE',
-  EGGS_VISIBLE = 'EGGS_VISIBLE',
-  
-  // Disease symptoms
-  FUNGAL_GROWTH = 'FUNGAL_GROWTH',
-  POWDERY_COATING = 'POWDERY_COATING',
-  STICKY_SUBSTANCE = 'STICKY_SUBSTANCE',
-  HONEYDEW = 'HONEYDEW',
-  SOOTY_MOLD = 'SOOTY_MOLD',
-  
-  // Plant-wide symptoms
-  STUNTED_GROWTH = 'STUNTED_GROWTH',
-  PLANT_DEATH = 'PLANT_DEATH',
-  PATCHY_DEATH = 'PATCHY_DEATH',
-  POOR_GERMINATION = 'POOR_GERMINATION',
-  
-  // Environmental stress
-  WATER_STRESS = 'WATER_STRESS',
-  NUTRIENT_DEFICIENCY = 'NUTRIENT_DEFICIENCY',
-  HEAT_STRESS = 'HEAT_STRESS',
-  
-  // Fruit/Yield symptoms
-  FRUIT_DAMAGE = 'FRUIT_DAMAGE',
-  POOR_YIELD = 'POOR_YIELD',
-  
-  // Unknown/ambiguous
-  UNKNOWN_SYMPTOM = 'UNKNOWN_SYMPTOM'
-}
-
-export enum CanonicalCropSymbol {
-  SUGARCANE = 'SUGARCANE',
-  COTTON = 'COTTON',
-  SOYBEAN = 'SOYBEAN',
-  RICE = 'RICE',
-  WHEAT = 'WHEAT',
-  MAIZE = 'MAIZE',
-  TOMATO = 'TOMATO',
-  ONION = 'ONION',
-  GRAPE = 'GRAPE',
-  POMEGRANATE = 'POMEGRANATE',
-  BANANA = 'BANANA',
-  CHILI = 'CHILI',
-  TURMERIC = 'TURMERIC',
-  GROUNDNUT = 'GROUNDNUT',
-  UNKNOWN_CROP = 'UNKNOWN_CROP'
-}
-
-export enum CanonicalAffectedPartSymbol {
-  LEAF = 'LEAF',
-  STEM = 'STEM',
-  ROOT = 'ROOT',
-  FRUIT = 'FRUIT',
-  FLOWER = 'FLOWER',
-  WHOLE_PLANT = 'WHOLE_PLANT',
-  UNKNOWN_PART = 'UNKNOWN_PART'
-}
-
-export enum CanonicalSeveritySymbol {
-  MILD = 'MILD',
-  MODERATE = 'MODERATE',
-  SEVERE = 'SEVERE',
-  CRITICAL = 'CRITICAL',
-  UNKNOWN_SEVERITY = 'UNKNOWN_SEVERITY'
-}
-
-export enum CanonicalDistributionSymbol {
-  LOCALIZED = 'LOCALIZED',
-  SCATTERED = 'SCATTERED',
-  WIDESPREAD = 'WIDESPREAD',
-  UNKNOWN_DISTRIBUTION = 'UNKNOWN_DISTRIBUTION'
-}
+export const LANGUAGE_INDUCTION_VERSION = '3.1.0';
 
 // ============================================================================
 // MULTILINGUAL MAPPING DICTIONARIES
