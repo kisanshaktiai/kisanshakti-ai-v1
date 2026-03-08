@@ -1872,32 +1872,66 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
   // ═══════════════════════════════════════════════════════════════════════════
   // LEGACY TEMPLATE FALLBACK — only when deterministic builder has no content
   // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Generate localized content instead of English-only
+  // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
-  const greeting = lang === 'en' ? 'Hello farmer friend! 🌾' : '🌾';
-  parts.push(greeting);
+  const greetings: Record<string, string> = {
+    mr: '🌾 नमस्कार शेतकरी मित्र!',
+    hi: '🌾 नमस्कार किसान मित्र!',
+    en: 'Hello farmer friend! 🌾'
+  };
+  parts.push(greetings[lang] || greetings['en']);
   
   const currentCrop = input.land_context?.current_crop;
-  if (currentCrop && lang === 'en') {
-    parts.push(`I understand your question about ${currentCrop}.`);
+  if (currentCrop) {
+    const cropMsgs: Record<string, string> = {
+      mr: `तुमच्या ${currentCrop} बद्दलचा प्रश्न समजला.`,
+      hi: `आपके ${currentCrop} के बारे में प्रश्न समझ आया.`,
+      en: `I understand your question about ${currentCrop}.`
+    };
+    parts.push(cropMsgs[lang] || cropMsgs['en']);
   }
   
   // Legacy fallback: minimal safe response
   const matchedResponses = decision?.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
-    parts.push('📌 **Recommendation (from rule database):**');
+    const recHeaders: Record<string, string> = {
+      mr: '📌 **शिफारस (नियम डेटाबेसमधून):**',
+      hi: '📌 **सिफारिश (नियम डेटाबेस से):**',
+      en: '📌 **Recommendation (from rule database):**'
+    };
+    parts.push(recHeaders[lang] || recHeaders['en']);
+    
     matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
-      const actionContent = resp.action_text || resp.reason_text || 'Monitor crop and share a photo if needed';
-      parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
+      const actionContent = resp.action_text || resp.reason_text || (
+        lang === 'mr' ? 'पिकाचे निरीक्षण करा आणि आवश्यक असल्यास फोटो पाठवा' :
+        lang === 'hi' ? 'फसल की निगरानी करें और ज़रूरत हो तो फोटो भेजें' :
+        'Monitor crop and share a photo if needed'
+      );
+      const recLabel: Record<string, string> = {
+        mr: 'शिफारस', hi: 'सिफारिश', en: 'Recommendation'
+      };
+      parts.push(`\n${idx + 1}. **${recLabel[lang] || recLabel['en']}:**\n${actionContent}`);
     });
   } else {
-    parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
+    const analysisHeaders: Record<string, string> = {
+      mr: '👀 **विश्लेषण:**\nअचूक शिफारसीसाठी कृपया:\n• पिकाचा फोटो पाठवा\n• किंवा लक्षणांबद्दल अधिक तपशील द्या',
+      hi: '👀 **विश्लेषण:**\nसटीक सिफारिश के लिए कृपया:\n• फसल का फोटो भेजें\n• या लक्षणों के बारे में अधिक विवरण दें',
+      en: '👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms'
+    };
+    parts.push(analysisHeaders[lang] || analysisHeaders['en']);
   }
   
-  parts.push('\n🙏 Feel free to ask if you need clarification. Best wishes!');
+  const closings: Record<string, string> = {
+    mr: '\n🙏 काही शंका असल्यास विचारा. शुभेच्छा!',
+    hi: '\n🙏 कोई शंका हो तो पूछें. शुभकामनाएं!',
+    en: '\n🙏 Feel free to ask if you need clarification. Best wishes!'
+  };
+  parts.push(closings[lang] || closings['en']);
   
   const finalResponse = parts.join('\n\n');
-  console.log(`   📋 Legacy template fallback generated: ${finalResponse.length} chars`);
+  console.log(`   📋 Localized legacy template fallback generated: ${finalResponse.length} chars, lang=${lang}`);
   
   return {
     formatted_response: finalResponse,

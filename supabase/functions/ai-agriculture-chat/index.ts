@@ -1358,7 +1358,7 @@ serve(async (req) => {
     
     if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
       console.log(`   🔄 Response not in target language, applying translation`);
-      responseContent = forceTranslateResponse(responseContent, detectedLanguage);
+      responseContent = await forceTranslateResponse(responseContent, detectedLanguage);
     }
     
     // ═══════════════════════════════════════════════════════════════════════════
