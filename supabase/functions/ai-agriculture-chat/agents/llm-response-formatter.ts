@@ -1399,14 +1399,20 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push('');
       parts.push(deterministicPrompt);
       
-      // Append secondary actions (capped at 1) from decision_output
+      // ═══ RULE ATOMICITY: Secondary actions stripped of treatment data ═══
+      // Secondary rules may ONLY contribute monitoring/context — never
+      // product_name or dosage, which would contaminate the primary rule's
+      // treatment and cause chemical/dosage mismatches in LLM output.
       const secondary = decision.secondary_actions || decision.secondary_recommendations;
       if (secondary && secondary.length > 0) {
-        parts.push(`\n═══ ADDITIONAL RECOMMENDATION ═══`);
+        parts.push(`\n═══ ADDITIONAL OBSERVATION ═══`);
         const sec = secondary[0];
-        parts.push(`1. ${sec.action || sec.action_type} - ${sec.reason || 'Supporting action'}`);
-        if (sec.product_name) parts.push(`   Product: ${sec.product_name}`);
-        if (sec.dosage_per_acre) parts.push(`   Per Acre: ${sec.dosage_per_acre}`);
+        parts.push(`1. ${sec.action_type || sec.action || 'MONITOR'} - ${sec.reason || 'Supporting observation'}`);
+        // BLOCKED: product_name and dosage_per_acre — prevents cross-rule contamination
+        if (sec.success_indicators) {
+          const indicators = Array.isArray(sec.success_indicators) ? sec.success_indicators : [sec.success_indicators];
+          parts.push(`   Monitor for: ${indicators.slice(0, 2).join(', ')}`);
+        }
       }
       
       // Warnings (capped at 2)

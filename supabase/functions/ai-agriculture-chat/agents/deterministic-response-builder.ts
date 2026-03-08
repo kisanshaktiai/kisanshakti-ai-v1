@@ -1178,39 +1178,138 @@ export function hasAdequateRuleContent(ruleData: RichRuleData): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RULE ATOMICITY: Chemical mismatch detection utility
+// Prevents cross-rule contamination where chemical A's name appears
+// in rule B's dosage string (e.g., Chlorpyrifos product + Fipronil dosage)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const KNOWN_ACTIVE_INGREDIENTS = [
+  'chlorpyrifos', 'fipronil', 'imidacloprid', 'thiamethoxam', 'acetamiprid',
+  'carbendazim', 'mancozeb', 'metalaxyl', 'tricyclazole', 'propiconazole',
+  'hexaconazole', 'tebuconazole', 'azoxystrobin', 'difenoconazole',
+  'lambda-cyhalothrin', 'cypermethrin', 'deltamethrin', 'profenofos',
+  'acephate', 'monocrotophos', 'dimethoate', 'quinalphos', 'phorate',
+  'cartap', 'flubendiamide', 'chlorantraniliprole', 'emamectin',
+  'spinosad', 'abamectin', 'novaluron', 'lufenuron', 'diafenthiuron',
+  'spiromesifen', 'pyriproxyfen', 'buprofezin', 'triazophos',
+  'ethion', 'malathion', 'carbaryl', 'methomyl', 'thiodicarb',
+  'indoxacarb', 'neem', 'beauveria', 'metarhizium', 'trichoderma',
+  'pseudomonas', 'bacillus', 'copper oxychloride', 'copper hydroxide',
+  'sulphur', 'glyphosate', 'paraquat', 'atrazine', '2,4-D',
+];
+
+export function detectChemicalMismatch(activeIngredient?: string, dosageString?: string): boolean {
+  if (!activeIngredient || !dosageString) return false;
+  
+  const ingredientLower = activeIngredient.toLowerCase().trim();
+  const dosageLower = dosageString.toLowerCase();
+  
+  // Check if any DIFFERENT known chemical name appears in dosage string
+  for (const chemical of KNOWN_ACTIVE_INGREDIENTS) {
+    if (dosageLower.includes(chemical)) {
+      // Found a chemical name in dosage — check if it matches the active_ingredient
+      if (!ingredientLower.includes(chemical) && !chemical.includes(ingredientLower.split(' ')[0])) {
+        console.error(`🚨 [RuleAtomicity] CROSS_RULE_CONTAMINATION_DETECTED: active_ingredient="${activeIngredient}" but dosage contains "${chemical}" → dosage="${dosageString}"`);
+        return true; // MISMATCH
+      }
+    }
+  }
+  return false;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RULE INTEGRITY VALIDATOR
+// Ensures treatment fields are internally consistent within a single rule.
+// If mismatch detected, nullifies contaminated fields to prevent bad advice.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function validateRuleIntegrity(ruleData: RichRuleData): RichRuleData {
+  const ruleId = ruleData.rule_id || 'UNKNOWN';
+  
+  // Log every advisory build for traceability
+  console.log(`📋 [ADVISORY_BUILD] rule_id=${ruleId} | active_ingredient=${ruleData.active_ingredient || 'NONE'} | dosage_per_acre=${ruleData.dosage_per_acre || 'NONE'}`);
+  
+  // Detect chemical/dosage mismatch
+  if (detectChemicalMismatch(ruleData.active_ingredient, ruleData.dosage_per_acre)) {
+    console.error(`🚨 [RULE_INTEGRITY_ERROR] rule_id=${ruleId}: Chemical mismatch detected. Nullifying contaminated dosage to prevent bad advice.`);
+    // Keep active_ingredient (from primary rule), nullify contaminated dosage
+    return {
+      ...ruleData,
+      dosage_per_acre: undefined,
+      water_volume_per_acre: undefined,
+    };
+  }
+  
+  return ruleData;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // EXTRACT RichRuleData from application_details (pipeline bridge)
+// ═══════════════════════════════════════════════════════════════════════════
+// RULE ATOMICITY PRINCIPLE:
+// Treatment-critical fields MUST come from primaryDecision ONLY.
+// appDetails fallback is ONLY allowed if appDetails.rule_id matches
+// primaryDecision.rule_id, preventing cross-rule data contamination.
 // ═══════════════════════════════════════════════════════════════════════════
 
 export function extractRichRuleData(
   primaryDecision: any,
   appDetails: Record<string, any>
 ): RichRuleData {
-  return {
-    rule_id: primaryDecision.rule_id || 'UNKNOWN',
+  const primaryRuleId = primaryDecision.rule_id || 'UNKNOWN';
+  const appDetailsRuleId = appDetails.rule_id || appDetails.ruleId;
+  
+  // RULE ATOMICITY GUARD: Only allow appDetails fallback for treatment fields
+  // if appDetails originates from the SAME rule as primaryDecision
+  const appDetailsSameRule = appDetailsRuleId && appDetailsRuleId === primaryRuleId;
+  
+  // Safe fallback helper: only falls through to appDetails if same rule_id
+  const treatmentField = (primaryVal: any, appVal: any) => {
+    if (primaryVal != null && primaryVal !== '') return primaryVal;
+    if (appDetailsSameRule && appVal != null && appVal !== '') return appVal;
+    // BLOCKED: appDetails has different/unknown rule_id — do NOT use for treatment
+    if (!appDetailsSameRule && appVal != null) {
+      console.warn(`⚠️ [RuleAtomicity] Blocked cross-rule fallback for treatment field. primary_rule=${primaryRuleId}, appDetails_rule=${appDetailsRuleId || 'NONE'}`);
+    }
+    return undefined;
+  };
+  
+  // Non-treatment fields (context/economics/environment) can use appDetails freely
+  const contextField = (primaryVal: any, appVal: any) => {
+    return primaryVal ?? appVal ?? undefined;
+  };
+  
+  const ruleData: RichRuleData = {
+    rule_id: primaryRuleId,
     action_type: primaryDecision.action_type || 'MONITOR',
-    cause: primaryDecision.cause || appDetails.cause || undefined,
-    reason_text: primaryDecision.reason_text || appDetails.reason_text || undefined,
-    knowledge_text: primaryDecision.knowledge_text || appDetails.knowledge_text || undefined,
+    // Narrative fields — safe to merge
+    cause: contextField(primaryDecision.cause, appDetails.cause),
+    reason_text: contextField(primaryDecision.reason_text, appDetails.reason_text),
+    knowledge_text: contextField(primaryDecision.knowledge_text, appDetails.knowledge_text),
     scientific_basis: appDetails.scientific_basis || undefined,
-    action_text: primaryDecision.action_text || appDetails.action_text || undefined,
-    treatment_type: appDetails.treatment_type || undefined,
-    active_ingredient: primaryDecision.active_ingredient || appDetails.active_ingredient || undefined,
-    dosage_per_acre: primaryDecision.dosage_per_acre || appDetails.dosage_per_acre || undefined,
-    water_volume_per_acre: primaryDecision.water_volume_per_acre || appDetails.water_volume_per_acre || undefined,
-    application_method: primaryDecision.application_method || appDetails.application_method || appDetails.method || undefined,
-    target_pest_stage: appDetails.target_pest_stage || undefined,
-    chemical_class: primaryDecision.chemical_class || appDetails.chemical_class || undefined,
-    mode_of_action: primaryDecision.mode_of_action || appDetails.mode_of_action || undefined,
-    resistance_group: primaryDecision.resistance_group || appDetails.resistance_group || undefined,
-    phi_days: primaryDecision.phi_days || appDetails.phi_days || undefined,
-    reentry_interval_hours: primaryDecision.reentry_interval_hours || appDetails.reentry_interval_hours || undefined,
-    bee_toxicity: primaryDecision.bee_toxicity || appDetails.bee_toxicity || undefined,
-    aquatic_toxicity: appDetails.aquatic_toxicity || undefined,
-    farmer_safety_level: appDetails.farmer_safety_level || undefined,
-    regulatory_status: appDetails.regulatory_status || undefined,
-    organic_alternative: primaryDecision.organic_alternative || appDetails.organic_alternative || undefined,
-    biological_group: appDetails.biological_group || undefined,
+    action_text: contextField(primaryDecision.action_text, appDetails.action_text),
+    
+    // ═══ TREATMENT-CRITICAL FIELDS: Primary rule ONLY ═══
+    treatment_type: treatmentField(primaryDecision.treatment_type, appDetails.treatment_type),
+    active_ingredient: treatmentField(primaryDecision.active_ingredient, appDetails.active_ingredient),
+    dosage_per_acre: treatmentField(primaryDecision.dosage_per_acre, appDetails.dosage_per_acre),
+    water_volume_per_acre: treatmentField(primaryDecision.water_volume_per_acre, appDetails.water_volume_per_acre),
+    application_method: treatmentField(primaryDecision.application_method, appDetails.application_method || appDetails.method),
+    target_pest_stage: treatmentField(primaryDecision.target_pest_stage, appDetails.target_pest_stage),
+    chemical_class: treatmentField(primaryDecision.chemical_class, appDetails.chemical_class),
+    mode_of_action: treatmentField(primaryDecision.mode_of_action, appDetails.mode_of_action),
+    resistance_group: treatmentField(primaryDecision.resistance_group, appDetails.resistance_group),
+    phi_days: treatmentField(primaryDecision.phi_days, appDetails.phi_days),
+    reentry_interval_hours: treatmentField(primaryDecision.reentry_interval_hours, appDetails.reentry_interval_hours),
+    bee_toxicity: treatmentField(primaryDecision.bee_toxicity, appDetails.bee_toxicity),
+    aquatic_toxicity: treatmentField(primaryDecision.aquatic_toxicity, appDetails.aquatic_toxicity),
+    farmer_safety_level: treatmentField(primaryDecision.farmer_safety_level, appDetails.farmer_safety_level),
+    regulatory_status: treatmentField(primaryDecision.regulatory_status, appDetails.regulatory_status),
+    organic_alternative: treatmentField(primaryDecision.organic_alternative, appDetails.organic_alternative),
+    biological_group: treatmentField(primaryDecision.biological_group, appDetails.biological_group),
     ipm_level: appDetails.ipm_level || undefined,
+    
+    // Economics — context, safe to merge
     material_cost_per_acre_min: appDetails.material_cost_per_acre_min || undefined,
     material_cost_per_acre_max: appDetails.material_cost_per_acre_max || undefined,
     labor_cost_per_acre_min: appDetails.labor_cost_per_acre_min || undefined,
@@ -1219,18 +1318,24 @@ export function extractRichRuleData(
     equipment_required: appDetails.equipment_required || undefined,
     equipment_cost_per_acre: appDetails.equipment_cost_per_acre || undefined,
     total_cost_estimated: appDetails.total_cost_estimated || undefined,
-    roi_yield_gain_pct: primaryDecision.roi_yield_gain_pct || appDetails.roi_yield_gain_pct || undefined,
+    roi_yield_gain_pct: contextField(primaryDecision.roi_yield_gain_pct, appDetails.roi_yield_gain_pct),
     roi_cost_saved_min: appDetails.roi_cost_saved_min || undefined,
     roi_cost_saved_max: appDetails.roi_cost_saved_max || undefined,
     roi_net_score: appDetails.roi_net_score || undefined,
     roi_confidence: appDetails.roi_confidence || undefined,
-    success_indicators: primaryDecision.success_indicators || appDetails.success_indicators || undefined,
-    failure_indicators: primaryDecision.failure_indicators || appDetails.failure_indicators || undefined,
+    
+    // Monitoring — context
+    success_indicators: contextField(primaryDecision.success_indicators, appDetails.success_indicators),
+    failure_indicators: contextField(primaryDecision.failure_indicators, appDetails.failure_indicators),
+    
+    // Environment — context
     min_temperature: appDetails.min_temperature || undefined,
     max_temperature: appDetails.max_temperature || undefined,
     max_wind_speed: appDetails.max_wind_speed || undefined,
     rain_delay_hours: appDetails.rain_delay_hours || undefined,
     weather_dependency: appDetails.weather_dependency || undefined,
+    
+    // Traceability — context
     scientific_source: appDetails.scientific_source || undefined,
     icar_package_ref: appDetails.icar_package_ref || undefined,
     university_source: appDetails.university_source || undefined,
@@ -1239,6 +1344,9 @@ export function extractRichRuleData(
     response_severity: appDetails.response_severity || undefined,
     data_authority_rank: appDetails.data_authority_rank || undefined,
   };
+  
+  // Run integrity validation before returning
+  return validateRuleIntegrity(ruleData);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

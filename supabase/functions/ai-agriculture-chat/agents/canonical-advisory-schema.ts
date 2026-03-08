@@ -329,11 +329,12 @@ export function buildMultiRuleAdvisory(
     return (b.data_authority_rank || 0) - (a.data_authority_rank || 0);
   });
   
+  // ═══ RULE ATOMICITY: Strip treatment data from secondary observations ═══
   const secondaryObs = sorted.slice(0, 3).map((d: any) => ({
     rule_id: d.rule_id || 'UNKNOWN',
     cause: d.cause || d.cause_name || '',
     action_type: d.action_type || 'MONITOR',
-    action_text: d.action_text || '',
+    action_text: '', // BLOCKED: prevents cross-rule treatment contamination
     confidence: d.confidence_score || d.weighted_confidence || 0
   }));
   
