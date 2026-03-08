@@ -1674,13 +1674,52 @@ async function callOpenAIWithTimeout(
 }
 
 async function callLovableAIWithTimeout(
-  _systemPrompt: string,
-  _userPrompt: string,
-  _apiKey: string,
-  _timeoutMs: number
+  systemPrompt: string,
+  userPrompt: string,
+  apiKey: string,
+  timeoutMs: number
 ): Promise<{ success: boolean; text: string }> {
-  // TEMPORARY SAFETY PATH: keep parser/runtime stable; OpenAI/Gemini remain primary providers
-  return { success: false, text: '' };
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        max_tokens: 800,
+        temperature: 0.7,
+      }),
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn(`Lovable AI error: ${response.status}`);
+      return { success: false, text: '' };
+    }
+
+    const data: any = await response.json();
+    const text = data?.choices?.[0]?.message?.content ?? '';
+
+    return {
+      success: typeof text === 'string' && text.length > 0,
+      text: typeof text === 'string' ? text : '',
+    };
+  } catch (error) {
+    clearTimeout(timeoutId);
+    console.warn('Lovable AI call failed:', error);
+    return { success: false, text: '' };
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
