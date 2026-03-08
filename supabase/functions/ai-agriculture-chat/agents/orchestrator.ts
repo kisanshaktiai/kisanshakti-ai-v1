@@ -2995,7 +2995,48 @@ export class AIAgentOrchestrator {
         // crop_schedules is the ONLY authority for crop identification in land chat
         console.log('      ✅ PATCH 3: crop_schedules is authoritative - observation.crop will NOT override');
       } else {
-        console.log('      ⚠️ No CropContextAuthority available - general chat mode');
+        // v7.7 FIX: Infer crop from farmer message when no land context
+        // The farmer may explicitly mention the crop (e.g., "ऊसाच्या" = sugarcane)
+        const CROP_MENTION_PATTERNS: Record<string, RegExp> = {
+          'SUGARCANE': /ऊस|ऊसा|उस|गन्ना|गन्ने|sugarcane|cane/i,
+          'COTTON': /कापूस|कापस|कपास|cotton/i,
+          'SOYBEAN': /सोयाबीन|सोयबीन|soybean|soya/i,
+          'WHEAT': /गहू|गेहूं|गेहू|wheat/i,
+          'RICE': /भात|धान|चावल|rice|paddy/i,
+          'MAIZE': /मका|मक्का|maize|corn/i,
+          'ONION': /कांदा|प्याज|onion/i,
+          'TOMATO': /टोमॅटो|टमाटर|tomato/i,
+          'GRAPE': /द्राक्ष|अंगूर|grape/i,
+          'POMEGRANATE': /डाळिंब|अनार|pomegranate/i,
+          'TURMERIC': /हळद|हल्दी|turmeric/i,
+          'BANANA': /केळी|केला|banana/i,
+        };
+        
+        let inferredCrop: string | null = null;
+        for (const [cropCode, pattern] of Object.entries(CROP_MENTION_PATTERNS)) {
+          if (pattern.test(safeFarmerMessage)) {
+            inferredCrop = cropCode;
+            break;
+          }
+        }
+        
+        if (inferredCrop) {
+          console.log(`      🌾 [v7.7] CROP INFERRED FROM MESSAGE: ${inferredCrop}`);
+          cropContextAuthority = {
+            crop_name: inferredCrop,
+            growth_stage: 'VEGETATIVE', // Safe default for diagnostic intents
+            days_since_sowing: 60, // Reasonable default
+            source: 'farmer_message' as any
+          };
+          lockedCropContext = {
+            crop_name: inferredCrop,
+            growth_stage: 'VEGETATIVE',
+            days_since_sowing: 60
+          };
+          agentsUsed.push('CROP_INFERENCE_FROM_MESSAGE');
+        } else {
+          console.log('      ⚠️ No CropContextAuthority available - general chat mode');
+        }
       }
       
       // PHASE-8.1: Pass cropContext to ObservationKey mapper
