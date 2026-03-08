@@ -3993,23 +3993,8 @@ function generateQuickRepliesFromCommunication(
   return uniqueQuestions.slice(0, 4);
 }
 
-function getDefaultQuickReplies(language: string): string[] {
-  if (language === 'mr') {
-    return [
-      '🌅 आज काय करावे?',
-      '💧 पाणी द्यावे का?',
-      '🌾 माझे पीक कसे आहे?',
-      '📅 पुढील काम कधी?'
-    ];
-  }
-  if (language === 'hi') {
-    return [
-      '🌅 आज क्या करूं?',
-      '💧 पानी देना है?',
-      '🌾 फसल कैसी है?',
-      '📅 अगला काम कब?'
-    ];
-  }
+function getDefaultQuickReplies(_language: string): string[] {
+  // English-only — LLM narration translates at runtime
   return [
     '🌅 What to do today?',
     '💧 When to water?',
