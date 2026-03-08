@@ -3853,10 +3853,9 @@ function getLocalizedMessage(comm: any, language: string): string {
   const flattened = flattenCommunicationToText(comm, language);
   if (flattened) return flattened;
   
-  // Legacy fallback: Try to get language-specific message
-  if (language === 'mr' && comm.main_message_mr) return comm.main_message_mr;
-  if (language === 'hi' && comm.main_message_hi) return comm.main_message_hi;
-  if (language === 'en' && comm.main_message_en) return comm.main_message_en;
+  // Legacy fallback: Try to get language-specific message via dynamic key
+  const langMsg = comm[`main_message_${language}`];
+  if (langMsg) return langMsg;
   
   // Fallback to main_message
   return comm.main_message || '';
