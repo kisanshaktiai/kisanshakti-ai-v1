@@ -37493,6 +37493,10 @@ export type Database = {
           total_processing_units: number
         }[]
       }
+      get_tenant_revenue: {
+        Args: { p_date_from?: string; p_date_to?: string; p_tenant_id: string }
+        Returns: number
+      }
       get_tenant_tiles: {
         Args: { p_tenant_id: string }
         Returns: {
