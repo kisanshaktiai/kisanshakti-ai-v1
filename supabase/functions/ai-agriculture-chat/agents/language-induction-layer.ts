@@ -364,43 +364,7 @@ const DISTRIBUTION_MAP: Record<string, CanonicalDistributionSymbol> = {
   'widespread': CanonicalDistributionSymbol.WIDESPREAD,
 };
 
-// ============================================================================
-// OUTPUT INTERFACES
-// ============================================================================
-
-export interface InducedSymbol {
-  symbol: string;
-  category: 'SYMPTOM' | 'CROP' | 'AFFECTED_PART' | 'SEVERITY' | 'DISTRIBUTION';
-  confidence: number;
-  source_text: string;
-  source_language: string;
-}
-
-export interface LanguageInductionResult {
-  version: string;
-  
-  // Primary outputs - always English symbols
-  symptoms: InducedSymbol[];
-  crop: InducedSymbol | null;
-  affected_parts: InducedSymbol[];
-  severity: InducedSymbol | null;
-  distribution: InducedSymbol | null;
-  
-  // Coverage metrics
-  symbol_coverage: number; // 0-1: % of input words mapped to symbols
-  total_symbols_extracted: number;
-  unmapped_tokens: string[];
-  
-  // Aggregated confidence (independent of intent)
-  aggregated_confidence: number; // Weighted average of all symbol confidences
-  min_confidence: number;
-  max_confidence: number;
-  
-  // Metadata
-  detected_language: string;
-  original_text: string;
-  processing_time_ms: number;
-}
+// Interfaces are now in symptom-enums.ts (re-exported above)
 
 // ============================================================================
 // LANGUAGE DETECTION
