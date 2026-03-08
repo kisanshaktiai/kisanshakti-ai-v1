@@ -153,25 +153,27 @@ export async function getObservationKeyLabels(key: string, language: string = 'e
   if (!client) return null;
   
   // Load labels in all three languages in parallel
-  const [enLabels, hiLabels, mrLabels] = await Promise.all([
-    loadObservationLabels(client, [key], 'en'),
-    loadObservationLabels(client, [key], 'hi'),
-    loadObservationLabels(client, [key], 'mr'),
-  ]);
+  // Load labels for requested language + English fallback
+  const langCodes = language === 'en' ? ['en'] : [language, 'en'];
+  const labelResults = await Promise.all(
+    langCodes.map(lang => loadObservationLabels(client, [key], lang))
+  );
   
   const upperKey = key.toUpperCase();
-  const en = enLabels.get(upperKey);
-  const hi = hiLabels.get(upperKey);
-  const mr = mrLabels.get(upperKey);
+  const primaryLabel = labelResults[0]?.get(upperKey);
+  const enLabel = (language === 'en' ? primaryLabel : labelResults[1]?.get(upperKey)) || null;
   
-  if (!en && !hi && !mr) return null;
+  if (!primaryLabel && !enLabel) return null;
   
   return {
     key: upperKey,
-    label_en: en?.display_text || formatCodeFallback(key, 'en'),
-    label_hi: hi?.display_text || formatCodeFallback(key, 'hi'),
-    label_mr: mr?.display_text || formatCodeFallback(key, 'mr'),
-    label: (language === 'hi' ? hi : language === 'mr' ? mr : en)?.display_text || formatCodeFallback(key, language),
+    label_en: enLabel?.display_text || formatCodeFallback(key, 'en'),
+    [`label_${language}`]: primaryLabel?.display_text || formatCodeFallback(key, language),
+    label: primaryLabel?.display_text || enLabel?.display_text || formatCodeFallback(key, language),
+    category: (enLabel || primaryLabel)?.icon || 'unknown',
+    stage: [],
+    visual_priority: 99
+  } as ObservationKeyWithLabels;
     category: en?.icon || 'unknown',
     stage: [],
     visual_priority: 99
