@@ -2915,7 +2915,7 @@ function generateActionDescription(primary: any, lang: string): string {
  * 4. Returns text suitable for ai_chat_messages.content field
  * 5. NEVER returns empty - always reflects decision brain output
  */
-function getResponseContent(response: OrchestratorResponse, language: string): string {
+async function getResponseContent(response: OrchestratorResponse, language: string): Promise<string> {
   const lang = language;
   console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
   console.log(`📝 [PostProcessor] Response assembly:`, {
