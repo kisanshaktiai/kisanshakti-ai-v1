@@ -1256,7 +1256,7 @@ ${landInfo}
 RULE ENGINE RECOMMENDATIONS (PRESERVE ALL DOSAGES EXACTLY):
 ${recData}
 
-FORMAT this into natural, empathetic farmer advice in ${input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English'}.`;
+FORMAT this into natural, empathetic farmer advice in ${getLanguageName(input.language)}.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
