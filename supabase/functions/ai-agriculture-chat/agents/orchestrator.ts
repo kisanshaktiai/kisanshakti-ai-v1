@@ -2327,16 +2327,12 @@ export class AIAgentOrchestrator {
           const cropName = clarificationLandCtx.crop || 'पीक';
           const stageName = clarificationLandCtx.stage || '';
           const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिवस)` : '';
-          clarificationMr = `तुमच्या ${cropName} पिकाबद्दल${dasStr} समजले. कृपया नेमकी समस्या सांगा:\n• पानांचा रंग बदलला?\n• पानांवर डाग/छिद्र?\n• किडे दिसतात?\n• खोड/मूळ समस्या?\n• वाढ मंदावली?`;
-          clarificationHi = `आपके ${cropName} फसल${dasStr} के बारे में समझा। कृपया सटीक समस्या बताएं:\n• पत्तों का रंग बदला?\n• पत्तों पर धब्बे/छेद?\n• कीड़े दिखते हैं?\n• तना/जड़ समस्या?\n• बढ़वार रुकी?`;
-          clarificationEn = `I understand you're reporting an issue with your ${clarificationLandCtx.crop} crop (${clarificationLandCtx.stage} stage). Could you describe the specific symptoms? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          clarificationEn = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
         } else {
-          clarificationMr = `कृपया तुमच्या पिकाची नेमकी समस्या सांगा:\n• पानांचा रंग बदलला?\n• पानांवर डाग/छिद्र?\n• किडे दिसतात?\n• वाढ मंदावली?`;
-          clarificationHi = `कृपया अपनी फसल की सटीक समस्या बताएं:\n• पत्तों का रंग बदला?\n• पत्तों पर धब्बे/छेद?\n• कीड़े दिखते हैं?\n• बढ़वार रुकी?`;
           clarificationEn = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
         }
         
-        const clarificationMessage = userLang === 'hi' ? clarificationHi : userLang === 'en' ? clarificationEn : clarificationMr;
+        const clarificationMessage = clarificationEn;
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
