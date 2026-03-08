@@ -423,11 +423,10 @@ export function formatExplanationForFarmer(
   const keySteps = chain.steps.filter(s => s.category === 'DIAGNOSIS' || s.category === 'PRESCRIPTION');
   
   if (keySteps.length > 0) {
-    const whyLabel = language === 'mr' ? '🔍 कारण:' : language === 'hi' ? '🔍 कारण:' : '🔍 Reasoning:';
-    output += whyLabel + '\n';
+    output += '🔍 Reasoning:\n';
     
     for (const step of keySteps.slice(0, 3)) {
-      const why = language === 'mr' ? step.why_mr : language === 'hi' ? step.why_hi : step.why_en;
+      const why = (step as any)[`why_${language}`] || step.why_en;
       output += `• ${why}\n`;
     }
   }
