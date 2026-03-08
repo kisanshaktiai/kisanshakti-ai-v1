@@ -267,14 +267,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.STOP_ESCALATE]: {
-    mr: {
-      question: '🌱 सध्या पिकाचे निरीक्षण करा. जर समस्या वाढली तर परत संपर्क करा किंवा जवळच्या कृषी सेवा केंद्राला भेट द्या.',
-      options: []
-    },
-    hi: {
-      question: '🌱 अभी फसल की निगरानी करें। अगर समस्या बढ़े तो फिर संपर्क करें या नजदीकी कृषि सेवा केंद्र जाएं।',
-      options: []
-    },
     en: {
       question: '🌱 Please monitor your crop for now. If the problem increases, contact us again or visit your nearest agriculture service center.',
       options: []
