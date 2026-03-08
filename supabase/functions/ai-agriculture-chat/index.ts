@@ -1332,7 +1332,7 @@ serve(async (req) => {
                 supabase
               ));
             } else {
-              responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
+              responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
             }
           }
         } // End of prescription gate allowed block
