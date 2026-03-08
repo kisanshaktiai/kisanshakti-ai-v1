@@ -1326,9 +1326,10 @@ serve(async (req) => {
             console.log(`   📋 Falling back to template-based response for safety`);
             
             if (orchestratorResponse.decision_output?.primary_decision) {
-              responseContent = sanitizeFarmerResponse(buildFormattedRecommendationsList(
+              responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
                 orchestratorResponse.decision_output, 
-                detectedLanguage
+                detectedLanguage,
+                supabase
               ));
             } else {
               responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
