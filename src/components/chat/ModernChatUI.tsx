@@ -15,6 +15,7 @@ import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainC
 import { DataAuditCards, type DataAudit } from './DataAuditCards';
 import { ClarificationOptionsUI } from './ClarificationOptionsUI';
 import { DiagnosticEscalationUI } from './DiagnosticEscalationUI';
+import { CanonicalAdvisoryCard } from './CanonicalAdvisoryCard';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC ESCALATION TYPES
