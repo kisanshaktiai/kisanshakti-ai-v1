@@ -675,9 +675,12 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
             </>
           ) : hasCanonicalAdvisory ? (
             <>
-              <div className="p-3">
-                <CanonicalAdvisoryCard advisory={message.structuredAdvisory} />
-              </div>
+              {/* Primary: Translated farmer-friendly narration */}
+              {message.content && message.content.length > 20 && (
+                <div className="px-3 py-2 text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                  {message.content}
+                </div>
+              )}
               {/* Timestamp */}
               <div className="flex items-center justify-between text-xs mt-1 opacity-60 text-muted-foreground px-3 pb-2.5">
                 <span>
