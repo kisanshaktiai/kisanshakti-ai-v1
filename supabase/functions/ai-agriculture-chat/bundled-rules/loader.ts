@@ -445,6 +445,9 @@ const CATEGORY_F_KEYS = new Set(['etl', 'etl_range']);
 
 // Category G: Informational/context (NOT required - don't block matching)
 // FORENSIC FIX 1B: Added all orphan keys that are informational/economic context
+// v7.6 FORENSIC FIX: Added domain-specific boolean keys that duplicate observations array
+// These are metadata annotations (e.g., egg_masses_visible: true) that redundantly
+// describe what the `observations` array already captures. They must NEVER block rules.
 const CATEGORY_G_KEYS = new Set([
   'context', 'roi_basis', 'roi_modifier', 'roi_by_region',
   'timing', 'method', 'operation', 'action', 'assessment_timing',
@@ -454,6 +457,41 @@ const CATEGORY_G_KEYS = new Set([
   'requires_identification', 'soil_type', 'soil_type_name',
   'variety', 'trait', 'region', 'farming_mode', 'monsoon_timing',
   'yield_potential', 'crop_cycle',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v7.6 BUG 1 FIX: Domain-specific boolean keys from conditions_json
+  // These are observation metadata that duplicate the `observations` array.
+  // Previously fell through to unrecognized-key handler (line 927) as required:true
+  // which blocked ALL pest treatment rules from firing.
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Pest observation booleans
+  'egg_masses_visible', 'pink_larvae_inside', 'bore_holes_at_nodes',
+  'larvae_visible', 'larvae_present', 'larvae_in_stem', 'larvae_in_whorl',
+  'frass_visible', 'frass_present', 'webbing_visible', 'webbing_present',
+  'honeydew_visible', 'honeydew_present', 'sooty_mold_visible',
+  'tunneling_visible', 'tunneling_present', 'exit_holes_visible',
+  'pupal_cases_visible', 'cocoon_visible', 'mines_visible',
+  'galls_visible', 'galls_present', 'leaf_rolling_visible',
+  'stem_boring_visible', 'dead_heart_visible', 'dead_heart_present',
+  'wilting_visible', 'wilting_present', 'drying_visible',
+  'discoloration_visible', 'discoloration_present',
+  'yellowing_visible', 'yellowing_present',
+  'spots_visible', 'lesions_visible', 'lesions_present',
+  'fungal_growth_visible', 'mold_visible', 'mold_present',
+  'rot_visible', 'rot_present', 'canker_visible',
+  'white_grub_visible', 'termite_visible', 'aphid_visible',
+  'whitefly_visible', 'mealybug_visible', 'scale_insect_visible',
+  'mite_visible', 'thrips_visible', 'jassid_visible',
+  // Cultural/environmental booleans
+  'trash_mulch', 'soil_moisture', 'population_trend',
+  'pest', 'pest_type', 'disease_type', 'damage_type',
+  'intercrop_present', 'ratoon_crop', 'irrigated',
+  'rainfed', 'waterlogged', 'drought_stress',
+  // Threshold strings that cannot be evaluated as booleans
+  'larvae_count_per_plant', 'damage_percentage', 'incidence_percentage',
+  'infestation_level', 'severity_level', 'attack_intensity',
+  // Confidence/diagnostic metadata
+  'requires_diagnosis_confidence', 'requires_confirmation',
+  'confidence_threshold', 'min_confidence',
 ]);
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -896,13 +934,18 @@ export function evaluateConditionsJson(
 
     // ─── Category F: ETL Objects ───
     if (CATEGORY_F_KEYS.has(key)) {
-      if (input.pest_count === undefined || input.pest_count === null) {
-        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+      if (typeof condValue === 'string') {
+        // v7.6 BUG 4 FIX: etl_range as string (e.g., "8-10") is informational metadata
+        // Cannot be evaluated without pest_count — treat as non-blocking context
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      } else if (input.pest_count === undefined || input.pest_count === null) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       } else if (typeof condValue === 'object' && condValue !== null) {
         const etlResult = evaluateETLCondition(condValue, input.pest_count);
         ledger.push({ key, status: etlResult ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue: input.pest_count, ruleValue: condValue });
       } else {
-        ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue });
+        // v7.6: Unknown ETL format — don't block the rule
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       }
       continue;
     }
@@ -924,14 +967,17 @@ export function evaluateConditionsJson(
     }
 
     // ─── Unrecognized keys: Domain-specific observation flags ───
+    // v7.6 BUG 1 FIX: Changed from required:true → required:false
+    // Unknown boolean keys are treated as SOFT observation hints, not hard gates.
+    // This prevents orphan/new DB keys from blocking entire rules.
     if (condValue === true || condValue === 'true') {
       const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
       const match = expandedObs.has(keySymbol) ||
         [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
         inputQuery.includes(keySymbol);
       ledger.push({
-        key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED,
-        required: true, ruleValue: condValue
+        key, status: match ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA,
+        required: false, ruleValue: condValue
       });
       continue;
     }
@@ -956,9 +1002,10 @@ export function evaluateConditionsJson(
       }
 
       // String match against observations/query
+      // v7.6: Unknown string keys are soft — don't block rules
       const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
       const match = [...expandedObs].some(o => o.includes(valUpper) || valUpper.includes(o)) || inputQuery.includes(valUpper);
-      ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, ruleValue: condValue });
+      ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       continue;
     }
 
@@ -973,15 +1020,17 @@ export function evaluateConditionsJson(
     if (typeof condValue === 'number') {
       const inputValue = (input as any)[key];
       if (inputValue === undefined || inputValue === null) {
-        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+        // v7.6: Unknown numeric keys without runtime data are non-blocking
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       } else {
         const passes = Math.abs(Number(inputValue) - condValue) < 0.01;
-        ledger.push({ key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue, ruleValue: condValue });
+        ledger.push({ key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: false, inputValue, ruleValue: condValue });
       }
       continue;
     }
 
     // ─── FORENSIC FIX 1C: Handle `requires_diagnosis_confidence` as threshold ───
+    // v7.6: Moved to CATEGORY_G_KEYS but keep explicit handler as safety net
     if (key === 'requires_diagnosis_confidence') {
       const confVal = typeof condValue === 'number' ? condValue : parseFloat(String(condValue));
       // This is a soft gate — if we don't have confidence data, skip gracefully
@@ -1012,8 +1061,8 @@ export function evaluateConditionsJson(
       continue;
     }
 
-    // Anything else
-    ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: true, ruleValue: condValue });
+    // Anything else — v7.6: non-blocking to prevent orphan keys from killing rules
+    ledger.push({ key, status: ConditionStatus.UNEVALUABLE, required: false, ruleValue: condValue });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
