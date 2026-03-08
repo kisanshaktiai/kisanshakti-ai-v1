@@ -14,6 +14,11 @@ import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/l
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 
+// CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
+import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
+import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent } from './agents/deterministic-response-builder.ts';
+import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
+
 // PHASE 5: Import LLM Response Formatter for natural language generation
 import { formatRecommendationsWithLLM } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
@@ -3625,6 +3630,49 @@ function transformOrchestratorResponseWithContent(
 
   // For DECISION_PROVIDED, use the pre-generated LLM-formatted content
   if (response.type === 'DECISION_PROVIDED') {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CANONICAL ADVISORY: Build structured JSON from decision_output
+    // This enables the frontend to render rich advisory cards
+    // ═══════════════════════════════════════════════════════════════════════════
+    let structuredAdvisory: any = null;
+    try {
+      const decisionOutput = response.decision_output as any;
+      const primaryDecision = decisionOutput?.primary_decision;
+      if (primaryDecision?.rule_id) {
+        const appDetails = primaryDecision.application_details || {};
+        const richData = extractRichRuleData(primaryDecision, appDetails);
+        
+        if (hasAdequateRuleContent(richData)) {
+          const landAreaAcres = response.dataAudit?.land?.area_acres || undefined;
+          const cropCtx: CropContext | undefined = response.dataAudit?.land?.days_since_sowing ? {
+            days_since_sowing: response.dataAudit.land.days_since_sowing,
+          } : undefined;
+          const weatherMeta = decisionOutput?.metadata?.weather_context;
+          const weather: WeatherContext | undefined = weatherMeta ? {
+            temperature_celsius: weatherMeta.temperature,
+            humidity_pct: weatherMeta.humidity,
+            wind_speed_kmh: weatherMeta.wind_speed,
+            rain_forecast_hours: weatherMeta.rain_forecast_hours,
+            is_raining: weatherMeta.is_raining,
+          } : undefined;
+          
+          const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropCtx, weather);
+          const secondaryDecisions = decisionOutput.secondary_decisions || decisionOutput.secondary_actions || [];
+          let advisory = buildCanonicalAdvisory(structuredResponse, richData, secondaryDecisions);
+          
+          if (secondaryDecisions.length > 0) {
+            advisory = buildMultiRuleAdvisory(advisory, secondaryDecisions);
+          }
+          
+          structuredAdvisory = advisory;
+          console.log(`📋 [CanonicalAdvisory] Built structured advisory for rule ${primaryDecision.rule_id}, decision=${advisory.diagnosis.response_decision}`);
+        }
+      }
+    } catch (advisoryError) {
+      console.warn('⚠️ [CanonicalAdvisory] Failed to build structured advisory:', advisoryError);
+      // Non-fatal — response still works with text content
+    }
+    
     return {
       response: preGeneratedContent, // ← CRITICAL: Use exact same content as DB save
       sessionId: sessionId,
@@ -3632,6 +3680,7 @@ function transformOrchestratorResponseWithContent(
       responseTime: responseTime,
       dataAudit: response.dataAudit,
       actionsReturned: actionsReturned,
+      structured_advisory: structuredAdvisory, // ← NEW: Canonical advisory JSON
       metadata: {
         type: 'decision',
         orchestrator_type: 'DECISION_PROVIDED', // Normalized enum

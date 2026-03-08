@@ -15,6 +15,7 @@ import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainC
 import { DataAuditCards, type DataAudit } from './DataAuditCards';
 import { ClarificationOptionsUI } from './ClarificationOptionsUI';
 import { DiagnosticEscalationUI } from './DiagnosticEscalationUI';
+import { CanonicalAdvisoryCard } from './CanonicalAdvisoryCard';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // DIAGNOSTIC ESCALATION TYPES
@@ -107,6 +108,8 @@ interface Message {
   };
   // Orchestrator type for detecting clarification questions
   orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
+  // ✅ Canonical Advisory structured JSON
+  structuredAdvisory?: any;
   // ✅ NEW: Diagnostic Escalation data for expert-quality intermediate responses
   diagnosticEscalationData?: DiagnosticEscalationData;
 }
@@ -340,6 +343,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // Check if this is an analysis response with full details
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
+  const hasCanonicalAdvisory = !isUser && message.structuredAdvisory?.version;
   const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
   const hasDataAudit = !isUser && message.dataAudit;
   
@@ -667,6 +671,32 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                     minute: '2-digit' 
                   })}
                 </span>
+              </div>
+            </>
+          ) : hasCanonicalAdvisory ? (
+            <>
+              <div className="p-3">
+                <CanonicalAdvisoryCard advisory={message.structuredAdvisory} />
+              </div>
+              {/* Markdown content below structured card */}
+              {message.content && message.content.length > 20 && (
+                <div className="px-3 pb-2 text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                  {message.content}
+                </div>
+              )}
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-1 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.analytics?.responseTime && (
+                  <span className="flex items-center gap-1 text-success">
+                    ⚡ {message.analytics.responseTime}ms
+                  </span>
+                )}
               </div>
             </>
           ) : hasDecisionBrainResponse ? (

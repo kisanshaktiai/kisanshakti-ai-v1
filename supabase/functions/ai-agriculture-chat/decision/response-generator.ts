@@ -1,17 +1,16 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * RESPONSE GENERATOR v2.0 — LANGUAGE-NEUTRAL TEMPLATES
+ * RESPONSE GENERATOR v2.0 — DEPRECATED (LEGACY)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * REFACTORED: All hardcoded Marathi/Hindi response templates REMOVED.
- * Templates are now English-only structural scaffolds.
- * LLM narration layer translates into the farmer's language at runtime.
+ * ⚠️ DEPRECATED: This module is superseded by:
+ *   - `agents/deterministic-response-builder.ts` (structured response)
+ *   - `agents/canonical-advisory-schema.ts` (canonical JSON)
+ *   - `agents/llm-response-formatter.ts` (LLM narration)
  * 
- * This ensures:
- *   - Language-neutral core (supports any language via LLM)
- *   - No hardcoded regional text in code
- *   - All agronomic content from decision_rules DB (SSOT)
- *   - Template structure only — no domain knowledge
+ * Exports are preserved for backward compatibility with orchestrator.ts
+ * but the template system is no longer the primary response path.
+ * The canonical advisory JSON is now built in index.ts and sent to frontend.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
