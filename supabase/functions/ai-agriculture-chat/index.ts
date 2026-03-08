@@ -3904,88 +3904,31 @@ function generateQuickRepliesFromCommunication(
   const hasBiologicalAction = /BIOLOGICAL|TRICHOGRAMMA|IPM|INTEGRATED/i.test(primaryActionType);
   
   // Generate language-specific context-aware questions
-  if (lang === 'mr') {
-    // Marathi questions
-    if (hasPest || hasDisease || hasSpray) {
-      questions.push(`💊 ${cropName ? cropName + 'साठी' : ''} औषध किती दिवसांनी पुन्हा फवारावे?`);
-      questions.push('💰 या उपचाराने किती नुकसान टळेल?');
-      if (hasBiologicalAction) {
-        questions.push('🦠 ट्रायकोग्रामा कुठे मिळेल?');
-      }
+  // English-only context-aware questions — LLM narration layer translates at runtime
+  if (hasPest || hasDisease || hasSpray) {
+    questions.push(`💊 When should I spray ${cropName || 'my crop'} again?`);
+    questions.push('💰 How much crop loss will this treatment prevent?');
+    if (hasBiologicalAction) {
+      questions.push('🦠 Where can I get Trichogramma cards?');
     }
-    if (hasDiagnosis) {
-      questions.push('🔍 मी कसे खात्री करू की हेच कारण आहे?');
-      questions.push('📸 फोटो पाठवू का तपासणीसाठी?');
-    }
-    if (hasFertilizer) {
-      questions.push(`📊 ${cropName || 'पीक'}साठी किती खत द्यावे?`);
-      questions.push('💵 या खताने उत्पादन किती वाढेल?');
-    }
-    if (hasIrrigation) {
-      questions.push('💧 पुढचे पाणी कधी द्यावे?');
-      questions.push('🌧️ पाऊस आला तर पाणी द्यावे का?');
-    }
-    // Add general follow-ups if less than 3
-    if (questions.length < 3) {
-      questions.push('📅 उद्या सर्वात आधी काय करू?');
-    }
-    if (questions.length < 3) {
-      questions.push('📈 माझ्या पिकाची वाढ कशी आहे?');
-    }
-  } else if (lang === 'hi') {
-    // Hindi questions
-    if (hasPest || hasDisease || hasSpray) {
-      questions.push(`💊 ${cropName ? cropName + ' पर' : ''} दोबारा स्प्रे कब करें?`);
-      questions.push('💰 इस इलाज से कितना नुकसान बचेगा?');
-      if (hasBiologicalAction) {
-        questions.push('🦠 ट्राइकोग्रामा कहां मिलेगा?');
-      }
-    }
-    if (hasDiagnosis) {
-      questions.push('🔍 मैं कैसे पक्का करूं कि यही कारण है?');
-      questions.push('📸 जांच के लिए फोटो भेजूं?');
-    }
-    if (hasFertilizer) {
-      questions.push(`📊 ${cropName || 'फसल'} को कितना खाद दूं?`);
-      questions.push('💵 इस खाद से उपज कितनी बढ़ेगी?');
-    }
-    if (hasIrrigation) {
-      questions.push('💧 अगला पानी कब दूं?');
-      questions.push('🌧️ बारिश आए तो भी पानी दूं?');
-    }
-    if (questions.length < 3) {
-      questions.push('📅 कल सबसे पहले क्या करूं?');
-    }
-    if (questions.length < 3) {
-      questions.push('📈 मेरी फसल की बढ़त कैसी है?');
-    }
-  } else {
-    // English questions
-    if (hasPest || hasDisease || hasSpray) {
-      questions.push(`💊 When should I spray ${cropName || 'my crop'} again?`);
-      questions.push('💰 How much crop loss will this treatment prevent?');
-      if (hasBiologicalAction) {
-        questions.push('🦠 Where can I get Trichogramma cards?');
-      }
-    }
-    if (hasDiagnosis) {
-      questions.push('🔍 How can I confirm which cause is affecting my crop?');
-      questions.push('📸 Should I send a photo for diagnosis?');
-    }
-    if (hasFertilizer) {
-      questions.push(`📊 How much fertilizer should I use for ${cropName || 'my crop'}?`);
-      questions.push('💵 How much will yield increase with this fertilizer?');
-    }
-    if (hasIrrigation) {
-      questions.push('💧 When should I water next?');
-      questions.push('🌧️ Should I water even if it rains?');
-    }
-    if (questions.length < 3) {
-      questions.push('📅 What should I do first thing tomorrow?');
-    }
-    if (questions.length < 3) {
-      questions.push('📈 How is my crop growth progressing?');
-    }
+  }
+  if (hasDiagnosis) {
+    questions.push('🔍 How can I confirm which cause is affecting my crop?');
+    questions.push('📸 Should I send a photo for diagnosis?');
+  }
+  if (hasFertilizer) {
+    questions.push(`📊 How much fertilizer should I use for ${cropName || 'my crop'}?`);
+    questions.push('💵 How much will yield increase with this fertilizer?');
+  }
+  if (hasIrrigation) {
+    questions.push('💧 When should I water next?');
+    questions.push('🌧️ Should I water even if it rains?');
+  }
+  if (questions.length < 3) {
+    questions.push('📅 What should I do first thing tomorrow?');
+  }
+  if (questions.length < 3) {
+    questions.push('📈 How is my crop growth progressing?');
   }
   
   // Return up to 4 unique questions
