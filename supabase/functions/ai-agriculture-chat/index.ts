@@ -3195,8 +3195,7 @@ function buildFormattedRecommendationsList(decision: any, lang: string): string 
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
     if (efficacy) {
-      const efficacyLabel = lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective';
-      primaryText += ` | 📊 ${efficacy}% ${efficacyLabel}`;
+      primaryText += ` | 📊 ${efficacy}% effective`;
     }
 
     recParts.push(primaryText);
