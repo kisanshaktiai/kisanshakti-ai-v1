@@ -1554,8 +1554,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push(`DO NOT recommend any specific product or dosage.`);
     }
     
-    parts.push(`- Priority: ${primary.priority || 'HIGH'}`);
-    parts.push(`- IPM Level: ${primary.ipm_level || 'LEVEL_3'}`);
+    // REMOVED: Priority and IPM Level are internal metadata — never expose to LLM prompt
     
     const ipmLevel = primary.ipm_level || 'LEVEL_3';
     if (!IPM_URGENCY_LABELS[ipmLevel]) {
