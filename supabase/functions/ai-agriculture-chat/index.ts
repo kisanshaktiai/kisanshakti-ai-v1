@@ -3565,8 +3565,9 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
   }
   
   // Fallbacks
-  if (comm.main_message_mr && lang === 'mr') return comm.main_message_mr;
-  if (comm.main_message_hi && lang === 'hi') return comm.main_message_hi;
+  // Language-specific fallbacks via property lookup
+  const langMessageKey = `main_message_${lang}`;
+  if ((comm as any)[langMessageKey]) return (comm as any)[langMessageKey];
   if (comm.main_message_en || comm.main_message) return comm.main_message_en || comm.main_message || '';
   if (comm.notification?.body) return comm.notification.body;
   
