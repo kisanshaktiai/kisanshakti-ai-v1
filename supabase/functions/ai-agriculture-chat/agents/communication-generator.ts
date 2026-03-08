@@ -1394,10 +1394,8 @@ export class CommunicationGenerator {
   
   private generateNotification(action: ImmediateAction, lang: SupportedLanguage): FarmerNotification {
     return {
-      title: lang === 'mr' ? 'तुमच्या पिकासाठी सल्ला तयार! 🌾' :
-             lang === 'hi' ? 'आपकी फसल के लिए सलाह तैयार! 🌾' :
-             'Advice ready for your crop! 🌾',
-      body: action.action_summary[lang],
+      title: 'Advice ready for your crop! 🌾',
+      body: action.action_summary[lang] || action.action_summary['en'] || '',
       icon: action.emoji,
       priority: action.urgency_indicator.urgency_level === 'IMMEDIATE' ? 'HIGH' : 'NORMAL'
     };
