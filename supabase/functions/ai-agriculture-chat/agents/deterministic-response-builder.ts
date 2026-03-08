@@ -38,8 +38,16 @@
  * Environmental Conditions | min_temperature, max_temperature, rain_delay_hours,
  *                          | max_wind_speed, weather_dependency
  * 
- * @version 2.0.0
+ * @version 2.1.0
+ * 
+ * v2.1.0 ADDITIONS:
+ * - Async DB-driven translation of indicator codes, action types, pest stages
+ * - Uses observation_translations table (SSOT) for all technical term localization
+ * - Eliminates raw English code leakage in Marathi/Hindi responses
  */
+
+import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
+import { getTranslation, initializeTranslationCache } from '../i18n/translation-loader.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE: Rich Rule Data (all columns from decision_rules used in response)
