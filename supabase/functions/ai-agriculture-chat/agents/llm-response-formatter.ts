@@ -739,11 +739,28 @@ function validateLLMOutput(
     'see label', 'refer label', 'cultural method',
     // BUG FIX: action_text phrases from monitoring/diagnostic rules that are NOT product names
     'pest population', 'monitor pest', 'no treatment required',
-    'regularly', 'at this stage', 'continue observation'
+    'regularly', 'at this stage', 'continue observation',
+    // CRITICAL FIX: NDVI/diagnostic phrases that are NOT product names
+    // These were being extracted from action_text and treated as product names,
+    // causing false "Product partially matched (single word only)" warnings
+    'ndvi decline', 'ndvi drop', 'ndvi', 'decline', 'poor tillering',
+    'growth retardation', 'stunted growth', 'yellowing', 'wilting',
+    'poor germination', 'leaf curl', 'leaf spot', 'nutrient deficiency',
+    'nitrogen deficiency', 'phosphorus deficiency', 'potassium deficiency',
+    'water stress', 'heat stress', 'cold stress', 'wilt', 'blight',
+    'root rot', 'stem rot', 'shoot borer', 'dead heart', 'bore holes'
   ];
   
+  // CRITICAL FIX: Additional guard — if "product name" looks like a diagnostic phrase
+  // (contains multiple words that are observation/symptom terms), skip product validation
+  const DIAGNOSTIC_KEYWORDS = ['decline', 'drop', 'poor', 'stunted', 'yellowing', 'wilting',
+    'deficiency', 'stress', 'damage', 'attack', 'infestation', 'infection', 'rot', 'blight',
+    'ndvi', 'growth', 'tillering', 'germination'];
+  const isDiagnosticPhrase = primaryProductName && 
+    DIAGNOSTIC_KEYWORDS.some(dk => primaryProductName.toLowerCase().includes(dk));
+  
   const isGenericActionType = primaryProductName && 
-    GENERIC_ACTION_TYPES.some(gt => primaryProductName.toLowerCase().includes(gt));
+    (GENERIC_ACTION_TYPES.some(gt => primaryProductName.toLowerCase().includes(gt)) || isDiagnosticPhrase);
   
   if (primaryProductName && 
       primaryProductName !== 'N/A' && 
