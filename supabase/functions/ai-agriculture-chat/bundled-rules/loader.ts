@@ -819,13 +819,18 @@ export function evaluateConditionsJson(
     if (key === 'crop_stage' || key === 'stage' || key === 'growth_stage') {
       const stages = Array.isArray(condValue) ? condValue : [condValue];
       if (stages.length > 0) {
+        // v7.8 FIX: Default/generic stages should not block rules
+        const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
+        const isDefault = !inputStage || DEFAULT_STAGES.has(inputStage);
         const stageMatch = stages.some((s: any) => {
           const upper = String(s).toUpperCase();
           return upper === inputStage || upper === '*' || upper === 'ALL' || upper === 'ANY' || inputStage.includes(upper);
         });
         ledger.push({
-          key, status: stageMatch || !inputStage ? ConditionStatus.PASSED : ConditionStatus.FAILED,
-          required: true, inputValue: inputStage, ruleValue: stages
+          key, status: stageMatch || isDefault ? ConditionStatus.PASSED : ConditionStatus.FAILED,
+          // v7.8: When stage is default/missing, treat as non-blocking
+          required: !isDefault,
+          inputValue: inputStage, ruleValue: stages
         });
       }
       continue;
