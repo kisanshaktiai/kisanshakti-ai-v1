@@ -1020,10 +1020,11 @@ export function evaluateConditionsJson(
     if (typeof condValue === 'number') {
       const inputValue = (input as any)[key];
       if (inputValue === undefined || inputValue === null) {
-        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+        // v7.6: Unknown numeric keys without runtime data are non-blocking
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       } else {
         const passes = Math.abs(Number(inputValue) - condValue) < 0.01;
-        ledger.push({ key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: true, inputValue, ruleValue: condValue });
+        ledger.push({ key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED, required: false, inputValue, ruleValue: condValue });
       }
       continue;
     }
