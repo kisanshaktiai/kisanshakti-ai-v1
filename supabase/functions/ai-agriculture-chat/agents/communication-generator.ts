@@ -1452,9 +1452,7 @@ export class CommunicationGenerator {
       text_to_speak: voiceText,
       language: lang,
       estimated_duration_seconds: Math.ceil(voiceText.split(/\s+/).length / 2.5), // ~150 words/min
-      narrator_voice: lang === 'mr' ? 'MARATHI_MALE' : 
-                      lang === 'hi' ? 'HINDI_MALE' : 
-                      'ENGLISH_NEUTRAL'
+      narrator_voice: getNarratorVoice(lang)
     };
   }
   
