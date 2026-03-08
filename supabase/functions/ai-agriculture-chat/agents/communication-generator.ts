@@ -1401,23 +1401,16 @@ export class CommunicationGenerator {
     };
   }
   
-  private generateQuickActions(lang: SupportedLanguage, scenario: CommunicationScenario): QuickAction[] {
+  private generateQuickActions(_lang: SupportedLanguage, scenario: CommunicationScenario): QuickAction[] {
+    // English-only keys — LLM narration layer translates at runtime
     const actions: QuickAction[] = [
       {
-        button_text: {
-          mr: '✅ समजले',
-          hi: '✅ समझ गया',
-          en: '✅ Got it'
-        },
+        button_text: { en: '✅ Got it' },
         action: 'ACKNOWLEDGE',
         icon: '✅'
       },
       {
-        button_text: {
-          mr: '❓ प्रश्न विचारा',
-          hi: '❓ सवाल पूछें',
-          en: '❓ Ask question'
-        },
+        button_text: { en: '❓ Ask question' },
         action: 'ASK_QUESTION',
         icon: '❓'
       }
@@ -1425,22 +1418,14 @@ export class CommunicationGenerator {
     
     if (scenario === 'ESCALATED_TO_EXPERT' || scenario === 'EMERGENCY') {
       actions.push({
-        button_text: {
-          mr: '📞 तज्ञाला कॉल करा',
-          hi: '📞 विशेषज्ञ को कॉल करें',
-          en: '📞 Call expert'
-        },
+        button_text: { en: '📞 Call expert' },
         action: 'CALL_EXPERT',
         icon: '📞'
       });
     }
     
     actions.push({
-      button_text: {
-        mr: '📷 फोटो पाठवा',
-        hi: '📷 फोटो भेजें',
-        en: '📷 Send photo'
-      },
+      button_text: { en: '📷 Send photo' },
       action: 'UPLOAD_PHOTO',
       icon: '📷'
     });
