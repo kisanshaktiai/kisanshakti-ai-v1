@@ -1337,7 +1337,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       } : undefined;
       
       const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather);
-      const deterministicPrompt = formatStructuredResponseForLLM(structuredResponse);
+      const deterministicPrompt = await formatStructuredResponseForLLM(structuredResponse, undefined, input.supabase_client);
       
       console.log(`✅ [DeterministicBuilder] Integrated into LLM prompt for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}, safety_warnings=${structuredResponse.safety_warnings.length}`);
       
