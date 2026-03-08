@@ -43,9 +43,11 @@ import {
   formatStructuredResponseForLLM,
   extractRichRuleData,
   hasAdequateRuleContent,
-  type RichRuleData,
-  type WeatherContext,
-  type CropContext,
+} from './deterministic-response-builder.ts';
+import type {
+  RichRuleData,
+  WeatherContext,
+  CropContext,
 } from './deterministic-response-builder.ts';
 
 // Import validation from decision representation
@@ -96,8 +98,8 @@ import {
   renderByMode,
   resolveResponseMode,
   assertResponseModeInvariant,
-  type ModeRenderedOutput
 } from '../utils/response-mode-renderer.ts';
+import type { ModeRenderedOutput } from '../utils/response-mode-renderer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
