@@ -3327,7 +3327,7 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please 
  * Fallback: Build natural language response directly from DecisionOutput
  * Used when CommunicationGenerator fails or returns incomplete data
  */
-function buildResponseFromDecisionOutput(decision: any, language: string): string {
+async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
   }
