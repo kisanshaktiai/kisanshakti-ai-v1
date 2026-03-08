@@ -448,7 +448,7 @@ const ALLOWED_PRODUCT_NAMES = new Set([
  * monitoring codes, confidence scores, and internal metadata.
  * Runs AFTER LLM call, BEFORE returning to farmer.
  */
-export function sanitizeFarmerResponse(text: string): string {
+function sanitizeFarmerResponse(text: string): string {
   if (!text) return text;
   
   let sanitized = text;
