@@ -337,12 +337,23 @@ export function validateLLMOutputIntegrity(
   const violations: string[] = [];
   
   // Extract products/dosages from symbolic input
+  // P0 FIX: Also add active_ingredient to allowed list — the CHECK below
+  // scans for common pesticide names which ARE active ingredients, not trade names
   const allowedProducts = new Set<string>();
   const allowedDosages = new Set<string>();
   
   for (const action of symbolicInput.actions) {
     if (action.product_name) {
       allowedProducts.add(action.product_name.toLowerCase());
+    }
+    // P0 FIX: Add active_ingredient and its individual words
+    const activeIngredient = (action as any).active_ingredient;
+    if (activeIngredient) {
+      allowedProducts.add(activeIngredient.toLowerCase());
+      // Add individual words (e.g., "Chlorpyrifos 20% EC" → "chlorpyrifos")
+      for (const word of activeIngredient.toLowerCase().split(/[\s+@\/,%]+/)) {
+        if (word.length > 3) allowedProducts.add(word);
+      }
     }
     if (action.dosage) {
       allowedDosages.add(action.dosage.toLowerCase());
