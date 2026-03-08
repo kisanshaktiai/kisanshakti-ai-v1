@@ -1346,9 +1346,10 @@ serve(async (req) => {
         // instead of relying on potentially incomplete FarmerCommunication
         if (orchestratorResponse.decision_output?.primary_decision) {
           console.log(`   📋 Using buildFormattedRecommendationsList for complete response`);
-          responseContent = sanitizeFarmerResponse(buildFormattedRecommendationsList(
+          responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
             orchestratorResponse.decision_output, 
-            detectedLanguage
+            detectedLanguage,
+            supabase
           ));
         } else {
           responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
