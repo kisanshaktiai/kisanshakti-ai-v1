@@ -14,6 +14,11 @@ import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/l
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 
+// CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
+import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
+import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent } from './agents/deterministic-response-builder.ts';
+import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
+
 // PHASE 5: Import LLM Response Formatter for natural language generation
 import { formatRecommendationsWithLLM } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
