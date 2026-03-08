@@ -821,82 +821,108 @@ function buildSprayWindowInstruction(rule: RichRuleData): string | undefined {
 // This is the TEXT that goes into the LLM prompt for translation/formatting
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function formatStructuredResponseForLLM(response: StructuredFarmerResponse): string {
+export function formatStructuredResponseForLLM(response: StructuredFarmerResponse, lang?: string): string {
   const parts: string[] = [];
+  
+  // Use language parameter for localized output (defaults to 'en' for LLM prompt usage)
+  const l = lang || 'en';
+  
+  // Localized labels helper
+  const L = (en: string, mr: string, hi: string): string => {
+    if (l === 'mr') return mr;
+    if (l === 'hi') return hi;
+    return en;
+  };
   
   // ─── Response decision mode header ───
   if (response.response_decision === 'CLARIFY') {
-    parts.push(`⚠️ RESPONSE MODE: CLARIFICATION REQUIRED`);
-    parts.push(`More crop observations are required before giving treatment advice.`);
-    parts.push(`DO NOT recommend any product or dosage.\n`);
+    parts.push(`⚠️ ${L('RESPONSE MODE: CLARIFICATION REQUIRED', 'प्रतिसाद प्रकार: स्पष्टीकरण आवश्यक', 'प्रतिक्रिया प्रकार: स्पष्टीकरण आवश्यक')}`);
+    parts.push(L(
+      'More crop observations are required before giving treatment advice.',
+      'उपचार सल्ला देण्यापूर्वी अधिक पीक निरीक्षण आवश्यक आहे.',
+      'उपचार सलाह देने से पहले अधिक फसल निरीक्षण आवश्यक है.'
+    ));
+    parts.push(L(
+      'DO NOT recommend any product or dosage.\n',
+      'कोणत्याही उत्पादन किंवा मात्रेची शिफारस करू नका.\n',
+      'किसी भी उत्पाद या खुराक की सिफारिश न करें.\n'
+    ));
   } else if (response.response_decision === 'MONITOR') {
-    parts.push(`ℹ️ RESPONSE MODE: MONITORING ONLY`);
-    parts.push(`Confidence is not sufficient for treatment recommendation. Provide monitoring guidance only.`);
-    parts.push(`DO NOT recommend any product or dosage.\n`);
+    parts.push(`ℹ️ ${L('RESPONSE MODE: MONITORING ONLY', 'प्रतिसाद प्रकार: फक्त निरीक्षण', 'प्रतिक्रिया प्रकार: केवल निगरानी')}`);
+    parts.push(L(
+      'Confidence is not sufficient for treatment recommendation. Provide monitoring guidance only.',
+      'उपचार शिफारसीसाठी पुरेसा विश्वास नाही. फक्त निरीक्षण मार्गदर्शन.',
+      'उपचार सिफारिश के लिए पर्याप्त विश्वास नहीं। केवल निगरानी मार्गदर्शन.'
+    ));
+    parts.push(L(
+      'DO NOT recommend any product or dosage.\n',
+      'कोणत्याही उत्पादन किंवा मात्रेची शिफारस करू नका.\n',
+      'किसी भी उत्पाद या खुराक की सिफारिश न करें.\n'
+    ));
   }
   
   // ─── Safety warnings (top priority) ───
   if (response.safety_warnings.length > 0) {
-    parts.push(`═══ ⛔ SAFETY ALERTS ═══`);
+    parts.push(`═══ ⛔ ${L('SAFETY ALERTS', 'सुरक्षा सूचना', 'सुरक्षा चेतावनी')} ═══`);
     response.safety_warnings.forEach(w => parts.push(w));
     parts.push('');
   }
   
   // Problem
-  parts.push(`═══ PROBLEM EXPLANATION ═══`);
-  parts.push(`Cause: ${response.problem.cause}`);
+  parts.push(`═══ 🎯 ${L('PROBLEM EXPLANATION', 'समस्येचे स्पष्टीकरण', 'समस्या का विवरण')} ═══`);
+  parts.push(`${L('Cause', 'कारण', 'कारण')}: ${response.problem.cause}`);
   if (response.problem.explanation) {
-    parts.push(`Explanation: ${response.problem.explanation}`);
+    parts.push(`${L('Explanation', 'स्पष्टीकरण', 'विवरण')}: ${response.problem.explanation}`);
   }
   if (response.problem.scientific_basis) {
-    parts.push(`Scientific Basis: ${response.problem.scientific_basis}`);
+    parts.push(`${L('Scientific Basis', 'वैज्ञानिक आधार', 'वैज्ञानिक आधार')}: ${response.problem.scientific_basis}`);
   }
   
   // Action
-  parts.push(`\n═══ RECOMMENDED ACTION ═══`);
-  parts.push(`Action Type: ${response.action.action_type}`);
+  parts.push(`\n═══ 📋 ${L('RECOMMENDED ACTION', 'शिफारस केलेली कृती', 'अनुशंसित कार्रवाई')} ═══`);
+  parts.push(`${L('Action Type', 'कृती प्रकार', 'कार्रवाई प्रकार')}: ${response.action.action_type}`);
   if (response.action.action_text) {
-    parts.push(`What To Do: ${response.action.action_text}`);
+    parts.push(`${L('What To Do', 'काय करावे', 'क्या करें')}: ${response.action.action_text}`);
   }
   if (response.action.treatment_type) {
-    parts.push(`Treatment Type: ${response.action.treatment_type}`);
+    parts.push(`${L('Treatment Type', 'उपचार प्रकार', 'उपचार प्रकार')}: ${response.action.treatment_type}`);
   }
   
   // Dosage (CALCULATED) — only in TREAT mode
   if (response.dosage.blocked) {
-    parts.push(`\n═══ ⛔ DOSAGE BLOCKED ═══`);
-    parts.push(response.dosage.block_reason || 'Dosage blocked due to safety concerns.');
-    parts.push(`DO NOT recommend this product. Suggest organic or cultural alternatives.`);
+    parts.push(`\n═══ ⛔ ${L('DOSAGE BLOCKED', 'मात्रा अवरोधित', 'खुराक अवरोधित')} ═══`);
+    parts.push(response.dosage.block_reason || L('Dosage blocked due to safety concerns.', 'सुरक्षिततेमुळे मात्रा अवरोधित.', 'सुरक्षा कारणों से खुराक अवरोधित.'));
+    parts.push(L('DO NOT recommend this product. Suggest organic or cultural alternatives.', 'हे उत्पादन वापरू नका. सेंद्रिय किंवा सांस्कृतिक पर्याय सुचवा.', 'यह उत्पाद न उपयोग करें. जैविक या सांस्कृतिक विकल्प सुझाएं.'));
   } else if (response.dosage.has_dosage && response.response_decision === 'TREAT') {
-    parts.push(`\n═══ DOSAGE FOR YOUR FIELD ═══`);
+    parts.push(`\n═══ 💊 ${L('DOSAGE FOR YOUR FIELD', 'तुमच्या शेतासाठी मात्रा', 'आपके खेत के लिए खुराक')} ═══`);
     if (response.dosage.active_ingredient) {
-      parts.push(`Product: ${response.dosage.active_ingredient}`);
+      parts.push(`${L('Product', 'उत्पादन', 'उत्पाद')}: ${response.dosage.active_ingredient}`);
     }
-    parts.push(`Per Acre: ${response.dosage.per_acre_dosage}`);
+    parts.push(`${L('Per Acre', 'प्रति एकर', 'प्रति एकड़')}: ${response.dosage.per_acre_dosage}`);
     if (response.dosage.per_acre_water) {
-      parts.push(`Water Per Acre: ${response.dosage.per_acre_water}`);
+      parts.push(`${L('Water Per Acre', 'प्रति एकर पाणी', 'प्रति एकड़ पानी')}: ${response.dosage.per_acre_water}`);
     }
     if (response.dosage.land_area_acres && response.dosage.total_dosage) {
-      parts.push(`YOUR LAND: ${response.dosage.land_area_acres} acres`);
-      parts.push(`TOTAL PRODUCT NEEDED: ${response.dosage.total_dosage}`);
+      parts.push(`${L('YOUR LAND', 'तुमची जमीन', 'आपकी ज़मीन')}: ${response.dosage.land_area_acres} ${L('acres', 'एकर', 'एकड़')}`);
+      parts.push(`${L('TOTAL PRODUCT NEEDED', 'एकूण लागणारे उत्पादन', 'कुल आवश्यक उत्पाद')}: ${response.dosage.total_dosage}`);
       if (response.dosage.total_water) {
-        parts.push(`TOTAL WATER NEEDED: ${response.dosage.total_water}`);
+        parts.push(`${L('TOTAL WATER NEEDED', 'एकूण लागणारे पाणी', 'कुल आवश्यक पानी')}: ${response.dosage.total_water}`);
       }
     }
     if (response.dosage.application_method) {
-      parts.push(`Method: ${response.dosage.application_method}`);
+      parts.push(`${L('Method', 'पद्धत', 'विधि')}: ${response.dosage.application_method}`);
     }
     if (response.dosage.spray_type_note) {
-      parts.push(`Spray Note: ${response.dosage.spray_type_note}`);
+      parts.push(`${L('Spray Note', 'फवारणी टीप', 'छिड़काव नोट')}: ${response.dosage.spray_type_note}`);
     }
     if (response.dosage.target_pest_stage) {
-      parts.push(`Best Target Stage: ${response.dosage.target_pest_stage}`);
+      parts.push(`${L('Best Target Stage', 'सर्वोत्तम लक्ष्य टप्पा', 'सर्वोत्तम लक्ष्य चरण')}: ${response.dosage.target_pest_stage}`);
     }
   }
   
   // Safety
   if (response.safety.has_safety_info) {
-    parts.push(`\n═══ SAFETY PRECAUTIONS ═══`);
+    parts.push(`\n═══ ⚠️ ${L('SAFETY PRECAUTIONS', 'सुरक्षा काळजी', 'सुरक्षा सावधानी')} ═══`);
     if (response.safety.phi_blocked) {
       parts.push(`⛔ ${response.safety.phi_block_reason}`);
     } else if (response.safety.phi_instruction) {
@@ -920,62 +946,62 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
   
   // Organic/IPM
   if (response.organic.has_alternative) {
-    parts.push(`\n═══ ORGANIC/IPM ALTERNATIVE ═══`);
+    parts.push(`\n═══ 🌿 ${L('ORGANIC/IPM ALTERNATIVE', 'सेंद्रिय/IPM पर्याय', 'जैविक/IPM विकल्प')} ═══`);
     if (response.organic.organic_alternative) {
-      parts.push(`🌿 Organic Option: ${response.organic.organic_alternative}`);
+      parts.push(`🌿 ${L('Organic Option', 'सेंद्रिय पर्याय', 'जैविक विकल्प')}: ${response.organic.organic_alternative}`);
     }
     if (response.organic.ipm_label) {
-      parts.push(`IPM Level: ${response.organic.ipm_label}`);
+      parts.push(`${L('IPM Level', 'IPM स्तर', 'IPM स्तर')}: ${response.organic.ipm_label}`);
     }
   }
   
   // Cost — only in TREAT mode
   if (response.cost.has_cost && response.response_decision === 'TREAT') {
-    parts.push(`\n═══ ESTIMATED COST ═══`);
+    parts.push(`\n═══ 💰 ${L('ESTIMATED COST', 'अंदाजित खर्च', 'अनुमानित लागत')} ═══`);
     if (response.cost.total_material_cost) {
-      parts.push(`Material Cost (total): ${response.cost.total_material_cost}`);
+      parts.push(`${L('Material Cost (total)', 'साहित्य खर्च (एकूण)', 'सामग्री लागत (कुल)')}: ${response.cost.total_material_cost}`);
     } else if (response.cost.per_acre_material_min || response.cost.per_acre_material_max) {
-      parts.push(`Material Cost: ₹${response.cost.per_acre_material_min || 0}-${response.cost.per_acre_material_max || 0}/acre`);
+      parts.push(`${L('Material Cost', 'साहित्य खर्च', 'सामग्री लागत')}: ₹${response.cost.per_acre_material_min || 0}-${response.cost.per_acre_material_max || 0}/${L('acre', 'एकर', 'एकड़')}`);
     }
     if (response.cost.total_labor_cost) {
-      parts.push(`Labor Cost (total): ${response.cost.total_labor_cost}`);
+      parts.push(`${L('Labor Cost (total)', 'मजुरी खर्च (एकूण)', 'श्रम लागत (कुल)')}: ${response.cost.total_labor_cost}`);
     }
     if (response.cost.labor_hours_per_acre) {
-      parts.push(`Labor Time: ${response.cost.labor_hours_per_acre} hours/acre`);
+      parts.push(`${L('Labor Time', 'मजुरी वेळ', 'श्रम समय')}: ${response.cost.labor_hours_per_acre} ${L('hours/acre', 'तास/एकर', 'घंटे/एकड़')}`);
     }
     if (response.cost.equipment_required?.length) {
-      parts.push(`Equipment: ${response.cost.equipment_required.join(', ')}`);
+      parts.push(`${L('Equipment', 'उपकरणे', 'उपकरण')}: ${response.cost.equipment_required.join(', ')}`);
     }
     if (response.cost.total_estimated) {
-      parts.push(`TOTAL ESTIMATED COST: ${response.cost.total_estimated}`);
+      parts.push(`${L('TOTAL ESTIMATED COST', 'एकूण अंदाजित खर्च', 'कुल अनुमानित लागत')}: ${response.cost.total_estimated}`);
     }
   }
   
   // ROI — only in TREAT mode
   if (response.roi.has_roi && response.response_decision === 'TREAT') {
-    parts.push(`\n═══ EXPECTED RETURN ═══`);
+    parts.push(`\n═══ 📈 ${L('EXPECTED RETURN', 'अपेक्षित फायदा', 'अपेक्षित लाभ')} ═══`);
     if (response.roi.yield_gain_pct) {
-      parts.push(`📈 Expected Yield Increase: ${response.roi.yield_gain_pct}%`);
+      parts.push(`📈 ${L('Expected Yield Increase', 'अपेक्षित उत्पादन वाढ', 'अपेक्षित उपज वृद्धि')}: ${response.roi.yield_gain_pct}%`);
     }
     if (response.roi.cost_saved_range) {
-      parts.push(`💰 Cost Savings: ${response.roi.cost_saved_range}`);
+      parts.push(`💰 ${L('Cost Savings', 'बचत', 'बचत')}: ${response.roi.cost_saved_range}`);
     }
   }
   
   // Monitoring (always shown)
   if (response.monitoring.has_monitoring) {
-    parts.push(`\n═══ MONITORING AFTER APPLICATION ═══`);
+    parts.push(`\n═══ ✅ ${L('MONITORING AFTER APPLICATION', 'वापरानंतर निरीक्षण', 'उपयोग के बाद निगरानी')} ═══`);
     if (response.monitoring.success_indicators?.length) {
-      parts.push(`✅ Success Signs (check after 5-7 days): ${response.monitoring.success_indicators.join(', ')}`);
+      parts.push(`✅ ${L('Success Signs (check after 5-7 days)', 'यशाची चिन्हे (5-7 दिवसांनी तपासा)', 'सफलता के संकेत (5-7 दिन बाद जांचें)')}: ${response.monitoring.success_indicators.join(', ')}`);
     }
     if (response.monitoring.failure_indicators?.length) {
-      parts.push(`❌ Failure Signs (re-treat if seen): ${response.monitoring.failure_indicators.join(', ')}`);
+      parts.push(`❌ ${L('Failure Signs (re-treat if seen)', 'अयशस्वी चिन्हे (दिसल्यास पुन्हा उपचार करा)', 'विफलता के संकेत (दिखने पर पुनः उपचार करें)')}: ${response.monitoring.failure_indicators.join(', ')}`);
     }
   }
   
   // Environmental
   if (response.environment.has_conditions) {
-    parts.push(`\n═══ SPRAY WINDOW CONDITIONS ═══`);
+    parts.push(`\n═══ 🌤️ ${L('SPRAY WINDOW CONDITIONS', 'फवारणी वेळ', 'छिड़काव का समय')} ═══`);
     if (response.environment.spray_blocked) {
       parts.push(`⛔ ${response.environment.spray_block_reason}`);
     }
@@ -986,13 +1012,29 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
   
   // CLARIFY / MONITOR footer
   if (response.response_decision === 'CLARIFY') {
-    parts.push(`\n═══ FARMER INSTRUCTION ═══`);
-    parts.push(`More crop observations are required before giving treatment advice.`);
-    parts.push(`Ask the farmer to describe symptoms in more detail or send a photo.`);
+    parts.push(`\n═══ ${L('FARMER INSTRUCTION', 'शेतकऱ्यांसाठी सूचना', 'किसान के लिए निर्देश')} ═══`);
+    parts.push(L(
+      'More crop observations are required before giving treatment advice.',
+      'उपचार सल्ला देण्यापूर्वी अधिक पीक निरीक्षण आवश्यक आहे.',
+      'उपचार सलाह देने से पहले अधिक फसल निरीक्षण आवश्यक है.'
+    ));
+    parts.push(L(
+      'Ask the farmer to describe symptoms in more detail or send a photo.',
+      'लक्षणे अधिक तपशीलात सांगा किंवा फोटो पाठवा.',
+      'लक्षणों का विस्तार से वर्णन करें या फोटो भेजें.'
+    ));
   } else if (response.response_decision === 'MONITOR') {
-    parts.push(`\n═══ FARMER INSTRUCTION ═══`);
-    parts.push(`Continue monitoring the crop. Check again after 3-5 days.`);
-    parts.push(`If symptoms worsen, contact the advisory system again with detailed observations.`);
+    parts.push(`\n═══ ${L('FARMER INSTRUCTION', 'शेतकऱ्यांसाठी सूचना', 'किसान के लिए निर्देश')} ═══`);
+    parts.push(L(
+      'Continue monitoring the crop. Check again after 3-5 days.',
+      'पिकाचे निरीक्षण सुरू ठेवा. 3-5 दिवसांनी पुन्हा तपासा.',
+      'फसल की निगरानी जारी रखें. 3-5 दिन बाद फिर से जांचें.'
+    ));
+    parts.push(L(
+      'If symptoms worsen, contact the advisory system again with detailed observations.',
+      'लक्षणे वाढल्यास, तपशीलवार निरीक्षणासह पुन्हा संपर्क साधा.',
+      'लक्षण बिगड़ने पर, विस्तृत निरीक्षण के साथ फिर से संपर्क करें.'
+    ));
   }
   
   return parts.join('\n');
