@@ -2944,16 +2944,14 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       
     case 'CLARIFICATION_QUESTION':
     case 'CLARIFICATION_NEEDED':
-      // Priority 1: question object with language-specific text
-      const questionText = lang === 'mr' ? (response.question?.text_mr || '') :
-                          lang === 'hi' ? (response.question?.text_hi || '') :
-                          (response.question?.text_en || '');
+      // Priority 1: question object with language-specific text (prefer lang, fallback to en)
+      const questionText = (response.question as any)?.[`text_${lang}`] || response.question?.text_en || '';
       if (questionText) return questionText;
       
       // Priority 2: communication.main_message.full_text (ZERO_CODE_GATE path)
       const commFullText = response.communication?.main_message?.full_text;
       if (commFullText) {
-        const commText = commFullText[lang] || commFullText['mr'] || commFullText['en'] || '';
+        const commText = commFullText[lang] || commFullText['en'] || '';
         if (commText) return commText;
       }
       
@@ -2967,21 +2965,14 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       return generateClarificationPrompt(response, lang);
       
     case 'PHOTO_REQUEST':
-      return lang === 'mr' ? (response.photo_instructions?.text_mr || '') :
-             lang === 'hi' ? (response.photo_instructions?.text_hi || '') :
-             (response.photo_instructions?.text_en || '');
+      return (response.photo_instructions as any)?.[`text_${lang}`] || response.photo_instructions?.text_en || '';
     case 'SAFETY_BLOCKED':
-      return lang === 'mr' ? (response.blocked_reason?.reason_mr || '') :
-             lang === 'hi' ? (response.blocked_reason?.reason_hi || '') :
-             (response.blocked_reason?.reason_en || '');
+      return (response.blocked_reason as any)?.[`reason_${lang}`] || response.blocked_reason?.reason_en || '';
     case 'ESCALATION_REQUIRED':
-      return lang === 'mr' ? (response.escalation?.message_mr || '') :
-             lang === 'hi' ? (response.escalation?.message_hi || '') :
-             (response.escalation?.message_en || '');
+      return (response.escalation as any)?.[`message_${lang}`] || response.escalation?.message_en || '';
     case 'LLM_RESPONSE':
       return response.llm_response || 
-             (response.escalation?.message_mr || '') ||
-             (response.escalation?.message_en || '');
+             response.escalation?.message_en || '';
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: Handle SYSTEM_ERROR properly - provide helpful advice
@@ -3152,12 +3143,7 @@ function buildFormattedRecommendationsList(decision: any, lang: string): string 
     
     // Primary action - CRITICAL FIX: Translate chemical names to farmer-friendly language
     const rawProductName = primary.application_details?.product_name || '';
-    // Use translation dictionary for farmer-friendly names
-    const productName = rawProductName ? getProductName(rawProductName, lang) : (
-      lang === 'mr' ? 'शिफारस केलेले उत्पादन' :
-      lang === 'hi' ? 'सिफारिश किया गया उत्पाद' :
-      'Recommended product'
-    );
+    const productName = rawProductName ? getProductName(rawProductName, lang) : 'Recommended product';
     const dosage = primary.application_details?.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
     const method = primary.application_details?.method || primary.application_details?.application_method || '';
@@ -3200,8 +3186,7 @@ function buildFormattedRecommendationsList(decision: any, lang: string): string 
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
     if (efficacy) {
-      const efficacyLabel = lang === 'mr' ? 'प्रभावी' : lang === 'hi' ? 'प्रभावी' : 'effective';
-      primaryText += ` | 📊 ${efficacy}% ${efficacyLabel}`;
+      primaryText += ` | 📊 ${efficacy}% effective`;
     }
 
     recParts.push(primaryText);
@@ -3372,12 +3357,7 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
   // Primary recommendation - CRITICAL FIX: Translate chemical names to farmer language
   if (primary) {
     const rawProductName = primary.application_details?.product_name || '';
-    // Use translation dictionary for farmer-friendly names
-    const productName = rawProductName ? getProductName(rawProductName, lang) : (
-      lang === 'mr' ? 'शिफारस केलेले औषध' : 
-      lang === 'hi' ? 'सिफारिश की गई दवा' : 
-      'Recommended treatment'
-    );
+    const productName = rawProductName ? getProductName(rawProductName, lang) : 'Recommended treatment';
     const dosage = primary.application_details?.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
     const method = primary.application_details?.method || '';
@@ -3715,22 +3695,15 @@ function transformOrchestratorResponse(
       
       // Handle the case where question might be a string (question_id) instead of object
       if (typeof question === 'string') {
-        // Fallback message when only question_id is provided
-        questionText = language === 'mr' ? 'कृपया अधिक माहिती द्या. तुमच्या प्रश्नाबद्दल मला अधिक तपशील सांगा.' :
-                       language === 'hi' ? 'कृपया अधिक जानकारी दें। अपने प्रश्न के बारे में मुझे अधिक विवरण बताएं।' :
-                       'Please provide more details. Tell me more about your question.';
+        questionText = 'Please provide more details. Tell me more about your question.';
       } else {
-        // Normal case: question is an object with text fields
-        questionText = language === 'mr' ? (question?.text_mr || '') :
-                       language === 'hi' ? (question?.text_hi || '') :
-                       (question?.text_en || 'Please provide more details.');
+        // Normal case: question is an object with text fields — prefer lang-specific, fallback to en
+        questionText = (question as any)?.[`text_${language}`] || question?.text_en || 'Please provide more details.';
       }
       
       // Ensure we always have some response text
       if (!questionText) {
-        questionText = language === 'mr' ? 'कृपया अधिक माहिती द्या.' :
-                       language === 'hi' ? 'कृपया अधिक जानकारी दें।' :
-                       'Please provide more details.';
+        questionText = 'Please provide more details.';
       }
       
       // ✅ CRITICAL FIX: Safe extraction of options from multiple possible locations
@@ -3786,9 +3759,7 @@ function transformOrchestratorResponse(
     case 'PHOTO_REQUEST':
       // Need photo for diagnosis
       const photoInstr = response.photo_instructions;
-      const photoText = language === 'mr' ? photoInstr?.text_mr :
-                       language === 'hi' ? photoInstr?.text_hi :
-                       photoInstr?.text_en || 'Please send a photo.';
+      const photoText = (photoInstr as any)?.[`text_${language}`] || photoInstr?.text_en || 'Please send a photo.';
       
       return {
         response: photoText,
@@ -3805,13 +3776,11 @@ function transformOrchestratorResponse(
     case 'SAFETY_BLOCKED':
       // Treatment blocked for safety
       const blockedReason = response.blocked_reason;
-      const blockedText = language === 'mr' ? blockedReason?.reason_mr :
-                         language === 'hi' ? blockedReason?.reason_hi :
-                         blockedReason?.reason_en || 'This treatment is not safe.';
+      const blockedText = (blockedReason as any)?.[`reason_${language}`] || blockedReason?.reason_en || 'This treatment is not safe.';
       
       let alternativesText = '';
       if (response.alternatives && response.alternatives.length > 0) {
-        alternativesText = '\n\nसुरक्षित विकल्प:\n' + 
+        alternativesText = '\n\nSafe alternatives:\n' + 
           response.alternatives.map(a => `• ${a.product_name}: ${a.why_safer}`).join('\n');
       }
       
@@ -3830,9 +3799,7 @@ function transformOrchestratorResponse(
     case 'ESCALATION_REQUIRED':
       // Need expert help
       const esc = response.escalation;
-      const escText = language === 'mr' ? esc?.message_mr :
-                     language === 'hi' ? esc?.message_hi :
-                     esc?.message_en || 'Connecting you with an expert.';
+      const escText = (esc as any)?.[`message_${language}`] || esc?.message_en || 'Connecting you with an expert.';
       
       return {
         response: escText,
@@ -3855,35 +3822,17 @@ function transformOrchestratorResponse(
       const fallbackAdvice = response.error?.fallback_advice;
       
       // Build a helpful message instead of just "sorry"
-      const helpfulMessages: Record<string, string> = {
-        'mr': `🙏 तुमच्या प्रश्नावर काम करत आहे.
-
-${fallbackAdvice || 'कृपया तुमचा प्रश्न पुन्हा विचारा किंवा अधिक माहिती द्या.'}
-
-📋 मला मदत करा:
-• तुमचे पीक कोणते?
-• समस्या काय आहे?
-• फोटो पाठवू शकता का?`,
-        'hi': `🙏 आपके प्रश्न पर काम कर रहा हूं।
-
-${fallbackAdvice || 'कृपया अपना प्रश्न दोबारा पूछें या अधिक जानकारी दें।'}
-
-📋 मेरी मदद करें:
-• आपकी फसल कौन सी?
-• समस्या क्या है?
-• फोटो भेज सकते हैं?`,
-        'en': `🙏 Working on your question.
+      const helpfulMessage = `🙏 Working on your question.
 
 ${fallbackAdvice || 'Please ask your question again or provide more details.'}
 
 📋 Help me help you:
 • What is your crop?
 • What is the problem?
-• Can you send a photo?`
-      };
+• Can you send a photo?`;
       
       return {
-        response: helpfulMessages[language] || helpfulMessages['en'],
+        response: helpfulMessage,
         sessionId: sessionId,
         language: language,
         responseTime: responseTime,
@@ -3904,10 +3853,9 @@ function getLocalizedMessage(comm: any, language: string): string {
   const flattened = flattenCommunicationToText(comm, language);
   if (flattened) return flattened;
   
-  // Legacy fallback: Try to get language-specific message
-  if (language === 'mr' && comm.main_message_mr) return comm.main_message_mr;
-  if (language === 'hi' && comm.main_message_hi) return comm.main_message_hi;
-  if (language === 'en' && comm.main_message_en) return comm.main_message_en;
+  // Legacy fallback: Try to get language-specific message via dynamic key
+  const langMsg = comm[`main_message_${language}`];
+  if (langMsg) return langMsg;
   
   // Fallback to main_message
   return comm.main_message || '';
@@ -4045,23 +3993,8 @@ function generateQuickRepliesFromCommunication(
   return uniqueQuestions.slice(0, 4);
 }
 
-function getDefaultQuickReplies(language: string): string[] {
-  if (language === 'mr') {
-    return [
-      '🌅 आज काय करावे?',
-      '💧 पाणी द्यावे का?',
-      '🌾 माझे पीक कसे आहे?',
-      '📅 पुढील काम कधी?'
-    ];
-  }
-  if (language === 'hi') {
-    return [
-      '🌅 आज क्या करूं?',
-      '💧 पानी देना है?',
-      '🌾 फसल कैसी है?',
-      '📅 अगला काम कब?'
-    ];
-  }
+function getDefaultQuickReplies(_language: string): string[] {
+  // English-only — LLM narration translates at runtime
   return [
     '🌅 What to do today?',
     '💧 When to water?',

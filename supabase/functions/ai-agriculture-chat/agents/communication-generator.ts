@@ -314,9 +314,9 @@ export class CommunicationGenerator {
       action_summary: actionSummary,
       urgency_indicator: {
         text: {
-          mr: getUrgencyTranslation(urgency, 'mr') || URGENCY_INDICATORS['TODAY'].mr,
-          hi: getUrgencyTranslation(urgency, 'hi') || URGENCY_INDICATORS['TODAY'].hi,
-          en: getUrgencyTranslation(urgency, 'en') || URGENCY_INDICATORS['TODAY'].en
+          mr: getUrgencyTranslation(urgency, 'mr') || URGENCY_INDICATORS['TODAY']?.en || '🟠 Today',
+          hi: getUrgencyTranslation(urgency, 'hi') || URGENCY_INDICATORS['TODAY']?.en || '🟠 Today',
+          en: getUrgencyTranslation(urgency, 'en') || URGENCY_INDICATORS['TODAY']?.en || '🟠 Today'
         },
         color: this.getUrgencyColor(urgency),
         urgency_level: urgency as 'IMMEDIATE' | 'TODAY' | 'WITHIN_48H' | 'THIS_WEEK' | 'NON_URGENT'
@@ -1392,11 +1392,11 @@ export class CommunicationGenerator {
     profile: FarmerProfile,
     questionClassification?: QuestionClassification
   ): any {
-    const greeting = GREETINGS[lang][0];
+    const greeting = (GREETINGS[lang] || GREETINGS['en'])?.[0] || 'Hello,';
     const empathyLine = profile.emotional_state !== 'NEUTRAL' 
-      ? EMPATHY_LINES[profile.emotional_state][lang] 
+      ? (EMPATHY_LINES[profile.emotional_state]?.[lang] || EMPATHY_LINES[profile.emotional_state]?.['en'] || '')
       : undefined;
-    const closing = CLOSINGS[lang][0];
+    const closing = (CLOSINGS[lang] || CLOSINGS['en'])?.[0] || 'Best wishes! 🌾';
     
     // Adjust closing based on response style
     const adjustedClosing = questionClassification?.response_style === 'concise'

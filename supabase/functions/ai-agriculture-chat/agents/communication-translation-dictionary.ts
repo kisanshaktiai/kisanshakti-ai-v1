@@ -1,682 +1,67 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * COMMUNICATION TRANSLATION DICTIONARY v1.0
+ * COMMUNICATION TRANSLATION DICTIONARY v2.0 — DB-DRIVEN
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * Translation dictionary for symbolic codes to farmer-friendly multilingual text
- * Language-agnostic: uses Record<string, string> keyed by language code.
- * Known translations exist for mr/hi/en, but system accepts any language.
- * For unsupported languages, LLM translates the 'en' value at runtime.
+ * REFACTORED: All hardcoded Marathi/Hindi/English dictionaries REMOVED.
+ * Translation now flows from:
+ *   1. observation_translations DB table (via i18n cache)
+ *   2. English fallback (formatted code)
+ *   3. LLM narration layer translates at runtime
+ * 
+ * This file retains the same exported function signatures for backward
+ * compatibility but resolves translations from the centralized i18n cache.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
+
+import {
+  getTranslation,
+  normalizeI18nKey,
+} from '../i18n/translation-loader.ts';
 
 // Language-agnostic type - accepts any language code
 export type SupportedLanguage = string;
-
 export type TrilingualText = Record<string, string>;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CAUSE TRANSLATIONS (Symbolic → Farmer Language)
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const CAUSE_TRANSLATIONS: Record<string, TrilingualText> = {
-  // Nutrient Deficiencies
-  'NITROGEN_DEFICIENCY': {
-    mr: 'नायट्रोजनची कमतरता - पाने पिवळी पडली आहेत',
-    hi: 'नाइट्रोजन की कमी - पत्तियां पीली हो गई हैं',
-    en: 'Nitrogen deficiency - Leaves have turned yellow'
-  },
-  'PHOSPHORUS_DEFICIENCY': {
-    mr: 'स्फुरदाची कमतरता - जुनी पाने जांभळी झाली आहेत',
-    hi: 'फास्फोरस की कमी - पुरानी पत्तियां बैंगनी हो गई हैं',
-    en: 'Phosphorus deficiency - Older leaves turned purple'
-  },
-  'POTASSIUM_DEFICIENCY': {
-    mr: 'पालाश कमतरता - पानांच्या काठावर जळजळ',
-    hi: 'पोटाशियम की कमी - पत्तियों के किनारे झुलसे हुए',
-    en: 'Potassium deficiency - Leaf edges scorched'
-  },
-  'ZINC_DEFICIENCY': {
-    mr: 'जस्त कमतरता - पानांवर पांढरे पट्टे',
-    hi: 'जिंक की कमी - पत्तियों पर सफेद धारियां',
-    en: 'Zinc deficiency - White stripes on leaves'
-  },
-  'IRON_DEFICIENCY': {
-    mr: 'लोह कमतरता - नवीन पाने पिवळी',
-    hi: 'आयरन की कमी - नई पत्तियां पीली',
-    en: 'Iron deficiency - New leaves yellow'
-  },
-  'CALCIUM_DEFICIENCY': {
-    mr: 'कॅल्शियम कमतरता - फळांवर काळे डाग',
-    hi: 'कैल्शियम की कमी - फलों पर काले धब्बे',
-    en: 'Calcium deficiency - Black spots on fruits (BER)'
-  },
-  'MAGNESIUM_DEFICIENCY': {
-    mr: 'मॅग्नेशियम कमतरता - पानांच्या शिरांमध्ये पिवळे',
-    hi: 'मैग्नीशियम की कमी - पत्तियों की नसों के बीच पीलापन',
-    en: 'Magnesium deficiency - Yellowing between leaf veins'
-  },
-  
-  // Pests
-  'PEST_WHITEFLY': {
-    mr: 'पांढरी माशी चा प्रादुर्भाव - पानांच्या खालच्या बाजूला लहान पांढरे किडे',
-    hi: 'सफेद मक्खी का प्रकोप - पत्तियों के नीचे छोटे सफेद कीड़े',
-    en: 'Whitefly infestation - Small white insects under leaves'
-  },
-  'PEST_APHID': {
-    mr: 'माव्याचा प्रादुर्भाव - हिरव्या/काळ्या रंगाचे लहान किडे',
-    hi: 'एफिड का प्रकोप - हरे/काले रंग के छोटे कीड़े',
-    en: 'Aphid infestation - Small green/black insects'
-  },
-  'PEST_THRIPS': {
-    mr: 'थ्रिप्स चा प्रादुर्भाव - पानांवर चांदी सारखे डाग',
-    hi: 'थ्रिप्स का प्रकोप - पत्तियों पर चांदी जैसे धब्बे',
-    en: 'Thrips infestation - Silvery patches on leaves'
-  },
-  'PEST_MITES': {
-    mr: 'माइट्स चा प्रादुर्भाव - पानांवर लालसर जाळे',
-    hi: 'माइट्स का प्रकोप - पत्तियों पर लाल जाले',
-    en: 'Mite infestation - Reddish webs on leaves'
-  },
-  'PEST_CATERPILLAR': {
-    mr: 'सुरवंटाचा प्रादुर्भाव - पाने खाल्ली',
-    hi: 'कैटरपिलर का प्रकोप - पत्तियां कटी हुई',
-    en: 'Caterpillar infestation - Eaten leaves'
-  },
-  'PEST_BOLLWORM': {
-    mr: 'बोंडअळीचा प्रादुर्भाव - फुले/बोंडात छिद्र',
-    hi: 'बॉलवर्म का प्रकोप - फूल/बॉल में छेद',
-    en: 'Bollworm infestation - Holes in flowers/bolls'
-  },
-  'PEST_STEMFLY': {
-    mr: 'शेंडा अळीचा प्रादुर्भाव - मधली सुरळी वाळली',
-    hi: 'स्टेमफ्लाई का प्रकोप - बीच की पत्ती सूखी',
-    en: 'Stemfly/shootfly infestation - Dead heart symptom'
-  },
-  'PEST_TUTA_ABSOLUTA': {
-    mr: 'टुटा अबसोल्युटा - पानात वेडीवाकडी रेषा',
-    hi: 'टूटा अब्सोलूटा - पत्तियों में टेढ़ी-मेढ़ी रेखाएं',
-    en: 'Tuta absoluta - Serpentine mines in leaves'
-  },
-  'PEST_FRUIT_FLY': {
-    mr: 'फळमाशीचा प्रादुर्भाव - फळांवर टोचने',
-    hi: 'फ्रूट फ्लाई का प्रकोप - फलों पर छेद',
-    en: 'Fruit fly infestation - Punctures on fruits'
-  },
-  'PEST_MEALYBUG': {
-    mr: 'मिलीबग चा प्रादुर्भाव - पांढरी मेणासारखी थर',
-    hi: 'मिलीबग का प्रकोप - सफेद मोम जैसी परत',
-    en: 'Mealybug infestation - White waxy coating'
-  },
-  
-  // Diseases
-  'DISEASE_POWDERY_MILDEW': {
-    mr: 'भुरी रोग - पानांवर पांढरी पावडरसारखी थर',
-    hi: 'पाउडरी मिल्ड्यू रोग - पत्तियों पर सफेद पाउडर जैसी परत',
-    en: 'Powdery mildew disease - White powdery coating on leaves'
-  },
-  'DISEASE_DOWNY_MILDEW': {
-    mr: 'डाऊनी मिल्ड्यू - पानांच्या खाली राखाडी बुरशी',
-    hi: 'डाउनी मिल्ड्यू - पत्तियों के नीचे ग्रे फंगस',
-    en: 'Downy mildew - Gray fungus under leaves'
-  },
-  'DISEASE_LATE_BLIGHT': {
-    mr: 'लेट ब्लाइट - पानांवर पाणीदार डाग',
-    hi: 'लेट ब्लाइट - पत्तियों पर पानीदार धब्बे',
-    en: 'Late blight - Water-soaked spots on leaves'
-  },
-  'DISEASE_EARLY_BLIGHT': {
-    mr: 'अर्ली ब्लाइट - पानांवर टार्गेट बोर्ड सारखे गोल डाग',
-    hi: 'अर्ली ब्लाइट - पत्तियों पर टार्गेट बोर्ड जैसे गोल धब्बे',
-    en: 'Early blight - Target board pattern spots'
-  },
-  'DISEASE_ANTHRACNOSE': {
-    mr: 'ऍन्थ्राक्नोझ - फळांवर खोल काळे डाग',
-    hi: 'एंथ्रेक्नोज - फलों पर गहरे काले धब्बे',
-    en: 'Anthracnose - Deep black spots on fruits'
-  },
-  'DISEASE_BACTERIAL_WILT': {
-    mr: 'बॅक्टेरियल विल्ट - झाड अचानक सुकले',
-    hi: 'बैक्टीरियल विल्ट - पौधा अचानक मुरझाया',
-    en: 'Bacterial wilt - Sudden plant wilting'
-  },
-  'DISEASE_FUSARIUM_WILT': {
-    mr: 'फ्युसेरियम विल्ट - पानांना एकतर्फी करपा',
-    hi: 'फ्यूसेरियम विल्ट - पत्तियों का एक तरफ से मुरझाना',
-    en: 'Fusarium wilt - One-sided leaf wilting'
-  },
-  'DISEASE_LEAF_CURL': {
-    mr: 'पानगुंडाळी रोग - पाने मुडली',
-    hi: 'लीफ कर्ल रोग - पत्तियां मुड़ गई',
-    en: 'Leaf curl disease - Curled leaves'
-  },
-  'DISEASE_MOSAIC': {
-    mr: 'मोझेक विषाणू - पानांवर हिरवे-पिवळे डाग',
-    hi: 'मोजेक वायरस - पत्तियों पर हरे-पीले धब्बे',
-    en: 'Mosaic virus - Green-yellow mottling on leaves'
-  },
-  
-  // Water & Irrigation
-  'WATER_STRESS': {
-    mr: 'पाण्याची कमतरता - पाने कोमेजलेली, माती कोरडी',
-    hi: 'पानी की कमी - पत्तियां मुरझाई, मिट्टी सूखी',
-    en: 'Water stress - Leaves wilted, soil dry'
-  },
-  'WATER_LOGGING': {
-    mr: 'पाण्याची साठवण - मुळे कुजलेली',
-    hi: 'जलभराव - जड़ें सड़ गई',
-    en: 'Waterlogging - Root rot'
-  },
-  
-  // General
-  'UNKNOWN': {
-    mr: 'समस्या ओळखली जात आहे',
-    hi: 'समस्या की पहचान हो रही है',
-    en: 'Problem being identified'
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ACTION TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const ACTION_TRANSLATIONS: Record<string, TrilingualText> = {
-  'APPLY_PESTICIDE': {
-    mr: 'किडनाशक औषध फवारणी',
-    hi: 'कीटनाशक दवा का छिड़काव',
-    en: 'Apply pesticide spray'
-  },
-  'APPLY_NEEM_OIL': {
-    mr: 'कडुनिंबाचे तेल फवारा',
-    hi: 'नीम तेल का छिड़काव करें',
-    en: 'Spray neem oil'
-  },
-  'APPLY_UREA': {
-    mr: 'युरिया खत टाका',
-    hi: 'यूरिया खाद डालें',
-    en: 'Apply urea fertilizer'
-  },
-  'APPLY_DAP': {
-    mr: 'डीएपी खत टाका',
-    hi: 'डीएपी खाद डालें',
-    en: 'Apply DAP fertilizer'
-  },
-  'APPLY_POTASH': {
-    mr: 'पालाश खत टाका',
-    hi: 'पोटाश खाद डालें',
-    en: 'Apply potash fertilizer'
-  },
-  'APPLY_FUNGICIDE': {
-    mr: 'बुरशीनाशक औषध फवारा',
-    hi: 'फफूंदनाशक दवा का छिड़काव',
-    en: 'Apply fungicide spray'
-  },
-  'IRRIGATE': {
-    mr: 'पाणी द्या',
-    hi: 'सिंचाई करें',
-    en: 'Irrigate the field'
-  },
-  'MONITOR': {
-    mr: 'पिकाचे निरीक्षण करा',
-    hi: 'फसल की निगरानी करें',
-    en: 'Monitor the crop'
-  },
-  'SPRAY_BIOPESTICIDE': {
-    mr: 'जैविक किडनाशक फवारा',
-    hi: 'जैविक कीटनाशक छिड़कें',
-    en: 'Spray biopesticide'
-  },
-  'SPRAY_BOTANICAL': {
-    mr: 'वनस्पती आधारित औषध फवारा',
-    hi: 'वानस्पतिक दवा छिड़कें',
-    en: 'Spray botanical pesticide'
-  },
-  'SPRAY_CHEMICAL': {
-    mr: 'रासायनिक औषध फवारा',
-    hi: 'रासायनिक दवा छिड़कें',
-    en: 'Spray chemical pesticide'
-  },
-  'CULTURAL_PRACTICE': {
-    mr: 'पीक पद्धत बदला',
-    hi: 'खेती की विधि बदलें',
-    en: 'Change cultural practice'
-  },
-  'MECHANICAL_CONTROL': {
-    mr: 'यांत्रिक नियंत्रण करा',
-    hi: 'यांत्रिक नियंत्रण करें',
-    en: 'Apply mechanical control'
-  },
-  'BIOLOGICAL_RELEASE': {
-    mr: 'जैविक शत्रू सोडा',
-    hi: 'जैविक शत्रु छोड़ें',
-    en: 'Release biological agents'
-  },
-  'FERTILIZER_APPLICATION': {
-    mr: 'खत द्या',
-    hi: 'खाद दें',
-    en: 'Apply fertilizer'
-  },
-  'NO_ACTION': {
-    mr: 'कृती आवश्यक नाही',
-    hi: 'कार्रवाई आवश्यक नहीं',
-    en: 'No action required'
-  },
-  'MONITOR_ONLY': {
-    mr: 'फक्त निरीक्षण करा',
-    hi: 'केवल निगरानी करें',
-    en: 'Monitor only'
-  },
-  // GAP #1: Positive terminal diagnosis - this is a SUCCESS state
-  'NO_INTERVENTION_REQUIRED': {
-    mr: '✅ सध्या कोणत्याही उपचाराची गरज नाही - पीक चांगले वाढत आहे',
-    hi: '✅ अभी कोई उपचार नहीं चाहिए - फसल अच्छी तरह बढ़ रही है',
-    en: '✅ No treatment needed at this time - crop is growing well'
-  },
-  'ESCALATE_TO_EXPERT': {
-    mr: 'तज्ञाचा सल्ला घ्या',
-    hi: 'विशेषज्ञ से सलाह लें',
-    en: 'Consult an expert'
-  },
-  // Cultural Control and Biological Release Actions
-  'CULTURAL_CONTROL': {
-    mr: 'सांस्कृतिक नियंत्रण (निरोगी बियाणे, अवशेष काढणे)',
-    hi: 'सांस्कृतिक नियंत्रण (स्वस्थ बीज, अवशेष निकालना)',
-    en: 'Cultural control (healthy setts, debris removal)'
-  },
-  'RELEASE': {
-    mr: 'जैविक किडे सोडा',
-    hi: 'जैविक कीट छोड़ें',
-    en: 'Release biological agents'
-  },
-  'RELEASE_BIOAGENT': {
-    mr: 'जैविक नियंत्रक सोडा (ट्रायकोग्रामा/कोटेसिया)',
-    hi: 'जैविक नियंत्रक छोड़ें (ट्राइकोग्रामा/कोटेसिया)',
-    en: 'Release biocontrol agents (Trichogramma/Cotesia)'
-  },
-  'RELEASE_TRICHOGRAMMA': {
-    mr: 'ट्रायकोग्रामा कार्ड सोडा - 50,000 अंडी/एकर',
-    hi: 'ट्राइकोग्रामा कार्ड छोड़ें - 50,000 अंडे/एकड़',
-    en: 'Release Trichogramma cards - 50,000 eggs/acre'
-  },
-  'INSTALL_PHEROMONE_TRAPS': {
-    mr: 'फेरोमोन ट्रॅप्स बसवा',
-    hi: 'फेरोमोन ट्रैप लगाएं',
-    en: 'Install pheromone traps'
-  },
-  'REMOVE_AFFECTED_PLANTS': {
-    mr: 'प्रभावित झाडे काढून टाका',
-    hi: 'प्रभावित पौधे निकालें',
-    en: 'Remove affected plants'
-  },
-  'CROP_ROTATION': {
-    mr: 'पीक फेरबदल करा',
-    hi: 'फसल चक्र अपनाएं',
-    en: 'Practice crop rotation'
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// PRODUCT NAME TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const PRODUCT_TRANSLATIONS: Record<string, TrilingualText> = {
-  // Insecticides
-  'Imidacloprid 17.8 SL': {
-    mr: 'इमिडाक्लोप्रिड (कॉन्फिडॉर)',
-    hi: 'इमिडाक्लोप्रिड (कॉन्फिडोर)',
-    en: 'Imidacloprid (Confidor)'
-  },
-  'Thiamethoxam 25 WG': {
-    mr: 'थायमिथॉक्सॅम (ॲक्टारा)',
-    hi: 'थायमेथोक्सम (एक्टारा)',
-    en: 'Thiamethoxam (Actara)'
-  },
-  'Spinosad 45 SC': {
-    mr: 'स्पिनोसॅड (ट्रेसर)',
-    hi: 'स्पिनोसैड (ट्रेसर)',
-    en: 'Spinosad (Tracer)'
-  },
-  'Chlorantraniliprole 18.5 SC': {
-    mr: 'क्लोरॅन्ट्रॅनिलिप्रोल (कोराजेन)',
-    hi: 'क्लोरेंट्रानिलीप्रोल (कोराजेन)',
-    en: 'Chlorantraniliprole (Coragen)'
-  },
-  'Emamectin Benzoate 5 SG': {
-    mr: 'इमामेक्टिन बेंझोएट (प्रोक्लेम)',
-    hi: 'इमामेक्टिन बेंजोएट (प्रोक्लेम)',
-    en: 'Emamectin Benzoate (Proclaim)'
-  },
-  
-  // Fungicides
-  'Mancozeb 75% WP': {
-    mr: 'मॅन्कोझेब (डायथेन M-45)',
-    hi: 'मैंकोजेब (डाइथेन M-45)',
-    en: 'Mancozeb (Dithane M-45)'
-  },
-  'Carbendazim 50 WP': {
-    mr: 'कार्बेन्डॅझिम (बाविस्टिन)',
-    hi: 'कार्बेन्डाजिम (बाविस्टिन)',
-    en: 'Carbendazim (Bavistin)'
-  },
-  'Copper Oxychloride 50 WP': {
-    mr: 'कॉपर ऑक्सीक्लोराइड (ब्लिटॉक्स)',
-    hi: 'कॉपर ऑक्सीक्लोराइड (ब्लिटॉक्स)',
-    en: 'Copper Oxychloride (Blitox)'
-  },
-  'Azoxystrobin 23 SC': {
-    mr: 'ॲझॉक्सिस्ट्रॉबिन (अमिस्टार)',
-    hi: 'एजोक्सीस्ट्रोबिन (अमिस्टर)',
-    en: 'Azoxystrobin (Amistar)'
-  },
-  
-  // Botanicals
-  'Neem Oil 1500 ppm': {
-    mr: 'कडुनिंबाचे तेल',
-    hi: 'नीम तेल',
-    en: 'Neem Oil'
-  },
-  'Neem Oil 10000 ppm': {
-    mr: 'कडुनिंबाचे तेल (गाढ)',
-    hi: 'नीम तेल (सांद्र)',
-    en: 'Neem Oil (Concentrated)'
-  },
-  
-  // Biologicals
-  'Trichoderma viride': {
-    mr: 'ट्रायकोडर्मा',
-    hi: 'ट्राइकोडर्मा',
-    en: 'Trichoderma'
-  },
-  'Pseudomonas fluorescens': {
-    mr: 'स्यूडोमोनास',
-    hi: 'स्यूडोमोनास',
-    en: 'Pseudomonas'
-  },
-  'Beauveria bassiana': {
-    mr: 'ब्युवेरिया बेसियाना',
-    hi: 'ब्यूवेरिया बेसियाना',
-    en: 'Beauveria bassiana'
-  },
-  'Verticillium lecanii': {
-    mr: 'व्हर्टिसिलियम लेकानी',
-    hi: 'वर्टिसिलियम लेकानी',
-    en: 'Verticillium lecanii'
-  },
-  'Metarhizium anisopliae': {
-    mr: 'मेटाऱ्हिझियम',
-    hi: 'मेटाराइजियम',
-    en: 'Metarhizium'
-  },
-  'Bacillus thuringiensis (Bt)': {
-    mr: 'बीटी (बॅसिलस थुरिंजिएन्सिस)',
-    hi: 'बीटी (बैसिलस थुरिंजिएंसिस)',
-    en: 'Bt (Bacillus thuringiensis)'
-  },
-  
-  // Fertilizers
-  'Urea 46% N': {
-    mr: 'युरिया खत',
-    hi: 'यूरिया खाद',
-    en: 'Urea fertilizer'
-  },
-  'DAP 18-46-0': {
-    mr: 'डायअमोनियम फॉस्फेट',
-    hi: 'डायअमोनियम फॉस्फेट',
-    en: 'Di-ammonium Phosphate'
-  },
-  'MOP 0-0-60': {
-    mr: 'म्युरिएट ऑफ पोटॅश',
-    hi: 'म्यूरिएट ऑफ पोटाश',
-    en: 'Muriate of Potash'
-  },
-  '19:19:19': {
-    mr: '19:19:19 खत',
-    hi: '19:19:19 खाद',
-    en: '19:19:19 fertilizer'
-  },
-  'Zinc Sulphate': {
-    mr: 'झिंक सल्फेट',
-    hi: 'जिंक सल्फेट',
-    en: 'Zinc Sulphate'
-  },
-  'Ferrous Sulphate': {
-    mr: 'फेरस सल्फेट',
-    hi: 'फेरस सल्फेट',
-    en: 'Ferrous Sulphate'
-  },
-  'Calcium Nitrate': {
-    mr: 'कॅल्शियम नायट्रेट',
-    hi: 'कैल्शियम नाइट्रेट',
-    en: 'Calcium Nitrate'
-  },
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // BIOCONTROL AGENTS - CRITICAL FOR FARMER-FRIENDLY NAMES
-  // ═══════════════════════════════════════════════════════════════════════════
-  'Trichogramma chilonis': {
-    mr: 'ट्रायकोग्रामा कार्ड (अंडी परजीवी) - 50,000/एकर जैविक कीटकनाशक',
-    hi: 'ट्राइकोग्रामा कार्ड (अंडा परजीवी) - 50,000/एकड़ जैविक कीटनाशक',
-    en: 'Trichogramma cards (Egg parasitoid) - 50,000/acre biocontrol'
-  },
-  'Cotesia flavipes': {
-    mr: 'कोटेसिया फ्लेविपेस (अळी परजीवी) - 5,000 कोष/एकर',
-    hi: 'कोटेसिया फ्लेविप्स (लार्वा परजीवी) - 5,000 कोकून/एकड़',
-    en: 'Cotesia flavipes (Larval parasitoid) - 5,000 cocoons/acre'
-  },
-  'Neem Oil 1500 ppm': {
-    mr: 'कडुनिंबाचे तेल - 5 मिली/लिटर पाण्यात मिसळा',
-    hi: 'नीम तेल - 5 मिली/लीटर पानी में मिलाएं',
-    en: 'Neem Oil - Mix 5ml per liter of water'
-  },
-  'Chlorantraniliprole 18.5 SC': {
-    mr: 'कोराजेन (क्लोरॅन्ट्रानिलिप्रोल) - 0.4 मिली/लिटर',
-    hi: 'कोराजेन (क्लोरेंट्रानिलीप्रोल) - 0.4 मिली/लीटर',
-    en: 'Coragen (Chlorantraniliprole) - 0.4 ml/L'
-  },
-  'Fipronil 5 SC': {
-    mr: 'फिप्रोनिल (रीजेंट) - 1.5 मिली/लिटर',
-    hi: 'फिप्रोनिल (रीजेंट) - 1.5 मिली/लीटर',
-    en: 'Fipronil (Regent) - 1.5 ml/L'
-  },
-  'NPV': {
-    mr: 'न्यूक्लिओपॉलिहेड्रोसिस विषाणू (जैविक कीटकनाशक)',
-    hi: 'न्यूक्लियोपॉलीहेड्रोसिस वायरस (जैविक कीटनाशक)',
-    en: 'Nuclear Polyhedrosis Virus (Biopesticide)'
-  },
-  'Neem cake': {
-    mr: 'निंबोळी पेंड - 250 किलो/एकर',
-    hi: 'नीम की खली - 250 किलो/एकड़',
-    en: 'Neem cake - 250 kg/acre'
-  },
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ACTION TYPE TRANSLATIONS - Farmer-friendly action descriptions
-  // ═══════════════════════════════════════════════════════════════════════════
-  'INTEGRATED': {
-    mr: 'एकात्मिक कीड व्यवस्थापन (IPM) - सांस्कृतिक + जैविक उपाय',
-    hi: 'समेकित कीट प्रबंधन (IPM) - सांस्कृतिक + जैविक उपचार',
-    en: 'Integrated Pest Management (IPM) - Cultural + Biological measures'
-  },
-  'SPRAY_BOTANICAL': {
-    mr: 'वनस्पतीजन्य फवारणी - नैसर्गिक कीटकनाशक',
-    hi: 'वानस्पतिक छिड़काव - प्राकृतिक कीटनाशक',
-    en: 'Botanical spray - Natural pesticide'
-  },
-  'SPRAY_CHEMICAL': {
-    mr: 'रासायनिक फवारणी',
-    hi: 'रासायनिक छिड़काव',
-    en: 'Chemical spray'
-  },
-  'CULTURAL_PRACTICE': {
-    mr: 'सांस्कृतिक उपाय - हाताने काढणे, नाश करणे',
-    hi: 'सांस्कृतिक उपाय - हाथ से निकालना, नष्ट करना',
-    en: 'Cultural practice - Hand picking, destruction'
-  },
-  'BIOLOGICAL_CONTROL': {
-    mr: 'जैविक नियंत्रण - मित्र कीटक वापरणे',
-    hi: 'जैविक नियंत्रण - मित्र कीट का उपयोग',
-    en: 'Biological control - Using beneficial insects'
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// APPLICATION METHOD TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const METHOD_TRANSLATIONS: Record<string, TrilingualText> = {
-  'FOLIAR_SPRAY': {
-    mr: 'पानांवर फवारणी',
-    hi: 'पत्तियों पर छिड़काव',
-    en: 'Foliar spray'
-  },
-  'SOIL_APPLICATION': {
-    mr: 'जमिनीत टाकणे',
-    hi: 'मिट्टी में डालना',
-    en: 'Soil application'
-  },
-  'SOIL_DRENCH': {
-    mr: 'मुळाला ओतणे',
-    hi: 'जड़ों में डालना',
-    en: 'Soil drench at root zone'
-  },
-  'DRIP_IRRIGATION': {
-    mr: 'थेंब सिंचन',
-    hi: 'ड्रिप सिंचाई',
-    en: 'Drip irrigation'
-  },
-  'FERTIGATION': {
-    mr: 'ड्रिप द्वारे खत',
-    hi: 'ड्रिप द्वारा खाद',
-    en: 'Fertigation'
-  },
-  'SEED_TREATMENT': {
-    mr: 'बीजप्रक्रिया',
-    hi: 'बीज उपचार',
-    en: 'Seed treatment'
-  },
-  'BASAL_APPLICATION': {
-    mr: 'पेरणीवेळी जमिनीत',
-    hi: 'बुवाई के समय मिट्टी में',
-    en: 'Basal application'
-  },
-  'TOP_DRESSING': {
-    mr: 'झाडांच्या बुंध्यालगत',
-    hi: 'पौधों के पास',
-    en: 'Top dressing'
-  },
-  'HAND_PICKING': {
-    mr: 'हाताने वेचणे',
-    hi: 'हाथ से चुनना',
-    en: 'Hand picking'
-  },
-  'TRAP_INSTALLATION': {
-    mr: 'सापळे लावणे',
-    hi: 'जाल लगाना',
-    en: 'Install traps'
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// URGENCY LEVEL TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const URGENCY_TRANSLATIONS: Record<string, TrilingualText> = {
-  'IMMEDIATE': {
-    mr: '⚠️ आत्ताच करा',
-    hi: '⚠️ तुरंत करें',
-    en: '⚠️ Do immediately'
-  },
-  'WITHIN_24H': {
-    mr: '📅 आजच करा',
-    hi: '📅 आज ही करें',
-    en: '📅 Do today'
-  },
-  'TODAY': {
-    mr: '📅 आजच करा',
-    hi: '📅 आज ही करें',
-    en: '📅 Do today'
-  },
-  'WITHIN_48H': {
-    mr: '⏰ 2 दिवसांत करा',
-    hi: '⏰ 2 दिन में करें',
-    en: '⏰ Do within 2 days'
-  },
-  'WITHIN_WEEK': {
-    mr: '📆 या आठवड्यात करा',
-    hi: '📆 इस सप्ताह करें',
-    en: '📆 Do this week'
-  },
-  'THIS_WEEK': {
-    mr: '📆 या आठवड्यात करा',
-    hi: '📆 इस सप्ताह करें',
-    en: '📆 Do this week'
-  },
-  'NON_URGENT': {
-    mr: '✅ जेव्हा वेळ मिळेल',
-    hi: '✅ जब समय मिले',
-    en: '✅ When convenient'
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// SAFETY GEAR TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-export const SAFETY_GEAR_TRANSLATIONS: Record<string, TrilingualText> = {
-  'GLOVES': {
-    mr: 'हातमोजे घाला',
-    hi: 'दस्ताने पहनें',
-    en: 'Wear gloves'
-  },
-  'MASK': {
-    mr: 'मुखपट्टी घाला',
-    hi: 'मास्क पहनें',
-    en: 'Wear mask'
-  },
-  'FULL_PPE': {
-    mr: 'संपूर्ण संरक्षक कपडे घाला',
-    hi: 'पूरे सुरक्षा कपड़े पहनें',
-    en: 'Wear full protective gear'
-  },
-  'GOGGLES': {
-    mr: 'डोळ्यांचे चष्मे घाला',
-    hi: 'आंखों का चश्मा पहनें',
-    en: 'Wear safety goggles'
-  },
-  'FULL_SLEEVES': {
-    mr: 'पूर्ण बाह्यांचा शर्ट',
-    hi: 'पूरी बांह की शर्ट',
-    en: 'Full-sleeved shirt'
-  },
-  'BOOTS': {
-    mr: 'बूट घाला',
-    hi: 'जूते पहनें',
-    en: 'Wear boots'
-  },
-  'APRON': {
-    mr: 'एप्रन घाला',
-    hi: 'एप्रन पहनें',
-    en: 'Wear apron'
-  }
-};
-
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPER FUNCTIONS
+// CORE RESOLUTION: DB-first, English fallback
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Translate any text using a dictionary
+ * Resolve a symbolic code to a farmer-friendly label via DB cache.
+ * Fallback chain: DB translation → English formatted code
+ */
+function resolveFromDB(code: string, lang: SupportedLanguage): string {
+  if (!code) return '';
+  const normalized = normalizeI18nKey(code);
+  return getTranslation(normalized, lang);
+}
+
+/**
+ * Format a code for human display when no translation exists
+ */
+function formatCodeForDisplay(code: string): string {
+  return code
+    .replace(/_/g, ' ')
+    .split(' ')
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PUBLIC API — Same signatures, DB-driven implementation
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Translate any text using DB cache
  */
 export function translateText(
   key: string,
-  dictionary: Record<string, TrilingualText>,
+  _dictionary: Record<string, TrilingualText>,
   lang: SupportedLanguage
 ): string {
-  const entry = dictionary[key];
-  if (entry) {
-    return entry[lang];
-  }
-  // Fallback: return key with basic formatting
-  return key.replace(/_/g, ' ').toLowerCase();
+  // Dictionary param kept for backward compat but ignored — DB is SSOT
+  return resolveFromDB(key, lang);
 }
 
 /**
@@ -686,20 +71,12 @@ export function getProductName(
   productName: string,
   lang: SupportedLanguage
 ): string {
-  // First check exact match
-  if (PRODUCT_TRANSLATIONS[productName]) {
-    return PRODUCT_TRANSLATIONS[productName][lang];
+  const dbResult = resolveFromDB(productName, lang);
+  // If DB returned the formatted code (no real translation), return original
+  if (dbResult === formatCodeForDisplay(normalizeI18nKey(productName))) {
+    return productName; // Keep original product name
   }
-  
-  // Try partial match
-  for (const [key, value] of Object.entries(PRODUCT_TRANSLATIONS)) {
-    if (productName.toLowerCase().includes(key.toLowerCase().split(' ')[0])) {
-      return value[lang];
-    }
-  }
-  
-  // Return original if no translation found
-  return productName;
+  return dbResult;
 }
 
 /**
@@ -709,24 +86,7 @@ export function getCauseTranslation(
   causeCode: string,
   lang: SupportedLanguage
 ): string {
-  // Normalize the cause code
-  const normalizedCode = causeCode.toUpperCase().replace(/-/g, '_');
-  
-  // Check direct match
-  if (CAUSE_TRANSLATIONS[normalizedCode]) {
-    return CAUSE_TRANSLATIONS[normalizedCode][lang];
-  }
-  
-  // Check for partial match
-  for (const [key, value] of Object.entries(CAUSE_TRANSLATIONS)) {
-    if (normalizedCode.includes(key) || key.includes(normalizedCode)) {
-      return value[lang];
-    }
-  }
-  
-  // Generate a readable fallback
-  const readable = causeCode.replace(/_/g, ' ').replace(/-/g, ' ').toLowerCase();
-  return readable.charAt(0).toUpperCase() + readable.slice(1);
+  return resolveFromDB(causeCode, lang);
 }
 
 /**
@@ -736,15 +96,7 @@ export function getActionTranslation(
   actionType: string,
   lang: SupportedLanguage
 ): string {
-  const normalizedAction = actionType.toUpperCase().replace(/-/g, '_');
-  
-  if (ACTION_TRANSLATIONS[normalizedAction]) {
-    return ACTION_TRANSLATIONS[normalizedAction][lang];
-  }
-  
-  // Generate a readable fallback
-  const readable = actionType.replace(/_/g, ' ').toLowerCase();
-  return readable.charAt(0).toUpperCase() + readable.slice(1);
+  return resolveFromDB(actionType, lang);
 }
 
 /**
@@ -754,13 +106,7 @@ export function getMethodTranslation(
   method: string,
   lang: SupportedLanguage
 ): string {
-  const normalizedMethod = method.toUpperCase().replace(/-/g, '_');
-  
-  if (METHOD_TRANSLATIONS[normalizedMethod]) {
-    return METHOD_TRANSLATIONS[normalizedMethod][lang];
-  }
-  
-  return method;
+  return resolveFromDB(method, lang);
 }
 
 /**
@@ -770,13 +116,7 @@ export function getUrgencyTranslation(
   urgency: string,
   lang: SupportedLanguage
 ): string {
-  const normalizedUrgency = urgency.toUpperCase().replace(/-/g, '_');
-  
-  if (URGENCY_TRANSLATIONS[normalizedUrgency]) {
-    return URGENCY_TRANSLATIONS[normalizedUrgency][lang];
-  }
-  
-  return urgency;
+  return resolveFromDB(urgency, lang);
 }
 
 /**
@@ -786,178 +126,73 @@ export function getSafetyGearTranslation(
   gear: string,
   lang: SupportedLanguage
 ): string {
-  const normalizedGear = gear.toUpperCase().replace(/-/g, '_');
-  
-  if (SAFETY_GEAR_TRANSLATIONS[normalizedGear]) {
-    return SAFETY_GEAR_TRANSLATIONS[normalizedGear][lang];
-  }
-  
-  return gear;
+  return resolveFromDB(gear, lang);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CRITICAL FIX: Ensure Full Translation - Scans response for untranslated English
+// ENGLISH LEAKAGE DETECTION — Script-aware
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Common English phrases that should be translated in farmer responses
- */
-const ENGLISH_FALLBACK_TRANSLATIONS: Record<string, TrilingualText> = {
-  'consult agricultural expert': {
-    mr: 'कृषी तज्ञांचा सल्ला घ्या',
-    hi: 'कृषि विशेषज्ञ से सलाह लें',
-    en: 'Consult agricultural expert'
-  },
-  'wait for weather': {
-    mr: 'हवामान सुधारण्याची वाट पहा',
-    hi: 'मौसम सुधरने की प्रतीक्षा करें',
-    en: 'Wait for weather to improve'
-  },
-  'spray in morning': {
-    mr: 'सकाळी ६-१० वाजता फवारणी करा',
-    hi: 'सुबह 6-10 बजे छिड़काव करें',
-    en: 'Spray in morning 6-10 AM'
-  },
-  'spray in evening': {
-    mr: 'संध्याकाळी ४-७ वाजता फवारणी करा',
-    hi: 'शाम 4-7 बजे छिड़काव करें',
-    en: 'Spray in evening 4-7 PM'
-  },
-  'pre-harvest interval': {
-    mr: 'कापणीपूर्व प्रतीक्षा कालावधी',
-    hi: 'कटाई पूर्व प्रतीक्षा अवधि',
-    en: 'Pre-Harvest Interval (PHI)'
-  },
-  'use protective equipment': {
-    mr: 'संरक्षक साधने वापरा',
-    hi: 'सुरक्षा उपकरण पहनें',
-    en: 'Use protective equipment'
-  },
-  'days after sowing': {
-    mr: 'पेरणीनंतर दिवस',
-    hi: 'बुवाई के बाद दिन',
-    en: 'Days after sowing'
-  },
-  'alternative treatment': {
-    mr: 'पर्यायी उपाय',
-    hi: 'वैकल्पिक उपचार',
-    en: 'Alternative treatment'
-  },
-  'organic option': {
-    mr: 'सेंद्रिय पर्याय',
-    hi: 'जैविक विकल्प',
-    en: 'Organic option'
-  },
-  'chemical option': {
-    mr: 'रासायनिक पर्याय',
-    hi: 'रासायनिक विकल्प',
-    en: 'Chemical option'
-  },
-  'apply immediately': {
-    mr: 'लगेच वापरा',
-    hi: 'तुरंत लगाएं',
-    en: 'Apply immediately'
-  },
-  'monitoring recommended': {
-    mr: 'निरीक्षण सुरू ठेवा',
-    hi: 'निगरानी जारी रखें',
-    en: 'Continue monitoring'
-  },
-  'no action needed': {
-    mr: 'सध्या कोणतीही कृती आवश्यक नाही',
-    hi: 'अभी कोई कार्रवाई आवश्यक नहीं',
-    en: 'No action needed currently'
-  },
-  'foliar spray': {
-    mr: 'पानांवर फवारणी',
-    hi: 'पत्तियों पर छिड़काव',
-    en: 'Foliar spray'
-  },
-  'soil application': {
-    mr: 'जमिनीत वापर',
-    hi: 'मिट्टी में प्रयोग',
-    en: 'Soil application'
-  },
-  'seed treatment': {
-    mr: 'बीजप्रक्रिया',
-    hi: 'बीज उपचार',
-    en: 'Seed treatment'
-  }
+const SCRIPT_RANGES: Record<string, RegExp> = {
+  mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
+  ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
+  ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
+  pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
 };
 
 /**
- * CRITICAL FIX: Ensure full translation - replaces common English phrases with target language
- * Call this on final response before sending to farmer
- */
-export function ensureFullTranslation(
-  text: string,
-  lang: SupportedLanguage
-): string {
-  if (lang === 'en') {
-    return text; // No translation needed for English
-  }
-  
-  let translatedText = text;
-  
-  // Replace common English phrases with translations
-  for (const [englishPhrase, translations] of Object.entries(ENGLISH_FALLBACK_TRANSLATIONS)) {
-    const regex = new RegExp(englishPhrase, 'gi');
-    if (regex.test(translatedText)) {
-      translatedText = translatedText.replace(regex, translations[lang]);
-    }
-  }
-  
-  // Also check for product-related English that should be translated
-  // Action translations
-  for (const [action, translations] of Object.entries(ACTION_TRANSLATIONS)) {
-    const englishText = translations.en;
-    if (englishText && translatedText.includes(englishText)) {
-      translatedText = translatedText.replace(new RegExp(englishText, 'gi'), translations[lang]);
-    }
-  }
-  
-  // Method translations
-  for (const [method, translations] of Object.entries(METHOD_TRANSLATIONS)) {
-    const englishText = translations.en;
-    if (englishText && translatedText.includes(englishText)) {
-      translatedText = translatedText.replace(new RegExp(englishText, 'gi'), translations[lang]);
-    }
-  }
-  
-  return translatedText;
-}
-
-/**
  * Check if response contains significant untranslated English text
- * Uses script-aware detection for any language, not just Devanagari.
  */
 export function hasUntranslatedEnglish(text: string, lang: SupportedLanguage): boolean {
   if (lang === 'en') return false;
   
-  // Import script ranges from shared types
-  const SCRIPT_RANGES: Record<string, RegExp> = {
-    mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/, 
-    ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
-    ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
-    pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
-  };
-  
-  // Remove numbers, special characters, and product names (which are OK in English)
   const cleanText = text
-    .replace(/\d+(\.\d+)?%?/g, '')       // Remove numbers/percentages
-    .replace(/\b[A-Z]{2,}\b/g, '')       // Remove abbreviations (like PHI, NPK)
-    .replace(/₹[\d,]+/g, '')             // Remove prices
-    .replace(/\b(SC|SL|WP|WG|EC|SG|SP|G)\b/gi, ''); // Remove formulation codes
+    .replace(/\d+(\.\d+)?%?/g, '')
+    .replace(/\b[A-Z]{2,}\b/g, '')
+    .replace(/₹[\d,]+/g, '')
+    .replace(/\b(SC|SL|WP|WG|EC|SG|SP|G)\b/gi, '');
   
   const scriptRegex = SCRIPT_RANGES[lang];
-  const scriptChars = scriptRegex 
+  const scriptChars = scriptRegex
     ? (cleanText.match(new RegExp(scriptRegex.source, 'g')) || []).length
     : 0;
   const asciiAlphaChars = (cleanText.match(/[a-zA-Z]/g) || []).length;
   
   const total = scriptChars + asciiAlphaChars;
-  if (total < 20) return false; // Too short to determine
+  if (total < 20) return false;
   
   const englishRatio = asciiAlphaChars / total;
-  return englishRatio > 0.3; // More than 30% English is concerning
+  return englishRatio > 0.3;
 }
+
+/**
+ * Post-process response to fix English leakage
+ * Delegates to LLM narration layer — no hardcoded replacements
+ */
+export function ensureFullTranslation(
+  text: string,
+  lang: SupportedLanguage
+): string {
+  // No-op: LLM narration layer handles full translation at runtime.
+  // This function is kept for backward compatibility only.
+  return text;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DEPRECATED CONSTANTS — Empty, retained for import compatibility
+// These were previously 963 lines of hardcoded mr/hi/en dictionaries.
+// All translations now come from observation_translations DB table.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** @deprecated Use resolveFromDB() - translations come from observation_translations table */
+export const CAUSE_TRANSLATIONS: Record<string, TrilingualText> = {};
+/** @deprecated Use resolveFromDB() */
+export const ACTION_TRANSLATIONS: Record<string, TrilingualText> = {};
+/** @deprecated Use resolveFromDB() */
+export const PRODUCT_TRANSLATIONS: Record<string, TrilingualText> = {};
+/** @deprecated Use resolveFromDB() */
+export const METHOD_TRANSLATIONS: Record<string, TrilingualText> = {};
+/** @deprecated Use resolveFromDB() */
+export const URGENCY_TRANSLATIONS: Record<string, TrilingualText> = {};
+/** @deprecated Use resolveFromDB() */
+export const SAFETY_GEAR_TRANSLATIONS: Record<string, TrilingualText> = {};

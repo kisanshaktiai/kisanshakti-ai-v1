@@ -1,8 +1,20 @@
-// ============= Lines 1-350 of 713 total lines (Truncated) =============
-
-// ═══════════════════════════════════════════════════════════════════════════
-// IPM RECOMMENDATIONS DATABASE
-// ═══════════════════════════════════════════════════════════════════════════
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * IPM RECOMMENDATIONS — FALLBACK DATA
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * ⚠️ DEPRECATION NOTICE:
+ * This file contains hardcoded IPM/disease knowledge that DUPLICATES
+ * data in the `decision_rules` database. It is retained ONLY as a
+ * fallback when DB rules fail to load.
+ * 
+ * MIGRATION TARGET: All IPM recommendations should be sourced from
+ * `decision_rules` with category='ipm' and appropriate condition_codes.
+ * Once DB coverage is complete, this file should be deleted.
+ * 
+ * All text is English-only — LLM narration layer translates at runtime.
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
 
 interface IPMRecommendation {
   crop_codes: string[];

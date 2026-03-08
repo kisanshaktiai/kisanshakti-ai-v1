@@ -313,147 +313,69 @@ export interface ScenarioContext {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// LANGUAGE TEMPLATES
+// LANGUAGE TEMPLATES — English-only (LLM narration translates at runtime)
+// REFACTORED: Hardcoded mr/hi text removed. English canonical only.
 // ═══════════════════════════════════════════════════════════════════════════
 
+/** @deprecated LLM narration layer generates greetings in target language */
 export const GREETINGS: Record<string, string[]> = {
-  mr: ['नमस्कार शेतकरी मित्र,', 'नमस्कार,', 'शेतकरी बंधू/भगिनी,'],
-  hi: ['नमस्कार किसान मित्र,', 'नमस्कार,', 'किसान भाई/बहन,'],
   en: ['Dear Farmer,', 'Hello,', 'Greetings,']
 };
 
+/** @deprecated LLM narration layer generates closings in target language */
 export const CLOSINGS: Record<string, string[]> = {
-  mr: ['शुभेच्छा! 🌾', 'यशस्वी हो! 💪', 'पुढील हंगामासाठी शुभेच्छा!'],
-  hi: ['शुभकामनाएं! 🌾', 'सफलता मिले! 💪', 'अगले सीजन के लिए शुभकामनाएं!'],
   en: ['Best wishes! 🌾', 'Wishing you success! 💪', 'Good luck with your crops!']
 };
 
+/** English-only empathy lines — LLM translates at runtime */
 export const EMPATHY_LINES: Record<EmotionalState, TrilingualText> = {
-  'STRESSED': {
-    mr: 'चिंता नको. समस्या सोडवता येईल.',
-    hi: 'चिंता न करें। समस्या का समाधान हो सकता है।',
-    en: "Don't worry. This problem can be solved."
-  },
-  'FRUSTRATED': {
-    mr: 'तुमचा प्रयत्न योग्य होता. आता हा मार्ग प्रभावी होईल.',
-    hi: 'आपका प्रयास सही था। अब यह तरीका कारगर होगा।',
-    en: 'Your effort was right. This approach will work now.'
-  },
-  'PANICKED': {
-    mr: 'शांत राहा. मी तुम्हाला मार्गदर्शन करतो.',
-    hi: 'शांत रहें। मैं आपका मार्गदर्शन करता हूं।',
-    en: 'Stay calm. I will guide you through this.'
-  },
-  'NEUTRAL': {
-    mr: '',
-    hi: '',
-    en: ''
-  },
-  'CONFIDENT': {
-    mr: 'तुम्ही योग्य मार्गावर आहात!',
-    hi: 'आप सही रास्ते पर हैं!',
-    en: "You're on the right track!"
-  }
+  'STRESSED': { en: "Don't worry. This problem can be solved." },
+  'FRUSTRATED': { en: 'Your effort was right. This approach will work now.' },
+  'PANICKED': { en: 'Stay calm. I will guide you through this.' },
+  'NEUTRAL': { en: '' },
+  'CONFIDENT': { en: "You're on the right track!" }
 };
 
+/** English-only urgency indicators — LLM translates at runtime */
 export const URGENCY_INDICATORS: Record<string, TrilingualText> = {
-  'IMMEDIATE': {
-    mr: '🔴 आता लगेच',
-    hi: '🔴 अभी तुरंत',
-    en: '🔴 Immediately'
-  },
-  'TODAY': {
-    mr: '🟠 आज',
-    hi: '🟠 आज',
-    en: '🟠 Today'
-  },
-  'WITHIN_48H': {
-    mr: '🟡 2 दिवसांत',
-    hi: '🟡 2 दिनों में',
-    en: '🟡 Within 2 days'
-  },
-  'THIS_WEEK': {
-    mr: '🟢 या आठवड्यात',
-    hi: '🟢 इस हफ्ते',
-    en: '🟢 This week'
-  },
-  'NON_URGENT': {
-    mr: '🟢 सोयीनुसार',
-    hi: '🟢 सुविधानुसार',
-    en: '🟢 At your convenience'
-  }
+  'IMMEDIATE': { en: '🔴 Immediately' },
+  'TODAY': { en: '🟠 Today' },
+  'WITHIN_48H': { en: '🟡 Within 2 days' },
+  'THIS_WEEK': { en: '🟢 This week' },
+  'NON_URGENT': { en: '🟢 At your convenience' }
 };
 
+/** English-only section headings — LLM translates at runtime */
 export const SECTION_HEADINGS: Record<string, TrilingualText> = {
-  'IMMEDIATE_ACTION': {
-    mr: '📌 आता काय करावे:',
-    hi: '📌 अभी क्या करें:',
-    en: '📌 What to Do Now:'
-  },
-  'HOW_TO': {
-    mr: '🔧 कसे करावे:',
-    hi: '🔧 कैसे करें:',
-    en: '🔧 How to Do It:'
-  },
-  'RATIONALE': {
-    mr: '💡 हे का:',
-    hi: '💡 यह क्यों:',
-    en: '💡 Why This:'
-  },
-  'WARNINGS': {
-    mr: '⚠️ हे नको करू:',
-    hi: '⚠️ यह न करें:',
-    en: '⚠️ Do NOT Do:'
-  },
-  'ECONOMICS': {
-    mr: '💰 खर्च आणि फायदा:',
-    hi: '💰 खर्च और फायदा:',
-    en: '💰 Cost & Benefit:'
-  },
-  'FOLLOW_UP': {
-    mr: '📅 पुढे काय:',
-    hi: '📅 आगे क्या:',
-    en: '📅 What\'s Next:'
-  },
-  'MATERIALS': {
-    mr: '🛒 साहित्य:',
-    hi: '🛒 सामग्री:',
-    en: '🛒 Materials:'
-  },
-  'MIXING': {
-    mr: '🧪 मिश्रण:',
-    hi: '🧪 मिश्रण:',
-    en: '🧪 Mixing:'
-  },
-  'APPLICATION': {
-    mr: '💧 फवारणी:',
-    hi: '💧 छिड़काव:',
-    en: '💧 Application:'
-  },
-  'SAFETY': {
-    mr: '🦺 सुरक्षा:',
-    hi: '🦺 सुरक्षा:',
-    en: '🦺 Safety:'
-  }
+  'IMMEDIATE_ACTION': { en: '📌 What to Do Now:' },
+  'HOW_TO': { en: '🔧 How to Do It:' },
+  'RATIONALE': { en: '💡 Why This:' },
+  'WARNINGS': { en: '⚠️ Do NOT Do:' },
+  'ECONOMICS': { en: '💰 Cost & Benefit:' },
+  'FOLLOW_UP': { en: '📅 What\'s Next:' },
+  'MATERIALS': { en: '🛒 Materials:' },
+  'MIXING': { en: '🧪 Mixing:' },
+  'APPLICATION': { en: '💧 Application:' },
+  'SAFETY': { en: '🦺 Safety:' }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
-// EMOJI ACCESSIBILITY DESCRIPTIONS
+// EMOJI ACCESSIBILITY DESCRIPTIONS — English-only
 // ═══════════════════════════════════════════════════════════════════════════
 
 export const EMOJI_DESCRIPTIONS: Record<string, TrilingualText> = {
-  '📌': { mr: 'महत्त्वाचे', hi: 'महत्वपूर्ण', en: 'Important' },
-  '🔧': { mr: 'साधने', hi: 'उपकरण', en: 'Tools' },
-  '💡': { mr: 'माहिती', hi: 'जानकारी', en: 'Information' },
-  '⚠️': { mr: 'सावधान', hi: 'सावधान', en: 'Warning' },
-  '❌': { mr: 'नको', hi: 'नहीं', en: 'No' },
-  '✅': { mr: 'होय', hi: 'हाँ', en: 'Yes' },
-  '💰': { mr: 'पैसे', hi: 'पैसे', en: 'Money' },
-  '📅': { mr: 'तारीख', hi: 'तारीख', en: 'Date' },
-  '🌾': { mr: 'पीक', hi: 'फसल', en: 'Crop' },
-  '💪': { mr: 'शक्ती', hi: 'शक्ति', en: 'Strength' },
-  '⏰': { mr: 'वेळ', hi: 'समय', en: 'Time' },
-  '🎯': { mr: 'लक्ष्य', hi: 'लक्ष्य', en: 'Target' },
-  '⛈️': { mr: 'पाऊस', hi: 'बारिश', en: 'Rain' },
-  '🦺': { mr: 'सुरक्षा', hi: 'सुरक्षा', en: 'Safety' }
+  '📌': { en: 'Important' },
+  '🔧': { en: 'Tools' },
+  '💡': { en: 'Information' },
+  '⚠️': { en: 'Warning' },
+  '❌': { en: 'No' },
+  '✅': { en: 'Yes' },
+  '💰': { en: 'Money' },
+  '📅': { en: 'Date' },
+  '🌾': { en: 'Crop' },
+  '💪': { en: 'Strength' },
+  '⏰': { en: 'Time' },
+  '🎯': { en: 'Target' },
+  '⛈️': { en: 'Rain' },
+  '🦺': { en: 'Safety' }
 };
