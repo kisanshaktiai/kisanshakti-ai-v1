@@ -2655,34 +2655,54 @@ export class AIAgentOrchestrator {
       }
       
       // PATCH 2: Stage context guard - ask farmer for crop stage if required
+      // v7.7 FIX: For DIAGNOSTIC intents (STEM_DAMAGE, LEAF_DAMAGE, PEST_OBSERVATION, etc.)
+      // the farmer is reporting visible damage. Blocking the entire pipeline for stage info
+      // is WRONG — the symptoms alone are sufficient for rule matching.
+      // Instead, use a default stage ('VEGETATIVE') and let the rule engine handle it.
+      const DIAGNOSTIC_INTENTS = new Set([
+        'STEM_DAMAGE', 'LEAF_DAMAGE', 'ROOT_DAMAGE', 'FRUIT_DAMAGE',
+        'PEST_OBSERVATION', 'DISEASE_OBSERVATION', 'REPORT_SYMPTOM',
+        'GROWTH_ANOMALY', 'WILTING_DRYING', 'YELLOWING', 'NUTRIENT_DEFICIENCY',
+        'BORER_DAMAGE', 'DEAD_HEART', 'INSECT_DAMAGE', 'FUNGAL_INFECTION',
+        'UNKNOWN_OBSERVATION'
+      ]);
+      
       if (intentMetaFromDB?.requires_stage_context && !landContext?.growth_stage) {
-        console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
-        agentsUsed.push('STAGE_CONTEXT_GUARD');
-        
-        const lang = options.language || 'mr';
-        const stageQuestion = lang === 'mr' 
-          ? 'तुमच्या पिकाची सध्याची अवस्था कोणती आहे? (उदा. रोपे, फुटवे, वाढ, फुलोरा, फळधारणा)'
-          : lang === 'hi'
-          ? 'आपकी फसल की वर्तमान अवस्था क्या है? (जैसे अंकुरण, कल्ले, बढ़वार, फूल, फल)'
-          : 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
-        
-        return {
-          type: 'CLARIFICATION_QUESTION',
-          session_id: sessionId,
-          question: {
-            text: stageQuestion,
-            options: [],
-            reason: 'STAGE_CONTEXT_REQUIRED'
-          },
-          metadata: {
-            confidence: intentConf,
-            safety_status: 'SAFE',
-            rules_applied: 0,
-            processing_time_ms: Date.now() - startTime,
-            agents_used: agentsUsed,
-            trace_id: traceId
-          }
-        } as any;
+        if (DIAGNOSTIC_INTENTS.has(intentCode)) {
+          // v7.7: Diagnostic intents proceed with default stage — symptoms are actionable
+          console.log(`   ✅ [PATCH 2 v7.7] DIAGNOSTIC BYPASS: Intent ${intentCode} is diagnostic — proceeding with default stage VEGETATIVE`);
+          console.log(`   📋 Rationale: Farmer reported visible damage/symptoms. Stage is helpful but NOT required for diagnosis.`);
+          agentsUsed.push('STAGE_GUARD_DIAGNOSTIC_BYPASS');
+          // landContext will be null — rule engine uses 'VEGETATIVE' as default downstream
+        } else {
+          console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
+          agentsUsed.push('STAGE_CONTEXT_GUARD');
+          
+          const lang = options.language || 'mr';
+          const stageQuestion = lang === 'mr' 
+            ? 'तुमच्या पिकाची सध्याची अवस्था कोणती आहे? (उदा. रोपे, फुटवे, वाढ, फुलोरा, फळधारणा)'
+            : lang === 'hi'
+            ? 'आपकी फसल की वर्तमान अवस्था क्या है? (जैसे अंकुरण, कल्ले, बढ़वार, फूल, फल)'
+            : 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
+          
+          return {
+            type: 'CLARIFICATION_QUESTION',
+            session_id: sessionId,
+            question: {
+              text: stageQuestion,
+              options: [],
+              reason: 'STAGE_CONTEXT_REQUIRED'
+            },
+            metadata: {
+              confidence: intentConf,
+              safety_status: 'SAFE',
+              rules_applied: 0,
+              processing_time_ms: Date.now() - startTime,
+              agents_used: agentsUsed,
+              trace_id: traceId
+            }
+          } as any;
+        }
       }
       
       // ═══════════════════════════════════════════════════════════════════════════

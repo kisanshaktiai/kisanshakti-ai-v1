@@ -106,9 +106,12 @@ const PEST_DISEASE_PATTERNS = [
   /पाने?\s*(पिवळ|सुक|वाळ|गळ)/i,
   /पौधा?\s*(मुरझ|सूख)/i,
   /कमकुवत|कमज़ोर|weak/i,
-  /holes?\s*in\s*(leaves?|bolls?|fruits?)/i,
+  /holes?\s*in\s*(leaves?|bolls?|fruits?|stem|stalk)/i,
   /wilting|yellowing|drying|rotting/i,
   /खराब|damage|नुकसान/i,
+  // Marathi/Hindi symptom descriptions - stem/stalk damage
+  /छिद्र|भोक|छेद|खोड.*भोक|खोड.*छिद्र|तना.*छेद/i,
+  /खोडात|खोडाला|खोडावर|तना\s*में/i,
   
   // Treatment requests
   /फवारणी|स्प्रे|spray|छिड़काव/i,
