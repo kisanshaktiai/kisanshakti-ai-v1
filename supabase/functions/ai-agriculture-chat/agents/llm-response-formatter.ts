@@ -439,16 +439,44 @@ export async function formatRecommendationsWithLLM(
   const allowedDosages: string[] = [];
   
   if (!isSafetyGateRule) {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P0 FIX: HELPER that adds product_name AND active_ingredient to allowed list
+    // ROOT CAUSE: active_ingredient (e.g., "Chlorpyrifos 20% EC") was NEVER added
+    // to allowedProducts, causing CHECK 5 to flag the rule engine's own product
+    // as "Unauthorized product mentioned: chlorpyrifos"
+    // ═══════════════════════════════════════════════════════════════════════════
+    const addToAllowed = (source: any) => {
+      if (!source) return;
+      const names = [
+        source.product_name, source.name,
+        source.active_ingredient,  // P0 FIX: Include active_ingredient
+      ].filter(Boolean);
+      for (const n of names) {
+        if (n && n !== 'N/A' && n !== 'Not specified' && !allowedProducts.includes(n.toLowerCase())) {
+          allowedProducts.push(n.toLowerCase());
+          // Also add individual words from active_ingredient for partial matching
+          // e.g., "Chlorpyrifos 20% EC" → adds "chlorpyrifos"
+          const words = n.toLowerCase().split(/[\s+@\/,%]+/).filter((w: string) => w.length > 3);
+          for (const w of words) {
+            if (!allowedProducts.includes(w)) allowedProducts.push(w);
+          }
+        }
+      }
+      const dosages = [source.dosage, source.dosage_per_acre, source.concentration].filter(Boolean);
+      for (const d of dosages) {
+        if (d && d !== 'N/A' && !allowedDosages.includes(String(d).toLowerCase())) {
+          allowedDosages.push(String(d).toLowerCase());
+        }
+      }
+    };
+
     // PRIMARY SOURCE: Structured products array from decision output
     const structuredProducts: any[] = input.decision_output?.products || 
                                        input.decision_output?.recommended_products || [];
     
     if (structuredProducts.length > 0) {
       for (const product of structuredProducts) {
-        const name = product.product_name || product.name;
-        const dosage = product.dosage || product.dosage_per_acre;
-        if (name && name !== 'N/A' && name !== 'Not specified') allowedProducts.push(name.toLowerCase());
-        if (dosage && dosage !== 'N/A') allowedDosages.push(String(dosage).toLowerCase());
+        addToAllowed(product);
       }
       console.log(`   📋 [StructuredValidation] ${structuredProducts.length} products from decision.products[]`);
     }
@@ -456,25 +484,14 @@ export async function formatRecommendationsWithLLM(
     // FALLBACK: Extract from actions_returned if no structured products
     if (allowedProducts.length === 0 && actions && actions.length > 0) {
       for (const action of actions) {
-        const productName = action.application_details?.product_name || action.product_name;
-        const dosage = action.application_details?.dosage || action.dosage;
-        if (productName && productName !== 'N/A') allowedProducts.push(productName.toLowerCase());
-        if (dosage) allowedDosages.push(dosage.toLowerCase());
+        addToAllowed(action.application_details || action);
+        addToAllowed(action);
       }
     }
     
     // ALSO: Extract from primary_decision structured fields
-    const primaryProduct = (primary as any)?.product_details || (primary as any)?.application_details;
-    if (primaryProduct) {
-      const pName = primaryProduct.product_name || primaryProduct.name;
-      const pDosage = primaryProduct.dosage || primaryProduct.dosage_per_acre;
-      if (pName && pName !== 'N/A' && !allowedProducts.includes(pName.toLowerCase())) {
-        allowedProducts.push(pName.toLowerCase());
-      }
-      if (pDosage && !allowedDosages.includes(String(pDosage).toLowerCase())) {
-        allowedDosages.push(String(pDosage).toLowerCase());
-      }
-    }
+    addToAllowed((primary as any)?.product_details);
+    addToAllowed((primary as any)?.application_details);
   } else {
     console.log(`   🛡️ [ProductValidation] SKIPPED - safety_gate rule (${primary?.action_type})`);
   }
