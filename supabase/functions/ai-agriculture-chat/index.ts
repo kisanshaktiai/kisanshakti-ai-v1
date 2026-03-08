@@ -3072,7 +3072,7 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
 /**
  * Build formatted numbered list from decision output
  */
-function buildFormattedRecommendationsList(decision: any, lang: string): string {
+async function buildFormattedRecommendationsList(decision: any, lang: string, supabaseClient?: any): Promise<string> {
   const parts: string[] = [];
   
   // Greeting
