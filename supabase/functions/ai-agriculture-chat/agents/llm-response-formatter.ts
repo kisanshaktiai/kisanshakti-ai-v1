@@ -591,7 +591,7 @@ export async function formatRecommendationsWithLLM(
         const devanagariRatio = cleanedTotalChars > 0 ? devanagariChars / cleanedTotalChars : 0;
         // FIX H5: Lowered threshold from 0.3 to 0.22 — too aggressive for technical agri content
         if (devanagariRatio < 0.22) {
-          const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : input.language;
+          const langName = getLanguageName(input.language);
           console.warn(`⚠️ [LANGUAGE CHECK] Only ${(devanagariRatio*100).toFixed(0)}% Devanagari in ${langName} response - possible translation failure.`);
           console.warn(`⚠️ [LANGUAGE CHECK] Response preview: ${formattedResponse.substring(0, 200)}`);
         }
