@@ -17,10 +17,7 @@ import type { OrchestratorResponse } from './agents/orchestrator.ts';
 import { formatRecommendationsWithLLM } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
 
-// Import legacy helpers for backward compatibility
-import { generateMultilingualQuickReplies } from './multilingual-quick-replies.ts';
-import { parseResponseToCards } from './response-parser.ts';
-import { localizeResponse } from './response-localizer.ts';
+// Legacy helpers removed - dead code cleanup
 
 // CRITICAL FIX: Import translation functions for farmer-friendly product names
 import { 
