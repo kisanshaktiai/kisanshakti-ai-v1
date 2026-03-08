@@ -1029,6 +1029,7 @@ export function evaluateConditionsJson(
     }
 
     // ─── FORENSIC FIX 1C: Handle `requires_diagnosis_confidence` as threshold ───
+    // v7.6: Moved to CATEGORY_G_KEYS but keep explicit handler as safety net
     if (key === 'requires_diagnosis_confidence') {
       const confVal = typeof condValue === 'number' ? condValue : parseFloat(String(condValue));
       // This is a soft gate — if we don't have confidence data, skip gracefully
