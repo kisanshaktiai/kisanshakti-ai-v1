@@ -1302,7 +1302,7 @@ function filterRelevantResponses(
 // RECOMMENDATION DATA EXTRACTOR
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildRecommendationSummary(input: LLMFormatterInput): string {
+async function buildRecommendationSummary(input: LLMFormatterInput): Promise<string> {
   const decision = input.decision_output;
   const primary = decision.primary_decision;
   
