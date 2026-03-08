@@ -639,6 +639,9 @@ export async function formatRecommendationsWithLLM(
       }
   }
   
+  // ═══ SANITIZATION GATE: Strip any leaked technical data from LLM output ═══
+  formattedResponse = sanitizeFarmerResponse(formattedResponse);
+
   const processingTime = Date.now() - startTime;
   console.log(`   ✅ PHASE 5 complete in ${processingTime}ms`);
   
