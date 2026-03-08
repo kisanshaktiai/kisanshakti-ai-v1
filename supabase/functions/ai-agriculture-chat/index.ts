@@ -3799,9 +3799,7 @@ function transformOrchestratorResponse(
     case 'ESCALATION_REQUIRED':
       // Need expert help
       const esc = response.escalation;
-      const escText = language === 'mr' ? esc?.message_mr :
-                     language === 'hi' ? esc?.message_hi :
-                     esc?.message_en || 'Connecting you with an expert.';
+      const escText = (esc as any)?.[`message_${language}`] || esc?.message_en || 'Connecting you with an expert.';
       
       return {
         response: escText,
