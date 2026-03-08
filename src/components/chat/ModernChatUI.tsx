@@ -108,6 +108,8 @@ interface Message {
   };
   // Orchestrator type for detecting clarification questions
   orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
+  // ✅ Canonical Advisory structured JSON
+  structuredAdvisory?: any;
   // ✅ NEW: Diagnostic Escalation data for expert-quality intermediate responses
   diagnosticEscalationData?: DiagnosticEscalationData;
 }

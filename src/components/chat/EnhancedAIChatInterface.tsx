@@ -1583,6 +1583,8 @@ export function EnhancedAIChatInterface() {
         dataAudit: data.dataAudit,
         // Include clarification options for interactive UI
         clarificationOptions,
+        // ✅ Canonical Advisory: structured JSON for rich card rendering
+        structuredAdvisory: data.structured_advisory || undefined,
         analytics: {
           responseTime: data.responseTime,
           queryComplexity: 'orchestrator'
