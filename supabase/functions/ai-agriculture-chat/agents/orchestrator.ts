@@ -8322,30 +8322,21 @@ export class AIAgentOrchestrator {
     
     // If no stage advice, detect query type and provide relevant generic advice
     if (!fallbackAdvice) {
+      // English-only fallbacks — LLM narration layer translates at runtime
       if (/खत|खाद|urea|dap|fertilizer|युरिया|डीएपी/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '🌱 खत शिफारस: मातीची तपासणी करा आणि शिफारसीनुसार NPK द्या. पिकाचे नाव आणि वय सांगा.' :
-                         language === 'hi' ? '🌱 खाद सिफारिश: मिट्टी जांच कराएं और सिफारिश के अनुसार NPK दें। फसल का नाम और उम्र बताएं।' :
-                         '🌱 Fertilizer advice: Get soil tested and apply NPK as recommended. Tell me your crop name and age.';
+        fallbackAdvice = '🌱 Fertilizer advice: Get soil tested and apply NPK as recommended. Tell me your crop name and age.';
       } else if (/पाणी|पानी|water|irrigation|सिंचन|सिंचाई/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '💧 पाणी व्यवस्थापन: सकाळी किंवा संध्याकाळी पाणी द्या. पाणी साचणे टाळा. पिकाचे नाव सांगा.' :
-                         language === 'hi' ? '💧 पानी प्रबंधन: सुबह या शाम को पानी दें। पानी का जमाव टालें। फसल का नाम बताएं।' :
-                         '💧 Water management: Irrigate in morning or evening. Avoid waterlogging. Tell me your crop.';
+        fallbackAdvice = '💧 Water management: Irrigate in morning or evening. Avoid waterlogging. Tell me your crop.';
       } else if (/किडी|कीट|कीड|pest|अळी|माशी|insect|बग|कीड़ा/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '🐛 किडी नियंत्रण: निंबोळी अर्क 5% फवारा. अचूक निदानासाठी फोटो पाठवा.' :
-                         language === 'hi' ? '🐛 कीट नियंत्रण: नीम अर्क 5% छिड़काव करें। सटीक निदान के लिए फोटो भेजें।' :
-                         '🐛 Pest control: Spray 5% neem extract. Send a photo for accurate diagnosis.';
+        fallbackAdvice = '🐛 Pest control: Spray 5% neem extract. Send a photo for accurate diagnosis.';
       } else if (/रोग|disease|वाळणे|पिवळे|बुरशी|fungus|wilting|yellow/.test(messageLower)) {
-        fallbackAdvice = language === 'mr' ? '🌿 रोग नियंत्रण: प्रभावित भाग काढा. अचूक निदानासाठी फोटो पाठवा.' :
-                         language === 'hi' ? '🌿 रोग नियंत्रण: प्रभावित भाग हटाएं। सटीक निदान के लिए फोटो भेजें।' :
-                         '🌿 Disease control: Remove affected parts. Send a photo for accurate diagnosis.';
+        fallbackAdvice = '🌿 Disease control: Remove affected parts. Send a photo for accurate diagnosis.';
       }
     }
     
     // Add photo request if no specific advice
     if (!fallbackAdvice) {
-      fallbackAdvice = language === 'mr' ? '📸 अधिक अचूक सल्ला देण्यासाठी कृपया पिकाचा फोटो पाठवा किंवा समस्या सविस्तर सांगा.' :
-                       language === 'hi' ? '📸 अधिक सटीक सलाह के लिए कृपया फसल का फोटो भेजें या समस्या विस्तार से बताएं।' :
-                       '📸 For more accurate advice, please send a photo of your crop or describe the problem in detail.';
+      fallbackAdvice = '📸 For more accurate advice, please send a photo of your crop or describe the problem in detail.';
     }
     
     return {
