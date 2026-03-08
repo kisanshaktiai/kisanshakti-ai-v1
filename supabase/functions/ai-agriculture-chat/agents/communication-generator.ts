@@ -314,9 +314,9 @@ export class CommunicationGenerator {
       action_summary: actionSummary,
       urgency_indicator: {
         text: {
-          mr: getUrgencyTranslation(urgency, 'mr') || URGENCY_INDICATORS['TODAY'].mr,
-          hi: getUrgencyTranslation(urgency, 'hi') || URGENCY_INDICATORS['TODAY'].hi,
-          en: getUrgencyTranslation(urgency, 'en') || URGENCY_INDICATORS['TODAY'].en
+          mr: getUrgencyTranslation(urgency, 'mr') || URGENCY_INDICATORS['TODAY']?.en || '🟠 Today',
+          hi: getUrgencyTranslation(urgency, 'hi') || URGENCY_INDICATORS['TODAY']?.en || '🟠 Today',
+          en: getUrgencyTranslation(urgency, 'en') || URGENCY_INDICATORS['TODAY']?.en || '🟠 Today'
         },
         color: this.getUrgencyColor(urgency),
         urgency_level: urgency as 'IMMEDIATE' | 'TODAY' | 'WITHIN_48H' | 'THIS_WEEK' | 'NON_URGENT'
