@@ -1387,13 +1387,38 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           }
           
           // Pass ALL CanonicalState properties to rule conditions
+          // ═══════════════════════════════════════════════════════════════════
+          // v7.9 CRITICAL FIX: CanonicalState has visual_symptom (SINGULAR enum)
+          // but rule evaluator needs visual_symptoms (PLURAL array of observation codes).
+          // The observations are stored in confirmed_observations + synthetic_observations
+          // which are injected into the extended canonical state by the orchestrator.
+          // Without this bridge, input.visual_symptoms was ALWAYS empty, causing
+          // every observation-based condition to FAIL with SKIPPED_NO_DATA + required:true.
+          // ═══════════════════════════════════════════════════════════════════
+          const confirmedObs: string[] = (state as any).confirmed_observations || [];
+          const syntheticObs: string[] = (state as any).synthetic_observations || [];
+          const secondarySyms: string[] = Array.isArray(state.secondary_symptoms) 
+            ? state.secondary_symptoms.map((s: any) => String(s)) : [];
+          const allVisualSymptoms = [
+            ...confirmedObs,
+            ...syntheticObs,
+            ...secondarySyms,
+            // Also include the primary visual_symptom if it's a real value
+            ...(state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN' 
+              ? [String(state.visual_symptom)] : [])
+          ];
+          // Deduplicate
+          const uniqueVisualSymptoms = [...new Set(allVisualSymptoms.filter(Boolean))];
+          
           const input = {
             crop_code: state.crop_type?.toLowerCase() || '',
             crop_stage: state.crop_stage?.toLowerCase() || '',
             user_query: state.user_query || '',
-            // Visual symptoms - critical for observation-based rules
-            visual_symptoms: state.visual_symptoms || [],
+            // v7.9 FIX: visual_symptoms now populated from confirmed + synthetic observations
+            visual_symptoms: uniqueVisualSymptoms,
             visual_symptom: state.visual_symptom || '',
+            // Also expose as 'observations' for evaluateConditionsJson inputObservations
+            observations: uniqueVisualSymptoms,
             // Soil data
             soil_nitrogen: state.soil_nitrogen || '',
             soil_phosphorus: state.soil_phosphorus || '',

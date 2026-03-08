@@ -1,4 +1,19 @@
-# Pipeline Stability Fixes v7.6 — Condition Ledger Unblocking
+# Pipeline Stability Fixes v7.9 — Observation Propagation Fix
+
+## v7.9 — Observation Propagation to Rule Evaluator (2026-03-08)
+
+### Critical Root Cause Fixed: Observations NEVER reached rule condition evaluator
+
+- **Root Cause:** `convertBundledToRule()` in `layered-rule-evaluator.ts` built the input object with `state.visual_symptoms` (PLURAL), but `CanonicalState` only has `visual_symptom` (SINGULAR enum). The actual observation arrays (`confirmed_observations`, `synthetic_observations`) are injected into the extended canonical state by the orchestrator but were never mapped to `input.visual_symptoms`. Result: `input.visual_symptoms = []` ALWAYS, causing every observation-based `conditions_json.observations` check to get `SKIPPED_NO_DATA` with `required: true`, killing ALL rules.
+- **Fix 1 (ROOT CAUSE):** `layered-rule-evaluator.ts` — `convertBundledToRule` now builds `visual_symptoms` from `confirmed_observations + synthetic_observations + secondary_symptoms + visual_symptom`. Also exposes as `observations` for `evaluateConditionsJson`'s `inputObservations` path.
+- **Fix 2:** `orchestrator.ts` — `.toLowerCase()` crash on non-string rule fields (category/canonical_group) fixed with `String()` coercion.
+- **Fix 3:** `orchestrator.ts` — Pipeline health monitor now reads `confirmed_observations` instead of nonexistent `visual_symptoms`.
+
+### Impact
+- All observation-based rules can now actually match farmer symptoms
+- Expected: "ऊसाच्या खोडात छिद्र पडली आहेत" should match SC_PEST_EARLY_SHOOT_BORER_004 via STEM_BORING ↔ STEM_AFFECTED root-word match
+
+
 
 ## v7.6 — Condition Ledger Boolean Gate Fix (2026-03-08)
 

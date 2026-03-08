@@ -5122,8 +5122,9 @@ export class AIAgentOrchestrator {
           
           // Filter to pest management rules
           const pestRules = allRulesWithBundled.filter((r: any) => {
-            const cat = (r.category || r.canonical_group || r.required_observation_category || '').toLowerCase();
-            const condCode = (r.condition_code || '').toLowerCase();
+            // v7.9 FIX: Coerce to string to prevent .toLowerCase() crash on non-string fields
+            const cat = String(r.category || r.canonical_group || r.required_observation_category || '').toLowerCase();
+            const condCode = String(r.condition_code || '').toLowerCase();
             return PEST_RULE_CATEGORIES.has(cat) || 
                    condCode.includes('borer') || condCode.includes('pest') ||
                    condCode.includes('shoot') || condCode.includes('insect');
@@ -5198,7 +5199,7 @@ export class AIAgentOrchestrator {
         // Logs critical warning when symptoms exist but zero rules matched,
         // enabling fast identification of condition_code/observable_characteristics gaps
         // ═══════════════════════════════════════════════════════════════════════════
-        const pipelineSymptoms = canonicalState.visual_symptoms || [];
+        const pipelineSymptoms = (canonicalStateWithQuery as any).confirmed_observations || (canonicalStateWithQuery as any).visual_symptoms || [];
         if (layeredRuleResult.rules_matched === 0 && pipelineSymptoms.length >= 3) {
           console.error(`🚨 [PIPELINE_HEALTH] ZERO RULES MATCHED despite ${pipelineSymptoms.length} symptoms!`);
           console.error(`   Crop: ${canonicalState.crop_type}, Stage: ${canonicalState.crop_stage}`);
