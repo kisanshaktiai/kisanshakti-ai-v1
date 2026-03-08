@@ -3366,12 +3366,7 @@ function buildResponseFromDecisionOutput(decision: any, language: string): strin
   // Primary recommendation - CRITICAL FIX: Translate chemical names to farmer language
   if (primary) {
     const rawProductName = primary.application_details?.product_name || '';
-    // Use translation dictionary for farmer-friendly names
-    const productName = rawProductName ? getProductName(rawProductName, lang) : (
-      lang === 'mr' ? 'शिफारस केलेले औषध' : 
-      lang === 'hi' ? 'सिफारिश की गई दवा' : 
-      'Recommended treatment'
-    );
+    const productName = rawProductName ? getProductName(rawProductName, lang) : 'Recommended treatment';
     const dosage = primary.application_details?.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
     const method = primary.application_details?.method || '';
