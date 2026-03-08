@@ -2004,28 +2004,65 @@ function validateWhatWhyHow(
   
   const lower = llmOutput.toLowerCase();
   
-  // WHAT detection: problem/cause identification markers
-  const hasWhat = lower.includes('🔍') || 
-    lower.includes('समस्या') || lower.includes('problem') ||
-    lower.includes('कारण ओळख') || lower.includes('cause') ||
-    lower.includes('identified') || lower.includes('detected') ||
-    lower.includes('आढळले') || lower.includes('पहचान') ||
-    lower.includes('what') || lower.includes('diagnosis');
+  // CRITICAL FIX: Greatly expanded detection markers for Marathi, Hindi, and English
+  // Previous narrow markers caused false-positive failures on valid Devanagari responses
+  // which triggered template fallback → 317-char incomplete English-only responses
   
-  // WHY detection: scientific reasoning markers
-  const hasWhy = lower.includes('📖') ||
-    lower.includes('कारण') || lower.includes('reason') || lower.includes('why') ||
-    lower.includes('because') || lower.includes('scientific') ||
-    lower.includes('वैज्ञानिक') || lower.includes('म्हणून') ||
-    lower.includes('इसलिए') || lower.includes('क्योंकि');
+  // WHAT detection: problem/cause identification markers (expanded for Marathi/Hindi)
+  const hasWhat = lower.includes('🔍') || lower.includes('🎯') || lower.includes('📋') ||
+    // Marathi markers
+    lower.includes('समस्या') || lower.includes('आढळले') || lower.includes('दिसतंय') ||
+    lower.includes('कारण ओळख') || lower.includes('लक्षणे') || lower.includes('रोग') ||
+    lower.includes('किडा') || lower.includes('कीड') || lower.includes('मर') ||
+    lower.includes('मावा') || lower.includes('बोअरर') || lower.includes('गाभा') ||
+    lower.includes('पिवळ') || lower.includes('तपासणी') || lower.includes('निदान') ||
+    lower.includes('ओळख') || lower.includes('दिसत') || lower.includes('झाल') ||
+    lower.includes('आहे') || lower.includes('आलेल') ||
+    // Hindi markers
+    lower.includes('पहचान') || lower.includes('लक्षण') || lower.includes('रोग') ||
+    lower.includes('कीट') || lower.includes('समस्या') || lower.includes('बीमारी') ||
+    lower.includes('दिख') || lower.includes('पता') ||
+    // English markers
+    lower.includes('problem') || lower.includes('cause') || lower.includes('identified') ||
+    lower.includes('detected') || lower.includes('what') || lower.includes('diagnosis') ||
+    lower.includes('issue') || lower.includes('found') || lower.includes('observe');
   
-  // HOW detection: treatment/action markers
-  const hasHow = lower.includes('💊') || lower.includes('🌿') ||
-    lower.includes('उपाय') || lower.includes('treatment') || lower.includes('how') ||
-    lower.includes('apply') || lower.includes('spray') ||
-    lower.includes('फवारणी') || lower.includes('छिड़काव') ||
-    lower.includes('dosage') || lower.includes('ml') || lower.includes('per acre') ||
-    lower.includes('प्रति एकर');
+  // WHY detection: scientific reasoning markers (expanded)
+  const hasWhy = lower.includes('📖') || lower.includes('🔬') ||
+    // Marathi markers
+    lower.includes('कारण') || lower.includes('म्हणून') || lower.includes('त्यामुळे') ||
+    lower.includes('वैज्ञानिक') || lower.includes('जीवनचक्र') || lower.includes('प्रसार') ||
+    lower.includes('मुळे') || lower.includes('झाल्यामुळे') || lower.includes('होतो') ||
+    lower.includes('करतो') || lower.includes('करतात') || lower.includes('पसरतो') ||
+    lower.includes('नुकसान') || lower.includes('हल्ला') || lower.includes('परिणाम') ||
+    // Hindi markers  
+    lower.includes('कारण') || lower.includes('इसलिए') || lower.includes('क्योंकि') ||
+    lower.includes('वजह') || lower.includes('नतीजा') || lower.includes('फैलत') ||
+    // English markers
+    lower.includes('reason') || lower.includes('why') || lower.includes('because') ||
+    lower.includes('scientific') || lower.includes('lifecycle') || lower.includes('spread') ||
+    lower.includes('damage') || lower.includes('result');
+  
+  // HOW detection: treatment/action markers (expanded)
+  const hasHow = lower.includes('💊') || lower.includes('🌿') || lower.includes('⚠️') ||
+    // Marathi markers
+    lower.includes('उपाय') || lower.includes('फवारणी') || lower.includes('टाका') ||
+    lower.includes('वापरा') || lower.includes('मिसळा') || lower.includes('एकर') ||
+    lower.includes('प्रमाण') || lower.includes('करा') || lower.includes('औषध') ||
+    lower.includes('दवा') || lower.includes('फवार') || lower.includes('पाण्यात') ||
+    lower.includes('लिटर') || lower.includes('ग्रॅम') || lower.includes('मिली') ||
+    lower.includes('शिफारस') || lower.includes('उपचार') || lower.includes('काय करा') ||
+    lower.includes('काय करायचं') ||
+    // Hindi markers
+    lower.includes('छिड़काव') || lower.includes('दवा') || lower.includes('उपचार') ||
+    lower.includes('इलाज') || lower.includes('डालें') || lower.includes('मिलाएं') ||
+    lower.includes('प्रति एकड') || lower.includes('लीटर') || lower.includes('ग्राम') ||
+    lower.includes('मिली') ||
+    // English markers
+    lower.includes('treatment') || lower.includes('how') || lower.includes('apply') ||
+    lower.includes('spray') || lower.includes('dosage') || lower.includes('ml') ||
+    lower.includes('per acre') || lower.includes('recommend') || lower.includes('action') ||
+    lower.includes('step');
   
   if (!hasWhat) {
     missing.push('WHAT');
