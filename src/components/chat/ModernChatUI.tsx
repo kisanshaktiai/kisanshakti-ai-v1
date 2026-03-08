@@ -343,6 +343,7 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // Check if this is an analysis response with full details
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
+  const hasCanonicalAdvisory = !isUser && message.structuredAdvisory?.version;
   const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
   const hasDataAudit = !isUser && message.dataAudit;
   
