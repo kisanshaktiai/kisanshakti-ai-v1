@@ -25,6 +25,7 @@
 
 import { getBestAvailableProvider, buildAIRequest, AI_CONFIG } from '../../_shared/aiConfig.ts';
 import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
+import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STRICT INPUT CONTRACT - Symbolic Decision Payload

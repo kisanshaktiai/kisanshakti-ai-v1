@@ -31,6 +31,7 @@
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
+import { getLanguageName } from '../utils/language-utils.ts';
 import {
   getProductName,
   getActionTranslation,

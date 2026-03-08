@@ -8,6 +8,7 @@
  */
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { getLanguageName } from '../utils/language-utils.ts';
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
