@@ -1850,7 +1850,7 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       } : undefined;
       
       const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext);
-      const deterministicText = formatStructuredResponseForLLM(structuredResponse);
+      const deterministicText = formatStructuredResponseForLLM(structuredResponse, lang);
       
       console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);
       
