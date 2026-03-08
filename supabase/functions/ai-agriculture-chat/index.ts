@@ -3704,22 +3704,15 @@ function transformOrchestratorResponse(
       
       // Handle the case where question might be a string (question_id) instead of object
       if (typeof question === 'string') {
-        // Fallback message when only question_id is provided
-        questionText = language === 'mr' ? 'कृपया अधिक माहिती द्या. तुमच्या प्रश्नाबद्दल मला अधिक तपशील सांगा.' :
-                       language === 'hi' ? 'कृपया अधिक जानकारी दें। अपने प्रश्न के बारे में मुझे अधिक विवरण बताएं।' :
-                       'Please provide more details. Tell me more about your question.';
+        questionText = 'Please provide more details. Tell me more about your question.';
       } else {
-        // Normal case: question is an object with text fields
-        questionText = language === 'mr' ? (question?.text_mr || '') :
-                       language === 'hi' ? (question?.text_hi || '') :
-                       (question?.text_en || 'Please provide more details.');
+        // Normal case: question is an object with text fields — prefer lang-specific, fallback to en
+        questionText = (question as any)?.[`text_${language}`] || question?.text_en || 'Please provide more details.';
       }
       
       // Ensure we always have some response text
       if (!questionText) {
-        questionText = language === 'mr' ? 'कृपया अधिक माहिती द्या.' :
-                       language === 'hi' ? 'कृपया अधिक जानकारी दें।' :
-                       'Please provide more details.';
+        questionText = 'Please provide more details.';
       }
       
       // ✅ CRITICAL FIX: Safe extraction of options from multiple possible locations
