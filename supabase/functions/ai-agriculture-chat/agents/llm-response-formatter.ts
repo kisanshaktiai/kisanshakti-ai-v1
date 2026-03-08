@@ -537,12 +537,19 @@ export async function formatRecommendationsWithLLM(
       const filteredViolations = whatWhyHowResult.violations.filter(v => !v.includes('HOW'));
       const filteredMissing = whatWhyHowResult.missing_sections.filter(s => s !== 'HOW');
       if (filteredMissing.length > 0) {
-        console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${filteredMissing.join(', ')}`);
-        outputValidation.violations.push(...filteredViolations);
+        // CRITICAL FIX: WHAT-WHY-HOW is WARNING ONLY — do NOT block LLM response
+        // The validator markers are too narrow for Marathi/Hindi Devanagari output
+        // Blocking here caused 317-char incomplete English fallback responses
+        console.warn(`⚠️ [WHAT-WHY-HOW] Structural warning (non-blocking): ${filteredMissing.join(', ')}`);
       }
     } else {
-      console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${whatWhyHowResult.missing_sections.join(', ')}`);
-      outputValidation.violations.push(...whatWhyHowResult.violations);
+      // CRITICAL FIX: Downgrade from hard-block to warning
+      // The WHAT-WHY-HOW detector has narrow keyword matching that frequently
+      // misses valid Marathi/Hindi patterns, causing valid LLM responses to be
+      // discarded in favor of 317-char English-only template fallbacks.
+      // This is the ROOT CAUSE of incomplete farmer responses.
+      console.warn(`⚠️ [WHAT-WHY-HOW] Structural warning (non-blocking): ${whatWhyHowResult.missing_sections.join(', ')}`);
+      console.warn(`   Response length: ${formattedResponse.length} chars — LLM content preserved`);
     }
   }
   
@@ -560,10 +567,35 @@ export async function formatRecommendationsWithLLM(
     }
   }
   
-  if (!outputValidation.valid) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Only block on HARD safety violations, not structural warnings
+  // Hard violations: unauthorized products, dosage tampering, crop mismatch
+  // Soft violations: WHAT-WHY-HOW missing sections (detection is unreliable for Devanagari)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const HARD_VIOLATION_PATTERNS = [
+    'Unauthorized product', 'unauthorized product',
+    'Missing product from symbolic', 'Leaked internal code',
+    'Dosage UNIT mismatch', 'PHI value modified',
+    'unauthorized efficacy claim', 'Chemical product',
+    'Crop mismatch', 'Invalid biocontrol',
+    'Dosage numbers mismatch'
+  ];
+  
+  const hardViolations = outputValidation.violations.filter(v =>
+    HARD_VIOLATION_PATTERNS.some(p => v.includes(p))
+  );
+  const softViolations = outputValidation.violations.filter(v =>
+    !HARD_VIOLATION_PATTERNS.some(p => v.includes(p))
+  );
+  
+  if (softViolations.length > 0) {
+    console.warn(`⚠️ [OUTPUT VALIDATION] ${softViolations.length} soft warnings (non-blocking): ${softViolations.join('; ')}`);
+  }
+  
+  if (hardViolations.length > 0) {
     console.error(`
 🚫 [OUTPUT VALIDATION GATE] LLM added unauthorized content:
-   Violations: ${outputValidation.violations.join(', ')}
+   Hard Violations: ${hardViolations.join(', ')}
    
    Using template fallback to prevent spreading incorrect advice.
     `);
@@ -707,11 +739,28 @@ function validateLLMOutput(
     'see label', 'refer label', 'cultural method',
     // BUG FIX: action_text phrases from monitoring/diagnostic rules that are NOT product names
     'pest population', 'monitor pest', 'no treatment required',
-    'regularly', 'at this stage', 'continue observation'
+    'regularly', 'at this stage', 'continue observation',
+    // CRITICAL FIX: NDVI/diagnostic phrases that are NOT product names
+    // These were being extracted from action_text and treated as product names,
+    // causing false "Product partially matched (single word only)" warnings
+    'ndvi decline', 'ndvi drop', 'ndvi', 'decline', 'poor tillering',
+    'growth retardation', 'stunted growth', 'yellowing', 'wilting',
+    'poor germination', 'leaf curl', 'leaf spot', 'nutrient deficiency',
+    'nitrogen deficiency', 'phosphorus deficiency', 'potassium deficiency',
+    'water stress', 'heat stress', 'cold stress', 'wilt', 'blight',
+    'root rot', 'stem rot', 'shoot borer', 'dead heart', 'bore holes'
   ];
   
+  // CRITICAL FIX: Additional guard — if "product name" looks like a diagnostic phrase
+  // (contains multiple words that are observation/symptom terms), skip product validation
+  const DIAGNOSTIC_KEYWORDS = ['decline', 'drop', 'poor', 'stunted', 'yellowing', 'wilting',
+    'deficiency', 'stress', 'damage', 'attack', 'infestation', 'infection', 'rot', 'blight',
+    'ndvi', 'growth', 'tillering', 'germination'];
+  const isDiagnosticPhrase = primaryProductName && 
+    DIAGNOSTIC_KEYWORDS.some(dk => primaryProductName.toLowerCase().includes(dk));
+  
   const isGenericActionType = primaryProductName && 
-    GENERIC_ACTION_TYPES.some(gt => primaryProductName.toLowerCase().includes(gt));
+    (GENERIC_ACTION_TYPES.some(gt => primaryProductName.toLowerCase().includes(gt)) || isDiagnosticPhrase);
   
   if (primaryProductName && 
       primaryProductName !== 'N/A' && 
@@ -1584,7 +1633,7 @@ async function callGeminiWithTimeout(
           }],
           generationConfig: {
             temperature: 0.5,    // LOWER: More consistent for safety
-            maxOutputTokens: 3000  // FIX 5: Increased for Devanagari languages (Marathi/Hindi use ~2x more tokens)
+            maxOutputTokens: 4000  // CRITICAL FIX: Increased from 3000 to 4000 for complete Devanagari responses (Marathi/Hindi use ~2.5x more tokens)
           }
         })
       }
@@ -1641,7 +1690,7 @@ async function callOpenAIWithTimeout(
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
         ],
-        max_tokens: 1800,  // FIX 5: Increased for Devanagari languages (Marathi/Hindi use ~2x more tokens)
+        max_tokens: 2800,  // CRITICAL FIX: Increased from 1800 to 2800 for Devanagari languages (Marathi/Hindi use ~2.5x more tokens than English, causing truncated incomplete responses)
         temperature: 0.5   // LOWER: More consistent, less creative for safety
       })
     });
@@ -1972,28 +2021,65 @@ function validateWhatWhyHow(
   
   const lower = llmOutput.toLowerCase();
   
-  // WHAT detection: problem/cause identification markers
-  const hasWhat = lower.includes('🔍') || 
-    lower.includes('समस्या') || lower.includes('problem') ||
-    lower.includes('कारण ओळख') || lower.includes('cause') ||
-    lower.includes('identified') || lower.includes('detected') ||
-    lower.includes('आढळले') || lower.includes('पहचान') ||
-    lower.includes('what') || lower.includes('diagnosis');
+  // CRITICAL FIX: Greatly expanded detection markers for Marathi, Hindi, and English
+  // Previous narrow markers caused false-positive failures on valid Devanagari responses
+  // which triggered template fallback → 317-char incomplete English-only responses
   
-  // WHY detection: scientific reasoning markers
-  const hasWhy = lower.includes('📖') ||
-    lower.includes('कारण') || lower.includes('reason') || lower.includes('why') ||
-    lower.includes('because') || lower.includes('scientific') ||
-    lower.includes('वैज्ञानिक') || lower.includes('म्हणून') ||
-    lower.includes('इसलिए') || lower.includes('क्योंकि');
+  // WHAT detection: problem/cause identification markers (expanded for Marathi/Hindi)
+  const hasWhat = lower.includes('🔍') || lower.includes('🎯') || lower.includes('📋') ||
+    // Marathi markers
+    lower.includes('समस्या') || lower.includes('आढळले') || lower.includes('दिसतंय') ||
+    lower.includes('कारण ओळख') || lower.includes('लक्षणे') || lower.includes('रोग') ||
+    lower.includes('किडा') || lower.includes('कीड') || lower.includes('मर') ||
+    lower.includes('मावा') || lower.includes('बोअरर') || lower.includes('गाभा') ||
+    lower.includes('पिवळ') || lower.includes('तपासणी') || lower.includes('निदान') ||
+    lower.includes('ओळख') || lower.includes('दिसत') || lower.includes('झाल') ||
+    lower.includes('आहे') || lower.includes('आलेल') ||
+    // Hindi markers
+    lower.includes('पहचान') || lower.includes('लक्षण') || lower.includes('रोग') ||
+    lower.includes('कीट') || lower.includes('समस्या') || lower.includes('बीमारी') ||
+    lower.includes('दिख') || lower.includes('पता') ||
+    // English markers
+    lower.includes('problem') || lower.includes('cause') || lower.includes('identified') ||
+    lower.includes('detected') || lower.includes('what') || lower.includes('diagnosis') ||
+    lower.includes('issue') || lower.includes('found') || lower.includes('observe');
   
-  // HOW detection: treatment/action markers
-  const hasHow = lower.includes('💊') || lower.includes('🌿') ||
-    lower.includes('उपाय') || lower.includes('treatment') || lower.includes('how') ||
-    lower.includes('apply') || lower.includes('spray') ||
-    lower.includes('फवारणी') || lower.includes('छिड़काव') ||
-    lower.includes('dosage') || lower.includes('ml') || lower.includes('per acre') ||
-    lower.includes('प्रति एकर');
+  // WHY detection: scientific reasoning markers (expanded)
+  const hasWhy = lower.includes('📖') || lower.includes('🔬') ||
+    // Marathi markers
+    lower.includes('कारण') || lower.includes('म्हणून') || lower.includes('त्यामुळे') ||
+    lower.includes('वैज्ञानिक') || lower.includes('जीवनचक्र') || lower.includes('प्रसार') ||
+    lower.includes('मुळे') || lower.includes('झाल्यामुळे') || lower.includes('होतो') ||
+    lower.includes('करतो') || lower.includes('करतात') || lower.includes('पसरतो') ||
+    lower.includes('नुकसान') || lower.includes('हल्ला') || lower.includes('परिणाम') ||
+    // Hindi markers  
+    lower.includes('कारण') || lower.includes('इसलिए') || lower.includes('क्योंकि') ||
+    lower.includes('वजह') || lower.includes('नतीजा') || lower.includes('फैलत') ||
+    // English markers
+    lower.includes('reason') || lower.includes('why') || lower.includes('because') ||
+    lower.includes('scientific') || lower.includes('lifecycle') || lower.includes('spread') ||
+    lower.includes('damage') || lower.includes('result');
+  
+  // HOW detection: treatment/action markers (expanded)
+  const hasHow = lower.includes('💊') || lower.includes('🌿') || lower.includes('⚠️') ||
+    // Marathi markers
+    lower.includes('उपाय') || lower.includes('फवारणी') || lower.includes('टाका') ||
+    lower.includes('वापरा') || lower.includes('मिसळा') || lower.includes('एकर') ||
+    lower.includes('प्रमाण') || lower.includes('करा') || lower.includes('औषध') ||
+    lower.includes('दवा') || lower.includes('फवार') || lower.includes('पाण्यात') ||
+    lower.includes('लिटर') || lower.includes('ग्रॅम') || lower.includes('मिली') ||
+    lower.includes('शिफारस') || lower.includes('उपचार') || lower.includes('काय करा') ||
+    lower.includes('काय करायचं') ||
+    // Hindi markers
+    lower.includes('छिड़काव') || lower.includes('दवा') || lower.includes('उपचार') ||
+    lower.includes('इलाज') || lower.includes('डालें') || lower.includes('मिलाएं') ||
+    lower.includes('प्रति एकड') || lower.includes('लीटर') || lower.includes('ग्राम') ||
+    lower.includes('मिली') ||
+    // English markers
+    lower.includes('treatment') || lower.includes('how') || lower.includes('apply') ||
+    lower.includes('spray') || lower.includes('dosage') || lower.includes('ml') ||
+    lower.includes('per acre') || lower.includes('recommend') || lower.includes('action') ||
+    lower.includes('step');
   
   if (!hasWhat) {
     missing.push('WHAT');
