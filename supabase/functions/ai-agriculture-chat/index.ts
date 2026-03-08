@@ -3156,6 +3156,18 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     const timing = primary.timing?.best_time_of_day || 'MORNING';
     const method = appDetails.method || appDetails.application_method || '';
 
+    // PRODUCT MAPPING: Look up market brand names for the active ingredient
+    let marketProductLine = '';
+    if (richData.active_ingredient && supabaseClient) {
+      try {
+        const cropCode = decision.metadata?.crop_code || decision.primary_decision?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        marketProductLine = formatMarketProducts(marketResult.products, lang);
+      } catch (err) {
+        console.warn(`[ProductMapping] Lookup failed, continuing without market products:`, err);
+      }
+    }
+
     // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
     const app = primary.application_details || {};
     const actionText = app.action_text as string | undefined;
