@@ -109,6 +109,8 @@ interface Message {
     mode: 'DIAGNOSTIC' | 'ACTION' | 'PHOTO_REQUIRED';
   };
   feedback?: 'like' | 'dislike' | null;
+  // ✅ Canonical Farmer Advisory structured JSON from backend
+  structuredAdvisory?: any;
   isCopied?: boolean;
   // Orchestrator response metadata
   orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
