@@ -2944,7 +2944,7 @@ function getResponseContent(response: OrchestratorResponse, language: string): s
       if (decisionOutput?.primary_decision || 
           (decisionOutput?.secondary_actions && decisionOutput.secondary_actions.length > 0)) {
         console.log(`   ✅ Building from decision_output (primary or secondary actions found)`);
-        return buildFormattedRecommendationsList(decisionOutput, lang);
+        return await buildFormattedRecommendationsList(decisionOutput, lang);
       }
       
       // Step 3: Fallback - only when truly no recommendations
