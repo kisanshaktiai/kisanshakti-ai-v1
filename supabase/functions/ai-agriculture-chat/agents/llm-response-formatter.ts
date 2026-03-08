@@ -127,6 +127,7 @@ export interface LLMFormatterInput {
   };
   data_audit?: DataAudit;
   trace_id?: string;
+  supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
 }
 
 export interface LLMFormatterOutput {
@@ -427,7 +428,7 @@ export async function formatRecommendationsWithLLM(
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
   
   // Build structured recommendation data for LLM
-  const recommendationData = buildRecommendationSummary(input);
+  const recommendationData = await buildRecommendationSummary(input);
   
   // If no API keys available, use template fallback immediately
   if (!GEMINI_API_KEY && !OPENAI_API_KEY && !LOVABLE_API_KEY) {
@@ -1301,7 +1302,7 @@ function filterRelevantResponses(
 // RECOMMENDATION DATA EXTRACTOR
 // ═══════════════════════════════════════════════════════════════════════════
 
-function buildRecommendationSummary(input: LLMFormatterInput): string {
+async function buildRecommendationSummary(input: LLMFormatterInput): Promise<string> {
   const decision = input.decision_output;
   const primary = decision.primary_decision;
   
@@ -1336,7 +1337,7 @@ function buildRecommendationSummary(input: LLMFormatterInput): string {
       } : undefined;
       
       const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather);
-      const deterministicPrompt = formatStructuredResponseForLLM(structuredResponse);
+      const deterministicPrompt = await formatStructuredResponseForLLM(structuredResponse, undefined, input.supabase_client);
       
       console.log(`✅ [DeterministicBuilder] Integrated into LLM prompt for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}, safety_warnings=${structuredResponse.safety_warnings.length}`);
       
@@ -1850,7 +1851,7 @@ function buildTemplateFallback(input: LLMFormatterInput, startTime: number): LLM
       } : undefined;
       
       const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext);
-      const deterministicText = formatStructuredResponseForLLM(structuredResponse, lang);
+      const deterministicText = await formatStructuredResponseForLLM(structuredResponse, lang, input.supabase_client);
       
       console.log(`   📋 [TemplateFallback] Deterministic builder used for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}`);
       

@@ -38,8 +38,16 @@
  * Environmental Conditions | min_temperature, max_temperature, rain_delay_hours,
  *                          | max_wind_speed, weather_dependency
  * 
- * @version 2.0.0
+ * @version 2.1.0
+ * 
+ * v2.1.0 ADDITIONS:
+ * - Async DB-driven translation of indicator codes, action types, pest stages
+ * - Uses observation_translations table (SSOT) for all technical term localization
+ * - Eliminates raw English code leakage in Marathi/Hindi responses
  */
+
+import { loadObservationLabels } from '../i18n/observation-label-loader.ts';
+import { getTranslation, initializeTranslationCache } from '../i18n/translation-loader.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE: Rich Rule Data (all columns from decision_rules used in response)
@@ -821,11 +829,111 @@ function buildSprayWindowInstruction(rule: RichRuleData): string | undefined {
 // This is the TEXT that goes into the LLM prompt for translation/formatting
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function formatStructuredResponseForLLM(response: StructuredFarmerResponse, lang?: string): string {
+/**
+ * Translate an array of indicator codes using observation_translations DB table.
+ * SSOT: All translations come from database, not hardcoded dictionaries.
+ */
+async function translateIndicatorArray(
+  indicators: string[] | string | undefined | null,
+  lang: string,
+  supabaseClient: any
+): Promise<string> {
+  if (!indicators) return '';
+  
+  const indicatorList = Array.isArray(indicators) 
+    ? indicators 
+    : (typeof indicators === 'string' 
+        ? (indicators.startsWith('[') ? JSON.parse(indicators) : [indicators]) 
+        : []);
+  
+  if (indicatorList.length === 0) return '';
+  
+  const cleanCodes = indicatorList.map((ind: string) => 
+    ind.replace(/[\[\]"']/g, '').trim().toUpperCase()
+  ).filter((c: string) => c.length > 0);
+  
+  if (!supabaseClient || lang === 'en') {
+    // For English or no DB client, format codes as title case
+    return cleanCodes.map((code: string) => 
+      code.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase())
+    ).join(', ');
+  }
+  
+  try {
+    const labelMap = await loadObservationLabels(supabaseClient, cleanCodes, lang);
+    
+    return cleanCodes.map((code: string) => {
+      const label = labelMap.get(code);
+      if (label && label.display_text) {
+        return label.display_text;
+      }
+      // Fallback: raw code with spaces (avoid English title-case for non-English)
+      return code.replace(/_/g, ' ').toLowerCase();
+    }).join(', ');
+  } catch (e) {
+    console.warn(`⚠️ [DeterministicBuilder] translateIndicatorArray error: ${e}`);
+    return cleanCodes.map((code: string) => code.replace(/_/g, ' ').toLowerCase()).join(', ');
+  }
+}
+
+/**
+ * Translate a technical term (action_type, target_stage, etc.) using DB.
+ * Uses observation_translations table with the code as observation_code.
+ */
+async function translateTechnicalTerm(
+  term: string | undefined | null,
+  lang: string,
+  supabaseClient: any
+): Promise<string> {
+  if (!term) return '';
+  
+  const termUpper = term.toUpperCase().trim();
+  
+  // For English, just format nicely
+  if (lang === 'en' || !supabaseClient) {
+    return term.replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase());
+  }
+  
+  try {
+    // Try observation_translations table
+    const labelMap = await loadObservationLabels(supabaseClient, [termUpper], lang);
+    const label = labelMap.get(termUpper);
+    
+    if (label && label.display_text && label.display_text !== termUpper.replace(/_/g, ' ')) {
+      return label.display_text;
+    }
+    
+    // Try i18n translation loader cache
+    const translated = getTranslation(termUpper, lang);
+    if (translated && translated !== termUpper.replace(/_/g, ' ')) {
+      return translated;
+    }
+  } catch (e) {
+    console.warn(`⚠️ [DeterministicBuilder] translateTechnicalTerm error: ${e}`);
+  }
+  
+  // Fallback: formatted code (avoid English for non-English)
+  return term.replace(/_/g, ' ').toLowerCase();
+}
+
+export async function formatStructuredResponseForLLM(
+  response: StructuredFarmerResponse, 
+  lang?: string,
+  supabaseClient?: any
+): Promise<string> {
   const parts: string[] = [];
   
   // Use language parameter for localized output (defaults to 'en' for LLM prompt usage)
   const l = lang || 'en';
+  
+  // Initialize translation cache if supabaseClient available
+  if (supabaseClient) {
+    try {
+      await initializeTranslationCache(supabaseClient);
+    } catch (e) {
+      console.warn(`⚠️ [DeterministicBuilder] Translation cache init failed: ${e}`);
+    }
+  }
   
   // Localized labels helper
   const L = (en: string, mr: string, hi: string): string => {
@@ -878,14 +986,16 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     parts.push(`${L('Scientific Basis', 'वैज्ञानिक आधार', 'वैज्ञानिक आधार')}: ${response.problem.scientific_basis}`);
   }
   
-  // Action
+  // Action — translate action_type
   parts.push(`\n═══ 📋 ${L('RECOMMENDED ACTION', 'शिफारस केलेली कृती', 'अनुशंसित कार्रवाई')} ═══`);
-  parts.push(`${L('Action Type', 'कृती प्रकार', 'कार्रवाई प्रकार')}: ${response.action.action_type}`);
+  const translatedActionType = await translateTechnicalTerm(response.action.action_type, l, supabaseClient);
+  parts.push(`${L('Action Type', 'कृती प्रकार', 'कार्रवाई प्रकार')}: ${translatedActionType}`);
   if (response.action.action_text) {
     parts.push(`${L('What To Do', 'काय करावे', 'क्या करें')}: ${response.action.action_text}`);
   }
   if (response.action.treatment_type) {
-    parts.push(`${L('Treatment Type', 'उपचार प्रकार', 'उपचार प्रकार')}: ${response.action.treatment_type}`);
+    const translatedTreatType = await translateTechnicalTerm(response.action.treatment_type, l, supabaseClient);
+    parts.push(`${L('Treatment Type', 'उपचार प्रकार', 'उपचार प्रकार')}: ${translatedTreatType}`);
   }
   
   // Dosage (CALCULATED) — only in TREAT mode
@@ -916,11 +1026,12 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
       parts.push(`${L('Spray Note', 'फवारणी टीप', 'छिड़काव नोट')}: ${response.dosage.spray_type_note}`);
     }
     if (response.dosage.target_pest_stage) {
-      parts.push(`${L('Best Target Stage', 'सर्वोत्तम लक्ष्य टप्पा', 'सर्वोत्तम लक्ष्य चरण')}: ${response.dosage.target_pest_stage}`);
+      const translatedStage = await translateTechnicalTerm(response.dosage.target_pest_stage, l, supabaseClient);
+      parts.push(`${L('Best Target Stage', 'सर्वोत्तम लक्ष्य टप्पा', 'सर्वोत्तम लक्ष्य चरण')}: ${translatedStage}`);
     }
   }
   
-  // Safety
+  // Safety — translate bee_toxicity warnings
   if (response.safety.has_safety_info) {
     parts.push(`\n═══ ⚠️ ${L('SAFETY PRECAUTIONS', 'सुरक्षा काळजी', 'सुरक्षा सावधानी')} ═══`);
     if (response.safety.phi_blocked) {
@@ -931,7 +1042,22 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     if (response.safety.reentry_instruction) {
       parts.push(`🚫 ${response.safety.reentry_instruction}`);
     }
-    if (response.safety.bee_spray_time) {
+    // Bee toxicity — use DB translation instead of hardcoded English
+    if (response.safety.bee_toxicity) {
+      const beeToxUpper = response.safety.bee_toxicity.toUpperCase();
+      if (beeToxUpper === 'HIGH' || beeToxUpper === 'MODERATE') {
+        const beeWarningKey = `BEE_WARNING_${beeToxUpper}`;
+        const translatedBeeWarning = await translateTechnicalTerm(beeWarningKey, l, supabaseClient);
+        // Check if we got a real translation (not just formatted code)
+        if (translatedBeeWarning && translatedBeeWarning !== beeWarningKey.replace(/_/g, ' ').toLowerCase()) {
+          parts.push(`🐝 ${translatedBeeWarning}`);
+        } else if (response.safety.bee_spray_time) {
+          parts.push(response.safety.bee_spray_time);
+        } else if (response.safety.bee_warning) {
+          parts.push(`🐝 ${response.safety.bee_warning}`);
+        }
+      }
+    } else if (response.safety.bee_spray_time) {
       parts.push(response.safety.bee_spray_time);
     } else if (response.safety.bee_warning) {
       parts.push(`🐝 ${response.safety.bee_warning}`);
@@ -944,14 +1070,15 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     }
   }
   
-  // Organic/IPM
+  // Organic/IPM — translate ipm_label
   if (response.organic.has_alternative) {
     parts.push(`\n═══ 🌿 ${L('ORGANIC/IPM ALTERNATIVE', 'सेंद्रिय/IPM पर्याय', 'जैविक/IPM विकल्प')} ═══`);
     if (response.organic.organic_alternative) {
       parts.push(`🌿 ${L('Organic Option', 'सेंद्रिय पर्याय', 'जैविक विकल्प')}: ${response.organic.organic_alternative}`);
     }
     if (response.organic.ipm_label) {
-      parts.push(`${L('IPM Level', 'IPM स्तर', 'IPM स्तर')}: ${response.organic.ipm_label}`);
+      const translatedIpm = await translateTechnicalTerm(response.organic.ipm_label, l, supabaseClient);
+      parts.push(`${L('IPM Level', 'IPM स्तर', 'IPM स्तर')}: ${translatedIpm}`);
     }
   }
   
@@ -988,14 +1115,16 @@ export function formatStructuredResponseForLLM(response: StructuredFarmerRespons
     }
   }
   
-  // Monitoring (always shown)
+  // Monitoring — translate indicator arrays via DB
   if (response.monitoring.has_monitoring) {
     parts.push(`\n═══ ✅ ${L('MONITORING AFTER APPLICATION', 'वापरानंतर निरीक्षण', 'उपयोग के बाद निगरानी')} ═══`);
     if (response.monitoring.success_indicators?.length) {
-      parts.push(`✅ ${L('Success Signs (check after 5-7 days)', 'यशाची चिन्हे (5-7 दिवसांनी तपासा)', 'सफलता के संकेत (5-7 दिन बाद जांचें)')}: ${response.monitoring.success_indicators.join(', ')}`);
+      const successText = await translateIndicatorArray(response.monitoring.success_indicators, l, supabaseClient);
+      parts.push(`✅ ${L('Success Signs (check after 5-7 days)', 'यशाची चिन्हे (5-7 दिवसांनी तपासा)', 'सफलता के संकेत (5-7 दिन बाद जांचें)')}: ${successText}`);
     }
     if (response.monitoring.failure_indicators?.length) {
-      parts.push(`❌ ${L('Failure Signs (re-treat if seen)', 'अयशस्वी चिन्हे (दिसल्यास पुन्हा उपचार करा)', 'विफलता के संकेत (दिखने पर पुनः उपचार करें)')}: ${response.monitoring.failure_indicators.join(', ')}`);
+      const failureText = await translateIndicatorArray(response.monitoring.failure_indicators, l, supabaseClient);
+      parts.push(`❌ ${L('Failure Signs (re-treat if seen)', 'अयशस्वी चिन्हे (दिसल्यास पुन्हा उपचार करा)', 'विफलता के संकेत (दिखने पर पुनः उपचार करें)')}: ${failureText}`);
     }
   }
   

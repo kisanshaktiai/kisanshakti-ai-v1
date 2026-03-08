@@ -1291,7 +1291,8 @@ serve(async (req) => {
             decision_output: decisionOutputForFormatting,
             land_context: landContext,
             data_audit: orchestratorResponse.dataAudit,
-            trace_id: traceId
+            trace_id: traceId,
+            supabase_client: supabase
           };
           
           // Call LLM formatter with timeout protection
