@@ -8,6 +8,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
+import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
