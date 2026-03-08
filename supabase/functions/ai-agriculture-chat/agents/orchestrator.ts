@@ -4895,11 +4895,9 @@ export class AIAgentOrchestrator {
           agentsUsed.push('G2_CONTEXT_VALIDATION_FAILED');
           
           // Return clarification for crop mismatch or missing context
-          const lang = options.language || 'mr';
+          const lang = options.language || 'en';
           const clarificationPrompt = contextValidation.clarification_prompt || 
-            (lang === 'mr' ? 'कोणत्या पिकाबद्दल विचारत आहात?' :
-             lang === 'hi' ? 'किस फसल के बारे में पूछ रहे हैं?' :
-             'Which crop are you asking about?');
+            'Which crop are you asking about?';
           
           return {
             type: 'CLARIFICATION_QUESTION',
