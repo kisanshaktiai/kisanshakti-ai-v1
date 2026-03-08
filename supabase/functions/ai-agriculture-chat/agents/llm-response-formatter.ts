@@ -1473,6 +1473,21 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropContext, weather);
       const deterministicPrompt = await formatStructuredResponseForLLM(structuredResponse, undefined, input.supabase_client);
       
+      // PRODUCT MAPPING: Look up market product names for LLM narration
+      let marketProductsLine = '';
+      if (richData.active_ingredient && input.supabase_client) {
+        try {
+          const cropCode = decision?.metadata?.crop_code || primary?.target?.crop || '';
+          const marketResult = await lookupMarketProducts(input.supabase_client, richData.active_ingredient, cropCode);
+          if (marketResult.found) {
+            marketProductsLine = `\nRECOMMENDED_MARKET_PRODUCTS: ${marketResult.products.join(', ')}`;
+            console.log(`[LLMFormatter] Market products for ${richData.active_ingredient}: ${marketResult.products.join(', ')}`);
+          }
+        } catch (err) {
+          console.warn(`[LLMFormatter] Market product lookup failed:`, err);
+        }
+      }
+      
       console.log(`✅ [DeterministicBuilder] Integrated into LLM prompt for rule ${primary.rule_id}, decision=${structuredResponse.response_decision}, safety_warnings=${structuredResponse.safety_warnings.length}`);
       
       // Prepend status and append matched responses for context
@@ -1480,6 +1495,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       parts.push(`STATUS: ${decision.status || 'DECISION_PROVIDED'}`);
       parts.push('');
       parts.push(deterministicPrompt);
+      if (marketProductsLine) parts.push(marketProductsLine);
       
       // ═══ RULE ATOMICITY: Secondary actions stripped of treatment data ═══
       // Secondary rules may ONLY contribute monitoring/context — never
