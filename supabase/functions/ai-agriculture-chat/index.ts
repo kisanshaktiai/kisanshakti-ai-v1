@@ -1887,18 +1887,16 @@ function normalizeToEnglish(content: string): string {
  */
 function verifyLanguageConsistency(content: string, targetLanguage: string): boolean {
   if (targetLanguage === 'en') {
-    // For English, check it's mostly ASCII
     const asciiRatio = (content.match(/[\x00-\x7F]/g) || []).length / content.length;
     return asciiRatio > 0.8;
   }
   
-  if (targetLanguage === 'mr' || targetLanguage === 'hi') {
-    // For Marathi/Hindi, check for Devanagari presence
-    const hasDevanagari = /[\u0900-\u097F]/.test(content);
-    return hasDevanagari;
+  const scriptRegex = getScriptRegex(targetLanguage);
+  if (scriptRegex) {
+    return scriptRegex.test(content);
   }
   
-  return true; // Default to true for other languages
+  return true; // Default to true for unsupported scripts
 }
 
 /**
