@@ -20,7 +20,7 @@ import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent
 import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
 
 // PHASE 5: Import LLM Response Formatter for natural language generation
-import { formatRecommendationsWithLLM } from './agents/llm-response-formatter.ts';
+import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
 
 // Legacy helpers removed - dead code cleanup
@@ -1323,10 +1323,10 @@ serve(async (req) => {
             console.log(`   📋 Falling back to template-based response for safety`);
             
             if (orchestratorResponse.decision_output?.primary_decision) {
-              responseContent = buildFormattedRecommendationsList(
+              responseContent = sanitizeFarmerResponse(buildFormattedRecommendationsList(
                 orchestratorResponse.decision_output, 
                 detectedLanguage
-              );
+              ));
             } else {
               responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
             }
@@ -1342,10 +1342,10 @@ serve(async (req) => {
         // instead of relying on potentially incomplete FarmerCommunication
         if (orchestratorResponse.decision_output?.primary_decision) {
           console.log(`   📋 Using buildFormattedRecommendationsList for complete response`);
-          responseContent = buildFormattedRecommendationsList(
+          responseContent = sanitizeFarmerResponse(buildFormattedRecommendationsList(
             orchestratorResponse.decision_output, 
             detectedLanguage
-          );
+          ));
         } else {
           responseContent = getResponseContent(orchestratorResponse, detectedLanguage);
         }
@@ -3145,12 +3145,13 @@ function buildFormattedRecommendationsList(decision: any, lang: string): string 
     let recNumber = 1;
     const recParts: string[] = [];
     
-    // Primary action - CRITICAL FIX: Translate chemical names to farmer-friendly language
-    const rawProductName = primary.application_details?.product_name || '';
-    const productName = rawProductName ? getProductName(rawProductName, lang) : 'Recommended product';
-    const dosage = primary.application_details?.concentration || '';
+    // Primary action - CRITICAL FIX: Validate through extractRichRuleData to prevent contaminated data
+    const appDetails = primary.application_details || {};
+    const richData = extractRichRuleData(primary, appDetails);
+    const productName = richData.active_ingredient ? getProductName(richData.active_ingredient, lang) : 'Recommended product';
+    const dosage = richData.dosage_per_acre || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
-    const method = primary.application_details?.method || primary.application_details?.application_method || '';
+    const method = appDetails.method || appDetails.application_method || '';
 
     // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
     const app = primary.application_details || {};
