@@ -427,15 +427,14 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
       )}
 
       {/* ═══ TRACEABILITY FOOTER ═══ */}
+      {/* ═══ TRACEABILITY — hidden by default, audit-only ═══ */}
       <div className="border-t border-border/30 pt-1">
         <button 
           onClick={() => setShowTrace(!showTrace)}
-          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 hover:text-muted-foreground transition-colors w-full"
+          className="flex items-center gap-1.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors w-full"
         >
           <Microscope className="h-3 w-3" />
-          <span>Rule: {trace.rule_id}</span>
-          <span>•</span>
-          <span>{Math.round(trace.confidence_score * 100)}%</span>
+          <span>Traceability</span>
           {showTrace ? <ChevronUp className="h-2.5 w-2.5 ml-auto" /> : <ChevronDown className="h-2.5 w-2.5 ml-auto" />}
         </button>
         <AnimatePresence>
