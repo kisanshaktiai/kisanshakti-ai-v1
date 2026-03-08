@@ -2317,22 +2317,16 @@ export class AIAgentOrchestrator {
           das: landContext.days_since_sowing
         } : null;
         
-        // CRITICAL FIX: Generate language-aware clarification message
-        const userLang = options.language || 'mr';
-        let clarificationMr: string;
-        let clarificationHi: string;
-        let clarificationEn: string;
+        // English-only clarification — LLM narration layer translates at runtime
+        let clarificationMessage: string;
         
         if (clarificationLandCtx) {
-          const cropName = clarificationLandCtx.crop || 'पीक';
-          const stageName = clarificationLandCtx.stage || '';
-          const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिवस)` : '';
-          clarificationEn = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
+          const cropName = clarificationLandCtx.crop || 'crop';
+          const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} days)` : '';
+          clarificationMessage = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
         } else {
-          clarificationEn = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          clarificationMessage = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
         }
-        
-        const clarificationMessage = clarificationEn;
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
