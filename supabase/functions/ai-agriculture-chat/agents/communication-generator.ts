@@ -401,10 +401,9 @@ export class CommunicationGenerator {
     return '📌';
   }
   
-  private translateWeatherNote(note: string, lang: SupportedLanguage): string {
-    if (lang === 'en') return note;
-    if (lang === 'mr') return note.includes('rain') ? '⛈️ पावसामुळे फवारणी टाळा' : note;
-    return note.includes('rain') ? '⛈️ बारिश के कारण छिड़काव टालें' : note;
+  private translateWeatherNote(note: string, _lang: SupportedLanguage): string {
+    // Language-neutral: return English note, LLM narration layer translates at runtime
+    return note;
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
