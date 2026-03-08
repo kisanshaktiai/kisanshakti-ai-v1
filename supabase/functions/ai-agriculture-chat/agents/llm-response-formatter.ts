@@ -537,12 +537,19 @@ export async function formatRecommendationsWithLLM(
       const filteredViolations = whatWhyHowResult.violations.filter(v => !v.includes('HOW'));
       const filteredMissing = whatWhyHowResult.missing_sections.filter(s => s !== 'HOW');
       if (filteredMissing.length > 0) {
-        console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${filteredMissing.join(', ')}`);
-        outputValidation.violations.push(...filteredViolations);
+        // CRITICAL FIX: WHAT-WHY-HOW is WARNING ONLY — do NOT block LLM response
+        // The validator markers are too narrow for Marathi/Hindi Devanagari output
+        // Blocking here caused 317-char incomplete English fallback responses
+        console.warn(`⚠️ [WHAT-WHY-HOW] Structural warning (non-blocking): ${filteredMissing.join(', ')}`);
       }
     } else {
-      console.warn(`⚠️ [WHAT-WHY-HOW] Structural validation failed: ${whatWhyHowResult.missing_sections.join(', ')}`);
-      outputValidation.violations.push(...whatWhyHowResult.violations);
+      // CRITICAL FIX: Downgrade from hard-block to warning
+      // The WHAT-WHY-HOW detector has narrow keyword matching that frequently
+      // misses valid Marathi/Hindi patterns, causing valid LLM responses to be
+      // discarded in favor of 317-char English-only template fallbacks.
+      // This is the ROOT CAUSE of incomplete farmer responses.
+      console.warn(`⚠️ [WHAT-WHY-HOW] Structural warning (non-blocking): ${whatWhyHowResult.missing_sections.join(', ')}`);
+      console.warn(`   Response length: ${formattedResponse.length} chars — LLM content preserved`);
     }
   }
   
@@ -560,10 +567,35 @@ export async function formatRecommendationsWithLLM(
     }
   }
   
-  if (!outputValidation.valid) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Only block on HARD safety violations, not structural warnings
+  // Hard violations: unauthorized products, dosage tampering, crop mismatch
+  // Soft violations: WHAT-WHY-HOW missing sections (detection is unreliable for Devanagari)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const HARD_VIOLATION_PATTERNS = [
+    'Unauthorized product', 'unauthorized product',
+    'Missing product from symbolic', 'Leaked internal code',
+    'Dosage UNIT mismatch', 'PHI value modified',
+    'unauthorized efficacy claim', 'Chemical product',
+    'Crop mismatch', 'Invalid biocontrol',
+    'Dosage numbers mismatch'
+  ];
+  
+  const hardViolations = outputValidation.violations.filter(v =>
+    HARD_VIOLATION_PATTERNS.some(p => v.includes(p))
+  );
+  const softViolations = outputValidation.violations.filter(v =>
+    !HARD_VIOLATION_PATTERNS.some(p => v.includes(p))
+  );
+  
+  if (softViolations.length > 0) {
+    console.warn(`⚠️ [OUTPUT VALIDATION] ${softViolations.length} soft warnings (non-blocking): ${softViolations.join('; ')}`);
+  }
+  
+  if (hardViolations.length > 0) {
     console.error(`
 🚫 [OUTPUT VALIDATION GATE] LLM added unauthorized content:
-   Violations: ${outputValidation.violations.join(', ')}
+   Hard Violations: ${hardViolations.join(', ')}
    
    Using template fallback to prevent spreading incorrect advice.
     `);
