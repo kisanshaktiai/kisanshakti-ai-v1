@@ -3822,32 +3822,14 @@ function transformOrchestratorResponse(
       const fallbackAdvice = response.error?.fallback_advice;
       
       // Build a helpful message instead of just "sorry"
-      const helpfulMessages: Record<string, string> = {
-        'mr': `🙏 तुमच्या प्रश्नावर काम करत आहे.
-
-${fallbackAdvice || 'कृपया तुमचा प्रश्न पुन्हा विचारा किंवा अधिक माहिती द्या.'}
-
-📋 मला मदत करा:
-• तुमचे पीक कोणते?
-• समस्या काय आहे?
-• फोटो पाठवू शकता का?`,
-        'hi': `🙏 आपके प्रश्न पर काम कर रहा हूं।
-
-${fallbackAdvice || 'कृपया अपना प्रश्न दोबारा पूछें या अधिक जानकारी दें।'}
-
-📋 मेरी मदद करें:
-• आपकी फसल कौन सी?
-• समस्या क्या है?
-• फोटो भेज सकते हैं?`,
-        'en': `🙏 Working on your question.
+      const helpfulMessage = `🙏 Working on your question.
 
 ${fallbackAdvice || 'Please ask your question again or provide more details.'}
 
 📋 Help me help you:
 • What is your crop?
 • What is the problem?
-• Can you send a photo?`
-      };
+• Can you send a photo?`;
       
       return {
         response: helpfulMessages[language] || helpfulMessages['en'],
