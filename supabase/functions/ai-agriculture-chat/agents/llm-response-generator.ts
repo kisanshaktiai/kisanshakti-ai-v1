@@ -383,7 +383,7 @@ function buildNarrationPrompt(input: SymbolicNarrationInput): string {
   
   if (land_context?.current_crop) {
     const cropCode = land_context.current_crop.toLowerCase();
-    const langKey = language === 'mr' ? 'crop_name_mr' : language === 'hi' ? 'crop_name_hi' : 'crop_name_en';
+    const langKey = getCropNameKey(language);
     
     // Resolve local name from ICAR_CALENDARS
     let cropLocalName = land_context.current_crop; // fallback to raw name

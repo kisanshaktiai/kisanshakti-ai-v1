@@ -617,7 +617,7 @@ async function translateClarificationOptions(
     try {
       const openAIKey = Deno.env.get('OPENAI_API_KEY');
       if (openAIKey) {
-        const langName = lang === 'mr' ? 'Marathi' : lang === 'hi' ? 'Hindi' : 'English';
+        const langName = getLanguageName(lang);
 
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',

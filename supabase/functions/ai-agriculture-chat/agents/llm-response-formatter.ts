@@ -1421,7 +1421,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
       }
     }
     
-    const langName = input.language === 'mr' ? 'Marathi' : input.language === 'hi' ? 'Hindi' : 'English';
+    const langName = getLanguageName(input.language);
     const translatedActionType = getActionTranslation(primary.action_type, input.language) || primary.action_type;
     parts.push(`- Action Type (translated): ${translatedActionType}`);
     

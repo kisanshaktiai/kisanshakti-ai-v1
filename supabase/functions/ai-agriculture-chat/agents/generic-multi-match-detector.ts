@@ -438,10 +438,8 @@ export async function generateFallbackClarificationOptions(
       }
       
       // Add base noun
-      const baseNouns: Record<string, string> = { mr: 'किडे', hi: 'कीड़े', en: 'insects' };
-      if (language === 'mr') parts.push('किडे');
-      else if (language === 'hi') parts.push('कीड़े');
-      else parts.push('insects');
+      // Language-neutral: use English, LLM translates at runtime
+      parts.push('insects');
       
       // Add secondary symptom
       if (chars.secondary_symptoms && chars.secondary_symptoms.length > 0) {

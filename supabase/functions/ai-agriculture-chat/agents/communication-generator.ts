@@ -10,6 +10,7 @@
  */
 
 import type { DecisionOutput, EconomicAssessment, PrimaryDecision } from './rule-engine-types.ts';
+import { getNarratorVoice } from '../utils/language-utils.ts';
 import type {
   FarmerProfile,
   ConversationContext,
