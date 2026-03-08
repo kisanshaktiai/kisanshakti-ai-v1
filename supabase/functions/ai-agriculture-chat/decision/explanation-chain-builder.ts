@@ -434,7 +434,7 @@ export function formatExplanationForFarmer(
   // Add data sources used
   if (chain.data_sources_used.length > 0) {
     output += '\n';
-    const dataLabel = language === 'mr' ? '📊 वापरलेला डेटा:' : language === 'hi' ? '📊 उपयोग किया डेटा:' : '📊 Data used:';
+    output += '📊 Data used:\n';
     output += dataLabel + '\n';
     
     for (const source of chain.data_sources_used.slice(0, 4)) {
