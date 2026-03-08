@@ -3776,13 +3776,11 @@ function transformOrchestratorResponse(
     case 'SAFETY_BLOCKED':
       // Treatment blocked for safety
       const blockedReason = response.blocked_reason;
-      const blockedText = language === 'mr' ? blockedReason?.reason_mr :
-                         language === 'hi' ? blockedReason?.reason_hi :
-                         blockedReason?.reason_en || 'This treatment is not safe.';
+      const blockedText = (blockedReason as any)?.[`reason_${language}`] || blockedReason?.reason_en || 'This treatment is not safe.';
       
       let alternativesText = '';
       if (response.alternatives && response.alternatives.length > 0) {
-        alternativesText = '\n\nसुरक्षित विकल्प:\n' + 
+        alternativesText = '\n\nSafe alternatives:\n' + 
           response.alternatives.map(a => `• ${a.product_name}: ${a.why_safer}`).join('\n');
       }
       
