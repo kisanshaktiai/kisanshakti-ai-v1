@@ -2675,12 +2675,8 @@ export class AIAgentOrchestrator {
           console.log(`   🚧 [PATCH 2] STAGE_CONTEXT_REQUIRED: Intent ${intentCode} needs stage but none available`);
           agentsUsed.push('STAGE_CONTEXT_GUARD');
           
-          const lang = options.language || 'mr';
-          const stageQuestion = lang === 'mr' 
-            ? 'तुमच्या पिकाची सध्याची अवस्था कोणती आहे? (उदा. रोपे, फुटवे, वाढ, फुलोरा, फळधारणा)'
-            : lang === 'hi'
-            ? 'आपकी फसल की वर्तमान अवस्था क्या है? (जैसे अंकुरण, कल्ले, बढ़वार, फूल, फल)'
-            : 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
+          const lang = options.language || 'en';
+          const stageQuestion = 'What is the current stage of your crop? (e.g., seedling, tillering, vegetative, flowering, fruiting)';
           
           return {
             type: 'CLARIFICATION_QUESTION',
