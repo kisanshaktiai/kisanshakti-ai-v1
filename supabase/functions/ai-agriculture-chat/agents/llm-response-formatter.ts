@@ -127,6 +127,7 @@ export interface LLMFormatterInput {
   };
   data_audit?: DataAudit;
   trace_id?: string;
+  supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
 }
 
 export interface LLMFormatterOutput {
