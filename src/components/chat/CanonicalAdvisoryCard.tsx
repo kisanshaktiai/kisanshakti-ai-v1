@@ -228,7 +228,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
               </Badge>
             )}
           </div>
-          <ConfidenceBadge score={diagnosis.confidence_score} decision={diagnosis.response_decision} />
+          {/* Confidence badge hidden from farmers — available in trace panel below */}
         </div>
       </Card>
 
