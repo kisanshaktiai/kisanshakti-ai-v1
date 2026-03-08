@@ -3642,6 +3642,9 @@ function transformOrchestratorResponseWithContent(
         const appDetails = primaryDecision.application_details || {};
         const richData = extractRichRuleData(primaryDecision, appDetails);
         
+        // ═══ RULE ATOMICITY: Log advisory build trace for contamination detection ═══
+        console.log(`🔍 [ADVISORY_BUILD_TRACE] rule_id=${richData.rule_id} | active_ingredient=${richData.active_ingredient || 'NONE'} | dosage_per_acre=${richData.dosage_per_acre || 'NONE'} | appDetails_rule=${appDetails.rule_id || 'NONE'}`);
+        
         if (hasAdequateRuleContent(richData)) {
           const landAreaAcres = response.dataAudit?.land?.area_acres || undefined;
           const cropCtx: CropContext | undefined = response.dataAudit?.land?.days_since_sowing ? {
