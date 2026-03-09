@@ -675,18 +675,19 @@ export function formatForClarificationUI(
       displayLabel = `${d.icon} ${d.cause_label} (${d.observation_label})`;
     }
     
-    // v1.3.0: Return CLEAN label for farmer UI
-    // The observation_key field carries routing info separately
-    // Frontend (ClarificationOptionsUI) will use observation_key when sending selection
-    return {
-      id: d.id,
-      label: displayLabel,  // CLEAN: Farmer sees only readable text
-      observation_key: d.observation_key,  // ROUTING: Backend uses this for rule matching
-      rule_id: d.rule_id,
-      confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
-      icon: d.icon,
-      cause: d.cause
-    };
+    // v2.1.0: Return CLEAN label for farmer UI
+      // FIX #1: Embed cause + rule_id in observation_key metadata so orchestrator
+      // can bypass generic observation matching when farmer confirms a diagnosis
+      // Frontend (ClarificationOptionsUI) will use observation_key when sending selection
+      return {
+        id: d.id,
+        label: displayLabel,  // CLEAN: Farmer sees only readable text
+        observation_key: d.observation_key,  // ROUTING: Backend uses this for rule matching
+        rule_id: d.rule_id,
+        confidence_boost: 0.20,  // Standard boost for confirmed diagnosis option
+        icon: d.icon,
+        cause: d.cause
+      };
   });
   
   // Add photo option at end - CLEAN label, observation_key for routing
