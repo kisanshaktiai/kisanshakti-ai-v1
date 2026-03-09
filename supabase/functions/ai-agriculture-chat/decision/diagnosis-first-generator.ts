@@ -490,6 +490,43 @@ export async function generateDiagnosisFirstResponse(
     console.log(`   🔄 [Dedup] Removed ${filteredDiagnoses.length - validatedDiagnoses.length} duplicate options by observation_key`);
   }
   
+  // ═══════════════════════════════════════════════════════════════
+  // FORENSIC AUDIT FIX v8.0: Second dedup layer by cause_label
+  // Even after observation_key dedup, different observation keys can produce
+  // the same farmer-facing label (e.g., "NUTRIENT DEFICIENCY" from NUTRIENT_DEFICIENCY
+  // and YELLOWING keys). Dedup by normalized cause_label to prevent UI duplicates.
+  // ═══════════════════════════════════════════════════════════════
+  const seenCauseLabels = new Map<string, DiagnosisOption>();
+  const labelDedupedDiagnoses: DiagnosisOption[] = [];
+  
+  for (const d of validatedDiagnoses) {
+    const normalizedLabel = d.cause_label
+      .replace(/[_\-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+    
+    const existing = seenCauseLabels.get(normalizedLabel);
+    if (!existing) {
+      seenCauseLabels.set(normalizedLabel, d);
+      labelDedupedDiagnoses.push(d);
+    } else {
+      // Keep higher priority / higher confidence
+      if (d.priority < existing.priority || (d.priority === existing.priority && d.confidence > existing.confidence)) {
+        const idx = labelDedupedDiagnoses.indexOf(existing);
+        if (idx >= 0) labelDedupedDiagnoses[idx] = d;
+        seenCauseLabels.set(normalizedLabel, d);
+        console.log(`   🔄 [LabelDedup] Replaced "${existing.cause_label}" with "${d.cause_label}" for label "${normalizedLabel}"`);
+      } else {
+        console.log(`   🔄 [LabelDedup] Skipped "${d.cause_label}" - already have "${existing.cause_label}" for label "${normalizedLabel}"`);
+      }
+    }
+  }
+  
+  if (validatedDiagnoses.length !== labelDedupedDiagnoses.length) {
+    console.log(`   🔄 [LabelDedup] Removed ${validatedDiagnoses.length - labelDedupedDiagnoses.length} duplicate options by cause_label`);
+  }
+  
   // Generate photo option (ALWAYS present)
   const photoOption: PhotoOption = {
     id: 'PHOTO_UPLOAD',
