@@ -275,8 +275,8 @@ export function renderByMode(
       response_mode: modeStr,
       primary_message: hasTextContent(content.monitoring_message) 
         ? content.monitoring_message 
-        : (MODE_TEMPLATES.MONITORING_ADVISED[lang] || MODE_TEMPLATES.MONITORING_ADVISED['en']),
-      monitoring_note: MODE_TEMPLATES.MONITORING_ADVISED[lang] || MODE_TEMPLATES.MONITORING_ADVISED['en'],
+        : MODE_TEMPLATES.MONITORING_ADVISED,
+      monitoring_note: MODE_TEMPLATES.MONITORING_ADVISED,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
