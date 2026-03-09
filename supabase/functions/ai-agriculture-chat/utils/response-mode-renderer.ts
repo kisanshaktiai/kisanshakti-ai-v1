@@ -381,16 +381,14 @@ export function renderByMode(
 
 function buildTreatmentMessage(
   treatment: TreatmentDetails,
-  lang: string
+  _lang: string
 ): string {
   const parts: string[] = [];
   
-  // Action text (primary)
   if (hasTextContent(treatment.action_text)) {
     parts.push(`📋 ${treatment.action_text}`);
   }
   
-  // Product + Dosage
   if (hasTextContent(treatment.product_name)) {
     let productLine = `💊 ${treatment.product_name}`;
     if (hasTextContent(treatment.dosage)) {
@@ -399,37 +397,19 @@ function buildTreatmentMessage(
     parts.push(productLine);
   }
   
-  // Timing
   if (hasTextContent(treatment.timing)) {
-    const timingLabels: Record<string, string> = {
-      mr: '⏰ वेळ:',
-      hi: '⏰ समय:',
-      en: '⏰ Timing:'
-    };
-    parts.push(`${timingLabels[lang]} ${treatment.timing}`);
+    parts.push(`⏰ Timing: ${treatment.timing}`);
   }
   
-  // Reason
   if (hasTextContent(treatment.reason_text)) {
-    const reasonLabels: Record<string, string> = {
-      mr: '🔍 कारण:',
-      hi: '🔍 कारण:',
-      en: '🔍 Reason:'
-    };
-    parts.push(`${reasonLabels[lang]} ${treatment.reason_text}`);
+    parts.push(`🔍 Reason: ${treatment.reason_text}`);
   }
   
-  // Scientific basis
   if (hasTextContent(treatment.knowledge_text)) {
-    const knowledgeLabels: Record<string, string> = {
-      mr: '📚 आधार:',
-      hi: '📚 आधार:',
-      en: '📚 Scientific basis:'
-    };
-    parts.push(`${knowledgeLabels[lang]} ${treatment.knowledge_text}`);
+    parts.push(`📚 Scientific basis: ${treatment.knowledge_text}`);
   }
   
-  return parts.length > 0 ? parts.join('\n') : (MODE_TEMPLATES.TREATMENT[lang] || MODE_TEMPLATES.TREATMENT['en']);
+  return parts.length > 0 ? parts.join('\n') : MODE_TEMPLATES.TREATMENT;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
