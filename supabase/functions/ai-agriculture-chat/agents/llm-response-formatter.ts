@@ -1294,9 +1294,54 @@ RULES:
 - Include organic alternative if rule provides one`;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // AUTHORITATIVE_CONTEXT — Crop Lock Block (CRITICAL FIX)
+  // Previously missing from formatter system prompt, causing LLM to mention
+  // wrong crop names (e.g., wheat in a sugarcane chat room)
+  // ═══════════════════════════════════════════════════════════════════════════
+  let cropLockBlock = '';
+  if (input.land_context?.current_crop) {
+    const cropCode = input.land_context.current_crop.toLowerCase();
+    // Import ICAR_CALENDARS dynamically would break edge function, so resolve inline
+    const CROP_LOCAL_NAMES: Record<string, Record<string, string>> = {
+      'sugarcane': { mr: 'ऊस', hi: 'गन्ना', en: 'Sugarcane' },
+      'cotton': { mr: 'कापूस', hi: 'कपास', en: 'Cotton' },
+      'rice': { mr: 'भात', hi: 'धान', en: 'Rice' },
+      'wheat': { mr: 'गहू', hi: 'गेहूं', en: 'Wheat' },
+      'soybean': { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'Soybean' },
+      'maize': { mr: 'मका', hi: 'मक्का', en: 'Maize' },
+      'groundnut': { mr: 'भुईमूग', hi: 'मूंगफली', en: 'Groundnut' },
+      'onion': { mr: 'कांदा', hi: 'प्याज', en: 'Onion' },
+      'tomato': { mr: 'टोमॅटो', hi: 'टमाटर', en: 'Tomato' },
+      'banana': { mr: 'केळी', hi: 'केला', en: 'Banana' },
+      'grape': { mr: 'द्राक्षे', hi: 'अंगूर', en: 'Grape' },
+      'pomegranate': { mr: 'डाळिंब', hi: 'अनार', en: 'Pomegranate' },
+      'potato': { mr: 'बटाटा', hi: 'आलू', en: 'Potato' },
+      'chilli': { mr: 'मिरची', hi: 'मिर्च', en: 'Chilli' },
+      'mango': { mr: 'आंबा', hi: 'आम', en: 'Mango' },
+    };
+    const langKey = input.language === 'hi' ? 'hi' : input.language === 'en' ? 'en' : 'mr';
+    const cropLocalName = CROP_LOCAL_NAMES[cropCode]?.[langKey] || input.land_context.current_crop;
+    const cropCanonical = CROP_LOCAL_NAMES[cropCode]?.['en'] || input.land_context.current_crop;
+    
+    cropLockBlock = `
+═══ 🔒 AUTHORITATIVE CROP CONTEXT (IMMUTABLE — VIOLATING = REJECTION) ═══
+AUTHORIZED CROP: ${cropCanonical}
+CROP LOCAL NAME (use this in response): ${cropLocalName}
+
+CRITICAL RULES:
+1. You MUST use "${cropLocalName}" when referring to the farmer's crop
+2. You MUST NOT mention any other crop name (no गहू/wheat if crop is ऊस/sugarcane, etc.)
+3. You MUST NOT substitute, translate, or replace the crop name with any other crop
+4. If the symbolic data mentions another crop for comparison, IGNORE that — respond ONLY about ${cropLocalName}
+5. VIOLATION of crop lock = immediate response rejection
+═══════════════════════════════════════════════════════════════════════════
+`;
+  }
+
   return `You are a LANGUAGE ADAPTER for an agricultural advisory system for rural Indian farmers.
 You are a TRANSLATOR/FORMATTER ONLY. The SYMBOLIC DECISION BRAIN has already made all decisions.
-
+${cropLockBlock}
 ═══ THE SUPREME LAW ═══
 Every product name, dosage, timing, and treatment in your response MUST come from the data below.
 You CANNOT add, remove, or modify product names, dosages, timing, actions, priorities, or safety instructions.
