@@ -322,8 +322,8 @@ export function renderByMode(
       response_mode: ResponseMode.OBSERVATION,
       primary_message: hasTextContent(content.primary_text) 
         ? content.primary_text 
-        : (MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en']),
-      monitoring_note: MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en'],
+        : MODE_TEMPLATES.OBSERVATION,
+      monitoring_note: MODE_TEMPLATES.OBSERVATION,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
