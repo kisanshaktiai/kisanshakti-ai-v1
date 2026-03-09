@@ -741,21 +741,15 @@ export async function evaluateCandidateHypotheses(
             confidence_boost: 0.12
           }));
         } else {
-          // Generate from category + cause for context-based matching
-          const causeKey = (rule.cause || '').toUpperCase().replace(/[\s-]+/g, '_').substring(0, 30);
-          const categoryKey = (rule.category || rule.canonical_group || 'GENERAL').toUpperCase();
-          if (causeKey) {
-            effectiveObsChars = [{
-              id: causeKey,
-              observation_key: causeKey,
-              label_en: (rule.cause || 'General advisory').substring(0, 50),
-              is_visual: false,
-              diagnostic_power: 'LOW' as const,
-              confidence_boost: 0.05
-            }];
-          } else {
-            continue; // Only skip if truly nothing to work with
-          }
+          // ═══════════════════════════════════════════════════════════════
+          // FIX: Do NOT generate synthetic observation keys from `cause`.
+          // Rules with no observable_characteristics AND no conditions_json
+          // observations are advisory/safety rules, not diagnostic hypotheses.
+          // Generating keys from cause text produces untranslatable garbage
+          // like "ZINC_DEFICIENCY_CAUSES_CHLOROS" in the farmer UI.
+          // ═══════════════════════════════════════════════════════════════
+          console.log(`   ⏭️ Skipping rule ${rule.rule_id}: no observable evidence (advisory-only rule)`);
+          continue;
         }
       }
       
