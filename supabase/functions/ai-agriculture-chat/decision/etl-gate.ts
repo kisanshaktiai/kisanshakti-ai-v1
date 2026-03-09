@@ -20,7 +20,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const ETL_GATE_VERSION = '2.0.0';
+export const ETL_GATE_VERSION = '2.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ETL STANDARDS CACHE (from etl_standards table)
@@ -33,6 +33,9 @@ interface ETLStandard {
   etl_unit: string;
   growth_stage: string[];
   sampling_method: string;
+  sampling_unit: string | null;
+  action_threshold: number | null;
+  is_active: boolean;
 }
 
 let etlStandardsCache: ETLStandard[] | null = null;
@@ -40,6 +43,7 @@ let etlStandardsCache: ETLStandard[] | null = null;
 /**
  * Pre-load ETL standards from database.
  * Call once before rule evaluation loop to avoid N+1 queries.
+ * Now includes sampling_unit, action_threshold, and is_active filtering.
  */
 export async function loadETLStandards(supabaseClient: any): Promise<void> {
   if (etlStandardsCache) return; // Already loaded
@@ -47,7 +51,8 @@ export async function loadETLStandards(supabaseClient: any): Promise<void> {
   try {
     const { data, error } = await supabaseClient
       .from('etl_standards')
-      .select('pest_code, crop_code, etl_value, etl_unit, growth_stage, sampling_method');
+      .select('pest_code, crop_code, etl_value, etl_unit, growth_stage, sampling_method, sampling_unit, action_threshold, is_active')
+      .eq('is_active', true);
     
     if (error) {
       console.warn(`⚠️ [ETL Gate] Failed to load etl_standards: ${error.message}`);
@@ -56,7 +61,7 @@ export async function loadETLStandards(supabaseClient: any): Promise<void> {
     }
     
     etlStandardsCache = (data || []) as ETLStandard[];
-    console.log(`✅ [ETL Gate] Loaded ${etlStandardsCache.length} ETL standards from DB`);
+    console.log(`✅ [ETL Gate] Loaded ${etlStandardsCache.length} active ETL standards from DB`);
   } catch (e) {
     console.warn(`⚠️ [ETL Gate] etl_standards load error:`, e instanceof Error ? e.message : 'unknown');
     etlStandardsCache = [];
