@@ -257,8 +257,6 @@ export function validateAgronomicAccuracy(
       warnings.push({
         code: 'MISSING_PRODUCT_FROM_RULES',
         message_en: `No product recommendation from rule engine for ${pestCode}. Check decision_rules table.`,
-        message_mr: `${pestCode} साठी नियम इंजिनमधून उत्पादन शिफारस नाही.`,
-        message_hi: `${pestCode} के लिए नियम इंजन से उत्पाद अनुशंसा नहीं है।`,
         field: 'product_name',
         suggestion: 'Ensure decision_rules has matching rule with structured_dosage for this pest'
       });
