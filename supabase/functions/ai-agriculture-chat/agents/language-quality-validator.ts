@@ -13,42 +13,9 @@
  */
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TECHNICAL TERM TRANSLATIONS (FIXED - LLM should not improvise)
+// TECHNICAL TERM TRANSLATIONS - REMOVED (Dead code: zero callers)
+// Translation is handled by the LLM narration layer at runtime.
 // ═══════════════════════════════════════════════════════════════════════════
-
-export const FIXED_TRANSLATIONS: Record<string, { mr: string; hi: string }> = {
-  // Application methods
-  'FOLIAR_SPRAY': { mr: 'पर्णीय फवारणी', hi: 'पर्णीय छिड़काव' },
-  'SOIL_APPLICATION': { mr: 'जमिनीत देणे', hi: 'मिट्टी में डालना' },
-  'SOIL_DRENCH': { mr: 'जमिनीत ओतणे', hi: 'मिट्टी में सींचना' },
-  'GRANULAR_APPLICATION': { mr: 'दाणेदार औषध देणे', hi: 'दानेदार दवा डालना' },
-  'WHORL_APPLICATION': { mr: 'गाभ्यात टाकणे', hi: 'पोंगली में डालना' },
-  
-  // Formulations
-  'GRANULES': { mr: 'दाणे', hi: 'दाने' },
-  'POWDER': { mr: 'भुकटी', hi: 'पाउडर' },
-  'LIQUID': { mr: 'द्रव', hi: 'तरल' },
-  'SUSPENSION': { mr: 'निलंबन', hi: 'निलंबन' },
-  
-  // Products (keep English name, explain in local)
-  'CARBOFURAN': { mr: 'कार्बोफ्युरान', hi: 'कार्बोफ्यूरान' },
-  'CHLORANTRANILIPROLE': { mr: 'क्लोरॅन्ट्रानिलिप्रोल', hi: 'क्लोरैंट्रानिलिप्रोल' },
-  'FIPRONIL': { mr: 'फिप्रोनिल', hi: 'फिप्रोनिल' },
-  'IMIDACLOPRID': { mr: 'इमिडाक्लोप्रिड', hi: 'इमिडाक्लोप्रिड' },
-  'THIAMETHOXAM': { mr: 'थायमेथॉक्सम', hi: 'थायमेथॉक्सम' },
-  
-  // Pest names
-  'SHOOT_BORER': { mr: 'खोड किडा / शूट बोरर', hi: 'तना छेदक' },
-  'STEM_BORER': { mr: 'खोड किडा', hi: 'तना छेदक' },
-  'WHITEFLY': { mr: 'पांढरी माशी', hi: 'सफेद मक्खी' },
-  'APHID': { mr: 'मावा', hi: 'माहूं' },
-  'THRIPS': { mr: 'तुडतुडे', hi: 'थ्रिप्स' },
-  
-  // Timing
-  'MORNING': { mr: 'सकाळी', hi: 'सुबह' },
-  'EVENING': { mr: 'संध्याकाळी', hi: 'शाम को' },
-  'WEEKLY': { mr: 'दर आठवड्याला', hi: 'हर हफ्ते' },
-};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GIBBERISH DETECTION PATTERNS
@@ -275,43 +242,16 @@ export function validateLanguageQuality(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TERM REPLACEMENT FUNCTION
+// TERM REPLACEMENT FUNCTION - REMOVED (Dead code: zero callers)
+// Translation is handled by the LLM narration layer at runtime.
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function enforceTermConsistency(
-  text: string,
-  language: string
-): string {
-  if (language === 'en') return text;
-  
-  let result = text;
-  
-  // Replace any inconsistent translations with fixed ones
-  for (const [term, translations] of Object.entries(FIXED_TRANSLATIONS)) {
-    const translation = translations[language];
-    if (!translation) continue;
-    
-    // If the English term appears, replace with proper translation
-    const termPattern = new RegExp(term.replace(/_/g, '[_\\s]'), 'gi');
-    if (termPattern.test(result)) {
-      result = result.replace(termPattern, translation);
-    }
-  }
-  
-  return result;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
-// SAFE FALLBACK MESSAGE
+// SAFE FALLBACK MESSAGE (English-only — LLM narration layer translates)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function getSafeAskMoreInfoMessage(language: string): string {
-  const messages: Record<string, string> = {
-    mr: '🙏 कृपया तुमच्या समस्येबद्दल अधिक माहिती द्या किंवा फोटो पाठवा. मी योग्य सल्ला देईन.',
-    hi: '🙏 कृपया अपनी समस्या के बारे में अधिक जानकारी दें या फोटो भेजें। मैं सही सलाह दूंगा।',
-    en: '🙏 Please provide more details about your issue or send a photo. I will give you accurate advice.'
-  };
-  return messages[language] || messages.en;
+export function getSafeAskMoreInfoMessage(_language: string): string {
+  return '🙏 Please provide more details about your issue or send a photo. I will give you accurate advice.';
 }
 
 export default validateLanguageQuality;

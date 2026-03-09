@@ -94,105 +94,23 @@ export interface TreatmentDetails {
 // LANGUAGE-SPECIFIC TEMPLATES (Mode-Driven, Not Text-Dependent)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MODE_TEMPLATES: Record<string, Record<string, string>> = {
-  MONITORING_ADVISED: {
-    mr: '✅ सध्या तुमचे पीक चांगले आहे. नियमित निरीक्षण करा.',
-    hi: '✅ अभी आपकी फसल ठीक है। नियमित निगरानी करें।',
-    en: '✅ Your crop is currently healthy. Continue regular monitoring.',
-    pa: '✅ ਹੁਣ ਤੁਹਾਡੀ ਫਸਲ ਠੀਕ ਹੈ। ਨਿਯਮਿਤ ਨਿਗਰਾਨੀ ਕਰੋ।',
-    ta: '✅ தற்போது உங்கள் பயிர் நன்றாக உள்ளது. தொடர்ந்து கண்காணிக்கவும்.'
-  },
-  OBSERVATION: {
-    mr: '👀 पिकाचे निरीक्षण करत रहा. समस्या वाढल्यास पुन्हा संपर्क करा.',
-    hi: '👀 फसल की निगरानी जारी रखें। समस्या बढ़े तो संपर्क करें।',
-    en: '👀 Continue observing your crop. Contact us if the issue worsens.',
-    pa: '👀 ਫਸਲ ਦੀ ਨਿਗਰਾਨੀ ਜਾਰੀ ਰੱਖੋ। ਸਮੱਸਿਆ ਵਧੇ ਤਾਂ ਸੰਪਰਕ ਕਰੋ।',
-    ta: '👀 பயிரை கவனித்துக் கொண்டிருங்கள். பிரச்சனை அதிகரித்தால் தொடர்பு கொள்ளுங்கள்.'
-  },
-  PHOTO_REQUIRED: {
-    mr: '📷 कृपया प्रभावित पिकाचा फोटो पाठवा. यामुळे अचूक निदान होईल.',
-    hi: '📷 कृपया प्रभावित फसल का फोटो भेजें। इससे सटीक निदान होगा।',
-    en: '📷 Please send a photo of the affected crop for accurate diagnosis.',
-    pa: '📷 ਕਿਰਪਾ ਕਰਕੇ ਪ੍ਰਭਾਵਿਤ ਫਸਲ ਦੀ ਫੋਟੋ ਭੇਜੋ। ਇਸ ਨਾਲ ਸਹੀ ਪਛਾਣ ਹੋਵੇਗੀ।',
-    ta: '📷 பாதிக்கப்பட்ட பயிரின் புகைப்படத்தை அனுப்பவும். இது சரியான கண்டறிதலுக்கு உதவும்.'
-  },
-  CLARIFICATION_REQUIRED: {
-    mr: '🔬 तुमच्या पिकाला खालीलपैकी कोणती समस्या असू शकते? (सर्वात जवळचे निवडा)',
-    hi: '🔬 आपकी फसल में नीचे में से कौन सी समस्या हो सकती है? (सबसे करीबी चुनें)',
-    en: '🔬 Which of the following problems might your crop have? (Select the closest)',
-    pa: '🔬 ਤੁਹਾਡੀ ਫਸਲ ਵਿੱਚ ਹੇਠਾਂ ਦਿੱਤੀਆਂ ਵਿੱਚੋਂ ਕਿਹੜੀ ਸਮੱਸਿਆ ਹੋ ਸਕਦੀ ਹੈ? (ਸਭ ਤੋਂ ਨੇੜੇ ਦੀ ਚੁਣੋ)',
-    ta: '🔬 உங்கள் பயிரில் கீழ்கண்ட பிரச்சனைகளில் எது இருக்கலாம்? (நெருங்கியதை தேர்வு செய்யவும்)'
-  },
-  CLARIFICATION: {
-    mr: '🔬 तुमच्या पिकाला खालीलपैकी कोणती समस्या असू शकते? (सर्वात जवळचे निवडा)',
-    hi: '🔬 आपकी फसल में नीचे में से कौन सी समस्या हो सकती है? (सबसे करीबी चुनें)',
-    en: '🔬 Which of the following problems might your crop have? (Select the closest)',
-    pa: '🔬 ਤੁਹਾਡੀ ਫਸਲ ਵਿੱਚ ਹੇਠਾਂ ਦਿੱਤੀਆਂ ਵਿੱਚੋਂ ਕਿਹੜੀ ਸਮੱਸਿਆ ਹੋ ਸਕਦੀ ਹੈ? (ਸਭ ਤੋਂ ਨੇੜੇ ਦੀ ਚੁਣੋ)',
-    ta: '🔬 உங்கள் பயிரில் கீழ்கண்ட பிரச்சனைகளில் எது இருக்கலாம்? (நெருங்கியதை தேர்வு செய்யவும்)'
-  },
-  INFORMATION: {
-    mr: '📋 माहिती:',
-    hi: '📋 जानकारी:',
-    en: '📋 Information:',
-    pa: '📋 ਜਾਣਕਾਰੀ:',
-    ta: '📋 தகவல்:'
-  },
-  TREATMENT: {
-    mr: '💊 शिफारस:',
-    hi: '💊 सिफारिश:',
-    en: '💊 Recommendation:',
-    pa: '💊 ਸਿਫਾਰਿਸ਼:',
-    ta: '💊 பரிந்துரை:'
-  },
-  TREATMENT_ALLOWED: {
-    mr: '💊 शिफारस:',
-    hi: '💊 सिफारिश:',
-    en: '💊 Recommendation:',
-    pa: '💊 ਸਿਫਾਰਿਸ਼:',
-    ta: '💊 பரிந்துரை:'
-  },
-  NO_ACTION_NEEDED: {
-    mr: '✅ कोणतीही कृती आवश्यक नाही. पीक निरोगी आहे.',
-    hi: '✅ कोई कार्रवाई आवश्यक नहीं। फसल स्वस्थ है।',
-    en: '✅ No action needed. Your crop is healthy.',
-    pa: '✅ ਕੋਈ ਕਾਰਵਾਈ ਦੀ ਲੋੜ ਨਹੀਂ। ਫਸਲ ਤੰਦਰੁਸਤ ਹੈ।',
-    ta: '✅ எந்த நடவடிக்கையும் தேவையில்லை. பயிர் ஆரோக்கியமாக உள்ளது.'
-  },
-  ERROR: {
-    mr: '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.',
-    hi: '⚠️ कुछ गलत हुआ। कृपया दोबारा प्रयास करें।',
-    en: '⚠️ Something went wrong. Please try again.',
-    pa: '⚠️ ਕੁਝ ਗਲਤ ਹੋਇਆ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
-    ta: '⚠️ ஏதோ தவறு ஏற்பட்டது. மீண்டும் முயற்சிக்கவும்.'
-  }
+const MODE_TEMPLATES: Record<string, string> = {
+  MONITORING_ADVISED: '✅ Your crop is currently healthy. Continue regular monitoring.',
+  OBSERVATION: '👀 Continue observing your crop. Contact us if the issue worsens.',
+  PHOTO_REQUIRED: '📷 Please send a photo of the affected crop for accurate diagnosis.',
+  CLARIFICATION_REQUIRED: '🔬 Which of the following problems might your crop have? (Select the closest)',
+  CLARIFICATION: '🔬 Which of the following problems might your crop have? (Select the closest)',
+  INFORMATION: '📋 Information:',
+  TREATMENT: '💊 Recommendation:',
+  TREATMENT_ALLOWED: '💊 Recommendation:',
+  NO_ACTION_NEEDED: '✅ No action needed. Your crop is healthy.',
+  ERROR: '⚠️ Something went wrong. Please try again.'
 };
 
-const PHOTO_GUIDANCE_TEMPLATES: Record<string, PhotoGuidance> = {
-  mr: {
-    prompt_text: '📷 फोटो पाठवा',
-    what_to_capture: 'प्रभावित पान किंवा खोडाचा जवळून फोटो घ्या',
-    tips: ['चांगला प्रकाश असलेल्या ठिकाणी फोटो घ्या', 'लक्षणे स्पष्ट दिसतील असा कोन निवडा']
-  },
-  hi: {
-    prompt_text: '📷 फोटो भेजें',
-    what_to_capture: 'प्रभावित पत्ते या तने का करीब से फोटो लें',
-    tips: ['अच्छी रोशनी में फोटो लें', 'लक्षण स्पष्ट दिखे ऐसा कोण चुनें']
-  },
-  en: {
-    prompt_text: '📷 Send Photo',
-    what_to_capture: 'Take a close-up photo of the affected leaf or stem',
-    tips: ['Take photo in good lighting', 'Choose an angle where symptoms are clearly visible']
-  },
-  pa: {
-    prompt_text: '📷 ਫੋਟੋ ਭੇਜੋ',
-    what_to_capture: 'ਪ੍ਰਭਾਵਿਤ ਪੱਤੇ ਜਾਂ ਤਣੇ ਦੀ ਨੇੜੇ ਤੋਂ ਫੋਟੋ ਖਿੱਚੋ',
-    tips: ['ਚੰਗੀ ਰੌਸ਼ਨੀ ਵਿੱਚ ਫੋਟੋ ਖਿੱਚੋ', 'ਲੱਛਣ ਸਾਫ਼ ਦਿਖਣ ਵਾਲਾ ਕੋਣ ਚੁਣੋ']
-  },
-  ta: {
-    prompt_text: '📷 புகைப்படம் அனுப்பவும்',
-    what_to_capture: 'பாதிக்கப்பட்ட இலை அல்லது தண்டின் நெருக்கமான புகைப்படம் எடுக்கவும்',
-    tips: ['நல்ல வெளிச்சத்தில் புகைப்படம் எடுக்கவும்', 'அறிகுறிகள் தெளிவாக தெரியும் கோணத்தை தேர்வு செய்யவும்']
-  }
+const PHOTO_GUIDANCE_TEMPLATE: PhotoGuidance = {
+  prompt_text: '📷 Send Photo',
+  what_to_capture: 'Take a close-up photo of the affected leaf or stem',
+  tips: ['Take photo in good lighting', 'Choose an angle where symptoms are clearly visible']
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -357,8 +275,8 @@ export function renderByMode(
       response_mode: modeStr,
       primary_message: hasTextContent(content.monitoring_message) 
         ? content.monitoring_message 
-        : (MODE_TEMPLATES.MONITORING_ADVISED[lang] || MODE_TEMPLATES.MONITORING_ADVISED['en']),
-      monitoring_note: MODE_TEMPLATES.MONITORING_ADVISED[lang] || MODE_TEMPLATES.MONITORING_ADVISED['en'],
+        : MODE_TEMPLATES.MONITORING_ADVISED,
+      monitoring_note: MODE_TEMPLATES.MONITORING_ADVISED,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -371,13 +289,13 @@ export function renderByMode(
     const options = content.options || [];
     const headerText = hasTextContent(content.primary_text) 
       ? content.primary_text 
-      : (MODE_TEMPLATES.CLARIFICATION_REQUIRED[lang] || MODE_TEMPLATES.CLARIFICATION_REQUIRED['en']);
+      : MODE_TEMPLATES.CLARIFICATION_REQUIRED;
     
     return {
       response_mode: ResponseMode.CLARIFICATION,
       primary_message: headerText,
       options: options,
-      is_valid: true, // Valid even without text if options exist
+      is_valid: true,
       render_source: 'MODE_RENDERER'
     };
   }
@@ -388,9 +306,9 @@ export function renderByMode(
   if (modeStr === 'PHOTO_REQUIRED' || modeStr === 'PHOTO') {
     return {
       response_mode: 'PHOTO_REQUIRED',
-      primary_message: MODE_TEMPLATES.PHOTO_REQUIRED[lang] || MODE_TEMPLATES.PHOTO_REQUIRED['en'],
+      primary_message: MODE_TEMPLATES.PHOTO_REQUIRED,
       request_photo: true,
-      photo_guidance: PHOTO_GUIDANCE_TEMPLATES[lang] || PHOTO_GUIDANCE_TEMPLATES['en'],
+      photo_guidance: PHOTO_GUIDANCE_TEMPLATE,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -404,8 +322,8 @@ export function renderByMode(
       response_mode: ResponseMode.OBSERVATION,
       primary_message: hasTextContent(content.primary_text) 
         ? content.primary_text 
-        : (MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en']),
-      monitoring_note: MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en'],
+        : MODE_TEMPLATES.OBSERVATION,
+      monitoring_note: MODE_TEMPLATES.OBSERVATION,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -439,7 +357,7 @@ export function renderByMode(
         ? content.primary_text 
         : hasTextContent(content.custom_message)
         ? content.custom_message
-        : (MODE_TEMPLATES.INFORMATION[lang] || MODE_TEMPLATES.INFORMATION['en']),
+        : MODE_TEMPLATES.INFORMATION,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
@@ -451,7 +369,7 @@ export function renderByMode(
   console.warn(`[ResponseModeRenderer] Unknown mode '${modeStr}', defaulting to OBSERVATION`);
   return {
     response_mode: ResponseMode.OBSERVATION,
-    primary_message: MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en'],
+    primary_message: MODE_TEMPLATES.OBSERVATION,
     is_valid: true,
     render_source: 'FALLBACK'
   };
@@ -463,16 +381,14 @@ export function renderByMode(
 
 function buildTreatmentMessage(
   treatment: TreatmentDetails,
-  lang: string
+  _lang: string
 ): string {
   const parts: string[] = [];
   
-  // Action text (primary)
   if (hasTextContent(treatment.action_text)) {
     parts.push(`📋 ${treatment.action_text}`);
   }
   
-  // Product + Dosage
   if (hasTextContent(treatment.product_name)) {
     let productLine = `💊 ${treatment.product_name}`;
     if (hasTextContent(treatment.dosage)) {
@@ -481,37 +397,19 @@ function buildTreatmentMessage(
     parts.push(productLine);
   }
   
-  // Timing
   if (hasTextContent(treatment.timing)) {
-    const timingLabels: Record<string, string> = {
-      mr: '⏰ वेळ:',
-      hi: '⏰ समय:',
-      en: '⏰ Timing:'
-    };
-    parts.push(`${timingLabels[lang]} ${treatment.timing}`);
+    parts.push(`⏰ Timing: ${treatment.timing}`);
   }
   
-  // Reason
   if (hasTextContent(treatment.reason_text)) {
-    const reasonLabels: Record<string, string> = {
-      mr: '🔍 कारण:',
-      hi: '🔍 कारण:',
-      en: '🔍 Reason:'
-    };
-    parts.push(`${reasonLabels[lang]} ${treatment.reason_text}`);
+    parts.push(`🔍 Reason: ${treatment.reason_text}`);
   }
   
-  // Scientific basis
   if (hasTextContent(treatment.knowledge_text)) {
-    const knowledgeLabels: Record<string, string> = {
-      mr: '📚 आधार:',
-      hi: '📚 आधार:',
-      en: '📚 Scientific basis:'
-    };
-    parts.push(`${knowledgeLabels[lang]} ${treatment.knowledge_text}`);
+    parts.push(`📚 Scientific basis: ${treatment.knowledge_text}`);
   }
   
-  return parts.length > 0 ? parts.join('\n') : (MODE_TEMPLATES.TREATMENT[lang] || MODE_TEMPLATES.TREATMENT['en']);
+  return parts.length > 0 ? parts.join('\n') : MODE_TEMPLATES.TREATMENT;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

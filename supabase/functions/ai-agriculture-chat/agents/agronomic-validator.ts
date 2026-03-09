@@ -127,8 +127,6 @@ export interface AgronomicValidationResult {
 export interface AgronomicError {
   code: string;
   message_en: string;
-  message_mr: string;
-  message_hi: string;
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
   field: string;
   original_value: string;
@@ -138,8 +136,6 @@ export interface AgronomicError {
 export interface AgronomicWarning {
   code: string;
   message_en: string;
-  message_mr: string;
-  message_hi: string;
   field: string;
   suggestion: string;
 }
@@ -193,8 +189,6 @@ export function validateAgronomicAccuracy(
         errors.push({
           code: 'PEST_METHOD_MISMATCH',
           message_en: `Foliar spray is ineffective for ${pestCode} (a boring pest). Use soil/granular application.`,
-          message_mr: `${pestCode} (खोडकिडा) साठी फवारणी प्रभावी नाही. जमिनीत औषध द्या.`,
-          message_hi: `${pestCode} (तना छेदक) के लिए छिड़काव प्रभावी नहीं है। मिट्टी में दवा दें।`,
           severity: 'CRITICAL',
           field: 'application_method',
           original_value: method,
@@ -230,8 +224,6 @@ export function validateAgronomicAccuracy(
         errors.push({
           code: 'PEST_STAGE_IMPOSSIBLE',
           message_en: `${pestCode} cannot occur during ${stage} stage. Please verify diagnosis.`,
-          message_mr: `${stage} अवस्थेत ${pestCode} होणे अशक्य आहे. कृपया निदान तपासा.`,
-          message_hi: `${stage} अवस्था में ${pestCode} असंभव है। कृपया निदान जांचें।`,
           severity: 'HIGH',
           field: 'pest_stage_combination',
           original_value: `${pestCode}@${stage}`,
@@ -242,8 +234,6 @@ export function validateAgronomicAccuracy(
         warnings.push({
           code: 'PEST_STAGE_UNLIKELY',
           message_en: `${pestCode} is unusual at ${stage} stage. Please confirm with photo.`,
-          message_mr: `${stage} अवस्थेत ${pestCode} असामान्य आहे. कृपया फोटो पाठवून पुष्टी करा.`,
-          message_hi: `${stage} अवस्था में ${pestCode} असामान्य है। कृपया फोटो से पुष्टि करें।`,
           field: 'pest_stage_combination',
           suggestion: 'Request photo for confirmation'
         });
@@ -267,8 +257,6 @@ export function validateAgronomicAccuracy(
       warnings.push({
         code: 'MISSING_PRODUCT_FROM_RULES',
         message_en: `No product recommendation from rule engine for ${pestCode}. Check decision_rules table.`,
-        message_mr: `${pestCode} साठी नियम इंजिनमधून उत्पादन शिफारस नाही.`,
-        message_hi: `${pestCode} के लिए नियम इंजन से उत्पाद अनुशंसा नहीं है।`,
         field: 'product_name',
         suggestion: 'Ensure decision_rules has matching rule with structured_dosage for this pest'
       });
@@ -334,9 +322,6 @@ export function applyAgronomicCorrections<T extends Record<string, any>>(
 // GET DEFAULT IPM RECOMMENDATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function getIPMDefaultRecommendation(
-  pestCode: string,
-  ipmLevel: number = 5
 /**
  * PHASE 1 FIX: This function now returns null always.
  * Product recommendations MUST come from the decision_rules table,
@@ -344,14 +329,13 @@ export function getIPMDefaultRecommendation(
  */
 export function getIPMDefaultRecommendation(
   pestCode: string,
-  ipmLevel: number = 5
+  _ipmLevel: number = 5
 ): {
   product_name: string;
   dosage: string;
   application_method: string;
   phi_days?: number;
 } | null {
-  // DEPRECATED: All product data must come from decision_rules table
   console.log(`⚠️ [AgronomicValidator] getIPMDefaultRecommendation() called for ${pestCode} - returning null (DB-only policy)`);
   return null;
 }

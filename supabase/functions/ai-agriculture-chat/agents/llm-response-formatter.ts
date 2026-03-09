@@ -32,6 +32,7 @@ import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
 import { getLanguageName } from '../utils/language-utils.ts';
+import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
 import {
   getProductName,
   getActionTranslation,
@@ -1302,27 +1303,11 @@ RULES:
   let cropLockBlock = '';
   if (input.land_context?.current_crop) {
     const cropCode = input.land_context.current_crop.toLowerCase();
-    // Import ICAR_CALENDARS dynamically would break edge function, so resolve inline
-    const CROP_LOCAL_NAMES: Record<string, Record<string, string>> = {
-      'sugarcane': { mr: 'ऊस', hi: 'गन्ना', en: 'Sugarcane' },
-      'cotton': { mr: 'कापूस', hi: 'कपास', en: 'Cotton' },
-      'rice': { mr: 'भात', hi: 'धान', en: 'Rice' },
-      'wheat': { mr: 'गहू', hi: 'गेहूं', en: 'Wheat' },
-      'soybean': { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'Soybean' },
-      'maize': { mr: 'मका', hi: 'मक्का', en: 'Maize' },
-      'groundnut': { mr: 'भुईमूग', hi: 'मूंगफली', en: 'Groundnut' },
-      'onion': { mr: 'कांदा', hi: 'प्याज', en: 'Onion' },
-      'tomato': { mr: 'टोमॅटो', hi: 'टमाटर', en: 'Tomato' },
-      'banana': { mr: 'केळी', hi: 'केला', en: 'Banana' },
-      'grape': { mr: 'द्राक्षे', hi: 'अंगूर', en: 'Grape' },
-      'pomegranate': { mr: 'डाळिंब', hi: 'अनार', en: 'Pomegranate' },
-      'potato': { mr: 'बटाटा', hi: 'आलू', en: 'Potato' },
-      'chilli': { mr: 'मिरची', hi: 'मिर्च', en: 'Chilli' },
-      'mango': { mr: 'आंबा', hi: 'आम', en: 'Mango' },
-    };
-    const langKey = input.language === 'hi' ? 'hi' : input.language === 'en' ? 'en' : 'mr';
-    const cropLocalName = CROP_LOCAL_NAMES[cropCode]?.[langKey] || input.land_context.current_crop;
-    const cropCanonical = CROP_LOCAL_NAMES[cropCode]?.['en'] || input.land_context.current_crop;
+    // Resolve crop local name from ICAR_CALENDARS (already imported via crop-calendar-lookup.ts)
+    const calendar = ICAR_CALENDARS[cropCode];
+    const langKey = input.language === 'hi' ? 'crop_name_hi' : input.language === 'en' ? 'crop_name_en' : 'crop_name_mr';
+    const cropLocalName = calendar?.[langKey] || input.land_context.current_crop;
+    const cropCanonical = calendar?.crop_name_en || input.land_context.current_crop;
     
     cropLockBlock = `
 ═══ 🔒 AUTHORITATIVE CROP CONTEXT (IMMUTABLE — VIOLATING = REJECTION) ═══

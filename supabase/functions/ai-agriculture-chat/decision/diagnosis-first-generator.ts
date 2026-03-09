@@ -190,43 +190,25 @@ function getObservationLabelFromMap(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PHOTO OPTION LABELS
+// PHOTO OPTION LABELS (English-only — LLM narration layer translates)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Photo and question labels keyed by language code (open to any language)
-// Unknown languages fall back to 'en'. LLM translates at runtime.
-const PHOTO_LABELS: Record<string, { label: string; description: string }> = {
-  'mr': { label: '📷 फोटो पाठवा', description: 'अधिक अचूक निदानासाठी पिकाचा फोटो पाठवा' },
-  'hi': { label: '📷 फोटो भेजें', description: 'अधिक सटीक निदान के लिए फसल का फोटो भेजें' },
-  'en': { label: '📷 Send Photo', description: 'Send a crop photo for more accurate diagnosis' }
-};
+const PHOTO_LABEL = { label: '📷 Send Photo', description: 'Send a crop photo for more accurate diagnosis' };
 
-const DIAGNOSIS_QUESTION_TEMPLATES: Record<string, { single: string; multiple: string }> = {
-  'mr': {
-    single: '🔬 तुमच्या पिकाला {cause} चा त्रास असू शकतो. खालील पैकी काय दिसते?',
-    multiple: '🔬 तुमच्या पिकाला खालीलपैकी कोणती समस्या असू शकते? (सर्वात जवळचे निवडा)'
-  },
-  'hi': {
-    single: '🔬 आपकी फसल को {cause} की समस्या हो सकती है। इनमें से क्या दिखता है?',
-    multiple: '🔬 आपकी फसल में इनमें से कौन सी समस्या हो सकती है? (सबसे नज़दीकी चुनें)'
-  },
-  'en': {
-    single: '🔬 Your crop may be affected by {cause}. Which of these do you see?',
-    multiple: '🔬 Your crop may have one of these issues. Select the closest match:'
-  }
+const DIAGNOSIS_QUESTION_TEMPLATE = {
+  single: '🔬 Your crop may be affected by {cause}. Which of these do you see?',
+  multiple: '🔬 Your crop may have one of these issues. Select the closest match:'
 };
 
 function getQuestionText(
   diagnoses: DiagnosisOption[],
-  language: string
+  _language: string
 ): string {
-  const template = DIAGNOSIS_QUESTION_TEMPLATES[language] || DIAGNOSIS_QUESTION_TEMPLATES['en'];
-  
   if (diagnoses.length === 1) {
-    return template.single.replace('{cause}', diagnoses[0].cause_label);
+    return DIAGNOSIS_QUESTION_TEMPLATE.single.replace('{cause}', diagnoses[0].cause_label);
   }
   
-  return template.multiple;
+  return DIAGNOSIS_QUESTION_TEMPLATE.multiple;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -477,12 +459,11 @@ export async function generateDiagnosisFirstResponse(
   });
   
   // Generate photo option (ALWAYS present)
-  const photoLabels = PHOTO_LABELS[language] || PHOTO_LABELS['en'];
   const photoOption: PhotoOption = {
     id: 'PHOTO_UPLOAD',
-    label: photoLabels.label,
+    label: PHOTO_LABEL.label,
     icon: '📷',
-    description: photoLabels.description
+    description: PHOTO_LABEL.description
   };
   
   // Generate question text
@@ -590,12 +571,11 @@ export function createUnknownDiagnosisResponse(
     }
   ];
   
-  const photoLabels = PHOTO_LABELS[language] || PHOTO_LABELS['en'];
   const photoOption: PhotoOption = {
     id: 'PHOTO_UPLOAD',
-    label: photoLabels.label,
+    label: PHOTO_LABEL.label,
     icon: '📷',
-    description: photoLabels.description
+    description: PHOTO_LABEL.description
   };
   
   return {

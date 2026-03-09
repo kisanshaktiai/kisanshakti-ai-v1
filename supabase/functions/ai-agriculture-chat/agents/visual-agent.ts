@@ -215,20 +215,14 @@ function assessImageQuality(imageData: VisualAgentInput['image_data']): ImageQua
       angle: 'GOOD',
       critical_area_visible: true
     },
-    retake_recommendation: {
-      needed: overallUsability === 'UNUSABLE',
-      priority: overallUsability === 'UNUSABLE' ? 'HIGH' : null,
-      reason: overallUsability === 'UNUSABLE' ? issues.join('; ') : null,
-      instructions_mr: overallUsability === 'UNUSABLE' 
-        ? 'कृपया पुन्हा फोटो घ्या:\n1. जास्त जवळून (15-20 सेमी)\n2. सूर्यप्रकाशात\n3. किडी/रोग दिसत असलेल्या भागाचा\n4. फोन स्थिर ठेवा'
-        : undefined,
-      instructions_hi: overallUsability === 'UNUSABLE'
-        ? 'कृपया फोटो दोबारा लें:\n1. करीब से (15-20 सेमी)\n2. धूप में\n3. कीट/रोग दिखने वाले हिस्से का\n4. फोन स्थिर रखें'
-        : undefined,
-      instructions_en: overallUsability === 'UNUSABLE'
-        ? 'Please retake photo:\n1. Closer (15-20cm)\n2. In sunlight\n3. Of affected area\n4. Hold phone steady'
-        : undefined
-    }
+      retake_recommendation: {
+        needed: overallUsability === 'UNUSABLE',
+        priority: overallUsability === 'UNUSABLE' ? 'HIGH' : null,
+        reason: overallUsability === 'UNUSABLE' ? issues.join('; ') : null,
+        instructions_en: overallUsability === 'UNUSABLE'
+          ? 'Please retake photo:\n1. Closer (15-20cm)\n2. In sunlight\n3. Of affected area\n4. Hold phone steady'
+          : undefined
+      }
   };
 }
 
@@ -879,8 +873,6 @@ function createRetakeResponse(
       secondary_issues: [],
       contributing_factors: [],
       positive_indicators: [],
-      diagnosis_summary_mr: 'फोटो स्पष्ट नाही. कृपया पुन्हा फोटो घ्या.',
-      diagnosis_summary_hi: 'फोटो स्पष्ट नहीं है। कृपया फोटो दोबारा लें।',
       diagnosis_summary_en: 'Photo is not clear. Please retake photo.'
     },
     recommendation_to_next_agent: {

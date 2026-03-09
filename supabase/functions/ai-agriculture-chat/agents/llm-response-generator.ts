@@ -343,11 +343,9 @@ function validateSymbolicInput(input: SymbolicNarrationInput): ValidationResult 
     console.warn('[NarrationLayer] Missing fallback_text - using default');
     // Generate default based on language
     const defaultFallbacks: Record<string, string> = {
-      mr: '🙏 कृपया तुमचा प्रश्न पुन्हा विचारा.',
-      hi: '🙏 कृपया अपना प्रश्न दोबारा पूछें।',
       en: '🙏 Please ask your question again.'
     };
-    input.symbolic_decision.fallback_text = defaultFallbacks[input.language] || defaultFallbacks.mr;
+    input.symbolic_decision.fallback_text = defaultFallbacks.en;
   }
   
   // MONITOR_ONLY mode: Does NOT require primary_action or any decision text
@@ -718,18 +716,14 @@ export async function generateLLMResponse(input: LLMResponseInput): Promise<{ re
   console.warn('[DEPRECATED] generateLLMResponse called - should migrate to generateNarratedResponse');
   
   // Create a minimal symbolic input with generic fallback
-  const fallbackMessages = {
-    mr: '🙏 कृपया तुमचा प्रश्न पुन्हा विचारा. मी तुमची मदत करण्यासाठी तयार आहे.',
-    hi: '🙏 कृपया अपना प्रश्न दोबारा पूछें। मैं आपकी मदद के लिए तैयार हूं।',
-    en: '🙏 Please ask your question again. I am ready to help you.'
-  };
+  const fallbackMessage = '🙏 Please ask your question again. I am ready to help you.';
   
   const symbolicInput: SymbolicNarrationInput = {
     language: input.language,
     farmer_message: input.farmer_message,
     symbolic_decision: {
       status: 'NO_MATCH',
-      fallback_text: fallbackMessages[input.language],
+      fallback_text: fallbackMessage,
       rules_applied: []
     },
     land_context: input.land_context ? {
