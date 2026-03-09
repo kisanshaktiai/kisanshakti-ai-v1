@@ -2142,13 +2142,14 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
 // ═══════════════════════════════════════════════════════════════════════════
 
 function extractSections(text: string): string[] {
+  // LANGUAGE-AGNOSTIC: Use emoji anchors only — works for ANY language
   const sections: string[] = [];
-  if (text.includes('नमस्कार') || text.includes('Hello')) sections.push('greeting');
-  if (text.includes('शिफारस') || text.includes('Recommend')) sections.push('recommendation');
+  if (text.includes('🎯') || text.includes('🌾') || text.length > 50) sections.push('greeting');
+  if (text.includes('📋') || text.includes('📌') || text.includes('💊')) sections.push('recommendation');
   if (text.includes('⏰')) sections.push('timing');
   if (text.includes('📊') || text.includes('%')) sections.push('efficacy');
   if (text.includes('⚠️')) sections.push('warning');
-  if (text.includes('🙏') || text.includes('शुभेच्छा')) sections.push('closing');
+  if (text.includes('🙏') || text.includes('✅')) sections.push('closing');
   return sections;
 }
 
