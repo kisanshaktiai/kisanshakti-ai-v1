@@ -40,6 +40,8 @@ function cleanOptionLabel(label: string): string {
   if (!label) return '';
   return label
     .replace(/\s*\[obs_keys:[^\]]+\]/gi, '')  // Remove [obs_keys:...]
+    .replace(/\s*\[cause:[^\]]+\]/gi, '')      // Remove [cause:...]
+    .replace(/\s*\[rule_id:[^\]]+\]/gi, '')    // Remove [rule_id:...]
     .replace(/\s+/g, ' ')                      // Normalize whitespace
     .trim();
 }

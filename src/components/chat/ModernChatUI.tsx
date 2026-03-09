@@ -183,8 +183,10 @@ const isUsableImageUrl = (url: string | undefined): boolean => {
 const cleanUserMessageContent = (content: string): string => {
   if (!content) return '';
   
-  // Step 1: Remove [obs_keys:...] patterns - these are for backend only
-  let cleaned = content.replace(/\s*\[obs_keys:[^\]]+\]/g, '');
+  // Step 1: Remove backend metadata patterns - these are for backend only
+  let cleaned = content.replace(/\s*\[obs_keys:[^\]]+\]/g, '')
+    .replace(/\s*\[cause:[^\]]+\]/g, '')
+    .replace(/\s*\[rule_id:[^\]]+\]/g, '');
   
   // Step 2: Split into lines and deduplicate
   const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
