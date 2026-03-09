@@ -27,8 +27,6 @@ export const FOLLOW_UP_GENERATOR_VERSION = '1.0.0';
 export interface FollowUpAction {
   day: number;
   action: string;
-  action_mr: string;
-  action_hi: string;
   action_en: string;
   is_critical: boolean;
   expected_outcome?: string;
