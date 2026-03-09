@@ -322,9 +322,6 @@ export function applyAgronomicCorrections<T extends Record<string, any>>(
 // GET DEFAULT IPM RECOMMENDATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function getIPMDefaultRecommendation(
-  pestCode: string,
-  ipmLevel: number = 5
 /**
  * PHASE 1 FIX: This function now returns null always.
  * Product recommendations MUST come from the decision_rules table,
@@ -332,14 +329,13 @@ export function getIPMDefaultRecommendation(
  */
 export function getIPMDefaultRecommendation(
   pestCode: string,
-  ipmLevel: number = 5
+  _ipmLevel: number = 5
 ): {
   product_name: string;
   dosage: string;
   application_method: string;
   phi_days?: number;
 } | null {
-  // DEPRECATED: All product data must come from decision_rules table
   console.log(`⚠️ [AgronomicValidator] getIPMDefaultRecommendation() called for ${pestCode} - returning null (DB-only policy)`);
   return null;
 }
