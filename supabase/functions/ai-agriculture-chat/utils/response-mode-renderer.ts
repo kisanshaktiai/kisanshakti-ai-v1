@@ -289,13 +289,13 @@ export function renderByMode(
     const options = content.options || [];
     const headerText = hasTextContent(content.primary_text) 
       ? content.primary_text 
-      : (MODE_TEMPLATES.CLARIFICATION_REQUIRED[lang] || MODE_TEMPLATES.CLARIFICATION_REQUIRED['en']);
+      : MODE_TEMPLATES.CLARIFICATION_REQUIRED;
     
     return {
       response_mode: ResponseMode.CLARIFICATION,
       primary_message: headerText,
       options: options,
-      is_valid: true, // Valid even without text if options exist
+      is_valid: true,
       render_source: 'MODE_RENDERER'
     };
   }
