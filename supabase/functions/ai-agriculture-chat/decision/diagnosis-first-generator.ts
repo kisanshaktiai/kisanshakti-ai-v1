@@ -459,9 +459,9 @@ export async function generateDiagnosisFirstResponse(
   };
   
   // Generate question text
-  const questionText = getQuestionText(diagnoses, language);
+  const questionText = getQuestionText(validatedDiagnoses, language);
   
-  console.log(`   ✅ Generated ${diagnoses.length} diagnosis options + photo option`);
+  console.log(`   ✅ Generated ${validatedDiagnoses.length} diagnosis options (filtered from ${diagnoses.length}) + photo option`);
   console.log(`   Question: "${questionText.substring(0, 60)}..."`);
   console.log(`═══════════════════════════════════════════════════════════════\n`);
   
@@ -469,7 +469,7 @@ export async function generateDiagnosisFirstResponse(
     mode: 'DIAGNOSIS_FIRST',
     source: 'DECISION_RULES',
     question_text: questionText,
-    diagnoses,
+    diagnoses: validatedDiagnoses,
     photo_option: photoOption,
     crop_code,
     growth_stage,
