@@ -1023,34 +1023,88 @@ export type Database = {
       }
       agro_climatic_zones: {
         Row: {
+          avg_rainfall_mm: number | null
+          climate_type: string | null
           country_id: string | null
           created_at: string | null
+          critical_period_end: string | null
+          critical_period_start: string | null
           cropping_pattern: string | null
           description: string | null
+          humidity_avg: number | null
           id: string
           is_active: boolean | null
+          major_crops: string | null
           name: string
+          notes: string | null
+          rainfall_pattern: string | null
+          soil_types: string | null
+          spray_humidity_min: number | null
+          spray_temp_max: number | null
+          spray_wind_threshold_kmph: number | null
+          states_covered: string | null
+          temp_max_summer: number | null
+          temp_max_winter: number | null
+          temp_min_summer: number | null
+          temp_min_winter: number | null
           updated_at: string | null
+          zone_code: string | null
         }
         Insert: {
+          avg_rainfall_mm?: number | null
+          climate_type?: string | null
           country_id?: string | null
           created_at?: string | null
+          critical_period_end?: string | null
+          critical_period_start?: string | null
           cropping_pattern?: string | null
           description?: string | null
+          humidity_avg?: number | null
           id?: string
           is_active?: boolean | null
+          major_crops?: string | null
           name: string
+          notes?: string | null
+          rainfall_pattern?: string | null
+          soil_types?: string | null
+          spray_humidity_min?: number | null
+          spray_temp_max?: number | null
+          spray_wind_threshold_kmph?: number | null
+          states_covered?: string | null
+          temp_max_summer?: number | null
+          temp_max_winter?: number | null
+          temp_min_summer?: number | null
+          temp_min_winter?: number | null
           updated_at?: string | null
+          zone_code?: string | null
         }
         Update: {
+          avg_rainfall_mm?: number | null
+          climate_type?: string | null
           country_id?: string | null
           created_at?: string | null
+          critical_period_end?: string | null
+          critical_period_start?: string | null
           cropping_pattern?: string | null
           description?: string | null
+          humidity_avg?: number | null
           id?: string
           is_active?: boolean | null
+          major_crops?: string | null
           name?: string
+          notes?: string | null
+          rainfall_pattern?: string | null
+          soil_types?: string | null
+          spray_humidity_min?: number | null
+          spray_temp_max?: number | null
+          spray_wind_threshold_kmph?: number | null
+          states_covered?: string | null
+          temp_max_summer?: number | null
+          temp_max_winter?: number | null
+          temp_min_summer?: number | null
+          temp_min_winter?: number | null
           updated_at?: string | null
+          zone_code?: string | null
         }
         Relationships: []
       }
@@ -4381,6 +4435,99 @@ export type Database = {
         }
         Relationships: []
       }
+      crop_baseline_guidelines_v2: {
+        Row: {
+          created_at: string | null
+          critical_moisture_percent: number | null
+          crop_code: string
+          das_end: number | null
+          das_start: number | null
+          growth_stage: string
+          id: string
+          iron_optimal: number | null
+          irrigation_interval_days: number | null
+          is_active: boolean | null
+          nitrogen_max: number | null
+          nitrogen_min: number | null
+          nitrogen_optimal: number | null
+          notes: string | null
+          phosphorus_max: number | null
+          phosphorus_min: number | null
+          phosphorus_optimal: number | null
+          potassium_max: number | null
+          potassium_min: number | null
+          potassium_optimal: number | null
+          soil_ec_max: number | null
+          soil_ph_max: number | null
+          soil_ph_min: number | null
+          source_reference: string | null
+          sulphur_optimal: number | null
+          updated_at: string | null
+          water_requirement_mm: number | null
+          zinc_optimal: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          critical_moisture_percent?: number | null
+          crop_code: string
+          das_end?: number | null
+          das_start?: number | null
+          growth_stage: string
+          id?: string
+          iron_optimal?: number | null
+          irrigation_interval_days?: number | null
+          is_active?: boolean | null
+          nitrogen_max?: number | null
+          nitrogen_min?: number | null
+          nitrogen_optimal?: number | null
+          notes?: string | null
+          phosphorus_max?: number | null
+          phosphorus_min?: number | null
+          phosphorus_optimal?: number | null
+          potassium_max?: number | null
+          potassium_min?: number | null
+          potassium_optimal?: number | null
+          soil_ec_max?: number | null
+          soil_ph_max?: number | null
+          soil_ph_min?: number | null
+          source_reference?: string | null
+          sulphur_optimal?: number | null
+          updated_at?: string | null
+          water_requirement_mm?: number | null
+          zinc_optimal?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          critical_moisture_percent?: number | null
+          crop_code?: string
+          das_end?: number | null
+          das_start?: number | null
+          growth_stage?: string
+          id?: string
+          iron_optimal?: number | null
+          irrigation_interval_days?: number | null
+          is_active?: boolean | null
+          nitrogen_max?: number | null
+          nitrogen_min?: number | null
+          nitrogen_optimal?: number | null
+          notes?: string | null
+          phosphorus_max?: number | null
+          phosphorus_min?: number | null
+          phosphorus_optimal?: number | null
+          potassium_max?: number | null
+          potassium_min?: number | null
+          potassium_optimal?: number | null
+          soil_ec_max?: number | null
+          soil_ph_max?: number | null
+          soil_ph_min?: number | null
+          source_reference?: string | null
+          sulphur_optimal?: number | null
+          updated_at?: string | null
+          water_requirement_mm?: number | null
+          zinc_optimal?: number | null
+        }
+        Relationships: []
+      }
       crop_code_fix_mapping: {
         Row: {
           fixed_at: string | null
@@ -5569,6 +5716,39 @@ export type Database = {
           growth_stage?: string
           id?: string
           stage_description?: string | null
+        }
+        Relationships: []
+      }
+      crop_synonyms: {
+        Row: {
+          canonical_crop: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          language_code: string
+          region: string | null
+          variant_name: string
+          variant_type: string
+        }
+        Insert: {
+          canonical_crop: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          language_code?: string
+          region?: string | null
+          variant_name: string
+          variant_type?: string
+        }
+        Update: {
+          canonical_crop?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          language_code?: string
+          region?: string | null
+          variant_name?: string
+          variant_type?: string
         }
         Relationships: []
       }
@@ -7700,6 +7880,7 @@ export type Database = {
       }
       etl_standards: {
         Row: {
+          action_threshold: number | null
           created_at: string | null
           crop_code: string
           etl_unit: string
@@ -7707,14 +7888,17 @@ export type Database = {
           growth_stage: string[] | null
           icar_source: string | null
           id: string
+          is_active: boolean | null
           pest_code: string
           pest_name_en: string
           pest_name_hi: string | null
           pest_name_mr: string | null
           sampling_method: string | null
+          sampling_unit: string | null
           updated_at: string | null
         }
         Insert: {
+          action_threshold?: number | null
           created_at?: string | null
           crop_code: string
           etl_unit: string
@@ -7722,14 +7906,17 @@ export type Database = {
           growth_stage?: string[] | null
           icar_source?: string | null
           id?: string
+          is_active?: boolean | null
           pest_code: string
           pest_name_en: string
           pest_name_hi?: string | null
           pest_name_mr?: string | null
           sampling_method?: string | null
+          sampling_unit?: string | null
           updated_at?: string | null
         }
         Update: {
+          action_threshold?: number | null
           created_at?: string | null
           crop_code?: string
           etl_unit?: string
@@ -7737,11 +7924,13 @@ export type Database = {
           growth_stage?: string[] | null
           icar_source?: string | null
           id?: string
+          is_active?: boolean | null
           pest_code?: string
           pest_name_en?: string
           pest_name_hi?: string | null
           pest_name_mr?: string | null
           sampling_method?: string | null
+          sampling_unit?: string | null
           updated_at?: string | null
         }
         Relationships: []
