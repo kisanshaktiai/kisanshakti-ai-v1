@@ -127,8 +127,6 @@ export interface AgronomicValidationResult {
 export interface AgronomicError {
   code: string;
   message_en: string;
-  message_mr: string;
-  message_hi: string;
   severity: 'CRITICAL' | 'HIGH' | 'MEDIUM';
   field: string;
   original_value: string;
