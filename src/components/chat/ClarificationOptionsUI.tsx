@@ -40,6 +40,8 @@ function cleanOptionLabel(label: string): string {
   if (!label) return '';
   return label
     .replace(/\s*\[obs_keys:[^\]]+\]/gi, '')  // Remove [obs_keys:...]
+    .replace(/\s*\[cause:[^\]]+\]/gi, '')      // Remove [cause:...]
+    .replace(/\s*\[rule_id:[^\]]+\]/gi, '')    // Remove [rule_id:...]
     .replace(/\s+/g, ' ')                      // Normalize whitespace
     .trim();
 }
@@ -56,6 +58,10 @@ export interface ClarificationOption {
   /** CRITICAL: Observation key for rule engine re-evaluation */
   observation_key?: string;
   diagnostic_power?: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** FIX #1: Cause name for confirmed diagnosis bypass */
+  cause?: string;
+  /** FIX #1: Rule ID for direct rule loading on confirmation */
+  rule_id?: string;
 }
 
 type SelectionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
@@ -393,10 +399,13 @@ export function ClarificationOptionsUI({
       return;
     }
     
-    // Build payload with embedded observation key for deterministic backend parsing
+    // Build payload with embedded observation key + cause + rule_id for deterministic backend parsing
+    // FIX #1: Embed cause and rule_id so orchestrator can bypass generic re-matching
     const observationKey = option.observation_key || option.value;
+    const causeTag = option.cause ? ` [cause:${option.cause}]` : '';
+    const ruleIdTag = option.rule_id ? ` [rule_id:${option.rule_id}]` : '';
     const payload = observationKey 
-      ? `${option.label} [obs_keys:${observationKey}]`
+      ? `${option.label} [obs_keys:${observationKey}]${causeTag}${ruleIdTag}`
       : option.label;
     
     console.log(`[ClarificationOptionsUI] Single select: ${payload}`);
