@@ -1855,41 +1855,13 @@ serve(async (req) => {
  * Normalize message content to English for NLU processing
  * Maps common agricultural terms from regional languages to English
  */
+/**
+ * @deprecated REMOVED — normalizeToEnglish had only 23 hardcoded mappings,
+ * creating half-translated hybrid strings. LLM Semantic Extractor handles
+ * all languages natively. Kept as no-op for any stale call sites.
+ */
 function normalizeToEnglish(content: string): string {
-  // Common agricultural term mappings
-  const termMappings: Record<string, string> = {
-    // Marathi terms
-    'ऊस': 'sugarcane',
-    'मधली सुरळी': 'shoot borer',
-    'खोड किडा': 'stem borer',
-    'कापूस': 'cotton',
-    'सोयाबीन': 'soybean',
-    'तूर': 'tur dal',
-    'गहू': 'wheat',
-    'भात': 'paddy',
-    'ज्वारी': 'jowar',
-    'बाजरी': 'bajra',
-    'फवारणी': 'spray',
-    'खत': 'fertilizer',
-    'पाणी': 'water',
-    'रोग': 'disease',
-    'किडा': 'pest',
-    'पान': 'leaf',
-    // Hindi terms
-    'गन्ना': 'sugarcane',
-    'कीट': 'pest',
-    'बीमारी': 'disease',
-    'छिड़काव': 'spray',
-    'उर्वरक': 'fertilizer',
-    'सिंचाई': 'irrigation'
-  };
-  
-  let normalized = content;
-  for (const [regional, english] of Object.entries(termMappings)) {
-    normalized = normalized.replace(new RegExp(regional, 'gi'), english);
-  }
-  
-  return normalized;
+  return content;
 }
 
 /**
