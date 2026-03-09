@@ -352,5 +352,7 @@ export default {
   checkETLThreshold,
   shouldBlockSpray,
   getETLAdvice,
-  logETLValidation
+  logETLValidation,
+  loadETLStandards,
+  lookupETLFromStandards
 };
