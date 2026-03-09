@@ -5198,12 +5198,27 @@ export class AIAgentOrchestrator {
         const isPrescriptionGateOverride = prescriptionGate.allowed && 
           canonicalState.data_confidence === 'LOW';
         
-        // PHASE-18: Pre-load ETL standards from DB (cached after first call)
+        // PHASE-18: Pre-load ETL standards + agro zones + baselines from DB (cached after first call)
         try {
-          const { loadETLStandards } = await import('../decision/etl-gate.ts');
-          await loadETLStandards(this.supabase);
+          const [
+            { loadETLStandards },
+            { loadAgroZones },
+            { loadBaselineGuidelines },
+            { loadCropSynonyms }
+          ] = await Promise.all([
+            import('../decision/etl-gate.ts'),
+            import('../utils/agro-zone-cache.ts'),
+            import('../utils/baseline-guidelines-cache.ts'),
+            import('../utils/crop-synonyms-cache.ts')
+          ]);
+          await Promise.all([
+            loadETLStandards(this.supabase),
+            loadAgroZones(this.supabase),
+            loadBaselineGuidelines(this.supabase),
+            loadCropSynonyms(this.supabase)
+          ]);
         } catch (e) {
-          console.warn(`⚠️ ETL standards pre-load failed:`, e instanceof Error ? e.message : 'unknown');
+          console.warn(`⚠️ Knowledge base pre-load failed:`, e instanceof Error ? e.message : 'unknown');
         }
         
         layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
