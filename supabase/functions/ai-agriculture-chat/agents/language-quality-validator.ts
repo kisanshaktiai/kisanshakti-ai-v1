@@ -242,31 +242,9 @@ export function validateLanguageQuality(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TERM REPLACEMENT FUNCTION
+// TERM REPLACEMENT FUNCTION - REMOVED (Dead code: zero callers)
+// Translation is handled by the LLM narration layer at runtime.
 // ═══════════════════════════════════════════════════════════════════════════
-
-export function enforceTermConsistency(
-  text: string,
-  language: string
-): string {
-  if (language === 'en') return text;
-  
-  let result = text;
-  
-  // Replace any inconsistent translations with fixed ones
-  for (const [term, translations] of Object.entries(FIXED_TRANSLATIONS)) {
-    const translation = translations[language];
-    if (!translation) continue;
-    
-    // If the English term appears, replace with proper translation
-    const termPattern = new RegExp(term.replace(/_/g, '[_\\s]'), 'gi');
-    if (termPattern.test(result)) {
-      result = result.replace(termPattern, translation);
-    }
-  }
-  
-  return result;
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SAFE FALLBACK MESSAGE
