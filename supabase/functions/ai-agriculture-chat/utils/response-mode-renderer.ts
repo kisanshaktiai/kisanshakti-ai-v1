@@ -369,7 +369,7 @@ export function renderByMode(
   console.warn(`[ResponseModeRenderer] Unknown mode '${modeStr}', defaulting to OBSERVATION`);
   return {
     response_mode: ResponseMode.OBSERVATION,
-    primary_message: MODE_TEMPLATES.OBSERVATION[lang] || MODE_TEMPLATES.OBSERVATION['en'],
+    primary_message: MODE_TEMPLATES.OBSERVATION,
     is_valid: true,
     render_source: 'FALLBACK'
   };
