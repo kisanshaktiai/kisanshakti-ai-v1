@@ -5158,6 +5158,14 @@ export class AIAgentOrchestrator {
         const isPrescriptionGateOverride = prescriptionGate.allowed && 
           canonicalState.data_confidence === 'LOW';
         
+        // PHASE-18: Pre-load ETL standards from DB (cached after first call)
+        try {
+          const { loadETLStandards } = await import('../decision/etl-gate.ts');
+          await loadETLStandards(this.supabase);
+        } catch (e) {
+          console.warn(`⚠️ ETL standards pre-load failed:`, e instanceof Error ? e.message : 'unknown');
+        }
+        
         layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
           prescriptionGateOverride: isPrescriptionGateOverride,
           traceId: traceId

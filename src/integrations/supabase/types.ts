@@ -14132,6 +14132,7 @@ export type Database = {
           description: string
           is_active: boolean
           is_diagnostic: boolean | null
+          is_farmer_observable: boolean | null
           observation_category: string | null
           observation_code: string
           symptom_category: string | null
@@ -14144,6 +14145,7 @@ export type Database = {
           description: string
           is_active?: boolean
           is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
           observation_category?: string | null
           observation_code: string
           symptom_category?: string | null
@@ -14156,6 +14158,7 @@ export type Database = {
           description?: string
           is_active?: boolean
           is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
           observation_category?: string | null
           observation_code?: string
           symptom_category?: string | null
