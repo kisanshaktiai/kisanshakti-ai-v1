@@ -112,13 +112,6 @@ const PHOTO_GUIDANCE_TEMPLATE: PhotoGuidance = {
   what_to_capture: 'Take a close-up photo of the affected leaf or stem',
   tips: ['Take photo in good lighting', 'Choose an angle where symptoms are clearly visible']
 };
-  OBSERVATION: {
-    mr: '👀 पिकाचे निरीक्षण करत रहा. समस्या वाढल्यास पुन्हा संपर्क करा.',
-    hi: '👀 फसल की निगरानी जारी रखें। समस्या बढ़े तो संपर्क करें।',
-    en: '👀 Continue observing your crop. Contact us if the issue worsens.',
-    pa: '👀 ਫਸਲ ਦੀ ਨਿਗਰਾਨੀ ਜਾਰੀ ਰੱਖੋ। ਸਮੱਸਿਆ ਵਧੇ ਤਾਂ ਸੰਪਰਕ ਕਰੋ।',
-    ta: '👀 பயிரை கவனித்துக் கொண்டிருங்கள். பிரச்சனை அதிகரித்தால் தொடர்பு கொள்ளுங்கள்.'
-  },
   PHOTO_REQUIRED: {
     mr: '📷 कृपया प्रभावित पिकाचा फोटो पाठवा. यामुळे अचूक निदान होईल.',
     hi: '📷 कृपया प्रभावित फसल का फोटो भेजें। इससे सटीक निदान होगा।',
