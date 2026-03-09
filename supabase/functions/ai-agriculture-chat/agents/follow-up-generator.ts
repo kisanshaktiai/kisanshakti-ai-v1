@@ -143,9 +143,7 @@ export function generateFollowUpPlan(
     treatment_applied: treatmentApplied,
     actions,
     expected_recovery_days: expectations?.timeline_days || 14,
-    recovery_indicator: expectations?.will_recover[0] || 'Improvement in plant health',
-    recovery_indicator_mr: 'पिकाच्या आरोग्यात सुधारणा',
-    recovery_indicator_hi: 'पौधे की सेहत में सुधार'
+    recovery_indicator: expectations?.will_recover[0] || 'Improvement in plant health'
   };
 }
 
