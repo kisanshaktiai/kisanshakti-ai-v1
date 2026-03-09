@@ -306,9 +306,9 @@ export function renderByMode(
   if (modeStr === 'PHOTO_REQUIRED' || modeStr === 'PHOTO') {
     return {
       response_mode: 'PHOTO_REQUIRED',
-      primary_message: MODE_TEMPLATES.PHOTO_REQUIRED[lang] || MODE_TEMPLATES.PHOTO_REQUIRED['en'],
+      primary_message: MODE_TEMPLATES.PHOTO_REQUIRED,
       request_photo: true,
-      photo_guidance: PHOTO_GUIDANCE_TEMPLATES[lang] || PHOTO_GUIDANCE_TEMPLATES['en'],
+      photo_guidance: PHOTO_GUIDANCE_TEMPLATE,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
