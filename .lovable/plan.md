@@ -1,4 +1,70 @@
-# Full Codebase Capability Audit — KisanShakti Symbolic Decision Brain
+# KisanShakti AI — Production Readiness Audit
+## Status: ✅ APPROVED (2026-03-09)
+
+---
+
+## Production Readiness Scores
+
+| Category | Score |
+|----------|-------|
+| White-Label Architecture | **8/10** |
+| Multi-Tenant SaaS Readiness | **7/10** |
+| Overall Production Readiness | **6.5/10** |
+
+---
+
+## Critical Fix Plan (Priority Order)
+
+### P0 — Immediate (This Week)
+
+| # | Fix | Status |
+|---|-----|--------|
+| 1 | Fix LLM validation gate false positives | ✅ DONE |
+| 2 | Replace 6 remaining Chlorpyrifos rules | 🔲 TODO |
+| 3 | Delete 39 backup tables | 🔲 TODO |
+| 4 | Add composite index on `decision_rules` | 🔲 TODO |
+
+### P1 — Next Sprint
+
+| # | Fix | Status |
+|---|-----|--------|
+| 5 | Consolidate 7 response builders to 2 | 🔲 TODO |
+| 6 | Migrate hardcoded translations to DB | 🔲 TODO |
+| 7 | Audit and fix RLS policies (321 warnings) | 🔲 TODO |
+| 8 | Remove `_deprecated/` folder | 🔲 TODO |
+
+### P2 — Next Month
+
+| # | Fix | Status |
+|---|-----|--------|
+| 9 | Split `orchestrator.ts` (8,900 lines) into modules | 🔲 TODO |
+| 10 | Implement rule pre-filtering (DB-level) | 🔲 TODO |
+| 11 | Add database indexes | 🔲 TODO |
+| 12 | Create crop rules for Rice/Wheat | 🔲 TODO |
+
+---
+
+## 2030-Ready Architecture Roadmap
+
+| Phase | Timeline | Focus |
+|-------|----------|-------|
+| 1 | Q1 | Modularization (split orchestrator into 6 pipeline modules) |
+| 2 | Q2 | Scalability (sharding by tenant_id, read replicas, CDN) |
+| 3 | Q3-Q4 | AI Evolution (pest ontology, weather API, CV for disease) |
+| 4 | 2027+ | Enterprise (quotas, multi-region, compliance export) |
+
+---
+
+## Recent Completions
+
+- ✅ Language-agnostic LLM formatter (removed hardcoded Marathi/Hindi from FORMAT templates)
+- ✅ Devanagari numeral normalization in validation gate (9 Indian scripts)
+- ✅ Emoji-based section detection (language-neutral anchors: 🎯📋⚠️🙏✅)
+- ✅ Soft warnings for transliterated product names (no more false English fallbacks)
+
+---
+
+# Full Codebase Capability Audit — Symbolic Decision Brain
 
 ## Audit Status: ✅ COMPLETE (2026-03-08)
 
