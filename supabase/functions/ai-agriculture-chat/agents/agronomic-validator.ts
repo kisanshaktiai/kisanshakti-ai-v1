@@ -189,8 +189,6 @@ export function validateAgronomicAccuracy(
         errors.push({
           code: 'PEST_METHOD_MISMATCH',
           message_en: `Foliar spray is ineffective for ${pestCode} (a boring pest). Use soil/granular application.`,
-          message_mr: `${pestCode} (खोडकिडा) साठी फवारणी प्रभावी नाही. जमिनीत औषध द्या.`,
-          message_hi: `${pestCode} (तना छेदक) के लिए छिड़काव प्रभावी नहीं है। मिट्टी में दवा दें।`,
           severity: 'CRITICAL',
           field: 'application_method',
           original_value: method,
