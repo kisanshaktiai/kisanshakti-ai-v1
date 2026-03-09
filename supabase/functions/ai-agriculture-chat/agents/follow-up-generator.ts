@@ -153,28 +153,14 @@ export function generateFollowUpPlan(
 
 export function formatFollowUpPlan(
   plan: FollowUpPlan,
-  language: string
+  _language: string
 ): string {
-  const headers: Record<string, string> = {
-    mr: '📅 पाठपुरावा योजना (Follow-up Plan):',
-    hi: '📅 फॉलो-अप योजना:',
-    en: '📅 Follow-up Plan:'
-  };
-  
-  const dayLabels: Record<string, string> = {
-    mr: 'दिवस',
-    hi: 'दिन',
-    en: 'Day'
-  };
-  
-  const output = `\n${headers[language] || headers['en']}\n`;
+  let output = `\n📅 Follow-up Plan:\n`;
   output += '─'.repeat(40) + '\n';
   
   for (const action of plan.actions) {
-    const actionText = (action as any)[`action_${language}`] || action.action_en;
-    
     const critical = action.is_critical ? ' ⚠️' : '';
-    output += `| ${dayLabels[language] || dayLabels['en']} ${action.day}:`.padEnd(12) + `| ${actionText}${critical}\n`;
+    output += `| Day ${action.day}:`.padEnd(12) + `| ${action.action_en}${critical}\n`;
   }
   
   output += '─'.repeat(40);
