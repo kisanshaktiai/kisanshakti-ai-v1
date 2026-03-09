@@ -2093,35 +2093,36 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   // ═══════════════════════════════════════════════════════════════════════════
   // LEGACY TEMPLATE FALLBACK — only when deterministic builder has no content
   // ═══════════════════════════════════════════════════════════════════════════
-  // CRITICAL FIX: Generate localized content instead of English-only
+  // LANGUAGE-AGNOSTIC LEGACY TEMPLATE FALLBACK
+  // English structural content — forceTranslateResponse() handles localization downstream
   // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
-  // English-only structural template — LLM narration translates at runtime
-  parts.push('Hello farmer friend! 🌾');
+  // English structural template — downstream forceTranslateResponse() will localize
+  parts.push('🌾 Hello farmer friend!');
   
   const currentCrop = input.land_context?.current_crop;
   if (currentCrop) {
     parts.push(`I understand your question about ${currentCrop}.`);
   }
   
-  // Legacy fallback: minimal safe response
+  // Legacy fallback: minimal safe response from rule data (English SSOT)
   const matchedResponses = decision?.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
-    parts.push('📌 **Recommendation (from rule database):**');
+    parts.push('📋 **Recommendation (from rule database):**');
     
     matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
       const actionContent = resp.action_text || resp.reason_text || 'Monitor crop and share a photo if needed';
-      parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
+      parts.push(`\n${idx + 1}. ${actionContent}`);
     });
   } else {
-    parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
+    parts.push('👀 For accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
   }
   
-  parts.push('\n🙏 Feel free to ask if you need clarification. Best wishes!');
+  parts.push('\n🙏 Feel free to ask if you need clarification.');
   
   const finalResponse = parts.join('\n\n');
-  console.log(`   📋 Localized legacy template fallback generated: ${finalResponse.length} chars, lang=${lang}`);
+  console.log(`   📋 Legacy template fallback generated (English SSOT, forceTranslate will localize): ${finalResponse.length} chars, lang=${lang}`);
   
   return {
     formatted_response: finalResponse,
