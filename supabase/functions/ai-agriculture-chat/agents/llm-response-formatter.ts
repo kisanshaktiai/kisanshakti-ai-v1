@@ -2323,31 +2323,59 @@ function validateCropNameConsistency(
   const expectedAliases = CROP_NAME_ALIASES[normalizedCrop] || CROP_NAME_ALIASES[authorizedCrop.toUpperCase()] || [];
   const expectedCropPresentInOutput = expectedAliases.some(a => llmOutput.toLowerCase().includes(a.toLowerCase()));
   
+  // CRITICAL FIX: For Devanagari/non-Latin scripts, also do direct substring matching
+  // (not just English subject patterns which miss Marathi/Hindi crop names)
+  const cleanedOutputLower = cleanedOutput.toLowerCase();
+  const llmOutputLower = llmOutput.toLowerCase();
+  
   // Check that the output doesn't prominently mention a DIFFERENT crop
   for (const [cropKey, aliases] of Object.entries(CROP_NAME_ALIASES)) {
     if (cropKey === normalizedCrop || cropKey === authorizedCrop.toUpperCase()) continue;
     
-    // Check if another crop is mentioned as the main subject (not incidental)
     for (const alias of aliases) {
-      // Look for patterns like "your [crop]" or "[crop] crop" that indicate main subject
-      const subjectPatterns = [
-        new RegExp(`your\\s+${alias}`, 'i'),
-        new RegExp(`${alias}\\s+crop`, 'i'),
-        new RegExp(`${alias}\\s+field`, 'i'),
-        new RegExp(`in\\s+${alias}`, 'i'),
-      ];
+      if (alias.length < 3) continue; // Skip very short aliases to avoid false positives
       
-      for (const pattern of subjectPatterns) {
-        if (pattern.test(cleanedOutput)) {
-          // FIX 6: Downgrade from hard-block to warning if expected crop IS also present
+      // ENHANCED: Direct substring match for Devanagari crop names
+      // Previously only checked English patterns like "your wheat", "wheat crop"
+      // This catches "गहू" in Marathi output when crop should be "ऊस"
+      const isDevanagari = /[\u0900-\u097F]/.test(alias);
+      
+      if (isDevanagari) {
+        // For Devanagari aliases, simple substring match is sufficient
+        // because Devanagari crop names are specific enough to not be substrings of other words
+        if (llmOutputLower.includes(alias.toLowerCase())) {
           if (expectedCropPresentInOutput) {
-            console.warn(`⚠️ [CROP_CONSISTENCY] Wrong crop "${alias}" mentioned alongside correct crop "${authorizedCrop}" — warning only, not blocking`);
-            return { valid: true, violation: '' };  // Allow response through
+            console.warn(`⚠️ [CROP_CONSISTENCY] Wrong crop "${alias}" (${cropKey}) mentioned alongside correct crop "${authorizedCrop}" — warning only`);
+            return { valid: true, violation: '' };
           }
+          console.error(`🚫 [CROP_CONSISTENCY] Devanagari crop mismatch: "${alias}" (${cropKey}) found but authorized crop is ${authorizedCrop}`);
           return {
             valid: false,
             violation: `Crop mismatch: LLM mentions "${alias}" (${cropKey}) but authorized crop is ${authorizedCrop}`
           };
+        }
+      } else {
+        // For Latin-script aliases, use subject pattern matching to avoid false positives
+        const subjectPatterns = [
+          new RegExp(`your\\s+${alias}`, 'i'),
+          new RegExp(`${alias}\\s+crop`, 'i'),
+          new RegExp(`${alias}\\s+field`, 'i'),
+          new RegExp(`in\\s+${alias}`, 'i'),
+          // ENHANCED: Also check Romanized patterns without English context words
+          new RegExp(`\\b${alias}\\b`, 'i'),
+        ];
+        
+        for (const pattern of subjectPatterns) {
+          if (pattern.test(cleanedOutput)) {
+            if (expectedCropPresentInOutput) {
+              console.warn(`⚠️ [CROP_CONSISTENCY] Wrong crop "${alias}" mentioned alongside correct crop "${authorizedCrop}" — warning only, not blocking`);
+              return { valid: true, violation: '' };
+            }
+            return {
+              valid: false,
+              violation: `Crop mismatch: LLM mentions "${alias}" (${cropKey}) but authorized crop is ${authorizedCrop}`
+            };
+          }
         }
       }
     }
