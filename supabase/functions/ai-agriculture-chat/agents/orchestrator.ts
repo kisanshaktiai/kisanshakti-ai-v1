@@ -1540,6 +1540,19 @@ export class AIAgentOrchestrator {
         const obsKeysMatch = safeFarmerMessage.match(/\[obs_keys:([^\]]+)\]/);
         const embeddedObservationKeys = obsKeysMatch ? obsKeysMatch[1].split(',').filter(k => k.trim()) : [];
         
+        // ═══════════════════════════════════════════════════════════════════════════
+        // FIX #1: Extract cause and rule_id from confirmed diagnosis selection
+        // Frontend embeds: "Label [obs_keys:KEY] [cause:Cause Name] [rule_id:RULE_ID]"
+        // When present, this allows direct rule loading bypassing generic observation matching
+        // ═══════════════════════════════════════════════════════════════════════════
+        const causeMatch = safeFarmerMessage.match(/\[cause:([^\]]+)\]/);
+        const ruleIdMatch = safeFarmerMessage.match(/\[rule_id:([^\]]+)\]/);
+        const confirmedCause = causeMatch ? causeMatch[1].trim() : null;
+        const confirmedRuleId = ruleIdMatch ? ruleIdMatch[1].trim() : null;
+        if (confirmedCause) {
+          console.log(`   🎯 [FIX#1] Confirmed diagnosis: cause="${confirmedCause}", rule_id="${confirmedRuleId}"`);
+        }
+        
         // PATCH 2: NULL-SAFE - matchResult always returns a valid object now
         if (matchResult.matched && matchResult.matched_option) {
           console.log(`   ✅ Farmer selected option ${(matchResult.option_index || 0) + 1}: "${matchResult.matched_option}"`);
