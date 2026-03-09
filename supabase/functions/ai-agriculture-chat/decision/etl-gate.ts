@@ -20,7 +20,76 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const ETL_GATE_VERSION = '1.0.0';
+export const ETL_GATE_VERSION = '2.0.0';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ETL STANDARDS CACHE (from etl_standards table)
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ETLStandard {
+  pest_code: string;
+  crop_code: string;
+  etl_value: number;
+  etl_unit: string;
+  growth_stage: string[];
+  sampling_method: string;
+}
+
+let etlStandardsCache: ETLStandard[] | null = null;
+
+/**
+ * Pre-load ETL standards from database.
+ * Call once before rule evaluation loop to avoid N+1 queries.
+ */
+export async function loadETLStandards(supabaseClient: any): Promise<void> {
+  if (etlStandardsCache) return; // Already loaded
+  
+  try {
+    const { data, error } = await supabaseClient
+      .from('etl_standards')
+      .select('pest_code, crop_code, etl_value, etl_unit, growth_stage, sampling_method');
+    
+    if (error) {
+      console.warn(`⚠️ [ETL Gate] Failed to load etl_standards: ${error.message}`);
+      etlStandardsCache = [];
+      return;
+    }
+    
+    etlStandardsCache = (data || []) as ETLStandard[];
+    console.log(`✅ [ETL Gate] Loaded ${etlStandardsCache.length} ETL standards from DB`);
+  } catch (e) {
+    console.warn(`⚠️ [ETL Gate] etl_standards load error:`, e instanceof Error ? e.message : 'unknown');
+    etlStandardsCache = [];
+  }
+}
+
+/**
+ * Look up ETL threshold from etl_standards table by pest/crop context.
+ * Falls back to rule-level thresholds if no DB match.
+ */
+export function lookupETLFromStandards(
+  pestCode: string | undefined,
+  cropCode: string | undefined,
+  growthStage: string | undefined
+): { etl_value_min?: number; etl_value_max?: number; sampling_method?: string } | null {
+  if (!etlStandardsCache || !pestCode) return null;
+  
+  const matches = etlStandardsCache.filter(s => {
+    if (s.pest_code !== pestCode) return false;
+    if (cropCode && s.crop_code !== cropCode) return false;
+    if (growthStage && s.growth_stage?.length > 0 && !s.growth_stage.includes(growthStage)) return false;
+    return true;
+  });
+  
+  if (matches.length === 0) return null;
+  
+  const best = matches[0];
+  return {
+    etl_value_min: best.etl_value,
+    etl_value_max: best.etl_value,
+    sampling_method: best.sampling_method
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
