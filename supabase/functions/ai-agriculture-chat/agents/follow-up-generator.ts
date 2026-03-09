@@ -38,8 +38,6 @@ export interface FollowUpPlan {
   actions: FollowUpAction[];
   expected_recovery_days: number;
   recovery_indicator: string;
-  recovery_indicator_mr: string;
-  recovery_indicator_hi: string;
 }
 
 export interface RealisticExpectation {
