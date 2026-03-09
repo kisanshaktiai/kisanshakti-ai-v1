@@ -716,11 +716,7 @@ export async function generateLLMResponse(input: LLMResponseInput): Promise<{ re
   console.warn('[DEPRECATED] generateLLMResponse called - should migrate to generateNarratedResponse');
   
   // Create a minimal symbolic input with generic fallback
-  const fallbackMessages = {
-    mr: '🙏 कृपया तुमचा प्रश्न पुन्हा विचारा. मी तुमची मदत करण्यासाठी तयार आहे.',
-    hi: '🙏 कृपया अपना प्रश्न दोबारा पूछें। मैं आपकी मदद के लिए तैयार हूं।',
-    en: '🙏 Please ask your question again. I am ready to help you.'
-  };
+  const fallbackMessage = '🙏 Please ask your question again. I am ready to help you.';
   
   const symbolicInput: SymbolicNarrationInput = {
     language: input.language,

@@ -873,8 +873,6 @@ function createRetakeResponse(
       secondary_issues: [],
       contributing_factors: [],
       positive_indicators: [],
-      diagnosis_summary_mr: 'फोटो स्पष्ट नाही. कृपया पुन्हा फोटो घ्या.',
-      diagnosis_summary_hi: 'फोटो स्पष्ट नहीं है। कृपया फोटो दोबारा लें।',
       diagnosis_summary_en: 'Photo is not clear. Please retake photo.'
     },
     recommendation_to_next_agent: {
