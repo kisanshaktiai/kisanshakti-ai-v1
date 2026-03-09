@@ -91,8 +91,9 @@ export function lookupETLFromStandards(
   const best = matches[0];
   return {
     etl_value_min: best.etl_value,
-    etl_value_max: best.etl_value,
-    sampling_method: best.sampling_method
+    etl_value_max: best.action_threshold ?? best.etl_value,
+    sampling_method: best.sampling_method,
+    sampling_unit: best.sampling_unit ?? undefined
   };
 }
 
