@@ -723,7 +723,7 @@ export async function generateLLMResponse(input: LLMResponseInput): Promise<{ re
     farmer_message: input.farmer_message,
     symbolic_decision: {
       status: 'NO_MATCH',
-      fallback_text: fallbackMessages[input.language],
+      fallback_text: fallbackMessage,
       rules_applied: []
     },
     land_context: input.land_context ? {

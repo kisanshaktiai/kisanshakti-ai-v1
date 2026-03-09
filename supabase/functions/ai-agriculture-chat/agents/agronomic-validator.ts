@@ -136,8 +136,6 @@ export interface AgronomicError {
 export interface AgronomicWarning {
   code: string;
   message_en: string;
-  message_mr: string;
-  message_hi: string;
   field: string;
   suggestion: string;
 }
