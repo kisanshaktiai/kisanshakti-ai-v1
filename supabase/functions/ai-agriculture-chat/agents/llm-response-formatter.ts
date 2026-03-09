@@ -2237,19 +2237,22 @@ function validateWhatWhyHow(
 // Ensures LLM output doesn't mention wrong/unauthorized crop names
 // ═══════════════════════════════════════════════════════════════════════════
 
+// LANGUAGE-AGNOSTIC: English-only canonical aliases for crop validation.
+// The LLM translates crop names to the farmer's language at runtime —
+// validation checks the English canonical name only.
 const CROP_NAME_ALIASES: Record<string, string[]> = {
-  'SUGARCANE': ['sugarcane', 'ऊस', 'गन्ना', 'sugar cane', 'cane'],
-  'COTTON': ['cotton', 'कापूस', 'कपास', 'kapas'],
-  'RICE': ['rice', 'भात', 'धान', 'paddy', 'चावल'],
-  'WHEAT': ['wheat', 'गहू', 'गेहूं', 'gehun'],
-  'MAIZE': ['maize', 'मका', 'मक्का', 'corn'],
-  'SOYBEAN': ['soybean', 'soya', 'सोयाबीन', 'सोयाबिन'],
-  'GROUNDNUT': ['groundnut', 'भुईमूग', 'मूंगफली', 'peanut'],
-  'ONION': ['onion', 'कांदा', 'प्याज', 'pyaj'],
-  'TOMATO': ['tomato', 'टोमॅटो', 'टमाटर'],
-  'CHILLI': ['chilli', 'मिरची', 'मिर्च', 'chili', 'pepper'],
-  'GRAM': ['gram', 'हरभरा', 'चना', 'chickpea'],
-  'TUR': ['tur', 'तूर', 'अरहर', 'pigeon pea', 'toor']
+  'SUGARCANE': ['sugarcane', 'sugar cane', 'cane'],
+  'COTTON': ['cotton'],
+  'RICE': ['rice', 'paddy'],
+  'WHEAT': ['wheat'],
+  'MAIZE': ['maize', 'corn'],
+  'SOYBEAN': ['soybean', 'soya'],
+  'GROUNDNUT': ['groundnut', 'peanut'],
+  'ONION': ['onion'],
+  'TOMATO': ['tomato'],
+  'CHILLI': ['chilli', 'chili', 'pepper'],
+  'GRAM': ['gram', 'chickpea'],
+  'TUR': ['tur', 'pigeon pea', 'toor']
 };
 
 function validateCropNameConsistency(
