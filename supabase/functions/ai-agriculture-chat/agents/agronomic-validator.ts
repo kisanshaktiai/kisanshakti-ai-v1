@@ -224,8 +224,6 @@ export function validateAgronomicAccuracy(
         errors.push({
           code: 'PEST_STAGE_IMPOSSIBLE',
           message_en: `${pestCode} cannot occur during ${stage} stage. Please verify diagnosis.`,
-          message_mr: `${stage} अवस्थेत ${pestCode} होणे अशक्य आहे. कृपया निदान तपासा.`,
-          message_hi: `${stage} अवस्था में ${pestCode} असंभव है। कृपया निदान जांचें।`,
           severity: 'HIGH',
           field: 'pest_stage_combination',
           original_value: `${pestCode}@${stage}`,
