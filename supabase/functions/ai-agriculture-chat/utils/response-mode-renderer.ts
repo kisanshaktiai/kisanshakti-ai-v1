@@ -357,7 +357,7 @@ export function renderByMode(
         ? content.primary_text 
         : hasTextContent(content.custom_message)
         ? content.custom_message
-        : (MODE_TEMPLATES.INFORMATION[lang] || MODE_TEMPLATES.INFORMATION['en']),
+        : MODE_TEMPLATES.INFORMATION,
       is_valid: true,
       render_source: 'MODE_RENDERER'
     };
