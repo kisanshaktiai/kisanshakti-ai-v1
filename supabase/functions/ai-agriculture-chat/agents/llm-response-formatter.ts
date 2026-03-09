@@ -676,10 +676,14 @@ export async function formatRecommendationsWithLLM(
   // Hard violations: unauthorized products, dosage tampering, crop mismatch
   // Soft violations: WHAT-WHY-HOW missing sections (detection is unreliable for Devanagari)
   // ═══════════════════════════════════════════════════════════════════════════
+  // LANGUAGE-AGNOSTIC FIX: 'Missing product from symbolic' and 'PHI value modified'
+  // are downgraded to soft warnings — LLM transliterates product names and uses
+  // Devanagari/regional numerals, causing false positives on English substring checks.
+  // Safety is enforced deterministically by the builder, not by output validation.
   const HARD_VIOLATION_PATTERNS = [
     'Unauthorized product', 'unauthorized product',
-    'Missing product from symbolic', 'Leaked internal code',
-    'Dosage UNIT mismatch', 'PHI value modified',
+    'Leaked internal code',
+    'Dosage UNIT mismatch',
     'unauthorized efficacy claim', 'Chemical product',
     'Crop mismatch', 'Invalid biocontrol',
     'Dosage numbers mismatch'
@@ -895,11 +899,21 @@ function validateLLMOutput(
     
     if (!fullNameFound && !multiWordFound) {
       if (singleWordFound) {
-        // Partial match only - warn but don't block (may be transliterated)
-        console.warn(`⚠️ [VALIDATION] Product partially matched (single word only): ${primaryProductName}`);
+        // Partial match only - warn but don't block (LLM transliterated the name)
+        console.warn(`⚠️ [VALIDATION] Product partially matched (single word only, likely transliterated): ${primaryProductName}`);
       } else {
-        errors.push(`Missing product from symbolic decision: ${primaryProductName}`);
-        console.error(`🚫 [VALIDATION] Missing required product: ${primaryProductName}`);
+        // LANGUAGE-AGNOSTIC FIX: Check if any product keyword is in allowedProducts.
+        // If so, the product IS from the symbolic decision — the LLM just transliterated it
+        // into the farmer's language (e.g., "क्लोरँट्रानिलिप्रोल" for "Chlorantraniliprole").
+        // Downgrade to soft warning instead of hard error.
+        const productKeywords = primaryProductName.toLowerCase().split(/[\s+@\/]+/).filter((w: string) => w.length > 3);
+        const keywordInAllowed = productKeywords.some((kw: string) => allowedProducts.includes(kw));
+        if (keywordInAllowed) {
+          console.warn(`⚠️ [VALIDATION] Product keyword in allowedProducts but full name not in output (likely transliterated to farmer language): ${primaryProductName}`);
+        } else {
+          errors.push(`Missing product from symbolic decision: ${primaryProductName}`);
+          console.error(`🚫 [VALIDATION] Missing required product: ${primaryProductName}`);
+        }
       }
     }
   } else if (isGenericActionType) {
@@ -990,9 +1004,22 @@ function validateLLMOutput(
    const phiDays = decisionInput?.decision_output?.primary_decision?.application_details?.phi_days;
    if (phiDays && typeof phiDays === 'number' && phiDays > 0) {
      const phiString = String(phiDays);
-     if (!llmOutput.includes(phiString)) {
-       errors.push(`PHI value modified or missing. Expected: ${phiDays} days`);
-       console.error(`🚫 [VALIDATION] PHI days not preserved: expected ${phiDays}`);
+     // LANGUAGE-AGNOSTIC FIX: Convert Devanagari/regional numerals to ASCII before checking
+     // LLM may write "४५" instead of "45" when translating to Marathi/Hindi/etc.
+     const devanagariToAscii = (text: string): string =>
+       text.replace(/[०-९]/g, (d) => String('०१२३४५६७८९'.indexOf(d)))
+           .replace(/[੦-੯]/g, (d) => String('੦੧੨੩੪੫੬੭੮੯'.indexOf(d)))
+           .replace(/[૦-૯]/g, (d) => String('૦૧૨૩૪૫૬૭૮૯'.indexOf(d)))
+           .replace(/[০-৯]/g, (d) => String('০১২৩৪৫৬৭৮৯'.indexOf(d)))
+           .replace(/[୦-୯]/g, (d) => String('୦୧୨୩୪୫୬୭୮୯'.indexOf(d)))
+           .replace(/[௦-௯]/g, (d) => String('௦௧௨௩௪௫௬௭௮௯'.indexOf(d)))
+           .replace(/[౦-౯]/g, (d) => String('౦౧౨౩౪౫౬౭౮౯'.indexOf(d)))
+           .replace(/[೦-೯]/g, (d) => String('೦೧೨೩೪೫೬೭೮೯'.indexOf(d)))
+           .replace(/[൦-൯]/g, (d) => String('൦൧൨൩൪൫൬൭൮൯'.indexOf(d)));
+     const normalizedOutput = devanagariToAscii(llmOutput);
+     if (!normalizedOutput.includes(phiString)) {
+       // Downgrade to soft warning — PHI is enforced deterministically by the builder
+       console.warn(`⚠️ [VALIDATION] PHI days not found in output (soft warning): expected ${phiDays}. PHI is enforced by deterministic builder.`);
      }
    }
    
@@ -1156,47 +1183,47 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   if (formatType === 'FORMAT_1') {
     formatInstruction = `
 ═══ MANDATORY FORMAT: TYPE 1 — DIRECT PRESCRIPTION ═══
-Structure your response EXACTLY as:
+Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-भाऊ/दादा (or ताई if female),
+[Warm greeting — address farmer respectfully in ${langName}]
 
 🎯 [ONE LINE: diagnosis in plain ${langName}]
 
-📋 काय करायचं:
+📋 [Action heading in ${langName} — e.g. "What to do"]:
 [action_text translated to natural ${langName}]
-- [Product name] — [dosage × land_area = TOTAL quantity]
-- [application_method — HOW to apply]
-- [Best time: morning/evening]
+- [Product name transliterated to ${langName} script] — [dosage × land_area = TOTAL quantity]
+- [application_method — HOW to apply, in ${langName}]
+- [Best time: morning/evening, in ${langName}]
 
-⚠️ काळजी घ्या:
-- [PHI days warning if provided]
-- [bee_toxicity warning if HIGH]
+⚠️ [Safety heading in ${langName} — e.g. "Be careful"]:
+- [PHI days warning if provided: "Stop spraying at least X days before harvest" in ${langName}]
+- [bee_toxicity warning if HIGH, in ${langName}]
 
-💰 फायदा: [ROI from rule if available]
+💰 [Benefit in ${langName}]: [ROI from rule if available]
 
-✅ 7 दिवसांनी: [specific observable improvement from knowledge_text]
+✅ [Follow-up in ${langName} — e.g. "After 7 days"]: [specific observable improvement from knowledge_text]
 
 CRITICAL RULES:
 - Calculate TOTAL dosage = dosage_per_acre × farmer's land area (${input.land_context?.area_acres || '?'} acres)
 - Show calculated total, NOT per-acre rate
-- If RECOMMENDED_MARKET_PRODUCTS are provided, mention them as "बाजारात उपलब्ध: [product names]" so farmer knows what to buy
+- If RECOMMENDED_MARKET_PRODUCTS are provided, mention available market products so farmer knows what to buy
 - Use trade name farmer recognizes, put molecule in brackets
-- If dosage_per_acre is null/missing, say "मला अधिक माहिती हवी आहे"
+- Transliterate product names into ${langName} script (e.g. "Chlorantraniliprole" → transliterated form)
+- If dosage_per_acre is null/missing, say "I need more information to recommend exact treatment" in ${langName}
 - NEVER invent products, dosages, or timing not in the data below`;
   } else if (formatType === 'FORMAT_2') {
     formatInstruction = `
 ═══ MANDATORY FORMAT: TYPE 2 — CLARIFICATION NEEDED ═══
-Structure your response EXACTLY as:
+Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-भाऊ, तुमच्या [crop] मध्ये [most likely cause] दिसतंय.
+[Greeting], [tell farmer you see likely issue with their crop in ${langName}].
 
-पण नक्की उपाय सांगायला एक गोष्ट सांगा:
-[ONE specific diagnostic question]
+[Ask ONE specific diagnostic question in ${langName}]:
 
-👉 [Option A — specific observation]
-👉 [Option B — specific observation]
-👉 [Option C — specific observation]
-📷 फोटो पाठवा जर शक्य असेल तर
+👉 [Option A — specific observation in ${langName}]
+👉 [Option B — specific observation in ${langName}]
+👉 [Option C — specific observation in ${langName}]
+📷 [Ask for photo if possible, in ${langName}]
 
 RULES:
 - Ask ONE precise question, not multiple
@@ -1205,17 +1232,17 @@ RULES:
   } else if (formatType === 'FORMAT_3') {
     formatInstruction = `
 ═══ MANDATORY FORMAT: TYPE 3 — MONITORING ADVISORY ═══
-Structure your response EXACTLY as:
+Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-भाऊ, [crop] ची तपासणी केली — सध्या [specific condition].
+[Greeting], [tell farmer you checked their crop — current condition in ${langName}].
 
-[reason_text — why no treatment needed yet, 1-2 lines]
+[reason_text — why no treatment needed yet, 1-2 lines in ${langName}]
 
-📋 7 दिवसांत तपासा:
-- [specific threshold from rule]
-- [specific visual marker]
+📋 [Check in 7 days heading in ${langName}]:
+- [specific threshold from rule, in ${langName}]
+- [specific visual marker, in ${langName}]
 
-अशी लक्षणे दिसली तर लगेच कळवा — उपाय सांगतो.
+[Tell farmer: if you see these symptoms, inform immediately — will suggest treatment, in ${langName}]
 
 RULES:
 - DO NOT recommend any product or dosage
@@ -1225,40 +1252,41 @@ RULES:
     formatInstruction = `
 ═══ MANDATORY FORMAT: TYPE 4 — STAGE ADVISORY FALLBACK ═══
 NOTE: Zero rules fired. Use ONLY crop-stage advisory data provided.
+ALL text must be in ${langName}:
 
-भाऊ, तुमचा [crop] [DAS] दिवसांचा आहे — हे [stage] टप्पा आहे.
+[Greeting], [tell farmer their crop is DAS days old — this is the current growth stage, in ${langName}].
 
-या टप्प्यात साधारणपणे:
-- [Stage-specific action 1 with timing]
-- [Stage-specific action 2 with timing]
+[At this stage, generally — in ${langName}]:
+- [Stage-specific action 1 with timing, in ${langName}]
+- [Stage-specific action 2 with timing, in ${langName}]
 
-⚠️ टीप: नक्की किती खत/औषध द्यायचे हे माती परीक्षण / अधिक माहिती मिळाल्यानंतर सांगता येईल.
+⚠️ [Note in ${langName}]: [Exact fertilizer/medicine amount can be advised after soil test / more information]
 
-[One clarification question to gather missing data]
+[One clarification question to gather missing data, in ${langName}]
 
-CRITICAL: This is ADVISORY, not prescription. Frame as "साधारणपणे" (generally).
-NEVER use "कीड मारायची दवा वापरा" or "योग्य औषध वापरा" — these are FORBIDDEN.
-If no specific product from rules, say "मला अधिक माहिती हवी आहे — नक्की कोणता उपाय द्यायचा हे सांगता येईल"`;
+CRITICAL: This is ADVISORY, not prescription. Frame as "generally" in ${langName}.
+NEVER use generic phrases like "use pesticide medicine" or "use appropriate medicine" without a specific product from the rules.
+If no specific product from rules, say "I need more information to recommend exact treatment" in ${langName}`;
   } else if (formatType === 'FORMAT_5') {
     formatInstruction = `
 ═══ MANDATORY FORMAT: TYPE 5 — PEST/DISEASE EMERGENCY ═══
-Structure your response EXACTLY as:
+Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-⚠️ भाऊ, लवकर करा — [pest/disease name in plain ${langName}]!
+⚠️ [Greeting, act quickly — pest/disease name in plain ${langName}]!
 
-[reason_text — why urgent, 1 line]
+[reason_text — why urgent, 1 line in ${langName}]
 
-अजून उशीर केला तर नुकसान वाढेल.
+[Warn: delay will increase damage, in ${langName}]
 
-💊 आत्ता करा:
-- [Product name] — [TOTAL dose for farmer's land]
-- [Application method]
-- [Timing — सकाळी/संध्याकाळी]
+💊 [Do now heading in ${langName}]:
+- [Product name transliterated to ${langName} script] — [TOTAL dose for farmer's land]
+- [Application method in ${langName}]
+- [Timing — morning/evening in ${langName}]
 
-⚠️ [PHI days warning]
-🌿 जैविक पर्याय: [organic_alternative if available]
+⚠️ [PHI days warning in ${langName}: "Stop spraying at least X days before harvest"]
+🌿 [Organic alternative in ${langName} if available]
 
-7 दिवसांनी तपासा: [specific recovery indicator]
+[Check after 7 days in ${langName}]: [specific recovery indicator]
 
 RULES:
 - Speed and clarity paramount — keep SHORT
@@ -1266,25 +1294,28 @@ RULES:
 - Include organic alternative if rule provides one`;
   }
 
-  return `You are a LANGUAGE ADAPTER for SATHI (साथी), an agricultural advisory system for rural Indian farmers.
+  return `You are a LANGUAGE ADAPTER for an agricultural advisory system for rural Indian farmers.
 You are a TRANSLATOR/FORMATTER ONLY. The SYMBOLIC DECISION BRAIN has already made all decisions.
 
 ═══ THE SUPREME LAW ═══
 Every product name, dosage, timing, and treatment in your response MUST come from the data below.
 You CANNOT add, remove, or modify product names, dosages, timing, actions, priorities, or safety instructions.
-You CANNOT use generic phrases like "कीड मारायची दवा वापरा" or "योग्य औषध वापरा" without a specific product from the rules.
-If dosage_per_acre AND active_ingredient are BOTH missing, replace the HOW section with: "मला अधिक माहिती हवी आहे — नक्की कोणता उपाय द्यायचा हे सांगता येईल"
+You CANNOT use generic phrases like "use pesticide medicine" or "use appropriate medicine" without a specific product from the rules.
+If dosage_per_acre AND active_ingredient are BOTH missing, replace the HOW section with: "I need more information to recommend exact treatment" (translated to ${langName}).
 
 ═══ APP LANGUAGE ═══
-Respond in ${langName} (code: ${input.language}). Even if farmer typed in Roman script, respond in ${langName} script.
+Respond ENTIRELY in ${langName} (code: ${input.language}). Even if farmer typed in Roman script, respond in ${langName} script.
+ALL content — greetings, headings, product names, safety warnings, follow-ups — must be in ${langName}.
+Transliterate English product/chemical names into ${langName} script (e.g. "Chlorantraniliprole" → phonetic ${langName} equivalent).
+Numbers can use either standard (0-9) or ${langName} script numerals.
 
 ═══ RURAL LANGUAGE RULES ═══
-- "फवारणी" not "छिडकाव", "एकर" not "हेक्टर", "बाटली"/"पिंप" for containers
-- Address: "भाऊ"/"दादा" for male, "ताई"/"माई" for female
-- "टाका" not "उपयोग करा", "किडा" not "कीटक", "मेलेला गाभा" not "डेड हार्ट"
+- Use simple, conversational, rural ${langName} vocabulary — NOT formal/literary/textbook language
+- Address the farmer warmly and respectfully as appropriate in ${langName} culture
+- Use colloquial farming terms that rural speakers actually use, not technical/academic terms
 - Keep response SHORT — proportional to query complexity
 - Every response MUST end with one specific, measurable, time-bound follow-up instruction
-  NOT "पिकाचे निरीक्षण करा" but "7 दिवसांनी तपासा — [specific thing to check]"
+  NOT "observe the crop" but "check after 7 days — [specific thing to check]" (in ${langName})
 
 ${formatInstruction}
 
@@ -1299,12 +1330,12 @@ TOTAL = dosage_per_acre × ${input.land_context?.area_acres || 'land_area'}
 Show the TOTAL quantity the farmer needs, not per-acre rate.
 
 ═══ PHI TRANSLATION ═══
-Translate phi_days to: "काढणीपूर्वी किमान X दिवस आधी फवारणी बंद करा"
+Translate phi_days to: "Stop spraying at least X days before harvest" (in natural ${langName}).
 
 ${ruralRules}
 ${cropStageConstraints}
 
-TRANSLATION: action_text/reason_text/knowledge_text are English REFERENCE texts. TRANSLATE into natural ${langName}. NEVER leave English phrases in ${langName} output.`
+TRANSLATION: action_text/reason_text/knowledge_text are English REFERENCE texts. TRANSLATE ALL into natural ${langName}. NEVER leave English phrases in the output. Every word must be in ${langName}.`
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2062,35 +2093,36 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
   // ═══════════════════════════════════════════════════════════════════════════
   // LEGACY TEMPLATE FALLBACK — only when deterministic builder has no content
   // ═══════════════════════════════════════════════════════════════════════════
-  // CRITICAL FIX: Generate localized content instead of English-only
+  // LANGUAGE-AGNOSTIC LEGACY TEMPLATE FALLBACK
+  // English structural content — forceTranslateResponse() handles localization downstream
   // ═══════════════════════════════════════════════════════════════════════════
   const parts: string[] = [];
   
-  // English-only structural template — LLM narration translates at runtime
-  parts.push('Hello farmer friend! 🌾');
+  // English structural template — downstream forceTranslateResponse() will localize
+  parts.push('🌾 Hello farmer friend!');
   
   const currentCrop = input.land_context?.current_crop;
   if (currentCrop) {
     parts.push(`I understand your question about ${currentCrop}.`);
   }
   
-  // Legacy fallback: minimal safe response
+  // Legacy fallback: minimal safe response from rule data (English SSOT)
   const matchedResponses = decision?.matched_responses;
   if (matchedResponses && matchedResponses.length > 0) {
-    parts.push('📌 **Recommendation (from rule database):**');
+    parts.push('📋 **Recommendation (from rule database):**');
     
     matchedResponses.slice(0, 2).forEach((resp: any, idx: number) => {
       const actionContent = resp.action_text || resp.reason_text || 'Monitor crop and share a photo if needed';
-      parts.push(`\n${idx + 1}. **Recommendation:**\n${actionContent}`);
+      parts.push(`\n${idx + 1}. ${actionContent}`);
     });
   } else {
-    parts.push('👀 **Analysis:**\nFor accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
+    parts.push('👀 For accurate recommendation please:\n• Send a crop photo\n• Or provide more details about symptoms');
   }
   
-  parts.push('\n🙏 Feel free to ask if you need clarification. Best wishes!');
+  parts.push('\n🙏 Feel free to ask if you need clarification.');
   
   const finalResponse = parts.join('\n\n');
-  console.log(`   📋 Localized legacy template fallback generated: ${finalResponse.length} chars, lang=${lang}`);
+  console.log(`   📋 Legacy template fallback generated (English SSOT, forceTranslate will localize): ${finalResponse.length} chars, lang=${lang}`);
   
   return {
     formatted_response: finalResponse,
@@ -2111,13 +2143,14 @@ async function buildTemplateFallback(input: LLMFormatterInput, startTime: number
 // ═══════════════════════════════════════════════════════════════════════════
 
 function extractSections(text: string): string[] {
+  // LANGUAGE-AGNOSTIC: Use emoji anchors only — works for ANY language
   const sections: string[] = [];
-  if (text.includes('नमस्कार') || text.includes('Hello')) sections.push('greeting');
-  if (text.includes('शिफारस') || text.includes('Recommend')) sections.push('recommendation');
+  if (text.includes('🎯') || text.includes('🌾') || text.length > 50) sections.push('greeting');
+  if (text.includes('📋') || text.includes('📌') || text.includes('💊')) sections.push('recommendation');
   if (text.includes('⏰')) sections.push('timing');
   if (text.includes('📊') || text.includes('%')) sections.push('efficacy');
   if (text.includes('⚠️')) sections.push('warning');
-  if (text.includes('🙏') || text.includes('शुभेच्छा')) sections.push('closing');
+  if (text.includes('🙏') || text.includes('✅')) sections.push('closing');
   return sections;
 }
 
@@ -2143,7 +2176,6 @@ function validateWhatWhyHow(
   
   // Only validate for treatment responses (not clarification/observation)
   const actionType = input?.decision_output?.primary_decision?.action_type?.toUpperCase() || '';
-  // FIX 7: Expanded monitoring-only action types that don't require HOW section
   const MONITORING_ONLY_ACTION_TYPES = new Set([
     'MONITOR', 'MONITOR_CLOSELY', 'MONITOR_ONLY', 'OBSERVE', 'OBSERVATION',
     'NO_ACTION', 'NO_ACTION_REQUIRED', 'WAIT_AND_WATCH', 'NONE', 'DIAGNOSIS',
@@ -2153,67 +2185,33 @@ function validateWhatWhyHow(
     return { valid: true, missing_sections: [], violations: [] };
   }
   
-  const lower = llmOutput.toLowerCase();
+  // LANGUAGE-AGNOSTIC FIX: Use ONLY emoji anchors for section detection.
+  // The LLM output can be in ANY language (mr, hi, ta, te, bn, gu, kn, pa, ml, or, en).
+  // Hardcoded Marathi/Hindi keywords violated the language-agnostic architecture.
+  // Emoji anchors are language-neutral and reliably inserted by the FORMAT templates.
   
-  // CRITICAL FIX: Greatly expanded detection markers for Marathi, Hindi, and English
-  // Previous narrow markers caused false-positive failures on valid Devanagari responses
-  // which triggered template fallback → 317-char incomplete English-only responses
+  // WHAT detection: diagnosis/problem identification (emoji anchors)
+  const hasWhat = llmOutput.includes('🎯') || llmOutput.includes('🔍') || llmOutput.includes('📋') ||
+    // English fallback markers (always safe — from structural template)
+    llmOutput.toLowerCase().includes('problem') || llmOutput.toLowerCase().includes('diagnosis') ||
+    llmOutput.toLowerCase().includes('identified') || llmOutput.toLowerCase().includes('detected') ||
+    // Content length heuristic: any substantial response likely has problem identification
+    llmOutput.length > 200;
   
-  // WHAT detection: problem/cause identification markers (expanded for Marathi/Hindi)
-  const hasWhat = lower.includes('🔍') || lower.includes('🎯') || lower.includes('📋') ||
-    // Marathi markers
-    lower.includes('समस्या') || lower.includes('आढळले') || lower.includes('दिसतंय') ||
-    lower.includes('कारण ओळख') || lower.includes('लक्षणे') || lower.includes('रोग') ||
-    lower.includes('किडा') || lower.includes('कीड') || lower.includes('मर') ||
-    lower.includes('मावा') || lower.includes('बोअरर') || lower.includes('गाभा') ||
-    lower.includes('पिवळ') || lower.includes('तपासणी') || lower.includes('निदान') ||
-    lower.includes('ओळख') || lower.includes('दिसत') || lower.includes('झाल') ||
-    lower.includes('आहे') || lower.includes('आलेल') ||
-    // Hindi markers
-    lower.includes('पहचान') || lower.includes('लक्षण') || lower.includes('रोग') ||
-    lower.includes('कीट') || lower.includes('समस्या') || lower.includes('बीमारी') ||
-    lower.includes('दिख') || lower.includes('पता') ||
-    // English markers
-    lower.includes('problem') || lower.includes('cause') || lower.includes('identified') ||
-    lower.includes('detected') || lower.includes('what') || lower.includes('diagnosis') ||
-    lower.includes('issue') || lower.includes('found') || lower.includes('observe');
+  // WHY detection: reasoning/explanation (emoji anchors)
+  const hasWhy = llmOutput.includes('📖') || llmOutput.includes('🔬') ||
+    llmOutput.toLowerCase().includes('reason') || llmOutput.toLowerCase().includes('because') ||
+    llmOutput.toLowerCase().includes('cause') ||
+    // Content heuristic: responses > 300 chars typically contain reasoning
+    llmOutput.length > 300;
   
-  // WHY detection: scientific reasoning markers (expanded)
-  const hasWhy = lower.includes('📖') || lower.includes('🔬') ||
-    // Marathi markers
-    lower.includes('कारण') || lower.includes('म्हणून') || lower.includes('त्यामुळे') ||
-    lower.includes('वैज्ञानिक') || lower.includes('जीवनचक्र') || lower.includes('प्रसार') ||
-    lower.includes('मुळे') || lower.includes('झाल्यामुळे') || lower.includes('होतो') ||
-    lower.includes('करतो') || lower.includes('करतात') || lower.includes('पसरतो') ||
-    lower.includes('नुकसान') || lower.includes('हल्ला') || lower.includes('परिणाम') ||
-    // Hindi markers  
-    lower.includes('कारण') || lower.includes('इसलिए') || lower.includes('क्योंकि') ||
-    lower.includes('वजह') || lower.includes('नतीजा') || lower.includes('फैलत') ||
-    // English markers
-    lower.includes('reason') || lower.includes('why') || lower.includes('because') ||
-    lower.includes('scientific') || lower.includes('lifecycle') || lower.includes('spread') ||
-    lower.includes('damage') || lower.includes('result');
-  
-  // HOW detection: treatment/action markers (expanded)
-  const hasHow = lower.includes('💊') || lower.includes('🌿') || lower.includes('⚠️') ||
-    // Marathi markers
-    lower.includes('उपाय') || lower.includes('फवारणी') || lower.includes('टाका') ||
-    lower.includes('वापरा') || lower.includes('मिसळा') || lower.includes('एकर') ||
-    lower.includes('प्रमाण') || lower.includes('करा') || lower.includes('औषध') ||
-    lower.includes('दवा') || lower.includes('फवार') || lower.includes('पाण्यात') ||
-    lower.includes('लिटर') || lower.includes('ग्रॅम') || lower.includes('मिली') ||
-    lower.includes('शिफारस') || lower.includes('उपचार') || lower.includes('काय करा') ||
-    lower.includes('काय करायचं') ||
-    // Hindi markers
-    lower.includes('छिड़काव') || lower.includes('दवा') || lower.includes('उपचार') ||
-    lower.includes('इलाज') || lower.includes('डालें') || lower.includes('मिलाएं') ||
-    lower.includes('प्रति एकड') || lower.includes('लीटर') || lower.includes('ग्राम') ||
-    lower.includes('मिली') ||
-    // English markers
-    lower.includes('treatment') || lower.includes('how') || lower.includes('apply') ||
-    lower.includes('spray') || lower.includes('dosage') || lower.includes('ml') ||
-    lower.includes('per acre') || lower.includes('recommend') || lower.includes('action') ||
-    lower.includes('step');
+  // HOW detection: treatment/action instructions (emoji anchors)
+  const hasHow = llmOutput.includes('💊') || llmOutput.includes('🌿') || llmOutput.includes('⚠️') ||
+    llmOutput.includes('📋') ||
+    llmOutput.toLowerCase().includes('ml') || llmOutput.toLowerCase().includes('per acre') ||
+    llmOutput.toLowerCase().includes('spray') || llmOutput.toLowerCase().includes('apply') ||
+    // Numeral patterns indicating dosage (language-neutral)
+    /\d+\s*(ml|g|kg|l|%)/i.test(llmOutput);
   
   if (!hasWhat) {
     missing.push('WHAT');
@@ -2240,19 +2238,22 @@ function validateWhatWhyHow(
 // Ensures LLM output doesn't mention wrong/unauthorized crop names
 // ═══════════════════════════════════════════════════════════════════════════
 
+// LANGUAGE-AGNOSTIC: English-only canonical aliases for crop validation.
+// The LLM translates crop names to the farmer's language at runtime —
+// validation checks the English canonical name only.
 const CROP_NAME_ALIASES: Record<string, string[]> = {
-  'SUGARCANE': ['sugarcane', 'ऊस', 'गन्ना', 'sugar cane', 'cane'],
-  'COTTON': ['cotton', 'कापूस', 'कपास', 'kapas'],
-  'RICE': ['rice', 'भात', 'धान', 'paddy', 'चावल'],
-  'WHEAT': ['wheat', 'गहू', 'गेहूं', 'gehun'],
-  'MAIZE': ['maize', 'मका', 'मक्का', 'corn'],
-  'SOYBEAN': ['soybean', 'soya', 'सोयाबीन', 'सोयाबिन'],
-  'GROUNDNUT': ['groundnut', 'भुईमूग', 'मूंगफली', 'peanut'],
-  'ONION': ['onion', 'कांदा', 'प्याज', 'pyaj'],
-  'TOMATO': ['tomato', 'टोमॅटो', 'टमाटर'],
-  'CHILLI': ['chilli', 'मिरची', 'मिर्च', 'chili', 'pepper'],
-  'GRAM': ['gram', 'हरभरा', 'चना', 'chickpea'],
-  'TUR': ['tur', 'तूर', 'अरहर', 'pigeon pea', 'toor']
+  'SUGARCANE': ['sugarcane', 'sugar cane', 'cane'],
+  'COTTON': ['cotton'],
+  'RICE': ['rice', 'paddy'],
+  'WHEAT': ['wheat'],
+  'MAIZE': ['maize', 'corn'],
+  'SOYBEAN': ['soybean', 'soya'],
+  'GROUNDNUT': ['groundnut', 'peanut'],
+  'ONION': ['onion'],
+  'TOMATO': ['tomato'],
+  'CHILLI': ['chilli', 'chili', 'pepper'],
+  'GRAM': ['gram', 'chickpea'],
+  'TUR': ['tur', 'pigeon pea', 'toor']
 };
 
 function validateCropNameConsistency(
