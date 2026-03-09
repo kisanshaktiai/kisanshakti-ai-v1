@@ -1844,25 +1844,50 @@ export class AIAgentOrchestrator {
             const safePrescriptions = Array.isArray(ruleResult.prescriptions) ? ruleResult.prescriptions : [];
             const safeMatchedResponses = Array.isArray(ruleResult.matched_responses) ? ruleResult.matched_responses : [];
             
-            const actionsToReturn = safePrescriptions.length > 0 
-              ? safePrescriptions.filter(p => p != null).map(p => ({
-                  action_type: p.action_type || 'RECOMMEND',
-                  action_details: p.action_details || {},
-                  product_reference: p.product_reference,
-                  rule_id: 'RULE_ENGINE'
-                }))
-              : safeMatchedResponses.length > 0 
-                ? safeMatchedResponses.slice(0, 3).filter(r => r != null).map(r => ({
-                    action_type: 'OBSERVATION_ADVICE',
-                    action_details: {
-                      action_text: r.action_text,
-                      reason_text: r.reason_text,
-                      knowledge_text: r.knowledge_text
-                    },
-                    product_reference: r.rule_id,
-                    rule_id: r.rule_id
-                  }))
-                : [];
+            // ═══════════════════════════════════════════════════════════════════════════
+            // FORENSIC AUDIT FIX v8.0: Build actions from prescriptions > matched_responses > primary_decision
+            // Previously, when both prescriptions and matched_responses were empty but primary_decision
+            // existed (pest rules routed to DIAGNOSIS phase), actionsToReturn was [] causing Actions=0 bug.
+            // ═══════════════════════════════════════════════════════════════════════════
+            let actionsToReturn: any[] = [];
+            
+            if (safePrescriptions.length > 0) {
+              actionsToReturn = safePrescriptions.filter(p => p != null).map(p => ({
+                action_type: p.action_type || 'RECOMMEND',
+                action_details: p.action_details || {},
+                product_reference: p.product_reference,
+                rule_id: 'RULE_ENGINE'
+              }));
+            } else if (safeMatchedResponses.length > 0) {
+              actionsToReturn = safeMatchedResponses.slice(0, 3).filter(r => r != null).map(r => ({
+                action_type: 'OBSERVATION_ADVICE',
+                action_details: {
+                  action_text: r.action_text,
+                  reason_text: r.reason_text,
+                  knowledge_text: r.knowledge_text
+                },
+                product_reference: r.rule_id,
+                rule_id: r.rule_id
+              }));
+            } else if (ruleResult.primary_decision && ruleResult.primary_decision.rule_id) {
+              // FORENSIC FIX: Extract action from primary_decision when formal arrays are empty
+              const pd = ruleResult.primary_decision;
+              console.log(`   🔧 [FORENSIC FIX] Building action from primary_decision: ${pd.rule_id} (${pd.action_type})`);
+              actionsToReturn = [{
+                action_type: pd.action_type || 'RECOMMEND',
+                action_details: {
+                  action_text: pd.action_text,
+                  reason_text: pd.reason_text,
+                  knowledge_text: pd.knowledge_text,
+                  active_ingredient: pd.active_ingredient,
+                  dosage_per_acre: pd.dosage_per_acre,
+                  application_method: pd.application_method,
+                  i18n_key: pd.i18n_key,
+                },
+                product_reference: pd.rule_id,
+                rule_id: pd.rule_id
+              }];
+            }
             
             // CRITICAL: Get the best response text for status determination
             const primaryResponse = hasMatchedResponses ? ruleResult.matched_responses[0] : null;

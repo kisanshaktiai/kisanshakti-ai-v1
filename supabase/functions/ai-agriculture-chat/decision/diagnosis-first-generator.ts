@@ -419,9 +419,21 @@ export async function generateDiagnosisFirstResponse(
         observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       }
       
-      // CRITICAL FIX: If causeLabel is empty (no regional translation found),
-      // use observationLabel as the display label so farmer never sees raw English keys
-      const finalCauseLabel = causeLabel || observationLabel || h.cause;
+      // ═══════════════════════════════════════════════════════════════
+      // FORENSIC AUDIT FIX v8.0: Prevent mixed-language options
+      // When causeLabel is empty (no regional translation), prefer observationLabel.
+      // If observationLabel is also English for a non-English user, format h.cause
+      // as human-readable instead of raw UPPERCASE_CODE.
+      // ═══════════════════════════════════════════════════════════════
+      let finalCauseLabel = causeLabel || observationLabel;
+      if (!finalCauseLabel || finalCauseLabel === h.cause) {
+        // Last resort: format the English cause as readable text
+        finalCauseLabel = h.cause
+          .replace(/_/g, ' ')
+          .split(' ')
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(' ');
+      }
       
       return {
         id: `diag_${idx}_${h.rule_id}`,

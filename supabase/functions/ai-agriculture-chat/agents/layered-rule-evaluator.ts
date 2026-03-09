@@ -1642,7 +1642,16 @@ function mapBundledCategory(category: string): RuleCategory {
     'weather': RuleCategory.WARNING,
     
     // CLARIFICATION - special handling
-    'clarification': RuleCategory.OBSERVATION
+    'clarification': RuleCategory.OBSERVATION,
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC AUDIT FIX v8.0: 4 previously unmapped categories
+    // These were defaulting to DIAGNOSIS via the fallback, causing 7 warnings/request
+    // ═══════════════════════════════════════════════════════════════════════
+    'governance': RuleCategory.SAFETY,              // Policy/regulatory rules
+    'resistance_mgmt': RuleCategory.PRESCRIPTION,   // Resistance management protocols
+    'weed_management': RuleCategory.PRESCRIPTION,   // Weed treatment rules
+    'physiology': RuleCategory.DIAGNOSIS,            // Physiological disorder identification
   };
   
   const mapped = map[category?.toLowerCase()];
