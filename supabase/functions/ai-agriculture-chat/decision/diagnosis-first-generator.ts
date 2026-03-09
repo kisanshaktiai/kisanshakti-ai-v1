@@ -548,9 +548,9 @@ export async function generateDiagnosisFirstResponse(
   };
   
   // Generate question text
-  const questionText = getQuestionText(validatedDiagnoses, language);
+  const questionText = getQuestionText(labelDedupedDiagnoses, language);
   
-  console.log(`   ✅ Generated ${validatedDiagnoses.length} diagnosis options (filtered from ${diagnoses.length}) + photo option`);
+  console.log(`   ✅ Generated ${labelDedupedDiagnoses.length} diagnosis options (filtered from ${diagnoses.length}) + photo option`);
   console.log(`   Question: "${questionText.substring(0, 60)}..."`);
   console.log(`═══════════════════════════════════════════════════════════════\n`);
   
@@ -558,7 +558,7 @@ export async function generateDiagnosisFirstResponse(
     mode: 'DIAGNOSIS_FIRST',
     source: 'DECISION_RULES',
     question_text: questionText,
-    diagnoses: validatedDiagnoses,
+    diagnoses: labelDedupedDiagnoses,
     photo_option: photoOption,
     crop_code,
     growth_stage,
