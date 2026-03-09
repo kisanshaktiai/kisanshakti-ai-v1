@@ -676,10 +676,14 @@ export async function formatRecommendationsWithLLM(
   // Hard violations: unauthorized products, dosage tampering, crop mismatch
   // Soft violations: WHAT-WHY-HOW missing sections (detection is unreliable for Devanagari)
   // ═══════════════════════════════════════════════════════════════════════════
+  // LANGUAGE-AGNOSTIC FIX: 'Missing product from symbolic' and 'PHI value modified'
+  // are downgraded to soft warnings — LLM transliterates product names and uses
+  // Devanagari/regional numerals, causing false positives on English substring checks.
+  // Safety is enforced deterministically by the builder, not by output validation.
   const HARD_VIOLATION_PATTERNS = [
     'Unauthorized product', 'unauthorized product',
-    'Missing product from symbolic', 'Leaked internal code',
-    'Dosage UNIT mismatch', 'PHI value modified',
+    'Leaked internal code',
+    'Dosage UNIT mismatch',
     'unauthorized efficacy claim', 'Chemical product',
     'Crop mismatch', 'Invalid biocontrol',
     'Dosage numbers mismatch'
