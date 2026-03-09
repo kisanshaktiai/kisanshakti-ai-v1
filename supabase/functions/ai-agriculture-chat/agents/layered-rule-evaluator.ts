@@ -632,11 +632,15 @@ export function evaluateRulesLayered(
       // ═══════════════════════════════════════════════════════════════════════
       const etlApplicable = rule.then.action_details?.etl_applicable;
       if (etlApplicable !== false) {
+        // Try DB-backed ETL standards first, fall back to rule-level values
+        const pestCode = rule.then.action_details?.pest_code || rule.condition?.condition_code;
+        const dbETL = lookupETLFromStandards(pestCode, options?.cropCode, options?.growthStage);
+        
         const etlInput: ETLInput = {
           rule_id: rule.id,
           etl_applicable: rule.then.action_details?.etl_applicable,
-          etl_value_min: rule.then.action_details?.etl_value_min,
-          etl_value_max: rule.then.action_details?.etl_value_max,
+          etl_value_min: dbETL?.etl_value_min ?? rule.then.action_details?.etl_value_min,
+          etl_value_max: dbETL?.etl_value_max ?? rule.then.action_details?.etl_value_max,
           action_type: rule.then.action_type,
           ipm_level: rule.then.action_details?.ipm_level
         };
