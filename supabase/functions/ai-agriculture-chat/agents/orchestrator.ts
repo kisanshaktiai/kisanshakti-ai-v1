@@ -1673,47 +1673,74 @@ export class AIAgentOrchestrator {
           }
           
           // ═══════════════════════════════════════════════════════════════════════════
-          // OBSERVATION KEY EXPANSION - Maps clarification selections to rule-matchable symbols
-          // v5.0: Expansion results are tagged INFERRED (not CONFIRMED)
+          // FIX #3: OBSERVATION KEY EXPANSION - DB-DRIVEN via observation_aliases
+          // Replaces hardcoded obsKeyExpansion dictionary with expandObservationVocabularyViaAliases()
+          // v5.1: All expansion now comes from observation_aliases table
           // ═══════════════════════════════════════════════════════════════════════════
-          const obsKeyExpansion: Record<string, string[]> = {
-            // Nutrient issues
-            'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'STUNTED_GROWTH', 'CHLOROSIS'],
-            'NUTRIENT_DEFICIENCY': ['LEAF_YELLOWING', 'STUNTED_GROWTH', 'CHLOROSIS', 'PURPLE_LEAVES'],
-            
-            // Pest issues
-            'PEST_CHECK': ['PEST_DAMAGE', 'INSECT_PRESENT', 'HOLES_IN_LEAVES', 'DAMAGED_LEAVES', 'BORER_DAMAGE'],
-            'PEST_DAMAGE': ['HOLES_IN_LEAVES', 'INSECT_PRESENT', 'DAMAGED_LEAVES'],
-            
-            // Water issues  
-            'WATER_STRESS_CHECK': ['WATER_STRESS', 'WILTING', 'LEAF_CURLING', 'LEAF_DRYING'],
-            'WATER_STRESS': ['WILTING', 'LEAF_CURLING', 'LEAF_DRYING'],
-            'WATERLOGGING': ['ROOT_ROT', 'WILTING', 'FIELD_WATERLOGGED'],
-            
-            // Disease issues
-            'DISEASE_SYMPTOMS': ['SPOTS_IRREGULAR', 'POWDERY_COATING', 'LEAF_SPOTS', 'FUNGAL_GROWTH'],
-            
-            // Borer symptoms - CRITICAL for sugarcane
-            'DEAD_HEART': ['DEAD_HEART', 'BORER_DAMAGE', 'DEAD_HEART_PRESENT', 'SHOOT_BORER_DAMAGE', 'CENTRAL_SHOOT_DRIED'],
-            'DEADHEART': ['DEAD_HEART', 'BORER_DAMAGE', 'DEAD_HEART_PRESENT', 'SHOOT_BORER_DAMAGE'],
-            'DEAD_HEART_PRESENT': ['DEAD_HEART', 'BORER_DAMAGE', 'SHOOT_BORER_DAMAGE'],
-            'BORER_DAMAGE': ['DEAD_HEART', 'TUNNELS_IN_STEM', 'BORER_HOLES', 'FRASS_VISIBLE'],
-            'SHOOT_BORER_DAMAGE': ['DEAD_HEART', 'BORER_DAMAGE', 'SHOOT_BORER'],
-            
-            // Termite symptoms
-            'TERMITE_DAMAGE': ['TERMITE', 'MUD_TUNNELS', 'WILTING', 'ROOT_DAMAGE'],
-            'MUD_TUNNELS': ['TERMITE', 'TERMITE_DAMAGE'],
-            
-            // Visual check fallback
-            'VISUAL_CHECK': ['SYMPTOM_REPORTED', 'OBSERVATION_MADE'],
-            
-            // Photo upload
-            'PHOTO_UPLOAD': ['PHOTO_SUBMITTED', 'VISUAL_EVIDENCE']
-          };
-          if (mappedObservationKey && obsKeyExpansion[mappedObservationKey]) {
-            const expansionCodes = obsKeyExpansion[mappedObservationKey];
-            allObservations.push(...expansionCodes);
-            console.log(`   🔍 [ObservationExpansion] Added ${expansionCodes.length} INFERRED expansion codes: [${expansionCodes.join(', ')}]`);
+          
+          // FIX #1: If cause was confirmed, add cause-specific observations from the confirmed rule
+          if (confirmedRuleId && confirmedRuleId !== 'UNKNOWN_FALLBACK' && confirmedRuleId !== 'PHOTO_FALLBACK') {
+            try {
+              const { data: confirmedRule } = await this.supabase
+                .from('decision_rules')
+                .select('observable_characteristics, conditions_json')
+                .eq('rule_id', confirmedRuleId)
+                .eq('is_active', true)
+                .single();
+              
+              if (confirmedRule) {
+                // Add ALL observable characteristics from the confirmed rule
+                const ruleObs = confirmedRule.observable_characteristics || [];
+                if (Array.isArray(ruleObs)) {
+                  for (const obs of ruleObs) {
+                    const obsKey = typeof obs === 'string' ? obs : obs?.observation_key;
+                    if (obsKey && !allObservations.includes(obsKey.toUpperCase())) {
+                      allObservations.push(obsKey.toUpperCase());
+                    }
+                  }
+                }
+                // Also add observations from conditions_json
+                const condObs = confirmedRule.conditions_json?.observations || [];
+                for (const obs of condObs) {
+                  if (typeof obs === 'string' && !allObservations.includes(obs.toUpperCase())) {
+                    allObservations.push(obs.toUpperCase());
+                  }
+                }
+                console.log(`   🎯 [FIX#1] Loaded ${allObservations.length} observations from confirmed rule ${confirmedRuleId}`);
+              }
+            } catch (e) {
+              console.warn(`   ⚠️ [FIX#1] Failed to load confirmed rule ${confirmedRuleId}: ${e}`);
+            }
+          }
+          
+          // FIX #3: DB-driven alias expansion (replaces hardcoded dictionary)
+          try {
+            const aliasResult = await expandObservationVocabularyViaAliases(allObservations, this.supabase);
+            if (aliasResult.expanded_codes.length > allObservations.length) {
+              const newCodes = aliasResult.expanded_codes.filter(c => !allObservations.includes(c));
+              allObservations.push(...newCodes);
+              console.log(`   🔍 [ObservationExpansion] DB alias expansion: +${newCodes.length} codes [${newCodes.join(', ')}]`);
+              if (aliasResult.trace.length > 0) {
+                console.log(`      Trace: ${aliasResult.trace.slice(0, 5).join(', ')}${aliasResult.trace.length > 5 ? '...' : ''}`);
+              }
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed, using static fallback: ${e}`);
+            // Minimal static fallback for critical paths only
+            const criticalFallback: Record<string, string[]> = {
+              'DEAD_HEART': ['DEAD_HEART_PRESENT', 'BORER_DAMAGE', 'SHOOT_BORER_DAMAGE'],
+              'DEAD_HEART_PRESENT': ['DEAD_HEART', 'BORER_DAMAGE'],
+              'BORER_DAMAGE': ['DEAD_HEART', 'TUNNELS_IN_STEM', 'BORER_HOLES'],
+              'INSECTS_VISIBLE': ['PEST_DAMAGE', 'INSECT_PRESENCE_CONFIRMED'],
+              'PEST_CHECK': ['PEST_DAMAGE', 'INSECT_PRESENT', 'BORER_DAMAGE'],
+              'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'CHLOROSIS'],
+              'WATER_STRESS_CHECK': ['WATER_STRESS', 'WILTING', 'LEAF_CURLING'],
+            };
+            if (mappedObservationKey && criticalFallback[mappedObservationKey]) {
+              const fallbackCodes = criticalFallback[mappedObservationKey].filter(c => !allObservations.includes(c));
+              allObservations.push(...fallbackCodes);
+              console.log(`   🔍 [ObservationExpansion] Static fallback: +${fallbackCodes.length} codes`);
+            }
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
           
