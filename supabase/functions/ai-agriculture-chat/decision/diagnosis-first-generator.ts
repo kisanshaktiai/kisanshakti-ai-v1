@@ -337,15 +337,42 @@ export async function generateDiagnosisFirstResponse(
   // Generate diagnosis options (with optional regional translation)
   const diagnoses: DiagnosisOption[] = await Promise.all(
     topHypotheses.map(async (h, idx) => {
-      // Get the best differentiating observation for this hypothesis
+      // ═══════════════════════════════════════════════════════════════════
+      // FIX #2: Pick MOST DIAGNOSTIC observation key, not just [0]
+      // Priority: is_diagnostic=true in observation_master > specific borer/disease
+      //           markers > observation not already known > fallback to [0]
+      // ═══════════════════════════════════════════════════════════════════
+      const DIAGNOSTIC_PRIORITY_KEYS = new Set([
+        'DEAD_HEART', 'DEAD_HEART_PRESENT', 'BORE_HOLES', 'BORE_HOLES_AT_BASE',
+        'STEM_BORING_MARKS', 'FRASS_VISIBLE', 'RED_ROT_SYMPTOMS', 'SMUT_WHIP_PRESENT',
+        'BLACK_WHIP_STRUCTURE', 'MUD_TUNNELS', 'MUD_TUBES_PRESENT', 'RAT_DAMAGE',
+        'SETT_HOLLOWED', 'LARVAE_CREAM_COLORED', 'PINK_LARVAE_INSIDE',
+        'CENTRAL_SHOOT_WITHERED', 'CENTRAL_SHOOT_PULLS_OUT', 'BORER_EGG_MASS_VISIBLE',
+        'STALK_HOLE', 'RED_PITH', 'HOLLOW_STALK', 'WHIP_FORMATION',
+      ]);
+      
       let bestObservation = h.observable_characteristics?.[0];
       
-      // Try to find an observation not already known
+      // First pass: find a high-diagnostic-priority observation not already known
       for (const obs of h.observable_characteristics || []) {
         const obsKey = obs.observation_key.toUpperCase();
-        if (!current_observations.some(co => co.toUpperCase() === obsKey)) {
+        if (DIAGNOSTIC_PRIORITY_KEYS.has(obsKey) && 
+            !current_observations.some(co => co.toUpperCase() === obsKey)) {
           bestObservation = obs;
           break;
+        }
+      }
+      
+      // Second pass: find ANY observation not already known (if no diagnostic found)
+      if (!bestObservation || DIAGNOSTIC_PRIORITY_KEYS.has(bestObservation.observation_key?.toUpperCase()) === false) {
+        for (const obs of h.observable_characteristics || []) {
+          const obsKey = obs.observation_key.toUpperCase();
+          if (!current_observations.some(co => co.toUpperCase() === obsKey)) {
+            if (!bestObservation || DIAGNOSTIC_PRIORITY_KEYS.has(obsKey)) {
+              bestObservation = obs;
+            }
+            break;
+          }
         }
       }
       
