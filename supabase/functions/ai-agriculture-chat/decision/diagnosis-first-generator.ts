@@ -571,12 +571,11 @@ export function createUnknownDiagnosisResponse(
     }
   ];
   
-  const photoLabels = PHOTO_LABELS[language] || PHOTO_LABELS['en'];
   const photoOption: PhotoOption = {
     id: 'PHOTO_UPLOAD',
-    label: photoLabels.label,
+    label: PHOTO_LABEL.label,
     icon: '📷',
-    description: photoLabels.description
+    description: PHOTO_LABEL.description
   };
   
   return {
