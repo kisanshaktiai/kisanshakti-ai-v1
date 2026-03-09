@@ -443,10 +443,9 @@ export async function generateDiagnosisFirstResponse(
   // Valid keys are short uppercase codes (e.g., LEAF_YELLOWING, DEAD_HEART_PRESENT).
   // Invalid keys are truncated sentences from cause field (e.g., ZINC_DEFICIENCY_CAUSES_CHLOROS).
   // ═══════════════════════════════════════════════════════════════
-  const RAW_SENTENCE_KEY_PATTERN = /^[A-Z_]{20,}$/; // Very long uppercase keys are suspicious
   const KNOWN_VALID_LONG_KEYS = new Set(['INTERVEINAL_CHLOROSIS', 'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'WATERLOGGING_DAMAGE', 'HONEYDEW_PRESENT']);
   
-  const validatedDiagnoses = diagnoses.filter(d => {
+  const filteredDiagnoses = diagnoses.filter(d => {
     const key = d.observation_key;
     if (key === 'VISUAL_CHECK') return true; // Always valid
     if (KNOWN_VALID_LONG_KEYS.has(key)) return true;
@@ -457,6 +456,39 @@ export async function generateDiagnosisFirstResponse(
     }
     return true;
   });
+  
+  // ═══════════════════════════════════════════════════════════════
+  // CRITICAL FIX: Deduplicate options by observation_key.
+  // Multiple hypotheses can produce the same observation_key (e.g., NUTRIENT_DEFICIENCY),
+  // causing duplicate options in the farmer UI. Keep the highest-priority one.
+  // ═══════════════════════════════════════════════════════════════
+  const seenObservationKeys = new Map<string, DiagnosisOption>();
+  const validatedDiagnoses: DiagnosisOption[] = [];
+  
+  for (const d of filteredDiagnoses) {
+    const key = d.observation_key.toUpperCase();
+    const existing = seenObservationKeys.get(key);
+    
+    if (!existing) {
+      seenObservationKeys.set(key, d);
+      validatedDiagnoses.push(d);
+    } else {
+      // Keep the one with higher priority (lower number) or higher confidence
+      if (d.priority < existing.priority || (d.priority === existing.priority && d.confidence > existing.confidence)) {
+        // Replace existing
+        const idx = validatedDiagnoses.indexOf(existing);
+        if (idx >= 0) validatedDiagnoses[idx] = d;
+        seenObservationKeys.set(key, d);
+        console.log(`   🔄 Dedup: Replaced "${existing.cause}" with "${d.cause}" for key ${key} (higher priority)`);
+      } else {
+        console.log(`   🔄 Dedup: Skipped "${d.cause}" - already have "${existing.cause}" for key ${key}`);
+      }
+    }
+  }
+  
+  if (filteredDiagnoses.length !== validatedDiagnoses.length) {
+    console.log(`   🔄 [Dedup] Removed ${filteredDiagnoses.length - validatedDiagnoses.length} duplicate options by observation_key`);
+  }
   
   // Generate photo option (ALWAYS present)
   const photoOption: PhotoOption = {
