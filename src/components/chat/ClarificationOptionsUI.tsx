@@ -56,6 +56,10 @@ export interface ClarificationOption {
   /** CRITICAL: Observation key for rule engine re-evaluation */
   observation_key?: string;
   diagnostic_power?: 'HIGH' | 'MEDIUM' | 'LOW';
+  /** FIX #1: Cause name for confirmed diagnosis bypass */
+  cause?: string;
+  /** FIX #1: Rule ID for direct rule loading on confirmation */
+  rule_id?: string;
 }
 
 type SelectionType = 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
