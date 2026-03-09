@@ -174,7 +174,7 @@ export function formatFollowUpPlan(
 
 export function formatRealisticExpectations(
   pestOrDisease: string,
-  language: string
+  _language: string
 ): string {
   const normalizedPest = pestOrDisease.toUpperCase().replace(/[_-]/g, '_');
   const expectations = REALISTIC_EXPECTATIONS[normalizedPest];
@@ -183,39 +183,16 @@ export function formatRealisticExpectations(
     return '';
   }
   
-  const headers: Record<string, { title: string; yes: string; no: string; impact: string }> = {
-    mr: {
-      title: '🎯 अपेक्षित परिणाम (Expected Outcome):',
-      yes: '✓ होईल:',
-      no: '✗ होणार नाही:',
-      impact: '⚠️ अपेक्षित उत्पादन प्रभाव:'
-    },
-    hi: {
-      title: '🎯 अपेक्षित परिणाम:',
-      yes: '✓ होगा:',
-      no: '✗ नहीं होगा:',
-      impact: '⚠️ अपेक्षित उपज प्रभाव:'
-    },
-    en: {
-      title: '🎯 Expected Outcome:',
-      yes: '✓ Will happen:',
-      no: '✗ Won\'t happen:',
-      impact: '⚠️ Expected yield impact:'
-    }
-  };
-  
-  const h = headers[language] || headers['en'];
-  
-  let output = `\n${h.title}\n`;
-  output += `${h.yes}\n`;
+  let output = `\n🎯 Expected Outcome:\n`;
+  output += `✓ Will happen:\n`;
   for (const item of expectations.will_recover) {
     output += `  - ${item}\n`;
   }
-  output += `${h.no}\n`;
+  output += `✗ Won't happen:\n`;
   for (const item of expectations.will_not_recover) {
     output += `  - ${item}\n`;
   }
-  output += `${h.impact} ~${expectations.expected_yield_impact_percent}%\n`;
+  output += `⚠️ Expected yield impact: ~${expectations.expected_yield_impact_percent}%\n`;
   
   return output;
 }
