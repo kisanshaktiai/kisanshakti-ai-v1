@@ -234,8 +234,6 @@ export function validateAgronomicAccuracy(
         warnings.push({
           code: 'PEST_STAGE_UNLIKELY',
           message_en: `${pestCode} is unusual at ${stage} stage. Please confirm with photo.`,
-          message_mr: `${stage} अवस्थेत ${pestCode} असामान्य आहे. कृपया फोटो पाठवून पुष्टी करा.`,
-          message_hi: `${stage} अवस्था में ${pestCode} असामान्य है। कृपया फोटो से पुष्टि करें।`,
           field: 'pest_stage_combination',
           suggestion: 'Request photo for confirmation'
         });
