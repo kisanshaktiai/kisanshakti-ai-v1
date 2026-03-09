@@ -247,16 +247,11 @@ export function validateLanguageQuality(
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SAFE FALLBACK MESSAGE
+// SAFE FALLBACK MESSAGE (English-only — LLM narration layer translates)
 // ═══════════════════════════════════════════════════════════════════════════
 
-export function getSafeAskMoreInfoMessage(language: string): string {
-  const messages: Record<string, string> = {
-    mr: '🙏 कृपया तुमच्या समस्येबद्दल अधिक माहिती द्या किंवा फोटो पाठवा. मी योग्य सल्ला देईन.',
-    hi: '🙏 कृपया अपनी समस्या के बारे में अधिक जानकारी दें या फोटो भेजें। मैं सही सलाह दूंगा।',
-    en: '🙏 Please provide more details about your issue or send a photo. I will give you accurate advice.'
-  };
-  return messages[language] || messages.en;
+export function getSafeAskMoreInfoMessage(_language: string): string {
+  return '🙏 Please provide more details about your issue or send a photo. I will give you accurate advice.';
 }
 
 export default validateLanguageQuality;

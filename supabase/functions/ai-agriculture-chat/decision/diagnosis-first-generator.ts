@@ -202,15 +202,13 @@ const DIAGNOSIS_QUESTION_TEMPLATE = {
 
 function getQuestionText(
   diagnoses: DiagnosisOption[],
-  language: string
+  _language: string
 ): string {
-  const template = DIAGNOSIS_QUESTION_TEMPLATES[language] || DIAGNOSIS_QUESTION_TEMPLATES['en'];
-  
   if (diagnoses.length === 1) {
-    return template.single.replace('{cause}', diagnoses[0].cause_label);
+    return DIAGNOSIS_QUESTION_TEMPLATE.single.replace('{cause}', diagnoses[0].cause_label);
   }
   
-  return template.multiple;
+  return DIAGNOSIS_QUESTION_TEMPLATE.multiple;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
