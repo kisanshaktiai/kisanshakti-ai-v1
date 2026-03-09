@@ -94,14 +94,24 @@ export interface TreatmentDetails {
 // LANGUAGE-SPECIFIC TEMPLATES (Mode-Driven, Not Text-Dependent)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MODE_TEMPLATES: Record<string, Record<string, string>> = {
-  MONITORING_ADVISED: {
-    mr: '✅ सध्या तुमचे पीक चांगले आहे. नियमित निरीक्षण करा.',
-    hi: '✅ अभी आपकी फसल ठीक है। नियमित निगरानी करें।',
-    en: '✅ Your crop is currently healthy. Continue regular monitoring.',
-    pa: '✅ ਹੁਣ ਤੁਹਾਡੀ ਫਸਲ ਠੀਕ ਹੈ। ਨਿਯਮਿਤ ਨਿਗਰਾਨੀ ਕਰੋ।',
-    ta: '✅ தற்போது உங்கள் பயிர் நன்றாக உள்ளது. தொடர்ந்து கண்காணிக்கவும்.'
-  },
+const MODE_TEMPLATES: Record<string, string> = {
+  MONITORING_ADVISED: '✅ Your crop is currently healthy. Continue regular monitoring.',
+  OBSERVATION: '👀 Continue observing your crop. Contact us if the issue worsens.',
+  PHOTO_REQUIRED: '📷 Please send a photo of the affected crop for accurate diagnosis.',
+  CLARIFICATION_REQUIRED: '🔬 Which of the following problems might your crop have? (Select the closest)',
+  CLARIFICATION: '🔬 Which of the following problems might your crop have? (Select the closest)',
+  INFORMATION: '📋 Information:',
+  TREATMENT: '💊 Recommendation:',
+  TREATMENT_ALLOWED: '💊 Recommendation:',
+  NO_ACTION_NEEDED: '✅ No action needed. Your crop is healthy.',
+  ERROR: '⚠️ Something went wrong. Please try again.'
+};
+
+const PHOTO_GUIDANCE_TEMPLATE: PhotoGuidance = {
+  prompt_text: '📷 Send Photo',
+  what_to_capture: 'Take a close-up photo of the affected leaf or stem',
+  tips: ['Take photo in good lighting', 'Choose an angle where symptoms are clearly visible']
+};
   OBSERVATION: {
     mr: '👀 पिकाचे निरीक्षण करत रहा. समस्या वाढल्यास पुन्हा संपर्क करा.',
     hi: '👀 फसल की निगरानी जारी रखें। समस्या बढ़े तो संपर्क करें।',
