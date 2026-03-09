@@ -429,6 +429,26 @@ export async function generateDiagnosisFirstResponse(
     })
   );
   
+  // ═══════════════════════════════════════════════════════════════
+  // SAFETY GUARD: Filter out diagnoses with synthetic/invalid observation keys.
+  // Valid keys are short uppercase codes (e.g., LEAF_YELLOWING, DEAD_HEART_PRESENT).
+  // Invalid keys are truncated sentences from cause field (e.g., ZINC_DEFICIENCY_CAUSES_CHLOROS).
+  // ═══════════════════════════════════════════════════════════════
+  const RAW_SENTENCE_KEY_PATTERN = /^[A-Z_]{20,}$/; // Very long uppercase keys are suspicious
+  const KNOWN_VALID_LONG_KEYS = new Set(['INTERVEINAL_CHLOROSIS', 'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'WATERLOGGING_DAMAGE', 'HONEYDEW_PRESENT']);
+  
+  const validatedDiagnoses = diagnoses.filter(d => {
+    const key = d.observation_key;
+    if (key === 'VISUAL_CHECK') return true; // Always valid
+    if (KNOWN_VALID_LONG_KEYS.has(key)) return true;
+    // Reject keys that look like truncated sentences (>25 chars, no DB match)
+    if (key.length > 25 && !observationLabelsMap.has(key)) {
+      console.log(`   🚫 Filtered out invalid observation key: "${key}" (from cause: "${d.cause}")`);
+      return false;
+    }
+    return true;
+  });
+  
   // Generate photo option (ALWAYS present)
   const photoLabels = PHOTO_LABELS[language] || PHOTO_LABELS['en'];
   const photoOption: PhotoOption = {
