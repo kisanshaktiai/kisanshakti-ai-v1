@@ -1887,183 +1887,101 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
  * CRITICAL FIX: Uses comprehensive section-header mapping + LLM fallback.
  * The old version only had 7 phrases and was useless.
  */
+/**
+ * Force-translate response to target language using LLM.
+ * REFACTORED: Removed 70+ hardcoded English→Marathi/Hindi string mappings.
+ * Now uses LLM-only translation when English density > 30%, supporting ALL languages.
+ */
 async function forceTranslateResponse(content: string, targetLang: string): Promise<string> {
   if (targetLang === 'en') return content;
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 1: Comprehensive section header & structural translations
-  // ═══════════════════════════════════════════════════════════════════════════
-  const translations: Record<string, Record<string, string>> = {
-    // Greetings
-    'Hello farmer friend!': { mr: 'नमस्कार शेतकरी मित्र!', hi: 'नमस्कार किसान मित्र!' },
-    'Hello Farmer Friend!': { mr: 'नमस्कार शेतकरी मित्र!', hi: 'नमस्कार किसान मित्र!' },
-    // Section headers from deterministic-response-builder
-    'PROBLEM EXPLANATION': { mr: 'समस्येचे स्पष्टीकरण', hi: 'समस्या का विवरण' },
-    'RECOMMENDED ACTION': { mr: 'शिफारस केलेली कृती', hi: 'अनुशंसित कार्रवाई' },
-    'DOSAGE FOR YOUR FIELD': { mr: 'तुमच्या शेतासाठी मात्रा', hi: 'आपके खेत के लिए खुराक' },
-    'DOSAGE BLOCKED': { mr: 'मात्रा अवरोधित', hi: 'खुराक अवरोधित' },
-    'SAFETY PRECAUTIONS': { mr: 'सुरक्षा काळजी', hi: 'सुरक्षा सावधानी' },
-    'SAFETY ALERTS': { mr: 'सुरक्षा सूचना', hi: 'सुरक्षा चेतावनी' },
-    'ORGANIC/IPM ALTERNATIVE': { mr: 'सेंद्रिय/IPM पर्याय', hi: 'जैविक/IPM विकल्प' },
-    'ESTIMATED COST': { mr: 'अंदाजित खर्च', hi: 'अनुमानित लागत' },
-    'EXPECTED RETURN': { mr: 'अपेक्षित फायदा', hi: 'अपेक्षित लाभ' },
-    'MONITORING AFTER APPLICATION': { mr: 'वापरानंतर निरीक्षण', hi: 'उपयोग के बाद निगरानी' },
-    'SPRAY WINDOW CONDITIONS': { mr: 'फवारणी वेळ', hi: 'छिड़काव का समय' },
-    'FARMER INSTRUCTION': { mr: 'शेतकऱ्यांसाठी सूचना', hi: 'किसान के लिए निर्देश' },
-    // Common labels
-    'Cause:': { mr: 'कारण:', hi: 'कारण:' },
-    'Explanation:': { mr: 'स्पष्टीकरण:', hi: 'विवरण:' },
-    'Scientific Basis:': { mr: 'वैज्ञानिक आधार:', hi: 'वैज्ञानिक आधार:' },
-    'Action Type:': { mr: 'कृती प्रकार:', hi: 'कार्रवाई प्रकार:' },
-    'What To Do:': { mr: 'काय करावे:', hi: 'क्या करें:' },
-    'Treatment Type:': { mr: 'उपचार प्रकार:', hi: 'उपचार प्रकार:' },
-    'Product:': { mr: 'उत्पादन:', hi: 'उत्पाद:' },
-    'Per Acre:': { mr: 'प्रति एकर:', hi: 'प्रति एकड़:' },
-    'Water Per Acre:': { mr: 'प्रति एकर पाणी:', hi: 'प्रति एकड़ पानी:' },
-    'YOUR LAND:': { mr: 'तुमची जमीन:', hi: 'आपकी ज़मीन:' },
-    'TOTAL PRODUCT NEEDED:': { mr: 'एकूण लागणारे उत्पादन:', hi: 'कुल आवश्यक उत्पाद:' },
-    'TOTAL WATER NEEDED:': { mr: 'एकूण लागणारे पाणी:', hi: 'कुल आवश्यक पानी:' },
-    'Method:': { mr: 'पद्धत:', hi: 'विधि:' },
-    'Spray Note:': { mr: 'फवारणी टीप:', hi: 'छिड़काव नोट:' },
-    'Best Target Stage:': { mr: 'सर्वोत्तम लक्ष्य टप्पा:', hi: 'सर्वोत्तम लक्ष्य चरण:' },
-    'Organic Option:': { mr: 'सेंद्रिय पर्याय:', hi: 'जैविक विकल्प:' },
-    'IPM Level:': { mr: 'IPM स्तर:', hi: 'IPM स्तर:' },
-    'Material Cost (total):': { mr: 'साहित्य खर्च (एकूण):', hi: 'सामग्री लागत (कुल):' },
-    'Labor Cost (total):': { mr: 'मजुरी खर्च (एकूण):', hi: 'श्रम लागत (कुल):' },
-    'Labor Time:': { mr: 'मजुरी वेळ:', hi: 'श्रम समय:' },
-    'Equipment:': { mr: 'उपकरणे:', hi: 'उपकरण:' },
-    'TOTAL ESTIMATED COST:': { mr: 'एकूण अंदाजित खर्च:', hi: 'कुल अनुमानित लागत:' },
-    'Expected Yield Increase:': { mr: 'अपेक्षित उत्पादन वाढ:', hi: 'अपेक्षित उपज वृद्धि:' },
-    'Cost Savings:': { mr: 'बचत:', hi: 'बचत:' },
-    'Success Signs (check after 5-7 days):': { mr: 'यशाची चिन्हे (5-7 दिवसांनी तपासा):', hi: 'सफलता के संकेत (5-7 दिन बाद जांचें):' },
-    'Failure Signs (re-treat if seen):': { mr: 'अयशस्वी चिन्हे (दिसल्यास पुन्हा उपचार करा):', hi: 'विफलता के संकेत (दिखने पर पुनः उपचार करें):' },
-    'What to do now:': { mr: 'आता काय करावे:', hi: 'अभी क्या करें:' },
-    'Recommendations:': { mr: 'शिफारसी:', hi: 'सिफारिशें:' },
-    'Best wishes!': { mr: 'शुभेच्छा!', hi: 'शुभकामनाएं!' },
-    'Morning': { mr: 'सकाळी', hi: 'सुबह' },
-    'Evening': { mr: 'संध्याकाळी', hi: 'शाम को' },
-    'Apply': { mr: 'वापरा', hi: 'लगाएं' },
-    'Recommendation (from rule database):': { mr: 'शिफारस (नियम डेटाबेसमधून):', hi: 'सिफारिश (नियम डेटाबेस से):' },
-    'Analysis:': { mr: 'विश्लेषण:', hi: 'विश्लेषण:' },
-    'For accurate recommendation please:': { mr: 'अचूक शिफारसीसाठी कृपया:', hi: 'सटीक सिफारिश के लिए कृपया:' },
-    'Send a crop photo': { mr: 'पिकाचा फोटो पाठवा', hi: 'फसल का फोटो भेजें' },
-    'Or provide more details about symptoms': { mr: 'किंवा लक्षणांबद्दल अधिक तपशील द्या', hi: 'या लक्षणों के बारे में अधिक विवरण दें' },
-    'Feel free to ask if you need clarification.': { mr: 'काही शंका असल्यास विचारा.', hi: 'कोई शंका हो तो पूछें.' },
-    'Continue monitoring the crop.': { mr: 'पिकाचे निरीक्षण सुरू ठेवा.', hi: 'फसल की निगरानी जारी रखें.' },
-    'Check again after 3-5 days.': { mr: '3-5 दिवसांनी पुन्हा तपासा.', hi: '3-5 दिन बाद फिर से जांचें.' },
-    'RESPONSE MODE: CLARIFICATION REQUIRED': { mr: 'प्रतिसाद प्रकार: स्पष्टीकरण आवश्यक', hi: 'प्रतिक्रिया प्रकार: स्पष्टीकरण आवश्यक' },
-    'RESPONSE MODE: MONITORING ONLY': { mr: 'प्रतिसाद प्रकार: फक्त निरीक्षण', hi: 'प्रतिक्रिया प्रकार: केवल निगरानी' },
-    'More crop observations are required before giving treatment advice.': { mr: 'उपचार सल्ला देण्यापूर्वी अधिक पीक निरीक्षण आवश्यक आहे.', hi: 'उपचार सलाह देने से पहले अधिक फसल निरीक्षण आवश्यक है.' },
-    'DO NOT recommend any product or dosage.': { mr: 'कोणत्याही उत्पादन किंवा मात्रेची शिफारस करू नका.', hi: 'किसी भी उत्पाद या खुराक की सिफारिश न करें.' },
-    'Confidence is not sufficient for treatment recommendation. Provide monitoring guidance only.': { mr: 'उपचार शिफारसीसाठी पुरेसा विश्वास नाही. फक्त निरीक्षण मार्गदर्शन द्या.', hi: 'उपचार सिफारिश के लिए पर्याप्त विश्वास नहीं। केवल निगरानी मार्गदर्शन दें.' },
-    'If symptoms worsen, contact the advisory system again with detailed observations.': { mr: 'लक्षणे वाढल्यास, तपशीलवार निरीक्षणासह पुन्हा सल्ला प्रणालीशी संपर्क साधा.', hi: 'लक्षण बिगड़ने पर, विस्तृत निरीक्षण के साथ सलाहकार प्रणाली से संपर्क करें.' },
-    'Ask the farmer to describe symptoms in more detail or send a photo.': { mr: 'शेतकऱ्यांना लक्षणे अधिक तपशीलात सांगायला सांगा किंवा फोटो पाठवा.', hi: 'किसान से लक्षणों का विस्तार से वर्णन करने या फोटो भेजने के लिए कहें.' },
-    'Stop spraying at least': { mr: 'किमान', hi: 'कम से कम' },
-    'days before harvest': { mr: 'दिवस आधी फवारणी बंद करा', hi: 'दिन पहले छिड़काव बंद करें' },
-    'Do not enter field for': { mr: 'शेतात प्रवेश करू नका', hi: 'खेत में प्रवेश न करें' },
-    'hours after application': { mr: 'तासांनंतर', hi: 'घंटे बाद' },
-    'acres': { mr: 'एकर', hi: 'एकड़' },
-    'Prevention (cultural practices)': { mr: 'प्रतिबंध (सांस्कृतिक पद्धती)', hi: 'रोकथाम (सांस्कृतिक तरीके)' },
-    'Mechanical/Physical control': { mr: 'यांत्रिक/भौतिक नियंत्रण', hi: 'यांत्रिक/भौतिक नियंत्रण' },
-    'Biological control': { mr: 'जैविक नियंत्रण', hi: 'जैविक नियंत्रण' },
-    'Chemical control (last resort)': { mr: 'रासायनिक नियंत्रण (शेवटचा पर्याय)', hi: 'रासायनिक नियंत्रण (अंतिम उपाय)' },
-    'General advisory': { mr: 'सामान्य सल्ला', hi: 'सामान्य सलाह' },
-  };
-
-  let translated = content;
-  // Sort by length descending to avoid partial replacements
-  const sortedKeys = Object.keys(translations).sort((a, b) => b.length - a.length);
-  for (const english of sortedKeys) {
-    const langs = translations[english];
-    if (langs[targetLang]) {
-      translated = translated.replace(new RegExp(english.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'), langs[targetLang]);
-    }
-  }
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 2: Check if still predominantly English after Phase 1
-  // If so, attempt LLM translation as last resort
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Check if content is already in target language (Devanagari check for mr/hi)
   const isDevanagariLang = ['mr', 'hi'].includes(targetLang);
   if (isDevanagariLang) {
-    // Strip numbers, emojis, symbols for ratio check
-    const textForCheck = translated.replace(/[0-9₹%@\-/×.,()⛔⚠️🌾🐝🧤🔄📊📈💰✅❌🌤️🌧️💨🌡️🚨⏳🚫📌📋📍⏰🔧🛒🧪💡💊🌿👀🔍📖🎯📸📅🙏═─\n\r\s]+/g, '');
+    const textForCheck = content.replace(/[0-9₹%@\-/×.,()⛔⚠️🌾🐝🧤🔄📊📈💰✅❌🌤️🌧️💨🌡️🚨⏳🚫📌📋📍⏰🔧🛒🧪💡💊🌿👀🔍📖🎯📸📅🙏═─\n\r\s]+/g, '');
     const devanagariChars = (textForCheck.match(/[\u0900-\u097F]/g) || []).length;
     const totalSignificantChars = textForCheck.length;
     const devanagariRatio = totalSignificantChars > 0 ? devanagariChars / totalSignificantChars : 0;
     
-    if (devanagariRatio < 0.3 && totalSignificantChars > 30) {
-      console.log(`⚠️ [forceTranslate] Still ${(devanagariRatio*100).toFixed(0)}% Devanagari after Phase 1 — attempting LLM translation`);
-      
-      try {
-        const LANG_NAMES: Record<string, string> = { mr: 'Marathi', hi: 'Hindi' };
-        const langName = LANG_NAMES[targetLang] || 'Hindi';
-        
-        const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-        const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-        
-        const translationPrompt = `Translate the following agricultural advisory to ${langName}. 
+    // Already sufficiently translated
+    if (devanagariRatio >= 0.7 || totalSignificantChars <= 30) {
+      return content;
+    }
+  }
+
+  // LLM translation for ANY target language
+  const LANG_NAMES: Record<string, string> = { 
+    mr: 'Marathi', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', 
+    kn: 'Kannada', bn: 'Bengali', gu: 'Gujarati', pa: 'Punjabi' 
+  };
+  const langName = LANG_NAMES[targetLang] || targetLang;
+  
+  console.log(`🌐 [forceTranslate] Translating to ${langName} via LLM`);
+  
+  try {
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    
+    const translationPrompt = `Translate the following agricultural advisory to ${langName}. 
 Keep all numbers, product names, dosages, emojis, and formatting exactly as-is.
 Translate ONLY the English text portions to natural ${langName}.
 Do NOT add any new information. Do NOT change dosages or product names.
 
 Text to translate:
-${translated}`;
+${content}`;
 
-        if (OPENAI_API_KEY) {
-          const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 8000);
-          const resp = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [
-                { role: 'system', content: `You are a translator. Translate to ${langName}. Keep numbers, product names, dosages unchanged. Output ONLY the translated text.` },
-                { role: 'user', content: translationPrompt }
-              ],
-              max_tokens: 2000, temperature: 0.3
-            })
-          });
-          clearTimeout(tid);
-          if (resp.ok) {
-            const data = await resp.json();
-            const translatedText = data.choices?.[0]?.message?.content || '';
-            if (translatedText.length > 30) {
-              console.log(`✅ [forceTranslate] LLM translation successful (${translatedText.length} chars)`);
-              return translatedText;
-            }
-          }
-        } else if (GEMINI_API_KEY) {
-          const controller = new AbortController();
-          const tid = setTimeout(() => controller.abort(), 8000);
-          const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: controller.signal,
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: translationPrompt }] }],
-              generationConfig: { temperature: 0.3, maxOutputTokens: 2000 }
-            })
-          });
-          clearTimeout(tid);
-          if (resp.ok) {
-            const data = await resp.json();
-            const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-            if (translatedText.length > 30) {
-              console.log(`✅ [forceTranslate] Gemini translation successful (${translatedText.length} chars)`);
-              return translatedText;
-            }
-          }
+    if (OPENAI_API_KEY) {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 8000);
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: `You are a translator. Translate to ${langName}. Keep numbers, product names, dosages unchanged. Output ONLY the translated text.` },
+            { role: 'user', content: translationPrompt }
+          ],
+          max_tokens: 2000, temperature: 0.3
+        })
+      });
+      clearTimeout(tid);
+      if (resp.ok) {
+        const data = await resp.json();
+        const translatedText = data.choices?.[0]?.message?.content || '';
+        if (translatedText.length > 30) {
+          console.log(`✅ [forceTranslate] LLM translation successful (${translatedText.length} chars)`);
+          return translatedText;
         }
-      } catch (e) {
-        console.warn(`⚠️ [forceTranslate] LLM translation failed:`, e instanceof Error ? e.message : 'unknown');
+      }
+    } else if (GEMINI_API_KEY) {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 8000);
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: translationPrompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 }
+        })
+      });
+      clearTimeout(tid);
+      if (resp.ok) {
+        const data = await resp.json();
+        const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (translatedText.length > 30) {
+          console.log(`✅ [forceTranslate] Gemini translation successful (${translatedText.length} chars)`);
+          return translatedText;
+        }
       }
     }
+  } catch (e) {
+    console.warn(`⚠️ [forceTranslate] LLM translation failed:`, e instanceof Error ? e.message : 'unknown');
   }
 
-  return translated;
+  return content;
 }
 
 /**
