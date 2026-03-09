@@ -149,6 +149,9 @@ function normalizeCauseForDedup(cause: string): string {
   
   // Apply pattern-based normalization for known variations
   const patterns: [RegExp, string][] = [
+    // ═══════════════════════════════════════════════════════════════════════
+    // PEST patterns (existing)
+    // ═══════════════════════════════════════════════════════════════════════
     [/early\s*shoot\s*borer/i, 'early shoot borer'],
     [/shoot\s*borer/i, 'shoot borer'],
     [/stem\s*borer/i, 'stem borer'],
@@ -166,6 +169,30 @@ function normalizeCauseForDedup(cause: string): string {
     [/smut/i, 'smut'],
     [/wilt/i, 'wilt'],
     [/rust/i, 'rust'],
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC AUDIT FIX v8.0: NUTRIENT dedup patterns
+    // "Basal Nitrogen Recommendation", "Optimized Nitrogen Application",
+    // "Split Nitrogen Application" all collapse to "nitrogen deficiency"
+    // ═══════════════════════════════════════════════════════════════════════
+    [/nitrogen/i, 'nitrogen deficiency'],
+    [/phosphorus|phospho/i, 'phosphorus deficiency'],
+    [/potassium|potash/i, 'potassium deficiency'],
+    [/micronutrient/i, 'micronutrient deficiency'],
+    [/iron\s*(deficiency|chlorosis)?/i, 'iron deficiency'],
+    [/zinc\s*(deficiency)?/i, 'zinc deficiency'],
+    [/boron\s*(deficiency)?/i, 'boron deficiency'],
+    [/manganese\s*(deficiency)?/i, 'manganese deficiency'],
+    [/sulphur|sulfur/i, 'sulphur deficiency'],
+    [/nutrient\s*deficiency/i, 'nutrient deficiency'],
+    [/yellowing|chlorosis|chlorotic/i, 'yellowing chlorosis'],
+    
+    // DISEASE dedup patterns
+    [/leaf\s*spot/i, 'leaf spot'],
+    [/blight/i, 'blight'],
+    [/mosaic/i, 'mosaic virus'],
+    [/grassy\s*shoot/i, 'grassy shoot'],
+    [/pokkah\s*boeng/i, 'pokkah boeng'],
   ];
   
   for (const [pattern, replacement] of patterns) {

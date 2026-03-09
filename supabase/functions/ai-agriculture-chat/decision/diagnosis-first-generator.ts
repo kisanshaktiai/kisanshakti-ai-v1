@@ -419,9 +419,21 @@ export async function generateDiagnosisFirstResponse(
         observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       }
       
-      // CRITICAL FIX: If causeLabel is empty (no regional translation found),
-      // use observationLabel as the display label so farmer never sees raw English keys
-      const finalCauseLabel = causeLabel || observationLabel || h.cause;
+      // ═══════════════════════════════════════════════════════════════
+      // FORENSIC AUDIT FIX v8.0: Prevent mixed-language options
+      // When causeLabel is empty (no regional translation), prefer observationLabel.
+      // If observationLabel is also English for a non-English user, format h.cause
+      // as human-readable instead of raw UPPERCASE_CODE.
+      // ═══════════════════════════════════════════════════════════════
+      let finalCauseLabel = causeLabel || observationLabel;
+      if (!finalCauseLabel || finalCauseLabel === h.cause) {
+        // Last resort: format the English cause as readable text
+        finalCauseLabel = h.cause
+          .replace(/_/g, ' ')
+          .split(' ')
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+          .join(' ');
+      }
       
       return {
         id: `diag_${idx}_${h.rule_id}`,
@@ -490,6 +502,43 @@ export async function generateDiagnosisFirstResponse(
     console.log(`   🔄 [Dedup] Removed ${filteredDiagnoses.length - validatedDiagnoses.length} duplicate options by observation_key`);
   }
   
+  // ═══════════════════════════════════════════════════════════════
+  // FORENSIC AUDIT FIX v8.0: Second dedup layer by cause_label
+  // Even after observation_key dedup, different observation keys can produce
+  // the same farmer-facing label (e.g., "NUTRIENT DEFICIENCY" from NUTRIENT_DEFICIENCY
+  // and YELLOWING keys). Dedup by normalized cause_label to prevent UI duplicates.
+  // ═══════════════════════════════════════════════════════════════
+  const seenCauseLabels = new Map<string, DiagnosisOption>();
+  const labelDedupedDiagnoses: DiagnosisOption[] = [];
+  
+  for (const d of validatedDiagnoses) {
+    const normalizedLabel = d.cause_label
+      .replace(/[_\-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+    
+    const existing = seenCauseLabels.get(normalizedLabel);
+    if (!existing) {
+      seenCauseLabels.set(normalizedLabel, d);
+      labelDedupedDiagnoses.push(d);
+    } else {
+      // Keep higher priority / higher confidence
+      if (d.priority < existing.priority || (d.priority === existing.priority && d.confidence > existing.confidence)) {
+        const idx = labelDedupedDiagnoses.indexOf(existing);
+        if (idx >= 0) labelDedupedDiagnoses[idx] = d;
+        seenCauseLabels.set(normalizedLabel, d);
+        console.log(`   🔄 [LabelDedup] Replaced "${existing.cause_label}" with "${d.cause_label}" for label "${normalizedLabel}"`);
+      } else {
+        console.log(`   🔄 [LabelDedup] Skipped "${d.cause_label}" - already have "${existing.cause_label}" for label "${normalizedLabel}"`);
+      }
+    }
+  }
+  
+  if (validatedDiagnoses.length !== labelDedupedDiagnoses.length) {
+    console.log(`   🔄 [LabelDedup] Removed ${validatedDiagnoses.length - labelDedupedDiagnoses.length} duplicate options by cause_label`);
+  }
+  
   // Generate photo option (ALWAYS present)
   const photoOption: PhotoOption = {
     id: 'PHOTO_UPLOAD',
@@ -499,9 +548,9 @@ export async function generateDiagnosisFirstResponse(
   };
   
   // Generate question text
-  const questionText = getQuestionText(validatedDiagnoses, language);
+  const questionText = getQuestionText(labelDedupedDiagnoses, language);
   
-  console.log(`   ✅ Generated ${validatedDiagnoses.length} diagnosis options (filtered from ${diagnoses.length}) + photo option`);
+  console.log(`   ✅ Generated ${labelDedupedDiagnoses.length} diagnosis options (filtered from ${diagnoses.length}) + photo option`);
   console.log(`   Question: "${questionText.substring(0, 60)}..."`);
   console.log(`═══════════════════════════════════════════════════════════════\n`);
   
@@ -509,7 +558,7 @@ export async function generateDiagnosisFirstResponse(
     mode: 'DIAGNOSIS_FIRST',
     source: 'DECISION_RULES',
     question_text: questionText,
-    diagnoses: validatedDiagnoses,
+    diagnoses: labelDedupedDiagnoses,
     photo_option: photoOption,
     crop_code,
     growth_stage,
