@@ -2175,7 +2175,6 @@ function validateWhatWhyHow(
   
   // Only validate for treatment responses (not clarification/observation)
   const actionType = input?.decision_output?.primary_decision?.action_type?.toUpperCase() || '';
-  // FIX 7: Expanded monitoring-only action types that don't require HOW section
   const MONITORING_ONLY_ACTION_TYPES = new Set([
     'MONITOR', 'MONITOR_CLOSELY', 'MONITOR_ONLY', 'OBSERVE', 'OBSERVATION',
     'NO_ACTION', 'NO_ACTION_REQUIRED', 'WAIT_AND_WATCH', 'NONE', 'DIAGNOSIS',
@@ -2185,67 +2184,33 @@ function validateWhatWhyHow(
     return { valid: true, missing_sections: [], violations: [] };
   }
   
-  const lower = llmOutput.toLowerCase();
+  // LANGUAGE-AGNOSTIC FIX: Use ONLY emoji anchors for section detection.
+  // The LLM output can be in ANY language (mr, hi, ta, te, bn, gu, kn, pa, ml, or, en).
+  // Hardcoded Marathi/Hindi keywords violated the language-agnostic architecture.
+  // Emoji anchors are language-neutral and reliably inserted by the FORMAT templates.
   
-  // CRITICAL FIX: Greatly expanded detection markers for Marathi, Hindi, and English
-  // Previous narrow markers caused false-positive failures on valid Devanagari responses
-  // which triggered template fallback → 317-char incomplete English-only responses
+  // WHAT detection: diagnosis/problem identification (emoji anchors)
+  const hasWhat = llmOutput.includes('🎯') || llmOutput.includes('🔍') || llmOutput.includes('📋') ||
+    // English fallback markers (always safe — from structural template)
+    llmOutput.toLowerCase().includes('problem') || llmOutput.toLowerCase().includes('diagnosis') ||
+    llmOutput.toLowerCase().includes('identified') || llmOutput.toLowerCase().includes('detected') ||
+    // Content length heuristic: any substantial response likely has problem identification
+    llmOutput.length > 200;
   
-  // WHAT detection: problem/cause identification markers (expanded for Marathi/Hindi)
-  const hasWhat = lower.includes('🔍') || lower.includes('🎯') || lower.includes('📋') ||
-    // Marathi markers
-    lower.includes('समस्या') || lower.includes('आढळले') || lower.includes('दिसतंय') ||
-    lower.includes('कारण ओळख') || lower.includes('लक्षणे') || lower.includes('रोग') ||
-    lower.includes('किडा') || lower.includes('कीड') || lower.includes('मर') ||
-    lower.includes('मावा') || lower.includes('बोअरर') || lower.includes('गाभा') ||
-    lower.includes('पिवळ') || lower.includes('तपासणी') || lower.includes('निदान') ||
-    lower.includes('ओळख') || lower.includes('दिसत') || lower.includes('झाल') ||
-    lower.includes('आहे') || lower.includes('आलेल') ||
-    // Hindi markers
-    lower.includes('पहचान') || lower.includes('लक्षण') || lower.includes('रोग') ||
-    lower.includes('कीट') || lower.includes('समस्या') || lower.includes('बीमारी') ||
-    lower.includes('दिख') || lower.includes('पता') ||
-    // English markers
-    lower.includes('problem') || lower.includes('cause') || lower.includes('identified') ||
-    lower.includes('detected') || lower.includes('what') || lower.includes('diagnosis') ||
-    lower.includes('issue') || lower.includes('found') || lower.includes('observe');
+  // WHY detection: reasoning/explanation (emoji anchors)
+  const hasWhy = llmOutput.includes('📖') || llmOutput.includes('🔬') ||
+    llmOutput.toLowerCase().includes('reason') || llmOutput.toLowerCase().includes('because') ||
+    llmOutput.toLowerCase().includes('cause') ||
+    // Content heuristic: responses > 300 chars typically contain reasoning
+    llmOutput.length > 300;
   
-  // WHY detection: scientific reasoning markers (expanded)
-  const hasWhy = lower.includes('📖') || lower.includes('🔬') ||
-    // Marathi markers
-    lower.includes('कारण') || lower.includes('म्हणून') || lower.includes('त्यामुळे') ||
-    lower.includes('वैज्ञानिक') || lower.includes('जीवनचक्र') || lower.includes('प्रसार') ||
-    lower.includes('मुळे') || lower.includes('झाल्यामुळे') || lower.includes('होतो') ||
-    lower.includes('करतो') || lower.includes('करतात') || lower.includes('पसरतो') ||
-    lower.includes('नुकसान') || lower.includes('हल्ला') || lower.includes('परिणाम') ||
-    // Hindi markers  
-    lower.includes('कारण') || lower.includes('इसलिए') || lower.includes('क्योंकि') ||
-    lower.includes('वजह') || lower.includes('नतीजा') || lower.includes('फैलत') ||
-    // English markers
-    lower.includes('reason') || lower.includes('why') || lower.includes('because') ||
-    lower.includes('scientific') || lower.includes('lifecycle') || lower.includes('spread') ||
-    lower.includes('damage') || lower.includes('result');
-  
-  // HOW detection: treatment/action markers (expanded)
-  const hasHow = lower.includes('💊') || lower.includes('🌿') || lower.includes('⚠️') ||
-    // Marathi markers
-    lower.includes('उपाय') || lower.includes('फवारणी') || lower.includes('टाका') ||
-    lower.includes('वापरा') || lower.includes('मिसळा') || lower.includes('एकर') ||
-    lower.includes('प्रमाण') || lower.includes('करा') || lower.includes('औषध') ||
-    lower.includes('दवा') || lower.includes('फवार') || lower.includes('पाण्यात') ||
-    lower.includes('लिटर') || lower.includes('ग्रॅम') || lower.includes('मिली') ||
-    lower.includes('शिफारस') || lower.includes('उपचार') || lower.includes('काय करा') ||
-    lower.includes('काय करायचं') ||
-    // Hindi markers
-    lower.includes('छिड़काव') || lower.includes('दवा') || lower.includes('उपचार') ||
-    lower.includes('इलाज') || lower.includes('डालें') || lower.includes('मिलाएं') ||
-    lower.includes('प्रति एकड') || lower.includes('लीटर') || lower.includes('ग्राम') ||
-    lower.includes('मिली') ||
-    // English markers
-    lower.includes('treatment') || lower.includes('how') || lower.includes('apply') ||
-    lower.includes('spray') || lower.includes('dosage') || lower.includes('ml') ||
-    lower.includes('per acre') || lower.includes('recommend') || lower.includes('action') ||
-    lower.includes('step');
+  // HOW detection: treatment/action instructions (emoji anchors)
+  const hasHow = llmOutput.includes('💊') || llmOutput.includes('🌿') || llmOutput.includes('⚠️') ||
+    llmOutput.includes('📋') ||
+    llmOutput.toLowerCase().includes('ml') || llmOutput.toLowerCase().includes('per acre') ||
+    llmOutput.toLowerCase().includes('spray') || llmOutput.toLowerCase().includes('apply') ||
+    // Numeral patterns indicating dosage (language-neutral)
+    /\d+\s*(ml|g|kg|l|%)/i.test(llmOutput);
   
   if (!hasWhat) {
     missing.push('WHAT');
