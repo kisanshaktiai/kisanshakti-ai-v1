@@ -2238,22 +2238,27 @@ function validateWhatWhyHow(
 // Ensures LLM output doesn't mention wrong/unauthorized crop names
 // ═══════════════════════════════════════════════════════════════════════════
 
-// LANGUAGE-AGNOSTIC: English-only canonical aliases for crop validation.
-// The LLM translates crop names to the farmer's language at runtime —
-// validation checks the English canonical name only.
+// MULTILINGUAL: Crop name aliases in English + Marathi + Hindi for validation.
+// CRITICAL FIX: Previously English-only, causing Devanagari crop mentions 
+// (e.g., "गहू" for wheat in a sugarcane chat) to bypass validation entirely.
 const CROP_NAME_ALIASES: Record<string, string[]> = {
-  'SUGARCANE': ['sugarcane', 'sugar cane', 'cane'],
-  'COTTON': ['cotton'],
-  'RICE': ['rice', 'paddy'],
-  'WHEAT': ['wheat'],
-  'MAIZE': ['maize', 'corn'],
-  'SOYBEAN': ['soybean', 'soya'],
-  'GROUNDNUT': ['groundnut', 'peanut'],
-  'ONION': ['onion'],
-  'TOMATO': ['tomato'],
-  'CHILLI': ['chilli', 'chili', 'pepper'],
-  'GRAM': ['gram', 'chickpea'],
-  'TUR': ['tur', 'pigeon pea', 'toor']
+  'SUGARCANE': ['sugarcane', 'sugar cane', 'cane', 'ऊस', 'गन्ना', 'गन्ने', 'ईख', 'उस'],
+  'COTTON': ['cotton', 'कापूस', 'कपास', 'रुई', 'kapus', 'kapas'],
+  'RICE': ['rice', 'paddy', 'भात', 'धान', 'चावल', 'तांदूळ', 'dhan'],
+  'WHEAT': ['wheat', 'गहू', 'गेहूं', 'गेहूँ', 'gehu', 'gehun'],
+  'MAIZE': ['maize', 'corn', 'मका', 'मक्का', 'makka'],
+  'SOYBEAN': ['soybean', 'soya', 'सोयाबीन', 'सोयाबिन', 'soyabean'],
+  'GROUNDNUT': ['groundnut', 'peanut', 'भुईमूग', 'मूंगफली', 'शेंगदाणा'],
+  'ONION': ['onion', 'कांदा', 'प्याज', 'kanda', 'pyaz'],
+  'TOMATO': ['tomato', 'टोमॅटो', 'टमाटर', 'tamatar'],
+  'CHILLI': ['chilli', 'chili', 'pepper', 'मिरची', 'मिर्च', 'mirchi'],
+  'GRAM': ['gram', 'chickpea', 'हरभरा', 'चना', 'chana'],
+  'TUR': ['tur', 'pigeon pea', 'toor', 'तूर', 'अरहर'],
+  'BANANA': ['banana', 'केळी', 'केला'],
+  'GRAPE': ['grape', 'grapes', 'द्राक्षे', 'अंगूर'],
+  'POMEGRANATE': ['pomegranate', 'डाळिंब', 'अनार'],
+  'MANGO': ['mango', 'आंबा', 'आम'],
+  'POTATO': ['potato', 'बटाटा', 'आलू', 'aloo'],
 };
 
 function validateCropNameConsistency(
