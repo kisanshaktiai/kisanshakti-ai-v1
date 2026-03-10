@@ -372,7 +372,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ MONITORING ═══ */}
       {monitoring.has_monitoring && (
-        <AdvisorySection icon={Activity} title="Monitoring" variant="green" defaultExpanded={false}>
+        <AdvisorySection icon={Activity} title={t('chatCards.cards.monitoring')} variant="green" defaultExpanded={false}>
           {monitoring.success_indicators.length > 0 && (
             <div className="mb-2">
               <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1 flex items-center gap-1">
