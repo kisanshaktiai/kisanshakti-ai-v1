@@ -114,7 +114,7 @@ export default function AuthScreen() {
       } else {
         // User not found, switch to register mode
         setMode('register');
-        setError(t('auth.noAccount') || 'No account found. Click Continue to register.');
+        setError(t('auth.accountNotFound') || 'No account found with this number. Click Continue to register.');
       }
     } catch (err: any) {
       console.error('Error in auth:', err);
