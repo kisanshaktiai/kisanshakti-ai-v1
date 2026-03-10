@@ -276,7 +276,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                 {message.recommended_solution.main_action.when && (
                   <p className="text-foreground">
                     <span className="text-muted-foreground">
-                      {message.language === 'mr' ? 'कधी: ' : message.language === 'hi' ? 'कब: ' : 'When: '}
+                      {t('chatCards.cards.when')}:
                     </span>
                     {safeString(message.recommended_solution.main_action.when)}
                   </p>
