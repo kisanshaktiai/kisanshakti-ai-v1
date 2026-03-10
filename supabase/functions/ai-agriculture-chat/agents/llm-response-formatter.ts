@@ -1349,9 +1349,13 @@ Numbers can use either standard (0-9) or ${langName} script numerals.
 
 ═══ TRANSLATION QUALITY RULES ═══
 - TRANSLATE MEANING, not words. Rewrite like an experienced agricultural officer talking face-to-face with a farmer.
-- Use colloquial rural dialect, NOT literary/formal language.
-- For Marathi: use बोलीभाषा (spoken language), not प्रमाणभाषा (standard written). Example: "Interveinal chlorosis observed" → "पानांच्या शिरांजवळ पिवळेपणा दिसतोय"
-- For Hindi: use गांव की बोली (village speech), not शुद्ध हिंदी. Example: "Nitrogen deficiency" → "खाद की कमी दिख रही है"
+- Use colloquial rural dialect of ${langName}, NOT literary/formal/textbook language.
+- Use the spoken village form of ${langName}, not the formal written standard.
+- Agricultural terms MUST use local farmer vocabulary, NOT literal translation of English technical terms.
+  Example: "Dead heart" is a pest symptom name — translate to the LOCAL FARMING TERM for this condition in ${langName}, NOT a literal word-by-word translation like "dead" + "heart".
+  Example: "Interveinal chlorosis" → translate as "yellowing near leaf veins" in natural ${langName}, NOT the medical/scientific term.
+  Example: "Bore hole" → use the ${langName} farming word for insect hole, NOT a transliteration of "bore hole".
+- NEVER literally translate English compound nouns — they are specific agricultural condition names with established local terms.
 - Keep sentences under 15 words. Break complex advice into numbered steps.
 - Every instruction must be actionable — farmer must know exactly WHAT to buy, HOW MUCH, and WHEN to apply.
 - NEVER use English words when a ${langName} equivalent exists.
