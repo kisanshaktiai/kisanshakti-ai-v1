@@ -150,6 +150,7 @@ const DataRow = ({ label, value, unit }: { label: string; value: any; unit?: str
 
 export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAuditCardsProps) {
   const [expanded, setExpanded] = React.useState(isExpanded);
+  const { t } = useTranslation();
   
   const qualityScore = audit.summary?.data_quality_score || 0;
   const qualityColor = qualityScore >= 80 ? 'text-success' : qualityScore >= 50 ? 'text-warning' : 'text-destructive';
