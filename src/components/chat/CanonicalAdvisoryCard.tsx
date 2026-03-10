@@ -210,6 +210,7 @@ function ConfidenceBadge({ score, decision }: { score: number; decision: string 
 
 export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ advisory }) => {
   const [showTrace, setShowTrace] = useState(false);
+  const { t } = useTranslation();
   const { diagnosis, explanation, treatment, safety, environment, economics, monitoring, trace } = advisory;
   
   return (
