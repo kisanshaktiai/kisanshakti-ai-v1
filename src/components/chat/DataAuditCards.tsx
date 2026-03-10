@@ -134,8 +134,9 @@ const AuditCard = ({
         )) || <span>{t('chatCards.cards.noDataAvailable')}</span>}
       </div>
     )}
-  </Card>
-);
+    </Card>
+  );
+};
 
 const DataRow = ({ label, value, unit }: { label: string; value: any; unit?: string }) => {
   if (value === undefined || value === null) return null;
