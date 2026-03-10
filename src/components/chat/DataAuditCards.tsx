@@ -129,7 +129,7 @@ const AuditCard = ({
             <span>•</span>
             <span>{reason}</span>
           </div>
-        )) || <span>No data available</span>}
+        )) || <span>{t('chatCards.cards.noDataAvailable')}</span>}
       </div>
     )}
   </Card>
