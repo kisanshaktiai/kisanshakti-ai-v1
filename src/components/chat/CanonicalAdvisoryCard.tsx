@@ -286,7 +286,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
         {/* Application method */}
         {treatment.application_method && (
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium">Method:</span> {treatment.application_method}
+            <span className="font-medium">{t('chatCards.cards.method')}:</span> {treatment.application_method}
           </p>
         )}
         
