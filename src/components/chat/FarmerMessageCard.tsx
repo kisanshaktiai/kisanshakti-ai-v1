@@ -318,7 +318,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-destructive" />
                 <span className="text-sm font-medium text-destructive">
-                  {message.language === 'mr' ? 'सुरक्षितता' : message.language === 'hi' ? 'सुरक्षा' : 'Safety'}
+                  {t('chatCards.cards.safety')}
                 </span>
               </div>
               {safetyOpen ? (
