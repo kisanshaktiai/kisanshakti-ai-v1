@@ -289,7 +289,8 @@ interface BlockedActionCardProps {
 }
 
 export function BlockedActionCard({ blockedAction, index, language }: BlockedActionCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <motion.div
