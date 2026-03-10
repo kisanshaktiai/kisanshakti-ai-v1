@@ -35,7 +35,7 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
   if (!analysis?.cropDetected || !analysis?.healthStatus || !analysis?.diagnosis) {
     return (
       <div className="p-4 text-center text-muted-foreground">
-        <p>Analysis data is incomplete. Please try again.</p>
+        <p>{t('chatCards.cards.analysisIncomplete')}</p>
       </div>
     );
   }
