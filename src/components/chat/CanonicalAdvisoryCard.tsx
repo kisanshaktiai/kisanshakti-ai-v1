@@ -419,7 +419,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
         <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5">
           <div className="flex items-center gap-1.5 mb-1">
             <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-            <span className="text-xs font-semibold text-destructive">Safety Warnings</span>
+            <span className="text-xs font-semibold text-destructive">{t('chatCards.cards.safetyWarnings')}</span>
           </div>
           <ul className="space-y-0.5">
             {advisory.safety_warnings.map((w, i) => (
