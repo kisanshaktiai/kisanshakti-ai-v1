@@ -324,6 +324,16 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
         .map(k => k.toUpperCase().replace(/[\s-]/g, '_'));
       console.log(`   [ExtractObs] Converted to array: [${raw.slice(0, 3).join(', ')}${raw.length > 3 ? '...' : ''}]`);
     }
+    // CASE 2.5: Object with nested 'symptoms' array: {symptoms: ["INTERVEINAL_CHLOROSIS", "LEAF_YELLOWING"]}
+    else if (Array.isArray(raw.symptoms)) {
+      console.log(`   [ExtractObs] Extracting from nested {symptoms: [...]} with ${raw.symptoms.length} items`);
+      raw = raw.symptoms.map((s: any) => typeof s === 'string' ? s.toUpperCase().replace(/[\s-]/g, '_') : s);
+    }
+    // CASE 2.6: Object with nested 'observations' array: {observations: [...]}
+    else if (Array.isArray(raw.observations)) {
+      console.log(`   [ExtractObs] Extracting from nested {observations: [...]} with ${raw.observations.length} items`);
+      raw = raw.observations.map((s: any) => typeof s === 'string' ? s.toUpperCase().replace(/[\s-]/g, '_') : s);
+    }
     // CASE 3: Unknown object structure, skip
     else {
       console.log('   [ExtractObs] Skipping unknown object structure:', keys.slice(0, 3));
