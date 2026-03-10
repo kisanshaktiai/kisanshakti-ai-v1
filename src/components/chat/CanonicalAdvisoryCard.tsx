@@ -388,7 +388,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           {monitoring.failure_indicators.length > 0 && (
             <div>
               <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-1 flex items-center gap-1">
-                <XCircle className="h-3 w-3" /> Warning Signs
+                <XCircle className="h-3 w-3" /> {t('chatCards.cards.warningSigns')}
               </p>
               <ul className="space-y-0.5">
                 {monitoring.failure_indicators.map((s, i) => (
