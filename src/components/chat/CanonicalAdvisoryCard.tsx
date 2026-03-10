@@ -313,7 +313,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ SAFETY ═══ */}
       {safety.has_safety_info && (
-        <AdvisorySection icon={Shield} title="Safety" variant="red">
+        <AdvisorySection icon={Shield} title={t('chatCards.cards.safety')} variant="red">
           <div className="space-y-1.5">
             {safety.safety_instruction && (
               <p className="text-muted-foreground">{safety.safety_instruction}</p>
