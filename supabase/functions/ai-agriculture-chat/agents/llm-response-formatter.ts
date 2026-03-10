@@ -156,16 +156,16 @@ export interface LLMFormatterOutput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// IPM LEVEL TRANSLATIONS
+// IPM LEVEL TRANSLATIONS — Now handled by LLM narration layer
+// Hardcoded dict removed to support all languages dynamically
 // ═══════════════════════════════════════════════════════════════════════════
 
-// CRITICAL FIX: IPM labels with full localization to prevent English leakage
 const IPM_URGENCY_LABELS: Record<string, Record<string, string>> = {
-  'LEVEL_1': { en: 'Monitor', mr: 'निरीक्षण करा', hi: 'निगरानी करें' },
-  'LEVEL_2': { en: 'Use cultural practices', mr: 'सांस्कृतिक पद्धती वापरा', hi: 'सांस्कृतिक तरीके अपनाएं' },
-  'LEVEL_3': { en: 'Mechanical control', mr: 'यांत्रिक नियंत्रण', hi: 'यांत्रिक नियंत्रण' },
-  'LEVEL_4': { en: 'Biological control', mr: 'जैविक नियंत्रण', hi: 'जैविक नियंत्रण' },
-  'LEVEL_5': { en: 'Do immediately', mr: 'लगेच करा', hi: 'तुरंत करें' },
+  'LEVEL_1': { en: 'Monitor' },
+  'LEVEL_2': { en: 'Use cultural practices' },
+  'LEVEL_3': { en: 'Mechanical control' },
+  'LEVEL_4': { en: 'Biological control' },
+  'LEVEL_5': { en: 'Do immediately' },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
