@@ -1784,7 +1784,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     if (!IPM_URGENCY_LABELS[ipmLevel]) {
       console.warn(`[IPM_GOVERNANCE] Unknown IPM level: ${ipmLevel}`);
     }
-    const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[input.language] || 'Normal priority';
+    const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel] || 'Normal priority';
     parts.push(`- Urgency: ${urgencyLabel}`);
     
     if (primary.rule_id) {
