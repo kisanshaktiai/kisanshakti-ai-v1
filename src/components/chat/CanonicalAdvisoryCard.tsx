@@ -276,7 +276,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
             )}
             {treatment.dosage.water_volume_per_acre && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Water/acre:</span>
+                <span className="text-muted-foreground">{t('chatCards.cards.waterPerAcre')}:</span>
                 <span className="font-medium text-foreground">{treatment.dosage.water_volume_per_acre}</span>
               </div>
             )}
