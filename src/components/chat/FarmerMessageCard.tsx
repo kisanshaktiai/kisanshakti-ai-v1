@@ -216,7 +216,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
         <div className="rounded-xl p-4 bg-card border border-border">
           <h4 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
-            {message.language === 'mr' ? 'कारण' : message.language === 'hi' ? 'कारण' : 'Cause'}
+            {t('chatCards.cards.cause')}
           </h4>
           <p className="text-base text-foreground leading-relaxed">
             {safeString(message.cause_explanation.text)}
