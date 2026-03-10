@@ -304,7 +304,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           <div className="mt-2 p-2 bg-green-500/10 rounded-md">
             <div className="flex items-center gap-1 mb-1">
               <Leaf className="h-3 w-3 text-green-600" />
-              <span className="text-xs font-medium text-green-700 dark:text-green-400">Organic Alternative</span>
+              <span className="text-xs font-medium text-green-700 dark:text-green-400">{t('chatCards.cards.organicAlternative')}</span>
             </div>
             <p className="text-xs text-muted-foreground">{treatment.organic_solution}</p>
           </div>
