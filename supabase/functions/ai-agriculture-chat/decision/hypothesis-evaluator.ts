@@ -185,7 +185,9 @@ function normalizeCauseForDedup(cause: string): string {
     [/manganese\s*(deficiency)?/i, 'manganese deficiency'],
     [/sulphur|sulfur/i, 'sulphur deficiency'],
     [/nutrient\s*deficiency/i, 'nutrient deficiency'],
-    [/yellowing|chlorosis|chlorotic/i, 'yellowing chlorosis'],
+    // REMOVED: Over-broad yellowing|chlorosis pattern that collapsed ALL nutrient
+    // deficiencies (Iron, Zinc, Nitrogen, Magnesium) into one bucket.
+    // Specific nutrient patterns above handle dedup correctly.
     
     // DISEASE dedup patterns
     [/leaf\s*spot/i, 'leaf spot'],
