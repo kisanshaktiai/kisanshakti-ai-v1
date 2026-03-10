@@ -331,7 +331,8 @@ interface ConfidenceIndicatorProps {
 }
 
 export function ConfidenceIndicator({ confidence, language }: ConfidenceIndicatorProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   const getRiskColor = (level: string) => {
     switch (level) {
