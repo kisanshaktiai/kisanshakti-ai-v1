@@ -437,7 +437,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           className="flex items-center gap-1.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors w-full"
         >
           <Microscope className="h-3 w-3" />
-          <span>Traceability</span>
+           <span>Traceability</span>
           {showTrace ? <ChevronUp className="h-2.5 w-2.5 ml-auto" /> : <ChevronDown className="h-2.5 w-2.5 ml-auto" />}
         </button>
         <AnimatePresence>
