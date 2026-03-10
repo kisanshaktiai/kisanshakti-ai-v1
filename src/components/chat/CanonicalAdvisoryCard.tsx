@@ -265,7 +265,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
         {treatment.dosage && (
           <div className="bg-foreground/5 rounded-md p-2 mb-2 space-y-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Dosage/acre:</span>
+              <span className="text-muted-foreground">{t('chatCards.cards.dosagePerAcre')}:</span>
               <span className="font-medium text-foreground">{treatment.dosage.per_acre}</span>
             </div>
             {treatment.dosage.total && (
