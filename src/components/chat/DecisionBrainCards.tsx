@@ -248,7 +248,8 @@ interface SecondaryActionCardProps {
 }
 
 export function SecondaryActionCard({ action, index, language }: SecondaryActionCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <motion.div
