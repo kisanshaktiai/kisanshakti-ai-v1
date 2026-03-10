@@ -207,6 +207,7 @@ i18n
           soil: mrSoil,
           profile_edit: mrProfileEdit,
           cropGrowth: mrCropGrowth,
+          chatCards: mrChatCards,
         })
       },
       ta: { translation: ta },
