@@ -79,6 +79,9 @@ export default function AuthScreen() {
         tenant_name: tenant.name
       });
 
+      // Set tenant header for RLS policy before pre-auth query
+      updateSupabaseHeaders(undefined, tenant.id);
+      
       // MULTI-TENANT QUERY: Always filter by tenant_id + mobile_number
       // Mobile numbers are stored as strings without country code
       const { data: farmer, error: fetchError } = await supabase
