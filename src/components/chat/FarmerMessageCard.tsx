@@ -261,7 +261,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
               <div className="pl-6 space-y-1 text-sm">
                 <p className="text-foreground">
                   <span className="text-muted-foreground">
-                    {message.language === 'mr' ? 'काय वापरावे: ' : message.language === 'hi' ? 'क्या इस्तेमाल करें: ' : 'What to use: '}
+                    {t('chatCards.cards.whatToUse')}:
                   </span>
                   {safeString(message.recommended_solution.main_action.what_to_use)}
                 </p>
