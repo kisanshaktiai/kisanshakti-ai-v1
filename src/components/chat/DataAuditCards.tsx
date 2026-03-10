@@ -204,7 +204,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
             >
               {/* Land Card */}
               <AuditCard 
-                title="Land" 
+                title={t('chatCards.cards.land')}
                 icon={MapPin} 
                 found={audit.land?.found}
                 missingReasons={audit.land?.missing_reasons}
