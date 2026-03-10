@@ -270,7 +270,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
             </div>
             {treatment.dosage.total && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Total ({treatment.dosage.land_area_acres} acres):</span>
+                <span className="text-muted-foreground">{t('chatCards.cards.total')} ({treatment.dosage.land_area_acres} {t('chatCards.cards.acre')}):</span>
                 <span className="font-semibold text-foreground">{treatment.dosage.total}</span>
               </div>
             )}
