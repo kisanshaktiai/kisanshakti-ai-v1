@@ -177,7 +177,7 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
               <div className="mt-3 p-2 bg-red-500/10 rounded-lg">
                 <div className="flex items-center gap-1 text-sm font-medium text-red-700 dark:text-red-300 mb-1">
                   <AlertTriangle className="h-4 w-4" />
-                  {language === 'hi' ? 'पहचाने गए रोग' : language === 'mr' ? 'ओळखलेले रोग' : 'Detected Diseases'}
+                  {t('chatCards.cards.detectedDiseases')}
                 </div>
                 <ul className="text-sm space-y-1">
                   {analysis.diagnosis.diseases.map((disease, idx) => (
