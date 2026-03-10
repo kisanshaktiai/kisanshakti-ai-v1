@@ -146,6 +146,7 @@ i18n
           soil: enSoil,
           profile_edit: enProfileEdit,
           cropGrowth: enCropGrowth,
+          chatCards: enChatCards,
         })
       },
       hi: { 
