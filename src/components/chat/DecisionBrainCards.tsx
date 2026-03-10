@@ -367,7 +367,7 @@ export function ConfidenceIndicator({ confidence, language }: ConfidenceIndicato
           </span>
         </div>
         <Badge className={cn("text-xs", getRiskColor(confidence.riskLevel))}>
-          {confidence.riskLevel} Risk
+          {confidence.riskLevel} {t('chatCards.cards.risk')}
         </Badge>
       </div>
       
