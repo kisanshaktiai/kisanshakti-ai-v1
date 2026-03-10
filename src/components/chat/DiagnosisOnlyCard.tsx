@@ -28,7 +28,8 @@ const getLabels = (t: (key: string) => string) => ({
 });
 
 export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: DiagnosisOnlyCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   // Safety check
   if (!analysis?.cropDetected || !analysis?.healthStatus || !analysis?.diagnosis) {
