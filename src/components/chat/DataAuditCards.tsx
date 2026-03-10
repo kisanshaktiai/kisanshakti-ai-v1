@@ -243,7 +243,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
 
               {/* NDVI Card */}
               <AuditCard 
-                title="NDVI (Satellite)" 
+                title={t('chatCards.cards.ndviSatellite')}
                 icon={Activity} 
                 found={audit.ndvi?.found}
                 stale={(audit.ndvi?.age_days || 0) > 14}
