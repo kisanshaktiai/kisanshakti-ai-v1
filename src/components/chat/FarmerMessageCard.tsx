@@ -150,6 +150,7 @@ const ConfidenceBadge: React.FC<{ label: FarmerMessage['confidence_disclosure'][
 export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) {
   const [safetyOpen, setSafetyOpen] = React.useState(false);
   const [followUpOpen, setFollowUpOpen] = React.useState(false);
+  const { t } = useTranslation();
   
   const hasProblem = message.problem_summary.text && 
     !message.problem_summary.text.includes('निरोगी') && 
