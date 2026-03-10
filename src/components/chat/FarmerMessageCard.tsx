@@ -268,7 +268,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                 {message.recommended_solution.main_action.how_much_land && (
                   <p className="text-foreground">
                     <span className="text-muted-foreground">
-                      {message.language === 'mr' ? 'किती जमीन: ' : message.language === 'hi' ? 'कितनी जमीन: ' : 'For area: '}
+                      {t('chatCards.cards.forArea')}:
                     </span>
                     {safeString(message.recommended_solution.main_action.how_much_land)}
                   </p>
