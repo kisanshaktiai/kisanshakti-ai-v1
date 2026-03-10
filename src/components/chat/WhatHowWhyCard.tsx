@@ -390,7 +390,7 @@ export function WhatHowWhyCard({
                   <div className="bg-primary/5 rounded-lg px-3 py-2 text-xs">
                     <div className="flex items-center gap-1.5 mb-1 text-primary">
                       <BookOpen className="h-3.5 w-3.5" />
-                      <span className="font-semibold">Scientific Basis</span>
+                      <span className="font-semibold">{t('chatCards.cards.scientificBasis')}</span>
                     </div>
                     <p className="text-muted-foreground">{safeString(why.knowledge_text)}</p>
                   </div>
