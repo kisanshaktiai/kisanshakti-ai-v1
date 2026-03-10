@@ -245,7 +245,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ SYMPTOMS TO CONFIRM ═══ */}
       {advisory.symptoms_to_confirm.length > 0 && (
-        <AdvisorySection icon={Eye} title="Symptoms to Confirm" variant="yellow" defaultExpanded={false}>
+        <AdvisorySection icon={Eye} title={t('chatCards.cards.symptomsToConfirm')} variant="yellow" defaultExpanded={false}>
           <ul className="space-y-1">
             {advisory.symptoms_to_confirm.map((s, i) => (
               <li key={i} className="flex items-start gap-2 text-muted-foreground">
