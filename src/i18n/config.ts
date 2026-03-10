@@ -176,6 +176,7 @@ i18n
           soil: hiSoil,
           profile_edit: hiProfileEdit,
           cropGrowth: hiCropGrowth,
+          chatCards: hiChatCards,
         })
       },
       pa: { translation: pa },
