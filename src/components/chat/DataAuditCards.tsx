@@ -284,10 +284,10 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                 found={audit.crop_schedule?.found}
                 missingReasons={audit.crop_schedule?.missing_reasons}
               >
-                <DataRow label="Crop" value={audit.crop_schedule?.crop_name} />
-                <DataRow label="Sowing" value={audit.crop_schedule?.sowing_date?.split('T')[0]} />
-                <DataRow label="Harvest" value={audit.crop_schedule?.expected_harvest?.split('T')[0]} />
-                <DataRow label="Status" value={audit.crop_schedule?.status} />
+                <DataRow label={t('chatCards.cards.crop')} value={audit.crop_schedule?.crop_name} />
+                <DataRow label={t('chatCards.cards.sowing')} value={audit.crop_schedule?.sowing_date?.split('T')[0]} />
+                <DataRow label={t('chatCards.cards.harvest')} value={audit.crop_schedule?.expected_harvest?.split('T')[0]} />
+                <DataRow label={t('chatCards.cards.status')} value={audit.crop_schedule?.status} />
               </AuditCard>
 
               {/* Summary Card */}
