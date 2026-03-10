@@ -279,7 +279,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
 
               {/* Crop Schedule Card */}
               <AuditCard 
-                title="Crop Schedule" 
+                title={t('chatCards.cards.cropSchedule')}
                 icon={Calendar} 
                 found={audit.crop_schedule?.found}
                 missingReasons={audit.crop_schedule?.missing_reasons}
