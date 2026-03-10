@@ -249,10 +249,10 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                 stale={(audit.ndvi?.age_days || 0) > 14}
                 missingReasons={audit.ndvi?.missing_reasons}
               >
-                <DataRow label="Value" value={audit.ndvi?.latest_value?.toFixed(2)} />
-                <DataRow label="Status" value={audit.ndvi?.health_status} />
-                <DataRow label="Trend" value={audit.ndvi?.trend} />
-                <DataRow label="History" value={audit.ndvi?.history_count} unit="readings" />
+                <DataRow label={t('chatCards.cards.value')} value={audit.ndvi?.latest_value?.toFixed(2)} />
+                <DataRow label={t('chatCards.cards.status')} value={audit.ndvi?.health_status} />
+                <DataRow label={t('chatCards.cards.trend')} value={audit.ndvi?.trend} />
+                <DataRow label={t('chatCards.cards.history')} value={audit.ndvi?.history_count} unit={t('chatCards.cards.readings')} />
                 {audit.ndvi?.age_days && (
                   <div className={cn(
                     "text-xs mt-1",
