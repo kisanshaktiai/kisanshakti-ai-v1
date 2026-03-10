@@ -209,13 +209,13 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                 found={audit.land?.found}
                 missingReasons={audit.land?.missing_reasons}
               >
-                <DataRow label="Name" value={audit.land?.land_name} />
-                <DataRow label="Crop" value={audit.land?.current_crop} />
-                <DataRow label="Area" value={audit.land?.area_acres} unit="acres" />
-                <DataRow label="Stage" value={audit.land?.growth_stage} />
-                <DataRow label="DAS" value={audit.land?.days_since_sowing} unit="days" />
+                <DataRow label={t('chatCards.cards.name')} value={audit.land?.land_name} />
+                <DataRow label={t('chatCards.cards.crop')} value={audit.land?.current_crop} />
+                <DataRow label={t('chatCards.cards.area')} value={audit.land?.area_acres} unit={t('chatCards.cards.acre')} />
+                <DataRow label={t('chatCards.cards.stage')} value={audit.land?.growth_stage} />
+                <DataRow label={t('chatCards.cards.das')} value={audit.land?.days_since_sowing} unit={t('chatCards.cards.days')} />
                 {!audit.land?.has_coordinates && (
-                  <div className="text-warning text-xs mt-1">⚠️ No GPS coordinates</div>
+                  <div className="text-warning text-xs mt-1">{t('chatCards.cards.noGpsCoordinates')}</div>
                 )}
               </AuditCard>
 
