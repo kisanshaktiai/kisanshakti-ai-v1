@@ -376,7 +376,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           {monitoring.success_indicators.length > 0 && (
             <div className="mb-2">
               <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1 flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3" /> Success Signs
+                <CheckCircle2 className="h-3 w-3" /> {t('chatCards.cards.successSigns')}
               </p>
               <ul className="space-y-0.5">
                 {monitoring.success_indicators.map((s, i) => (
