@@ -81,9 +81,10 @@ const StatusIcon = ({ found, stale }: { found: boolean; stale?: boolean }) => {
 };
 
 const StatusBadge = ({ found, stale, label }: { found: boolean; stale?: boolean; label?: string }) => {
-  if (!found) return <Badge variant="destructive" className="text-xs">Missing</Badge>;
+  const { t } = useTranslation();
+  if (!found) return <Badge variant="destructive" className="text-xs">{t('chatCards.cards.missing')}</Badge>;
   if (stale) return <Badge variant="outline" className="text-xs border-warning text-warning">Stale</Badge>;
-  return <Badge variant="outline" className="text-xs border-success text-success">{label || 'Found'}</Badge>;
+  return <Badge variant="outline" className="text-xs border-success text-success">{label || t('chatCards.cards.found')}</Badge>;
 };
 
 const AuditCard = ({ 
