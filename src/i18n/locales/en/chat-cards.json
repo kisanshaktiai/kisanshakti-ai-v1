@@ -1,5 +1,6 @@
 {
-  "cards": {
+  "chatCards": {
+    "cards": {
     "what": "WHAT",
     "whatSubtitle": "Problem Identified",
     "how": "HOW",
@@ -132,5 +133,6 @@
     "dayFive": "Day 5",
     "daySeven": "Day 7",
     "analysisIncomplete": "Analysis data is incomplete. Please try again."
+    }
   }
 }

@@ -1,5 +1,6 @@
 {
-  "cards": {
+  "chatCards": {
+    "cards": {
     "what": "क्या",
     "whatSubtitle": "समस्या पहचानी गई",
     "how": "कैसे",
@@ -132,5 +133,6 @@
     "dayFive": "दिन 5",
     "daySeven": "दिन 7",
     "analysisIncomplete": "विश्लेषण डेटा अधूरा है। कृपया पुनः प्रयास करें।"
+    }
   }
 }
