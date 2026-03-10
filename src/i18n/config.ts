@@ -82,6 +82,9 @@ import mrProfileEdit from './locales/mr/profile_edit.json';
 import enCropGrowth from './locales/en/cropGrowth.json';
 import hiCropGrowth from './locales/hi/cropGrowth.json';
 import mrCropGrowth from './locales/mr/cropGrowth.json';
+import enChatCards from './locales/en/chat-cards.json';
+import hiChatCards from './locales/hi/chat-cards.json';
+import mrChatCards from './locales/mr/chat-cards.json';
 
 // Helper function to dynamically merge base and page-level translations
 // This makes adding new languages in the future seamless - just add JSON files!
