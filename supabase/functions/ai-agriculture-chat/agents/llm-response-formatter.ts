@@ -160,12 +160,12 @@ export interface LLMFormatterOutput {
 // Hardcoded dict removed to support all languages dynamically
 // ═══════════════════════════════════════════════════════════════════════════
 
-const IPM_URGENCY_LABELS: Record<string, Record<string, string>> = {
-  'LEVEL_1': { en: 'Monitor' },
-  'LEVEL_2': { en: 'Use cultural practices' },
-  'LEVEL_3': { en: 'Mechanical control' },
-  'LEVEL_4': { en: 'Biological control' },
-  'LEVEL_5': { en: 'Do immediately' },
+const IPM_URGENCY_LABELS: Record<string, string> = {
+  'LEVEL_1': 'Monitor only',
+  'LEVEL_2': 'Use cultural practices',
+  'LEVEL_3': 'Mechanical control',
+  'LEVEL_4': 'Biological control',
+  'LEVEL_5': 'Immediate chemical action required',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
