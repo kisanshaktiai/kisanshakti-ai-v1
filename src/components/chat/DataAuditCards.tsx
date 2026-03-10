@@ -101,7 +101,9 @@ const AuditCard = ({
   stale?: boolean;
   children: React.ReactNode;
   missingReasons?: string[];
-}) => (
+}) => {
+  const { t } = useTranslation();
+  return (
   <Card className={cn(
     "p-3 border transition-all",
     found 
