@@ -428,6 +428,7 @@ export function DiagnosticResponseCard({
 }: DiagnosticResponseCardProps) {
   const { t } = useTranslation();
   const labels = getLabelsFromT(t);
+  const currentQuestion = data.disambiguationQuestions[currentQuestionIndex];
   const showQuestion = data.mode === 'DIAGNOSTIC' && currentQuestion && onQuestionAnswer;
   const showPhotoRequest = data.mode === 'PHOTO_REQUIRED' && onTakePhoto;
 
