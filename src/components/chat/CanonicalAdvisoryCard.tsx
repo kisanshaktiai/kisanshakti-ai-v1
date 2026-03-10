@@ -359,7 +359,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ ECONOMICS ═══ */}
       {economics.has_economics && (
-        <AdvisorySection icon={DollarSign} title="Cost & Benefit" variant="purple" defaultExpanded={false}>
+        <AdvisorySection icon={DollarSign} title={t('chatCards.cards.costAndBenefit')} variant="purple" defaultExpanded={false}>
           <div className="space-y-1 text-xs text-muted-foreground">
             {economics.cost_estimate && <p>💰 Estimated Cost: <span className="font-medium text-foreground">₹{economics.cost_estimate}</span></p>}
             {economics.material_cost && <p>📦 Material: ₹{economics.material_cost}</p>}
