@@ -258,7 +258,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
       )}
 
       {/* ═══ TREATMENT ═══ */}
-      <AdvisorySection emoji="💊" title={treatment.is_treatment ? 'Treatment' : 'Recommended Action'} variant="green">
+      <AdvisorySection emoji="💊" title={treatment.is_treatment ? t('chatCards.cards.treatment') : t('chatCards.cards.recommendedAction')} variant="green">
         <p className="font-medium text-foreground mb-2">{treatment.immediate_action}</p>
         
         {/* Dosage */}
