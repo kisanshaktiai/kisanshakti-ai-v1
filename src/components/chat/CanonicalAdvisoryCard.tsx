@@ -344,7 +344,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ ENVIRONMENT ═══ */}
       {environment.has_conditions && (
-        <AdvisorySection icon={Thermometer} title="Weather Conditions" variant="blue" defaultExpanded={false}>
+        <AdvisorySection icon={Thermometer} title={t('chatCards.cards.weatherConditions')} variant="blue" defaultExpanded={false}>
           <div className="space-y-1 text-xs text-muted-foreground">
             {environment.spray_blocked && (
               <p className="text-destructive font-medium">⚠️ {environment.spray_block_reason}</p>
