@@ -1316,7 +1316,7 @@ CROP LOCAL NAME (use this in response): ${cropLocalName}
 
 CRITICAL RULES:
 1. You MUST use "${cropLocalName}" when referring to the farmer's crop
-2. You MUST NOT mention any other crop name (no गहू/wheat if crop is ऊस/sugarcane, etc.)
+2. You MUST NOT mention any other crop name in the response — only "${cropLocalName}"
 3. You MUST NOT substitute, translate, or replace the crop name with any other crop
 4. If the symbolic data mentions another crop for comparison, IGNORE that — respond ONLY about ${cropLocalName}
 5. VIOLATION of crop lock = immediate response rejection
