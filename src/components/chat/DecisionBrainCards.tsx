@@ -389,7 +389,8 @@ interface DecisionBrainCardsProps {
 }
 
 export function DecisionBrainCards({ response }: DecisionBrainCardsProps) {
-  const labels = getLabels(response.language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <div className="w-full max-w-full overflow-hidden space-y-3 p-3">
