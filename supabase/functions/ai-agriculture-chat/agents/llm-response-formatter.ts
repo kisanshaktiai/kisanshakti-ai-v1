@@ -1305,7 +1305,7 @@ RULES:
     const cropCode = input.land_context.current_crop.toLowerCase();
     // Resolve crop local name from ICAR_CALENDARS (already imported via crop-calendar-lookup.ts)
     const calendar = ICAR_CALENDARS[cropCode];
-    const langKey = input.language === 'hi' ? 'crop_name_hi' : input.language === 'en' ? 'crop_name_en' : 'crop_name_mr';
+    const langKey = getCropNameKey(input.language);
     const cropLocalName = calendar?.[langKey] || input.land_context.current_crop;
     const cropCanonical = calendar?.crop_name_en || input.land_context.current_crop;
     
