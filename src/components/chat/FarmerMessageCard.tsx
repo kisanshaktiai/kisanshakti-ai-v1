@@ -244,7 +244,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
         <div className="rounded-xl p-4 bg-primary/5 border border-primary/20">
           <h4 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
             <Droplets className="h-4 w-4" />
-            {message.language === 'mr' ? 'उपाय' : message.language === 'hi' ? 'उपाय' : 'Solution'}
+            {t('chatCards.cards.solution')}
           </h4>
           
           <div className="space-y-3">
