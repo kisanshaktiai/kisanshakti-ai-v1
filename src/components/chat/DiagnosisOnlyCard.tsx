@@ -193,7 +193,7 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
               <div className="mt-3 p-2 bg-orange-500/10 rounded-lg">
                 <div className="flex items-center gap-1 text-sm font-medium text-orange-700 dark:text-orange-300 mb-1">
                   <AlertTriangle className="h-4 w-4" />
-                  {language === 'hi' ? 'पहचाने गए कीट' : language === 'mr' ? 'ओळखलेले कीटक' : 'Detected Pests'}
+                  {t('chatCards.cards.detectedPests')}
                 </div>
                 <ul className="text-sm space-y-1">
                   {analysis.diagnosis.pests.map((pest, idx) => (
