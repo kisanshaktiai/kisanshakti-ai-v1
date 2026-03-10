@@ -31,7 +31,7 @@
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
-import { getLanguageName } from '../utils/language-utils.ts';
+import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
 import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
 import {
   getProductName,
@@ -160,12 +160,12 @@ export interface LLMFormatterOutput {
 // Hardcoded dict removed to support all languages dynamically
 // ═══════════════════════════════════════════════════════════════════════════
 
-const IPM_URGENCY_LABELS: Record<string, Record<string, string>> = {
-  'LEVEL_1': { en: 'Monitor' },
-  'LEVEL_2': { en: 'Use cultural practices' },
-  'LEVEL_3': { en: 'Mechanical control' },
-  'LEVEL_4': { en: 'Biological control' },
-  'LEVEL_5': { en: 'Do immediately' },
+const IPM_URGENCY_LABELS: Record<string, string> = {
+  'LEVEL_1': 'Monitor only',
+  'LEVEL_2': 'Use cultural practices',
+  'LEVEL_3': 'Mechanical control',
+  'LEVEL_4': 'Biological control',
+  'LEVEL_5': 'Immediate chemical action required',
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1183,33 +1183,47 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   // ═══════════════════════════════════════════════════════════════════════════
   if (formatType === 'FORMAT_1') {
     formatInstruction = `
-═══ MANDATORY FORMAT: TYPE 1 — DIRECT PRESCRIPTION ═══
+═══ MANDATORY FORMAT: TYPE 1 — DIRECT PRESCRIPTION (8-SECTION) ═══
 Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-[Warm greeting — address farmer respectfully in ${langName}]
+[Warm greeting — address farmer by crop name "${input.land_context?.current_crop || ''}" in ${langName}]
 
-🎯 [ONE LINE: diagnosis in plain ${langName}]
+🔎 [ONE LINE: diagnosis in plain ${langName}, using local farmer terms — NEVER literally translate English symptom names]
 
-📋 [Action heading in ${langName} — e.g. "What to do"]:
-[action_text translated to natural ${langName}]
+📌 [Reason — WHY this happened, 1-2 lines in ${langName}]
+
+📋 [Action heading in ${langName}]:
 - [Product name transliterated to ${langName} script] — [dosage × land_area = TOTAL quantity]
 - [application_method — HOW to apply, in ${langName}]
 - [Best time: morning/evening, in ${langName}]
 
-⚠️ [Safety heading in ${langName} — e.g. "Be careful"]:
+📏 [Quantity for your field in ${langName}]:
+- [Per acre dosage] × [${input.land_context?.area_acres || '?'} acres] = [TOTAL]
+- [Water per acre] × [${input.land_context?.area_acres || '?'} acres] = [TOTAL water needed]
+
+⚠️ [Safety heading in ${langName}]:
 - [PHI days warning if provided: "Stop spraying at least X days before harvest" in ${langName}]
-- [bee_toxicity warning if HIGH, in ${langName}]
+- [bee_toxicity warning if HIGH — recommend evening-only spray, in ${langName}]
+- [PPE instructions in ${langName}]
 
-💰 [Benefit in ${langName}]: [ROI from rule if available]
+🌿 [Organic/IPM Alternative heading in ${langName} — THIS SECTION IS MANDATORY if organic_alternative data exists below]:
+- [Organic option translated to natural ${langName}]
 
-✅ [Follow-up in ${langName} — e.g. "After 7 days"]: [specific observable improvement from knowledge_text]
+📈 [Expected Benefit in ${langName}]: [ROI/yield gain if available from data]
+
+✅ [Follow-up in ${langName}]: [specific observable improvement from success_indicators data, time-bound]
 
 CRITICAL RULES:
 - Calculate TOTAL dosage = dosage_per_acre × farmer's land area (${input.land_context?.area_acres || '?'} acres)
-- Show calculated total, NOT per-acre rate
+- Show calculated total, NOT per-acre rate only
+- MUST reference farmer's crop by its ${langName} name in the greeting
+- MUST mention farmer's land area when calculating dosage
+- If ORGANIC_ALTERNATIVE or IPM data exists in the symbolic data below, the 🌿 section is MANDATORY — do NOT skip it
+- If SUCCESS_INDICATORS exist in data below, use them in the ✅ follow-up section
+- If BEE_TOXICITY is HIGH, MUST include evening-only spray warning
 - If RECOMMENDED_MARKET_PRODUCTS are provided, mention available market products so farmer knows what to buy
 - Use trade name farmer recognizes, put molecule in brackets
-- Transliterate product names into ${langName} script (e.g. "Chlorantraniliprole" → transliterated form)
+- Transliterate product names into ${langName} script (e.g. "Chlorantraniliprole" → phonetic ${langName} equivalent)
 - If dosage_per_acre is null/missing, say "I need more information to recommend exact treatment" in ${langName}
 - NEVER invent products, dosages, or timing not in the data below`;
   } else if (formatType === 'FORMAT_2') {
@@ -1270,29 +1284,40 @@ NEVER use generic phrases like "use pesticide medicine" or "use appropriate medi
 If no specific product from rules, say "I need more information to recommend exact treatment" in ${langName}`;
   } else if (formatType === 'FORMAT_5') {
     formatInstruction = `
-═══ MANDATORY FORMAT: TYPE 5 — PEST/DISEASE EMERGENCY ═══
+═══ MANDATORY FORMAT: TYPE 5 — PEST/DISEASE EMERGENCY (8-SECTION) ═══
 Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-⚠️ [Greeting, act quickly — pest/disease name in plain ${langName}]!
+⚠️ [Greeting, act quickly — pest/disease name in plain ${langName} using local farmer terms]!
 
-[reason_text — why urgent, 1 line in ${langName}]
+📌 [reason_text — why urgent, 1-2 lines in ${langName}]
 
 [Warn: delay will increase damage, in ${langName}]
 
 💊 [Do now heading in ${langName}]:
-- [Product name transliterated to ${langName} script] — [TOTAL dose for farmer's land]
+- [Product name transliterated to ${langName} script] — [TOTAL dose for ${input.land_context?.area_acres || '?'} acres]
 - [Application method in ${langName}]
 - [Timing — morning/evening in ${langName}]
 
-⚠️ [PHI days warning in ${langName}: "Stop spraying at least X days before harvest"]
-🌿 [Organic alternative in ${langName} if available]
+📏 [Quantity calculation in ${langName}]:
+- [Per acre dosage] × [${input.land_context?.area_acres || '?'} acres] = [TOTAL]
 
-[Check after 7 days in ${langName}]: [specific recovery indicator]
+⚠️ [Safety in ${langName}]:
+- [PHI days warning: "Stop spraying at least X days before harvest" in ${langName}]
+- [bee_toxicity warning if HIGH — evening spray only, in ${langName}]
+- [PPE instructions in ${langName}]
+
+🌿 [Organic/IPM Alternative in ${langName} — MANDATORY if organic_alternative data exists below]:
+- [Organic option translated to natural ${langName}]
+
+✅ [Check after 7 days in ${langName}]: [specific recovery indicator from success_indicators data]
 
 RULES:
 - Speed and clarity paramount — keep SHORT
-- Calculate TOTAL dosage for farmer's land area
-- Include organic alternative if rule provides one`;
+- Calculate TOTAL dosage = dosage_per_acre × farmer's land area (${input.land_context?.area_acres || '?'} acres)
+- MUST reference farmer's crop by its ${langName} name
+- If ORGANIC_ALTERNATIVE data exists below, the 🌿 section is MANDATORY — do NOT skip it
+- If SUCCESS_INDICATORS exist, use them in the ✅ follow-up
+- NEVER literally translate English pest/disease names — use local ${langName} farming terms`;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1305,7 +1330,7 @@ RULES:
     const cropCode = input.land_context.current_crop.toLowerCase();
     // Resolve crop local name from ICAR_CALENDARS (already imported via crop-calendar-lookup.ts)
     const calendar = ICAR_CALENDARS[cropCode];
-    const langKey = input.language === 'hi' ? 'crop_name_hi' : input.language === 'en' ? 'crop_name_en' : 'crop_name_mr';
+    const langKey = getCropNameKey(input.language);
     const cropLocalName = calendar?.[langKey] || input.land_context.current_crop;
     const cropCanonical = calendar?.crop_name_en || input.land_context.current_crop;
     
@@ -1316,7 +1341,7 @@ CROP LOCAL NAME (use this in response): ${cropLocalName}
 
 CRITICAL RULES:
 1. You MUST use "${cropLocalName}" when referring to the farmer's crop
-2. You MUST NOT mention any other crop name (no गहू/wheat if crop is ऊस/sugarcane, etc.)
+2. You MUST NOT mention any other crop name in the response — only "${cropLocalName}"
 3. You MUST NOT substitute, translate, or replace the crop name with any other crop
 4. If the symbolic data mentions another crop for comparison, IGNORE that — respond ONLY about ${cropLocalName}
 5. VIOLATION of crop lock = immediate response rejection
@@ -1349,9 +1374,13 @@ Numbers can use either standard (0-9) or ${langName} script numerals.
 
 ═══ TRANSLATION QUALITY RULES ═══
 - TRANSLATE MEANING, not words. Rewrite like an experienced agricultural officer talking face-to-face with a farmer.
-- Use colloquial rural dialect, NOT literary/formal language.
-- For Marathi: use बोलीभाषा (spoken language), not प्रमाणभाषा (standard written). Example: "Interveinal chlorosis observed" → "पानांच्या शिरांजवळ पिवळेपणा दिसतोय"
-- For Hindi: use गांव की बोली (village speech), not शुद्ध हिंदी. Example: "Nitrogen deficiency" → "खाद की कमी दिख रही है"
+- Use colloquial rural dialect of ${langName}, NOT literary/formal/textbook language.
+- Use the spoken village form of ${langName}, not the formal written standard.
+- Agricultural terms MUST use local farmer vocabulary, NOT literal translation of English technical terms.
+  Example: "Dead heart" is a pest symptom name — translate to the LOCAL FARMING TERM for this condition in ${langName}, NOT a literal word-by-word translation like "dead" + "heart".
+  Example: "Interveinal chlorosis" → translate as "yellowing near leaf veins" in natural ${langName}, NOT the medical/scientific term.
+  Example: "Bore hole" → use the ${langName} farming word for insect hole, NOT a transliteration of "bore hole".
+- NEVER literally translate English compound nouns — they are specific agricultural condition names with established local terms.
 - Keep sentences under 15 words. Break complex advice into numbered steps.
 - Every instruction must be actionable — farmer must know exactly WHAT to buy, HOW MUCH, and WHEN to apply.
 - NEVER use English words when a ${langName} equivalent exists.
@@ -1755,7 +1784,7 @@ async function buildRecommendationSummary(input: LLMFormatterInput): Promise<str
     if (!IPM_URGENCY_LABELS[ipmLevel]) {
       console.warn(`[IPM_GOVERNANCE] Unknown IPM level: ${ipmLevel}`);
     }
-    const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel]?.[input.language] || 'Normal priority';
+    const urgencyLabel = IPM_URGENCY_LABELS[ipmLevel] || 'Normal priority';
     parts.push(`- Urgency: ${urgencyLabel}`);
     
     if (primary.rule_id) {
