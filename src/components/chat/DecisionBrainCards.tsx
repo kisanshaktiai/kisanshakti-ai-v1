@@ -105,7 +105,8 @@ interface LandContextCardProps {
 }
 
 export function LandContextSummaryCard({ context, language }: LandContextCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   const getNdviColor = (state?: string) => {
     if (!state) return 'bg-muted';
