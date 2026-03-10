@@ -236,7 +236,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
       </Card>
 
       {/* ═══ EXPLANATION ═══ */}
-      <AdvisorySection emoji="📖" title="What & Why" variant="blue">
+      <AdvisorySection emoji="📖" title={t('chatCards.cards.whatAndWhy')} variant="blue">
         <p className="text-muted-foreground leading-relaxed mb-1">{explanation.what_is_happening}</p>
         {explanation.why_it_happens !== explanation.what_is_happening && (
           <p className="text-muted-foreground leading-relaxed text-xs italic">{explanation.why_it_happens}</p>
