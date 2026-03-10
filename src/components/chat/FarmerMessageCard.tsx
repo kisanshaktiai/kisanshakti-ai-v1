@@ -363,9 +363,9 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-2">
             <div className="p-3 rounded-xl bg-muted/30 border border-border space-y-1 text-sm">
-              {message.follow_up.day_3 && <p><strong>Day 3:</strong> {safeString(message.follow_up.day_3)}</p>}
-              {message.follow_up.day_5 && <p><strong>Day 5:</strong> {safeString(message.follow_up.day_5)}</p>}
-              {message.follow_up.day_7 && <p><strong>Day 7:</strong> {safeString(message.follow_up.day_7)}</p>}
+              {message.follow_up.day_3 && <p><strong>{t('chatCards.cards.dayThree')}:</strong> {safeString(message.follow_up.day_3)}</p>}
+              {message.follow_up.day_5 && <p><strong>{t('chatCards.cards.dayFive')}:</strong> {safeString(message.follow_up.day_5)}</p>}
+              {message.follow_up.day_7 && <p><strong>{t('chatCards.cards.daySeven')}:</strong> {safeString(message.follow_up.day_7)}</p>}
               {message.follow_up.alert_condition && (
                 <p className="text-destructive mt-2">{safeString(message.follow_up.alert_condition)}</p>
               )}
