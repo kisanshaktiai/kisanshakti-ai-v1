@@ -207,7 +207,8 @@ interface PrimaryActionCardProps {
 }
 
 export function PrimaryActionCard({ action, index, language }: PrimaryActionCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <motion.div
