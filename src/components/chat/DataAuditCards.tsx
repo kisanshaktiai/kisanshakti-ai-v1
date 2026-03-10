@@ -258,7 +258,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                     "text-xs mt-1",
                     audit.ndvi.age_days > 14 ? "text-warning" : "text-muted-foreground"
                   )}>
-                    Age: {audit.ndvi.age_days} days
+                    {t('chatCards.cards.age')}: {audit.ndvi.age_days} {t('chatCards.cards.days')}
                   </div>
                 )}
               </AuditCard>
