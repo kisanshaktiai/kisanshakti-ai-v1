@@ -183,18 +183,19 @@ function AdvisorySection({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ConfidenceBadge({ score, decision }: { score: number; decision: string }) {
+  const { t } = useTranslation();
   const pct = Math.round(score * 100);
   const color = pct >= 75 ? 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30' :
                 pct >= 50 ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30' :
                 'bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30';
   
-  const decisionLabel = decision === 'TREAT' ? '💊 Treatment' : 
-                        decision === 'MONITOR' ? '👁️ Monitor' : '❓ Clarify';
+  const decisionLabel = decision === 'TREAT' ? `💊 ${t('chatCards.cards.treatment')}` : 
+                        decision === 'MONITOR' ? `👁️ ${t('chatCards.cards.monitoring')}` : `❓ ${t('chatCards.cards.confirmDiagnosis')}`;
   
   return (
     <div className="flex items-center gap-2">
       <Badge variant="outline" className={cn('text-xs font-medium', color)}>
-        {pct}% Confidence
+        {pct}% {t('chatCards.cards.confidence')}
       </Badge>
       <Badge variant="outline" className="text-xs">
         {decisionLabel}
