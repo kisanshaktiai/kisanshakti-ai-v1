@@ -1183,33 +1183,47 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   // ═══════════════════════════════════════════════════════════════════════════
   if (formatType === 'FORMAT_1') {
     formatInstruction = `
-═══ MANDATORY FORMAT: TYPE 1 — DIRECT PRESCRIPTION ═══
+═══ MANDATORY FORMAT: TYPE 1 — DIRECT PRESCRIPTION (8-SECTION) ═══
 Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-[Warm greeting — address farmer respectfully in ${langName}]
+[Warm greeting — address farmer by crop name "${input.land_context?.current_crop || ''}" in ${langName}]
 
-🎯 [ONE LINE: diagnosis in plain ${langName}]
+🔎 [ONE LINE: diagnosis in plain ${langName}, using local farmer terms — NEVER literally translate English symptom names]
 
-📋 [Action heading in ${langName} — e.g. "What to do"]:
-[action_text translated to natural ${langName}]
+📌 [Reason — WHY this happened, 1-2 lines in ${langName}]
+
+📋 [Action heading in ${langName}]:
 - [Product name transliterated to ${langName} script] — [dosage × land_area = TOTAL quantity]
 - [application_method — HOW to apply, in ${langName}]
 - [Best time: morning/evening, in ${langName}]
 
-⚠️ [Safety heading in ${langName} — e.g. "Be careful"]:
+📏 [Quantity for your field in ${langName}]:
+- [Per acre dosage] × [${input.land_context?.area_acres || '?'} acres] = [TOTAL]
+- [Water per acre] × [${input.land_context?.area_acres || '?'} acres] = [TOTAL water needed]
+
+⚠️ [Safety heading in ${langName}]:
 - [PHI days warning if provided: "Stop spraying at least X days before harvest" in ${langName}]
-- [bee_toxicity warning if HIGH, in ${langName}]
+- [bee_toxicity warning if HIGH — recommend evening-only spray, in ${langName}]
+- [PPE instructions in ${langName}]
 
-💰 [Benefit in ${langName}]: [ROI from rule if available]
+🌿 [Organic/IPM Alternative heading in ${langName} — THIS SECTION IS MANDATORY if organic_alternative data exists below]:
+- [Organic option translated to natural ${langName}]
 
-✅ [Follow-up in ${langName} — e.g. "After 7 days"]: [specific observable improvement from knowledge_text]
+📈 [Expected Benefit in ${langName}]: [ROI/yield gain if available from data]
+
+✅ [Follow-up in ${langName}]: [specific observable improvement from success_indicators data, time-bound]
 
 CRITICAL RULES:
 - Calculate TOTAL dosage = dosage_per_acre × farmer's land area (${input.land_context?.area_acres || '?'} acres)
-- Show calculated total, NOT per-acre rate
+- Show calculated total, NOT per-acre rate only
+- MUST reference farmer's crop by its ${langName} name in the greeting
+- MUST mention farmer's land area when calculating dosage
+- If ORGANIC_ALTERNATIVE or IPM data exists in the symbolic data below, the 🌿 section is MANDATORY — do NOT skip it
+- If SUCCESS_INDICATORS exist in data below, use them in the ✅ follow-up section
+- If BEE_TOXICITY is HIGH, MUST include evening-only spray warning
 - If RECOMMENDED_MARKET_PRODUCTS are provided, mention available market products so farmer knows what to buy
 - Use trade name farmer recognizes, put molecule in brackets
-- Transliterate product names into ${langName} script (e.g. "Chlorantraniliprole" → transliterated form)
+- Transliterate product names into ${langName} script (e.g. "Chlorantraniliprole" → phonetic ${langName} equivalent)
 - If dosage_per_acre is null/missing, say "I need more information to recommend exact treatment" in ${langName}
 - NEVER invent products, dosages, or timing not in the data below`;
   } else if (formatType === 'FORMAT_2') {
