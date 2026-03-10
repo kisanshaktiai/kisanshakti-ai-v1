@@ -221,7 +221,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
 
               {/* Soil Health Card */}
               <AuditCard 
-                title="Soil Health" 
+                title={t('chatCards.cards.soilHealth')}
                 icon={Leaf} 
                 found={audit.soil_health?.found}
                 stale={(audit.soil_health?.test_age_days || 0) > 180}
