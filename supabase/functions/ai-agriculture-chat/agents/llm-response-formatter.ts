@@ -156,16 +156,16 @@ export interface LLMFormatterOutput {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// IPM LEVEL TRANSLATIONS
+// IPM LEVEL TRANSLATIONS — Now handled by LLM narration layer
+// Hardcoded dict removed to support all languages dynamically
 // ═══════════════════════════════════════════════════════════════════════════
 
-// CRITICAL FIX: IPM labels with full localization to prevent English leakage
 const IPM_URGENCY_LABELS: Record<string, Record<string, string>> = {
-  'LEVEL_1': { en: 'Monitor', mr: 'निरीक्षण करा', hi: 'निगरानी करें' },
-  'LEVEL_2': { en: 'Use cultural practices', mr: 'सांस्कृतिक पद्धती वापरा', hi: 'सांस्कृतिक तरीके अपनाएं' },
-  'LEVEL_3': { en: 'Mechanical control', mr: 'यांत्रिक नियंत्रण', hi: 'यांत्रिक नियंत्रण' },
-  'LEVEL_4': { en: 'Biological control', mr: 'जैविक नियंत्रण', hi: 'जैविक नियंत्रण' },
-  'LEVEL_5': { en: 'Do immediately', mr: 'लगेच करा', hi: 'तुरंत करें' },
+  'LEVEL_1': { en: 'Monitor' },
+  'LEVEL_2': { en: 'Use cultural practices' },
+  'LEVEL_3': { en: 'Mechanical control' },
+  'LEVEL_4': { en: 'Biological control' },
+  'LEVEL_5': { en: 'Do immediately' },
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1346,6 +1346,16 @@ Numbers can use either standard (0-9) or ${langName} script numerals.
 - Keep response SHORT — proportional to query complexity
 - Every response MUST end with one specific, measurable, time-bound follow-up instruction
   NOT "observe the crop" but "check after 7 days — [specific thing to check]" (in ${langName})
+
+═══ TRANSLATION QUALITY RULES ═══
+- TRANSLATE MEANING, not words. Rewrite like an experienced agricultural officer talking face-to-face with a farmer.
+- Use colloquial rural dialect, NOT literary/formal language.
+- For Marathi: use बोलीभाषा (spoken language), not प्रमाणभाषा (standard written). Example: "Interveinal chlorosis observed" → "पानांच्या शिरांजवळ पिवळेपणा दिसतोय"
+- For Hindi: use गांव की बोली (village speech), not शुद्ध हिंदी. Example: "Nitrogen deficiency" → "खाद की कमी दिख रही है"
+- Keep sentences under 15 words. Break complex advice into numbered steps.
+- Every instruction must be actionable — farmer must know exactly WHAT to buy, HOW MUCH, and WHEN to apply.
+- NEVER use English words when a ${langName} equivalent exists.
+- Transliterate-only for chemical/product names that have no ${langName} equivalent.
 
 ${formatInstruction}
 

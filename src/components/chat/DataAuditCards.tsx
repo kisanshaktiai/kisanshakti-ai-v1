@@ -1,5 +1,6 @@
 import React from 'react';
 import { Card } from '@/components/ui/card';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { 
   MapPin, Leaf, Activity, CloudRain, Calendar, 
@@ -80,9 +81,10 @@ const StatusIcon = ({ found, stale }: { found: boolean; stale?: boolean }) => {
 };
 
 const StatusBadge = ({ found, stale, label }: { found: boolean; stale?: boolean; label?: string }) => {
-  if (!found) return <Badge variant="destructive" className="text-xs">Missing</Badge>;
+  const { t } = useTranslation();
+  if (!found) return <Badge variant="destructive" className="text-xs">{t('chatCards.cards.missing')}</Badge>;
   if (stale) return <Badge variant="outline" className="text-xs border-warning text-warning">Stale</Badge>;
-  return <Badge variant="outline" className="text-xs border-success text-success">{label || 'Found'}</Badge>;
+  return <Badge variant="outline" className="text-xs border-success text-success">{label || t('chatCards.cards.found')}</Badge>;
 };
 
 const AuditCard = ({ 
@@ -99,7 +101,9 @@ const AuditCard = ({
   stale?: boolean;
   children: React.ReactNode;
   missingReasons?: string[];
-}) => (
+}) => {
+  const { t } = useTranslation();
+  return (
   <Card className={cn(
     "p-3 border transition-all",
     found 
@@ -127,11 +131,12 @@ const AuditCard = ({
             <span>•</span>
             <span>{reason}</span>
           </div>
-        )) || <span>No data available</span>}
+        )) || <span>{t('chatCards.cards.noDataAvailable')}</span>}
       </div>
     )}
-  </Card>
-);
+    </Card>
+  );
+};
 
 const DataRow = ({ label, value, unit }: { label: string; value: any; unit?: string }) => {
   if (value === undefined || value === null) return null;
@@ -145,6 +150,7 @@ const DataRow = ({ label, value, unit }: { label: string; value: any; unit?: str
 
 export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAuditCardsProps) {
   const [expanded, setExpanded] = React.useState(isExpanded);
+  const { t } = useTranslation();
   
   const qualityScore = audit.summary?.data_quality_score || 0;
   const qualityColor = qualityScore >= 80 ? 'text-success' : qualityScore >= 50 ? 'text-warning' : 'text-destructive';
@@ -164,9 +170,9 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Info className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">Data Context Audit</span>
+                <span className="text-sm font-medium">{t('chatCards.cards.dataContextAudit')}</span>
                 <Badge variant="outline" className={cn("text-xs", qualityColor)}>
-                  {audit.summary?.available_sources || 0}/{audit.summary?.total_data_sources || 5} sources • {qualityScore}% quality
+                  {audit.summary?.available_sources || 0}/{audit.summary?.total_data_sources || 5} {t('chatCards.cards.sources')} • {qualityScore}% {t('chatCards.cards.quality')}
                 </Badge>
               </div>
               {expanded ? (
@@ -198,24 +204,24 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
             >
               {/* Land Card */}
               <AuditCard 
-                title="Land" 
+                title={t('chatCards.cards.land')}
                 icon={MapPin} 
                 found={audit.land?.found}
                 missingReasons={audit.land?.missing_reasons}
               >
-                <DataRow label="Name" value={audit.land?.land_name} />
-                <DataRow label="Crop" value={audit.land?.current_crop} />
-                <DataRow label="Area" value={audit.land?.area_acres} unit="acres" />
-                <DataRow label="Stage" value={audit.land?.growth_stage} />
-                <DataRow label="DAS" value={audit.land?.days_since_sowing} unit="days" />
+                <DataRow label={t('chatCards.cards.name')} value={audit.land?.land_name} />
+                <DataRow label={t('chatCards.cards.crop')} value={audit.land?.current_crop} />
+                <DataRow label={t('chatCards.cards.area')} value={audit.land?.area_acres} unit={t('chatCards.cards.acre')} />
+                <DataRow label={t('chatCards.cards.stage')} value={audit.land?.growth_stage} />
+                <DataRow label={t('chatCards.cards.das')} value={audit.land?.days_since_sowing} unit={t('chatCards.cards.days')} />
                 {!audit.land?.has_coordinates && (
-                  <div className="text-warning text-xs mt-1">⚠️ No GPS coordinates</div>
+                  <div className="text-warning text-xs mt-1">{t('chatCards.cards.noGpsCoordinates')}</div>
                 )}
               </AuditCard>
 
               {/* Soil Health Card */}
               <AuditCard 
-                title="Soil Health" 
+                title={t('chatCards.cards.soilHealth')}
                 icon={Leaf} 
                 found={audit.soil_health?.found}
                 stale={(audit.soil_health?.test_age_days || 0) > 180}
@@ -230,58 +236,58 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                     "text-xs mt-1",
                     audit.soil_health.test_age_days > 180 ? "text-warning" : "text-muted-foreground"
                   )}>
-                    Test age: {audit.soil_health.test_age_days} days
+                    {t('chatCards.cards.testAge')}: {audit.soil_health.test_age_days} {t('chatCards.cards.days')}
                   </div>
                 )}
               </AuditCard>
 
               {/* NDVI Card */}
               <AuditCard 
-                title="NDVI (Satellite)" 
+                title={t('chatCards.cards.ndviSatellite')}
                 icon={Activity} 
                 found={audit.ndvi?.found}
                 stale={(audit.ndvi?.age_days || 0) > 14}
                 missingReasons={audit.ndvi?.missing_reasons}
               >
-                <DataRow label="Value" value={audit.ndvi?.latest_value?.toFixed(2)} />
-                <DataRow label="Status" value={audit.ndvi?.health_status} />
-                <DataRow label="Trend" value={audit.ndvi?.trend} />
-                <DataRow label="History" value={audit.ndvi?.history_count} unit="readings" />
+                <DataRow label={t('chatCards.cards.value')} value={audit.ndvi?.latest_value?.toFixed(2)} />
+                <DataRow label={t('chatCards.cards.status')} value={audit.ndvi?.health_status} />
+                <DataRow label={t('chatCards.cards.trend')} value={audit.ndvi?.trend} />
+                <DataRow label={t('chatCards.cards.history')} value={audit.ndvi?.history_count} unit={t('chatCards.cards.readings')} />
                 {audit.ndvi?.age_days && (
                   <div className={cn(
                     "text-xs mt-1",
                     audit.ndvi.age_days > 14 ? "text-warning" : "text-muted-foreground"
                   )}>
-                    Age: {audit.ndvi.age_days} days
+                    {t('chatCards.cards.age')}: {audit.ndvi.age_days} {t('chatCards.cards.days')}
                   </div>
                 )}
               </AuditCard>
 
               {/* Weather Card */}
               <AuditCard 
-                title="Weather" 
+                title={t('chatCards.cards.weather')}
                 icon={CloudRain} 
                 found={audit.weather?.found}
                 stale={(audit.weather?.data_age_hours || 0) > 6}
                 missingReasons={audit.weather?.missing_reasons}
               >
-                <DataRow label="Temp" value={audit.weather?.temperature} unit="°C" />
-                <DataRow label="Humidity" value={audit.weather?.humidity} unit="%" />
-                <DataRow label="Rain Prob" value={audit.weather?.rain_probability} unit="%" />
-                <DataRow label="Rain 24h" value={audit.weather?.rain_last_24h} unit="mm" />
+                <DataRow label={t('chatCards.cards.temp')} value={audit.weather?.temperature} unit="°C" />
+                <DataRow label={t('chatCards.cards.humidity')} value={audit.weather?.humidity} unit="%" />
+                <DataRow label={t('chatCards.cards.rainProb')} value={audit.weather?.rain_probability} unit="%" />
+                <DataRow label={t('chatCards.cards.rain24h')} value={audit.weather?.rain_last_24h} unit="mm" />
               </AuditCard>
 
               {/* Crop Schedule Card */}
               <AuditCard 
-                title="Crop Schedule" 
+                title={t('chatCards.cards.cropSchedule')}
                 icon={Calendar} 
                 found={audit.crop_schedule?.found}
                 missingReasons={audit.crop_schedule?.missing_reasons}
               >
-                <DataRow label="Crop" value={audit.crop_schedule?.crop_name} />
-                <DataRow label="Sowing" value={audit.crop_schedule?.sowing_date?.split('T')[0]} />
-                <DataRow label="Harvest" value={audit.crop_schedule?.expected_harvest?.split('T')[0]} />
-                <DataRow label="Status" value={audit.crop_schedule?.status} />
+                <DataRow label={t('chatCards.cards.crop')} value={audit.crop_schedule?.crop_name} />
+                <DataRow label={t('chatCards.cards.sowing')} value={audit.crop_schedule?.sowing_date?.split('T')[0]} />
+                <DataRow label={t('chatCards.cards.harvest')} value={audit.crop_schedule?.expected_harvest?.split('T')[0]} />
+                <DataRow label={t('chatCards.cards.status')} value={audit.crop_schedule?.status} />
               </AuditCard>
 
               {/* Summary Card */}
@@ -289,7 +295,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                 <Card className="p-3 bg-primary/5 border-primary/20 sm:col-span-2 lg:col-span-1">
                   <div className="flex items-center gap-2 mb-2">
                     <Info className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium">Recommendations</span>
+                    <span className="text-sm font-medium">{t('chatCards.cards.recommendations')}</span>
                   </div>
                   <div className="text-xs space-y-1">
                     {audit.summary.recommendations.map((rec, i) => (

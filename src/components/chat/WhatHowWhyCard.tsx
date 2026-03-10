@@ -14,6 +14,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { safeString } from './utils/safe-render';
+import { useTranslation } from 'react-i18next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
@@ -83,90 +84,7 @@ export interface WhatHowWhyCardProps {
   onPhotoRequest?: () => void;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-const LABELS: Record<string, Record<string, string>> = {
-  en: {
-    what: 'WHAT',
-    whatSubtitle: 'Problem Identified',
-    how: 'HOW',
-    howSubtitle: 'Take This Action',
-    why: 'WHY',
-    whySubtitle: 'Scientific Reason',
-    nextSteps: 'NEXT STEPS',
-    confidence: 'Confidence',
-    symptoms: 'Symptoms',
-    dosage: 'Dosage',
-    timing: 'Timing',
-    safetyNote: 'Safety',
-    phiDays: 'days before harvest',
-    beeWarning: 'Bee toxicity',
-    ppeRequired: 'PPE Required',
-    organicOption: 'Organic Option',
-    takePhoto: 'Take Photo',
-    followUp: 'Follow-up in',
-    days: 'days',
-    source: 'Source',
-    ipmLevel1: 'Cultural Practice',
-    ipmLevel2: 'Biological Control',
-    ipmLevel3: 'Chemical Treatment',
-    ipmLevel4: 'Integrated Management',
-  },
-  hi: {
-    what: 'क्या',
-    whatSubtitle: 'समस्या पहचानी गई',
-    how: 'कैसे',
-    howSubtitle: 'यह कार्रवाई करें',
-    why: 'क्यों',
-    whySubtitle: 'वैज्ञानिक कारण',
-    nextSteps: 'अगले कदम',
-    confidence: 'विश्वसनीयता',
-    symptoms: 'लक्षण',
-    dosage: 'खुराक',
-    timing: 'समय',
-    safetyNote: 'सुरक्षा',
-    phiDays: 'कटाई से पहले दिन',
-    beeWarning: 'मधुमक्खी विषाक्तता',
-    ppeRequired: 'सुरक्षा उपकरण',
-    organicOption: 'जैविक विकल्प',
-    takePhoto: 'फोटो लें',
-    followUp: 'फॉलो-अप',
-    days: 'दिनों में',
-    source: 'स्रोत',
-    ipmLevel1: 'सांस्कृतिक अभ्यास',
-    ipmLevel2: 'जैविक नियंत्रण',
-    ipmLevel3: 'रासायनिक उपचार',
-    ipmLevel4: 'एकीकृत प्रबंधन',
-  },
-  mr: {
-    what: 'काय',
-    whatSubtitle: 'समस्या ओळखली',
-    how: 'कसे',
-    howSubtitle: 'ही कृती करा',
-    why: 'का',
-    whySubtitle: 'वैज्ञानिक कारण',
-    nextSteps: 'पुढील पायऱ्या',
-    confidence: 'विश्वासार्हता',
-    symptoms: 'लक्षणे',
-    dosage: 'डोस',
-    timing: 'वेळ',
-    safetyNote: 'सुरक्षितता',
-    phiDays: 'कापणीपूर्वी दिवस',
-    beeWarning: 'मधमाशी विषाक्तता',
-    ppeRequired: 'सुरक्षा उपकरणे',
-    organicOption: 'सेंद्रिय पर्याय',
-    takePhoto: 'फोटो घ्या',
-    followUp: 'फॉलो-अप',
-    days: 'दिवसांत',
-    source: 'स्रोत',
-    ipmLevel1: 'सांस्कृतिक पद्धती',
-    ipmLevel2: 'जैविक नियंत्रण',
-    ipmLevel3: 'रासायनिक उपचार',
-    ipmLevel4: 'एकात्मिक व्यवस्थापन',
-  }
-};
+// Labels are now loaded from i18n via useTranslation — see WhatHowWhyCard component below
 
 // ═══════════════════════════════════════════════════════════════════════════
 // HELPER FUNCTIONS
@@ -283,8 +201,31 @@ export function WhatHowWhyCard({
 }: WhatHowWhyCardProps) {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
   const [showDetails, setShowDetails] = useState(false);
+  const { t } = useTranslation();
   
-  const labels = LABELS[language] || LABELS.en;
+  // Build labels object from i18n for backward compat with helper functions
+  const labels: Record<string, string> = {
+    what: t('chatCards.cards.what'),
+    whatSubtitle: t('chatCards.cards.whatSubtitle'),
+    how: t('chatCards.cards.how'),
+    howSubtitle: t('chatCards.cards.howSubtitle'),
+    why: t('chatCards.cards.why'),
+    whySubtitle: t('chatCards.cards.whySubtitle'),
+    nextSteps: t('chatCards.cards.nextSteps'),
+    confidence: t('chatCards.cards.confidence'),
+    organicOption: t('chatCards.cards.organicOption'),
+    ppeRequired: t('chatCards.cards.ppeRequired'),
+    phiDays: t('chatCards.cards.phiDays'),
+    followUp: t('chatCards.cards.followUp'),
+    days: t('chatCards.cards.days'),
+    takePhoto: t('chatCards.cards.takePhoto'),
+    source: t('chatCards.cards.source'),
+    ipmLevel1: t('chatCards.cards.ipmLevel1'),
+    ipmLevel2: t('chatCards.cards.ipmLevel2'),
+    ipmLevel3: t('chatCards.cards.ipmLevel3'),
+    ipmLevel4: t('chatCards.cards.ipmLevel4'),
+  };
+  
   const { what, how, why, safety, next_steps } = response;
   
   return (
@@ -449,7 +390,7 @@ export function WhatHowWhyCard({
                   <div className="bg-primary/5 rounded-lg px-3 py-2 text-xs">
                     <div className="flex items-center gap-1.5 mb-1 text-primary">
                       <BookOpen className="h-3.5 w-3.5" />
-                      <span className="font-semibold">Scientific Basis</span>
+                      <span className="font-semibold">{t('chatCards.cards.scientificBasis')}</span>
                     </div>
                     <p className="text-muted-foreground">{safeString(why.knowledge_text)}</p>
                   </div>

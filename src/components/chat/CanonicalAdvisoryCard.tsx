@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -182,18 +183,19 @@ function AdvisorySection({
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ConfidenceBadge({ score, decision }: { score: number; decision: string }) {
+  const { t } = useTranslation();
   const pct = Math.round(score * 100);
   const color = pct >= 75 ? 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30' :
                 pct >= 50 ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30' :
                 'bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30';
   
-  const decisionLabel = decision === 'TREAT' ? '💊 Treatment' : 
-                        decision === 'MONITOR' ? '👁️ Monitor' : '❓ Clarify';
+  const decisionLabel = decision === 'TREAT' ? `💊 ${t('chatCards.cards.treatment')}` : 
+                        decision === 'MONITOR' ? `👁️ ${t('chatCards.cards.monitoring')}` : `❓ ${t('chatCards.cards.confirmDiagnosis')}`;
   
   return (
     <div className="flex items-center gap-2">
       <Badge variant="outline" className={cn('text-xs font-medium', color)}>
-        {pct}% Confidence
+        {pct}% {t('chatCards.cards.confidence')}
       </Badge>
       <Badge variant="outline" className="text-xs">
         {decisionLabel}
@@ -208,6 +210,7 @@ function ConfidenceBadge({ score, decision }: { score: number; decision: string 
 
 export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ advisory }) => {
   const [showTrace, setShowTrace] = useState(false);
+  const { t } = useTranslation();
   const { diagnosis, explanation, treatment, safety, environment, economics, monitoring, trace } = advisory;
   
   return (
@@ -233,7 +236,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
       </Card>
 
       {/* ═══ EXPLANATION ═══ */}
-      <AdvisorySection emoji="📖" title="What & Why" variant="blue">
+      <AdvisorySection emoji="📖" title={t('chatCards.cards.whatAndWhy')} variant="blue">
         <p className="text-muted-foreground leading-relaxed mb-1">{explanation.what_is_happening}</p>
         {explanation.why_it_happens !== explanation.what_is_happening && (
           <p className="text-muted-foreground leading-relaxed text-xs italic">{explanation.why_it_happens}</p>
@@ -242,7 +245,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ SYMPTOMS TO CONFIRM ═══ */}
       {advisory.symptoms_to_confirm.length > 0 && (
-        <AdvisorySection icon={Eye} title="Symptoms to Confirm" variant="yellow" defaultExpanded={false}>
+        <AdvisorySection icon={Eye} title={t('chatCards.cards.symptomsToConfirm')} variant="yellow" defaultExpanded={false}>
           <ul className="space-y-1">
             {advisory.symptoms_to_confirm.map((s, i) => (
               <li key={i} className="flex items-start gap-2 text-muted-foreground">
@@ -255,25 +258,25 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
       )}
 
       {/* ═══ TREATMENT ═══ */}
-      <AdvisorySection emoji="💊" title={treatment.is_treatment ? 'Treatment' : 'Recommended Action'} variant="green">
+      <AdvisorySection emoji="💊" title={treatment.is_treatment ? t('chatCards.cards.treatment') : t('chatCards.cards.recommendedAction')} variant="green">
         <p className="font-medium text-foreground mb-2">{treatment.immediate_action}</p>
         
         {/* Dosage */}
         {treatment.dosage && (
           <div className="bg-foreground/5 rounded-md p-2 mb-2 space-y-1 text-xs">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Dosage/acre:</span>
+              <span className="text-muted-foreground">{t('chatCards.cards.dosagePerAcre')}:</span>
               <span className="font-medium text-foreground">{treatment.dosage.per_acre}</span>
             </div>
             {treatment.dosage.total && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Total ({treatment.dosage.land_area_acres} acres):</span>
+                <span className="text-muted-foreground">{t('chatCards.cards.total')} ({treatment.dosage.land_area_acres} {t('chatCards.cards.acre')}):</span>
                 <span className="font-semibold text-foreground">{treatment.dosage.total}</span>
               </div>
             )}
             {treatment.dosage.water_volume_per_acre && (
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Water/acre:</span>
+                <span className="text-muted-foreground">{t('chatCards.cards.waterPerAcre')}:</span>
                 <span className="font-medium text-foreground">{treatment.dosage.water_volume_per_acre}</span>
               </div>
             )}
@@ -283,7 +286,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
         {/* Application method */}
         {treatment.application_method && (
           <p className="text-xs text-muted-foreground">
-            <span className="font-medium">Method:</span> {treatment.application_method}
+            <span className="font-medium">{t('chatCards.cards.method')}:</span> {treatment.application_method}
           </p>
         )}
         
@@ -301,7 +304,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           <div className="mt-2 p-2 bg-green-500/10 rounded-md">
             <div className="flex items-center gap-1 mb-1">
               <Leaf className="h-3 w-3 text-green-600" />
-              <span className="text-xs font-medium text-green-700 dark:text-green-400">Organic Alternative</span>
+              <span className="text-xs font-medium text-green-700 dark:text-green-400">{t('chatCards.cards.organicAlternative')}</span>
             </div>
             <p className="text-xs text-muted-foreground">{treatment.organic_solution}</p>
           </div>
@@ -310,7 +313,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ SAFETY ═══ */}
       {safety.has_safety_info && (
-        <AdvisorySection icon={Shield} title="Safety" variant="red">
+        <AdvisorySection icon={Shield} title={t('chatCards.cards.safety')} variant="red">
           <div className="space-y-1.5">
             {safety.safety_instruction && (
               <p className="text-muted-foreground">{safety.safety_instruction}</p>
@@ -341,7 +344,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ ENVIRONMENT ═══ */}
       {environment.has_conditions && (
-        <AdvisorySection icon={Thermometer} title="Weather Conditions" variant="blue" defaultExpanded={false}>
+        <AdvisorySection icon={Thermometer} title={t('chatCards.cards.weatherConditions')} variant="blue" defaultExpanded={false}>
           <div className="space-y-1 text-xs text-muted-foreground">
             {environment.spray_blocked && (
               <p className="text-destructive font-medium">⚠️ {environment.spray_block_reason}</p>
@@ -356,7 +359,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ ECONOMICS ═══ */}
       {economics.has_economics && (
-        <AdvisorySection icon={DollarSign} title="Cost & Benefit" variant="purple" defaultExpanded={false}>
+        <AdvisorySection icon={DollarSign} title={t('chatCards.cards.costAndBenefit')} variant="purple" defaultExpanded={false}>
           <div className="space-y-1 text-xs text-muted-foreground">
             {economics.cost_estimate && <p>💰 Estimated Cost: <span className="font-medium text-foreground">₹{economics.cost_estimate}</span></p>}
             {economics.material_cost && <p>📦 Material: ₹{economics.material_cost}</p>}
@@ -369,11 +372,11 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ MONITORING ═══ */}
       {monitoring.has_monitoring && (
-        <AdvisorySection icon={Activity} title="Monitoring" variant="green" defaultExpanded={false}>
+        <AdvisorySection icon={Activity} title={t('chatCards.cards.monitoring')} variant="green" defaultExpanded={false}>
           {monitoring.success_indicators.length > 0 && (
             <div className="mb-2">
               <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1 flex items-center gap-1">
-                <CheckCircle2 className="h-3 w-3" /> Success Signs
+                <CheckCircle2 className="h-3 w-3" /> {t('chatCards.cards.successSigns')}
               </p>
               <ul className="space-y-0.5">
                 {monitoring.success_indicators.map((s, i) => (
@@ -385,7 +388,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           {monitoring.failure_indicators.length > 0 && (
             <div>
               <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-1 flex items-center gap-1">
-                <XCircle className="h-3 w-3" /> Warning Signs
+                <XCircle className="h-3 w-3" /> {t('chatCards.cards.warningSigns')}
               </p>
               <ul className="space-y-0.5">
                 {monitoring.failure_indicators.map((s, i) => (
@@ -399,7 +402,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ MULTI-RULE SECONDARY ═══ */}
       {advisory.multi_rule?.has_secondary && (
-        <AdvisorySection emoji="📋" title="Additional Observations" variant="default" defaultExpanded={false}>
+        <AdvisorySection emoji="📋" title={t('chatCards.cards.additionalObservations')} variant="default" defaultExpanded={false}>
           <div className="space-y-2">
             {advisory.multi_rule.secondary_observations.map((obs, i) => (
               <div key={i} className="p-2 bg-foreground/5 rounded-md text-xs">
@@ -416,7 +419,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
         <div className="bg-destructive/10 border border-destructive/30 rounded-lg p-2.5">
           <div className="flex items-center gap-1.5 mb-1">
             <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-            <span className="text-xs font-semibold text-destructive">Safety Warnings</span>
+            <span className="text-xs font-semibold text-destructive">{t('chatCards.cards.safetyWarnings')}</span>
           </div>
           <ul className="space-y-0.5">
             {advisory.safety_warnings.map((w, i) => (
@@ -434,7 +437,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           className="flex items-center gap-1.5 text-[10px] text-muted-foreground/40 hover:text-muted-foreground/60 transition-colors w-full"
         >
           <Microscope className="h-3 w-3" />
-          <span>Traceability</span>
+           <span>Traceability</span>
           {showTrace ? <ChevronUp className="h-2.5 w-2.5 ml-auto" /> : <ChevronDown className="h-2.5 w-2.5 ml-auto" />}
         </button>
         <AnimatePresence>

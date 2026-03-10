@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { 
@@ -72,71 +73,27 @@ export interface DecisionBrainResponse {
   language: string;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// TRANSLATIONS
-// ═══════════════════════════════════════════════════════════════════════════
+// Labels are now loaded from i18n via useTranslation
 
-const LABELS: Record<string, Record<string, string>> = {
-  en: {
-    landContext: 'Your Field',
-    whatToDoNow: '✅ What to Do Now',
-    whatToDoNext: '🟡 What to Do Next',
-    whatNotToDo: '❌ What NOT to Do',
-    confidence: 'Confidence',
-    source: 'Source',
-    timing: 'Timing',
-    reason: 'Reason',
-    whyNot: 'Why Not',
-    crop: 'Crop',
-    stage: 'Stage',
-    area: 'Area',
-    soil: 'Soil',
-    weather: 'Weather',
-    ndvi: 'Health',
-    rulesApplied: 'rules applied',
-    decisionBrain: '🧠 Decision Brain'
-  },
-  hi: {
-    landContext: 'आपका खेत',
-    whatToDoNow: '✅ अभी क्या करें',
-    whatToDoNext: '🟡 आगे क्या करें',
-    whatNotToDo: '❌ क्या न करें',
-    confidence: 'विश्वसनीयता',
-    source: 'स्रोत',
-    timing: 'समय',
-    reason: 'कारण',
-    whyNot: 'क्यों नहीं',
-    crop: 'फसल',
-    stage: 'अवस्था',
-    area: 'क्षेत्र',
-    soil: 'मिट्टी',
-    weather: 'मौसम',
-    ndvi: 'स्वास्थ्य',
-    rulesApplied: 'नियम लागू',
-    decisionBrain: '🧠 निर्णय मस्तिष्क'
-  },
-  mr: {
-    landContext: 'तुमचे शेत',
-    whatToDoNow: '✅ आता काय करावे',
-    whatToDoNext: '🟡 पुढे काय करावे',
-    whatNotToDo: '❌ काय करू नये',
-    confidence: 'विश्वासार्हता',
-    source: 'स्रोत',
-    timing: 'वेळ',
-    reason: 'कारण',
-    whyNot: 'का नाही',
-    crop: 'पीक',
-    stage: 'अवस्था',
-    area: 'क्षेत्र',
-    soil: 'माती',
-    weather: 'हवामान',
-    ndvi: 'आरोग्य',
-    rulesApplied: 'नियम लागू',
-    decisionBrain: '🧠 निर्णय मेंदू'
-  }
-};
-
-const getLabels = (lang: string) => LABELS[lang] || LABELS.en;
+const getLabels = (t: (key: string) => string) => ({
+  landContext: t('chatCards.cards.landContext'),
+  whatToDoNow: t('chatCards.cards.whatToDoNow'),
+  whatToDoNext: t('chatCards.cards.whatToDoNext'),
+  whatNotToDo: t('chatCards.cards.whatNotToDo'),
+  confidence: t('chatCards.cards.confidence'),
+  source: t('chatCards.cards.source'),
+  timing: t('chatCards.cards.timing'),
+  reason: t('chatCards.cards.reason'),
+  whyNot: t('chatCards.cards.whyNot'),
+  crop: t('chatCards.cards.crop'),
+  stage: t('chatCards.cards.stage'),
+  area: t('chatCards.cards.area'),
+  soil: t('chatCards.cards.soil'),
+  weather: t('chatCards.cards.weather'),
+  ndvi: t('chatCards.cards.ndvi'),
+  rulesApplied: t('chatCards.cards.rulesApplied'),
+  decisionBrain: t('chatCards.cards.decisionBrain'),
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LAND CONTEXT CARD
@@ -148,7 +105,8 @@ interface LandContextCardProps {
 }
 
 export function LandContextSummaryCard({ context, language }: LandContextCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   const getNdviColor = (state?: string) => {
     if (!state) return 'bg-muted';
@@ -249,7 +207,8 @@ interface PrimaryActionCardProps {
 }
 
 export function PrimaryActionCard({ action, index, language }: PrimaryActionCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <motion.div
@@ -289,7 +248,8 @@ interface SecondaryActionCardProps {
 }
 
 export function SecondaryActionCard({ action, index, language }: SecondaryActionCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <motion.div
@@ -329,7 +289,8 @@ interface BlockedActionCardProps {
 }
 
 export function BlockedActionCard({ blockedAction, index, language }: BlockedActionCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <motion.div
@@ -370,7 +331,8 @@ interface ConfidenceIndicatorProps {
 }
 
 export function ConfidenceIndicator({ confidence, language }: ConfidenceIndicatorProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   const getRiskColor = (level: string) => {
     switch (level) {
@@ -405,7 +367,7 @@ export function ConfidenceIndicator({ confidence, language }: ConfidenceIndicato
           </span>
         </div>
         <Badge className={cn("text-xs", getRiskColor(confidence.riskLevel))}>
-          {confidence.riskLevel} Risk
+          {confidence.riskLevel} {t('chatCards.cards.risk')}
         </Badge>
       </div>
       
@@ -427,7 +389,8 @@ interface DecisionBrainCardsProps {
 }
 
 export function DecisionBrainCards({ response }: DecisionBrainCardsProps) {
-  const labels = getLabels(response.language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   return (
     <div className="w-full max-w-full overflow-hidden space-y-3 p-3">

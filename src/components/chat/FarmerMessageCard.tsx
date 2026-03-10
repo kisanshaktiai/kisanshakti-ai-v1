@@ -8,6 +8,7 @@
  */
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { 
   AlertTriangle, 
@@ -149,6 +150,7 @@ const ConfidenceBadge: React.FC<{ label: FarmerMessage['confidence_disclosure'][
 export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) {
   const [safetyOpen, setSafetyOpen] = React.useState(false);
   const [followUpOpen, setFollowUpOpen] = React.useState(false);
+  const { t } = useTranslation();
   
   const hasProblem = message.problem_summary.text && 
     !message.problem_summary.text.includes('निरोगी') && 
@@ -214,7 +216,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
         <div className="rounded-xl p-4 bg-card border border-border">
           <h4 className="text-sm font-semibold text-muted-foreground mb-2 flex items-center gap-2">
             <MessageCircle className="h-4 w-4" />
-            {message.language === 'mr' ? 'कारण' : message.language === 'hi' ? 'कारण' : 'Cause'}
+            {t('chatCards.cards.cause')}
           </h4>
           <p className="text-base text-foreground leading-relaxed">
             {safeString(message.cause_explanation.text)}
@@ -242,7 +244,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
         <div className="rounded-xl p-4 bg-primary/5 border border-primary/20">
           <h4 className="text-sm font-semibold text-primary mb-3 flex items-center gap-2">
             <Droplets className="h-4 w-4" />
-            {message.language === 'mr' ? 'उपाय' : message.language === 'hi' ? 'उपाय' : 'Solution'}
+            {t('chatCards.cards.solution')}
           </h4>
           
           <div className="space-y-3">
@@ -259,14 +261,14 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
               <div className="pl-6 space-y-1 text-sm">
                 <p className="text-foreground">
                   <span className="text-muted-foreground">
-                    {message.language === 'mr' ? 'काय वापरावे: ' : message.language === 'hi' ? 'क्या इस्तेमाल करें: ' : 'What to use: '}
+                    {t('chatCards.cards.whatToUse')}:
                   </span>
                   {safeString(message.recommended_solution.main_action.what_to_use)}
                 </p>
                 {message.recommended_solution.main_action.how_much_land && (
                   <p className="text-foreground">
                     <span className="text-muted-foreground">
-                      {message.language === 'mr' ? 'किती जमीन: ' : message.language === 'hi' ? 'कितनी जमीन: ' : 'For area: '}
+                      {t('chatCards.cards.forArea')}:
                     </span>
                     {safeString(message.recommended_solution.main_action.how_much_land)}
                   </p>
@@ -274,7 +276,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                 {message.recommended_solution.main_action.when && (
                   <p className="text-foreground">
                     <span className="text-muted-foreground">
-                      {message.language === 'mr' ? 'कधी: ' : message.language === 'hi' ? 'कब: ' : 'When: '}
+                      {t('chatCards.cards.when')}:
                     </span>
                     {safeString(message.recommended_solution.main_action.when)}
                   </p>
@@ -282,7 +284,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
                 {message.recommended_solution.main_action.how_to_apply && (
                   <p className="text-foreground">
                     <span className="text-muted-foreground">
-                      {message.language === 'mr' ? 'कसे: ' : message.language === 'hi' ? 'कैसे: ' : 'How: '}
+                      {t('chatCards.cards.howToApply')}:
                     </span>
                     {safeString(message.recommended_solution.main_action.how_to_apply)}
                   </p>
@@ -316,7 +318,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
               <div className="flex items-center gap-2">
                 <Shield className="h-4 w-4 text-destructive" />
                 <span className="text-sm font-medium text-destructive">
-                  {message.language === 'mr' ? 'सुरक्षितता' : message.language === 'hi' ? 'सुरक्षा' : 'Safety'}
+                  {t('chatCards.cards.safety')}
                 </span>
               </div>
               {safetyOpen ? (
@@ -349,7 +351,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium text-muted-foreground">
-                  {message.language === 'mr' ? 'पुढील तपासणी' : message.language === 'hi' ? 'अगली जांच' : 'Follow-up'}
+                  {t('chatCards.cards.followUpCheck')}
                 </span>
               </div>
               {followUpOpen ? (
@@ -361,9 +363,9 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-2">
             <div className="p-3 rounded-xl bg-muted/30 border border-border space-y-1 text-sm">
-              {message.follow_up.day_3 && <p><strong>Day 3:</strong> {safeString(message.follow_up.day_3)}</p>}
-              {message.follow_up.day_5 && <p><strong>Day 5:</strong> {safeString(message.follow_up.day_5)}</p>}
-              {message.follow_up.day_7 && <p><strong>Day 7:</strong> {safeString(message.follow_up.day_7)}</p>}
+              {message.follow_up.day_3 && <p><strong>{t('chatCards.cards.dayThree')}:</strong> {safeString(message.follow_up.day_3)}</p>}
+              {message.follow_up.day_5 && <p><strong>{t('chatCards.cards.dayFive')}:</strong> {safeString(message.follow_up.day_5)}</p>}
+              {message.follow_up.day_7 && <p><strong>{t('chatCards.cards.daySeven')}:</strong> {safeString(message.follow_up.day_7)}</p>}
               {message.follow_up.alert_condition && (
                 <p className="text-destructive mt-2">{safeString(message.follow_up.alert_condition)}</p>
               )}
