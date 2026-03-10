@@ -271,10 +271,10 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                 stale={(audit.weather?.data_age_hours || 0) > 6}
                 missingReasons={audit.weather?.missing_reasons}
               >
-                <DataRow label="Temp" value={audit.weather?.temperature} unit="°C" />
-                <DataRow label="Humidity" value={audit.weather?.humidity} unit="%" />
-                <DataRow label="Rain Prob" value={audit.weather?.rain_probability} unit="%" />
-                <DataRow label="Rain 24h" value={audit.weather?.rain_last_24h} unit="mm" />
+                <DataRow label={t('chatCards.cards.temp')} value={audit.weather?.temperature} unit="°C" />
+                <DataRow label={t('chatCards.cards.humidity')} value={audit.weather?.humidity} unit="%" />
+                <DataRow label={t('chatCards.cards.rainProb')} value={audit.weather?.rain_probability} unit="%" />
+                <DataRow label={t('chatCards.cards.rain24h')} value={audit.weather?.rain_last_24h} unit="mm" />
               </AuditCard>
 
               {/* Crop Schedule Card */}
