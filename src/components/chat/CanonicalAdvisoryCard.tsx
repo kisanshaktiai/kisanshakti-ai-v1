@@ -402,7 +402,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
 
       {/* ═══ MULTI-RULE SECONDARY ═══ */}
       {advisory.multi_rule?.has_secondary && (
-        <AdvisorySection emoji="📋" title="Additional Observations" variant="default" defaultExpanded={false}>
+        <AdvisorySection emoji="📋" title={t('chatCards.cards.additionalObservations')} variant="default" defaultExpanded={false}>
           <div className="space-y-2">
             {advisory.multi_rule.secondary_observations.map((obs, i) => (
               <div key={i} className="p-2 bg-foreground/5 rounded-md text-xs">
