@@ -351,7 +351,7 @@ export function FarmerMessageCard({ message, rawText }: FarmerMessageCardProps) 
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
                 <span className="text-sm font-medium text-muted-foreground">
-                  {message.language === 'mr' ? 'पुढील तपासणी' : message.language === 'hi' ? 'अगली जांच' : 'Follow-up'}
+                  {t('chatCards.cards.followUpCheck')}
                 </span>
               </div>
               {followUpOpen ? (
