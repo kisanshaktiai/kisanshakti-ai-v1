@@ -201,8 +201,31 @@ export function WhatHowWhyCard({
 }: WhatHowWhyCardProps) {
   const [isExpanded, setIsExpanded] = useState(initialExpanded);
   const [showDetails, setShowDetails] = useState(false);
+  const { t } = useTranslation();
   
-  const labels = LABELS[language] || LABELS.en;
+  // Build labels object from i18n for backward compat with helper functions
+  const labels: Record<string, string> = {
+    what: t('chatCards.cards.what'),
+    whatSubtitle: t('chatCards.cards.whatSubtitle'),
+    how: t('chatCards.cards.how'),
+    howSubtitle: t('chatCards.cards.howSubtitle'),
+    why: t('chatCards.cards.why'),
+    whySubtitle: t('chatCards.cards.whySubtitle'),
+    nextSteps: t('chatCards.cards.nextSteps'),
+    confidence: t('chatCards.cards.confidence'),
+    organicOption: t('chatCards.cards.organicOption'),
+    ppeRequired: t('chatCards.cards.ppeRequired'),
+    phiDays: t('chatCards.cards.phiDays'),
+    followUp: t('chatCards.cards.followUp'),
+    days: t('chatCards.cards.days'),
+    takePhoto: t('chatCards.cards.takePhoto'),
+    source: t('chatCards.cards.source'),
+    ipmLevel1: t('chatCards.cards.ipmLevel1'),
+    ipmLevel2: t('chatCards.cards.ipmLevel2'),
+    ipmLevel3: t('chatCards.cards.ipmLevel3'),
+    ipmLevel4: t('chatCards.cards.ipmLevel4'),
+  };
+  
   const { what, how, why, safety, next_steps } = response;
   
   return (
