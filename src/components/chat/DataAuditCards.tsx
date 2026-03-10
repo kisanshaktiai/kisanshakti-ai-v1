@@ -265,7 +265,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
 
               {/* Weather Card */}
               <AuditCard 
-                title="Weather" 
+                title={t('chatCards.cards.weather')}
                 icon={CloudRain} 
                 found={audit.weather?.found}
                 stale={(audit.weather?.data_age_hours || 0) > 6}
