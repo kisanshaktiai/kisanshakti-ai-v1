@@ -295,7 +295,7 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
                 <Card className="p-3 bg-primary/5 border-primary/20 sm:col-span-2 lg:col-span-1">
                   <div className="flex items-center gap-2 mb-2">
                     <Info className="w-4 h-4 text-primary" />
-                    <span className="text-sm font-medium">Recommendations</span>
+                    <span className="text-sm font-medium">{t('chatCards.cards.recommendations')}</span>
                   </div>
                   <div className="text-xs space-y-1">
                     {audit.summary.recommendations.map((rec, i) => (
