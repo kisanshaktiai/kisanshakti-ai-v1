@@ -1284,29 +1284,40 @@ NEVER use generic phrases like "use pesticide medicine" or "use appropriate medi
 If no specific product from rules, say "I need more information to recommend exact treatment" in ${langName}`;
   } else if (formatType === 'FORMAT_5') {
     formatInstruction = `
-═══ MANDATORY FORMAT: TYPE 5 — PEST/DISEASE EMERGENCY ═══
+═══ MANDATORY FORMAT: TYPE 5 — PEST/DISEASE EMERGENCY (8-SECTION) ═══
 Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-⚠️ [Greeting, act quickly — pest/disease name in plain ${langName}]!
+⚠️ [Greeting, act quickly — pest/disease name in plain ${langName} using local farmer terms]!
 
-[reason_text — why urgent, 1 line in ${langName}]
+📌 [reason_text — why urgent, 1-2 lines in ${langName}]
 
 [Warn: delay will increase damage, in ${langName}]
 
 💊 [Do now heading in ${langName}]:
-- [Product name transliterated to ${langName} script] — [TOTAL dose for farmer's land]
+- [Product name transliterated to ${langName} script] — [TOTAL dose for ${input.land_context?.area_acres || '?'} acres]
 - [Application method in ${langName}]
 - [Timing — morning/evening in ${langName}]
 
-⚠️ [PHI days warning in ${langName}: "Stop spraying at least X days before harvest"]
-🌿 [Organic alternative in ${langName} if available]
+📏 [Quantity calculation in ${langName}]:
+- [Per acre dosage] × [${input.land_context?.area_acres || '?'} acres] = [TOTAL]
 
-[Check after 7 days in ${langName}]: [specific recovery indicator]
+⚠️ [Safety in ${langName}]:
+- [PHI days warning: "Stop spraying at least X days before harvest" in ${langName}]
+- [bee_toxicity warning if HIGH — evening spray only, in ${langName}]
+- [PPE instructions in ${langName}]
+
+🌿 [Organic/IPM Alternative in ${langName} — MANDATORY if organic_alternative data exists below]:
+- [Organic option translated to natural ${langName}]
+
+✅ [Check after 7 days in ${langName}]: [specific recovery indicator from success_indicators data]
 
 RULES:
 - Speed and clarity paramount — keep SHORT
-- Calculate TOTAL dosage for farmer's land area
-- Include organic alternative if rule provides one`;
+- Calculate TOTAL dosage = dosage_per_acre × farmer's land area (${input.land_context?.area_acres || '?'} acres)
+- MUST reference farmer's crop by its ${langName} name
+- If ORGANIC_ALTERNATIVE data exists below, the 🌿 section is MANDATORY — do NOT skip it
+- If SUCCESS_INDICATORS exist, use them in the ✅ follow-up
+- NEVER literally translate English pest/disease names — use local ${langName} farming terms`;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
