@@ -170,9 +170,9 @@ export function DataAuditCards({ audit, isExpanded = false, onToggle }: DataAudi
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Info className="w-4 h-4 text-primary" />
-                <span className="text-sm font-medium">Data Context Audit</span>
+                <span className="text-sm font-medium">{t('chatCards.cards.dataContextAudit')}</span>
                 <Badge variant="outline" className={cn("text-xs", qualityColor)}>
-                  {audit.summary?.available_sources || 0}/{audit.summary?.total_data_sources || 5} sources • {qualityScore}% quality
+                  {audit.summary?.available_sources || 0}/{audit.summary?.total_data_sources || 5} {t('chatCards.cards.sources')} • {qualityScore}% {t('chatCards.cards.quality')}
                 </Badge>
               </div>
               {expanded ? (
