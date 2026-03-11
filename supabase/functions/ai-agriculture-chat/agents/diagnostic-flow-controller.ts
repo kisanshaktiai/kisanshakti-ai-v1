@@ -788,8 +788,10 @@ export interface DiagnosticFlowResponse {
   blocked_reason?: string;
   alternatives?: string[];
   emergency_contacts?: EmergencyContact[];
-  message_mr: string;
-  message_hi: string;
+  /** @deprecated Use message_en — LLM translates at runtime */
+  message_mr?: string;
+  /** @deprecated Use message_en — LLM translates at runtime */
+  message_hi?: string;
   message_en: string;
   session_state: DiagnosticSession;
 }
