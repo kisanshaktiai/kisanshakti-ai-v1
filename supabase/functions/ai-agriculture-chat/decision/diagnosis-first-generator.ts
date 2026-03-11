@@ -360,11 +360,43 @@ export async function generateDiagnosisFirstResponse(
       
       const observationKey = bestObservation?.observation_key || 'VISUAL_CHECK';
       
-      // Determine cause label (regional or DB-driven fallback)
+      // ═══════════════════════════════════════════════════════════════
+      // CRITICAL FIX v2.1.0: DB-FIRST label resolution
+      // Priority: DB observation_translations → regional translator fallback
+      // Previous bug: hardcoded regional dict returned short technical labels
+      // (e.g., "मृत गाभा / सुरळी वाळणे") which bypassed longer farmer-friendly
+      // DB entries (e.g., "मधली सुरळी सुकलेली आणि ओढल्यास बाहेर येते")
+      // ═══════════════════════════════════════════════════════════════
       let causeLabel: string;
       let observationLabel: string;
       
-      if (farmer_location) {
+      // Script-aware untranslated detection (works for any language)
+      const isUntranslated = (text: string | undefined | null): boolean => {
+        const t = (text || '').trim();
+        if (!t) return true;
+        if (language === 'en') return false;
+        const SCRIPT_RANGES: Record<string, RegExp> = {
+          mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
+          ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
+          ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
+          pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
+        };
+        const scriptRegex = SCRIPT_RANGES[language];
+        if (scriptRegex && !scriptRegex.test(t)) return true;
+        if (t.toLowerCase() === (h.cause || '').trim().toLowerCase()) return true;
+        if (/\bcheck\s+for\b/i.test(t)) return true;
+        return false;
+      };
+
+      // STEP 1: Try DB-driven labels FIRST (SSOT)
+      causeLabel = getCauseLabelFromDB(h.cause, language);
+      observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
+      
+      const dbCauseGood = !isUntranslated(causeLabel);
+      const dbObsGood = !isUntranslated(observationLabel);
+      
+      // STEP 2: Only fall back to regional translator if DB didn't provide good labels
+      if (farmer_location && (!dbCauseGood || !dbObsGood)) {
         try {
           const regional = await translateToRegionalTerms(
             {
@@ -374,49 +406,22 @@ export async function generateDiagnosisFirstResponse(
             farmer_location
           );
 
-          // Script-aware untranslated detection (works for any language)
-          const isUntranslated = (text: string | undefined | null): boolean => {
-            const t = (text || '').trim();
-            if (!t) return true;
-            if (language === 'en') return false;
-            // Use script-aware check from language-types
-            const SCRIPT_RANGES: Record<string, RegExp> = {
-              mr: /[\u0900-\u097F]/, hi: /[\u0900-\u097F]/,
-              ta: /[\u0B80-\u0BFF]/, te: /[\u0C00-\u0C7F]/, kn: /[\u0C80-\u0CFF]/,
-              ml: /[\u0D00-\u0D7F]/, bn: /[\u0980-\u09FF]/, gu: /[\u0A80-\u0AFF]/,
-              pa: /[\u0A00-\u0A7F]/, or: /[\u0B00-\u0B7F]/,
-            };
-            const scriptRegex = SCRIPT_RANGES[language];
-            if (scriptRegex && !scriptRegex.test(t)) return true;
-            if (t.toLowerCase() === (h.cause || '').trim().toLowerCase()) return true;
-            if (/\bcheck\s+for\b/i.test(t)) return true;
-            return false;
-          };
-
-          // v2.0.0: Fallback to DB-driven translateCause() instead of hardcoded dictionary
-          causeLabel = isUntranslated(regional.pest_name_regional)
-            ? getCauseLabelFromDB(h.cause, language)
-            : regional.pest_name_regional;
-
-          // v2.0.0: Fallback to DB-driven observation labels instead of hardcoded dictionary
-          observationLabel = isUntranslated(regional.treatment_label_regional)
-            ? getObservationLabelFromMap(observationKey, observationLabelsMap, language)
-            : regional.treatment_label_regional;
-
-          if (isUntranslated(regional.pest_name_regional) || isUntranslated(regional.treatment_label_regional)) {
-            console.log(`   🌍 Regional fallback → DB: cause="${h.cause}" → "${causeLabel}" | obs="${observationKey}" → "${observationLabel}"`);
-          } else {
-            console.log(`   🌍 Regional: ${h.cause} → ${causeLabel}`);
+          // Only use regional result if DB label was missing/untranslated
+          if (!dbCauseGood && !isUntranslated(regional.pest_name_regional)) {
+            causeLabel = regional.pest_name_regional;
+            console.log(`   🌍 [v2.1] Regional fallback for cause: "${h.cause}" → "${causeLabel}" (DB had no translation)`);
+          }
+          if (!dbObsGood && !isUntranslated(regional.treatment_label_regional)) {
+            observationLabel = regional.treatment_label_regional;
+            console.log(`   🌍 [v2.1] Regional fallback for obs: "${observationKey}" → "${observationLabel}" (DB had no translation)`);
           }
         } catch (error) {
-          console.warn(`   ⚠️ Regional translation failed for ${h.cause}, using DB fallback`);
-          causeLabel = getCauseLabelFromDB(h.cause, language);
-          observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
+          console.warn(`   ⚠️ Regional translation also failed for ${h.cause}`);
         }
-      } else {
-        // v2.0.0: Use DB-driven translations (NOT hardcoded dictionaries)
-        causeLabel = getCauseLabelFromDB(h.cause, language);
-        observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
+      }
+      
+      if (dbCauseGood || dbObsGood) {
+        console.log(`   ✅ [v2.1] DB-first: cause="${h.cause}" → "${causeLabel}" | obs="${observationKey}" → "${observationLabel}"`);
       }
       
       // ═══════════════════════════════════════════════════════════════
