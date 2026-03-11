@@ -50,7 +50,7 @@ export async function getCropVocabulary(cropCode: string, supabase: any): Promis
     try {
       const { data, error } = await supabase
         .from('crop_vocabulary')
-        .select('phrase_pattern, semantic_hint, recommended_observation_bias')
+        .select('phrase_pattern, semantic_hint, recommended_intent_bias, recommended_observation_bias')
         .eq('crop_code', cropCode)
         .eq('is_active', true);
       
