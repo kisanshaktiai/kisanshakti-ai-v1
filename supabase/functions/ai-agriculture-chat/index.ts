@@ -3136,12 +3136,8 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
  * Generate clarification prompt when question text is missing
  */
 function generateClarificationPrompt(response: OrchestratorResponse, lang: string): string {
-  const messages: Record<string, string> = {
-    mr: 'कृपया तुमच्या प्रश्नाबद्दल अधिक माहिती द्या. पिकाचे नाव, समस्या आणि लक्षणे सांगा.',
-    hi: 'कृपया अपने प्रश्न के बारे में अधिक जानकारी दें। फसल का नाम, समस्या और लक्षण बताएं।',
-    en: 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.'
-  };
-  return messages[lang];
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.';
 }
 
 /**
