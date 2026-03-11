@@ -924,41 +924,34 @@ function determineNextAction(
   };
 }
 
-// Normalization helpers
+// Normalization helpers (English-only codes; Devanagari removed - use crop_vocabulary DB)
 function normalizePestCode(name: string): string {
   const normalized = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
   const mappings: Record<string, string> = {
     'APHID': 'APHID',
     'APHIS': 'APHID',
-    'माशी': 'APHID',
     'WHITEFLY': 'WHITEFLY',
-    'पांढरी माशी': 'WHITEFLY',
     'JASSID': 'JASSID',
     'THRIPS': 'THRIPS',
     'BOLLWORM': 'BOLLWORM',
-    'गाभा': 'BOLLWORM',
     'MEALYBUG': 'MEALYBUG',
     'MITE': 'MITE',
     'BORER': 'BORER'
   };
-  return mappings[normalized] || mappings[name] || normalized;
+  return mappings[normalized] || normalized;
 }
 
 function normalizeDiseaseCode(name: string): string {
   const normalized = name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
   const mappings: Record<string, string> = {
     'RUST': 'RUST',
-    'गेरू': 'RUST',
     'BLIGHT': 'BLIGHT',
-    'करपा': 'BLIGHT',
     'WILT': 'WILT',
-    'सुरळी': 'WILT',
     'POWDERY_MILDEW': 'POWDERY_MILDEW',
-    'भुरी': 'POWDERY_MILDEW',
     'SOOTY_MOLD': 'SOOTY_MOLD',
     'LEAF_SPOT': 'LEAF_SPOT'
   };
-  return mappings[normalized] || mappings[name] || normalized;
+  return mappings[normalized] || normalized;
 }
 
 function normalizeSymptomCode(symptom: string): string {
@@ -976,39 +969,19 @@ function normalizeBeneficialCode(name: string): string {
   return mappings[name.toUpperCase()] || name.toUpperCase().replace(/[^A-Z0-9]/g, '_');
 }
 
+// Local name functions removed - use observation_translations DB via i18n cache
+// getPestLocalNames, getDiseaseLocalNames, getBeneficialLocalName are now DB-driven
 function getPestLocalNames(code: string): { mr: string; hi: string } {
-  const names: Record<string, { mr: string; hi: string }> = {
-    'APHID': { mr: 'माशी', hi: 'माशी' },
-    'WHITEFLY': { mr: 'पांढरी माशी', hi: 'सफेद मक्खी' },
-    'JASSID': { mr: 'तुडतुडे', hi: 'फुदका' },
-    'THRIPS': { mr: 'फुलकिडे', hi: 'थ्रिप्स' },
-    'BOLLWORM': { mr: 'गाभा अळी', hi: 'बॉलवर्म' },
-    'MEALYBUG': { mr: 'ढेकूण', hi: 'मिलीबग' },
-    'MITE': { mr: 'कोळी', hi: 'माइट' }
-  };
-  return names[code] || { mr: code, hi: code };
+  // Return code as placeholder; actual translations come from observation_translations DB
+  return { mr: code, hi: code };
 }
 
 function getDiseaseLocalNames(code: string): { mr: string; hi: string } {
-  const names: Record<string, { mr: string; hi: string }> = {
-    'RUST': { mr: 'गेरू', hi: 'गेरुआ' },
-    'BLIGHT': { mr: 'करपा', hi: 'झुलसा' },
-    'WILT': { mr: 'सुरळी', hi: 'मुरझान' },
-    'POWDERY_MILDEW': { mr: 'भुरी', hi: 'छाछया' },
-    'SOOTY_MOLD': { mr: 'काळी बुरशी', hi: 'काला फफूंद' },
-    'LEAF_SPOT': { mr: 'पानावरील डाग', hi: 'पत्ती धब्बा' }
-  };
-  return names[code] || { mr: code, hi: code };
+  return { mr: code, hi: code };
 }
 
-function getBeneficialLocalName(code: string, lang: 'mr' | 'hi'): string {
-  const names: Record<string, { mr: string; hi: string }> = {
-    'LADYBIRD_BEETLE': { mr: 'भिंगोर किडा', hi: 'भिंडी' },
-    'LACEWING': { mr: 'हिरवी माशी', hi: 'हरी मक्खी' },
-    'SPIDER': { mr: 'कोळी', hi: 'मकड़ी' },
-    'PARASITIC_WASP': { mr: 'परजीवी माशी', hi: 'परजीवी ततैया' }
-  };
-  return names[code]?.[lang] || code;
+function getBeneficialLocalName(code: string, _lang: 'mr' | 'hi'): string {
+  return code;
 }
 
 function parseLifeStages(stage?: string): Array<'EGG' | 'LARVA' | 'NYMPH' | 'PUPA' | 'ADULT'> {
