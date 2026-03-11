@@ -2858,13 +2858,7 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   
   // Action type - NO ACTION / MONITOR
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    const monitorMessages: Record<string, string> = {
-      mr: '👀 **सध्या कोणतीही कृती आवश्यक नाही.** निरीक्षण सुरू ठेवा.',
-      hi: '👀 **अभी कोई कार्रवाई आवश्यक नहीं।** निगरानी जारी रखें।',
-      en: '👀 **No action required at this time.** Continue monitoring.'
-    };
-
-    parts.push(monitorMessages[lang]);
+    parts.push('👀 **No action required at this time.** Continue monitoring.');
 
     // If decision_rules provided rich text, include it so response stays SSOT-based
     const app = primary?.application_details || {};
