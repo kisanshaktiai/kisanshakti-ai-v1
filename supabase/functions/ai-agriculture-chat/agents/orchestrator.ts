@@ -6856,12 +6856,8 @@ export class AIAgentOrchestrator {
         // Don't fail the request for audit issues
       }
       
-      // FIX 2 (v6.1): Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      const EMERGENCY_OBS_CODES_MAIN = new Set([
-        'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
-        'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-        'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-      ]);
+      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
+      // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
       const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES_MAIN.has(code));
       
