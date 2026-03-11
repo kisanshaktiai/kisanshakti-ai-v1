@@ -11,6 +11,7 @@
  */
 
 import type { RulePriority, CropStageCode, SeverityLevel } from './rule-module-types.ts';
+import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PRIORITY MAPPINGS
