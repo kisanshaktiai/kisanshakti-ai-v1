@@ -2345,32 +2345,8 @@ function generateValidationFailureFallback(
   }
   
   // Original fallback when no actions available
-  const fallbacks: Record<string, string> = {
-    mr: `🌾 **नमस्कार शेतकरी मित्र!**
-
-माझ्याकडून शिफारस तयार करताना तांत्रिक समस्या आली. कृपया खालील माहिती द्या:
-
-1. तुमचे पीक कोणते आहे?
-2. सध्याची समस्या काय आहे?
-3. पिकाचा टप्पा कोणता आहे?
-
-या माहितीवरून मी तुम्हाला योग्य मार्गदर्शन करू शकेन.
-
-📞 तातडीसाठी: जवळच्या कृषी विज्ञान केंद्राशी (KVK) संपर्क साधा.`,
-
-    hi: `🌾 **नमस्कार किसान मित्र!**
-
-सिफारिश तैयार करते समय तकनीकी समस्या आई। कृपया निम्नलिखित जानकारी दें:
-
-1. आपकी फसल कौन सी है?
-2. वर्तमान समस्या क्या है?
-3. फसल की अवस्था क्या है?
-
-इस जानकारी से मैं आपको उचित मार्गदर्शन दे सकूंगा।
-
-📞 तत्काल सहायता के लिए: निकटतम कृषि विज्ञान केंद्र (KVK) से संपर्क करें।`,
-
-    en: `🌾 **Hello Farmer Friend!**
+  // English-only fallback — forceTranslateResponse() handles localization at runtime
+  return `🌾 **Hello Farmer Friend!**
 
 I encountered a technical issue while preparing recommendations. Please provide the following information:
 
@@ -2380,10 +2356,7 @@ I encountered a technical issue while preparing recommendations. Please provide 
 
 With this information, I can provide you proper guidance.
 
-📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`
-  };
-  
-  return fallbacks[lang] || fallbacks['en'];
+📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`;
 }
 
 /**
