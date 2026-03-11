@@ -287,7 +287,7 @@ function buildContent(
   
   // Add monitoring note for observation modes
   if (mode === 'OBSERVATION' || mode === 'MONITORING_ADVISED') {
-    content.monitoring_note = { fallback_text: MODE_MESSAGES.MONITORING_ADVISED[language] };
+    content.monitoring_note = { fallback_text: MODE_MESSAGES.MONITORING_ADVISED };
   }
   
   return content;
