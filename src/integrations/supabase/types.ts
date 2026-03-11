@@ -17760,6 +17760,65 @@ export type Database = {
           },
         ]
       }
+      rule_product_mapping: {
+        Row: {
+          context_notes: string | null
+          created_at: string | null
+          id: string
+          is_primary: boolean | null
+          priority: number | null
+          product_id: string
+          rule_id: string
+        }
+        Insert: {
+          context_notes?: string | null
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          priority?: number | null
+          product_id: string
+          rule_id: string
+        }
+        Update: {
+          context_notes?: string | null
+          created_at?: string | null
+          id?: string
+          is_primary?: boolean | null
+          priority?: number | null
+          product_id?: string
+          rule_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_product_mapping_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "decision_rules"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "rule_authority_weights"
+            referencedColumns: ["rule_id"]
+          },
+          {
+            foreignKeyName: "rule_product_mapping_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "v_decision_rules_admin"
+            referencedColumns: ["rule_id"]
+          },
+        ]
+      }
       safety_verifications: {
         Row: {
           banned_substance_violations: Json | null
