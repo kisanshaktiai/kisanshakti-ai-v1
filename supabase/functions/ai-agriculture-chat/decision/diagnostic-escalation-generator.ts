@@ -118,27 +118,12 @@ const CAUSE_NAMES: Record<string, Record<string, string>> = {
 // EXPLANATION TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only explanations — LLM uses local farming terms at runtime
 const EXPLANATIONS: Record<string, Record<string, string>> = {
-  APHID_INFESTATION: {
-    mr: 'मावा हे लहान, मऊ शरीराचे कीटक आहेत जे पानांचा रस शोषतात. साधारणपणे पानांच्या खालच्या बाजूस आढळतात.',
-    hi: 'माहू छोटे, मुलायम शरीर वाले कीट हैं जो पत्तियों का रस चूसते हैं। आमतौर पर पत्तियों के नीचे पाए जाते हैं।',
-    en: 'Aphids are small, soft-bodied insects that suck plant sap. Usually found on the underside of leaves.'
-  },
-  THRIPS_DAMAGE: {
-    mr: 'तुडतुडे हे अत्यंत लहान कीटक आहेत जे पानांवर चांदी रंगाचे डाग करतात. कोवळ्या पानांना जास्त नुकसान करतात.',
-    hi: 'थ्रिप्स बहुत छोटे कीट हैं जो पत्तियों पर चाँदी जैसे धब्बे बनाते हैं। कोमल पत्तियों को ज्यादा नुकसान करते हैं।',
-    en: 'Thrips are very tiny insects that cause silvery patches on leaves. They damage tender leaves more.'
-  },
-  NITROGEN_DEFICIENCY: {
-    mr: 'नत्राच्या कमतरतेमुळे खालच्या जुन्या पानांचा रंग पिवळा होतो. पिक फिकट हिरवे दिसते.',
-    hi: 'नाइट्रोजन की कमी से नीचे की पुरानी पत्तियाँ पीली हो जाती हैं। फसल हल्की हरी दिखती है।',
-    en: 'Nitrogen deficiency causes lower, older leaves to turn yellow. The crop appears light green overall.'
-  },
-  RUST_DISEASE: {
-    mr: 'तांबेरा रोगामुळे पानांवर नारंगी-तपकिरी रंगाचे पुस्ट्यूल (pustules) दिसतात.',
-    hi: 'गेरुआ रोग से पत्तियों पर नारंगी-भूरे रंग के पस्ट्यूल (pustules) दिखते हैं।',
-    en: 'Rust disease causes orange-brown pustules to appear on leaves.'
-  }
+  APHID_INFESTATION: { en: 'Aphids are small, soft-bodied insects that suck plant sap. Usually found on the underside of leaves.' },
+  THRIPS_DAMAGE: { en: 'Thrips are very tiny insects that cause silvery patches on leaves. They damage tender leaves more.' },
+  NITROGEN_DEFICIENCY: { en: 'Nitrogen deficiency causes lower, older leaves to turn yellow. The crop appears light green overall.' },
+  RUST_DISEASE: { en: 'Rust disease causes orange-brown pustules to appear on leaves.' }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
