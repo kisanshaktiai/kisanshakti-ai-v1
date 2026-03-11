@@ -2847,12 +2847,7 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   // Status handling
   if (decision.status === 'BLOCKED') {
     const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    const blockedMessages: Record<string, string> = {
-      mr: `⚠️ **थांबा:** ${blockedReason}`,
-      hi: `⚠️ **रुकें:** ${blockedReason}`,
-      en: `⚠️ **Stop:** ${blockedReason}`
-    };
-    parts.push(blockedMessages[lang]);
+    parts.push(`⚠️ **Stop:** ${blockedReason}`);
     return parts.join('\n\n');
   }
   
