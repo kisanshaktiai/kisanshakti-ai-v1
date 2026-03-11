@@ -502,36 +502,23 @@ export function mapHumidityToEnum(humidity: number | undefined): HumidityLevel {
 export function mapCropNameToEnum(cropName: string | undefined): CropType {
   if (!cropName) return CropType.UNKNOWN;
   
-  const normalized = cropName.toLowerCase().trim();
+  // Use unified normalizer to get canonical English name, then map to enum
+  const { normalizeCropCode, getFullCropName } = await_free_imports;
+  const shortCode = normalizeCropCode(cropName);
+  const fullName = getFullCropName(shortCode);
   
-  const cropMap: Record<string, CropType> = {
-    'wheat': CropType.WHEAT, 'गहू': CropType.WHEAT, 'गेहूं': CropType.WHEAT,
-    'rice': CropType.RICE, 'धान': CropType.RICE, 'भात': CropType.RICE, 'तांदूळ': CropType.RICE,
-    'sugarcane': CropType.SUGARCANE, 'ऊस': CropType.SUGARCANE, 'गन्ना': CropType.SUGARCANE,
-    'cotton': CropType.COTTON, 'कापूस': CropType.COTTON, 'कपास': CropType.COTTON,
-    'soybean': CropType.SOYBEAN, 'सोयाबीन': CropType.SOYBEAN,
-    'maize': CropType.MAIZE, 'मका': CropType.MAIZE, 'मक्का': CropType.MAIZE,
-    'bajra': CropType.BAJRA, 'बाजरी': CropType.BAJRA, 'बाजरा': CropType.BAJRA,
-    'jowar': CropType.JOWAR, 'ज्वारी': CropType.JOWAR, 'ज्वार': CropType.JOWAR, 'sorghum': CropType.JOWAR,
-    'groundnut': CropType.GROUNDNUT, 'भुईमूग': CropType.GROUNDNUT, 'मूंगफली': CropType.GROUNDNUT,
-    'onion': CropType.ONION, 'कांदा': CropType.ONION, 'प्याज': CropType.ONION,
-    'tomato': CropType.TOMATO, 'टोमॅटो': CropType.TOMATO, 'टमाटर': CropType.TOMATO,
-    'potato': CropType.POTATO, 'बटाटा': CropType.POTATO, 'आलू': CropType.POTATO,
-    'chilli': CropType.CHILLI, 'मिरची': CropType.CHILLI, 'मिर्च': CropType.CHILLI,
-    'grapes': CropType.GRAPES, 'द्राक्षे': CropType.GRAPES, 'अंगूर': CropType.GRAPES,
-    'pomegranate': CropType.POMEGRANATE, 'डाळिंब': CropType.POMEGRANATE, 'अनार': CropType.POMEGRANATE,
-    'banana': CropType.BANANA, 'केळी': CropType.BANANA, 'केला': CropType.BANANA,
-    'mango': CropType.MANGO, 'आंबा': CropType.MANGO, 'आम': CropType.MANGO,
-    'turmeric': CropType.TURMERIC, 'हळद': CropType.TURMERIC, 'हल्दी': CropType.TURMERIC,
-    'ginger': CropType.GINGER, 'आले': CropType.GINGER, 'अदरक': CropType.GINGER,
-    'chickpea': CropType.CHICKPEA, 'हरभरा': CropType.CHICKPEA, 'चना': CropType.CHICKPEA,
-    'pigeon pea': CropType.PIGEON_PEA, 'तूर': CropType.PIGEON_PEA, 'अरहर': CropType.PIGEON_PEA,
-    'mustard': CropType.MUSTARD, 'मोहरी': CropType.MUSTARD, 'सरसों': CropType.MUSTARD,
-    'sunflower': CropType.SUNFLOWER, 'सूर्यफूल': CropType.SUNFLOWER,
-    'ragi': CropType.RAGI, 'नाचणी': CropType.RAGI, 'रागी': CropType.RAGI
+  // Map full English name to CropType enum
+  const enumMap: Record<string, CropType> = {
+    'WHEAT': CropType.WHEAT, 'RICE': CropType.RICE, 'SUGARCANE': CropType.SUGARCANE,
+    'COTTON': CropType.COTTON, 'SOYBEAN': CropType.SOYBEAN, 'MAIZE': CropType.MAIZE,
+    'GROUNDNUT': CropType.GROUNDNUT, 'ONION': CropType.ONION, 'TOMATO': CropType.TOMATO,
+    'POTATO': CropType.POTATO, 'CHILLI': CropType.CHILLI, 'GRAPE': CropType.GRAPES,
+    'POMEGRANATE': CropType.POMEGRANATE, 'BANANA': CropType.BANANA, 'MANGO': CropType.MANGO,
+    'TURMERIC': CropType.TURMERIC, 'GINGER': CropType.GINGER, 'GRAM': CropType.CHICKPEA,
+    'TUR': CropType.PIGEON_PEA, 'MUSTARD': CropType.MUSTARD, 'SUNFLOWER': CropType.SUNFLOWER,
   };
   
-  return cropMap[normalized] || CropType.UNKNOWN;
+  return enumMap[fullName] || CropType.UNKNOWN;
 }
 
 export function mapStageToEnum(stage: string | undefined): CropStage {
