@@ -6136,15 +6136,6 @@ export class AIAgentOrchestrator {
         // Complete audit trail
         await auditLogger.completeTurn(Date.now() - startTime);
         
-        // Generate farmer communication using the decision
-        const immediateResponse = await this.generateFarmerCommunication(
-          decisionOutput,
-          landContext,
-          fusedIntelligence,
-          options.language || 'mr',
-          traceId
-        );
-        
         // FIX 2 (v6.1): Wire symptomKeys + isEmergency into IMMEDIATE return path
         const EMERGENCY_OBS_CODES = new Set([
           'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
@@ -6154,7 +6145,7 @@ export class AIAgentOrchestrator {
         const obsArray = Array.from(allObservationsForPreAuth || []);
         const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
         
-        // BUG-C FIX: Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
+        // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         // so the formatter can read them from decision_output.metadata directly
         decisionOutput.symptom_keys = obsArray;
         if (!decisionOutput.metadata) decisionOutput.metadata = {};
@@ -6167,6 +6158,19 @@ export class AIAgentOrchestrator {
         if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
         }
+        
+        // Generate farmer communication using the working communicationGenerator pattern
+        const farmerProfile = await this.getFarmerProfile(farmerId, options.language || 'mr');
+        const immediateResponse = await this.communicationGenerator.generate(
+          decisionOutput,
+          farmerProfile,
+          {
+            issue_urgency: fusedIntelligence?.unified_context?.problem?.severity === 'CRITICAL' ? 'CRITICAL' :
+                           fusedIntelligence?.unified_context?.problem?.severity === 'HIGH' ? 'HIGH' : 'MEDIUM',
+            previous_failed_treatments: 0,
+            questions_asked: 0
+          }
+        );
         
         return {
           type: 'DECISION_PROVIDED',

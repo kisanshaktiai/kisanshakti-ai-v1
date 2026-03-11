@@ -6785,6 +6785,7 @@ export type Database = {
           failure_indicators: string[] | null
           farmer_safety_level: string | null
           field_validated: boolean | null
+          forecast_horizon_days: number | null
           gdd_max: number | null
           gdd_min: number | null
           growth_stage: string | null
@@ -6800,6 +6801,7 @@ export type Database = {
           ipm_level: number | null
           irrigation_method_applicable: string[] | null
           is_active: boolean | null
+          is_proactive_rule: boolean | null
           is_system_derived: boolean | null
           knowledge_text: string | null
           labor_cost_per_acre_max: number | null
@@ -6823,8 +6825,10 @@ export type Database = {
           observation_confidence_weight: number | null
           organic_alternative: string | null
           phi_days: number | null
+          prediction_type: string | null
           prerequisite_rule_ids: string[] | null
           priority: number
+          probability_threshold: number | null
           rain_delay_hours: number | null
           rainfall_probability_min_pct: number | null
           reason_text: string | null
@@ -6943,6 +6947,7 @@ export type Database = {
           failure_indicators?: string[] | null
           farmer_safety_level?: string | null
           field_validated?: boolean | null
+          forecast_horizon_days?: number | null
           gdd_max?: number | null
           gdd_min?: number | null
           growth_stage?: string | null
@@ -6958,6 +6963,7 @@ export type Database = {
           ipm_level?: number | null
           irrigation_method_applicable?: string[] | null
           is_active?: boolean | null
+          is_proactive_rule?: boolean | null
           is_system_derived?: boolean | null
           knowledge_text?: string | null
           labor_cost_per_acre_max?: number | null
@@ -6981,8 +6987,10 @@ export type Database = {
           observation_confidence_weight?: number | null
           organic_alternative?: string | null
           phi_days?: number | null
+          prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
           priority: number
+          probability_threshold?: number | null
           rain_delay_hours?: number | null
           rainfall_probability_min_pct?: number | null
           reason_text?: string | null
@@ -7101,6 +7109,7 @@ export type Database = {
           failure_indicators?: string[] | null
           farmer_safety_level?: string | null
           field_validated?: boolean | null
+          forecast_horizon_days?: number | null
           gdd_max?: number | null
           gdd_min?: number | null
           growth_stage?: string | null
@@ -7116,6 +7125,7 @@ export type Database = {
           ipm_level?: number | null
           irrigation_method_applicable?: string[] | null
           is_active?: boolean | null
+          is_proactive_rule?: boolean | null
           is_system_derived?: boolean | null
           knowledge_text?: string | null
           labor_cost_per_acre_max?: number | null
@@ -7139,8 +7149,10 @@ export type Database = {
           observation_confidence_weight?: number | null
           organic_alternative?: string | null
           phi_days?: number | null
+          prediction_type?: string | null
           prerequisite_rule_ids?: string[] | null
           priority?: number
+          probability_threshold?: number | null
           rain_delay_hours?: number | null
           rainfall_probability_min_pct?: number | null
           reason_text?: string | null
