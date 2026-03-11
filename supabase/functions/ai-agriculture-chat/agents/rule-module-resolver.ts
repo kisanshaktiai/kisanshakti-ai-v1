@@ -363,17 +363,17 @@ export function generateRuleRequiredQuestions(
   if ((intent === 'PEST_PROBLEM' || intent === 'DISEASE_PROBLEM') && !entities.affected_area_percent) {
     questions.push({
       question_id: 'Q_AFFECTED_AREA',
-      question_text_mr: 'किती टक्के शेतात समस्या दिसते?',
-      question_text_hi: 'कितने प्रतिशत खेत में समस्या दिखती है?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'What percentage of field is affected?',
       question_type: 'AFFECTED_AREA',
       priority: 'MEDIUM',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: '10', label_mr: '10% पर्यंत', label_hi: '10% तक', label_en: 'Up to 10%' },
-        { value: '30', label_mr: '10-30%', label_hi: '10-30%', label_en: '10-30%' },
-        { value: '50', label_mr: '30-50%', label_hi: '30-50%', label_en: '30-50%' },
-        { value: '75', label_mr: '50% पेक्षा जास्त', label_hi: '50% से ज्यादा', label_en: 'More than 50%' }
+        { value: '10', label_mr: '', label_hi: '', label_en: 'Up to 10%' },
+        { value: '30', label_mr: '', label_hi: '', label_en: '10-30%' },
+        { value: '50', label_mr: '', label_hi: '', label_en: '30-50%' },
+        { value: '75', label_mr: '', label_hi: '', label_en: 'More than 50%' }
       ],
       affects_rule_selection: true,
       target_entity: 'affected_area_percent'
