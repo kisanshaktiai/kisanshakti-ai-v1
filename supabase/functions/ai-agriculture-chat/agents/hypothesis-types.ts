@@ -101,7 +101,9 @@ export interface DiagnosticQuestion {
   /** Which hypothesis(es) this question helps evaluate */
   hypothesis_targeted: string[];
   /** Question text in multiple languages */
+  /** @deprecated Use question_text_en — LLM translates at runtime */
   question_text_mr: string;
+  /** @deprecated Use question_text_en — LLM translates at runtime */
   question_text_hi: string;
   question_text_en: string;
   /** Type of expected answer */

@@ -352,7 +352,9 @@ export interface RuleWarning {
 export interface RuleRequirement {
   rule_id: string;
   requirement_type: 'PHI' | 'PPE' | 'TIMING' | 'WAITING_PERIOD' | 'CERTIFICATION';
+  /** @deprecated Use requirement_text_en — LLM translates at runtime */
   requirement_text_mr: string;
+  /** @deprecated Use requirement_text_en — LLM translates at runtime */
   requirement_text_hi: string;
   requirement_text_en: string;
   is_mandatory: boolean;
