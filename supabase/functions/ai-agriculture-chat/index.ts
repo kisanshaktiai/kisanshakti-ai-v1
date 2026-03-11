@@ -1835,7 +1835,7 @@ serve(async (req) => {
         details: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
         trace_id: traceId,
-        fallback_advice: 'कृपया पुन्हा प्रयत्न करा किंवा कृषी तज्ञांशी संपर्क साधा.'
+        fallback_advice: 'Please try again or contact an agricultural expert.'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
