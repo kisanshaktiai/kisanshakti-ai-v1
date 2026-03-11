@@ -1,26 +1,33 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CROP SYNONYMS CACHE v1.0.0
+ * CROP SYNONYMS CACHE v1.1.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * In-memory cache for crop_synonyms table (multilingual crop name → crop_code).
  * Used to enrich NLU crop detection with DB-sourced synonyms beyond
  * the hardcoded agricultural-vocabulary.ts entries.
  * 
+ * v1.1.0 — Aligned with actual DB schema columns:
+ *   - canonical_crop (was: crop_code)
+ *   - variant_name (was: synonym)
+ *   - variant_type, region (new fields)
+ * 
  * Performance: 10-minute TTL, single global load.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CROP_SYNONYMS_VERSION = '1.0.0';
+export const CROP_SYNONYMS_VERSION = '1.1.0';
 
 interface CropSynonymRow {
-  crop_code: string;
-  synonym: string;
+  canonical_crop: string;
+  variant_name: string;
   language_code: string;
+  variant_type: string;
+  region: string | null;
 }
 
 interface SynonymsCache {
-  /** Map of lowercase synonym → crop_code */
+  /** Map of lowercase variant_name → canonical_crop */
   synonymMap: Map<string, string>;
   loadedAt: number;
   loadingPromise?: Promise<Map<string, string>>;
@@ -31,7 +38,7 @@ const CACHE_TTL = 600_000; // 10 minutes
 
 /**
  * Load all crop synonyms from DB into an in-memory map.
- * Returns Map<lowercase_synonym, CROP_CODE>.
+ * Returns Map<lowercase_variant_name, CANONICAL_CROP>.
  */
 export async function loadCropSynonyms(supabase: any): Promise<Map<string, string>> {
   const now = Date.now();
@@ -48,24 +55,24 @@ export async function loadCropSynonyms(supabase: any): Promise<Map<string, strin
     try {
       const { data, error } = await supabase
         .from('crop_synonyms')
-        .select('crop_code, synonym, language_code')
+        .select('canonical_crop, variant_name, language_code, variant_type, region')
         .eq('is_active', true);
       
       if (error) {
-        console.error(`[CROP_SYNONYMS] Load failed: ${error.message}`);
+        console.error(`[CROP_SYNONYMS] ❌ Load failed: ${error.message} (code: ${error.code}, details: ${error.details})`);
         return cache?.synonymMap || new Map();
       }
       
       const map = new Map<string, string>();
       for (const row of (data || []) as CropSynonymRow[]) {
-        map.set(row.synonym.toLowerCase(), row.crop_code);
+        map.set(row.variant_name.toLowerCase(), row.canonical_crop);
       }
       
-      console.log(`[CROP_SYNONYMS] Loaded ${map.size} synonyms from DB`);
+      console.log(`[CROP_SYNONYMS] ✅ Loaded ${map.size} synonyms from DB`);
       cache = { synonymMap: map, loadedAt: Date.now() };
       return map;
     } catch (e) {
-      console.error(`[CROP_SYNONYMS] Cache error:`, e instanceof Error ? e.message : 'unknown');
+      console.error(`[CROP_SYNONYMS] ❌ Cache error:`, e instanceof Error ? e.message : 'unknown');
       return cache?.synonymMap || new Map();
     }
   })();
@@ -83,7 +90,7 @@ export async function loadCropSynonyms(supabase: any): Promise<Map<string, strin
 
 /**
  * Look up a crop code from a text token using the DB synonym cache.
- * Returns the CROP_CODE or null if no match.
+ * Returns the CANONICAL_CROP or null if no match.
  */
 export function lookupCropSynonym(token: string, synonymMap: Map<string, string>): string | null {
   return synonymMap.get(token.toLowerCase()) || null;

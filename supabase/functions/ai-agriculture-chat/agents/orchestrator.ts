@@ -6117,6 +6117,26 @@ export class AIAgentOrchestrator {
         if (layeredRuleResult.matched_responses && layeredRuleResult.matched_responses.length > 0) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
         }
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // BUG-3 FIX: Propagate rules_applied from layeredRuleResult → decisionOutput
+        // Without this, decisionOutput.rules_applied stays empty ([]) even when 11+
+        // rules actually fired. This causes PHASE-19 photo gate (line 6322) to
+        // incorrectly trigger when rulesAppliedCount === 0.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const safeLayeredRulesApplied = Array.isArray(layeredRuleResult.rules_applied) 
+          ? layeredRuleResult.rules_applied 
+          : [];
+        if (safeLayeredRulesApplied.length > 0 && (!decisionOutput.rules_applied || decisionOutput.rules_applied.length === 0)) {
+          decisionOutput.rules_applied = safeLayeredRulesApplied.map((ruleId: string) => ({
+            rule_id: ruleId,
+            rule_file: 'layered-evaluator',
+            priority: 'P5_IPM',
+            result: 'RECOMMEND',
+            confidence: layeredRuleResult.confidence_in_result ?? 0.7
+          }));
+          console.log(`   🔧 BUG-3 FIX: Propagated ${safeLayeredRulesApplied.length} rules_applied from layeredRuleResult → decisionOutput`);
+        }
       }
       
       console.log('   ✅ Decision generated:', decisionOutput.status);
