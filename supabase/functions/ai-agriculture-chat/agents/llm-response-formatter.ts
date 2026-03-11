@@ -1148,6 +1148,7 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   const langName = LANG_NAMES[input.language] || 'English';
   
   const ruralRules = getRuralLanguageRules(input.language);
+  const villageOfficerPersona = getVillageOfficerPersona();
   
   // Get crop stage constraints
   const cropStageConstraints = getCropStageConstraints(input);
