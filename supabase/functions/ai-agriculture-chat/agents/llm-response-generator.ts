@@ -483,7 +483,7 @@ export async function generateNarratedResponse(
     console.error('❌ NarrationLayer: Invalid symbolic input:', inputValidation.errors);
     return {
       response_text: input.symbolic_decision?.fallback_text || 
-        'कृपया पुन्हा प्रयत्न करा. | Please try again.',
+        'Please try again.',
       source: 'FALLBACK_USED',
       validation_passed: false,
       validation_errors: inputValidation.errors

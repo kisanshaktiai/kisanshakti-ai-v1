@@ -270,6 +270,15 @@ import {
 } from './photoperiod-calculator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// SHARED CONSTANT: Emergency observation codes (used in both return paths)
+// ═══════════════════════════════════════════════════════════════════════════
+const EMERGENCY_OBS_CODES = new Set([
+  'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
+  'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
+  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
+]);
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
 // These enforce scientific validity before any treatment recommendation
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1186,8 +1195,6 @@ export class AIAgentOrchestrator {
               type: 'PHOTO_REQUEST',
               session_id: sessionId,
               photo_instructions: {
-                text_mr: `📷 फोटो स्पष्ट नाही. कृपया पुन्हा फोटो पाठवा.\n\n💡 टिप्स:\n• चांगल्या प्रकाशात\n• प्रभावित भागाचा जवळून\n• निरोगी भाग सोबत`,
-                text_hi: `📷 फोटो स्पष्ट नहीं है। कृपया फिर से फोटो भेजें.\n\n💡 टिप्स:\n• अच्छी रोशनी में\n• प्रभावित क्षेत्र का करीब से\n• स्वस्थ भाग के साथ`,
                 text_en: `📷 Photo is not clear. Please send again.\n\n💡 Tips:\n• In good lighting\n• Close-up of affected area\n• Include healthy part for comparison`,
                 tips: photoAnalysisResult.image_quality.issues
               },
@@ -5897,8 +5904,6 @@ export class AIAgentOrchestrator {
           mode: this.mapDiagnosticAction(diagnosticResponse.action),
           next_question: firstQuestion ? {
             question_id: firstQuestion.question_id,
-            text_mr: firstQuestion.question_text_mr || 'अधिक माहिती द्या',
-            text_hi: firstQuestion.question_text_hi || 'अधिक जानकारी दें',
             text_en: firstQuestion.question_text_en || 'Please provide more details',
             options: firstQuestion.options
           } : null,
@@ -5934,8 +5939,6 @@ export class AIAgentOrchestrator {
           type: 'PHOTO_REQUEST',
           session_id: sessionId,
           photo_instructions: {
-            text_mr: '📷 कृपया प्रभावित पानाचा/पिकाचा स्पष्ट फोटो पाठवा',
-            text_hi: '📷 कृपया प्रभावित पत्ती/फसल का स्पष्ट फोटो भेजें',
             text_en: '📷 Please send a clear photo of the affected leaf/crop',
             tips: [
               'Good lighting',
@@ -6136,17 +6139,11 @@ export class AIAgentOrchestrator {
         // Complete audit trail
         await auditLogger.completeTurn(Date.now() - startTime);
         
-        // FIX 2 (v6.1): Wire symptomKeys + isEmergency into IMMEDIATE return path
-        const EMERGENCY_OBS_CODES = new Set([
-          'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
-          'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-          'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-        ]);
+        // Wire symptomKeys + isEmergency into IMMEDIATE return path
         const obsArray = Array.from(allObservationsForPreAuth || []);
         const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
         
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
-        // so the formatter can read them from decision_output.metadata directly
         decisionOutput.symptom_keys = obsArray;
         if (!decisionOutput.metadata) decisionOutput.metadata = {};
         decisionOutput.metadata.has_symptoms = obsArray.length > 0;
@@ -6154,9 +6151,127 @@ export class AIAgentOrchestrator {
         decisionOutput.metadata.decision_confidence = layeredRuleResult?.primary_decision?.weighted_confidence || 0;
         decisionOutput.metadata.isEmergency = isEmergencyImmediate;
         
-        // FIX 3 (v6.1): Wire matched_responses into IMMEDIATE return path
+        // Wire matched_responses into IMMEDIATE return path
         if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════
+        // P0 SAFETY FIX: Run PHI + Pollinator + SafetyGuardian checks
+        // BEFORE returning — prevents unsafe chemicals from reaching farmer
+        // ═══════════════════════════════════════════════════════════════════
+        let immediateSafetyStatus = 'APPROVED';
+        
+        // PHI Enforcement
+        const immediateChemicals = this.extractChemicalRecommendations(decisionOutput);
+        if (immediateChemicals.length > 0 && landContext?.expected_harvest_date) {
+          try {
+            const daysToHarvest = this.calculateDaysToHarvest(landContext.expected_harvest_date);
+            const phiResult = enforcePHI(
+              immediateChemicals,
+              daysToHarvest,
+              landContext.current_crop?.toUpperCase(),
+              'DOMESTIC',
+              false
+            );
+            if (phiResult.blocked_chemicals.length > 0) {
+              console.warn(`   ⚠️ [INVARIANT] PHI VIOLATION: ${phiResult.blocked_chemicals.map(c => c.chemical_name).join(', ')}`);
+              decisionOutput = this.applyPHIBlocking(decisionOutput, phiResult);
+              immediateSafetyStatus = 'PHI_MODIFIED';
+              agentsUsed.push('PHI_GUARDIAN');
+            }
+          } catch (phiErr) {
+            console.error('   ❌ [INVARIANT] PHI check failed (non-blocking):', phiErr);
+          }
+        }
+        
+        // Pollinator Protection
+        const immediateCurrentHour = new Date().getHours();
+        const immediateIsFlowering = landContext?.current_crop && landContext?.days_since_sowing
+          ? isFloweringStage(landContext.current_crop.toUpperCase(), landContext.days_since_sowing)
+          : false;
+        if (immediateChemicals.length > 0 && immediateIsFlowering) {
+          try {
+            const pollinatorResult = enforcePollinatorProtection(
+              immediateChemicals,
+              landContext.current_crop.toUpperCase(),
+              landContext.days_since_sowing,
+              immediateCurrentHour
+            );
+            if (pollinatorResult.blocked_chemicals.length > 0) {
+              console.warn(`   ⚠️ [INVARIANT] POLLINATOR SAFETY: ${pollinatorResult.blocked_chemicals.map(c => c.chemical_name).join(', ')} BLOCKED`);
+              decisionOutput = this.applyPollinatorBlocking(decisionOutput, pollinatorResult);
+              immediateSafetyStatus = 'POLLINATOR_MODIFIED';
+              agentsUsed.push('POLLINATOR_PROTECTION');
+            }
+          } catch (pollinatorErr) {
+            console.error('   ❌ [INVARIANT] Pollinator check failed (non-blocking):', pollinatorErr);
+          }
+        }
+        
+        // SafetyGuardian verification
+        try {
+          const immediateSafetyVerification = await this.safetyGuardian.verifySafety(
+            decisionOutput,
+            {
+              original_input: farmerMessage,
+              session_id: sessionId,
+              farmer_id: farmerId,
+              crop_stage: contextState?.crop_context?.stage,
+              expected_harvest_date: contextState?.crop_context?.expected_harvest_date,
+              previous_failed_treatments: 0,
+              severity: fusedIntelligence?.unified_context?.problem?.severity
+            },
+            layeredRuleResult?.primary_decision?.weighted_confidence || 0.7
+          );
+          agentsUsed.push('Safety');
+          
+          if (immediateSafetyVerification.emergency_protocol?.emergency_detected) {
+            return {
+              type: 'ESCALATION_REQUIRED',
+              session_id: sessionId,
+              escalation: {
+                level: 'EMERGENCY',
+                expert_type: immediateSafetyVerification.emergency_protocol.expert_escalation.expert_type || 'SAFETY_OFFICER',
+                sla_hours: (immediateSafetyVerification.emergency_protocol.expert_escalation.sla_minutes || 30) / 60,
+                ...immediateSafetyVerification.emergency_protocol.farmer_safety_instructions
+              },
+              metadata: {
+                confidence: 0,
+                safety_status: 'EMERGENCY',
+                rules_applied: 0,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed
+              }
+            };
+          }
+          
+          if (!immediateSafetyVerification.approved) {
+            return {
+              type: 'SAFETY_BLOCKED',
+              session_id: sessionId,
+              blocked_reason: immediateSafetyVerification.blocked_decision ? {
+                reason_en: immediateSafetyVerification.blocked_decision.reason_en
+              } : undefined,
+              alternatives: immediateSafetyVerification.safety_check.safer_alternatives,
+              metadata: {
+                confidence: 0,
+                safety_status: 'BLOCKED',
+                rules_applied: decisionOutput.rules_applied?.length || 0,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed
+              }
+            };
+          }
+          
+          immediateSafetyStatus = immediateSafetyVerification.safety_check.overall_safety_status || immediateSafetyStatus;
+          
+          // Use safety-modified decision if available
+          if (immediateSafetyVerification.modified_decision) {
+            decisionOutput = immediateSafetyVerification.modified_decision;
+          }
+        } catch (safetyErr) {
+          console.error('   ❌ [INVARIANT] SafetyGuardian failed (non-blocking):', safetyErr);
         }
         
         // Generate farmer communication using the working communicationGenerator pattern
@@ -6183,7 +6298,7 @@ export class AIAgentOrchestrator {
             confidence: layeredRuleResult?.primary_decision?.weighted_confidence ||
                         layeredRuleResult?.primary_decision?.confidence_score || 
                         decisionOutput.confidence_score || 0.7,
-            safety_status: 'PENDING_VALIDATION',
+            safety_status: immediateSafetyStatus,
             rules_applied: decisionOutput.rules_applied?.length || 0,
             processing_time_ms: Date.now() - startTime,
             agents_used: agentsUsed,
@@ -6416,10 +6531,9 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             question: {
               question_id: `intent_mismatch_${Date.now()}`,
-              text_mr: clarification.text_mr,
-              text_hi: clarification.text_hi,
-              text_en: clarification.text_en,
-              options: clarification.options
+              text_en: 'Could you describe your problem in more detail so I can help you better?',
+              i18n_key: clarification.i18n_key,
+              options: clarification.option_codes.map(code => ({ code, label: code }))
             },
             metadata: {
               confidence: intentConfidence,
@@ -6555,8 +6669,6 @@ export class AIAgentOrchestrator {
           type: 'SAFETY_BLOCKED',
           session_id: sessionId,
           blocked_reason: safetyVerification.blocked_decision ? {
-            reason_mr: safetyVerification.blocked_decision.reason_mr,
-            reason_hi: safetyVerification.blocked_decision.reason_hi,
             reason_en: safetyVerification.blocked_decision.reason_en
           } : undefined,
           alternatives: safetyVerification.safety_check.safer_alternatives,
@@ -6580,8 +6692,6 @@ export class AIAgentOrchestrator {
             level: escalation.escalation_level,
             expert_type: escalation.expert_needed.type,
             sla_hours: escalation.expert_needed.sla_response_hours,
-            message_mr: `तज्ञांशी संपर्क साधत आहोत. ${escalation.expert_needed.sla_response_hours} तासांत उत्तर मिळेल.`,
-            message_hi: `विशेषज्ञ से संपर्क कर रहे हैं। ${escalation.expert_needed.sla_response_hours} घंटे में जवाब मिलेगा।`,
             message_en: `Contacting expert. Response within ${escalation.expert_needed.sla_response_hours} hours.`
           },
           metadata: {
@@ -6744,14 +6854,10 @@ export class AIAgentOrchestrator {
         // Don't fail the request for audit issues
       }
       
-      // FIX 2 (v6.1): Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      const EMERGENCY_OBS_CODES_MAIN = new Set([
-        'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
-        'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-        'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-      ]);
+      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
+      // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
-      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES_MAIN.has(code));
+      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
       
       return {
         type: 'DECISION_PROVIDED',
@@ -6836,29 +6942,8 @@ export class AIAgentOrchestrator {
    */
   private normalizeCropCode(cropName?: string): string | undefined {
     if (!cropName) return undefined;
-    const cropNameUpper = cropName.toUpperCase();
-    const cropMap: Record<string, string> = {
-      'SUGARCANE': 'SUGARCANE',
-      'COTTON': 'COTTON',
-      'SOYBEAN': 'SOYBEAN',
-      'SOYA': 'SOYBEAN',
-      'RICE': 'RICE',
-      'PADDY': 'RICE',
-      'WHEAT': 'WHEAT',
-      'MAIZE': 'MAIZE',
-      'CORN': 'MAIZE',
-      'TOMATO': 'TOMATO',
-      'ONION': 'ONION',
-      'CHILLI': 'CHILLI',
-      'CHILI': 'CHILLI',
-      'GROUNDNUT': 'GROUNDNUT',
-      'PEANUT': 'GROUNDNUT',
-      'TUR': 'TUR',
-      'PIGEON PEA': 'TUR',
-      'GRAM': 'GRAM',
-      'CHICKPEA': 'GRAM'
-    };
-    return cropMap[cropNameUpper] || cropNameUpper;
+    // Use the unified crop code normalizer (SSOT) instead of hardcoded map
+    return unifiedNormalizeCropCode(cropName);
   }
   
   /**

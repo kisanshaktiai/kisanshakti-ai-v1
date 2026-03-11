@@ -247,8 +247,6 @@ export class DiagnosticFlowController {
       return {
         action: 'REQUEST_PHOTO',
         photo_instructions: this.getPhotoInstructions(nluOutput.intent),
-        message_mr: 'कृपया प्रभावित भागाचा फोटो पाठवा',
-        message_hi: 'कृपया प्रभावित भाग का फोटो भेजें',
         message_en: 'Please send a photo of the affected area',
         session_state: this.session
       };

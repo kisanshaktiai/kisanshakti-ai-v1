@@ -252,14 +252,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.PHOTO_ONLY]: {
-    mr: {
-      question: '📸 कृपया प्रभावित भागाचा फोटो पाठवा. यामुळे अचूक सल्ला देणे सोपे होईल.',
-      options: []
-    },
-    hi: {
-      question: '📸 कृपया प्रभावित हिस्से की फोटो भेजें। इससे सही सलाह देना आसान होगा।',
-      options: []
-    },
     en: {
       question: '📸 Please send a photo of the affected area. This will help provide accurate advice.',
       options: []

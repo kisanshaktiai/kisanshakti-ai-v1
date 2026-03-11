@@ -1007,8 +1007,8 @@ serve(async (req) => {
       // Static Gate already generated the response - use it directly
       console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
       responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage] ||
-                        orchestratorResponse.communication?.main_message?.full_text?.mr ||
-                        'माहिती उपलब्ध नाही';
+                        orchestratorResponse.communication?.main_message?.full_text?.en ||
+                        'Information not available';
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
@@ -1835,7 +1835,7 @@ serve(async (req) => {
         details: error instanceof Error ? error.message : 'Unknown error',
         timestamp: new Date().toISOString(),
         trace_id: traceId,
-        fallback_advice: 'कृपया पुन्हा प्रयत्न करा किंवा कृषी तज्ञांशी संपर्क साधा.'
+        fallback_advice: 'Please try again or contact an agricultural expert.'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
@@ -2324,12 +2324,8 @@ function generateValidationFailureFallback(
       if (validSecondaryActions.length === 0) {
         // NO valid actions at all - use technical issue fallback
         console.log(`   ⚠️ No valid actions found in actionsReturned, using technical fallback`);
-        const fallbacks: Record<string, string> = {
-          mr: `🌾 नमस्कार शेतकरी मित्र!\n\nमाझ्याकडून शिफारस तयार करताना तांत्रिक समस्या आली. कृपया पुन्हा प्रयत्न करा किंवा तुमची समस्या अधिक तपशीलात सांगा.\n\n📞 तातडीसाठी: जवळच्या कृषी विज्ञान केंद्राशी संपर्क साधा.`,
-          hi: `🌾 नमस्कार किसान मित्र!\n\nसिफारिश तैयार करते समय तकनीकी समस्या आई। कृपया दोबारा प्रयास करें या अपनी समस्या और विस्तार से बताएं।\n\n📞 तत्काल सहायता के लिए: निकटतम KVK से संपर्क करें।`,
-          en: `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`
-        };
-        return fallbacks[lang] || fallbacks['en'];
+        const fallbackText = `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`;
+        return fallbackText;
       }
       
       // Use valid secondary actions - TRANSLATE to farmer-friendly language

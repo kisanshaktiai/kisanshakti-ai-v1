@@ -466,8 +466,7 @@ export function checkPHISafety(
   if (!profile) {
     result.is_safe = false;
     result.block_reason = `Unknown chemical - cannot verify PHI safety. Consult agricultural officer.`;
-    result.block_reason_mr = `अज्ञात रसायन - PHI सुरक्षितता तपासता येत नाही. कृषी अधिकाऱ्यांचा सल्ला घ्या.`;
-    result.block_reason_hi = `अज्ञात रसायन - PHI सुरक्षा जाँच नहीं हो सकती। कृषि अधिकारी से परामर्श करें।`;
+    return result;
     return result;
   }
   
@@ -476,8 +475,6 @@ export function checkPHISafety(
     result.is_safe = false;
     result.violation_type = 'ORGANIC_VIOLATION';
     result.block_reason = `${chemicalName} is not allowed in organic farming. Using synthetic chemicals will void organic certification.`;
-    result.block_reason_mr = `${chemicalName} सेंद्रिय शेतीसाठी परवानगी नाही. रासायनिक औषध वापरल्यास सेंद्रिय प्रमाणपत्र रद्द होईल.`;
-    result.block_reason_hi = `${chemicalName} जैविक खेती में अनुमति नहीं है। रासायनिक दवाई का उपयोग जैविक प्रमाणन रद्द कर देगा।`;
     result.alternative_suggestions = NEAR_HARVEST_ALTERNATIVES
       .filter(a => a.organic_safe)
       .map(a => a.name);
@@ -519,10 +516,6 @@ export function checkPHISafety(
   const shortfall = requiredPHI - daysToHarvest;
   
   result.block_reason = `BLOCKED: ${chemicalName} requires ${requiredPHI} days before harvest, but only ${daysToHarvest} days remain. Spraying now will result in residue above safe limits (MRL violation).`;
-  
-  result.block_reason_mr = `अवरोधित: ${chemicalName} साठी कापणीपूर्वी ${requiredPHI} दिवस आवश्यक, पण फक्त ${daysToHarvest} दिवस शिल्लक आहेत. आता फवारणी केल्यास अवशेष सुरक्षित मर्यादेपेक्षा जास्त राहील.`;
-  
-  result.block_reason_hi = `अवरोधित: ${chemicalName} के लिए कटाई से ${requiredPHI} दिन पहले आवश्यक है, लेकिन केवल ${daysToHarvest} दिन शेष हैं। अभी छिड़काव करने से अवशेष सुरक्षित सीमा से अधिक रहेगा।`;
   
   // Calculate when it would have been safe
   const safeSprayDaysAgo = shortfall;

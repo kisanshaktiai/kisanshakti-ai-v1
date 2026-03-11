@@ -1130,35 +1130,25 @@ export class CommunicationGenerator {
         treatment_cost: {
           amount_inr: 0,
           breakdown: {
-            mr: 'खर्च माहिती उपलब्ध नाही',
-            hi: 'लागत जानकारी उपलब्ध नहीं',
             en: 'Cost information not available'
           }
         },
         expected_benefit: {
           loss_prevented_inr: 0,
           explanation: {
-            mr: 'फायदा माहिती उपलब्ध नाही',
-            hi: 'लाभ जानकारी उपलब्ध नहीं',
             en: 'Benefit information not available'
           }
         },
         net_benefit: {
           amount_inr: 0,
           roi_message: {
-            mr: 'ROI माहिती उपलब्ध नाही',
-            hi: 'ROI जानकारी उपलब्ध नहीं',
             en: 'ROI information not available'
           }
         },
         affordability_message: {
-          mr: 'बजेट माहिती तपासा',
-          hi: 'बजट जानकारी जांचें',
           en: 'Check budget information'
         },
         value_proposition: {
-          mr: '📊 आर्थिक माहिती उपलब्ध नाही',
-          hi: '📊 आर्थिक जानकारी उपलब्ध नहीं',
           en: '📊 Economic information not available'
         }
       };
