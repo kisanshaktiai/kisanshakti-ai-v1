@@ -91,33 +91,27 @@ const TEMPLATES = {
 // CAUSE NAME TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only cause names — LLM narration layer translates to local farming terms at runtime
 const CAUSE_NAMES: Record<string, Record<string, string>> = {
-  // Pests
-  APHID_INFESTATION: { mr: 'मावा (Aphid)', hi: 'माहू (Aphid)', en: 'Aphid Infestation' },
-  WHITEFLY_ATTACK: { mr: 'पांढरी माशी', hi: 'सफेद मक्खी', en: 'Whitefly Attack' },
-  THRIPS_DAMAGE: { mr: 'तुडतुडे (Thrips)', hi: 'थ्रिप्स', en: 'Thrips Damage' },
-  BORER_INFESTATION: { mr: 'खोडकिडा', hi: 'तना छेदक', en: 'Stem Borer' },
-  MITE_INFESTATION: { mr: 'कोळी (Mites)', hi: 'मकड़ी (Mites)', en: 'Mite Infestation' },
-  CATERPILLAR_DAMAGE: { mr: 'अळी', hi: 'इल्ली', en: 'Caterpillar Damage' },
-  
-  // Diseases
-  FUNGAL_INFECTION: { mr: 'बुरशीजन्य रोग', hi: 'फफूंद रोग', en: 'Fungal Infection' },
-  RUST_DISEASE: { mr: 'तांबेरा रोग', hi: 'गेरुआ रोग', en: 'Rust Disease' },
-  BLIGHT_DISEASE: { mr: 'करपा रोग', hi: 'झुलसा रोग', en: 'Blight Disease' },
-  POWDERY_MILDEW: { mr: 'भुरी', hi: 'चूर्णिल आसिता', en: 'Powdery Mildew' },
-  WILT_DISEASE: { mr: 'मर रोग', hi: 'उकठा रोग', en: 'Wilt Disease' },
-  
-  // Nutrients
-  NITROGEN_DEFICIENCY: { mr: 'नत्र कमतरता', hi: 'नाइट्रोजन की कमी', en: 'Nitrogen Deficiency' },
-  PHOSPHORUS_DEFICIENCY: { mr: 'स्फुरद कमतरता', hi: 'फॉस्फोरस की कमी', en: 'Phosphorus Deficiency' },
-  POTASSIUM_DEFICIENCY: { mr: 'पालाश कमतरता', hi: 'पोटाश की कमी', en: 'Potassium Deficiency' },
-  IRON_DEFICIENCY: { mr: 'लोह कमतरता', hi: 'लोहे की कमी', en: 'Iron Deficiency' },
-  ZINC_DEFICIENCY: { mr: 'जस्त कमतरता', hi: 'जिंक की कमी', en: 'Zinc Deficiency' },
-  
-  // Environmental
-  WATER_STRESS: { mr: 'पाण्याचा ताण', hi: 'जल तनाव', en: 'Water Stress' },
-  HEAT_STRESS: { mr: 'उष्णतेचा ताण', hi: 'गर्मी का तनाव', en: 'Heat Stress' },
-  WIND_DAMAGE: { mr: 'वाऱ्याचे नुकसान', hi: 'हवा से नुकसान', en: 'Wind Damage' }
+  APHID_INFESTATION: { en: 'Aphid Infestation' },
+  WHITEFLY_ATTACK: { en: 'Whitefly Attack' },
+  THRIPS_DAMAGE: { en: 'Thrips Damage' },
+  BORER_INFESTATION: { en: 'Stem Borer' },
+  MITE_INFESTATION: { en: 'Mite Infestation' },
+  CATERPILLAR_DAMAGE: { en: 'Caterpillar Damage' },
+  FUNGAL_INFECTION: { en: 'Fungal Infection' },
+  RUST_DISEASE: { en: 'Rust Disease' },
+  BLIGHT_DISEASE: { en: 'Blight Disease' },
+  POWDERY_MILDEW: { en: 'Powdery Mildew' },
+  WILT_DISEASE: { en: 'Wilt Disease' },
+  NITROGEN_DEFICIENCY: { en: 'Nitrogen Deficiency' },
+  PHOSPHORUS_DEFICIENCY: { en: 'Phosphorus Deficiency' },
+  POTASSIUM_DEFICIENCY: { en: 'Potassium Deficiency' },
+  IRON_DEFICIENCY: { en: 'Iron Deficiency' },
+  ZINC_DEFICIENCY: { en: 'Zinc Deficiency' },
+  WATER_STRESS: { en: 'Water Stress' },
+  HEAT_STRESS: { en: 'Heat Stress' },
+  WIND_DAMAGE: { en: 'Wind Damage' }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
