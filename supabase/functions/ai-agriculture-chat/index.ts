@@ -2906,11 +2906,8 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     const reasonText = app.reason_text as string | undefined;
     const knowledgeText = app.knowledge_text as string | undefined;
 
-    const richLabels = {
-      action: { mr: 'काय करावे', hi: 'क्या करें', en: 'Action' },
-      reason: { mr: 'कारण', hi: 'कारण', en: 'Reason' },
-      knowledge: { mr: 'माहिती', hi: 'जानकारी', en: 'Knowledge' }
-    } as const;
+    // English-only labels — forceTranslateResponse() handles localization
+    const richLabels = { action: 'Action', reason: 'Reason', knowledge: 'Knowledge' };
 
     let primaryText = `**${recNumber}. ${productName}**`;
     if (dosage) primaryText += ` @ ${dosage}`;
