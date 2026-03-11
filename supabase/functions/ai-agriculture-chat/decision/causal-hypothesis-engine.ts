@@ -783,15 +783,19 @@ export async function runCausalHypothesisArbitration(
   const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
   const startTime = Date.now();
 
+  // CRITICAL FIX: Normalize crop code to crop_group used in hypothesis_master
+  // DB stores: SUGARCANE, COTTON, RICE, WHEAT. Orchestrator may pass: SC, CTN, etc.
+  const normalizedCropGroup = normalizeCropGroup(crop_group);
+
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
-  console.log(`   crop_group=${crop_group}, observations=${observations.length}, trace=${trace_id || 'none'}`);
+  console.log(`   crop_group=${normalizedCropGroup} (raw=${crop_group}), observations=${observations.length}, trace=${trace_id || 'none'}`);
 
   // Load hypothesis data
-  const data = await loadHypothesesForCrop(crop_group, supabase_client);
+  const data = await loadHypothesesForCrop(normalizedCropGroup, supabase_client);
   const cropHasHypotheses = data.hypotheses.length > 0;
 
   if (!cropHasHypotheses) {
-    console.log(`   📭 No hypothesis model for crop_group=${crop_group}, falling back to full rule scope`);
+    console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
     return {
       best_hypothesis: null,
       competing: [],
