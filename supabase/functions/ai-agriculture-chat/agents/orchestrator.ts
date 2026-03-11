@@ -6942,29 +6942,8 @@ export class AIAgentOrchestrator {
    */
   private normalizeCropCode(cropName?: string): string | undefined {
     if (!cropName) return undefined;
-    const cropNameUpper = cropName.toUpperCase();
-    const cropMap: Record<string, string> = {
-      'SUGARCANE': 'SUGARCANE',
-      'COTTON': 'COTTON',
-      'SOYBEAN': 'SOYBEAN',
-      'SOYA': 'SOYBEAN',
-      'RICE': 'RICE',
-      'PADDY': 'RICE',
-      'WHEAT': 'WHEAT',
-      'MAIZE': 'MAIZE',
-      'CORN': 'MAIZE',
-      'TOMATO': 'TOMATO',
-      'ONION': 'ONION',
-      'CHILLI': 'CHILLI',
-      'CHILI': 'CHILLI',
-      'GROUNDNUT': 'GROUNDNUT',
-      'PEANUT': 'GROUNDNUT',
-      'TUR': 'TUR',
-      'PIGEON PEA': 'TUR',
-      'GRAM': 'GRAM',
-      'CHICKPEA': 'GRAM'
-    };
-    return cropMap[cropNameUpper] || cropNameUpper;
+    // Use the unified crop code normalizer (SSOT) instead of hardcoded map
+    return unifiedNormalizeCropCode(cropName);
   }
   
   /**
