@@ -94,8 +94,6 @@ interface DifferentialPattern {
   primary_symptom: string;
   competing_causes: {
     cause_code: string;
-    cause_name_mr: string;
-    cause_name_hi: string;
     cause_name_en: string;
     category: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'WEATHER' | 'OTHER';
     base_probability: number;
@@ -103,11 +101,9 @@ interface DifferentialPattern {
     ruling_out_factors: string[];
   }[];
   differentiating_questions: {
-    question_mr: string;
-    question_hi: string;
     question_en: string;
-    yes_supports: string; // cause_code
-    no_supports: string;  // cause_code
+    yes_supports: string;
+    no_supports: string;
     information_gain: number;
   }[];
 }
