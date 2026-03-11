@@ -40,60 +40,22 @@ import {
 // MODE-SPECIFIC DEFAULT MESSAGES
 // ═══════════════════════════════════════════════════════════════════════════
 
-const MODE_MESSAGES: Record<UIResponseMode, Record<string, string>> = {
-  OBSERVATION: {
-    mr: '👀 पिकाचे नियमित निरीक्षण करा. समस्या वाढल्यास पुन्हा संपर्क करा.',
-    hi: '👀 फसल की नियमित निगरानी करें। समस्या बढ़े तो संपर्क करें।',
-    en: '👀 Continue regular monitoring. Contact us if the issue worsens.'
-  },
-  CLARIFICATION_REQUIRED: {
-    mr: '❓ अधिक माहिती हवी आहे. कृपया खालीलपैकी एक निवडा:',
-    hi: '❓ अधिक जानकारी चाहिए। कृपया नीचे से एक चुनें:',
-    en: '❓ More information needed. Please select one of the following:'
-  },
-  PHOTO_REQUIRED: {
-    mr: '📷 अचूक निदानासाठी कृपया प्रभावित भागाचा फोटो पाठवा.',
-    hi: '📷 सटीक निदान के लिए कृपया प्रभावित हिस्से का फोटो भेजें।',
-    en: '📷 Please send a photo of the affected area for accurate diagnosis.'
-  },
-  MONITORING_ADVISED: {
-    mr: '✅ सध्या तुमचे पीक चांगले दिसते. निरीक्षण चालू ठेवा.',
-    hi: '✅ अभी आपकी फसल ठीक दिखती है। निगरानी जारी रखें।',
-    en: '✅ Your crop looks healthy for now. Continue monitoring.'
-  },
-  TREATMENT_ALLOWED: {
-    mr: '💊 खालील उपाय करा:',
-    hi: '💊 निम्नलिखित उपाय करें:',
-    en: '💊 Take the following action:'
-  },
-  NO_ACTION_NEEDED: {
-    mr: '✅ सध्या कोणतीही कृती आवश्यक नाही. पीक निरोगी आहे.',
-    hi: '✅ अभी कोई कार्रवाई आवश्यक नहीं। फसल स्वस्थ है।',
-    en: '✅ No action needed at this time. Your crop is healthy.'
-  },
-  ERROR: {
-    mr: '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.',
-    hi: '⚠️ कुछ गलत हुआ। कृपया दोबारा प्रयास करें।',
-    en: '⚠️ Something went wrong. Please try again.'
-  }
+// English-only defaults — LLM narration layer translates at runtime
+const MODE_MESSAGES: Record<UIResponseMode, string> = {
+  OBSERVATION: '👀 Continue regular monitoring. Contact us if the issue worsens.',
+  CLARIFICATION_REQUIRED: '❓ More information needed. Please select one of the following:',
+  PHOTO_REQUIRED: '📷 Please send a photo of the affected area for accurate diagnosis.',
+  MONITORING_ADVISED: '✅ Your crop looks healthy for now. Continue monitoring.',
+  TREATMENT_ALLOWED: '💊 Take the following action:',
+  NO_ACTION_NEEDED: '✅ No action needed at this time. Your crop is healthy.',
+  ERROR: '⚠️ Something went wrong. Please try again.'
 };
 
-const PHOTO_GUIDANCE: Record<string, Record<string, string>> = {
-  prompt: {
-    mr: '📷 फोटो पाठवा',
-    hi: '📷 फोटो भेजें',
-    en: '📷 Send Photo'
-  },
-  what_to_capture: {
-    mr: 'प्रभावित पान किंवा खोडाचा जवळून फोटो घ्या',
-    hi: 'प्रभावित पत्ते या तने का क़रीब से फोटो लें',
-    en: 'Take a close-up photo of the affected leaf or stem'
-  },
-  lighting_tip: {
-    mr: 'चांगल्या प्रकाशात फोटो घ्या',
-    hi: 'अच्छी रोशनी में फोटो लें',
-    en: 'Take photo in good lighting'
-  }
+// English-only photo guidance — LLM narration layer translates at runtime
+const PHOTO_GUIDANCE = {
+  prompt: '📷 Send Photo',
+  what_to_capture: 'Take a close-up photo of the affected leaf or stem',
+  lighting_tip: 'Take photo in good lighting'
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -297,7 +259,7 @@ function buildContent(
   const content: UIResponseContent = {};
   
   // Get default message for mode
-  const defaultMessage = MODE_MESSAGES[mode]?.[language] || MODE_MESSAGES.OBSERVATION[language];
+  const defaultMessage = MODE_MESSAGES[mode] || MODE_MESSAGES.OBSERVATION;
   
   // Build primary message
   if (mode === 'TREATMENT_ALLOWED' && hasTextContent(details.action_text)) {
@@ -325,7 +287,7 @@ function buildContent(
   
   // Add monitoring note for observation modes
   if (mode === 'OBSERVATION' || mode === 'MONITORING_ADVISED') {
-    content.monitoring_note = { fallback_text: MODE_MESSAGES.MONITORING_ADVISED[language] };
+    content.monitoring_note = { fallback_text: MODE_MESSAGES.MONITORING_ADVISED };
   }
   
   return content;
@@ -368,10 +330,10 @@ function buildActions(
   if (mode === 'PHOTO_REQUIRED' || details.needs_photo) {
     actions.request_photo = {
       enabled: true,
-      target: { fallback_text: PHOTO_GUIDANCE.what_to_capture[language] },
+      target: { fallback_text: PHOTO_GUIDANCE.what_to_capture },
       guidance: {
-        what_to_capture: { fallback_text: PHOTO_GUIDANCE.what_to_capture[language] },
-        lighting_tip: { fallback_text: PHOTO_GUIDANCE.lighting_tip[language] }
+        what_to_capture: { fallback_text: PHOTO_GUIDANCE.what_to_capture },
+        lighting_tip: { fallback_text: PHOTO_GUIDANCE.lighting_tip }
       },
       priority: 'HIGH'
     };
@@ -421,8 +383,7 @@ export function extractDisplayText(response: UIResponseContract): string {
   }
   
   // Priority 4: Default by mode
-  const lang = response.context.detected_language || 'mr';
-  return MODE_MESSAGES[response.response_mode]?.[lang] || MODE_MESSAGES.OBSERVATION[lang];
+  return MODE_MESSAGES[response.response_mode] || MODE_MESSAGES.OBSERVATION;
 }
 
 /**

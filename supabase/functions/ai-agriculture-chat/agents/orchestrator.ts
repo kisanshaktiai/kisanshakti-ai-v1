@@ -151,6 +151,9 @@ import { getAuditLogger } from './audit-logger.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
+// STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
+import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
+
 // Import soil/NDVI state calculator for land-specific recommendations
 import { 
   calculateFieldStates, 
@@ -5109,7 +5112,7 @@ export class AIAgentOrchestrator {
             throw new Error('FATAL_CANONICAL_CONTEXT_CORRUPTION: crop_code missing or UNKNOWN before hypothesis arbitration');
           }
           
-          const { runCausalHypothesisArbitration } = await import('../decision/causal-hypothesis-engine.ts');
+          // Static import used (moved to top of file for edge function compatibility)
           hypothesisResult = await runCausalHypothesisArbitration({
             crop_group: hypothesisCrop,
             canonical_state: canonicalState,

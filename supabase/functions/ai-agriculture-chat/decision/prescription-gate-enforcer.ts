@@ -531,15 +531,8 @@ export function generateObservationOnlyResponse(
   cropName?: string,
   reason?: string
 ): string {
-  const templates = {
-    mr: `🌾 नमस्कार!\n\n${cropName ? `तुमच्या ${cropName} पिकाबद्दल` : 'पिकाबद्दल'} समजले.\n\n📋 **सध्या काय करावे:**\n• पिकाचे काळजीपूर्वक निरीक्षण करा\n• प्रभावित भागाचा फोटो काढा\n• लक्षणे वाढत आहेत का ते पहा\n\n🔍 अधिक माहिती मिळाल्यावर आम्ही योग्य उपाय सुचवू.\n\n👉 शक्य असल्यास फोटो पाठवा.`,
-    
-    hi: `🌾 नमस्कार!\n\n${cropName ? `आपकी ${cropName} फसल के बारे में` : 'फसल के बारे में'} समझ गया.\n\n📋 **अभी क्या करें:**\n• फसल का ध्यानपूर्वक निरीक्षण करें\n• प्रभावित भाग की फोटो लें\n• देखें कि लक्षण बढ़ रहे हैं या नहीं\n\n🔍 अधिक जानकारी मिलने पर हम सही उपाय बताएंगे.\n\n👉 यदि संभव हो तो फोटो भेजें.`,
-    
-    en: `🌾 Hello!\n\nUnderstood about your ${cropName || 'crop'}.\n\n📋 **What to do now:**\n• Carefully observe the crop\n• Take photos of affected areas\n• Watch if symptoms are spreading\n\n🔍 We'll suggest proper treatment once we have more information.\n\n👉 Please send a photo if possible.`
-  };
-  
-  return templates[language] || templates['en'];
+  // English-only — LLM narration layer translates at runtime via forceTranslateResponse
+  return `🌾 Hello!\n\nUnderstood about your ${cropName || 'crop'}.\n\n📋 **What to do now:**\n• Carefully observe the crop\n• Take photos of affected areas\n• Watch if symptoms are spreading\n\n🔍 We'll suggest proper treatment once we have more information.\n\n👉 Please send a photo if possible.`;
 }
 
 /**
@@ -551,15 +544,8 @@ export function generateYoungCropMonitoringResponse(
   cropStage?: string,
   daysSinceSowing?: number
 ): string {
-  const templates = {
-    mr: `🌱 नमस्कार!\n\nतुमचे ${cropName || 'पीक'} सध्या ${cropStage || 'लवकर'} अवस्थेत आहे (${daysSinceSowing || '?'} दिवस).\n\n📋 **या अवस्थेत काय करावे:**\n• पिकाचे नियमित निरीक्षण करा\n• पाणी व्यवस्थापन योग्य ठेवा\n• लक्षणे वाढल्यास कळवा\n\n⚠️ लहान पिकांना उपचार सावधगिरीने करावे लागतात.\n\n👉 नक्की काय दिसतंय ते सांगा किंवा फोटो पाठवा.`,
-    
-    hi: `🌱 नमस्कार!\n\nआपकी ${cropName || 'फसल'} अभी ${cropStage || 'प्रारंभिक'} अवस्था में है (${daysSinceSowing || '?'} दिन).\n\n📋 **इस अवस्था में क्या करें:**\n• फसल का नियमित निरीक्षण करें\n• पानी प्रबंधन सही रखें\n• लक्षण बढ़ने पर बताएं\n\n⚠️ छोटी फसलों का उपचार सावधानी से करना होता है.\n\n👉 क्या दिख रहा है वो बताएं या फोटो भेजें.`,
-    
-    en: `🌱 Hello!\n\nYour ${cropName || 'crop'} is currently in ${cropStage || 'early'} stage (${daysSinceSowing || '?'} days).\n\n📋 **What to do at this stage:**\n• Regularly monitor the crop\n• Maintain proper water management\n• Inform us if symptoms increase\n\n⚠️ Young crops require careful treatment approach.\n\n👉 Tell us what you see or send a photo.`
-  };
-  
-  return templates[language];
+  // English-only — LLM narration layer translates at runtime via forceTranslateResponse
+  return `🌱 Hello!\n\nYour ${cropName || 'crop'} is currently in ${cropStage || 'early'} stage (${daysSinceSowing || '?'} days).\n\n📋 **What to do at this stage:**\n• Regularly monitor the crop\n• Maintain proper water management\n• Inform us if symptoms increase\n\n⚠️ Young crops require careful treatment approach.\n\n👉 Tell us what you see or send a photo.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

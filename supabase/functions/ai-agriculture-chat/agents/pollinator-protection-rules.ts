@@ -23,10 +23,12 @@ export interface PollinatorCheckResult {
   chemical_name: string;
   risk_level: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
   block_reason?: string;
+  /** @deprecated Use block_reason — LLM translates at runtime */
   block_reason_mr?: string;
+  /** @deprecated Use block_reason — LLM translates at runtime */
   block_reason_hi?: string;
   time_restriction?: {
-    allowed_hours: string;  // e.g., "After 7 PM"
+    allowed_hours: string;
     reason: string;
   };
   alternative_suggestions: string[];
@@ -41,8 +43,10 @@ export interface PollinatorEnforcementResult {
   time_restricted_chemicals: PollinatorCheckResult[];
   safe_alternatives: string[];
   general_advice: string;
-  general_advice_mr: string;
-  general_advice_hi: string;
+  /** @deprecated Use general_advice — LLM translates at runtime */
+  general_advice_mr?: string;
+  /** @deprecated Use general_advice — LLM translates at runtime */
+  general_advice_hi?: string;
 }
 
 export interface ChemicalPollinatorProfile {
@@ -410,8 +414,7 @@ export function checkPollinatorSafety(
     result.is_safe = false;
     result.risk_level = 'MEDIUM';
     result.block_reason = `Unknown chemical toxicity to pollinators. Avoid spraying during flowering.`;
-    result.block_reason_mr = `या रसायनाचे परागीकरण किडींवर परिणाम माहित नाही. फुलोऱ्यात फवारणी टाळा.`;
-    result.block_reason_hi = `इस रसायन का परागणकों पर प्रभाव ज्ञात नहीं है। फूलों के समय छिड़काव से बचें।`;
+    result.scientific_basis = 'Precautionary principle - unknown toxicity';
     result.scientific_basis = 'Precautionary principle - unknown toxicity';
     return result;
   }
@@ -446,8 +449,6 @@ export function checkPollinatorSafety(
   if (profile.flowering_banned && profile.bee_toxicity === 'HIGHLY_TOXIC') {
     result.is_safe = false;
     result.block_reason = `BLOCKED: ${chemicalName} is HIGHLY TOXIC to bees (LD50: ${profile.contact_ld50_ug_bee || 'very low'} µg/bee). DO NOT spray during flowering. Bees visiting flowers will be killed, destroying pollination and honey production.`;
-    result.block_reason_mr = `अवरोधित: ${chemicalName} मधमाश्यांसाठी अत्यंत विषारी आहे. फुलोऱ्यात फवारणी करू नका. फुलांवर येणाऱ्या मधमाश्या मरतील, परागीकरण आणि मध उत्पादन नष्ट होईल.`;
-    result.block_reason_hi = `अवरोधित: ${chemicalName} मधुमक्खियों के लिए अत्यधिक विषाक्त है। फूलों के समय छिड़काव न करें। फूलों पर आने वाली मधुमक्खियां मर जाएंगी, परागण और शहद उत्पादन नष्ट होगा।`;
     result.scientific_basis = `Neonicotinoids and pyrethroids cause acute bee mortality. LD50 values indicate lethal dose for 50% of bee population. Values below 2 µg/bee are highly toxic.`;
     return result;
   }
@@ -467,8 +468,6 @@ export function checkPollinatorSafety(
       result.is_safe = false;
       result.risk_level = 'HIGH';
       result.block_reason = `${chemicalName} is toxic to bees during flowering. ONLY spray after 7 PM when bees have returned to their hive. Chemical will dry overnight and be safer by morning.`;
-      result.block_reason_mr = `${chemicalName} फुलोऱ्यात मधमाश्यांसाठी विषारी आहे. फक्त संध्याकाळी ७ नंतर फवारणी करा जेव्हा मधमाश्या पोळ्यात परततात.`;
-      result.block_reason_hi = `${chemicalName} फूलों के समय मधुमक्खियों के लिए विषाक्त है। केवल शाम 7 बजे के बाद छिड़काव करें जब मधुमक्खियां छत्ते में लौट आती हैं।`;
       result.time_restriction = {
         allowed_hours: 'After 7 PM only',
         reason: 'Spray after bees return to hive',
@@ -520,25 +519,17 @@ export function enforcePollinatorProtection(
     .filter(c => c.bee_toxicity === 'RELATIVELY_NONTOXIC')
     .map(c => c.chemical);
   
-  // Generate advice
+  // English-only advice — LLM narration layer translates at runtime
   let generalAdvice = '';
-  let generalAdvice_mr = '';
-  let generalAdvice_hi = '';
   
   if (isFlowering) {
     if (cropInfo?.dependency_level === 'HIGH') {
       generalAdvice = `CRITICAL: ${cropCode} is flowering and highly dependent on pollinators. Use ONLY pollinator-safe products (Neem, Bt, NPV). Avoid all neonicotinoids and pyrethroids.`;
-      generalAdvice_mr = `महत्त्वाचे: ${cropCode} फुलोऱ्यात आहे आणि परागीकरणासाठी मधमाश्यांवर अवलंबून आहे. फक्त मधमाशी-सुरक्षित उत्पादने वापरा (निंब, बीटी, एनपीव्ही).`;
-      generalAdvice_hi = `महत्वपूर्ण: ${cropCode} में फूल आए हैं और परागण के लिए मधुमक्खियों पर निर्भर है। केवल मधुमक्खी-सुरक्षित उत्पाद लगाएं (नीम, बीटी, एनपीवी)।`;
     } else {
       generalAdvice = `Crop is flowering. Prefer pollinator-friendly options. If chemical spray essential, spray after 7 PM when bees have returned to hive.`;
-      generalAdvice_mr = `पीक फुलोऱ्यात आहे. परागीकरण-अनुकूल पर्याय निवडा. रासायनिक फवारणी आवश्यक असल्यास, संध्याकाळी ७ नंतर फवारणी करा.`;
-      generalAdvice_hi = `फसल में फूल आए हैं। परागण-अनुकूल विकल्प चुनें। रासायनिक छिड़काव आवश्यक हो तो शाम 7 बजे के बाद करें।`;
     }
   } else {
     generalAdvice = 'Crop is not in flowering stage. Standard spray guidelines apply. Still avoid spraying if bees are foraging on nearby flowering plants.';
-    generalAdvice_mr = 'पीक फुलोऱ्यात नाही. सामान्य फवारणी मार्गदर्शक तत्त्वे लागू. जवळपास फुलांवर मधमाश्या असल्यास फवारणी टाळा.';
-    generalAdvice_hi = 'फसल में फूल नहीं आए हैं। सामान्य छिड़काव दिशानिर्देश लागू। आसपास फूलों पर मधुमक्खियां हों तो छिड़काव से बचें।';
   }
   
   return {
@@ -549,8 +540,6 @@ export function enforcePollinatorProtection(
     time_restricted_chemicals: timeRestricted,
     safe_alternatives: safeAlternatives,
     general_advice: generalAdvice,
-    general_advice_mr: generalAdvice_mr,
-    general_advice_hi: generalAdvice_hi,
   };
 }
 

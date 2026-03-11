@@ -230,8 +230,6 @@ export class DiagnosticFlowController {
         return {
           action: 'ASK_CLARIFICATION',
           questions: criticalMissingQuestions,
-          message_mr: 'कृपया खालील माहिती द्या:',
-          message_hi: 'कृपया निम्नलिखित जानकारी दें:',
           message_en: 'Please provide the following information:',
           session_state: this.session
         };
@@ -449,8 +447,6 @@ export class DiagnosticFlowController {
     return {
       action: result.blocked ? 'BLOCK' : 'RECOMMEND',
       evaluation_result: result,
-      message_mr: result.blocked ? this.getBlockMessageMr(result.blockingRule!) : this.getRecommendationMessageMr(result),
-      message_hi: result.blocked ? this.getBlockMessageHi(result.blockingRule!) : this.getRecommendationMessageHi(result),
       message_en: result.blocked ? this.getBlockMessageEn(result.blockingRule!) : this.getRecommendationMessageEn(result),
       session_state: this.session
     };
@@ -514,8 +510,6 @@ export class DiagnosticFlowController {
     return {
       action: 'ESCALATE',
       emergency_type: nlu.safety_alerts.emergency_type,
-      message_mr: '⚠️ ही गंभीर परिस्थिती आहे. कृपया जवळच्या कृषी अधिकाऱ्याशी संपर्क साधा.',
-      message_hi: '⚠️ यह गंभीर स्थिति है। कृपया नज़दीकी कृषि अधिकारी से संपर्क करें।',
       message_en: '⚠️ This is a serious situation. Please contact your nearest agriculture officer.',
       emergency_contacts: this.getEmergencyContacts(),
       session_state: this.session
@@ -528,8 +522,6 @@ export class DiagnosticFlowController {
     return {
       action: 'BLOCK',
       blocked_reason: 'BANNED_SUBSTANCE',
-      message_mr: `⛔ ${nlu.safety_alerts.banned_substance_code} हे रसायन बंदी आहे आणि वापरता कामा नये. कृपया सुरक्षित पर्याय वापरा.`,
-      message_hi: `⛔ ${nlu.safety_alerts.banned_substance_code} यह रसायन प्रतिबंधित है और इसका उपयोग नहीं करना चाहिए। कृपया सुरक्षित विकल्प का उपयोग करें।`,
       message_en: `⛔ ${nlu.safety_alerts.banned_substance_code} is banned and must not be used. Please use safe alternatives.`,
       alternatives: this.getSafeAlternatives(nlu.entities.pest_code || nlu.entities.disease_code || ''),
       session_state: this.session
@@ -540,50 +532,23 @@ export class DiagnosticFlowController {
   // MESSAGE GENERATORS
   // ═══════════════════════════════════════════════════════════════════════
   
-  private getBlockMessageMr(rule: BlockingRuleInfo): string {
-    return `⛔ ${rule.reason}\n\nपर्यायी उपाय: ${rule.alternatives?.join(', ') || 'कृषी तज्ञाशी संपर्क साधा'}`;
-  }
-  
-  private getBlockMessageHi(rule: BlockingRuleInfo): string {
-    return `⛔ ${rule.reason}\n\nवैकल्पिक उपाय: ${rule.alternatives?.join(', ') || 'कृषि विशेषज्ञ से संपर्क करें'}`;
-  }
-  
+  // English-only — LLM narration layer translates at runtime
   private getBlockMessageEn(rule: BlockingRuleInfo): string {
     return `⛔ ${rule.reason}\n\nAlternatives: ${rule.alternatives?.join(', ') || 'Contact agriculture expert'}`;
-  }
-  
-  private getRecommendationMessageMr(result: RuleEvaluationResult): string {
-    if (result.recommendations.length === 0) {
-      return 'सध्या कोणताही उपाय आवश्यक नाही. पिकाचे निरीक्षण चालू ठेवा.';
-    }
-    
-    const primary = result.recommendations[0];
-    return primary.recommendation_text_mr;
-  }
-  
-  private getRecommendationMessageHi(result: RuleEvaluationResult): string {
-    if (result.recommendations.length === 0) {
-      return 'अभी कोई उपाय आवश्यक नहीं है। फसल की निगरानी जारी रखें।';
-    }
-    
-    const primary = result.recommendations[0];
-    return primary.recommendation_text_hi;
   }
   
   private getRecommendationMessageEn(result: RuleEvaluationResult): string {
     if (result.recommendations.length === 0) {
       return 'No action needed at this time. Continue monitoring the crop.';
     }
-    
     const primary = result.recommendations[0];
     return primary.recommendation_text_en;
   }
   
+  // English-only photo instructions — LLM narration layer translates at runtime
   private getPhotoInstructions(intent: string): PhotoInstructions {
     if (intent === 'PEST_PROBLEM') {
       return {
-        what_to_capture_mr: 'किडी दिसत असलेल्या पानाच्या खालच्या भागाचा जवळून फोटो',
-        what_to_capture_hi: 'जहां कीड़े दिख रहे हैं उस पत्ते के नीचे का नज़दीकी फोटो',
         what_to_capture_en: 'Close-up photo of leaf underside where pests are visible',
         distance: '15-20 cm',
         lighting: 'Natural daylight'
@@ -592,8 +557,6 @@ export class DiagnosticFlowController {
     
     if (intent === 'DISEASE_PROBLEM') {
       return {
-        what_to_capture_mr: 'डाग किंवा रोगाची लक्षणे दिसत असलेल्या पानांचा फोटो',
-        what_to_capture_hi: 'दाग या रोग के लक्षण दिखने वाले पत्तों का फोटो',
         what_to_capture_en: 'Photo of leaves showing spots or disease symptoms',
         distance: '20-30 cm',
         lighting: 'Natural daylight, avoid direct sunlight'
@@ -601,8 +564,6 @@ export class DiagnosticFlowController {
     }
     
     return {
-      what_to_capture_mr: 'प्रभावित भागाचा स्पष्ट फोटो',
-      what_to_capture_hi: 'प्रभावित भाग का स्पष्ट फोटो',
       what_to_capture_en: 'Clear photo of affected area',
       distance: '20-30 cm',
       lighting: 'Natural daylight'
@@ -730,14 +691,12 @@ export class DiagnosticFlowController {
     decision: AuthorityDecision,
     context: RuleEvaluationContext
   ): DiagnosticFlowResponse {
-    const messages = this.getAuthorityBlockMessages(decision);
+    const message = this.getAuthorityBlockMessageEn(decision);
     
     return {
       action: 'BLOCK',
       blocked_reason: `AUTHORITY_${decision.authority}`,
-      message_mr: messages.mr,
-      message_hi: messages.hi,
-      message_en: messages.en,
+      message_en: message,
       alternatives: this.getAuthorityAlternatives(decision),
       session_state: this.session
     };
@@ -746,78 +705,49 @@ export class DiagnosticFlowController {
   /**
    * Get localized messages for authority blocks.
    */
-  private getAuthorityBlockMessages(decision: AuthorityDecision): {
-    mr: string;
-    hi: string;
-    en: string;
-  } {
+  // English-only authority block messages — LLM narration layer translates at runtime
+  private getAuthorityBlockMessageEn(decision: AuthorityDecision): string {
     switch (decision.authority) {
       case DecisionAuthority.LAND:
-        return {
-          mr: '🌱 जमिनीची समस्या आधी सोडवणे आवश्यक आहे. लवण किंवा पाणी साचल्याचे निराकरण करा, त्यानंतरच कीड/रोग उपचार शक्य आहे.',
-          hi: '🌱 पहले मिट्टी की समस्या को हल करना आवश्यक है। लवणता या जल भराव का समाधान करें, उसके बाद ही कीट/रोग उपचार संभव है।',
-          en: '🌱 Soil issue must be addressed first. Resolve salinity or waterlogging before pest/disease treatment can be effective.'
-        };
-      
+        return '🌱 Soil issue must be addressed first. Resolve salinity or waterlogging before pest/disease treatment can be effective.';
       case DecisionAuthority.CLIMATE:
-        return {
-          mr: '🌦️ हवामान तणावामुळे पीक प्रभावित आहे. प्रथम हवामान-संबंधित उपाय करा.',
-          hi: '🌦️ जलवायु तनाव से फसल प्रभावित है। पहले जलवायु-संबंधी उपाय करें।',
-          en: '🌦️ Crop is affected by climate stress. Address weather-related measures first.'
-        };
-      
+        return '🌦️ Crop is affected by climate stress. Address weather-related measures first.';
       case DecisionAuthority.SYSTEM:
-        return {
-          mr: '⚙️ सिंचन किंवा यंत्रणा बिघाड आधी दुरुस्त करा.',
-          hi: '⚙️ सिंचाई या यंत्र की खराबी पहले ठीक करें।',
-          en: '⚙️ Fix irrigation or equipment failure first.'
-        };
-      
+        return '⚙️ Fix irrigation or equipment failure first.';
       case DecisionAuthority.SAFETY:
-        return {
-          mr: '⚠️ सुरक्षा प्राधान्य! कृपया प्रथम सुरक्षा मार्गदर्शक तत्त्वांचे पालन करा.',
-          hi: '⚠️ सुरक्षा प्राथमिकता! कृपया पहले सुरक्षा दिशानिर्देशों का पालन करें।',
-          en: '⚠️ Safety priority! Please follow safety guidelines first.'
-        };
-      
+        return '⚠️ Safety priority! Please follow safety guidelines first.';
       default:
-        return {
-          mr: 'कृपया प्रथम मूळ कारण शोधा.',
-          hi: 'कृपया पहले मूल कारण खोजें।',
-          en: 'Please address root cause first.'
-        };
+        return 'Please address root cause first.';
     }
   }
   
   /**
    * Get alternatives based on authority domain.
    */
+  // English-only alternatives — LLM narration layer translates at runtime
   private getAuthorityAlternatives(decision: AuthorityDecision): string[] {
     switch (decision.authority) {
       case DecisionAuthority.LAND:
         return [
-          'Soil testing / माती परीक्षण',
-          'Gypsum application for salinity / लवण निवारणासाठी जिप्सम',
-          'Drainage improvement / निचरा सुधारणा',
-          'Consult KVK soil specialist / KVK माती तज्ञाशी संपर्क'
+          'Soil testing',
+          'Gypsum application for salinity',
+          'Drainage improvement',
+          'Consult KVK soil specialist'
         ];
-      
       case DecisionAuthority.CLIMATE:
         return [
-          'Protective irrigation / संरक्षणात्मक सिंचन',
-          'Mulching for temperature control / तापमान नियंत्रणासाठी आच्छादन',
-          'Wait for weather improvement / हवामान सुधारण्याची प्रतीक्षा करा'
+          'Protective irrigation',
+          'Mulching for temperature control',
+          'Wait for weather improvement'
         ];
-      
       case DecisionAuthority.SYSTEM:
         return [
-          'Repair irrigation system / सिंचन प्रणाली दुरुस्त करा',
-          'Check pump and motor / पंप आणि मोटर तपासा',
-          'Manual watering if critical / गरज असल्यास हाताने पाणी द्या'
+          'Repair irrigation system',
+          'Check pump and motor',
+          'Manual watering if critical'
         ];
-      
       default:
-        return ['Contact agriculture officer / कृषी अधिकाऱ्याशी संपर्क'];
+        return ['Contact agriculture officer'];
     }
   }
   
@@ -858,15 +788,19 @@ export interface DiagnosticFlowResponse {
   blocked_reason?: string;
   alternatives?: string[];
   emergency_contacts?: EmergencyContact[];
-  message_mr: string;
-  message_hi: string;
+  /** @deprecated Use message_en — LLM translates at runtime */
+  message_mr?: string;
+  /** @deprecated Use message_en — LLM translates at runtime */
+  message_hi?: string;
   message_en: string;
   session_state: DiagnosticSession;
 }
 
 export interface PhotoInstructions {
-  what_to_capture_mr: string;
-  what_to_capture_hi: string;
+  /** @deprecated Use what_to_capture_en — LLM translates at runtime */
+  what_to_capture_mr?: string;
+  /** @deprecated Use what_to_capture_en — LLM translates at runtime */
+  what_to_capture_hi?: string;
   what_to_capture_en: string;
   distance: string;
   lighting: string;
