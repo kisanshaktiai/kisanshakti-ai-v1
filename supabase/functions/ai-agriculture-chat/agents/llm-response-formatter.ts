@@ -30,7 +30,7 @@
 
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
-import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
+import { getRuralLanguageRules, replaceFormalsWithRural, getVillageOfficerPersona } from '../rural-language-dictionary.ts';
 import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
 import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
 import {
