@@ -262,6 +262,21 @@ class OfflineDataService {
               input_land_coordinates: s.input_land_coordinates || null,
               input_soil_data: s.input_soil_data || null,
               input_weather_data: s.input_weather_data || null,
+              // Intercrop data
+              backdated_consent: s.backdated_consent ?? null,
+              backdated_consent_at: s.backdated_consent_at || null,
+              intercrop_name: s.intercrop_name || null,
+              intercrop_variety: s.intercrop_variety || null,
+              intercrop_sowing_date: s.intercrop_sowing_date || null,
+              intercrop_area_percent: s.intercrop_area_percent || null,
+              intercrop_2_name: s.intercrop_2_name || null,
+              intercrop_2_variety: s.intercrop_2_variety || null,
+              intercrop_2_sowing_date: s.intercrop_2_sowing_date || null,
+              intercrop_2_area_percent: s.intercrop_2_area_percent || null,
+              intercrop_3_name: s.intercrop_3_name || null,
+              intercrop_3_variety: s.intercrop_3_variety || null,
+              intercrop_3_sowing_date: s.intercrop_3_sowing_date || null,
+              intercrop_3_area_percent: s.intercrop_3_area_percent || null,
               // Additional metadata
               metadata: s.metadata || null,
               // Timestamps
