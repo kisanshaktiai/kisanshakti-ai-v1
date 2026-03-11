@@ -447,8 +447,6 @@ export class DiagnosticFlowController {
     return {
       action: result.blocked ? 'BLOCK' : 'RECOMMEND',
       evaluation_result: result,
-      message_mr: result.blocked ? this.getBlockMessageMr(result.blockingRule!) : this.getRecommendationMessageMr(result),
-      message_hi: result.blocked ? this.getBlockMessageHi(result.blockingRule!) : this.getRecommendationMessageHi(result),
       message_en: result.blocked ? this.getBlockMessageEn(result.blockingRule!) : this.getRecommendationMessageEn(result),
       session_state: this.session
     };
