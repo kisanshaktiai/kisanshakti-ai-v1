@@ -2394,7 +2394,7 @@ function generateAllActionsFilteredResponse(
   };
   
   Object.entries(categoryReasons).forEach(([category, reasons]) => {
-    const label = categoryLabels[category]?.[lang] || category;
+    const label = categoryLabels[category] || category;
     parts.push(`\n${label}:`);
     reasons.slice(0, 2).forEach(reason => {
       parts.push(`  • ${reason}`);
