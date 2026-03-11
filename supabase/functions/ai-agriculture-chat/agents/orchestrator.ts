@@ -2364,16 +2364,24 @@ export class AIAgentOrchestrator {
       // STABILIZATION v4.0 ISSUE 8: Crop Vocabulary Prompt Enrichment
       // Fetch crop-specific vocabulary for LLM prompt enrichment (cached, 5-min TTL)
       let cropVocabularyBlock = '';
-      if (canonicalContext?.crop_code && canonicalContext.crop_code !== 'UNKNOWN') {
-        try {
-          const vocabEntries = await getCropVocabulary(canonicalContext.crop_code, this.supabase);
-          cropVocabularyBlock = buildVocabularyPromptBlock(canonicalContext.crop_code, vocabEntries);
-          if (cropVocabularyBlock) {
-            console.log(`      📚 Loaded ${vocabEntries.length} crop vocabulary entries for ${canonicalContext.crop_code}`);
-          }
-        } catch (vocabError) {
-          console.warn(`      ⚠️ Crop vocabulary load failed: ${(vocabError as Error)?.message || String(vocabError)}`);
+      try {
+        // Load crop-specific vocabulary
+        const cropSpecificEntries = (canonicalContext?.crop_code && canonicalContext.crop_code !== 'UNKNOWN')
+          ? await getCropVocabulary(canonicalContext.crop_code, this.supabase)
+          : [];
+        // Always load universal vocabulary (crop_code='ALL') for cross-crop terms
+        const universalEntries = await getCropVocabulary('ALL', this.supabase);
+        const allEntries = [...cropSpecificEntries, ...universalEntries];
+        
+        if (allEntries.length > 0) {
+          cropVocabularyBlock = buildVocabularyPromptBlock(
+            canonicalContext?.crop_code || 'ALL',
+            allEntries
+          );
+          console.log(`      📚 Loaded ${allEntries.length} vocabulary entries (${cropSpecificEntries.length} crop-specific + ${universalEntries.length} universal)`);
         }
+      } catch (vocabError) {
+        console.warn(`      ⚠️ Crop vocabulary load failed: ${(vocabError as Error)?.message || String(vocabError)}`);
       }
       
       // STEP 1: LLM extracts semantic meaning (any language → English)
