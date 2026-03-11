@@ -1288,7 +1288,7 @@ If no specific product from rules, say "I need more information to recommend exa
 ═══ MANDATORY FORMAT: TYPE 5 — PEST/DISEASE EMERGENCY (8-SECTION) ═══
 Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-⚠️ [Greeting, act quickly — pest/disease name in plain ${langName} using local farmer terms]!
+⚠️ [Address the farmer casually like a friend/brother — then urgently tell them what pest/disease you see in their crop using local farmer terms in ${langName}. Do NOT use formal greetings. Speak as if you ran to their field to warn them.]!
 
 📌 [reason_text — why urgent, 1-2 lines in ${langName}]
 
