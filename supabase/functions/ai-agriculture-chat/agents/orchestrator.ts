@@ -7969,7 +7969,7 @@ export class AIAgentOrchestrator {
     } catch {
       return {
         preferred_language: preferredLanguage || 'mr',
-        name: 'शेतकरी',
+        name: 'Farmer',
         literacy_level: 'MODERATE',
         technical_knowledge: 'MODERATE',
         emotional_state: 'NEUTRAL'
