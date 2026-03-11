@@ -129,7 +129,29 @@ interface HypothesisRuleMappingRow {
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
-const ENGINE_VERSION = '1.0.0';
+const ENGINE_VERSION = '1.1.0'; // v1.1.0: Fixed subquery bug + crop_group normalization
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CROP GROUP NORMALIZER
+// Maps short crop codes to canonical crop_group values used in hypothesis_master
+// DB crop_groups: SUGARCANE, COTTON, RICE, WHEAT
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CROP_CODE_TO_GROUP: Record<string, string> = {
+  'SC': 'SUGARCANE', 'SUGARCANE': 'SUGARCANE', 'sugarcane': 'SUGARCANE',
+  'CTN': 'COTTON', 'COTTON': 'COTTON', 'cotton': 'COTTON',
+  'RICE': 'RICE', 'rice': 'RICE', 'PADDY': 'RICE', 'paddy': 'RICE',
+  'WHEAT': 'WHEAT', 'wheat': 'WHEAT', 'WHT': 'WHEAT',
+  'SOYBEAN': 'SOYBEAN', 'soybean': 'SOYBEAN', 'SOY': 'SOYBEAN',
+  'MAIZE': 'MAIZE', 'maize': 'MAIZE', 'MZ': 'MAIZE',
+  'ONION': 'ONION', 'onion': 'ONION', 'ON': 'ONION',
+  'TOMATO': 'TOMATO', 'tomato': 'TOMATO', 'TM': 'TOMATO',
+  'TUR': 'TUR', 'tur': 'TUR', 'PIGEON_PEA': 'TUR',
+};
+
+function normalizeCropGroup(input: string): string {
+  return CROP_CODE_TO_GROUP[input] || CROP_CODE_TO_GROUP[input.toUpperCase()] || input.toUpperCase();
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE
@@ -144,55 +166,80 @@ interface CachedHypothesisData {
 }
 
 const hypothesisCache = new Map<string, CachedHypothesisData>();
+let loadingPromise: Map<string, Promise<CachedHypothesisData>> = new Map();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// DATA LOADER
+// DATA LOADER — FIX: Sequential 2-phase load (Supabase JS .in() requires array)
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function loadHypothesesForCrop(
   cropGroup: string,
   supabase: any
 ): Promise<CachedHypothesisData> {
-  const cacheKey = cropGroup.toUpperCase();
+  const cacheKey = normalizeCropGroup(cropGroup);
   const cached = hypothesisCache.get(cacheKey);
   if (cached && (Date.now() - cached.loadedAt) < HYPOTHESIS_CACHE_TTL) {
     return cached;
   }
 
-  // Load all data in parallel
-  const [masterRes, condRes, contraRes, mappingRes] = await Promise.all([
-    supabase.from('hypothesis_master')
-      .select('*')
-      .eq('crop_group', cropGroup)
-      .eq('is_active', true),
-    supabase.from('hypothesis_conditions')
-      .select('*')
-      .in('hypothesis_id', 
-        supabase.from('hypothesis_master')
-          .select('hypothesis_id')
-          .eq('crop_group', cropGroup)
-          .eq('is_active', true)
-      ),
-    supabase.from('hypothesis_contradictions')
-      .select('*')
-      .in('hypothesis_id',
-        supabase.from('hypothesis_master')
-          .select('hypothesis_id')
-          .eq('crop_group', cropGroup)
-          .eq('is_active', true)
-      ),
-    supabase.from('hypothesis_rule_mapping')
-      .select('*')
-      .in('hypothesis_id',
-        supabase.from('hypothesis_master')
-          .select('hypothesis_id')
-          .eq('crop_group', cropGroup)
-          .eq('is_active', true)
-      )
-  ]);
+  // Concurrency lock: prevent N+1 parallel loads for same crop
+  const existing = loadingPromise.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = _loadHypothesesImpl(cacheKey, supabase);
+  loadingPromise.set(cacheKey, promise);
+  try {
+    return await promise;
+  } finally {
+    loadingPromise.delete(cacheKey);
+  }
+}
+
+async function _loadHypothesesImpl(
+  cropGroup: string,
+  supabase: any
+): Promise<CachedHypothesisData> {
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 1: Load master hypotheses to extract IDs
+  // ═══════════════════════════════════════════════════════════════════════
+  const masterRes = await supabase.from('hypothesis_master')
+    .select('*')
+    .eq('crop_group', cropGroup)
+    .eq('is_active', true);
 
   const hypotheses: HypothesisMasterRow[] = masterRes.data || [];
-  const hypothesisIds = new Set(hypotheses.map(h => h.hypothesis_id));
+  const hypothesisIds = hypotheses.map(h => h.hypothesis_id);
+
+  if (hypothesisIds.length === 0) {
+    const empty: CachedHypothesisData = {
+      hypotheses: [],
+      conditions: new Map(),
+      contradictions: new Map(),
+      ruleMappings: new Map(),
+      loadedAt: Date.now()
+    };
+    hypothesisCache.set(cropGroup, empty);
+    console.log(`   📭 [HypothesisLoader] No hypotheses for crop_group=${cropGroup}`);
+    return empty;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 2: Load dependent tables in parallel using extracted ID array
+  // CRITICAL FIX: .in() requires a concrete string[] array, NOT a subquery
+  // ═══════════════════════════════════════════════════════════════════════
+  const [condRes, contraRes, mappingRes] = await Promise.all([
+    supabase.from('hypothesis_conditions')
+      .select('*')
+      .in('hypothesis_id', hypothesisIds),
+    supabase.from('hypothesis_contradictions')
+      .select('*')
+      .in('hypothesis_id', hypothesisIds),
+    supabase.from('hypothesis_rule_mapping')
+      .select('*')
+      .in('hypothesis_id', hypothesisIds)
+  ]);
+
+  const idSet = new Set(hypothesisIds);
 
   // Build indexed maps
   const conditions = new Map<string, HypothesisConditionRow[]>();
@@ -200,19 +247,19 @@ async function loadHypothesesForCrop(
   const ruleMappings = new Map<string, string[]>();
 
   for (const c of (condRes.data || []) as HypothesisConditionRow[]) {
-    if (!hypothesisIds.has(c.hypothesis_id)) continue;
+    if (!idSet.has(c.hypothesis_id)) continue;
     if (!conditions.has(c.hypothesis_id)) conditions.set(c.hypothesis_id, []);
     conditions.get(c.hypothesis_id)!.push(c);
   }
 
   for (const c of (contraRes.data || []) as HypothesisContradictionRow[]) {
-    if (!hypothesisIds.has(c.hypothesis_id)) continue;
+    if (!idSet.has(c.hypothesis_id)) continue;
     if (!contradictions.has(c.hypothesis_id)) contradictions.set(c.hypothesis_id, []);
     contradictions.get(c.hypothesis_id)!.push(c);
   }
 
   for (const m of (mappingRes.data || []) as HypothesisRuleMappingRow[]) {
-    if (!hypothesisIds.has(m.hypothesis_id)) continue;
+    if (!idSet.has(m.hypothesis_id)) continue;
     if (!ruleMappings.has(m.hypothesis_id)) ruleMappings.set(m.hypothesis_id, []);
     ruleMappings.get(m.hypothesis_id)!.push(m.rule_id);
   }
@@ -225,8 +272,8 @@ async function loadHypothesesForCrop(
     loadedAt: Date.now()
   };
 
-  hypothesisCache.set(cacheKey, result);
-  console.log(`   📦 [HypothesisLoader] Loaded ${hypotheses.length} hypotheses for crop_group=${cropGroup}`);
+  hypothesisCache.set(cropGroup, result);
+  console.log(`   📦 [HypothesisLoader] Loaded ${hypotheses.length} hypotheses, ${condRes.data?.length || 0} conditions, ${contraRes.data?.length || 0} contradictions, ${mappingRes.data?.length || 0} rule mappings for crop_group=${cropGroup}`);
   return result;
 }
 
@@ -695,13 +742,24 @@ function updateMetrics(
   supabase: any
 ): void {
   try {
+    // Use RPC or raw update for atomic increment instead of upsert overwrite
     if (result.best_hypothesis && !result.needs_clarification) {
-      supabase.from('hypothesis_metrics').upsert({
-        hypothesis_id: result.best_hypothesis.hypothesis_id,
-        times_triggered: 1, // Will be incremented server-side with proper logic later
-        avg_confidence: result.best_hypothesis.weighted_score,
-        last_triggered: new Date().toISOString()
-      }, { onConflict: 'hypothesis_id' }).then(() => {}).catch(() => {});
+      const hId = result.best_hypothesis.hypothesis_id;
+      const conf = result.best_hypothesis.weighted_score;
+      // Fire-and-forget: update metrics with proper increment
+      supabase.rpc('increment_hypothesis_metric', {
+        p_hypothesis_id: hId,
+        p_field: 'times_triggered',
+        p_confidence: conf
+      }).then(() => {}).catch(() => {
+        // Fallback: simple upsert if RPC doesn't exist (non-blocking)
+        supabase.from('hypothesis_metrics').upsert({
+          hypothesis_id: hId,
+          times_triggered: 1,
+          avg_confidence: conf,
+          last_triggered: new Date().toISOString()
+        }, { onConflict: 'hypothesis_id' }).then(() => {}).catch(() => {});
+      });
     }
 
     for (const e of result.eliminated_hypotheses) {
@@ -736,15 +794,19 @@ export async function runCausalHypothesisArbitration(
   const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
   const startTime = Date.now();
 
+  // CRITICAL FIX: Normalize crop code to crop_group used in hypothesis_master
+  // DB stores: SUGARCANE, COTTON, RICE, WHEAT. Orchestrator may pass: SC, CTN, etc.
+  const normalizedCropGroup = normalizeCropGroup(crop_group);
+
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
-  console.log(`   crop_group=${crop_group}, observations=${observations.length}, trace=${trace_id || 'none'}`);
+  console.log(`   crop_group=${normalizedCropGroup} (raw=${crop_group}), observations=${observations.length}, trace=${trace_id || 'none'}`);
 
   // Load hypothesis data
-  const data = await loadHypothesesForCrop(crop_group, supabase_client);
+  const data = await loadHypothesesForCrop(normalizedCropGroup, supabase_client);
   const cropHasHypotheses = data.hypotheses.length > 0;
 
   if (!cropHasHypotheses) {
-    console.log(`   📭 No hypothesis model for crop_group=${crop_group}, falling back to full rule scope`);
+    console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
     return {
       best_hypothesis: null,
       competing: [],
