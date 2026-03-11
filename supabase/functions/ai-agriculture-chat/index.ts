@@ -1007,8 +1007,8 @@ serve(async (req) => {
       // Static Gate already generated the response - use it directly
       console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
       responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage] ||
-                        orchestratorResponse.communication?.main_message?.full_text?.mr ||
-                        'माहिती उपलब्ध नाही';
+                        orchestratorResponse.communication?.main_message?.full_text?.en ||
+                        'Information not available';
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
