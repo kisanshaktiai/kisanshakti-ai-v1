@@ -449,8 +449,6 @@ export function checkPollinatorSafety(
   if (profile.flowering_banned && profile.bee_toxicity === 'HIGHLY_TOXIC') {
     result.is_safe = false;
     result.block_reason = `BLOCKED: ${chemicalName} is HIGHLY TOXIC to bees (LD50: ${profile.contact_ld50_ug_bee || 'very low'} µg/bee). DO NOT spray during flowering. Bees visiting flowers will be killed, destroying pollination and honey production.`;
-    result.block_reason_mr = `अवरोधित: ${chemicalName} मधमाश्यांसाठी अत्यंत विषारी आहे. फुलोऱ्यात फवारणी करू नका. फुलांवर येणाऱ्या मधमाश्या मरतील, परागीकरण आणि मध उत्पादन नष्ट होईल.`;
-    result.block_reason_hi = `अवरोधित: ${chemicalName} मधुमक्खियों के लिए अत्यधिक विषाक्त है। फूलों के समय छिड़काव न करें। फूलों पर आने वाली मधुमक्खियां मर जाएंगी, परागण और शहद उत्पादन नष्ट होगा।`;
     result.scientific_basis = `Neonicotinoids and pyrethroids cause acute bee mortality. LD50 values indicate lethal dose for 50% of bee population. Values below 2 µg/bee are highly toxic.`;
     return result;
   }
