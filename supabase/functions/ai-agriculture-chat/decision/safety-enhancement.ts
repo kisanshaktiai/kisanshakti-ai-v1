@@ -1,27 +1,20 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 6: SAFETY ENHANCEMENT MODULE
+ * PHASE 6: SAFETY ENHANCEMENT MODULE (v2.0.0 - English-only)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * PURPOSE:
- * Provides farmer safety warnings and resistance management validation
- * based on farmer_safety_level, resistance_group, and mode_of_action fields.
- * 
- * FEATURES:
- * 1. Safety Level Warnings - Generate appropriate PPE and safety warnings
- * 2. Resistance Rotation Check - Prevent consecutive use of same IRAC/FRAC group
- * 3. Mode of Action Validation - Ensure proper rotation for resistance management
+ * v2.0.0: Removed all hardcoded mr/hi strings.
+ * Safety warnings are English-only; LLM narration layer translates at runtime.
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const SAFETY_ENHANCEMENT_VERSION = '1.0.0';
+export const SAFETY_ENHANCEMENT_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-// AUDIT FIX: DB stores farmer_safety_level as TEXT (SAFE/CAUTION/EXPERT_ONLY), not integer
 export type SafetyLevel = 'SAFE' | 'CAUTION' | 'EXPERT_ONLY';
 
 export interface SafetyInput {
@@ -36,8 +29,6 @@ export interface SafetyInput {
 export interface SafetyWarning {
   level: SafetyLevel;
   icon: string;
-  warning_mr: string;
-  warning_hi: string;
   warning_en: string;
   ppe_required: string[];
 }
@@ -58,33 +49,25 @@ export interface SafetyValidationResult {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SAFETY LEVEL DEFINITIONS
-// Based on WHO/FAO pesticide classification
+// SAFETY LEVEL DEFINITIONS (English-only; LLM narration translates)
 // ═══════════════════════════════════════════════════════════════════════════
 
-// AUDIT FIX: SafetyLevel is now TEXT from DB (SAFE/CAUTION/EXPERT_ONLY)
 const SAFETY_WARNINGS: Record<SafetyLevel, SafetyWarning> = {
   'SAFE': {
-    level: 'SAFE' as any,
+    level: 'SAFE',
     icon: '✅',
-    warning_mr: 'सुरक्षित - विशेष काळजी आवश्यक नाही',
-    warning_hi: 'सुरक्षित - विशेष सावधानी आवश्यक नहीं',
     warning_en: 'Safe - No special precautions needed',
     ppe_required: []
   },
   'CAUTION': {
-    level: 'CAUTION' as any,
+    level: 'CAUTION',
     icon: '⚠️',
-    warning_mr: 'हातमोजे घाला. डोळ्यांपासून दूर ठेवा. फवारणीनंतर हात धुवा.',
-    warning_hi: 'दस्ताने पहनें। आंखों से दूर रखें। स्प्रे के बाद हाथ धोएं।',
     warning_en: 'Wear gloves. Keep away from eyes. Wash hands after spraying.',
     ppe_required: ['gloves', 'eye_protection']
   },
   'EXPERT_ONLY': {
-    level: 'EXPERT_ONLY' as any,
+    level: 'EXPERT_ONLY',
     icon: '🔴',
-    warning_mr: '⚠️ सावधान! मास्क आणि हातमोजे अवश्य घाला. मुले आणि गर्भवती स्त्रियांना दूर ठेवा. फवारणीनंतर कपडे बदला आणि आंघोळ करा.',
-    warning_hi: '⚠️ सावधान! मास्क और दस्ताने अवश्य पहनें। बच्चों और गर्भवती महिलाओं को दूर रखें। स्प्रे के बाद कपड़े बदलें और नहाएं।',
     warning_en: '⚠️ CAUTION! Must wear mask and gloves. Keep children and pregnant women away. Change clothes and bathe after spraying.',
     ppe_required: ['mask', 'gloves', 'protective_clothing', 'eye_protection']
   }
@@ -118,66 +101,45 @@ const FUNGICIDE_GROUPS: Record<string, string[]> = {
 // SAFETY WARNING GENERATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get safety warning based on farmer_safety_level
- */
 export function getSafetyWarning(
   safetyLevel: SafetyLevel | undefined,
-  language: string
+  _language: string
 ): SafetyWarning | null {
   if (!safetyLevel || safetyLevel === 'SAFE') {
-    return null; // No warning needed for SAFE level
+    return null;
   }
-  
   return SAFETY_WARNINGS[safetyLevel] || null;
 }
 
-/**
- * Format safety warning for display
- */
 export function formatSafetyWarning(
   warning: SafetyWarning,
-  language: string
+  _language: string
 ): string {
-  const warningText = (warning as any)[`warning_${language}`] || warning.warning_en;
-  
-  return `${warning.icon} ${warningText}`;
+  // English-only; LLM narration layer translates at runtime
+  return `${warning.icon} ${warning.warning_en}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RESISTANCE MANAGEMENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if a resistance group has been used recently
- * Prevents consecutive use of same IRAC/FRAC group
- * 
- * @param resistanceGroup - Current rule's resistance group
- * @param recentTreatments - Array of recently used resistance groups (last 3)
- * @returns ResistanceCheckResult with rotation_allowed status
- */
 export function checkResistanceRotation(
   resistanceGroup: string | undefined,
   recentTreatments: string[]
 ): ResistanceCheckResult {
   if (!resistanceGroup) {
-    return {
-      rotation_allowed: true,
-      consecutive_uses: 0
-    };
+    return { rotation_allowed: true, consecutive_uses: 0 };
   }
   
-  // Count consecutive uses of same group
   let consecutiveUses = 0;
   for (const recent of recentTreatments) {
     if (recent === resistanceGroup) {
       consecutiveUses++;
     } else {
-      break; // Stop counting when we hit a different group
+      break;
     }
   }
   
-  // Block if used 2+ times consecutively
   if (consecutiveUses >= 2) {
     return {
       rotation_allowed: false,
@@ -187,15 +149,9 @@ export function checkResistanceRotation(
     };
   }
   
-  return {
-    rotation_allowed: true,
-    consecutive_uses: consecutiveUses
-  };
+  return { rotation_allowed: true, consecutive_uses: consecutiveUses };
 }
 
-/**
- * Get alternative resistance groups for rotation
- */
 function getAlternativeGroups(currentGroup: string): string[] {
   const isInsecticide = currentGroup.startsWith('IRAC');
   const isFungicide = currentGroup.startsWith('FRAC');
@@ -207,34 +163,22 @@ function getAlternativeGroups(currentGroup: string): string[] {
 }
 
 /**
- * Get rotation advice for resistance management
+ * Get rotation advice (English-only; LLM narration translates)
  */
 export function getRotationAdvice(
   result: ResistanceCheckResult,
-  language: string
+  _language: string
 ): string {
-  if (result.rotation_allowed) {
-    return '';
-  }
+  if (result.rotation_allowed) return '';
   
   const alternatives = result.alternative_groups?.join(', ') || 'different group';
-  
-  const templates: Record<string, string> = {
-    mr: `⚠️ सतत एकाच गटातील औषधे वापरू नका! प्रतिकार टाळण्यासाठी ${alternatives} गटातील औषध वापरा.`,
-    hi: `⚠️ लगातार एक ही ग्रुप की दवा न लगाएं! प्रतिरोध से बचने के लिए ${alternatives} ग्रुप की दवा लगाएं।`,
-    en: `⚠️ Do not use same chemical group consecutively! To prevent resistance, use ${alternatives} group.`
-  };
-  
-  return templates[language] || templates['en'];
+  return `⚠️ Do not use same chemical group consecutively! To prevent resistance, use ${alternatives} group.`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // COMBINED VALIDATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Validate all safety and resistance constraints
- */
 export function validateSafety(
   rule: SafetyInput,
   recentTreatments: string[],
@@ -243,27 +187,20 @@ export function validateSafety(
   const messages: string[] = [];
   let passed = true;
   
-  // Check safety level
   const safetyWarning = getSafetyWarning(rule.farmer_safety_level, language);
   if (safetyWarning) {
     messages.push(formatSafetyWarning(safetyWarning, language));
   }
   
-  // Check resistance rotation
   const resistanceCheck = checkResistanceRotation(rule.resistance_group, recentTreatments);
   if (!resistanceCheck.rotation_allowed) {
     passed = false;
     messages.push(getRotationAdvice(resistanceCheck, language));
   }
   
-  // Check bee toxicity (if HIGH and not already warned)
+  // Bee toxicity warning (English-only; LLM translates)
   if (rule.bee_toxicity === 'HIGH') {
-    const beeWarning: Record<string, string> = {
-      mr: '🐝 मधमाश्यांसाठी धोकादायक! संध्याकाळी फवारणी करा.',
-      hi: '🐝 मधुमक्खियों के लिए खतरनाक! शाम को स्प्रे करें।',
-      en: '🐝 Hazardous to bees! Spray in evening only.'
-    };
-    messages.push(beeWarning[language] || beeWarning['en']);
+    messages.push('🐝 Hazardous to bees! Spray in evening only.');
   }
   
   return {

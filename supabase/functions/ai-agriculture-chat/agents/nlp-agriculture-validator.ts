@@ -43,10 +43,9 @@ export interface NLPValidationResult {
   forbidden_combinations: Array<{
     pattern: string;
     reason: string;
-    explanation_mr: string;
-    explanation_hi: string;
+    explanation_en: string;
   }>;
-  
+
   // Gibberish detection
   is_gibberish: boolean;
   gibberish_score: number;
@@ -300,43 +299,31 @@ export const FORBIDDEN_COMBINATIONS = [
   {
     pattern: /फवारणी.*(पाऊस|वाट|rain)/i,
     reason: 'spray_during_rain_wait',
-    explanation_mr: 'पाऊस असताना फवारणी करू नका - औषध वाहून जाईल',
-    explanation_hi: 'बारिश में छिड़काव न करें - दवाई बह जाएगी',
     explanation_en: 'Do not spray during or before rain - chemical will wash off',
   },
   {
     pattern: /श्रावण.*कापणी|कापणी.*श्रावण/i,
     reason: 'monsoon_harvest_wheat',
-    explanation_mr: 'श्रावणात गव्हाची कापणी होत नाही - हंगाम चुकीचा',
-    explanation_hi: 'सावन में गेहूं की कटाई नहीं होती - मौसम गलत है',
     explanation_en: 'Wheat harvest does not happen in monsoon - wrong season',
   },
   {
     pattern: /रब्बी.*भात|भात.*रब्बी/i,
     reason: 'rabi_paddy_conflict',
-    explanation_mr: 'भात हे खरीप पीक आहे, रब्बी नाही',
-    explanation_hi: 'धान खरीफ की फसल है, रबी की नहीं',
     explanation_en: 'Rice/Paddy is a Kharif crop, not Rabi',
   },
   {
     pattern: /खरीप.*गहू|गहू.*खरीप/i,
     reason: 'kharif_wheat_conflict',
-    explanation_mr: 'गहू हे रब्बी पीक आहे, खरीप नाही',
-    explanation_hi: 'गेहूं रबी की फसल है, खरीफ की नहीं',
     explanation_en: 'Wheat is a Rabi crop, not Kharif',
   },
   {
     pattern: /(बंद|थांबवा|नको).*(फवारणी|औषध|spray).*(कापणीला|harvest).*(\d{1,2})\s*(दिवस|days)/i,
     reason: 'phi_clarification_needed',
-    explanation_mr: 'कापणीपूर्वी फवारणी बंद करण्याचा कालावधी औषधानुसार बदलतो',
-    explanation_hi: 'कटाई से पहले छिड़काव बंद करने की अवधि दवाई के अनुसार बदलती है',
     explanation_en: 'Pre-harvest interval varies by chemical - need specific guidance',
   },
   {
     pattern: /(युरिया|urea).*(फुलोऱ्यात|flowering)/i,
     reason: 'urea_at_flowering_harmful',
-    explanation_mr: 'फुलोऱ्यात युरिया देऊ नका - वनस्पती वाढ होते, फळधारणा कमी होते',
-    explanation_hi: 'फूल आने पर यूरिया न दें - पौधे की वृद्धि होती है, फल कम लगते हैं',
     explanation_en: 'Do not apply urea at flowering - causes vegetative growth instead of fruiting',
   },
 ];
@@ -684,14 +671,10 @@ export function validateAgricultureNLP(
       result.forbidden_combinations.push({
         pattern: forbidden.reason,
         reason: forbidden.reason,
-        explanation_mr: forbidden.explanation_mr,
-        explanation_hi: forbidden.explanation_hi,
+        explanation_en: forbidden.explanation_en,
       });
-      result.warnings.push(
-        result.detected_language === 'hi' 
-          ? forbidden.explanation_hi 
-          : forbidden.explanation_mr
-      );
+      // Always push English explanation; LLM narration translates at runtime
+      result.warnings.push(forbidden.explanation_en);
     }
   }
   

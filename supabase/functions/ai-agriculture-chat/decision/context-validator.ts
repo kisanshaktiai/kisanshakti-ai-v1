@@ -255,8 +255,8 @@ export class ContextValidator {
       
       // Generate clarification question
       result.clarification_question = {
-        question_mr: `तुमच्या शेतात सध्या कोणते पीक आहे? "${farmerCrop}" की "${landCrop}"?`,
-        question_hi: `आपके खेत में अभी कौन सी फसल है? "${farmerCrop}" या "${landCrop}"?`,
+        question_mr: 'question_placeholder',
+        question_hi: 'question_placeholder',
         question_en: `Which crop is currently in your field? "${farmerCrop}" or "${landCrop}"?`,
         options: [farmerCrop, landCrop]
       };
