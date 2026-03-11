@@ -531,15 +531,8 @@ export function generateObservationOnlyResponse(
   cropName?: string,
   reason?: string
 ): string {
-  const templates = {
-    mr: `🌾 नमस्कार!\n\n${cropName ? `तुमच्या ${cropName} पिकाबद्दल` : 'पिकाबद्दल'} समजले.\n\n📋 **सध्या काय करावे:**\n• पिकाचे काळजीपूर्वक निरीक्षण करा\n• प्रभावित भागाचा फोटो काढा\n• लक्षणे वाढत आहेत का ते पहा\n\n🔍 अधिक माहिती मिळाल्यावर आम्ही योग्य उपाय सुचवू.\n\n👉 शक्य असल्यास फोटो पाठवा.`,
-    
-    hi: `🌾 नमस्कार!\n\n${cropName ? `आपकी ${cropName} फसल के बारे में` : 'फसल के बारे में'} समझ गया.\n\n📋 **अभी क्या करें:**\n• फसल का ध्यानपूर्वक निरीक्षण करें\n• प्रभावित भाग की फोटो लें\n• देखें कि लक्षण बढ़ रहे हैं या नहीं\n\n🔍 अधिक जानकारी मिलने पर हम सही उपाय बताएंगे.\n\n👉 यदि संभव हो तो फोटो भेजें.`,
-    
-    en: `🌾 Hello!\n\nUnderstood about your ${cropName || 'crop'}.\n\n📋 **What to do now:**\n• Carefully observe the crop\n• Take photos of affected areas\n• Watch if symptoms are spreading\n\n🔍 We'll suggest proper treatment once we have more information.\n\n👉 Please send a photo if possible.`
-  };
-  
-  return templates[language] || templates['en'];
+  // English-only — LLM narration layer translates at runtime via forceTranslateResponse
+  return `🌾 Hello!\n\nUnderstood about your ${cropName || 'crop'}.\n\n📋 **What to do now:**\n• Carefully observe the crop\n• Take photos of affected areas\n• Watch if symptoms are spreading\n\n🔍 We'll suggest proper treatment once we have more information.\n\n👉 Please send a photo if possible.`;
 }
 
 /**
