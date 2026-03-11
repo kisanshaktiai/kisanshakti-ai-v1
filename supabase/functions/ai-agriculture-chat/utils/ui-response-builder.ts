@@ -330,10 +330,10 @@ function buildActions(
   if (mode === 'PHOTO_REQUIRED' || details.needs_photo) {
     actions.request_photo = {
       enabled: true,
-      target: { fallback_text: PHOTO_GUIDANCE.what_to_capture[language] },
+      target: { fallback_text: PHOTO_GUIDANCE.what_to_capture },
       guidance: {
-        what_to_capture: { fallback_text: PHOTO_GUIDANCE.what_to_capture[language] },
-        lighting_tip: { fallback_text: PHOTO_GUIDANCE.lighting_tip[language] }
+        what_to_capture: { fallback_text: PHOTO_GUIDANCE.what_to_capture },
+        lighting_tip: { fallback_text: PHOTO_GUIDANCE.lighting_tip }
       },
       priority: 'HIGH'
     };
