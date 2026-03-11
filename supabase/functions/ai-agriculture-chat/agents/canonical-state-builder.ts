@@ -3,6 +3,8 @@
 // LLM understands → CanonicalState → Rules decide → LLM explains
 // This is the ONLY object allowed into the Decision Brain
 
+import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
+
 // ==================== CLOSED WORLD ENUMS ====================
 // These are the ONLY allowed values - no free text in decision brain
 
