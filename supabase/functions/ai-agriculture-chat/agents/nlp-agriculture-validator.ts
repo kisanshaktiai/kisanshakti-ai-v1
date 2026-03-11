@@ -671,14 +671,10 @@ export function validateAgricultureNLP(
       result.forbidden_combinations.push({
         pattern: forbidden.reason,
         reason: forbidden.reason,
-        explanation_mr: forbidden.explanation_mr,
-        explanation_hi: forbidden.explanation_hi,
+        explanation_en: forbidden.explanation_en,
       });
-      result.warnings.push(
-        result.detected_language === 'hi' 
-          ? forbidden.explanation_hi 
-          : forbidden.explanation_mr
-      );
+      // Always push English explanation; LLM narration translates at runtime
+      result.warnings.push(forbidden.explanation_en);
     }
   }
   
