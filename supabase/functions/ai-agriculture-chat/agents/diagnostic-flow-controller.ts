@@ -545,11 +545,10 @@ export class DiagnosticFlowController {
     return primary.recommendation_text_en;
   }
   
+  // English-only photo instructions — LLM narration layer translates at runtime
   private getPhotoInstructions(intent: string): PhotoInstructions {
     if (intent === 'PEST_PROBLEM') {
       return {
-        what_to_capture_mr: 'किडी दिसत असलेल्या पानाच्या खालच्या भागाचा जवळून फोटो',
-        what_to_capture_hi: 'जहां कीड़े दिख रहे हैं उस पत्ते के नीचे का नज़दीकी फोटो',
         what_to_capture_en: 'Close-up photo of leaf underside where pests are visible',
         distance: '15-20 cm',
         lighting: 'Natural daylight'
@@ -558,8 +557,6 @@ export class DiagnosticFlowController {
     
     if (intent === 'DISEASE_PROBLEM') {
       return {
-        what_to_capture_mr: 'डाग किंवा रोगाची लक्षणे दिसत असलेल्या पानांचा फोटो',
-        what_to_capture_hi: 'दाग या रोग के लक्षण दिखने वाले पत्तों का फोटो',
         what_to_capture_en: 'Photo of leaves showing spots or disease symptoms',
         distance: '20-30 cm',
         lighting: 'Natural daylight, avoid direct sunlight'
@@ -567,8 +564,6 @@ export class DiagnosticFlowController {
     }
     
     return {
-      what_to_capture_mr: 'प्रभावित भागाचा स्पष्ट फोटो',
-      what_to_capture_hi: 'प्रभावित भाग का स्पष्ट फोटो',
       what_to_capture_en: 'Clear photo of affected area',
       distance: '20-30 cm',
       lighting: 'Natural daylight'
