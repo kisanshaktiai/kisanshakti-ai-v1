@@ -1236,6 +1236,54 @@ export class AIAgentOrchestrator {
       console.log(`   Context hints: ${queryRoute.context_hints.join(', ')}`);
       agentsUsed.push('QUERY_ROUTER');
       
+      // ========================================
+      // PHASE 0.3B: DB-DRIVEN VOCABULARY ROUTE OVERRIDE
+      // ========================================
+      // If routeQuery() returned GENERAL_INFO, check crop_vocabulary DB
+      // for phrase_pattern matches that indicate a specific intent.
+      // This is fully DB-driven: no hardcoded regional strings.
+      // ========================================
+      if (queryRoute.route === 'GENERAL_INFO') {
+        try {
+          const msgLower = farmerMessage.toLowerCase();
+          // Load universal vocabulary (crop_code='ALL') for cross-crop terms
+          const allVocab = await getCropVocabulary('ALL', this.supabase);
+          // Also load crop-specific vocab if we have a crop context
+          const cropCode = landContext?.current_crop || options.sessionState?.previousCrop;
+          const cropVocab = cropCode ? await getCropVocabulary(cropCode, this.supabase) : [];
+          const combinedVocab = [...allVocab, ...cropVocab];
+          
+          for (const entry of combinedVocab) {
+            if (!entry.recommended_intent_bias) continue;
+            // Word boundary match for phrase_pattern in farmer message
+            const pattern = new RegExp(`\\b${entry.phrase_pattern}\\b`, 'i');
+            if (pattern.test(msgLower)) {
+              const bias = entry.recommended_intent_bias;
+              // Map intent bias to appropriate route
+              const SYMPTOM_INTENTS = ['WEED_PROBLEM', 'REPORT_SYMPTOM', 'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN'];
+              const NUTRIENT_INTENTS = ['FERTILIZER_SCHEDULE', 'NUTRIENT_DEFICIENCY'];
+              
+              if (SYMPTOM_INTENTS.includes(bias)) {
+                (queryRoute as any).route = 'PEST_DISEASE_TREATMENT';
+                queryRoute.confidence = Math.max(queryRoute.confidence, 0.75);
+                console.log(`📚 [${traceId}] VOCAB ROUTE OVERRIDE: "${entry.phrase_pattern}" → PEST_DISEASE_TREATMENT (bias: ${bias})`);
+              } else if (NUTRIENT_INTENTS.includes(bias)) {
+                (queryRoute as any).route = 'FERTILIZER_NUTRITION';
+                queryRoute.confidence = Math.max(queryRoute.confidence, 0.75);
+                console.log(`📚 [${traceId}] VOCAB ROUTE OVERRIDE: "${entry.phrase_pattern}" → FERTILIZER_NUTRITION (bias: ${bias})`);
+              }
+              
+              if (queryRoute.route !== 'GENERAL_INFO') {
+                agentsUsed.push('VOCAB_ROUTE_OVERRIDE');
+                break; // First match wins
+              }
+            }
+          }
+        } catch (vocabRouteError) {
+          console.warn(`⚠️ [${traceId}] Vocab route override failed: ${(vocabRouteError as Error)?.message || String(vocabRouteError)}`);
+        }
+      }
+      
       const routeRequirements = getRouteRequirements(queryRoute.route);
       
       // ========================================
