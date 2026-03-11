@@ -2932,9 +2932,9 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
       primaryText += `\n   ${marketProductLine}`;
     }
 
-    if (actionText) primaryText += `\n   🧾 **${richLabels.action[lang]}:** ${actionText}`;
-    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason[lang]}:** ${reasonText}`;
-    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge[lang]}:** ${knowledgeText}`;
+    if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
+    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${reasonText}`;
+    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge}:** ${knowledgeText}`;
 
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
