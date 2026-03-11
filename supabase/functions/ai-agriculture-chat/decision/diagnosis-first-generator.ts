@@ -585,31 +585,15 @@ export function createUnknownDiagnosisResponse(
   console.log(`   Crop=${crop_code}, Stage=${growth_stage}`);
   console.log(`   Damage observed: ${damage_observations.join(', ')}`);
   
-  const unknownMessages: Record<string, string> = {
-    'mr': '🔍 तुमच्या पिकात समस्या दिसत आहे पण नेमके कारण ओळखण्यासाठी अधिक माहिती हवी.',
-    'hi': '🔍 आपकी फसल में समस्या है लेकिन सही कारण जानने के लिए अधिक जानकारी चाहिए।',
-    'en': '🔍 Your crop has an issue but we need more information to identify the exact cause.'
-  };
+  // English-only — LLM narration layer translates at runtime
+  const questionText = '🔍 Your crop has an issue but we need more information to identify the exact cause.';
   
-  const checkLabels: Record<string, { water: string; pest: string; nutrient: string }> = {
-    'mr': {
-      water: 'पाण्याची समस्या (जास्त/कमी पाणी)',
-      pest: 'कीड/किडीचा हल्ला',
-      nutrient: 'पोषण कमतरता (खत कमी)'
-    },
-    'hi': {
-      water: 'पानी की समस्या (अधिक/कम पानी)',
-      pest: 'कीड़े/कीटक का हमला',
-      nutrient: 'पोषक तत्वों की कमी'
-    },
-    'en': {
-      water: 'Water issue (too much/too little)',
-      pest: 'Pest/insect attack',
-      nutrient: 'Nutrient deficiency'
-    }
+  // English-only labels — LLM translates at runtime
+  const labels = {
+    water: 'Water issue (too much/too little)',
+    pest: 'Pest/insect attack',
+    nutrient: 'Nutrient deficiency'
   };
-  
-  const labels = checkLabels[language] || checkLabels['en'];
   
   // v1.3.0: CLEAN labels - NO embedded [obs_keys:...] metadata
   // The observation_key field carries routing info separately
