@@ -62,6 +62,7 @@ export async function getCropVocabulary(cropCode: string, supabase: any): Promis
       const entries: VocabEntry[] = (data || []).map((r: any) => ({
         phrase_pattern: r.phrase_pattern,
         semantic_hint: r.semantic_hint,
+        recommended_intent_bias: r.recommended_intent_bias,
         recommended_observation_bias: r.recommended_observation_bias
       }));
       
