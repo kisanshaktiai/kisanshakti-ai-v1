@@ -150,6 +150,8 @@ export interface LandData {
   nitrogen_kg_per_ha: number | null;
   phosphorus_kg_per_ha: number | null;
   potassium_kg_per_ha: number | null;
+  soil_confidence_level: string | null;
+  soil_data_source: string | null;
   
   // Irrigation and water
   water_source: string | null;
@@ -166,6 +168,10 @@ export interface LandData {
   harvest_date: string | null;
   expected_harvest_date: string | null;
   
+  // Moisture
+  current_moisture_status: string | null;
+  last_moisture_update: string | null;
+  
   // Previous crop
   previous_crop: string | null;
   previous_crop_id: string | null;
@@ -177,6 +183,8 @@ export interface LandData {
   last_ndvi_calculation: string | null;
   last_ndvi_value: number | null;
   ndvi_thumbnail_url: string | null;
+  ndvi_geotiff_url: string | null;
+  ndvi_status: string | null;
   last_processed_at: string | null;
   
   // Tile mapping
@@ -338,6 +346,22 @@ export interface CropScheduleData {
   input_land_coordinates: any;
   input_soil_data: any;
   input_weather_data: any;
+  
+  // Intercrop data
+  backdated_consent: boolean | null;
+  backdated_consent_at: string | null;
+  intercrop_name: string | null;
+  intercrop_variety: string | null;
+  intercrop_sowing_date: string | null;
+  intercrop_area_percent: number | null;
+  intercrop_2_name: string | null;
+  intercrop_2_variety: string | null;
+  intercrop_2_sowing_date: string | null;
+  intercrop_2_area_percent: number | null;
+  intercrop_3_name: string | null;
+  intercrop_3_variety: string | null;
+  intercrop_3_sowing_date: string | null;
+  intercrop_3_area_percent: number | null;
   
   // Additional metadata
   metadata: any;
@@ -567,6 +591,8 @@ export interface CropData {
   
   // Localization
   label_local: string | null;
+  label_hi: string | null;
+  label_mr: string | null;
   local_name: string | null;
   
   // Visual
@@ -803,8 +829,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 9; // Bumped for ai_chat_messages schema update with training/intent fields (2025-12-31)
-const SCHEMA_VERSION = 7; // Bumped for ai_chat_messages intent/training fields sync
+const DB_VERSION = 10; // Bumped for land/schedule/crop schema parity + crops/alerts sync (2026-03-11)
+const SCHEMA_VERSION = 8; // Bumped for full offline schema parity with Supabase
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
