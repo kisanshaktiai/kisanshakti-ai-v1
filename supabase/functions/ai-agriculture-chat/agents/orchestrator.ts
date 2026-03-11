@@ -8974,8 +8974,6 @@ export class AIAgentOrchestrator {
         main_message: {
           i18n_key: 'greeting.welcome',
           full_text: {
-            mr: '🙏 नमस्कार! मी साथी आहे - तुमचा शेती सल्लागार. तुम्हाला आज कसली मदत हवी आहे?',
-            hi: '🙏 नमस्कार! मैं साथी हूँ - आपका कृषि सलाहकार। आज आपको क्या सहायता चाहिए?',
             en: '🙏 Hello! I am SATHI - your agricultural advisor. How can I help you today?'
           },
           fallback_text: ''
