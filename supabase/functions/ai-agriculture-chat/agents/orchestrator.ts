@@ -5939,8 +5939,6 @@ export class AIAgentOrchestrator {
           type: 'PHOTO_REQUEST',
           session_id: sessionId,
           photo_instructions: {
-            text_mr: '📷 कृपया प्रभावित पानाचा/पिकाचा स्पष्ट फोटो पाठवा',
-            text_hi: '📷 कृपया प्रभावित पत्ती/फसल का स्पष्ट फोटो भेजें',
             text_en: '📷 Please send a clear photo of the affected leaf/crop',
             tips: [
               'Good lighting',
