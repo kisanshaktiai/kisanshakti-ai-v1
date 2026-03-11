@@ -1,16 +1,23 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CROP BASELINE GUIDELINES CACHE v1.0.0
+ * CROP BASELINE GUIDELINES CACHE v1.1.0
  * ═══════════════════════════════════════════════════════════════════════════
  * 
  * In-memory cache for crop_baseline_guidelines_v2 table.
  * Provides stage-wise nutrient and irrigation data for the decision engine.
  * 
+ * v1.1.0 — Aligned with actual DB schema columns:
+ *   - critical_moisture_percent (was: irrigation_critical)
+ *   - water_requirement_mm (new)
+ *   - notes (was: key_activities)
+ *   - sulphur/zinc/iron/soil pH/EC fields (new)
+ *   - Removed: common_problems (does not exist in DB)
+ * 
  * Performance: 10-minute TTL, keyed by crop_code.
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const BASELINE_CACHE_VERSION = '1.0.0';
+export const BASELINE_CACHE_VERSION = '1.1.0';
 
 export interface BaselineGuideline {
   crop_code: string;
@@ -20,10 +27,16 @@ export interface BaselineGuideline {
   nitrogen_optimal: number | null;
   phosphorus_optimal: number | null;
   potassium_optimal: number | null;
+  sulphur_optimal: number | null;
+  zinc_optimal: number | null;
+  iron_optimal: number | null;
   irrigation_interval_days: number | null;
-  irrigation_critical: boolean;
-  key_activities: string | null;
-  common_problems: string | null;
+  water_requirement_mm: number | null;
+  critical_moisture_percent: number | null;
+  soil_ph_min: number | null;
+  soil_ph_max: number | null;
+  soil_ec_max: number | null;
+  notes: string | null;
   source_reference: string | null;
 }
 
@@ -55,11 +68,11 @@ export async function loadBaselineGuidelines(supabase: any): Promise<void> {
     try {
       const { data, error } = await supabase
         .from('crop_baseline_guidelines_v2')
-        .select('crop_code, growth_stage, das_start, das_end, nitrogen_optimal, phosphorus_optimal, potassium_optimal, irrigation_interval_days, irrigation_critical, key_activities, common_problems, source_reference')
+        .select('crop_code, growth_stage, das_start, das_end, nitrogen_optimal, phosphorus_optimal, potassium_optimal, sulphur_optimal, zinc_optimal, iron_optimal, irrigation_interval_days, water_requirement_mm, critical_moisture_percent, soil_ph_min, soil_ph_max, soil_ec_max, notes, source_reference')
         .eq('is_active', true);
       
       if (error) {
-        console.error(`[BASELINE] Load failed: ${error.message}`);
+        console.error(`[BASELINE] ❌ Load failed: ${error.message} (code: ${error.code}, details: ${error.details})`);
         return;
       }
       
@@ -70,10 +83,10 @@ export async function loadBaselineGuidelines(supabase: any): Promise<void> {
         entries.set(row.crop_code, existing);
       }
       
-      console.log(`[BASELINE] Loaded ${(data || []).length} guidelines for ${entries.size} crops`);
+      console.log(`[BASELINE] ✅ Loaded ${(data || []).length} guidelines for ${entries.size} crops`);
       cache = { entries, loadedAt: Date.now() };
     } catch (e) {
-      console.error(`[BASELINE] Cache error:`, e instanceof Error ? e.message : 'unknown');
+      console.error(`[BASELINE] ❌ Cache error:`, e instanceof Error ? e.message : 'unknown');
     }
   })();
   
