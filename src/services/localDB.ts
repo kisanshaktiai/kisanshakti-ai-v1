@@ -829,8 +829,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 9; // Bumped for ai_chat_messages schema update with training/intent fields (2025-12-31)
-const SCHEMA_VERSION = 7; // Bumped for ai_chat_messages intent/training fields sync
+const DB_VERSION = 10; // Bumped for land/schedule/crop schema parity + crops/alerts sync (2026-03-11)
+const SCHEMA_VERSION = 8; // Bumped for full offline schema parity with Supabase
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
