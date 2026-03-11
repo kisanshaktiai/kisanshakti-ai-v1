@@ -62,41 +62,8 @@ export interface DiagnosticEscalationInput {
 // TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only templates — LLM narration layer handles localization at runtime
 const TEMPLATES = {
-  mr: {
-    greeting: 'नमस्कार',
-    diagnostic_intro: 'तुमच्या {crop_name} पिकात ({days} दिवस, {stage} अवस्था) आढळलेल्या लक्षणांचे विश्लेषण:',
-    hypotheses_header: '🔍 संभाव्य कारणे:',
-    hypothesis_template: '{index}. **{cause_name}** (शक्यता: {confidence}%)\n   {explanation}',
-    evidence_header: '   ✓ जुळणारी लक्षणे: {evidence}',
-    confirm_header: '   📌 खात्री करण्यासाठी: {confirm}',
-    required_inputs_header: '📸 निदान पूर्ण करण्यासाठी खालील माहिती द्या:',
-    photo_request: '📷 **फोटो काढा**: {target}\n   कारण: {rationale}',
-    photo_guidance: '   💡 टिप: {guidance}',
-    severity_request: '📊 **तीव्रता सांगा**: {target}',
-    distribution_request: '🗺️ **वितरण नमुना**: {target}',
-    interim_monitoring: '⏳ **तोपर्यंत निरीक्षण करा**:',
-    confidence_note: '⚡ सध्याची खात्री: {current}% | उपचारासाठी आवश्यक: {threshold}%',
-    take_photo_cta: '📷 फोटो काढा',
-    expert_note: 'अधिक माहिती मिळाल्यावर अचूक निदान व उपचार सुचवता येईल.'
-  },
-  hi: {
-    greeting: 'नमस्ते',
-    diagnostic_intro: 'आपकी {crop_name} फसल ({days} दिन, {stage} अवस्था) में दिखे लक्षणों का विश्लेषण:',
-    hypotheses_header: '🔍 संभावित कारण:',
-    hypothesis_template: '{index}. **{cause_name}** (संभावना: {confidence}%)\n   {explanation}',
-    evidence_header: '   ✓ मिलते-जुलते लक्षण: {evidence}',
-    confirm_header: '   📌 पुष्टि के लिए: {confirm}',
-    required_inputs_header: '📸 निदान पूर्ण करने के लिए यह जानकारी दें:',
-    photo_request: '📷 **फोटो लें**: {target}\n   कारण: {rationale}',
-    photo_guidance: '   💡 टिप: {guidance}',
-    severity_request: '📊 **गंभीरता बताएं**: {target}',
-    distribution_request: '🗺️ **वितरण पैटर्न**: {target}',
-    interim_monitoring: '⏳ **तब तक निगरानी करें**:',
-    confidence_note: '⚡ वर्तमान विश्वास: {current}% | उपचार के लिए आवश्यक: {threshold}%',
-    take_photo_cta: '📷 फोटो लें',
-    expert_note: 'अधिक जानकारी मिलने पर सटीक निदान और उपचार सुझाव दिया जा सकता है।'
-  },
   en: {
     greeting: 'Hello',
     diagnostic_intro: 'Analysis of symptoms observed in your {crop_name} ({days} days, {stage} stage):',
@@ -113,7 +80,11 @@ const TEMPLATES = {
     confidence_note: '⚡ Current confidence: {current}% | Treatment threshold: {threshold}%',
     take_photo_cta: '📷 Take Photo',
     expert_note: 'Once we have more information, we can provide accurate diagnosis and treatment.'
-  }
+  },
+  /** @deprecated Use 'en' — LLM translates at runtime */
+  get mr() { return this.en; },
+  /** @deprecated Use 'en' — LLM translates at runtime */
+  get hi() { return this.en; }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
