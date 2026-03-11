@@ -705,46 +705,19 @@ export class DiagnosticFlowController {
   /**
    * Get localized messages for authority blocks.
    */
-  private getAuthorityBlockMessages(decision: AuthorityDecision): {
-    mr: string;
-    hi: string;
-    en: string;
-  } {
+  // English-only authority block messages — LLM narration layer translates at runtime
+  private getAuthorityBlockMessageEn(decision: AuthorityDecision): string {
     switch (decision.authority) {
       case DecisionAuthority.LAND:
-        return {
-          mr: '🌱 जमिनीची समस्या आधी सोडवणे आवश्यक आहे. लवण किंवा पाणी साचल्याचे निराकरण करा, त्यानंतरच कीड/रोग उपचार शक्य आहे.',
-          hi: '🌱 पहले मिट्टी की समस्या को हल करना आवश्यक है। लवणता या जल भराव का समाधान करें, उसके बाद ही कीट/रोग उपचार संभव है।',
-          en: '🌱 Soil issue must be addressed first. Resolve salinity or waterlogging before pest/disease treatment can be effective.'
-        };
-      
+        return '🌱 Soil issue must be addressed first. Resolve salinity or waterlogging before pest/disease treatment can be effective.';
       case DecisionAuthority.CLIMATE:
-        return {
-          mr: '🌦️ हवामान तणावामुळे पीक प्रभावित आहे. प्रथम हवामान-संबंधित उपाय करा.',
-          hi: '🌦️ जलवायु तनाव से फसल प्रभावित है। पहले जलवायु-संबंधी उपाय करें।',
-          en: '🌦️ Crop is affected by climate stress. Address weather-related measures first.'
-        };
-      
+        return '🌦️ Crop is affected by climate stress. Address weather-related measures first.';
       case DecisionAuthority.SYSTEM:
-        return {
-          mr: '⚙️ सिंचन किंवा यंत्रणा बिघाड आधी दुरुस्त करा.',
-          hi: '⚙️ सिंचाई या यंत्र की खराबी पहले ठीक करें।',
-          en: '⚙️ Fix irrigation or equipment failure first.'
-        };
-      
+        return '⚙️ Fix irrigation or equipment failure first.';
       case DecisionAuthority.SAFETY:
-        return {
-          mr: '⚠️ सुरक्षा प्राधान्य! कृपया प्रथम सुरक्षा मार्गदर्शक तत्त्वांचे पालन करा.',
-          hi: '⚠️ सुरक्षा प्राथमिकता! कृपया पहले सुरक्षा दिशानिर्देशों का पालन करें।',
-          en: '⚠️ Safety priority! Please follow safety guidelines first.'
-        };
-      
+        return '⚠️ Safety priority! Please follow safety guidelines first.';
       default:
-        return {
-          mr: 'कृपया प्रथम मूळ कारण शोधा.',
-          hi: 'कृपया पहले मूल कारण खोजें।',
-          en: 'Please address root cause first.'
-        };
+        return 'Please address root cause first.';
     }
   }
   
