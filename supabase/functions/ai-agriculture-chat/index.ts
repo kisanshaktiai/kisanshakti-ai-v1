@@ -2402,12 +2402,7 @@ function generateAllActionsFilteredResponse(
   });
   
   // Suggestion
-  const suggestions: Record<string, string> = {
-    mr: '\n💡 **पुढे काय करावे:**\n1. हवामान सुधारण्याची प्रतीक्षा करा\n2. पीक टप्पा बदलल्यावर पुन्हा विचारा\n3. कृषी अधिकाऱ्यांशी संपर्क साधा',
-    hi: '\n💡 **आगे क्या करें:**\n1. मौसम सुधरने का इंतज़ार करें\n2. फसल चरण बदलने पर फिर से पूछें\n3. कृषि अधिकारियों से संपर्क करें',
-    en: '\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer'
-  };
-  parts.push(suggestions[lang]);
+  parts.push('\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer');
   
   return parts.join('\n');
 }
