@@ -117,14 +117,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   options: string[];
 }>> = {
   [ClarificationScope.IDENTIFY_CROP]: {
-    mr: {
-      question: '🌾 कोणत्या पिकाबद्दल तुम्ही विचारत आहात?',
-      options: ['ऊस', 'कापूस', 'सोयाबीन', 'गहू', 'भात', 'इतर पीक']
-    },
-    hi: {
-      question: '🌾 आप किस फसल के बारे में पूछ रहे हैं?',
-      options: ['गन्ना', 'कपास', 'सोयाबीन', 'गेहूं', 'धान', 'अन्य फसल']
-    },
     en: {
       question: '🌾 Which crop are you asking about?',
       options: ['Sugarcane', 'Cotton', 'Soybean', 'Wheat', 'Rice', 'Other crop']
@@ -132,14 +124,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.IDENTIFY_LOCATION]: {
-    mr: {
-      question: '🌿 झाडाच्या कोणत्या भागावर समस्या दिसते?',
-      options: ['पान', 'खोड / देठ', 'मूळ', 'फळ / बोंड']
-    },
-    hi: {
-      question: '🌿 पौधे के किस हिस्से पर समस्या दिख रही है?',
-      options: ['पत्ते', 'तना / डंठल', 'जड़', 'फल / बॉल']
-    },
     en: {
       question: '🌿 Which part of the plant is affected?',
       options: ['Leaves', 'Stem / Stalk', 'Roots', 'Fruit / Boll']
@@ -147,14 +131,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.IDENTIFY_DISTRIBUTION]: {
-    mr: {
-      question: '📍 शेतात समस्या कशी पसरली आहे?',
-      options: ['सगळीकडे सारखी', 'ठिकठिकाणी वेगळी', 'कडेने जास्त', 'मध्यभागी जास्त']
-    },
-    hi: {
-      question: '📍 खेत में समस्या कैसे फैली है?',
-      options: ['हर जगह एक जैसी', 'जगह-जगह अलग', 'किनारों पर ज्यादा', 'बीच में ज्यादा']
-    },
     en: {
       question: '📍 How is the problem distributed in the field?',
       options: ['Uniform everywhere', 'Patchy/scattered', 'More on edges', 'More in center']
@@ -162,14 +138,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.IDENTIFY_SEVERITY]: {
-    mr: {
-      question: '📊 समस्या किती गंभीर आहे?',
-      options: ['थोडी (काही झाडे)', 'मध्यम (अर्धे शेत)', 'जास्त (बहुतेक शेत)']
-    },
-    hi: {
-      question: '📊 समस्या कितनी गंभीर है?',
-      options: ['थोड़ी (कुछ पौधे)', 'मध्यम (आधा खेत)', 'ज्यादा (अधिकतर खेत)']
-    },
     en: {
       question: '📊 How severe is the problem?',
       options: ['Light (few plants)', 'Moderate (half field)', 'Heavy (most of field)']
@@ -177,14 +145,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.IDENTIFY_TIMING]: {
-    mr: {
-      question: '⏰ समस्या कधीपासून दिसत आहे?',
-      options: ['आज / काल', 'या आठवड्यात', 'गेल्या आठवड्यापासून', 'खूप दिवसांपासून']
-    },
-    hi: {
-      question: '⏰ समस्या कब से दिख रही है?',
-      options: ['आज / कल', 'इस हफ्ते', 'पिछले हफ्ते से', 'बहुत दिनों से']
-    },
     en: {
       question: '⏰ When did you first notice this problem?',
       options: ['Today/Yesterday', 'This week', 'Since last week', 'Long time']
@@ -192,14 +152,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.IDENTIFY_INSECT_TYPE]: {
-    mr: {
-      question: '🐛 किडे कसे दिसतात?',
-      options: ['हिरवट-पिवळे लहान किडे', 'बारीक लांबट काळे किडे', 'पानांवर जाळी आणि लाल ठिपके']
-    },
-    hi: {
-      question: '🐛 कीड़े कैसे दिखते हैं?',
-      options: ['हरे-पीले छोटे कीड़े', 'पतले लंबे काले कीड़े', 'पत्तों पर जाला और लाल धब्बे']
-    },
     en: {
       question: '🐛 What do the insects look like?',
       options: ['Small green-yellow insects', 'Tiny elongated dark insects', 'Fine webbing with red spots']
@@ -207,14 +159,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]: {
-    mr: {
-      question: '🔍 हे किडे उडतात का चालतात?',
-      options: ['उडतात', 'चालतात / रांगतात', 'सांगता येत नाही']
-    },
-    hi: {
-      question: '🔍 ये कीड़े उड़ते हैं या रेंगते हैं?',
-      options: ['उड़ते हैं', 'चलते / रेंगते हैं', 'पता नहीं']
-    },
     en: {
       question: '🔍 Are these insects flying or crawling?',
       options: ['Flying', 'Crawling', 'Cannot tell']
@@ -222,14 +166,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.IDENTIFY_PLANT_RESPONSE]: {
-    mr: {
-      question: '🌿 पानांवर काही बदल दिसतात का?',
-      options: ['पाने वळलेली / मुडलेली', 'पाने पिवळी होत आहेत', 'पानांवर चिकटपणा', 'पानांवर छिद्र / भोक', 'असे काहीही दिसत नाही']
-    },
-    hi: {
-      question: '🌿 पत्तों पर कोई बदलाव दिखता है?',
-      options: ['पत्ते मुड़े हुए', 'पत्ते पीले हो रहे हैं', 'पत्तों पर चिपचिपाहट', 'पत्तों पर छेद', 'ऐसा कुछ नहीं दिखता']
-    },
     en: {
       question: '🌿 Do you notice any changes in the leaves?',
       options: ['Leaves curling', 'Leaves yellowing', 'Sticky substance on leaves', 'Holes or bite marks', 'No such changes visible']
@@ -237,14 +173,6 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
   },
   
   [ClarificationScope.REFINE_OBSERVATION]: {
-    mr: {
-      question: '🔍 तुम्ही नेमके काय पाहत आहात?',
-      options: ['रंग बदलला', 'छिद्र/भोक दिसतात', 'वाळलेले/सुकलेले', 'किडे दिसतात']
-    },
-    hi: {
-      question: '🔍 आप ठीक से क्या देख रहे हैं?',
-      options: ['रंग बदला है', 'छेद दिखते हैं', 'सूखा/मुरझाया', 'कीड़े दिखते हैं']
-    },
     en: {
       question: '🔍 What exactly are you observing?',
       options: ['Color change', 'Holes visible', 'Drying/wilting', 'Insects visible']
@@ -265,33 +193,7 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
     }
   },
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // DIAGNOSTIC_CONFIRMATION - Trust-First Agronomist Mode
-  // When terminal damage is detected, show CAUSE-confirmation options
-  // NOT location questions. This mirrors real agronomist behavior.
-  // CRITICAL: ALL options MUST be in the same language - NO mixed language!
-  // ═══════════════════════════════════════════════════════════════════════════
   [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
-    mr: {
-      question: '🔬 हे निश्चित करण्यासाठी, खालीलपैकी काय दिसते ते सांगा:',
-      options: [
-        '🔴 मधली सुरळी सुकलेली / ओढल्यास बाहेर येते (मेलेला गाभा)',
-        '🐛 खोडात / मुळांजवळ अळ्या दिसतात',
-        '🏠 मातीत पांढरे वाळवी / बोगदे दिसतात',
-        '✨ पानांवर चिकट पदार्थ / काळी बुरशी',
-        '📷 फोटो काढा (स्पष्ट ओळखण्यासाठी)'
-      ]
-    },
-    hi: {
-      question: '🔬 इसे पक्का करने के लिए, नीचे में से क्या दिखता है बताएं:',
-      options: [
-        '🔴 बीच की पत्ती सूखी / खींचने पर निकल जाती है (मृत गभा)',
-        '🐛 तने में / जड़ों के पास इल्ली दिखती है',
-        '🏠 मिट्टी में सफेद दीमक / सुरंग दिखती है',
-        '✨ पत्तों पर चिपचिपा पदार्थ / काली फफूंद',
-        '📷 फोटो लें (सही पहचान के लिए)'
-      ]
-    },
     en: {
       question: '🔬 To confirm the cause, tell us which of these you see:',
       options: [
