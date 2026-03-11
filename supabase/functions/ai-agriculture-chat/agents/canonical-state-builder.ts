@@ -505,8 +505,7 @@ export function mapCropNameToEnum(cropName: string | undefined): CropType {
   if (!cropName) return CropType.UNKNOWN;
   
   // Use unified normalizer to get canonical English name, then map to enum
-  const { normalizeCropCode, getFullCropName } = await_free_imports;
-  const shortCode = normalizeCropCode(cropName);
+  const shortCode = unifiedNormalizeCropCode(cropName);
   const fullName = getFullCropName(shortCode);
   
   // Map full English name to CropType enum
