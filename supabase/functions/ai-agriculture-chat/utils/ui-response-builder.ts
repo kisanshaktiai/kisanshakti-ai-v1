@@ -383,8 +383,7 @@ export function extractDisplayText(response: UIResponseContract): string {
   }
   
   // Priority 4: Default by mode
-  const lang = response.context.detected_language || 'mr';
-  return MODE_MESSAGES[response.response_mode]?.[lang] || MODE_MESSAGES.OBSERVATION[lang];
+  return MODE_MESSAGES[response.response_mode] || MODE_MESSAGES.OBSERVATION;
 }
 
 /**
