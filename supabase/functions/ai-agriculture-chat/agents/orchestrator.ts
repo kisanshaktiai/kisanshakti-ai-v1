@@ -7961,7 +7961,7 @@ export class AIAgentOrchestrator {
       
       return {
         preferred_language: preferredLanguage || data?.language_preference || 'mr',
-        name: data?.farmer_name || 'शेतकरी',
+        name: data?.farmer_name || 'Farmer',
         literacy_level: (data?.education_level || 'MODERATE') as any,
         technical_knowledge: 'MODERATE',
         emotional_state: 'NEUTRAL'
@@ -7969,7 +7969,7 @@ export class AIAgentOrchestrator {
     } catch {
       return {
         preferred_language: preferredLanguage || 'mr',
-        name: 'शेतकरी',
+        name: 'Farmer',
         literacy_level: 'MODERATE',
         technical_knowledge: 'MODERATE',
         emotional_state: 'NEUTRAL'
@@ -8974,8 +8974,6 @@ export class AIAgentOrchestrator {
         main_message: {
           i18n_key: 'greeting.welcome',
           full_text: {
-            mr: '🙏 नमस्कार! मी साथी आहे - तुमचा शेती सल्लागार. तुम्हाला आज कसली मदत हवी आहे?',
-            hi: '🙏 नमस्कार! मैं साथी हूँ - आपका कृषि सलाहकार। आज आपको क्या सहायता चाहिए?',
             en: '🙏 Hello! I am SATHI - your agricultural advisor. How can I help you today?'
           },
           fallback_text: ''

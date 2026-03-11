@@ -2258,20 +2258,10 @@ function generateValidationFailureFallback(
     const parts: string[] = [];
     
     // Greeting
-    const greetings: Record<string, string> = {
-      mr: '🌾 नमस्कार शेतकरी मित्र!',
-      hi: '🌾 नमस्कार किसान मित्र!',
-      en: '🌾 Hello farmer friend!'
-    };
-    parts.push(greetings[lang]);
+    parts.push('🌾 Hello farmer friend!');
     
     // Header
-    const headers: Record<string, string> = {
-      mr: '📌 **आता काय करावे:**',
-      hi: '📌 **अभी क्या करें:**',
-      en: '📌 **What to do now:**'
-    };
-    parts.push(headers[lang]);
+    parts.push('📌 **What to do now:**');
     
     // Extract actions - with STRICT validation to prevent placeholder content
     const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
@@ -2349,43 +2339,14 @@ function generateValidationFailureFallback(
     }
     
     // Closing
-    const closings: Record<string, string> = {
-      mr: '\n✅ शुभेच्छा! 🙏',
-      hi: '\n✅ शुभकामनाएं! 🙏',
-      en: '\n✅ Best wishes! 🙏'
-    };
-    parts.push(closings[lang]);
+    parts.push('\n✅ Best wishes! 🙏');
     
     return parts.join('\n\n');
   }
   
   // Original fallback when no actions available
-  const fallbacks: Record<string, string> = {
-    mr: `🌾 **नमस्कार शेतकरी मित्र!**
-
-माझ्याकडून शिफारस तयार करताना तांत्रिक समस्या आली. कृपया खालील माहिती द्या:
-
-1. तुमचे पीक कोणते आहे?
-2. सध्याची समस्या काय आहे?
-3. पिकाचा टप्पा कोणता आहे?
-
-या माहितीवरून मी तुम्हाला योग्य मार्गदर्शन करू शकेन.
-
-📞 तातडीसाठी: जवळच्या कृषी विज्ञान केंद्राशी (KVK) संपर्क साधा.`,
-
-    hi: `🌾 **नमस्कार किसान मित्र!**
-
-सिफारिश तैयार करते समय तकनीकी समस्या आई। कृपया निम्नलिखित जानकारी दें:
-
-1. आपकी फसल कौन सी है?
-2. वर्तमान समस्या क्या है?
-3. फसल की अवस्था क्या है?
-
-इस जानकारी से मैं आपको उचित मार्गदर्शन दे सकूंगा।
-
-📞 तत्काल सहायता के लिए: निकटतम कृषि विज्ञान केंद्र (KVK) से संपर्क करें।`,
-
-    en: `🌾 **Hello Farmer Friend!**
+  // English-only fallback — forceTranslateResponse() handles localization at runtime
+  return `🌾 **Hello Farmer Friend!**
 
 I encountered a technical issue while preparing recommendations. Please provide the following information:
 
@@ -2395,10 +2356,7 @@ I encountered a technical issue while preparing recommendations. Please provide 
 
 With this information, I can provide you proper guidance.
 
-📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`
-  };
-  
-  return fallbacks[lang] || fallbacks['en'];
+📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`;
 }
 
 /**
@@ -2411,20 +2369,10 @@ function generateAllActionsFilteredResponse(
   const parts: string[] = [];
   
   // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang]);
+  parts.push('Hello farmer friend! 🌾');
   
   // Explanation
-  const explanations: Record<string, string> = {
-    mr: '⚠️ सध्या या परिस्थितीत शिफारसी देणे शक्य नाही. कारणे खालीलप्रमाणे:',
-    hi: '⚠️ वर्तमान में इस स्थिति में सिफारिशें देना संभव नहीं है। कारण इस प्रकार हैं:',
-    en: '⚠️ Unable to provide recommendations at this time. Here\'s why:'
-  };
-  parts.push(explanations[lang]);
+  parts.push('⚠️ Unable to provide recommendations at this time. Here\'s why:');
   
   // List filtered reasons by category
   const categoryReasons: Record<string, string[]> = {};
@@ -2434,46 +2382,19 @@ function generateAllActionsFilteredResponse(
     categoryReasons[category].push(action.reason || action.action);
   });
   
-  const categoryLabels: Record<string, Record<string, string>> = {
-    REGULATORY: {
-      mr: '📋 नियामक निर्बंध',
-      hi: '📋 नियामक प्रतिबंध',
-      en: '📋 Regulatory Restrictions'
-    },
-    SAFETY: {
-      mr: '🛡️ सुरक्षा कारणे',
-      hi: '🛡️ सुरक्षा कारण',
-      en: '🛡️ Safety Reasons'
-    },
-    SEASONAL: {
-      mr: '📅 हंगाम-संबंधित',
-      hi: '📅 मौसम-संबंधित',
-      en: '📅 Seasonal Restrictions'
-    },
-    WEATHER: {
-      mr: '🌧️ हवामान-संबंधित',
-      hi: '🌧️ मौसम-संबंधित',
-      en: '🌧️ Weather Conditions'
-    },
-    ECONOMIC: {
-      mr: '💰 आर्थिक कारणे',
-      hi: '💰 आर्थिक कारण',
-      en: '💰 Economic Factors'
-    },
-    COMPATIBILITY: {
-      mr: '⚗️ सुसंगतता समस्या',
-      hi: '⚗️ संगतता समस्या',
-      en: '⚗️ Compatibility Issues'
-    },
-    UNKNOWN: {
-      mr: 'ℹ️ इतर कारणे',
-      hi: 'ℹ️ अन्य कारण',
-      en: 'ℹ️ Other Reasons'
-    }
+  // English-only category labels — forceTranslateResponse() handles localization
+  const categoryLabels: Record<string, string> = {
+    REGULATORY: '📋 Regulatory Restrictions',
+    SAFETY: '🛡️ Safety Reasons',
+    SEASONAL: '📅 Seasonal Restrictions',
+    WEATHER: '🌧️ Weather Conditions',
+    ECONOMIC: '💰 Economic Factors',
+    COMPATIBILITY: '⚗️ Compatibility Issues',
+    UNKNOWN: 'ℹ️ Other Reasons'
   };
   
   Object.entries(categoryReasons).forEach(([category, reasons]) => {
-    const label = categoryLabels[category]?.[lang] || category;
+    const label = categoryLabels[category] || category;
     parts.push(`\n${label}:`);
     reasons.slice(0, 2).forEach(reason => {
       parts.push(`  • ${reason}`);
@@ -2481,12 +2402,7 @@ function generateAllActionsFilteredResponse(
   });
   
   // Suggestion
-  const suggestions: Record<string, string> = {
-    mr: '\n💡 **पुढे काय करावे:**\n1. हवामान सुधारण्याची प्रतीक्षा करा\n2. पीक टप्पा बदलल्यावर पुन्हा विचारा\n3. कृषी अधिकाऱ्यांशी संपर्क साधा',
-    hi: '\n💡 **आगे क्या करें:**\n1. मौसम सुधरने का इंतज़ार करें\n2. फसल चरण बदलने पर फिर से पूछें\n3. कृषि अधिकारियों से संपर्क करें',
-    en: '\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer'
-  };
-  parts.push(suggestions[lang]);
+  parts.push('\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer');
   
   return parts.join('\n');
 }
@@ -2892,12 +2808,7 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   const parts: string[] = [];
   
   // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang]);
+  parts.push('Hello farmer friend! 🌾');
   
   // Extract context clues from response
   const nluIntent = response.metadata?.nlu_output?.primary_intent;
@@ -2905,54 +2816,19 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
   const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
   
-  // Build context-aware message
+  // Build context-aware message — English-only, forceTranslateResponse() handles localization
   if (detectedPest || detectedDisease) {
     const target = detectedPest || detectedDisease;
-    const messages: Record<string, string> = {
-      mr: `तुमच्या ${target} समस्येबद्दल माहिती मिळाली. अचूक शिफारसी देण्यासाठी मला आणखी काही माहिती हवी:`,
-      hi: `आपकी ${target} समस्या के बारे में जानकारी मिली। सटीक सिफारिशों के लिए मुझे और जानकारी चाहिए:`,
-      en: `I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`
-    };
-    parts.push(messages[lang]);
+    parts.push(`I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`);
   } else {
-    const messages: Record<string, string> = {
-      mr: 'तुमच्या प्रश्नाचे योग्य उत्तर देण्यासाठी मला आणखी काही माहिती हवी:',
-      hi: 'आपके प्रश्न का सही उत्तर देने के लिए मुझे और जानकारी चाहिए:',
-      en: 'To properly answer your question, I need some more information:'
-    };
-    parts.push(messages[lang]);
+    parts.push('To properly answer your question, I need some more information:');
   }
   
-  // Numbered list of required information
-  const questions: Record<string, string[]> = {
-    mr: [
-      '1. पिकाचे नाव काय आहे?',
-      '2. पिकाची सध्याची अवस्था (वाढीचा टप्पा) काय आहे?',
-      '3. समस्येची लक्षणे काय दिसत आहेत?',
-      '4. शक्य असल्यास प्रभावित पानांचा/रोपांचा फोटो पाठवा'
-    ],
-    hi: [
-      '1. फसल का नाम क्या है?',
-      '2. फसल की वर्तमान अवस्था (विकास चरण) क्या है?',
-      '3. समस्या के लक्षण क्या दिख रहे हैं?',
-      '4. यदि संभव हो तो प्रभावित पत्तियों/पौधों की तस्वीर भेजें'
-    ],
-    en: [
-      '1. What is the crop name?',
-      '2. What is the current growth stage?',
-      '3. What symptoms are you seeing?',
-      '4. If possible, send a photo of the affected leaves/plants'
-    ]
-  };
-  parts.push('\n' + questions[lang].join('\n'));
+  // Numbered list of required information — English-only
+  parts.push('\n1. What is the crop name?\n2. What is the current growth stage?\n3. What symptoms are you seeing?\n4. If possible, send a photo of the affected leaves/plants');
   
   // Encouragement
-  const closings: Record<string, string> = {
-    mr: '\nही माहिती मिळाल्यावर मी तुम्हाला योग्य शिफारस देईन! 🙏',
-    hi: '\nयह जानकारी मिलने पर मैं आपको सही सिफारिश दूंगा! 🙏',
-    en: '\nOnce I have this information, I can give you the right recommendation! 🙏'
-  };
-  parts.push(closings[lang]);
+  parts.push('\nOnce I have this information, I can give you the right recommendation! 🙏');
   
   return parts.join('\n\n');
 }
@@ -2964,46 +2840,25 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   const parts: string[] = [];
   
   // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang]);
+  parts.push('Hello farmer friend! 🌾');
   
   const primary = decision.primary_decision;
   
   // Status handling
   if (decision.status === 'BLOCKED') {
     const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    const blockedMessages: Record<string, string> = {
-      mr: `⚠️ **थांबा:** ${blockedReason}`,
-      hi: `⚠️ **रुकें:** ${blockedReason}`,
-      en: `⚠️ **Stop:** ${blockedReason}`
-    };
-    parts.push(blockedMessages[lang]);
+    parts.push(`⚠️ **Stop:** ${blockedReason}`);
     return parts.join('\n\n');
   }
   
   if (decision.status === 'WEATHER_DELAYED') {
-    const delayMessages: Record<string, string> = {
-      mr: '⏱️ **फवारणी पुढे ढकला** - हवामान सुधारल्यावर फवारणी करा. सध्या पिकाचे निरीक्षण सुरू ठेवा.',
-      hi: '⏱️ **छिड़काव टालें** - मौसम साफ होने पर छिड़काव करें। अभी फसल की निगरानी जारी रखें।',
-      en: '⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.'
-    };
-    parts.push(delayMessages[lang]);
+    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
     return parts.join('\n\n');
   }
   
   // Action type - NO ACTION / MONITOR
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    const monitorMessages: Record<string, string> = {
-      mr: '👀 **सध्या कोणतीही कृती आवश्यक नाही.** निरीक्षण सुरू ठेवा.',
-      hi: '👀 **अभी कोई कार्रवाई आवश्यक नहीं।** निगरानी जारी रखें।',
-      en: '👀 **No action required at this time.** Continue monitoring.'
-    };
-
-    parts.push(monitorMessages[lang]);
+    parts.push('👀 **No action required at this time.** Continue monitoring.');
 
     // If decision_rules provided rich text, include it so response stays SSOT-based
     const app = primary?.application_details || {};
@@ -3011,27 +2866,16 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     const reasonText = app.reason_text as string | undefined;
     const knowledgeText = app.knowledge_text as string | undefined;
 
-    const labels = {
-      action: { mr: 'काय करावे:', hi: 'क्या करें:', en: 'Action:' },
-      reason: { mr: 'कारण:', hi: 'कारण:', en: 'Reason:' },
-      knowledge: { mr: 'माहिती:', hi: 'जानकारी:', en: 'Knowledge:' }
-    } as const;
-
-    if (actionText) parts.push(`\n🧾 **${labels.action[lang]}** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **${labels.reason[lang]}** ${reasonText}`);
-    if (knowledgeText) parts.push(`\n📚 **${labels.knowledge[lang]}** ${knowledgeText}`);
+    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
+    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
+    if (knowledgeText) parts.push(`\n📚 **Knowledge:** ${knowledgeText}`);
 
     return parts.join('\n\n');
   }
   
   // Primary recommendation as numbered list
   if (primary) {
-    const actionHeaders: Record<string, string> = {
-      mr: '📌 **शिफारसी:**',
-      hi: '📌 **सिफारिशें:**',
-      en: '📌 **Recommendations:**'
-    };
-    parts.push(actionHeaders[lang]);
+    parts.push('📌 **Recommendations:**');
     
     let recNumber = 1;
     const recParts: string[] = [];
@@ -3062,11 +2906,8 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     const reasonText = app.reason_text as string | undefined;
     const knowledgeText = app.knowledge_text as string | undefined;
 
-    const richLabels = {
-      action: { mr: 'काय करावे', hi: 'क्या करें', en: 'Action' },
-      reason: { mr: 'कारण', hi: 'कारण', en: 'Reason' },
-      knowledge: { mr: 'माहिती', hi: 'जानकारी', en: 'Knowledge' }
-    } as const;
+    // English-only labels — forceTranslateResponse() handles localization
+    const richLabels = { action: 'Action', reason: 'Reason', knowledge: 'Knowledge' };
 
     let primaryText = `**${recNumber}. ${productName}**`;
     if (dosage) primaryText += ` @ ${dosage}`;
@@ -3078,12 +2919,12 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     }
 
     // Add timing
-    const timingLabels: Record<string, Record<string, string>> = {
-      MORNING: { mr: 'सकाळी 6-10 वाजता', hi: 'सुबह 6-10 बजे', en: 'Morning 6-10 AM' },
-      EVENING: { mr: 'संध्याकाळी 4-6 वाजता', hi: 'शाम 4-6 बजे', en: 'Evening 4-6 PM' },
-      ANY: { mr: 'दिवसातून कधीही', hi: 'दिन में कभी भी', en: 'Any time' }
+    const timingLabels: Record<string, string> = {
+      MORNING: 'Morning 6-10 AM',
+      EVENING: 'Evening 4-6 PM',
+      ANY: 'Any time'
     };
-    const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
+    const timingText = timingLabels[timing] || timingLabels.MORNING;
     primaryText += `\n   ⏰ ${timingText}`;
 
     // PRODUCT MAPPING: Append market product brand names
@@ -3091,9 +2932,9 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
       primaryText += `\n   ${marketProductLine}`;
     }
 
-    if (actionText) primaryText += `\n   🧾 **${richLabels.action[lang]}:** ${actionText}`;
-    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason[lang]}:** ${reasonText}`;
-    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge[lang]}:** ${knowledgeText}`;
+    if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
+    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${reasonText}`;
+    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge}:** ${knowledgeText}`;
 
     // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
@@ -3122,12 +2963,7 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   }
   
   // Closing
-  const closings: Record<string, string> = {
-    mr: '\n✅ शुभेच्छा! 🙏',
-    hi: '\n✅ शुभकामनाएं! 🙏',
-    en: '\n✅ Best wishes! 🙏'
-  };
-  parts.push(closings[lang]);
+  parts.push('\n✅ Best wishes! 🙏');
   
   return parts.join('\n\n');
 }
