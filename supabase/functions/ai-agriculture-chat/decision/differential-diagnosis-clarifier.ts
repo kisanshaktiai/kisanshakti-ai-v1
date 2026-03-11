@@ -467,7 +467,7 @@ export function generateDifferentialClarification(
     
     return {
       cause_code: cause.cause_code,
-      cause_name: cause[`cause_name_${input.language}` as keyof typeof cause] as string || cause.cause_name_en,
+      cause_name: cause.cause_name_en,
       category: cause.category,
       probability: Math.min(0.95, probability),
       supporting_symptoms: cause.confirming_factors,
@@ -476,11 +476,9 @@ export function generateDifferentialClarification(
     };
   }).sort((a, b) => b.probability - a.probability);
   
-  // Generate questions sorted by information gain
+  // Generate questions sorted by information gain (English-only; LLM translates)
   const questions: DifferentialQuestion[] = matchedPattern.differentiating_questions.map((q, idx) => ({
     question_id: `diff_q_${idx}`,
-    question_mr: q.question_mr,
-    question_hi: q.question_hi,
     question_en: q.question_en,
     yes_indicates: {
       cause: q.yes_supports,
