@@ -1349,8 +1349,9 @@ CRITICAL RULES:
 `;
   }
 
-  return `You are a LANGUAGE ADAPTER for an agricultural advisory system for rural Indian farmers.
-You are a TRANSLATOR/FORMATTER ONLY. The SYMBOLIC DECISION BRAIN has already made all decisions.
+  return `${villageOfficerPersona}
+
+You are explaining a decision ALREADY MADE by the Symbolic Decision Brain. You do NOT make decisions.
 ${cropLockBlock}
 ═══ THE SUPREME LAW ═══
 Every product name, dosage, timing, and treatment in your response MUST come from the data below.
