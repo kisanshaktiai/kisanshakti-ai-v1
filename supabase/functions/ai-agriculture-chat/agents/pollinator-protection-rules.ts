@@ -414,8 +414,7 @@ export function checkPollinatorSafety(
     result.is_safe = false;
     result.risk_level = 'MEDIUM';
     result.block_reason = `Unknown chemical toxicity to pollinators. Avoid spraying during flowering.`;
-    result.block_reason_mr = `या रसायनाचे परागीकरण किडींवर परिणाम माहित नाही. फुलोऱ्यात फवारणी टाळा.`;
-    result.block_reason_hi = `इस रसायन का परागणकों पर प्रभाव ज्ञात नहीं है। फूलों के समय छिड़काव से बचें।`;
+    result.scientific_basis = 'Precautionary principle - unknown toxicity';
     result.scientific_basis = 'Precautionary principle - unknown toxicity';
     return result;
   }
