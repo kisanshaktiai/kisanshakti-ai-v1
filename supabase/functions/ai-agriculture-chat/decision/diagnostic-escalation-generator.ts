@@ -130,25 +130,18 @@ const EXPLANATIONS: Record<string, Record<string, string>> = {
 // PHOTO GUIDANCE BY SYMPTOM
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only photo guidance — LLM translates at runtime
 const PHOTO_GUIDANCE: Record<string, Record<string, { what: string; angle: string; lighting: string }>> = {
   INSECT_VISIBLE: {
-    mr: { what: 'किड्याचा जवळून फोटो', angle: 'किड्याच्या अगदी जवळून', lighting: 'सकाळचा प्रकाश उत्तम' },
-    hi: { what: 'कीट का नजदीकी फोटो', angle: 'कीट के बिल्कुल पास से', lighting: 'सुबह की रोशनी सबसे अच्छी' },
     en: { what: 'Close-up of the insect', angle: 'Very close to the insect', lighting: 'Morning light is best' }
   },
   LEAF_DAMAGE: {
-    mr: { what: 'खराब झालेले पान', angle: 'पानाच्या वरून आणि खालून', lighting: 'सावलीत काढा' },
-    hi: { what: 'क्षतिग्रस्त पत्ता', angle: 'पत्ते के ऊपर और नीचे से', lighting: 'छाया में लें' },
     en: { what: 'Damaged leaf', angle: 'Top and underside of leaf', lighting: 'Take in shade' }
   },
   YELLOWING: {
-    mr: { what: 'पिवळे पडलेले पान', angle: 'पूर्ण पान दिसेल असे', lighting: 'नैसर्गिक प्रकाशात' },
-    hi: { what: 'पीला पड़ा पत्ता', angle: 'पूरा पत्ता दिखे ऐसा', lighting: 'प्राकृतिक रोशनी में' },
     en: { what: 'Yellow leaf', angle: 'Full leaf visible', lighting: 'In natural light' }
   },
   SPOTS: {
-    mr: { what: 'डागांचा जवळून फोटो', angle: 'डाग स्पष्ट दिसतील असे', lighting: 'चांगल्या प्रकाशात' },
-    hi: { what: 'धब्बों का नजदीकी फोटो', angle: 'धब्बे साफ दिखें ऐसा', lighting: 'अच्छी रोशनी में' },
     en: { what: 'Close-up of spots', angle: 'Spots clearly visible', lighting: 'In good light' }
   }
 };

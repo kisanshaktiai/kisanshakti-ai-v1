@@ -264,9 +264,9 @@ export function generateDifferentialClarificationFromRules(
   return {
     question_id: `differential_${Date.now()}`,
     question_text: {
-      mr: '🔍 मला अधिक माहिती हवी आहे. तुम्हाला नक्की काय दिसतंय?',
-      hi: '🔍 मुझे अधिक जानकारी चाहिए। आपको क्या दिख रहा है?',
-      en: '🔍 I need more information. What exactly do you see?'
+      en: '🔍 I need more information. What exactly do you see?',
+      mr: '', // @deprecated — LLM translates at runtime
+      hi: ''  // @deprecated — LLM translates at runtime
     },
     options,
     selection_type: 'SINGLE',

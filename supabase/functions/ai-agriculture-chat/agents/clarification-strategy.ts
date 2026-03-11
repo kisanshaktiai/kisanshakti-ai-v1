@@ -375,25 +375,25 @@ export async function fetchRuleDrivenClarificationOptions(
         {
           code: dq.discriminator_key + '_YES',
           label_en: 'Yes',
-          label_mr: 'होय',
-          label_hi: 'हाँ',
+          label_mr: '', // @deprecated — LLM translates at runtime
+          label_hi: '', // @deprecated — LLM translates at runtime
           description_en: dq.question_text_en,
-          description_mr: dq.question_text_mr,
-          description_hi: dq.question_text_hi
+          description_mr: '', // @deprecated — LLM translates at runtime
+          description_hi: ''  // @deprecated — LLM translates at runtime
         },
         {
           code: dq.discriminator_key + '_NO',
           label_en: 'No',
-          label_mr: 'नाही',
-          label_hi: 'नहीं',
+          label_mr: '', // @deprecated — LLM translates at runtime
+          label_hi: '', // @deprecated — LLM translates at runtime
           description_en: `No, I haven't noticed ${dq.discriminator_key.toLowerCase().replace(/_/g, ' ')}`,
-          description_mr: `नाही, मला ${dq.discriminator_key.toLowerCase().replace(/_/g, ' ')} दिसले नाही`,
-          description_hi: `नहीं, मैंने ${dq.discriminator_key.toLowerCase().replace(/_/g, ' ')} नहीं देखा`
+          description_mr: '', // @deprecated — LLM translates at runtime
+          description_hi: ''  // @deprecated — LLM translates at runtime
         }
       ],
       question_text: dq.question_text_en,
-      question_text_mr: dq.question_text_mr,
-      question_text_hi: dq.question_text_hi,
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       competing_hypotheses: [dq.hypothesis_a_name, dq.hypothesis_b_name],
       source: 'CAUSAL_HYPOTHESIS_ENGINE'
     } as any;

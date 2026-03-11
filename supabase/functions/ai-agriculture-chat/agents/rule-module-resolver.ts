@@ -384,17 +384,17 @@ export function generateRuleRequiredQuestions(
   if (modules.some(m => m.moduleFile === 'resistance-management-rules') && !entities.treatment_history) {
     questions.push({
       question_id: 'Q_LAST_SPRAY',
-      question_text_mr: 'शेवटची फवारणी कधी केली होती?',
-      question_text_hi: 'आखिरी बार छिड़काव कब किया था?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'When was the last spray done?',
       question_type: 'TREATMENT_HISTORY',
       priority: 'MEDIUM',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: '0', label_mr: 'फवारणी केली नाही', label_hi: 'छिड़काव नहीं किया', label_en: 'No spray done' },
-        { value: '7', label_mr: '1 आठवड्यापूर्वी', label_hi: '1 हफ्ते पहले', label_en: '1 week ago' },
-        { value: '14', label_mr: '2 आठवड्यापूर्वी', label_hi: '2 हफ्ते पहले', label_en: '2 weeks ago' },
-        { value: '30', label_mr: '1 महिन्यापूर्वी', label_hi: '1 महीने पहले', label_en: '1 month ago' }
+        { value: '0', label_mr: '', label_hi: '', label_en: 'No spray done' },
+        { value: '7', label_mr: '', label_hi: '', label_en: '1 week ago' },
+        { value: '14', label_mr: '', label_hi: '', label_en: '2 weeks ago' },
+        { value: '30', label_mr: '', label_hi: '', label_en: '1 month ago' }
       ],
       affects_rule_selection: true,
       target_entity: 'last_spray_days'

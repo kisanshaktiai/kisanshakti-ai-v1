@@ -354,25 +354,25 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
     
     // Generate blocking messages
     if (blockedReasons.includes('high_rain')) {
-      result.block_reason_mr = '⛈️ पावसाची शक्यता जास्त आहे - आज फवारणी टाळा. औषध वाहून जाईल आणि पैसे वाया जातील.';
-      result.block_reason_hi = '⛈️ बारिश की संभावना अधिक है - आज स्प्रे न करें। दवाई बह जाएगी और पैसे बर्बाद होंगे।';
       result.block_reason_en = '⛈️ High rain probability - avoid spraying today. Pesticide will wash off, wasting money.';
+      result.block_reason_mr = result.block_reason_en; // @deprecated - LLM translates at runtime
+      result.block_reason_hi = result.block_reason_en; // @deprecated - LLM translates at runtime
       result.alternative_actions.push('Wait for clear weather (next 6-12 hours)');
       result.alternative_actions.push('Check weather forecast before scheduling');
     }
     
     if (blockedReasons.includes('high_wind')) {
-      result.block_reason_mr = '💨 वारा जास्त आहे - फवारणी करू नका. औषध शेजारच्या शेतात जाईल.';
-      result.block_reason_hi = '💨 हवा तेज है - स्प्रे न करें। दवाई पड़ोसी खेत में चली जाएगी।';
       result.block_reason_en = '💨 Wind too strong - do not spray. Pesticide will drift to neighboring fields.';
+      result.block_reason_mr = result.block_reason_en; // @deprecated - LLM translates at runtime
+      result.block_reason_hi = result.block_reason_en; // @deprecated - LLM translates at runtime
       result.alternative_actions.push('Spray early morning when wind is calm');
       result.alternative_actions.push('Wait for wind speed < 10 km/h');
     }
     
     if (blockedReasons.includes('too_hot')) {
-      result.block_reason_mr = '🌡️ खूप गरम आहे - संध्याकाळी 5 नंतर फवारणी करा.';
-      result.block_reason_hi = '🌡️ बहुत गर्मी है - शाम 5 बजे के बाद स्प्रे करें।';
       result.block_reason_en = '🌡️ Too hot - spray after 5 PM when temperature drops.';
+      result.block_reason_mr = result.block_reason_en; // @deprecated - LLM translates at runtime
+      result.block_reason_hi = result.block_reason_en; // @deprecated - LLM translates at runtime
       result.alternative_actions.push('Spray during cooler hours (6-9 AM or 5-7 PM)');
       result.recommended_spray_window = {
         start_time: '17:00',
@@ -382,9 +382,9 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
     }
     
     if (blockedReasons.includes('too_cold')) {
-      result.block_reason_mr = '❄️ खूप थंड आहे - दुपारी 11-2 वाजता फवारणी करा.';
-      result.block_reason_hi = '❄️ बहुत ठंड है - दोपहर 11-2 बजे स्प्रे करें।';
       result.block_reason_en = '❄️ Too cold - spray during warmest hours (11 AM - 2 PM).';
+      result.block_reason_mr = result.block_reason_en; // @deprecated - LLM translates at runtime
+      result.block_reason_hi = result.block_reason_en; // @deprecated - LLM translates at runtime
       result.alternative_actions.push('Spray during warmest part of day');
       result.recommended_spray_window = {
         start_time: '11:00',
