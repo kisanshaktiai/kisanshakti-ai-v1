@@ -321,17 +321,17 @@ export function generateRuleRequiredQuestions(
   if (intent === 'PEST_PROBLEM' && entities.pest_code && !entities.affected_area_percent) {
     questions.push({
       question_id: 'Q_PEST_DENSITY',
-      question_text_mr: 'प्रत्येक पानावर किती किडी आहेत?',
-      question_text_hi: 'हर पत्ते पर कितने कीड़े हैं?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'How many pests per leaf?',
       question_type: 'PEST_DENSITY',
       priority: 'HIGH',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: '5', label_mr: 'थोडी (5 पर्यंत)', label_hi: 'कम (5 तक)', label_en: 'Few (up to 5)' },
-        { value: '15', label_mr: 'मध्यम (5-15)', label_hi: 'मध्यम (5-15)', label_en: 'Moderate (5-15)' },
-        { value: '25', label_mr: 'जास्त (15-25)', label_hi: 'ज्यादा (15-25)', label_en: 'Many (15-25)' },
-        { value: '50', label_mr: 'खूप जास्त (25+)', label_hi: 'बहुत ज्यादा (25+)', label_en: 'Very many (25+)' }
+        { value: '5', label_mr: '', label_hi: '', label_en: 'Few (up to 5)' },
+        { value: '15', label_mr: '', label_hi: '', label_en: 'Moderate (5-15)' },
+        { value: '25', label_mr: '', label_hi: '', label_en: 'Many (15-25)' },
+        { value: '50', label_mr: '', label_hi: '', label_en: 'Very many (25+)' }
       ],
       affects_rule_selection: true,
       target_entity: 'pest_density'
