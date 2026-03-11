@@ -522,8 +522,6 @@ export class DiagnosticFlowController {
     return {
       action: 'BLOCK',
       blocked_reason: 'BANNED_SUBSTANCE',
-      message_mr: `⛔ ${nlu.safety_alerts.banned_substance_code} हे रसायन बंदी आहे आणि वापरता कामा नये. कृपया सुरक्षित पर्याय वापरा.`,
-      message_hi: `⛔ ${nlu.safety_alerts.banned_substance_code} यह रसायन प्रतिबंधित है और इसका उपयोग नहीं करना चाहिए। कृपया सुरक्षित विकल्प का उपयोग करें।`,
       message_en: `⛔ ${nlu.safety_alerts.banned_substance_code} is banned and must not be used. Please use safe alternatives.`,
       alternatives: this.getSafeAlternatives(nlu.entities.pest_code || nlu.entities.disease_code || ''),
       session_state: this.session
