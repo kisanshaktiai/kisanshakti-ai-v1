@@ -2808,12 +2808,7 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   const parts: string[] = [];
   
   // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang]);
+  parts.push('Hello farmer friend! 🌾');
   
   // Extract context clues from response
   const nluIntent = response.metadata?.nlu_output?.primary_intent;
@@ -2821,54 +2816,19 @@ function generateNoRecommendationsFallback(response: OrchestratorResponse, lang:
   const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
   const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
   
-  // Build context-aware message
+  // Build context-aware message — English-only, forceTranslateResponse() handles localization
   if (detectedPest || detectedDisease) {
     const target = detectedPest || detectedDisease;
-    const messages: Record<string, string> = {
-      mr: `तुमच्या ${target} समस्येबद्दल माहिती मिळाली. अचूक शिफारसी देण्यासाठी मला आणखी काही माहिती हवी:`,
-      hi: `आपकी ${target} समस्या के बारे में जानकारी मिली। सटीक सिफारिशों के लिए मुझे और जानकारी चाहिए:`,
-      en: `I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`
-    };
-    parts.push(messages[lang]);
+    parts.push(`I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`);
   } else {
-    const messages: Record<string, string> = {
-      mr: 'तुमच्या प्रश्नाचे योग्य उत्तर देण्यासाठी मला आणखी काही माहिती हवी:',
-      hi: 'आपके प्रश्न का सही उत्तर देने के लिए मुझे और जानकारी चाहिए:',
-      en: 'To properly answer your question, I need some more information:'
-    };
-    parts.push(messages[lang]);
+    parts.push('To properly answer your question, I need some more information:');
   }
   
-  // Numbered list of required information
-  const questions: Record<string, string[]> = {
-    mr: [
-      '1. पिकाचे नाव काय आहे?',
-      '2. पिकाची सध्याची अवस्था (वाढीचा टप्पा) काय आहे?',
-      '3. समस्येची लक्षणे काय दिसत आहेत?',
-      '4. शक्य असल्यास प्रभावित पानांचा/रोपांचा फोटो पाठवा'
-    ],
-    hi: [
-      '1. फसल का नाम क्या है?',
-      '2. फसल की वर्तमान अवस्था (विकास चरण) क्या है?',
-      '3. समस्या के लक्षण क्या दिख रहे हैं?',
-      '4. यदि संभव हो तो प्रभावित पत्तियों/पौधों की तस्वीर भेजें'
-    ],
-    en: [
-      '1. What is the crop name?',
-      '2. What is the current growth stage?',
-      '3. What symptoms are you seeing?',
-      '4. If possible, send a photo of the affected leaves/plants'
-    ]
-  };
-  parts.push('\n' + questions[lang].join('\n'));
+  // Numbered list of required information — English-only
+  parts.push('\n1. What is the crop name?\n2. What is the current growth stage?\n3. What symptoms are you seeing?\n4. If possible, send a photo of the affected leaves/plants');
   
   // Encouragement
-  const closings: Record<string, string> = {
-    mr: '\nही माहिती मिळाल्यावर मी तुम्हाला योग्य शिफारस देईन! 🙏',
-    hi: '\nयह जानकारी मिलने पर मैं आपको सही सिफारिश दूंगा! 🙏',
-    en: '\nOnce I have this information, I can give you the right recommendation! 🙏'
-  };
-  parts.push(closings[lang]);
+  parts.push('\nOnce I have this information, I can give you the right recommendation! 🙏');
   
   return parts.join('\n\n');
 }
