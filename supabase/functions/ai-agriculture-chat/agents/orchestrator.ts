@@ -6531,10 +6531,9 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             question: {
               question_id: `intent_mismatch_${Date.now()}`,
-              text_mr: clarification.text_mr,
-              text_hi: clarification.text_hi,
-              text_en: clarification.text_en,
-              options: clarification.options
+              text_en: 'Could you describe your problem in more detail so I can help you better?',
+              i18n_key: clarification.i18n_key,
+              options: clarification.option_codes.map(code => ({ code, label: code }))
             },
             metadata: {
               confidence: intentConfidence,
