@@ -3170,7 +3170,6 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please 
 • Maintain proper water management
 • Report any new pest/disease signs`;
 }
-}
 
 /**
  * Fallback: Build natural language response directly from DecisionOutput
