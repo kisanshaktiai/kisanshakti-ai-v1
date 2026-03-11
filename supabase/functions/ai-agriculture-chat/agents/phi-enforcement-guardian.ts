@@ -475,8 +475,6 @@ export function checkPHISafety(
     result.is_safe = false;
     result.violation_type = 'ORGANIC_VIOLATION';
     result.block_reason = `${chemicalName} is not allowed in organic farming. Using synthetic chemicals will void organic certification.`;
-    result.block_reason_mr = `${chemicalName} सेंद्रिय शेतीसाठी परवानगी नाही. रासायनिक औषध वापरल्यास सेंद्रिय प्रमाणपत्र रद्द होईल.`;
-    result.block_reason_hi = `${chemicalName} जैविक खेती में अनुमति नहीं है। रासायनिक दवाई का उपयोग जैविक प्रमाणन रद्द कर देगा।`;
     result.alternative_suggestions = NEAR_HARVEST_ALTERNATIVES
       .filter(a => a.organic_safe)
       .map(a => a.name);
