@@ -114,8 +114,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
     competing_causes: [
       {
         cause_code: 'NITROGEN_DEFICIENCY',
-        cause_name_mr: 'नायट्रोजन कमतरता',
-        cause_name_hi: 'नाइट्रोजन की कमी',
         cause_name_en: 'Nitrogen Deficiency',
         category: 'NUTRIENT',
         base_probability: 0.35,
@@ -124,8 +122,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
       },
       {
         cause_code: 'IRON_DEFICIENCY',
-        cause_name_mr: 'लोह कमतरता',
-        cause_name_hi: 'लौह की कमी',
         cause_name_en: 'Iron Deficiency',
         category: 'NUTRIENT',
         base_probability: 0.25,
@@ -134,8 +130,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
       },
       {
         cause_code: 'WATER_STRESS',
-        cause_name_mr: 'पाणी ताण',
-        cause_name_hi: 'पानी का तनाव',
         cause_name_en: 'Water Stress',
         category: 'WATER',
         base_probability: 0.25,
@@ -144,8 +138,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
       },
       {
         cause_code: 'APHID_INFESTATION',
-        cause_name_mr: 'मावा',
-        cause_name_hi: 'माहूं',
         cause_name_en: 'Aphid Infestation',
         category: 'PEST',
         base_probability: 0.15,
@@ -155,32 +147,24 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
     ],
     differentiating_questions: [
       {
-        question_mr: 'पिवळेपणा आधी कोणत्या पानांवर आला - खालच्या (जुन्या) की वरच्या (नवीन)?',
-        question_hi: 'पीलापन पहले किन पत्तियों पर आया - नीचे की (पुरानी) या ऊपर की (नई)?',
         question_en: 'Which leaves turned yellow first - lower (older) or upper (newer)?',
-        yes_supports: 'NITROGEN_DEFICIENCY', // lower = N
-        no_supports: 'IRON_DEFICIENCY',      // upper = Fe
+        yes_supports: 'NITROGEN_DEFICIENCY',
+        no_supports: 'IRON_DEFICIENCY',
         information_gain: 0.85
       },
       {
-        question_mr: 'पानांच्या शिरांमध्ये (veins) हिरवा रंग आहे का?',
-        question_hi: 'पत्तियों की नसों (veins) में हरा रंग है?',
         question_en: 'Are the leaf veins still green?',
-        yes_supports: 'IRON_DEFICIENCY',     // interveinal = Fe
-        no_supports: 'NITROGEN_DEFICIENCY',  // whole leaf = N
+        yes_supports: 'IRON_DEFICIENCY',
+        no_supports: 'NITROGEN_DEFICIENCY',
         information_gain: 0.80
       },
       {
-        question_mr: 'पानांवर चिकट पदार्थ किंवा लहान कीटक दिसतात का?',
-        question_hi: 'पत्तियों पर चिपचिपा पदार्थ या छोटे कीड़े दिख रहे हैं?',
         question_en: 'Do you see sticky substance or small insects on leaves?',
         yes_supports: 'APHID_INFESTATION',
         no_supports: 'NITROGEN_DEFICIENCY',
         information_gain: 0.75
       },
       {
-        question_mr: 'दुपारी पाने मलूल होतात आणि संध्याकाळी परत ताजी होतात का?',
-        question_hi: 'दोपहर में पत्ते मुरझाते हैं और शाम को फिर ताजे हो जाते हैं?',
         question_en: 'Do leaves wilt in afternoon and recover in evening?',
         yes_supports: 'WATER_STRESS',
         no_supports: 'NITROGEN_DEFICIENCY',
@@ -194,8 +178,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
     competing_causes: [
       {
         cause_code: 'STEM_BORER',
-        cause_name_mr: 'खोड किडा',
-        cause_name_hi: 'तना छेदक',
         cause_name_en: 'Stem Borer',
         category: 'PEST',
         base_probability: 0.50,
@@ -204,8 +186,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
       },
       {
         cause_code: 'TERMITE_DAMAGE',
-        cause_name_mr: 'वाळवी',
-        cause_name_hi: 'दीमक',
         cause_name_en: 'Termite Damage',
         category: 'PEST',
         base_probability: 0.30,
@@ -214,8 +194,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
       },
       {
         cause_code: 'WATERLOGGING',
-        cause_name_mr: 'पाणथळ',
-        cause_name_hi: 'जलभराव',
         cause_name_en: 'Waterlogging',
         category: 'WATER',
         base_probability: 0.20,
@@ -225,24 +203,18 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
     ],
     differentiating_questions: [
       {
-        question_mr: 'खोडात छिद्र (hole) दिसते का? आतून भुसा बाहेर येतोय का?',
-        question_hi: 'तने में छेद दिख रहा है? अंदर से भूसा निकल रहा है?',
         question_en: 'Is there a hole in the stem? Is frass (sawdust-like material) coming out?',
         yes_supports: 'STEM_BORER',
         no_supports: 'TERMITE_DAMAGE',
         information_gain: 0.90
       },
       {
-        question_mr: 'जमिनीत पांढऱ्या/तपकिरी मातीचे बोगदे दिसतात का?',
-        question_hi: 'जमीन में सफेद/भूरी मिट्टी की सुरंगें दिख रही हैं?',
         question_en: 'Do you see white/brown mud tunnels in the soil?',
         yes_supports: 'TERMITE_DAMAGE',
         no_supports: 'STEM_BORER',
         information_gain: 0.85
       },
       {
-        question_mr: 'शेतात पाणी साठले आहे का? मुळांना कुजल्याचा वास येतोय का?',
-        question_hi: 'खेत में पानी भरा है? जड़ों से सड़ी बदबू आ रही है?',
         question_en: 'Is water standing in the field? Do roots smell rotten?',
         yes_supports: 'WATERLOGGING',
         no_supports: 'STEM_BORER',
@@ -256,8 +228,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
     competing_causes: [
       {
         cause_code: 'FUNGAL_LEAF_SPOT',
-        cause_name_mr: 'बुरशीजन्य पानठिपके',
-        cause_name_hi: 'फफूंद पत्ती धब्बा',
         cause_name_en: 'Fungal Leaf Spot',
         category: 'DISEASE',
         base_probability: 0.45,
@@ -266,8 +236,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
       },
       {
         cause_code: 'BACTERIAL_LEAF_SPOT',
-        cause_name_mr: 'जिवाणूजन्य पानठिपके',
-        cause_name_hi: 'जीवाणु पत्ती धब्बा',
         cause_name_en: 'Bacterial Leaf Spot',
         category: 'DISEASE',
         base_probability: 0.30,
@@ -276,8 +244,6 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
       },
       {
         cause_code: 'INSECT_FEEDING',
-        cause_name_mr: 'कीटक खाद्य',
-        cause_name_hi: 'कीट खाना',
         cause_name_en: 'Insect Feeding Damage',
         category: 'PEST',
         base_probability: 0.25,
@@ -287,24 +253,18 @@ const DIFFERENTIAL_PATTERNS: Record<string, DifferentialPattern> = {
     ],
     differentiating_questions: [
       {
-        question_mr: 'ठिपक्यांना पिवळ्या रंगाची किनार (halo) आहे का?',
-        question_hi: 'धब्बों के चारों ओर पीला घेरा (halo) है?',
         question_en: 'Do the spots have a yellow halo around them?',
         yes_supports: 'BACTERIAL_LEAF_SPOT',
         no_supports: 'FUNGAL_LEAF_SPOT',
         information_gain: 0.80
       },
       {
-        question_mr: 'ठिपक्यांमध्ये गोलाकार रेषा (concentric rings) दिसतात का?',
-        question_hi: 'धब्बों में गोल रेखाएं (concentric rings) दिख रही हैं?',
         question_en: 'Do you see concentric rings (target pattern) in the spots?',
         yes_supports: 'FUNGAL_LEAF_SPOT',
         no_supports: 'BACTERIAL_LEAF_SPOT',
         information_gain: 0.75
       },
       {
-        question_mr: 'ठिपक्यांमध्ये छिद्रे आहेत का? पानांवर कीटक दिसतात का?',
-        question_hi: 'धब्बों में छेद हैं? पत्तियों पर कीड़े दिख रहे हैं?',
         question_en: 'Are there holes in the spots? Do you see insects on leaves?',
         yes_supports: 'INSECT_FEEDING',
         no_supports: 'FUNGAL_LEAF_SPOT',
