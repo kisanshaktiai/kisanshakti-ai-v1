@@ -299,18 +299,18 @@ export function generateRuleRequiredQuestions(
   if (!entities.crop_code) {
     questions.push({
       question_id: 'Q_CROP_CODE',
-      question_text_mr: 'तुम्ही कोणतं पीक घेतलंय?',
-      question_text_hi: 'आप कौन सी फसल उगा रहे हैं?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'Which crop are you growing?',
       question_type: 'CROP_ID',
       priority: 'HIGH',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: 'COTTON', label_mr: 'कापूस', label_hi: 'कपास', label_en: 'Cotton' },
-        { value: 'SOYBEAN', label_mr: 'सोयाबीन', label_hi: 'सोयाबीन', label_en: 'Soybean' },
-        { value: 'RICE', label_mr: 'भात', label_hi: 'धान', label_en: 'Rice' },
-        { value: 'WHEAT', label_mr: 'गहू', label_hi: 'गेहूं', label_en: 'Wheat' },
-        { value: 'TOMATO', label_mr: 'टमाटर', label_hi: 'टमाटर', label_en: 'Tomato' }
+        { value: 'COTTON', label_mr: '', label_hi: '', label_en: 'Cotton' },
+        { value: 'SOYBEAN', label_mr: '', label_hi: '', label_en: 'Soybean' },
+        { value: 'RICE', label_mr: '', label_hi: '', label_en: 'Rice' },
+        { value: 'WHEAT', label_mr: '', label_hi: '', label_en: 'Wheat' },
+        { value: 'TOMATO', label_mr: '', label_hi: '', label_en: 'Tomato' }
       ],
       affects_rule_selection: true,
       target_entity: 'crop_code'
