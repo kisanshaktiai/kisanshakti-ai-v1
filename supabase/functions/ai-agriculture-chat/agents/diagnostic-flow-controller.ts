@@ -230,8 +230,6 @@ export class DiagnosticFlowController {
         return {
           action: 'ASK_CLARIFICATION',
           questions: criticalMissingQuestions,
-          message_mr: 'कृपया खालील माहिती द्या:',
-          message_hi: 'कृपया निम्नलिखित जानकारी दें:',
           message_en: 'Please provide the following information:',
           session_state: this.session
         };
