@@ -320,7 +320,9 @@ export interface RuleRecommendation {
   rule_id: string;
   priority: RulePriority;
   recommendation_type: 'CULTURAL' | 'BIOLOGICAL' | 'BOTANICAL' | 'CHEMICAL' | 'INTEGRATED';
+  /** @deprecated Use recommendation_text_en — LLM translates at runtime */
   recommendation_text_mr: string;
+  /** @deprecated Use recommendation_text_en — LLM translates at runtime */
   recommendation_text_hi: string;
   recommendation_text_en: string;
   products?: RecommendedProduct[];
