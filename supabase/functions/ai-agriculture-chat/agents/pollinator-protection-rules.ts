@@ -43,8 +43,10 @@ export interface PollinatorEnforcementResult {
   time_restricted_chemicals: PollinatorCheckResult[];
   safe_alternatives: string[];
   general_advice: string;
-  general_advice_mr: string;
-  general_advice_hi: string;
+  /** @deprecated Use general_advice — LLM translates at runtime */
+  general_advice_mr?: string;
+  /** @deprecated Use general_advice — LLM translates at runtime */
+  general_advice_hi?: string;
 }
 
 export interface ChemicalPollinatorProfile {
