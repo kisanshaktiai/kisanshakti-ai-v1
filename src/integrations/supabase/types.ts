@@ -10385,6 +10385,45 @@ export type Database = {
           },
         ]
       }
+      intent_observation_mapping_backup_2026_03: {
+        Row: {
+          confidence_rank: number | null
+          created_at: string | null
+          crop_code: string | null
+          das_max: number | null
+          das_min: number | null
+          growth_stage: string | null
+          id: string | null
+          intent_code: string | null
+          is_active: boolean | null
+          observation_code: string | null
+        }
+        Insert: {
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+        }
+        Update: {
+          confidence_rank?: number | null
+          created_at?: string | null
+          crop_code?: string | null
+          das_max?: number | null
+          das_min?: number | null
+          growth_stage?: string | null
+          id?: string | null
+          intent_code?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+        }
+        Relationships: []
+      }
       intent_translations: {
         Row: {
           created_at: string | null
@@ -14325,6 +14364,54 @@ export type Database = {
         }
         Relationships: []
       }
+      observation_intent_master_backup_2026_03: {
+        Row: {
+          allowed_observation_groups: string[] | null
+          clarification_mode: string | null
+          created_at: string | null
+          intent_category: string | null
+          intent_code: string | null
+          intent_description: string | null
+          is_active: boolean | null
+          is_biological: boolean | null
+          max_clarification_rounds: number | null
+          requires_crop_context: boolean | null
+          requires_stage_context: boolean | null
+          routing_target: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          allowed_observation_groups?: string[] | null
+          clarification_mode?: string | null
+          created_at?: string | null
+          intent_category?: string | null
+          intent_code?: string | null
+          intent_description?: string | null
+          is_active?: boolean | null
+          is_biological?: boolean | null
+          max_clarification_rounds?: number | null
+          requires_crop_context?: boolean | null
+          requires_stage_context?: boolean | null
+          routing_target?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          allowed_observation_groups?: string[] | null
+          clarification_mode?: string | null
+          created_at?: string | null
+          intent_category?: string | null
+          intent_code?: string | null
+          intent_description?: string | null
+          is_active?: boolean | null
+          is_biological?: boolean | null
+          max_clarification_rounds?: number | null
+          requires_crop_context?: boolean | null
+          requires_stage_context?: boolean | null
+          routing_target?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       observation_master: {
         Row: {
           affected_plant_part: string | null
@@ -14362,6 +14449,90 @@ export type Database = {
           is_farmer_observable?: boolean | null
           observation_category?: string | null
           observation_code?: string
+          symptom_category?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      observation_master_backup_2026_03: {
+        Row: {
+          affected_plant_part: string | null
+          canonical_group: string | null
+          created_at: string | null
+          description: string | null
+          is_active: boolean | null
+          is_diagnostic: boolean | null
+          is_farmer_observable: boolean | null
+          observation_category: string | null
+          observation_code: string | null
+          symptom_category: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          affected_plant_part?: string | null
+          canonical_group?: string | null
+          created_at?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_category?: string | null
+          observation_code?: string | null
+          symptom_category?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          affected_plant_part?: string | null
+          canonical_group?: string | null
+          created_at?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_category?: string | null
+          observation_code?: string | null
+          symptom_category?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      observation_master_backup_20260311: {
+        Row: {
+          affected_plant_part: string | null
+          canonical_group: string | null
+          created_at: string | null
+          description: string | null
+          is_active: boolean | null
+          is_diagnostic: boolean | null
+          is_farmer_observable: boolean | null
+          observation_category: string | null
+          observation_code: string | null
+          symptom_category: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          affected_plant_part?: string | null
+          canonical_group?: string | null
+          created_at?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_category?: string | null
+          observation_code?: string | null
+          symptom_category?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          affected_plant_part?: string | null
+          canonical_group?: string | null
+          created_at?: string | null
+          description?: string | null
+          is_active?: boolean | null
+          is_diagnostic?: boolean | null
+          is_farmer_observable?: boolean | null
+          observation_category?: string | null
+          observation_code?: string | null
           symptom_category?: string | null
           updated_at?: string | null
         }
