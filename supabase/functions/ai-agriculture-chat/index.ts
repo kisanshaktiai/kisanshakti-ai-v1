@@ -2261,12 +2261,7 @@ function generateValidationFailureFallback(
     parts.push('🌾 Hello farmer friend!');
     
     // Header
-    const headers: Record<string, string> = {
-      mr: '📌 **आता काय करावे:**',
-      hi: '📌 **अभी क्या करें:**',
-      en: '📌 **What to do now:**'
-    };
-    parts.push(headers[lang]);
+    parts.push('📌 **What to do now:**');
     
     // Extract actions - with STRICT validation to prevent placeholder content
     const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
