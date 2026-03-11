@@ -6136,17 +6136,11 @@ export class AIAgentOrchestrator {
         // Complete audit trail
         await auditLogger.completeTurn(Date.now() - startTime);
         
-        // FIX 2 (v6.1): Wire symptomKeys + isEmergency into IMMEDIATE return path
-        const EMERGENCY_OBS_CODES = new Set([
-          'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
-          'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-          'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-        ]);
+        // Wire symptomKeys + isEmergency into IMMEDIATE return path
         const obsArray = Array.from(allObservationsForPreAuth || []);
         const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
         
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
-        // so the formatter can read them from decision_output.metadata directly
         decisionOutput.symptom_keys = obsArray;
         if (!decisionOutput.metadata) decisionOutput.metadata = {};
         decisionOutput.metadata.has_symptoms = obsArray.length > 0;
@@ -6154,9 +6148,127 @@ export class AIAgentOrchestrator {
         decisionOutput.metadata.decision_confidence = layeredRuleResult?.primary_decision?.weighted_confidence || 0;
         decisionOutput.metadata.isEmergency = isEmergencyImmediate;
         
-        // FIX 3 (v6.1): Wire matched_responses into IMMEDIATE return path
+        // Wire matched_responses into IMMEDIATE return path
         if (!decisionOutput.matched_responses && layeredRuleResult?.matched_responses?.length) {
           decisionOutput.matched_responses = layeredRuleResult.matched_responses;
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════
+        // P0 SAFETY FIX: Run PHI + Pollinator + SafetyGuardian checks
+        // BEFORE returning — prevents unsafe chemicals from reaching farmer
+        // ═══════════════════════════════════════════════════════════════════
+        let immediateSafetyStatus = 'APPROVED';
+        
+        // PHI Enforcement
+        const immediateChemicals = this.extractChemicalRecommendations(decisionOutput);
+        if (immediateChemicals.length > 0 && landContext?.expected_harvest_date) {
+          try {
+            const daysToHarvest = this.calculateDaysToHarvest(landContext.expected_harvest_date);
+            const phiResult = enforcePHI(
+              immediateChemicals,
+              daysToHarvest,
+              landContext.current_crop?.toUpperCase(),
+              'DOMESTIC',
+              false
+            );
+            if (phiResult.blocked_chemicals.length > 0) {
+              console.warn(`   ⚠️ [INVARIANT] PHI VIOLATION: ${phiResult.blocked_chemicals.map(c => c.chemical_name).join(', ')}`);
+              decisionOutput = this.applyPHIBlocking(decisionOutput, phiResult);
+              immediateSafetyStatus = 'PHI_MODIFIED';
+              agentsUsed.push('PHI_GUARDIAN');
+            }
+          } catch (phiErr) {
+            console.error('   ❌ [INVARIANT] PHI check failed (non-blocking):', phiErr);
+          }
+        }
+        
+        // Pollinator Protection
+        const immediateCurrentHour = new Date().getHours();
+        const immediateIsFlowering = landContext?.current_crop && landContext?.days_since_sowing
+          ? isFloweringStage(landContext.current_crop.toUpperCase(), landContext.days_since_sowing)
+          : false;
+        if (immediateChemicals.length > 0 && immediateIsFlowering) {
+          try {
+            const pollinatorResult = enforcePollinatorProtection(
+              immediateChemicals,
+              landContext.current_crop.toUpperCase(),
+              landContext.days_since_sowing,
+              immediateCurrentHour
+            );
+            if (pollinatorResult.blocked_chemicals.length > 0) {
+              console.warn(`   ⚠️ [INVARIANT] POLLINATOR SAFETY: ${pollinatorResult.blocked_chemicals.map(c => c.chemical_name).join(', ')} BLOCKED`);
+              decisionOutput = this.applyPollinatorBlocking(decisionOutput, pollinatorResult);
+              immediateSafetyStatus = 'POLLINATOR_MODIFIED';
+              agentsUsed.push('POLLINATOR_PROTECTION');
+            }
+          } catch (pollinatorErr) {
+            console.error('   ❌ [INVARIANT] Pollinator check failed (non-blocking):', pollinatorErr);
+          }
+        }
+        
+        // SafetyGuardian verification
+        try {
+          const immediateSafetyVerification = await this.safetyGuardian.verifySafety(
+            decisionOutput,
+            {
+              original_input: farmerMessage,
+              session_id: sessionId,
+              farmer_id: farmerId,
+              crop_stage: contextState?.crop_context?.stage,
+              expected_harvest_date: contextState?.crop_context?.expected_harvest_date,
+              previous_failed_treatments: 0,
+              severity: fusedIntelligence?.unified_context?.problem?.severity
+            },
+            layeredRuleResult?.primary_decision?.weighted_confidence || 0.7
+          );
+          agentsUsed.push('Safety');
+          
+          if (immediateSafetyVerification.emergency_protocol?.emergency_detected) {
+            return {
+              type: 'ESCALATION_REQUIRED',
+              session_id: sessionId,
+              escalation: {
+                level: 'EMERGENCY',
+                expert_type: immediateSafetyVerification.emergency_protocol.expert_escalation.expert_type || 'SAFETY_OFFICER',
+                sla_hours: (immediateSafetyVerification.emergency_protocol.expert_escalation.sla_minutes || 30) / 60,
+                ...immediateSafetyVerification.emergency_protocol.farmer_safety_instructions
+              },
+              metadata: {
+                confidence: 0,
+                safety_status: 'EMERGENCY',
+                rules_applied: 0,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed
+              }
+            };
+          }
+          
+          if (!immediateSafetyVerification.approved) {
+            return {
+              type: 'SAFETY_BLOCKED',
+              session_id: sessionId,
+              blocked_reason: immediateSafetyVerification.blocked_decision ? {
+                reason_en: immediateSafetyVerification.blocked_decision.reason_en
+              } : undefined,
+              alternatives: immediateSafetyVerification.safety_check.safer_alternatives,
+              metadata: {
+                confidence: 0,
+                safety_status: 'BLOCKED',
+                rules_applied: decisionOutput.rules_applied?.length || 0,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed
+              }
+            };
+          }
+          
+          immediateSafetyStatus = immediateSafetyVerification.safety_check.overall_safety_status || immediateSafetyStatus;
+          
+          // Use safety-modified decision if available
+          if (immediateSafetyVerification.modified_decision) {
+            decisionOutput = immediateSafetyVerification.modified_decision;
+          }
+        } catch (safetyErr) {
+          console.error('   ❌ [INVARIANT] SafetyGuardian failed (non-blocking):', safetyErr);
         }
         
         // Generate farmer communication using the working communicationGenerator pattern
@@ -6183,7 +6295,7 @@ export class AIAgentOrchestrator {
             confidence: layeredRuleResult?.primary_decision?.weighted_confidence ||
                         layeredRuleResult?.primary_decision?.confidence_score || 
                         decisionOutput.confidence_score || 0.7,
-            safety_status: 'PENDING_VALIDATION',
+            safety_status: immediateSafetyStatus,
             rules_applied: decisionOutput.rules_applied?.length || 0,
             processing_time_ms: Date.now() - startTime,
             agents_used: agentsUsed,
