@@ -1922,12 +1922,17 @@ async function forceTranslateResponse(content: string, targetLang: string): Prom
     const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
     const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
     
-    const translationPrompt = `Translate the following agricultural advisory to ${langName}. 
+    const translationPrompt = `You are a village agriculture officer rewriting this advisory in natural rural ${langName}.
+Speak like you are in the farmer's field explaining advice face-to-face.
+Use local farming vocabulary, not textbook language.
+Use common village words and farming terms that farmers actually use.
+Agricultural symptom names must use the LOCAL FARMING TERM, not a literal English translation.
+Avoid literal translation of English sentences — explain in local words.
 Keep all numbers, product names, dosages, emojis, and formatting exactly as-is.
-Translate ONLY the English text portions to natural ${langName}.
 Do NOT add any new information. Do NOT change dosages or product names.
+You are explaining, not translating.
 
-Text to translate:
+Text to rewrite in natural rural ${langName}:
 ${content}`;
 
     if (OPENAI_API_KEY) {
@@ -1940,7 +1945,7 @@ ${content}`;
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
-            { role: 'system', content: `You are a translator. Translate to ${langName}. Keep numbers, product names, dosages unchanged. Output ONLY the translated text.` },
+            { role: 'system', content: `You are a village agriculture officer with 20+ years of field experience. Rewrite the advisory in natural rural ${langName} as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.` },
             { role: 'user', content: translationPrompt }
           ],
           max_tokens: 2000, temperature: 0.3

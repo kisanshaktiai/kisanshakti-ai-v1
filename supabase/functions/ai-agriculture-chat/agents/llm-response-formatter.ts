@@ -30,7 +30,7 @@
 
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
-import { getRuralLanguageRules, replaceFormalsWithRural } from '../rural-language-dictionary.ts';
+import { getRuralLanguageRules, replaceFormalsWithRural, getVillageOfficerPersona } from '../rural-language-dictionary.ts';
 import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
 import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
 import {
@@ -1148,6 +1148,7 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
   const langName = LANG_NAMES[input.language] || 'English';
   
   const ruralRules = getRuralLanguageRules(input.language);
+  const villageOfficerPersona = getVillageOfficerPersona();
   
   // Get crop stage constraints
   const cropStageConstraints = getCropStageConstraints(input);
@@ -1349,8 +1350,9 @@ CRITICAL RULES:
 `;
   }
 
-  return `You are a LANGUAGE ADAPTER for an agricultural advisory system for rural Indian farmers.
-You are a TRANSLATOR/FORMATTER ONLY. The SYMBOLIC DECISION BRAIN has already made all decisions.
+  return `${villageOfficerPersona}
+
+You are explaining a decision ALREADY MADE by the Symbolic Decision Brain. You do NOT make decisions.
 ${cropLockBlock}
 ═══ THE SUPREME LAW ═══
 Every product name, dosage, timing, and treatment in your response MUST come from the data below.
