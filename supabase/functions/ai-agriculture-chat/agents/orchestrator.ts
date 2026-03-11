@@ -6859,7 +6859,7 @@ export class AIAgentOrchestrator {
       // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
       // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
-      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES_MAIN.has(code));
+      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
       
       return {
         type: 'DECISION_PROVIDED',
