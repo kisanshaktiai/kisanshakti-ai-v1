@@ -742,13 +742,24 @@ function updateMetrics(
   supabase: any
 ): void {
   try {
+    // Use RPC or raw update for atomic increment instead of upsert overwrite
     if (result.best_hypothesis && !result.needs_clarification) {
-      supabase.from('hypothesis_metrics').upsert({
-        hypothesis_id: result.best_hypothesis.hypothesis_id,
-        times_triggered: 1, // Will be incremented server-side with proper logic later
-        avg_confidence: result.best_hypothesis.weighted_score,
-        last_triggered: new Date().toISOString()
-      }, { onConflict: 'hypothesis_id' }).then(() => {}).catch(() => {});
+      const hId = result.best_hypothesis.hypothesis_id;
+      const conf = result.best_hypothesis.weighted_score;
+      // Fire-and-forget: update metrics with proper increment
+      supabase.rpc('increment_hypothesis_metric', {
+        p_hypothesis_id: hId,
+        p_field: 'times_triggered',
+        p_confidence: conf
+      }).then(() => {}).catch(() => {
+        // Fallback: simple upsert if RPC doesn't exist (non-blocking)
+        supabase.from('hypothesis_metrics').upsert({
+          hypothesis_id: hId,
+          times_triggered: 1,
+          avg_confidence: conf,
+          last_triggered: new Date().toISOString()
+        }, { onConflict: 'hypothesis_id' }).then(() => {}).catch(() => {});
+      });
     }
 
     for (const e of result.eliminated_hypotheses) {
