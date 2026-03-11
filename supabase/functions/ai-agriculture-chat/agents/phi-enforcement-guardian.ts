@@ -466,8 +466,7 @@ export function checkPHISafety(
   if (!profile) {
     result.is_safe = false;
     result.block_reason = `Unknown chemical - cannot verify PHI safety. Consult agricultural officer.`;
-    result.block_reason_mr = `अज्ञात रसायन - PHI सुरक्षितता तपासता येत नाही. कृषी अधिकाऱ्यांचा सल्ला घ्या.`;
-    result.block_reason_hi = `अज्ञात रसायन - PHI सुरक्षा जाँच नहीं हो सकती। कृषि अधिकारी से परामर्श करें।`;
+    return result;
     return result;
   }
   
