@@ -388,11 +388,12 @@ class SyncService {
               resolution: 'server_win',
             });
           } else {
-            // Update existing schedule with available fields
+            // Update existing schedule with ALL fields
+            const { lastModified, syncStatus, ...uploadData } = schedule;
             await supabase
               .from('crop_schedules')
               .update({
-                generation_params: { tasks: schedule.tasks },
+                ...uploadData,
                 updated_at: new Date(schedule.lastModified).toISOString(),
               })
               .eq('id', schedule.id);
@@ -400,17 +401,13 @@ class SyncService {
             syncedIds.push(schedule.id);
           }
         } else {
-          // Insert new schedule - using actual crop_schedules table structure
+          // Insert new schedule with ALL fields
+          const { lastModified, syncStatus, ...uploadData } = schedule;
           await supabase
             .from('crop_schedules')
             .insert({
-              farmer_id: schedule.land_id, // Using land_id as farmer reference
-              land_id: schedule.land_id,
+              ...uploadData,
               tenant_id: tenantId || '',
-              crop_name: schedule.crop_id,
-              sowing_date: new Date().toISOString(),
-              generation_params: { tasks: schedule.tasks },
-              created_at: new Date(schedule.lastModified).toISOString(),
             });
           
           syncedIds.push(schedule.id);
