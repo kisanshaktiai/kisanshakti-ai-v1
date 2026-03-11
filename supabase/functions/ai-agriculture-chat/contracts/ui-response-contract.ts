@@ -332,42 +332,15 @@ export function buildUIResponse(input: UIResponseBuilderInput): UIResponseContra
   } = input;
   
   // Default messages by mode (crash-proof)
-  const MODE_DEFAULTS: Record<UIResponseMode, Record<string, string>> = {
-    OBSERVATION: {
-      mr: '👀 पिकाचे निरीक्षण करत रहा.',
-      hi: '👀 फसल की निगरानी जारी रखें।',
-      en: '👀 Continue monitoring your crop.'
-    },
-    CLARIFICATION_REQUIRED: {
-      mr: '❓ कृपया एक पर्याय निवडा:',
-      hi: '❓ कृपया एक विकल्प चुनें:',
-      en: '❓ Please select an option:'
-    },
-    PHOTO_REQUIRED: {
-      mr: '📷 कृपया प्रभावित पिकाचा फोटो पाठवा.',
-      hi: '📷 कृपया प्रभावित फसल का फोटो भेजें।',
-      en: '📷 Please send a photo of the affected crop.'
-    },
-    MONITORING_ADVISED: {
-      mr: '✅ सध्या पीक चांगले आहे. निरीक्षण चालू ठेवा.',
-      hi: '✅ अभी फसल ठीक है। निगरानी जारी रखें।',
-      en: '✅ Your crop is healthy. Continue monitoring.'
-    },
-    TREATMENT_ALLOWED: {
-      mr: '💊 शिफारस:',
-      hi: '💊 सिफारिश:',
-      en: '💊 Recommendation:'
-    },
-    NO_ACTION_NEEDED: {
-      mr: '✅ कोणतीही कृती आवश्यक नाही.',
-      hi: '✅ कोई कार्रवाई आवश्यक नहीं।',
-      en: '✅ No action needed.'
-    },
-    ERROR: {
-      mr: '⚠️ काहीतरी चुकले. कृपया पुन्हा प्रयत्न करा.',
-      hi: '⚠️ कुछ गलत हुआ। कृपया फिर से प्रयास करें।',
-      en: '⚠️ Something went wrong. Please try again.'
-    }
+  // English-only defaults — LLM narration layer translates at runtime
+  const MODE_DEFAULTS: Record<UIResponseMode, string> = {
+    OBSERVATION: '👀 Continue monitoring your crop.',
+    CLARIFICATION_REQUIRED: '❓ Please select an option:',
+    PHOTO_REQUIRED: '📷 Please send a photo of the affected crop.',
+    MONITORING_ADVISED: '✅ Your crop is healthy. Continue monitoring.',
+    TREATMENT_ALLOWED: '💊 Recommendation:',
+    NO_ACTION_NEEDED: '✅ No action needed.',
+    ERROR: '⚠️ Something went wrong. Please try again.'
   };
   
   // Build primary message with fallback
