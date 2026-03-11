@@ -16,6 +16,7 @@ export const CROP_VOCABULARY_VERSION = '1.0.0';
 export interface VocabEntry {
   phrase_pattern: string;
   semantic_hint: string;
+  recommended_intent_bias?: string;
   recommended_observation_bias?: string;
 }
 
