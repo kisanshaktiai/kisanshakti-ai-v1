@@ -724,32 +724,30 @@ export class DiagnosticFlowController {
   /**
    * Get alternatives based on authority domain.
    */
+  // English-only alternatives — LLM narration layer translates at runtime
   private getAuthorityAlternatives(decision: AuthorityDecision): string[] {
     switch (decision.authority) {
       case DecisionAuthority.LAND:
         return [
-          'Soil testing / माती परीक्षण',
-          'Gypsum application for salinity / लवण निवारणासाठी जिप्सम',
-          'Drainage improvement / निचरा सुधारणा',
-          'Consult KVK soil specialist / KVK माती तज्ञाशी संपर्क'
+          'Soil testing',
+          'Gypsum application for salinity',
+          'Drainage improvement',
+          'Consult KVK soil specialist'
         ];
-      
       case DecisionAuthority.CLIMATE:
         return [
-          'Protective irrigation / संरक्षणात्मक सिंचन',
-          'Mulching for temperature control / तापमान नियंत्रणासाठी आच्छादन',
-          'Wait for weather improvement / हवामान सुधारण्याची प्रतीक्षा करा'
+          'Protective irrigation',
+          'Mulching for temperature control',
+          'Wait for weather improvement'
         ];
-      
       case DecisionAuthority.SYSTEM:
         return [
-          'Repair irrigation system / सिंचन प्रणाली दुरुस्त करा',
-          'Check pump and motor / पंप आणि मोटर तपासा',
-          'Manual watering if critical / गरज असल्यास हाताने पाणी द्या'
+          'Repair irrigation system',
+          'Check pump and motor',
+          'Manual watering if critical'
         ];
-      
       default:
-        return ['Contact agriculture officer / कृषी अधिकाऱ्याशी संपर्क'];
+        return ['Contact agriculture officer'];
     }
   }
   

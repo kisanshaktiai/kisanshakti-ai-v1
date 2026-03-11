@@ -646,7 +646,7 @@ export function createUnknownDiagnosisResponse(
   return {
     mode: 'DIAGNOSIS_FIRST',
     source: 'DECISION_RULES',
-    question_text: unknownMessages[language] || unknownMessages['en'],
+    question_text: questionText,
     diagnoses,
     photo_option: photoOption,
     crop_code,

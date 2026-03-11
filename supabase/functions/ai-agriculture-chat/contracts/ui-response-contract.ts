@@ -344,7 +344,7 @@ export function buildUIResponse(input: UIResponseBuilderInput): UIResponseContra
   };
   
   // Build primary message with fallback
-  const defaultMessage = MODE_DEFAULTS[response_mode]?.[language] || MODE_DEFAULTS.OBSERVATION[language];
+  const defaultMessage = MODE_DEFAULTS[response_mode] || MODE_DEFAULTS.OBSERVATION;
   const primaryMessage: LocalizableText = {
     i18n_key: primary_i18n_key,
     fallback_text: primary_text || defaultMessage
