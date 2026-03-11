@@ -342,17 +342,17 @@ export function generateRuleRequiredQuestions(
   if (!entities.crop_stage && (intent === 'PEST_PROBLEM' || intent === 'DISEASE_PROBLEM')) {
     questions.push({
       question_id: 'Q_CROP_STAGE',
-      question_text_mr: 'तुमच्या पिकाची सध्याची अवस्था काय आहे?',
-      question_text_hi: 'आपकी फसल की वर्तमान अवस्था क्या है?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'What is the current stage of your crop?',
       question_type: 'CROP_STAGE',
       priority: 'HIGH',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: 'SEEDLING', label_mr: 'रोपे', label_hi: 'पौधे', label_en: 'Seedling' },
-        { value: 'VEGETATIVE', label_mr: 'वाढीचा काळ', label_hi: 'बढ़ने का समय', label_en: 'Vegetative' },
-        { value: 'FLOWERING', label_mr: 'फुलं आली', label_hi: 'फूल आए', label_en: 'Flowering' },
-        { value: 'MATURITY', label_mr: 'काढणीला आलं', label_hi: 'कटाई के लिए तैयार', label_en: 'Maturity' }
+        { value: 'SEEDLING', label_mr: '', label_hi: '', label_en: 'Seedling' },
+        { value: 'VEGETATIVE', label_mr: '', label_hi: '', label_en: 'Vegetative' },
+        { value: 'FLOWERING', label_mr: '', label_hi: '', label_en: 'Flowering' },
+        { value: 'MATURITY', label_mr: '', label_hi: '', label_en: 'Maturity' }
       ],
       affects_rule_selection: true,
       target_entity: 'crop_stage'
