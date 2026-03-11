@@ -2852,12 +2852,7 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   }
   
   if (decision.status === 'WEATHER_DELAYED') {
-    const delayMessages: Record<string, string> = {
-      mr: '⏱️ **फवारणी पुढे ढकला** - हवामान सुधारल्यावर फवारणी करा. सध्या पिकाचे निरीक्षण सुरू ठेवा.',
-      hi: '⏱️ **छिड़काव टालें** - मौसम साफ होने पर छिड़काव करें। अभी फसल की निगरानी जारी रखें।',
-      en: '⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.'
-    };
-    parts.push(delayMessages[lang]);
+    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
     return parts.join('\n\n');
   }
   
