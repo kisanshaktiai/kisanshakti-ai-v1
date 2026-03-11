@@ -919,6 +919,107 @@ class SyncService {
         console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
       }
       
+      // Download crops reference data
+      console.log('📥 [Sync] Fetching crops reference data...');
+      try {
+        const { data: crops, error: cropsError } = await client
+          .from('crops')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true });
+
+        if (cropsError) {
+          console.warn('⚠️ [Sync] Failed to fetch crops:', cropsError);
+        } else if (crops && crops.length > 0) {
+          console.log(`✅ [Sync] Fetched ${crops.length} crops from server`);
+          const db = (localDB as any).db;
+          if (db) {
+            const tx = db.transaction('crops', 'readwrite');
+            const store = tx.objectStore('crops');
+            await store.clear();
+            for (const c of crops) {
+              await store.put({
+                id: c.id,
+                value: c.value,
+                label: c.label,
+                label_local: c.label_local || null,
+                label_hi: c.label_hi || null,
+                label_mr: c.label_mr || null,
+                local_name: c.local_name || null,
+                icon: c.icon || '🌾',
+                description: c.description || null,
+                duration_days: c.duration_days || null,
+                season: c.season || null,
+                crop_group_id: c.crop_group_id || null,
+                display_order: c.display_order || 0,
+                is_active: c.is_active,
+                is_popular: c.is_popular || null,
+                metadata: c.metadata || null,
+                created_at: c.created_at || null,
+                updated_at: c.updated_at || new Date().toISOString(),
+                lastModified: new Date(c.updated_at || c.created_at || Date.now()).getTime(),
+                syncStatus: 'synced' as const,
+              });
+            }
+            await tx.done;
+            console.log(`✅ [Sync] Saved ${crops.length} crops to localDB`);
+          }
+        }
+      } catch (cropError) {
+        console.warn('⚠️ [Sync] Crops download failed (non-critical):', cropError);
+      }
+
+      // Download farmer alerts
+      console.log('📥 [Sync] Fetching farmer alerts...');
+      try {
+        const { data: alerts, error: alertsError } = await client
+          .from('farmer_alerts')
+          .select('*')
+          .eq('tenant_id', tenant)
+          .eq('farmer_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (alertsError) {
+          console.warn('⚠️ [Sync] Failed to fetch alerts:', alertsError);
+        } else if (alerts && alerts.length > 0) {
+          console.log(`✅ [Sync] Fetched ${alerts.length} alerts from server`);
+          const db = (localDB as any).db;
+          if (db) {
+            const tx = db.transaction('farmerAlerts', 'readwrite');
+            const store = tx.objectStore('farmerAlerts');
+            await store.clear();
+            for (const a of alerts) {
+              await store.put({
+                id: a.id,
+                tenant_id: a.tenant_id,
+                farmer_id: a.farmer_id,
+                land_id: a.land_id,
+                title: a.title,
+                message: a.message,
+                alert_type: a.alert_type,
+                priority: a.priority,
+                ai_reasoning: a.ai_reasoning || null,
+                action_required: a.action_required || null,
+                data_source: a.data_source || null,
+                schedule_id: a.schedule_id || null,
+                is_read: a.is_read || false,
+                is_actioned: a.is_actioned || false,
+                actioned_at: a.actioned_at || null,
+                expires_at: a.expires_at || null,
+                created_at: a.created_at || null,
+                lastModified: new Date(a.created_at || Date.now()).getTime(),
+                syncStatus: 'synced' as const,
+              });
+            }
+            await tx.done;
+            console.log(`✅ [Sync] Saved ${alerts.length} alerts to localDB`);
+          }
+        }
+      } catch (alertError) {
+        console.warn('⚠️ [Sync] Alerts download failed (non-critical):', alertError);
+      }
+
       // VERIFY data was actually saved correctly
       const verifyLands = await localDB.getLands(undefined, userId);
       const verifySchedules = await localDB.getAllSchedules(userId);
