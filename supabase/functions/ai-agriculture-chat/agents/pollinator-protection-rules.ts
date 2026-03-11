@@ -23,10 +23,12 @@ export interface PollinatorCheckResult {
   chemical_name: string;
   risk_level: 'NONE' | 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
   block_reason?: string;
+  /** @deprecated Use block_reason — LLM translates at runtime */
   block_reason_mr?: string;
+  /** @deprecated Use block_reason — LLM translates at runtime */
   block_reason_hi?: string;
   time_restriction?: {
-    allowed_hours: string;  // e.g., "After 7 PM"
+    allowed_hours: string;
     reason: string;
   };
   alternative_suggestions: string[];
