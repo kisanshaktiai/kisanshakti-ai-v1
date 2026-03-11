@@ -2875,12 +2875,7 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   
   // Primary recommendation as numbered list
   if (primary) {
-    const actionHeaders: Record<string, string> = {
-      mr: '📌 **शिफारसी:**',
-      hi: '📌 **सिफारिशें:**',
-      en: '📌 **Recommendations:**'
-    };
-    parts.push(actionHeaders[lang]);
+    parts.push('📌 **Recommendations:**');
     
     let recNumber = 1;
     const recParts: string[] = [];
