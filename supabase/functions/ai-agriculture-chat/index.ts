@@ -2963,12 +2963,7 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
   }
   
   // Closing
-  const closings: Record<string, string> = {
-    mr: '\n✅ शुभेच्छा! 🙏',
-    hi: '\n✅ शुभकामनाएं! 🙏',
-    en: '\n✅ Best wishes! 🙏'
-  };
-  parts.push(closings[lang]);
+  parts.push('\n✅ Best wishes! 🙏');
   
   return parts.join('\n\n');
 }

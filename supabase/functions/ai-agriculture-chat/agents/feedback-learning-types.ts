@@ -310,12 +310,14 @@ export interface FarmerFeedback {
 
 // Constants
 export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
+  // All text fields are English-only — LLM narration layer handles runtime localization
+  // @deprecated text_mr/text_hi/label_mr/label_hi — kept as empty strings for backward compat
   3: [
     {
       id: 'improvement_visible',
       day: 3,
-      text_mr: 'फवारणीनंतर माशी/रोग कमी झाला का?',
-      text_hi: 'छिड़काव के बाद कीड़े/रोग कम हुए?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'Did pests/disease reduce after treatment?',
       type: 'YES_NO',
       required: true
@@ -323,8 +325,8 @@ export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
     {
       id: 'satisfaction_3day',
       day: 3,
-      text_mr: 'सल्ल्यावर किती समाधानी आहात?',
-      text_hi: 'सलाह से कितने संतुष्ट हैं?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'How satisfied are you with the advice?',
       type: 'RATING_1_TO_5',
       required: true
@@ -332,8 +334,8 @@ export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
     {
       id: 'comments_3day',
       day: 3,
-      text_mr: 'काही अडचण आली का?',
-      text_hi: 'कोई समस्या आई?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'Any issues faced?',
       type: 'FREE_TEXT',
       required: false
@@ -343,8 +345,8 @@ export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
     {
       id: 'problem_resolved',
       day: 7,
-      text_mr: 'समस्या पूर्णपणे सुटली का?',
-      text_hi: 'समस्या पूरी तरह हल हुई?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'Is the problem fully resolved?',
       type: 'YES_NO',
       required: true
@@ -352,8 +354,8 @@ export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
     {
       id: 'additional_treatment',
       day: 7,
-      text_mr: 'आणखी उपचार लागले का?',
-      text_hi: 'और उपचार की जरूरत पड़ी?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'Did you need additional treatment?',
       type: 'YES_NO',
       required: true
@@ -361,8 +363,8 @@ export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
     {
       id: 'current_photo',
       day: 7,
-      text_mr: 'सध्याचा फोटो पाठवा',
-      text_hi: 'वर्तमान फोटो भेजें',
+      text_mr: '',
+      text_hi: '',
       text_en: 'Send current photo',
       type: 'PHOTO_UPLOAD',
       required: false
@@ -372,22 +374,22 @@ export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
     {
       id: 'final_outcome',
       day: 14,
-      text_mr: 'एकूण परिणाम कसा होता?',
-      text_hi: 'कुल मिलाकर परिणाम कैसा रहा?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'What was the overall outcome?',
       type: 'MULTIPLE_CHOICE',
       options: [
-        { value: 'SUCCESS', label_mr: 'यशस्वी', label_hi: 'सफल', label_en: 'Successful' },
-        { value: 'PARTIAL_SUCCESS', label_mr: 'अंशतः यशस्वी', label_hi: 'आंशिक सफल', label_en: 'Partially Successful' },
-        { value: 'FAILURE', label_mr: 'अयशस्वी', label_hi: 'असफल', label_en: 'Failed' }
+        { value: 'SUCCESS', label_mr: '', label_hi: '', label_en: 'Successful' },
+        { value: 'PARTIAL_SUCCESS', label_mr: '', label_hi: '', label_en: 'Partially Successful' },
+        { value: 'FAILURE', label_mr: '', label_hi: '', label_en: 'Failed' }
       ],
       required: true
     },
     {
       id: 'would_recommend',
       day: 14,
-      text_mr: 'हा सल्ला इतरांना सांगाल का?',
-      text_hi: 'यह सलाह दूसरों को बताएंगे?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'Would you recommend this advice?',
       type: 'YES_NO',
       required: true
@@ -395,15 +397,15 @@ export const FOLLOW_UP_QUESTIONS: Record<number, FollowUpQuestion[]> = {
     {
       id: 'yield_impact',
       day: 14,
-      text_mr: 'उत्पादनावर काय परिणाम झाला?',
-      text_hi: 'उपज पर क्या असर हुआ?',
+      text_mr: '',
+      text_hi: '',
       text_en: 'What was the impact on yield?',
       type: 'MULTIPLE_CHOICE',
       options: [
-        { value: 'SAVED_FULL', label_mr: 'पूर्ण वाचले', label_hi: 'पूरा बचा', label_en: 'Fully Saved' },
-        { value: 'SAVED_PARTIAL', label_mr: 'अंशतः वाचले', label_hi: 'आंशिक बचा', label_en: 'Partially Saved' },
-        { value: 'NO_IMPACT', label_mr: 'फरक नाही', label_hi: 'कोई फर्क नहीं', label_en: 'No Impact' },
-        { value: 'LOSS', label_mr: 'नुकसान झाले', label_hi: 'नुकसान हुआ', label_en: 'Loss Occurred' }
+        { value: 'SAVED_FULL', label_mr: '', label_hi: '', label_en: 'Fully Saved' },
+        { value: 'SAVED_PARTIAL', label_mr: '', label_hi: '', label_en: 'Partially Saved' },
+        { value: 'NO_IMPACT', label_mr: '', label_hi: '', label_en: 'No Impact' },
+        { value: 'LOSS', label_mr: '', label_hi: '', label_en: 'Loss Occurred' }
       ],
       required: true
     }
