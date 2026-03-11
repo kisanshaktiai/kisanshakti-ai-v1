@@ -234,28 +234,12 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
   'SUGARCANE': {
     default: {
       [ClarificationScope.IDENTIFY_LOCATION]: {
-        mr: {
-          question: '🎋 उसाच्या कोणत्या भागावर समस्या दिसते?',
-          options: ['पान', 'खोड / सुरळी', 'मूळ / बुडखा', 'संपूर्ण झाड']
-        },
-        hi: {
-          question: '🎋 गन्ने के किस हिस्से पर समस्या है?',
-          options: ['पत्ते', 'तना / गड्डी', 'जड़ / गांठ', 'पूरा पौधा']
-        },
         en: {
           question: '🎋 Which part of the sugarcane is affected?',
           options: ['Leaves', 'Stem / Whorl', 'Root / Sett', 'Whole plant']
         }
       },
       [ClarificationScope.REFINE_OBSERVATION]: {
-        mr: {
-          question: '🔍 उसामध्ये नेमके काय दिसते?',
-          options: ['सुरळी वाळली (Dead Heart)', 'खोडात छिद्र', 'पाने पिवळी', 'पाने लाल झाली', 'खोड तुटते']
-        },
-        hi: {
-          question: '🔍 गन्ने में क्या दिख रहा है?',
-          options: ['गोभ सूख गई (Dead Heart)', 'तने में छेद', 'पत्ते पीले', 'पत्ते लाल', 'तना टूट रहा']
-        },
         en: {
           question: '🔍 What exactly do you see in sugarcane?',
           options: ['Dead Heart (dried whorl)', 'Holes in stem', 'Yellow leaves', 'Red leaves', 'Stem breaking']
@@ -265,55 +249,18 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
     stages: {
       'GERMINATION': {
         [ClarificationScope.REFINE_OBSERVATION]: {
-          mr: {
-            question: '🌱 उगवण अवस्थेतील उसात नेमके काय दिसते?',
-            options: ['बेणे काळे/मऊ दिसते', 'मातीवर पांढरे डाग', 'उगवण कमी/असमान', 'पाने पिवळी होत आहेत', 'काही झाडे पूर्ण मेली']
-          },
-          hi: {
-            question: '🌱 अंकुरण अवस्था में गन्ने में क्या दिख रहा है?',
-            options: ['बीज काला/नरम दिखता है', 'मिट्टी पर सफेद दाग', 'अंकुरण कम/असमान', 'पत्ते पीले हो रहे हैं', 'कुछ पौधे पूरे मर गए']
-          },
           en: {
             question: '🌱 What do you see in sugarcane at germination stage?',
             options: ['Sett looks black/soft', 'White patches on soil', 'Poor/uneven germination', 'Leaves yellowing', 'Some plants completely dead']
           }
         },
         [ClarificationScope.IDENTIFY_LOCATION]: {
-          mr: {
-            question: '🎋 उगवण अवस्थेत समस्या कुठे दिसते?',
-            options: ['बेणे/बुडखा', 'नवीन फुटवा', 'मूळ', 'संपूर्ण झाड']
-          },
-          hi: {
-            question: '🎋 अंकुरण अवस्था में समस्या कहाँ है?',
-            options: ['बीज/गांठ', 'नया अंकुर', 'जड़', 'पूरा पौधा']
-          },
           en: {
             question: '🎋 Where is the problem in germination stage?',
             options: ['Sett/Node', 'New shoot', 'Roots', 'Whole plant']
           }
         },
-        // CRITICAL: SEEDLING stage maps here for terminal damage
         [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
-          mr: {
-            question: '🔬 उगवण/रोपावस्थेत काय दिसते ते सांगा:',
-            options: [
-              '🔍 सुरुवातीची खोड किडा (मेलेला गाभा)',
-              '🐛 वाळवी / मातीत बोगदे',
-              '🌱 बेणे कुजले / काळे झाले',
-              '💧 पाणी साचल्याने नुकसान',
-              '📷 फोटो पाठवा'
-            ]
-          },
-          hi: {
-            question: '🔬 अंकुरण/पौध अवस्था में क्या दिखता है बताएं:',
-            options: [
-              '🔍 शुरुआती तना छेदक (मृत गभा)',
-              '🐛 दीमक / मिट्टी में सुरंग',
-              '🌱 बीज सड़ गया / काला हो गया',
-              '💧 जलभराव से नुकसान',
-              '📷 फोटो भेजें'
-            ]
-          },
           en: {
             question: '🔬 What do you see at germination/seedling stage:',
             options: [
@@ -328,41 +275,12 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
       },
       'TILLERING': {
         [ClarificationScope.REFINE_OBSERVATION]: {
-          mr: {
-            question: '🪴 फुटवा अवस्थेतील उसात काय दिसते?',
-            options: ['मधली सुरळी वाळली', 'खोडात छिद्र दिसते', 'पाने पिवळी/लाल होत आहेत', 'फुटवे कमी आहेत', 'झाडे वाळत आहेत']
-          },
-          hi: {
-            question: '🪴 कल्ले अवस्था में गन्ने में क्या दिख रहा है?',
-            options: ['बीच की पत्ती सूख गई', 'तने में छेद दिखता है', 'पत्ते पीले/लाल हो रहे', 'कल्ले कम हैं', 'पौधे सूख रहे']
-          },
           en: {
             question: '🪴 What do you see in sugarcane at tillering stage?',
             options: ['Dried central whorl', 'Holes visible in stem', 'Leaves yellowing/reddening', 'Less tillers', 'Plants drying']
           }
         },
-        // Tillering stage diagnostic confirmation options - for terminal damage
         [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: {
-          mr: {
-            question: '🔬 फुटवा अवस्थेत काय दिसते ते सांगा:',
-            options: [
-              '🔴 मधली सुरळी सुकलेली (मेलेला गाभा)',
-              '🐛 खोडात छिद्र / अळ्या दिसतात',
-              '🏠 मातीत वाळवी / बोगदे',
-              '💧 पाणी साचल्याने नुकसान',
-              '📷 फोटो पाठवा'
-            ]
-          },
-          hi: {
-            question: '🔬 कल्ले अवस्था में क्या दिखता है बताएं:',
-            options: [
-              '🔴 बीच की पत्ती सूखी (मृत गभा)',
-              '🐛 तने में छेद / इल्ली दिखती है',
-              '🏠 मिट्टी में दीमक / सुरंग',
-              '💧 जलभराव से नुकसान',
-              '📷 फोटो भेजें'
-            ]
-          },
           en: {
             question: '🔬 What do you see at tillering stage:',
             options: [
@@ -377,14 +295,6 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
       },
       'GRAND_GROWTH': {
         [ClarificationScope.REFINE_OBSERVATION]: {
-          mr: {
-            question: '🎋 वाढीच्या अवस्थेतील उसात काय दिसते?',
-            options: ['खोडात छिद्र दिसतात', 'पाने पिवळी/लाल', 'खोड तुटते/वाकते', 'पांढरे जीव दिसतात', 'पाने गुंडाळलेली']
-          },
-          hi: {
-            question: '🎋 बढ़वार अवस्था में गन्ने में क्या दिख रहा है?',
-            options: ['तने में छेद दिखते हैं', 'पत्ते पीले/लाल', 'तना टूट/झुक रहा', 'सफेद जीव दिखते हैं', 'पत्ते मुड़े हुए']
-          },
           en: {
             question: '🎋 What do you see in sugarcane at grand growth stage?',
             options: ['Holes visible in stem', 'Yellow/red leaves', 'Stem breaking/bending', 'White creatures visible', 'Leaves curled']
@@ -396,28 +306,12 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
   
   'WHEAT': {
     [ClarificationScope.IDENTIFY_LOCATION]: {
-      mr: {
-        question: '🌾 गव्हाच्या कोणत्या भागावर समस्या दिसते?',
-        options: ['पान', 'खोड / देठ', 'ओंबी / कणीस', 'मूळ']
-      },
-      hi: {
-        question: '🌾 गेहूं के किस हिस्से पर समस्या है?',
-        options: ['पत्ते', 'तना', 'बाली', 'जड़']
-      },
       en: {
         question: '🌾 Which part of wheat is affected?',
         options: ['Leaves', 'Stem', 'Ear/Spike', 'Roots']
       }
     },
     [ClarificationScope.REFINE_OBSERVATION]: {
-      mr: {
-        question: '🔍 गव्हामध्ये नेमके काय दिसते?',
-        options: ['पानांवर तपकिरी ठिपके', 'पाने पिवळी', 'पाने वाळत आहेत', 'ओंबी पांढरी झाली', 'खोड मऊ/काळे होत आहे']
-      },
-      hi: {
-        question: '🔍 गेहूं में क्या दिख रहा है?',
-        options: ['पत्तों पर भूरे धब्बे', 'पत्ते पीले', 'पत्ते सूख रहे', 'बाली सफेद हो गई', 'तना नरम/काला हो रहा']
-      },
       en: {
         question: '🔍 What exactly do you see in wheat?',
         options: ['Brown spots on leaves', 'Yellow leaves', 'Drying leaves', 'White colored ear', 'Stem turning soft/dark']
@@ -427,28 +321,12 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
   
   'COTTON': {
     [ClarificationScope.IDENTIFY_LOCATION]: {
-      mr: {
-        question: '🪺 कापसाच्या कोणत्या भागावर समस्या दिसते?',
-        options: ['पान', 'खोड', 'बोंड', 'फुले', 'मूळ']
-      },
-      hi: {
-        question: '🪺 कपास के किस हिस्से पर समस्या है?',
-        options: ['पत्ते', 'तना', 'बॉल', 'फूल', 'जड़']
-      },
       en: {
         question: '🪺 Which part of cotton is affected?',
         options: ['Leaves', 'Stem', 'Boll', 'Flowers', 'Roots']
       }
     },
     [ClarificationScope.REFINE_OBSERVATION]: {
-      mr: {
-        question: '🔍 कापसात नेमके काय दिसते?',
-        options: ['पानांवर पांढरे लहान जीव', 'बोंडात आतून खाल्लेले', 'पाने लाल झाली', 'पाने वळली/कुरळी', 'झाड वाळतंय']
-      },
-      hi: {
-        question: '🔍 कपास में क्या दिख रहा है?',
-        options: ['पत्तों पर छोटे सफेद जीव', 'बॉल अंदर से खाई हुई', 'पत्ते लाल', 'पत्ते मुड़े/कर्ली', 'पौधा सूख रहा']
-      },
       en: {
         question: '🔍 What exactly do you see in cotton?',
         options: ['Small white creatures on leaves', 'Boll eaten from inside', 'Red leaves', 'Curled/twisted leaves', 'Plant drying']
@@ -458,14 +336,6 @@ const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> =
   
   'RICE': {
     [ClarificationScope.IDENTIFY_LOCATION]: {
-      mr: {
-        question: '🌾 भाताच्या कोणत्या भागावर समस्या दिसते?',
-        options: ['पान', 'खोड / देठ', 'कणीस', 'मूळ', 'संपूर्ण झाड']
-      },
-      hi: {
-        question: '🌾 धान के किस हिस्से पर समस्या है?',
-        options: ['पत्ते', 'तना', 'बाली', 'जड़', 'पूरा पौधा']
-      },
       en: {
         question: '🌾 Which part of rice is affected?',
         options: ['Leaves', 'Stem', 'Panicle', 'Roots', 'Whole plant']
