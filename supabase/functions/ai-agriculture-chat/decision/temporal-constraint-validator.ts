@@ -1,26 +1,16 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * PHASE 2: TEMPORAL CONSTRAINT VALIDATOR
+ * PHASE 2: TEMPORAL CONSTRAINT VALIDATOR (v2.0.0 - English-only)
  * ═══════════════════════════════════════════════════════════════════════════
  * 
- * PURPOSE:
- * Validates crop age constraints (crop_age_days_min, crop_age_days_max) to ensure
- * rules are only applied at appropriate growth stages.
- * 
- * ARCHITECTURE:
- * - validateCropAge(): Check if days since sowing is within rule bounds
- * - filterRulesByAge(): Filter a list of rules by crop age constraints
- * - getAgeViolationReason(): Get human-readable explanation of violation
- * 
- * SAFETY:
- * - Prevents early-stage treatments for late-stage problems
- * - Prevents late-stage advice for young crops
- * - Enables stage-specific IPM recommendations
+ * v2.0.0: Removed hardcoded mr/hi templates.
+ * All temporal violation messages are English-only.
+ * LLM narration layer translates at runtime via forceTranslateResponse().
  * 
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const TEMPORAL_CONSTRAINT_VERSION = '1.0.0';
+export const TEMPORAL_CONSTRAINT_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -51,20 +41,11 @@ export interface TemporalContext {
 // CORE VALIDATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Validate if a rule can fire based on crop age constraints
- * 
- * @param daysSinceSowing - Current days since sowing (DAS)
- * @param minDays - Minimum DAS for rule applicability (optional)
- * @param maxDays - Maximum DAS for rule applicability (optional)
- * @returns TemporalValidationResult with validity and reason
- */
 export function validateCropAge(
   daysSinceSowing: number | null | undefined,
   minDays: number | null | undefined,
   maxDays: number | null | undefined
 ): TemporalValidationResult {
-  // If no DAS available, allow rule to fire (fail-open for missing data)
   if (daysSinceSowing === null || daysSinceSowing === undefined) {
     return {
       valid: true,
@@ -76,7 +57,6 @@ export function validateCropAge(
     };
   }
   
-  // If no constraints defined, always valid
   if ((minDays === null || minDays === undefined) && 
       (maxDays === null || maxDays === undefined)) {
     return {
@@ -89,7 +69,6 @@ export function validateCropAge(
     };
   }
   
-  // Check minimum age constraint
   if (minDays !== null && minDays !== undefined && daysSinceSowing < minDays) {
     return {
       valid: false,
@@ -101,7 +80,6 @@ export function validateCropAge(
     };
   }
   
-  // Check maximum age constraint
   if (maxDays !== null && maxDays !== undefined && daysSinceSowing > maxDays) {
     return {
       valid: false,
@@ -127,13 +105,6 @@ export function validateCropAge(
 // RULE FILTERING
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Filter rules by temporal constraints
- * 
- * @param rules - Array of rules with temporal fields
- * @param daysSinceSowing - Current DAS
- * @returns Filtered rules that are valid for the current crop age
- */
 export function filterRulesByAge<T extends TemporalValidationInput>(
   rules: T[],
   daysSinceSowing: number | null | undefined
@@ -161,35 +132,24 @@ export function filterRulesByAge<T extends TemporalValidationInput>(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HUMAN-READABLE EXPLANATIONS
+// HUMAN-READABLE EXPLANATIONS (English-only; LLM translates at runtime)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Get localized explanation of temporal violation
- */
 export function getAgeViolationReason(
   result: TemporalValidationResult,
-  language: string
+  _language: string
 ): string {
-  if (result.valid) {
-    return '';
+  if (result.valid) return '';
+  
+  if (result.violation === 'TOO_EARLY') {
+    return `Crop is too young (${result.days_since_sowing} days). This treatment applies after ${result.min_days} days.`;
   }
   
-  const templates: Record<string, Record<string, string>> = {
-    'TOO_EARLY': {
-      mr: `पीक अजून लहान आहे (${result.days_since_sowing} दिवस). हे उपाय ${result.min_days} दिवसांनंतर लागू होतील.`,
-      hi: `फसल अभी छोटी है (${result.days_since_sowing} दिन)। यह उपाय ${result.min_days} दिनों के बाद लागू होंगे।`,
-      en: `Crop is too young (${result.days_since_sowing} days). This treatment applies after ${result.min_days} days.`
-    },
-    'TOO_LATE': {
-      mr: `पीक खूप मोठे झाले आहे (${result.days_since_sowing} दिवस). हे उपाय ${result.max_days} दिवसांपूर्वी लागू होते.`,
-      hi: `फसल बहुत बड़ी हो गई है (${result.days_since_sowing} दिन)। यह उपाय ${result.max_days} दिनों से पहले लागू होते थे।`,
-      en: `Crop is too mature (${result.days_since_sowing} days). This treatment was applicable before ${result.max_days} days.`
-    }
-  };
+  if (result.violation === 'TOO_LATE') {
+    return `Crop is too mature (${result.days_since_sowing} days). This treatment was applicable before ${result.max_days} days.`;
+  }
   
-  const violation = result.violation || 'TOO_EARLY';
-  return templates[violation][language] || templates[violation]['en'];
+  return result.reason;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
