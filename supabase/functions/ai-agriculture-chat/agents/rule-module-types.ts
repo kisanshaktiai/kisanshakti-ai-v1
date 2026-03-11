@@ -341,7 +341,9 @@ export interface RecommendedProduct {
 export interface RuleWarning {
   rule_id: string;
   warning_type: 'WEATHER' | 'TIMING' | 'RESISTANCE' | 'SAFETY' | 'ECONOMIC';
+  /** @deprecated Use warning_text_en — LLM translates at runtime */
   warning_text_mr: string;
+  /** @deprecated Use warning_text_en — LLM translates at runtime */
   warning_text_hi: string;
   warning_text_en: string;
   severity: 'LOW' | 'MEDIUM' | 'HIGH';
