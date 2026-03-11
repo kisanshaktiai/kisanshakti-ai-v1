@@ -510,8 +510,6 @@ export class DiagnosticFlowController {
     return {
       action: 'ESCALATE',
       emergency_type: nlu.safety_alerts.emergency_type,
-      message_mr: '⚠️ ही गंभीर परिस्थिती आहे. कृपया जवळच्या कृषी अधिकाऱ्याशी संपर्क साधा.',
-      message_hi: '⚠️ यह गंभीर स्थिति है। कृपया नज़दीकी कृषि अधिकारी से संपर्क करें।',
       message_en: '⚠️ This is a serious situation. Please contact your nearest agriculture officer.',
       emergency_contacts: this.getEmergencyContacts(),
       session_state: this.session
