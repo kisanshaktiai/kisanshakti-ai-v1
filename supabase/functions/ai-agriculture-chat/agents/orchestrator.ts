@@ -5904,8 +5904,6 @@ export class AIAgentOrchestrator {
           mode: this.mapDiagnosticAction(diagnosticResponse.action),
           next_question: firstQuestion ? {
             question_id: firstQuestion.question_id,
-            text_mr: firstQuestion.question_text_mr || 'अधिक माहिती द्या',
-            text_hi: firstQuestion.question_text_hi || 'अधिक जानकारी दें',
             text_en: firstQuestion.question_text_en || 'Please provide more details',
             options: firstQuestion.options
           } : null,
