@@ -540,8 +540,6 @@ export function enforcePollinatorProtection(
     time_restricted_chemicals: timeRestricted,
     safe_alternatives: safeAlternatives,
     general_advice: generalAdvice,
-    general_advice_mr: generalAdvice_mr,
-    general_advice_hi: generalAdvice_hi,
   };
 }
 

@@ -797,8 +797,10 @@ export interface DiagnosticFlowResponse {
 }
 
 export interface PhotoInstructions {
-  what_to_capture_mr: string;
-  what_to_capture_hi: string;
+  /** @deprecated Use what_to_capture_en — LLM translates at runtime */
+  what_to_capture_mr?: string;
+  /** @deprecated Use what_to_capture_en — LLM translates at runtime */
+  what_to_capture_hi?: string;
   what_to_capture_en: string;
   distance: string;
   lighting: string;
