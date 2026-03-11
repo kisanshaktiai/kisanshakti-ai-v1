@@ -6670,8 +6670,6 @@ export class AIAgentOrchestrator {
           type: 'SAFETY_BLOCKED',
           session_id: sessionId,
           blocked_reason: safetyVerification.blocked_decision ? {
-            reason_mr: safetyVerification.blocked_decision.reason_mr,
-            reason_hi: safetyVerification.blocked_decision.reason_hi,
             reason_en: safetyVerification.blocked_decision.reason_en
           } : undefined,
           alternatives: safetyVerification.safety_check.safer_alternatives,
