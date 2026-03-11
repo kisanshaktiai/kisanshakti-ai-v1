@@ -193,7 +193,9 @@ export interface ContextRequirements {
 
 export interface ClarificationQuestionWithType {
   question_id: string;
+  /** @deprecated Use question_text_en — LLM translates at runtime */
   question_text_mr: string;
+  /** @deprecated Use question_text_en — LLM translates at runtime */
   question_text_hi: string;
   question_text_en: string;
   question_type: QuestionType;
