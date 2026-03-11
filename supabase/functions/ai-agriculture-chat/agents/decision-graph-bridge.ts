@@ -188,9 +188,9 @@ export async function evaluateDecisionGraph(
       rule_id: r.rule_id,
       priority: r.priority,
       recommendation_type: r.products?.length ? 'CHEMICAL' : 'INTEGRATED',
-      recommendation_text_mr: r.recommendation_mr || '',
-      recommendation_text_hi: r.recommendation_hi || '',
-      recommendation_text_en: r.recommendation_en || '',
+      recommendation_text_mr: '', // @deprecated — LLM translates at runtime
+      recommendation_text_hi: '', // @deprecated — LLM translates at runtime
+      recommendation_text_en: r.recommendation_en || r.recommendation_mr || r.recommendation_hi || '',
       products: r.products?.map(p => ({
         product_name: p.name,
         dosage: p.dosage,

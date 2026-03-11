@@ -62,41 +62,8 @@ export interface DiagnosticEscalationInput {
 // TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only templates — LLM narration layer handles localization at runtime
 const TEMPLATES = {
-  mr: {
-    greeting: 'नमस्कार',
-    diagnostic_intro: 'तुमच्या {crop_name} पिकात ({days} दिवस, {stage} अवस्था) आढळलेल्या लक्षणांचे विश्लेषण:',
-    hypotheses_header: '🔍 संभाव्य कारणे:',
-    hypothesis_template: '{index}. **{cause_name}** (शक्यता: {confidence}%)\n   {explanation}',
-    evidence_header: '   ✓ जुळणारी लक्षणे: {evidence}',
-    confirm_header: '   📌 खात्री करण्यासाठी: {confirm}',
-    required_inputs_header: '📸 निदान पूर्ण करण्यासाठी खालील माहिती द्या:',
-    photo_request: '📷 **फोटो काढा**: {target}\n   कारण: {rationale}',
-    photo_guidance: '   💡 टिप: {guidance}',
-    severity_request: '📊 **तीव्रता सांगा**: {target}',
-    distribution_request: '🗺️ **वितरण नमुना**: {target}',
-    interim_monitoring: '⏳ **तोपर्यंत निरीक्षण करा**:',
-    confidence_note: '⚡ सध्याची खात्री: {current}% | उपचारासाठी आवश्यक: {threshold}%',
-    take_photo_cta: '📷 फोटो काढा',
-    expert_note: 'अधिक माहिती मिळाल्यावर अचूक निदान व उपचार सुचवता येईल.'
-  },
-  hi: {
-    greeting: 'नमस्ते',
-    diagnostic_intro: 'आपकी {crop_name} फसल ({days} दिन, {stage} अवस्था) में दिखे लक्षणों का विश्लेषण:',
-    hypotheses_header: '🔍 संभावित कारण:',
-    hypothesis_template: '{index}. **{cause_name}** (संभावना: {confidence}%)\n   {explanation}',
-    evidence_header: '   ✓ मिलते-जुलते लक्षण: {evidence}',
-    confirm_header: '   📌 पुष्टि के लिए: {confirm}',
-    required_inputs_header: '📸 निदान पूर्ण करने के लिए यह जानकारी दें:',
-    photo_request: '📷 **फोटो लें**: {target}\n   कारण: {rationale}',
-    photo_guidance: '   💡 टिप: {guidance}',
-    severity_request: '📊 **गंभीरता बताएं**: {target}',
-    distribution_request: '🗺️ **वितरण पैटर्न**: {target}',
-    interim_monitoring: '⏳ **तब तक निगरानी करें**:',
-    confidence_note: '⚡ वर्तमान विश्वास: {current}% | उपचार के लिए आवश्यक: {threshold}%',
-    take_photo_cta: '📷 फोटो लें',
-    expert_note: 'अधिक जानकारी मिलने पर सटीक निदान और उपचार सुझाव दिया जा सकता है।'
-  },
   en: {
     greeting: 'Hello',
     diagnostic_intro: 'Analysis of symptoms observed in your {crop_name} ({days} days, {stage} stage):',
@@ -113,92 +80,68 @@ const TEMPLATES = {
     confidence_note: '⚡ Current confidence: {current}% | Treatment threshold: {threshold}%',
     take_photo_cta: '📷 Take Photo',
     expert_note: 'Once we have more information, we can provide accurate diagnosis and treatment.'
-  }
+  },
+  /** @deprecated Use 'en' — LLM translates at runtime */
+  get mr() { return this.en; },
+  /** @deprecated Use 'en' — LLM translates at runtime */
+  get hi() { return this.en; }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CAUSE NAME TRANSLATIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only cause names — LLM narration layer translates to local farming terms at runtime
 const CAUSE_NAMES: Record<string, Record<string, string>> = {
-  // Pests
-  APHID_INFESTATION: { mr: 'मावा (Aphid)', hi: 'माहू (Aphid)', en: 'Aphid Infestation' },
-  WHITEFLY_ATTACK: { mr: 'पांढरी माशी', hi: 'सफेद मक्खी', en: 'Whitefly Attack' },
-  THRIPS_DAMAGE: { mr: 'तुडतुडे (Thrips)', hi: 'थ्रिप्स', en: 'Thrips Damage' },
-  BORER_INFESTATION: { mr: 'खोडकिडा', hi: 'तना छेदक', en: 'Stem Borer' },
-  MITE_INFESTATION: { mr: 'कोळी (Mites)', hi: 'मकड़ी (Mites)', en: 'Mite Infestation' },
-  CATERPILLAR_DAMAGE: { mr: 'अळी', hi: 'इल्ली', en: 'Caterpillar Damage' },
-  
-  // Diseases
-  FUNGAL_INFECTION: { mr: 'बुरशीजन्य रोग', hi: 'फफूंद रोग', en: 'Fungal Infection' },
-  RUST_DISEASE: { mr: 'तांबेरा रोग', hi: 'गेरुआ रोग', en: 'Rust Disease' },
-  BLIGHT_DISEASE: { mr: 'करपा रोग', hi: 'झुलसा रोग', en: 'Blight Disease' },
-  POWDERY_MILDEW: { mr: 'भुरी', hi: 'चूर्णिल आसिता', en: 'Powdery Mildew' },
-  WILT_DISEASE: { mr: 'मर रोग', hi: 'उकठा रोग', en: 'Wilt Disease' },
-  
-  // Nutrients
-  NITROGEN_DEFICIENCY: { mr: 'नत्र कमतरता', hi: 'नाइट्रोजन की कमी', en: 'Nitrogen Deficiency' },
-  PHOSPHORUS_DEFICIENCY: { mr: 'स्फुरद कमतरता', hi: 'फॉस्फोरस की कमी', en: 'Phosphorus Deficiency' },
-  POTASSIUM_DEFICIENCY: { mr: 'पालाश कमतरता', hi: 'पोटाश की कमी', en: 'Potassium Deficiency' },
-  IRON_DEFICIENCY: { mr: 'लोह कमतरता', hi: 'लोहे की कमी', en: 'Iron Deficiency' },
-  ZINC_DEFICIENCY: { mr: 'जस्त कमतरता', hi: 'जिंक की कमी', en: 'Zinc Deficiency' },
-  
-  // Environmental
-  WATER_STRESS: { mr: 'पाण्याचा ताण', hi: 'जल तनाव', en: 'Water Stress' },
-  HEAT_STRESS: { mr: 'उष्णतेचा ताण', hi: 'गर्मी का तनाव', en: 'Heat Stress' },
-  WIND_DAMAGE: { mr: 'वाऱ्याचे नुकसान', hi: 'हवा से नुकसान', en: 'Wind Damage' }
+  APHID_INFESTATION: { en: 'Aphid Infestation' },
+  WHITEFLY_ATTACK: { en: 'Whitefly Attack' },
+  THRIPS_DAMAGE: { en: 'Thrips Damage' },
+  BORER_INFESTATION: { en: 'Stem Borer' },
+  MITE_INFESTATION: { en: 'Mite Infestation' },
+  CATERPILLAR_DAMAGE: { en: 'Caterpillar Damage' },
+  FUNGAL_INFECTION: { en: 'Fungal Infection' },
+  RUST_DISEASE: { en: 'Rust Disease' },
+  BLIGHT_DISEASE: { en: 'Blight Disease' },
+  POWDERY_MILDEW: { en: 'Powdery Mildew' },
+  WILT_DISEASE: { en: 'Wilt Disease' },
+  NITROGEN_DEFICIENCY: { en: 'Nitrogen Deficiency' },
+  PHOSPHORUS_DEFICIENCY: { en: 'Phosphorus Deficiency' },
+  POTASSIUM_DEFICIENCY: { en: 'Potassium Deficiency' },
+  IRON_DEFICIENCY: { en: 'Iron Deficiency' },
+  ZINC_DEFICIENCY: { en: 'Zinc Deficiency' },
+  WATER_STRESS: { en: 'Water Stress' },
+  HEAT_STRESS: { en: 'Heat Stress' },
+  WIND_DAMAGE: { en: 'Wind Damage' }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // EXPLANATION TEMPLATES
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only explanations — LLM uses local farming terms at runtime
 const EXPLANATIONS: Record<string, Record<string, string>> = {
-  APHID_INFESTATION: {
-    mr: 'मावा हे लहान, मऊ शरीराचे कीटक आहेत जे पानांचा रस शोषतात. साधारणपणे पानांच्या खालच्या बाजूस आढळतात.',
-    hi: 'माहू छोटे, मुलायम शरीर वाले कीट हैं जो पत्तियों का रस चूसते हैं। आमतौर पर पत्तियों के नीचे पाए जाते हैं।',
-    en: 'Aphids are small, soft-bodied insects that suck plant sap. Usually found on the underside of leaves.'
-  },
-  THRIPS_DAMAGE: {
-    mr: 'तुडतुडे हे अत्यंत लहान कीटक आहेत जे पानांवर चांदी रंगाचे डाग करतात. कोवळ्या पानांना जास्त नुकसान करतात.',
-    hi: 'थ्रिप्स बहुत छोटे कीट हैं जो पत्तियों पर चाँदी जैसे धब्बे बनाते हैं। कोमल पत्तियों को ज्यादा नुकसान करते हैं।',
-    en: 'Thrips are very tiny insects that cause silvery patches on leaves. They damage tender leaves more.'
-  },
-  NITROGEN_DEFICIENCY: {
-    mr: 'नत्राच्या कमतरतेमुळे खालच्या जुन्या पानांचा रंग पिवळा होतो. पिक फिकट हिरवे दिसते.',
-    hi: 'नाइट्रोजन की कमी से नीचे की पुरानी पत्तियाँ पीली हो जाती हैं। फसल हल्की हरी दिखती है।',
-    en: 'Nitrogen deficiency causes lower, older leaves to turn yellow. The crop appears light green overall.'
-  },
-  RUST_DISEASE: {
-    mr: 'तांबेरा रोगामुळे पानांवर नारंगी-तपकिरी रंगाचे पुस्ट्यूल (pustules) दिसतात.',
-    hi: 'गेरुआ रोग से पत्तियों पर नारंगी-भूरे रंग के पस्ट्यूल (pustules) दिखते हैं।',
-    en: 'Rust disease causes orange-brown pustules to appear on leaves.'
-  }
+  APHID_INFESTATION: { en: 'Aphids are small, soft-bodied insects that suck plant sap. Usually found on the underside of leaves.' },
+  THRIPS_DAMAGE: { en: 'Thrips are very tiny insects that cause silvery patches on leaves. They damage tender leaves more.' },
+  NITROGEN_DEFICIENCY: { en: 'Nitrogen deficiency causes lower, older leaves to turn yellow. The crop appears light green overall.' },
+  RUST_DISEASE: { en: 'Rust disease causes orange-brown pustules to appear on leaves.' }
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHOTO GUIDANCE BY SYMPTOM
 // ═══════════════════════════════════════════════════════════════════════════
 
+// English-only photo guidance — LLM translates at runtime
 const PHOTO_GUIDANCE: Record<string, Record<string, { what: string; angle: string; lighting: string }>> = {
   INSECT_VISIBLE: {
-    mr: { what: 'किड्याचा जवळून फोटो', angle: 'किड्याच्या अगदी जवळून', lighting: 'सकाळचा प्रकाश उत्तम' },
-    hi: { what: 'कीट का नजदीकी फोटो', angle: 'कीट के बिल्कुल पास से', lighting: 'सुबह की रोशनी सबसे अच्छी' },
     en: { what: 'Close-up of the insect', angle: 'Very close to the insect', lighting: 'Morning light is best' }
   },
   LEAF_DAMAGE: {
-    mr: { what: 'खराब झालेले पान', angle: 'पानाच्या वरून आणि खालून', lighting: 'सावलीत काढा' },
-    hi: { what: 'क्षतिग्रस्त पत्ता', angle: 'पत्ते के ऊपर और नीचे से', lighting: 'छाया में लें' },
     en: { what: 'Damaged leaf', angle: 'Top and underside of leaf', lighting: 'Take in shade' }
   },
   YELLOWING: {
-    mr: { what: 'पिवळे पडलेले पान', angle: 'पूर्ण पान दिसेल असे', lighting: 'नैसर्गिक प्रकाशात' },
-    hi: { what: 'पीला पड़ा पत्ता', angle: 'पूरा पत्ता दिखे ऐसा', lighting: 'प्राकृतिक रोशनी में' },
     en: { what: 'Yellow leaf', angle: 'Full leaf visible', lighting: 'In natural light' }
   },
   SPOTS: {
-    mr: { what: 'डागांचा जवळून फोटो', angle: 'डाग स्पष्ट दिसतील असे', lighting: 'चांगल्या प्रकाशात' },
-    hi: { what: 'धब्बों का नजदीकी फोटो', angle: 'धब्बे साफ दिखें ऐसा', lighting: 'अच्छी रोशनी में' },
     en: { what: 'Close-up of spots', angle: 'Spots clearly visible', lighting: 'In good light' }
   }
 };

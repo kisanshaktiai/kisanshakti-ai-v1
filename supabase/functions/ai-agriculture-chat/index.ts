@@ -3136,12 +3136,8 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
  * Generate clarification prompt when question text is missing
  */
 function generateClarificationPrompt(response: OrchestratorResponse, lang: string): string {
-  const messages: Record<string, string> = {
-    mr: 'कृपया तुमच्या प्रश्नाबद्दल अधिक माहिती द्या. पिकाचे नाव, समस्या आणि लक्षणे सांगा.',
-    hi: 'कृपया अपने प्रश्न के बारे में अधिक जानकारी दें। फसल का नाम, समस्या और लक्षण बताएं।',
-    en: 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.'
-  };
-  return messages[lang];
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.';
 }
 
 /**
@@ -3157,41 +3153,8 @@ function generateGenericAcknowledgment(lang: string): string {
  * Instead of "we will respond shortly", provide immediate value
  */
 function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
-  // ✅ FIX: Remove numbered emojis - use bullet points instead for instructional text
-  const messages: Record<string, string> = {
-    mr: `🙏 नमस्कार शेतकरी मित्र!
-
-${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}तुमच्या प्रश्नाचे उत्तर देण्यासाठी मला थोडी माहिती द्या:
-
-📋 **कृपया सांगा:**
-• तुमचे पीक कोणते आहे?
-• पिकाचे वय किती दिवस?
-• काय समस्या दिसत आहे?
-
-📸 शक्य असल्यास प्रभावित भागाचा फोटो पाठवा - अधिक अचूक सल्ला देता येईल!
-
-💡 **तात्पुरता सल्ला:**
-• पिकाचे नियमित निरीक्षण करा
-• पाणी व्यवस्थापन योग्य ठेवा
-• नवीन कीड/रोग दिसल्यास कळवा`,
-
-    hi: `🙏 नमस्कार किसान मित्र!
-
-${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}आपके प्रश्न का उत्तर देने के लिए थोड़ी जानकारी दें:
-
-📋 **कृपया बताएं:**
-• आपकी फसल कौन सी है?
-• फसल की उम्र कितने दिन?
-• क्या समस्या दिख रही है?
-
-📸 यदि संभव हो तो प्रभावित भाग का फोटो भेजें - अधिक सटीक सलाह दे पाऊंगा!
-
-💡 **तात्कालिक सलाह:**
-• फसल का नियमित निरीक्षण करें
-• पानी प्रबंधन सही रखें
-• नई कीट/रोग दिखने पर बताएं`,
-
-    en: `🙏 Hello Farmer Friend!
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return `🙏 Hello Farmer Friend!
 
 ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please provide:
 
@@ -3205,10 +3168,7 @@ ${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please 
 💡 **Quick tips:**
 • Monitor your crop regularly
 • Maintain proper water management
-• Report any new pest/disease signs`
-  };
-  
-  return messages[lang];
+• Report any new pest/disease signs`;
 }
 
 /**

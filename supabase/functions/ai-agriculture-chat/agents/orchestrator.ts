@@ -8280,8 +8280,8 @@ export class AIAgentOrchestrator {
       clarification_strategy: {
         needs_clarification: !cropCode,
         questions_to_ask: cropCode ? [] : [{
-          question_text_mr: 'कृपया तुमची समस्या पुन्हा सांगा',
-          question_text_hi: 'कृपया अपनी समस्या फिर से बताएं',
+          question_text_mr: '', // @deprecated — LLM translates at runtime
+          question_text_hi: '', // @deprecated — LLM translates at runtime
           question_text_en: 'Please describe your problem again'
         }]
       }

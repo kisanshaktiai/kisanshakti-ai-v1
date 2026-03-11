@@ -299,18 +299,18 @@ export function generateRuleRequiredQuestions(
   if (!entities.crop_code) {
     questions.push({
       question_id: 'Q_CROP_CODE',
-      question_text_mr: 'तुम्ही कोणतं पीक घेतलंय?',
-      question_text_hi: 'आप कौन सी फसल उगा रहे हैं?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'Which crop are you growing?',
       question_type: 'CROP_ID',
       priority: 'HIGH',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: 'COTTON', label_mr: 'कापूस', label_hi: 'कपास', label_en: 'Cotton' },
-        { value: 'SOYBEAN', label_mr: 'सोयाबीन', label_hi: 'सोयाबीन', label_en: 'Soybean' },
-        { value: 'RICE', label_mr: 'भात', label_hi: 'धान', label_en: 'Rice' },
-        { value: 'WHEAT', label_mr: 'गहू', label_hi: 'गेहूं', label_en: 'Wheat' },
-        { value: 'TOMATO', label_mr: 'टमाटर', label_hi: 'टमाटर', label_en: 'Tomato' }
+        { value: 'COTTON', label_mr: '', label_hi: '', label_en: 'Cotton' },
+        { value: 'SOYBEAN', label_mr: '', label_hi: '', label_en: 'Soybean' },
+        { value: 'RICE', label_mr: '', label_hi: '', label_en: 'Rice' },
+        { value: 'WHEAT', label_mr: '', label_hi: '', label_en: 'Wheat' },
+        { value: 'TOMATO', label_mr: '', label_hi: '', label_en: 'Tomato' }
       ],
       affects_rule_selection: true,
       target_entity: 'crop_code'
@@ -321,17 +321,17 @@ export function generateRuleRequiredQuestions(
   if (intent === 'PEST_PROBLEM' && entities.pest_code && !entities.affected_area_percent) {
     questions.push({
       question_id: 'Q_PEST_DENSITY',
-      question_text_mr: 'प्रत्येक पानावर किती किडी आहेत?',
-      question_text_hi: 'हर पत्ते पर कितने कीड़े हैं?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'How many pests per leaf?',
       question_type: 'PEST_DENSITY',
       priority: 'HIGH',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: '5', label_mr: 'थोडी (5 पर्यंत)', label_hi: 'कम (5 तक)', label_en: 'Few (up to 5)' },
-        { value: '15', label_mr: 'मध्यम (5-15)', label_hi: 'मध्यम (5-15)', label_en: 'Moderate (5-15)' },
-        { value: '25', label_mr: 'जास्त (15-25)', label_hi: 'ज्यादा (15-25)', label_en: 'Many (15-25)' },
-        { value: '50', label_mr: 'खूप जास्त (25+)', label_hi: 'बहुत ज्यादा (25+)', label_en: 'Very many (25+)' }
+        { value: '5', label_mr: '', label_hi: '', label_en: 'Few (up to 5)' },
+        { value: '15', label_mr: '', label_hi: '', label_en: 'Moderate (5-15)' },
+        { value: '25', label_mr: '', label_hi: '', label_en: 'Many (15-25)' },
+        { value: '50', label_mr: '', label_hi: '', label_en: 'Very many (25+)' }
       ],
       affects_rule_selection: true,
       target_entity: 'pest_density'
@@ -342,17 +342,17 @@ export function generateRuleRequiredQuestions(
   if (!entities.crop_stage && (intent === 'PEST_PROBLEM' || intent === 'DISEASE_PROBLEM')) {
     questions.push({
       question_id: 'Q_CROP_STAGE',
-      question_text_mr: 'तुमच्या पिकाची सध्याची अवस्था काय आहे?',
-      question_text_hi: 'आपकी फसल की वर्तमान अवस्था क्या है?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'What is the current stage of your crop?',
       question_type: 'CROP_STAGE',
       priority: 'HIGH',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: 'SEEDLING', label_mr: 'रोपे', label_hi: 'पौधे', label_en: 'Seedling' },
-        { value: 'VEGETATIVE', label_mr: 'वाढीचा काळ', label_hi: 'बढ़ने का समय', label_en: 'Vegetative' },
-        { value: 'FLOWERING', label_mr: 'फुलं आली', label_hi: 'फूल आए', label_en: 'Flowering' },
-        { value: 'MATURITY', label_mr: 'काढणीला आलं', label_hi: 'कटाई के लिए तैयार', label_en: 'Maturity' }
+        { value: 'SEEDLING', label_mr: '', label_hi: '', label_en: 'Seedling' },
+        { value: 'VEGETATIVE', label_mr: '', label_hi: '', label_en: 'Vegetative' },
+        { value: 'FLOWERING', label_mr: '', label_hi: '', label_en: 'Flowering' },
+        { value: 'MATURITY', label_mr: '', label_hi: '', label_en: 'Maturity' }
       ],
       affects_rule_selection: true,
       target_entity: 'crop_stage'
@@ -363,17 +363,17 @@ export function generateRuleRequiredQuestions(
   if ((intent === 'PEST_PROBLEM' || intent === 'DISEASE_PROBLEM') && !entities.affected_area_percent) {
     questions.push({
       question_id: 'Q_AFFECTED_AREA',
-      question_text_mr: 'किती टक्के शेतात समस्या दिसते?',
-      question_text_hi: 'कितने प्रतिशत खेत में समस्या दिखती है?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'What percentage of field is affected?',
       question_type: 'AFFECTED_AREA',
       priority: 'MEDIUM',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: '10', label_mr: '10% पर्यंत', label_hi: '10% तक', label_en: 'Up to 10%' },
-        { value: '30', label_mr: '10-30%', label_hi: '10-30%', label_en: '10-30%' },
-        { value: '50', label_mr: '30-50%', label_hi: '30-50%', label_en: '30-50%' },
-        { value: '75', label_mr: '50% पेक्षा जास्त', label_hi: '50% से ज्यादा', label_en: 'More than 50%' }
+        { value: '10', label_mr: '', label_hi: '', label_en: 'Up to 10%' },
+        { value: '30', label_mr: '', label_hi: '', label_en: '10-30%' },
+        { value: '50', label_mr: '', label_hi: '', label_en: '30-50%' },
+        { value: '75', label_mr: '', label_hi: '', label_en: 'More than 50%' }
       ],
       affects_rule_selection: true,
       target_entity: 'affected_area_percent'
@@ -384,17 +384,17 @@ export function generateRuleRequiredQuestions(
   if (modules.some(m => m.moduleFile === 'resistance-management-rules') && !entities.treatment_history) {
     questions.push({
       question_id: 'Q_LAST_SPRAY',
-      question_text_mr: 'शेवटची फवारणी कधी केली होती?',
-      question_text_hi: 'आखिरी बार छिड़काव कब किया था?',
+      question_text_mr: '', // @deprecated — LLM translates at runtime
+      question_text_hi: '', // @deprecated — LLM translates at runtime
       question_text_en: 'When was the last spray done?',
       question_type: 'TREATMENT_HISTORY',
       priority: 'MEDIUM',
       expected_answer_type: 'CHOICE',
       options: [
-        { value: '0', label_mr: 'फवारणी केली नाही', label_hi: 'छिड़काव नहीं किया', label_en: 'No spray done' },
-        { value: '7', label_mr: '1 आठवड्यापूर्वी', label_hi: '1 हफ्ते पहले', label_en: '1 week ago' },
-        { value: '14', label_mr: '2 आठवड्यापूर्वी', label_hi: '2 हफ्ते पहले', label_en: '2 weeks ago' },
-        { value: '30', label_mr: '1 महिन्यापूर्वी', label_hi: '1 महीने पहले', label_en: '1 month ago' }
+        { value: '0', label_mr: '', label_hi: '', label_en: 'No spray done' },
+        { value: '7', label_mr: '', label_hi: '', label_en: '1 week ago' },
+        { value: '14', label_mr: '', label_hi: '', label_en: '2 weeks ago' },
+        { value: '30', label_mr: '', label_hi: '', label_en: '1 month ago' }
       ],
       affects_rule_selection: true,
       target_entity: 'last_spray_days'

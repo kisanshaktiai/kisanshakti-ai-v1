@@ -11,6 +11,7 @@
  */
 
 import type { RulePriority, CropStageCode, SeverityLevel } from './rule-module-types.ts';
+import { normalizeCropCode as unifiedNormalizeCropCode, getFullCropName } from '../utils/crop-code-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PRIORITY MAPPINGS
@@ -167,74 +168,10 @@ export function normalizeSeverity(
  */
 export function normalizeCropCode(cropName: string | undefined): string {
   if (!cropName) return 'UNKNOWN';
-  
-  const cropUpper = cropName.toUpperCase().trim();
-  
-  const cropMap: Record<string, string> = {
-    // English
-    'COTTON': 'COTTON',
-    'KAPAS': 'COTTON',
-    'SOYBEAN': 'SOYBEAN',
-    'SOYA': 'SOYBEAN',
-    'RICE': 'RICE',
-    'PADDY': 'RICE',
-    'WHEAT': 'WHEAT',
-    'TOMATO': 'TOMATO',
-    'ONION': 'ONION',
-    'SUGARCANE': 'SUGARCANE',
-    'CANE': 'SUGARCANE',
-    'GROUNDNUT': 'GROUNDNUT',
-    'PEANUT': 'GROUNDNUT',
-    'MAIZE': 'MAIZE',
-    'CORN': 'MAIZE',
-    'CHILLI': 'CHILLI',
-    'CHILI': 'CHILLI',
-    'PEPPER': 'CHILLI',
-    'GRAM': 'GRAM',
-    'CHICKPEA': 'GRAM',
-    'PIGEON_PEA': 'TUR',
-    'TUR': 'TUR',
-    'ARHAR': 'TUR',
-    'MUNG': 'MUNG',
-    'MOONG': 'MUNG',
-    'URAD': 'URAD',
-    'BLACK_GRAM': 'URAD',
-    'BANANA': 'BANANA',
-    'MANGO': 'MANGO',
-    'GRAPE': 'GRAPE',
-    'POMEGRANATE': 'POMEGRANATE',
-    'ORANGE': 'ORANGE',
-    'CITRUS': 'ORANGE',
-    // Marathi
-    'कापूस': 'COTTON',
-    'सोयाबीन': 'SOYBEAN',
-    'भात': 'RICE',
-    'गहू': 'WHEAT',
-    'टोमॅटो': 'TOMATO',
-    'कांदा': 'ONION',
-    'ऊस': 'SUGARCANE',
-    'भुईमूग': 'GROUNDNUT',
-    'मका': 'MAIZE',
-    'मिरची': 'CHILLI',
-    'हरभरा': 'GRAM',
-    'तूर': 'TUR',
-    'मूग': 'MUNG',
-    'उडीद': 'URAD',
-    // Hindi
-    'कपास': 'COTTON',
-    'धान': 'RICE',
-    'गेहूं': 'WHEAT',
-    'टमाटर': 'TOMATO',
-    'प्याज': 'ONION',
-    'गन्ना': 'SUGARCANE',
-    'मूंगफली': 'GROUNDNUT',
-    'मक्का': 'MAIZE',
-    'मिर्च': 'CHILLI',
-    'चना': 'GRAM',
-    'अरहर': 'TUR'
-  };
-  
-  return cropMap[cropUpper] || cropUpper;
+  // Delegate to single source of truth: crop-code-normalizer.ts
+  const shortCode = unifiedNormalizeCropCode(cropName);
+  if (shortCode === 'ALL') return cropName.toUpperCase().trim();
+  return getFullCropName(shortCode);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

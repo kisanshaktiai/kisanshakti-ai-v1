@@ -590,8 +590,8 @@ function buildDiscriminatorQuestion(
         hypothesis_a_name: scoreA.cause_name_en,
         hypothesis_b_name: scoreB.cause_name_en,
         question_text_en: `To help identify the exact problem: Have you noticed ${code.toLowerCase().replace(/_/g, ' ')}?`,
-        question_text_mr: `समस्या ओळखण्यासाठी: तुम्हाला ${code.toLowerCase().replace(/_/g, ' ')} दिसले का?`,
-        question_text_hi: `समस्या पहचानने के लिए: क्या आपने ${code.toLowerCase().replace(/_/g, ' ')} देखा है?`,
+        question_text_mr: '', // @deprecated — LLM translates at runtime
+        question_text_hi: '', // @deprecated — LLM translates at runtime
         weight: disc.weight
       };
     }

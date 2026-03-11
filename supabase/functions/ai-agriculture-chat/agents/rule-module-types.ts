@@ -193,7 +193,9 @@ export interface ContextRequirements {
 
 export interface ClarificationQuestionWithType {
   question_id: string;
+  /** @deprecated Use question_text_en — LLM translates at runtime */
   question_text_mr: string;
+  /** @deprecated Use question_text_en — LLM translates at runtime */
   question_text_hi: string;
   question_text_en: string;
   question_type: QuestionType;
@@ -318,7 +320,9 @@ export interface RuleRecommendation {
   rule_id: string;
   priority: RulePriority;
   recommendation_type: 'CULTURAL' | 'BIOLOGICAL' | 'BOTANICAL' | 'CHEMICAL' | 'INTEGRATED';
+  /** @deprecated Use recommendation_text_en — LLM translates at runtime */
   recommendation_text_mr: string;
+  /** @deprecated Use recommendation_text_en — LLM translates at runtime */
   recommendation_text_hi: string;
   recommendation_text_en: string;
   products?: RecommendedProduct[];
@@ -337,7 +341,9 @@ export interface RecommendedProduct {
 export interface RuleWarning {
   rule_id: string;
   warning_type: 'WEATHER' | 'TIMING' | 'RESISTANCE' | 'SAFETY' | 'ECONOMIC';
+  /** @deprecated Use warning_text_en — LLM translates at runtime */
   warning_text_mr: string;
+  /** @deprecated Use warning_text_en — LLM translates at runtime */
   warning_text_hi: string;
   warning_text_en: string;
   severity: 'LOW' | 'MEDIUM' | 'HIGH';
@@ -346,7 +352,9 @@ export interface RuleWarning {
 export interface RuleRequirement {
   rule_id: string;
   requirement_type: 'PHI' | 'PPE' | 'TIMING' | 'WAITING_PERIOD' | 'CERTIFICATION';
+  /** @deprecated Use requirement_text_en — LLM translates at runtime */
   requirement_text_mr: string;
+  /** @deprecated Use requirement_text_en — LLM translates at runtime */
   requirement_text_hi: string;
   requirement_text_en: string;
   is_mandatory: boolean;
