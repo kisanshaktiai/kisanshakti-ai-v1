@@ -517,10 +517,6 @@ export function checkPHISafety(
   
   result.block_reason = `BLOCKED: ${chemicalName} requires ${requiredPHI} days before harvest, but only ${daysToHarvest} days remain. Spraying now will result in residue above safe limits (MRL violation).`;
   
-  result.block_reason_mr = `अवरोधित: ${chemicalName} साठी कापणीपूर्वी ${requiredPHI} दिवस आवश्यक, पण फक्त ${daysToHarvest} दिवस शिल्लक आहेत. आता फवारणी केल्यास अवशेष सुरक्षित मर्यादेपेक्षा जास्त राहील.`;
-  
-  result.block_reason_hi = `अवरोधित: ${chemicalName} के लिए कटाई से ${requiredPHI} दिन पहले आवश्यक है, लेकिन केवल ${daysToHarvest} दिन शेष हैं। अभी छिड़काव करने से अवशेष सुरक्षित सीमा से अधिक रहेगा।`;
-  
   // Calculate when it would have been safe
   const safeSprayDaysAgo = shortfall;
   result.safe_spray_date = `${safeSprayDaysAgo} days ago`;
