@@ -1187,7 +1187,7 @@ function buildFormattingSystemPrompt(input: LLMFormatterInput): string {
 ═══ MANDATORY FORMAT: TYPE 1 — DIRECT PRESCRIPTION (8-SECTION) ═══
 Structure your response EXACTLY as (ALL text must be in ${langName}):
 
-[Warm greeting — address farmer by crop name "${input.land_context?.current_crop || ''}" in ${langName}]
+[Start by casually addressing the farmer like a friend/brother — then state what you see in their ${input.land_context?.current_crop || ''} crop. Do NOT use formal greetings like "Dear farmer" or "Respected farmer" or "प्रिय". Speak as if you walked into their field.]
 
 🔎 [ONE LINE: diagnosis in plain ${langName}, using local farmer terms — NEVER literally translate English symptom names]
 
