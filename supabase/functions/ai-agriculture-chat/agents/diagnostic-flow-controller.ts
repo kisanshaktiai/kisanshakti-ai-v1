@@ -532,41 +532,15 @@ export class DiagnosticFlowController {
   // MESSAGE GENERATORS
   // ═══════════════════════════════════════════════════════════════════════
   
-  private getBlockMessageMr(rule: BlockingRuleInfo): string {
-    return `⛔ ${rule.reason}\n\nपर्यायी उपाय: ${rule.alternatives?.join(', ') || 'कृषी तज्ञाशी संपर्क साधा'}`;
-  }
-  
-  private getBlockMessageHi(rule: BlockingRuleInfo): string {
-    return `⛔ ${rule.reason}\n\nवैकल्पिक उपाय: ${rule.alternatives?.join(', ') || 'कृषि विशेषज्ञ से संपर्क करें'}`;
-  }
-  
+  // English-only — LLM narration layer translates at runtime
   private getBlockMessageEn(rule: BlockingRuleInfo): string {
     return `⛔ ${rule.reason}\n\nAlternatives: ${rule.alternatives?.join(', ') || 'Contact agriculture expert'}`;
-  }
-  
-  private getRecommendationMessageMr(result: RuleEvaluationResult): string {
-    if (result.recommendations.length === 0) {
-      return 'सध्या कोणताही उपाय आवश्यक नाही. पिकाचे निरीक्षण चालू ठेवा.';
-    }
-    
-    const primary = result.recommendations[0];
-    return primary.recommendation_text_mr;
-  }
-  
-  private getRecommendationMessageHi(result: RuleEvaluationResult): string {
-    if (result.recommendations.length === 0) {
-      return 'अभी कोई उपाय आवश्यक नहीं है। फसल की निगरानी जारी रखें।';
-    }
-    
-    const primary = result.recommendations[0];
-    return primary.recommendation_text_hi;
   }
   
   private getRecommendationMessageEn(result: RuleEvaluationResult): string {
     if (result.recommendations.length === 0) {
       return 'No action needed at this time. Continue monitoring the crop.';
     }
-    
     const primary = result.recommendations[0];
     return primary.recommendation_text_en;
   }
