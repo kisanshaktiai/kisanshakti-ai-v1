@@ -6693,8 +6693,6 @@ export class AIAgentOrchestrator {
             level: escalation.escalation_level,
             expert_type: escalation.expert_needed.type,
             sla_hours: escalation.expert_needed.sla_response_hours,
-            message_mr: `तज्ञांशी संपर्क साधत आहोत. ${escalation.expert_needed.sla_response_hours} तासांत उत्तर मिळेल.`,
-            message_hi: `विशेषज्ञ से संपर्क कर रहे हैं। ${escalation.expert_needed.sla_response_hours} घंटे में जवाब मिलेगा।`,
             message_en: `Contacting expert. Response within ${escalation.expert_needed.sla_response_hours} hours.`
           },
           metadata: {
