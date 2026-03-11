@@ -16,6 +16,7 @@ export const CROP_VOCABULARY_VERSION = '1.0.0';
 export interface VocabEntry {
   phrase_pattern: string;
   semantic_hint: string;
+  recommended_intent_bias?: string;
   recommended_observation_bias?: string;
 }
 
@@ -49,7 +50,7 @@ export async function getCropVocabulary(cropCode: string, supabase: any): Promis
     try {
       const { data, error } = await supabase
         .from('crop_vocabulary')
-        .select('phrase_pattern, semantic_hint, recommended_observation_bias')
+        .select('phrase_pattern, semantic_hint, recommended_intent_bias, recommended_observation_bias')
         .eq('crop_code', cropCode)
         .eq('is_active', true);
       
@@ -61,6 +62,7 @@ export async function getCropVocabulary(cropCode: string, supabase: any): Promis
       const entries: VocabEntry[] = (data || []).map((r: any) => ({
         phrase_pattern: r.phrase_pattern,
         semantic_hint: r.semantic_hint,
+        recommended_intent_bias: r.recommended_intent_bias,
         recommended_observation_bias: r.recommended_observation_bias
       }));
       
