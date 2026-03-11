@@ -5112,7 +5112,7 @@ export class AIAgentOrchestrator {
             throw new Error('FATAL_CANONICAL_CONTEXT_CORRUPTION: crop_code missing or UNKNOWN before hypothesis arbitration');
           }
           
-          const { runCausalHypothesisArbitration } = await import('../decision/causal-hypothesis-engine.ts');
+          // Static import used (moved to top of file for edge function compatibility)
           hypothesisResult = await runCausalHypothesisArbitration({
             crop_group: hypothesisCrop,
             canonical_state: canonicalState,
