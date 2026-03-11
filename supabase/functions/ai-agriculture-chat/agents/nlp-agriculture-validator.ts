@@ -43,10 +43,9 @@ export interface NLPValidationResult {
   forbidden_combinations: Array<{
     pattern: string;
     reason: string;
-    explanation_mr: string;
-    explanation_hi: string;
+    explanation_en: string;
   }>;
-  
+
   // Gibberish detection
   is_gibberish: boolean;
   gibberish_score: number;
