@@ -151,6 +151,9 @@ import { getAuditLogger } from './audit-logger.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 
+// STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
+import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
+
 // Import soil/NDVI state calculator for land-specific recommendations
 import { 
   calculateFieldStates, 
