@@ -468,8 +468,6 @@ export function checkPollinatorSafety(
       result.is_safe = false;
       result.risk_level = 'HIGH';
       result.block_reason = `${chemicalName} is toxic to bees during flowering. ONLY spray after 7 PM when bees have returned to their hive. Chemical will dry overnight and be safer by morning.`;
-      result.block_reason_mr = `${chemicalName} फुलोऱ्यात मधमाश्यांसाठी विषारी आहे. फक्त संध्याकाळी ७ नंतर फवारणी करा जेव्हा मधमाश्या पोळ्यात परततात.`;
-      result.block_reason_hi = `${chemicalName} फूलों के समय मधुमक्खियों के लिए विषाक्त है। केवल शाम 7 बजे के बाद छिड़काव करें जब मधुमक्खियां छत्ते में लौट आती हैं।`;
       result.time_restriction = {
         allowed_hours: 'After 7 PM only',
         reason: 'Spray after bees return to hive',
