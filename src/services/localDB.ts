@@ -591,6 +591,8 @@ export interface CropData {
   
   // Localization
   label_local: string | null;
+  label_hi: string | null;
+  label_mr: string | null;
   local_name: string | null;
   
   // Visual
