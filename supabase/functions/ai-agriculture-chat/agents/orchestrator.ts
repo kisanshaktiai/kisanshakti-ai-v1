@@ -1195,8 +1195,6 @@ export class AIAgentOrchestrator {
               type: 'PHOTO_REQUEST',
               session_id: sessionId,
               photo_instructions: {
-                text_mr: `📷 फोटो स्पष्ट नाही. कृपया पुन्हा फोटो पाठवा.\n\n💡 टिप्स:\n• चांगल्या प्रकाशात\n• प्रभावित भागाचा जवळून\n• निरोगी भाग सोबत`,
-                text_hi: `📷 फोटो स्पष्ट नहीं है। कृपया फिर से फोटो भेजें.\n\n💡 टिप्स:\n• अच्छी रोशनी में\n• प्रभावित क्षेत्र का करीब से\n• स्वस्थ भाग के साथ`,
                 text_en: `📷 Photo is not clear. Please send again.\n\n💡 Tips:\n• In good lighting\n• Close-up of affected area\n• Include healthy part for comparison`,
                 tips: photoAnalysisResult.image_quality.issues
               },
