@@ -524,6 +524,9 @@ export async function translateToRegionalTerms(
   
   const translationData = PEST_TRANSLATIONS[pestKey];
   
+  if (translationData) {
+    console.warn(`   ⚠️ [DEPRECATED] Using hardcoded PEST_TRANSLATIONS for "${pestKey}". Migrate to observation_translations DB table.`);
+  }
   if (!translationData) {
     // No translation found - return English with note
     console.log(`   ⚠️ No translation found for: ${pestKey}, using English`);
