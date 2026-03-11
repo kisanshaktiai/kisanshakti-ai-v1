@@ -2372,12 +2372,7 @@ function generateAllActionsFilteredResponse(
   parts.push('Hello farmer friend! 🌾');
   
   // Explanation
-  const explanations: Record<string, string> = {
-    mr: '⚠️ सध्या या परिस्थितीत शिफारसी देणे शक्य नाही. कारणे खालीलप्रमाणे:',
-    hi: '⚠️ वर्तमान में इस स्थिति में सिफारिशें देना संभव नहीं है। कारण इस प्रकार हैं:',
-    en: '⚠️ Unable to provide recommendations at this time. Here\'s why:'
-  };
-  parts.push(explanations[lang]);
+  parts.push('⚠️ Unable to provide recommendations at this time. Here\'s why:');
   
   // List filtered reasons by category
   const categoryReasons: Record<string, string[]> = {};
