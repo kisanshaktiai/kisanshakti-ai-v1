@@ -2919,12 +2919,12 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     }
 
     // Add timing
-    const timingLabels: Record<string, Record<string, string>> = {
-      MORNING: { mr: 'सकाळी 6-10 वाजता', hi: 'सुबह 6-10 बजे', en: 'Morning 6-10 AM' },
-      EVENING: { mr: 'संध्याकाळी 4-6 वाजता', hi: 'शाम 4-6 बजे', en: 'Evening 4-6 PM' },
-      ANY: { mr: 'दिवसातून कधीही', hi: 'दिन में कभी भी', en: 'Any time' }
+    const timingLabels: Record<string, string> = {
+      MORNING: 'Morning 6-10 AM',
+      EVENING: 'Evening 4-6 PM',
+      ANY: 'Any time'
     };
-    const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
+    const timingText = timingLabels[timing] || timingLabels.MORNING;
     primaryText += `\n   ⏰ ${timingText}`;
 
     // PRODUCT MAPPING: Append market product brand names
