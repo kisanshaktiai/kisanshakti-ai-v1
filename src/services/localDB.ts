@@ -150,6 +150,8 @@ export interface LandData {
   nitrogen_kg_per_ha: number | null;
   phosphorus_kg_per_ha: number | null;
   potassium_kg_per_ha: number | null;
+  soil_confidence_level: string | null;
+  soil_data_source: string | null;
   
   // Irrigation and water
   water_source: string | null;
@@ -166,6 +168,10 @@ export interface LandData {
   harvest_date: string | null;
   expected_harvest_date: string | null;
   
+  // Moisture
+  current_moisture_status: string | null;
+  last_moisture_update: string | null;
+  
   // Previous crop
   previous_crop: string | null;
   previous_crop_id: string | null;
@@ -177,6 +183,8 @@ export interface LandData {
   last_ndvi_calculation: string | null;
   last_ndvi_value: number | null;
   ndvi_thumbnail_url: string | null;
+  ndvi_geotiff_url: string | null;
+  ndvi_status: string | null;
   last_processed_at: string | null;
   
   // Tile mapping
