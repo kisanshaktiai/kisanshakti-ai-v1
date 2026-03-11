@@ -29,11 +29,8 @@ export interface CompetingHypothesis {
 
 export interface DifferentialQuestion {
   question_id: string;
-  question_mr: string;
-  question_hi: string;
   question_en: string;
   
-  // What each answer indicates
   yes_indicates: {
     cause: string;
     confidence_boost: number;
@@ -43,14 +40,12 @@ export interface DifferentialQuestion {
     confidence_boost: number;
   };
   
-  // Visual aid (optional)
   visual_aid?: {
     image_url?: string;
     icon?: string;
     description: string;
   };
   
-  // Priority (higher = ask first)
   information_gain: number;
 }
 
