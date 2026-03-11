@@ -691,14 +691,12 @@ export class DiagnosticFlowController {
     decision: AuthorityDecision,
     context: RuleEvaluationContext
   ): DiagnosticFlowResponse {
-    const messages = this.getAuthorityBlockMessages(decision);
+    const message = this.getAuthorityBlockMessageEn(decision);
     
     return {
       action: 'BLOCK',
       blocked_reason: `AUTHORITY_${decision.authority}`,
-      message_mr: messages.mr,
-      message_hi: messages.hi,
-      message_en: messages.en,
+      message_en: message,
       alternatives: this.getAuthorityAlternatives(decision),
       session_state: this.session
     };
