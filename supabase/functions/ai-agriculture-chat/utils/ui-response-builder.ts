@@ -51,22 +51,11 @@ const MODE_MESSAGES: Record<UIResponseMode, string> = {
   ERROR: '⚠️ Something went wrong. Please try again.'
 };
 
-const PHOTO_GUIDANCE: Record<string, Record<string, string>> = {
-  prompt: {
-    mr: '📷 फोटो पाठवा',
-    hi: '📷 फोटो भेजें',
-    en: '📷 Send Photo'
-  },
-  what_to_capture: {
-    mr: 'प्रभावित पान किंवा खोडाचा जवळून फोटो घ्या',
-    hi: 'प्रभावित पत्ते या तने का क़रीब से फोटो लें',
-    en: 'Take a close-up photo of the affected leaf or stem'
-  },
-  lighting_tip: {
-    mr: 'चांगल्या प्रकाशात फोटो घ्या',
-    hi: 'अच्छी रोशनी में फोटो लें',
-    en: 'Take photo in good lighting'
-  }
+// English-only photo guidance — LLM narration layer translates at runtime
+const PHOTO_GUIDANCE = {
+  prompt: '📷 Send Photo',
+  what_to_capture: 'Take a close-up photo of the affected leaf or stem',
+  lighting_tip: 'Take photo in good lighting'
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
