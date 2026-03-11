@@ -329,14 +329,11 @@ class SyncService {
               resolution: 'server_win',
             });
           } else {
+            const { lastModified, syncStatus, ...uploadData } = land;
             await supabase
               .from('lands')
               .update({
-                name: land.name,
-                area_acres: land.area_acres,
-                ownership_type: land.ownership_type,
-                current_crop: land.crops?.[0] || null,
-                boundary: land.boundary,
+                ...uploadData,
                 updated_at: new Date(land.lastModified).toISOString(),
               })
               .eq('id', land.id);
@@ -344,20 +341,16 @@ class SyncService {
             syncedIds.push(land.id);
           }
         } else {
+          const { lastModified, syncStatus, ...uploadData } = land;
           await supabase
             .from('lands')
             .insert({
+              ...uploadData,
               tenant_id: tenantId,
-              farmer_id: land.farmer_id,
-              name: land.name,
-              area_acres: land.area_acres,
-              ownership_type: land.ownership_type,
-              current_crop: land.crops?.[0] || null,
-              boundary: land.boundary,
               created_at: new Date(land.lastModified).toISOString(),
             });
           
-          syncedIds.push(land.farmer_id);
+          syncedIds.push(land.id);
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
