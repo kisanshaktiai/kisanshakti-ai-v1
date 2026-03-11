@@ -2866,15 +2866,9 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
     const reasonText = app.reason_text as string | undefined;
     const knowledgeText = app.knowledge_text as string | undefined;
 
-    const labels = {
-      action: { mr: 'काय करावे:', hi: 'क्या करें:', en: 'Action:' },
-      reason: { mr: 'कारण:', hi: 'कारण:', en: 'Reason:' },
-      knowledge: { mr: 'माहिती:', hi: 'जानकारी:', en: 'Knowledge:' }
-    } as const;
-
-    if (actionText) parts.push(`\n🧾 **${labels.action[lang]}** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **${labels.reason[lang]}** ${reasonText}`);
-    if (knowledgeText) parts.push(`\n📚 **${labels.knowledge[lang]}** ${knowledgeText}`);
+    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
+    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
+    if (knowledgeText) parts.push(`\n📚 **Knowledge:** ${knowledgeText}`);
 
     return parts.join('\n\n');
   }
