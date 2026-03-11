@@ -347,6 +347,22 @@ export interface CropScheduleData {
   input_soil_data: any;
   input_weather_data: any;
   
+  // Intercrop data
+  backdated_consent: boolean | null;
+  backdated_consent_at: string | null;
+  intercrop_name: string | null;
+  intercrop_variety: string | null;
+  intercrop_sowing_date: string | null;
+  intercrop_area_percent: number | null;
+  intercrop_2_name: string | null;
+  intercrop_2_variety: string | null;
+  intercrop_2_sowing_date: string | null;
+  intercrop_2_area_percent: number | null;
+  intercrop_3_name: string | null;
+  intercrop_3_variety: string | null;
+  intercrop_3_sowing_date: string | null;
+  intercrop_3_area_percent: number | null;
+  
   // Additional metadata
   metadata: any;
   
