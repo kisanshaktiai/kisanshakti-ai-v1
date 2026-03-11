@@ -2382,42 +2382,15 @@ function generateAllActionsFilteredResponse(
     categoryReasons[category].push(action.reason || action.action);
   });
   
-  const categoryLabels: Record<string, Record<string, string>> = {
-    REGULATORY: {
-      mr: '📋 नियामक निर्बंध',
-      hi: '📋 नियामक प्रतिबंध',
-      en: '📋 Regulatory Restrictions'
-    },
-    SAFETY: {
-      mr: '🛡️ सुरक्षा कारणे',
-      hi: '🛡️ सुरक्षा कारण',
-      en: '🛡️ Safety Reasons'
-    },
-    SEASONAL: {
-      mr: '📅 हंगाम-संबंधित',
-      hi: '📅 मौसम-संबंधित',
-      en: '📅 Seasonal Restrictions'
-    },
-    WEATHER: {
-      mr: '🌧️ हवामान-संबंधित',
-      hi: '🌧️ मौसम-संबंधित',
-      en: '🌧️ Weather Conditions'
-    },
-    ECONOMIC: {
-      mr: '💰 आर्थिक कारणे',
-      hi: '💰 आर्थिक कारण',
-      en: '💰 Economic Factors'
-    },
-    COMPATIBILITY: {
-      mr: '⚗️ सुसंगतता समस्या',
-      hi: '⚗️ संगतता समस्या',
-      en: '⚗️ Compatibility Issues'
-    },
-    UNKNOWN: {
-      mr: 'ℹ️ इतर कारणे',
-      hi: 'ℹ️ अन्य कारण',
-      en: 'ℹ️ Other Reasons'
-    }
+  // English-only category labels — forceTranslateResponse() handles localization
+  const categoryLabels: Record<string, string> = {
+    REGULATORY: '📋 Regulatory Restrictions',
+    SAFETY: '🛡️ Safety Reasons',
+    SEASONAL: '📅 Seasonal Restrictions',
+    WEATHER: '🌧️ Weather Conditions',
+    ECONOMIC: '💰 Economic Factors',
+    COMPATIBILITY: '⚗️ Compatibility Issues',
+    UNKNOWN: 'ℹ️ Other Reasons'
   };
   
   Object.entries(categoryReasons).forEach(([category, reasons]) => {
