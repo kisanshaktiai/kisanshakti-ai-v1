@@ -519,25 +519,17 @@ export function enforcePollinatorProtection(
     .filter(c => c.bee_toxicity === 'RELATIVELY_NONTOXIC')
     .map(c => c.chemical);
   
-  // Generate advice
+  // English-only advice — LLM narration layer translates at runtime
   let generalAdvice = '';
-  let generalAdvice_mr = '';
-  let generalAdvice_hi = '';
   
   if (isFlowering) {
     if (cropInfo?.dependency_level === 'HIGH') {
       generalAdvice = `CRITICAL: ${cropCode} is flowering and highly dependent on pollinators. Use ONLY pollinator-safe products (Neem, Bt, NPV). Avoid all neonicotinoids and pyrethroids.`;
-      generalAdvice_mr = `महत्त्वाचे: ${cropCode} फुलोऱ्यात आहे आणि परागीकरणासाठी मधमाश्यांवर अवलंबून आहे. फक्त मधमाशी-सुरक्षित उत्पादने वापरा (निंब, बीटी, एनपीव्ही).`;
-      generalAdvice_hi = `महत्वपूर्ण: ${cropCode} में फूल आए हैं और परागण के लिए मधुमक्खियों पर निर्भर है। केवल मधुमक्खी-सुरक्षित उत्पाद लगाएं (नीम, बीटी, एनपीवी)।`;
     } else {
       generalAdvice = `Crop is flowering. Prefer pollinator-friendly options. If chemical spray essential, spray after 7 PM when bees have returned to hive.`;
-      generalAdvice_mr = `पीक फुलोऱ्यात आहे. परागीकरण-अनुकूल पर्याय निवडा. रासायनिक फवारणी आवश्यक असल्यास, संध्याकाळी ७ नंतर फवारणी करा.`;
-      generalAdvice_hi = `फसल में फूल आए हैं। परागण-अनुकूल विकल्प चुनें। रासायनिक छिड़काव आवश्यक हो तो शाम 7 बजे के बाद करें।`;
     }
   } else {
     generalAdvice = 'Crop is not in flowering stage. Standard spray guidelines apply. Still avoid spraying if bees are foraging on nearby flowering plants.';
-    generalAdvice_mr = 'पीक फुलोऱ्यात नाही. सामान्य फवारणी मार्गदर्शक तत्त्वे लागू. जवळपास फुलांवर मधमाश्या असल्यास फवारणी टाळा.';
-    generalAdvice_hi = 'फसल में फूल नहीं आए हैं। सामान्य छिड़काव दिशानिर्देश लागू। आसपास फूलों पर मधुमक्खियां हों तो छिड़काव से बचें।';
   }
   
   return {
