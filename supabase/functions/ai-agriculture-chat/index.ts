@@ -2324,12 +2324,8 @@ function generateValidationFailureFallback(
       if (validSecondaryActions.length === 0) {
         // NO valid actions at all - use technical issue fallback
         console.log(`   ⚠️ No valid actions found in actionsReturned, using technical fallback`);
-        const fallbacks: Record<string, string> = {
-          mr: `🌾 नमस्कार शेतकरी मित्र!\n\nमाझ्याकडून शिफारस तयार करताना तांत्रिक समस्या आली. कृपया पुन्हा प्रयत्न करा किंवा तुमची समस्या अधिक तपशीलात सांगा.\n\n📞 तातडीसाठी: जवळच्या कृषी विज्ञान केंद्राशी संपर्क साधा.`,
-          hi: `🌾 नमस्कार किसान मित्र!\n\nसिफारिश तैयार करते समय तकनीकी समस्या आई। कृपया दोबारा प्रयास करें या अपनी समस्या और विस्तार से बताएं।\n\n📞 तत्काल सहायता के लिए: निकटतम KVK से संपर्क करें।`,
-          en: `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`
-        };
-        return fallbacks[lang] || fallbacks['en'];
+        const fallbackText = `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`;
+        return fallbackText;
       }
       
       // Use valid secondary actions - TRANSLATE to farmer-friendly language
