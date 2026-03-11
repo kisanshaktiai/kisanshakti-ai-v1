@@ -259,7 +259,7 @@ function buildContent(
   const content: UIResponseContent = {};
   
   // Get default message for mode
-  const defaultMessage = MODE_MESSAGES[mode]?.[language] || MODE_MESSAGES.OBSERVATION[language];
+  const defaultMessage = MODE_MESSAGES[mode] || MODE_MESSAGES.OBSERVATION;
   
   // Build primary message
   if (mode === 'TREATMENT_ALLOWED' && hasTextContent(details.action_text)) {
