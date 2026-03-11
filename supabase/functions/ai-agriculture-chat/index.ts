@@ -2369,12 +2369,7 @@ function generateAllActionsFilteredResponse(
   const parts: string[] = [];
   
   // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang]);
+  parts.push('Hello farmer friend! 🌾');
   
   // Explanation
   const explanations: Record<string, string> = {
