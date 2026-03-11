@@ -7961,7 +7961,7 @@ export class AIAgentOrchestrator {
       
       return {
         preferred_language: preferredLanguage || data?.language_preference || 'mr',
-        name: data?.farmer_name || 'शेतकरी',
+        name: data?.farmer_name || 'Farmer',
         literacy_level: (data?.education_level || 'MODERATE') as any,
         technical_knowledge: 'MODERATE',
         emotional_state: 'NEUTRAL'
