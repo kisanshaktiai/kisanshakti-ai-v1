@@ -271,13 +271,11 @@ class SyncService {
             });
           } else {
             // Local version is newer - update server
+            const { lastModified, syncStatus, ...uploadData } = farmer;
             await supabase
               .from('farmers')
               .update({
-                farmer_name: farmer.name,
-                mobile_number: farmer.phone,
-                location: farmer.address,
-                metadata: farmer.metadata,
+                ...uploadData,
                 updated_at: new Date(farmer.lastModified).toISOString(),
               })
               .eq('id', farmer.id);
@@ -286,15 +284,12 @@ class SyncService {
           }
         } else {
           // New farmer - insert to server
+          const { lastModified, syncStatus, ...uploadData } = farmer;
           await supabase
             .from('farmers')
             .insert({
-              id: farmer.id,
+              ...uploadData,
               tenant_id: tenantId,
-              farmer_name: farmer.name,
-              mobile_number: farmer.phone,
-              location: farmer.address,
-              metadata: farmer.metadata,
               created_at: new Date(farmer.lastModified).toISOString(),
             });
           
