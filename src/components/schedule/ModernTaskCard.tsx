@@ -289,16 +289,16 @@ export default function ModernTaskCard({
             {(task.confidence_score || task.based_on || task.scientific_reason) && (
               <div className="space-y-3 p-4 rounded-xl bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/20">
                 {/* Confidence Score */}
-                {task.confidence_score && (
+                {task.confidence_score != null && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">{t('schedule.task_card.confidence_level', 'Confidence Level')}</span>
                     <Badge className={cn(
                       "text-xs",
-                      task.confidence_score >= 80 ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
-                      task.confidence_score >= 60 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                      Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
+                      Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30" :
                       "bg-red-500/20 text-red-700 dark:text-red-300 border-red-500/30"
                     )}>
-                      {task.confidence_score}%
+                      {Math.round(task.confidence_score * 100)}%
                     </Badge>
                   </div>
                 )}

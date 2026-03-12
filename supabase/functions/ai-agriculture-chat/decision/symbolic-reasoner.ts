@@ -1378,7 +1378,13 @@ export class SymbolicReasoner {
       hypotheses.set(causeId, {
         cause_id: causeId,
         cause_name: rule.cause || rule.rule_id,
-        confidence: confidence * (rule.confidence_score || 0.7),
+        confidence: (() => {
+          const cs = rule.confidence_score || 0.7;
+          if (cs > 1) {
+            console.error(`[symbolic-reasoner] confidence_score out of range: ${cs} for rule ${rule.rule_id}. Expected 0–1 float. DB migration may not have run.`);
+          }
+          return confidence * cs;
+        })(),
         evidence: [rule.scientific_basis || 'rule match'],
         supporting_rules: [rule.rule_id]
       });

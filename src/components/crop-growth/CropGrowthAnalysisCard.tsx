@@ -310,14 +310,14 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
                           <Clock className="h-3 w-3" />
                           {action.timing}
                         </span>
-                        {action.confidence_score && (
+                        {action.confidence_score != null && (
                           <Badge variant="outline" className={cn(
                             "text-[10px]",
-                            action.confidence_score >= 80 ? "bg-emerald-500/10 text-emerald-600" :
-                            action.confidence_score >= 60 ? "bg-amber-500/10 text-amber-600" :
+                            Math.round(action.confidence_score * 100) >= 80 ? "bg-emerald-500/10 text-emerald-600" :
+                            Math.round(action.confidence_score * 100) >= 60 ? "bg-amber-500/10 text-amber-600" :
                             "bg-red-500/10 text-red-600"
                           )}>
-                            {action.confidence_score}%
+                            {Math.round(action.confidence_score * 100)}%
                           </Badge>
                         )}
                       </div>
