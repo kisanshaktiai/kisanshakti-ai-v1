@@ -40,14 +40,18 @@ const makeAdvisory = (confidence: number) => ({
       method: 'foliar spray',
     },
   },
+  symptoms_to_confirm: { has_symptoms: false, symptoms: [] },
   prevention: { has_prevention: false, measures: [] },
   economics: { has_economics: false },
   monitoring: { has_monitoring: false, success_indicators: [], failure_indicators: [] },
+  safety: { has_safety_info: false },
+  environment: { has_conditions: false },
+  safety_warnings: [],
   trace: {
     rule_id: 'TEST_001',
     confidence_score: confidence,
   },
-});
+} as any);
 
 describe('CanonicalAdvisoryCard confidence_score display', () => {
   const cases = [

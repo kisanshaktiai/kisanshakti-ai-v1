@@ -33,6 +33,7 @@ describe('ModernTaskCard confidence_score display', () => {
           task={{ ...baseTask, confidence_score: input }}
           isOverdue={false}
           daysUntil={5}
+          onSpeak={() => {}}
         />
       );
       expect(screen.getByText(new RegExp(`${expected}%\\s*confident`))).toBeInTheDocument();
