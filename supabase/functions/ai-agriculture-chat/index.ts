@@ -915,7 +915,7 @@ serve(async (req) => {
     }
     
     // STEP 2: Extract and audit with filter logging
-    const { actions_returned, actions_filtered_out, audit_log, filter_trace } = extractAndAuditActionsWithFilterTrace(orchestratorResponse, traceId);
+    const { actions_returned, actions_filtered_out, audit_log, filter_trace } = extractAndAuditActionsWithFilterTrace(orchestratorResponse, traceId, detectedLanguage);
     
     // STEP 3: Log DURING filtering - each filter rule applied
     console.log(`\n🔬 [${traceId}] ─── DURING FILTERING: FILTER RULES APPLIED ───`);
