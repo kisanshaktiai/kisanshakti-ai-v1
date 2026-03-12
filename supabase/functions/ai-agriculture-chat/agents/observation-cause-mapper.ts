@@ -375,6 +375,62 @@ const OBSERVATION_RULES: PatternRule[] = [
     confidence: 0.80
   },
   
+  // Magnesium Deficiency (Interveinal chlorosis on OLDER leaves)
+  {
+    patterns: [
+      /magnesium\s*deficien/i,
+      /mg\s*deficien/i,
+      /मॅग्नेशियम\s*कमी/i,
+      /interveinal\s*chlorosis/i,
+      /शिरांमधील\s*(पिवळेपणा|पिवळा)/i,
+      /शिरा\s*हिरव्या.*पान\s*पिवळ/i,
+      /पानाच्या\s*शिरांमधील\s*भाग\s*पिवळा/i,
+      /veins?\s*green.*yellow/i,
+      /yellow.*between\s*veins?/i,
+      /पिवळे\s*पट्टे.*शिरा\s*हिरव/i
+    ],
+    cause_code: 'MAGNESIUM_DEFICIENCY',
+    cause_type: 'NUTRIENT',
+    confidence: 0.88
+  },
+  
+  // Zinc Deficiency (Interveinal chlorosis on YOUNG leaves + white bands)
+  {
+    patterns: [
+      /zinc\s*deficien/i,
+      /zn\s*deficien/i,
+      /जस्त\s*कमी/i,
+      /झिंक\s*कमी/i,
+      /white\s*band/i,
+      /पांढरे\s*पट्टे/i,
+      /young\s*leaves?\s*yellow.*veins?\s*green/i,
+      /नवीन\s*पाने\s*पिवळी/i,
+      /khaira/i,
+      /खैरा/i
+    ],
+    cause_code: 'ZINC_DEFICIENCY',
+    cause_type: 'NUTRIENT',
+    crop_specific: ['RICE', 'SUGARCANE', 'MAIZE', 'WHEAT'],
+    confidence: 0.85
+  },
+  
+  // Iron Deficiency (Chlorosis on YOUNGEST leaves, entire leaf pale)
+  {
+    patterns: [
+      /iron\s*deficien/i,
+      /fe\s*deficien/i,
+      /लोह\s*कमी/i,
+      /आयर्न\s*कमी/i,
+      /youngest\s*leaves?\s*yellow/i,
+      /entire\s*leaf\s*pale/i,
+      /सगळं\s*पान\s*पिवळं/i,
+      /नवीन\s*पान\s*पूर्ण\s*पिवळे/i
+    ],
+    cause_code: 'IRON_DEFICIENCY',
+    cause_type: 'NUTRIENT',
+    confidence: 0.82
+  },
+
   // ═══ WATER PATTERNS ═══
   
   // Water Stress / Drought

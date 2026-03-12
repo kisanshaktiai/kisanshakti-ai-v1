@@ -230,7 +230,37 @@ export function sanitizeFarmerResponse(text: string): string {
   // 5. Strip "Priority: HIGH" / "IPM Level: LEVEL_3" patterns
   sanitized = sanitized.replace(/\b(?:Priority|IPM Level)\s*:\s*\S+/g, '');
   
-  // 6. Clean up multiple spaces/newlines left by removals
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 6. AGRONOMIC SAFETY GUARDRAILS - Block unrealistic claims
+  // ═══════════════════════════════════════════════════════════════════════════
+  
+  // 6a. Block unrealistic growth rate claims (>5 cm/day for sugarcane)
+  sanitized = sanitized.replace(/(\d+)\s*(?:cm|सेमी|से\.मी\.)\s*(?:per|\/|प्रति)\s*(?:day|दिवस|दिन)/gi, (match, num) => {
+    const rate = parseInt(num);
+    if (rate > 5) {
+      console.warn(`🚫 [AGRONOMIC GUARD] Blocked unrealistic growth rate: ${match}`);
+      return '';
+    }
+    return match;
+  });
+  
+  // 6b. Block unrealistic yield increase claims (>15% from single intervention)
+  sanitized = sanitized.replace(/(?:production|yield|उत्पादन|उत्पन्न|पिकाचे).*?(\d{2,3})\s*%\s*(?:increase|वाढ|बढ़|more|जास्त)/gi, (match, num) => {
+    const pct = parseInt(num);
+    if (pct > 15) {
+      console.warn(`🚫 [AGRONOMIC GUARD] Blocked unrealistic yield claim: ${match}`);
+      return '';
+    }
+    return match;
+  });
+  
+  // 6c. Strip generic percentage yield promises (scientifically unsafe)
+  sanitized = sanitized.replace(/(?:will|shall|होईल|होतो)\s*(?:increase|improve|वाढ)\s*(?:by|ने)?\s*\d+\s*%/gi, (match) => {
+    console.warn(`🚫 [AGRONOMIC GUARD] Stripped unsafe yield promise: ${match}`);
+    return '';
+  });
+  
+  // 7. Clean up multiple spaces/newlines left by removals
   sanitized = sanitized.replace(/  +/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
   
   return sanitized;
