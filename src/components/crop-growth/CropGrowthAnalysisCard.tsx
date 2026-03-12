@@ -109,14 +109,14 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
               {t('cropGrowth.currentStatus', 'Current Status')}
             </CardTitle>
             <div className="flex items-center gap-2">
-              {analysis.analysis_confidence && (
+              {analysis.analysis_confidence != null && (
                 <Badge variant="outline" className={cn(
                   "text-xs",
-                  analysis.analysis_confidence >= 80 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" :
-                  analysis.analysis_confidence >= 60 ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
+                  Math.round(analysis.analysis_confidence * 100) >= 80 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" :
+                  Math.round(analysis.analysis_confidence * 100) >= 60 ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
                   "bg-red-500/10 border-red-500/30 text-red-600"
                 )}>
-                  {analysis.analysis_confidence}% {t('cropGrowth.confident', 'confident')}
+                  {Math.round(analysis.analysis_confidence * 100)}% {t('cropGrowth.confident', 'confident')}
                 </Badge>
               )}
               <Badge variant={getRiskColor(analysis.risk_level) as any}>
