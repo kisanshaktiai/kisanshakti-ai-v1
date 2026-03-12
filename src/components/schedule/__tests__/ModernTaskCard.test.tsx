@@ -1,12 +1,22 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import ModernTaskCard from '../ModernTaskCard';
 
+// Mock react-i18next with initReactI18next export
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (_key: string, fallback: string) => fallback,
   }),
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
+
+vi.mock('framer-motion', () => ({
+  motion: {
+    div: ({ children, ...props }: any) => <div {...props}>{children}</div>,
+  },
+  AnimatePresence: ({ children }: any) => <>{children}</>,
+}));
+
+import ModernTaskCard from '../ModernTaskCard';
 
 const baseTask = {
   id: 'test-1',
