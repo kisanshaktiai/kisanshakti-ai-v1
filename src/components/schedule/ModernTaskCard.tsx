@@ -206,16 +206,16 @@ export default function ModernTaskCard({
             )}
 
             {/* Scientific Confidence Badge */}
-            {task.confidence_score && (
+            {task.confidence_score != null && (
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold",
-                  task.confidence_score >= 80 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
-                  task.confidence_score >= 60 ? "bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400" :
+                  Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
+                  Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400" :
                   "bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400"
                 )}>
                   <Sparkles className="h-3 w-3" />
-                  {task.confidence_score}% {t('schedule.task_card.confidence', 'confident')}
+                  {Math.round(task.confidence_score * 100)}% {t('schedule.task_card.confidence', 'confident')}
                 </div>
               </div>
             )}
