@@ -1865,7 +1865,10 @@ function normalizeToEnglish(content: string): string {
 }
 
 /**
- * Verify if response content matches target language
+ * Verify if response content matches target language.
+ * CRITICAL FIX: Old logic only checked if ANY script char existed (regex.test).
+ * This passed for mixed English/Marathi responses like "Hello farmer! 🌾 शुभेच्छा".
+ * New logic checks that the response has SUFFICIENT target-script content (>30% of text).
  */
 function verifyLanguageConsistency(content: string, targetLanguage: string): boolean {
   if (targetLanguage === 'en') {
@@ -1873,12 +1876,26 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
     return asciiRatio > 0.8;
   }
   
+  // Strip emojis, numbers, whitespace, punctuation for ratio calculation
+  const cleanText = content.replace(/[0-9₹%@\-/×.,()⛔⚠️🌾🐝🧤🔄📊📈💰✅❌🌤️🌧️💨🌡️🚨⏳🚫📌📋📍⏰🔧🛒🧪💡💊🌿👀🔍📖🎯📸📅🙏═─\n\r\s*#]+/g, '');
+  
   const scriptRegex = getScriptRegex(targetLanguage);
-  if (scriptRegex) {
-    return scriptRegex.test(content);
+  if (scriptRegex && cleanText.length > 20) {
+    // Count script chars vs total significant chars
+    const scriptChars = (cleanText.match(new RegExp(scriptRegex.source, 'g')) || []).length;
+    const asciiAlpha = (cleanText.match(/[a-zA-Z]/g) || []).length;
+    const total = scriptChars + asciiAlpha;
+    if (total < 10) return true; // Too short to judge
+    
+    const scriptRatio = scriptChars / total;
+    // If less than 30% is target script, it's predominantly English → needs translation
+    return scriptRatio >= 0.3;
   }
   
-  return true; // Default to true for unsupported scripts
+  // Fallback: just check if ANY target script present
+  if (scriptRegex) return scriptRegex.test(content);
+  
+  return true;
 }
 
 /**
