@@ -3112,13 +3112,9 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
 /**
  * Get generic monitoring message when no decision output is available
  */
-function getGenericMonitoringMessage(language: string): string {
-  const messages: Record<string, string> = {
-    mr: 'नमस्कार! 🌾 तुमच्या पिकाचे निरीक्षण सुरू ठेवा. काही समस्या दिसल्यास आम्हाला कळवा.',
-    hi: 'नमस्कार! 🌾 अपनी फसल की निगरानी जारी रखें। कोई समस्या दिखे तो हमें बताएं।',
-    en: 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.'
-  };
-  return messages[language] || messages.en;
+function getGenericMonitoringMessage(_language: string): string {
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.';
 }
 
 /**
