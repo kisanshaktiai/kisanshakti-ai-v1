@@ -3,13 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2"
 import { checkRateLimit } from '../_shared/rateLimiter.ts'
 import { resolveTenantFromRequest } from '../_shared/tenantMiddleware.ts'
 import { withTenantBlocker } from '../_shared/tenantBlocker.ts'
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token, x-client-domain, if-none-match, origin',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
-  'Access-Control-Max-Age': '86400',
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 // Type definitions
 interface WeatherRequest {
