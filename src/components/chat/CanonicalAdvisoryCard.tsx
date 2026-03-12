@@ -450,7 +450,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
             >
               <div className="pt-1.5 space-y-0.5 text-[10px] text-muted-foreground/40">
                 <p>🔗 Rule: {trace.rule_id}</p>
-                <p>📊 Confidence: {Math.round(trace.confidence_score * 100)}%</p>
+                <p>📊 Confidence: {Math.min(Math.round(trace.confidence_score * 100), 100)}%</p>
                 {trace.scientific_source && <p>📚 Source: {trace.scientific_source}</p>}
                 {trace.icar_package && <p>🏛️ ICAR: {trace.icar_package}</p>}
                 {trace.university_source && <p>🎓 Univ: {trace.university_source}</p>}

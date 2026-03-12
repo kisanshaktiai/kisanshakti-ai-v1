@@ -164,7 +164,7 @@ export function MarketingInsightsDashboard({ tenantId }: { tenantId: string }) {
                       {insightTypeLabels[insight.insight_type] || insight.insight_type}
                     </Badge>
                     <Badge variant="outline">
-                      {Math.round(insight.confidence_score * 100)}% confidence
+                      {Math.min(Math.round(insight.confidence_score * 100), 100)}% confidence
                     </Badge>
                   </div>
                   <div className="text-sm text-muted-foreground">

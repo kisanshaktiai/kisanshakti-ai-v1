@@ -109,14 +109,14 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
               {t('cropGrowth.currentStatus', 'Current Status')}
             </CardTitle>
             <div className="flex items-center gap-2">
-              {analysis.analysis_confidence && (
+              {analysis.analysis_confidence != null && (
                 <Badge variant="outline" className={cn(
                   "text-xs",
-                  analysis.analysis_confidence >= 80 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" :
-                  analysis.analysis_confidence >= 60 ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
+                  Math.round(analysis.analysis_confidence * 100) >= 80 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" :
+                  Math.round(analysis.analysis_confidence * 100) >= 60 ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
                   "bg-red-500/10 border-red-500/30 text-red-600"
                 )}>
-                  {analysis.analysis_confidence}% {t('cropGrowth.confident', 'confident')}
+                  {Math.round(analysis.analysis_confidence * 100)}% {t('cropGrowth.confident', 'confident')}
                 </Badge>
               )}
               <Badge variant={getRiskColor(analysis.risk_level) as any}>
@@ -310,14 +310,14 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
                           <Clock className="h-3 w-3" />
                           {action.timing}
                         </span>
-                        {action.confidence_score && (
+                        {action.confidence_score != null && (
                           <Badge variant="outline" className={cn(
                             "text-[10px]",
-                            action.confidence_score >= 80 ? "bg-emerald-500/10 text-emerald-600" :
-                            action.confidence_score >= 60 ? "bg-amber-500/10 text-amber-600" :
+                            Math.round(action.confidence_score * 100) >= 80 ? "bg-emerald-500/10 text-emerald-600" :
+                            Math.round(action.confidence_score * 100) >= 60 ? "bg-amber-500/10 text-amber-600" :
                             "bg-red-500/10 text-red-600"
                           )}>
-                            {action.confidence_score}%
+                            {Math.round(action.confidence_score * 100)}%
                           </Badge>
                         )}
                       </div>

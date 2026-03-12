@@ -206,16 +206,16 @@ export default function ModernTaskCard({
             )}
 
             {/* Scientific Confidence Badge */}
-            {task.confidence_score && (
+            {task.confidence_score != null && (
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold",
-                  task.confidence_score >= 80 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
-                  task.confidence_score >= 60 ? "bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400" :
+                  Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
+                  Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400" :
                   "bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400"
                 )}>
                   <Sparkles className="h-3 w-3" />
-                  {task.confidence_score}% {t('schedule.task_card.confidence', 'confident')}
+                  {Math.round(task.confidence_score * 100)}% {t('schedule.task_card.confidence', 'confident')}
                 </div>
               </div>
             )}
@@ -289,16 +289,16 @@ export default function ModernTaskCard({
             {(task.confidence_score || task.based_on || task.scientific_reason) && (
               <div className="space-y-3 p-4 rounded-xl bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/20">
                 {/* Confidence Score */}
-                {task.confidence_score && (
+                {task.confidence_score != null && (
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-muted-foreground">{t('schedule.task_card.confidence_level', 'Confidence Level')}</span>
                     <Badge className={cn(
                       "text-xs",
-                      task.confidence_score >= 80 ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
-                      task.confidence_score >= 60 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                      Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
+                      Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30" :
                       "bg-red-500/20 text-red-700 dark:text-red-300 border-red-500/30"
                     )}>
-                      {task.confidence_score}%
+                      {Math.round(task.confidence_score * 100)}%
                     </Badge>
                   </div>
                 )}
