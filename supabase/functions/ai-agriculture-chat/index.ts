@@ -2485,7 +2485,7 @@ function categorizeFilterReason(reason: string, blockedByRule?: string): FilterC
   return 'UNKNOWN';
 }
 
-function extractAndAuditActionsWithFilterTrace(orchestratorResponse: OrchestratorResponse, traceId: string): {
+function extractAndAuditActionsWithFilterTrace(orchestratorResponse: OrchestratorResponse, traceId: string, detectedLanguage: string = 'en'): {
   actions_returned: any[] | null;
   actions_filtered_out: any[] | null;
   audit_log: ActionAuditLog;
