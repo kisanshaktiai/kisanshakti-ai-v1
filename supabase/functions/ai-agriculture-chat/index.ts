@@ -915,7 +915,7 @@ serve(async (req) => {
     }
     
     // STEP 2: Extract and audit with filter logging
-    const { actions_returned, actions_filtered_out, audit_log, filter_trace } = extractAndAuditActionsWithFilterTrace(orchestratorResponse, traceId);
+    const { actions_returned, actions_filtered_out, audit_log, filter_trace } = extractAndAuditActionsWithFilterTrace(orchestratorResponse, traceId, detectedLanguage);
     
     // STEP 3: Log DURING filtering - each filter rule applied
     console.log(`\n🔬 [${traceId}] ─── DURING FILTERING: FILTER RULES APPLIED ───`);
@@ -1865,7 +1865,10 @@ function normalizeToEnglish(content: string): string {
 }
 
 /**
- * Verify if response content matches target language
+ * Verify if response content matches target language.
+ * CRITICAL FIX: Old logic only checked if ANY script char existed (regex.test).
+ * This passed for mixed English/Marathi responses like "Hello farmer! 🌾 शुभेच्छा".
+ * New logic checks that the response has SUFFICIENT target-script content (>30% of text).
  */
 function verifyLanguageConsistency(content: string, targetLanguage: string): boolean {
   if (targetLanguage === 'en') {
@@ -1873,12 +1876,26 @@ function verifyLanguageConsistency(content: string, targetLanguage: string): boo
     return asciiRatio > 0.8;
   }
   
+  // Strip emojis, numbers, whitespace, punctuation for ratio calculation
+  const cleanText = content.replace(/[0-9₹%@\-/×.,()⛔⚠️🌾🐝🧤🔄📊📈💰✅❌🌤️🌧️💨🌡️🚨⏳🚫📌📋📍⏰🔧🛒🧪💡💊🌿👀🔍📖🎯📸📅🙏═─\n\r\s*#]+/g, '');
+  
   const scriptRegex = getScriptRegex(targetLanguage);
-  if (scriptRegex) {
-    return scriptRegex.test(content);
+  if (scriptRegex && cleanText.length > 20) {
+    // Count script chars vs total significant chars
+    const scriptChars = (cleanText.match(new RegExp(scriptRegex.source, 'g')) || []).length;
+    const asciiAlpha = (cleanText.match(/[a-zA-Z]/g) || []).length;
+    const total = scriptChars + asciiAlpha;
+    if (total < 10) return true; // Too short to judge
+    
+    const scriptRatio = scriptChars / total;
+    // If less than 30% is target script, it's predominantly English → needs translation
+    return scriptRatio >= 0.3;
   }
   
-  return true; // Default to true for unsupported scripts
+  // Fallback: just check if ANY target script present
+  if (scriptRegex) return scriptRegex.test(content);
+  
+  return true;
 }
 
 /**
@@ -2485,7 +2502,7 @@ function categorizeFilterReason(reason: string, blockedByRule?: string): FilterC
   return 'UNKNOWN';
 }
 
-function extractAndAuditActionsWithFilterTrace(orchestratorResponse: OrchestratorResponse, traceId: string): {
+function extractAndAuditActionsWithFilterTrace(orchestratorResponse: OrchestratorResponse, traceId: string, detectedLanguage: string = 'en'): {
   actions_returned: any[] | null;
   actions_filtered_out: any[] | null;
   audit_log: ActionAuditLog;
@@ -2529,10 +2546,10 @@ function extractAndAuditActionsWithFilterTrace(orchestratorResponse: Orchestrato
     const enrichedAction = {
       type: 'primary',
       action_type: primary.action_type,
-      // Generate title from action type
-      title: generateActionTitle(primary, 'mr'),
+      // Generate title from action type — use detected language, not hardcoded 'mr'
+      title: generateActionTitle(primary, detectedLanguage),
       // Generate description from action details
-      description: generateActionDescription(primary, 'mr'),
+      description: generateActionDescription(primary, detectedLanguage),
       product_name: primary.application_details?.product_name,
       dosage: primary.application_details?.concentration,
       timing: primary.timing,
@@ -2659,33 +2676,23 @@ function buildExplicitFilterReason(blocked: any, category: FilterCategory): stri
 function generateActionTitle(primary: any, lang: string): string {
   const actionType = primary.action_type || 'UNKNOWN';
   const productName = primary.application_details?.product_name;
-  const pestCode = primary.target?.pest_code;
-  const diseaseCode = primary.target?.disease_code;
   
-  const titles: Record<string, Record<string, string>> = {
-    SPRAY: {
-      mr: productName ? `${productName} फवारणी` : 'किटकनाशक फवारणी',
-      hi: productName ? `${productName} छिड़काव` : 'कीटनाशक छिड़काव',
-      en: productName ? `Apply ${productName}` : 'Insecticide Spray'
-    },
-    FERTILIZER: {
-      mr: 'खत देणे',
-      hi: 'उर्वरक देना',
-      en: 'Apply Fertilizer'
-    },
-    NO_ACTION: {
-      mr: 'कोणतीही कृती नाही',
-      hi: 'कोई कार्रवाई नहीं',
-      en: 'No Action Required'
-    },
-    MONITOR_ONLY: {
-      mr: 'निरीक्षण करा',
-      hi: 'निगरानी करें',
-      en: 'Monitor Only'
-    }
+  // English-only titles — forceTranslateResponse() handles localization at runtime
+  const titles: Record<string, string> = {
+    SPRAY: productName ? `Apply ${productName}` : 'Insecticide Spray',
+    FERTILIZER: 'Apply Fertilizer',
+    NO_ACTION: 'No Action Required',
+    MONITOR_ONLY: 'Monitor Only',
+    CULTURAL: 'Cultural Practice',
+    BIOLOGICAL: 'Biological Control',
+    MECHANICAL: 'Mechanical Control',
+    IRRIGATION: 'Irrigation Management',
+    HERBICIDE: 'Weed Control',
+    FUNGICIDE: 'Fungicide Application',
+    INSECTICIDE: 'Insecticide Application',
   };
   
-  return titles[actionType]?.[lang] || titles[actionType]?.en || actionType;
+  return titles[actionType] || actionType;
 }
 
 /**
@@ -3022,69 +3029,48 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
   }
   
   const parts: string[] = [];
-  const lang = language;
   
-  // Greeting
-  const greetings: Record<string, string> = {
-    mr: 'नमस्कार शेतकरी मित्र! 🌾',
-    hi: 'नमस्कार किसान मित्र! 🌾',
-    en: 'Hello farmer friend! 🌾'
-  };
-  parts.push(greetings[lang] || greetings.en);
+  // English-only — forceTranslateResponse() handles localization at runtime
+  parts.push('Hello farmer friend! 🌾');
   
   const primary = decision.primary_decision;
   
   // Status handling
   if (decision.status === 'BLOCKED') {
     const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    const blockedMessages: Record<string, string> = {
-      mr: `⚠️ थांबा: ${blockedReason}`,
-      hi: `⚠️ रुकें: ${blockedReason}`,
-      en: `⚠️ Stop: ${blockedReason}`
-    };
-    parts.push(blockedMessages[lang]);
+    parts.push(`⚠️ **Stop:** ${blockedReason}`);
     return parts.join('\n\n');
   }
   
   if (decision.status === 'WEATHER_DELAYED') {
-    const delayMessages: Record<string, string> = {
-      mr: '⏱️ फवारणी पुढे ढकला - हवामान सुधारल्यावर फवारणी करा. सध्या पिकाचे निरीक्षण सुरू ठेवा.',
-      hi: '⏱️ छिड़काव टालें - मौसम साफ होने पर छिड़काव करें। अभी फसल की निगरानी जारी रखें।',
-      en: '⏱️ Postpone spray - Spray when weather clears. Continue crop monitoring for now.'
-    };
-    parts.push(delayMessages[lang]);
+    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
     return parts.join('\n\n');
   }
   
   // Action type
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    const monitorMessages: Record<string, string> = {
-      mr: '👀 सध्या कोणतीही कृती आवश्यक नाही. निरीक्षण सुरू ठेवा.',
-      hi: '👀 अभी कोई कार्रवाई आवश्यक नहीं। निगरानी जारी रखें।',
-      en: '👀 No action required at this time. Continue monitoring.'
-    };
-    parts.push(monitorMessages[lang]);
+    parts.push('👀 **No action required at this time.** Continue monitoring.');
+
+    const app = primary?.application_details || {};
+    if (app.action_text) parts.push(`\n🧾 **Action:** ${app.action_text}`);
+    if (app.reason_text) parts.push(`\n🔍 **Reason:** ${app.reason_text}`);
+    if (app.knowledge_text) parts.push(`\n📚 **Knowledge:** ${app.knowledge_text}`);
+
     return parts.join('\n\n');
   }
   
-  // Primary recommendation - CRITICAL FIX: Use validated rich data, not raw application_details
+  // Primary recommendation
   if (primary) {
     const appDetails = primary.application_details || {};
     const richData = extractRichRuleData(primary, appDetails);
     const rawProductName = richData.active_ingredient || appDetails.product_name || '';
-    const productName = rawProductName ? getProductName(rawProductName, lang) : 'Recommended treatment';
+    const productName = rawProductName ? getProductName(rawProductName, language) : 'Recommended treatment';
     const dosage = richData.dosage_per_acre || appDetails.concentration || '';
     const timing = primary.timing?.best_time_of_day || 'MORNING';
     const method = richData.application_method || appDetails.method || '';
     
-    const actionHeaders: Record<string, string> = {
-      mr: '📌 आता काय करावे:',
-      hi: '📌 अभी क्या करें:',
-      en: '📌 What to do now:'
-    };
-    parts.push(actionHeaders[lang]);
+    parts.push('📌 **What to do now:**');
     
-    // Product and dosage - with translated product name
     const productLine = dosage ? `${productName} @ ${dosage}` : productName;
     parts.push(productLine);
 
@@ -3093,65 +3079,49 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
       try {
         const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
         const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
-        const marketLine = formatMarketProducts(marketResult.products, lang);
+        const marketLine = formatMarketProducts(marketResult.products, language);
         if (marketLine) parts.push(marketLine);
       } catch (err) {
         console.warn(`[ProductMapping] Lookup failed in fallback builder:`, err);
       }
     }
     
-    // Application method - translated
     if (method) {
-      const methodText = getMethodTranslation(method, lang);
+      const methodText = getMethodTranslation(method, language);
       parts.push(`📍 ${methodText}`);
     }
     
-    // Timing - with detailed labels
-    const timingLabels: Record<string, Record<string, string>> = {
-      MORNING: { mr: 'सकाळी 6-10 वाजता फवारणी करा', hi: 'सुबह 6-10 बजे छिड़काव करें', en: 'Spray in the morning 6-10 AM' },
-      EVENING: { mr: 'संध्याकाळी 4-6 वाजता फवारणी करा', hi: 'शाम 4-6 बजे छिड़काव करें', en: 'Spray in the evening 4-6 PM' },
-      ANY: { mr: 'दिवसातून कधीही', hi: 'दिन में कभी भी', en: 'Any time of day' }
+    const timingLabels: Record<string, string> = {
+      MORNING: 'Spray in the morning 6-10 AM',
+      EVENING: 'Spray in the evening 4-6 PM',
+      ANY: 'Any time of day'
     };
-    const timingText = timingLabels[timing]?.[lang] || timingLabels.MORNING[lang];
-    parts.push(`⏰ ${timingText}`);
+    parts.push(`⏰ ${timingLabels[timing] || timingLabels.MORNING}`);
     
-    // Efficacy if available
+    // Rich SSOT texts
+    const actionText = appDetails.action_text as string | undefined;
+    const reasonText = appDetails.reason_text as string | undefined;
+    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
+    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
+    
     const efficacy = primary.expected_outcomes?.efficacy_percent;
     if (efficacy) {
-      const efficacyText: Record<string, string> = {
-        mr: `📊 अपेक्षित परिणामकारकता: ${efficacy}%`,
-        hi: `📊 अपेक्षित प्रभावशीलता: ${efficacy}%`,
-        en: `📊 Expected efficacy: ${efficacy}%`
-      };
-      parts.push(efficacyText[lang]);
+      parts.push(`📊 Expected efficacy: ${efficacy}%`);
     }
   }
   
-  // Secondary actions - CRITICAL FIX: Translate action names
+  // Secondary actions
   if (decision.secondary_actions && decision.secondary_actions.length > 0) {
-    const altHeaders: Record<string, string> = {
-      mr: '\n🔄 पर्यायी उपाय:',
-      hi: '\n🔄 वैकल्पिक उपाय:',
-      en: '\n🔄 Alternative measures:'
-    };
-    parts.push(altHeaders[lang]);
-    
+    parts.push('\n🔄 **Alternative measures:**');
     decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
       if (alt.action) {
-        // Translate action to farmer language
-        const translatedAction = getActionTranslation(alt.action, lang);
+        const translatedAction = getActionTranslation(alt.action, language);
         parts.push(`• ${translatedAction}`);
       }
     });
   }
   
-  // Closing
-  const closings: Record<string, string> = {
-    mr: '\nशुभेच्छा! 🙏',
-    hi: '\nशुभकामनाएं! 🙏',
-    en: '\nBest wishes! 🙏'
-  };
-  parts.push(closings[lang]);
+  parts.push('\n✅ Best wishes! 🙏');
   
   return parts.join('\n');
 }
@@ -3159,13 +3129,9 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
 /**
  * Get generic monitoring message when no decision output is available
  */
-function getGenericMonitoringMessage(language: string): string {
-  const messages: Record<string, string> = {
-    mr: 'नमस्कार! 🌾 तुमच्या पिकाचे निरीक्षण सुरू ठेवा. काही समस्या दिसल्यास आम्हाला कळवा.',
-    hi: 'नमस्कार! 🌾 अपनी फसल की निगरानी जारी रखें। कोई समस्या दिखे तो हमें बताएं।',
-    en: 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.'
-  };
-  return messages[language] || messages.en;
+function getGenericMonitoringMessage(_language: string): string {
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.';
 }
 
 /**
