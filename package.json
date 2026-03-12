@@ -124,13 +124,4 @@
     "@testing-library/react": "^16.0.0",
     "@testing-library/jest-dom": "^6.6.0"
   },
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "bundle-rules": "npx tsx scripts/bundle-rules.ts",
-    "test": "vitest run"
-  }
 }
