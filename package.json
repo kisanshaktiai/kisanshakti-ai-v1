@@ -8,7 +8,9 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "bundle-rules": "npx tsx scripts/bundle-rules.ts",
+    "test": "vitest run"
   },
   "dependencies": {
     "@capacitor-community/speech-recognition": "^7.0.1",
