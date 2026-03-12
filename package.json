@@ -51,6 +51,7 @@
     "@react-google-maps/api": "^2.20.7",
     "@supabase/supabase-js": "^2.57.2",
     "@tanstack/react-query": "^5.83.0",
+    "@testing-library/jest-dom": "^6.6.0",
     "@turf/turf": "^7.2.0",
     "chart.js": "^4.5.0",
     "class-variance-authority": "^0.7.1",
@@ -117,11 +118,11 @@
     "vite": "^5.4.19"
   },
   "scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "build:dev": "vite build --mode development",
-  "lint": "eslint .",
-  "preview": "vite preview",
-  "bundle-rules": "npx tsx scripts/bundle-rules.ts"
+    "dev": "vite",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "bundle-rules": "npx tsx scripts/bundle-rules.ts"
   }
 }
