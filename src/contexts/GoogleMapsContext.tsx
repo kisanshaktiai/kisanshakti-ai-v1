@@ -178,7 +178,6 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
         const { data, error: fetchError } = await fetchWithTimeout(
           () => supabase.functions.invoke('google-maps-config', {
             method: 'POST',
-            headers: { 'Cache-Control': 'no-cache' },
             body: {}
           }),
           6000
