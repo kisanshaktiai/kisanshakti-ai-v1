@@ -2529,10 +2529,10 @@ function extractAndAuditActionsWithFilterTrace(orchestratorResponse: Orchestrato
     const enrichedAction = {
       type: 'primary',
       action_type: primary.action_type,
-      // Generate title from action type
-      title: generateActionTitle(primary, 'mr'),
+      // Generate title from action type — use detected language, not hardcoded 'mr'
+      title: generateActionTitle(primary, detectedLanguage),
       // Generate description from action details
-      description: generateActionDescription(primary, 'mr'),
+      description: generateActionDescription(primary, detectedLanguage),
       product_name: primary.application_details?.product_name,
       dosage: primary.application_details?.concentration,
       timing: primary.timing,
