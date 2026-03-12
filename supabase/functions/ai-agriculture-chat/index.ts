@@ -2659,33 +2659,23 @@ function buildExplicitFilterReason(blocked: any, category: FilterCategory): stri
 function generateActionTitle(primary: any, lang: string): string {
   const actionType = primary.action_type || 'UNKNOWN';
   const productName = primary.application_details?.product_name;
-  const pestCode = primary.target?.pest_code;
-  const diseaseCode = primary.target?.disease_code;
   
-  const titles: Record<string, Record<string, string>> = {
-    SPRAY: {
-      mr: productName ? `${productName} फवारणी` : 'किटकनाशक फवारणी',
-      hi: productName ? `${productName} छिड़काव` : 'कीटनाशक छिड़काव',
-      en: productName ? `Apply ${productName}` : 'Insecticide Spray'
-    },
-    FERTILIZER: {
-      mr: 'खत देणे',
-      hi: 'उर्वरक देना',
-      en: 'Apply Fertilizer'
-    },
-    NO_ACTION: {
-      mr: 'कोणतीही कृती नाही',
-      hi: 'कोई कार्रवाई नहीं',
-      en: 'No Action Required'
-    },
-    MONITOR_ONLY: {
-      mr: 'निरीक्षण करा',
-      hi: 'निगरानी करें',
-      en: 'Monitor Only'
-    }
+  // English-only titles — forceTranslateResponse() handles localization at runtime
+  const titles: Record<string, string> = {
+    SPRAY: productName ? `Apply ${productName}` : 'Insecticide Spray',
+    FERTILIZER: 'Apply Fertilizer',
+    NO_ACTION: 'No Action Required',
+    MONITOR_ONLY: 'Monitor Only',
+    CULTURAL: 'Cultural Practice',
+    BIOLOGICAL: 'Biological Control',
+    MECHANICAL: 'Mechanical Control',
+    IRRIGATION: 'Irrigation Management',
+    HERBICIDE: 'Weed Control',
+    FUNGICIDE: 'Fungicide Application',
+    INSECTICIDE: 'Insecticide Application',
   };
   
-  return titles[actionType]?.[lang] || titles[actionType]?.en || actionType;
+  return titles[actionType] || actionType;
 }
 
 /**
