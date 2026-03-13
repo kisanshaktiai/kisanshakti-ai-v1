@@ -1567,6 +1567,14 @@ export class SymbolicReasoner {
       soil_k_status: getNutrientStatus(landState?.soil.potassium_kg_per_ha || null, 120, 280),
       soil_ph: landState?.soil.ph,
       
+      // Micronutrient soil facts (null until soil test data schema is extended)
+      soil_zn_ppm: (landState?.soil as any)?.zinc_ppm ?? null,
+      soil_fe_ppm: (landState?.soil as any)?.iron_ppm ?? null,
+      soil_mn_ppm: (landState?.soil as any)?.manganese_ppm ?? null,
+      soil_mg_cmol: (landState?.soil as any)?.magnesium_cmol ?? null,
+      soil_s_ppm: (landState?.soil as any)?.sulphur_ppm ?? null,
+      soil_b_ppm: (landState?.soil as any)?.boron_ppm ?? null,
+      
       // Derived facts
       stress_level: stressLevel,
       critical_stage: criticalStage,
