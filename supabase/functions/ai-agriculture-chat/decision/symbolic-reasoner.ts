@@ -1009,9 +1009,11 @@ export class SymbolicReasoner {
       'crop_code', 'crop_type', // Already filtered at query level
       ...Object.keys(BOOLEAN_FLAG_MAP),
       // ═══════════════════════════════════════════════════════════════════
-      // EXPANDED: All condition keys from decision_rules conditions_json
-      // These are handled as soft/contextual constraints below
+      // P1 Fix: ROI metadata keys — NOT matching conditions, just metadata
+      // Must be skipped to prevent inflating totalConditions
       // ═══════════════════════════════════════════════════════════════════
+      'roi_basis', 'roi_modifier', 'roi_by_region',
+      'roi_estimate', 'cost_benefit', 'economic_note',
     ]);
     
     // Extended keys that need special handling (not just skip)
