@@ -64,7 +64,7 @@ export interface SymbolicFact {
   recent_rain: boolean;
   soil_moisture_estimated: string;
   
-  // Soil facts
+  // Soil facts — macronutrients
   soil_n: number | null;
   soil_n_status: string;
   soil_p: number | null;
@@ -72,6 +72,14 @@ export interface SymbolicFact {
   soil_k: number | null;
   soil_k_status: string;
   soil_ph: number | null;
+  
+  // Soil facts — micronutrients (populated when soil test data available)
+  soil_zn_ppm: number | null;
+  soil_fe_ppm: number | null;
+  soil_mn_ppm: number | null;
+  soil_mg_cmol: number | null;
+  soil_s_ppm: number | null;
+  soil_b_ppm: number | null;
   
   // Derived facts
   stress_level: string;
