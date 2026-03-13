@@ -64,7 +64,7 @@ export interface SymbolicFact {
   recent_rain: boolean;
   soil_moisture_estimated: string;
   
-  // Soil facts
+  // Soil facts — macronutrients
   soil_n: number | null;
   soil_n_status: string;
   soil_p: number | null;
@@ -72,6 +72,14 @@ export interface SymbolicFact {
   soil_k: number | null;
   soil_k_status: string;
   soil_ph: number | null;
+  
+  // Soil facts — micronutrients (populated when soil test data available)
+  soil_zn_ppm: number | null;
+  soil_fe_ppm: number | null;
+  soil_mn_ppm: number | null;
+  soil_mg_cmol: number | null;
+  soil_s_ppm: number | null;
+  soil_b_ppm: number | null;
   
   // Derived facts
   stress_level: string;
@@ -914,12 +922,15 @@ export class SymbolicReasoner {
           // Exact match OR token-boundary match (not substring containment)
           const exactMatch = (s: string) => s === upperObs;
           const tokenMatch = (s: string) => {
-            // Match if tokens share at least 2 common segments when split by underscore
+            // P3 Fix: Require ALL tokens of the shorter code to match
+            // Prevents YELLOWING_OLDER_LEAVES matching YELLOWING_YOUNG_LEAVES
             const obsTokens = upperObs.split('_').filter(t => t.length > 1);
             const sTokens = s.split('_').filter(t => t.length > 1);
             if (obsTokens.length === 0 || sTokens.length === 0) return s === upperObs;
-            const commonTokens = obsTokens.filter(t => sTokens.includes(t));
-            return commonTokens.length >= Math.min(2, obsTokens.length);
+            const shorter = obsTokens.length <= sTokens.length ? obsTokens : sTokens;
+            const longer = obsTokens.length <= sTokens.length ? sTokens : obsTokens;
+            const allShorterMatch = shorter.every(t => longer.includes(t));
+            return allShorterMatch && shorter.length >= 2;
           };
           return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
                  exactMatch(factQuery) || tokenMatch(factQuery) ||
@@ -998,9 +1009,11 @@ export class SymbolicReasoner {
       'crop_code', 'crop_type', // Already filtered at query level
       ...Object.keys(BOOLEAN_FLAG_MAP),
       // ═══════════════════════════════════════════════════════════════════
-      // EXPANDED: All condition keys from decision_rules conditions_json
-      // These are handled as soft/contextual constraints below
+      // P1 Fix: ROI metadata keys — NOT matching conditions, just metadata
+      // Must be skipped to prevent inflating totalConditions
       // ═══════════════════════════════════════════════════════════════════
+      'roi_basis', 'roi_modifier', 'roi_by_region',
+      'roi_estimate', 'cost_benefit', 'economic_note',
     ]);
     
     // Extended keys that need special handling (not just skip)
@@ -1152,7 +1165,7 @@ export class SymbolicReasoner {
     }
     
     const score = metConditions / totalConditions;
-    const matches = score >= 0.5; // At least half conditions must match
+    const matches = score >= 0.6; // P3 Fix: Raised from 0.5 — at least 60% conditions must match
     
     return {
       matches,
@@ -1309,11 +1322,26 @@ export class SymbolicReasoner {
    */
   private getNumericFactForConditionKey(key: string, facts: SymbolicFact): number | null {
     const CONDITION_TO_FACT: Record<string, () => number | null> = {
-      'soil_zn_ppm': () => null, // Not tracked in SymbolicFact yet
+      // Macronutrients
       'soil_ph': () => facts.soil_ph,
       'soil_n': () => facts.soil_n,
       'soil_p': () => facts.soil_p,
       'soil_k': () => facts.soil_k,
+      // P2 Fix: Micronutrient soil data mappings (populated when available)
+      'soil_zn_ppm': () => facts.soil_zn_ppm,
+      'soil_zn': () => facts.soil_zn_ppm,
+      'soil_fe_ppm': () => facts.soil_fe_ppm,
+      'soil_fe': () => facts.soil_fe_ppm,
+      'soil_mn_ppm': () => facts.soil_mn_ppm,
+      'soil_mn': () => facts.soil_mn_ppm,
+      'soil_mg_cmol': () => facts.soil_mg_cmol,
+      'soil_mg': () => facts.soil_mg_cmol,
+      'soil_s_ppm': () => facts.soil_s_ppm,
+      'soil_s': () => facts.soil_s_ppm,
+      'soil_b_ppm': () => facts.soil_b_ppm,
+      'soil_b': () => facts.soil_b_ppm,
+      'boron_application_kg_ha': () => facts.soil_b_ppm, // Approximate mapping
+      // Environmental
       'ndvi': () => facts.ndvi,
       'ndvi_value': () => facts.ndvi,
       'temperature': () => facts.temperature,
@@ -1539,6 +1567,14 @@ export class SymbolicReasoner {
       soil_k_status: getNutrientStatus(landState?.soil.potassium_kg_per_ha || null, 120, 280),
       soil_ph: landState?.soil.ph,
       
+      // Micronutrient soil facts (null until soil test data schema is extended)
+      soil_zn_ppm: (landState?.soil as any)?.zinc_ppm ?? null,
+      soil_fe_ppm: (landState?.soil as any)?.iron_ppm ?? null,
+      soil_mn_ppm: (landState?.soil as any)?.manganese_ppm ?? null,
+      soil_mg_cmol: (landState?.soil as any)?.magnesium_cmol ?? null,
+      soil_s_ppm: (landState?.soil as any)?.sulphur_ppm ?? null,
+      soil_b_ppm: (landState?.soil as any)?.boron_ppm ?? null,
+      
       // Derived facts
       stress_level: stressLevel,
       critical_stage: criticalStage,
@@ -1562,8 +1598,13 @@ let reasonerInstance: SymbolicReasoner | null = null;
  * GAP #1 FIX: Accept optional Supabase client for connection reuse.
  */
 export function getSymbolicReasoner(supabaseClient?: any): SymbolicReasoner {
+  // P3 Fix: Always pass fresh client per request to prevent stale connections
+  // in edge functions where the Supabase client changes per request
   if (!reasonerInstance) {
     reasonerInstance = new SymbolicReasoner(supabaseClient);
+  } else if (supabaseClient) {
+    // Update the client on existing instance to prevent stale connections
+    (reasonerInstance as any).supabase = supabaseClient;
   }
   return reasonerInstance;
 }
