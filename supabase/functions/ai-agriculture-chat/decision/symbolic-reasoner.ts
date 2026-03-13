@@ -1598,8 +1598,13 @@ let reasonerInstance: SymbolicReasoner | null = null;
  * GAP #1 FIX: Accept optional Supabase client for connection reuse.
  */
 export function getSymbolicReasoner(supabaseClient?: any): SymbolicReasoner {
+  // P3 Fix: Always pass fresh client per request to prevent stale connections
+  // in edge functions where the Supabase client changes per request
   if (!reasonerInstance) {
     reasonerInstance = new SymbolicReasoner(supabaseClient);
+  } else if (supabaseClient) {
+    // Update the client on existing instance to prevent stale connections
+    (reasonerInstance as any).supabase = supabaseClient;
   }
   return reasonerInstance;
 }
