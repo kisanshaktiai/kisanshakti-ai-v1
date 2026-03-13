@@ -1322,11 +1322,26 @@ export class SymbolicReasoner {
    */
   private getNumericFactForConditionKey(key: string, facts: SymbolicFact): number | null {
     const CONDITION_TO_FACT: Record<string, () => number | null> = {
-      'soil_zn_ppm': () => null, // Not tracked in SymbolicFact yet
+      // Macronutrients
       'soil_ph': () => facts.soil_ph,
       'soil_n': () => facts.soil_n,
       'soil_p': () => facts.soil_p,
       'soil_k': () => facts.soil_k,
+      // P2 Fix: Micronutrient soil data mappings (populated when available)
+      'soil_zn_ppm': () => facts.soil_zn_ppm,
+      'soil_zn': () => facts.soil_zn_ppm,
+      'soil_fe_ppm': () => facts.soil_fe_ppm,
+      'soil_fe': () => facts.soil_fe_ppm,
+      'soil_mn_ppm': () => facts.soil_mn_ppm,
+      'soil_mn': () => facts.soil_mn_ppm,
+      'soil_mg_cmol': () => facts.soil_mg_cmol,
+      'soil_mg': () => facts.soil_mg_cmol,
+      'soil_s_ppm': () => facts.soil_s_ppm,
+      'soil_s': () => facts.soil_s_ppm,
+      'soil_b_ppm': () => facts.soil_b_ppm,
+      'soil_b': () => facts.soil_b_ppm,
+      'boron_application_kg_ha': () => facts.soil_b_ppm, // Approximate mapping
+      // Environmental
       'ndvi': () => facts.ndvi,
       'ndvi_value': () => facts.ndvi,
       'temperature': () => facts.temperature,
