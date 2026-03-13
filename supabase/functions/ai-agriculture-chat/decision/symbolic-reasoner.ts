@@ -922,12 +922,15 @@ export class SymbolicReasoner {
           // Exact match OR token-boundary match (not substring containment)
           const exactMatch = (s: string) => s === upperObs;
           const tokenMatch = (s: string) => {
-            // Match if tokens share at least 2 common segments when split by underscore
+            // P3 Fix: Require ALL tokens of the shorter code to match
+            // Prevents YELLOWING_OLDER_LEAVES matching YELLOWING_YOUNG_LEAVES
             const obsTokens = upperObs.split('_').filter(t => t.length > 1);
             const sTokens = s.split('_').filter(t => t.length > 1);
             if (obsTokens.length === 0 || sTokens.length === 0) return s === upperObs;
-            const commonTokens = obsTokens.filter(t => sTokens.includes(t));
-            return commonTokens.length >= Math.min(2, obsTokens.length);
+            const shorter = obsTokens.length <= sTokens.length ? obsTokens : sTokens;
+            const longer = obsTokens.length <= sTokens.length ? sTokens : obsTokens;
+            const allShorterMatch = shorter.every(t => longer.includes(t));
+            return allShorterMatch && shorter.length >= 2;
           };
           return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
                  exactMatch(factQuery) || tokenMatch(factQuery) ||
