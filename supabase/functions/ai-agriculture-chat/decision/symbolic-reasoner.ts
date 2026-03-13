@@ -1165,7 +1165,7 @@ export class SymbolicReasoner {
     }
     
     const score = metConditions / totalConditions;
-    const matches = score >= 0.5; // At least half conditions must match
+    const matches = score >= 0.6; // P3 Fix: Raised from 0.5 — at least 60% conditions must match
     
     return {
       matches,
