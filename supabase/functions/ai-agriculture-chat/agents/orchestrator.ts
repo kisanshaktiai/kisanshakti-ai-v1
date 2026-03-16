@@ -7634,21 +7634,58 @@ export class AIAgentOrchestrator {
           .single();
         
         if (land?.center_lat && land?.center_lon) {
-          // Fetch real weather from weather cache or API
-          const { data: weatherCache } = await this.supabase
-            .from('weather_cache')
-            .select('weather_data')
-            .eq('location_key', `${land.center_lat.toFixed(2)}_${land.center_lon.toFixed(2)}`)
-            .gte('expires_at', new Date().toISOString())
-            .order('created_at', { ascending: false })
+          // Fetch real weather from weather_current table (NOT weather_cache which doesn't exist)
+          const locationKey = `${Number(land.center_lat).toFixed(2)},${Number(land.center_lon).toFixed(2)}`;
+          const { data: weatherCurrent } = await this.supabase
+            .from('weather_current')
+            .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, weather_description, uv_index, cloud_cover_percent, feels_like_celsius, pressure_hpa, wind_direction_degrees, wind_gust_kmh, visibility_km, observation_time')
+            .eq('location_key', locationKey)
+            .order('observation_time', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
           
-          if (weatherCache?.weather_data) {
-            console.log('🌤️ [Orchestrator] Using cached weather data');
-            // NORMALIZE cache data to canonical format
-            const cached = weatherCache.weather_data;
-            return this.normalizeWeatherData(cached, false);
+          if (weatherCurrent) {
+            console.log(`🌤️ [Orchestrator] Using REAL weather data from weather_current (location_key: ${locationKey})`);
+            // Also fetch 24h forecast for rain probability
+            const { data: forecast } = await this.supabase
+              .from('weather_forecasts')
+              .select('temperature_celsius, temperature_min_celsius, temperature_max_celsius, rain_probability_percent, rain_amount_mm, wind_speed_kmh, wind_gust_kmh, weather_main')
+              .eq('location_key', locationKey)
+              .eq('forecast_type', 'daily')
+              .gte('forecast_time', new Date().toISOString())
+              .order('forecast_time', { ascending: true })
+              .limit(1)
+              .maybeSingle();
+
+            return {
+              is_default: false,
+              data_source: 'weather_current',
+              observation_time: weatherCurrent.observation_time,
+              current: {
+                temperature_c: weatherCurrent.temperature_celsius ?? 28,
+                humidity_percent: weatherCurrent.humidity_percent ?? 65,
+                wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? 12,
+                rainfall_last_24h_mm: weatherCurrent.rain_24h_mm ?? weatherCurrent.rain_1h_mm ?? 0,
+                feels_like_c: weatherCurrent.feels_like_celsius,
+                pressure_hpa: weatherCurrent.pressure_hpa,
+                uv_index: weatherCurrent.uv_index,
+                cloud_cover_percent: weatherCurrent.cloud_cover_percent,
+                visibility_km: weatherCurrent.visibility_km,
+                wind_direction_degrees: weatherCurrent.wind_direction_degrees,
+                wind_gust_kmh: weatherCurrent.wind_gust_kmh,
+                weather_condition: weatherCurrent.weather_main,
+                weather_description: weatherCurrent.weather_description
+              },
+              forecast_24h: {
+                rain_probability_percent: forecast?.rain_probability_percent ?? 20,
+                temperature_max_c: forecast?.temperature_max_celsius ?? 32,
+                temperature_min_c: forecast?.temperature_min_celsius ?? 22,
+                wind_max_kmh: forecast?.wind_gust_kmh ?? forecast?.wind_speed_kmh ?? 18,
+                rain_amount_mm: forecast?.rain_amount_mm ?? 0,
+                weather_condition: forecast?.weather_main
+              },
+              forecast_72h: []
+            };
           }
         }
       }
