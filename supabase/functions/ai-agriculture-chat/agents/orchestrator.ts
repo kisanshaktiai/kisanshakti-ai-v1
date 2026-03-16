@@ -7730,36 +7730,8 @@ export class AIAgentOrchestrator {
     }
   }
   
-  /**
-   * Normalize any weather data format to canonical format for MultiModalFusion
-   * Handles: weather_cache format, weather_current format, and already-canonical format
-   */
-  private normalizeWeatherData(raw: any, isDefault: boolean): any {
-    // If already in canonical format, return as-is
-    if (raw?.current?.temperature_c !== undefined && raw?.forecast_24h?.rain_probability_percent !== undefined) {
-      return { ...raw, is_default: isDefault };
-    }
-    
-    // Handle weather_cache format: { current: { temperature, humidity, ... }, forecast: [{ precipitation_probability, ... }] }
-    const forecast = raw?.forecast?.[0] || raw?.forecast_24h || {};
-    
-    return {
-      is_default: isDefault,
-      current: {
-        temperature_c: raw?.current?.temperature_c ?? raw?.current?.temperature ?? 28,
-        humidity_percent: raw?.current?.humidity_percent ?? raw?.current?.humidity ?? 65,
-        wind_speed_kmh: raw?.current?.wind_speed_kmh ?? raw?.current?.wind_speed ?? 12,
-        rainfall_last_24h_mm: raw?.current?.rainfall_last_24h_mm ?? raw?.current?.precipitation ?? 0
-      },
-      forecast_24h: {
-        rain_probability_percent: forecast?.rain_probability_percent ?? forecast?.precipitation_probability ?? 20,
-        temperature_max_c: forecast?.temperature_max_c ?? forecast?.temperature_max ?? 32,
-        temperature_min_c: forecast?.temperature_min_c ?? forecast?.temperature_min ?? 22,
-        wind_max_kmh: forecast?.wind_max_kmh ?? forecast?.wind_speed_max ?? 18
-      },
-      forecast_72h: raw?.forecast_72h || []
-    };
-  }
+  // normalizeWeatherData removed — was dead code (never called). 
+  // fetchWeatherData now returns canonical format directly from weather_current table.
   
   /**
    * Fetch historical data - ENHANCED: Now queries dedicated soil_health and ndvi_data tables
