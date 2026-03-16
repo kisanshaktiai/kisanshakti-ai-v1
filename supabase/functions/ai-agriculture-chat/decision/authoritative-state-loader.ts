@@ -399,10 +399,10 @@ export async function loadAuthoritativeLandState(
         .order('date', { ascending: false })
         .limit(10),
       
-      // 5. Weather data — FIXED: weather_data → weather_observations (actual table)
+      // 5. Weather data — Try weather_observations first, fallback to weather_current
       supabase
         .from('weather_observations')
-        .select('temperature_celsius, metadata, observation_date, land_id')
+        .select('temperature_celsius, humidity_percent, rainfall_mm, wind_speed_kmh, metadata, observation_date, land_id')
         .eq('land_id', landId)
         .order('observation_date', { ascending: false })
         .limit(1)
@@ -479,16 +479,55 @@ export async function loadAuthoritativeLandState(
     // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS WEATHER DATA
     // ═══════════════════════════════════════════════════════════════════════════
-    // FIXED: weather_data → weather_observations; use observation_date & temperature_celsius
-    const weather = weatherResult.data;
+    // Primary: weather_observations by land_id
+    // Fallback: weather_current by location_key (rounded lat/lon)
+    let weather = weatherResult.data;
     let weatherAgeHours: number | null = null;
     let weatherDataFresh = false;
+    let weatherSource = 'weather_observations';
+    
+    // If no weather_observations for this land, fallback to weather_current via location_key
+    if (!weather && land.center_lat && land.center_lon) {
+      const locationKey = `${Number(land.center_lat).toFixed(2)},${Number(land.center_lon).toFixed(2)}`;
+      console.log(`🌤️ [AuthoritativeStateLoader] No weather_observations for land ${landId}, falling back to weather_current (location_key: ${locationKey})`);
+      const { data: currentWeather } = await supabase
+        .from('weather_current')
+        .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, uv_index, observation_time')
+        .eq('location_key', locationKey)
+        .order('observation_time', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (currentWeather) {
+        weatherSource = 'weather_current';
+        // Map weather_current fields into a compatible format
+        weather = {
+          temperature_celsius: currentWeather.temperature_celsius,
+          humidity_percent: currentWeather.humidity_percent,
+          rainfall_mm: currentWeather.rain_24h_mm ?? currentWeather.rain_1h_mm ?? 0,
+          wind_speed_kmh: currentWeather.wind_speed_kmh,
+          observation_date: currentWeather.observation_time?.split('T')[0] ?? null,
+          land_id: landId,
+          metadata: {
+            humidity: currentWeather.humidity_percent,
+            rainfall: currentWeather.rain_24h_mm ?? currentWeather.rain_1h_mm ?? 0,
+            rainfall_last_24h: currentWeather.rain_24h_mm ?? 0,
+            rain_probability: null,
+            wind_speed: currentWeather.wind_speed_kmh,
+            uv_index: currentWeather.uv_index,
+            weather_main: currentWeather.weather_main,
+            source: 'weather_current_fallback'
+          }
+        } as any;
+        console.log(`✅ [AuthoritativeStateLoader] Got weather from weather_current: ${currentWeather.temperature_celsius}°C, ${currentWeather.humidity_percent}% humidity`);
+      }
+    }
     
     // Parse metadata for humidity, rainfall, wind etc. if available
-    const weatherMeta = weather?.metadata as any || {};
+    const weatherMeta = (weather as any)?.metadata as any || {};
     
-    if (weather?.observation_date) {
-      const fetchedAt = new Date(weather.observation_date);
+    if ((weather as any)?.observation_date) {
+      const fetchedAt = new Date((weather as any).observation_date);
       weatherAgeHours = Math.floor((now.getTime() - fetchedAt.getTime()) / (1000 * 60 * 60));
       weatherDataFresh = weatherAgeHours <= FRESHNESS_THRESHOLDS.WEATHER_HOURS;
     }
@@ -600,14 +639,15 @@ export async function loadAuthoritativeLandState(
       },
       
       weather: {
-        temperature: weather?.temperature_celsius ?? weatherMeta?.temperature ?? null,
-        humidity: weatherMeta?.humidity ?? null,
-        rainfall_last_24h: weatherMeta?.rainfall ?? weatherMeta?.rainfall_last_24h ?? null,
+        temperature: (weather as any)?.temperature_celsius ?? weatherMeta?.temperature ?? null,
+        humidity: (weather as any)?.humidity_percent ?? weatherMeta?.humidity ?? null,
+        rainfall_last_24h: (weather as any)?.rainfall_mm ?? weatherMeta?.rainfall ?? weatherMeta?.rainfall_last_24h ?? null,
         rain_probability: weatherMeta?.rain_probability ?? null,
-        wind_speed: weatherMeta?.wind_speed ?? null,
-        data_timestamp: weather?.observation_date ?? null,
+        wind_speed: (weather as any)?.wind_speed_kmh ?? weatherMeta?.wind_speed ?? null,
+        data_timestamp: (weather as any)?.observation_date ?? null,
         data_age_hours: weatherAgeHours,
-        data_fresh: weatherDataFresh
+        data_fresh: weatherDataFresh,
+        data_source: weatherSource
       },
       
       // SSOT INTERPRETATIONS
