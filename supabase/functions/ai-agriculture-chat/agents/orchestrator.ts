@@ -7634,23 +7634,54 @@ export class AIAgentOrchestrator {
           .single();
         
         if (land?.center_lat && land?.center_lon) {
-          // Fetch real weather from weather_current table (NOT weather_cache which doesn't exist)
-          const locationKey = `${Number(land.center_lat).toFixed(2)},${Number(land.center_lon).toFixed(2)}`;
-          const { data: weatherCurrent } = await this.supabase
+          const lat = Number(land.center_lat);
+          const lon = Number(land.center_lon);
+          const locationKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
+          
+          // Strategy 1: Exact location_key match
+          let { data: weatherCurrent } = await this.supabase
             .from('weather_current')
-            .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, weather_description, uv_index, cloud_cover_percent, feels_like_celsius, pressure_hpa, wind_direction_degrees, wind_gust_kmh, visibility_km, observation_time')
+            .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, weather_description, uv_index, cloud_cover_percent, feels_like_celsius, pressure_hpa, wind_direction_degrees, wind_gust_kmh, visibility_km, observation_time, location_key')
             .eq('location_key', locationKey)
             .order('observation_time', { ascending: false })
             .limit(1)
             .maybeSingle();
           
+          // Strategy 2: Proximity search - find nearest weather record within ~50km
+          if (!weatherCurrent) {
+            console.log(`⚠️ [Orchestrator] No exact match for ${locationKey}, searching nearby records...`);
+            const latRange = 0.5; // ~55km
+            const lonRange = 0.5;
+            const { data: nearbyRecords } = await this.supabase
+              .from('weather_current')
+              .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, weather_description, uv_index, cloud_cover_percent, feels_like_celsius, pressure_hpa, wind_direction_degrees, wind_gust_kmh, visibility_km, observation_time, location_key, latitude, longitude')
+              .gte('latitude', lat - latRange)
+              .lte('latitude', lat + latRange)
+              .gte('longitude', lon - lonRange)
+              .lte('longitude', lon + lonRange)
+              .order('observation_time', { ascending: false })
+              .limit(5);
+            
+            if (nearbyRecords && nearbyRecords.length > 0) {
+              let closest = nearbyRecords[0];
+              let minDist = Infinity;
+              for (const rec of nearbyRecords) {
+                const d = Math.sqrt(Math.pow((rec.latitude || 0) - lat, 2) + Math.pow((rec.longitude || 0) - lon, 2));
+                if (d < minDist) { minDist = d; closest = rec; }
+              }
+              weatherCurrent = closest;
+              console.log(`✅ [Orchestrator] Found nearby weather at ${closest.location_key} (dist: ${(minDist * 111).toFixed(1)}km)`);
+            }
+          }
+          
           if (weatherCurrent) {
-            console.log(`🌤️ [Orchestrator] Using REAL weather data from weather_current (location_key: ${locationKey})`);
+            const matchKey = (weatherCurrent as any).location_key || locationKey;
+            console.log(`🌤️ [Orchestrator] Using REAL weather data from weather_current (location_key: ${matchKey})`);
             // Also fetch 24h forecast for rain probability
             const { data: forecast } = await this.supabase
               .from('weather_forecasts')
               .select('temperature_celsius, temperature_min_celsius, temperature_max_celsius, rain_probability_percent, rain_amount_mm, wind_speed_kmh, wind_gust_kmh, weather_main')
-              .eq('location_key', locationKey)
+              .eq('location_key', matchKey)
               .eq('forecast_type', 'daily')
               .gte('forecast_time', new Date().toISOString())
               .order('forecast_time', { ascending: true })
