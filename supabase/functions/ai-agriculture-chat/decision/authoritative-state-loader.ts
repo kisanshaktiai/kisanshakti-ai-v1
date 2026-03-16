@@ -488,9 +488,13 @@ export async function loadAuthoritativeLandState(
     
     // If no weather_observations for this land, fallback to weather_current via location_key
     if (!weather && land.center_lat && land.center_lon) {
-      const locationKey = `${Number(land.center_lat).toFixed(2)},${Number(land.center_lon).toFixed(2)}`;
+      const lat = Number(land.center_lat);
+      const lon = Number(land.center_lon);
+      const locationKey = `${lat.toFixed(2)},${lon.toFixed(2)}`;
       console.log(`🌤️ [AuthoritativeStateLoader] No weather_observations for land ${landId}, falling back to weather_current (location_key: ${locationKey})`);
-      const { data: currentWeather } = await supabase
+      
+      // Strategy 1: Exact location_key match
+      let { data: currentWeather } = await supabase
         .from('weather_current')
         .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, uv_index, observation_time')
         .eq('location_key', locationKey)
@@ -498,9 +502,35 @@ export async function loadAuthoritativeLandState(
         .limit(1)
         .maybeSingle();
       
+      // Strategy 2: Proximity search - find nearest within ~50km
+      if (!currentWeather) {
+        console.log(`⚠️ [AuthoritativeStateLoader] No exact match for ${locationKey}, searching nearby...`);
+        const latRange = 0.5;
+        const lonRange = 0.5;
+        const { data: nearbyRecords } = await supabase
+          .from('weather_current')
+          .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, uv_index, observation_time, latitude, longitude')
+          .gte('latitude', lat - latRange)
+          .lte('latitude', lat + latRange)
+          .gte('longitude', lon - lonRange)
+          .lte('longitude', lon + lonRange)
+          .order('observation_time', { ascending: false })
+          .limit(5);
+        
+        if (nearbyRecords && nearbyRecords.length > 0) {
+          let closest = nearbyRecords[0];
+          let minDist = Infinity;
+          for (const rec of nearbyRecords) {
+            const d = Math.sqrt(Math.pow((rec.latitude || 0) - lat, 2) + Math.pow((rec.longitude || 0) - lon, 2));
+            if (d < minDist) { minDist = d; closest = rec; }
+          }
+          currentWeather = closest;
+          console.log(`✅ [AuthoritativeStateLoader] Found nearby weather (dist: ${(minDist * 111).toFixed(1)}km)`);
+        }
+      }
+      
       if (currentWeather) {
         weatherSource = 'weather_current';
-        // Map weather_current fields into a compatible format
         weather = {
           temperature_celsius: currentWeather.temperature_celsius,
           humidity_percent: currentWeather.humidity_percent,
@@ -516,7 +546,7 @@ export async function loadAuthoritativeLandState(
             wind_speed: currentWeather.wind_speed_kmh,
             uv_index: currentWeather.uv_index,
             weather_main: currentWeather.weather_main,
-            source: 'weather_current_fallback'
+            source: 'weather_current_proximity'
           }
         } as any;
         console.log(`✅ [AuthoritativeStateLoader] Got weather from weather_current: ${currentWeather.temperature_celsius}°C, ${currentWeather.humidity_percent}% humidity`);
