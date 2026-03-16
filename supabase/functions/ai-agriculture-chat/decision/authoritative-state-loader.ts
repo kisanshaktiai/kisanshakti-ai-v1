@@ -479,16 +479,55 @@ export async function loadAuthoritativeLandState(
     // ═══════════════════════════════════════════════════════════════════════════
     // PROCESS WEATHER DATA
     // ═══════════════════════════════════════════════════════════════════════════
-    // FIXED: weather_data → weather_observations; use observation_date & temperature_celsius
-    const weather = weatherResult.data;
+    // Primary: weather_observations by land_id
+    // Fallback: weather_current by location_key (rounded lat/lon)
+    let weather = weatherResult.data;
     let weatherAgeHours: number | null = null;
     let weatherDataFresh = false;
+    let weatherSource = 'weather_observations';
+    
+    // If no weather_observations for this land, fallback to weather_current via location_key
+    if (!weather && land.center_lat && land.center_lon) {
+      const locationKey = `${Number(land.center_lat).toFixed(2)},${Number(land.center_lon).toFixed(2)}`;
+      console.log(`🌤️ [AuthoritativeStateLoader] No weather_observations for land ${landId}, falling back to weather_current (location_key: ${locationKey})`);
+      const { data: currentWeather } = await supabase
+        .from('weather_current')
+        .select('temperature_celsius, humidity_percent, wind_speed_kmh, rain_1h_mm, rain_24h_mm, weather_main, uv_index, observation_time')
+        .eq('location_key', locationKey)
+        .order('observation_time', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      if (currentWeather) {
+        weatherSource = 'weather_current';
+        // Map weather_current fields into a compatible format
+        weather = {
+          temperature_celsius: currentWeather.temperature_celsius,
+          humidity_percent: currentWeather.humidity_percent,
+          rainfall_mm: currentWeather.rain_24h_mm ?? currentWeather.rain_1h_mm ?? 0,
+          wind_speed_kmh: currentWeather.wind_speed_kmh,
+          observation_date: currentWeather.observation_time?.split('T')[0] ?? null,
+          land_id: landId,
+          metadata: {
+            humidity: currentWeather.humidity_percent,
+            rainfall: currentWeather.rain_24h_mm ?? currentWeather.rain_1h_mm ?? 0,
+            rainfall_last_24h: currentWeather.rain_24h_mm ?? 0,
+            rain_probability: null,
+            wind_speed: currentWeather.wind_speed_kmh,
+            uv_index: currentWeather.uv_index,
+            weather_main: currentWeather.weather_main,
+            source: 'weather_current_fallback'
+          }
+        } as any;
+        console.log(`✅ [AuthoritativeStateLoader] Got weather from weather_current: ${currentWeather.temperature_celsius}°C, ${currentWeather.humidity_percent}% humidity`);
+      }
+    }
     
     // Parse metadata for humidity, rainfall, wind etc. if available
-    const weatherMeta = weather?.metadata as any || {};
+    const weatherMeta = (weather as any)?.metadata as any || {};
     
-    if (weather?.observation_date) {
-      const fetchedAt = new Date(weather.observation_date);
+    if ((weather as any)?.observation_date) {
+      const fetchedAt = new Date((weather as any).observation_date);
       weatherAgeHours = Math.floor((now.getTime() - fetchedAt.getTime()) / (1000 * 60 * 60));
       weatherDataFresh = weatherAgeHours <= FRESHNESS_THRESHOLDS.WEATHER_HOURS;
     }
