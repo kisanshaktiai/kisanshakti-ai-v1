@@ -639,14 +639,15 @@ export async function loadAuthoritativeLandState(
       },
       
       weather: {
-        temperature: weather?.temperature_celsius ?? weatherMeta?.temperature ?? null,
-        humidity: weatherMeta?.humidity ?? null,
-        rainfall_last_24h: weatherMeta?.rainfall ?? weatherMeta?.rainfall_last_24h ?? null,
+        temperature: (weather as any)?.temperature_celsius ?? weatherMeta?.temperature ?? null,
+        humidity: (weather as any)?.humidity_percent ?? weatherMeta?.humidity ?? null,
+        rainfall_last_24h: (weather as any)?.rainfall_mm ?? weatherMeta?.rainfall ?? weatherMeta?.rainfall_last_24h ?? null,
         rain_probability: weatherMeta?.rain_probability ?? null,
-        wind_speed: weatherMeta?.wind_speed ?? null,
-        data_timestamp: weather?.observation_date ?? null,
+        wind_speed: (weather as any)?.wind_speed_kmh ?? weatherMeta?.wind_speed ?? null,
+        data_timestamp: (weather as any)?.observation_date ?? null,
         data_age_hours: weatherAgeHours,
-        data_fresh: weatherDataFresh
+        data_fresh: weatherDataFresh,
+        data_source: weatherSource
       },
       
       // SSOT INTERPRETATIONS
