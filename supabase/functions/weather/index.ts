@@ -1176,7 +1176,7 @@ serve(async (req: Request): Promise<Response> => {
       // Get land coordinates from database
       const { data: land, error: landError } = await supabase
         .from('lands')
-        .select('id, name, center_lat, center_lon, farmer_id')
+        .select('id, name, center_lat, center_lon, farmer_id, boundary_polygon_old')
         .eq('id', landId)
         .maybeSingle()
       
@@ -1185,11 +1185,19 @@ serve(async (req: Request): Promise<Response> => {
       }
       
       if (!land.center_lat || !land.center_lon) {
-        throw new Error(`Land ${land.name} does not have coordinates set`)
+        // Fallback: compute centroid from boundary polygon
+        const ring = land.boundary_polygon_old?.coordinates?.[0];
+        if (ring && ring.length > 0) {
+          lat = ring.reduce((s: number, c: number[]) => s + c[1], 0) / ring.length;
+          lon = ring.reduce((s: number, c: number[]) => s + c[0], 0) / ring.length;
+          console.warn(`[Weather] center_lat missing for ${land.name}, computed from boundary: ${lat}, ${lon}`);
+        } else {
+          throw new Error(`Land ${land.name} has no coordinates or boundary polygon`);
+        }
+      } else {
+        lat = parseFloat(land.center_lat)
+        lon = parseFloat(land.center_lon)
       }
-      
-      lat = parseFloat(land.center_lat)
-      lon = parseFloat(land.center_lon)
       landData = { id: land.id, name: land.name, farmer_id: land.farmer_id }
       
       // For land action, fetch all weather data

@@ -305,6 +305,16 @@ serve(async (req) => {
           );
         }
         
+        // Auto-compute center_lat/center_lon from boundary polygon on create
+        if (body.boundary_polygon_old && (!body.center_lat || !body.center_lon)) {
+          const ring = body.boundary_polygon_old?.coordinates?.[0];
+          if (ring && ring.length > 0) {
+            body.center_lat = ring.reduce((s: number, c: number[]) => s + c[1], 0) / ring.length;
+            body.center_lon = ring.reduce((s: number, c: number[]) => s + c[0], 0) / ring.length;
+            console.log(`📍 [LandsAPI] Auto-computed centroid on create: ${body.center_lat}, ${body.center_lon}`);
+          }
+        }
+
         // Ensure tenant_id and farmer_id are set correctly (override any sent values)
         const landData = {
           ...body,
