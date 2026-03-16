@@ -399,10 +399,10 @@ export async function loadAuthoritativeLandState(
         .order('date', { ascending: false })
         .limit(10),
       
-      // 5. Weather data — FIXED: weather_data → weather_observations (actual table)
+      // 5. Weather data — Try weather_observations first, fallback to weather_current
       supabase
         .from('weather_observations')
-        .select('temperature_celsius, metadata, observation_date, land_id')
+        .select('temperature_celsius, humidity_percent, rainfall_mm, wind_speed_kmh, metadata, observation_date, land_id')
         .eq('land_id', landId)
         .order('observation_date', { ascending: false })
         .limit(1)
