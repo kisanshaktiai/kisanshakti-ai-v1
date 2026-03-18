@@ -742,6 +742,11 @@ async function cacheWeatherData(
       await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now, rounded.lat, rounded.lon)
     }
     
+    // ============= 6. Compute and store land-level weather metrics =============
+    if (landId && tenantId) {
+      await computeLandWeatherMetrics(supabase, landId, tenantId, locationKey, current, rounded)
+    }
+    
     console.log(`✅ [Weather] All weather data cached successfully for ${locationKey}`)
     
   } catch (error) {
