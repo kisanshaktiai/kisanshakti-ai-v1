@@ -657,9 +657,9 @@ export class MultiModalFusionEngine {
     
     const environmental: UnifiedContext['environmental'] = {
       current_weather: {
-        temperature_c: weatherCurrent.temperature_c ?? weatherCurrent.temperature ?? 28,
-        humidity_percent: weatherCurrent.humidity_percent ?? weatherCurrent.humidity ?? 65,
-        wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? weatherCurrent.wind_speed ?? 12,
+        temperature_c: weatherCurrent.temperature_c ?? weatherCurrent.temperature ?? null,
+        humidity_percent: weatherCurrent.humidity_percent ?? weatherCurrent.humidity ?? null,
+        wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? weatherCurrent.wind_speed ?? null,
         conditions: this.summarizeWeatherConditions(input.weather_data)
       },
       weather_forecast_24h: {
