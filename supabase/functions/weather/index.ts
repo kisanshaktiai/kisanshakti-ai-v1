@@ -803,24 +803,28 @@ async function updateWeatherAggregate(
     
     if (existing) {
       // Update existing aggregate
+      const obsCount = (existing.observation_count || 1);
       const updates: Record<string, any> = {
         updated_at: now.toISOString(),
         rain_mm_total: (existing.rain_mm_total || 0) + (current.rain_1h || 0),
-        [rainColumn]: (existing[rainColumn] || 0) + (current.rain_1h || 0)
+        [rainColumn]: (existing[rainColumn] || 0) + (current.rain_1h || 0),
+        observation_count: obsCount + 1
       }
       
-      // Update min/max temps
-      if (!existing.temp_min_celsius || current.temp < existing.temp_min_celsius) {
-        updates.temp_min_celsius = current.temp
+      // Update min/max temps — use API Tmin/Tmax AND observed temp
+      const candidateMin = Math.min(current.temp, tempMin);
+      const candidateMax = Math.max(current.temp, tempMax);
+      if (!existing.temp_min_celsius || candidateMin < existing.temp_min_celsius) {
+        updates.temp_min_celsius = candidateMin;
       }
-      if (!existing.temp_max_celsius || current.temp > existing.temp_max_celsius) {
-        updates.temp_max_celsius = current.temp
+      if (!existing.temp_max_celsius || candidateMax > existing.temp_max_celsius) {
+        updates.temp_max_celsius = candidateMax;
       }
       
-      // Running average
-      updates.temp_avg_celsius = ((existing.temp_avg_celsius || current.temp) + current.temp) / 2
-      updates.humidity_avg_percent = ((existing.humidity_avg_percent || current.humidity) + current.humidity) / 2
-      updates.wind_speed_avg_kmh = ((existing.wind_speed_avg_kmh || current.wind_speed * 3.6) + current.wind_speed * 3.6) / 2
+      // Proper incremental mean: avg = old_avg + (new - old_avg) / (n + 1)
+      updates.temp_avg_celsius = (existing.temp_avg_celsius || current.temp) + (current.temp - (existing.temp_avg_celsius || current.temp)) / (obsCount + 1);
+      updates.humidity_avg_percent = (existing.humidity_avg_percent || current.humidity) + (current.humidity - (existing.humidity_avg_percent || current.humidity)) / (obsCount + 1);
+      updates.wind_speed_avg_kmh = (existing.wind_speed_avg_kmh || current.wind_speed * 3.6) + (current.wind_speed * 3.6 - (existing.wind_speed_avg_kmh || current.wind_speed * 3.6)) / (obsCount + 1);
       
       if (current.wind_speed * 3.6 > (existing.wind_speed_max_kmh || 0)) {
         updates.wind_speed_max_kmh = current.wind_speed * 3.6
