@@ -739,7 +739,7 @@ async function cacheWeatherData(
     
     // ============= 5. Update weather_aggregates for the day =============
     if (tenantId) {
-      await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now, rounded.lat)
+      await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now, rounded.lat, rounded.lon)
     }
     
     console.log(`✅ [Weather] All weather data cached successfully for ${locationKey}`)
