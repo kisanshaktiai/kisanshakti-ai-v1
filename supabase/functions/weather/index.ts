@@ -879,7 +879,7 @@ async function updateWeatherAggregate(
     console.log(`💾 [Weather] ✅ Updated daily aggregate for ${today} with GDD=${dailyGDD.toFixed(1)}, ET0=${et0.toFixed(1)}`)
     
     // ============= 6. Archive to weather_historical (end-of-day or new day detection) =============
-    await archiveToWeatherHistorical(supabase, tenantId, landId, lat, rounded.lon)
+    await archiveToWeatherHistorical(supabase, tenantId, landId, lat, longitude)
     
   } catch (error) {
     console.warn('⚠️ [Weather] Failed to update aggregate:', error)
