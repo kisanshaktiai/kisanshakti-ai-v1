@@ -602,7 +602,7 @@ async function cacheWeatherData(
       // RAIN DATA - Critical for agriculture
       rain_1h_mm: current.rain_1h || 0, // 1-hour rainfall in mm
       rain_3h_mm: current.rain_3h || 0, // 3-hour rainfall in mm (NEW)
-      rain_24h_mm: (current.rain_3h || 0) * 8, // Estimate 24h from 3h
+      rain_24h_mm: current.rain_1h || 0, // Store actual 1h rain only; daily totals tracked via aggregates
       snow_1h_mm: 0, // Future: Extract from API if available
       sunrise: current.sunrise ? new Date(current.sunrise * 1000).toISOString() : null,
       sunset: current.sunset ? new Date(current.sunset * 1000).toISOString() : null,
