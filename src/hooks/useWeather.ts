@@ -160,9 +160,10 @@ export const useWeather = (location?: { lat: number; lon: number }, landId?: str
       
       const { data, error: fetchError } = await weatherClient.functions.invoke('weather', {
         body: {
-          action: 'all', // NEW: Get everything at once
+          action: 'all',
           lat: rounded.lat,
           lon: rounded.lon,
+          ...(landId ? { landId } : {}), // Pass landId for land-specific weather intelligence
         },
       });
 

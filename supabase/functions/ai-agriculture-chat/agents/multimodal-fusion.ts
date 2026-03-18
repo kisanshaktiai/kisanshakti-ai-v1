@@ -1016,18 +1016,22 @@ export class MultiModalFusionEngine {
     
     const conditions: string[] = [];
     
+    if (temp == null && humidity == null && wind == null) {
+      return 'Weather data unavailable';
+    }
+    
     if (rainfall > 0) {
       conditions.push(`${rainfall}mm rain`);
     }
-    if (temp > 35) {
+    if (temp != null && temp > 35) {
       conditions.push('Hot');
-    } else if (temp < 15) {
+    } else if (temp != null && temp < 15) {
       conditions.push('Cool');
     }
-    if (humidity > 80) {
+    if (humidity != null && humidity > 80) {
       conditions.push('Humid');
     }
-    if (wind > 20) {
+    if (wind != null && wind > 20) {
       conditions.push('Windy');
     }
     
