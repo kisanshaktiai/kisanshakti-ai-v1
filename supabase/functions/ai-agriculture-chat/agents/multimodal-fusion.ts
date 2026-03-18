@@ -1043,6 +1043,7 @@ export class MultiModalFusionEngine {
     const wind = current.wind_speed_kmh ?? current.wind_speed ?? null;
     const temp = current.temperature_c ?? current.temperature ?? null;
     
+    if (rainProb == null || wind == null || temp == null) return false; // Unknown weather = unsafe to spray
     return rainProb < 40 && wind < 15 && temp < 35;
   }
   
