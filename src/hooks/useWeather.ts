@@ -93,7 +93,7 @@ function roundCoordinates(lat: number, lon: number): { lat: number; lon: number 
   };
 }
 
-export const useWeather = (location?: { lat: number; lon: number }) => {
+export const useWeather = (location?: { lat: number; lon: number }, landId?: string) => {
   // Use centralized weather store for single source of truth
   const {
     currentWeather,
