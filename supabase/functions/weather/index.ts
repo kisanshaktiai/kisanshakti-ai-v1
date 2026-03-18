@@ -846,7 +846,7 @@ async function updateWeatherAggregate(
         .eq('id', existing.id)
       
     } else {
-      // Create new aggregate
+      // Create new aggregate — use API Tmin/Tmax for real GDD/ET0
       const newAggregate = {
         tenant_id: tenantId,
         farmer_id: farmerId || null,
@@ -854,8 +854,9 @@ async function updateWeatherAggregate(
         aggregate_date: today,
         rain_mm_total: current.rain_1h || 0,
         [rainColumn]: current.rain_1h || 0,
-        temp_min_celsius: current.temp,
-        temp_max_celsius: current.temp,
+        temp_min_celsius: tempMin,
+        temp_max_celsius: tempMax,
+        observation_count: 1,
         temp_avg_celsius: current.temp,
         humidity_avg_percent: current.humidity,
         wind_speed_avg_kmh: current.wind_speed * 3.6,
