@@ -777,9 +777,9 @@ async function updateWeatherAggregate(
   else if (hour >= 17 && hour < 21) rainColumn = 'rain_mm_evening'
   else if (hour >= 21 || hour < 6) rainColumn = 'rain_mm_night'
   
-  // Calculate agricultural indices
-  const tempMax = current.temp_max || current.temp + 3
-  const tempMin = current.temp_min || current.temp - 5
+  // Calculate agricultural indices — use API-provided Tmin/Tmax (CRITICAL for GDD/ET0)
+  const tempMax = current.temp_max ?? current.temp
+  const tempMin = current.temp_min ?? current.temp
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
   const lat = latitude || 20 // Default to central India
   
