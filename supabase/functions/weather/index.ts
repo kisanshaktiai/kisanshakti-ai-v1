@@ -602,7 +602,7 @@ async function cacheWeatherData(
       // RAIN DATA - Critical for agriculture
       rain_1h_mm: current.rain_1h || 0, // 1-hour rainfall in mm
       rain_3h_mm: current.rain_3h || 0, // 3-hour rainfall in mm (NEW)
-      rain_24h_mm: (current.rain_3h || 0) * 8, // Estimate 24h from 3h
+      rain_24h_mm: current.rain_1h || 0, // Store actual 1h rain only; daily totals tracked via aggregates
       snow_1h_mm: 0, // Future: Extract from API if available
       sunrise: current.sunrise ? new Date(current.sunrise * 1000).toISOString() : null,
       sunset: current.sunset ? new Date(current.sunset * 1000).toISOString() : null,
@@ -739,13 +739,140 @@ async function cacheWeatherData(
     
     // ============= 5. Update weather_aggregates for the day =============
     if (tenantId) {
-      await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now, rounded.lat)
+      await updateWeatherAggregate(supabase, tenantId, farmerId, landId, current, now, rounded.lat, rounded.lon)
+    }
+    
+    // ============= 6. Compute and store land-level weather metrics =============
+    if (landId && tenantId) {
+      await computeLandWeatherMetrics(supabase, landId, tenantId, locationKey, current, rounded)
     }
     
     console.log(`✅ [Weather] All weather data cached successfully for ${locationKey}`)
     
   } catch (error) {
     console.error('❌ [Weather] Cache storage error:', error)
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LAND WEATHER METRICS — Per-land derived intelligence (USDA SCS method)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Soil infiltration factors (fraction of rainfall that infiltrates)
+const SOIL_FACTORS: Record<string, number> = {
+  'black': 0.60, 'black_cotton': 0.60, 'vertisol': 0.60,
+  'red': 0.75, 'laterite': 0.75, 'alfisol': 0.75,
+  'sandy': 0.85, 'sandy_loam': 0.85, 'entisol': 0.85,
+  'alluvial': 0.70, 'loamy': 0.70, 'inceptisol': 0.70,
+  'clay': 0.55, 'clayey': 0.55,
+  'default': 0.70
+};
+
+async function computeLandWeatherMetrics(
+  supabase: any,
+  landId: string,
+  tenantId: string,
+  locationKey: string,
+  current: CurrentWeatherData,
+  rounded: { lat: number; lon: number }
+) {
+  try {
+    // Get land properties for adjustment factors
+    const { data: land } = await supabase
+      .from('lands')
+      .select('soil_type, crop_type, area_hectares')
+      .eq('id', landId)
+      .maybeSingle();
+
+    const soilType = (land?.soil_type || 'default').toLowerCase();
+    const soilFactor = SOIL_FACTORS[soilType] || SOIL_FACTORS['default'];
+    
+    const today = new Date().toISOString().split('T')[0];
+    const rainfall = current.rain_1h || 0;
+    
+    // Effective Rainfall (USDA SCS method simplified)
+    const effectiveRainfall = rainfall * soilFactor;
+    const runoffLoss = rainfall - effectiveRainfall;
+    
+    // ET0 calculation
+    const tempMax = current.temp_max ?? current.temp;
+    const tempMin = current.temp_min ?? current.temp;
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+    const et0 = calculateET0Simple(tempMax, tempMin, rounded.lat, dayOfYear);
+    const gdd = calculateDailyGDDSimple(tempMax, tempMin);
+    
+    // Water deficit = ET0 - effective rainfall (positive = deficit)
+    const waterDeficit = Math.max(0, et0 - effectiveRainfall);
+    const irrigationNeeded = waterDeficit > 2; // More than 2mm deficit
+    const irrigationUrgency = waterDeficit > 5 ? 'HIGH' : waterDeficit > 2 ? 'MEDIUM' : 'NONE';
+    
+    // Disease risk score (0-100)
+    const dewPoint = calculateDewPointSimple(current.temp, current.humidity);
+    let diseaseScore = 0;
+    if (current.humidity > 85) diseaseScore += 25;
+    else if (current.humidity > 70) diseaseScore += 15;
+    if (Math.abs(current.temp - dewPoint) < 2) diseaseScore += 30;
+    else if (Math.abs(current.temp - dewPoint) < 5) diseaseScore += 15;
+    if (current.temp >= 20 && current.temp <= 28) diseaseScore += 20;
+    if (rainfall > 15) diseaseScore += 25;
+    else if (rainfall > 5) diseaseScore += 15;
+    
+    const diseaseRiskLevel = diseaseScore >= 75 ? 'CRITICAL' : diseaseScore >= 50 ? 'HIGH' : diseaseScore >= 25 ? 'MEDIUM' : 'LOW';
+    
+    // Crop stress
+    let cropStress = 'NONE';
+    if (current.temp > 40) cropStress = 'SEVERE_HEAT';
+    else if (current.temp > 38) cropStress = 'HEAT';
+    else if (current.temp < 5) cropStress = 'FROST';
+    else if (waterDeficit > 5) cropStress = 'WATER_STRESS';
+    
+    // Water balance
+    let waterBalance = 'BALANCED';
+    if (effectiveRainfall > et0 * 1.5) waterBalance = 'SURPLUS';
+    else if (waterDeficit > 3) waterBalance = 'DEFICIT';
+    
+    // Get existing accumulated GDD
+    const { data: existing } = await supabase
+      .from('land_weather_metrics')
+      .select('gdd_accumulated')
+      .eq('land_id', landId)
+      .eq('metric_date', today)
+      .maybeSingle();
+    
+    const gddAccumulated = (existing?.gdd_accumulated || 0) + gdd;
+    
+    const { error } = await supabase.from('land_weather_metrics').upsert({
+      land_id: landId,
+      tenant_id: tenantId,
+      metric_date: today,
+      location_key: locationKey,
+      temperature_c: current.temp,
+      humidity_percent: current.humidity,
+      wind_speed_kmh: current.wind_speed * 3.6,
+      total_rainfall_mm: rainfall,
+      effective_rainfall_mm: Math.round(effectiveRainfall * 10) / 10,
+      runoff_loss_mm: Math.round(runoffLoss * 10) / 10,
+      water_deficit_mm: Math.round(waterDeficit * 10) / 10,
+      soil_infiltration_rate: soilType,
+      irrigation_needed: irrigationNeeded,
+      irrigation_urgency: irrigationUrgency,
+      gdd_daily: gdd,
+      gdd_accumulated: gddAccumulated,
+      et0_mm: et0,
+      disease_risk_score: diseaseScore,
+      disease_risk_level: diseaseRiskLevel,
+      crop_stress_level: cropStress,
+      water_balance_status: waterBalance,
+      computed_at: new Date().toISOString()
+    }, { onConflict: 'land_id,metric_date' });
+    
+    if (error) {
+      console.warn('⚠️ [Weather] Failed to compute land metrics:', error.message);
+    } else {
+      console.log(`🌱 [Weather] ✅ Land metrics computed for ${landId}: ER=${effectiveRainfall.toFixed(1)}mm, deficit=${waterDeficit.toFixed(1)}mm, GDD=${gdd.toFixed(1)}, stress=${cropStress}`);
+    }
+  } catch (err) {
+    console.warn('⚠️ [Weather] Land metrics computation error:', err);
   }
 }
 
@@ -764,7 +891,8 @@ async function updateWeatherAggregate(
   landId?: string,
   current?: CurrentWeatherData,
   now?: Date,
-  latitude?: number // NEW: For ET0 calculation
+  latitude?: number,
+  longitude?: number
 ) {
   if (!current || !now) return
   
@@ -777,9 +905,9 @@ async function updateWeatherAggregate(
   else if (hour >= 17 && hour < 21) rainColumn = 'rain_mm_evening'
   else if (hour >= 21 || hour < 6) rainColumn = 'rain_mm_night'
   
-  // Calculate agricultural indices
-  const tempMax = current.temp_max || current.temp + 3
-  const tempMin = current.temp_min || current.temp - 5
+  // Calculate agricultural indices — use API-provided Tmin/Tmax (CRITICAL for GDD/ET0)
+  const tempMax = current.temp_max ?? current.temp
+  const tempMin = current.temp_min ?? current.temp
   const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000)
   const lat = latitude || 20 // Default to central India
   
@@ -803,24 +931,28 @@ async function updateWeatherAggregate(
     
     if (existing) {
       // Update existing aggregate
+      const obsCount = (existing.observation_count || 1);
       const updates: Record<string, any> = {
         updated_at: now.toISOString(),
         rain_mm_total: (existing.rain_mm_total || 0) + (current.rain_1h || 0),
-        [rainColumn]: (existing[rainColumn] || 0) + (current.rain_1h || 0)
+        [rainColumn]: (existing[rainColumn] || 0) + (current.rain_1h || 0),
+        observation_count: obsCount + 1
       }
       
-      // Update min/max temps
-      if (!existing.temp_min_celsius || current.temp < existing.temp_min_celsius) {
-        updates.temp_min_celsius = current.temp
+      // Update min/max temps — use API Tmin/Tmax AND observed temp
+      const candidateMin = Math.min(current.temp, tempMin);
+      const candidateMax = Math.max(current.temp, tempMax);
+      if (!existing.temp_min_celsius || candidateMin < existing.temp_min_celsius) {
+        updates.temp_min_celsius = candidateMin;
       }
-      if (!existing.temp_max_celsius || current.temp > existing.temp_max_celsius) {
-        updates.temp_max_celsius = current.temp
+      if (!existing.temp_max_celsius || candidateMax > existing.temp_max_celsius) {
+        updates.temp_max_celsius = candidateMax;
       }
       
-      // Running average
-      updates.temp_avg_celsius = ((existing.temp_avg_celsius || current.temp) + current.temp) / 2
-      updates.humidity_avg_percent = ((existing.humidity_avg_percent || current.humidity) + current.humidity) / 2
-      updates.wind_speed_avg_kmh = ((existing.wind_speed_avg_kmh || current.wind_speed * 3.6) + current.wind_speed * 3.6) / 2
+      // Proper incremental mean: avg = old_avg + (new - old_avg) / (n + 1)
+      updates.temp_avg_celsius = (existing.temp_avg_celsius || current.temp) + (current.temp - (existing.temp_avg_celsius || current.temp)) / (obsCount + 1);
+      updates.humidity_avg_percent = (existing.humidity_avg_percent || current.humidity) + (current.humidity - (existing.humidity_avg_percent || current.humidity)) / (obsCount + 1);
+      updates.wind_speed_avg_kmh = (existing.wind_speed_avg_kmh || current.wind_speed * 3.6) + (current.wind_speed * 3.6 - (existing.wind_speed_avg_kmh || current.wind_speed * 3.6)) / (obsCount + 1);
       
       if (current.wind_speed * 3.6 > (existing.wind_speed_max_kmh || 0)) {
         updates.wind_speed_max_kmh = current.wind_speed * 3.6
@@ -842,7 +974,7 @@ async function updateWeatherAggregate(
         .eq('id', existing.id)
       
     } else {
-      // Create new aggregate
+      // Create new aggregate — use API Tmin/Tmax for real GDD/ET0
       const newAggregate = {
         tenant_id: tenantId,
         farmer_id: farmerId || null,
@@ -850,8 +982,9 @@ async function updateWeatherAggregate(
         aggregate_date: today,
         rain_mm_total: current.rain_1h || 0,
         [rainColumn]: current.rain_1h || 0,
-        temp_min_celsius: current.temp,
-        temp_max_celsius: current.temp,
+        temp_min_celsius: tempMin,
+        temp_max_celsius: tempMax,
+        observation_count: 1,
         temp_avg_celsius: current.temp,
         humidity_avg_percent: current.humidity,
         wind_speed_avg_kmh: current.wind_speed * 3.6,
@@ -873,7 +1006,7 @@ async function updateWeatherAggregate(
     console.log(`💾 [Weather] ✅ Updated daily aggregate for ${today} with GDD=${dailyGDD.toFixed(1)}, ET0=${et0.toFixed(1)}`)
     
     // ============= 6. Archive to weather_historical (end-of-day or new day detection) =============
-    await archiveToWeatherHistorical(supabase, tenantId, landId, lat)
+    await archiveToWeatherHistorical(supabase, tenantId, landId, lat, longitude)
     
   } catch (error) {
     console.warn('⚠️ [Weather] Failed to update aggregate:', error)
@@ -889,7 +1022,8 @@ async function archiveToWeatherHistorical(
   supabase: any,
   tenantId: string,
   landId?: string,
-  latitude?: number
+  latitude?: number,
+  rounded_lon?: number
 ) {
   try {
     const today = new Date()
@@ -943,7 +1077,7 @@ async function archiveToWeatherHistorical(
           
           const historicalRecord = {
             latitude: latitude || 0,
-            longitude: 0, // Will be updated with actual data
+            longitude: rounded_lon || 0, // Use actual longitude
             record_date: yesterdayStr,
             temperature_avg_celsius: Math.round(tavg * 10) / 10,
             temperature_min_celsius: Math.round(tmin * 10) / 10,
@@ -976,7 +1110,7 @@ async function archiveToWeatherHistorical(
     // Archive from aggregate
     const historicalRecord = {
       latitude: latitude || 0,
-      longitude: 0, // Will need to be set from land data
+      longitude: rounded_lon || 0, // Use actual longitude
       record_date: yesterdayStr,
       temperature_avg_celsius: aggregate.temp_avg_celsius,
       temperature_min_celsius: aggregate.temp_min_celsius,

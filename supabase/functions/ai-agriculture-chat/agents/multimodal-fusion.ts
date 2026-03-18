@@ -657,9 +657,9 @@ export class MultiModalFusionEngine {
     
     const environmental: UnifiedContext['environmental'] = {
       current_weather: {
-        temperature_c: weatherCurrent.temperature_c ?? weatherCurrent.temperature ?? 28,
-        humidity_percent: weatherCurrent.humidity_percent ?? weatherCurrent.humidity ?? 65,
-        wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? weatherCurrent.wind_speed ?? 12,
+        temperature_c: weatherCurrent.temperature_c ?? weatherCurrent.temperature ?? null,
+        humidity_percent: weatherCurrent.humidity_percent ?? weatherCurrent.humidity ?? null,
+        wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? weatherCurrent.wind_speed ?? null,
         conditions: this.summarizeWeatherConditions(input.weather_data)
       },
       weather_forecast_24h: {
@@ -1010,24 +1010,28 @@ export class MultiModalFusionEngine {
     // CRITICAL FIX: Defensive access for variable weather data shapes
     const current = weather?.current || {};
     const rainfall = current.rainfall_last_24h_mm ?? current.precipitation ?? 0;
-    const temp = current.temperature_c ?? current.temperature ?? 28;
-    const humidity = current.humidity_percent ?? current.humidity ?? 65;
-    const wind = current.wind_speed_kmh ?? current.wind_speed ?? 12;
+    const temp = current.temperature_c ?? current.temperature;
+    const humidity = current.humidity_percent ?? current.humidity;
+    const wind = current.wind_speed_kmh ?? current.wind_speed;
     
     const conditions: string[] = [];
+    
+    if (temp == null && humidity == null && wind == null) {
+      return 'Weather data unavailable';
+    }
     
     if (rainfall > 0) {
       conditions.push(`${rainfall}mm rain`);
     }
-    if (temp > 35) {
+    if (temp != null && temp > 35) {
       conditions.push('Hot');
-    } else if (temp < 15) {
+    } else if (temp != null && temp < 15) {
       conditions.push('Cool');
     }
-    if (humidity > 80) {
+    if (humidity != null && humidity > 80) {
       conditions.push('Humid');
     }
-    if (wind > 20) {
+    if (wind != null && wind > 20) {
       conditions.push('Windy');
     }
     
@@ -1039,10 +1043,11 @@ export class MultiModalFusionEngine {
     const forecast = weather?.forecast_24h || weather?.forecast?.[0] || {};
     const current = weather?.current || {};
     
-    const rainProb = forecast.rain_probability_percent ?? forecast.precipitation_probability ?? 20;
-    const wind = current.wind_speed_kmh ?? current.wind_speed ?? 12;
-    const temp = current.temperature_c ?? current.temperature ?? 28;
+    const rainProb = forecast.rain_probability_percent ?? forecast.precipitation_probability ?? null;
+    const wind = current.wind_speed_kmh ?? current.wind_speed ?? null;
+    const temp = current.temperature_c ?? current.temperature ?? null;
     
+    if (rainProb == null || wind == null || temp == null) return false; // Unknown weather = unsafe to spray
     return rainProb < 40 && wind < 15 && temp < 35;
   }
   

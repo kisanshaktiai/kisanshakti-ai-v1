@@ -7606,20 +7606,22 @@ export class AIAgentOrchestrator {
    *           forecast_24h: { rain_probability_percent, temperature_max_c, temperature_min_c, wind_max_kmh } }
    */
   private async fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
-    // Canonical default weather data for Indian agriculture
+    // Weather data unavailable — return null values (no hardcoded defaults)
     const defaultWeather = {
       is_default: true,
+      confidence: 'LOW' as const,
+      warning: 'Weather data unavailable — advisory based on general conditions only',
       current: {
-        temperature_c: 28,
-        humidity_percent: 65,
-        wind_speed_kmh: 12,
+        temperature_c: null as number | null,
+        humidity_percent: null as number | null,
+        wind_speed_kmh: null as number | null,
         rainfall_last_24h_mm: 0
       },
       forecast_24h: {
-        rain_probability_percent: 20,
-        temperature_max_c: 32,
-        temperature_min_c: 22,
-        wind_max_kmh: 18
+        rain_probability_percent: null as number | null,
+        temperature_max_c: null as number | null,
+        temperature_min_c: null as number | null,
+        wind_max_kmh: null as number | null
       },
       forecast_72h: []
     };
@@ -7688,14 +7690,21 @@ export class AIAgentOrchestrator {
               .limit(1)
               .maybeSingle();
 
+            // Check weather freshness — flag stale data
+            const obsTime = weatherCurrent.observation_time ? new Date(weatherCurrent.observation_time).getTime() : 0;
+            const ageHours = (Date.now() - obsTime) / (1000 * 60 * 60);
+            const isStale = ageHours > 6;
+            
             return {
               is_default: false,
               data_source: 'weather_current',
               observation_time: weatherCurrent.observation_time,
+              confidence: isStale ? 'STALE' : 'HIGH',
+              ...(isStale ? { warning: `Weather data is ${Math.round(ageHours)}h old — accuracy may be reduced` } : {}),
               current: {
-                temperature_c: weatherCurrent.temperature_celsius ?? 28,
-                humidity_percent: weatherCurrent.humidity_percent ?? 65,
-                wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? 12,
+                temperature_c: weatherCurrent.temperature_celsius ?? null,
+                humidity_percent: weatherCurrent.humidity_percent ?? null,
+                wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? null,
                 rainfall_last_24h_mm: weatherCurrent.rain_24h_mm ?? weatherCurrent.rain_1h_mm ?? 0,
                 feels_like_c: weatherCurrent.feels_like_celsius,
                 pressure_hpa: weatherCurrent.pressure_hpa,
@@ -7708,10 +7717,10 @@ export class AIAgentOrchestrator {
                 weather_description: weatherCurrent.weather_description
               },
               forecast_24h: {
-                rain_probability_percent: forecast?.rain_probability_percent ?? 20,
-                temperature_max_c: forecast?.temperature_max_celsius ?? 32,
-                temperature_min_c: forecast?.temperature_min_celsius ?? 22,
-                wind_max_kmh: forecast?.wind_gust_kmh ?? forecast?.wind_speed_kmh ?? 18,
+                rain_probability_percent: forecast?.rain_probability_percent ?? null,
+                temperature_max_c: forecast?.temperature_max_celsius ?? null,
+                temperature_min_c: forecast?.temperature_min_celsius ?? null,
+                wind_max_kmh: forecast?.wind_gust_kmh ?? forecast?.wind_speed_kmh ?? null,
                 rain_amount_mm: forecast?.rain_amount_mm ?? 0,
                 weather_condition: forecast?.weather_main
               },
@@ -8031,13 +8040,13 @@ export class AIAgentOrchestrator {
       
       environmental_context: {
         current_weather: fused.unified_context?.environmental?.current_weather || {
-          temperature_c: 28,
-          humidity_percent: 65,
-          wind_speed_kmh: 12
+          temperature_c: null,
+          humidity_percent: null,
+          wind_speed_kmh: null
         },
         weather_forecast_24h: fused.unified_context?.environmental?.weather_forecast_24h || {
-          rain_probability_percent: 20,
-          temperature_max_c: 32
+          rain_probability_percent: null,
+          temperature_max_c: null
         },
         season: (fused.unified_context?.environmental?.season || 'KHARIF') as any,
         region_code: landContext?.region_code || landContext?.district || 'MH'
