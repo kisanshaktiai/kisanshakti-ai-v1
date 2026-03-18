@@ -119,7 +119,7 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
     },
     {
       name: 'Fertilization',
-      suitable: weather?.wind_speed < 10,
+      suitable: (weather?.wind_speed * 3.6) < 10, // Convert m/s to km/h
       icon: Flower,
     },
     {
