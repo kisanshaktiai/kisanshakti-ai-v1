@@ -50,7 +50,7 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
   const getSprayingConditions = () => {
     if (!weather) return null;
     
-    const windSpeed = weather.wind_speed;
+    const windSpeed = weather.wind_speed * 3.6; // Convert m/s to km/h
     const humidity = weather.humidity;
     
     if (windSpeed > 15) {
@@ -119,7 +119,7 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
     },
     {
       name: 'Fertilization',
-      suitable: weather?.wind_speed < 10,
+      suitable: (weather?.wind_speed * 3.6) < 10, // Convert m/s to km/h
       icon: Flower,
     },
     {
