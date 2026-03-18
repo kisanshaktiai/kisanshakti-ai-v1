@@ -764,7 +764,8 @@ async function updateWeatherAggregate(
   landId?: string,
   current?: CurrentWeatherData,
   now?: Date,
-  latitude?: number // NEW: For ET0 calculation
+  latitude?: number,
+  longitude?: number
 ) {
   if (!current || !now) return
   
