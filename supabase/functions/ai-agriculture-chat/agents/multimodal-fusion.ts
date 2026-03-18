@@ -1010,9 +1010,9 @@ export class MultiModalFusionEngine {
     // CRITICAL FIX: Defensive access for variable weather data shapes
     const current = weather?.current || {};
     const rainfall = current.rainfall_last_24h_mm ?? current.precipitation ?? 0;
-    const temp = current.temperature_c ?? current.temperature ?? 28;
-    const humidity = current.humidity_percent ?? current.humidity ?? 65;
-    const wind = current.wind_speed_kmh ?? current.wind_speed ?? 12;
+    const temp = current.temperature_c ?? current.temperature;
+    const humidity = current.humidity_percent ?? current.humidity;
+    const wind = current.wind_speed_kmh ?? current.wind_speed;
     
     const conditions: string[] = [];
     
