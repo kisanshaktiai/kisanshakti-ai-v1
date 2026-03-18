@@ -948,7 +948,7 @@ async function archiveToWeatherHistorical(
           
           const historicalRecord = {
             latitude: latitude || 0,
-            longitude: 0, // Will be updated with actual data
+            longitude: rounded_lon || 0, // Use actual longitude
             record_date: yesterdayStr,
             temperature_avg_celsius: Math.round(tavg * 10) / 10,
             temperature_min_celsius: Math.round(tmin * 10) / 10,
