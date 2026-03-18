@@ -754,6 +754,128 @@ async function cacheWeatherData(
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LAND WEATHER METRICS — Per-land derived intelligence (USDA SCS method)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Soil infiltration factors (fraction of rainfall that infiltrates)
+const SOIL_FACTORS: Record<string, number> = {
+  'black': 0.60, 'black_cotton': 0.60, 'vertisol': 0.60,
+  'red': 0.75, 'laterite': 0.75, 'alfisol': 0.75,
+  'sandy': 0.85, 'sandy_loam': 0.85, 'entisol': 0.85,
+  'alluvial': 0.70, 'loamy': 0.70, 'inceptisol': 0.70,
+  'clay': 0.55, 'clayey': 0.55,
+  'default': 0.70
+};
+
+async function computeLandWeatherMetrics(
+  supabase: any,
+  landId: string,
+  tenantId: string,
+  locationKey: string,
+  current: CurrentWeatherData,
+  rounded: { lat: number; lon: number }
+) {
+  try {
+    // Get land properties for adjustment factors
+    const { data: land } = await supabase
+      .from('lands')
+      .select('soil_type, crop_type, area_hectares')
+      .eq('id', landId)
+      .maybeSingle();
+
+    const soilType = (land?.soil_type || 'default').toLowerCase();
+    const soilFactor = SOIL_FACTORS[soilType] || SOIL_FACTORS['default'];
+    
+    const today = new Date().toISOString().split('T')[0];
+    const rainfall = current.rain_1h || 0;
+    
+    // Effective Rainfall (USDA SCS method simplified)
+    const effectiveRainfall = rainfall * soilFactor;
+    const runoffLoss = rainfall - effectiveRainfall;
+    
+    // ET0 calculation
+    const tempMax = current.temp_max ?? current.temp;
+    const tempMin = current.temp_min ?? current.temp;
+    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
+    const et0 = calculateET0Simple(tempMax, tempMin, rounded.lat, dayOfYear);
+    const gdd = calculateDailyGDDSimple(tempMax, tempMin);
+    
+    // Water deficit = ET0 - effective rainfall (positive = deficit)
+    const waterDeficit = Math.max(0, et0 - effectiveRainfall);
+    const irrigationNeeded = waterDeficit > 2; // More than 2mm deficit
+    const irrigationUrgency = waterDeficit > 5 ? 'HIGH' : waterDeficit > 2 ? 'MEDIUM' : 'NONE';
+    
+    // Disease risk score (0-100)
+    const dewPoint = calculateDewPointSimple(current.temp, current.humidity);
+    let diseaseScore = 0;
+    if (current.humidity > 85) diseaseScore += 25;
+    else if (current.humidity > 70) diseaseScore += 15;
+    if (Math.abs(current.temp - dewPoint) < 2) diseaseScore += 30;
+    else if (Math.abs(current.temp - dewPoint) < 5) diseaseScore += 15;
+    if (current.temp >= 20 && current.temp <= 28) diseaseScore += 20;
+    if (rainfall > 15) diseaseScore += 25;
+    else if (rainfall > 5) diseaseScore += 15;
+    
+    const diseaseRiskLevel = diseaseScore >= 75 ? 'CRITICAL' : diseaseScore >= 50 ? 'HIGH' : diseaseScore >= 25 ? 'MEDIUM' : 'LOW';
+    
+    // Crop stress
+    let cropStress = 'NONE';
+    if (current.temp > 40) cropStress = 'SEVERE_HEAT';
+    else if (current.temp > 38) cropStress = 'HEAT';
+    else if (current.temp < 5) cropStress = 'FROST';
+    else if (waterDeficit > 5) cropStress = 'WATER_STRESS';
+    
+    // Water balance
+    let waterBalance = 'BALANCED';
+    if (effectiveRainfall > et0 * 1.5) waterBalance = 'SURPLUS';
+    else if (waterDeficit > 3) waterBalance = 'DEFICIT';
+    
+    // Get existing accumulated GDD
+    const { data: existing } = await supabase
+      .from('land_weather_metrics')
+      .select('gdd_accumulated')
+      .eq('land_id', landId)
+      .eq('metric_date', today)
+      .maybeSingle();
+    
+    const gddAccumulated = (existing?.gdd_accumulated || 0) + gdd;
+    
+    const { error } = await supabase.from('land_weather_metrics').upsert({
+      land_id: landId,
+      tenant_id: tenantId,
+      metric_date: today,
+      location_key: locationKey,
+      temperature_c: current.temp,
+      humidity_percent: current.humidity,
+      wind_speed_kmh: current.wind_speed * 3.6,
+      total_rainfall_mm: rainfall,
+      effective_rainfall_mm: Math.round(effectiveRainfall * 10) / 10,
+      runoff_loss_mm: Math.round(runoffLoss * 10) / 10,
+      water_deficit_mm: Math.round(waterDeficit * 10) / 10,
+      soil_infiltration_rate: soilType,
+      irrigation_needed: irrigationNeeded,
+      irrigation_urgency: irrigationUrgency,
+      gdd_daily: gdd,
+      gdd_accumulated: gddAccumulated,
+      et0_mm: et0,
+      disease_risk_score: diseaseScore,
+      disease_risk_level: diseaseRiskLevel,
+      crop_stress_level: cropStress,
+      water_balance_status: waterBalance,
+      computed_at: new Date().toISOString()
+    }, { onConflict: 'land_id,metric_date' });
+    
+    if (error) {
+      console.warn('⚠️ [Weather] Failed to compute land metrics:', error.message);
+    } else {
+      console.log(`🌱 [Weather] ✅ Land metrics computed for ${landId}: ER=${effectiveRainfall.toFixed(1)}mm, deficit=${waterDeficit.toFixed(1)}mm, GDD=${gdd.toFixed(1)}, stress=${cropStress}`);
+    }
+  } catch (err) {
+    console.warn('⚠️ [Weather] Land metrics computation error:', err);
+  }
+}
+
 // Helper function to convert wind degrees to direction
 function getWindDirection(deg: number): string {
   const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW']

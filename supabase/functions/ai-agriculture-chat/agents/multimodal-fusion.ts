@@ -1039,9 +1039,9 @@ export class MultiModalFusionEngine {
     const forecast = weather?.forecast_24h || weather?.forecast?.[0] || {};
     const current = weather?.current || {};
     
-    const rainProb = forecast.rain_probability_percent ?? forecast.precipitation_probability ?? 20;
-    const wind = current.wind_speed_kmh ?? current.wind_speed ?? 12;
-    const temp = current.temperature_c ?? current.temperature ?? 28;
+    const rainProb = forecast.rain_probability_percent ?? forecast.precipitation_probability ?? null;
+    const wind = current.wind_speed_kmh ?? current.wind_speed ?? null;
+    const temp = current.temperature_c ?? current.temperature ?? null;
     
     return rainProb < 40 && wind < 15 && temp < 35;
   }

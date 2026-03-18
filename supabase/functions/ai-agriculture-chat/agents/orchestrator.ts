@@ -8040,13 +8040,13 @@ export class AIAgentOrchestrator {
       
       environmental_context: {
         current_weather: fused.unified_context?.environmental?.current_weather || {
-          temperature_c: 28,
-          humidity_percent: 65,
-          wind_speed_kmh: 12
+          temperature_c: null,
+          humidity_percent: null,
+          wind_speed_kmh: null
         },
         weather_forecast_24h: fused.unified_context?.environmental?.weather_forecast_24h || {
-          rain_probability_percent: 20,
-          temperature_max_c: 32
+          rain_probability_percent: null,
+          temperature_max_c: null
         },
         season: (fused.unified_context?.environmental?.season || 'KHARIF') as any,
         region_code: landContext?.region_code || landContext?.district || 'MH'
