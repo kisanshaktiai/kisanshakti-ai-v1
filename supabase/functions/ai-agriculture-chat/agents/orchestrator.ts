@@ -7606,20 +7606,22 @@ export class AIAgentOrchestrator {
    *           forecast_24h: { rain_probability_percent, temperature_max_c, temperature_min_c, wind_max_kmh } }
    */
   private async fetchWeatherData(sessionId: string, landId?: string): Promise<any> {
-    // Canonical default weather data for Indian agriculture
+    // Weather data unavailable — return null values (no hardcoded defaults)
     const defaultWeather = {
       is_default: true,
+      confidence: 'LOW' as const,
+      warning: 'Weather data unavailable — advisory based on general conditions only',
       current: {
-        temperature_c: 28,
-        humidity_percent: 65,
-        wind_speed_kmh: 12,
+        temperature_c: null as number | null,
+        humidity_percent: null as number | null,
+        wind_speed_kmh: null as number | null,
         rainfall_last_24h_mm: 0
       },
       forecast_24h: {
-        rain_probability_percent: 20,
-        temperature_max_c: 32,
-        temperature_min_c: 22,
-        wind_max_kmh: 18
+        rain_probability_percent: null as number | null,
+        temperature_max_c: null as number | null,
+        temperature_min_c: null as number | null,
+        wind_max_kmh: null as number | null
       },
       forecast_72h: []
     };
