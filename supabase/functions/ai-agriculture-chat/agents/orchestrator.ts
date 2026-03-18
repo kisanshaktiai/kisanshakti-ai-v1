@@ -7690,14 +7690,21 @@ export class AIAgentOrchestrator {
               .limit(1)
               .maybeSingle();
 
+            // Check weather freshness — flag stale data
+            const obsTime = weatherCurrent.observation_time ? new Date(weatherCurrent.observation_time).getTime() : 0;
+            const ageHours = (Date.now() - obsTime) / (1000 * 60 * 60);
+            const isStale = ageHours > 6;
+            
             return {
               is_default: false,
               data_source: 'weather_current',
               observation_time: weatherCurrent.observation_time,
+              confidence: isStale ? 'STALE' : 'HIGH',
+              ...(isStale ? { warning: `Weather data is ${Math.round(ageHours)}h old — accuracy may be reduced` } : {}),
               current: {
-                temperature_c: weatherCurrent.temperature_celsius ?? 28,
-                humidity_percent: weatherCurrent.humidity_percent ?? 65,
-                wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? 12,
+                temperature_c: weatherCurrent.temperature_celsius ?? null,
+                humidity_percent: weatherCurrent.humidity_percent ?? null,
+                wind_speed_kmh: weatherCurrent.wind_speed_kmh ?? null,
                 rainfall_last_24h_mm: weatherCurrent.rain_24h_mm ?? weatherCurrent.rain_1h_mm ?? 0,
                 feels_like_c: weatherCurrent.feels_like_celsius,
                 pressure_hpa: weatherCurrent.pressure_hpa,
@@ -7710,10 +7717,10 @@ export class AIAgentOrchestrator {
                 weather_description: weatherCurrent.weather_description
               },
               forecast_24h: {
-                rain_probability_percent: forecast?.rain_probability_percent ?? 20,
-                temperature_max_c: forecast?.temperature_max_celsius ?? 32,
-                temperature_min_c: forecast?.temperature_min_celsius ?? 22,
-                wind_max_kmh: forecast?.wind_gust_kmh ?? forecast?.wind_speed_kmh ?? 18,
+                rain_probability_percent: forecast?.rain_probability_percent ?? null,
+                temperature_max_c: forecast?.temperature_max_celsius ?? null,
+                temperature_min_c: forecast?.temperature_min_celsius ?? null,
+                wind_max_kmh: forecast?.wind_gust_kmh ?? forecast?.wind_speed_kmh ?? null,
                 rain_amount_mm: forecast?.rain_amount_mm ?? 0,
                 weather_condition: forecast?.weather_main
               },
