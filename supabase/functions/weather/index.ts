@@ -981,7 +981,7 @@ async function archiveToWeatherHistorical(
     // Archive from aggregate
     const historicalRecord = {
       latitude: latitude || 0,
-      longitude: 0, // Will need to be set from land data
+      longitude: rounded_lon || 0, // Use actual longitude
       record_date: yesterdayStr,
       temperature_avg_celsius: aggregate.temp_avg_celsius,
       temperature_min_celsius: aggregate.temp_min_celsius,
