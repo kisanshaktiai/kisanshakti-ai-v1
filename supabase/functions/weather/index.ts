@@ -894,7 +894,8 @@ async function archiveToWeatherHistorical(
   supabase: any,
   tenantId: string,
   landId?: string,
-  latitude?: number
+  latitude?: number,
+  rounded_lon?: number
 ) {
   try {
     const today = new Date()
