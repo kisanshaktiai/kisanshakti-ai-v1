@@ -10549,6 +10549,42 @@ export type Database = {
           },
         ]
       }
+      hypothesis_integrity_alerts: {
+        Row: {
+          alert_type: string
+          created_at: string | null
+          description: string
+          hypothesis_id: string
+          id: string
+          resolution_notes: string | null
+          resolution_status: string | null
+          resolved_at: string | null
+          severity: string
+        }
+        Insert: {
+          alert_type: string
+          created_at?: string | null
+          description: string
+          hypothesis_id: string
+          id?: string
+          resolution_notes?: string | null
+          resolution_status?: string | null
+          resolved_at?: string | null
+          severity: string
+        }
+        Update: {
+          alert_type?: string
+          created_at?: string | null
+          description?: string
+          hypothesis_id?: string
+          id?: string
+          resolution_notes?: string | null
+          resolution_status?: string | null
+          resolved_at?: string | null
+          severity?: string
+        }
+        Relationships: []
+      }
       hypothesis_master: {
         Row: {
           biological_basis: string | null
@@ -15028,8 +15064,10 @@ export type Database = {
       observation_master: {
         Row: {
           affected_plant_part: string | null
+          applicable_crop_groups: string[] | null
           canonical_group: string | null
           created_at: string | null
+          crop_group: string | null
           description: string
           is_active: boolean
           is_diagnostic: boolean | null
@@ -15041,8 +15079,10 @@ export type Database = {
         }
         Insert: {
           affected_plant_part?: string | null
+          applicable_crop_groups?: string[] | null
           canonical_group?: string | null
           created_at?: string | null
+          crop_group?: string | null
           description: string
           is_active?: boolean
           is_diagnostic?: boolean | null
@@ -15054,8 +15094,10 @@ export type Database = {
         }
         Update: {
           affected_plant_part?: string | null
+          applicable_crop_groups?: string[] | null
           canonical_group?: string | null
           created_at?: string | null
+          crop_group?: string | null
           description?: string
           is_active?: boolean
           is_diagnostic?: boolean | null
@@ -18509,6 +18551,51 @@ export type Database = {
             referencedColumns: ["rule_id"]
           },
         ]
+      }
+      rule_quality_metrics: {
+        Row: {
+          audit_notes: string | null
+          audit_status: string | null
+          confidence_score_justified: boolean | null
+          has_icar_reference: boolean | null
+          has_research_paper: boolean | null
+          has_scientific_source: boolean | null
+          id: string
+          is_expert_approved: boolean | null
+          is_field_validated: boolean | null
+          last_audit_date: string | null
+          rule_id: string
+          validation_trial_count: number | null
+        }
+        Insert: {
+          audit_notes?: string | null
+          audit_status?: string | null
+          confidence_score_justified?: boolean | null
+          has_icar_reference?: boolean | null
+          has_research_paper?: boolean | null
+          has_scientific_source?: boolean | null
+          id?: string
+          is_expert_approved?: boolean | null
+          is_field_validated?: boolean | null
+          last_audit_date?: string | null
+          rule_id: string
+          validation_trial_count?: number | null
+        }
+        Update: {
+          audit_notes?: string | null
+          audit_status?: string | null
+          confidence_score_justified?: boolean | null
+          has_icar_reference?: boolean | null
+          has_research_paper?: boolean | null
+          has_scientific_source?: boolean | null
+          id?: string
+          is_expert_approved?: boolean | null
+          is_field_validated?: boolean | null
+          last_audit_date?: string | null
+          rule_id?: string
+          validation_trial_count?: number | null
+        }
+        Relationships: []
       }
       safety_verifications: {
         Row: {
