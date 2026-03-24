@@ -440,13 +440,24 @@ export async function generateDiagnosisFirstResponse(
           .join(' ');
       }
       
+      // ALL_CAPS LABEL GATE: If labels are still raw technical codes, humanize them
+      const isRawCode = (s: string) => /^[A-Z][A-Z_]{3,}$/.test(s);
+      if (isRawCode(finalCauseLabel)) {
+        finalCauseLabel = finalCauseLabel.replace(/_/g, ' ').split(' ')
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      }
+      if (isRawCode(observationLabel)) {
+        observationLabel = observationLabel.replace(/_/g, ' ').split(' ')
+          .map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      }
+      
       return {
         id: `diag_${idx}_${h.rule_id}`,
-        cause: h.cause,  // Keep English for backend logic
-        cause_label: finalCauseLabel,  // Regional translation for display (falls back to observation label)
+        cause: h.cause,
+        cause_label: finalCauseLabel,
         canonical_group: h.canonical_group,
-        observation_key: observationKey,  // Keep English for backend logic
-        observation_label: observationLabel,  // Regional translation for display
+        observation_key: observationKey,
+        observation_label: observationLabel,
         confidence: h.total_score,
         priority: h.priority,
         icon: getGroupIcon(h.canonical_group),

@@ -99,6 +99,7 @@ INTENT CODES:
 - LEAF_DAMAGE_VISIBLE: Holes, chewing damage on leaves
 - LEAF_MARKS_OR_SPOTS: Spots, patches, lesions, marks on leaves
 - STEM_DAMAGE: Stem holes, tunnels, breakage, boring, dead heart
+- BORER_IDENTIFICATION: Specific borer damage — frass visible, bore holes in internodes, dead heart with larva, tunnels in stem
 - ROOT_OR_BASE_PROBLEM: Root rot, base issues
 - PEST_PRESENCE_VISIBLE: Insects or pests physically seen
 - DISEASE_LIKE_PATTERN: Spreading pattern, fungal signs, plant death/decay
@@ -359,7 +360,7 @@ export async function classifyFarmerIntent(
           model,
           messages: [
             { role: 'system', content: 'You are a JSON-only classifier. Output MUST be valid JSON. Nothing else. Format: {"intent_code": "CATEGORY", "confidence": 0.8}' },
-            { role: 'user', content: `Classify this agricultural query. Query: "${farmerMessage}"\n\nValid intent_codes: EMERGENCE_FAILURE, GROWTH_ANOMALY, COLOR_CHANGE, WILTING_OR_DROOPING, LEAF_DAMAGE_VISIBLE, LEAF_MARKS_OR_SPOTS, STEM_DAMAGE, ROOT_OR_BASE_PROBLEM, PEST_PRESENCE_VISIBLE, DISEASE_LIKE_PATTERN, WATER_STRESS_SIGNAL, NUTRIENT_STRESS_SIGNAL, WEED_PROBLEM, FERTILIZER_SCHEDULE, IRRIGATION_QUERY, HARVEST_TIMING, GENERAL_CROP_INFO, UNKNOWN_OBSERVATION\n\nJSON:` }
+            { role: 'user', content: `Classify this agricultural query. Query: "${farmerMessage}"\n\nValid intent_codes: EMERGENCE_FAILURE, GROWTH_ANOMALY, COLOR_CHANGE, WILTING_OR_DROOPING, LEAF_DAMAGE_VISIBLE, LEAF_MARKS_OR_SPOTS, STEM_DAMAGE, BORER_IDENTIFICATION, ROOT_OR_BASE_PROBLEM, PEST_PRESENCE_VISIBLE, DISEASE_LIKE_PATTERN, WATER_STRESS_SIGNAL, NUTRIENT_STRESS_SIGNAL, WEED_PROBLEM, FERTILIZER_SCHEDULE, IRRIGATION_QUERY, HARVEST_TIMING, GENERAL_CROP_INFO, UNKNOWN_OBSERVATION\n\nJSON:` }
           ],
           temperature: 0,
           max_tokens: 1024,
@@ -508,8 +509,11 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.55 };
   }
   
-  // Stem damage / borer
-  if (/खोड|तना|stem|borer|छेदक|\bkhod\b/i.test(original)) {
+  // Stem damage / borer — route to BORER_IDENTIFICATION if borer-specific keywords present
+  if (/borer|छेदक|भोक.*खोड|खोड.*भोक|bore.*hole|larva|अळी.*खोड|खोड.*अळी|frass/i.test(original)) {
+    return { intent_code: 'BORER_IDENTIFICATION' as IntentCode, confidence: 0.6 };
+  }
+  if (/खोड|तना|stem|\bkhod\b/i.test(original)) {
     return { intent_code: 'STEM_DAMAGE' as IntentCode, confidence: 0.5 };
   }
   

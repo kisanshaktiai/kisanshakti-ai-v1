@@ -2782,7 +2782,7 @@ export class AIAgentOrchestrator {
       // is WRONG — the symptoms alone are sufficient for rule matching.
       // Instead, use a default stage ('VEGETATIVE') and let the rule engine handle it.
       const DIAGNOSTIC_INTENTS = new Set([
-        'STEM_DAMAGE', 'LEAF_DAMAGE', 'ROOT_DAMAGE', 'FRUIT_DAMAGE',
+        'STEM_DAMAGE', 'BORER_IDENTIFICATION', 'LEAF_DAMAGE', 'ROOT_DAMAGE', 'FRUIT_DAMAGE',
         'PEST_OBSERVATION', 'DISEASE_OBSERVATION', 'REPORT_SYMPTOM',
         'GROWTH_ANOMALY', 'WILTING_DRYING', 'YELLOWING', 'NUTRIENT_DEFICIENCY',
         'BORER_DAMAGE', 'DEAD_HEART', 'INSECT_DAMAGE', 'FUNGAL_INFECTION',
@@ -3445,6 +3445,7 @@ export class AIAgentOrchestrator {
           'LEAF_DAMAGE_VISIBLE',
           'LEAF_MARKS_OR_SPOTS',
           'STEM_DAMAGE',
+          'BORER_IDENTIFICATION',
           'ROOT_OR_BASE_PROBLEM',
           'GROWTH_ANOMALY',
           'WATER_STRESS_SIGNAL',
@@ -3478,6 +3479,7 @@ export class AIAgentOrchestrator {
             'LEAF_DAMAGE_VISIBLE': 'LEAF_HOLES',
             'LEAF_MARKS_OR_SPOTS': 'LEAF_SPOTS',
             'STEM_DAMAGE': 'STEM_BORER_DAMAGE',
+            'BORER_IDENTIFICATION': 'BORER_HOLES',
             'ROOT_OR_BASE_PROBLEM': 'ROOT_ROT',
             'GROWTH_ANOMALY': 'STUNTED_GROWTH',
             'WATER_STRESS_SIGNAL': 'WATER_STRESS',

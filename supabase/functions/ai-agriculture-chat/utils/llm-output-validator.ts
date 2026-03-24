@@ -56,7 +56,8 @@ async function loadValidIntentCodes(supabase: any): Promise<Set<string>> {
       const { data, error } = await supabase
         .from('observation_intent_master')
         .select('intent_code')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(2000);
       
       if (error) {
         console.error(`[LLM_VALIDATOR] Failed to load intent codes: ${error.message}`);
@@ -104,7 +105,8 @@ async function loadValidObservationCodes(supabase: any): Promise<Set<string>> {
       const { data, error } = await supabase
         .from('observation_master')
         .select('observation_code')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(2000);
       
       if (error) {
         console.error(`[LLM_VALIDATOR] Failed to load observation codes: ${error.message}`);
@@ -150,7 +152,8 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
         .from('decision_rules')
         .select('observable_characteristics')
         .eq('crop_code', cropCode)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(2000);
       
       if (error) {
         console.error(`[LLM_VALIDATOR] Failed to load crop-applicable observations for ${cropCode}: ${error.message}`);
