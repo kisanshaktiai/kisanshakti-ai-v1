@@ -17,8 +17,23 @@ interface SyncResult {
 class SyncService {
   private syncInterval: NodeJS.Timeout | null = null;
   private syncInProgress: boolean = false;
+  private isInitialized: boolean = false;
 
   constructor() {
+    // PERFORMANCE FIX: Don't initialize listeners in constructor
+    // They will be initialized lazily when first sync is requested
+    console.log('🔄 [Sync] SyncService created (lazy initialization)');
+  }
+
+  /**
+   * Initialize listeners and auto-sync lazily - only when needed
+   * This prevents blocking app startup with unnecessary listeners
+   */
+  private ensureInitialized(): void {
+    if (this.isInitialized) return;
+    this.isInitialized = true;
+    
+    console.log('🔄 [Sync] Initializing listeners and auto-sync...');
     this.initializeListeners();
     this.startAutoSync();
   }
@@ -68,6 +83,9 @@ class SyncService {
   }
 
   async performSync(showToast: boolean = false): Promise<SyncResult> {
+    // PERFORMANCE FIX: Initialize lazily on first sync request
+    this.ensureInitialized();
+    
     if (this.syncInProgress) {
       console.log('⚠️ [Sync] Sync already in progress, skipping');
       return { success: false, message: 'Sync already in progress' };
@@ -253,13 +271,11 @@ class SyncService {
             });
           } else {
             // Local version is newer - update server
+            const { lastModified, syncStatus, ...uploadData } = farmer;
             await supabase
               .from('farmers')
               .update({
-                farmer_name: farmer.name,
-                mobile_number: farmer.phone,
-                location: farmer.address,
-                metadata: farmer.metadata,
+                ...uploadData,
                 updated_at: new Date(farmer.lastModified).toISOString(),
               })
               .eq('id', farmer.id);
@@ -268,15 +284,12 @@ class SyncService {
           }
         } else {
           // New farmer - insert to server
+          const { lastModified, syncStatus, ...uploadData } = farmer;
           await supabase
             .from('farmers')
             .insert({
-              id: farmer.id,
+              ...uploadData,
               tenant_id: tenantId,
-              farmer_name: farmer.name,
-              mobile_number: farmer.phone,
-              location: farmer.address,
-              metadata: farmer.metadata,
               created_at: new Date(farmer.lastModified).toISOString(),
             });
           
@@ -316,14 +329,11 @@ class SyncService {
               resolution: 'server_win',
             });
           } else {
+            const { lastModified, syncStatus, ...uploadData } = land;
             await supabase
               .from('lands')
               .update({
-                name: land.name,
-                area_acres: land.area_acres,
-                ownership_type: land.ownership_type,
-                current_crop: land.crops?.[0] || null,
-                boundary: land.boundary,
+                ...uploadData,
                 updated_at: new Date(land.lastModified).toISOString(),
               })
               .eq('id', land.id);
@@ -331,20 +341,16 @@ class SyncService {
             syncedIds.push(land.id);
           }
         } else {
+          const { lastModified, syncStatus, ...uploadData } = land;
           await supabase
             .from('lands')
             .insert({
+              ...uploadData,
               tenant_id: tenantId,
-              farmer_id: land.farmer_id,
-              name: land.name,
-              area_acres: land.area_acres,
-              ownership_type: land.ownership_type,
-              current_crop: land.crops?.[0] || null,
-              boundary: land.boundary,
               created_at: new Date(land.lastModified).toISOString(),
             });
           
-          syncedIds.push(land.farmer_id);
+          syncedIds.push(land.id);
         }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -382,11 +388,12 @@ class SyncService {
               resolution: 'server_win',
             });
           } else {
-            // Update existing schedule with available fields
+            // Update existing schedule with ALL fields
+            const { lastModified, syncStatus, ...uploadData } = schedule;
             await supabase
               .from('crop_schedules')
               .update({
-                generation_params: { tasks: schedule.tasks },
+                ...uploadData,
                 updated_at: new Date(schedule.lastModified).toISOString(),
               })
               .eq('id', schedule.id);
@@ -394,17 +401,13 @@ class SyncService {
             syncedIds.push(schedule.id);
           }
         } else {
-          // Insert new schedule - using actual crop_schedules table structure
+          // Insert new schedule with ALL fields
+          const { lastModified, syncStatus, ...uploadData } = schedule;
           await supabase
             .from('crop_schedules')
             .insert({
-              farmer_id: schedule.land_id, // Using land_id as farmer reference
-              land_id: schedule.land_id,
+              ...uploadData,
               tenant_id: tenantId || '',
-              crop_name: schedule.crop_id,
-              sowing_date: new Date().toISOString(),
-              generation_params: { tasks: schedule.tasks },
-              created_at: new Date(schedule.lastModified).toISOString(),
             });
           
           syncedIds.push(schedule.id);
@@ -640,6 +643,8 @@ class SyncService {
             last_ndvi_calculation: l.last_ndvi_calculation,
             last_ndvi_value: l.last_ndvi_value,
             ndvi_thumbnail_url: l.ndvi_thumbnail_url,
+            ndvi_geotiff_url: l.ndvi_geotiff_url || null,
+            ndvi_status: l.ndvi_status || null,
             last_processed_at: l.last_processed_at,
             tile_id: l.tile_id,
             tile_ids: l.tile_ids,
@@ -647,6 +652,10 @@ class SyncService {
             land_documents: l.land_documents,
             notes: l.notes,
             marketplace_enabled: l.marketplace_enabled,
+            soil_confidence_level: l.soil_confidence_level || null,
+            soil_data_source: l.soil_data_source || null,
+            current_moisture_status: l.current_moisture_status || null,
+            last_moisture_update: l.last_moisture_update || null,
             is_active: l.is_active,
             deleted_at: l.deleted_at,
             created_at: l.created_at,
@@ -803,6 +812,21 @@ class SyncService {
             input_land_coordinates: s.input_land_coordinates || null,
             input_soil_data: s.input_soil_data || null,
             input_weather_data: s.input_weather_data || null,
+            // Intercrop data
+            backdated_consent: s.backdated_consent ?? null,
+            backdated_consent_at: s.backdated_consent_at || null,
+            intercrop_name: s.intercrop_name || null,
+            intercrop_variety: s.intercrop_variety || null,
+            intercrop_sowing_date: s.intercrop_sowing_date || null,
+            intercrop_area_percent: s.intercrop_area_percent || null,
+            intercrop_2_name: s.intercrop_2_name || null,
+            intercrop_2_variety: s.intercrop_2_variety || null,
+            intercrop_2_sowing_date: s.intercrop_2_sowing_date || null,
+            intercrop_2_area_percent: s.intercrop_2_area_percent || null,
+            intercrop_3_name: s.intercrop_3_name || null,
+            intercrop_3_variety: s.intercrop_3_variety || null,
+            intercrop_3_sowing_date: s.intercrop_3_sowing_date || null,
+            intercrop_3_area_percent: s.intercrop_3_area_percent || null,
             // Additional metadata
             metadata: s.metadata || null,
             // Timestamps
@@ -895,6 +919,107 @@ class SyncService {
         console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
       }
       
+      // Download crops reference data
+      console.log('📥 [Sync] Fetching crops reference data...');
+      try {
+        const { data: crops, error: cropsError } = await client
+          .from('crops')
+          .select('*')
+          .eq('is_active', true)
+          .order('display_order', { ascending: true });
+
+        if (cropsError) {
+          console.warn('⚠️ [Sync] Failed to fetch crops:', cropsError);
+        } else if (crops && crops.length > 0) {
+          console.log(`✅ [Sync] Fetched ${crops.length} crops from server`);
+          const db = (localDB as any).db;
+          if (db) {
+            const tx = db.transaction('crops', 'readwrite');
+            const store = tx.objectStore('crops');
+            await store.clear();
+            for (const c of crops) {
+              await store.put({
+                id: c.id,
+                value: c.value,
+                label: c.label,
+                label_local: c.label_local || null,
+                label_hi: c.label_hi || null,
+                label_mr: c.label_mr || null,
+                local_name: c.local_name || null,
+                icon: c.icon || '🌾',
+                description: c.description || null,
+                duration_days: c.duration_days || null,
+                season: c.season || null,
+                crop_group_id: c.crop_group_id || null,
+                display_order: c.display_order || 0,
+                is_active: c.is_active,
+                is_popular: c.is_popular || null,
+                metadata: c.metadata || null,
+                created_at: c.created_at || null,
+                updated_at: c.updated_at || new Date().toISOString(),
+                lastModified: new Date(c.updated_at || c.created_at || Date.now()).getTime(),
+                syncStatus: 'synced' as const,
+              });
+            }
+            await tx.done;
+            console.log(`✅ [Sync] Saved ${crops.length} crops to localDB`);
+          }
+        }
+      } catch (cropError) {
+        console.warn('⚠️ [Sync] Crops download failed (non-critical):', cropError);
+      }
+
+      // Download farmer alerts
+      console.log('📥 [Sync] Fetching farmer alerts...');
+      try {
+        const { data: alerts, error: alertsError } = await client
+          .from('farmer_alerts')
+          .select('*')
+          .eq('tenant_id', tenant)
+          .eq('farmer_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(100);
+
+        if (alertsError) {
+          console.warn('⚠️ [Sync] Failed to fetch alerts:', alertsError);
+        } else if (alerts && alerts.length > 0) {
+          console.log(`✅ [Sync] Fetched ${alerts.length} alerts from server`);
+          const db = (localDB as any).db;
+          if (db) {
+            const tx = db.transaction('farmerAlerts', 'readwrite');
+            const store = tx.objectStore('farmerAlerts');
+            await store.clear();
+            for (const a of alerts) {
+              await store.put({
+                id: a.id,
+                tenant_id: a.tenant_id,
+                farmer_id: a.farmer_id,
+                land_id: a.land_id,
+                title: a.title,
+                message: a.message,
+                alert_type: a.alert_type,
+                priority: a.priority,
+                ai_reasoning: a.ai_reasoning || null,
+                action_required: a.action_required || null,
+                data_source: a.data_source || null,
+                schedule_id: a.schedule_id || null,
+                is_read: a.is_read || false,
+                is_actioned: a.is_actioned || false,
+                actioned_at: a.actioned_at || null,
+                expires_at: a.expires_at || null,
+                created_at: a.created_at || null,
+                lastModified: new Date(a.created_at || Date.now()).getTime(),
+                syncStatus: 'synced' as const,
+              });
+            }
+            await tx.done;
+            console.log(`✅ [Sync] Saved ${alerts.length} alerts to localDB`);
+          }
+        }
+      } catch (alertError) {
+        console.warn('⚠️ [Sync] Alerts download failed (non-critical):', alertError);
+      }
+
       // VERIFY data was actually saved correctly
       const verifyLands = await localDB.getLands(undefined, userId);
       const verifySchedules = await localDB.getAllSchedules(userId);

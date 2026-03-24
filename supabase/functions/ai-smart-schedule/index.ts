@@ -1,6 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from "../_shared/rateLimiter.ts";
 import { 
   AI_CONFIG, 
@@ -11,11 +11,7 @@ import {
   buildAIRequest,
   getProviderFromModel 
 } from "../_shared/aiConfig.ts";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-ai-provider",
-};
+import { corsHeaders } from '../_shared/cors.ts';
 
 // ═══════════════════════════════════════════════════════════════════════
 // FARMING STAGES - 9 Sequential Stages (fetched from DB at runtime)
@@ -2616,7 +2612,24 @@ serve(async (req) => {
       localizedCropName = "",
       farmingType = "organic_fertilizer",
       aiProvider: requestedProvider,
+      // NEW: Multi-crop support (array of up to 3 intercrops)
+      intercrops = [],
+      backdatedConsent = false,
     } = reqBody;
+    
+    // Parse intercrops array - support both new array format and legacy single intercrop
+    const intercropArray: Array<{cropName: string; localizedCropName?: string; cropVariety?: string; areaPercent?: number}> = 
+      Array.isArray(intercrops) ? intercrops : 
+      (reqBody.intercrop ? [reqBody.intercrop] : []);
+    
+    const intercrop1 = intercropArray[0] || null;
+    const intercrop2 = intercropArray[1] || null;
+    const intercrop3 = intercropArray[2] || null;
+    
+    console.log(`🌿 [AI-Schedule] Intercrops received: ${intercropArray.length} (max 3)`);
+    if (intercrop1) console.log(`  1️⃣ ${intercrop1.cropName} - ${intercrop1.areaPercent}%`);
+    if (intercrop2) console.log(`  2️⃣ ${intercrop2.cropName} - ${intercrop2.areaPercent}%`);
+    if (intercrop3) console.log(`  3️⃣ ${intercrop3.cropName} - ${intercrop3.areaPercent}%`);
     
     // CRITICAL: Use the app language from request, default to English if not provided
     // This ensures schedule is generated in the user's selected app language
@@ -3362,6 +3375,87 @@ FUNGICIDES:
       ? { acidic: 'आम्लयुक्त', alkaline: 'क्षारयुक्त', neutral: 'संतुलित' }
       : { acidic: 'अम्लीय', alkaline: 'क्षारीय', neutral: 'संतुलित' };
     
+    // ═══════════════════════════════════════════════════════════════════
+    // INTERCROP CONTEXT SECTION - CRITICAL FOR MULTI-CROP SCHEDULE
+    // ═══════════════════════════════════════════════════════════════════
+    let intercropSection = "";
+    const hasIntercrops = intercropArray.length > 0;
+    
+    if (hasIntercrops) {
+      // Get translated names for intercrops
+      const intercropDetails = intercropArray.map((ic, idx) => {
+        const translatedName = getTranslatedCropName(ic.cropName, language);
+        return {
+          index: idx + 1,
+          name: ic.cropName,
+          translatedName,
+          variety: ic.cropVariety || '',
+          areaPercent: ic.areaPercent || 0
+        };
+      });
+      
+      // Calculate primary crop area percentage
+      const intercropTotalArea = intercropDetails.reduce((sum, ic) => sum + ic.areaPercent, 0);
+      const primaryCropAreaPercent = 100 - intercropTotalArea;
+      
+      const intercropLabel = language === 'mr' ? '🌱 आंतरपीक (INTERCROP)' 
+        : language === 'hi' ? '🌱 अंतरफसल (INTERCROP)' 
+        : '🌱 INTERCROPPING SYSTEM';
+      
+      const intercropListStr = intercropDetails.map(ic => 
+        `   ${ic.index}. ${ic.translatedName} (${ic.name})${ic.variety ? ` - ${ic.variety}` : ''} → ${ic.areaPercent}% क्षेत्र`
+      ).join('\n');
+      
+      intercropSection = language === 'mr' ? `
+═══════════════════════════════════════════════════════════════
+${intercropLabel}
+═══════════════════════════════════════════════════════════════
+या शेतात आंतरपीक पद्धत वापरली आहे:
+
+🌾 मुख्य पीक (PRIMARY): ${translatedCropName} → ${primaryCropAreaPercent}% क्षेत्र
+${intercropListStr}
+
+⚠️ महत्त्वाचे आंतरपीक नियम:
+1. मुख्य पिकासाठी ${Math.ceil(primaryCropAreaPercent/100 * 25)} टास्क + प्रत्येक आंतरपिकासाठी 5-8 टास्क
+2. आंतरपिकांसाठी टास्क नाव: "[आंतरपीक नाव] - [कार्य]" (उदा: "${intercropDetails[0]?.translatedName || 'गहू'} - पेरणी")
+3. आंतरपिकांचे खत मुख्य पिकापेक्षा कमी (क्षेत्र टक्केवारीनुसार)
+4. आंतरपिकांची पेरणी मुख्य पिकानंतर 7-15 दिवसांनी
+5. प्रत्येक आंतरपिकासाठी स्वतंत्र बियाणे उपचार, सिंचन, खत टास्क
+` : language === 'hi' ? `
+═══════════════════════════════════════════════════════════════
+${intercropLabel}
+═══════════════════════════════════════════════════════════════
+इस खेत में अंतरफसल प्रणाली का उपयोग किया गया है:
+
+🌾 मुख्य फसल (PRIMARY): ${translatedCropName} → ${primaryCropAreaPercent}% क्षेत्र
+${intercropListStr}
+
+⚠️ महत्वपूर्ण अंतरफसल नियम:
+1. मुख्य फसल के लिए ${Math.ceil(primaryCropAreaPercent/100 * 25)} टास्क + प्रत्येक अंतरफसल के लिए 5-8 टास्क
+2. अंतरफसलों के लिए टास्क नाम: "[अंतरफसल नाम] - [कार्य]" (उदा: "${intercropDetails[0]?.translatedName || 'गेहूं'} - बुवाई")
+3. अंतरफसलों का खाद मुख्य फसल से कम (क्षेत्र प्रतिशत के अनुसार)
+4. अंतरफसलों की बुवाई मुख्य फसल के 7-15 दिन बाद
+5. प्रत्येक अंतरफसल के लिए अलग बीज उपचार, सिंचाई, खाद टास्क
+` : `
+═══════════════════════════════════════════════════════════════
+${intercropLabel}
+═══════════════════════════════════════════════════════════════
+This field uses INTERCROPPING SYSTEM:
+
+🌾 PRIMARY CROP: ${translatedCropName} → ${primaryCropAreaPercent}% area
+${intercropListStr}
+
+⚠️ CRITICAL INTERCROP RULES:
+1. Generate ${Math.ceil(primaryCropAreaPercent/100 * 25)} tasks for PRIMARY + 5-8 tasks per INTERCROP
+2. Intercrop task names: "[Intercrop Name] - [action]" (e.g., "${intercropDetails[0]?.translatedName || 'Wheat'} - Sowing")
+3. Intercrop fertilizer doses REDUCED based on area percentage
+4. Intercrop sowing 7-15 days AFTER primary crop sowing
+5. Each intercrop needs SEPARATE seed treatment, irrigation, fertilizer tasks
+`;
+      
+      console.log(`🌱 [AI-Schedule] Intercrop context added: ${intercropDetails.map(ic => `${ic.name} (${ic.areaPercent}%)`).join(', ')}`);
+    }
+
     const taskSection = `
 ${taskSectionHeader}
 Generate crop schedule for ${translatedCropName} (${cropName}) cultivation.
@@ -3371,7 +3465,7 @@ Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landA
 CROP: ${translatedCropName} ${cropVariety ? `(${cropVariety})` : ""}
 Sowing: ${sowingDate} | Location: ${district}, ${state}
 Soil: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"} | Irrigation: ${land.irrigation_type || "manual"}
-
+${intercropSection}
 ${soilReportLabel}:
 - pH: ${soilPh.toFixed(1)} (${soilPh < 6.5 ? phLabels.acidic : soilPh > 7.5 ? phLabels.alkaline : phLabels.neutral})
 - N: ${soilN} kg/ha | P: ${soilP} kg/ha | K: ${soilK} kg/ha
@@ -3406,6 +3500,17 @@ Labor Rate: ₹${laborRate}/day`;
       ? 'यूरिया, डीएपी, केंचुआ खाद' 
       : 'Urea, DAP, Vermicompost';
 
+    // Build intercrop task instruction if intercrops exist
+    const intercropTaskInstruction = hasIntercrops ? `
+8. INTERCROP TASKS (MANDATORY if intercrops exist):
+   ${intercropArray.map((ic, idx) => {
+     const translatedName = getTranslatedCropName(ic.cropName, language);
+     return `- ${translatedName}: Generate 5-8 tasks (sowing +7-15 days, fertilizer reduced to ${ic.areaPercent}% dose)`;
+   }).join('\n   ')}
+   - Each intercrop needs: seed treatment, sowing, fertilizer (2-3 splits), pest control, irrigation
+   - Intercrop task_name format: "[Intercrop Name] - [action]"
+` : '';
+
     const instructionSection = `
 📋 INSTRUCTIONS
 
@@ -3413,8 +3518,9 @@ Labor Rate: ₹${laborRate}/day`;
 ${stagesPrompt}
 
 2. TASK REQUIREMENTS:
-   - Generate 2-3 tasks per stage
-   - Each task MUST include: "${translatedCropName} - [action]" in ${languageName}
+   - Generate 2-3 tasks per stage for PRIMARY CROP
+   - Each PRIMARY task MUST include: "${translatedCropName} - [action]" in ${languageName}
+   ${hasIntercrops ? `- ALSO generate 5-8 tasks for EACH intercrop with "[Intercrop Name] - [action]"` : ''}
    - Include quantities, product brands, prices
 ${seedRules}
 
@@ -3434,7 +3540,8 @@ ${seedRules}
    ${language !== 'en' ? `- Use rural dialect terms` : ''}
    ${regionalLanguageRules}
 
-7. WEATHER: Mark irrigation, spraying as weather_dependent: true`;
+7. WEATHER: Mark irrigation, spraying as weather_dependent: true
+${intercropTaskInstruction}`;
 
     // DATA Section (compact to reduce token usage / latency)
     // DATA Section (compact)
@@ -3447,6 +3554,19 @@ ${seedRules}
 - Water/irrigation: ${adjustedWaterPerIrrigation} liters
 `;
 
+    // Calculate expected total tasks (primary + intercrops)
+    const expectedPrimaryTasks = totalStages * tasksPerStage;
+    const expectedIntercropTasks = hasIntercrops ? intercropArray.length * 6 : 0; // ~6 tasks per intercrop
+    const expectedTotalTasks = expectedPrimaryTasks + expectedIntercropTasks;
+
+    // Build intercrop task name examples for JSON format
+    const intercropTaskNameExamples = hasIntercrops 
+      ? intercropArray.slice(0, 2).map(ic => {
+          const translatedName = getTranslatedCropName(ic.cropName, language);
+          return `"${translatedName} - <task description>"`;
+        }).join(',\n      ')
+      : '';
+
     // Combine all sections into system prompt
     const systemPrompt = `${contextSection}
 ${taskSection}
@@ -3457,12 +3577,14 @@ ${dataSection}
 ⚠️ CRITICAL OUTPUT RULES
 ═══════════════════════════════════════════════════════════════════════════
 1. Return a valid JSON object with the exact structure shown below
-2. Every task_name MUST start with "${translatedCropName} -"
+2. PRIMARY crop tasks: "${translatedCropName} - [action]"
+${hasIntercrops ? `2b. INTERCROP tasks: Each intercrop needs 5-8 tasks with "[Intercrop Name] - [action]"` : ''}
 3. All ${totalStages} stages (${allStageKeys.join(", ")}) MUST have at least 1 task
 4. ${hasSoilData ? 'DO NOT include soil test task - soil data already exists!' : 'Include soil test task in planning stage'}
 5. Use PRESCRIPTION doses from NPK PRESCRIPTION section above - NOT generic doses
 6. Use CORRECT application_method for each product type
 7. Include water_required_liters for irrigation tasks: ${adjustedWaterPerIrrigation} liters
+${hasIntercrops ? `8. TOTAL TASKS EXPECTED: ~${expectedTotalTasks} (${expectedPrimaryTasks} primary + ${expectedIntercropTasks} intercrop)` : ''}
 
 EXACT JSON OUTPUT FORMAT (follow this exactly):
 {
@@ -3500,13 +3622,19 @@ EXACT JSON OUTPUT FORMAT (follow this exactly):
     // Language-specific dialect label
     const dialectLabel = language === 'mr' ? 'ग्रामीण भाषा' : language === 'hi' ? 'ग्रामीण भाषा' : 'practical language';
 
-    const userPrompt = `Generate ${translatedCropName} crop schedule as JSON.
+    // Build intercrop checklist item if intercrops exist
+    const intercropChecklist = hasIntercrops 
+      ? `✓ INTERCROP tasks: ${intercropArray.map(ic => `${getTranslatedCropName(ic.cropName, language)} (5-8 tasks)`).join(', ')}\n` 
+      : '';
+
+    const userPrompt = `Generate ${translatedCropName}${hasIntercrops ? ' + INTERCROPS' : ''} crop schedule as JSON.
 
 CHECKLIST:
 ✓ All ${totalStages} stages: ${allStageKeys.join(", ")}
-✓ ${totalStages * tasksPerStage} tasks total (${tasksPerStage}/stage)
-✓ Short descriptions (≤240 chars), 2-5 instruction bullets
+✓ PRIMARY: ${expectedPrimaryTasks} tasks for ${translatedCropName} (${tasksPerStage}/stage)
+${intercropChecklist}✓ Short descriptions (≤240 chars), 2-5 instruction bullets
 ✓ All content in ${languageName} (${dialectLabel})${mandatoryCategoriesPrompt}
+${hasIntercrops ? `⚠️ INTERCROP tasks REQUIRED - don't skip them!` : ''}
 
 OUTPUT: JSON only, no markdown. Start with { end with }`;
 
@@ -4313,13 +4441,33 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         irrigation_count_total: Math.round(scheduleData.total_duration_days / 7),
         tasks_total_count: processedTasks.length,
         tasks_completed_count: 0,
+        // NEW: Multi-intercrop support (up to 3 intercrops)
+        intercrop_name: intercrop1?.cropName || null,
+        intercrop_variety: intercrop1?.cropVariety || null,
+        intercrop_area_percent: intercrop1?.areaPercent || 0,
+        intercrop_sowing_date: sowingDate,
+        // Intercrop 2
+        intercrop_2_name: intercrop2?.cropName || null,
+        intercrop_2_variety: intercrop2?.cropVariety || null,
+        intercrop_2_area_percent: intercrop2?.areaPercent || 0,
+        intercrop_2_sowing_date: intercrop2 ? sowingDate : null,
+        // Intercrop 3
+        intercrop_3_name: intercrop3?.cropName || null,
+        intercrop_3_variety: intercrop3?.cropVariety || null,
+        intercrop_3_area_percent: intercrop3?.areaPercent || 0,
+        intercrop_3_sowing_date: intercrop3 ? sowingDate : null,
+        // NEW: Backdated consent tracking
+        backdated_consent: backdatedConsent || false,
+        backdated_consent_at: backdatedConsent ? new Date().toISOString() : null,
         metadata: {
           seed_data: { quantity: exactSeedQty, rate: seedData.rate_kg_per_acre, cost: seedCost },
           fertilizer_data: { urea_kg: ureaKg, dap_kg: dapKg, mop_kg: mopKg, fym_tons: fymTons },
           translated_crop_name: translatedCropName,
           ai_version: AI_CONFIG.MODEL,
           generation_timestamp: new Date().toISOString(),
-          harvest_date: harvestDateStr, // Also store in metadata
+          harvest_date: harvestDateStr,
+          intercrops: intercropArray,
+          backdated_consent: backdatedConsent || false,
         },
       })
       .select()
@@ -4391,6 +4539,142 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       console.error("❌ Tasks insert error:", tasksError);
     } else {
       console.log(`✅ [DB] Inserted ${insertedTasks?.length || 0} tasks`);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔗 CRITICAL: SYNC CROP TO LANDS TABLE
+    // This ensures lands.current_crop matches the schedule's crop
+    // ═══════════════════════════════════════════════════════════════════════
+    console.log('🔄 [Sync] Updating lands table with schedule crop...');
+    
+    // 1. Move current crop to previous_crop (for rotation tracking)
+    const { data: landBeforeUpdate } = await supabase
+      .from("lands")
+      .select("current_crop, current_crop_id")
+      .eq("id", landId)
+      .single();
+    
+    // 2. Update lands table with new crop info - CRITICAL FIX: Also update cultivation_date
+    const { error: landUpdateError } = await supabase
+      .from("lands")
+      .update({
+        current_crop: cropName,
+        cultivation_date: sowingDate, // CRITICAL: Sync cultivation_date with schedule sowing_date
+        // If previous crop exists, move it to previous_crop
+        previous_crop: landBeforeUpdate?.current_crop || null,
+        previous_crop_id: landBeforeUpdate?.current_crop_id || null,
+        last_harvest_date: landBeforeUpdate?.current_crop ? new Date().toISOString().split("T")[0] : null,
+        planting_date: sowingDate,
+        expected_harvest_date: harvestDateStr,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", landId);
+    
+    if (landUpdateError) {
+      console.error("⚠️ Land sync warning:", landUpdateError.message);
+    } else {
+      console.log(`✅ [Sync] Land ${landId} updated: current_crop = "${cropName}"`);
+    }
+    
+    // 3. Insert/Update land_crops entry for multi-crop tracking
+    const { error: landCropsError } = await supabase
+      .from("land_crops")
+      .upsert({
+        land_id: landId,
+        tenant_id: tenantId,
+        farmer_id: farmerId,
+        crop_name: cropName,
+        crop_name_local: translatedCropName,
+        crop_variety: cropVariety || null,
+        crop_type: 'major', // Main crop from schedule
+        sowing_date: sowingDate,
+        expected_harvest_date: harvestDateStr,
+        area_percentage: 100,
+        area_acres: landAreaAcres,
+        schedule_id: savedSchedule.id,
+        is_active: true,
+        status: 'growing',
+        farming_type: farmingType,
+        metadata: {
+          schedule_crop_name: cropName,
+          translated_name: translatedCropName,
+          generated_at: new Date().toISOString()
+        }
+      }, {
+        onConflict: 'land_id,crop_type,is_active',
+        ignoreDuplicates: false
+      });
+    
+    if (landCropsError) {
+      // Try insert if upsert fails (no conflict columns might exist yet)
+      const { error: insertError } = await supabase
+        .from("land_crops")
+        .insert({
+          land_id: landId,
+          tenant_id: tenantId,
+          farmer_id: farmerId,
+          crop_name: cropName,
+          crop_name_local: translatedCropName,
+          crop_variety: cropVariety || null,
+          crop_type: 'major',
+          sowing_date: sowingDate,
+          expected_harvest_date: harvestDateStr,
+          area_percentage: 100,
+          area_acres: landAreaAcres,
+          schedule_id: savedSchedule.id,
+          is_active: true,
+          status: 'growing',
+          farming_type: farmingType,
+        });
+      
+      if (insertError) {
+        console.warn("⚠️ land_crops insert warning:", insertError.message);
+      } else {
+        console.log(`✅ [Sync] land_crops entry created for major crop "${cropName}"`);
+      }
+    } else {
+      console.log(`✅ [Sync] land_crops entry updated for major crop "${cropName}"`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🌿 INSERT INTERCROP ENTRIES TO land_crops TABLE
+    // ═══════════════════════════════════════════════════════════════════════
+    for (let i = 0; i < intercropArray.length; i++) {
+      const ic = intercropArray[i];
+      if (ic?.cropName) {
+        console.log(`🌿 [Sync] Inserting intercrop ${i + 1}: ${ic.cropName} (${ic.areaPercent}%)`);
+        
+        const { error: icInsertError } = await supabase
+          .from("land_crops")
+          .insert({
+            land_id: landId,
+            tenant_id: tenantId,
+            farmer_id: farmerId,
+            crop_name: ic.cropName,
+            crop_name_local: ic.localizedCropName || ic.cropName,
+            crop_variety: ic.cropVariety || null,
+            crop_type: 'intercrop',
+            crop_sequence: i + 1,
+            sowing_date: sowingDate,
+            expected_harvest_date: harvestDateStr,
+            area_percentage: ic.areaPercent || 0,
+            area_acres: (landAreaAcres * (ic.areaPercent || 0)) / 100,
+            schedule_id: savedSchedule.id,
+            is_active: true,
+            status: 'growing',
+            farming_type: farmingType,
+            metadata: {
+              parent_crop: cropName,
+              intercrop_index: i + 1,
+            }
+          });
+        
+        if (icInsertError) {
+          console.warn(`⚠️ land_crops intercrop ${i + 1} insert warning:`, icInsertError.message);
+        } else {
+          console.log(`✅ [Sync] land_crops entry created for intercrop ${i + 1}: "${ic.cropName}"`);
+        }
+      }
     }
 
     const executionTime = Date.now() - startTime;

@@ -178,7 +178,6 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
         const { data, error: fetchError } = await fetchWithTimeout(
           () => supabase.functions.invoke('google-maps-config', {
             method: 'POST',
-            headers: { 'Cache-Control': 'no-cache' },
             body: {}
           }),
           6000
@@ -234,21 +233,22 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
     }
   }, []);
 
-  // Initial fetch
+  // Initial fetch - PERFORMANCE FIX: Delay fetching if we have cache
   useEffect(() => {
     isMounted.current = true;
     
     // If we have a cached key, we're already good
-    // Still fetch in background to refresh if needed
+    // Delay background refresh to not block app startup
     if (apiKey) {
-      // Silently refresh in background after 1 second
+      // PERFORMANCE FIX: Delay background refresh to 10 seconds
       const refreshTimeout = setTimeout(() => {
-        if (isMounted.current) {
+        if (isMounted.current && navigator.onLine) {
+          console.log('🗺️ [GoogleMapsContext] Background refresh of API key...');
           fetchApiKey(true).catch(() => {
             // Ignore errors during background refresh - we already have a key
           });
         }
-      }, 1000);
+      }, 10000); // Increased from 1000ms to 10000ms
       
       return () => {
         clearTimeout(refreshTimeout);
@@ -256,7 +256,13 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
       };
     }
     
-    fetchApiKey();
+    // PERFORMANCE FIX: If no cache, still delay initial fetch by 2 seconds
+    // Maps are usually not needed immediately on app load
+    const initialFetchTimeout = setTimeout(() => {
+      if (isMounted.current) {
+        fetchApiKey();
+      }
+    }, 2000);
 
     // Handle app resume
     const unsubscribe = onAppResume(() => {
@@ -267,6 +273,7 @@ export function GoogleMapsProvider({ children }: { children: React.ReactNode }) 
     });
 
     return () => {
+      clearTimeout(initialFetchTimeout);
       isMounted.current = false;
       unsubscribe();
     };

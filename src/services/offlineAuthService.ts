@@ -129,10 +129,14 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
+    // OFFLINE-FIRST: Check cached auth IMMEDIATELY, regardless of network status
+    const offlineResult = await this.validateOfflinePin(mobile, pin);
+    
     // Check if we're online
-    if (!navigator.onLine) {
-      console.log('Device is offline, using cached authentication');
-      const offlineResult = await this.validateOfflinePin(mobile, pin);
+    const isOnline = navigator.onLine;
+    
+    if (!isOnline) {
+      console.log('📴 [OfflineAuth] Device is offline, using cached authentication');
       
       if (offlineResult.isValid) {
         return {
@@ -150,51 +154,87 @@ class OfflineAuthService {
       }
     }
 
-    // Try online authentication
-    try {
-      // Set a timeout for the online request
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Request timeout')), 10000)
-      );
+    // ONLINE: Try online authentication with timeout, retry, and fallback
+    console.log('🌐 [OfflineAuth] Device is online, attempting online authentication...');
+    
+    const maxRetries = 2;
+    let lastError: Error | null = null;
 
-      const authPromise = this.performOnlineAuth(farmerId, tenantId, pin);
-      
-      const result = await Promise.race([authPromise, timeoutPromise]);
-      
-      // If online auth succeeds, cache the data
-      if ((result as any).success) {
-        await this.cacheAuthData(
-          farmerId,
-          tenantId,
-          mobile,
-          pin,
-          (result as any).farmerData,
-          (result as any).profileData
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Shorter timeout for retries
+        const timeoutMs = attempt === 1 ? 8000 : 5000;
+        const timeoutPromise = new Promise<never>((_, reject) => 
+          setTimeout(() => reject(new Error('Request timeout')), timeoutMs)
         );
+
+        const authPromise = this.performOnlineAuth(farmerId, tenantId, pin);
+        
+        const result = await Promise.race([authPromise, timeoutPromise]);
+        
+        // If online auth succeeds, cache the data for future offline use
+        if (result.success) {
+          console.log('✅ [OfflineAuth] Online authentication successful, caching data');
+          await this.cacheAuthData(
+            farmerId,
+            tenantId,
+            mobile,
+            pin,
+            result.farmerData,
+            result.profileData
+          );
+        }
+        
+        return result;
+      } catch (error: any) {
+        lastError = error;
+        const isNetworkError = error.message === 'TypeError: Failed to fetch' || 
+                               error.message?.includes('Failed to fetch') ||
+                               error.message === 'Request timeout' ||
+                               error.message === 'Load failed' ||
+                               error.name === 'TypeError';
+        
+        console.warn(`⚠️ [OfflineAuth] Attempt ${attempt}/${maxRetries} failed:`, error.message, 
+          isNetworkError ? '(network error)' : '(auth error)');
+        
+        // Don't retry non-network errors (wrong PIN, user not found, etc.)
+        if (!isNetworkError) {
+          break;
+        }
+        
+        // Small delay before retry
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
-      
-      return result as any;
-    } catch (error) {
-      console.log('Online authentication failed, falling back to offline');
-      
-      // Fallback to offline
-      const offlineResult = await this.validateOfflinePin(mobile, pin);
-      
-      if (offlineResult.isValid) {
-        return {
-          success: true,
-          isOffline: true,
-          farmerData: offlineResult.farmerData,
-          profileData: offlineResult.profileData
-        };
-      }
-      
+    }
+
+    // All online attempts failed — fallback to offline
+    console.log('🔄 [OfflineAuth] Online auth failed, falling back to offline validation');
+    
+    if (offlineResult.isValid) {
+      console.log('✅ [OfflineAuth] Offline validation successful');
       return {
-        success: false,
+        success: true,
         isOffline: true,
-        error: 'Unable to authenticate. Please check your internet connection.'
+        farmerData: offlineResult.farmerData,
+        profileData: offlineResult.profileData
       };
     }
+    
+    // Both online and offline failed
+    const isNetworkError = lastError?.message?.includes('Failed to fetch') || 
+                           lastError?.message === 'Request timeout' ||
+                           lastError?.message === 'Load failed' ||
+                           lastError?.name === 'TypeError';
+    
+    return {
+      success: false,
+      isOffline: !isOnline,
+      error: isNetworkError
+        ? 'Network connection is weak. Please move to an area with better signal and try again.'
+        : lastError?.message || 'Unable to authenticate. Please try again.'
+    };
   }
 
   private async performOnlineAuth(

@@ -31,16 +31,16 @@ export const AI_MODELS = {
   },
 } as const;
 
-// API endpoints
+// API endpoints - PRODUCTION: Only use Gemini & OpenAI directly, NO Lovable AI Gateway
 export const AI_ENDPOINTS = {
   openai: "https://api.openai.com/v1/chat/completions",
-  google: "https://ai.gateway.lovable.dev/v1/chat/completions",
+  google: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", // Use Gemini directly
   gemini: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
 } as const;
 
 export const AI_CONFIG = {
-  // Default provider - Gemini preferred for rural agriculture content
-  DEFAULT_PROVIDER: "gemini" as AIProvider,
+  // Default provider - OpenAI preferred for reliable JSON structured output
+  DEFAULT_PROVIDER: "openai" as AIProvider,
   
   // PRODUCTION: Gemini 2.5 Flash - best for agriculture schedules
   MODEL: "gemini-2.5-flash",
@@ -84,32 +84,89 @@ export function getAPIEndpoint(provider: AIProvider): string {
 
 /**
  * Get the API key for the specified provider
- * PRODUCTION: All keys come from Supabase secrets - never hardcoded
- * Priority: GEMINI_API_KEY > OPENAI_API_KEY > LOVABLE_API_KEY
+ * CRITICAL FIX v2.1: Now respects the provider parameter to prevent key-endpoint mismatch
+ * Returns empty string if key not available (for backward compatibility with callers that check `if (!apiKey)`)
  */
 export function getAPIKey(provider: AIProvider): string {
-  if (provider === "gemini") {
+  if (provider === 'openai') {
+    const openaiKey = Deno.env.get("OPENAI_API_KEY");
+    if (openaiKey && openaiKey.trim() !== "") {
+      console.log("✅ [AIConfig] Using OPENAI_API_KEY for provider: openai");
+      return openaiKey;
+    }
+    console.log("⚠️ [AIConfig] OpenAI provider requested but OPENAI_API_KEY not configured");
+    return ""; // Return empty for backward compatibility
+  }
+  
+  if (provider === 'gemini' || provider === 'google') {
     const geminiKey = Deno.env.get("GEMINI_API_KEY");
     if (geminiKey && geminiKey.trim() !== "") {
-      console.log("✅ [AIConfig] Using GEMINI_API_KEY from Supabase secrets");
+      console.log(`✅ [AIConfig] Using GEMINI_API_KEY for provider: ${provider}`);
       return geminiKey;
     }
-    console.warn("⚠️ [AIConfig] GEMINI_API_KEY not found, falling back to OpenAI");
-    return validateOpenAIKey();
+    console.log(`⚠️ [AIConfig] Gemini provider requested but GEMINI_API_KEY not configured`);
+    return ""; // Return empty for backward compatibility
   }
   
-  if (provider === "openai") {
-    return validateOpenAIKey();
+  console.log(`⚠️ [AIConfig] Unknown provider: ${provider}`);
+  return "";
+}
+
+/**
+ * Get any available API key (for backward compatibility)
+ * Priority: GEMINI_API_KEY > OPENAI_API_KEY
+ */
+export function getAnyAPIKey(): string {
+  // Try Gemini first (preferred for agriculture)
+  const geminiKey = Deno.env.get("GEMINI_API_KEY");
+  if (geminiKey && geminiKey.trim() !== "") return geminiKey;
+  
+  const openaiKey = Deno.env.get("OPENAI_API_KEY");
+  if (openaiKey && openaiKey.trim() !== "") return openaiKey;
+  
+  throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
+}
+
+/**
+ * Check if OpenAI API key is available
+ */
+export function hasOpenAIKey(): boolean {
+  const key = Deno.env.get("OPENAI_API_KEY");
+  return !!(key && key.trim() !== "");
+}
+
+/**
+ * Get the best available provider with matching key - CRITICAL for preventing 401 errors
+ * Returns a tuple of { provider, model, apiKey } that are guaranteed to match
+ */
+export function getBestAvailableProvider(): { 
+  provider: AIProvider; 
+  model: string; 
+  apiKey: string 
+} {
+  // CRITICAL FIX: OpenAI FIRST - Gemini's OpenAI-compatible endpoint returns
+  // truncated/malformed JSON that breaks intent classification and cascades to fallback.
+  // OpenAI was the working provider before the Gemini switch.
+  if (hasOpenAIKey()) {
+    console.log("✅ [AIConfig] getBestAvailableProvider: Using OpenAI (primary - reliable JSON)");
+    return { 
+      provider: "openai", 
+      model: AI_MODELS.openai.default,
+      apiKey: Deno.env.get("OPENAI_API_KEY")!
+    };
   }
   
-  // Google/Lovable AI Gateway 
-  const key = Deno.env.get("LOVABLE_API_KEY");
-  if (!key || key.trim() === "") {
-    console.warn("⚠️ [AIConfig] LOVABLE_API_KEY not found, falling back to OpenAI");
-    return validateOpenAIKey();
+  // Fallback to Gemini if OpenAI not available
+  if (hasGeminiKey()) {
+    console.log("✅ [AIConfig] getBestAvailableProvider: Using Gemini (fallback)");
+    return { 
+      provider: "gemini", 
+      model: AI_MODELS.gemini.default,
+      apiKey: Deno.env.get("GEMINI_API_KEY")!
+    };
   }
-  console.log("✅ [AIConfig] Using LOVABLE_API_KEY for Google provider");
-  return key;
+  
+  throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
 }
 
 /**
@@ -133,12 +190,10 @@ export function hasGeminiKey(): boolean {
 }
 
 /**
- * Check if any AI API key is configured
+ * Check if any AI API key is configured (Gemini or OpenAI only)
  */
 export function hasAnyAIKey(): boolean {
-  return hasGeminiKey() || 
-         !!(Deno.env.get("OPENAI_API_KEY")?.trim()) || 
-         !!(Deno.env.get("LOVABLE_API_KEY")?.trim());
+  return hasGeminiKey() || !!(Deno.env.get("OPENAI_API_KEY")?.trim());
 }
 
 /**
@@ -169,22 +224,19 @@ export function getProviderFromModel(model: string): AIProvider {
  * PRODUCTION: Prioritizes Gemini 2.5 Flash for rural agriculture language support
  */
 export function getBestScheduleProvider(): { provider: AIProvider; model: string } {
-  // Check for Gemini API key first (preferred for schedule generation)
-  if (hasGeminiKey()) {
-    console.log("🚀 [AIConfig] Using Gemini 2.5 Flash for schedule generation");
-    return { provider: "gemini", model: AI_MODELS.gemini.default };
-  }
-  
-  // Fallback to OpenAI if available
-  const openaiKey = Deno.env.get("OPENAI_API_KEY");
-  if (openaiKey && openaiKey.trim() !== "") {
-    console.log("🔄 [AIConfig] Falling back to OpenAI for schedule generation");
+  // CRITICAL FIX: OpenAI FIRST for schedule generation (reliable structured output)
+  if (hasOpenAIKey()) {
+    console.log("🚀 [AIConfig] Using OpenAI for schedule generation (primary)");
     return { provider: "openai", model: AI_MODELS.openai.default };
   }
   
-  // Last resort: Lovable AI Gateway
-  console.log("🔄 [AIConfig] Using Lovable AI Gateway for schedule generation");
-  return { provider: "google", model: AI_MODELS.google.default };
+  // Fallback to Gemini if OpenAI not available
+  if (hasGeminiKey()) {
+    console.log("🔄 [AIConfig] Falling back to Gemini for schedule generation");
+    return { provider: "gemini", model: AI_MODELS.gemini.default };
+  }
+  
+  throw new Error("No AI API keys configured. Please add GEMINI_API_KEY or OPENAI_API_KEY in Supabase secrets.");
 }
 
 /**

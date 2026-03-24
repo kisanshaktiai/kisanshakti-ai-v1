@@ -37,6 +37,7 @@ import { toastManager } from '@/utils/ToastManager';
 import { WeatherSkeleton } from '@/components/skeletons';
 import { PullRefreshController } from '@/components/weather/PullRefreshController';
 import { HourlyForecastChart } from '@/components/weather/HourlyForecastChart';
+import { SevenDayForecast } from '@/components/weather/SevenDayForecast';
 
 export default function Weather() {
   const { t } = useTranslation();
@@ -180,11 +181,10 @@ export default function Weather() {
     <div className="h-screen relative bg-gradient-to-br from-background to-background/95 flex flex-col overflow-hidden">
       <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30" />
       
-      {/* FIX: Wrap content in PullRefreshController for proper refresh handling */}
+      {/* FIX: PullRefreshController wraps everything with proper scroll */}
       <PullRefreshController onRefresh={handleManualSync} threshold={80}>
-        <div className="relative z-10 flex flex-col h-full">
-        {/* Hero Section with Weather Info */}
-        <div className="flex-none">
+        <div className="relative z-10 min-h-full">
+          {/* Hero Section with Weather Info */}
           <WeatherHeroCard
             currentWeather={currentWeather}
             location={currentWeather.location || 'Current Location'}
@@ -192,153 +192,226 @@ export default function Weather() {
             isRefreshing={false}
             onRefresh={handleManualSync}
             weatherIcon={getWeatherIcon(currentWeather.main, 'large')}
-          weatherCondition={getWeatherCondition()}
-          gradient={getWeatherGradient()}
-          lastUpdated={lastUpdated}
-        />
-        </div>
+            weatherCondition={getWeatherCondition()}
+            gradient={getWeatherGradient()}
+            lastUpdated={lastUpdated}
+          />
 
-        {/* Quick Stats Grid with Voice Icon */}
-        <div className="flex-none px-3 py-3 relative z-20">
-          <motion.div 
-            variants={fadeInUp}
-            initial="hidden"
-            animate="visible"
-            transition={{ delay: 0.2 }}
-            className="grid grid-cols-5 gap-2"
-          >
-            {/* Voice Button as First Card */}
+          {/* Sunrise/Sunset Row - NEW: Shows real data from API */}
+          {(currentWeather.sunrise || currentWeather.sunset) && (
             <motion.div
-              variants={scaleIn}
+              variants={fadeInUp}
+              initial="hidden"
+              animate="visible"
+              transition={{ delay: 0.15 }}
+              className="px-3 pt-3 pb-1"
+            >
+              <div className="flex justify-center gap-6">
+                {currentWeather.sunrise && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20">
+                    <Sunrise className="h-4 w-4 text-amber-500" />
+                    <span className="text-xs font-medium">
+                      {format(new Date(currentWeather.sunrise * 1000), 'h:mm a')}
+                    </span>
+                  </div>
+                )}
+                {currentWeather.sunset && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20">
+                    <Sunset className="h-4 w-4 text-purple-500" />
+                    <span className="text-xs font-medium">
+                      {format(new Date(currentWeather.sunset * 1000), 'h:mm a')}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* Quick Stats Grid - Modern 2030 Design */}
+          <div className="px-3 py-2 relative z-20">
+            <motion.div 
+              variants={fadeInUp}
               initial="hidden"
               animate="visible"
               transition={{ delay: 0.2 }}
-              className="bg-card/90 backdrop-blur-xl rounded-xl p-3 border border-border/50 shadow-sm flex items-center justify-center"
+              className="grid grid-cols-3 gap-2"
             >
-              <VoiceWeatherSummary
-                currentWeather={currentWeather}
-                forecast={forecast}
-                className="w-full"
-              />
+              {/* Row 1: Primary Stats */}
+              {[
+                { icon: Wind, label: 'Wind', value: Math.round(currentWeather.wind_speed * 3.6), unit: 'km/h', type: 'wind', gradient: 'from-cyan-500/10 to-blue-500/10' },
+                { icon: Droplets, label: 'Humidity', value: currentWeather.humidity, unit: '%', type: 'humidity', gradient: 'from-blue-500/10 to-indigo-500/10' },
+                { icon: Eye, label: 'Visibility', value: (currentWeather.visibility / 1000).toFixed(1), unit: 'km', type: 'visibility', gradient: 'from-emerald-500/10 to-teal-500/10' }
+              ].map((stat, index) => (
+                <motion.div
+                  key={stat.label}
+                  variants={scaleIn}
+                  initial="hidden"
+                  animate="visible"
+                  transition={{ delay: 0.25 + index * 0.05 }}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  className={cn(
+                    "bg-gradient-to-br backdrop-blur-xl rounded-2xl p-3 border border-white/10 shadow-sm",
+                    stat.gradient
+                  )}
+                >
+                  <div className="flex flex-col items-center text-center gap-1">
+                    <stat.icon className={cn("h-5 w-5", getStatColor(stat.type, Number(stat.value)))} />
+                    <span className={cn("text-xl font-bold tracking-tight", getStatColor(stat.type, Number(stat.value)))}>
+                      {stat.value}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground font-medium">{stat.label}</span>
+                  </div>
+                </motion.div>
+              ))}
             </motion.div>
 
-            {/* Weather Stats */}
-            {[
-              { icon: Wind, label: 'Wind', value: Math.round(currentWeather.wind_speed * 3.6), unit: 'km/h', type: 'wind' },
-              { icon: Droplets, label: 'Humidity', value: currentWeather.humidity, unit: '%', type: 'humidity' },
-              { icon: Eye, label: 'Visibility', value: (currentWeather.visibility / 1000).toFixed(1), unit: 'km', type: 'visibility' },
-              { icon: Gauge, label: 'Pressure', value: currentWeather.pressure, unit: 'hPa', type: 'pressure' }
-            ].map((stat, index) => (
+            {/* Row 2: Secondary Stats + Voice */}
+            <motion.div 
+              variants={fadeInUp}
+              initial="hidden"
+              animate="visible"
+              transition={{ delay: 0.3 }}
+              className="grid grid-cols-4 gap-2 mt-2"
+            >
+              {/* Voice Button */}
               <motion.div
-                key={stat.label}
                 variants={scaleIn}
                 initial="hidden"
                 animate="visible"
-                transition={{ delay: 0.3 + index * 0.05 }}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="bg-card/90 backdrop-blur-xl rounded-xl p-2 border border-border/50 shadow-sm"
+                transition={{ delay: 0.3 }}
+                className="bg-gradient-to-br from-primary/10 to-primary/5 backdrop-blur-xl rounded-2xl p-2 border border-primary/20 shadow-sm flex items-center justify-center"
               >
-                <div className="text-center">
-                  <stat.icon className={cn("h-4 w-4 mx-auto mb-1", getStatColor(stat.type, Number(stat.value)))} />
-                  <div className="flex items-baseline justify-center gap-0.5">
-                    <span className={cn("text-lg font-bold", getStatColor(stat.type, Number(stat.value)))}>
-                      {stat.value}
-                    </span>
-                  </div>
-                  <span className="text-[9px] text-muted-foreground block">{stat.label}</span>
+                <VoiceWeatherSummary
+                  currentWeather={currentWeather}
+                  forecast={forecast}
+                  className="w-full"
+                />
+              </motion.div>
+
+              {/* Pressure */}
+              <motion.div
+                variants={scaleIn}
+                initial="hidden"
+                animate="visible"
+                transition={{ delay: 0.35 }}
+                className="bg-gradient-to-br from-gray-500/10 to-slate-500/10 backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm"
+              >
+                <div className="flex flex-col items-center text-center gap-0.5">
+                  <Gauge className="h-4 w-4 text-slate-500" />
+                  <span className="text-sm font-bold">{currentWeather.pressure}</span>
+                  <span className="text-[9px] text-muted-foreground">hPa</span>
                 </div>
               </motion.div>
-            ))}
-          </motion.div>
-        </div>
 
-        {/* Scrollable Content Area - FIX: Single scroll container */}
-        <div className="flex-1 pb-20 space-y-1">
-          {/* Farming Recommendations */}
-          <FarmingRecommendations
-            currentWeather={currentWeather}
-            forecast={forecast}
-          />
-
-          {/* Hourly Forecast Chart - NEW: Line chart instead of cards */}
-          {hourlyForecast && hourlyForecast.length > 0 && (
-            <HourlyForecastChart hourlyForecast={hourlyForecast} />
-          )}
-
-          {/* Rainfall Summary */}
-          <motion.div 
-            variants={fadeInUp}
-            initial="hidden"
-            animate="visible"
-            transition={{ delay: 0.5 }}
-            className="px-4 py-3"
-          >
-            <Card className="bg-card/80 backdrop-blur-sm border-border/50">
-              <CardHeader className="pb-2">
-                <CardTitle className="flex items-center justify-between text-sm">
-                  <span className="flex items-center gap-1.5">
-                    <Umbrella className="h-3.5 w-3.5 text-primary" />
-                    {t('weather.rainfall.title')}
+              {/* UV Index - NEW: Real data from API */}
+              <motion.div
+                variants={scaleIn}
+                initial="hidden"
+                animate="visible"
+                transition={{ delay: 0.4 }}
+                className={cn(
+                  "bg-gradient-to-br backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm",
+                  currentWeather.uv_index !== undefined && currentWeather.uv_index > 7 
+                    ? "from-red-500/10 to-orange-500/10" 
+                    : currentWeather.uv_index !== undefined && currentWeather.uv_index > 3 
+                      ? "from-yellow-500/10 to-amber-500/10"
+                      : "from-green-500/10 to-emerald-500/10"
+                )}
+              >
+                <div className="flex flex-col items-center text-center gap-0.5">
+                  <Sun className={cn(
+                    "h-4 w-4",
+                    currentWeather.uv_index !== undefined && currentWeather.uv_index > 7 
+                      ? "text-red-500" 
+                      : currentWeather.uv_index !== undefined && currentWeather.uv_index > 3 
+                        ? "text-yellow-500"
+                        : "text-green-500"
+                  )} />
+                  <span className="text-sm font-bold">
+                    {currentWeather.uv_index !== undefined ? currentWeather.uv_index.toFixed(1) : '--'}
                   </span>
-                  <Badge variant="secondary" className="text-xs">{t('weather.forecast.days_7')}</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 pb-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.today')}</p>
-                    <p className="text-lg font-bold text-primary">
-                      {forecast && forecast[0]?.rain ? forecast[0].rain.toFixed(1) : '0.0'} {t('weather.units.mm')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.week')}</p>
-                    <p className="text-lg font-bold text-primary">
-                      {forecast ? forecast.slice(0, 7).reduce((sum, day) => sum + (day.rain || 0), 0).toFixed(1) : '0.0'} {t('weather.units.mm')}
-                    </p>
-                  </div>
+                  <span className="text-[9px] text-muted-foreground">UV</span>
                 </div>
-                
-                <div className="h-24">
-                  <RainfallChart data={rainfallData} />
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+              </motion.div>
 
-          {/* 7-Day Forecast */}
-          <div className="px-4 py-3">
-            <h3 className="text-base font-bold mb-3">{t('weather.forecast.title')}</h3>
-            <div className="grid grid-cols-7 gap-1.5">
-              {forecast.slice(0, 7).map((day, index) => (
-                <motion.div
-                  key={day.dt}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="text-center"
-                >
-                  <Card className="bg-background/60 backdrop-blur-sm hover:shadow-md transition-all p-2">
-                    <p className="text-[10px] font-semibold mb-1">{format(new Date(day.dt * 1000), 'EEE')}</p>
-                    <div className="flex justify-center mb-1">
-                      {getWeatherIcon(day.weather[0]?.main || 'Clear', 'small')}
+              {/* Dew Point - NEW: Real data from API */}
+              <motion.div
+                variants={scaleIn}
+                initial="hidden"
+                animate="visible"
+                transition={{ delay: 0.45 }}
+                className="bg-gradient-to-br from-teal-500/10 to-cyan-500/10 backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm"
+              >
+                <div className="flex flex-col items-center text-center gap-0.5">
+                  <Thermometer className="h-4 w-4 text-teal-500" />
+                  <span className="text-sm font-bold">
+                    {currentWeather.dew_point !== undefined ? Math.round(currentWeather.dew_point) : '--'}°
+                  </span>
+                  <span className="text-[9px] text-muted-foreground">Dew Pt</span>
+                </div>
+              </motion.div>
+            </motion.div>
+          </div>
+
+          {/* Main Scrollable Content */}
+          <div className="pb-24 space-y-1">
+            {/* Farming Recommendations */}
+            <FarmingRecommendations
+              currentWeather={currentWeather}
+              forecast={forecast}
+            />
+
+            {/* Hourly Forecast Chart - NEW: Line chart instead of cards */}
+            {hourlyForecast && hourlyForecast.length > 0 && (
+              <HourlyForecastChart hourlyForecast={hourlyForecast} />
+            )}
+
+            {/* Rainfall Summary */}
+            <motion.div 
+              variants={fadeInUp}
+              initial="hidden"
+              animate="visible"
+              transition={{ delay: 0.5 }}
+              className="px-4 py-3"
+            >
+              <Card className="bg-card/80 backdrop-blur-sm border-border/50">
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1.5">
+                      <Umbrella className="h-3.5 w-3.5 text-primary" />
+                      {t('weather.rainfall.title')}
+                    </span>
+                    <Badge variant="secondary" className="text-xs">{t('weather.forecast.days_7')}</Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2 pb-3">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.today')}</p>
+                      <p className="text-lg font-bold text-primary">
+                        {forecast && forecast[0]?.rain ? forecast[0].rain.toFixed(1) : '0.0'} {t('weather.units.mm')}
+                      </p>
                     </div>
-                    <p className="text-sm font-bold mb-0.5">{Math.round(day.temp.max)}°</p>
-                    <p className="text-xs text-muted-foreground">{Math.round(day.temp.min)}°</p>
-                    {day.pop > 0.2 && (
-                      <div className="flex items-center justify-center gap-0.5 text-[10px] text-blue-500 mt-1">
-                        <CloudRain className="h-2.5 w-2.5" />
-                        {Math.round(day.pop * 100)}%
-                      </div>
-                    )}
-                  </Card>
-                </motion.div>
-              ))}
-            </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground">{t('weather.rainfall.week')}</p>
+                      <p className="text-lg font-bold text-primary">
+                        {forecast ? forecast.slice(0, 7).reduce((sum, day) => sum + (day.rain || 0), 0).toFixed(1) : '0.0'} {t('weather.units.mm')}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="h-24">
+                    <RainfallChart data={rainfallData} />
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* 7-Day Forecast - Modern 2030 Component */}
+            <SevenDayForecast forecast={forecast} />
           </div>
         </div>
-      </div>
       </PullRefreshController>
     </div>
   );

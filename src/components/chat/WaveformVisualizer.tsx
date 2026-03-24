@@ -53,7 +53,10 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       ctx.clearRect(0, 0, width, height);
 
       ctx.lineWidth = 3;
-      ctx.strokeStyle = 'hsl(142 76% 45%)'; // success color
+      // Use CSS variable for theming
+      const computedStyle = getComputedStyle(document.documentElement);
+      const successH = computedStyle.getPropertyValue('--success').trim() || '142 76% 45%';
+      ctx.strokeStyle = `hsl(${successH})`;
       ctx.beginPath();
 
       const sliceWidth = width / dataArray.length;

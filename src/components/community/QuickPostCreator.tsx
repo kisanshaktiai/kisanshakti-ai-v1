@@ -20,7 +20,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
   language,
   onExpandToFull
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
@@ -57,7 +57,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
       setIsRecording(true);
       setIsExpanded(true);
     } catch (err) {
-      toast.error(t('social.post.recording_error', 'Unable to access microphone'));
+      toast.error(t('social.post.recording_error'));
     }
   };
 
@@ -85,10 +85,10 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
       if (error) throw error;
       if (data?.text) {
         setContent(prev => prev ? `${prev}\n\n${data.text}` : data.text);
-        toast.success(t('social.post.transcribed', 'Voice converted to text!'));
+        toast.success(t('social.post.transcribed'));
       }
     } catch (err) {
-      toast.error(t('social.post.transcription_error', 'Failed to convert voice'));
+      toast.error(t('social.post.transcription_error'));
     } finally {
       setIsTranscribing(false);
     }
@@ -108,7 +108,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
 
   const handleSubmit = async () => {
     if (!content.trim() && !selectedImage) {
-      toast.error(t('social.post.empty_error', 'Please write or speak something'));
+      toast.error(t('social.post.empty_error'));
       return;
     }
 
@@ -124,7 +124,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
           setContent('');
           setSelectedImage(null);
           setIsExpanded(false);
-          toast.success(t('social.post.success', 'Posted successfully! 🎉'));
+          toast.success(t('social.post.success'));
         },
       }
     );
@@ -165,13 +165,13 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={t('social.post.whats_on_mind', "Share your farming tip...")}
+                placeholder={t('social.post.whats_on_mind')}
                 className="w-full bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground min-h-[60px]"
                 autoFocus
               />
             ) : (
               <p className="text-muted-foreground">
-                {t('social.post.tap_or_speak', "Tap to type or hold mic to speak...")}
+                {t('social.post.tap_or_speak')}
               </p>
             )}
           </div>
@@ -215,10 +215,10 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
         {/* Voice Hint */}
         <p className="text-center text-xs text-muted-foreground mt-2">
           {isRecording 
-            ? t('social.post.release_to_stop', '🎤 Recording... Release to stop')
+            ? t('social.post.release_to_stop')
             : isTranscribing
-            ? t('social.post.converting', '✨ Converting voice to text...')
-            : t('social.post.hold_mic', 'Hold 🎤 button to speak in your language')}
+            ? t('social.post.converting')
+            : t('social.post.hold_mic')}
         </p>
       </div>
 
@@ -278,7 +278,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                   onClick={handleClear}
                   className="text-muted-foreground"
                 >
-                  {t('social.post.clear', 'Clear')}
+                  {t('social.post.clear')}
                 </Button>
               </div>
 
@@ -292,7 +292,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                 ) : (
                   <Send className="w-4 h-4" />
                 )}
-                {t('social.post.publish', 'Post')}
+                {t('social.post.publish')}
               </Button>
             </div>
           </motion.div>

@@ -24,14 +24,48 @@ export default function SplashScreen() {
       hasTenant: !!tenant, 
       hasBranding: !!branding,
       isLoading,
+      isOnline: navigator.onLine,
       logoUrl: branding?.logo_url,
       companyName: branding?.company_name
     });
 
     const initializeApp = async () => {
-      // Wait for tenant to load from TenantProvider
-      if (isLoading || !tenant) {
-        console.log('⏳ [SplashScreen] Waiting for tenant to load...');
+      const isOnline = navigator.onLine;
+      
+      // OFFLINE-FIRST: If offline, don't wait for tenant to load from network
+      // Use cached data and proceed faster
+      if (!isOnline) {
+        console.log('📴 [SplashScreen] Device is OFFLINE - using cached data');
+        
+        // Check auth immediately
+        await checkAuth();
+        
+        // Use cached version or fallback
+        setAppVersion(versionService.getCurrentVersion());
+        
+        // Ready faster for offline
+        setTimeout(() => {
+          setIsReady(true);
+        }, 400);
+        return;
+      }
+      
+      // PRODUCTION FIX: Fast startup - don't block on tenant loading if we have any data
+      const cachedTenantRaw = localStorage.getItem('tenant_config_cache');
+      const hasCachedTenant = !!cachedTenantRaw;
+      
+      // If tenant is loading but we have cache, proceed immediately
+      if (isLoading && !tenant && hasCachedTenant) {
+        console.log('🚀 [SplashScreen] Using cached data for fast startup');
+        await checkAuth();
+        setAppVersion(versionService.getCurrentVersion());
+        setTimeout(() => setIsReady(true), 200); // Super fast with cache
+        return;
+      }
+      
+      // ONLINE: Wait for tenant only if no cache exists (first-time user)
+      if (isLoading && !tenant && !hasCachedTenant) {
+        console.log('⏳ [SplashScreen] First-time user, waiting for tenant...');
         return;
       }
 
@@ -52,35 +86,32 @@ export default function SplashScreen() {
       console.log('✅ [SplashScreen] Tenant loaded, checking auth...');
       await checkAuth();
       
-      // Fetch version from database
-      try {
-        const versionData = await versionService.fetchVersionFromDatabase();
+      // PERFORMANCE FIX: Use local version immediately, fetch from DB in background (non-blocking)
+      setAppVersion(versionService.getCurrentVersion());
+      
+      // Quick ready state - don't wait for version API
+      setTimeout(() => {
+        setIsReady(true);
+      }, 400); // Reduced from 800ms
+      
+      // Fetch version from database in background (non-blocking)
+      versionService.fetchVersionFromDatabase().then(versionData => {
         if (versionData) {
           setAppVersion(versionData.version);
           
-          // Check for force update
+          // Check for force update (handle in background)
           if (versionData.forceUpdate) {
             console.log('[SplashScreen] Force update required, updating app...');
-            await versionService.forceUpdate();
-            return;
+            versionService.forceUpdate();
           }
-        } else {
-          // Fallback to local version
-          setAppVersion(versionService.getCurrentVersion());
         }
-      } catch (err) {
+      }).catch(err => {
         console.error('[SplashScreen] Error fetching version:', err);
-        setAppVersion(versionService.getCurrentVersion());
-      }
-      
-      // Quick ready state
-      setTimeout(() => {
-        setIsReady(true);
-      }, 800);
+      });
     };
 
     initializeApp();
-  }, [tenant, isLoading, checkAuth]);
+  }, [tenant, isLoading, checkAuth, error, branding]);
 
   const handleContinue = () => {
     markSplashCompleted();
@@ -113,10 +144,9 @@ export default function SplashScreen() {
     }
   };
 
-  // Show nothing while tenant is loading - let index.html loader show
-  if (isLoading || !tenant) {
-    return null;
-  }
+  // CRITICAL FIX: Never return null - always show some UI
+  // Previously this returned null which caused a white screen if tenant loading failed
+  // Now we proceed with fallback values and show the splash screen regardless
 
   // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
   const logoUrl = branding?.logo_url;

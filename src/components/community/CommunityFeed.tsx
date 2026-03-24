@@ -55,7 +55,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   viewLanguage,
   filterByUser = false
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   
   // Fetch real data from database
   const { 
@@ -86,7 +86,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         >
           <Loader2 className="w-5 h-5 animate-spin text-primary" />
           <span className="text-sm text-muted-foreground">
-            {t('social.feed.refreshing', 'Refreshing...')}
+            {t('social.feed.refreshing')}
           </span>
         </motion.div>
       )}
@@ -105,7 +105,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           className="rounded-full gap-2 bg-card/50 backdrop-blur-sm"
         >
           <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
-          {t('social.feed.refresh', 'Refresh posts')}
+          {t('social.feed.refresh')}
         </Button>
       </motion.div>
 
@@ -136,7 +136,7 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
               className="w-10 h-10 rounded-full border-3 border-primary/30 border-t-primary"
             />
             <span className="text-sm text-muted-foreground">
-              {t('social.feed.loading', 'Loading posts...')}
+              {t('social.feed.loading')}
             </span>
           </div>
         </div>
@@ -152,13 +152,13 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
           <div className="text-6xl mb-4">🌱</div>
           <h3 className="text-lg font-semibold text-foreground mb-2">
             {filterByUser 
-              ? t('social.empty.my_posts', 'You haven\'t posted yet')
-              : t('social.empty.feed', 'No posts yet')}
+              ? t('social.empty.my_posts')
+              : t('social.empty.feed')}
           </h3>
           <p className="text-muted-foreground text-sm max-w-xs mx-auto">
             {filterByUser
-              ? t('social.empty.my_posts_hint', 'Share your farming knowledge with the community!')
-              : t('social.empty.feed_hint', 'Be the first to share your farming knowledge!')}
+              ? t('social.empty.my_posts_hint')
+              : t('social.empty.feed_hint')}
           </p>
         </motion.div>
       )}

@@ -1,0 +1,328 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "stress",
+    "canonical_group": "08_stress",
+    "version": "3.1.0",
+    "scientific_source": "ICAR-SBI Coimbatore, CRIDA Hyderabad, TNAU",
+    "last_updated": "2026-01-10",
+    "total_rules": 15
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_DROUGHT_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["leaf_rolling", "wilting", "stunted_growth"],
+        "weather": {"rainfall": "deficit", "temperature": "high"}
+      },
+      "cause": "Drought stress - water deficit",
+      "priority": 92,
+      "confidence_score": 0.92,
+      "scientific_source": "CRIDA Drought Management",
+      "response_en": "🌵 DROUGHT STRESS DETECTED:\n\nSymptoms: Leaf rolling, afternoon wilting, stunted growth, yellowing\n\n✅ IMMEDIATE:\n• Irrigate within 24 hours (life-saving irrigation)\n• Reduce fertilizer application by 25%\n• Apply mulch to conserve moisture\n• Spray KCl 1% for stress tolerance\n\n📊 Yield impact: 5-7% loss per day of stress during grand growth\n\n⚠️ After recovery: Resume normal schedule gradually",
+      "response_hi": "🌵 सूखा तनाव:\n\nलक्षण: पत्ती मुड़ना, मुरझाना, वाढ कमी\n\n✅ तुरंत सिंचाई करें, 1% KCl छिड़कें",
+      "response_mr": "🌵 दुष्काळ ताण:\n\nलक्षणे: पान गुंडाळणे, कोमेजणे, वाढ कमी\n\n✅ तात्काळ पाणी द्या, 1% KCl फवारा",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_HEAT_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["germination", "tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["leaf_scorching", "reduced_growth", "tip_burn"],
+        "weather": {"temperature": ">40C"}
+      },
+      "cause": "Heat stress - high temperature",
+      "priority": 88,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Heat Stress Management",
+      "response_en": "🌡️ HEAT STRESS (Temperature >40°C):\n\nSymptoms: Leaf scorching, tip burn, reduced photosynthesis, poor tillering\n\n✅ MANAGEMENT:\n• Increase irrigation frequency (5-7 day interval)\n• Apply trash mulch to cool soil\n• Spray 2% Kaolin (reflective coating)\n• Avoid fertilizer during peak heat\n• Light irrigation in evening cools crop\n\n📊 Optimum: 30-35°C, Growth stops above 45°C",
+      "response_hi": "🌡️ गर्मी तनाव (तापमान >40°C):\n\nलक्षण: पत्ती झुलसना, सिरा जलना\n\n✅ सिंचाई बढ़ाएं, मल्चिंग करें, 2% केओलिन छिड़कें",
+      "response_mr": "🌡️ उष्णता ताण (तापमान >40°C):\n\nलक्षणे: पान करपणे, टोक जळणे\n\n✅ पाणी वाढवा, आच्छादन करा, 2% केओलिन फवारा",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_COLD_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["germination", "tillering"],
+      "conditions_json": {
+        "observations": ["chlorosis", "stunted_growth", "poor_germination"],
+        "weather": {"temperature": "<15C"}
+      },
+      "cause": "Cold stress - low temperature",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-IISR Cold Stress Management",
+      "response_en": "❄️ COLD STRESS (Temperature <15°C):\n\nSymptoms: Yellowing (chlorosis), poor germination, stunted growth, leaf tip necrosis\n\n✅ MANAGEMENT:\n• Apply irrigation before cold night (soil stores heat)\n• Trash mulch retains soil warmth\n• Avoid nitrogen application during cold\n• Spray 0.5% ZnSO4 + 0.3% Boric acid\n• Light smoke/bonfire on coldest nights (traditional)\n\n📊 Germination stops below 12°C, frost damages leaves",
+      "response_hi": "❄️ ठंड तनाव (तापमान <15°C):\n\nलक्षण: पीलापन, खराब अंकुरण\n\n✅ ठंडी रात से पहले सिंचाई, मल्चिंग करें",
+      "response_mr": "❄️ थंडी ताण (तापमान <15°C):\n\nलक्षणे: पिवळेपणा, खराब उगवण\n\n✅ थंड रात्रीपूर्वी पाणी, आच्छादन करा",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_FROST_DAMAGE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["white_frozen_leaves", "wilting_after_frost", "stem_damage"],
+        "weather": {"temperature": "<0C", "frost": true}
+      },
+      "cause": "Frost damage",
+      "priority": 95,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR Frost Management",
+      "response_en": "🥶 FROST DAMAGE:\n\nSymptoms: White/water-soaked leaves, rapid wilting after sunrise, stem splitting\n\n✅ IMMEDIATE AFTER FROST:\n• DO NOT touch frozen leaves (breaks cells)\n• Wait for natural thawing\n• Irrigate next day to raise soil temperature\n• Cut severely damaged canes for early harvest\n• Apply 1% Urea spray after recovery\n\n⚠️ Sucrose inversion starts within 24 hours of frost\n⚠️ Harvest frost-damaged cane within 7-10 days",
+      "response_hi": "🥶 पाला नुकसान:\n\n✅ जमी पत्तियों को न छुएं, अगले दिन सिंचाई करें\n⚠️ 7-10 दिनों में कटाई करें",
+      "response_mr": "🥶 दव नुकसान:\n\n✅ गोठलेल्या पानांना स्पर्श करू नका, दुसऱ्या दिवशी पाणी द्या\n⚠️ 7-10 दिवसांत कापणी करा",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_WATERLOG_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["yellowing", "root_rot", "wilting_despite_water"],
+        "soil_moisture": "excess"
+      },
+      "cause": "Waterlogging stress",
+      "priority": 90,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Waterlogging Management",
+      "response_en": "🌊 WATERLOGGING STRESS:\n\nSymptoms: Yellowing, root rot, wilting despite wet soil, fungal growth\n\n✅ IMMEDIATE:\n• Drain excess water (open furrow outlets, pumping)\n• After drainage: Spray Carbendazim 1g/L\n• Apply Potash 20 kg/ha to strengthen\n• Earthing up improves aeration\n\n📊 Tolerance: 48-72 hours\n📊 Beyond 5 days: 30-40% yield loss\n\n⚠️ Ratoon more susceptible than plant crop",
+      "response_hi": "🌊 जलभराव तनाव:\n\n✅ तुरंत पानी निकालें, निकासी के बाद कार्बेन्डाजिम छिड़कें\n⚠️ 5 दिनों से अधिक: 30-40% उपज हानि",
+      "response_mr": "🌊 पाणी साचण्याचा ताण:\n\n✅ तात्काळ पाणी काढा, निचऱ्यानंतर कार्बेन्डाझिम फवारा\n⚠️ 5 दिवसांपेक्षा जास्त: 30-40% उत्पादन घट",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SALT_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["leaf_tip_burn", "marginal_necrosis", "stunted_growth"],
+        "soil": {"salinity": "high", "ec": ">4"}
+      },
+      "cause": "Salt/salinity stress",
+      "priority": 82,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-CSSRI Salinity Management",
+      "response_en": "🧂 SALT STRESS:\n\nSymptoms: Leaf tip/margin burn, stunted growth, poor tillering, whitish deposits\n\n✅ MANAGEMENT:\n• Apply Gypsum @5-10 t/ha\n• Leaching irrigation (20-25% extra water)\n• Apply FYM/organic matter liberally\n• Use tolerant varieties (Co 0238, CoS 767)\n• Avoid chloride fertilizers (use SOP not MOP)\n\n📊 Sugarcane tolerance: EC up to 4 dS/m\n📊 Above 8 dS/m: Severe yield reduction",
+      "response_hi": "🧂 लवण तनाव:\n\n✅ जिप्सम @5-10 t/ha, लीचिंग सिंचाई\n📊 सहनशीलता: EC 4 dS/m तक",
+      "response_mr": "🧂 क्षार ताण:\n\n✅ जिप्सम @5-10 t/ha, लीचिंग सिंचन\n📊 सहनशीलता: EC 4 dS/m पर्यंत",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_WIND_DAMAGE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["grand_growth", "maturity"],
+      "conditions_json": {
+        "observations": ["lodging", "broken_canes", "uprooting"],
+        "weather": {"wind_speed": ">60kmph"}
+      },
+      "cause": "Wind/storm damage",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Storm Damage Management",
+      "response_en": "💨 WIND/STORM DAMAGE:\n\nSymptoms: Lodging (fallen canes), broken tops, uprooting\n\n✅ AFTER STORM:\n• Prop up fallen canes within 48 hours\n• Tie in bundles if severely lodged\n• Apply 25 kg N/ha to recover\n• Spray fungicide (damaged canes prone to infection)\n• Harvest severely damaged canes early\n\n📋 PREVENTION:\n• Earthing up strengthens root anchorage\n• Propping in exposed areas\n• Windbreaks (trees on field border)",
+      "response_hi": "💨 तूफान नुकसान:\n\n✅ 48 घंटे में गिरे गन्नों को उठाएं, गंभीर हो तो जल्दी काटें\n📋 रोकथाम: मिट्टी चढ़ाना, प्रॉपिंग",
+      "response_mr": "💨 वादळ नुकसान:\n\n✅ 48 तासांत पडलेले ऊस उभे करा, गंभीर असल्यास लवकर कापा\n📋 प्रतिबंध: मातीची भर, प्रॉपिंग",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_LODGING_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["grand_growth", "maturity"],
+      "conditions_json": {
+        "observations": ["cane_falling", "weak_stalks", "root_exposure"],
+        "context": "lodging"
+      },
+      "cause": "Lodging - canes falling over",
+      "priority": 80,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Lodging Management",
+      "response_en": "📉 LODGING MANAGEMENT:\n\nCauses: Excess nitrogen, weak roots, waterlogging, wind, tall varieties\n\n✅ PREVENTION:\n• Balanced fertilization (don't excess N)\n• Adequate potash (strengthens stalks)\n• Timely earthing up (2-3 times)\n• Proper drainage\n• Variety selection (erect types)\n\n✅ IF LODGED:\n• Prop up within 48 hours\n• Tie in groups of 4-5 canes\n• Harvest lodged portion first\n\n📊 Lodging reduces sugar by 1-2%",
+      "response_hi": "📉 गिरने (लॉजिंग) प्रबंधन:\n\n✅ रोकथाम: संतुलित उर्वरक, मिट्टी चढ़ाना, जल निकासी\n✅ गिरने पर: 48 घंटे में उठाएं, बांधें",
+      "response_mr": "📉 पडणे (लॉजिंग) व्यवस्थापन:\n\n✅ प्रतिबंध: संतुलित खत, मातीची भर, निचरा\n✅ पडल्यास: 48 तासांत उभे करा, बांधा",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_HAIL_DAMAGE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["tillering", "grand_growth", "maturity"],
+      "conditions_json": {
+        "observations": ["shredded_leaves", "bruised_stalks", "broken_tops"],
+        "weather": {"hail": true}
+      },
+      "cause": "Hail damage",
+      "priority": 85,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR Hail Damage Recovery",
+      "response_en": "🧊 HAIL DAMAGE:\n\nSymptoms: Shredded leaves, bruised/cracked stalks, broken growing points\n\n✅ AFTER HAIL:\n• Spray Carbendazim 1g/L + Streptocycline 0.5g/L (prevent infection)\n• Apply 25 kg N/ha for recovery\n• Cut severely damaged leaves (not stalks)\n• If growing point dead: Side tillers will compensate\n\n📋 INSURANCE: Report damage within 48 hours to insurance company\n\n📊 Mild hail: 10-20% yield loss\n📊 Severe hail: 30-50% yield loss",
+      "response_hi": "🧊 ओलावृष्टि नुकसान:\n\n✅ कार्बेन्डाजिम + स्ट्रेप्टोसाइक्लिन छिड़कें\n✅ 25 kg N/ha दें, बीमा को 48 घंटे में रिपोर्ट करें",
+      "response_mr": "🧊 गारपीट नुकसान:\n\n✅ कार्बेन्डाझिम + स्ट्रेप्टोसायक्लिन फवारा\n✅ 25 kg N/ha द्या, विम्याला 48 तासांत कळवा",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_NUTRIENT_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observations": ["poor_growth", "yellowing", "deficiency_symptoms"],
+        "context": "nutrient_stress"
+      },
+      "cause": "Nutrient stress - deficiency",
+      "priority": 78,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-SBI Nutrient Stress",
+      "response_en": "🧪 NUTRIENT STRESS DIAGNOSIS:\n\n📋 QUICK GUIDE:\n• N deficiency: Yellowing from OLD leaves\n• P deficiency: Purple leaves, poor roots\n• K deficiency: Leaf margin burn, weak stalks\n• Fe deficiency: Yellowing of YOUNG leaves (green veins)\n• Zn deficiency: White bands on leaves\n\n✅ ACTION:\n• Conduct soil test if persistent\n• Foliar spray for quick correction\n• See detailed nutrient rules for specific treatment\n\n⚠️ Overuse of one nutrient can induce deficiency of another",
+      "response_hi": "🧪 पोषक तनाव निदान:\n\n📋 N कमी: पुरानी पत्तियां पीली\n📋 K कमी: पत्ती किनारा जलना\n✅ मिट्टी परीक्षण करें, पर्णीय छिड़काव",
+      "response_mr": "🧪 पोषक ताण निदान:\n\n📋 N कमी: जुनी पाने पिवळी\n📋 K कमी: पानाची कड करपणे\n✅ माती परीक्षण करा, पर्णसंवर्धन फवारा",
+      "action_type": "clarification",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_TOXICITY_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["leaf_burn", "necrosis", "abnormal_growth"],
+        "context": "toxicity"
+      },
+      "cause": "Toxicity stress - nutrient/chemical excess",
+      "priority": 75,
+      "confidence_score": 0.82,
+      "scientific_source": "ICAR Toxicity Management",
+      "response_en": "⚠️ TOXICITY SYMPTOMS:\n\n📋 BORON TOXICITY: Leaf tip necrosis, brown spots\n📋 SALT TOXICITY: White crust on soil, margin burn\n📋 HERBICIDE TOXICITY: Abnormal growth, chlorosis\n📋 EXCESS NITROGEN: Dark green, weak stalks, lodging\n\n✅ MANAGEMENT:\n• Heavy irrigation to leach excess\n• Apply organic matter to buffer\n• Foliar Ca spray for B toxicity\n• Stop fertilizer application if excess\n\n⚠️ Toxicity often mimics deficiency - soil test essential",
+      "response_hi": "⚠️ विषाक्तता लक्षण:\n\n📋 बोरॉन: पत्ती सिरा मृत\n📋 नमक: सफेद परत, किनारा जलना\n✅ भारी सिंचाई, जैविक पदार्थ डालें",
+      "response_mr": "⚠️ विषाक्तता लक्षणे:\n\n📋 बोरॉन: पान टोक मृत\n📋 मीठ: पांढरा थर, कडा करपणे\n✅ जास्त पाणी, सेंद्रिय पदार्थ टाका",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RATOON_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["post_harvest"],
+      "conditions_json": {
+        "observations": ["poor_ratoon_sprouting", "weak_ratoon"],
+        "context": "ratoon_stress"
+      },
+      "cause": "Ratoon establishment stress",
+      "priority": 80,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Ratoon Management",
+      "response_en": "🌱 RATOON STRESS:\n\nSymptoms: Poor sprouting, uneven regrowth, weak tillers\n\n✅ PREVENTION:\n• Stubble shaving within 7 days of harvest\n• First irrigation within 7 days (CRITICAL)\n• Gap filling within 30 days\n• Higher fertilizer dose (25% more than plant)\n• Apply Carbendazim drench to cut stumps\n\n📋 CAUSES OF FAILURE:\n• Delayed irrigation (most common)\n• Deep cutting (root damage)\n• Pest/disease carryover\n• Exhausted soil",
+      "response_hi": "🌱 रैटून तनाव:\n\n✅ 7 दिनों में ठूंठ छंटाई, 7 दिनों में पहली सिंचाई\n📋 विफलता कारण: देरी से सिंचाई, गहरी कटाई",
+      "response_mr": "🌱 खोडवा ताण:\n\n✅ 7 दिवसांत खुंट छाटणी, 7 दिवसांत पहिले पाणी\n📋 अपयश कारण: उशीरा पाणी, खोल कापणी",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MIXED_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["grand_growth"],
+      "conditions_json": {
+        "observations": ["multiple_stress_symptoms"],
+        "context": "complex_stress"
+      },
+      "cause": "Multiple stress factors",
+      "priority": 85,
+      "confidence_score": 0.82,
+      "scientific_source": "ICAR Integrated Stress Management",
+      "response_en": "⚠️ MULTIPLE STRESS DETECTION:\n\nWhen symptoms are confusing (multiple causes possible):\n\n📋 DIAGNOSTIC APPROACH:\n1. Check weather data (drought? heat? cold?)\n2. Check irrigation history\n3. Check fertilizer application record\n4. Examine roots (rot? insects?)\n5. Soil test if persistent\n6. Send sample to lab if unsure\n\n✅ GENERAL RECOVERY:\n• Irrigate if soil dry\n• Light N application (12.5 kg/ha)\n• Foliar spray: 2% Urea + 1% KCl + micronutrients\n• Address primary stress first",
+      "response_hi": "⚠️ बहु तनाव:\n\n📋 निदान: मौसम, सिंचाई, उर्वरक इतिहास जांचें\n✅ सामान्य: सिंचाई, हल्का N, पर्णीय छिड़काव",
+      "response_mr": "⚠️ बहु ताण:\n\n📋 निदान: हवामान, सिंचन, खत इतिहास तपासा\n✅ सामान्य: पाणी, हलके N, पर्णसंवर्धन फवारा",
+      "action_type": "clarification",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_PREHARVEST_STRESS_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["maturity"],
+      "conditions_json": {
+        "observations": ["pre_harvest_stress"],
+        "context": "maturity_management"
+      },
+      "cause": "Pre-harvest stress management",
+      "priority": 75,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Maturity Management",
+      "response_en": "🍯 PRE-HARVEST STRESS FOR SUGAR ACCUMULATION:\n\n✅ BENEFICIAL MILD STRESS:\n• Stop irrigation 15-20 days before harvest\n• Mild water stress increases sucrose concentration\n• Reduces vegetative growth, promotes ripening\n\n⚠️ AVOID:\n• Severe drought (causes sucrose inversion)\n• Frost (rapid sugar loss)\n• Lodging (quality deterioration)\n\n📊 Optimum harvest: When Brix >18 and Pol >16",
+      "response_hi": "🍯 कटाई पूर्व तनाव:\n\n✅ लाभदायक: कटाई से 15-20 दिन पहले सिंचाई बंद\n📊 इष्टतम कटाई: Brix >18, Pol >16",
+      "response_mr": "🍯 कापणीपूर्व ताण:\n\n✅ फायदेशीर: कापणीपूर्वी 15-20 दिवस पाणी बंद\n📊 इष्टतम कापणी: Brix >18, Pol >16",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RECOVERY_GENERAL_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "stress",
+      "canonical_group": "08_stress",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observations": ["stress_recovery"],
+        "context": "general_recovery"
+      },
+      "cause": "General stress recovery protocol",
+      "priority": 78,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Stress Recovery Guidelines",
+      "response_en": "🔄 STRESS RECOVERY PROTOCOL:\n\n✅ IMMEDIATE (Day 1-3):\n• Address primary cause (irrigate/drain/protect)\n• Light foliar spray if leaves functional\n\n✅ SHORT TERM (Week 1-2):\n• Resume normal irrigation\n• Light N application (12.5-25 kg/ha)\n• Spray micronutrient mix\n\n✅ MEDIUM TERM (Week 3-4):\n• Full fertilizer schedule if recovered\n• Monitor for secondary issues (pests/diseases)\n• Assess damage for insurance if needed\n\n⚠️ Don't over-fertilize stressed plants - they can't utilize",
+      "response_hi": "🔄 तनाव रिकवरी:\n\n✅ तुरंत: कारण ठीक करें\n✅ 1-2 सप्ताह: सामान्य सिंचाई, हल्का N\n✅ 3-4 सप्ताह: पूर्ण कार्यक्रम",
+      "response_mr": "🔄 ताण रिकव्हरी:\n\n✅ तात्काळ: कारण दूर करा\n✅ 1-2 आठवडे: सामान्य पाणी, हलके N\n✅ 3-4 आठवडे: पूर्ण कार्यक्रम",
+      "action_type": "advisory",
+      "is_active": true
+    }
+  ]
+}

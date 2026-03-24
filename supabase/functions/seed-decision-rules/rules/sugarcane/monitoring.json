@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "monitoring",
+    "canonical_group": "12_monitoring",
+    "version": "3.2.0",
+    "scientific_source": "ICAR-SBI, NIPHM",
+    "last_updated": "2026-01-10",
+    "total_rules": 5
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_ETL_MONITOR_001",
+      "crop_code": "sugarcane",
+      "category": "monitoring",
+      "canonical_group": "12_monitoring",
+      "stage_applicable": ["all"],
+      "conditions_json": {"context": "pest_monitoring"},
+      "cause": "Economic Threshold Level monitoring",
+      "priority": 85,
+      "confidence_score": 0.92,
+      "scientific_source": "NIPHM ETL Standards",
+      "response_en": "📊 SUGARCANE ETL THRESHOLDS:\n\n• ESB: 10% dead hearts\n• ISB: 5% bored internodes\n• Pyrilla: 5 nymphs/leaf\n• Woolly Aphid: 10% leaf infestation\n• Termite: 5% plant mortality\n\n✅ Scout weekly, spray ONLY if ETL crossed",
+      "response_hi": "📊 गन्ना ETL: ESB 10% डेड हार्ट, पायरिला 5 निम्फ/पत्ती",
+      "response_mr": "📊 ऊस ETL: ESB 10% डेड हार्ट, पायरिला 5 निम्फ/पान",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_LIGHT_TRAP_001",
+      "crop_code": "sugarcane",
+      "category": "monitoring",
+      "canonical_group": "12_monitoring",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {"context": "trap_monitoring"},
+      "cause": "Light trap monitoring",
+      "priority": 80,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI IPM",
+      "response_en": "💡 LIGHT TRAP MONITORING:\n\n✅ Install 5 traps/ha for borer moths\n✅ Peak activity: Feb-Apr, Aug-Oct\n✅ Release Trichogramma when moth count rises\n✅ Record daily catches for timing decisions",
+      "response_hi": "💡 प्रकाश जाल: 5 जाल/हेक्टेयर, पतंग गिनती के आधार पर ट्राइकोग्रामा छोड़ें",
+      "response_mr": "💡 प्रकाश सापळे: 5 सापळे/हेक्टर, पतंग संख्येनुसार ट्रायकोग्रामा सोडा",
+      "action_type": "advisory",
+      "is_active": true
+    }
+  ]
+}

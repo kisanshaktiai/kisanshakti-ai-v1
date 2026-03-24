@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
@@ -12,32 +13,29 @@ interface DiagnosisOnlyCardProps {
   language?: string;
 }
 
-const getLabels = (lang: string) => ({
-  cropDetected: lang === 'hi' ? 'पहचानी गई फसल' : lang === 'mr' ? 'ओळखलेले पीक' : 'Crop Detected',
-  healthStatus: lang === 'hi' ? 'स्वास्थ्य स्थिति' : lang === 'mr' ? 'आरोग्य स्थिती' : 'Health Status',
-  diagnosis: lang === 'hi' ? 'निदान' : lang === 'mr' ? 'निदान' : 'Diagnosis',
-  confidence: lang === 'hi' ? 'विश्वास स्तर' : lang === 'mr' ? 'विश्वास पातळी' : 'Confidence',
-  healthy: lang === 'hi' ? 'स्वस्थ' : lang === 'mr' ? 'निरोगी' : 'Healthy',
-  warning: lang === 'hi' ? 'सतर्कता' : lang === 'mr' ? 'सावधानता' : 'Warning',
-  critical: lang === 'hi' ? 'गंभीर' : lang === 'mr' ? 'गंभीर' : 'Critical',
-  analyzed: lang === 'hi' ? 'विश्लेषित' : lang === 'mr' ? 'विश्लेषित' : 'Analyzed',
-  cropMismatch: lang === 'hi' 
-    ? '⚠️ यह आपके खेत की फसल से मेल नहीं खाता। सही सलाह के लिए सामान्य चैट का उपयोग करें।'
-    : lang === 'mr'
-    ? '⚠️ हे तुमच्या शेतातील पिकाशी जुळत नाही. योग्य सल्ल्यासाठी सामान्य चॅट वापरा.'
-    : '⚠️ This does not match your land\'s crop. Use General Chat for accurate advice.',
-  expected: lang === 'hi' ? 'अपेक्षित' : lang === 'mr' ? 'अपेक्षित' : 'Expected',
-  detected: lang === 'hi' ? 'पहचाना गया' : lang === 'mr' ? 'ओळखले' : 'Detected'
+const getLabels = (t: (key: string) => string) => ({
+  cropDetected: t('chatCards.cards.cropDetected'),
+  healthStatus: t('chatCards.cards.healthStatus'),
+  diagnosis: t('chatCards.cards.diagnosis'),
+  confidence: t('chatCards.cards.confidence'),
+  healthy: t('chatCards.cards.healthy'),
+  warning: t('chatCards.cards.warning'),
+  critical: t('chatCards.cards.critical'),
+  analyzed: t('chatCards.cards.analyzed'),
+  cropMismatch: t('chatCards.cards.cropMismatch'),
+  expected: t('chatCards.cards.expected'),
+  detected: t('chatCards.cards.detected'),
 });
 
 export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: DiagnosisOnlyCardProps) {
-  const labels = getLabels(language);
+  const { t } = useTranslation();
+  const labels = getLabels(t);
   
   // Safety check
   if (!analysis?.cropDetected || !analysis?.healthStatus || !analysis?.diagnosis) {
     return (
       <div className="p-4 text-center text-muted-foreground">
-        <p>Analysis data is incomplete. Please try again.</p>
+        <p>{t('chatCards.cards.analysisIncomplete')}</p>
       </div>
     );
   }
@@ -179,7 +177,7 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
               <div className="mt-3 p-2 bg-red-500/10 rounded-lg">
                 <div className="flex items-center gap-1 text-sm font-medium text-red-700 dark:text-red-300 mb-1">
                   <AlertTriangle className="h-4 w-4" />
-                  {language === 'hi' ? 'पहचाने गए रोग' : language === 'mr' ? 'ओळखलेले रोग' : 'Detected Diseases'}
+                  {t('chatCards.cards.detectedDiseases')}
                 </div>
                 <ul className="text-sm space-y-1">
                   {analysis.diagnosis.diseases.map((disease, idx) => (
@@ -195,7 +193,7 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
               <div className="mt-3 p-2 bg-orange-500/10 rounded-lg">
                 <div className="flex items-center gap-1 text-sm font-medium text-orange-700 dark:text-orange-300 mb-1">
                   <AlertTriangle className="h-4 w-4" />
-                  {language === 'hi' ? 'पहचाने गए कीट' : language === 'mr' ? 'ओळखलेले कीटक' : 'Detected Pests'}
+                  {t('chatCards.cards.detectedPests')}
                 </div>
                 <ul className="text-sm space-y-1">
                   {analysis.diagnosis.pests.map((pest, idx) => (

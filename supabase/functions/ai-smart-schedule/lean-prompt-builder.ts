@@ -30,6 +30,11 @@ import {
   getSplitSchedule
 } from './agro-knowledge-base.ts';
 
+import { 
+  DecisionGraphOutput, 
+  formatForAIPrompt 
+} from './decision-graph-integration.ts';
+
 export interface PromptContext {
   cropName: string;
   landAreaAcres: number;

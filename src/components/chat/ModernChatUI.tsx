@@ -11,6 +11,48 @@ import { EnhancedSpeakerButton } from './EnhancedSpeakerButton';
 import { RecommendationCards, type VisionAnalysisResult } from './RecommendationCards';
 import { DiagnosisOnlyCard } from './DiagnosisOnlyCard';
 import { SuggestionTypeSelector, type SuggestionType } from './SuggestionTypeSelector';
+import { DecisionBrainCards, type DecisionBrainResponse } from './DecisionBrainCards';
+import { DataAuditCards, type DataAudit } from './DataAuditCards';
+import { ClarificationOptionsUI } from './ClarificationOptionsUI';
+import { DiagnosticEscalationUI } from './DiagnosticEscalationUI';
+import { CanonicalAdvisoryCard } from './CanonicalAdvisoryCard';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DIAGNOSTIC ESCALATION TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface DiagnosticHypothesis {
+  cause_code: string;
+  cause_name: string;
+  category: 'PEST' | 'DISEASE' | 'NUTRIENT' | 'WATER' | 'WEATHER' | 'OTHER';
+  confidence: number;
+  supporting_evidence: string[];
+  confirming_evidence: string[];
+  ruling_out_evidence: string[];
+  explanation?: string;
+}
+
+interface RequiredInput {
+  type: 'PHOTO' | 'SEVERITY' | 'DISTRIBUTION' | 'SYMPTOM_DETAIL';
+  target: string;
+  rationale: string;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  photo_guidance?: {
+    what_to_capture: string;
+    angle: string;
+    lighting: string;
+  };
+}
+
+export interface DiagnosticEscalationData {
+  hypotheses: DiagnosticHypothesis[];
+  required_inputs: RequiredInput[];
+  current_confidence: number;
+  threshold_for_treatment: number;
+  diagnostic_summary?: string;
+  interim_monitoring?: string[];
+  photo_recommended?: boolean;
+}
 
 interface Message {
   id: string;
@@ -24,7 +66,7 @@ interface Message {
   imageUrl?: string;
   imageUrls?: string[];
   videoUrl?: string;
-  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution';
+  messageType?: 'text' | 'image_analysis' | 'video_analysis' | 'image_analysis_response' | 'video_analysis_response' | 'suggestion_selector' | 'targeted_solution' | 'orchestrator';
   // Full analysis result for detailed cards
   analysisResult?: VisionAnalysisResult;
   // For targeted solutions
@@ -43,6 +85,12 @@ interface Message {
     }>;
     language: string;
   };
+  // ✅ NEW: Decision Brain structured response
+  decisionBrainResponse?: DecisionBrainResponse;
+  // Data Audit for debugging
+  dataAudit?: DataAudit;
+  // PHASE 5: trace_id for debugging
+  traceId?: string;
   analytics?: {
     responseTime?: number;
     tokensUsed?: {
@@ -52,6 +100,18 @@ interface Message {
     };
     queryComplexity?: string;
   };
+  // Clarification options from Decision Brain
+  clarificationOptions?: {
+    question?: string;
+    options?: Array<{ label: string; value?: string; description?: string; observation_key?: string }>;
+    selectionType?: 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE';
+  };
+  // Orchestrator type for detecting clarification questions
+  orchestratorType?: 'DECISION_PROVIDED' | 'CLARIFICATION_QUESTION' | 'PHOTO_REQUEST' | 'SAFETY_BLOCKED' | 'ESCALATION_REQUIRED' | 'DIAGNOSTIC_ESCALATION';
+  // ✅ Canonical Advisory structured JSON
+  structuredAdvisory?: any;
+  // ✅ NEW: Diagnostic Escalation data for expert-quality intermediate responses
+  diagnosticEscalationData?: DiagnosticEscalationData;
 }
 
 interface ModernChatUIProps {
@@ -61,16 +121,32 @@ interface ModernChatUIProps {
   onShare: (content: string) => void;
   onPlay: (messageId: string, content: string) => void;
   onSuggestionSelect?: (messageId: string, type: SuggestionType) => void;
+  onClarificationSelect?: (selectedOptions: string[]) => void;
+  onTakePhoto?: () => void;
   isLoadingSuggestion?: boolean;
 }
 
-// User bubble color variations
-const USER_BUBBLE_GRADIENTS = [
-  'from-primary via-primary-hover to-primary-glow',
-  'from-[hsl(var(--chat-user-1))] via-[hsl(var(--chat-user-1-mid))] to-[hsl(var(--chat-user-1-end))]',
-  'from-[hsl(var(--chat-user-2))] via-[hsl(var(--chat-user-2-mid))] to-[hsl(var(--chat-user-2-end))]',
-  'from-[hsl(var(--chat-user-3))] via-[hsl(var(--chat-user-3-mid))] to-[hsl(var(--chat-user-3-end))]',
-];
+// Modern 2030-ready User bubble styling with glassmorphism - Using semantic tokens
+const USER_BUBBLE_STYLES = {
+  // Using semantic color tokens from design system
+  gradients: [
+    'from-primary via-primary/90 to-primary/80',
+    'from-success via-success/90 to-success/80',
+    'from-info via-info/90 to-info/80',
+    'from-warning via-warning/90 to-warning/80',
+  ],
+  glow: [
+    'shadow-[0_8px_32px_-8px_hsl(var(--primary)/0.5)]',
+    'shadow-[0_8px_32px_-8px_hsl(var(--success)/0.5)]',
+    'shadow-[0_8px_32px_-8px_hsl(var(--info)/0.5)]',
+    'shadow-[0_8px_32px_-8px_hsl(var(--warning)/0.5)]',
+  ],
+  // Background overlays for glassmorphism
+  overlay: [
+    'bg-gradient-to-br from-white/20 via-white/10 to-transparent',
+    'bg-gradient-to-br from-white/25 via-white/15 to-transparent',
+  ]
+};
 
 // ✅ Helper to check if URL is a valid storage URL (not base64)
 const isValidStorageUrl = (url: string | undefined): boolean => {
@@ -96,17 +172,59 @@ const isUsableImageUrl = (url: string | undefined): boolean => {
   return isValidStorageUrl(url) || isBase64Image(url);
 };
 
-export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, isLoadingSuggestion }: ModernChatUIProps) {
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CRITICAL FIX: Clean user message content for display
+ * - Removes [obs_keys:...] patterns (backend parsing markers)
+ * - Deduplicates repeated lines
+ * - Shows only the farmer-friendly label
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+const cleanUserMessageContent = (content: string): string => {
+  if (!content) return '';
+  
+  // Step 1: Remove backend metadata patterns - these are for backend only
+  let cleaned = content.replace(/\s*\[obs_keys:[^\]]+\]/g, '')
+    .replace(/\s*\[cause:[^\]]+\]/g, '')
+    .replace(/\s*\[rule_id:[^\]]+\]/g, '');
+  
+  // Step 2: Split into lines and deduplicate
+  const lines = cleaned.split('\n').map(line => line.trim()).filter(Boolean);
+  const uniqueLines: string[] = [];
+  const seenLines = new Set<string>();
+  
+  for (const line of lines) {
+    // Normalize for comparison (remove emojis and extra spaces)
+    const normalized = line.replace(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim().toLowerCase();
+    if (!seenLines.has(normalized) && normalized.length > 0) {
+      seenLines.add(normalized);
+      uniqueLines.push(line);
+    }
+  }
+  
+  // Step 3: Return cleaned content - show only the first unique line for selection messages
+  // This prevents showing duplicate selected options
+  if (uniqueLines.length === 1) {
+    return uniqueLines[0];
+  }
+  
+  return uniqueLines.join('\n');
+};
+
+export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSuggestionSelect, onClarificationSelect, onTakePhoto, isLoadingSuggestion }: ModernChatUIProps) {
   const { i18n } = useTranslation();
   const isUser = message.role === 'user';
   const currentLanguage = i18n.language || 'hi';
   
-  // Get consistent gradient based on message id hash
-  const userGradient = useMemo(() => {
-    if (!isUser) return '';
+  // Get consistent gradient and glow based on message id hash
+  const userStyleIndex = useMemo(() => {
+    if (!isUser) return 0;
     const hash = message.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return USER_BUBBLE_GRADIENTS[hash % USER_BUBBLE_GRADIENTS.length];
+    return hash % USER_BUBBLE_STYLES.gradients.length;
   }, [message.id, isUser]);
+  
+  const userGradient = USER_BUBBLE_STYLES.gradients[userStyleIndex];
+  const userGlow = USER_BUBBLE_STYLES.glow[userStyleIndex];
   
   // ✅ FIXED: Get first valid image URL - check all possible sources
   const displayImageUrl = useMemo(() => {
@@ -123,9 +241,22 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // ✅ FIXED: For user image/video messages, show ONLY the image (no text/cards)
   const isUserImageMessage = isUser && (message.messageType === 'image_analysis' || message.messageType === 'video_analysis');
   
-  // ✅ Enhanced text formatter - handles numbered lists, bullets, and line breaks
+  // ✅ Enhanced text formatter - handles numbered lists, bullets, line breaks, and FILTERS placeholder content
   const formatAIResponse = (text: string) => {
     if (!text) return null;
+    
+    // Step 0: ✅ FIX - Filter out template placeholder lines with "None", "N/A" or empty values
+    // These indicate backend template failures that should not be shown to users
+    const placeholderPatterns = [
+      /^[•\-\*]\s*(None|N\/A)\s*$/i,                     // • None, • N/A
+      /^[•\-\*]\s*\S+\s*-\s*N\/A\s*$/i,                  // • पाणी - N/A
+      /^[•\-\*]\s*No treatment required\s*-\s*N\/A\s*$/i, // • No treatment required - N/A
+      /^\d+\.\s*.*None.*घाला\s*$/i,                      // 1. ...None घाला
+      /^\d+\.\s*अर्ध्?या?\s*पाण्यात\s*None\s*घाला\s*$/i, // अर्ध्या पाण्यात None घाला
+      /^🛒\s*Materials:\s*$/i,                            // Empty Materials section header
+      /^🧪\s*Mixing:\s*$/i,                               // Empty Mixing section header  
+      /^[•\-\*]\s*$/,                                     // Empty bullet point
+    ];
     
     // Step 1: Clean markdown symbols
     let formatted = text
@@ -148,9 +279,39 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
       .replace(/^\n+/, '')
       .trim();
     
-    // Step 4: Split into lines and render
-    const lines = formatted.split('\n');
+    // Step 4: Split into lines and filter out placeholder lines
+    const lines = formatted.split('\n').filter(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return true; // Keep empty lines for spacing
+      
+      // Filter out placeholder patterns
+      for (const pattern of placeholderPatterns) {
+        if (pattern.test(trimmed)) {
+          console.log('[ModernChatUI] Filtered placeholder line:', trimmed);
+          return false;
+        }
+      }
+      
+      // Also filter lines that are just "- N/A" or have None as the main content
+      if (/^\s*[•\-\*]?\s*(None|N\/A|null|undefined)\s*$/i.test(trimmed)) {
+        return false;
+      }
+      
+      return true;
+    });
     
+    // Step 5.5: ✅ CRITICAL FIX: If all lines were filtered, show fallback message
+    if (lines.length === 0 || lines.every(line => !line.trim())) {
+      console.log('[ModernChatUI] All lines filtered - showing fallback');
+      const fallbackMessage = "मला समजले आहे. कृपया पुन्हा एकदा विचारा किंवा अधिक माहिती द्या. / Please ask again or provide more details.";
+      return [
+        <div key="fallback" className="mb-1.5 leading-relaxed text-sm md:text-base text-muted-foreground italic">
+          {fallbackMessage}
+        </div>
+      ];
+    }
+    
+    // Step 6: Render remaining lines
     return lines.map((line, idx) => {
       const trimmedLine = line.trim();
       if (!trimmedLine) {
@@ -184,6 +345,86 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
   // Check if this is an analysis response with full details
   const hasAnalysisResult = !isUser && message.analysisResult;
   const hasStructuredCards = !isUser && message.structuredResponse?.cards?.length > 0;
+  const hasCanonicalAdvisory = !isUser && message.structuredAdvisory?.version;
+  const hasDecisionBrainResponse = !isUser && message.decisionBrainResponse;
+  const hasDataAudit = !isUser && message.dataAudit;
+  
+  // ✅ Enhanced: Check if this is a clarification question with options
+  // Also check for 'clarification' type from backend (mapped to CLARIFICATION_QUESTION)
+  const hasClarificationOptions = !isUser && 
+    (message.orchestratorType === 'CLARIFICATION_QUESTION' || 
+     message.clarificationOptions?.options?.length > 0);
+  
+  // Extract clarification options from message metadata (primary) or parse from content (fallback)
+  const clarificationData = useMemo(() => {
+    // First priority: Use options from metadata
+    if (message.clarificationOptions?.options?.length) {
+      console.log(`[ClarificationUI] Using metadata options for message ${message.id}:`, message.clarificationOptions);
+      return {
+        question: message.clarificationOptions.question || message.content,
+        options: message.clarificationOptions.options,
+        selectionType: message.clarificationOptions.selectionType || 'SINGLE_CHOICE'
+      };
+    }
+    
+    // Only try to parse from content if orchestratorType indicates clarification
+    if (!hasClarificationOptions) return null;
+    
+    // Fallback: Parse from content for implicit question patterns
+    const content = message.content || '';
+    
+    // Enhanced pattern detection for multi-language questions
+    const optionPatterns: Array<{ pattern: RegExp; options: Array<{ label: string; value: string }> }> = [
+      // Flying vs crawling (Marathi)
+      { 
+        pattern: /उडतात\s*(का|किंवा)\s*चालतात/i,
+        options: [
+          { label: 'किडे उडतात', value: 'flying' },
+          { label: 'किडे चालतात / रेंगतात', value: 'crawling' }
+        ]
+      },
+      // Distribution patterns (Marathi)
+      { 
+        pattern: /एक\s*जाग(ी|ेवर)|एका\s*ठिकाणी\s*(का|किंवा)\s*पूर्ण|संपूर्ण/i,
+        options: [
+          { label: 'एका जागी / एका ठिकाणी', value: 'localized' },
+          { label: 'संपूर्ण शेतात', value: 'widespread' }
+        ]
+      },
+      // Edge vs center (Marathi)
+      { 
+        pattern: /कड(ा|े)\s*(का|किंवा)\s*मध्य/i,
+        options: [
+          { label: 'कडेला / बाहेरून', value: 'edge' },
+          { label: 'मध्यभागी', value: 'center' }
+        ]
+      },
+      // Hindi patterns
+      { 
+        pattern: /उड़ते\s*(हैं|है)\s*(या|अथवा)\s*चलते/i,
+        options: [
+          { label: 'कीड़े उड़ते हैं', value: 'flying' },
+          { label: 'कीड़े चलते / रेंगते हैं', value: 'crawling' }
+        ]
+      }
+    ];
+    
+    for (const { pattern, options } of optionPatterns) {
+      if (pattern.test(content)) {
+        console.log(`[ClarificationUI] Parsed options from content pattern for message ${message.id}`);
+        return {
+          question: content,
+          options,
+          selectionType: 'SINGLE_CHOICE' as const
+        };
+      }
+    }
+    
+    return null;
+  }, [hasClarificationOptions, message.clarificationOptions, message.content, message.id]);
+  
+  // ✅ NEW: Check for Diagnostic Escalation state
+  const hasDiagnosticEscalation = message.orchestratorType === 'DIAGNOSTIC_ESCALATION' && message.diagnosticEscalationData;
   
   // ✅ Check if this is a targeted solution (user already selected suggestion type)
   const isTargetedSolution = message.messageType === 'targeted_solution' && message.suggestionType;
@@ -196,8 +437,10 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
     !isTargetedSolution &&
     !isCropMismatch;
   
-  // ✅ Check if content is a placeholder that should be hidden
-  const isPlaceholderContent = message.content.includes('[📷') || 
+  // ✅ FIXED: Only hide placeholder for USER messages, not assistant responses
+  // Assistant responses should ALWAYS be shown even if they contain these strings
+  const isPlaceholderContent = isUser && (
+    message.content.includes('[📷') || 
     message.content.includes('[🎥') || 
     message.content === 'Analysis complete' ||
     message.content.includes('uploaded for analysis') ||
@@ -206,7 +449,12 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
     message.content.includes('वीडियो विश्लेषण') ||
     message.content.includes('फोटो विश्लेषणासाठी') ||
     message.content.includes('Photo for analysis') ||
-    message.content.includes('Video for analysis');
+    message.content.includes('Video for analysis')
+  );
+  
+  // ✅ NEW: Check if assistant response is empty/error - show fallback
+  const isEmptyAssistantResponse = !isUser && (!message.content || message.content.trim().length < 10) && 
+    !hasAnalysisResult && !hasStructuredCards && !hasDecisionBrainResponse;
   
   return (
     <motion.div
@@ -245,25 +493,117 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
         isUser && "flex flex-col items-end"
       )}>
         <motion.div
-          whileHover={{ scale: 1.01 }}
+          whileHover={{ scale: 1.01, y: -1 }}
+          whileTap={{ scale: 0.99 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
           className={cn(
-            "relative rounded-2xl backdrop-blur-xl",
+            "relative",
             "transition-all duration-300",
             isUser
-              ? `bg-gradient-to-br ${userGradient} rounded-tr-sm text-primary-foreground shadow-lg px-4 py-3`
-              : "bg-card/80 border border-border/50 rounded-tl-sm shadow-chat-ai p-0 overflow-hidden"
+              ? cn(
+                  // Modern 2030 glassmorphism user bubble with semantic tokens
+                  "rounded-2xl rounded-tr-md",
+                  "bg-gradient-to-br", userGradient,
+                  "text-primary-foreground",
+                  // Glassmorphism border with semantic tokens
+                  "border border-primary-foreground/20",
+                  // Backdrop blur for glass effect
+                  "backdrop-blur-md",
+                  userGlow,
+                  "px-4 py-3",
+                  // Modern glass shine overlay
+                  "before:absolute before:inset-0 before:rounded-2xl before:rounded-tr-md",
+                  "before:bg-gradient-to-t before:from-transparent before:via-primary-foreground/5 before:to-primary-foreground/15",
+                  "before:pointer-events-none",
+                  // Subtle inner shadow for depth
+                  "after:absolute after:inset-0 after:rounded-2xl after:rounded-tr-md",
+                  "after:shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)]",
+                  "after:pointer-events-none"
+                )
+              : cn(
+                  // AI message bubble with semantic tokens
+                  "bg-card/95 backdrop-blur-sm",
+                  "border border-border/50",
+                  "rounded-2xl rounded-tl-md",
+                  "shadow-lg shadow-foreground/5",
+                  "p-0 overflow-hidden"
+                )
           )}
         >
+          {/* User bubble glass highlight band */}
+          {isUser && (
+            <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-primary-foreground/20 via-primary-foreground/5 to-transparent rounded-t-2xl pointer-events-none" />
+          )}
+          
           {/* AI Shimmer Effect */}
           {!isUser && (
-            <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+            <div className="absolute inset-0 rounded-[20px] overflow-hidden pointer-events-none">
               <div className="absolute top-0 -left-full h-full w-1/2 bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-12 animate-[shimmer_3s_infinite]" />
             </div>
           )}
           
-          {/* ✅ NEW FLOW: Diagnosis Only + Suggestion Selector (awaiting user choice) */}
-          {awaitingSuggestion ? (
+          {/* ═══════════════════════════════════════════════════════════════════════════
+              2030-READY CLARIFICATION OPTIONS UI
+              Shows interactive buttons/checkboxes for Decision Brain clarification questions
+              ═══════════════════════════════════════════════════════════════════════════ */}
+          {/* ═══════════════════════════════════════════════════════════════════════════
+              DIAGNOSTIC ESCALATION UI - Expert-level intermediate state
+              Shows hypotheses, required inputs (photo CTA), and interim advice
+              ═══════════════════════════════════════════════════════════════════════════ */}
+          {hasDiagnosticEscalation && message.diagnosticEscalationData ? (
+            <div className="p-4">
+              <DiagnosticEscalationUI
+                escalationData={message.diagnosticEscalationData}
+                language={currentLanguage}
+                onTakePhoto={onTakePhoto || (() => console.warn('[DiagnosticEscalation] onTakePhoto not provided'))}
+                onSelectOption={(input, value) => {
+                  console.log('[DiagnosticEscalation] Input selected:', input.type, value);
+                  // TODO: Wire to orchestrator for follow-up handling
+                }}
+              />
+              
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-3 opacity-60 text-muted-foreground">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.traceId && (
+                  <span className="font-mono text-[10px] text-muted-foreground/50">
+                    {message.traceId.slice(-8)}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : clarificationData && onClarificationSelect ? (
+            <div className="p-4">
+              <ClarificationOptionsUI
+                question={clarificationData.question}
+                options={clarificationData.options}
+                selectionType={clarificationData.selectionType}
+                language={currentLanguage}
+                onSelect={onClarificationSelect}
+                onTakePhoto={onTakePhoto}
+              />
+              
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-3 opacity-60 text-muted-foreground">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.traceId && (
+                  <span className="font-mono text-[10px] text-muted-foreground/50">
+                    {message.traceId.slice(-8)}
+                  </span>
+                )}
+              </div>
+            </div>
+          ) : awaitingSuggestion ? (
             <>
               {/* Diagnosis Only Card (no recommendations) */}
               <div className="p-3">
@@ -335,9 +675,50 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 </span>
               </div>
             </>
+          ) : hasCanonicalAdvisory ? (
+            <>
+              {/* Primary: Translated farmer-friendly narration */}
+              {message.content && message.content.length > 20 && (
+                <div className="px-3 py-2 text-sm text-foreground leading-relaxed whitespace-pre-wrap">
+                  {message.content}
+                </div>
+              )}
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-1 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.analytics?.responseTime && (
+                  <span className="flex items-center gap-1 text-success">
+                    ⚡ {message.analytics.responseTime}ms
+                  </span>
+                )}
+              </div>
+            </>
+          ) : hasDecisionBrainResponse ? (
+            <>
+              <DecisionBrainCards response={message.decisionBrainResponse!} />
+              {/* Timestamp */}
+              <div className="flex items-center justify-between text-xs mt-2 opacity-60 text-muted-foreground px-3 pb-2.5">
+                <span>
+                  {new Date(message.timestamp).toLocaleTimeString([], { 
+                    hour: '2-digit', 
+                    minute: '2-digit' 
+                  })}
+                </span>
+                {message.analytics?.responseTime && (
+                  <span className="flex items-center gap-1 text-success">
+                    ⚡ {message.analytics.responseTime}ms
+                  </span>
+                )}
+              </div>
+            </>
           ) : hasStructuredCards ? (
             <>
-              <div className="space-y-2">
+              <div className="space-y-2 p-3">
                 {message.structuredResponse!.cards.map((card, index) => (
                   <ColorCodedCard key={card.id} card={card} index={index} />
                 ))}
@@ -457,7 +838,8 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 >
                   {isUser ? (
                     <span className="text-sm md:text-base leading-relaxed whitespace-pre-wrap break-words">
-                      {message.content}
+                      {/* CRITICAL FIX: Clean user messages - remove [obs_keys:...] patterns and deduplicate */}
+                      {cleanUserMessageContent(message.content)}
                     </span>
                   ) : (
                     formatAIResponse(message.content)
@@ -465,7 +847,14 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                 </div>
               )}
               
-              {/* Timestamp & Token Usage */}
+              {/* ✅ NEW: Data Audit Cards for debugging - shows what data was found/missing */}
+              {hasDataAudit && message.dataAudit && (
+                <div className="px-3 pb-2">
+                  <DataAuditCards audit={message.dataAudit} />
+                </div>
+              )}
+              
+              {/* Timestamp, Token Usage & Trace ID */}
               <div className={cn(
                 "flex items-center justify-between text-xs mt-1 opacity-60",
                 isUser ? "text-primary-foreground/80 px-4 pb-3" : "text-muted-foreground px-3 pb-2.5"
@@ -476,12 +865,28 @@ export function ModernChatUI({ message, onCopy, onLike, onShare, onPlay, onSugge
                     minute: '2-digit' 
                   })}
                 </span>
-                {!isUser && message.analytics?.tokensUsed?.total && (
-                  <span className="flex items-center gap-1 text-primary/70">
-                    <Zap className="h-3 w-3" />
-                    {message.analytics.tokensUsed.total.toLocaleString()} tokens
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {/* PHASE 5: Trace ID display for debugging */}
+                  {!isUser && message.traceId && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(message.traceId || '');
+                        console.log('📋 Trace ID copied:', message.traceId);
+                      }}
+                      className="flex items-center gap-1 text-muted-foreground/60 hover:text-primary/70 transition-colors cursor-pointer"
+                      title={`Copy trace ID: ${message.traceId}`}
+                    >
+                      <span className="font-mono text-[10px]">{message.traceId.substring(0, 16)}...</span>
+                      <Copy className="h-2.5 w-2.5" />
+                    </button>
+                  )}
+                  {!isUser && message.analytics?.tokensUsed?.total && (
+                    <span className="flex items-center gap-1 text-primary/70">
+                      <Zap className="h-3 w-3" />
+                      {message.analytics.tokensUsed.total.toLocaleString()} tokens
+                    </span>
+                  )}
+                </div>
               </div>
             </>
           )}

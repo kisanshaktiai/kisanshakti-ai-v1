@@ -40,6 +40,7 @@ self.addEventListener('message', (event) => {
 });
 
 // API calls - Network first with short cache
+// IMPORTANT: Do NOT cache status 0 (opaque responses) - they can cause "Failed to fetch" on replay
 registerRoute(
   ({ url }) => url.hostname.includes('supabase.co') && url.pathname.includes('/rest/'),
   new NetworkFirst({
@@ -51,7 +52,7 @@ registerRoute(
         maxAgeSeconds: 5 * 60, // 5 minutes
       }),
       new CacheableResponsePlugin({
-        statuses: [0, 200],
+        statuses: [200],
       }),
     ],
   })

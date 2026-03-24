@@ -88,10 +88,10 @@ export const defaultFeatures: FeatureItem[] = [
     category: 'tools'
   },
   {
-    id: 'social',
+    id: 'community',
     icon: Users,
     labelKey: 'fab.community',
-    path: '/app/social',
+    path: '/app/community',
     enabled: true, // Enabled by default
     order: 6,
     category: 'community'

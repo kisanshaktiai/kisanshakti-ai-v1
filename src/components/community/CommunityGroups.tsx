@@ -45,7 +45,7 @@ const getGroupName = (group: CropGroup, language: string): string => {
 };
 
 export const CommunityGroups: React.FC<CommunityGroupsProps> = ({ viewLanguage, onModalStateChange }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);

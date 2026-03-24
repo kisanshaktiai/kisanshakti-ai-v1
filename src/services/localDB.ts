@@ -150,6 +150,8 @@ export interface LandData {
   nitrogen_kg_per_ha: number | null;
   phosphorus_kg_per_ha: number | null;
   potassium_kg_per_ha: number | null;
+  soil_confidence_level: string | null;
+  soil_data_source: string | null;
   
   // Irrigation and water
   water_source: string | null;
@@ -166,6 +168,10 @@ export interface LandData {
   harvest_date: string | null;
   expected_harvest_date: string | null;
   
+  // Moisture
+  current_moisture_status: string | null;
+  last_moisture_update: string | null;
+  
   // Previous crop
   previous_crop: string | null;
   previous_crop_id: string | null;
@@ -177,6 +183,8 @@ export interface LandData {
   last_ndvi_calculation: string | null;
   last_ndvi_value: number | null;
   ndvi_thumbnail_url: string | null;
+  ndvi_geotiff_url: string | null;
+  ndvi_status: string | null;
   last_processed_at: string | null;
   
   // Tile mapping
@@ -339,6 +347,22 @@ export interface CropScheduleData {
   input_soil_data: any;
   input_weather_data: any;
   
+  // Intercrop data
+  backdated_consent: boolean | null;
+  backdated_consent_at: string | null;
+  intercrop_name: string | null;
+  intercrop_variety: string | null;
+  intercrop_sowing_date: string | null;
+  intercrop_area_percent: number | null;
+  intercrop_2_name: string | null;
+  intercrop_2_variety: string | null;
+  intercrop_2_sowing_date: string | null;
+  intercrop_2_area_percent: number | null;
+  intercrop_3_name: string | null;
+  intercrop_3_variety: string | null;
+  intercrop_3_sowing_date: string | null;
+  intercrop_3_area_percent: number | null;
+  
   // Additional metadata
   metadata: any;
   
@@ -498,6 +522,7 @@ export interface AIChatMessageData {
   // Feedback
   feedback_rating: number | null;
   feedback_text: string | null;
+  feedback_timestamp: string | null;
   
   // Attachments
   attachments: any;
@@ -519,8 +544,29 @@ export interface AIChatMessageData {
   ip_address: any;
   partition_key: number | null;
   
-  // Analysis
+  // Analysis & Intent Classification
   word_count: number | null;
+  inferred_intent: string | null;
+  intent_confidence: number | null;
+  
+  // Training & Quality fields (Supabase schema)
+  is_training_candidate: boolean | null;
+  human_verified: boolean | null;
+  correction_notes: string | null;
+  conversation_quality_score: number | null;
+  domain_tags: string[] | null;
+  complexity_level: string | null;
+  conversation_turn_number: number | null;
+  off_topic: boolean | null;
+  training_processed: boolean | null;
+  preprocessed_content: string | null;
+  excluded_reason: string | null;
+  agricultural_accuracy: number | null;
+  
+  // Decision Brain fields
+  decision_brain_source: boolean | null;
+  actions_returned: any;
+  actions_filtered_out: any;
   
   // Metadata
   metadata: any;
@@ -545,6 +591,8 @@ export interface CropData {
   
   // Localization
   label_local: string | null;
+  label_hi: string | null;
+  label_mr: string | null;
   local_name: string | null;
   
   // Visual
@@ -781,8 +829,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 8; // Bumped for scheduleTasks index updates (2025-12-09)
-const SCHEMA_VERSION = 6; // Bumped for full schedule_tasks sync support
+const DB_VERSION = 10; // Bumped for land/schedule/crop schema parity + crops/alerts sync (2026-03-11)
+const SCHEMA_VERSION = 8; // Bumped for full offline schema parity with Supabase
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -1244,15 +1292,41 @@ class LocalDatabase {
 
   async getChatSessionsByFarmer(farmerId: string): Promise<AIChatSessionData[]> {
     if (!this.db) await this.initialize();
-    return await this.db!.getAllFromIndex('aiChatSessions', 'by-farmer', farmerId);
+    
+    // CRITICAL: Also filter by tenant_id for multi-tenant isolation
+    const tenantId = tenantIsolationService.getTenantId();
+    const allSessions = await this.db!.getAllFromIndex('aiChatSessions', 'by-farmer', farmerId);
+    
+    if (tenantId) {
+      return allSessions.filter(s => s.tenant_id === tenantId);
+    }
+    return allSessions;
   }
 
-  async getChatSessionsByLand(landId: string | null): Promise<AIChatSessionData[]> {
+  async getChatSessionsByLand(landId: string | null, farmerId?: string): Promise<AIChatSessionData[]> {
     if (!this.db) await this.initialize();
+    
+    // CRITICAL FIX: Get farmer and tenant context for proper isolation
+    const currentFarmerId = farmerId || tenantIsolationService.getUserId();
+    const tenantId = tenantIsolationService.getTenantId();
+    
+    let sessions: AIChatSessionData[];
+    
     if (landId) {
-      return await this.db!.getAllFromIndex('aiChatSessions', 'by-land', landId);
+      sessions = await this.db!.getAllFromIndex('aiChatSessions', 'by-land', landId);
+    } else {
+      // CRITICAL FIX: For general sessions (landId === null), we cannot use index lookup
+      // because IndexedDB doesn't index null values. Instead, filter all sessions manually.
+      const allSessions = await this.db!.getAll('aiChatSessions');
+      sessions = allSessions.filter(s => s.land_id === null || s.land_id === undefined);
     }
-    return [];
+    
+    // CRITICAL: Apply tenant and farmer isolation
+    return sessions.filter(s => {
+      const tenantMatch = !tenantId || s.tenant_id === tenantId;
+      const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
+      return tenantMatch && farmerMatch;
+    });
   }
 
   async saveChatMessage(message: Omit<AIChatMessageData, 'lastModified' | 'syncStatus'>): Promise<void> {
@@ -1266,23 +1340,101 @@ class LocalDatabase {
     await this.updatePendingCount();
   }
 
-  async getChatMessages(landId?: string | null): Promise<AIChatMessageData[]> {
+  async getChatMessages(landId?: string | null, farmerId?: string, tenantIdParam?: string): Promise<AIChatMessageData[]> {
     if (!this.db) await this.initialize();
     
-    // First, get sessions for this land (or general if landId is null)
+    // CRITICAL FIX: Get farmer and tenant IDs from context if not provided
+    const currentFarmerId = farmerId || tenantIsolationService.getUserId();
+    const currentTenantId = tenantIdParam || tenantIsolationService.getTenantId();
+    
+    if (!currentFarmerId) {
+      console.warn('⚠️ [LocalDB] getChatMessages called without farmer context');
+    }
+    if (!currentTenantId) {
+      console.warn('⚠️ [LocalDB] getChatMessages called without tenant context');
+    }
+    
+    // =========================================================================
+    // CRITICAL FIX (2026-01-14): Multi-tenant isolation in message retrieval
+    // All messages MUST be filtered by tenant_id AND farmer_id
+    // =========================================================================
+    
+    // Get all messages and apply strict tenant + farmer isolation
+    const allMessages = await this.db!.getAll('aiChatMessages');
+    const isolatedMessages = allMessages.filter(m => {
+      const tenantMatch = !currentTenantId || m.tenant_id === currentTenantId;
+      const farmerMatch = !currentFarmerId || m.farmer_id === currentFarmerId;
+      return tenantMatch && farmerMatch;
+    });
+    
+    if (isolatedMessages.length === 0) {
+      console.log(`📱 [LocalDB] No messages found for tenant ${currentTenantId}, farmer ${currentFarmerId} in IndexedDB`);
+      return [];
+    }
+    
+    // Get sessions to determine land association - also with tenant/farmer isolation
     const allSessions = await this.db!.getAll('aiChatSessions');
     const relevantSessions = allSessions.filter(s => {
+      const tenantMatch = !currentTenantId || s.tenant_id === currentTenantId;
+      const farmerMatch = !currentFarmerId || s.farmer_id === currentFarmerId;
+      
+      if (!tenantMatch || !farmerMatch) return false;
+      
       if (landId === null || landId === undefined) {
+        // General chat: sessions without land_id
         return s.land_id === null || s.land_id === undefined;
       }
+      // Land-specific: sessions with matching land_id
       return s.land_id === landId;
     });
     
     const sessionIds = new Set(relevantSessions.map(s => s.id));
     
-    // Get all messages and filter by session
-    const allMessages = await this.db!.getAll('aiChatMessages');
-    return allMessages.filter(m => sessionIds.has(m.session_id));
+    // Filter messages by session, with fallback for messages that may have missing session links
+    const sessionFilteredMessages = isolatedMessages.filter(m => sessionIds.has(m.session_id));
+    
+    // CRITICAL FIX: SMART CONTENT-BASED FILTERING
+    const filteredMessages = sessionFilteredMessages.filter(msg => {
+      // Filter 1: Skip empty content messages
+      if (!msg.content || msg.content.trim().length === 0) {
+        return false;
+      }
+      
+      const content = msg.content.trim();
+      
+      // Filter 2: Skip ACTUAL system prompts (NOT farmer messages)
+      // These are internal prompts sent TO the LLM, not real farmer questions
+      const isSystemPrompt = 
+        content.startsWith('Based on the ') ||
+        content.startsWith('Based on ') && content.includes('provide') ||
+        content.startsWith('🧠 DECISION BRAIN OUTPUT') ||
+        content.startsWith('🧠') ||
+        content.startsWith('[PREVIOUS_RECOMMENDATIONS') ||
+        content.startsWith('Analyze this') ||
+        content.startsWith('Provide ') ||
+        content.includes('DO NOT CHANGE THE FORMAT') ||
+        content.includes('DECISION BRAIN OUTPUT');
+      
+      if (msg.role === 'user' && isSystemPrompt) {
+        return false;
+      }
+      
+      // Filter 3: Skip system acknowledgment messages
+      if (content === 'Response generated' || content === 'Processing...') {
+        return false;
+      }
+      
+      // Filter 4: Skip minimal decision brain responses (< 20 chars)
+      if (msg.role === 'assistant' && msg.decision_brain_source === true && content.length < 20) {
+        return false;
+      }
+      
+      // KEEP: All other messages including real farmer questions
+      return true;
+    });
+    
+    console.log(`📱 [LocalDB] getChatMessages: Found ${filteredMessages.length}/${sessionFilteredMessages.length} displayable messages for tenant ${currentTenantId}, farmer ${currentFarmerId} and land ${landId || 'general'}`);
+    return filteredMessages;
   }
 
   async getChatMessagesBySession(sessionId: string): Promise<AIChatMessageData[]> {

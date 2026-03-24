@@ -23,13 +23,14 @@ const MOCK_TRENDING: TrendingTopic[] = [
   { id: '6', tag: 'PM_किसान_योजना', translatedTag: 'PM Kisan Scheme', postCount: 432, participantCount: 123, isHot: false, category: 'scheme' },
 ];
 
+// Semantic color tokens from design system
 const CATEGORY_COLORS: Record<string, string> = {
-  pest: 'bg-red-500/10 text-red-600 border-red-500/20',
-  crop: 'bg-green-500/10 text-green-600 border-green-500/20',
-  weather: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
-  market: 'bg-amber-500/10 text-amber-600 border-amber-500/20',
-  scheme: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
-  technique: 'bg-teal-500/10 text-teal-600 border-teal-500/20',
+  pest: 'bg-destructive/10 text-destructive border-destructive/20',
+  crop: 'bg-success/10 text-success border-success/20',
+  weather: 'bg-info/10 text-info border-info/20',
+  market: 'bg-warning/10 text-warning border-warning/20',
+  scheme: 'bg-secondary/10 text-secondary border-secondary/20',
+  technique: 'bg-accent/10 text-accent border-accent/20',
 };
 
 interface TrendingTopicsProps {
@@ -37,7 +38,7 @@ interface TrendingTopicsProps {
 }
 
 export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
 
   return (
     <div className="px-4 py-2">
@@ -48,10 +49,10 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
         </div>
         <div>
           <h2 className="font-semibold text-foreground">
-            {t('social.trending.title', 'Trending Topics')}
+            {t('social.trending.title')}
           </h2>
           <p className="text-xs text-muted-foreground">
-            {t('social.trending.subtitle', 'What farmers are discussing')}
+            {t('social.trending.subtitle')}
           </p>
         </div>
       </div>
@@ -77,7 +78,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
                 <div className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm",
                   index < 3 
-                    ? "bg-gradient-to-br from-amber-400 to-amber-600 text-white" 
+                    ? "bg-gradient-to-br from-warning to-warning/80 text-warning-foreground"
                     : "bg-secondary text-muted-foreground"
                 )}>
                   {index + 1}
@@ -90,9 +91,9 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
                       #{topic.tag}
                     </span>
                     {topic.isHot && (
-                      <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-orange-500/10 rounded-full">
-                        <Flame className="w-3 h-3 text-orange-500" />
-                        <span className="text-[10px] text-orange-500 font-medium">Hot</span>
+                      <span className="flex items-center gap-0.5 px-1.5 py-0.5 bg-warning/10 rounded-full">
+                        <Flame className="w-3 h-3 text-warning" />
+                        <span className="text-[10px] text-warning font-medium">Hot</span>
                       </span>
                     )}
                   </div>
@@ -135,7 +136,7 @@ export const TrendingTopics: React.FC<TrendingTopicsProps> = ({ viewLanguage }) 
         whileTap={{ scale: 0.98 }}
         className="w-full mt-4 py-3 text-center text-sm text-primary font-medium hover:bg-primary/5 rounded-xl transition-colors"
       >
-        {t('social.trending.view_all', 'View all trending topics')} →
+        {t('social.trending.view_all')} →
       </motion.button>
     </div>
   );

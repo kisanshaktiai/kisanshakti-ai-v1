@@ -35,7 +35,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   onClose,
   defaultLanguage
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [selectedLanguage, setSelectedLanguage] = useState(defaultLanguage);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -85,7 +85,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      toast.error(t('social.post.recording_error', 'Unable to access microphone'));
+      toast.error(t('social.post.recording_error'));
     }
   };
 
@@ -113,10 +113,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       if (error) throw error;
       if (data?.text) {
         setContent(prev => prev ? `${prev}\n\n${data.text}` : data.text);
-        toast.success(t('social.post.transcribed', 'Voice transcribed!'));
+        toast.success(t('social.post.transcribed'));
       }
     } catch (err) {
-      toast.error(t('social.post.transcription_error', 'Failed to transcribe voice'));
+      toast.error(t('social.post.transcription_error'));
     } finally {
       setIsTranscribing(false);
     }
@@ -124,7 +124,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
   const handleSubmit = async () => {
     if (!content.trim()) {
-      toast.error(t('social.post.empty_error', 'Please write something'));
+      toast.error(t('social.post.empty_error'));
       return;
     }
 
@@ -169,14 +169,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full">
                 <X className="w-5 h-5" />
               </Button>
-              <h2 className="font-semibold text-foreground">{t('social.post.create', 'Create Post')}</h2>
+              <h2 className="font-semibold text-foreground">{t('social.post.create')}</h2>
               <Button
                 onClick={handleSubmit}
                 disabled={!content.trim() || createPostMutation.isPending}
                 className="rounded-full gap-2"
               >
                 {createPostMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                {t('social.post.publish', 'Post')}
+                {t('social.post.publish')}
               </Button>
             </div>
 
@@ -204,14 +204,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               <Textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={t('social.post.whats_on_mind', "Share your farming experience...")}
+                placeholder={t('social.post.whats_on_mind')}
                 className="min-h-[120px] text-lg border-none bg-transparent resize-none focus-visible:ring-0 p-0"
               />
 
               {isTranscribing && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 mt-3 p-3 bg-primary/10 rounded-xl">
                   <Sparkles className="w-4 h-4 text-primary animate-spin" />
-                  <span className="text-sm text-primary">{t('social.post.transcribing', 'Converting voice to text...')}</span>
+                  <span className="text-sm text-primary">{t('social.post.converting')}</span>
                 </motion.div>
               )}
 
@@ -228,7 +228,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-3 bg-secondary/50 rounded-xl flex items-center gap-3">
                   <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center"><Mic className="w-5 h-5 text-primary" /></div>
                   <div className="flex-1">
-                    <p className="text-sm font-medium">{t('social.post.voice_attached', 'Voice note attached')}</p>
+                    <p className="text-sm font-medium">{t('social.post.voice')}</p>
                   </div>
                   <button onClick={() => setVoiceNoteUrl(null)} className="p-1.5 hover:bg-secondary rounded-full"><X className="w-4 h-4 text-muted-foreground" /></button>
                 </motion.div>
@@ -253,7 +253,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 <div className="text-sm text-muted-foreground">{content.length}/2000</div>
               </div>
               <p className="text-center text-xs text-muted-foreground mt-3">
-                {isRecording ? t('social.post.recording_hint', 'Tap to stop') : t('social.post.voice_hint', 'Tap mic to speak')}
+                {isRecording ? t('social.post.release_to_stop') : t('social.post.hold_mic')}
               </p>
             </div>
           </motion.div>

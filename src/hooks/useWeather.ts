@@ -93,7 +93,7 @@ function roundCoordinates(lat: number, lon: number): { lat: number; lon: number 
   };
 }
 
-export const useWeather = (location?: { lat: number; lon: number }) => {
+export const useWeather = (location?: { lat: number; lon: number }, landId?: string) => {
   // Use centralized weather store for single source of truth
   const {
     currentWeather,
@@ -160,9 +160,10 @@ export const useWeather = (location?: { lat: number; lon: number }) => {
       
       const { data, error: fetchError } = await weatherClient.functions.invoke('weather', {
         body: {
-          action: 'all', // NEW: Get everything at once
+          action: 'all',
           lat: rounded.lat,
           lon: rounded.lon,
+          ...(landId ? { landId } : {}), // Pass landId for land-specific weather intelligence
         },
       });
 

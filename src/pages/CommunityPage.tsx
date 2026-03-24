@@ -19,7 +19,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { Bookmark } from 'lucide-react';
 
 const CommunityPage: React.FC = () => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const { currentLanguage } = useLanguageStore();
   const [activeTab, setActiveTab] = useState<CommunityTab>('feed');
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
@@ -163,10 +163,10 @@ const CommunityPage: React.FC = () => {
                     <Bookmark className="w-10 h-10 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">
-                    {t('social.empty.saved')}
+                    {t('empty.saved')}
                   </h3>
                   <p className="text-muted-foreground text-sm">
-                    {t('social.empty.saved_hint')}
+                    {t('empty.saved_hint')}
                   </p>
                 </div>
               )}

@@ -57,7 +57,7 @@ const quickActions: QuickAction[] = [
     icon: <Users className="h-5 w-5" />,
     label: { en: 'Community', hi: 'समुदाय', mr: 'समुदाय', ta: 'சமூகம்', pa: 'ਕਮਿਊਨਿਟੀ' },
     command: { en: 'open community', hi: 'समुदाय खोलो', mr: 'समुदाय उघडा', ta: 'சமூகத்தை திற', pa: 'ਕਮਿਊਨਿਟੀ ਖੋਲ੍ਹੋ' },
-    route: '/app/social'
+    route: '/app/community'
   }
 ];
 

@@ -29,7 +29,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
   group,
   language,
 }) => {
-  const { t } = useTranslation('social');
+  const { t } = useTranslation();
   const { user } = useAuthStore();
   const [inputValue, setInputValue] = useState('');
   const [isRecording, setIsRecording] = useState(false);
@@ -90,7 +90,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
       mediaRecorder.start();
       setIsRecording(true);
     } catch (err) {
-      toast.error(t('social.post.recording_error', 'Unable to access microphone'));
+      toast.error(t('social.post.recording_error'));
     }
   };
 
@@ -118,10 +118,10 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
       if (error) throw error;
       if (data?.text) {
         setInputValue(prev => prev ? `${prev} ${data.text}` : data.text);
-        toast.success(t('social.post.transcribed', 'Voice converted to text!'));
+        toast.success(t('social.post.transcribed'));
       }
     } catch (err) {
-      toast.error(t('social.post.transcription_error', 'Failed to convert voice'));
+      toast.error(t('social.post.transcription_error'));
     } finally {
       setIsTranscribing(false);
     }
@@ -141,8 +141,8 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
 
   const getSenderName = (message: GroupMessage) => {
     if (message.message_type === 'system') return 'System';
-    if (isOwnMessage(message)) return t('social.groups.you', 'You');
-    return message.farmer?.farmer_name || t('social.groups.anonymous', 'Anonymous Farmer');
+    if (isOwnMessage(message)) return t('social.groups.you');
+    return message.farmer?.farmer_name || t('social.groups.anonymous');
   };
 
   return (
@@ -199,7 +199,7 @@ export const GroupChatSheet: React.FC<GroupChatSheetProps> = ({
               <div className="text-center py-12">
                 <div className="text-4xl mb-3">💬</div>
                 <p className="text-muted-foreground text-sm">
-                  {t('social.groups.no_messages', 'No messages yet. Start the conversation!')}
+                  {t('social.groups.no_messages')}
                 </p>
               </div>
             ) : (

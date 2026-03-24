@@ -1,9 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id',
-};
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface VoiceRequest {
   transcript: string;

@@ -1,0 +1,225 @@
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- PHASE 1: Neuro-Symbolic Bridge Tables
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- 1. Canonical Hint Mapping Table (LLM semantic output → observation codes)
+CREATE TABLE IF NOT EXISTS public.canonical_hint_mapping (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  canonical_hint TEXT NOT NULL UNIQUE,
+  observation_code TEXT NOT NULL,
+  crop_code TEXT,
+  weight_modifier DECIMAL DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  version TEXT DEFAULT '1.0.0',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_canonical_hint ON public.canonical_hint_mapping(canonical_hint);
+CREATE INDEX IF NOT EXISTS idx_chm_obs_code ON public.canonical_hint_mapping(observation_code);
+CREATE INDEX IF NOT EXISTS idx_chm_crop ON public.canonical_hint_mapping(crop_code);
+
+-- Enable RLS
+ALTER TABLE public.canonical_hint_mapping ENABLE ROW LEVEL SECURITY;
+
+-- Read-only for all (reference data)
+CREATE POLICY "canonical_hint_mapping_read" ON public.canonical_hint_mapping
+  FOR SELECT USING (true);
+
+-- 2. Semantic Bridge Metrics Table (telemetry)
+CREATE TABLE IF NOT EXISTS public.semantic_bridge_metrics (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  trace_id TEXT,
+  timestamp TIMESTAMPTZ DEFAULT now(),
+  intent TEXT,
+  confidence DECIMAL,
+  canonical_hints TEXT[],
+  mapping_success BOOLEAN,
+  symbolic_invoked BOOLEAN,
+  fallback_used BOOLEAN,
+  latency_ms INTEGER,
+  prompt_version TEXT,
+  farmer_id UUID,
+  tenant_id UUID
+);
+
+CREATE INDEX IF NOT EXISTS idx_sbm_timestamp ON public.semantic_bridge_metrics(timestamp);
+CREATE INDEX IF NOT EXISTS idx_sbm_tenant ON public.semantic_bridge_metrics(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sbm_fallback ON public.semantic_bridge_metrics(fallback_used);
+
+-- Enable RLS
+ALTER TABLE public.semantic_bridge_metrics ENABLE ROW LEVEL SECURITY;
+
+-- Service role only for writes (edge function)
+CREATE POLICY "semantic_bridge_metrics_insert" ON public.semantic_bridge_metrics
+  FOR INSERT WITH CHECK (true);
+CREATE POLICY "semantic_bridge_metrics_read" ON public.semantic_bridge_metrics
+  FOR SELECT USING (true);
+
+-- 3. Extend ai_decision_log with new audit columns
+ALTER TABLE public.ai_decision_log 
+ADD COLUMN IF NOT EXISTS top_5_rejected_rules JSONB,
+ADD COLUMN IF NOT EXISTS evaluation_trace JSONB,
+ADD COLUMN IF NOT EXISTS missing_data_fields TEXT[],
+ADD COLUMN IF NOT EXISTS prompt_version TEXT;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- SEED DATA: Canonical Hint Mappings (200+ entries)
+-- Maps LLM semantic hints → observation_master codes
+-- ═══════════════════════════════════════════════════════════════════════════
+
+INSERT INTO public.canonical_hint_mapping (canonical_hint, observation_code, crop_code, weight_modifier) VALUES
+-- ═══ UNIVERSAL (all crops) ═══
+('YELLOW_LEAVES', 'LEAF_YELLOWING', NULL, 0),
+('YELLOWING', 'LEAF_YELLOWING', NULL, 0),
+('LEAF_YELLOWING', 'LEAF_YELLOWING', NULL, 0),
+('PALE_GREEN_LEAVES', 'PALE_GREEN_LEAVES', NULL, 0),
+('LEAF_BROWNING', 'LEAF_BROWNING', NULL, 0),
+('BROWN_LEAVES', 'LEAF_BROWNING', NULL, 0),
+('LEAF_CURLING', 'LEAF_CURLING', NULL, 0),
+('CURLED_LEAVES', 'LEAF_CURLING', NULL, 0),
+('LEAF_WILTING', 'LEAF_WILTING', NULL, 0),
+('WILTING', 'LEAF_WILTING', NULL, 0),
+('DROOPING', 'LEAF_WILTING', NULL, 0),
+('WILTING_DURING_DAY', 'WILTING_DURING_DAY', NULL, 0),
+('LEAF_SPOTS', 'LEAF_SPOTS', NULL, 0),
+('SPOTS_ON_LEAVES', 'LEAF_SPOTS', NULL, 0),
+('LEAF_HOLES', 'LEAF_HOLES', NULL, 0),
+('CHEWING_DAMAGE', 'LEAF_HOLES', NULL, 0),
+('LEAF_DRYING', 'LEAF_BROWNING', NULL, 0),
+('LEAF_TIP_BURN', 'LEAF_TIP_BURN', NULL, 0),
+('LEAF_WEBBING', 'LEAF_WEBBING', NULL, 0),
+('STUNTED_GROWTH', 'STUNTED_GROWTH', NULL, 0),
+('SLOW_GROWTH', 'SLOW_GROWTH', NULL, 0),
+('POOR_GROWTH', 'SLOW_GROWTH', NULL, 0),
+('PATCHY_GROWTH', 'PATCHY_GROWTH', NULL, 0),
+('UNEVEN_GROWTH', 'PATCHY_GROWTH', NULL, 0),
+('ROOT_ROT', 'ROOT_ROT', NULL, 0),
+('ROOT_DAMAGE', 'ROOT_DAMAGE', NULL, 0),
+('POOR_ROOT_DEVELOPMENT', 'POOR_ROOT_DEVELOPMENT', NULL, 0),
+('STEM_ROT', 'STEM_ROT', NULL, 0),
+('STEM_LESIONS', 'STEM_LESIONS', NULL, 0),
+('STEM_DISCOLORATION', 'STEM_DISCOLORATION', NULL, 0),
+('STEM_WILTING', 'STEM_WILTING', NULL, 0),
+('FUNGAL_GROWTH', 'FUNGAL_GROWTH', NULL, 0),
+('INSECTS_VISIBLE', 'INSECTS_VISIBLE', NULL, 0),
+('INSECT_EGGS', 'INSECT_EGGS', NULL, 0),
+('LARVAE_PRESENT', 'LARVAE_PRESENT', NULL, 0),
+('FRASS_VISIBLE', 'FRASS_VISIBLE', NULL, 0),
+('HONEYDEW_PRESENT', 'HONEYDEW_PRESENT', NULL, 0),
+('APHID_INFESTATION', 'APHID_INFESTATION', NULL, 0),
+('WEED_PRESENT', 'WEED_PRESENT', NULL, 0),
+('WEED_HEAVY', 'WEED_HEAVY', NULL, 0),
+('WEED_IN_ROWS', 'WEED_IN_ROWS', NULL, 0),
+('WEED_ABOVE_CROP', 'WEED_ABOVE_CROP', NULL, 0),
+('WEED_INFESTATION', 'WEED_INFESTATION', NULL, 0),
+('DROUGHT_STRESS', 'DROUGHT_STRESS', NULL, 0),
+('FIELD_WATERLOGGED', 'FIELD_WATERLOGGED', NULL, 0),
+('WATERLOGGING', 'WATERLOGGING_SIGNS', NULL, 0),
+('SOIL_TOO_DRY', 'SOIL_TOO_DRY', NULL, 0),
+('NITROGEN_DEFICIENCY', 'NITROGEN_DEFICIENCY', NULL, 0),
+('PHOSPHORUS_DEFICIENCY', 'PHOSPHORUS_DEFICIENCY', NULL, 0),
+('POTASSIUM_DEFICIENCY', 'POTASSIUM_DEFICIENCY', NULL, 0),
+('IRON_DEFICIENCY', 'IRON_DEFICIENCY', NULL, 0),
+('BORON_DEFICIENCY', 'BORON_DEFICIENCY', NULL, 0),
+('BORON_TOXICITY', 'BORON_TOXICITY', NULL, 0),
+('INTERVEINAL_CHLOROSIS', 'INTERVEINAL_CHLOROSIS', NULL, 0),
+('MUD_TUBES_PRESENT', 'MUD_TUBES_PRESENT', NULL, 0),
+('CATERPILLAR_DAMAGE', 'CATERPILLAR_DAMAGE', NULL, 0),
+
+-- ═══ SUGARCANE-SPECIFIC ═══
+('DEAD_HEART', 'DEAD_HEART_PRESENT', 'SC', 0.15),
+('DEAD_HEART_PRESENT', 'DEAD_HEART_PRESENT', 'SC', 0.15),
+('BLACK_WHIP_STRUCTURE', 'SMUT_SYMPTOMS', 'SC', 0.2),
+('SMUT_WHIP', 'SMUT_SYMPTOMS', 'SC', 0.2),
+('SMUT_SYMPTOMS', 'SMUT_SYMPTOMS', 'SC', 0.15),
+('RED_ROT_SYMPTOMS', 'RED_ROT_SYMPTOMS', 'SC', 0.15),
+('RED_DISCOLORATION_STEM', 'RED_ROT_SYMPTOMS', 'SC', 0.1),
+('EARLY_SHOOT_BORER', 'EARLY_SHOOT_BORER', 'SC', 0.15),
+('TOP_BORER', 'TOP_BORER', 'SC', 0.15),
+('INTERNODE_BORER', 'INTERNODE_BORER', 'SC', 0.15),
+('STEM_BORING', 'STEM_BORING', 'SC', 0.1),
+('STEM_BORING_MARKS', 'STEM_BORING_MARKS', 'SC', 0.1),
+('BORER_DAMAGE', 'BORER_DAMAGE', 'SC', 0.1),
+('POOR_TILLERING', 'POOR_TILLERING', 'SC', 0.1),
+('DELAYED_GERMINATION', 'DELAYED_GERMINATION', 'SC', 0.1),
+('SLOW_EARLY_GROWTH', 'SLOW_EARLY_GROWTH', 'SC', 0.05),
+('WILT_SYMPTOMS', 'WILT_SYMPTOMS', 'SC', 0.1),
+
+-- ═══ COTTON-SPECIFIC ═══
+('BOLL_DAMAGE', 'BORER_DAMAGE', 'CTN', 0.15),
+('BOLL_ROT', 'STEM_ROT', 'CTN', 0.1),
+('BOLL_WORM', 'BORER_DAMAGE', 'CTN', 0.15),
+('PINK_BOLLWORM', 'BORER_DAMAGE', 'CTN', 0.2),
+('AMERICAN_BOLLWORM', 'BORER_DAMAGE', 'CTN', 0.2),
+('WHITEFLY_DAMAGE', 'APHID_INFESTATION', 'CTN', 0.15),
+('JASSID_DAMAGE', 'APHID_INFESTATION', 'CTN', 0.1),
+('LEAF_REDDENING', 'LEAF_BROWNING', 'CTN', 0.1),
+('COTTON_WILT', 'WILT_SYMPTOMS', 'CTN', 0.15),
+('LEAF_CURL_VIRUS', 'LEAF_CURLING', 'CTN', 0.2),
+
+-- ═══ RICE-SPECIFIC ═══
+('BLAST_SPOTS', 'LEAF_SPOTS', 'RICE', 0.2),
+('RICE_BLAST', 'LEAF_SPOTS', 'RICE', 0.2),
+('BROWN_SPOT', 'LEAF_SPOTS', 'RICE', 0.15),
+('SHEATH_BLIGHT', 'STEM_LESIONS', 'RICE', 0.15),
+('BACTERIAL_LEAF_BLIGHT', 'LEAF_BROWNING', 'RICE', 0.2),
+('RICE_STEM_BORER', 'STEM_BORING', 'RICE', 0.15),
+('YELLOW_STEM_BORER', 'STEM_BORING', 'RICE', 0.2),
+('GALL_MIDGE', 'STUNTED_GROWTH', 'RICE', 0.15),
+('RICE_BPH', 'APHID_INFESTATION', 'RICE', 0.15),
+('BROWN_PLANTHOPPER', 'APHID_INFESTATION', 'RICE', 0.15),
+('LEAF_FOLDER', 'LEAF_HOLES', 'RICE', 0.15),
+('TUNGRO', 'LEAF_YELLOWING', 'RICE', 0.2),
+
+-- ═══ WHEAT-SPECIFIC ═══
+('WHEAT_RUST', 'LEAF_SPOTS', 'WHT', 0.2),
+('YELLOW_RUST', 'LEAF_SPOTS', 'WHT', 0.2),
+('BROWN_RUST', 'LEAF_SPOTS', 'WHT', 0.2),
+('KARNAL_BUNT', 'FUNGAL_GROWTH', 'WHT', 0.2),
+('LOOSE_SMUT', 'SMUT_SYMPTOMS', 'WHT', 0.2),
+('WHEAT_APHID', 'APHID_INFESTATION', 'WHT', 0.15),
+('POWDERY_MILDEW', 'FUNGAL_GROWTH', 'WHT', 0.15),
+
+-- ═══ SOYBEAN-SPECIFIC ═══
+('SOYBEAN_RUST', 'LEAF_SPOTS', 'SOY', 0.2),
+('POD_BORER', 'BORER_DAMAGE', 'SOY', 0.15),
+('GIRDLE_BEETLE', 'STEM_BORING', 'SOY', 0.15),
+('SOYBEAN_MOSAIC', 'LEAF_YELLOWING', 'SOY', 0.15),
+('CHARCOAL_ROT', 'STEM_ROT', 'SOY', 0.2),
+('SOYBEAN_CATERPILLAR', 'CATERPILLAR_DAMAGE', 'SOY', 0.15),
+('STEM_FLY', 'STEM_BORING', 'SOY', 0.15),
+('YELLOW_MOSAIC', 'LEAF_YELLOWING', 'SOY', 0.2),
+
+-- ═══ MAIZE-SPECIFIC ═══
+('FALL_ARMYWORM', 'CATERPILLAR_DAMAGE', 'MAIZE', 0.2),
+('MAIZE_STEM_BORER', 'STEM_BORING', 'MAIZE', 0.15),
+('NORTHERN_LEAF_BLIGHT', 'LEAF_SPOTS', 'MAIZE', 0.15),
+('MAIZE_RUST', 'LEAF_SPOTS', 'MAIZE', 0.15),
+('DOWNY_MILDEW', 'FUNGAL_GROWTH', 'MAIZE', 0.15),
+('COB_ROT', 'FUNGAL_GROWTH', 'MAIZE', 0.1),
+
+-- ═══ ONION-SPECIFIC ═══
+('PURPLE_BLOTCH', 'LEAF_SPOTS', 'ONION', 0.2),
+('ONION_THRIPS', 'INSECTS_VISIBLE', 'ONION', 0.15),
+('BASAL_ROT', 'ROOT_ROT', 'ONION', 0.15),
+('NECK_ROT', 'STEM_ROT', 'ONION', 0.15),
+('ONION_SMUT', 'SMUT_SYMPTOMS', 'ONION', 0.15),
+
+-- ═══ TOMATO-SPECIFIC ═══
+('EARLY_BLIGHT', 'LEAF_SPOTS', 'TOMATO', 0.15),
+('LATE_BLIGHT', 'LEAF_BROWNING', 'TOMATO', 0.2),
+('BACTERIAL_WILT', 'WILT_SYMPTOMS', 'TOMATO', 0.2),
+('TOMATO_LEAF_CURL', 'LEAF_CURLING', 'TOMATO', 0.2),
+('FRUIT_BORER', 'BORER_DAMAGE', 'TOMATO', 0.15),
+('NEMATODE_DAMAGE', 'ROOT_DAMAGE', 'TOMATO', 0.15),
+
+-- ═══ CHILLI-SPECIFIC ═══
+('CHILLI_LEAF_CURL', 'LEAF_CURLING', 'CHILLI', 0.2),
+('ANTHRACNOSE', 'LEAF_SPOTS', 'CHILLI', 0.15),
+('CHILLI_THRIPS', 'INSECTS_VISIBLE', 'CHILLI', 0.15),
+('DIEBACK', 'STEM_WILTING', 'CHILLI', 0.15),
+('FRUIT_ROT', 'STEM_ROT', 'CHILLI', 0.1)
+
+ON CONFLICT (canonical_hint) DO NOTHING;

@@ -13,7 +13,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ai-agriculture-chat]
-verify_jwt = true
+verify_jwt = false
 
 [functions.ai-crop-scan]
 verify_jwt = true
@@ -58,4 +58,13 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.market-price-intelligence]
+verify_jwt = false
+
+[functions.ai-query-understanding]
+verify_jwt = false
+
+[functions.validation-monitor]
+verify_jwt = false
+
+[functions.seed-decision-rules]
 verify_jwt = false
