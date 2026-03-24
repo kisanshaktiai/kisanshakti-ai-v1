@@ -509,8 +509,11 @@ function emergencyKeywordFallback(message: string): IntentClassification | null 
     return { intent_code: 'DISEASE_LIKE_PATTERN' as IntentCode, confidence: 0.55 };
   }
   
-  // Stem damage / borer
-  if (/खोड|तना|stem|borer|छेदक|\bkhod\b/i.test(original)) {
+  // Stem damage / borer — route to BORER_IDENTIFICATION if borer-specific keywords present
+  if (/borer|छेदक|भोक.*खोड|खोड.*भोक|bore.*hole|larva|अळी.*खोड|खोड.*अळी|frass/i.test(original)) {
+    return { intent_code: 'BORER_IDENTIFICATION' as IntentCode, confidence: 0.6 };
+  }
+  if (/खोड|तना|stem|\bkhod\b/i.test(original)) {
     return { intent_code: 'STEM_DAMAGE' as IntentCode, confidence: 0.5 };
   }
   
