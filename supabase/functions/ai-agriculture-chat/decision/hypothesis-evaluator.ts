@@ -554,7 +554,7 @@ export async function evaluateCandidateHypotheses(
       `)
       .eq('is_active', true)
       .or(cropFilter)
-      .limit(500); // Include ALL rules - conditions_json scoring handles empty obs
+      .limit(800); // Safety headroom: 514+ SUGARCANE rules + multi-crop variants
     
     if (error) {
       console.error(`   ❌ [HypothesisEval] Database error:`, error);
