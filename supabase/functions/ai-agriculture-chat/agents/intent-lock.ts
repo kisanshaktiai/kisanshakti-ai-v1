@@ -135,6 +135,11 @@ const INTENT_SCOPE_MAP: Record<string, {
     allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
     forbidden_actions: ['HARVEST', 'SELL']
   },
+  'BORER_IDENTIFICATION': {
+    allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'GENERAL'],
+    allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
+    forbidden_actions: ['HARVEST', 'SELL']
+  },
   'LEAF_DAMAGE_VISIBLE': {
     allowed_scopes: ['PEST', 'DISEASE', 'IPM', 'BIOCONTROL', 'CHEMICAL_PEST', 'CULTURAL', 'GENERAL'],
     allowed_actions: ['SPRAY', 'APPLY', 'RELEASE', 'MONITOR', 'REMOVE', 'TRAP', 'CULTURAL_PRACTICE', 'INFORM', 'CLARIFY'],
