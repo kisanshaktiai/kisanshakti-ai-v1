@@ -99,6 +99,7 @@ INTENT CODES:
 - LEAF_DAMAGE_VISIBLE: Holes, chewing damage on leaves
 - LEAF_MARKS_OR_SPOTS: Spots, patches, lesions, marks on leaves
 - STEM_DAMAGE: Stem holes, tunnels, breakage, boring, dead heart
+- BORER_IDENTIFICATION: Specific borer damage — frass visible, bore holes in internodes, dead heart with larva, tunnels in stem
 - ROOT_OR_BASE_PROBLEM: Root rot, base issues
 - PEST_PRESENCE_VISIBLE: Insects or pests physically seen
 - DISEASE_LIKE_PATTERN: Spreading pattern, fungal signs, plant death/decay
