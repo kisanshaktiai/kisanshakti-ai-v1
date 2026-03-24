@@ -4,12 +4,8 @@
  * Used by clients to detect new deployments and trigger cache invalidation
  */
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface AppVersion {
   id: string;
@@ -32,7 +28,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('[app-version] Fetching current app version');
+    // Parse app_key from query params with default fallback
+    const url = new URL(req.url);
+    const appKey = url.searchParams.get('app_key') || 'farmer_app';
+    
+    console.log('[app-version] Fetching current app version for:', appKey);
 
     // Create Supabase client
     const supabaseClient = createClient(
@@ -45,17 +45,21 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Fetch current version
-    const { data: currentVersion, error } = await supabaseClient
+    // Fetch current version for the specified app_key (defaults to farmer_app)
+    const { data: versions, error } = await supabaseClient
       .from('app_versions')
       .select('*')
+      .eq('app_key', appKey)
       .eq('is_current', true)
-      .maybeSingle();
+      .order('deployed_at', { ascending: false, nullsFirst: false })
+      .limit(1);
 
     if (error) {
       console.error('[app-version] Database error:', error);
       throw error;
     }
+
+    const currentVersion = versions?.[0] || null;
 
     if (!currentVersion) {
       console.warn('[app-version] No current version found in database');

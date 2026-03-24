@@ -1,10 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token',
-};
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { corsHeaders } from '../_shared/cors.ts';
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -65,15 +61,15 @@ serve(async (req) => {
       case 'GET': {
         // Check if fetching a specific land by ID
         if (landId) {
-          console.log('🔍 [LandsAPI] Fetching specific land:', { 
+          console.log('🔍 [LandsAPI] Fetching specific land with context:', { 
             landId, 
             tenantId, 
             farmerId,
             hasSessionToken: !!sessionToken
           });
           
-          // Fetch specific land by ID
-          const { data, error } = await supabase
+          // Fetch specific land by ID with joined context data
+          const { data: land, error } = await supabase
             .from('lands')
             .select('*')
             .eq('id', landId)
@@ -82,58 +78,87 @@ serve(async (req) => {
             .eq('is_active', true)
             .is('deleted_at', null)
             .single();
-
-          if (error) {
-            console.error('❌ [LandsAPI] Database error fetching land:', {
-              error: error.message,
-              code: error.code,
-              details: error.details,
-              hint: error.hint
-            });
+          
+          if (error || !land) {
+            console.error('❌ [LandsAPI] Land fetch error:', error);
             return new Response(
-              JSON.stringify({ 
-                error: error.message,
-                details: error.details,
-                hint: error.hint 
-              }),
-              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              JSON.stringify({ error: error?.message || 'Land not found' }),
+              { status: error ? 400 : 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
-
-          if (!data) {
-            console.warn('⚠️ [LandsAPI] No land found matching criteria:', {
-              landId,
-              tenantId,
-              farmerId
-            });
-            
-            // Query without farmer_id to check if land exists but with different farmer
-            const { data: anyLand } = await supabase
-              .from('lands')
-              .select('id, farmer_id, tenant_id')
-              .eq('id', landId)
-              .eq('tenant_id', tenantId)
-              .maybeSingle();
-            
-            if (anyLand) {
-              console.error('❌ [LandsAPI] PERMISSION ISSUE: Land exists but farmer_id mismatch:', {
-                requestedFarmerId: farmerId,
-                actualFarmerId: anyLand.farmer_id,
-                landId,
-                tenantId
-              });
-            } else {
-              console.warn('⚠️ [LandsAPI] Land does not exist in this tenant');
+          
+          // ✅ CRITICAL: Fetch soil_health data for this land
+          const { data: soilHealth } = await supabase
+            .from('soil_health')
+            .select('nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon, soil_moisture_surface_percent, soil_moisture_rootzone_percent, test_date, confidence_level, source')
+            .eq('land_id', landId)
+            .order('test_date', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          // ✅ CRITICAL: Fetch latest NDVI data for this land
+          const { data: ndviRecords } = await supabase
+            .from('ndvi_data')
+            .select('ndvi_value, mean_ndvi, date, evi_value, ndwi_value')
+            .eq('land_id', landId)
+            .order('date', { ascending: false })
+            .limit(3);
+          
+          // Build enriched land data with context
+          const enrichedLand = {
+            ...land,
+            // ✅ SOIL DATA: Prefer soil_health table, fallback to inline fields
+            soil_data: soilHealth ? {
+              n: soilHealth.nitrogen_kg_per_ha ?? land.nitrogen_kg_per_ha,
+              p: soilHealth.phosphorus_kg_per_ha ?? land.phosphorus_kg_per_ha,
+              k: soilHealth.potassium_kg_per_ha ?? land.potassium_kg_per_ha,
+              ph: soilHealth.ph_level ?? land.soil_ph,
+              organic_carbon: soilHealth.organic_carbon ?? land.organic_carbon_percent,
+              moisture: soilHealth.soil_moisture_surface_percent ?? soilHealth.soil_moisture_rootzone_percent,
+              test_date: soilHealth.test_date ?? land.last_soil_test_date,
+              confidence: soilHealth.confidence_level,
+              source: soilHealth.source
+            } : (land.nitrogen_kg_per_ha || land.soil_ph) ? {
+              n: land.nitrogen_kg_per_ha,
+              p: land.phosphorus_kg_per_ha,
+              k: land.potassium_kg_per_ha,
+              ph: land.soil_ph,
+              organic_carbon: land.organic_carbon_percent,
+              test_date: land.last_soil_test_date
+            } : null,
+            // ✅ NDVI DATA: From ndvi_data table or inline field
+            ndvi_data: ndviRecords && ndviRecords.length > 0 ? {
+              value: ndviRecords[0].ndvi_value ?? ndviRecords[0].mean_ndvi ?? land.last_ndvi_value,
+              trend: ndviRecords.length > 1 
+                ? (ndviRecords[0].ndvi_value || 0) - (ndviRecords[1].ndvi_value || 0) 
+                : 0,
+              timestamp: ndviRecords[0].date ?? land.last_ndvi_calculation,
+              evi: ndviRecords[0].evi_value,
+              ndwi: ndviRecords[0].ndwi_value
+            } : land.last_ndvi_value ? {
+              value: land.last_ndvi_value,
+              timestamp: land.last_ndvi_calculation
+            } : null,
+            // ✅ LOCATION: Structured location data
+            location: {
+              state: land.state,
+              district: land.district,
+              taluka: land.taluka,
+              village: land.village,
+              latitude: land.center_lat,
+              longitude: land.center_lon
             }
-            
-            return new Response(
-              JSON.stringify({ 
-                error: 'Land not found', 
-                details: 'The requested land was not found or you do not have permission to view it' 
-              }),
-              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-            );
-          }
+          };
+          
+          console.log('✅ [LandsAPI] Enriched land context:', {
+            landId: enrichedLand.id,
+            hasSoilData: !!enrichedLand.soil_data,
+            hasNdviData: !!enrichedLand.ndvi_data,
+            soilN: enrichedLand.soil_data?.n,
+            ndviValue: enrichedLand.ndvi_data?.value
+          });
+          
+          const data = enrichedLand;
 
           console.log('✅ [LandsAPI] Land fetched successfully:', {
             landId: data.id,
@@ -145,8 +170,8 @@ serve(async (req) => {
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         } else {
-          // List all lands for the farmer
-          const { data, error } = await supabase
+          // List all lands for the farmer with enriched context
+          const { data: lands, error } = await supabase
             .from('lands')
             .select('*')
             .eq('tenant_id', tenantId)
@@ -162,9 +187,90 @@ serve(async (req) => {
               { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
             );
           }
+          
+          if (!lands || lands.length === 0) {
+            return new Response(
+              JSON.stringify({ data: [], success: true }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          
+          // Fetch soil and NDVI data for all lands in batch
+          const landIds = lands.map(l => l.id);
+          
+          const { data: soilRecords } = await supabase
+            .from('soil_health')
+            .select('land_id, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon, soil_moisture_surface_percent, soil_moisture_rootzone_percent, test_date')
+            .in('land_id', landIds)
+            .order('test_date', { ascending: false });
+          
+          const { data: ndviRecords } = await supabase
+            .from('ndvi_data')
+            .select('land_id, ndvi_value, mean_ndvi, date')
+            .in('land_id', landIds)
+            .order('date', { ascending: false });
+          
+          // Group by land_id (take latest for each land)
+          const soilByLand: Record<string, any> = {};
+          const ndviByLand: Record<string, any[]> = {};
+          
+          soilRecords?.forEach(s => {
+            if (!soilByLand[s.land_id]) soilByLand[s.land_id] = s;
+          });
+          
+          ndviRecords?.forEach(n => {
+            if (!ndviByLand[n.land_id]) ndviByLand[n.land_id] = [];
+            if (ndviByLand[n.land_id].length < 3) ndviByLand[n.land_id].push(n);
+          });
+          
+          // Enrich each land
+          const enrichedLands = lands.map(land => {
+            const soil = soilByLand[land.id];
+            const ndviList = ndviByLand[land.id] || [];
+            
+            return {
+              ...land,
+              soil_data: soil ? {
+                n: soil.nitrogen_kg_per_ha ?? land.nitrogen_kg_per_ha,
+                p: soil.phosphorus_kg_per_ha ?? land.phosphorus_kg_per_ha,
+                k: soil.potassium_kg_per_ha ?? land.potassium_kg_per_ha,
+                ph: soil.ph_level ?? land.soil_ph,
+                organic_carbon: soil.organic_carbon ?? land.organic_carbon_percent,
+                moisture: soil.soil_moisture_surface_percent ?? soil.soil_moisture_rootzone_percent,
+                test_date: soil.test_date ?? land.last_soil_test_date
+              } : (land.nitrogen_kg_per_ha || land.soil_ph) ? {
+                n: land.nitrogen_kg_per_ha,
+                p: land.phosphorus_kg_per_ha,
+                k: land.potassium_kg_per_ha,
+                ph: land.soil_ph,
+                organic_carbon: land.organic_carbon_percent,
+                test_date: land.last_soil_test_date
+              } : null,
+              ndvi_data: ndviList.length > 0 ? {
+                value: ndviList[0].ndvi_value ?? ndviList[0].mean_ndvi ?? land.last_ndvi_value,
+                trend: ndviList.length > 1 
+                  ? (ndviList[0].ndvi_value || 0) - (ndviList[1].ndvi_value || 0)
+                  : 0,
+                timestamp: ndviList[0].date ?? land.last_ndvi_calculation
+              } : land.last_ndvi_value ? {
+                value: land.last_ndvi_value,
+                timestamp: land.last_ndvi_calculation
+              } : null,
+              location: {
+                state: land.state,
+                district: land.district,
+                taluka: land.taluka,
+                village: land.village,
+                latitude: land.center_lat,
+                longitude: land.center_lon
+              }
+            };
+          });
+          
+          console.log(`✅ [LandsAPI] Enriched ${enrichedLands.length} lands with soil/NDVI data`);
 
           return new Response(
-            JSON.stringify({ data, success: true }),
+            JSON.stringify({ data: enrichedLands, success: true }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -199,6 +305,16 @@ serve(async (req) => {
           );
         }
         
+        // Auto-compute center_lat/center_lon from boundary polygon on create
+        if (body.boundary_polygon_old && (!body.center_lat || !body.center_lon)) {
+          const ring = body.boundary_polygon_old?.coordinates?.[0];
+          if (ring && ring.length > 0) {
+            body.center_lat = ring.reduce((s: number, c: number[]) => s + c[1], 0) / ring.length;
+            body.center_lon = ring.reduce((s: number, c: number[]) => s + c[0], 0) / ring.length;
+            console.log(`📍 [LandsAPI] Auto-computed centroid on create: ${body.center_lat}, ${body.center_lon}`);
+          }
+        }
+
         // Ensure tenant_id and farmer_id are set correctly (override any sent values)
         const landData = {
           ...body,
@@ -263,12 +379,42 @@ serve(async (req) => {
         }
 
         const body = await req.json();
+
+        // Auto-compute center_lat/center_lon from boundary polygon if missing
+        if (body.boundary_polygon_old && (!body.center_lat || !body.center_lon)) {
+          const ring = body.boundary_polygon_old?.coordinates?.[0];
+          if (ring && ring.length > 0) {
+            body.center_lat = ring.reduce((s: number, c: number[]) => s + c[1], 0) / ring.length;
+            body.center_lon = ring.reduce((s: number, c: number[]) => s + c[0], 0) / ring.length;
+            console.log(`📍 [LandsAPI] Auto-computed centroid: ${body.center_lat}, ${body.center_lon}`);
+          }
+        }
         
         // Remove fields that shouldn't be updated
         delete body.id;
         delete body.tenant_id;
         delete body.farmer_id;
         delete body.created_at;
+
+        // ✅ CRITICAL: Sanitize date fields - convert empty strings to null
+        const dateFields = [
+          'cultivation_date', 'planting_date', 'harvest_date', 
+          'last_harvest_date', 'last_sowing_date', 'expected_harvest_date',
+          'last_soil_test_date', 'last_ndvi_calculation', 'gps_recorded_at'
+        ];
+        
+        dateFields.forEach(field => {
+          if (body[field] === '' || body[field] === undefined) {
+            body[field] = null;
+          }
+        });
+
+        // Remove undefined values
+        Object.keys(body).forEach(key => {
+          if (body[key] === undefined) {
+            delete body[key];
+          }
+        });
 
         const updateData = {
           ...body,

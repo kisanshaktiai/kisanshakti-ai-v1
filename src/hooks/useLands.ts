@@ -102,6 +102,8 @@ export function useLands() {
                 nitrogen_kg_per_ha: null,
                 phosphorus_kg_per_ha: null,
                 potassium_kg_per_ha: null,
+                soil_confidence_level: null,
+                soil_data_source: null,
                 water_source: l.water_source || null,
                 irrigation_source: null,
                 irrigation_type: null,
@@ -113,6 +115,8 @@ export function useLands() {
                 last_sowing_date: null,
                 harvest_date: null,
                 expected_harvest_date: null,
+                current_moisture_status: null,
+                last_moisture_update: null,
                 previous_crop: null,
                 previous_crop_id: null,
                 last_crop: null,
@@ -121,6 +125,8 @@ export function useLands() {
                 last_ndvi_calculation: null,
                 last_ndvi_value: null,
                 ndvi_thumbnail_url: null,
+                ndvi_geotiff_url: null,
+                ndvi_status: null,
                 last_processed_at: null,
                 tile_id: null,
                 tile_ids: null,
@@ -163,23 +169,27 @@ export function useLands() {
     retryDelay: 1000, // Quick retry
   });
 
-  // Mutation for deleting a land
+  // Mutation for deleting a land (soft delete - marks as inactive)
   const deleteMutation = useMutation({
     mutationFn: async (landId: string) => {
+      console.log('🗑️ [useLands] Delete mutation started for:', landId);
       await landsApi.deleteLand(landId);
+      console.log('✅ [useLands] Delete mutation completed for:', landId);
     },
     onSuccess: () => {
+      console.log('✅ [useLands] Delete successful, invalidating queries');
       queryClient.invalidateQueries({ queryKey: ['lands'] });
       queryClient.invalidateQueries({ queryKey: ['schedules'] });
       toast({
-        title: 'Success',
-        description: 'Land deleted successfully',
+        title: 'Land Removed',
+        description: 'Land has been removed from your list',
       });
     },
-    onError: (error) => {
+    onError: (error: any) => {
+      console.error('❌ [useLands] Delete mutation error:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete land',
+        description: error?.message || 'Failed to remove land',
         variant: 'destructive',
       });
     },

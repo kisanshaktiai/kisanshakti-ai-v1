@@ -1,0 +1,312 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "economics",
+    "canonical_group": "12_economics",
+    "version": "3.1.0",
+    "scientific_source": "ICAR-SBI Coimbatore, NABARD, State Agricultural Universities",
+    "last_updated": "2026-01-10"
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_ECON_001",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["harvest", "post_harvest"],
+      "conditions_json": {
+        "observation": "market_price_low",
+        "context": "harvest_timing"
+      },
+      "cause": "Low market prices during peak harvest season",
+      "priority": 80,
+      "confidence_score": 0.85,
+      "scientific_source": "NABARD Market Analysis",
+      "response_en": "Consider staggered harvesting or early crushing contracts. Peak harvest flooding reduces prices by 15-20%. Contact sugar mills for advance booking.",
+      "response_hi": "चरणबद्ध कटाई या अग्रिम क्रशिंग अनुबंध पर विचार करें। पीक हार्वेस्ट में कीमतें 15-20% कम होती हैं। चीनी मिलों से अग्रिम बुकिंग करें।",
+      "response_mr": "टप्प्याटप्प्याने कापणी किंवा आगाऊ गाळप करार विचारात घ्या. शिखर हंगामात भाव १५-२०% कमी होतात. साखर कारखान्यांशी आगाऊ बुकिंग करा.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_002",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["planting", "germination"],
+      "conditions_json": {
+        "observation": "input_cost_concern",
+        "context": "seed_selection"
+      },
+      "cause": "High seed sett costs reducing profitability",
+      "priority": 75,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Economics Division",
+      "response_en": "Use single-bud chip technology - reduces seed requirement by 80%. Cost savings: ₹8,000-12,000/ha. Contact nearest Tissue Culture lab for certified chips.",
+      "response_hi": "सिंगल-बड चिप तकनीक का उपयोग करें - बीज की आवश्यकता 80% कम होती है। बचत: ₹8,000-12,000/हेक्टेयर। प्रमाणित चिप्स के लिए निकटतम टिश्यू कल्चर लैब से संपर्क करें।",
+      "response_mr": "सिंगल-बड चिप तंत्रज्ञान वापरा - बियाणे गरज ८०% कमी होते. बचत: ₹८,०००-१२,०००/हेक्टर. प्रमाणित चिप्ससाठी जवळच्या टिश्यू कल्चर लॅबशी संपर्क करा.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_003",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["grand_growth", "maturity"],
+      "conditions_json": {
+        "observation": "fertilizer_cost_high",
+        "context": "nutrient_management"
+      },
+      "cause": "Excessive chemical fertilizer expenditure",
+      "priority": 72,
+      "confidence_score": 0.86,
+      "scientific_source": "ICAR-SBI Integrated Nutrient Management",
+      "response_en": "Integrate organic inputs: Press mud @10 t/ha saves ₹4,000-6,000 on fertilizers. Use Azotobacter + PSB to reduce N-P fertilizer need by 25%.",
+      "response_hi": "जैविक इनपुट एकीकृत करें: प्रेस मड @10 टन/हेक्टेयर से ₹4,000-6,000 की बचत। एज़ोटोबैक्टर + पीएसबी से एन-पी खाद 25% कम करें।",
+      "response_mr": "सेंद्रिय निविष्ठा एकत्रित करा: प्रेस मड @१० टन/हेक्टर वापरल्यास ₹४,०००-६,००० बचत. अझोटोबॅक्टर + पीएसबी वापरल्यास एन-पी खत २५% कमी.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_004",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "observation": "labor_shortage",
+        "context": "intercultural_operations"
+      },
+      "cause": "High labor costs for manual operations",
+      "priority": 70,
+      "confidence_score": 0.84,
+      "scientific_source": "ICAR Farm Mechanization Research",
+      "response_en": "Adopt tractor-mounted trash mulcher and ratoon manager. Labor cost reduction: 40-50%. Contact Custom Hiring Centre for equipment rental.",
+      "response_hi": "ट्रैक्टर-माउंटेड ट्रैश मल्चर और रैटून मैनेजर अपनाएं। श्रम लागत में 40-50% कमी। उपकरण किराए के लिए कस्टम हायरिंग सेंटर से संपर्क करें।",
+      "response_mr": "ट्रॅक्टर-माउंटेड ट्रॅश मल्चर आणि खोडवा व्यवस्थापक वापरा. मजूर खर्च ४०-५०% कमी. यंत्र भाड्याने घेण्यासाठी कस्टम हायरिंग सेंटरशी संपर्क करा.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_005",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["planting"],
+      "conditions_json": {
+        "observation": "intercropping_query",
+        "context": "income_diversification"
+      },
+      "cause": "Need for additional income during early growth period",
+      "priority": 68,
+      "confidence_score": 0.87,
+      "scientific_source": "ICAR-SBI Cropping Systems",
+      "response_en": "Intercrop with short-duration vegetables (onion, coriander, garlic) in paired-row system. Additional income: ₹15,000-25,000/ha in first 90 days.",
+      "response_hi": "पेयर्ड-रो प्रणाली में छोटी अवधि की सब्जियां (प्याज, धनिया, लहसुन) अंतरफसल करें। अतिरिक्त आय: पहले 90 दिनों में ₹15,000-25,000/हेक्टेयर।",
+      "response_mr": "जोडी-ओळ पद्धतीत कमी कालावधीच्या भाज्या (कांदा, कोथिंबीर, लसूण) आंतरपीक घ्या. अतिरिक्त उत्पन्न: पहिल्या ९० दिवसांत ₹१५,०००-२५,०००/हेक्टर.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_006",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["harvest", "post_harvest"],
+      "conditions_json": {
+        "observation": "delayed_payment",
+        "context": "mill_payment"
+      },
+      "cause": "Cash flow problems due to delayed mill payments",
+      "priority": 85,
+      "confidence_score": 0.82,
+      "scientific_source": "NABARD Credit Advisory",
+      "response_en": "Register for FRP (Fair & Remunerative Price) direct benefit transfer. Contact District Cane Officer for pending payment grievance. Consider pledge financing against stored cane.",
+      "response_hi": "एफआरपी (उचित और लाभकारी मूल्य) डायरेक्ट बेनिफिट ट्रांसफर के लिए पंजीकरण करें। लंबित भुगतान शिकायत के लिए जिला गन्ना अधिकारी से संपर्क करें।",
+      "response_mr": "एफआरपी (वाजवी आणि फायदेशीर किंमत) थेट लाभ हस्तांतरणासाठी नोंदणी करा. प्रलंबित पेमेंट तक्रारीसाठी जिल्हा ऊस अधिकाऱ्यांशी संपर्क करा.",
+      "action_type": "escalation"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_007",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observation": "insurance_query",
+        "context": "crop_protection"
+      },
+      "cause": "Need for crop insurance information",
+      "priority": 65,
+      "confidence_score": 0.90,
+      "scientific_source": "PMFBY Guidelines",
+      "response_en": "Enroll in PMFBY (Pradhan Mantri Fasal Bima Yojana) before sowing deadline. Premium: 2% for Kharif, 1.5% for Rabi. Coverage includes drought, flood, pest damage.",
+      "response_hi": "बुवाई की समय सीमा से पहले पीएमएफबीवाई (प्रधानमंत्री फसल बीमा योजना) में नामांकन करें। प्रीमियम: खरीफ के लिए 2%, रबी के लिए 1.5%।",
+      "response_mr": "पेरणी मुदतीपूर्वी पीएमएफबीवाई (प्रधानमंत्री फसल विमा योजना) मध्ये नोंदणी करा. प्रीमियम: खरीपसाठी २%, रब्बीसाठी १.५%.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_008",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["maturity", "harvest"],
+      "conditions_json": {
+        "observation": "sucrose_low",
+        "context": "quality_premium"
+      },
+      "cause": "Low sucrose affecting premium payments",
+      "priority": 78,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR-SBI Quality Parameters",
+      "response_en": "Harvest at 10-11 months for peak sucrose (18-20%). Avoid irrigation 15 days before harvest. Quality premium can add ₹50-100/tonne above FRP.",
+      "response_hi": "अधिकतम सुक्रोज (18-20%) के लिए 10-11 महीने पर कटाई करें। कटाई से 15 दिन पहले सिंचाई बंद करें। गुणवत्ता प्रीमियम एफआरपी से ₹50-100/टन अधिक दे सकता है।",
+      "response_mr": "कमाल सुक्रोज (१८-२०%) साठी १०-११ महिन्यांवर कापणी करा. कापणीपूर्वी १५ दिवस पाणी बंद करा. गुणवत्ता प्रीमियम एफआरपीपेक्षा ₹५०-१००/टन जास्त देऊ शकतो.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_009",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["post_harvest"],
+      "conditions_json": {
+        "observation": "ratoon_decision",
+        "context": "replanting_economics"
+      },
+      "cause": "Decision required on ratoon vs replanting",
+      "priority": 75,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Ratoon Management",
+      "response_en": "Ratoon economics: 30-40% lower input cost, 15-20% yield reduction. Viable for 2 ratoons. After 3rd ratoon, replanting gives better returns.",
+      "response_hi": "रैटून अर्थशास्त्र: 30-40% कम इनपुट लागत, 15-20% उपज में कमी। 2 रैटून के लिए व्यवहार्य। 3री रैटून के बाद पुनर्रोपण बेहतर रिटर्न देता है।",
+      "response_mr": "खोडवा अर्थशास्त्र: ३०-४०% कमी निविष्ठा खर्च, १५-२०% उत्पादन घट. २ खोडव्यांसाठी व्यवहार्य. ३ऱ्या खोडव्यानंतर पुनर्लागवड चांगला परतावा देते.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_010",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observation": "subsidy_query",
+        "context": "government_schemes"
+      },
+      "cause": "Need for government subsidy information",
+      "priority": 70,
+      "confidence_score": 0.89,
+      "scientific_source": "State Agriculture Department",
+      "response_en": "Available subsidies: Drip irrigation (55-90%), Tissue culture seedlings (50%), Farm machinery (40-50%). Apply through DBT Agriculture portal or visit Krishi Seva Kendra.",
+      "response_hi": "उपलब्ध सब्सिडी: ड्रिप सिंचाई (55-90%), टिश्यू कल्चर पौध (50%), कृषि मशीनरी (40-50%)। डीबीटी कृषि पोर्टल या कृषि सेवा केंद्र पर आवेदन करें।",
+      "response_mr": "उपलब्ध अनुदान: ठिबक सिंचन (५५-९०%), टिश्यू कल्चर रोपे (५०%), शेती यंत्रे (४०-५०%). डीबीटी कृषी पोर्टल किंवा कृषी सेवा केंद्रावर अर्ज करा.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_011",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["harvest"],
+      "conditions_json": {
+        "observation": "transport_cost_high",
+        "context": "logistics"
+      },
+      "cause": "High transportation costs to mill",
+      "priority": 65,
+      "confidence_score": 0.83,
+      "scientific_source": "NABARD Logistics Study",
+      "response_en": "Form Farmer Producer Organization (FPO) for bulk transport negotiation. Collective bargaining reduces transport cost by 20-30%. Contact NABARD for FPO formation support.",
+      "response_hi": "बल्क ट्रांसपोर्ट नेगोशिएशन के लिए किसान उत्पादक संगठन (एफपीओ) बनाएं। सामूहिक सौदेबाजी से परिवहन लागत 20-30% कम होती है।",
+      "response_mr": "मोठ्या प्रमाणात वाहतूक वाटाघाटीसाठी शेतकरी उत्पादक संघटना (एफपीओ) स्थापन करा. सामूहिक सौदेबाजीने वाहतूक खर्च २०-३०% कमी होतो.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_012",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "observation": "credit_access",
+        "context": "financing"
+      },
+      "cause": "Need for crop loan information",
+      "priority": 72,
+      "confidence_score": 0.87,
+      "scientific_source": "RBI Agricultural Credit Guidelines",
+      "response_en": "KCC (Kisan Credit Card) offers crop loans at 4% interest (with prompt repayment). Limit: ₹1-3 lakh for sugarcane. Apply at nearest cooperative bank or commercial bank.",
+      "response_hi": "केसीसी (किसान क्रेडिट कार्ड) 4% ब्याज पर फसल ऋण प्रदान करता है (समय पर भुगतान के साथ)। सीमा: गन्ने के लिए ₹1-3 लाख। निकटतम सहकारी बैंक में आवेदन करें।",
+      "response_mr": "केसीसी (किसान क्रेडिट कार्ड) ४% व्याजावर पीक कर्ज देते (वेळेवर परतफेडीसह). मर्यादा: उसासाठी ₹१-३ लाख. जवळच्या सहकारी बँकेत अर्ज करा.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_013",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["post_harvest"],
+      "conditions_json": {
+        "observation": "value_addition_query",
+        "context": "processing"
+      },
+      "cause": "Interest in value-added products",
+      "priority": 60,
+      "confidence_score": 0.84,
+      "scientific_source": "ICAR Post-Harvest Technology",
+      "response_en": "Jaggery (gur) making gives 25-40% higher returns than mill sale. Organic jaggery premium: 50-80%. Consider kolhu (crusher) group ownership for small farmers.",
+      "response_hi": "गुड़ बनाने से मिल बिक्री की तुलना में 25-40% अधिक रिटर्न मिलता है। जैविक गुड़ प्रीमियम: 50-80%। छोटे किसानों के लिए कोल्हू समूह स्वामित्व पर विचार करें।",
+      "response_mr": "गूळ बनवल्याने मिल विक्रीपेक्षा २५-४०% जास्त परतावा मिळतो. सेंद्रिय गूळ प्रीमियम: ५०-८०%. लहान शेतकऱ्यांसाठी कोल्हू समूह मालकी विचारात घ्या.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_014",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["grand_growth"],
+      "conditions_json": {
+        "observation": "irrigation_cost_high",
+        "context": "water_economics"
+      },
+      "cause": "High electricity/diesel costs for irrigation",
+      "priority": 73,
+      "confidence_score": 0.86,
+      "scientific_source": "ICAR Water Management Division",
+      "response_en": "Switch to drip irrigation - reduces water use by 40-50%, electricity by 30%. Government subsidy: 55-90%. Payback period: 2-3 years. Solar pump subsidy also available.",
+      "response_hi": "ड्रिप सिंचाई अपनाएं - पानी का उपयोग 40-50%, बिजली 30% कम होती है। सरकारी सब्सिडी: 55-90%। पेबैक अवधि: 2-3 वर्ष। सोलर पंप सब्सिडी भी उपलब्ध।",
+      "response_mr": "ठिबक सिंचनावर जा - पाणी वापर ४०-५०%, वीज ३०% कमी होते. सरकारी अनुदान: ५५-९०%. परतावा कालावधी: २-३ वर्षे. सोलर पंप अनुदानही उपलब्ध.",
+      "action_type": "advisory"
+    },
+    {
+      "rule_id": "SUGARCANE_ECON_015",
+      "crop_code": "sugarcane",
+      "crop_group": "cash_crops",
+      "category": "economics",
+      "canonical_group": "12_economics",
+      "stage_applicable": ["post_harvest"],
+      "conditions_json": {
+        "observation": "trash_management",
+        "context": "residue_economics"
+      },
+      "cause": "Query about sugarcane trash utilization",
+      "priority": 62,
+      "confidence_score": 0.85,
+      "scientific_source": "ICAR Biomass Utilization",
+      "response_en": "Don't burn trash - use as mulch (saves 2 irrigations worth ₹3,000-5,000) or sell to biomass power plants @₹1,500-2,000/tonne. Trash burning attracts ₹15,000 fine.",
+      "response_hi": "पराली न जलाएं - मल्च के रूप में उपयोग करें (2 सिंचाई की बचत ₹3,000-5,000) या बायोमास पावर प्लांट को @₹1,500-2,000/टन बेचें। पराली जलाने पर ₹15,000 जुर्माना।",
+      "response_mr": "पाचट जाळू नका - आच्छादन म्हणून वापरा (२ पाण्याची बचत ₹३,०००-५,०००) किंवा बायोमास वीज प्रकल्पांना @₹१,५००-२,०००/टन विका. पाचट जाळल्यास ₹१५,००० दंड.",
+      "action_type": "advisory"
+    }
+  ]
+}

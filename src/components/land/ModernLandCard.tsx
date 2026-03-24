@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, memo, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -61,7 +61,8 @@ interface ModernLandCardProps {
   onRefresh: () => void;
 }
 
-export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
+// PERFORMANCE: Memoize component to prevent unnecessary re-renders
+export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -70,36 +71,44 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
   
   // Removed inline map URL generation - now using LandThumbnail component
   
-  const handleEdit = () => {
+  // PERFORMANCE: Memoize callbacks to prevent child re-renders
+  const handleEdit = useCallback(() => {
     navigate(`/app/lands/${land.id}/edit`);
-  };
+  }, [navigate, land.id]);
   
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     setIsDeleting(true);
     try {
+      console.log('🗑️ [ModernLandCard] Starting delete for land:', land.id, land.name);
       const { landsApi } = await import('@/services/landsApi');
       await landsApi.deleteLand(land.id);
       
+      console.log('✅ [ModernLandCard] Delete successful for land:', land.id);
       toast({
         title: t('lands.card.toast.removed_title'),
         description: t('lands.card.toast.removed_message', { name: land.name }),
       });
       
       onRefresh();
-    } catch (error) {
-      console.error('Error deleting land:', error);
+    } catch (error: any) {
+      console.error('❌ [ModernLandCard] Error deleting land:', {
+        landId: land.id,
+        landName: land.name,
+        error: error?.message || error,
+        stack: error?.stack
+      });
       toast({
-        title: t('lands.wizard.toast.error_title'),
-        description: t('lands.card.toast.error'),
+        title: t('lands.details.error.not_found_title'),
+        description: error?.message || t('lands.card.toast.error'),
         variant: 'destructive',
       });
     } finally {
       setIsDeleting(false);
       setDeleteDialogOpen(false);
     }
-  };
+  }, [land.id, land.name, onRefresh, t, toast]);
   
-  const handleShare = () => {
+  const handleShare = useCallback(() => {
     if (navigator.share) {
       navigator.share({
         title: land.name,
@@ -113,15 +122,15 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
         description: t('lands.card.toast.link_copied_message'),
       });
     }
-  };
+  }, [land.name, t, toast]);
   
-  const formatArea = () => {
+  const formatArea = useCallback(() => {
     let areaText = `${land.area_acres.toFixed(2)} acres`;
     if (land.area_guntas && land.area_guntas > 0) {
       areaText += ` ${land.area_guntas} guntas`;
     }
     return areaText;
-  };
+  }, [land.area_acres, land.area_guntas]);
   
   return (
     <>
@@ -299,7 +308,9 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
             {(land.village || land.district) && (
               <div className="pt-2 border-t border-border/50">
                 <p className="text-xs text-muted-foreground truncate">
-                  {[land.village, land.district, land.state].filter(Boolean).join(', ')}
+                  {[land.village, land.district, land.state]
+                    .filter(val => val && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
+                    .join(', ') || 'Location not set'}
                 </p>
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                   <Clock className="h-2.5 w-2.5" />
@@ -334,4 +345,4 @@ export function ModernLandCard({ land, onRefresh }: ModernLandCardProps) {
       </AlertDialog>
     </>
   );
-}
+});

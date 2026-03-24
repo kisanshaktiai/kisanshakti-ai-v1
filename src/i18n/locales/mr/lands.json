@@ -132,6 +132,14 @@
     "wizard": {
       "step_of_total": "पायरी {{current}}/{{total}}: {{title}}",
       "voice_guide": "आवाज मार्गदर्शक",
+      "tap_to_select": "निवडण्यासाठी टॅप करा",
+      "select_crop_category": "पीक श्रेणी निवडा",
+      "select_crop": "तुमचे पीक निवडा",
+      "search_crops": "पीके शोधा...",
+      "crop_selection": "पीक निवड",
+      "current_crop": "वर्तमान पीक",
+      "previous_crop": "मागील पीक",
+      "popular": "लोकप्रिय",
       "steps": {
         "basic_info": "मूलभूत माहिती",
         "location": "स्थान",

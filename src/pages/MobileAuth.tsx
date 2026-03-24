@@ -37,7 +37,8 @@ export default function MobileAuth() {
       return;
     }
 
-    if (!isReady) {
+    // Allow offline mode even if tenant is still loading
+    if (!isReady && isOnline) {
       setError('Application is still loading. Please wait...');
       return;
     }
@@ -50,39 +51,90 @@ export default function MobileAuth() {
       
       let farmer = null;
       
-      // If offline, check local database first
-      if (!isOnline) {
-        console.log('Offline mode: Checking local database');
-        const cachedAuth = await offlineAuthService.getCachedAuthData();
+      // OFFLINE-FIRST: Always check local database first
+      console.log('🔍 [MobileAuth] Checking local database first (offline-first approach)');
+      const cachedAuth = await offlineAuthService.getCachedAuthData();
+      
+      if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
+        farmer = cachedAuth.farmerData;
+        console.log('✅ [MobileAuth] Found farmer in local cache:', farmer.id);
         
+        // Store needed data for PIN entry
+        localStorage.setItem('authMobile', mobile);
+        localStorage.setItem('farmerId', farmer.id);
+        localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+        navigate('/pin-auth');
+        return;
+      }
+      
+      // If offline and no cached data for this user
+      if (!isOnline) {
+        console.log('📴 [MobileAuth] Offline mode with no cached auth for this number');
+        
+        // Check if ANY cached auth exists (different user)
+        if (cachedAuth) {
+          setError('This mobile number is not available offline. Please use the registered number or connect to internet.');
+        } else {
+          setError('Cannot register new users while offline. Please connect to the internet first.');
+        }
+        setIsLoading(false);
+        return;
+      }
+      
+      // ONLINE: Check Supabase with retry for flaky networks
+      console.log('🌐 [MobileAuth] Online mode - checking Supabase');
+      const maxRetries = 2;
+      let lastNetworkError: any = null;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          let query = supabase
+            .from('farmers')
+            .select('id, mobile_number, farmer_code, tenant_id')
+            .eq('mobile_number', mobile);
+          
+          // Only add tenant filter if tenant exists
+          if (tenant?.id) {
+            query = query.eq('tenant_id', tenant.id);
+          }
+          
+          const { data: farmerData, error: fetchError } = await query.maybeSingle();
+
+          if (fetchError && fetchError.code !== 'PGRST116') {
+            console.error('Error fetching farmer:', fetchError);
+            throw fetchError;
+          }
+          
+          farmer = farmerData;
+          lastNetworkError = null;
+          break; // Success, exit retry loop
+        } catch (networkError: any) {
+          lastNetworkError = networkError;
+          const isNetworkErr = networkError.message?.includes('Failed to fetch') || 
+                               networkError.message === 'Load failed' ||
+                               networkError.name === 'TypeError';
+          
+          console.warn(`⚠️ [MobileAuth] Attempt ${attempt}/${maxRetries} failed:`, networkError.message);
+          
+          if (!isNetworkErr || attempt >= maxRetries) break;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      // If all online attempts failed, fallback to offline
+      if (lastNetworkError) {
+        console.log('⚠️ [MobileAuth] All online attempts failed, checking offline cache');
         if (cachedAuth && cachedAuth.farmerData?.mobile_number === mobile) {
           farmer = cachedAuth.farmerData;
-          console.log('Found farmer in local cache:', farmer.id);
-        } else {
-          setError('Cannot register new users while offline. Please connect to the internet.');
-          setIsLoading(false);
+          localStorage.setItem('authMobile', mobile);
+          localStorage.setItem('farmerId', farmer.id);
+          localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
+          navigate('/pin-auth');
           return;
         }
-      } else {
-        // Online mode: Check Supabase
-        let query = supabase
-          .from('farmers')
-          .select('id, mobile_number, pin, pin_hash, tenant_id')
-          .eq('mobile_number', mobile);
-        
-        // Only add tenant filter if tenant exists
-        if (tenant?.id) {
-          query = query.eq('tenant_id', tenant.id);
-        }
-        
-        const { data: farmerData, error: fetchError } = await query.maybeSingle();
-
-        if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = no rows returned
-          console.error('Error fetching farmer:', fetchError);
-          throw fetchError;
-        }
-        
-        farmer = farmerData;
+        setError('Network connection is weak. Please move to an area with better signal and try again.');
+        setIsLoading(false);
+        return;
       }
 
       if (farmer) {
@@ -90,6 +142,7 @@ export default function MobileAuth() {
         // Farmer exists, navigate to PIN entry
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', farmer.id);
+        localStorage.setItem('tenantId', farmer.tenant_id || tenant?.id || '');
         navigate('/pin-auth');
       } else {
         console.log('Creating new farmer with tenant_id:', tenant?.id);
@@ -142,6 +195,7 @@ export default function MobileAuth() {
 
         localStorage.setItem('authMobile', mobile);
         localStorage.setItem('farmerId', newFarmer.id);
+        localStorage.setItem('tenantId', newFarmer.tenant_id || tenant?.id || '');
         navigate('/set-pin');
       }
     } catch (err: any) {

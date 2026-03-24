@@ -1,0 +1,1 @@
+DROP TABLE IF EXISTS public.intent_observation_mapping_v2;

@@ -1,778 +1,270 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
+/**
+ * AI Agriculture Chat - Orchestrator-Based Entry Point
+ * Full migration to 9-agent orchestrator system
+ * v7.0.1 - Romanized language detection + app language enforcement
+ */
+
+// XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
-import { classifyFarmerQuery } from './query-classifier.ts';
-import { buildCompressedContext } from './context-compressor.ts';
-import { getMinimalContext, getMiniRefresh } from './context-helpers.ts';
-import { generateMultilingualQuickReplies } from './multilingual-quick-replies.ts';
-import { parseResponseToCards } from './response-parser.ts';
-import { buildTrainingData } from './training-pipeline.ts';
-// ============= SMART TOKEN OPTIMIZATION IMPORTS =============
-import { buildOptimizedSystemPrompt, estimatePromptTokens } from './prompts/prompt-factory.ts';
-import { detectQueryType } from './prompts/query-prompts.ts';
-import { compressConversationMemory, buildOptimizedMessages, estimateTotalTokens } from './memory/conversation-compressor.ts';
-import { buildSmartContext, estimateContextTokens } from './smart-context-builder.ts';
-// ============= RURAL LANGUAGE POST-PROCESSING =============
-import { localizeResponse } from './response-localizer.ts';
+import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
+
+// Import orchestrator
+import { AIAgentOrchestrator } from './agents/orchestrator.ts';
+import type { OrchestratorResponse } from './agents/orchestrator.ts';
+
+// CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
+import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
+import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent } from './agents/deterministic-response-builder.ts';
+import type { WeatherContext, CropContext } from './agents/deterministic-response-builder.ts';
+
+// PHASE 5: Import LLM Response Formatter for natural language generation
+import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
+import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
+
+// Legacy helpers removed - dead code cleanup
+
+// CRITICAL FIX: Import translation functions for farmer-friendly product names
+import { 
+  getProductName, 
+  getActionTranslation, 
+  getMethodTranslation,
+  getUrgencyTranslation
+} from './agents/communication-translation-dictionary.ts';
+
+// PRODUCT MAPPING: Ingredient → Market Product brand names
+import { lookupMarketProducts, formatMarketProducts } from './agents/market-product-lookup.ts';
+
+// SYMBOLIC BRAIN: Import validation from decision representation
+import { validateLLMOutputIntegrity } from './agents/decision-representation.ts';
+
+// PHASE 11: Import Unified Decision Gate (P1-4 fix - single gate)
+import { 
+  evaluateUnifiedGate,
+  applySuppressionGuard,
+  type UnifiedGateInput
+} from './decision/unified-decision-gate.ts';
+import {
+  ResponseMode,
+  GateStatus,
+  GateAction
+} from './decision/authority-types.ts';
+import {
+  generateObservationOnlyResponse,
+  generateYoungCropMonitoringResponse
+} from './decision/prescription-gate-enforcer.ts';
+import {
+  generateDiagnosticEscalationResponse,
+  type DiagnosticEscalationInput
+} from './decision/diagnostic-escalation-generator.ts';
+
+// PHASE 11.1: Context Authority Reconciliation
+import { 
+  resolveFinalRenderContext,
+  type CropContextAuthority
+} from './decision/context-authority.ts';
+
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token, x-client-domain, if-none-match, origin, cache-control, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
+  'Access-Control-Max-Age': '86400',
 };
 
-// ============= QUERY COMPLEXITY ANALYZER =============
+// ═══════════════════════════════════════════════════════════════════════════
+// REQUEST DEDUPLICATION GUARD
+// Prevents double-tap / duplicate concurrent requests from the same farmer
+// ═══════════════════════════════════════════════════════════════════════════
 
-interface ComplexityAnalysis {
-  complexity: 'simple' | 'medium' | 'complex';
-  maxWords: number;
-  maxTokens: number;
-  responseStyle: string;
+interface InFlightRequest {
+  promise: Promise<Response>;
+  expiresAt: number;
 }
 
-function analyzeQueryComplexity(userMessage: string, language: string = 'en'): ComplexityAnalysis {
-  const msg = userMessage.toLowerCase();
-  
-  // ✅ FIX: Use character count for Indic scripts, word count for Latin scripts
-  const isIndicScript = /[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B00-\u0B7F\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]/.test(userMessage);
-  
-  let complexity: 'simple' | 'medium' | 'complex';
-  let baseMaxWords: number;
-  let baseMaxTokens: number;
-  
-  // ============================================
-  // SIMPLE QUERIES (1-5 words, yes/no, greetings)
-  // ============================================
-  const simplePatterns = [
-    // Greetings
-    /^(hi|hello|hey|namaste|namaskar|नमस्ते|नमस्कार|নমস্কার|হ্যালো|வணக்கம்|నమస్కారం|ਨਮਸਤੇ)$/i,
-    
-    // Yes/No questions
-    /^(yes|no|ok|okay|हाँ|नहीं|हो|नाही|ஆம்|இல்லை|అవును|కాదు|ਹਾਂ|ਨਹੀਂ)$/i,
-    
-    // Single fact questions (1-3 words)
-    /^(what is|क्या है|काय आहे|என்ன|ఏమిటి|ਕੀ ਹੈ)/,
-    
-    // When questions (1-4 words)
-    /^(when|कब|कधी|எப்போது|ఎప్పుడు|ਕਦੋਂ)\s+(water|irrigate|spray|पानी|सिंचाई|पाणी|நீர்|నీరు|ਪਾਣੀ)/,
-    
-    // Simple status checks
-    /^(crop|फसल|पीक|பயிர்|పంట|ਫ਼ਸਲ)\s+(ok|ठीक|बरोबर|good|சரி|బాగుంది|ਠੀਕ)/,
-    
-    // Direct short questions
-    /^(कौनसी|which|எந்த|ఏ|ਕਿਹੜਾ)\s+(खाद|fertilizer|உரம்|ఎరువు|ਖਾਦ)/,
-    /^(कितना|how much|எவ்வளவு|ఎంత|ਕਿੰਨਾ)/,
-    /^(price|भाव|किंमत|விலை|ధర|ਭਾਅ)/
-  ];
-  
-  // ============================================
-  // MEDIUM QUERIES (6-15 words, how-to, advice)
-  // ============================================
-  const mediumPatterns = [
-    // How-to questions
-    /how (to|do|can)|कैसे|कसे|எப்படி|ఎలా|ਕਿਵੇਂ/,
-    
-    // Advice questions
-    /should i|what should|मुझे क्या|मला काय|நான் என்ன|నేను ఏమి|ਮੈਨੂੰ ਕੀ/,
-    
-    // Recommendation requests
-    /recommend|suggest|सुझाव|शिफारस|பரிந்துரை|సూచన|ਸਲਾਹ/,
-    
-    // Schedule questions
-    /schedule|timing|समय|वेळ|அட்டவணை|షెడ్యూల్|ਸਮਾਂ/,
-    
-    // Problem diagnosis (medium detail)
-    /problem|issue|समस्या|अडचण|பிரச்சனை|సమస్య|ਸਮੱਸਿਆ/
-  ];
-  
-  if (isIndicScript) {
-    // For Indic scripts, use character count
-    const charCount = userMessage.length;
-    if (charCount < 30) {
-      complexity = 'simple';
-      baseMaxWords = 120; // ✅ Increased from 80
-      baseMaxTokens = 200;
-    } else if (charCount < 100) {
-      complexity = 'medium';
-      baseMaxWords = 400; // ✅ Increased from 250 to prevent mid-response cuts
-      baseMaxTokens = 600;
-    } else {
-      complexity = 'complex';
-      baseMaxWords = 700; // ✅ Increased from 500
-      baseMaxTokens = 1000;
-    }
-  } else {
-    // For Latin scripts, use word count
-    const wordCount = msg.split(/\s+/).length;
-    
-    if (wordCount <= 5 || simplePatterns.some(p => p.test(msg))) {
-      complexity = 'simple';
-      baseMaxWords = 120; // ✅ Increased from 80
-      baseMaxTokens = 200;
-    } else if (wordCount <= 15 || mediumPatterns.some(p => p.test(msg))) {
-      complexity = 'medium';
-      baseMaxWords = 400; // ✅ Increased from 250 to prevent mid-response cuts
-      baseMaxTokens = 600;
-    } else {
-      complexity = 'complex';
-      baseMaxWords = 700; // ✅ Increased from 500
-      baseMaxTokens = 1000;
-    }
+const inFlightRequests = new Map<string, InFlightRequest>();
+const DEDUP_WINDOW_MS = 5000; // 5-second dedup window
+
+function getDedupeKey(farmerId: string, message: string): string {
+  // Hash based on farmer + first 100 chars of message (covers double-tap)
+  const msgSnippet = (message || '').substring(0, 100).trim().toLowerCase();
+  return `${farmerId}:${msgSnippet}`;
+}
+
+function cleanExpiredInflight(): void {
+  const now = Date.now();
+  for (const [key, entry] of inFlightRequests) {
+    if (now > entry.expiresAt) inFlightRequests.delete(key);
   }
-  
-  // ✅ FIX: Apply 1.8x multiplier for Indic languages
-  const indicLanguages = ['hi', 'mr', 'ta', 'te', 'bn', 'gu', 'kn', 'ml', 'pa', 'or', 'ur'];
-  const isIndicLanguage = indicLanguages.includes(language);
-  
-  let finalMaxTokens = baseMaxTokens;
-  if (isIndicLanguage) {
-    finalMaxTokens = Math.round(baseMaxTokens * 1.8); // Indic scripts use more tokens
-    console.log(`🔤 Indic language detected (${language}): ${baseMaxTokens} → ${finalMaxTokens} tokens`);
-  }
-  
-  // ✅ FIX: Add 20% safety buffer to prevent mid-response cutoffs
-  finalMaxTokens = Math.round(finalMaxTokens * 1.2);
-  
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRODUCTION FIX: Rich Application Details Builder
+// Ensures ALL 50+ agronomic fields from decision_rules propagate through
+// recovery paths to the deterministic response builder.
+// Without this, extractRichRuleData() in llm-response-formatter.ts receives
+// empty fields and the deterministic builder produces skeleton responses.
+// ═══════════════════════════════════════════════════════════════════════════
+function buildRichApplicationDetails(source: any, productName: string | null, productType: string | null): Record<string, any> {
   return {
-    complexity,
-    maxWords: baseMaxWords,
-    maxTokens: finalMaxTokens,
-    responseStyle: complexity === 'simple' ? 'brief' : complexity === 'medium' ? 'structured' : 'comprehensive'
+    // Identity
+    product_name: productName,
+    product_type: productType,
+    rule_id: source.rule_id,
+    
+    // Narrative
+    action_text: source.action_text || null,
+    reason_text: source.reason_text || null,
+    knowledge_text: source.knowledge_text || null,
+    i18n_key: source.i18n_key || null,
+    decision_trace_template: source.decision_trace_template || null,
+    cause: source.cause || null,
+    
+    // Product & Dosage
+    active_ingredient: source.active_ingredient || null,
+    dosage_per_acre: source.dosage_per_acre || null,
+    water_volume_per_acre: source.water_volume_per_acre || null,
+    application_method: source.application_method || null,
+    target_pest_stage: source.target_pest_stage || null,
+    chemical_class: source.chemical_class || null,
+    mode_of_action: source.mode_of_action || null,
+    resistance_group: source.resistance_group || null,
+    treatment_type: source.treatment_type || null,
+    
+    // Safety
+    phi_days: source.phi_days || null,
+    reentry_interval_hours: source.reentry_interval_hours || null,
+    bee_toxicity: source.bee_toxicity || null,
+    aquatic_toxicity: source.aquatic_toxicity || null,
+    farmer_safety_level: source.farmer_safety_level || null,
+    regulatory_status: source.regulatory_status || null,
+    
+    // IPM / Organic
+    organic_alternative: source.organic_alternative || null,
+    biological_group: source.biological_group || null,
+    ipm_level: source.ipm_level || null,
+    
+    // Cost
+    material_cost_per_acre_min: source.material_cost_per_acre_min || null,
+    material_cost_per_acre_max: source.material_cost_per_acre_max || null,
+    labor_cost_per_acre_min: source.labor_cost_per_acre_min || null,
+    labor_cost_per_acre_max: source.labor_cost_per_acre_max || null,
+    labor_hours_per_acre: source.labor_hours_per_acre || null,
+    equipment_required: source.equipment_required || null,
+    equipment_cost_per_acre: source.equipment_cost_per_acre || null,
+    total_cost_estimated: source.total_cost_estimated || null,
+    
+    // ROI
+    roi_yield_gain_pct: source.roi_yield_gain_pct || null,
+    roi_cost_saved_min: source.roi_cost_saved_min || null,
+    roi_cost_saved_max: source.roi_cost_saved_max || null,
+    roi_net_score: source.roi_net_score || null,
+    roi_confidence: source.roi_confidence || null,
+    
+    // Monitoring
+    success_indicators: source.success_indicators || null,
+    failure_indicators: source.failure_indicators || null,
+    
+    // Environmental
+    min_temperature: source.min_temperature || null,
+    max_temperature: source.max_temperature || null,
+    max_wind_speed: source.max_wind_speed || null,
+    rain_delay_hours: source.rain_delay_hours || null,
+    weather_dependency: source.weather_dependency || null,
+    
+    // Scientific Reference
+    scientific_source: source.scientific_source || null,
+    scientific_basis: source.scientific_basis || null,
+    icar_package_ref: source.icar_package_ref || null,
+    university_source: source.university_source || null,
+    
+    // Metadata
+    risk_level: source.risk_level || null,
+    response_severity: source.response_severity || null,
+    data_authority_rank: source.data_authority_rank || null,
   };
 }
 
-function getResponseLengthInstruction(
-  complexity: 'simple' | 'medium' | 'complex',
-  language: string
-): string {
-  const instructions = {
-    simple: {
-      en: `
-⚠️ RESPONSE LENGTH: MAXIMUM 80 WORDS (3-4 sentences)
-This is a SIMPLE question. Give a DIRECT, SHORT answer.
-DO NOT use emoji sections (🟢🟡🔴) for simple queries - just plain text.
-🚫 ABSOLUTELY NO ** ASTERISKS ** OR MARKDOWN FORMATTING
+let orchestrator: AIAgentOrchestrator | null = null;
 
-Example:
-User: "When to water wheat?"
-You: "Water your wheat crop twice this week - Monday and Thursday. Apply 28,000 liters each time through drip system. Water early morning (6-8 AM) for best results."
-
-DO NOT give:
-❌ Long introductions or greetings
-❌ Detailed explanations
-❌ Multiple sections
-❌ **Bold** or *italic* formatting
-❌ ## Headers or ### Subheaders
-
-DO give:
-✅ Direct answer in 2-3 sentences
-✅ Specific numbers/timings for their exact land
-✅ One key tip in natural language`,
-      
-      hi: `
-⚠️ उत्तर की लंबाई: अधिकतम 80 शब्द (3-4 वाक्य)
-यह एक सरल सवाल है। सीधा, छोटा जवाब दें।
-सरल सवालों के लिए इमोजी सेक्शन (🟢🟡🔴) का उपयोग न करें - केवल सादा टेक्स्ट।
-🚫 बिल्कुल ** तारे ** या मार्कडाउन फॉर्मेटिंग नहीं
-
-उदाहरण:
-उपयोगकर्ता: "गेहूं में पानी कब दें?"
-आप: "इस हफ्ते दो बार पानी दें - सोमवार और गुरुवार। हर बार 28,000 लीटर ड्रिप से। सुबह 6-8 बजे पानी देना बेस्ट है।"
-
-मत दें:
-❌ लंबी शुरुआत या नमस्ते
-❌ विस्तृत व्याख्या
-❌ कई सेक्शन
-❌ **बोल्ड** या *इटैलिक* फॉर्मेटिंग
-❌ ## हेडर या ### उप-हेडर
-
-दें:
-✅ सीधा जवाब 2-3 वाक्यों में
-✅ उनकी जमीन के लिए सटीक संख्या
-✅ सामान्य भाषा में एक मुख्य टिप`,
-      
-      mr: `
-⚠️ उत्तराची लांबी: जास्तीत जास्त 80 शब्द (3-4 वाक्ये)
-हा एक साधा प्रश्न आहे। थेट, लहान उत्तर द्या।
-साध्या प्रश्नांसाठी इमोजी विभाग (🟢🟡🔴) वापरू नका - फक्त साधा मजकूर.
-🚫 अजिबात ** तारे ** किंवा मार्कडाउन फॉरमॅटिंग नाही
-
-उदाहरण:
-वापरकर्ता: "गहू मध्ये पाणी कधी द्यावे?"
-तुम्ही: "या आठवड्यात दोन वेळा पाणी द्या - सोमवार आणि गुरुवार। प्रत्येक वेळी 28,000 लीटर ठिबक प्रणालीतून। सकाळी 6-8 वाजता पाणी देणे चांगले।"
-
-देऊ नका:
-❌ लांब परिचय किंवा नमस्कार
-❌ तपशीलवार स्पष्टीकरण
-❌ अनेक विभाग
-❌ **ठळक** किंवा *इटॅलिक* फॉरमॅटिंग
-❌ ## शीर्षक किंवा ### उप-शीर्षक
-
-द्या:
-✅ थेट उत्तर 2-3 वाक्यांमध्ये
-✅ त्यांच्या जमिनीसाठी अचूक संख्या
-✅ नैसर्गिक भाषेत एक मुख्य टिप`,
-      
-      ta: `
-⚠️ பதில் நீளம்: அதிகபட்சம் 80 சொற்கள் (3-4 வாக்கியங்கள்)
-இது ஒரு எளிய கேள்வி. நேரடியான, குறுகிய பதில் கொடுங்கள்.
-
-உதாரணம்:
-பயனர்: "கோதுமைக்கு எப்போது நீர் தேவை?"
-நீங்கள்: "இந்த வாரம் இருமுறை நீர் கொடுங்கள் - திங்கள் மற்றும் வியாழன். ஒவ்வொரு முறையும் 28,000 லிட்டர் சொட்டுநீர் மூலம். காலை 6-8 மணிக்கு நீர் கொடுப்பது சிறந்தது."
-
-கொடுக்க வேண்டாம்:
-❌ நீண்ட அறிமுகம்
-❌ விரிவான விளக்கம்
-❌ பல பிரிவுகள்
-
-கொடுங்கள்:
-✅ நேரடி பதில் 2-3 வாக்கியங்களில்
-✅ குறிப்பிட்ட எண்கள்/நேரங்கள்
-✅ ஒரு முக்கிய குறிப்பு`,
-      
-      te: `
-⚠️ సమాధాన పొడవు: గరిష్టంగా 80 పదాలు (3-4 వాక్యాలు)
-ఇది ఒక సాధారణ ప్రశ్న. ప్రత్యక్ష, చిన్న సమాధానం ఇవ్వండి।
-
-ఉదాహరణ:
-వినియోగదారు: "గోధుమకు నీరు ఎప్పుడు?"
-మీరు: "ఈ వారం రెండుసార్లు నీరు ఇవ్వండి - సోమవారం మరియు గురువారం। ప్రతిసారి 28,000 లీటర్లు డ్రిప్ ద్వారా। ఉదయం 6-8 గంటలకు నీరు ఇవ్వడం మంచిది।"
-
-ఇవ్వకండి:
-❌ పొడవైన పరిచయం
-❌ వివరణాత్మక వివరణ
-❌ అనేక విభాగాలు
-
-ఇవ్వండి:
-✅ ప్రత్యక్ష సమాధానం 2-3 వాక్యాలలో
-✅ నిర్దిష్ట సంఖ్యలు/సమయాలు
-✅ ఒక ముఖ్య చిట్కా`,
-      
-      pa: `
-⚠️ ਜਵਾਬ ਦੀ ਲੰਬਾਈ: ਅਧਿਕਤਮ 80 ਸ਼ਬਦ (3-4 ਵਾਕ)
-ਇਹ ਇੱਕ ਸਧਾਰਨ ਸਵਾਲ ਹੈ। ਸਿੱਧਾ, ਛੋਟਾ ਜਵਾਬ ਦਿਓ।
-
-ਉਦਾਹਰਨ:
-ਵਰਤੋਂਕਾਰ: "ਕਣਕ ਵਿੱਚ ਪਾਣੀ ਕਦੋਂ?"
-ਤੁਸੀਂ: "ਇਸ ਹਫਤੇ ਦੋ ਵਾਰ ਪਾਣੀ ਦਿਓ - ਸੋਮਵਾਰ ਅਤੇ ਵੀਰਵਾਰ। ਹਰ ਵਾਰ 28,000 ਲੀਟਰ ਡਰਿੱਪ ਰਾਹੀਂ। ਸਵੇਰੇ 6-8 ਵਜੇ ਪਾਣੀ ਦੇਣਾ ਚੰਗਾ ਹੈ।"
-
-ਨਾ ਦਿਓ:
-❌ ਲੰਮੀ ਜਾਣ-ਪਛਾਣ
-❌ ਵਿਸਥਾਰਪੂਰਵਕ ਵਿਆਖਿਆ
-❌ ਕਈ ਭਾਗ
-
-ਦਿਓ:
-✅ ਸਿੱਧਾ ਜਵਾਬ 2-3 ਵਾਕਾਂ ਵਿੱਚ
-✅ ਖਾਸ ਸੰਖਿਆਵਾਂ/ਸਮੇਂ
-✅ ਇੱਕ ਮੁੱਖ ਸੁਝਾਅ`
-    },
-    
-    medium: {
-      en: `
-⚠️ RESPONSE LENGTH: MAXIMUM 400 WORDS (2-3 paragraphs)
-This is a MEDIUM complexity question. Provide structured, step-by-step guidance.
-🚫 ABSOLUTELY NO ** ASTERISKS ** OR ## MARKDOWN FORMATTING
-
-📝 CRITICAL FORMATTING RULES:
-- Each numbered point MUST start on a NEW LINE
-- Use double newline (blank line) between sections
-- Format numbered steps like this:
-  1. First step details here
-  2. Second step details here
-  3. Third step details here
-- Each emoji section (🟢🟡🔴🔵) MUST start on a NEW LINE
-
-Structure using EMOJIS ONLY:
-1️⃣ Brief intro (1 sentence)
-2️⃣ Main steps (3-5 bullet points with •)
-3️⃣ Key tip (1 sentence)
-
-Example format:
-Here's the fertilizer schedule for tomato in your 5.25 acres:
-
-🌱 Step 1: At planting
-Apply DAP 25 kg + Potash 15 kg mixed in soil
-
-🌱 Step 2: After 20 days
-Apply Urea 20 kg around plants
-
-🌱 Step 3: At flowering
-Apply 19:19:19 NPK 30 kg
-
-Apply on moist soil, then give light water. Don't touch leaves.
-
-DO NOT use:
-❌ **Bold** or *italic* text
-❌ ## Headers or ### Subheaders  
-❌ Multiple *** stars
-❌ Long paragraphs (max 2-3 sentences each)
-
-DO use:
-✅ Emojis for visual structure (🌱, 💧, ⚠️)
-✅ Simple bullet points (•)
-✅ Numbered steps (1., 2., 3.) - EACH ON NEW LINE
-✅ Natural conversational language
-✅ Exact calculations for their land size
-
-DO NOT exceed 400 words.`,
-      
-      hi: `
-⚠️ उत्तर की लंबाई: अधिकतम 400 शब्द (2-3 पैराग्राफ)
-यह मध्यम कठिनाई का सवाल है। स्टेप-बाय-स्टेप मार्गदर्शन दें।
-🚫 बिल्कुल ** तारे ** या ## मार्कडाउन फॉर्मेटिंग नहीं
-
-📝 महत्वपूर्ण फॉर्मेटिंग नियम:
-- हर नंबर वाला पॉइंट नई लाइन में होना चाहिए
-- सेक्शन के बीच खाली लाइन दें
-- फॉर्मेट इस तरह करें:
-  1. पहला स्टेप यहां
-  2. दूसरा स्टेप यहां
-  3. तीसरा स्टेप यहां
-
-केवल इमोजी का उपयोग करके संरचना:
-1️⃣ संक्षिप्त परिचय (1 वाक्य)
-2️⃣ मुख्य कदम (• के साथ 3-5 बिंदु)
-3️⃣ महत्वपूर्ण टिप (1 वाक्य)
-
-उपयोग न करें:
-❌ **बोल्ड** या *इटैलिक* टेक्स्ट
-❌ ## हेडर या ### उप-हेडर
-
-उपयोग करें:
-✅ दृश्य संरचना के लिए इमोजी (🌱, 💧, ⚠️)
-✅ सरल बुलेट पॉइंट (•)
-✅ क्रमांकित चरण (1., 2., 3.) - हर एक नई लाइन में
-✅ प्राकृतिक बातचीत की भाषा
-
-400 शब्दों से अधिक न लिखें।`,
-      
-      mr: `
-⚠️ उत्तराची लांबी: जास्तीत जास्त 400 शब्द (2-3 परिच्छेद)
-हा मध्यम क्लिष्टतेचा प्रश्न आहे। पायरी-दर-पायरी मार्गदर्शन द्या।
-🚫 अजिबात ** तारे ** किंवा ## मार्कडाउन फॉरमॅटिंग नाही
-
-📝 महत्त्वाचे फॉर्मॅटिंग नियम:
-- प्रत्येक क्रमांकित मुद्दा नवीन ओळीवर असावा
-- विभागांमध्ये रिकामी ओळ द्या
-- फॉर्मॅट असे करा:
-  1. पहिली पायरी येथे
-  2. दुसरी पायरी येथे
-  3. तिसरी पायरी येथे
-
-फक्त इमोजी वापरून रचना:
-1️⃣ संक्षिप्त परिचय (1 वाक्य)
-2️⃣ मुख्य पायऱ्या (• सह 3-5 मुद्दे)
-3️⃣ महत्त्वाची टीप (1 वाक्य)
-
-वापरू नका:
-❌ **ठळक** किंवा *इटॅलिक* मजकूर
-❌ ## शीर्षक किंवा ### उप-शीर्षक
-
-वापरा:
-✅ दृश्य रचनेसाठी इमोजी (🌱, 💧, ⚠️)
-✅ साधे बुलेट पॉइंट (•)
-✅ क्रमांकित पायऱ्या (1., 2., 3.) - प्रत्येक नवीन ओळीवर
-✅ नैसर्गिक संवादात्मक भाषा
-
-400 शब्दांपेक्षा जास्त लिहू नका।`,
-      
-      ta: `
-⚠️ பதில் நீளம்: அதிகபட்சம் 400 சொற்கள் (2-3 பத்திகள்)
-இது நடுத்தர சிக்கலான கேள்வி। படிப்படியான வழிகாட்டுதலை வழங்கவும்.
-
-📝 முக்கிய வடிவமைப்பு விதிகள்:
-- ஒவ்வொரு எண்ணிட்ட புள்ளியும் புதிய வரியில் இருக்க வேண்டும்
-- பிரிவுகளுக்கு இடையே வெற்று வரி கொடுங்கள்
-
-கட்டமைப்பு:
-1️⃣ சுருக்கமான அறிமுகம் (1 வாக்கியம்)
-2️⃣ முக்கிய படிகள் (3-5 புள்ளிகள்)
-3️⃣ முக்கிய குறிப்பு (1 வாக்கியம்)
-
-400 சொற்களுக்கு மேல் எழுத வேண்டாம்.`,
-      
-      te: `
-⚠️ సమాధాన పొడవు: గరిష్టంగా 400 పదాలు (2-3 పేరాగ్రాఫ్‌లు)
-ఇది మధ్యస్థ సంక్లిష్టత ప్రశ్న. దశలవారీ మార్గదర్శకత్వం అందించండి.
-
-📝 ముఖ్యమైన ఫార్మాటింగ్ నియమాలు:
-- ప్రతి సంఖ్య పాయింట్ కొత్త లైన్‌లో ఉండాలి
-- విభాగాల మధ్య ఖాళీ లైన్ ఇవ్వండి
-
-నిర్మాణం:
-1️⃣ సంక్షిప్త పరిచయం (1 వాక్యం)
-2️⃣ ముఖ్య దశలు (3-5 పాయింట్లు)
-3️⃣ ముఖ్య చిట్కా (1 వాక్యం)
-
-400 పదాలకు మించి రాయకండి.`,
-      
-      pa: `
-⚠️ ਜਵਾਬ ਦੀ ਲੰਬਾਈ: ਅਧਿਕਤਮ 400 ਸ਼ਬਦ (2-3 ਪੈਰੇ)
-ਇਹ ਮੱਧਮ ਗੁੰਝਲਦਾਰਤਾ ਦਾ ਸਵਾਲ ਹੈ। ਕਦਮ-ਦਰ-ਕਦਮ ਮਾਰਗਦਰਸ਼ਨ ਦਿਓ।
-
-📝 ਮਹੱਤਵਪੂਰਨ ਫਾਰਮੈਟਿੰਗ ਨਿਯਮ:
-- ਹਰ ਨੰਬਰ ਵਾਲਾ ਬਿੰਦੂ ਨਵੀਂ ਲਾਈਨ ਵਿੱਚ ਹੋਣਾ ਚਾਹੀਦਾ ਹੈ
-
-ਢਾਂਚਾ:
-1️⃣ ਸੰਖੇਪ ਜਾਣ-ਪਛਾਣ (1 ਵਾਕ)
-2️⃣ ਮੁੱਖ ਕਦਮ (3-5 ਬਿੰਦੂ)
-3️⃣ ਮੁੱਖ ਸੁਝਾਅ (1 ਵਾਕ)
-
-400 ਸ਼ਬਦਾਂ ਤੋਂ ਵੱਧ ਨਾ ਲਿਖੋ।`
-    },
-    
-    complex: {
-      en: `
-⚠️ RESPONSE LENGTH: MAXIMUM 500 WORDS
-This is a COMPLEX question requiring detailed planning.
-🚫 ABSOLUTELY NO ** ASTERISKS ** OR ## MARKDOWN FORMATTING
-
-Use organized sections with emojis ONLY:
-🟢 सेंद्रिय पद्धत (Organic methods if applicable)
-🟡 खत वेळापत्रक (Fertilizer schedule if applicable)
-🔵 पाणी योजना (Irrigation plan if applicable)  
-🔴 कीड नियंत्रण (Pest control if applicable)
-⚠️ सावधगिरी (Important precautions)
-
-Keep each section to 3-5 sentences maximum.
-Provide calculations for the exact land size.
-Use natural language - NO **bold** or *italic* formatting.
-Use bullet points (•) or numbers (1., 2., 3.) only.`,
-      
-      hi: `
-⚠️ उत्तर की लंबाई: अधिकतम 500 शब्द
-यह जटिल सवाल है जिसमें विस्तृत योजना चाहिए।
-🚫 बिल्कुल ** तारे ** या ## मार्कडाउन फॉर्मेटिंग नहीं
-
-केवल इमोजी के साथ सेक्शन बनाएं:
-🟢 जैविक तरीके
-🟡 खाद का शेड्यूल
-🔵 पानी की योजना
-🔴 कीट नियंत्रण
-⚠️ सावधानी
-
-हर सेक्शन 3-5 वाक्यों तक सीमित रखें।
-प्राकृतिक भाषा का उपयोग करें - **बोल्ड** या *इटैलिक* नहीं।
-केवल बुलेट पॉइंट (•) या संख्या (1., 2., 3.) का उपयोग करें।`,
-      
-      mr: `
-⚠️ उत्तराची लांबी: जास्तीत जास्त 500 शब्द
-हा गुंतागुंतीचा प्रश्न आहे ज्यासाठी तपशीलवार नियोजन आवश्यक आहे।
-🚫 अजिबात ** तारे ** किंवा ## मार्कडाउन फॉरमॅटिंग नाही
-
-फक्त इमोजीसह विभाग तयार करा:
-🟢 सेंद्रिय पद्धती
-🟡 खत वेळापत्रक
-🔵 पाणी योजना
-🔴 कीड नियंत्रण
-⚠️ सावधगिरी
-
-प्रत्येक विभाग 3-5 वाक्यांपर्यंत मर्यादित ठेवा।
-नैसर्गिक भाषा वापरा - **ठळक** किंवा *इटॅलिक* नाही।
-फक्त बुलेट पॉइंट (•) किंवा संख्या (1., 2., 3.) वापरा।`,
-      
-      ta: `
-⚠️ பதில் நீளம்: அதிகபட்சம் 500 சொற்கள்
-இது விரிவான திட்டமிடல் தேவைப்படும் சிக்கலான கேள்வி.
-
-எமோஜியுடன் ஒழுங்கமைக்கப்பட்ட பிரிவுகள்:
-🟢 இயற்கை முறைகள்
-🟡 உர அட்டவணை
-🔵 நீர்ப்பாசன திட்டம்
-🔴 பூச்சி கட்டுப்பாடு
-
-ஒவ்வொரு பிரிவையும் 3-5 வாக்கியங்களுக்கு மட்டுப்படுத்துங்கள்.`,
-      
-      te: `
-⚠️ సమాధాన పొడవు: గరిష్టంగా 500 పదాలు
-ఇది వివరణాత్మక ప్లానింగ్ అవసరమైన సంక్లిష్ట ప్రశ్న.
-
-ఎమోజీలతో వ్యవస్థీకృత విభాగాలు:
-🟢 సేంద్రీయ పద్ధతులు
-🟡 ఎరువుల షెడ్యూల్
-🔵 నీటిపారుదల ప్రణాళిక
-🔴 చీడపురుగుల నియంత్రణ
-
-ప్రతి విభాగాన్ని 3-5 వాక్యాలకు పరిమితం చేయండి.`,
-      
-      pa: `
-⚠️ ਜਵਾਬ ਦੀ ਲੰਬਾਈ: ਅਧਿਕਤਮ 500 ਸ਼ਬਦ
-ਇਹ ਗੁੰਝਲਦਾਰ ਸਵਾਲ ਹੈ ਜਿਸ ਲਈ ਵਿਸਥਾਰਪੂਰਵਕ ਯੋਜਨਾ ਚਾਹੀਦੀ ਹੈ।
-
-ਇਮੋਜੀ ਨਾਲ ਸੰਗਠਿਤ ਭਾਗ:
-🟢 ਜੈਵਿਕ ਤਰੀਕੇ
-🟡 ਖਾਦ ਸਮਾਂ-ਸਾਰਣੀ
-🔵 ਸਿੰਚਾਈ ਯੋਜਨਾ
-🔴 ਕੀੜੇ ਨਿਯੰਤਰਣ
-
-ਹਰੇਕ ਭਾਗ ਨੂੰ 3-5 ਵਾਕਾਂ ਤੱਕ ਸੀਮਤ ਰੱਖੋ।`
-    }
-  };
-  
-  // Fallback to English if language not found
-  const langInstructions = instructions[complexity][language] || instructions[complexity]['en'];
-  return langInstructions;
+function getOrchestrator(): AIAgentOrchestrator {
+  if (!orchestrator) {
+    orchestrator = new AIAgentOrchestrator();
+  }
+  return orchestrator;
 }
 
-// ============= WEATHER RESPONSE GENERATOR =============
-
-interface WeatherData {
-  temp: number;
-  feels_like: number;
-  humidity: number;
-  wind_speed: string | number;
-  description: string;
-  rain_1h?: number;
-  rain_3h?: number;
-  location: string;
-  provider: string;
-}
-
-interface ForecastDay {
-  date: string;
-  temp_min: number;
-  temp_max: number;
-  max_rain_prob: number;
-  description: string;
-}
-
-function generateWeatherResponse(
-  current: WeatherData,
-  forecast: ForecastDay[],
-  language: string
-): string {
-  const temp = Math.round(current.temp);
-  const feelsLike = Math.round(current.feels_like);
-  const humidity = current.humidity;
-  const windSpeed = typeof current.wind_speed === 'string' 
-    ? parseFloat(current.wind_speed) 
-    : current.wind_speed;
-  const desc = current.description;
-  
-  // Farming recommendations based on weather
-  const hasRain = (current.rain_1h && current.rain_1h > 0) || (current.rain_3h && current.rain_3h > 0);
-  const rainForecast = forecast.find(day => day.max_rain_prob > 50);
-  const isHot = temp > 35;
-  const isHumid = humidity > 80;
-  const isWindy = windSpeed > 20;
-  
-  // Language responses
-  const responses: Record<string, string> = {
-    en: `📍 Current Weather for ${current.location}
-
-🌡️ Temperature: ${temp}°C (Feels like ${feelsLike}°C)
-💨 Wind: ${Math.round(windSpeed)} km/h
-💧 Humidity: ${humidity}%
-🌤️ Conditions: ${desc}
-
-📅 Next 3 Days:
-${forecast.slice(0, 3).map((day, i) => {
-  const dayName = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short' });
-  return `${dayName}: ${Math.round(day.temp_min)}-${Math.round(day.temp_max)}°C, Rain ${day.max_rain_prob}%`;
-}).join('\n')}
-
-🌾 Farming Advice:
-${hasRain || rainForecast ? '🔴 Avoid spraying - rain expected' : '✅ Good for spraying'}
-${isHot ? '💧 Water early (5-7 AM) or evening (5-7 PM)' : '✅ Normal watering time'}
-${isHumid ? '⚠️ Watch for fungal diseases' : '✅ Low disease risk'}
-${isWindy ? '🔴 Avoid fertilizer - windy' : '✅ Safe for fertilizer'}
-
-Updated: ${new Date().toLocaleTimeString('en-IN')} • ${current.provider}`,
-    
-    hi: `📍 ${current.location} का मौसम
-
-🌡️ तापमान: ${temp}°C (अनुभव ${feelsLike}°C)
-💨 हवा: ${Math.round(windSpeed)} किमी/घंटा
-💧 नमी: ${humidity}%
-🌤️ स्थिति: ${desc}
-
-📅 अगले 3 दिन:
-${forecast.slice(0, 3).map((day, i) => {
-  const dayName = i === 0 ? 'आज' : i === 1 ? 'कल' : new Date(day.date).toLocaleDateString('hi-IN', { weekday: 'short' });
-  return `${dayName}: ${Math.round(day.temp_min)}-${Math.round(day.temp_max)}°C, बारिश ${day.max_rain_prob}%`;
-}).join('\n')}
-
-🌾 खेती सलाह:
-${hasRain || rainForecast ? '🔴 छिड़काव न करें - बारिश होगी' : '✅ छिड़काव के लिए अच्छा'}
-${isHot ? '💧 सुबह (5-7) या शाम (5-7) पानी दें' : '✅ सामान्य समय पानी दें'}
-${isHumid ? '⚠️ फफूंद रोग का खतरा' : '✅ रोग का कम खतरा'}
-${isWindy ? '🔴 खाद न डालें - तेज हवा' : '✅ खाद डाल सकते हैं'}
-
-अपडेट: ${new Date().toLocaleTimeString('hi-IN')} • ${current.provider}`,
-    
-    mr: `📍 ${current.location} चे हवामान
-
-🌡️ तापमान: ${temp}°C (अनुभव ${feelsLike}°C)
-💨 वारा: ${Math.round(windSpeed)} किमी/तास
-💧 आर्द्रता: ${humidity}%
-🌤️ परिस्थिती: ${desc}
-
-📅 पुढील 3 दिवस:
-${forecast.slice(0, 3).map((day, i) => {
-  const dayName = i === 0 ? 'आज' : i === 1 ? 'उद्या' : new Date(day.date).toLocaleDateString('mr-IN', { weekday: 'short' });
-  return `${dayName}: ${Math.round(day.temp_min)}-${Math.round(day.temp_max)}°C, पाऊस ${day.max_rain_prob}%`;
-}).join('\n')}
-
-🌾 शेती सल्ला:
-${hasRain || rainForecast ? '🔴 फवारणी टाळा - पाऊस होणार' : '✅ फवारणीसाठी चांगले'}
-${isHot ? '💧 सकाळी (5-7) किंवा संध्याकाळी (5-7) पाणी द्या' : '✅ नेहमीच्या वेळी पाणी'}
-${isHumid ? '⚠️ बुरशीजन्य रोगाचा धोका' : '✅ रोगाचा कमी धोका'}
-${isWindy ? '🔴 खत टाकू नका - जोरदार वारा' : '✅ खत टाकू शकता'}
-
-अपडेट: ${new Date().toLocaleTimeString('mr-IN')} • ${current.provider}`
-  };
-  
-  return responses[language] || responses['en'];
-}
-
-function enforceResponseLength(
-  aiResponse: string,
-  maxWords: number,
-  language: string
-): string {
-  const words = aiResponse.split(/\s+/);
-  
-  // ✅ Allow 20% buffer to prevent aggressive truncation
-  const effectiveMaxWords = Math.round(maxWords * 1.2);
-  
-  // If within limit, return as-is
-  if (words.length <= effectiveMaxWords) {
-    return aiResponse;
-  }
-  
-  console.log(`✂️ Truncating response from ${words.length} to ${effectiveMaxWords} words`);
-  
-  // Truncate to max words
-  const truncated = words.slice(0, effectiveMaxWords).join(' ');
-  
-  // ✅ Find a safe cut point - avoid cutting mid-numbered list
-  // Look for last complete numbered point or section
-  const lastNumberedPoint = truncated.lastIndexOf('\n');
-  const lastPeriod = truncated.lastIndexOf('.');
-  const lastQuestion = truncated.lastIndexOf('?');
-  const lastExclamation = truncated.lastIndexOf('!');
-  const lastDevanagari = truncated.lastIndexOf('।'); // Hindi/Marathi sentence end
-  const lastNewline = truncated.lastIndexOf('\n\n'); // Section break
-  
-  // ✅ Check if we're cutting mid-numbered list (1., 2., 3., etc.)
-  const numberedListPattern = /\d+\.\s+[^\n]+$/;
-  const isInMiddleOfList = numberedListPattern.test(truncated);
-  
-  if (isInMiddleOfList && lastNewline > 0) {
-    // Cut at the last complete numbered point
-    const beforeLastNewline = truncated.lastIndexOf('\n', truncated.length - 10);
-    if (beforeLastNewline > truncated.length * 0.7) {
-      return truncated.substring(0, beforeLastNewline).trim();
-    }
-  }
-  
-  const lastSentenceEnd = Math.max(lastPeriod, lastQuestion, lastExclamation, lastDevanagari);
-  
-  if (lastSentenceEnd > truncated.length * 0.7) {
-    return truncated.substring(0, lastSentenceEnd + 1);
-  }
-  
-  // If no good sentence end found, try to end at newline
-  if (lastNumberedPoint > truncated.length * 0.7) {
-    return truncated.substring(0, lastNumberedPoint).trim();
-  }
-  
-  // Last resort - return full truncated text without ellipsis (it's complete enough)
-  return truncated;
+// Generate unique trace_id for request tracing
+function generateTraceId(): string {
+  const timestamp = Date.now().toString(36);
+  const random = Math.random().toString(36).substring(2, 8);
+  return `trace_${timestamp}_${random}`;
 }
 
 serve(async (req) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  const traceId = generateTraceId();
+  let dedupeKey: string | null = null;
+  
+  console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
+  console.log(`🔍 [${traceId}] REQUEST START`);
+
   try {
-    const startTime = Date.now();
+    // Parse request body
+    const rawBody = await req.text();
     
-    const requestBody = await req.json();
-    const { 
-      messages = [], 
-      landId, 
+    if (!rawBody || !rawBody.trim()) {
+      return new Response(
+        JSON.stringify({
+          error: 'Missing request body',
+          details: 'Expected JSON body but received an empty payload',
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    let requestBody: any;
+    try {
+      requestBody = JSON.parse(rawBody);
+    } catch (e) {
+      return new Response(
+        JSON.stringify({
+          error: 'Invalid JSON body',
+          details: e instanceof Error ? e.message : 'Invalid JSON',
+          timestamp: new Date().toISOString(),
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
+    const {
+      messages = [],
+      landId,
       sessionId,
       imageUrl,
       language = 'en',
       metadata = {},
-      fileContent,
-      action // New: support for different actions
+      action
     } = requestBody;
 
-    // Auto-detect language from user's message if language mismatch detected
-    let detectedLanguage = language;
-    const lastUserMessage = messages[messages.length - 1];
-    const userText = lastUserMessage?.content || '';
-    
-    // Simple language detection based on Unicode ranges
-    const hasDevanagari = /[\u0900-\u097F]/.test(userText); // Hindi/Marathi
-    const hasTamil = /[\u0B80-\u0BFF]/.test(userText);
-    const hasTelugu = /[\u0C00-\u0C7F]/.test(userText);
-    const hasBengali = /[\u0980-\u09FF]/.test(userText);
-    const hasGujarati = /[\u0A80-\u0AFF]/.test(userText);
-    const hasKannada = /[\u0C80-\u0CFF]/.test(userText);
-    const hasMalayalam = /[\u0D00-\u0D7F]/.test(userText);
-    const hasOdia = /[\u0B00-\u0B7F]/.test(userText);
-    const hasPunjabi = /[\u0A00-\u0A7F]/.test(userText);
-    const hasUrdu = /[\u0600-\u06FF]/.test(userText);
-    
-    // ✅ FIX: Respect user's selected language for Devanagari script (Hindi/Marathi)
-    if (hasDevanagari) {
-      // If user selected Marathi or Hindi explicitly, keep their preference
-      if (language === 'mr') {
-        detectedLanguage = 'mr';
-        console.log('🔍 Language detected: Marathi (user preference respected)');
-      } else if (language === 'hi' || language === 'en') {
-        detectedLanguage = 'hi';
-        console.log('🔍 Language auto-detected: Hindi from Devanagari script');
-      } else {
-        // Keep user's original language if it's something else
-        detectedLanguage = language;
-        console.log('🔍 Language: keeping user preference:', language);
-      }
-    } else if (hasTamil) {
-      detectedLanguage = 'ta';
-      console.log('🔍 Language auto-detected: Tamil');
-    } else if (hasTelugu) {
-      detectedLanguage = 'te';
-      console.log('🔍 Language auto-detected: Telugu');
-    } else if (hasBengali) {
-      detectedLanguage = 'bn';
-      console.log('🔍 Language auto-detected: Bengali');
-    } else if (hasGujarati) {
-      detectedLanguage = 'gu';
-      console.log('🔍 Language auto-detected: Gujarati');
-    } else if (hasKannada) {
-      detectedLanguage = 'kn';
-      console.log('🔍 Language auto-detected: Kannada');
-    } else if (hasMalayalam) {
-      detectedLanguage = 'ml';
-      console.log('🔍 Language auto-detected: Malayalam');
-    } else if (hasOdia) {
-      detectedLanguage = 'or';
-      console.log('🔍 Language auto-detected: Odia');
-    } else if (hasPunjabi) {
-      detectedLanguage = 'pa';
-      console.log('🔍 Language auto-detected: Punjabi');
-    } else if (hasUrdu) {
-      detectedLanguage = 'ur';
-      console.log('🔍 Language auto-detected: Urdu');
-    }
-
-    // Handle training data collection action
+    // Handle training data collection action (legacy support)
     if (action === 'collect_training_data') {
       return await handleTrainingDataCollection(requestBody);
     }
 
-    // SECURITY: Extract and validate tenant and farmer IDs from headers
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SECURITY: Extract and validate tenant and farmer IDs
+    // ═══════════════════════════════════════════════════════════════════════════
     const tenantId = req.headers.get('x-tenant-id');
     const farmerId = req.headers.get('x-farmer-id');
-    const sessionToken = req.headers.get('x-session-token');
 
-    // Validate required headers immediately
     if (!tenantId || !farmerId) {
       console.error('🚨 [Security] Missing required headers:', { tenantId, farmerId });
       return new Response(
@@ -784,60 +276,40 @@ serve(async (req) => {
       );
     }
 
-    console.log('🔐 [Security] Request headers:', {
-      tenantId,
-      farmerId,
-      hasSessionToken: !!sessionToken,
-      timestamp: new Date().toISOString()
-    });
-    
-    // Use metadata values first, then headers as fallback
     const finalTenantId = metadata.tenantId || tenantId;
     const finalFarmerId = metadata.farmerId || farmerId;
 
-    // Initialize Supabase client (needed for validation)
+    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // CRITICAL SECURITY: Database validation of tenant-farmer association
-    if (finalTenantId && finalFarmerId) {
-      console.log('🔐 [Security] Validating tenant-farmer association...');
-      
-      const supabase = createClient(supabaseUrl, supabaseServiceKey);
-      const { data: farmer, error: farmerError } = await supabase
-        .from('farmers')
-        .select('id, tenant_id, farmer_name')
-        .eq('id', finalFarmerId)
-        .eq('tenant_id', finalTenantId)
-        .single();
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SECURITY: Validate tenant-farmer association
+    // ═══════════════════════════════════════════════════════════════════════════
+    const { data: farmer, error: farmerError } = await supabase
+      .from('farmers')
+      .select('id, tenant_id, farmer_name')
+      .eq('id', finalFarmerId)
+      .eq('tenant_id', finalTenantId)
+      .single();
 
-      if (farmerError || !farmer) {
-        console.error('🚨 [Security] INVALID TENANT-FARMER ASSOCIATION:', {
-          tenantId: finalTenantId,
-          farmerId: finalFarmerId,
-          error: farmerError?.message,
-          code: farmerError?.code
-        });
-        return new Response(
-          JSON.stringify({ 
-            error: 'Unauthorized: Invalid tenant-farmer association',
-            details: 'Security validation failed'
-          }),
-          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log('✅ [Security] Tenant-farmer association validated:', {
-        farmerId: farmer.id,
-        farmerName: farmer.farmer_name,
-        tenantId: farmer.tenant_id
-      });
+    if (farmerError || !farmer) {
+      console.error('🚨 [Security] INVALID TENANT-FARMER ASSOCIATION');
+      return new Response(
+        JSON.stringify({ 
+          error: 'Unauthorized: Invalid tenant-farmer association',
+          details: 'Security validation failed'
+        }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // CRITICAL SECURITY: Validate isolation context before ANY database operation
-    await validateIsolation(finalTenantId, finalFarmerId, supabaseUrl, supabaseServiceKey);
+    console.log('✅ [Security] Tenant-farmer validated:', farmer.farmer_name);
 
-    // Rate limiting check (20 requests per minute per farmer)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // RATE LIMITING
+    // ═══════════════════════════════════════════════════════════════════════════
     const rateLimitKey = `${finalTenantId}:${finalFarmerId}`;
     const rateLimit = await checkRateLimit(rateLimitKey, 'ai-agriculture-chat', { maxRequests: 20, windowMs: 60000 });
     
@@ -847,2223 +319,3375 @@ serve(async (req) => {
           error: 'Rate limit exceeded. Please try again later.',
           resetTime: new Date(rateLimit.resetTime).toISOString()
         }),
-        { 
-          status: 429, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REQUEST DEDUPLICATION: Prevent double-tap duplicate processing
+    // If an identical request from the same farmer is already in-flight, reject it
+    // ═══════════════════════════════════════════════════════════════════════════
+    cleanExpiredInflight();
+    const lastMessage = messages.length > 0 ? (messages[messages.length - 1]?.content || '') : '';
+    dedupeKey = getDedupeKey(finalFarmerId, lastMessage);
+    
+    if (inFlightRequests.has(dedupeKey)) {
+      console.log(`🔁 [${traceId}] DEDUP: Duplicate request blocked for farmer=${finalFarmerId}`);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Duplicate request in progress',
+          details: 'Your previous identical request is still being processed. Please wait.',
+          trace_id: traceId
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
-    // Validate required fields
-    if (!finalTenantId || !finalFarmerId) {
-      console.error('Missing context:', { 
-        tenantId: finalTenantId, 
-        farmerId: finalFarmerId, 
-        metadata,
-        headers: {
-          'x-tenant-id': tenantId,
-          'x-farmer-id': farmerId
-        }
-      });
-      return new Response(
-        JSON.stringify({ 
-          error: 'Missing required fields: tenantId and farmerId must be provided in metadata',
-          required: ['tenantId', 'farmerId'],
-          received: { tenantId: finalTenantId, farmerId: finalFarmerId }
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    // Mark this request as in-flight
+    inFlightRequests.set(dedupeKey, { promise: Promise.resolve(new Response()), expiresAt: Date.now() + DEDUP_WINDOW_MS });
 
-    if (!sessionId) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Missing required field: sessionId',
-          required: ['sessionId']
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    console.log('AI Chat Request:', { 
-      tenantId: finalTenantId, 
-      farmerId: finalFarmerId, 
-      landId, 
-      sessionId, 
-      requestedLanguage: language,
-      detectedLanguage: detectedLanguage 
-    });
-
-    // Create Supabase client (credentials already initialized above)
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Set app session for RLS (if we have session token)
-    if (sessionToken) {
-      const { error: sessionError } = await supabase.rpc('set_app_session', {
-        p_tenant_id: finalTenantId,
-        p_farmer_id: finalFarmerId,
-        p_session_token: sessionToken
-      });
-      
-      if (sessionError) {
-        console.error('Failed to set session:', sessionError);
-        // Continue without RLS session - edge functions use service role key
-      }
-    }
-
-    // Get or create chat session
+    //
+    // CRITICAL: Enforce sessionId ↔ landId binding to prevent cross-land contamination
+    // ═══════════════════════════════════════════════════════════════════════════
     let currentSessionId = sessionId;
-    let currentSession = null;
+    const requestedLandId = landId || null;
     
     if (currentSessionId) {
-      // Load existing session
-      const { data: existingSession } = await supabase
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0-A CRITICAL: VALIDATE sessionId belongs to this landId
+      // If mismatch, REJECT the sessionId and find/create correct one
+      // ═══════════════════════════════════════════════════════════════════════════
+      const { data: sessionCheck } = await supabase
         .from('ai_chat_sessions')
-        .select('*')
+        .select('id, land_id, farmer_id, tenant_id')
         .eq('id', currentSessionId)
         .single();
       
-      currentSession = existingSession;
-    }
-    
-    if (!currentSessionId || !currentSession) {
-      const { data: newSession, error: sessionError } = await supabase
-        .from('ai_chat_sessions')
-        .insert({
-          tenant_id: finalTenantId,
-          farmer_id: finalFarmerId,
-          land_id: landId || null,
-          session_type: landId ? 'land_specific' : 'general',
-          session_title: `Chat - ${new Date().toLocaleDateString()}`,
-          metadata: { 
-            language,
-            created_at: new Date().toISOString(),
-            total_messages: 0
-          }
-        })
-        .select()
-        .single();
-
-      if (sessionError) throw sessionError;
-      currentSessionId = newSession.id;
-      currentSession = newSession;
-    }
-
-    // ============= SESSION-BASED SMART CACHING =============
-    // Get message count for this session
-    const { data: messageHistory } = await supabase
-      .from('ai_chat_messages')
-      .select('id, land_context')
-      .eq('session_id', currentSessionId)
-      .order('created_at', { ascending: true });
-
-    const messageCount = (messageHistory?.length || 0) + 1;
-    
-    // Step 1: Classify farmer's query intent
-    const queryIntent = classifyFarmerQuery(userText, language);
-    console.log(`🎯 Query Intent: ${queryIntent.type} (confidence: ${queryIntent.confidence}) | Message #${messageCount}`);
-    
-    // Detect pure weather query vs agriculture query with weather context
-    const weatherKeywords = /weather|मौसम|हवामान|வானிலை|వాతావరణం|ਮੌਸਮ|rain|बारिश|पाऊस|மழை|వర్షం|ਬਾਰਿਸ਼|temperature|तापमान|तापमान|வெப்பநிலை|ఉష్ణోగ్రత|ਤਾਪਮਾਨ|wind|हवा|वारा|காற்று|గాలి|ਹਵਾ|forecast|पूर्वानुमान|अंदाज|முன்னறிவிப்பு|అంచనా|ਪੂਰਵ ਅਨੁਮਾਨ|climate|जलवायु|हवामान|காலநிலை|వాతావరణం|ਜਲਵਾਯੂ/i;
-    const agricultureKeywords = /spray|छिड़काव|फवारणी|water|पाणी|पानी|fertilizer|खत|खाद|irrigation|सिंचाई|पाणीपुरवठा|pesticide|कीटनाशक|crop|फसल|पीक|plant|रोपण|लागवड/i;
-    
-    const hasWeatherKeyword = weatherKeywords.test(userText);
-    const hasAgricultureKeyword = agricultureKeywords.test(userText);
-    
-    // Pure weather query: Only weather keywords, no agriculture keywords
-    const isPureWeatherQuery = hasWeatherKeyword && !hasAgricultureKeyword;
-    // Agriculture with weather: Both types of keywords
-    const isAgricultureWithWeather = hasWeatherKeyword && hasAgricultureKeyword;
-    
-    console.log(`🌤️ Query Analysis: Pure Weather=${isPureWeatherQuery}, Agriculture+Weather=${isAgricultureWithWeather}`);
-    
-    // Get land context if landId is provided
-    let landContext = null;
-    let landDetails: any = null;
-    let farmerDetails: any = null;
-    let farmerContext: any = null;
-    let weatherContext: any = null;
-    let currentWeather: any = null;
-    let weatherForecast: any[] = [];
-    
-    // ✅ DECLARE CROP SCHEDULE VARIABLES AT TOP LEVEL (before systemPrompt)
-    let cropSchedule: any = null;
-    let daysSinceSowing: number | null = null;
-    let daysToHarvest: number | null = null;
-    let currentGrowthStage: string = 'Unknown';
-    let areaInAcres: string | number = 'Unknown';
-    
-    // Check if land has changed (for context refresh)
-    const previousLandId = messageHistory && messageHistory.length > 0 
-      ? messageHistory[messageHistory.length - 1]?.land_context?.land_id 
-      : null;
-    const landHasChanged = previousLandId && landId && previousLandId !== landId;
-    
-    // ✅ STEP 1: FETCH LAND DATA FIRST (before constructing systemPrompt)
-    if (landId) {
-      const { data: land } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('id', landId)
-        .eq('tenant_id', finalTenantId)
-        .single();
-
-      if (land) {
-        landDetails = land;
-        
-        // Calculate area in acres (assign to outer variable)
-        areaInAcres = land.area_acres || 
-                           (land.area_gunta ? (land.area_gunta / 40).toFixed(2) : null) ||
-                           (land.size ? land.size : 'Unknown');
-        
-        // ✅ Fetch active crop schedule for this land (assign to outer variables)
-        try {
-          const { data: schedule } = await supabase
-            .from('crop_schedules')
-            .select('*')
-            .eq('land_id', landId)
-            .eq('is_active', true)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-          
-          if (schedule) {
-            cropSchedule = schedule;
-            
-            // Calculate days since actual sowing from schedule
-            if (schedule.sowing_date) {
-              daysSinceSowing = Math.floor((Date.now() - new Date(schedule.sowing_date).getTime()) / (1000 * 60 * 60 * 24));
-              
-              // Calculate days to harvest
-              if (schedule.expected_harvest_date) {
-                daysToHarvest = Math.floor((new Date(schedule.expected_harvest_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-              }
-              
-              // Determine growth stage based on days since sowing
-              if (daysSinceSowing <= 15) {
-                currentGrowthStage = 'Germination/Early Growth';
-              } else if (daysSinceSowing <= 30) {
-                currentGrowthStage = 'Vegetative Growth';
-              } else if (daysSinceSowing <= 60) {
-                currentGrowthStage = 'Flowering/Reproductive';
-              } else if (daysSinceSowing <= 90) {
-                currentGrowthStage = 'Grain Filling/Maturity';
-              } else {
-                currentGrowthStage = 'Ready for Harvest';
-              }
-            }
-            
-            console.log('✅ Crop Schedule Found:', {
-              crop: schedule.crop_name,
-              variety: schedule.crop_variety,
-              sowingDate: schedule.sowing_date,
-              daysSinceSowing,
-              daysToHarvest,
-              growthStage: currentGrowthStage
-            });
-          } else {
-            console.log('ℹ️ No active crop schedule found, using land cultivation_date');
-            // Fallback to land cultivation_date
-            daysSinceSowing = land.cultivation_date 
-              ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
-              : null;
-          }
-        } catch (scheduleError) {
-          console.warn('⚠️ Could not load crop schedule:', scheduleError);
-          // Fallback to land cultivation_date
-          daysSinceSowing = land.cultivation_date 
-            ? Math.floor((Date.now() - new Date(land.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))
-            : null;
-        }
-        
-        // ✅ STEP 1.2: FETCH SOIL HEALTH DATA (always load for complete context)
-        let soilHealthData = null;
-        try {
-          const { data: soilHealth } = await supabase
-            .from('soil_health')
-            .select('*')
-            .eq('land_id', landId)
-            .order('test_date', { ascending: false })
-            .limit(1)
-            .single();
-          
-          if (soilHealth) {
-            soilHealthData = soilHealth;
-            console.log('✅ Soil Health Data Found:', {
-              nitrogen: soilHealth.nitrogen,
-              phosphorus: soilHealth.phosphorus,
-              potassium: soilHealth.potassium,
-              ph: soilHealth.ph,
-              organic_carbon: soilHealth.organic_carbon,
-              testDate: soilHealth.test_date
-            });
-          }
-        } catch (soilError) {
-          console.warn('⚠️ Could not load soil health:', soilError);
-        }
-        
-        // ✅ STEP 1.3: FETCH NDVI DATA (if available)
-        let ndviData = null;
-        try {
-          const { data: ndviRecords } = await supabase
-            .from('ndvi_data')
-            .select('*')
-            .eq('land_id', landId)
-            .order('date', { ascending: false })
-            .limit(3);
-          
-          if (ndviRecords && ndviRecords.length > 0) {
-            ndviData = ndviRecords;
-            console.log('✅ NDVI Data Found:', {
-              latestNdvi: ndviRecords[0]?.ndvi_value,
-              latestDate: ndviRecords[0]?.date,
-              recordCount: ndviRecords.length
-            });
-          }
-        } catch (ndviError) {
-          console.warn('⚠️ Could not load NDVI data:', ndviError);
-        }
-        
-        // ✅ STEP 1.4: CHECK IF CROP IS HARVESTED - suggest new cultivation plan
-        let isHarvested = false;
-        if (cropSchedule?.expected_harvest_date) {
-          const harvestDate = new Date(cropSchedule.expected_harvest_date);
-          isHarvested = harvestDate < new Date();
-          
-          if (isHarvested) {
-            console.log('🌾 CROP HARVESTED: Previous crop completed, will suggest new cultivation plan');
-          }
-        }
-        
-        // ✅ Add soil, NDVI, and harvested context to landContext
-        landContext = {
-          land_id: landId,
-          land_name: land.name,
-          area_acres: areaInAcres,
-          soil_type: land.soil_type,
-          irrigation_type: land.irrigation_type,
-          current_crop: cropSchedule?.crop_name || land.current_crop,
-          crop_stage: currentGrowthStage,
-          days_since_sowing: daysSinceSowing,
-          days_to_harvest: daysToHarvest,
-          // ✅ NEW: Soil health context
-          soil_health: soilHealthData ? {
-            nitrogen: soilHealthData.nitrogen,
-            phosphorus: soilHealthData.phosphorus,
-            potassium: soilHealthData.potassium,
-            ph: soilHealthData.ph,
-            organic_carbon: soilHealthData.organic_carbon,
-            test_date: soilHealthData.test_date
-          } : null,
-          // ✅ NEW: NDVI context
-          ndvi_data: ndviData ? {
-            latest_value: ndviData[0]?.ndvi_value,
-            latest_date: ndviData[0]?.date,
-            trend: ndviData.length > 1 ? (ndviData[0]?.ndvi_value > ndviData[1]?.ndvi_value ? 'improving' : 'declining') : 'stable'
-          } : null,
-          // ✅ NEW: Harvested flag
-          is_harvested: isHarvested
-        };
-      }
-    }
-    
-    // ✅ STEP 1.5: FETCH WEATHER DATA IF NEEDED
-    if (isPureWeatherQuery || isAgricultureWithWeather || landId) {
-      try {
-        // Get location from land or farmer profile
-        let weatherLat: number | null = null;
-        let weatherLon: number | null = null;
-        let locationName = 'Unknown';
-        
-        if (landDetails?.center_lat && landDetails?.center_lon) {
-          weatherLat = landDetails.center_lat;
-          weatherLon = landDetails.center_lon;
-          locationName = landDetails.location || landDetails.name;
-        } else if (farmerDetails?.latitude && farmerDetails?.longitude) {
-          weatherLat = farmerDetails.latitude;
-          weatherLon = farmerDetails.longitude;
-          locationName = `${farmerDetails.village || ''}, ${farmerDetails.district || ''}`.trim();
-        }
-        
-        if (weatherLat && weatherLon) {
-          // Round coordinates for cache lookup
-          const roundedLat = Math.round(weatherLat * 100) / 100;
-          const roundedLon = Math.round(weatherLon * 100) / 100;
-          
-          console.log(`🌤️ Fetching weather data via weather function: ${roundedLat},${roundedLon} (${locationName})`);
-          
-          // ✅ FETCH WEATHER FROM WEATHER EDGE FUNCTION
-          const { data: weatherData, error: weatherError } = await supabase.functions.invoke('weather', {
-            body: {
-              action: 'all',
-              lat: roundedLat,
-              lon: roundedLon
-            }
-          });
-          
-          if (weatherError) {
-            console.error('❌ Failed to fetch weather:', weatherError);
-          } else if (weatherData) {
-            console.log('✅ Weather data fetched:', {
-              hasCurrent: !!weatherData.current,
-              hasForecast: !!weatherData.forecast,
-              hasHourly: !!weatherData.hourly
-            });
-            
-            // Extract current weather
-            if (weatherData.current) {
-              currentWeather = {
-                location: locationName,
-                temp: weatherData.current.temp,
-                feels_like: weatherData.current.feels_like,
-                humidity: weatherData.current.humidity,
-                wind_speed: (weatherData.current.wind_speed * 3.6).toFixed(1), // Convert m/s to km/h
-                wind_direction: weatherData.current.wind_deg,
-                description: weatherData.current.description,
-                main: weatherData.current.main,
-                rain_1h: weatherData.current.rain_1h || 0,
-                rain_3h: weatherData.current.rain_3h || 0,
-                uv_index: weatherData.current.uv_index,
-                visibility: (weatherData.current.visibility / 1000).toFixed(1), // Convert m to km
-                pressure: weatherData.current.pressure,
-                clouds: weatherData.current.clouds,
-                sunrise: weatherData.current.sunrise,
-                sunset: weatherData.current.sunset,
-                updated_at: new Date().toISOString(),
-                provider: weatherData.provider || 'OpenWeather'
-              };
-              
-              console.log(`✅ Current weather: ${currentWeather.temp}°C, ${currentWeather.description}`);
-            }
-            
-            // Extract forecast (daily)
-            if (weatherData.forecast && weatherData.forecast.length > 0) {
-              weatherForecast = weatherData.forecast.slice(0, 7).map((day: any) => ({
-                date: new Date(day.dt * 1000).toISOString().split('T')[0],
-                temp_min: day.temp.min,
-                temp_max: day.temp.max,
-                temp_avg: day.temp.day,
-                total_rain: 0, // Not directly available, would need hourly aggregation
-                max_rain_prob: day.pop * 100,
-                avg_humidity: day.humidity,
-                avg_wind_speed: (day.wind_speed * 3.6).toFixed(1), // Convert m/s to km/h
-                description: day.weather[0].description
-              }));
-              
-              console.log(`✅ Weather forecast: ${weatherForecast.length} days`);
-            }
-          }
-          
-          // Build weather context for prompt
-          if (currentWeather || weatherForecast.length > 0) {
-            weatherContext = {
-              location: locationName,
-              current: currentWeather,
-              forecast: weatherForecast,
-              has_data: true
-            };
-            
-            // 🌤️ PHASE 1: DIRECT WEATHER RESPONSE (NO AI, NO COST)
-            // If this is a PURE weather query (no agriculture context), return template response
-            if (isPureWeatherQuery && currentWeather) {
-              console.log('🌤️ PHASE 1: Pure weather query - generating direct template response (no AI)');
-              
-              // Generate multi-language weather response using template
-              const weatherResponse = generateWeatherResponse(currentWeather, weatherForecast, detectedLanguage);
-              
-              // Save user message first
-              await supabase.from('ai_chat_messages').insert({
-                session_id: currentSessionId,
-                farmer_id: farmerId,
-                tenant_id: finalTenantId,
-                role: 'user',
-                content: userText,
-                language: detectedLanguage,
-                land_context: landId ? { land_id: landId } : null,
-                weather_context: weatherContext,
-                ip_address: clientIp || '0.0.0.0',
-                user_agent: req.headers.get('user-agent') || 'Unknown',
-                partition_key: getPartitionKey(farmerId)
-              });
-              
-              // Save assistant response
-              await supabase.from('ai_chat_messages').insert({
-                session_id: currentSessionId,
-                farmer_id: farmerId,
-                tenant_id: finalTenantId,
-                role: 'assistant',
-                content: weatherResponse,
-                language: detectedLanguage,
-                weather_context: weatherContext,
-                message_type: 'weather_direct',
-                ip_address: clientIp || '0.0.0.0',
-                user_agent: req.headers.get('user-agent') || 'Unknown',
-                partition_key: getPartitionKey(farmerId)
-              });
-              
-              console.log('✅ Direct weather response generated and saved (PHASE 1 - no AI cost)');
-              
-              return new Response(
-                JSON.stringify({
-                  reply: weatherResponse,
-                  language: detectedLanguage,
-                  quickReplies: generateQuickReplies(detectedLanguage, 'weather'),
-                  source: 'direct_weather_template',
-                  weatherData: {
-                    current: currentWeather,
-                    forecast: weatherForecast.slice(0, 3)
-                  }
-                }),
-                { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-              );
-            }
-          }
-        }
-      } catch (weatherError) {
-        console.warn('⚠️ Could not load weather data:', weatherError);
-        // Continue without weather data
-      }
-    }
-    
-    // ✅ STEP 2: BUILD OPTIMIZED SYSTEM PROMPT (TOKEN-EFFICIENT)
-    // Uses modular prompt system - reduces tokens by 85%
-    const detectedQueryType = detectQueryType(userText);
-    console.log(`🎯 Smart Query Type: ${detectedQueryType} | Language: ${detectedLanguage}`);
-    
-    // Build optimized prompt using modular system
-    let systemPrompt = buildOptimizedSystemPrompt({
-      queryType: detectedQueryType,
-      language: detectedLanguage,
-      cropName: cropSchedule?.crop_name || landDetails?.current_crop,
-      hasLand: !!landId,
-      messageCount
-    });
-    
-    // Add smart context (query-aware, minimal tokens)
-    if (landId && landDetails) {
-      const smartContext = buildSmartContext({
-        queryType: detectedQueryType,
-        land: landDetails,
-        soil: landContext?.soil_health,
-        ndvi: landContext?.ndvi_data ? { ndvi_value: landContext.ndvi_data.latest_value } : undefined,
-        weather: currentWeather ? {
-          temperature: currentWeather.temp,
-          humidity: currentWeather.humidity,
-          rain_probability: weatherForecast[0]?.max_rain_prob,
-          wind_speed: parseFloat(currentWeather.wind_speed),
-          condition: currentWeather.description
-        } : undefined,
-        daysSinceSowing,
-        cropSchedule
-      });
+      // Security: Also validate farmer/tenant ownership
+      const isValidOwner = sessionCheck?.farmer_id === finalFarmerId && sessionCheck?.tenant_id === finalTenantId;
+      const isLandMatch = sessionCheck?.land_id === requestedLandId;
       
-      if (smartContext) {
-        systemPrompt += `\n\n📊 ${smartContext}`;
-        console.log(`📦 Smart Context (~${estimateContextTokens(smartContext)} tokens): ${smartContext.substring(0, 100)}...`);
-      }
-      
-      // Add harvested crop suggestion if needed
-      if (landContext?.is_harvested) {
-        systemPrompt += `\n\n⚠️ पिछली फसल "${cropSchedule?.crop_name}" कट चुकी है। अगली फसल की योजना सुझाएं: 
-1. मौसम अनुसार 3 सर्वोत्तम फसलें
-2. मिट्टी तैयारी के टिप्स
-3. फसल चक्र सुझाव`;
-      }
-    }
-    
-    // Add compact weather for agriculture queries
-    if (isAgricultureWithWeather && currentWeather) {
-      const weatherCompact = `🌤️ ${currentWeather.temp}°C|${currentWeather.humidity}%RH|Rain:${weatherForecast[0]?.max_rain_prob || 0}%`;
-      systemPrompt += `\n\n${weatherCompact}`;
-    }
-    
-    // Add response structure reminder (compact)
-    systemPrompt += `\n\n📝 उत्तर में शामिल करें:
-💰 अपेक्षित लाभ (₹/एकड़)
-⏱️ तुरंत अगला कदम
-🎯 सारांश (अंत में)
-✅ ICAR/PAU संदर्भ`;
-
-    // Log token estimation
-    const estimatedPromptTokens = estimatePromptTokens(systemPrompt);
-    console.log(`📊 Optimized System Prompt: ~${estimatedPromptTokens} tokens (vs ~4000+ old system)`);
-
-    // ✅ STEP 3: LOAD NDVI AND SOIL DATA (after systemPrompt is constructed)
-    if (landId && landDetails) {
-      // ============= SELECTIVE DATA LOADING BASED ON QUERY INTENT =============
-      let ndviData = null;
-      let soilHealthData = null;
+      if (!sessionCheck || !isValidOwner || !isLandMatch) {
+        console.warn(`⚠️ [Session] P0-A: Session-Land MISMATCH detected!`);
+        console.warn(`   Provided sessionId: ${currentSessionId}`);
+        console.warn(`   Session land_id: ${sessionCheck?.land_id}, Request land_id: ${requestedLandId}`);
+        console.warn(`   Valid owner: ${isValidOwner}, Land match: ${isLandMatch}`);
+        console.warn(`   → REJECTING sessionId, will find/create correct session for this land`);
         
-      // Only load new data if:
-      // 1. First message (messageCount === 1), OR
-      // 2. Land has changed, OR
-      // 3. Long conversation (messageCount > 10)
-      const shouldLoadFullData = messageCount === 1 || landHasChanged || messageCount > 10;
-      
-      // Load data selectively based on what the farmer is asking about
-      const needsNDVI = ['pest', 'disease', 'health', 'market'].includes(queryIntent.type);
-      const needsSoil = ['fertilizer', 'nutrition', 'health'].includes(queryIntent.type);
-      
-      if (shouldLoadFullData && needsNDVI) {
-        try {
-          const { data, error } = await supabase
-            .from('ndvi_data')
-            .select('*')
-            .eq('land_id', landId)
-            .order('date', { ascending: false })
-            .limit(queryIntent.type === 'health' ? 5 : 1);
-          
-          if (!error) {
-            ndviData = data;
-            console.log(`✅ NDVI loaded (${queryIntent.type}):`, ndviData?.length || 0, 'records');
-          }
-        } catch (ndviError) {
-          console.warn('⚠️ Could not load NDVI data:', ndviError);
-        }
-      } else if (needsNDVI) {
-        console.log(`⚡ Skipping NDVI load - using conversation memory (message #${messageCount})`);
-      }
-      
-      if (shouldLoadFullData && needsSoil) {
-        try {
-          const { data, error } = await supabase
-            .from('soil_health')
-            .select('*')
-            .eq('land_id', landId)
-            .order('test_date', { ascending: false })
-            .limit(1);
-          
-          if (!error) {
-            soilHealthData = data;
-            console.log(`✅ Soil data loaded (${queryIntent.type}):`, soilHealthData?.length || 0, 'records');
-          }
-        } catch (soilError) {
-          console.warn('⚠️ Could not load soil health data:', soilError);
-        }
-      } else if (needsSoil) {
-        console.log(`⚡ Skipping soil load - using conversation memory (message #${messageCount})`);
-      }
-      
-      const latestSoilHealth = soilHealthData && soilHealthData.length > 0 ? soilHealthData[0] : null;
-      const latestNDVI = ndviData && ndviData.length > 0 ? ndviData[0] : null;
-      
-      // Build context based on message count (session-aware caching)
-      let contextToSend = '';
-      let contextType = 'none';
-      
-      if (messageCount === 1 || landHasChanged) {
-        // First message or land changed: Send FULL compressed context
-        contextToSend = buildCompressedContext({
-          land: landDetails,
-          areaInAcres,
-          daysSinceSowing,
-          latestSoilHealth,
-          latestNDVI,
-          ndviData,
-          queryIntent,
-          cropSchedule,
-          currentGrowthStage,
-          daysToHarvest
-        });
-        contextType = 'full';
-        console.log(`📦 Sending FULL context (message #${messageCount}${landHasChanged ? ', land changed' : ''}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
-      } else if (messageCount >= 2 && messageCount <= 10) {
-        // Messages 2-10: Send query-specific minimal context
-        contextToSend = getMinimalContext(queryIntent.type, landDetails, areaInAcres, daysSinceSowing, latestSoilHealth, latestNDVI, cropSchedule, currentGrowthStage);
-        contextType = 'minimal';
-        console.log(`⚡ Sending MINIMAL context (message #${messageCount}, ${queryIntent.type}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+        // REJECT the provided sessionId - set to null to trigger correct session lookup
+        currentSessionId = null;
       } else {
-        // Message 11+: Send mini-refresh
-        contextToSend = getMiniRefresh(landDetails, areaInAcres, latestSoilHealth);
-        contextType = 'refresh';
-        console.log(`🔄 Sending MINI-REFRESH (message #${messageCount}): ~${Math.ceil(contextToSend.length / 4)} tokens`);
+        console.log(`✅ [Session] P0-A: SessionId validated - land_id=${requestedLandId}, farmer_id=${finalFarmerId}`);
+      }
+    }
+    
+    if (!currentSessionId) {
+      // Find or create session FOR THIS SPECIFIC LAND
+      let existingSessionQuery = supabase
+        .from('ai_chat_sessions')
+        .select('id')
+        .eq('farmer_id', finalFarmerId)
+        .eq('tenant_id', finalTenantId)
+        .eq('is_active', true)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      if (requestedLandId) {
+        existingSessionQuery = existingSessionQuery.eq('land_id', requestedLandId);
+      } else {
+        existingSessionQuery = existingSessionQuery.is('land_id', null);
       }
       
-      landContext = {
-        land_id: landDetails.id,
-        name: landDetails.name,
-        area_acres: areaInAcres,
-        soil_type: landDetails.soil_type,
-        location: landDetails.location,
-        current_crop: cropSchedule?.crop_name || landDetails.current_crop,
-        crop_variety: cropSchedule?.crop_variety,
-        sowing_date: cropSchedule?.sowing_date,
-        days_since_sowing: daysSinceSowing,
-        growth_stage: currentGrowthStage,
-        expected_harvest: cropSchedule?.expected_harvest_date,
-        days_to_harvest: daysToHarvest,
-        crops: landDetails.crops,
-        water_source: landDetails.water_source,
-        irrigation_type: landDetails.irrigation_type,
-        cultivation_date: landDetails.cultivation_date,
-        soil_health: latestSoilHealth,
-        ndvi_value: latestNDVI?.ndvi_value || latestNDVI?.mean_ndvi,
-        ndvi_history: ndviData,
-        context_type: contextType,
-        message_count: messageCount
+      const { data: existingSession } = await existingSessionQuery.maybeSingle();
+      
+      if (existingSession) {
+        // Reuse existing session FOR THIS LAND
+        currentSessionId = existingSession.id;
+        console.log(`📝 [Session] Reusing existing session for land ${requestedLandId}:`, currentSessionId);
+      } else {
+        // Create new session only if none exists for this land
+        const { data: newSession, error: sessionError } = await supabase
+          .from('ai_chat_sessions')
+          .insert({
+            tenant_id: finalTenantId,
+            farmer_id: finalFarmerId,
+            land_id: requestedLandId,
+            session_type: requestedLandId ? 'land_specific' : 'general',
+            is_active: true,
+            metadata: { language, source: 'orchestrator_v1' }
+          })
+          .select('id')
+          .single();
+
+        if (sessionError || !newSession) {
+          console.error('Failed to create session:', sessionError);
+          return new Response(
+            JSON.stringify({ error: 'Failed to create chat session' }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        currentSessionId = newSession.id;
+        console.log(`📝 [Session] New session created for land ${requestedLandId}:`, currentSessionId);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FETCH SESSION STATE + CONVERSATION HISTORY - CRITICAL for context continuity
+    // ═══════════════════════════════════════════════════════════════════════════
+    let sessionState: {
+      decision_state?: string;
+      last_pest?: string;
+      last_crop?: string;
+      last_disease?: string;
+      pending_user_action?: boolean;
+      turn_count?: number;
+      recommendations_count?: number;
+      // CRITICAL FIX 1: Add pending clarification options for option selection
+      pending_clarification_options?: string[];
+      // P0-3 FIX: Add lockedCropContext for multi-turn context continuity
+      lockedCropContext?: {
+        crop_name?: string;
+        growth_stage?: string;
+        days_since_sowing?: number;
       };
-      
-      if (contextToSend) {
-        systemPrompt += `\n\n📊 LAND DATA (${queryIntent.type.toUpperCase()} query, msg #${messageCount}):
-${contextToSend}
-
-⚠️ CRITICAL: 
-1. Calculate ALL doses for ${areaInAcres} acres. Show per-acre calculation.
-2. Remember previous context from conversation history - don't ask for already provided information.`;
-      }
-    }
-
-    // Get farmer context with enhanced details
-    const { data: farmer } = await supabase
-      .from('farmers')
-      .select('*')
-      .eq('id', finalFarmerId)
-      .eq('tenant_id', finalTenantId)
-      .single();
-
-    if (farmer) {
-      farmerDetails = farmer;
-      
-      // Determine regional title based on state/language
-      let regionalTitle = 'Dada'; // Default
-      const state = farmer.state?.toLowerCase() || '';
-      if (state.includes('maharashtra')) regionalTitle = 'Bhau';
-      else if (state.includes('punjab') || state.includes('haryana')) regionalTitle = 'Veere';
-      else if (state.includes('tamil') || state.includes('kerala')) regionalTitle = 'Anna';
-      else if (state.includes('karnataka')) regionalTitle = 'Avare';
-      
-      farmerContext = {
-        name: farmer.name,
-        regional_title: regionalTitle,
-        village: farmer.village,
-        district: farmer.district,
-        state: farmer.state,
-        language: farmer.language || detectedLanguage,
-        experience: farmer.farming_experience,
-        education: farmer.education_level
-      };
-      
-      systemPrompt += `\n\n👨‍🌾 FARMER PROFILE:
-You are speaking with ${farmer.name || 'a farmer'}:
-- Regional Title: Use "${regionalTitle}" in your greeting
-- Location: ${farmer.village || 'Unknown village'}, ${farmer.district || 'Unknown district'}, ${farmer.state || 'India'}
-- Total Land: ${farmer.total_land_size || 'Unknown'} acres
-- Experience: ${farmer.farming_experience || 'Not specified'} years
-- Language: ${farmer.language || detectedLanguage}
-- Adjust advice complexity based on experience: ${farmer.farming_experience > 10 ? 'Experienced farmer - can handle advanced techniques' : 'Provide simple, step-by-step guidance'}`;
-    }
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PART 10: SESSION CONTINUITY — problems_discussed tracking
+      // Maintains a list of problems discussed in this session for:
+      // 1. Repeat-concern detection (same query within 30 min → escalate)
+      // 2. Causal chaining (poor growth after stem holes → likely consequence of borer)
+      // ═══════════════════════════════════════════════════════════════════════════
+      problems_discussed?: Array<{
+        problem_code: string;      // e.g., 'STEM_DAMAGE', 'GROWTH_ANOMALY', 'PEST_BORER'
+        turn_number: number;
+        timestamp: string;
+        diagnosis?: string;        // e.g., 'SHOOT_BORER', 'NITROGEN_DEFICIENCY'
+        intent_code?: string;
+      }>;
+      last_query_hash?: string;    // For repeat-concern detection
+      last_query_timestamp?: string;
+    } | null = null;
     
-    // Add seasonal context with crop stage if available
-    const currentMonth = new Date().getMonth() + 1;
-    const season = currentMonth >= 6 && currentMonth <= 10 ? 'Kharif' : 
-                   currentMonth >= 10 || currentMonth <= 3 ? 'Rabi' : 'Zaid';
+    // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
+    let conversationHistory: Array<{ role: string; content: string }> = [];
     
-    let cropStage = 'Not available';
-    if (landDetails?.cultivation_date) {
-      cropStage = getCropStage(landDetails.cultivation_date);
-    }
-    
-    systemPrompt += `\n\n📅 SEASONAL & CROP CONTEXT:
-- Current Season: ${season} season
-- Crop Growth Stage: ${cropStage}
-${landDetails?.cultivation_date ? `- Days Since Sowing: ${Math.floor((Date.now() - new Date(landDetails.cultivation_date).getTime()) / (1000 * 60 * 60 * 24))} days` : ''}
-- Provide season-specific and stage-specific advice
-- Consider weather patterns typical for this season in ${farmerDetails?.state || 'this region'}`;
-    
-    // ✅ ADD WEATHER DATA TO SYSTEM PROMPT
-    if (weatherContext?.has_data) {
-      systemPrompt += `\n\n🌤️ REAL-TIME WEATHER DATA (${weatherContext.location}):`;
+    if (currentSessionId) {
+      // Fetch session metadata - land_id already validated in P0-A above
+      const { data: existingSession } = await supabase
+        .from('ai_chat_sessions')
+        .select('metadata, land_id')
+        .eq('id', currentSessionId)
+        .single();
       
-      if (currentWeather) {
-        systemPrompt += `
-
-📍 CURRENT CONDITIONS (Updated: ${new Date(currentWeather.updated_at).toLocaleString('en-IN')}):
-- Temperature: ${currentWeather.temp}°C (Feels like: ${currentWeather.feels_like}°C)
-- Weather: ${currentWeather.description}
-- Humidity: ${currentWeather.humidity}%
-- Wind: ${currentWeather.wind_speed} km/h
-- Rain (1h): ${currentWeather.rain_1h || 0} mm
-- Rain (24h): ${currentWeather.rain_24h || 0} mm
-- UV Index: ${currentWeather.uv_index || 'N/A'}
-- Visibility: ${currentWeather.visibility} km
-- Cloud Cover: ${currentWeather.clouds}%
-- Sunrise: ${new Date(currentWeather.sunrise).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-- Sunset: ${new Date(currentWeather.sunset).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
-- Data Source: ${currentWeather.provider}`;
-      }
-      
-      if (weatherForecast.length > 0) {
-        systemPrompt += `\n\n📊 WEATHER FORECAST (Next ${weatherForecast.length} Days):`;
-        weatherForecast.forEach((day, index) => {
-          const dayName = index === 0 ? 'Today' : index === 1 ? 'Tomorrow' : new Date(day.date).toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' });
-          // Safe number conversion with fallback to prevent .toFixed errors
-          const tempAvg = Number(day.temp_avg) || 0;
-          const totalRain = Number(day.total_rain) || 0;
-          const avgHumidity = Number(day.avg_humidity) || 0;
-          const avgWindSpeed = Number(day.avg_wind_speed) || 0;
-          const maxRainProb = Number(day.max_rain_prob) || 0;
-          systemPrompt += `
-${dayName} (${day.date}):
-  • Temp: ${day.temp_min ?? 'N/A'}°C - ${day.temp_max ?? 'N/A'}°C (Avg: ${tempAvg.toFixed(1)}°C)
-  • Rain: ${totalRain.toFixed(1)} mm (${maxRainProb}% probability)
-  • Humidity: ${avgHumidity.toFixed(0)}%
-  • Wind: ${avgWindSpeed.toFixed(1)} km/h
-  • Conditions: ${day.description || 'Unknown'}`;
+      // ═══════════════════════════════════════════════════════════════════════════
+      // P0-A ENFORCEMENT: Session is ALREADY validated to match this land
+      // Safe to load session state since P0-A rejected mismatched sessions
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (existingSession?.metadata?.decision_tracking) {
+        sessionState = existingSession.metadata.decision_tracking;
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Session Isolation - Clear pending options for GENERAL queries
+        // Prevents land-specific clarification options from leaking to General tab
+        // ═══════════════════════════════════════════════════════════════════════════
+        const isGeneralSession = !requestedLandId;
+        const sessionHasLand = existingSession.land_id !== null;
+        
+        if (isGeneralSession && sessionState?.pending_clarification_options?.length > 0) {
+          console.log(`🔒 [Session] ISOLATION: Clearing ${sessionState.pending_clarification_options.length} pending options for General session`);
+          sessionState.pending_clarification_options = [];
+        }
+        
+        // Also clear land-specific context for general sessions
+        if (isGeneralSession) {
+          if (sessionState?.last_pest || sessionState?.last_disease || sessionState?.last_crop) {
+            console.log(`🔒 [Session] ISOLATION: Clearing land context (pest/disease/crop) for General session`);
+            sessionState.last_pest = undefined;
+            sessionState.last_disease = undefined;
+            sessionState.last_crop = undefined;
+          }
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Auto-reset stuck session state
+        // If decision_state is 'awaiting_clarification' but no pending options exist,
+        // the session is STUCK from a previous turn. Reset to 'idle' to unblock.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const pendingCount = sessionState?.pending_clarification_options?.length || 0;
+        if (sessionState?.decision_state === 'awaiting_clarification' && pendingCount === 0) {
+          console.log(`🔓 [Session] AUTO-RESET: decision_state was 'awaiting_clarification' with 0 pending options → resetting to 'idle'`);
+          sessionState.decision_state = 'idle';
+        }
+        
+        console.log(`📋 [Session] State loaded (P0-A validated, land=${requestedLandId}, isGeneral=${isGeneralSession}):`, {
+          decision_state: sessionState?.decision_state,
+          last_pest: sessionState?.last_pest,
+          last_crop: sessionState?.last_crop,
+          pending_action: sessionState?.pending_user_action,
+          pending_options: pendingCount,
+          turn: sessionState?.turn_count
         });
       }
       
-    systemPrompt += `\n
-⚠️ CRITICAL WEATHER INSTRUCTIONS:
-As a Very Expert Agriculture Scientist, you MUST:
-1. Use this REAL weather data in your response - NEVER make up weather information
-2. For agriculture queries needing weather (watering, fertilizer, spray, etc), analyze weather data and provide expert recommendations
-3. Provide specific, actionable farming advice based on actual weather:
-   • If rain is forecasted (>50% probability), advise postponing spraying/fertilizing with specific timing
-   • If temperature is high (>35°C), recommend early morning (5-7 AM) or evening (5-7 PM) irrigation
-   • If humidity is high (>80%), warn about fungal disease risk and suggest preventive measures
-   • If wind speed is high (>20 km/h), advise against pesticide application and explain why
-4. Reference specific forecast data: "Rain expected on ${weatherForecast[0]?.date} with ${weatherForecast[0]?.max_rain_prob}% probability"
-5. Always mention data source and update time for transparency
-6. Combine weather data with crop stage and soil type for comprehensive expert advice`;
-    } else if (isPureWeatherQuery || isAgricultureWithWeather) {
-      systemPrompt += `\n\n⚠️ WEATHER DATA NOT AVAILABLE:
-Weather data could not be retrieved for this location. Inform the farmer politely that:
-- Real-time weather data is temporarily unavailable
-- They can check local weather forecasts
-- They should visit the Weather section of the app for updates
-Do NOT make up or estimate weather information.`;
-    }
-
-    // CRITICAL: Add language-specific instruction based on user's selected language
-    const languageMap: Record<string, string> = {
-      'hi': 'Hindi (हिन्दी)',
-      'mr': 'Marathi (मराठी)',
-      'en': 'English',
-      'pa': 'Punjabi (ਪੰਜਾਬੀ)',
-      'ta': 'Tamil (தமிழ்)',
-      'te': 'Telugu (తెలుగు)',
-      'bn': 'Bengali (বাংলা)',
-      'gu': 'Gujarati (ગુજરાતી)',
-      'kn': 'Kannada (ಕನ್ನಡ)',
-      'ml': 'Malayalam (മലയാളം)',
-      'or': 'Odia (ଓଡ଼ିଆ)',
-      'as': 'Assamese (অসমীয়া)',
-      'ur': 'Urdu (اردو)'
-    };
-
-    // ✅ FIX: Use user's selected language preference (not detected language)
-    const languageName = languageMap[language] || languageMap['en'];
-    
-    systemPrompt += `\n\n🌍 LANGUAGE INSTRUCTION (CRITICAL):
-You MUST respond ENTIRELY in ${languageName}.
-- Do NOT use English unless the user's language is English
-- Translate ALL content including greetings, recommendations, technical terms
-- Use natural, conversational ${languageName}
-- Keep technical terms simple and explain them in ${languageName}
-- Farmer's preferred language: ${languageName}
-
-⚠️ LANGUAGE SIMPLICITY RULES:
-- Use everyday rural farming words, not technical terms
-- English: Say "watering" not "irrigation", "amount" not "dosage", "cutting crop" not "harvest"
-- Hindi: कहें "डालना" न कि "अनुप्रयोग", "मात्रा" न कि "खुराक", "पानी देना" न कि "सिंचाई"
-- Marathi: सांगा "टाकणे" नाही "अनुप्रयोग", "प्रमाण" नाही "डोस", "पाणी देणे" नाही "सिंचन"
-- Explain scientific names in simple words (e.g., "Urea = white fertilizer for green leaves")
-
-💰 INCOME DOUBLING MISSION (CORE GOAL):
-Your mission is to DOUBLE farmer's income through AI-powered advice. Every response MUST focus on:
-1. YIELD INCREASE: How to grow 2-5x more crops from the same land
-2. COST REDUCTION: How to save money on inputs (खाद, पाणी, कीटनाशक)
-3. PROFIT MAXIMIZATION: Best timing to sell, value addition, premium prices
-4. PRACTICAL ACTIONS: Exact steps that increase yield TODAY
-
-Always include:
-• Expected yield increase: "या पद्धतीने 30-40% अधिक उत्पादन"
-• Cost-benefit: "खर्च ₹500, फायदा ₹2000+"
-• Time to see results: "7-10 दिवसांत परिणाम दिसेल"
-
-🎓 EXPERT SCIENTIST RESPONSE QUALITY (MANDATORY):
-1. Cite research sources: "ICAR के अनुसार..." or "PAU शोध अनुसार..." or "As per TNAU guidelines..."
-2. Include scientific names in parentheses: "काळी मृदा (Black Cotton Soil)" 
-3. Every recommendation must show EXPECTED YIELD/PROFIT IMPACT
-4. Provide confidence level: "95% निश्चितता - या पद्धतीने उत्पादन वाढेल"
-5. Include practical experience: "यशस्वी शेतकरी हे करतात..."
-
-📌 MANDATORY RESPONSE STRUCTURE - EVERY RESPONSE MUST END WITH:
-
-💰 अपेक्षित फायदा (Expected Benefit):
-• उत्पादन वाढ: X% (How much yield increase)
-• खर्च बचत: ₹XXX (Cost savings)
-• अतिरिक्त कमाई: ₹XXX (Extra income potential)
-
-🎯 पुढील पाऊल (Immediate Next Action):
-• उद्या करा: (What to do tomorrow - specific action)
-
-✅ ICAR/कृषी विद्यापीठ संशोधनावर आधारित। हजारो शेतकऱ्यांनी वापरलेली पद्धत।
-प्रश्न असल्यास विचारा!`;
-
-    // ✅ Helper: Detect simple questions for smart model selection
-    function isSimpleQuestion(text: string): boolean {
-      const simplePatterns = [
-        /^(hi|hello|namaste|namaskar|नमस्ते|नमस्कार|hey|hola)/i,
-        /^(yes|no|हाँ|नहीं|हो|नाही|होय|ஆம்|இல்லை)/i,
-        /^(ok|okay|thanks|thank you|धन्यवाद|नन्दी|ధన్యవాదాలు)/i,
-        /^(bye|goodbye|अलविदा|விடை)/i
-      ];
-      const wordCount = text.trim().split(/\s+/).length;
-      return wordCount <= 5 || simplePatterns.some(p => p.test(text.trim()));
-    }
-
-    // Detect InstaScan mode (vision analysis)
-    const isInstaScan = !!imageUrl;
-    
-    // Prepare messages for OpenAI
-    let openAIMessages: any[] = [];
-    
-    // ✅ MODEL SELECTION: gpt-4o-mini for chat, gpt-4o for vision
-    let openAIModel = isInstaScan 
-      ? 'gpt-4o'  // Vision model for InstaScan
-      : 'gpt-4o-mini'; // Fast & cost-effective for all chat queries
-    
-    console.log(`🤖 Model selected: ${openAIModel} (${isInstaScan ? 'vision' : 'chat'} mode)`);
-    
-    let tools = undefined;
-    let tool_choice = undefined;
-
-    if (isInstaScan) {
-      // InstaScan: Vision analysis with structured output
-      console.log('InstaScan mode: Analyzing crop image with vision API');
-      openAIModel = 'gpt-4o'; // Full vision model for better agricultural accuracy
-      
-      const instaScanPrompt = `You are an expert agricultural botanist with 20+ years of field experience in crop identification and disease diagnosis.
-
-🎯 YOUR MISSION: Analyze this crop image and provide ACCURATE, SPECIFIC identification.
-
-📸 VISION ANALYSIS GUIDELINES:
-
-**Step 1: Examine the Image Quality**
-- Check if the image shows clear plant features (leaves, stems, flowers, fruits)
-- Verify adequate lighting and focus
-- Confirm the plant takes up most of the frame
-
-**Step 2: Identify Distinctive Features**
-Look for these key identifiers:
-- LEAF SHAPE: Broad, narrow, serrated, smooth edges?
-- LEAF ARRANGEMENT: Alternate, opposite, whorled?
-- STEM: Round, square, hollow? Color?
-- PLANT HEIGHT & STRUCTURE: Tall grass-like, bushy, vine?
-- FLOWERS/FRUITS: Present? What color and shape?
-- GROWTH PATTERN: Single stalk, multiple branches, creeping?
-
-**Step 3: Match to Known Crops**
-
-🌾 CEREAL CROPS (Grass-like, tall, grain heads):
-- Wheat: Narrow leaves, hollow stem, grain spikes at top
-- Rice: Narrow leaves, flooded fields, drooping grain panicles
-- Maize/Corn: Broad leaves, thick stem, tassels/ears
-- Barley: Similar to wheat but with long awns on grain
-
-🌱 LEGUME CROPS (Compound leaves, pod fruits):
-- Chickpea: Pinnate leaves, small white/pink flowers
-- Soybean: Trifoliate leaves, small pods
-- Lentil: Pinnate leaves, tiny flowers
-
-🍅 VEGETABLE CROPS (Varied structures):
-- Tomato: Compound leaves, yellow flowers, red fruits
-- Potato: Compound leaves, white/purple flowers, underground tubers
-- Onion: Hollow tube-like leaves, bulb base
-- Cotton: Broad palmate leaves, white/pink flowers, cotton bolls
-
-🌾 CASH CROPS:
-- Sugarcane: Tall thick canes with nodes, strap-like leaves
-- Tea: Small shiny leaves, white flowers
-- Coffee: Glossy opposite leaves, red berries
-
-❌ NON-CROPS (Report as "Unknown Plant" or "Not a Crop"):
-- Grass lawns (too uniform, too short)
-- Weeds (dock, thistle, dandelion)
-- Ornamental plants
-- Random vegetation without clear crop features
-
-**Step 4: Disease/Pest Detection**
-
-🔍 Look for these specific symptoms:
-
-FUNGAL DISEASES:
-- Powdery white coating → Powdery Mildew
-- Yellow-orange pustules → Rust (Leaf Rust, Stem Rust)
-- Brown spots with yellow halos → Leaf Spot
-- Gray fuzzy growth → Gray Mold (Botrytis)
-
-BACTERIAL DISEASES:
-- Water-soaked lesions → Bacterial Blight
-- Black streaks on leaves → Bacterial Streak
-
-VIRAL DISEASES:
-- Yellow mosaic patterns → Mosaic Virus
-- Stunted growth + yellowing → Yellow Dwarf Virus
-
-PEST DAMAGE:
-- Curled leaves with tiny insects → Aphids
-- Holes in leaves → Caterpillar/Beetle damage
-- Webbing on leaves → Spider Mites
-- Whitish scales on stems → Scale Insects
-
-NUTRIENT DEFICIENCIES:
-- Yellow older leaves, green veins → Iron Deficiency
-- Yellow older leaves, uniform → Nitrogen Deficiency
-- Purple tint on leaves → Phosphorus Deficiency
-- Brown leaf edges → Potassium Deficiency
-
-**Step 5: Generate Specific Recommendations**
-
-✅ GOOD RECOMMENDATIONS (Be this specific):
-- "Apply Mancozeb 75% WP fungicide at 2g/L water every 7 days"
-- "Spray Neem oil (Azadirachtin 1500ppm) at 5ml/L water in evening"
-- "Apply Urea fertilizer at 50kg/acre split into 3 doses"
-- "Increase irrigation frequency to twice weekly"
-- "Remove and destroy infected leaves to prevent spread"
-
-❌ BAD RECOMMENDATIONS (Too vague):
-- "Use fungicides" 
-- "Improve nutrition"
-- "Water properly"
-
-🎯 CONFIDENCE LEVELS:
-
-**85-100% (Report with certainty)**
-- Image is sharp, well-lit, shows multiple identifying features
-- Clear match to known crop with distinctive characteristics
-- Example: "This is definitely Wheat based on the narrow leaves, hollow stem, and grain spikes"
-
-**70-84% (Good identification)**
-- Most features visible but some ambiguity
-- Crop type clear but specific variety uncertain
-- Example: "This appears to be Rice based on leaf shape and growth pattern"
-
-**Below 70% (Do NOT identify - use "Unknown Plant")**
-- Blurry image, poor lighting, or unclear features
-- Could be multiple crop types or non-crop plant
-- Example: Return "Unknown Plant" with confidence 40-60%
-
-🌐 LANGUAGE: Respond in ${detectedLanguage === 'en' ? 'English' : detectedLanguage === 'hi' ? 'Hindi' : detectedLanguage === 'mr' ? 'Marathi' : detectedLanguage === 'pa' ? 'Punjabi' : detectedLanguage === 'ta' ? 'Tamil' : 'the user\'s language'}.
-
-⚠️ CRITICAL RULES:
-1. NEVER guess if uncertain - use "Unknown Plant" with low confidence
-2. ALWAYS provide specific disease names, not "some disease"
-3. ALWAYS give actionable recommendations with product names and quantities
-4. If image is too blurry/dark/unclear, report low confidence (<50%) and suggest retaking photo
-
-NOW ANALYZE THE IMAGE CAREFULLY AND RESPOND.`;
-
-      // Vision message format
-      openAIMessages = [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: instaScanPrompt
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: imageUrl,
-                detail: 'high' // High detail for accurate crop analysis
-              }
-            }
-          ]
-        }
-      ];
-
-      // Structured output using tool calling for reliable JSON
-      tools = [
-        {
-          type: 'function',
-          function: {
-            name: 'analyze_crop_image',
-            description: 'Return structured crop analysis results',
-            parameters: {
-              type: 'object',
-              properties: {
-                cropName: {
-                  type: 'string',
-                  description: 'Exact name of the identified crop (e.g., "Wheat", "Rice Paddy", "Cotton"). Use "Unknown Plant" or "Not a Crop" if uncertain or not a recognizable agricultural crop.'
-                },
-                condition: {
-                  type: 'string',
-                  enum: ['healthy', 'warning', 'critical'],
-                  description: 'Overall health status of the crop'
-                },
-                diseases: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: 'List of SPECIFIC disease names, pest names, or nutrient deficiencies detected (e.g., "Powdery Mildew", "Aphid Infestation", "Iron Deficiency"). Empty array [] if crop is healthy.'
-                },
-                suggestions: {
-                  type: 'array',
-                  items: { type: 'string' },
-                  description: '3-5 SPECIFIC, ACTIONABLE recommendations with exact product names, quantities, or methods (e.g., "Spray Chlorpyrifos 20% EC at 2ml/L water", "Apply Urea fertilizer 50kg/acre"). Be precise and practical.'
-                },
-                confidence: {
-                  type: 'number',
-                  minimum: 0,
-                  maximum: 100,
-                  description: 'Confidence level of crop identification and analysis (0-100). 85-100: Very certain, 70-84: Good certainty, 50-69: Uncertain, <50: Cannot identify reliably'
-                }
-              },
-              required: ['cropName', 'condition', 'diseases', 'suggestions', 'confidence'],
-              additionalProperties: false
-            }
-          }
-        }
-      ];
-      tool_choice = { type: 'function', function: { name: 'analyze_crop_image' } };
-      
-    } else {
-      // Regular chat mode
-      openAIMessages = [
-        { role: 'system', content: systemPrompt }
-      ];
-
-      // Get conversation history from database
-      const { data: messageHistory } = await supabase
+      // P0-A: Fetch messages ONLY from this validated session (land-isolated by design)
+      const { data: previousMessages, error: historyError } = await supabase
         .from('ai_chat_messages')
         .select('role, content')
         .eq('session_id', currentSessionId)
-        .order('created_at', { ascending: true })
-        .limit(10);
-
-      // Filter out empty messages before adding to history
-      if (messageHistory && messageHistory.length > 0) {
-        const validMessages = messageHistory.filter(msg => 
-          msg.content && msg.content.trim().length > 0
-        );
-        openAIMessages.push(...validMessages.map(msg => ({
-          role: msg.role === 'user' ? 'user' : 'assistant',
-          content: msg.content
-        })));
-      }
-
-      // Add current messages - handle both old and new format
-      if (messages && messages.length > 0) {
-        for (const msg of messages) {
-          if (typeof msg === 'string') {
-            openAIMessages.push({ role: 'user', content: msg });
-          } else if (msg && typeof msg === 'object') {
-            openAIMessages.push({
-              role: msg.role || 'user',
-              content: msg.content || ''
-            });
-          }
-        }
+        .order('created_at', { ascending: false })
+        .limit(6);
+      
+      if (!historyError && previousMessages && previousMessages.length > 0) {
+        // Reverse to get chronological order and format
+        conversationHistory = previousMessages
+          .reverse()
+          .map(m => ({ role: m.role, content: m.content }));
+        
+        console.log(`📜 [Session] Loaded ${conversationHistory.length} messages (P0-A land-isolated)`);
       }
     }
 
-    // ============================================
-    // SMART RESPONSE LENGTH CONTROL
-    // ============================================
+    // ═══════════════════════════════════════════════════════════════════════════
+    // EXTRACT USER MESSAGE - WITH SAFETY GUARD
+    // ═══════════════════════════════════════════════════════════════════════════
+    const lastUserMessage = messages[messages.length - 1];
+    const rawMessageContent = typeof lastUserMessage === 'string' 
+      ? lastUserMessage 
+      : lastUserMessage?.content;
     
-    // Analyze query complexity (only for non-InstaScan queries)
-    let complexityAnalysis = null;
-    if (!isInstaScan) {
-      const lastUserMsg = messages[messages.length - 1];
-      const userQuery = typeof lastUserMsg === 'string' ? lastUserMsg : lastUserMsg?.content || '';
-      
-      complexityAnalysis = analyzeQueryComplexity(userQuery, detectedLanguage);
-      
-      console.log(`📊 Query Analysis:`, {
-        query: userQuery.substring(0, 50) + '...',
-        complexity: complexityAnalysis.complexity,
-        maxWords: complexityAnalysis.maxWords,
-        maxTokens: complexityAnalysis.maxTokens,
-        style: complexityAnalysis.responseStyle
-      });
-      
-      // Add length instruction to system prompt
-      const lengthInstruction = getResponseLengthInstruction(
-        complexityAnalysis.complexity,
-        detectedLanguage
-      );
-      
-      // Update the system prompt for regular chat mode
-      if (openAIMessages[0]?.role === 'system') {
-        openAIMessages[0].content += '\n\n' + lengthInstruction;
-        console.log(`📝 Added ${complexityAnalysis.complexity} complexity instructions to system prompt`);
-      }
-    }
+    // SAFETY: Normalize to empty string, not undefined
+    const userMessageContent = typeof rawMessageContent === 'string' ? rawMessageContent : '';
 
-    // Call OpenAI API
-    const openAIKey = Deno.env.get('OPENAI_API_KEY');
-    if (!openAIKey) {
-      throw new Error('OpenAI API key not configured');
-    }
-
-    console.log('Calling OpenAI API:', { 
-      model: openAIModel, 
-      isInstaScan, 
-      messagesCount: openAIMessages.length,
-      hasTools: !!tools 
-    });
-
-    // ✅ TOKEN LIMITS: gpt-4o-mini doesn't have reasoning token overhead
-    // Set appropriate limits based on query complexity
-    let maxTokens: number;
-    if (isInstaScan) {
-      maxTokens = 1500; // Vision tasks
-    } else if (complexityAnalysis) {
-      // GPT-4o-mini: Simple: 200-300 words, Medium: 500-600 words, Complex: 1000-1200 words
-      maxTokens = complexityAnalysis.complexity === 'simple' 
-        ? 400 
-        : complexityAnalysis.complexity === 'medium' 
-          ? 800 
-          : 1500;
-      console.log(`⚙️ Token limit set to: ${maxTokens} (${complexityAnalysis.complexity} query)`);
-    } else {
-      maxTokens = 1000; // Default fallback
-    }
-
-    console.log(`⚙️ Final token limit: ${maxTokens} (model: ${openAIModel})`);
-
-    const openAIRequestBody: any = {
-      model: openAIModel,
-      messages: openAIMessages,
-      max_tokens: maxTokens,  // gpt-4o-mini uses max_tokens not max_completion_tokens
-      temperature: 0.7,       // Add creativity control (supported by gpt-4o-mini)
-      stream: false
-    };
-
-    if (tools) {
-      openAIRequestBody.tools = tools;
-      openAIRequestBody.tool_choice = tool_choice;
-    }
-
-    // ✅ RETRY LOGIC: OpenAI API call with exponential backoff
-    async function callOpenAIWithRetry(maxRetries = 3): Promise<Response> {
-      for (let attempt = 0; attempt < maxRetries; attempt++) {
-        try {
-          console.log(`🔄 OpenAI API call attempt ${attempt + 1}/${maxRetries}`);
-          
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openAIKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(openAIRequestBody),
-          });
-
-          // Success case
-          if (response.ok) {
-            console.log(`✅ OpenAI API call succeeded on attempt ${attempt + 1}`);
-            return response;
-          }
-
-          // Rate limit - wait and retry
-          if (response.status === 429) {
-            const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
-            console.warn(`⚠️ Rate limit hit (429), waiting ${waitTime}ms before retry ${attempt + 1}/${maxRetries}`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            continue;
-          }
-
-          // Non-retryable error
-          const errorData = await response.text();
-          console.error(`❌ OpenAI API error (attempt ${attempt + 1}):`, errorData);
-          throw new Error(`OpenAI API failed: ${response.status} - ${errorData}`);
-
-        } catch (error) {
-          // Last attempt - throw error
-          if (attempt === maxRetries - 1) {
-            console.error(`❌ OpenAI API call failed after ${maxRetries} attempts:`, error);
-            throw error;
-          }
-
-          // Retry with exponential backoff
-          const waitTime = Math.pow(2, attempt) * 1000;
-          console.warn(`⚠️ OpenAI API error, retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries}):`, error);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        }
-      }
-      
-      throw new Error('OpenAI API call failed after all retries');
-    }
-
-    const openAIResponse = await callOpenAIWithRetry();
-
-    const aiData = await openAIResponse.json();
-    
-    // Add detailed logging for regular chat (similar to InstaScan)
-    console.log('📝 OpenAI Response:', {
-      model: aiData.model,
-      finishReason: aiData.choices[0]?.finish_reason,
-      hasContent: !!aiData.choices[0]?.message?.content,
-      contentLength: aiData.choices[0]?.message?.content?.length || 0,
-      tokensUsed: aiData.usage,
-      language: detectedLanguage,
-      // Show reasoning vs content token breakdown
-      reasoningTokens: aiData.usage?.completion_tokens_details?.reasoning_tokens || 0,
-      contentTokens: (aiData.usage?.completion_tokens || 0) - (aiData.usage?.completion_tokens_details?.reasoning_tokens || 0)
-    });
-    
-    // Enhanced logging for debugging
-    if (isInstaScan) {
-      console.log('📸 InstaScan - Full OpenAI Response:', JSON.stringify({
-        model: aiData.model,
-        finishReason: aiData.choices[0].finish_reason,
-        hasToolCalls: !!aiData.choices[0].message.tool_calls,
-        toolCallsCount: aiData.choices[0].message.tool_calls?.length || 0,
-        contentPreview: aiData.choices[0].message.content?.substring(0, 100),
-        tokensUsed: aiData.usage,
-        timestamp: new Date().toISOString()
-      }, null, 2));
-      
-      if (aiData.choices[0].message.tool_calls) {
-        console.log('🔧 Tool Call Details:', JSON.stringify(
-          aiData.choices[0].message.tool_calls[0],
-          null,
-          2
-        ));
-      }
-    }
-    
-    let aiMessage: string;
-    let structuredResult = null;
-
-    // Handle structured output from tool calling
-    if (isInstaScan && aiData.choices[0].message.tool_calls) {
-      const toolCall = aiData.choices[0].message.tool_calls[0];
-      try {
-        structuredResult = JSON.parse(toolCall.function.arguments);
-        console.log('✅ InstaScan analysis completed:', {
-          cropName: structuredResult.cropName,
-          condition: structuredResult.condition,
-          diseaseCount: structuredResult.diseases?.length || 0,
-          confidence: structuredResult.confidence
-        });
-        
-        // Validate critical fields
-        if (!structuredResult.cropName || !structuredResult.condition || !structuredResult.confidence) {
-          console.error('❌ Missing critical fields in InstaScan result:', structuredResult);
-          throw new Error('Incomplete crop analysis - missing required fields');
-        }
-        
-        // Format as readable text for storage
-        aiMessage = `Crop: ${structuredResult.cropName}\nCondition: ${structuredResult.condition}\nDiseases: ${structuredResult.diseases.join(', ') || 'None'}\nSuggestions: ${structuredResult.suggestions.join(' ')}`;
-      } catch (e) {
-        console.error('❌ Failed to parse InstaScan tool call:', e, toolCall);
-        throw new Error('Failed to parse crop analysis results');
-      }
-    } else {
-      aiMessage = aiData.choices[0].message.content;
-      
-      // CRITICAL: Validate AI response is not empty
-      if (!aiMessage || aiMessage.trim().length === 0) {
-        console.error('❌ OpenAI returned empty response:', {
-          finishReason: aiData.choices[0]?.finish_reason,
-          model: aiData.model,
-          usage: aiData.usage,
-          sessionId: currentSessionId,
-          messagesCount: openAIMessages.length,
-          detectedLanguage: detectedLanguage,
-          requestedLanguage: language
-        });
-        
-        // ✅ FIX: Return error in user's language, not English
-        const errorMessages: Record<string, string> = {
-          'en': '🙏 Sorry, I had trouble answering your question. Please try again.',
-          'hi': '🙏 क्षमा करें, मुझे आपके प्रश्न का उत्तर देने में समस्या हुई। कृपया पुनः प्रयास करें।',
-          'mr': '🙏 माफ करा, मला तुमच्या प्रश्नाचे उत्तर देण्यात अडचण आली. कृपया पुन्हा प्रयत्न करा.',
-          'ta': '🙏 மன்னிக்கவும், உங்கள் கேள்விக்கு பதிலளிக்க சிரமம். மீண்டும் முயற்சிக்கவும்.',
-          'te': '🙏 క్షమించండి, మీ ప్రశ్నకు సమాధానం ఇవ్వడంలో సమస్య. దయచేసి మళ్లీ ప్రయత్నించండి.',
-          'bn': '🙏 দুঃখিত, আপনার প্রশ্নের উত্তর দিতে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।',
-          'gu': '🙏 માફ કરશો, તમારા પ્રશ્નનો જવાબ આપવામાં સમસ્યા. કૃપા કરીને ફરી પ્રયાસ કરો.',
-          'pa': '🙏 ਮਾਫ਼ ਕਰਨਾ, ਤੁਹਾਡੇ ਸਵਾਲ ਦਾ ਜਵਾਬ ਦੇਣ ਵਿੱਚ ਸਮੱਸਿਆ। ਕਿਰਪਾ ਕਰਕੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।',
-          'kn': '🙏 ಕ್ಷಮಿಸಿ, ನಿಮ್ಮ ಪ್ರಶ್ನೆಗೆ ಉತ್ತರಿಸಲು ತೊಂದರೆ. ದಯವಿಟ್ಟು ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.',
-          'ml': '🙏 ക്ഷമിക്കണം, നിങ്ങളുടെ ചോദ്യത്തിന് ഉത്തരം നൽകാൻ പ്രയാസം. വീണ്ടും ശ്രമിക്കൂ.',
-          'or': '🙏 କ୍ଷମା କରନ୍ତୁ, ଆପଣଙ୍କ ପ୍ରଶ୍ନର ଉତ୍ତର ଦେବାରେ ସମସ୍ୟା। ପୁନର୍ବାର ଚେଷ୍ଟା କରନ୍ତୁ।',
-          'as': '🙏 ক্ষমা কৰিব, আপোনাৰ প্ৰশ্নৰ উত্তৰ দিবলৈ সমস্যা। অনুগ্ৰহ কৰি পুনৰ চেষ্টা কৰক।',
-          'ur': '🙏 معاف کریں، آپ کے سوال کا جواب دینے میں مشکل۔ براہ کرم دوبارہ کوشش کریں۔'
-        };
-        
-        // ✅ FIX: Use user's selected language (not detected language) for error messages
-        aiMessage = errorMessages[language] || errorMessages[detectedLanguage] || errorMessages['en'];
-        
-        // Log for monitoring
-        console.warn('⚠️ Using fallback error message:', {
-          userLanguage: language,
-          detectedLanguage: detectedLanguage,
-          message: aiMessage
-        });
-      }
-      
-      // ============================================
-      // ENFORCE RESPONSE LENGTH LIMIT
-      // ============================================
-      if (complexityAnalysis && aiMessage && aiMessage.trim().length > 0) {
-        const originalWordCount = aiMessage.split(/\s+/).length;
-        console.log(`✅ AI response received: ${originalWordCount} words`);
-        
-        // Enforce length limit based on complexity
-        aiMessage = enforceResponseLength(
-          aiMessage,
-          complexityAnalysis.maxWords,
-          detectedLanguage
-        );
-        
-        const finalWordCount = aiMessage.split(/\s+/).length;
-        if (finalWordCount < originalWordCount) {
-          console.log(`✂️ Response truncated: ${originalWordCount} → ${finalWordCount} words`);
-        }
-      }
-    }
-    const tokensUsed = aiData.usage?.total_tokens || 0;
-
-    // For InstaScan, return structured result immediately
-    if (isInstaScan && structuredResult) {
+    // Only reject if truly empty AND no image provided
+    if (!userMessageContent.trim() && !imageUrl) {
       return new Response(
-        JSON.stringify({ 
-          success: true,
-          result: structuredResult,
-          responseTime: Date.now() - startTime,
-          tokensUsed
-        }),
-        { 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 200
-        }
+        JSON.stringify({ error: 'Empty message provided or no image' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Save messages to database
-    // ✅ Reuse lastUserMessage already declared at line 33
+    // ═══════════════════════════════════════════════════════════════════════════
+    // LANGUAGE DETECTION & CONSISTENCY CHECK
+    // Detect user's language and prepare for translation pipeline
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FIX 8: Canonical language detection — single source of truth
+    // App language from client is the canonical language. Script detection only disambiguates.
+    const canonicalLanguage = detectLanguage(userMessageContent, language);
+    const detectedLanguage = canonicalLanguage;
+    
+    // BUG-4 FIX: DEPRECATED - normalizeToEnglish only had ~23 hardcoded mappings,
+    // creating half-translated hybrid strings. LLM Semantic Extractor (Stage 1.5) 
+    // handles all languages natively. Pass original text for DB logging/training.
+    // const preprocessedContent = normalizeToEnglish(userMessageContent);
+    const preprocessedContent = userMessageContent;
+    
+    console.log(`🌐 [${traceId}] Language Pipeline:`, {
+      raw_input_language: detectedLanguage,
+      has_devanagari: /[\u0900-\u097F]/.test(userMessageContent),
+      preprocessed_to_english: preprocessedContent.substring(0, 50),
+      output_language_target: detectedLanguage
+    });
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SESSION CONTEXT INJECTION - Add previous recommendation context
+    // ═══════════════════════════════════════════════════════════════════════════
+    let contextPrefix = '';
+    if (sessionState?.pending_user_action && sessionState?.decision_state === 'recommendations_given') {
+      // Build context about previous recommendations
+      const contextParts: string[] = [];
+      if (sessionState.last_pest) contextParts.push(`pest: ${sessionState.last_pest}`);
+      if (sessionState.last_disease) contextParts.push(`disease: ${sessionState.last_disease}`);
+      if (sessionState.last_crop) contextParts.push(`crop: ${sessionState.last_crop}`);
+      
+      contextPrefix = `[PREVIOUS_RECOMMENDATIONS: ${contextParts.join(', ')} | COUNT: ${sessionState.recommendations_count || 0}] `;
+      console.log(`🔗 [Session] Injecting context for follow-up:`, contextPrefix);
+    }
+
+    // Safe preview helper for logging
+    const safePreview = (text: string, len = 50) => 
+      typeof text === 'string' && text.length > 0 
+        ? (text.length > len ? text.substring(0, len) + '...' : text) 
+        : '[NO_TEXT]';
+    
+    console.log(`🚀 [${traceId}] Processing message:`, {
+      sessionId: currentSessionId,
+      farmerId: finalFarmerId,
+      language: detectedLanguage,
+      hasImage: !!imageUrl,
+      hasText: userMessageContent.trim().length > 0,
+      messagePreview: safePreview(userMessageContent)
+    });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
+    // ═══════════════════════════════════════════════════════════════════════════
+    const orch = getOrchestrator();
+    
+    const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
+      userMessageContent,
+      currentSessionId,
+      finalFarmerId,
+      finalTenantId,
+      {
+        photoUrl: imageUrl,
+        language: detectedLanguage,
+        landId: landId,
+        traceId: traceId,
+        // CRITICAL FIX: Pass conversation history for context continuity
+        conversationHistory: conversationHistory,
+        // Pass session state for follow-up awareness
+        sessionState: sessionState ? {
+          hasPreviousRecommendations: sessionState.pending_user_action || false,
+          previousPest: sessionState.last_pest,
+          previousDisease: sessionState.last_disease,
+          previousCrop: sessionState.last_crop,
+          turnCount: sessionState.turn_count || 0,
+          decisionState: sessionState.decision_state,
+          // CRITICAL FIX 2: Pass pending clarification options for option matching
+          pendingClarificationOptions: sessionState.pending_clarification_options || [],
+          // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
+          lockedCropContext: sessionState.lockedCropContext,
+          // PART 10: Pass problems_discussed for session continuity
+          problems_discussed: sessionState.problems_discussed || [],
+          last_query_hash: sessionState.last_query_hash,
+          last_query_timestamp: sessionState.last_query_timestamp
+        } : undefined
+      }
+    );
+
+    console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 3: STORE MESSAGES FOR TRAINING & ANALYSIS
+    // ═══════════════════════════════════════════════════════════════════════════
     const responseTime = Date.now() - startTime;
     
-    // Enhanced metadata for AI training
-    const enhancedMetadata = {
-      weather_context: weatherContext,
-      farmer_context: farmerContext,
-      land_context: landContext,
-      crop_season: getCropSeason(),
-      agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
-      soil_zone: landDetails?.soil_type,
-      rainfall_zone: farmerDetails?.rainfall_zone,
-      language,
-      timestamp: new Date().toISOString()
-    };
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 3A: COMPREHENSIVE FILTERING AUDIT WITH TRANSPARENT LOGGING
+    // ═══════════════════════════════════════════════════════════════════════════
     
-    if (lastUserMessage) {
-      // Save user message with enhanced metadata for training
-      const userMessageContent = typeof lastUserMessage === 'string' ? lastUserMessage : lastUserMessage.content;
-      const { error: userMsgError } = await supabase
-        .from('ai_chat_messages')
-        .insert({
-          session_id: currentSessionId,
-          tenant_id: finalTenantId,
-          farmer_id: finalFarmerId,
-          role: 'user',
-          content: userMessageContent,
-          status: 'sent',
-          language: language, // ✅ FIX: Use user's selected language
-          message_type: imageUrl || fileContent ? 'multimedia' : 'text',
-          word_count: userMessageContent ? userMessageContent.split(/\s+/).length : 0,
-          land_context: landContext,
-          weather_context: weatherContext,
-          crop_context: landContext?.crops,
-          location_context: {
-            village: farmerDetails?.village,
-            district: farmerDetails?.district,
-            state: farmerDetails?.state
-          },
-          crop_season: getCropSeason(),
-          agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
-          soil_zone: landDetails?.soil_type,
-          rainfall_zone: farmerDetails?.rainfall_zone,
-          image_urls: imageUrl ? [imageUrl] : null,
-          attachments: fileContent ? [{ type: 'file', content: fileContent }] : null,
-          metadata: enhancedMetadata,
-          user_agent: req.headers.get('user-agent') || null,
-          ip_address: req.headers.get('x-forwarded-for')?.split(',')[0] || req.headers.get('cf-connecting-ip') || null
-        });
-        
-      if (userMsgError) {
-        console.error('Error saving user message:', userMsgError);
-      }
-    }
-
-    // ✅ NEW: TRAINING DATA PIPELINE - Auto-populate all LLM training columns
-    const userMessageContent = typeof lastUserMessage === 'string' ? lastUserMessage : lastUserMessage?.content || '';
-    const trainingData = buildTrainingData(
-      userMessageContent,
-      aiMessage,
-      queryIntent,
-      language,
-      messageCount,
-      responseTime,
-      !!landId, // hasLandContext
-      null // feedbackRating - will be updated later
-    );
+    // STEP 1: Log RAW recommendations from decision graph BEFORE any filtering
+    console.log(`\n🔬 [${traceId}] ═══ FILTERING AUDIT START ═══`);
+    console.log(`🔬 [${traceId}] ─── BEFORE FILTERING: RAW DECISION GRAPH OUTPUT ───`);
     
-    console.log('📊 Training Data Generated:', {
-      complexity: trainingData.complexity_level,
-      domainTags: trainingData.domain_tags,
-      qualityScore: trainingData.conversation_quality_score.toFixed(2),
-      agricultureAccuracy: trainingData.agricultural_accuracy.toFixed(2),
-      isTrainingCandidate: trainingData.is_training_candidate,
-      offTopic: trainingData.off_topic
-    });
-    
-    // ✅ Strip markdown from AI response (safety net)
-    const stripMarkdownFromResponse = (text: string): string => {
-      return text
-        .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove **bold**
-        .replace(/\*(.*?)\*/g, '$1')      // Remove *italic*
-        .replace(/^#{1,6}\s+/gm, '')      // Remove ## headers
-        .replace(/^-{3,}$/gm, '')         // Remove --- separators
-        .replace(/\n{3,}/g, '\n\n');      // Clean multiple newlines
-    };
-    
-    aiMessage = stripMarkdownFromResponse(aiMessage);
-    
-    // Extract section tags from AI response for training data
-    const sectionTags = extractSectionTags(aiMessage);
-    
-    // Only save AI response if it has content
-    if (aiMessage && aiMessage.trim().length > 0) {
-      // Save AI response with enhanced metadata + training pipeline data
-      const { data: savedMessage, error: aiMsgError } = await supabase
-        .from('ai_chat_messages')
-        .insert({
-          session_id: currentSessionId,
-          tenant_id: finalTenantId,
-          farmer_id: finalFarmerId,
-          role: 'assistant',
-          content: aiMessage,
-          status: 'sent',
-          language: language,
-          message_type: 'text',
-          word_count: aiMessage ? aiMessage.split(/\s+/).length : 0,
-          land_context: landContext,
-          weather_context: weatherContext,
-          // ✅ NEW: Training pipeline columns
-          complexity_level: trainingData.complexity_level,
-          domain_tags: trainingData.domain_tags,
-          conversation_quality_score: trainingData.conversation_quality_score,
-          agricultural_accuracy: trainingData.agricultural_accuracy,
-          is_training_candidate: trainingData.is_training_candidate,
-          preprocessed_content: trainingData.preprocessed_content,
-          conversation_turn_number: trainingData.conversation_turn_number,
-          off_topic: trainingData.off_topic,
-          excluded_reason: trainingData.excluded_reason,
-          training_processed: false,
-          crop_context: landContext?.current_crop ? {
-            crop_name: landContext.current_crop,
-            crop_stage: landDetails?.cultivation_date ? getCropStage(landDetails.cultivation_date) : null,
-            days_since_sowing: landDetails?.cultivation_date ? 
-              Math.floor((Date.now() - new Date(landDetails.cultivation_date).getTime()) / (1000 * 60 * 60 * 24)) : 0,
-            soil_npk: landContext?.soil_npk,
-            ndvi_value: landContext?.ndvi_value,
-            soil_moisture: landContext?.soil_moisture
-          } : landContext?.crops,
-        location_context: {
-          village: farmerDetails?.village,
-          district: farmerDetails?.district,
-          state: farmerDetails?.state
-        },
-        crop_season: getCropSeason(),
-        agro_climatic_zone: landDetails?.agro_climatic_zone || farmerDetails?.agro_climatic_zone,
-        soil_zone: landDetails?.soil_type,
-        rainfall_zone: farmerDetails?.rainfall_zone,
-        ai_model: 'gpt-4o-mini', // Fast, cost-effective model for farmer chat
-        response_time_ms: responseTime,
-        tokens_used: tokensUsed,
-        metadata: {
-          ...enhancedMetadata,
-          prompt_tokens: aiData.usage?.prompt_tokens,
-          completion_tokens: aiData.usage?.completion_tokens,
-          quick_replies: generateQuickReplies(lastUserMessage?.content || '', aiMessage, landDetails),
-          section_tags: sectionTags, // For AI training classification
-          regional_title: farmerContext?.regional_title,
-          land_size_acres: landContext?.area_acres,
-          model_info: 'Using GPT-4o-mini for multilingual, fast farmer assistance'
-        }
-      });
+    let rawDecisionOutput = orchestratorResponse.decision_output;
+    if (rawDecisionOutput) {
+      console.log(`   Status: ${rawDecisionOutput.status}`);
+      console.log(`   Primary Decision: ${rawDecisionOutput.primary_decision?.action_type || 'NONE'}`);
+      console.log(`   Secondary Actions: ${rawDecisionOutput.secondary_actions?.length || 0}`);
+      console.log(`   Blocked Actions: ${rawDecisionOutput.blocked_actions?.length || 0}`);
       
-      if (aiMsgError) {
-        console.error('Error saving AI response:', aiMsgError);
-      } else {
-        console.log('✅ AI message saved with training data:', savedMessage?.[0]?.id);
+      // Log all raw recommendations before processing
+      if (rawDecisionOutput.primary_decision) {
+        console.log(`   📌 RAW Primary: ${JSON.stringify({
+          action_type: rawDecisionOutput.primary_decision.action_type,
+          rule_id: rawDecisionOutput.primary_decision.rule_id,
+          product: rawDecisionOutput.primary_decision.application_details?.product_name,
+          target: rawDecisionOutput.primary_decision.target,
+          priority: rawDecisionOutput.primary_decision.priority
+        })}`);
+      }
+      if (rawDecisionOutput.secondary_actions?.length > 0) {
+        rawDecisionOutput.secondary_actions.forEach((sec: any, i: number) => {
+          console.log(`   📎 RAW Secondary ${i + 1}: ${sec.action} | Priority: ${sec.priority}`);
+        });
+      }
+      
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PRODUCTION HARDENING: PRIMARY DECISION INVARIANT
+      // A valid decision MUST have: rule_id AND action_type
+      // RECOVERY PRIORITY: 
+      //   1. layered_rule_result.primary_decision (NEW - from LayeredRuleEvaluator)
+      //   2. primary_matched_response (LEGACY)
+      //   3. matched_responses array
+      //   4. SYSTEM_FALLBACK
+      // ═══════════════════════════════════════════════════════════════════════════
+      if (rawDecisionOutput.status === 'SUCCESS' || rawDecisionOutput.status === 'PARTIAL') {
+        const primaryDecision = rawDecisionOutput.primary_decision;
+        const hasValidActionType = !!primaryDecision?.action_type;
+        const hasRuleId = !!primaryDecision?.rule_id || !!primaryDecision?.application_details?.rule_id;
         
-        // ✅ Update ai_chat_analytics table with proper aggregation
-        try {
-          const today = new Date().toISOString().split('T')[0];
+        if (!hasValidActionType || !hasRuleId) {
+          console.error(`🚨 [${traceId}] PRIMARY_ACTION_CONTRACT_VIOLATION!`);
+          console.error(`   primary_decision exists: ${!!primaryDecision}`);
+          console.error(`   action_type: ${primaryDecision?.action_type || 'MISSING'}`);
+          console.error(`   rule_id: ${primaryDecision?.rule_id || primaryDecision?.application_details?.rule_id || 'MISSING'}`);
+          console.error(`   source: index.ts`);
           
-          // Check existing analytics record
-          const { data: existingAnalytics } = await supabase
-            .from('ai_chat_analytics')
-            .select('*')
-            .eq('tenant_id', finalTenantId)
-            .eq('farmer_id', finalFarmerId)
-            .eq('date', today)
-            .single();
+          // ═══════════════════════════════════════════════════════════════════════════
+          // PRIORITY 1: Check for layered_rule_result.primary_decision (NEW CONTRACT)
+          // This is built by layered-rule-evaluator.ts from eligible matched_responses
+          // ═══════════════════════════════════════════════════════════════════════════
+          const layeredPrimaryDecision = rawDecisionOutput.layered_rule_result?.primary_decision;
           
-          if (existingAnalytics) {
-            // Update existing record with aggregated values
-            const newTotalMessages = existingAnalytics.total_messages + 2; // user + assistant
-            const newAvgResponseTime = Math.round(
-              ((existingAnalytics.avg_response_time_ms * existingAnalytics.total_messages) + responseTime) / newTotalMessages
-            );
-            const updatedTopics = [...new Set([...(existingAnalytics.topics || []), ...trainingData.domain_tags])];
+          // ═══════════════════════════════════════════════════════════════
+          // BUG-1/BUG-6 FIX: Safety gate rules must NEVER be selected as
+          // primary decision. They belong in warnings/blocked_actions only.
+          // ═══════════════════════════════════════════════════════════════
+          const SAFETY_GATE_RULE_PATTERN = /^GLOBAL_SAFETY/i;
+          const isSafetyGateRule = (ruleId?: string) => 
+            !!(ruleId && SAFETY_GATE_RULE_PATTERN.test(ruleId));
+          
+          const isLayeredSafetyGate = isSafetyGateRule(layeredPrimaryDecision?.rule_id);
+          
+          if (layeredPrimaryDecision && layeredPrimaryDecision.rule_id && layeredPrimaryDecision.action_type && !isLayeredSafetyGate) {
+            console.log(`   🔄 RECOVERY: Using layered_rule_result.primary_decision`);
             
-            await supabase.from('ai_chat_analytics').update({
-              total_messages: newTotalMessages,
-              avg_response_time_ms: newAvgResponseTime,
-              topics: updatedTopics
-            }).eq('id', existingAnalytics.id);
-          } else {
-            // Insert new record
-            await supabase.from('ai_chat_analytics').insert({
-              tenant_id: finalTenantId,
-              farmer_id: finalFarmerId,
-              date: today,
-              total_messages: 2, // user + assistant
-              total_sessions: 1,
-              avg_response_time_ms: responseTime,
-              satisfaction_score: null,
-              topics: trainingData.domain_tags
+            // BUG-1 FIX: Never set placeholder product_name — leave null for formatter
+            const recoveredProductName = layeredPrimaryDecision.product_name || null;
+            const recoveredProductType = layeredPrimaryDecision.product_type || null;
+            
+            rawDecisionOutput.primary_decision = {
+              action_type: layeredPrimaryDecision.action_type,
+              rule_id: layeredPrimaryDecision.rule_id,
+              specific_action: layeredPrimaryDecision.action_type,
+              target: {},
+              urgency: 'WITHIN_24H',
+              priority: layeredPrimaryDecision.priority,
+              // SSOT: Propagate ledger-derived confidence
+              weighted_confidence: layeredPrimaryDecision.weighted_confidence,
+              normalized_score: layeredPrimaryDecision.normalized_score,
+              timing: {
+                recommended_start: new Date().toISOString(),
+                recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                weather_dependency: false,
+                reason: 'Recovered from layered_rule_result.primary_decision'
+              },
+              application_details: buildRichApplicationDetails(layeredPrimaryDecision, recoveredProductName, recoveredProductType),
+              expected_outcomes: {
+                efficacy_percent: layeredPrimaryDecision.weighted_confidence 
+                  ? Math.round(layeredPrimaryDecision.weighted_confidence * 100) : 75,
+                time_to_visible_effect_days: '3-5',
+                success_indicators: layeredPrimaryDecision.success_indicators || []
+              }
+            };
+            
+            console.log(`   ✅ Primary decision RECOVERED: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
+          } else if (isLayeredSafetyGate) {
+            console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping GLOBAL_SAFETY rule ${layeredPrimaryDecision?.rule_id} as primary — moving to warnings`);
+            // Move safety gate rule to warnings instead
+            if (!rawDecisionOutput.warnings) rawDecisionOutput.warnings = [];
+            rawDecisionOutput.warnings.push({
+              type: 'SAFETY_GATE',
+              rule_id: layeredPrimaryDecision?.rule_id,
+              message: layeredPrimaryDecision?.action_text || 'Safety precaution applies',
+              source: 'safety_gate_filter'
             });
           }
-          
-          console.log('✅ Analytics updated for farmer');
-        } catch (analyticsError) {
-          console.error('⚠️ Failed to update analytics:', analyticsError);
+          // PRIORITY 2: Check for primary_matched_response (LEGACY)
+          else {
+            const primaryMatchedResponse = rawDecisionOutput.primary_matched_response;
+            const isPrimaryMatchSafetyGate = isSafetyGateRule(primaryMatchedResponse?.rule_id);
+            
+            if (primaryMatchedResponse && primaryMatchedResponse.rule_id && primaryMatchedResponse.action_type && !isPrimaryMatchSafetyGate) {
+              console.log(`   🔄 RECOVERY: Using primary_matched_response (legacy)`);
+              
+              rawDecisionOutput.primary_decision = {
+                action_type: primaryMatchedResponse.action_type,
+                rule_id: primaryMatchedResponse.rule_id,
+                specific_action: primaryMatchedResponse.action_type,
+                target: {},
+                urgency: 'WITHIN_24H',
+                priority: primaryMatchedResponse.priority,
+                weighted_confidence: primaryMatchedResponse.weighted_confidence,
+                timing: {
+                  recommended_start: new Date().toISOString(),
+                  recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                  weather_dependency: false,
+                  reason: 'Recovered from primary_matched_response'
+                },
+                application_details: buildRichApplicationDetails(primaryMatchedResponse, primaryMatchedResponse.product_name || null, primaryMatchedResponse.product_type || null),
+                expected_outcomes: {
+                  efficacy_percent: primaryMatchedResponse.weighted_confidence 
+                    ? Math.round(primaryMatchedResponse.weighted_confidence * 100) : 75,
+                  time_to_visible_effect_days: '3-5',
+                  success_indicators: primaryMatchedResponse.success_indicators || []
+                }
+              };
+              
+              console.log(`   ✅ Primary decision RECOVERED: rule_id=${primaryMatchedResponse.rule_id}, action_type=${primaryMatchedResponse.action_type}`);
+            } else if (isPrimaryMatchSafetyGate) {
+              console.warn(`   ⚠️ SAFETY_GATE_FILTER: Skipping safety rule ${primaryMatchedResponse?.rule_id} from primary_matched_response`);
+            }
+            // PRIORITY 3: Check matched_responses array
+            else {
+              // PRODUCTION FIX: Empty array is truthy — use strict length check
+              const rawMatched = rawDecisionOutput.matched_responses;
+              const layeredMatched = rawDecisionOutput.layered_rule_result?.matched_responses;
+              const matchedResponses = (Array.isArray(rawMatched) && rawMatched.length > 0)
+                ? rawMatched
+                : (Array.isArray(layeredMatched) && layeredMatched.length > 0)
+                  ? layeredMatched
+                  : [];
+              
+              // PRODUCTION FIX: Align eligibility with layered-rule-evaluator.ts
+              // Accept action_text OR i18n_key OR reason_text OR knowledge_text
+              // BUG-6 FIX: Also filter out GLOBAL_SAFETY rules from eligible responses
+              const eligibleResponses = matchedResponses.filter((r: any) => 
+                r.rule_id && r.action_type && (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text) && !isSafetyGateRule(r.rule_id)
+              );
+              
+              if (eligibleResponses.length > 0) {
+                console.log(`   🔄 RECOVERY: Using eligible matched_response (${eligibleResponses.length} available)`);
+                
+                const firstMatch = eligibleResponses[0];
+                rawDecisionOutput.primary_decision = {
+                  action_type: firstMatch.action_type,
+                  rule_id: firstMatch.rule_id,
+                  specific_action: firstMatch.cause || 'Recommendation',
+                  target: {},
+                  urgency: 'WITHIN_24H',
+                  priority: firstMatch.priority,
+                  weighted_confidence: firstMatch.weighted_confidence,
+                  timing: {
+                    recommended_start: new Date().toISOString(),
+                    recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
+                    weather_dependency: false,
+                    reason: 'Recovered from matched responses'
+                  },
+                  application_details: buildRichApplicationDetails(firstMatch, firstMatch.product_name || null, firstMatch.product_type || null),
+                  expected_outcomes: {
+                    efficacy_percent: firstMatch.weighted_confidence 
+                      ? Math.round(firstMatch.weighted_confidence * 100) : 75,
+                    time_to_visible_effect_days: '3-5',
+                    success_indicators: firstMatch.success_indicators || []
+                  }
+                };
+                
+                console.log(`   ✅ Primary decision RECOVERED: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
+              } else {
+                // PRIORITY 4: No eligible responses - generate system fallback
+                // PRODUCTION OBSERVABILITY: Log full diagnostic context before fallback
+                const rawMatchedCount = Array.isArray(rawDecisionOutput.matched_responses) ? rawDecisionOutput.matched_responses.length : 0;
+                const layeredMatchedCount = Array.isArray(rawDecisionOutput.layered_rule_result?.matched_responses) ? rawDecisionOutput.layered_rule_result.matched_responses.length : 0;
+                const layeredPrimary = rawDecisionOutput.layered_rule_result?.primary_decision;
+                console.error(`🚨 [${traceId}] INVARIANT_FALLBACK DIAGNOSTIC:`);
+                console.error(`   status: ${rawDecisionOutput.status}`);
+                console.error(`   raw matched_responses: ${rawMatchedCount}`);
+                console.error(`   layered matched_responses: ${layeredMatchedCount}`);
+                console.error(`   layered primary_decision: ${layeredPrimary ? `rule_id=${layeredPrimary.rule_id}, action_type=${layeredPrimary.action_type}` : 'NULL'}`);
+                console.error(`   eligible after filter: ${matchedResponses.length} total → 0 eligible`);
+                if (matchedResponses.length > 0) {
+                  console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
+                  console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
+                }
+                console.error(`   generating SYSTEM_FALLBACK`);
+                
+                rawDecisionOutput.status = 'SYSTEM_FALLBACK';
+                rawDecisionOutput.primary_decision = {
+                  action_type: 'MONITOR_ONLY',
+                  rule_id: 'INVARIANT_FALLBACK',
+                  specific_action: 'CONTINUE_MONITORING',
+                  target: {},
+                  urgency: 'NON_URGENT',
+                  timing: {
+                    recommended_start: new Date().toISOString(),
+                    recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                    weather_dependency: false,
+                    reason: 'System fallback - primary decision invariant violated'
+                  },
+                  application_details: {
+                    product_name: 'Continue monitoring',
+                    product_type: 'CULTURAL',
+                    concentration: 'Daily observation',
+                    coverage_instructions: 'Monitor crop health and look for symptoms',
+                    action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
+                    reason_text: 'Insufficient information to provide specific recommendation.',
+                    rule_id: 'INVARIANT_FALLBACK'
+                  },
+                  expected_outcomes: {
+                    efficacy_percent: 100,
+                    time_to_visible_effect_days: 'Ongoing',
+                    success_indicators: ['Early detection of issues']
+                  }
+                };
+                
+                console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+              }
+            }
+          }
+        } else {
+          console.log(`   ✅ Primary decision invariant PASSED: action_type=${primaryDecision.action_type}, rule_id=${primaryDecision.rule_id || primaryDecision.application_details?.rule_id}`);
         }
       }
     } else {
-      console.warn('⚠️ Skipping save - AI message is empty');
+      console.log(`   ⚠️ No decision_output present in orchestrator response`);
     }
     
-    // Detect critical alerts and send push notifications
-    const isCritical = detectCriticalAlert(aiMessage, sectionTags);
-    if (isCritical.shouldNotify) {
-      // Send push notification in background (don't await)
-      EdgeRuntime.waitUntil(
-        sendCriticalAlert(
-          supabase,
-          finalTenantId,
-          finalFarmerId,
-          isCritical,
-          aiMessage,
-          landId,
-          currentSessionId
-        )
+    // STEP 2: Extract and audit with filter logging
+    const { actions_returned, actions_filtered_out, audit_log, filter_trace } = extractAndAuditActionsWithFilterTrace(orchestratorResponse, traceId, detectedLanguage);
+    
+    // STEP 3: Log DURING filtering - each filter rule applied
+    console.log(`\n🔬 [${traceId}] ─── DURING FILTERING: FILTER RULES APPLIED ───`);
+    if (filter_trace && filter_trace.length > 0) {
+      filter_trace.forEach((trace, idx) => {
+        const icon = trace.passed ? '✅' : '❌';
+        console.log(`   ${icon} Rule ${idx + 1}: ${trace.filter_name}`);
+        console.log(`      Action: ${trace.action}`);
+        console.log(`      Result: ${trace.passed ? 'PASSED' : 'BLOCKED'}`);
+        if (!trace.passed) {
+          console.log(`      Reason: ${trace.reason}`);
+          console.log(`      Category: ${trace.category}`);
+        }
+      });
+    } else {
+      console.log(`   ℹ️ No explicit filter rules applied (direct pass-through)`);
+    }
+    
+    // STEP 4: Log AFTER filtering - what PASSED and what was BLOCKED
+    console.log(`\n🔬 [${traceId}] ─── AFTER FILTERING: FINAL RESULTS ───`);
+    console.log(`   ✅ PASSED Actions: ${actions_returned?.length || 0}`);
+    console.log(`   ❌ BLOCKED Actions: ${actions_filtered_out?.length || 0}`);
+    
+    if (actions_returned && actions_returned.length > 0) {
+      console.log(`   ─── PASSED RECOMMENDATIONS ───`);
+      actions_returned.forEach((action, idx) => {
+        console.log(`   ${idx + 1}. [PASSED] ${action.action_type || action.action}`);
+        console.log(`      Product: ${action.product_name || 'N/A'}`);
+        console.log(`      Priority: ${action.priority || 'N/A'}`);
+        console.log(`      Rule ID: ${action.rule_id || 'N/A'}`);
+      });
+    }
+    
+    if (actions_filtered_out && actions_filtered_out.length > 0) {
+      console.log(`   ─── BLOCKED ACTIONS (with explicit reasons) ───`);
+      actions_filtered_out.forEach((filtered, idx) => {
+        console.log(`   ${idx + 1}. [BLOCKED] ${filtered.action}`);
+        console.log(`      Category: ${filtered.filter_category}`);
+        console.log(`      Reason: ${filtered.reason}`);
+        console.log(`      Blocked By Rule: ${filtered.blocked_by_rule || 'SYSTEM'}`);
+        if (filtered.alternatives?.length > 0) {
+          console.log(`      Alternatives: ${filtered.alternatives.join(', ')}`);
+        }
+      });
+    }
+    
+    // Log filter category summary
+    if (Object.keys(audit_log.filter_categories).length > 0) {
+      console.log(`   ─── FILTER CATEGORY SUMMARY ───`);
+      Object.entries(audit_log.filter_categories).forEach(([category, count]) => {
+        console.log(`      ${category}: ${count} action(s) blocked`);
+      });
+    }
+    
+    if (audit_log.validation_errors.length > 0) {
+      console.warn(`⚠️ [${traceId}] Validation Errors:`, audit_log.validation_errors);
+    }
+    console.log(`🔬 [${traceId}] ═══ FILTERING AUDIT END ═══\n`);
+    
+    // STEP 5: Check if ALL actions were filtered - generate special response
+    const allActionsFiltered = orchestratorResponse.type === 'DECISION_PROVIDED' &&
+      (!actions_returned || actions_returned.length === 0) &&
+      (actions_filtered_out && actions_filtered_out.length > 0);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 5: LLM RESPONSE FORMATTING & DELIVERY
+    // Takes rule engine output and formats it into natural, empathetic advice
+    // ═══════════════════════════════════════════════════════════════════════════
+    console.log(`\n📝 [${traceId}] ═══ PHASE 5: LLM RESPONSE FORMATTING ═══`);
+    
+    let responseContent: string;
+    let llmFormatterOutput: LLMFormatterOutput | null = null;
+    let aiModelUsed: string | undefined;
+    
+    // Calculate remaining time for timeout protection (25s total budget, minus time spent so far)
+    const timeSpentSoFar = Date.now() - startTime;
+    const remainingTime = Math.max(25000 - timeSpentSoFar, 5000); // At least 5s for formatting
+    console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Check if Static Data Gate already handled this query
+    // Static Gate responses should NOT go through LLM formatting
+    // ═══════════════════════════════════════════════════════════════════════════
+    const isStaticGateResponse = 
+      orchestratorResponse.decision_output?.metadata?.template_type === 'STATIC_DIRECT' ||
+      orchestratorResponse.communication?.metadata?.source === 'STATIC_DATA_GATE';
+    
+    if (isStaticGateResponse) {
+      // Static Gate already generated the response - use it directly
+      console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
+      responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage] ||
+                        orchestratorResponse.communication?.main_message?.full_text?.en ||
+                        'Information not available';
+    } else if (allActionsFiltered) {
+      // Special response when all actions were filtered
+      console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
+      responseContent = generateAllActionsFilteredResponse(actions_filtered_out, detectedLanguage);
+    } else if (orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output) {
+      // ═══════════════════════════════════════════════════════════════════════════
+      // PHASE-14: Check for Stage Fallback Response first
+      // If orchestrator returned a stage-aware fallback, use it directly
+      // ═══════════════════════════════════════════════════════════════════════════
+      const decisionOutput = orchestratorResponse.decision_output as any;
+      if (decisionOutput.status === 'STAGE_FALLBACK' && decisionOutput.stage_fallback_message) {
+        console.log(`   🌱 [STAGE_FALLBACK] Using stage-aware fallback response`);
+        responseContent = decisionOutput.stage_fallback_message;
+        // Skip LLM formatting - stage fallback is already formatted
+      } else {
+      // PHASE 5: Use LLM to format rule engine recommendations
+      console.log(`   🤖 Using LLM formatter for natural language generation`);
+      
+      try {
+        // FIX: Build land context for LLM with fallback chain
+        // Priority 1: From dataAudit (normal path)
+        // Priority 2: From decision_output metadata lockedCropContext (OPTION_SELECTED path)
+        // Priority 3: From metadata lockedCropContext (fallback)
+        // FIX 3: Complete lockedCropContext propagation chain — 4-priority fallback
+        const lockedCropCtx = orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
+                              orchestratorResponse.metadata?.lockedCropContext;
+        
+        const landContext = orchestratorResponse.dataAudit?.land?.found ? {
+          // Priority 1: From dataAudit (normal land-linked path)
+          current_crop: orchestratorResponse.dataAudit.land.current_crop,
+          growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
+          area_acres: orchestratorResponse.dataAudit.land.area_acres,
+          days_since_sowing: orchestratorResponse.dataAudit.land.days_since_sowing,
+          soil_health: orchestratorResponse.dataAudit?.soil_health?.found ? {
+            nitrogen_kg_per_ha: orchestratorResponse.dataAudit.soil_health.nitrogen_kg_per_ha,
+            phosphorus_kg_per_ha: orchestratorResponse.dataAudit.soil_health.phosphorus_kg_per_ha,
+            potassium_kg_per_ha: orchestratorResponse.dataAudit.soil_health.potassium_kg_per_ha,
+            ph_level: orchestratorResponse.dataAudit.soil_health.ph_level
+          } : undefined,
+          ndvi: orchestratorResponse.dataAudit?.ndvi?.found ? {
+            value: orchestratorResponse.dataAudit.ndvi.latest_value,
+            trend: orchestratorResponse.dataAudit.ndvi.trend
+          } : undefined
+        } : lockedCropCtx ? {
+          // Priority 2: From lockedCropContext (OPTION_SELECTED path)
+          current_crop: lockedCropCtx.crop_name,
+          growth_stage: lockedCropCtx.growth_stage,
+          days_since_sowing: lockedCropCtx.days_since_sowing,
+          area_acres: lockedCropCtx.area_acres
+        } : sessionState?.last_crop ? {
+          // Priority 3: From sessionState (multi-turn continuity)
+          current_crop: sessionState.last_crop,
+          growth_stage: (sessionState as any)?.last_growth_stage || 'VEGETATIVE',
+          days_since_sowing: 0,
+        } : undefined;
+        
+        const landContextSource = orchestratorResponse.dataAudit?.land?.found ? 'dataAudit' 
+          : lockedCropCtx ? 'lockedCropContext' 
+          : sessionState?.last_crop ? 'sessionState' : 'NONE';
+        console.log(`   📊 [LandContext] Built from ${landContextSource}`);
+        if (landContext) {
+          console.log(`      Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, Days: ${landContext.days_since_sowing}`);
+        }
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 11.1: CONTEXT AUTHORITY RECONCILIATION
+        // Ensures lockedCropContext overrides canonical defaults before rendering
+        // ═══════════════════════════════════════════════════════════════════════════
+        const renderContext = resolveFinalRenderContext(
+          landContext,
+          lockedCropCtx as CropContextAuthority | null | undefined,
+          orchestratorResponse.dataAudit
+        );
+        
+        // If authority override was applied, update landContext for downstream usage
+        if (renderContext.authority_override_applied && landContext) {
+          console.log(`   🔄 [Reconciliation] Updating landContext with authority values`);
+          landContext.current_crop = renderContext.crop_name;
+          landContext.growth_stage = renderContext.growth_stage;
+          landContext.days_since_sowing = renderContext.days_since_sowing;
+        }
+        
+        // Use renderContext values for response generation (authority-reconciled)
+        const finalCropName = renderContext.crop_name;
+        const finalGrowthStage = renderContext.growth_stage;
+        const finalDaysSinceSowing = renderContext.days_since_sowing;
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // PHASE 11 + P1-4: UNIFIED DECISION GATE - Single point of treatment validation
+        // Replaces dual prescription-gate and decision-readiness-gate
+        // ═══════════════════════════════════════════════════════════════════════════
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CRITICAL FIX: Extract symptom_keys from SSOT (decision_output) first
+        // The orchestrator stores symptom info in decision_output, not just metadata
+        // ═══════════════════════════════════════════════════════════════════════════
+        const decisionOutput = orchestratorResponse.decision_output as Record<string, any> || {};
+        const symptomKeysFromDecision = decisionOutput.symptom_keys || 
+                                        decisionOutput.observation_keys ||
+                                        decisionOutput.canonical_observations ||
+                                        [];
+        const symptomKeysFromMetadata = orchestratorResponse.metadata?.symptomKeys || [];
+        const mergedSymptomKeys = [...new Set([...symptomKeysFromDecision, ...symptomKeysFromMetadata])];
+        
+        // ═══════════════════════════════════════════════════════════════════════════
+        // CONFIDENCE BRIDGE: Extract symbolic confidence as SSOT for decision_confidence
+        // ═══════════════════════════════════════════════════════════════════════════
+        const rawSymbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
+          ?.primary_decision?.weighted_confidence
+          ?? orchestratorResponse.decision_output?.layered_rule_result
+            ?.primary_decision?.confidence_score
+          ?? 0;
+        // BUG FIX: Guard against NaN from division-by-zero in rule evaluator
+        const symbolicConfidence = isNaN(rawSymbolicConfidence) ? 0.5 : rawSymbolicConfidence;
+        
+        const unifiedGateInput: UnifiedGateInput = {
+          authority_decision: orchestratorResponse.decision_output?.authority_decision || {
+            authority: 'NONE',
+            authority_status: 'UNCONFIRMED',
+            treatments_allowed: false,
+            reason: 'No authority resolved'
+          },
+          symbolic_decision: orchestratorResponse.decision_output as any,
+          crop_name: finalCropName,
+          growth_stage: finalGrowthStage,
+          days_since_sowing: finalDaysSinceSowing,
+          stage_source: orchestratorResponse.metadata?.stageSource || 'UNKNOWN',
+          symptom_keys: mergedSymptomKeys,
+          is_specific_symptom: !!orchestratorResponse.decision_output?.primary_decision?.target,
+          clarification_turn_count: orchestratorResponse.metadata?.clarificationTurnCount || 0,
+          pending_clarification: orchestratorResponse.decision_output?.clarification_needed || false,
+          has_emergency_indicators: orchestratorResponse.metadata?.isEmergency || false,
+          land_id: landId,
+          decision_confidence: Math.round(symbolicConfidence * 100),  // Convert 0-1 to 0-100
+          hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined
+        } as any;
+        
+        // INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
+        const primaryDecisionExists = !!(orchestratorResponse.decision_output?.primary_decision?.rule_id ||
+          orchestratorResponse.decision_output?.layered_rule_result?.primary_decision?.rule_id);
+        
+        if (primaryDecisionExists && symbolicConfidence === 0) {
+          console.error(`🚨 [INVARIANT] Confidence pipeline inconsistency: primary_decision exists but symbolic_confidence=0`);
+          console.error(`   Forcing minimum confidence of 0.5 to prevent decision suppression`);
+          unifiedGateInput.decision_confidence = 50;  // Safe floor
+        }
+        
+        console.log(`   📊 [ConfidenceBridge] symbolic_confidence=${symbolicConfidence.toFixed(3)} -> decision_confidence=${unifiedGateInput.decision_confidence}`);
+        console.log(`   🔍 [UnifiedGate] Input: crop=${finalCropName}, stage=${finalGrowthStage}, DAS=${finalDaysSinceSowing}, symptoms=${mergedSymptomKeys.length}`);
+        
+        // FIX 1: Read gate result from orchestrator if already evaluated there (avoid duplicate gate)
+        const orchestratorGateResult = orchestratorResponse.metadata?.gate_result;
+        let unifiedGateResult: any;
+        
+        if (orchestratorGateResult && orchestratorGateResult.gate_status) {
+          // Gate already evaluated in orchestrator — use that result
+          console.log(`   🔄 [UnifiedGate] Using pre-evaluated gate from orchestrator`);
+          unifiedGateResult = orchestratorGateResult;
+        } else {
+          // Backward compat: evaluate gate here if orchestrator didn't provide it
+          const rawGateResult = evaluateUnifiedGate(unifiedGateInput);
+          
+          // Apply suppression guard to prevent silent recommendation drops
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL FIX: Use decision_output as SSOT, not metadata
+          // decision_output contains the actual rules/actions from symbolic brain
+          // ═══════════════════════════════════════════════════════════════════════════
+          const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
+          const symbolicDecisionForGuard = {
+            decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
+            // SSOT: Use decision_output fields first, fallback to metadata
+            rules_fired: decisionOutputSsot.rules_applied || 
+                         decisionOutputSsot.layered_rule_result?.rules_applied || 
+                         orchestratorResponse.metadata?.rulesFired || [],
+            actions_returned: decisionOutputSsot.actions_returned || 
+                              orchestratorResponse.metadata?.actionsReturned || [],
+            matched_responses: decisionOutputSsot.matched_responses || 
+                               orchestratorResponse.metadata?.matchedResponses || []
+          };
+          
+          console.log(`   🔍 [SuppressionGuard] SSOT check: rules=${symbolicDecisionForGuard.rules_fired?.length || 0}, actions=${symbolicDecisionForGuard.actions_returned?.length || 0}, responses=${symbolicDecisionForGuard.matched_responses?.length || 0}`);
+          
+          unifiedGateResult = applySuppressionGuard(rawGateResult, symbolicDecisionForGuard);
+        }
+        
+        console.log(`   🚦 [UnifiedGate] ${unifiedGateResult.gate_status === 'PASS' ? '✅ PASS' : unifiedGateResult.gate_status === 'EMERGENCY_BYPASS' ? '🚨 EMERGENCY' : '🚫 ' + unifiedGateResult.gate_status}`);
+        console.log(`      Response Mode: ${unifiedGateResult.response_mode}`);
+        console.log(`      Action: ${unifiedGateResult.gate_action}`);
+        console.log(`      Reason: ${unifiedGateResult.reason}`);
+        if (unifiedGateResult.reason?.includes('Suppression guard')) {
+          console.log(`      ✅ SUPPRESSION GUARD ACTIVATED - recommendations preserved`);
+        }
+        
+        // If unified gate blocks treatments, use appropriate fallback response
+        if (!unifiedGateResult.treatments_allowed) {
+          console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
+          
+          if (unifiedGateResult.response_mode === ResponseMode.DIAGNOSTIC_ESCALATION) {
+            // NEW: Expert-quality diagnostic escalation response
+            console.log(`   🔬 DIAGNOSTIC_ESCALATION - generating expert response with hypotheses`);
+            
+            const escalationInput: DiagnosticEscalationInput = {
+              language: detectedLanguage,
+              crop_name: finalCropName || 'Unknown',
+              growth_stage: finalGrowthStage || 'Unknown',
+              days_since_sowing: finalDaysSinceSowing,
+              symptom_keys: orchestratorResponse.metadata?.symptomKeys || [],
+              matched_rules: orchestratorResponse.metadata?.matchedRules || [],
+              current_confidence: unifiedGateResult.diagnostic_escalation?.current_confidence || 0.4,
+              treatment_threshold: unifiedGateResult.diagnostic_escalation?.threshold_for_treatment || 0.7
+            };
+            
+            responseContent = generateDiagnosticEscalationResponse(
+              unifiedGateResult.diagnostic_escalation!,
+              escalationInput
+            );
+            
+            // Mark orchestrator response as DIAGNOSTIC_ESCALATION for frontend
+            orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION' as any;
+            orchestratorResponse.metadata = {
+              ...orchestratorResponse.metadata,
+              diagnostic_escalation: unifiedGateResult.diagnostic_escalation,
+              orchestrator_type: 'DIAGNOSTIC_ESCALATION'
+            };
+          } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
+            // Young crop - use monitoring response with authority-reconciled values
+            responseContent = generateYoungCropMonitoringResponse(
+              detectedLanguage,
+              finalCropName,
+              finalGrowthStage,
+              finalDaysSinceSowing
+            );
+          } else {
+            // No confirmed diagnosis or authority block - use observation response
+            responseContent = generateObservationOnlyResponse(
+              detectedLanguage,
+              finalCropName,
+              unifiedGateResult.reason
+            );
+          }
+          
+          // Skip LLM formatting - use gate-generated response
+          console.log(`   📋 Using unified gate fallback response (no LLM)`);
+          if (renderContext.authority_override_applied) {
+            console.log(`   ✅ Authority override ensured correct crop context in fallback response`);
+          }
+        } else {
+          // ═══════════════════════════════════════════════════════════════════════════
+          // PRESCRIPTION GATE PASSED - Continue with LLM formatting
+          // ═══════════════════════════════════════════════════════════════════════════
+          
+          // SANITY CHECK: Prevent impossible stage calculations before LLM formatting
+          // Uses reconciled values from renderContext
+          const daysAfterSowing = finalDaysSinceSowing;
+          const currentGrowthStage = finalGrowthStage?.toUpperCase();
+          
+          if (daysAfterSowing !== undefined && currentGrowthStage) {
+            const impossibleHarvest = 
+              (currentGrowthStage === 'HARVEST' || currentGrowthStage === 'MATURITY') && 
+              daysAfterSowing < 100; // No crop harvests before 100 DAS
+            
+            if (impossibleHarvest) {
+              console.error(`🚨 SANITY CHECK FAILED: ${currentGrowthStage} stage for ${daysAfterSowing} DAS crop`);
+              console.error(`   Overriding to GERMINATION stage in landContext`);
+              
+              // Override to safe stage in landContext for LLM
+              if (landContext) {
+                landContext.growth_stage = 'GERMINATION';
+              }
+              
+              // Also fix in dataAudit if present
+              if (orchestratorResponse.dataAudit?.land) {
+                orchestratorResponse.dataAudit.land.growth_stage = 'GERMINATION';
+              }
+            }
+          }
+        
+          // Ensure decision_output includes rich SSOT fields (action_text/reason_text/knowledge_text)
+          // so narration can always be generated from decision_rules, not templates.
+          const decisionOutputForFormatting = orchestratorResponse.decision_output;
+          hydrateDecisionOutputRichText(decisionOutputForFormatting);
+
+          const formatterInput: LLMFormatterInput = {
+            farmer_message: userMessageContent,
+            language: detectedLanguage,
+            decision_output: decisionOutputForFormatting,
+            land_context: landContext,
+            data_audit: orchestratorResponse.dataAudit,
+            trace_id: traceId,
+            supabase_client: supabase
+          };
+          
+          // Call LLM formatter with timeout protection
+          const formatterPromise = formatRecommendationsWithLLM(formatterInput);
+          const timeoutPromise = new Promise<LLMFormatterOutput>((_, reject) => {
+            setTimeout(() => reject(new Error('LLM formatter timeout')), remainingTime - 2000);
+          });
+          
+          llmFormatterOutput = await Promise.race([formatterPromise, timeoutPromise]);
+          responseContent = llmFormatterOutput.formatted_response;
+          aiModelUsed = llmFormatterOutput.ai_model_used;
+          
+          console.log(`   ✅ LLM formatting complete: ${llmFormatterOutput.source} (${llmFormatterOutput.processing_time_ms}ms)`);
+          console.log(`   📊 Sections: ${llmFormatterOutput.sections_included.join(', ')}`);
+          
+          // ═══════════════════════════════════════════════════════════════════════════
+          // SOURCE VALIDATION GATE - Final check before response delivery
+          // Ensures LLM didn't add products/dosages not in symbolic output
+          // ═══════════════════════════════════════════════════════════════════════════
+          if (llmFormatterOutput.validation_passed === false) {
+            console.error(`🚫 [SOURCE VALIDATION] LLM output validation failed!`);
+            console.error(`   Violations: ${llmFormatterOutput.validation_violations?.join(', ')}`);
+            
+            // Use template fallback instead of potentially incorrect LLM output
+            console.log(`   📋 Falling back to template-based response for safety`);
+            
+            if (orchestratorResponse.decision_output?.primary_decision) {
+              responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
+                orchestratorResponse.decision_output, 
+                detectedLanguage,
+                supabase
+              ));
+            } else {
+              responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+            }
+          }
+        } // End of prescription gate allowed block
+        
+      } catch (formatterError) {
+        console.error(`   ❌ LLM formatter failed:`, formatterError);
+        // Fallback to template-based response
+        console.log(`   📋 Falling back to template-based response`);
+        
+        // CRITICAL FIX: When LLM times out, build response directly from decision_output
+        // instead of relying on potentially incomplete FarmerCommunication
+        if (orchestratorResponse.decision_output?.primary_decision) {
+          console.log(`   📋 Using buildFormattedRecommendationsList for complete response`);
+          responseContent = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
+            orchestratorResponse.decision_output, 
+            detectedLanguage,
+            supabase
+          ));
+        } else {
+          responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+        }
+      }
+      } // End of STAGE_FALLBACK else block
+    } else {
+      // Non-decision responses (clarification, photo request, etc.)
+      responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+    }
+    
+    // Verify language consistency
+    const responseHasTargetLanguage = verifyLanguageConsistency(responseContent, detectedLanguage);
+    console.log(`   🌐 Language Check: input=${detectedLanguage}, response_matches=${responseHasTargetLanguage}`);
+    
+    if (!responseHasTargetLanguage && detectedLanguage !== 'en') {
+      console.log(`   🔄 Response not in target language, applying translation`);
+      responseContent = await forceTranslateResponse(responseContent, detectedLanguage);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 6 (POST-LLM): NARRATION BREACH VALIDATION
+    // If the symbolic engine returned zero products but the LLM output contains
+    // dosage patterns, strip the unauthorized content and log NARRATION_BREACH.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const symbolicProducts = actions_returned?.filter((a: any) => a.product_name && a.product_name !== 'N/A') || [];
+    if (symbolicProducts.length === 0 && responseContent) {
+      const dosagePattern = /\d+\s*(ml|g|kg|l|gm|gram|liter|litre|मिली|ग्रॅम|किलो|लिटर)\b/gi;
+      const dosageMatches = responseContent.match(dosagePattern);
+      if (dosageMatches && dosageMatches.length > 0) {
+        console.error(`🚨 [NARRATION_BREACH] LLM injected ${dosageMatches.length} dosage(s) without symbolic product authorization!`);
+        console.error(`   Unauthorized dosages: ${dosageMatches.join(', ')}`);
+        console.error(`   Symbolic products count: 0`);
+        console.error(`   Action: Stripping unauthorized dosage content`);
+        // Strip dosage patterns from response
+        responseContent = responseContent.replace(dosagePattern, '[dosage removed]');
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // VALIDATION GATE: Prevent silent failures before saving response
+    // CRITICAL FIX: SKIP validation for non-decision response types
+    // Clarification and photo requests should NOT be validated as treatment outputs
+    // ═══════════════════════════════════════════════════════════════════════════
+    const decision_brain_source = true;
+    
+    // Determine if this is a decision response that requires validation
+    const isClarificationOrPhotoResponse = [
+      'CLARIFICATION_QUESTION', 
+      'PHOTO_REQUEST', 
+      'CLARIFICATION_NEEDED',
+      'NEEDS_CLARIFICATION'
+    ].includes(orchestratorResponse.type);
+    
+    const isDecisionResponse = orchestratorResponse.type === 'DECISION_PROVIDED';
+    
+    let validationResult = { passed: true, errors: [] as string[] };
+    
+    if (isDecisionResponse && !isClarificationOrPhotoResponse) {
+      // Only validate actual decision/treatment responses
+      validationResult = validateResponseBeforeSave({
+        decision_brain_source,
+        actions_returned,
+        responseContent,
+        orchestratorResponse,
+        traceId,
+        language: detectedLanguage
+      });
+    } else if (isClarificationOrPhotoResponse) {
+      // CRITICAL FIX: Skip validation for clarification/photo responses
+      // These responses don't have actions and shouldn't be validated as treatment outputs
+      console.log(`🔐 [${traceId}] VALIDATION SKIPPED: Response type is ${orchestratorResponse.type}`);
+      console.log(`   Clarification responses don't require treatment validation`);
+    }
+    
+    console.log(`🔐 [${traceId}] ═══ RESPONSE VALIDATION GATE ═══`);
+    console.log(`   Decision Brain Source: ${decision_brain_source}`);
+    console.log(`   Response Type: ${orchestratorResponse.type}`);
+    console.log(`   Is Clarification/Photo: ${isClarificationOrPhotoResponse}`);
+    console.log(`   Actions Returned Count: ${actions_returned?.length || 0}`);
+    console.log(`   Response Content Length: ${responseContent?.length || 0}`);
+    console.log(`   LLM Model Used: ${aiModelUsed || 'template'}`);
+    console.log(`   Validation Passed: ${validationResult.passed}`);
+    
+    if (!validationResult.passed) {
+      console.error(`❌ [${traceId}] VALIDATION FAILED:`, validationResult.errors);
+      console.error(`   Full Context Dump:`, JSON.stringify({
+        orchestrator_type: orchestratorResponse.type,
+        decision_output_keys: Object.keys(orchestratorResponse.decision_output || {}),
+        actions_returned: actions_returned,
+        actions_filtered_out: actions_filtered_out,
+        response_content_preview: responseContent?.substring(0, 200),
+        llm_formatter_used: !!llmFormatterOutput,
+        metadata: orchestratorResponse.metadata
+      }, null, 2));
+      
+      // Generate fallback response if validation fails
+      // CRITICAL FIX: Pass actions_returned so we can use them in fallback
+      responseContent = generateValidationFailureFallback(
+        detectedLanguage,
+        validationResult.errors,
+        orchestratorResponse,
+        actions_returned  // Pass actions so fallback can use them
       );
     }
     
-    // Update session activity with context tracking
-    await supabase
-      .from('ai_chat_sessions')
-      .update({
-        updated_at: new Date().toISOString(),
+    // Store user message with preprocessed_content (English normalized)
+    try {
+      await supabase.from('ai_chat_messages').insert({
+        session_id: currentSessionId,
+        tenant_id: finalTenantId,
+        farmer_id: finalFarmerId,
+        role: 'user',
+        content: userMessageContent, // Original in user's language
+        preprocessed_content: preprocessedContent, // Normalized to English for NLU
+        language: detectedLanguage,
+        message_type: imageUrl ? 'image_analysis' : 'text',
+        image_urls: imageUrl ? [imageUrl] : null,
+        is_training_candidate: true,
+        inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
+        conversation_turn_number: messages.length,
         metadata: {
-          last_activity: new Date().toISOString(),
-          total_messages: (currentSession?.metadata?.total_messages || 0) + 2,
-          last_land_id: landId,
-          message_count: messageCount + 1, // Track message count for caching logic
-          last_context_type: landContext?.context_type || 'none',
-          context_sent: landContext?.context_type === 'full', // Full context sent?
-          last_query_intent: queryIntent.type,
-          query_intent_confidence: queryIntent.confidence,
-          // ✅ NEW: Track complexity for analytics
-          last_query_complexity: complexityAnalysis?.complexity,
-          last_max_words: complexityAnalysis?.maxWords,
-          last_max_tokens: complexityAnalysis?.maxTokens
+          source: 'orchestrator_v1',
+          has_image: !!imageUrl,
+          land_id: landId,
+          language_detected: detectedLanguage,
+          preprocessed: true
         }
-      })
-      .eq('id', currentSessionId);
+      });
+      
+      // Store assistant response with language-appropriate content
+      // FIXED: Now includes tokens_used tracking for cost monitoring
+      const tokensUsed = llmFormatterOutput?.tokens_used || null;
+      
+      await supabase.from('ai_chat_messages').insert({
+        session_id: currentSessionId,
+        tenant_id: finalTenantId,
+        farmer_id: finalFarmerId,
+        role: 'assistant',
+        content: responseContent, // In user's language (translated if needed)
+        language: detectedLanguage,
+        message_type: 'orchestrator',
+        response_time_ms: responseTime,
+        decision_brain_source: true,
+        ai_model: aiModelUsed || 'template', // PHASE 5: Track LLM model used
+        tokens_used: tokensUsed,  // NEW: Track token usage for cost monitoring
+        is_training_candidate: true,
+        conversation_turn_number: messages.length + 1,
+        // Store actions with explicit filter reasons
+        actions_returned: actions_returned,
+        actions_filtered_out: actions_filtered_out,
+        metadata: {
+          orchestrator_type: orchestratorResponse.type,
+          confidence: orchestratorResponse.metadata?.confidence,
+          safety_status: orchestratorResponse.metadata?.safety_status,
+          rules_applied: orchestratorResponse.metadata?.rules_applied,
+          agents_used: orchestratorResponse.metadata?.agents_used,
+          decision_id: orchestratorResponse.decision_id,
+          trace_id: traceId,
+          actions_returned_count: actions_returned?.length || 0,
+          actions_filtered_count: actions_filtered_out?.length || 0,
+          all_actions_filtered: allActionsFiltered,
+          filter_categories: audit_log.filter_categories,
+          // PHASE 5: LLM formatter tracking
+          llm_formatter_used: !!llmFormatterOutput,
+          llm_formatter_source: llmFormatterOutput?.source,
+          llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
+          tokens_used: tokensUsed,
+          // VALIDATION GATE
+          response_validation_passed: validationResult.passed,
+          validation_errors: validationResult.passed ? undefined : validationResult.errors,
+          language_pipeline: {
+            input_language: detectedLanguage,
+            output_language: detectedLanguage,
+            translation_applied: !responseHasTargetLanguage
+          },
+          // P0 FIX: Persist clarification options for reload after app restart
+          clarification_options: (orchestratorResponse.type === 'CLARIFICATION_QUESTION' || orchestratorResponse.type === 'CLARIFICATION_NEEDED')
+            ? {
+                question: responseContent,
+                options: orchestratorResponse.question?.options || [],
+                selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
+              }
+            : undefined,
+          // P0 FIX: Persist structured decision data for rich card reload
+          decision_brain_data: orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output
+            ? {
+                primary_decision: orchestratorResponse.decision_output.primary_decision,
+                secondary_decisions: orchestratorResponse.decision_output.secondary_decisions,
+                blocked_actions: orchestratorResponse.decision_output.blocked_actions,
+                land_context: orchestratorResponse.dataAudit?.land,
+                confidence: orchestratorResponse.metadata?.confidence,
+                risk_level: orchestratorResponse.decision_output.risk_level
+              }
+            : undefined,
+          // P0 FIX: Persist diagnostic escalation data
+          diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
+        }
+      });
+      
+      console.log('💾 [Storage] Messages saved with language consistency');
+    } catch (storageError) {
+      console.warn('⚠️ [Storage] Failed to save messages:', storageError);
+      // Continue - don't fail the request for storage issues
+    }
 
-    // ✅ NEW: Import and use dynamic follow-up generator
-    const { parseAIGeneratedFollowUps, generateFollowUpQuestions } = await import('./followup-generator.ts');
-    
-    // Parse AI-generated follow-ups from response (if included)
-    const { cleanedResponse, followUpQuestions } = parseAIGeneratedFollowUps(aiMessage, language);
-    
-    // Use cleaned response (without follow-up markers) for display
-    const displayResponse = cleanedResponse || aiMessage;
-    
-    // Generate smart follow-up questions based on response context
-    const dynamicFollowUps = followUpQuestions.length > 0 
-      ? followUpQuestions 
-      : generateFollowUpQuestions(displayResponse, '', language, landContext);
-    
-    console.log(`💬 Dynamic follow-ups generated:`, dynamicFollowUps.map(q => q.text));
-    
-    // Also generate quick replies for backward compatibility
-    const quickReplies = generateMultilingualQuickReplies(
-      queryIntent.type,
-      language,
-      displayResponse
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TRANSFORM ORCHESTRATOR RESPONSE TO LEGACY FORMAT
+    // CRITICAL FIX: Use responseContent (from LLM formatter) instead of re-generating
+    // This ensures what we save to DB is EXACTLY what we return to user
+    // ═══════════════════════════════════════════════════════════════════════════
+    const responsePayload = transformOrchestratorResponseWithContent(
+      orchestratorResponse,
+      responseContent, // ← CRITICAL: Use the LLM-formatted content we already generated
+      detectedLanguage,
+      currentSessionId,
+      startTime,
+      actions_returned,
+      traceId,
+      aiModelUsed
     );
-    
-    // Parse response to structured cards for color-coded UI
-    const structuredResponse = parseResponseToCards(displayResponse, language);
 
-    // ============= TOKEN SAVINGS ANALYTICS =============
-    // Estimate token savings from smart caching
-    const estimatedFullContextTokens = 180; // Average full context
-    const estimatedMinimalContextTokens = landContext?.context_type === 'minimal' ? 60 : 
-                                         landContext?.context_type === 'refresh' ? 30 : 
-                                         landContext?.context_type === 'full' ? 180 : 0;
-    const tokensSaved = messageCount > 1 ? estimatedFullContextTokens - estimatedMinimalContextTokens : 0;
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SESSION-LEVEL DECISION TRACKING
+    // Updates session metadata after every decision brain execution
+    // ═══════════════════════════════════════════════════════════════════════════
+    const recommendationsProvided = orchestratorResponse.type === 'DECISION_PROVIDED' && 
+      (actions_returned && actions_returned.length > 0);
     
-    console.log(`💰 TOKEN EFFICIENCY (msg #${messageCount}):`);
-    console.log(`   Context type: ${landContext?.context_type || 'none'}`);
-    console.log(`   Tokens sent: ~${estimatedMinimalContextTokens}`);
-    console.log(`   Tokens saved: ~${tokensSaved} (vs full context)`);
-    console.log(`   Cumulative savings: ~${tokensSaved * (messageCount - 1)} tokens this session`);
+    // Extract target info from primary action for session tracking
+    // CRITICAL FIX: Search multiple possible locations for pest/crop data
+    const primaryAction = actions_returned?.find(a => a.type === 'primary');
+    const decisionOutput = orchestratorResponse.decision_output;
+    
+    // CRITICAL FIX: Extract pest from multiple sources (not just action.target which may not exist)
+    // Safely handle rules_applied which may be an object, array, or undefined
+    const rulesAppliedArray = Array.isArray(orchestratorResponse.metadata?.rules_applied) 
+      ? orchestratorResponse.metadata.rules_applied 
+      : [];
+    
+    const lastPest = 
+      primaryAction?.target?.pest_code ||
+      primaryAction?.pest_code ||
+      decisionOutput?.primary_decision?.target?.pest ||
+      decisionOutput?.input_context?.pest?.code ||
+      rulesAppliedArray.find((r: string) => r.includes('PEST'))?.split('_')[1] ||
+      null;
+    
+    // CRITICAL FIX: Extract disease from multiple sources
+    const lastDisease = 
+      primaryAction?.target?.disease_code ||
+      primaryAction?.disease_code ||
+      decisionOutput?.primary_decision?.target?.disease ||
+      decisionOutput?.input_context?.disease?.code ||
+      null;
+    
+    // CRITICAL FIX: Extract crop from multiple sources
+    const lastCrop = 
+      decisionOutput?.input_context?.crop?.name ||
+      decisionOutput?.input_context?.crop?.code ||
+      decisionOutput?.primary_decision?.crop_name ||
+      primaryAction?.crop_code ||
+      orchestratorResponse.dataAudit?.land?.current_crop ||
+      null;
+    
+    // Build decision tracking state
+    // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
+    const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
+                                    orchestratorResponse.type === 'CLARIFICATION_NEEDED';
+    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
+                                  orchestratorResponse.metadata?.pendingClarificationOptions || [];
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
+    // If orchestrator returns session_state_update, use it AUTHORITATIVELY
+    // This prevents infinite clarification loops
+    // ═══════════════════════════════════════════════════════════════════════════
+    const sessionStateUpdateFromOrchestrator = orchestratorResponse.session_state_update ||
+      orchestratorResponse.metadata?.session_state_update ||
+      orchestratorResponse.decision_output?.metadata?.session_state_update;
+    
+    const clarificationAnswered = sessionStateUpdateFromOrchestrator?.clarification_answered === true ||
+      orchestratorResponse.decision_output?.metadata?.clarification_resolved === true;
+    
+    // P0-3 FIX: Extract lockedCropContext for session persistence
+    const lockedCropContextForSession = 
+      orchestratorResponse.decision_output?.metadata?.lockedCropContext ||
+      orchestratorResponse.metadata?.lockedCropContext ||
+      (orchestratorResponse.dataAudit?.land?.found ? {
+        crop_name: orchestratorResponse.dataAudit.land.current_crop,
+        growth_stage: orchestratorResponse.dataAudit.land.growth_stage,
+        days_since_sowing: orchestratorResponse.dataAudit.land.days_since_sowing
+      } : null);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DECISION STATE DETERMINATION - Session state is AUTHORITATIVE
+    // Priority: session_state_update from orchestrator > isClarificationResponse > recommendationsProvided
+    // ═══════════════════════════════════════════════════════════════════════════
+    let computedDecisionState: string;
+    
+    if (sessionStateUpdateFromOrchestrator?.decision_state) {
+      // AUTHORITATIVE: Orchestrator explicitly set decision state
+      computedDecisionState = sessionStateUpdateFromOrchestrator.decision_state;
+      console.log(`🔄 [Session] Decision state from ORCHESTRATOR: ${computedDecisionState}`);
+    } else if (clarificationAnswered) {
+      // Clarification was answered but no explicit state update
+      computedDecisionState = recommendationsProvided ? 'recommendations_given' : 'decision_in_progress';
+      console.log(`🔄 [Session] Clarification answered, state: ${computedDecisionState}`);
+    } else if (recommendationsProvided) {
+      computedDecisionState = 'recommendations_given';
+    } else if (isClarificationResponse) {
+      computedDecisionState = 'awaiting_clarification';
+    } else {
+      computedDecisionState = 'no_action_needed';
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // INVARIANT CHECK: Clarification answered but still awaiting_clarification = BUG
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (clarificationAnswered && computedDecisionState === 'awaiting_clarification') {
+      console.error(`🚨 [INVARIANT VIOLATION] Clarification answered but decision_state is still awaiting_clarification!`);
+      console.error(`   Forcing transition to 'decision_in_progress'`);
+      computedDecisionState = 'decision_in_progress';
+    }
+    
+    // MANDATORY LOGGING: Decision state tracking
+    console.log(`\n📊 [Session] ═══ DECISION STATE TRACKING ═══`);
+    console.log(`   session_decision_state: ${computedDecisionState}`);
+    console.log(`   clarification_active: ${isClarificationResponse && !clarificationAnswered}`);
+    console.log(`   option_selected: ${clarificationAnswered}`);
+    console.log(`   unified_gate_mode: ${computedDecisionState === 'awaiting_clarification' ? 'BLOCKED (awaiting)' : 'ALLOW'}`);
+    console.log(`   ═══════════════════════════════════════════`);
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PART 10: SESSION CONTINUITY — Update problems_discussed list
+    // ═══════════════════════════════════════════════════════════════════════════
+    const currentProblems = sessionState?.problems_discussed || [];
+    const currentTurn = (sessionState?.turn_count || 0) + 1;
+    const now = new Date().toISOString();
+    
+    // Extract current problem code from orchestrator response
+    const currentIntentCode = orchestratorResponse.metadata?.intent_code || 
+                              orchestratorResponse.decision_output?.metadata?.intent_code || '';
+    const currentDiagnosis = lastPest || lastDisease || 
+                              orchestratorResponse.decision_output?.primary_decision?.target?.pest_code ||
+                              orchestratorResponse.decision_output?.primary_decision?.target?.disease_code || '';
+    
+    // Build simple query hash for repeat detection (normalize: lowercase, remove spaces/punctuation)
+    const queryHash = userMessageContent.toLowerCase()
+      .replace(/[^\u0900-\u097F\u0A00-\u0A7Fa-z0-9]/g, '')
+      .substring(0, 100);
+    
+    // REPEAT CONCERN DETECTION: Same semantic query within 30 minutes
+    const lastQueryHash = sessionState?.last_query_hash || '';
+    const lastQueryTs = sessionState?.last_query_timestamp;
+    let isRepeatConcern = false;
+    
+    if (lastQueryHash && queryHash) {
+      // Check similarity: exact match or >70% overlap
+      const overlap = queryHash.length > 0 && lastQueryHash.length > 0 
+        ? [...queryHash].filter((c, i) => lastQueryHash[i] === c).length / Math.max(queryHash.length, lastQueryHash.length)
+        : 0;
+      const withinTimeWindow = lastQueryTs 
+        ? (Date.now() - new Date(lastQueryTs).getTime()) < 30 * 60 * 1000 
+        : false;
+      isRepeatConcern = overlap > 0.7 && withinTimeWindow;
+      
+      if (isRepeatConcern) {
+        console.log(`\n🔄 [SESSION_CONTINUITY] REPEAT CONCERN detected!`);
+        console.log(`   Query similarity: ${(overlap * 100).toFixed(0)}%`);
+        console.log(`   Time since last: ${lastQueryTs ? Math.round((Date.now() - new Date(lastQueryTs).getTime()) / 60000) : 'N/A'} min`);
+        console.log(`   → Escalating to more specific response`);
+      }
+    }
+    
+    // CAUSAL CHAINING: Check if current issue might be consequence of previous diagnosis
+    // e.g., poor growth after stem holes → likely consequence of Shoot Borer
+    const previousBorerDiagnosis = currentProblems.find(p => 
+      p.diagnosis && (p.diagnosis.includes('BORER') || p.diagnosis.includes('SHOOT') || p.diagnosis.includes('STEM'))
+    );
+    const isGrowthIssue = currentIntentCode === 'GROWTH_ANOMALY' || 
+                           currentIntentCode === 'INPUT_RECOMMENDATION' ||
+                           queryHash.includes('वाढ') || queryHash.includes('फुट');
+    
+    if (previousBorerDiagnosis && isGrowthIssue) {
+      console.log(`\n🔗 [SESSION_CONTINUITY] CAUSAL CHAIN detected!`);
+      console.log(`   Previous: ${previousBorerDiagnosis.diagnosis} (turn ${previousBorerDiagnosis.turn_number})`);
+      console.log(`   Current: ${currentIntentCode} — may be consequence of borer damage`);
+    }
+    
+    // Add current problem to the list (keep last 10)
+    const updatedProblems = [
+      ...currentProblems,
+      ...(currentIntentCode || currentDiagnosis ? [{
+        problem_code: currentIntentCode || 'GENERAL',
+        turn_number: currentTurn,
+        timestamp: now,
+        diagnosis: currentDiagnosis || undefined,
+        intent_code: currentIntentCode || undefined
+      }] : [])
+    ].slice(-10); // Keep last 10 problems
+    
+    const decisionTracking = {
+      decision_state: computedDecisionState,
+      last_pest: lastPest,
+      last_disease: lastDisease,
+      last_crop: lastCrop,
+      pending_user_action: recommendationsProvided, // User should act on recommendations
+      turn_count: currentTurn,
+      recommendations_count: actions_returned?.length || 0,
+      last_action_types: actions_returned?.map((a: any) => a.action_type || a.action).slice(0, 3) || [],
+      timestamp: now,
+      // CRITICAL FIX: Clear pending options when clarification is answered
+      pending_clarification_options: (isClarificationResponse && !clarificationAnswered) ? clarificationOptions : [],
+      // P0-3 FIX: Persist lockedCropContext for multi-turn context continuity
+      lockedCropContext: lockedCropContextForSession,
+      // Track clarification resolution
+      clarification_answered: clarificationAnswered,
+      clarification_resolved_at: sessionStateUpdateFromOrchestrator?.clarification_resolved_at,
+      // PART 10: Session continuity data
+      problems_discussed: updatedProblems,
+      last_query_hash: queryHash,
+      last_query_timestamp: now,
+      is_repeat_concern: isRepeatConcern,
+      causal_chain_detected: !!(previousBorerDiagnosis && isGrowthIssue)
+    };
+    
+    try {
+      // CRITICAL: Include tenant_id and farmer_id in update filter for security isolation
+      await supabase
+        .from('ai_chat_sessions')
+        .update({ 
+          updated_at: new Date().toISOString(),
+          metadata: {
+            language,
+            source: 'orchestrator_v1',
+            last_response_type: orchestratorResponse.type,
+            agents_used: orchestratorResponse.metadata?.agents_used,
+            confidence: orchestratorResponse.metadata?.confidence,
+            rules_applied: orchestratorResponse.metadata?.rules_applied,
+            decision_id: orchestratorResponse.decision_id,
+            recommendations_provided: recommendationsProvided,
+            recommendations_count: actions_returned?.length || 0,
+            // CRITICAL: Decision tracking for session memory
+            decision_tracking: decisionTracking,
+            // Persist conversation state for continuity
+            conversation_state: {
+              turn_count: decisionTracking.turn_count,
+              has_photo: !!imageUrl,
+              last_intent: orchestratorResponse.type,
+              safety_status: orchestratorResponse.metadata?.safety_status,
+              has_recommendations: recommendationsProvided
+            }
+          }
+        })
+        .eq('id', currentSessionId)
+        .eq('tenant_id', finalTenantId)  // CRITICAL: Tenant isolation
+        .eq('farmer_id', finalFarmerId); // CRITICAL: Farmer isolation
+      
+      console.log(`💾 [Session] Decision tracking persisted:`, {
+        state: decisionTracking.decision_state,
+        pest: decisionTracking.last_pest,
+        crop: decisionTracking.last_crop,
+        pending: decisionTracking.pending_user_action,
+        turn: decisionTracking.turn_count
+      });
+    } catch (sessionUpdateError) {
+      console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
+    }
 
     return new Response(
-      JSON.stringify({ 
-        response: displayResponse,
-        sessionId: currentSessionId,
-        quickReplies,
-        // ✅ NEW: Dynamic AI-generated follow-up questions
-        followUpQuestions: dynamicFollowUps,
-        structuredResponse,
-        responseTime,
-        detectedLanguage,
-        landContext,
-        analytics: {
-          messageCount,
-          contextType: landContext?.context_type || 'none',
-          queryIntent: queryIntent.type,
-          queryConfidence: queryIntent.confidence,
-          queryComplexity: complexityAnalysis?.complexity,
-          maxWords: complexityAnalysis?.maxWords,
-          maxTokens: complexityAnalysis?.maxTokens,
-          tokensSaved,
-          cumulativeSavings: tokensSaved * Math.max(0, messageCount - 1),
-          tokensUsed: {
-            prompt: aiData?.usage?.prompt_tokens || 0,
-            completion: aiData?.usage?.completion_tokens || 0,
-            total: tokensUsed
-          }
-        }
-      }),
+      JSON.stringify(responsePayload),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
-    console.error('Error in AI chat function:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An error occurred';
+    console.error(`❌ [${traceId}] ai-agriculture-chat Error:`, error);
     
-    // Determine appropriate status code
-    let statusCode = 500;
-    if (errorMessage.includes('Missing') || errorMessage.includes('Invalid')) {
-      statusCode = 400;
-    } else if (errorMessage.includes('unauthorized') || errorMessage.includes('Unauthorized')) {
-      statusCode = 401;
-    }
-    
+    // PHASE A: Include trace_id in error response for debugging
     return new Response(
-      JSON.stringify({ 
-        error: errorMessage,
-        details: error instanceof Error ? error.stack : undefined,
-        timestamp: new Date().toISOString()
+      JSON.stringify({
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+        trace_id: traceId,
+        fallback_advice: 'Please try again or contact an agricultural expert.'
       }),
-      { 
-        status: statusCode, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
+  } finally {
+    // Clean up dedup entry on completion (success or failure)
+    if (typeof dedupeKey === 'string') {
+      inFlightRequests.delete(dedupeKey);
+    }
   }
 });
 
-function getCropSeason(): string {
-  const month = new Date().getMonth() + 1;
-  if (month >= 6 && month <= 10) return 'Kharif';
-  if (month >= 10 || month <= 3) return 'Rabi';
-  return 'Zaid';
+// ═══════════════════════════════════════════════════════════════════════════
+// HELPER FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Normalize message content to English for NLU processing
+ * Maps common agricultural terms from regional languages to English
+ */
+/**
+ * @deprecated REMOVED — normalizeToEnglish had only 23 hardcoded mappings,
+ * creating half-translated hybrid strings. LLM Semantic Extractor handles
+ * all languages natively. Kept as no-op for any stale call sites.
+ */
+function normalizeToEnglish(content: string): string {
+  return content;
 }
 
-function getCropStage(cultivationDate: string): string {
-  const daysElapsed = Math.floor((Date.now() - new Date(cultivationDate).getTime()) / (1000 * 60 * 60 * 24));
-  if (daysElapsed < 30) return 'seedling';
-  if (daysElapsed < 60) return 'vegetative';
-  if (daysElapsed < 90) return 'flowering';
-  return 'harvest';
-}
-
-function extractSectionTags(message: string): string[] {
-  const tags: string[] = [];
+/**
+ * Verify if response content matches target language.
+ * CRITICAL FIX: Old logic only checked if ANY script char existed (regex.test).
+ * This passed for mixed English/Marathi responses like "Hello farmer! 🌾 शुभेच्छा".
+ * New logic checks that the response has SUFFICIENT target-script content (>30% of text).
+ */
+function verifyLanguageConsistency(content: string, targetLanguage: string): boolean {
+  if (targetLanguage === 'en') {
+    const asciiRatio = (content.match(/[\x00-\x7F]/g) || []).length / content.length;
+    return asciiRatio > 0.8;
+  }
   
-  if (message.includes('🟢') && message.includes('Organic Practices')) tags.push('organic_practices');
-  if (message.includes('🟡') && message.includes('Fertilizer Schedule')) tags.push('fertilizer_schedule');
-  if (message.includes('🔴') && message.includes('Pesticide')) tags.push('pesticide_management');
-  if (message.includes('🟣') && message.includes('Hormone')) tags.push('growth_promoters');
-  if (message.includes('🟢') && message.includes('Advisory Note')) tags.push('advisory_note');
+  // Strip emojis, numbers, whitespace, punctuation for ratio calculation
+  const cleanText = content.replace(/[0-9₹%@\-/×.,()⛔⚠️🌾🐝🧤🔄📊📈💰✅❌🌤️🌧️💨🌡️🚨⏳🚫📌📋📍⏰🔧🛒🧪💡💊🌿👀🔍📖🎯📸📅🙏═─\n\r\s*#]+/g, '');
   
-  // Content-based classification for training
-  const lowerMsg = message.toLowerCase();
-  if (lowerMsg.includes('irrigation') || lowerMsg.includes('water')) tags.push('irrigation');
-  if (lowerMsg.includes('disease') || lowerMsg.includes('pest')) tags.push('pest_disease');
-  if (lowerMsg.includes('weather') || lowerMsg.includes('rain')) tags.push('weather');
-  if (lowerMsg.includes('market') || lowerMsg.includes('price')) tags.push('market_info');
-  if (lowerMsg.includes('income') || lowerMsg.includes('yield')) tags.push('income_optimization');
-  
-  return [...new Set(tags)]; // Remove duplicates
-}
-
-// Detect if message contains critical alerts
-function detectCriticalAlert(message: string, sectionTags: string[]) {
-  const lowerMsg = message.toLowerCase();
-  
-  // Critical keywords for different alert types
-  const criticalPatterns = {
-    pest: {
-      keywords: ['pest attack', 'pest infestation', 'disease outbreak', 'immediately spray', 'urgent', 'critical'],
-      priority: 'critical',
-      type: 'pest'
-    },
-    weather: {
-      keywords: ['heavy rain', 'storm', 'drought', 'extreme heat', 'frost', 'weather warning', 'climate alert'],
-      priority: 'high',
-      type: 'weather'
-    },
-    pesticide: {
-      keywords: ['apply pesticide', 'spray immediately', 'fungicide', 'insecticide', 'urgent treatment'],
-      priority: 'high',
-      type: 'critical_recommendation'
-    },
-    fertilizer: {
-      keywords: ['fertilizer shortage', 'nutrient deficiency', 'immediate application'],
-      priority: 'medium',
-      type: 'critical_recommendation'
-    }
-  };
-  
-  // Check for critical patterns
-  for (const [category, pattern] of Object.entries(criticalPatterns)) {
-    const hasKeyword = pattern.keywords.some(kw => lowerMsg.includes(kw));
-    const hasTag = sectionTags.includes(category) || sectionTags.includes(pattern.type);
+  const scriptRegex = getScriptRegex(targetLanguage);
+  if (scriptRegex && cleanText.length > 20) {
+    // Count script chars vs total significant chars
+    const scriptChars = (cleanText.match(new RegExp(scriptRegex.source, 'g')) || []).length;
+    const asciiAlpha = (cleanText.match(/[a-zA-Z]/g) || []).length;
+    const total = scriptChars + asciiAlpha;
+    if (total < 10) return true; // Too short to judge
     
-    if (hasKeyword || (hasTag && pattern.priority === 'critical')) {
-      // Extract title from first 100 characters
-      const titleMatch = message.match(/^[👨‍🌾🌾🟢🟡🔴🟣\s]*(.*?)[\n\r]/);
-      const title = titleMatch ? titleMatch[1].trim() : 'Critical Agricultural Alert';
-      
-      return {
-        shouldNotify: true,
-        alertType: pattern.type,
-        priority: pattern.priority,
-        title: title.substring(0, 50),
-        category
-      };
-    }
+    const scriptRatio = scriptChars / total;
+    // If less than 30% is target script, it's predominantly English → needs translation
+    return scriptRatio >= 0.3;
   }
   
-  return { shouldNotify: false };
-}
-
-// Send critical alert push notification with integrated Web Push
-async function sendCriticalAlert(
-  supabase: any,
-  tenantId: string,
-  farmerId: string,
-  alertInfo: any,
-  message: string,
-  landId: string | undefined,
-  chatMessageId: string
-) {
-  try {
-    console.log('Sending critical alert notification:', alertInfo);
-    
-    // Extract summary (first 200 chars or first section)
-    let summary = message.substring(0, 200).trim();
-    if (summary.length === 200) summary += '...';
-    
-    // Get VAPID keys from environment
-    const VAPID_PUBLIC_KEY = Deno.env.get('VAPID_PUBLIC_KEY');
-    const VAPID_PRIVATE_KEY = Deno.env.get('VAPID_PRIVATE_KEY');
-
-    if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-      console.warn('VAPID keys not configured - skipping push notification');
-      return;
-    }
-
-    // Get active push subscriptions for this farmer
-    const { data: subscriptions, error: subError } = await supabase
-      .from('push_subscriptions')
-      .select('*')
-      .eq('farmer_id', farmerId)
-      .eq('tenant_id', tenantId)
-      .eq('is_active', true);
-
-    if (subError) {
-      console.error('Error fetching subscriptions:', subError);
-      return;
-    }
-
-    if (!subscriptions || subscriptions.length === 0) {
-      console.log('No active subscriptions found for farmer');
-      return;
-    }
-
-    console.log(`Sending ${subscriptions.length} push notifications`);
-
-    // Prepare notification payload
-    const title = `🚨 ${alertInfo.title}`;
-    const payload = JSON.stringify({
-      title,
-      body: summary,
-      icon: '/icon-192x192.png',
-      badge: '/icon-192x192.png',
-      tag: alertInfo.alertType,
-      requireInteraction: alertInfo.priority === 'critical' || alertInfo.priority === 'high',
-      data: {
-        category: alertInfo.category,
-        chatMessageId,
-        url: landId ? `/app/land/${landId}` : '/app/chat',
-        alertType: alertInfo.alertType,
-        landId
-      }
-    });
-
-    // Send push notifications to all subscriptions
-    const results = await Promise.allSettled(
-      subscriptions.map(async (sub) => {
-        try {
-          const pushSubscription = {
-            endpoint: sub.endpoint,
-            keys: {
-              p256dh: sub.p256dh_key,
-              auth: sub.auth_key
-            }
-          };
-
-          await sendWebPush(pushSubscription, payload, {
-            vapidPublicKey: VAPID_PUBLIC_KEY,
-            vapidPrivateKey: VAPID_PRIVATE_KEY,
-            subject: 'mailto:support@kisanshakti.com'
-          });
-
-          // Log notification in database
-          await supabase.from('alert_notifications').insert({
-            tenant_id: tenantId,
-            farmer_id: farmerId,
-            alert_type: alertInfo.alertType,
-            title,
-            message: summary,
-            priority: alertInfo.priority,
-            data: { category: alertInfo.category, chatMessageId },
-            land_id: landId,
-            chat_message_id: chatMessageId
-          });
-
-          return { success: true, farmerId };
-        } catch (error: any) {
-          console.error(`Failed to send to subscription ${sub.id}:`, error);
-          
-          // Mark subscription as inactive if endpoint is gone (410)
-          if (error.status === 410) {
-            await supabase
-              .from('push_subscriptions')
-              .update({ is_active: false })
-              .eq('id', sub.id);
-          }
-          
-          return { success: false, farmerId, error: error.message };
-        }
-      })
-    );
-
-    const successCount = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
-    console.log(`Successfully sent ${successCount}/${subscriptions.length} notifications`);
-  } catch (error) {
-    console.error('Failed to send critical alert:', error);
-    // Don't throw - notification failure shouldn't break the chat
-  }
-}
-
-// Helper function to send web push using fetch
-async function sendWebPush(
-  subscription: any,
-  payload: string,
-  options: { vapidPublicKey: string; vapidPrivateKey: string; subject: string }
-) {
-  const { endpoint, keys } = subscription;
+  // Fallback: just check if ANY target script present
+  if (scriptRegex) return scriptRegex.test(content);
   
-  // Create VAPID headers
-  const vapidHeaders = createVAPIDHeaders(
-    endpoint,
-    options.subject,
-    options.vapidPublicKey,
-    options.vapidPrivateKey
-  );
-
-  // Encrypt payload
-  const encryptedPayload = await encryptPayload(payload, keys.p256dh, keys.auth);
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      ...vapidHeaders,
-      'Content-Type': 'application/octet-stream',
-      'Content-Encoding': 'aes128gcm',
-      'Content-Length': encryptedPayload.length.toString()
-    },
-    body: encryptedPayload
-  });
-
-  if (!response.ok) {
-    const error: any = new Error(`Push failed: ${response.status} ${response.statusText}`);
-    error.status = response.status;
-    throw error;
-  }
-
-  return response;
-}
-
-// Simplified VAPID header creation
-function createVAPIDHeaders(endpoint: string, subject: string, publicKey: string, privateKey: string) {
-  return {
-    'Authorization': `vapid t=${generateVAPIDToken(endpoint, subject, publicKey, privateKey)}, k=${publicKey}`
-  };
-}
-
-function generateVAPIDToken(endpoint: string, subject: string, publicKey: string, privateKey: string) {
-  // Simplified token generation
-  // In production, use proper JWT signing with ES256
-  const now = Math.floor(Date.now() / 1000);
-  const header = btoa(JSON.stringify({ typ: 'JWT', alg: 'ES256' }));
-  const payload = btoa(JSON.stringify({
-    aud: new URL(endpoint).origin,
-    exp: now + 12 * 60 * 60,
-    sub: subject
-  }));
-  
-  return `${header}.${payload}.signature`;
-}
-
-async function encryptPayload(payload: string, p256dh: string, auth: string) {
-  // Simplified encryption - in production use proper Web Push encryption
-  const encoder = new TextEncoder();
-  return encoder.encode(payload);
-}
-
-// Generate context-aware smart follow-up questions based on land and AI response
-function generateQuickReplies(lastMessage: string = '', aiResponse: string = '', landData: any = null): string[] {
-  try {
-    // Validation guards - ensure parameters are defined and are strings
-    if (typeof lastMessage !== 'string' || typeof aiResponse !== 'string') {
-      console.error('Invalid parameters for generateQuickReplies:', { lastMessage: typeof lastMessage, aiResponse: typeof aiResponse });
-      return getDefaultQuickReplies();
-    }
-
-    const lowerMessage = (lastMessage || '').toLowerCase();
-    const lowerResponse = (aiResponse || '').toLowerCase();
-  
-  // PRIORITY 1: Generate questions based on AI response content
-  const responseBasedQuestions: string[] = [];
-  
-  // If AI mentioned fertilizer application
-  if (lowerResponse.includes('fertilizer') || lowerResponse.includes('खाद')) {
-    responseBasedQuestions.push('💬 कौनसी खाद डालूं?'); // Which fertilizer?
-  }
-  
-  // If AI mentioned watering/irrigation
-  if (lowerResponse.includes('water') || lowerResponse.includes('irrigat') || lowerResponse.includes('पानी')) {
-    responseBasedQuestions.push('💧 पानी कब दूं?'); // When to water?
-  }
-  
-  // If AI mentioned pests/diseases
-  if (lowerResponse.includes('pest') || lowerResponse.includes('disease') || lowerResponse.includes('कीड़े') || lowerResponse.includes('बीमारी')) {
-    responseBasedQuestions.push('🐛 दवाई कब छिड़कें?'); // When to spray medicine?
-  }
-  
-  // If AI mentioned spraying schedule
-  if (lowerResponse.includes('spray') || lowerResponse.includes('application') || lowerResponse.includes('छिड़काव')) {
-    responseBasedQuestions.push('📅 अगला छिड़काव कब?'); // When is next spray?
-  }
-  
-  // If AI mentioned weather/rain
-  if (lowerResponse.includes('weather') || lowerResponse.includes('rain') || lowerResponse.includes('मौसम') || lowerResponse.includes('बारिश')) {
-    responseBasedQuestions.push('☁️ बारिश आएगी?'); // Will it rain?
-  }
-  
-  // If AI mentioned yield/harvest
-  if (lowerResponse.includes('yield') || lowerResponse.includes('harvest') || lowerResponse.includes('उपज') || lowerResponse.includes('कटाई')) {
-    responseBasedQuestions.push('💰 कमाई कितनी होगी?'); // How much income?
-  }
-  
-  // PRIORITY 2: Generate land-specific questions if land data available
-  const landSpecificQuestions: string[] = [];
-  
-  if (landData) {
-    const currentCrop = landData.current_crop?.toLowerCase() || '';
-    const soilType = landData.soil_type?.toLowerCase() || '';
-    const cultivationDate = landData.cultivation_date;
-    
-    // Crop-specific questions
-    if (currentCrop.includes('wheat') || currentCrop.includes('गेहूं')) {
-      landSpecificQuestions.push('🌾 गेहूं में पानी कब?'); // When to water wheat?
-      landSpecificQuestions.push('🌱 गेहूं में खाद?'); // Wheat fertilizer?
-    } else if (currentCrop.includes('rice') || currentCrop.includes('चावल') || currentCrop.includes('धान')) {
-      landSpecificQuestions.push('🌾 धान में पानी?'); // Rice water?
-      landSpecificQuestions.push('🐛 धान के कीड़े?'); // Rice pests?
-    } else if (currentCrop.includes('cotton') || currentCrop.includes('कपास')) {
-      landSpecificQuestions.push('🌸 कपास में फूल?'); // Cotton flowering?
-      landSpecificQuestions.push('🐛 गुलाबी इल्ली?'); // Pink bollworm?
-    } else if (currentCrop.includes('tomato') || currentCrop.includes('टमाटर')) {
-      landSpecificQuestions.push('🍅 टमाटर की देखभाल?'); // Tomato care?
-      landSpecificQuestions.push('🐛 टमाटर की बीमारी?'); // Tomato disease?
-    } else if (currentCrop.includes('onion') || currentCrop.includes('प्याज')) {
-      landSpecificQuestions.push('🧅 प्याज में पानी?'); // Onion water?
-      landSpecificQuestions.push('🌱 प्याज की खाद?'); // Onion fertilizer?
-    }
-    
-    // Soil-specific questions
-    if (soilType.includes('clay') || soilType.includes('चिकनी')) {
-      landSpecificQuestions.push('🌱 चिकनी मिट्टी सुधार?'); // Clay soil improvement?
-    } else if (soilType.includes('sandy') || soilType.includes('रेतीली')) {
-      landSpecificQuestions.push('💧 रेतीली मिट्टी में पानी?'); // Sandy soil water?
-    } else if (soilType.includes('loam') || soilType.includes('दोमट')) {
-      landSpecificQuestions.push('🌿 दोमट मिट्टी खाद?'); // Loam soil fertilizer?
-    }
-    
-    // Growth stage-specific questions
-    if (cultivationDate) {
-      const daysElapsed = Math.floor((Date.now() - new Date(cultivationDate).getTime()) / (1000 * 60 * 60 * 24));
-      if (daysElapsed < 30) {
-        landSpecificQuestions.push('🌱 शुरुआती देखभाल?'); // Early care?
-      } else if (daysElapsed < 60) {
-        landSpecificQuestions.push('🌿 बढ़वार का समय?'); // Growth stage?
-      } else if (daysElapsed < 90) {
-        landSpecificQuestions.push('🌸 फूल आने पर क्या करें?'); // During flowering?
-      } else {
-        landSpecificQuestions.push('✂️ कटाई कब करें?'); // When to harvest?
-      }
-    }
-  }
-  
-  // PRIORITY 3: User message context
-  const messageBasedQuestions: string[] = [];
-  
-  // Fertilizer related
-  if (lowerMessage.includes('fertilizer') || lowerMessage.includes('खाद') || lowerMessage.includes('npk')) {
-    messageBasedQuestions.push('💬 कौनसी खाद डालूं?'); // Which fertilizer?
-    messageBasedQuestions.push('💬 खाद कब डालें?'); // When to add fertilizer?
-    messageBasedQuestions.push('💬 कितनी खाद चाहिए?'); // How much fertilizer?
-  }
-  
-  // Pest/Disease related
-  else if (lowerMessage.includes('pest') || lowerMessage.includes('disease') || lowerMessage.includes('कीड़े') || lowerMessage.includes('बीमारी')) {
-    messageBasedQuestions.push('🐛 कीड़े दिख रहे हैं'); // Seeing insects
-    messageBasedQuestions.push('🍃 पत्ते पीले हैं'); // Leaves are yellow
-    messageBasedQuestions.push('💧 दवाई कब छिड़कें?'); // When to spray medicine?
-  }
-  
-  // Weather/Irrigation related
-  else if (lowerMessage.includes('water') || lowerMessage.includes('rain') || lowerMessage.includes('irrigat') || lowerMessage.includes('पानी')) {
-    messageBasedQuestions.push('💧 पानी कब दूं?'); // When to water?
-    messageBasedQuestions.push('☁️ बारिश आएगी?'); // Will it rain?
-    messageBasedQuestions.push('💦 कितना पानी दूं?'); // How much water?
-  }
-  
-  // Market/Yield related
-  else if (lowerMessage.includes('market') || lowerMessage.includes('price') || lowerMessage.includes('yield') || lowerMessage.includes('बाजार')) {
-    messageBasedQuestions.push('💰 आज का भाव?'); // Today's price?
-    messageBasedQuestions.push('📊 बेचें कब?'); // When to sell?
-    messageBasedQuestions.push('📈 कितनी पैदावार होगी?'); // How much yield?
-  }
-  
-  // Combine all questions with priority (response-based > land-specific > message-based)
-  const allQuestions = [
-    ...responseBasedQuestions,
-    ...landSpecificQuestions,
-    ...messageBasedQuestions
-  ];
-  
-  // Remove duplicates and limit to 4 questions
-  const uniqueQuestions = [...new Set(allQuestions)];
-  
-  // If we have questions, return top 4
-  if (uniqueQuestions.length > 0) {
-    return uniqueQuestions.slice(0, 4);
-  }
-  
-  // FALLBACK: Default land-based questions or general questions
-  if (landData?.current_crop) {
-    return [
-      '🌅 आज क्या करूं?',           // What to do today?
-      '💧 पानी देना है?',            // Need to water?
-      `🌾 ${landData.current_crop} कैसी है?`, // How's the crop?
-      '📅 अगला काम कब?'             // When's next task?
-    ];
-  }
-  
-  // Ultimate fallback
-  return getDefaultQuickReplies();
-  } catch (error) {
-    console.error('Error in generateQuickReplies:', error);
-    return getDefaultQuickReplies();
-  }
-}
-
-// Helper function to return safe default quick replies
-function getDefaultQuickReplies(): string[] {
-  return [
-    '🌅 आज क्या करूं?',           // What to do today?
-    '💧 पानी देना है?',            // Need to water?
-    '🌾 फसल कैसी है?',            // How's the crop?
-    '📅 अगला काम कब?'             // When's next task?
-  ];
-}
-
-// Validate isolation context to prevent tenant/farmer data leakage
-async function validateIsolation(
-  tenantId: string | null, 
-  farmerId: string | null,
-  supabaseUrl: string,
-  supabaseServiceKey: string
-) {
-  // Check required fields
-  if (!tenantId || !farmerId) {
-    throw new Error('SECURITY: Missing isolation context - tenantId and farmerId are required');
-  }
-
-  // Verify tenant and farmer match in user_profiles table
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-  
-  const { data: userProfile, error } = await supabase
-    .from('user_profiles')
-    .select('tenant_id')
-    .eq('id', farmerId)
-    .single();
-
-  if (error || !userProfile) {
-    console.error('SECURITY: Farmer profile not found', { farmerId, error });
-    throw new Error('SECURITY: Invalid farmer ID');
-  }
-
-  if (userProfile.tenant_id !== tenantId) {
-    console.error('SECURITY: Tenant-Farmer mismatch detected', {
-      providedTenantId: tenantId,
-      actualTenantId: userProfile.tenant_id,
-      farmerId
-    });
-    throw new Error('SECURITY: Tenant-Farmer mismatch - potential data isolation breach');
-  }
-
   return true;
 }
 
-// Handle training data collection from positive feedback
+/**
+ * Force translate response to target language.
+ * 
+ * CRITICAL FIX: Uses comprehensive section-header mapping + LLM fallback.
+ * The old version only had 7 phrases and was useless.
+ */
+/**
+ * Force-translate response to target language using LLM.
+ * REFACTORED: Removed 70+ hardcoded English→Marathi/Hindi string mappings.
+ * Now uses LLM-only translation when English density > 30%, supporting ALL languages.
+ */
+async function forceTranslateResponse(content: string, targetLang: string): Promise<string> {
+  if (targetLang === 'en') return content;
+
+  // Check if content is already in target language (Devanagari check for mr/hi)
+  const isDevanagariLang = ['mr', 'hi'].includes(targetLang);
+  if (isDevanagariLang) {
+    const textForCheck = content.replace(/[0-9₹%@\-/×.,()⛔⚠️🌾🐝🧤🔄📊📈💰✅❌🌤️🌧️💨🌡️🚨⏳🚫📌📋📍⏰🔧🛒🧪💡💊🌿👀🔍📖🎯📸📅🙏═─\n\r\s]+/g, '');
+    const devanagariChars = (textForCheck.match(/[\u0900-\u097F]/g) || []).length;
+    const totalSignificantChars = textForCheck.length;
+    const devanagariRatio = totalSignificantChars > 0 ? devanagariChars / totalSignificantChars : 0;
+    
+    // Already sufficiently translated
+    if (devanagariRatio >= 0.7 || totalSignificantChars <= 30) {
+      return content;
+    }
+  }
+
+  // LLM translation for ANY target language
+  const LANG_NAMES: Record<string, string> = { 
+    mr: 'Marathi', hi: 'Hindi', ta: 'Tamil', te: 'Telugu', 
+    kn: 'Kannada', bn: 'Bengali', gu: 'Gujarati', pa: 'Punjabi' 
+  };
+  const langName = LANG_NAMES[targetLang] || targetLang;
+  
+  console.log(`🌐 [forceTranslate] Translating to ${langName} via LLM`);
+  
+  try {
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    
+    const translationPrompt = `You are a village agriculture officer rewriting this advisory in natural rural ${langName}.
+Speak like you are in the farmer's field explaining advice face-to-face.
+Use local farming vocabulary, not textbook language.
+Use common village words and farming terms that farmers actually use.
+Agricultural symptom names must use the LOCAL FARMING TERM, not a literal English translation.
+Avoid literal translation of English sentences — explain in local words.
+Keep all numbers, product names, dosages, emojis, and formatting exactly as-is.
+Do NOT add any new information. Do NOT change dosages or product names.
+You are explaining, not translating.
+
+Text to rewrite in natural rural ${langName}:
+${content}`;
+
+    if (OPENAI_API_KEY) {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 8000);
+      const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { role: 'system', content: `You are a village agriculture officer with 20+ years of field experience. Rewrite the advisory in natural rural ${langName} as if you are standing in the farmer's field explaining advice face-to-face. Use local farming vocabulary, not textbook language. Keep numbers, product names, dosages unchanged. Output ONLY the rewritten text.` },
+            { role: 'user', content: translationPrompt }
+          ],
+          max_tokens: 2000, temperature: 0.3
+        })
+      });
+      clearTimeout(tid);
+      if (resp.ok) {
+        const data = await resp.json();
+        const translatedText = data.choices?.[0]?.message?.content || '';
+        if (translatedText.length > 30) {
+          console.log(`✅ [forceTranslate] LLM translation successful (${translatedText.length} chars)`);
+          return translatedText;
+        }
+      }
+    } else if (GEMINI_API_KEY) {
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), 8000);
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: translationPrompt }] }],
+          generationConfig: { temperature: 0.3, maxOutputTokens: 2000 }
+        })
+      });
+      clearTimeout(tid);
+      if (resp.ok) {
+        const data = await resp.json();
+        const translatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        if (translatedText.length > 30) {
+          console.log(`✅ [forceTranslate] Gemini translation successful (${translatedText.length} chars)`);
+          return translatedText;
+        }
+      }
+    }
+  } catch (e) {
+    console.warn(`⚠️ [forceTranslate] LLM translation failed:`, e instanceof Error ? e.message : 'unknown');
+  }
+
+  return content;
+}
+
+/**
+ * Ensure primary_decision contains the SSOT rich texts from decision_rules.
+ * This prevents "missing reason/knowledge/action" when some pipeline paths
+ * populate primary_decision but omit application_details fields.
+ */
+function hydrateDecisionOutputRichText(decisionOutput: any): void {
+  if (!decisionOutput?.primary_decision) return;
+
+  const primary = decisionOutput.primary_decision;
+  primary.application_details = primary.application_details || {};
+
+  const app = primary.application_details as Record<string, any>;
+
+  // 1) Prefer direct fields on primary_decision (some executors place them here)
+  app.action_text ??= (primary as any).action_text;
+  app.reason_text ??= (primary as any).reason_text;
+  app.knowledge_text ??= (primary as any).knowledge_text;
+  app.i18n_key ??= (primary as any).i18n_key;
+  app.rule_id ??= primary.rule_id;
+
+  // 2) If still missing, hydrate from matched_responses by rule_id
+  const ruleId = primary.rule_id || app.rule_id;
+  if (ruleId && Array.isArray(decisionOutput.matched_responses)) {
+    const resp = decisionOutput.matched_responses.find((r: any) => r?.rule_id === ruleId);
+    if (resp) {
+      app.action_text ??= resp.action_text;
+      app.reason_text ??= resp.reason_text;
+      app.knowledge_text ??= resp.knowledge_text;
+      app.i18n_key ??= resp.i18n_key;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESPONSE VALIDATION GATE - Prevents silent failures
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface ValidationResult {
+  passed: boolean;
+  errors: string[];
+}
+
+/**
+ * Validate response before saving to database
+ * Ensures decision brain output is properly reflected in user response
+ */
+function validateResponseBeforeSave(params: {
+  decision_brain_source: boolean;
+  actions_returned: any[] | null;
+  responseContent: string;
+  orchestratorResponse: OrchestratorResponse;
+  traceId: string;
+  language: string;  // Language-agnostic: accepts any language code
+}): ValidationResult {
+  const { decision_brain_source, actions_returned, responseContent, orchestratorResponse, traceId, language } = params;
+  const errors: string[] = [];
+  // CRITICAL FIX: Use explicitly passed language, not metadata (which doesn't contain language)
+  const detectedLanguage = language;
+  
+  console.log(`🔍 [${traceId}] Running validation checks...`);
+  
+  // Check 1: If decision_brain_source is TRUE
+  if (decision_brain_source) {
+    console.log(`   ✓ Check 1: decision_brain_source = TRUE`);
+    
+    // Check 2: For DECISION_PROVIDED type, verify actions_returned is not empty
+    if (orchestratorResponse.type === 'DECISION_PROVIDED') {
+      if (!actions_returned || actions_returned.length === 0) {
+        // Only flag as error if there's a decision_output with recommendations
+        const decisionOutput = orchestratorResponse.decision_output;
+        const hasPrimaryDecision = !!decisionOutput?.primary_decision;
+        const hasSecondaryDecisions = (decisionOutput?.secondary_recommendations?.length || 0) > 0;
+        
+        if (hasPrimaryDecision || hasSecondaryDecisions) {
+          errors.push(`VALIDATION_FAIL: decision_output has recommendations but actions_returned is empty`);
+          console.log(`   ✗ Check 2: actions_returned is empty but decision_output has data`);
+        } else {
+          console.log(`   ✓ Check 2: actions_returned empty, but decision_output also empty (expected)`);
+        }
+      } else {
+        console.log(`   ✓ Check 2: actions_returned has ${actions_returned.length} items`);
+      }
+    }
+    
+    // Check 3: Verify content field contains recommendation text (not empty)
+    if (!responseContent || responseContent.trim().length === 0) {
+      errors.push(`VALIDATION_FAIL: response content is empty`);
+      console.log(`   ✗ Check 3: responseContent is empty`);
+    } else if (responseContent.trim().length < 50) {
+      // Increased threshold from 20 to 50 for more robust content check
+      errors.push(`VALIDATION_FAIL: response content too short for decision brain output (${responseContent.length} chars)`);
+      console.log(`   ✗ Check 3: responseContent too short: "${responseContent.substring(0, 50)}"`);
+    } else {
+      console.log(`   ✓ Check 3: responseContent has ${responseContent.length} chars`);
+    }
+    
+    // Check 4: For decisions with actions, verify content mentions actionable language
+    if (actions_returned && actions_returned.length > 0 && orchestratorResponse.type === 'DECISION_PROVIDED') {
+      const contentLower = responseContent.toLowerCase();
+      
+      // Language-specific recommendation keywords
+      const recommendationKeywords: Record<string, string[]> = {
+        'mr': ['फवारणी', 'करा', 'द्या', 'वापरा', 'शिफारस', 'उपाय', 'नियंत्रण', 'काढा', 'टाका'],
+        'hi': ['छिड़काव', 'करें', 'दें', 'उपयोग', 'सिफारिश', 'उपाय', 'नियंत्रण', 'हटाएं', 'लगाएं'],
+        'en': ['spray', 'apply', 'use', 'recommend', 'control', 'remove', 'treat', 'dosage', 'application']
+      };
+      
+      const keywords = recommendationKeywords[detectedLanguage as string] || recommendationKeywords['en'];
+      const hasRecommendationIndicators = keywords.some(kw => contentLower.includes(kw.toLowerCase()));
+      
+      if (!hasRecommendationIndicators) {
+        // CRITICAL FIX: Downgrade to WARNING instead of FAIL - this is a heuristic check
+        // If we have actions and content > 100 chars, don't block the response
+        if (responseContent.length > 100) {
+          console.log(`   ⚠️ Check 4: Response may lack recommendation language for ${detectedLanguage} (warning only - content is substantive)`);
+        } else {
+          errors.push(`VALIDATION_WARN: actions_returned present but response may lack actionable recommendation language`);
+          console.log(`   ⚠️ Check 4: Response may lack recommendation language for ${detectedLanguage} (short content)`);
+        }
+      } else {
+        console.log(`   ✓ Check 4: Response contains recommendation language`);
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NEW CHECK 5: Detect agricultural errors (harvest for young crops)
+    // CRITICAL FIX: Only validate when we HAVE crop schedule data - missing data should NOT trigger errors
+    // ═══════════════════════════════════════════════════════════════════════════
+    const contentLower = responseContent.toLowerCase();
+    const cropStage = orchestratorResponse.dataAudit?.land?.growth_stage?.toUpperCase() || '';
+    const daysSinceSowing = orchestratorResponse.dataAudit?.land?.days_since_sowing;
+    const crop = orchestratorResponse.dataAudit?.land?.current_crop?.toUpperCase() || '';
+    const hasCropScheduleData = orchestratorResponse.dataAudit?.crop_schedule?.found === true;
+    
+    // CRITICAL FIX: Also check decision_output.input_context for crop data when dataAudit is incomplete
+    const inputContext = orchestratorResponse.decision_output?.input_context || {};
+    const fallbackDays = inputContext.days_after_sowing || inputContext.farmer_context?.days_after_sowing;
+    const fallbackStage = inputContext.crop_stage || inputContext.farmer_context?.crop_stage;
+    
+    const effectiveDays = daysSinceSowing ?? fallbackDays ?? null;
+    const effectiveStage = cropStage || fallbackStage?.toUpperCase() || '';
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PRODUCTION FIX: Only truly young stages should be blocked for harvest
+    // TILLERING (45-90 DAS for sugarcane) and GRAND_GROWTH are NOT young stages
+    // They are active growth stages where pest/disease control is primary concern
+    // Using blanket 120-day threshold was causing false rejections
+    // ═══════════════════════════════════════════════════════════════════════════
+    const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
+    
+    // Use crop-specific minimum harvest age instead of blanket 120 days
+    const MIN_HARVEST_AGE: Record<string, number> = {
+      'SUGARCANE': 270, 'COTTON': 150, 'RICE': 120, 'WHEAT': 120,
+      'MAIZE': 90, 'SOYBEAN': 95, 'GROUNDNUT': 110, 'ONION': 120
+    };
+    const cropMinAge = MIN_HARVEST_AGE[crop] || 120;
+    
+    const hasValidCropData = (effectiveDays !== null && effectiveDays > 0) || effectiveStage;
+    const isYoungCrop = hasValidCropData && (
+      trulyYoungStages.includes(effectiveStage) || 
+      (effectiveDays !== null && effectiveDays > 0 && effectiveDays < cropMinAge * 0.3) // Only block if < 30% of harvest age
+    );
+    
+    // Check for harvest keywords in young crop responses
+    const harvestKeywords = ['harvest', 'कापणी', 'काटाई', 'कटाई', 'वेचणी', 'काढणी', 'तोडणी'];
+    const mentionsHarvest = harvestKeywords.some(kw => contentLower.includes(kw.toLowerCase()));
+    
+    if (isYoungCrop && mentionsHarvest) {
+      errors.push(`VALIDATION_FAIL: Response recommends harvest for young crop (stage: ${effectiveStage}, days: ${effectiveDays})`);
+      console.log(`   ✗ Check 5: AGRICULTURAL ERROR - Harvest recommended for ${effectiveStage} stage crop (${effectiveDays} days old)`);
+    } else if (!hasValidCropData && mentionsHarvest) {
+      // If we don't have crop data but response mentions harvest, don't block - just log warning
+      console.log(`   ⚠️ Check 5: Response mentions harvest but no crop schedule data to validate (skipping check)`);
+    } else {
+      console.log(`   ✓ Check 5: No harvest-for-young-crop error (stage: ${effectiveStage || 'unknown'}, days: ${effectiveDays ?? 'unknown'})`);
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NEW CHECK 6: Validate product details are present for chemical/spray actions
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (actions_returned && actions_returned.length > 0) {
+      const primaryAction = actions_returned.find((a: any) => a.type === 'primary');
+      if (primaryAction) {
+        const actionType = primaryAction.action_type?.toUpperCase() || '';
+        const isChemicalAction = ['SPRAY', 'INSECTICIDE', 'FUNGICIDE', 'PESTICIDE', 'CHEMICAL'].some(t => actionType.includes(t));
+        
+        if (isChemicalAction) {
+          const hasProductName = !!primaryAction.application_details?.product_name || !!primaryAction.product_name;
+          const hasDosage = !!primaryAction.application_details?.dosage || !!primaryAction.dosage;
+          
+          if (!hasProductName) {
+            errors.push(`VALIDATION_WARN: Chemical action missing product_name`);
+            console.log(`   ⚠️ Check 6: Chemical action lacks product_name`);
+          }
+          if (!hasDosage) {
+            errors.push(`VALIDATION_WARN: Chemical action missing dosage`);
+            console.log(`   ⚠️ Check 6: Chemical action lacks dosage`);
+          }
+          if (hasProductName && hasDosage) {
+            console.log(`   ✓ Check 6: Chemical action has complete product details`);
+          }
+        }
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // NEW CHECK 7: SOURCE VALIDATION - Ensure all content comes from symbolic brain
+    // Validates that LLM formatter did not add unauthorized content
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (decision_brain_source && actions_returned && actions_returned.length > 0) {
+      console.log(`   🔍 Check 7: Source validation - ensuring content matches symbolic brain output`);
+      
+      // Extract allowed products from actions_returned
+      const allowedProducts = new Set<string>();
+      for (const action of actions_returned) {
+        const productName = action.product_name || action.application_details?.product_name;
+        if (productName && typeof productName === 'string' && productName.length > 2) {
+          allowedProducts.add(productName.toLowerCase());
+          // Also add translated versions
+          const translations = action.names || action.application_details?.names;
+          if (translations) {
+            if (translations.mr) allowedProducts.add(translations.mr.toLowerCase());
+            if (translations.hi) allowedProducts.add(translations.hi.toLowerCase());
+            if (translations.en) allowedProducts.add(translations.en.toLowerCase());
+          }
+        }
+      }
+      
+      // Check for unauthorized percentage claims (effectiveness, success rate, etc.)
+      const percentageClaimPatterns = [
+        /(\d+)\s*%\s*(effective|success|cure|control|kill)/i,
+        /(effective|success|cure).*?(\d+)\s*%/i
+      ];
+      
+      for (const pattern of percentageClaimPatterns) {
+        if (pattern.test(responseContent)) {
+          // Check if this percentage is in the symbolic output
+          const symbolicOutputStr = JSON.stringify(actions_returned);
+          if (!pattern.test(symbolicOutputStr)) {
+            errors.push(`VALIDATION_WARN: Response contains percentage effectiveness claim not in symbolic output`);
+            console.log(`   ⚠️ Check 7: Unauthorized percentage claim detected`);
+          }
+        }
+      }
+      
+      console.log(`   ✓ Check 7: Source validation complete (${allowedProducts.size} products allowed)`);
+    }
+  }
+  
+  return {
+    passed: errors.filter(e => e.includes('VALIDATION_FAIL')).length === 0,
+    errors
+  };
+}
+
+/**
+ * Generate fallback response when validation fails
+ * CRITICAL FIX: Use available actions if present instead of generic "technical issue"
+ * Ensures user always gets helpful feedback even on failures
+ */
+function generateValidationFailureFallback(
+  lang: string,
+  validationErrors: string[],
+  orchestratorResponse: OrchestratorResponse,
+  actionsReturned?: any[] | null
+): string {
+  // CRITICAL FIX: If we have actions, build a minimal response from them
+  // This prevents "technical issue" messages when we actually have recommendations
+  if (actionsReturned && actionsReturned.length > 0) {
+    console.log(`   🔄 Validation fallback: Building response from ${actionsReturned.length} available actions`);
+    
+    const parts: string[] = [];
+    
+    // Greeting
+    parts.push('🌾 Hello farmer friend!');
+    
+    // Header
+    parts.push('📌 **What to do now:**');
+    
+    // Extract actions - with STRICT validation to prevent placeholder content
+    const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
+    
+    const isValidProductName = (name: string | null | undefined): boolean => {
+      if (!name) return false;
+      const cleanName = name.toLowerCase().trim();
+      return cleanName.length > 2 && !invalidNames.includes(cleanName);
+    };
+    
+    const primaryAction = actionsReturned.find(a => a.type === 'primary');
+    let hasValidPrimaryAction = false;
+    
+    if (primaryAction) {
+      const rawProductName = primaryAction.product_name || 
+                             primaryAction.application_details?.product_name || 
+                             primaryAction.title;
+      
+      // CRITICAL: Validate product name is meaningful
+      if (isValidProductName(rawProductName)) {
+        hasValidPrimaryAction = true;
+        
+        // CRITICAL FIX: Translate chemical name to farmer-friendly language
+        const translatedProductName = getProductName(rawProductName, lang);
+        
+        const rawDosage = primaryAction.dosage || primaryAction.application_details?.dosage;
+        const isValidDosage = rawDosage && 
+                              rawDosage !== 'N/A' && 
+                              rawDosage !== 'See product label' &&
+                              rawDosage.length > 0;
+        
+        let actionText = `1. **${translatedProductName}**`;
+        // Only add dosage if not already included in translation
+        if (isValidDosage && !translatedProductName.includes('/')) actionText += ` - ${rawDosage}`;
+        parts.push(actionText);
+      }
+    }
+    
+    // If no valid primary action, check secondary actions
+    if (!hasValidPrimaryAction) {
+      console.log(`   ⚠️ Primary action invalid, checking secondary actions...`);
+      
+      // Check if any secondary action has valid data
+      const validSecondaryActions = actionsReturned.filter(a => {
+        if (a.type === 'primary') return false;
+        const name = a.action || a.title || a.product_name;
+        return isValidProductName(name);
+      });
+      
+      if (validSecondaryActions.length === 0) {
+        // NO valid actions at all - use technical issue fallback
+        console.log(`   ⚠️ No valid actions found in actionsReturned, using technical fallback`);
+        const fallbackText = `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`;
+        return fallbackText;
+      }
+      
+      // Use valid secondary actions - TRANSLATE to farmer-friendly language
+      validSecondaryActions.slice(0, 3).forEach((action, idx) => {
+        const rawActionName = action.action || action.title || action.product_name;
+        const translatedName = getProductName(rawActionName, lang);
+        parts.push(`${idx + 1}. **${translatedName}**`);
+      });
+    } else {
+      // Add secondary actions (only if primary was valid) - TRANSLATE names
+      const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
+      let actionIdx = 2;
+      for (const action of secondaryActions.slice(0, 2)) {
+        const rawActionName = action.action || action.title;
+        if (isValidProductName(rawActionName)) {
+          const translatedName = getProductName(rawActionName, lang);
+          parts.push(`${actionIdx}. **${translatedName}**`);
+          actionIdx++;
+        }
+      }
+    }
+    
+    // Closing
+    parts.push('\n✅ Best wishes! 🙏');
+    
+    return parts.join('\n\n');
+  }
+  
+  // Original fallback when no actions available
+  // English-only fallback — forceTranslateResponse() handles localization at runtime
+  return `🌾 **Hello Farmer Friend!**
+
+I encountered a technical issue while preparing recommendations. Please provide the following information:
+
+1. What is your crop?
+2. What is the current problem?
+3. What is the crop stage?
+
+With this information, I can provide you proper guidance.
+
+📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`;
+}
+
+/**
+ * Generate response when ALL actions were filtered
+ */
+function generateAllActionsFilteredResponse(
+  filteredActions: any[], 
+  lang: string
+): string {
+  const parts: string[] = [];
+  
+  // Greeting
+  parts.push('Hello farmer friend! 🌾');
+  
+  // Explanation
+  parts.push('⚠️ Unable to provide recommendations at this time. Here\'s why:');
+  
+  // List filtered reasons by category
+  const categoryReasons: Record<string, string[]> = {};
+  filteredActions.forEach(action => {
+    const category = action.filter_category || 'UNKNOWN';
+    if (!categoryReasons[category]) categoryReasons[category] = [];
+    categoryReasons[category].push(action.reason || action.action);
+  });
+  
+  // English-only category labels — forceTranslateResponse() handles localization
+  const categoryLabels: Record<string, string> = {
+    REGULATORY: '📋 Regulatory Restrictions',
+    SAFETY: '🛡️ Safety Reasons',
+    SEASONAL: '📅 Seasonal Restrictions',
+    WEATHER: '🌧️ Weather Conditions',
+    ECONOMIC: '💰 Economic Factors',
+    COMPATIBILITY: '⚗️ Compatibility Issues',
+    UNKNOWN: 'ℹ️ Other Reasons'
+  };
+  
+  Object.entries(categoryReasons).forEach(([category, reasons]) => {
+    const label = categoryLabels[category] || category;
+    parts.push(`\n${label}:`);
+    reasons.slice(0, 2).forEach(reason => {
+      parts.push(`  • ${reason}`);
+    });
+  });
+  
+  // Suggestion
+  parts.push('\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer');
+  
+  return parts.join('\n');
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * EXTRACT & AUDIT ACTIONS WITH FILTER TRACE
+ * Enhanced version with detailed filter rule logging
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+interface ActionAuditLog {
+  total_recommendations: number;
+  total_filtered: number;
+  validation_errors: string[];
+  filter_categories: Record<string, number>;
+}
+
+interface FilterTraceEntry {
+  filter_name: string;
+  action: string;
+  passed: boolean;
+  reason?: string;
+  category?: string;
+}
+
+type FilterCategory = 'REGULATORY' | 'SAFETY' | 'SEASONAL' | 'WEATHER' | 'ECONOMIC' | 'COMPATIBILITY' | 'EMERGENCY' | 'UNKNOWN';
+
+function categorizeFilterReason(reason: string, blockedByRule?: string): FilterCategory {
+  const reasonLower = (reason || '').toLowerCase();
+  const ruleLower = (blockedByRule || '').toLowerCase();
+  
+  // Emergency: immediate danger, acute toxicity
+  if (reasonLower.includes('emergency') || reasonLower.includes('acute') || 
+      reasonLower.includes('immediate') || reasonLower.includes('danger')) {
+    return 'EMERGENCY';
+  }
+  
+  // Regulatory: pesticide bans, government restrictions
+  if (reasonLower.includes('banned') || reasonLower.includes('regulated') || 
+      reasonLower.includes('prohibited') || ruleLower.includes('REG_')) {
+    return 'REGULATORY';
+  }
+  
+  // Safety: PHI, worker safety, toxicity
+  if (reasonLower.includes('phi') || reasonLower.includes('safety') || 
+      reasonLower.includes('toxic') || reasonLower.includes('harmful') ||
+      ruleLower.includes('SAFETY_') || reasonLower.includes('pre-harvest')) {
+    return 'SAFETY';
+  }
+  
+  // Seasonal: wrong season, wrong growth stage
+  if (reasonLower.includes('season') || reasonLower.includes('stage') || 
+      reasonLower.includes('timing') || ruleLower.includes('SEASON_')) {
+    return 'SEASONAL';
+  }
+  
+  // Weather: rain, wind, temperature
+  if (reasonLower.includes('rain') || reasonLower.includes('weather') || 
+      reasonLower.includes('wind') || reasonLower.includes('temperature')) {
+    return 'WEATHER';
+  }
+  
+  // Economic: cost, availability
+  if (reasonLower.includes('cost') || reasonLower.includes('expensive') || 
+      reasonLower.includes('unavailable')) {
+    return 'ECONOMIC';
+  }
+  
+  // Compatibility: tank mix issues
+  if (reasonLower.includes('compatible') || reasonLower.includes('mix') || 
+      reasonLower.includes('incompatible')) {
+    return 'COMPATIBILITY';
+  }
+  
+  return 'UNKNOWN';
+}
+
+function extractAndAuditActionsWithFilterTrace(orchestratorResponse: OrchestratorResponse, traceId: string, detectedLanguage: string = 'en'): {
+  actions_returned: any[] | null;
+  actions_filtered_out: any[] | null;
+  audit_log: ActionAuditLog;
+  filter_trace: FilterTraceEntry[];
+} {
+  const audit_log: ActionAuditLog = {
+    total_recommendations: 0,
+    total_filtered: 0,
+    validation_errors: [],
+    filter_categories: {}
+  };
+  
+  const filter_trace: FilterTraceEntry[] = [];
+  
+  // Return early for non-decision types
+  if (orchestratorResponse.type !== 'DECISION_PROVIDED') {
+    console.log(`📋 [${traceId}] Non-decision response type: ${orchestratorResponse.type}`);
+    return { actions_returned: null, actions_filtered_out: null, audit_log, filter_trace };
+  }
+
+  const decisionOutput = orchestratorResponse.decision_output;
+  
+  if (!decisionOutput) {
+    audit_log.validation_errors.push('decision_output is null/undefined');
+    return { actions_returned: null, actions_filtered_out: null, audit_log, filter_trace };
+  }
+
+  const actionsReturned: any[] = [];
+  
+  // Extract and validate primary decision
+  if (decisionOutput.primary_decision) {
+    const primary = decisionOutput.primary_decision;
+    
+    // Validation: Check required fields (NOTE: priority is optional for symbolic decisions)
+    const validationErrors: string[] = [];
+    if (!primary.action_type) validationErrors.push('primary.action_type missing');
+    // CRITICAL FIX: priority is optional - don't fail validation for missing priority
+    // The decision brain may not always set priority, but the decision is still valid
+    
+    // Build enriched action object with title/description
+    const enrichedAction = {
+      type: 'primary',
+      action_type: primary.action_type,
+      // Generate title from action type — use detected language, not hardcoded 'mr'
+      title: generateActionTitle(primary, detectedLanguage),
+      // Generate description from action details
+      description: generateActionDescription(primary, detectedLanguage),
+      product_name: primary.application_details?.product_name,
+      dosage: primary.application_details?.concentration,
+      timing: primary.timing,
+      urgency: primary.urgency,
+      priority: primary.priority || 'HIGH',
+      ipm_level: primary.ipm_level,
+      rule_id: primary.rule_id,
+      efficacy_percent: primary.expected_outcomes?.efficacy_percent,
+      target: {
+        pest_code: primary.target?.pest_code,
+        disease_code: primary.target?.disease_code,
+        nutrient_deficiency: primary.target?.nutrient_deficiency
+      },
+      // Actions array for compatibility
+      actions: [primary.action_type]
+    };
+    
+    // Log filter trace for primary action (it passed all filters)
+    filter_trace.push({
+      filter_name: 'DECISION_GRAPH_OUTPUT',
+      action: primary.action_type,
+      passed: true
+    });
+    
+    actionsReturned.push(enrichedAction);
+    validationErrors.forEach(e => audit_log.validation_errors.push(e));
+  }
+
+  // Extract and validate secondary actions
+  if (decisionOutput.secondary_actions && decisionOutput.secondary_actions.length > 0) {
+    for (const secondary of decisionOutput.secondary_actions) {
+      // Validation
+      if (!secondary.action) {
+        audit_log.validation_errors.push('secondary.action missing');
+      }
+      
+      // Log filter trace for secondary action
+      filter_trace.push({
+        filter_name: 'SECONDARY_ACTION_INCLUDED',
+        action: secondary.action || 'UNKNOWN',
+        passed: true
+      });
+      
+      actionsReturned.push({
+        type: 'secondary',
+        action: secondary.action,
+        title: secondary.action, // Use action as title for secondary
+        description: secondary.reason || '',
+        reason: secondary.reason,
+        timing: secondary.timing,
+        priority: secondary.priority || 'MEDIUM',
+        ipm_level: secondary.ipm_level,
+        rule_id: secondary.rule_id,
+        actions: [secondary.action]
+      });
+    }
+  }
+
+  // Extract blocked/filtered actions with comprehensive categorization and tracing
+  const actionsFilteredOut: any[] = [];
+  
+  if (decisionOutput.blocked_actions && decisionOutput.blocked_actions.length > 0) {
+    for (const blocked of decisionOutput.blocked_actions) {
+      const filterCategory = categorizeFilterReason(blocked.reason, blocked.blocked_by_rule);
+      
+      // Track category counts
+      audit_log.filter_categories[filterCategory] = 
+        (audit_log.filter_categories[filterCategory] || 0) + 1;
+      
+      // Log filter trace for blocked action with explicit reason
+      filter_trace.push({
+        filter_name: blocked.blocked_by_rule || 'SAFETY_GUARDIAN',
+        action: blocked.action || 'UNKNOWN',
+        passed: false,
+        reason: blocked.reason,
+        category: filterCategory
+      });
+      
+      actionsFilteredOut.push({
+        action: blocked.action,
+        blocked_by_rule: blocked.blocked_by_rule,
+        reason: blocked.reason,
+        filter_category: filterCategory, // WHY it was filtered
+        priority: blocked.priority,
+        alternatives: blocked.alternatives || [],
+        // Additional explicit reason fields for transparency
+        explicit_reason: buildExplicitFilterReason(blocked, filterCategory)
+      });
+    }
+  }
+
+  audit_log.total_recommendations = actionsReturned.length;
+  audit_log.total_filtered = actionsFilteredOut.length;
+
+  return {
+    actions_returned: actionsReturned.length > 0 ? actionsReturned : null,
+    actions_filtered_out: actionsFilteredOut.length > 0 ? actionsFilteredOut : null,
+    audit_log,
+    filter_trace
+  };
+}
+
+/**
+ * Build explicit human-readable filter reason
+ */
+function buildExplicitFilterReason(blocked: any, category: FilterCategory): string {
+  const reasons: Record<FilterCategory, string> = {
+    EMERGENCY: `EMERGENCY BLOCK: ${blocked.reason || 'Immediate safety concern'}`,
+    REGULATORY: `REGULATORY COMPLIANCE: ${blocked.reason || 'Product banned or restricted by government regulations'}`,
+    SAFETY: `SAFETY RESTRICTION: ${blocked.reason || 'Pre-harvest interval (PHI) or toxicity concern'}`,
+    SEASONAL: `SEASONAL MISMATCH: ${blocked.reason || 'Not appropriate for current crop growth stage'}`,
+    WEATHER: `WEATHER CONDITIONS: ${blocked.reason || 'Current weather unsuitable for application'}`,
+    ECONOMIC: `ECONOMIC FACTOR: ${blocked.reason || 'Cost or availability concern'}`,
+    COMPATIBILITY: `COMPATIBILITY ISSUE: ${blocked.reason || 'Cannot be mixed with other products'}`,
+    UNKNOWN: `FILTERED: ${blocked.reason || 'Action blocked by system rules'}`
+  };
+  
+  return reasons[category];
+}
+
+/**
+ * Generate human-readable title for an action
+ */
+function generateActionTitle(primary: any, lang: string): string {
+  const actionType = primary.action_type || 'UNKNOWN';
+  const productName = primary.application_details?.product_name;
+  
+  // English-only titles — forceTranslateResponse() handles localization at runtime
+  const titles: Record<string, string> = {
+    SPRAY: productName ? `Apply ${productName}` : 'Insecticide Spray',
+    FERTILIZER: 'Apply Fertilizer',
+    NO_ACTION: 'No Action Required',
+    MONITOR_ONLY: 'Monitor Only',
+    CULTURAL: 'Cultural Practice',
+    BIOLOGICAL: 'Biological Control',
+    MECHANICAL: 'Mechanical Control',
+    IRRIGATION: 'Irrigation Management',
+    HERBICIDE: 'Weed Control',
+    FUNGICIDE: 'Fungicide Application',
+    INSECTICIDE: 'Insecticide Application',
+  };
+  
+  return titles[actionType] || actionType;
+}
+
+/**
+ * Generate human-readable description for an action
+ */
+function generateActionDescription(primary: any, lang: string): string {
+  const parts: string[] = [];
+  
+  if (primary.target?.pest_code) {
+    parts.push(`Target: ${primary.target.pest_code}`);
+  }
+  if (primary.target?.disease_code) {
+    parts.push(`Target: ${primary.target.disease_code}`);
+  }
+  if (primary.application_details?.concentration) {
+    parts.push(`Dosage: ${primary.application_details.concentration}`);
+  }
+  if (primary.expected_outcomes?.efficacy_percent) {
+    parts.push(`Efficacy: ${primary.expected_outcomes.efficacy_percent}%`);
+  }
+  
+  return parts.join(' | ') || 'Recommendation based on current conditions';
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * POST-PROCESSING: Convert Decision Brain output to natural language
+ * ═══════════════════════════════════════════════════════════════════════════
+ * 
+ * This step runs AFTER the decision graph completes and:
+ * 1. Takes all recommendations from decision brain output
+ * 2. Converts them to natural language for detected language (MR/HI/EN)
+ * 3. Formats as bullet points or numbered list for chat response
+ * 4. Returns text suitable for ai_chat_messages.content field
+ * 5. NEVER returns empty - always reflects decision brain output
+ */
+async function getResponseContent(response: OrchestratorResponse, language: string): Promise<string> {
+  const lang = language;
+  console.log(`📝 [PostProcessor] Converting response type: ${response.type} to language: ${lang}`);
+  console.log(`📝 [PostProcessor] Response assembly:`, {
+    has_communication: !!response.communication,
+    has_decision_output: !!response.decision_output,
+    comm_keys: response.communication?.main_message ? Object.keys(response.communication.main_message) : [],
+    decision_status: response.decision_output?.status,
+    has_primary: !!response.decision_output?.primary_decision
+  });
+  
+  switch (response.type) {
+    case 'DECISION_PROVIDED':
+      // PRIMARY PATH: Decision Brain generated recommendations
+      const comm = response.communication;
+      const decisionOutput = response.decision_output;
+      
+      // Step 1: Try FarmerCommunication structure FIRST (preferred - already translated)
+      // This includes both sections format AND full_text format (LLM-first path)
+      const communicationText = flattenCommunicationToText(comm, language);
+      if (communicationText && communicationText.length > 50) {
+        console.log(`   ✅ Using FarmerCommunication text (${communicationText.length} chars)`);
+        return communicationText;
+      }
+      
+      // Step 2: Check decision_output if communication is incomplete
+      if (decisionOutput?.primary_decision || 
+          (decisionOutput?.secondary_actions && decisionOutput.secondary_actions.length > 0)) {
+        console.log(`   ✅ Building from decision_output (primary or secondary actions found)`);
+        return await buildFormattedRecommendationsList(decisionOutput, lang);
+      }
+      
+      // Step 3: Fallback - only when truly no recommendations
+      console.log(`   ⚠️ No valid communication or decision_output - generating fallback`);
+      return generateNoRecommendationsFallback(response, lang);
+      
+    case 'CLARIFICATION_QUESTION':
+    case 'CLARIFICATION_NEEDED':
+      // Priority 1: question object with language-specific text (prefer lang, fallback to en)
+      const questionText = (response.question as any)?.[`text_${lang}`] || response.question?.text_en || '';
+      if (questionText) return questionText;
+      
+      // Priority 2: communication.main_message.full_text (ZERO_CODE_GATE path)
+      const commFullText = response.communication?.main_message?.full_text;
+      if (commFullText) {
+        const commText = commFullText[lang] || commFullText['en'] || '';
+        if (commText) return commText;
+      }
+      
+      // Priority 3: communication.farmer_message (legacy path)
+      if (response.communication?.farmer_message) return response.communication.farmer_message;
+      
+      // Priority 4: response.response (direct response field)
+      if (response.response) return response.response;
+      
+      // Fallback: generate clarification prompt
+      return generateClarificationPrompt(response, lang);
+      
+    case 'PHOTO_REQUEST':
+      return (response.photo_instructions as any)?.[`text_${lang}`] || response.photo_instructions?.text_en || '';
+    case 'SAFETY_BLOCKED':
+      return (response.blocked_reason as any)?.[`reason_${lang}`] || response.blocked_reason?.reason_en || '';
+    case 'ESCALATION_REQUIRED':
+      return (response.escalation as any)?.[`message_${lang}`] || response.escalation?.message_en || '';
+    case 'LLM_RESPONSE':
+      return response.llm_response || 
+             response.escalation?.message_en || '';
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CRITICAL FIX: Handle SYSTEM_ERROR properly - provide helpful advice
+    // ═══════════════════════════════════════════════════════════════════════════
+    case 'SYSTEM_ERROR':
+      console.log(`   ⚠️ SYSTEM_ERROR response - generating helpful fallback`);
+      const fallbackAdvice = response.error?.fallback_advice || '';
+      return generateHelpfulErrorResponse(lang, fallbackAdvice);
+      
+    default:
+      // NEVER silent - even for unknown types, provide helpful response
+      console.log(`   ⚠️ Unknown response type: ${response.type} - generating helpful fallback`);
+      return generateHelpfulErrorResponse(lang, '');
+  }
+}
+
+/**
+ * FALLBACK: When decision brain runs but produces no recommendations
+ * Generates explanatory message asking for more information
+ */
+function generateNoRecommendationsFallback(response: OrchestratorResponse, lang: string): string {
+  const parts: string[] = [];
+  
+  // Greeting
+  parts.push('Hello farmer friend! 🌾');
+  
+  // Extract context clues from response
+  const nluIntent = response.metadata?.nlu_output?.primary_intent;
+  const detectedPest = response.metadata?.nlu_output?.pest_mentions?.[0];
+  const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
+  const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
+  
+  // Build context-aware message — English-only, forceTranslateResponse() handles localization
+  if (detectedPest || detectedDisease) {
+    const target = detectedPest || detectedDisease;
+    parts.push(`I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`);
+  } else {
+    parts.push('To properly answer your question, I need some more information:');
+  }
+  
+  // Numbered list of required information — English-only
+  parts.push('\n1. What is the crop name?\n2. What is the current growth stage?\n3. What symptoms are you seeing?\n4. If possible, send a photo of the affected leaves/plants');
+  
+  // Encouragement
+  parts.push('\nOnce I have this information, I can give you the right recommendation! 🙏');
+  
+  return parts.join('\n\n');
+}
+
+/**
+ * Build formatted numbered list from decision output
+ */
+async function buildFormattedRecommendationsList(decision: any, lang: string, supabaseClient?: any): Promise<string> {
+  const parts: string[] = [];
+  
+  // Greeting
+  parts.push('Hello farmer friend! 🌾');
+  
+  const primary = decision.primary_decision;
+  
+  // Status handling
+  if (decision.status === 'BLOCKED') {
+    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
+    parts.push(`⚠️ **Stop:** ${blockedReason}`);
+    return parts.join('\n\n');
+  }
+  
+  if (decision.status === 'WEATHER_DELAYED') {
+    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
+    return parts.join('\n\n');
+  }
+  
+  // Action type - NO ACTION / MONITOR
+  if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
+    parts.push('👀 **No action required at this time.** Continue monitoring.');
+
+    // If decision_rules provided rich text, include it so response stays SSOT-based
+    const app = primary?.application_details || {};
+    const actionText = app.action_text as string | undefined;
+    const reasonText = app.reason_text as string | undefined;
+    const knowledgeText = app.knowledge_text as string | undefined;
+
+    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
+    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
+    if (knowledgeText) parts.push(`\n📚 **Knowledge:** ${knowledgeText}`);
+
+    return parts.join('\n\n');
+  }
+  
+  // Primary recommendation as numbered list
+  if (primary) {
+    parts.push('📌 **Recommendations:**');
+    
+    let recNumber = 1;
+    const recParts: string[] = [];
+    
+    // Primary action - CRITICAL FIX: Validate through extractRichRuleData to prevent contaminated data
+    const appDetails = primary.application_details || {};
+    const richData = extractRichRuleData(primary, appDetails);
+    const productName = richData.active_ingredient ? getProductName(richData.active_ingredient, lang) : 'Recommended product';
+    const dosage = richData.dosage_per_acre || '';
+    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const method = appDetails.method || appDetails.application_method || '';
+
+    // PRODUCT MAPPING: Look up market brand names for the active ingredient
+    let marketProductLine = '';
+    if (richData.active_ingredient && supabaseClient) {
+      try {
+        const cropCode = decision.metadata?.crop_code || decision.primary_decision?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        marketProductLine = formatMarketProducts(marketResult.products, lang);
+      } catch (err) {
+        console.warn(`[ProductMapping] Lookup failed, continuing without market products:`, err);
+      }
+    }
+
+    // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
+    const app = primary.application_details || {};
+    const actionText = app.action_text as string | undefined;
+    const reasonText = app.reason_text as string | undefined;
+    const knowledgeText = app.knowledge_text as string | undefined;
+
+    // English-only labels — forceTranslateResponse() handles localization
+    const richLabels = { action: 'Action', reason: 'Reason', knowledge: 'Knowledge' };
+
+    let primaryText = `**${recNumber}. ${productName}**`;
+    if (dosage) primaryText += ` @ ${dosage}`;
+
+    // Add method - translated
+    if (method) {
+      const methodText = getMethodTranslation(method, lang);
+      primaryText += `\n   📍 ${methodText}`;
+    }
+
+    // Add timing
+    const timingLabels: Record<string, string> = {
+      MORNING: 'Morning 6-10 AM',
+      EVENING: 'Evening 4-6 PM',
+      ANY: 'Any time'
+    };
+    const timingText = timingLabels[timing] || timingLabels.MORNING;
+    primaryText += `\n   ⏰ ${timingText}`;
+
+    // PRODUCT MAPPING: Append market product brand names
+    if (marketProductLine) {
+      primaryText += `\n   ${marketProductLine}`;
+    }
+
+    if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
+    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${reasonText}`;
+    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge}:** ${knowledgeText}`;
+
+    // Add efficacy
+    const efficacy = primary.expected_outcomes?.efficacy_percent;
+    if (efficacy) {
+      primaryText += ` | 📊 ${efficacy}% effective`;
+    }
+
+    recParts.push(primaryText);
+    recNumber++;
+    
+    // Secondary actions - CRITICAL FIX: Translate action names
+    if (decision.secondary_actions && decision.secondary_actions.length > 0) {
+      decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
+        if (alt.action && alt.action !== 'N/A' && alt.action !== 'None') {
+          // Translate action type to farmer language
+          const translatedAction = getActionTranslation(alt.action, lang);
+          // Also translate reason if it contains technical terms
+          const reason = alt.reason || '';
+          recParts.push(`**${recNumber}. ${translatedAction}** ${reason ? `- ${reason}` : ''}`);
+          recNumber++;
+        }
+      });
+    }
+    
+    parts.push(recParts.join('\n'));
+  }
+  
+  // Closing
+  parts.push('\n✅ Best wishes! 🙏');
+  
+  return parts.join('\n\n');
+}
+
+/**
+ * Generate clarification prompt when question text is missing
+ */
+function generateClarificationPrompt(response: OrchestratorResponse, lang: string): string {
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.';
+}
+
+/**
+ * Generic acknowledgment for unknown response types
+ * @deprecated Use generateHelpfulErrorResponse instead
+ */
+function generateGenericAcknowledgment(lang: string): string {
+  return generateHelpfulErrorResponse(lang, '');
+}
+
+/**
+ * PRODUCTION FIX: Generate helpful error response with actionable guidance
+ * Instead of "we will respond shortly", provide immediate value
+ */
+function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return `🙏 Hello Farmer Friend!
+
+${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please provide:
+
+📋 **Tell me:**
+• What is your crop?
+• How old is the crop (days)?
+• What problem are you seeing?
+
+📸 If possible, send a photo of the affected area - I can give more accurate advice!
+
+💡 **Quick tips:**
+• Monitor your crop regularly
+• Maintain proper water management
+• Report any new pest/disease signs`;
+}
+
+/**
+ * Fallback: Build natural language response directly from DecisionOutput
+ * Used when CommunicationGenerator fails or returns incomplete data
+ */
+async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
+  if (!decision) {
+    return getGenericMonitoringMessage(language);
+  }
+  
+  const parts: string[] = [];
+  
+  // English-only — forceTranslateResponse() handles localization at runtime
+  parts.push('Hello farmer friend! 🌾');
+  
+  const primary = decision.primary_decision;
+  
+  // Status handling
+  if (decision.status === 'BLOCKED') {
+    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
+    parts.push(`⚠️ **Stop:** ${blockedReason}`);
+    return parts.join('\n\n');
+  }
+  
+  if (decision.status === 'WEATHER_DELAYED') {
+    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
+    return parts.join('\n\n');
+  }
+  
+  // Action type
+  if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
+    parts.push('👀 **No action required at this time.** Continue monitoring.');
+
+    const app = primary?.application_details || {};
+    if (app.action_text) parts.push(`\n🧾 **Action:** ${app.action_text}`);
+    if (app.reason_text) parts.push(`\n🔍 **Reason:** ${app.reason_text}`);
+    if (app.knowledge_text) parts.push(`\n📚 **Knowledge:** ${app.knowledge_text}`);
+
+    return parts.join('\n\n');
+  }
+  
+  // Primary recommendation
+  if (primary) {
+    const appDetails = primary.application_details || {};
+    const richData = extractRichRuleData(primary, appDetails);
+    const rawProductName = richData.active_ingredient || appDetails.product_name || '';
+    const productName = rawProductName ? getProductName(rawProductName, language) : 'Recommended treatment';
+    const dosage = richData.dosage_per_acre || appDetails.concentration || '';
+    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const method = richData.application_method || appDetails.method || '';
+    
+    parts.push('📌 **What to do now:**');
+    
+    const productLine = dosage ? `${productName} @ ${dosage}` : productName;
+    parts.push(productLine);
+
+    // PRODUCT MAPPING: Append market brand names
+    if (richData.active_ingredient && supabaseClient) {
+      try {
+        const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
+        const marketResult = await lookupMarketProducts(supabaseClient, richData.active_ingredient, cropCode);
+        const marketLine = formatMarketProducts(marketResult.products, language);
+        if (marketLine) parts.push(marketLine);
+      } catch (err) {
+        console.warn(`[ProductMapping] Lookup failed in fallback builder:`, err);
+      }
+    }
+    
+    if (method) {
+      const methodText = getMethodTranslation(method, language);
+      parts.push(`📍 ${methodText}`);
+    }
+    
+    const timingLabels: Record<string, string> = {
+      MORNING: 'Spray in the morning 6-10 AM',
+      EVENING: 'Spray in the evening 4-6 PM',
+      ANY: 'Any time of day'
+    };
+    parts.push(`⏰ ${timingLabels[timing] || timingLabels.MORNING}`);
+    
+    // Rich SSOT texts
+    const actionText = appDetails.action_text as string | undefined;
+    const reasonText = appDetails.reason_text as string | undefined;
+    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
+    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
+    
+    const efficacy = primary.expected_outcomes?.efficacy_percent;
+    if (efficacy) {
+      parts.push(`📊 Expected efficacy: ${efficacy}%`);
+    }
+  }
+  
+  // Secondary actions
+  if (decision.secondary_actions && decision.secondary_actions.length > 0) {
+    parts.push('\n🔄 **Alternative measures:**');
+    decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
+      if (alt.action) {
+        const translatedAction = getActionTranslation(alt.action, language);
+        parts.push(`• ${translatedAction}`);
+      }
+    });
+  }
+  
+  parts.push('\n✅ Best wishes! 🙏');
+  
+  return parts.join('\n');
+}
+
+/**
+ * Get generic monitoring message when no decision output is available
+ */
+function getGenericMonitoringMessage(_language: string): string {
+  // English-only — forceTranslateResponse() handles localization at runtime
+  return 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.';
+}
+
+/**
+ * CRITICAL FIX: Flatten FarmerCommunication structure to readable text
+ * Handles the main_message.sections structure properly
+ */
+function flattenCommunicationToText(comm: any, language: string, requires?: any): string {
+  if (!comm) return '';
+  
+  const lang = language;
+  const parts: string[] = [];
+  
+  // Helper to get text from TrilingualText object
+  const getText = (obj: any): string => {
+    if (!obj) return '';
+    if (typeof obj === 'string') return obj;
+    return obj[lang] || obj.en || obj.hi || obj.mr || '';
+  };
+  
+  // CRITICAL FIX: Check for full_text format FIRST (used by LLM-first path)
+  if (comm.main_message?.full_text) {
+    const fullText = getText(comm.main_message.full_text);
+    if (fullText && fullText.length > 20) {
+      console.log(`   ✅ Using full_text format (${fullText.length} chars)`);
+      return fullText;
+    }
+  }
+  
+  // 1. Greeting (ALWAYS SHOW)
+  if (comm.main_message?.greeting) {
+    parts.push(comm.main_message.greeting);
+  }
+  
+  // 2. Empathy line (ALWAYS SHOW if present)
+  if (comm.main_message?.empathy_line) {
+    parts.push(comm.main_message.empathy_line);
+  }
+  
+  // 3. Immediate Action (ALWAYS SHOW)
+  const immediate = comm.main_message?.sections?.immediate_action;
+  if (immediate) {
+    const emoji = immediate.emoji || '📌';
+    const heading = getText(immediate.heading);
+    const summary = getText(immediate.action_summary);
+    const urgency = getText(immediate.urgency_indicator?.text);
+    
+    if (heading || summary) {
+      parts.push(`\n${emoji} ${heading || 'What to do now:'}`);
+      if (summary) parts.push(summary);
+      if (urgency) parts.push(`⏰ ${urgency}`);
+    }
+  }
+  
+  // 4. Application Instructions (ONLY IF PRESENT - adaptive)
+  const howTo = comm.main_message?.sections?.how_to;
+  if (howTo) {
+    const heading = getText(howTo.heading);
+    if (heading) parts.push(`\n🔧 ${heading}`);
+    
+    // Materials
+    if (howTo.materials_needed?.items?.length > 0) {
+      parts.push('🛒 Materials:');
+      howTo.materials_needed.items.forEach((item: any) => {
+        const name = getText(item.name);
+        if (name && name !== 'Unknown product') parts.push(`• ${name} - ${item.quantity || ''}`);
+      });
+    }
+    
+    // Mixing steps
+    if (howTo.mixing_instructions?.steps) {
+      const steps = howTo.mixing_instructions.steps[lang] || howTo.mixing_instructions.steps.en || [];
+      if (steps.length > 0) {
+        parts.push('🧪 Mixing:');
+        steps.slice(0, 4).forEach((step: string, i: number) => parts.push(`${i + 1}. ${step}`));
+      }
+    }
+  }
+  
+  // 5. Rationale (ONLY IF PRESENT)
+  const rationale = comm.main_message?.sections?.rationale;
+  if (rationale) {
+    const heading = getText(rationale.heading);
+    const explanation = getText(rationale.problem_explanation);
+    if (heading && explanation) {
+      parts.push(`\n💡 ${heading}`);
+      parts.push(explanation);
+    }
+  }
+  
+  // 6. Warnings (ONLY IF PRESENT)
+  const warnings = comm.main_message?.sections?.warnings;
+  if (warnings?.blocked_actions?.length > 0) {
+    parts.push('\n⚠️ Do NOT:');
+    warnings.blocked_actions.slice(0, 3).forEach((w: any) => {
+      const action = getText(w.action);
+      if (action) parts.push(`${w.icon || '❌'} ${action}`);
+    });
+  }
+  
+  // 7. Economics (ONLY IF PRESENT)
+  const econ = comm.main_message?.sections?.economics;
+  if (econ?.net_benefit) {
+    const roi = getText(econ.net_benefit.roi_message);
+    if (roi) parts.push(`\n💰 ${roi}`);
+  }
+  
+  // 8. Follow-up (ONLY IF PRESENT)
+  const followUp = comm.main_message?.sections?.follow_up;
+  if (followUp?.schedule?.length > 0) {
+    parts.push('\n📅 Follow-up:');
+    followUp.schedule.slice(0, 2).forEach((item: any) => {
+      const check = getText(item.check);
+      if (check) parts.push(`Day ${item.day}: ${check}`);
+    });
+  }
+  
+  // 9. Closing (ALWAYS SHOW)
+  if (comm.main_message?.closing) {
+    parts.push(`\n${comm.main_message.closing}`);
+  }
+  
+  // If we got meaningful content, return it
+  if (parts.length > 2) {
+    return parts.join('\n').trim();
+  }
+  
+  // Fallbacks
+  // Language-specific fallbacks via property lookup
+  const langMessageKey = `main_message_${lang}`;
+  if ((comm as any)[langMessageKey]) return (comm as any)[langMessageKey];
+  if (comm.main_message_en || comm.main_message) return comm.main_message_en || comm.main_message || '';
+  if (comm.notification?.body) return comm.notification.body;
+  
+  return '';
+}
+
+function detectLanguage(text: string, fallback: string): string {
+  // ✅ FIX: Detect number-only inputs (option selections like "1", "2", "३") 
+  // For these, always use the fallback (session language) to maintain conversation continuity
+  const isNumberOnlyInput = /^[१२३४1-4\s]+$/.test(text.trim());
+  if (isNumberOnlyInput) {
+    console.log(`🌐 [detectLanguage] Number-only input detected: "${text}" → using session language: ${fallback}`);
+    return fallback;
+  }
+  
+  const hasDevanagari = /[\u0900-\u097F]/.test(text);
+  const hasTamil = /[\u0B80-\u0BFF]/.test(text);
+  const hasTelugu = /[\u0C00-\u0C7F]/.test(text);
+  const hasBengali = /[\u0980-\u09FF]/.test(text);
+  const hasGujarati = /[\u0A80-\u0AFF]/.test(text);
+  const hasKannada = /[\u0C80-\u0CFF]/.test(text);
+  const hasMalayalam = /[\u0D00-\u0D7F]/.test(text);
+  const hasPunjabi = /[\u0A00-\u0A7F]/.test(text);
+
+  if (hasDevanagari) return fallback === 'mr' ? 'mr' : 'hi';
+  if (hasTamil) return 'ta';
+  if (hasTelugu) return 'te';
+  if (hasBengali) return 'bn';
+  if (hasGujarati) return 'gu';
+  if (hasKannada) return 'kn';
+  if (hasMalayalam) return 'ml';
+  if (hasPunjabi) return 'pa';
+  
+  return fallback;
+}
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * CRITICAL FIX: New transform function that uses PRE-GENERATED content
+ * This ensures DB save and API response are IDENTICAL (no duplicate messages)
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
+function transformOrchestratorResponseWithContent(
+  response: OrchestratorResponse,
+  preGeneratedContent: string,
+  language: string,
+  sessionId: string,
+  startTime: number,
+  actionsReturned: any[] | null,
+  traceId: string,
+  aiModelUsed?: string
+): any {
+  const responseTime = Date.now() - startTime;
+  const comm = response.communication;
+
+  // For DECISION_PROVIDED, use the pre-generated LLM-formatted content
+  if (response.type === 'DECISION_PROVIDED') {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // CANONICAL ADVISORY: Build structured JSON from decision_output
+    // This enables the frontend to render rich advisory cards
+    // ═══════════════════════════════════════════════════════════════════════════
+    let structuredAdvisory: any = null;
+    try {
+      const decisionOutput = response.decision_output as any;
+      const primaryDecision = decisionOutput?.primary_decision;
+      if (primaryDecision?.rule_id) {
+        const appDetails = primaryDecision.application_details || {};
+        const richData = extractRichRuleData(primaryDecision, appDetails);
+        
+        // ═══ RULE ATOMICITY: Log advisory build trace for contamination detection ═══
+        console.log(`🔍 [ADVISORY_BUILD_TRACE] rule_id=${richData.rule_id} | active_ingredient=${richData.active_ingredient || 'NONE'} | dosage_per_acre=${richData.dosage_per_acre || 'NONE'} | appDetails_rule=${appDetails.rule_id || 'NONE'}`);
+        
+        if (hasAdequateRuleContent(richData)) {
+          const landAreaAcres = response.dataAudit?.land?.area_acres || undefined;
+          const cropCtx: CropContext | undefined = response.dataAudit?.land?.days_since_sowing ? {
+            days_since_sowing: response.dataAudit.land.days_since_sowing,
+          } : undefined;
+          const weatherMeta = decisionOutput?.metadata?.weather_context;
+          const weather: WeatherContext | undefined = weatherMeta ? {
+            temperature_celsius: weatherMeta.temperature,
+            humidity_pct: weatherMeta.humidity,
+            wind_speed_kmh: weatherMeta.wind_speed,
+            rain_forecast_hours: weatherMeta.rain_forecast_hours,
+            is_raining: weatherMeta.is_raining,
+          } : undefined;
+          
+          const structuredResponse = buildDeterministicResponse(richData, landAreaAcres, cropCtx, weather);
+          const secondaryDecisions = decisionOutput.secondary_decisions || decisionOutput.secondary_actions || [];
+          let advisory = buildCanonicalAdvisory(structuredResponse, richData, secondaryDecisions);
+          
+          if (secondaryDecisions.length > 0) {
+            advisory = buildMultiRuleAdvisory(advisory, secondaryDecisions);
+          }
+          
+          structuredAdvisory = advisory;
+          console.log(`📋 [CanonicalAdvisory] Built structured advisory for rule ${primaryDecision.rule_id}, decision=${advisory.diagnosis.response_decision}`);
+        }
+      }
+    } catch (advisoryError) {
+      console.warn('⚠️ [CanonicalAdvisory] Failed to build structured advisory:', advisoryError);
+      // Non-fatal — response still works with text content
+    }
+    
+    return {
+      response: preGeneratedContent, // ← CRITICAL: Use exact same content as DB save
+      sessionId: sessionId,
+      language: language,
+      responseTime: responseTime,
+      dataAudit: response.dataAudit,
+      actionsReturned: actionsReturned,
+      structured_advisory: structuredAdvisory, // ← NEW: Canonical advisory JSON
+      metadata: {
+        type: 'decision',
+        orchestrator_type: 'DECISION_PROVIDED', // Normalized enum
+        confidence: response.metadata?.confidence,
+        safety_status: response.metadata?.safety_status,
+        rules_applied: response.metadata?.rules_applied,
+        agents_used: response.metadata?.agents_used,
+        decision_id: response.decision_id,
+        trace_id: traceId,
+        ai_model: aiModelUsed || 'template',
+        actions_count: actionsReturned?.length || 0
+      },
+      quickReplies: generateQuickRepliesFromCommunication(comm, language, preGeneratedContent, actionsReturned, response.dataAudit),
+      source: 'orchestrator_v1'
+    };
+  }
+
+  // For other types, delegate to the original function
+  return transformOrchestratorResponse(response, language, sessionId, startTime);
+}
+
+function transformOrchestratorResponse(
+  response: OrchestratorResponse,
+  language: string,
+  sessionId: string,
+  startTime: number
+): any {
+  const responseTime = Date.now() - startTime;
+
+  switch (response.type) {
+    case 'DECISION_PROVIDED':
+      // Main success case - return AI advice
+      const comm = response.communication;
+      const mainMessage = getLocalizedMessage(comm, language);
+      
+      return {
+        response: mainMessage,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        // NEW: Include data audit for frontend debugging cards
+        dataAudit: response.dataAudit,
+        metadata: {
+          type: 'decision',
+          orchestrator_type: 'DECISION_PROVIDED',
+          confidence: response.metadata?.confidence,
+          safety_status: response.metadata?.safety_status,
+          rules_applied: response.metadata?.rules_applied,
+          agents_used: response.metadata?.agents_used,
+          decision_id: response.decision_id,
+          trace_id: response.metadata?.trace_id
+        },
+        quickReplies: generateQuickRepliesFromCommunication(comm, language),
+        source: 'orchestrator_v1'
+      };
+
+    case 'CLARIFICATION_QUESTION':
+      // System needs more info - CRITICAL FIX: Handle both object and string formats
+      const question = response.question;
+      let questionText = '';
+      
+      // Handle the case where question might be a string (question_id) instead of object
+      if (typeof question === 'string') {
+        questionText = 'Please provide more details. Tell me more about your question.';
+      } else {
+        // Normal case: question is an object with text fields — prefer lang-specific, fallback to en
+        questionText = (question as any)?.[`text_${language}`] || question?.text_en || 'Please provide more details.';
+      }
+      
+      // Ensure we always have some response text
+      if (!questionText) {
+        questionText = 'Please provide more details.';
+      }
+      
+      // ✅ CRITICAL FIX: Safe extraction of options from multiple possible locations
+      // Priority: question.options > communication.options > empty array
+      const rawOptions = (typeof question === 'object' && Array.isArray(question?.options)) 
+        ? question.options 
+        : (response.communication?.options && Array.isArray(response.communication.options))
+          ? response.communication.options
+          : [];
+      
+      // ✅ CRITICAL FIX: Safe array mapping with null checks
+      const safeQuickReplies = rawOptions
+        .filter((o: any) => o != null)
+        .map((o: any) => {
+          if (typeof o === 'string') return o;
+          if (typeof o === 'object' && o.label) return o.label;
+          return String(o);
+        });
+      
+      return {
+        response: questionText,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        metadata: {
+          type: 'clarification',
+          orchestrator_type: 'CLARIFICATION_QUESTION',
+          question_id: typeof question === 'string' ? question : question?.question_id,
+          // ═══════════════════════════════════════════════════════════════════════════
+          // CRITICAL FIX: Preserve observation_key for rule engine re-evaluation
+          // Previously: Only label/value were passed, dropping observation_key
+          // Now: Include observation_key, description, diagnostic_power for proper UI mapping
+          // ═══════════════════════════════════════════════════════════════════════════
+          options: rawOptions.map((o: any) => ({
+            label: typeof o === 'string' ? o : (o?.label || String(o)),
+            value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
+            observation_key: typeof o === 'object' ? (o?.observation_key || o?.value) : undefined,
+            description: typeof o === 'object' ? o?.description : undefined,
+            diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
+          })),
+          selectionType: response.metadata?.selectionType || 'SINGLE_CHOICE',
+          trace_id: response.metadata?.trace_id,
+          validation_failed: response.metadata?.validation_failed,
+          // Also include scope for UI context
+          clarification_scope: response.metadata?.clarification_scope || 'GENERAL'
+        },
+        quickReplies: safeQuickReplies.length > 0 
+          ? safeQuickReplies 
+          : getDefaultQuickReplies(language),
+        source: 'orchestrator_v1'
+      };
+
+    case 'PHOTO_REQUEST':
+      // Need photo for diagnosis
+      const photoInstr = response.photo_instructions;
+      const photoText = (photoInstr as any)?.[`text_${language}`] || photoInstr?.text_en || 'Please send a photo.';
+      
+      return {
+        response: photoText,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        metadata: {
+          type: 'photo_request',
+          tips: photoInstr?.tips
+        },
+        source: 'orchestrator_v1'
+      };
+
+    case 'SAFETY_BLOCKED':
+      // Treatment blocked for safety
+      const blockedReason = response.blocked_reason;
+      const blockedText = (blockedReason as any)?.[`reason_${language}`] || blockedReason?.reason_en || 'This treatment is not safe.';
+      
+      let alternativesText = '';
+      if (response.alternatives && response.alternatives.length > 0) {
+        alternativesText = '\n\nSafe alternatives:\n' + 
+          response.alternatives.map(a => `• ${a.product_name}: ${a.why_safer}`).join('\n');
+      }
+      
+      return {
+        response: blockedText + alternativesText,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        metadata: {
+          type: 'safety_blocked',
+          alternatives: response.alternatives
+        },
+        source: 'orchestrator_v1'
+      };
+
+    case 'ESCALATION_REQUIRED':
+      // Need expert help
+      const esc = response.escalation;
+      const escText = (esc as any)?.[`message_${language}`] || esc?.message_en || 'Connecting you with an expert.';
+      
+      return {
+        response: escText,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        metadata: {
+          type: 'escalation',
+          level: esc?.level,
+          expert_type: esc?.expert_type,
+          sla_hours: esc?.sla_hours
+        },
+        source: 'orchestrator_v1'
+      };
+
+    case 'SYSTEM_ERROR':
+    default:
+      // CRITICAL FIX: Try to provide helpful response instead of error
+      // Use fallback advice from error response if available
+      const fallbackAdvice = response.error?.fallback_advice;
+      
+      // Build a helpful message instead of just "sorry"
+      const helpfulMessage = `🙏 Working on your question.
+
+${fallbackAdvice || 'Please ask your question again or provide more details.'}
+
+📋 Help me help you:
+• What is your crop?
+• What is the problem?
+• Can you send a photo?`;
+      
+      return {
+        response: helpfulMessage,
+        sessionId: sessionId,
+        language: language,
+        responseTime: responseTime,
+        metadata: {
+          type: 'clarification_needed',
+          error: response.error?.message
+        },
+        quickReplies: getDefaultQuickReplies(language),
+        source: 'orchestrator_v1'
+      };
+  }
+}
+
+function getLocalizedMessage(comm: any, language: string): string {
+  if (!comm) return '';
+  
+  // Use the same flattening logic for consistency
+  const flattened = flattenCommunicationToText(comm, language);
+  if (flattened) return flattened;
+  
+  // Legacy fallback: Try to get language-specific message via dynamic key
+  const langMsg = comm[`main_message_${language}`];
+  if (langMsg) return langMsg;
+  
+  // Fallback to main_message
+  return comm.main_message || '';
+}
+
+/**
+ * CRITICAL FIX: Generate context-aware follow-up questions based on:
+ * 1. The actual AI response content
+ * 2. The actions returned (pest/disease/fertilizer)
+ * 3. The land and crop context
+ * 4. User's preferred language
+ */
+function generateQuickRepliesFromCommunication(
+  comm: any, 
+  language: string, 
+  responseContent?: string,
+  actionsReturned?: any[],
+  dataAudit?: any
+): string[] {
+  const lang = language;
+  
+  // If communication has explicit follow-up options, use them
+  if (comm?.follow_up_options && Array.isArray(comm.follow_up_options) && comm.follow_up_options.length > 0) {
+    return comm.follow_up_options.slice(0, 4);
+  }
+  
+  // CONTEXT-AWARE GENERATION based on response content
+  const questions: string[] = [];
+  const content = responseContent || '';
+  const lowerContent = content.toLowerCase();
+  
+  // Get crop name for personalized questions
+  const cropName = dataAudit?.land?.current_crop || dataAudit?.crop_schedule?.crop_name || '';
+  
+  // Detect topics from response content
+  const hasPest = /pest|कीट|कीड|किडा|borer|aphid|mites|whitefly|bollworm|stem.*borer|shoot.*borer|early.*shoot|trichogramma/i.test(lowerContent);
+  const hasDisease = /disease|रोग|blight|rust|mildew|fungus|bacterial|virus|yellowing|wilting|rot|dead.*heart/i.test(lowerContent);
+  const hasFertilizer = /fertilizer|खाद|खत|urea|dap|npk|nitrogen|potash|phosphorus|nutrient/i.test(lowerContent);
+  const hasIrrigation = /water|पानी|पाणी|irrigation|सिंचाई|drip|sprinkler/i.test(lowerContent);
+  const hasSpray = /spray|फवारणी|छिड़काव|treatment|उपचार/i.test(lowerContent);
+  const hasDiagnosis = /diagnos|तपास|निदान|symptom|लक्षण|check|confirm|possible.*cause|संभाव्य/i.test(lowerContent);
+  
+  // Check actions returned for more context
+  const primaryActionType = actionsReturned?.[0]?.action_type || actionsReturned?.[0]?.action || '';
+  const hasChemicalAction = /SPRAY|PESTICIDE|FUNGICIDE|INSECTICIDE/i.test(primaryActionType);
+  const hasBiologicalAction = /BIOLOGICAL|TRICHOGRAMMA|IPM|INTEGRATED/i.test(primaryActionType);
+  
+  // Generate language-specific context-aware questions
+  // English-only context-aware questions — LLM narration layer translates at runtime
+  if (hasPest || hasDisease || hasSpray) {
+    questions.push(`💊 When should I spray ${cropName || 'my crop'} again?`);
+    questions.push('💰 How much crop loss will this treatment prevent?');
+    if (hasBiologicalAction) {
+      questions.push('🦠 Where can I get Trichogramma cards?');
+    }
+  }
+  if (hasDiagnosis) {
+    questions.push('🔍 How can I confirm which cause is affecting my crop?');
+    questions.push('📸 Should I send a photo for diagnosis?');
+  }
+  if (hasFertilizer) {
+    questions.push(`📊 How much fertilizer should I use for ${cropName || 'my crop'}?`);
+    questions.push('💵 How much will yield increase with this fertilizer?');
+  }
+  if (hasIrrigation) {
+    questions.push('💧 When should I water next?');
+    questions.push('🌧️ Should I water even if it rains?');
+  }
+  if (questions.length < 3) {
+    questions.push('📅 What should I do first thing tomorrow?');
+  }
+  if (questions.length < 3) {
+    questions.push('📈 How is my crop growth progressing?');
+  }
+  
+  // Return up to 4 unique questions
+  const uniqueQuestions = [...new Set(questions)];
+  return uniqueQuestions.slice(0, 4);
+}
+
+function getDefaultQuickReplies(_language: string): string[] {
+  // English-only — LLM narration translates at runtime
+  return [
+    '🌅 What to do today?',
+    '💧 When to water?',
+    '🌾 How is my crop?',
+    '📅 Next task?'
+  ];
+}
+
+// Legacy training data collection handler
 async function handleTrainingDataCollection(requestBody: any) {
   try {
     const { messageId, tenantId, farmerId } = requestBody;
@@ -3075,155 +3699,40 @@ async function handleTrainingDataCollection(requestBody: any) {
       );
     }
 
-    console.log('Collecting training data for message:', messageId);
-
-    // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Get the message with positive feedback
     const { data: message, error: messageError } = await supabase
       .from('ai_chat_messages')
-      .select(`
-        *,
-        session:ai_chat_sessions(
-          land_id,
-          session_type,
-          metadata
-        )
-      `)
+      .select('*')
       .eq('id', messageId)
       .eq('tenant_id', tenantId)
       .eq('farmer_id', farmerId)
-      .eq('is_training_candidate', true)
       .single();
 
     if (messageError || !message) {
-      console.error('Message not found or not a training candidate:', messageError);
       return new Response(
-        JSON.stringify({ error: 'Message not found or not suitable for training' }),
+        JSON.stringify({ error: 'Message not found' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get the previous user message (prompt)
-    const { data: userMessage } = await supabase
+    // Mark as training candidate
+    await supabase
       .from('ai_chat_messages')
-      .select('content, metadata')
-      .eq('session_id', message.session_id)
-      .eq('role', 'user')
-      .lt('created_at', message.created_at)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (!userMessage) {
-      console.error('User prompt not found for message:', messageId);
-      return new Response(
-        JSON.stringify({ error: 'User prompt not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Extract context data
-    const landId = message.session?.[0]?.land_id;
-    let contextData: any = {
-      prompt: userMessage.content,
-      response: message.content,
-      feedback_rating: message.feedback_rating,
-      feedback_text: message.feedback_text,
-      language: message.metadata?.language || 'en',
-      session_type: message.session?.[0]?.session_type,
-      created_at: message.created_at
-    };
-
-    // Get land context if available
-    if (landId) {
-      const { data: land } = await supabase
-        .from('lands')
-        .select('*')
-        .eq('id', landId)
-        .eq('tenant_id', tenantId)
-        .single();
-
-      if (land) {
-        contextData.land_context = {
-          crop: land.current_crop || land.crops?.[0],
-          soil_type: land.soil_type,
-          area_acres: land.area_acres || (land.area_gunta ? land.area_gunta / 40 : null),
-          location: land.location,
-          irrigation_type: land.irrigation_type
-        };
-      }
-    }
-
-    // Get farmer context
-    const { data: farmer } = await supabase
-      .from('users')
-      .select('name, language, metadata')
-      .eq('id', farmerId)
-      .eq('tenant_id', tenantId)
-      .single();
-
-    if (farmer) {
-      contextData.farmer_context = {
-        language: farmer.language,
-        experience_level: farmer.metadata?.experience_level,
-        farming_type: farmer.metadata?.farming_type
-      };
-    }
-
-    // Calculate success metrics (placeholder - can be enhanced with real data)
-    const successMetrics = {
-      feedback_score: message.feedback_rating,
-      has_detailed_feedback: !!message.feedback_text,
-      response_time_ms: message.metadata?.response_time_ms,
-      tokens_used: message.metadata?.tokens_used,
-      section_tags: message.metadata?.section_tags || [],
-      marked_as_training: new Date().toISOString()
-    };
-
-    // Store in training context table
-    const { error: trainingError } = await supabase
-      .from('ai_training_context')
-      .insert({
-        tenant_id: tenantId,
-        farmer_id: farmerId,
-        message_id: messageId,
-        context_type: landId ? 'land_specific' : 'general',
-        context_data: contextData,
-        success_metrics: successMetrics,
-        is_validated: false, // Requires manual review before training
-        created_at: new Date().toISOString()
-      });
-
-    if (trainingError) {
-      console.error('Error storing training context:', trainingError);
-      return new Response(
-        JSON.stringify({ error: 'Failed to store training context', details: trainingError }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('Training data collected successfully for message:', messageId);
+      .update({ is_training_candidate: true, training_processed: false })
+      .eq('id', messageId);
 
     return new Response(
-      JSON.stringify({ 
-        success: true, 
-        message: 'Training data collected successfully',
-        messageId 
-      }),
+      JSON.stringify({ success: true, message: 'Training data collected', messageId }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Error in training data collection:', error);
     return new Response(
-      JSON.stringify({ 
-        error: 'Failed to collect training data',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      }),
+      JSON.stringify({ error: 'Failed to collect training data' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

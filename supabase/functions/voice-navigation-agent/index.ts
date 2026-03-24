@@ -1,9 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id',
-};
+import { createClient } from "npm:@supabase/supabase-js@2.57.2";
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface VoiceRequest {
   transcript: string;
@@ -95,12 +91,12 @@ Deno.serve(async (req) => {
       );
     }
 
-    // AI Fallback: Use Lovable AI to understand natural language
-    console.log('[Voice Agent] Using AI fallback for:', transcript);
+    // AI Fallback: Use OpenAI to understand natural language
+    console.log('[Voice Agent] Using OpenAI fallback for:', transcript);
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      console.error('LOVABLE_API_KEY not configured');
+    const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
+    if (!OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY not configured');
       return new Response(
         JSON.stringify({ 
           matched: false,
@@ -134,25 +130,24 @@ App routes:
 Match intent and return JSON:
 {"intent":"navigate.X","route":"/app/X","suggestions":["p1","p2","p3"],"response":"msg in ${language}"}`;
 
-    const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const aiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-lite',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'user', content: aiPrompt }
         ],
-        temperature: 0.2,
         max_tokens: 150,
       }),
     });
 
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
-      console.error('Lovable AI error:', aiResponse.status, errorText);
+      console.error('OpenAI API error:', aiResponse.status, errorText);
       
       if (aiResponse.status === 429) {
         return new Response(
@@ -167,16 +162,16 @@ Match intent and return JSON:
         );
       }
       
-      if (aiResponse.status === 402) {
+      if (aiResponse.status === 402 || aiResponse.status === 401) {
         return new Response(
           JSON.stringify({ 
             matched: false,
-            error: 'Payment required',
+            error: 'API authentication/billing error',
             response: getErrorMessage(language),
             suggestions: getSuggestions(language),
             confidence: 0
           }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: aiResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 

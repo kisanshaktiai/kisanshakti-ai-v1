@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { MarketplaceHeader } from '@/components/marketplace/MarketplaceHeader';
 import { CategoryFilter } from '@/components/marketplace/CategoryFilter';
@@ -8,18 +9,27 @@ import { ProductDetails } from '@/components/marketplace/ProductDetails';
 import { ShoppingCart } from '@/components/marketplace/ShoppingCart';
 import { SellerDashboard } from '@/components/marketplace/SellerDashboard';
 import { OrderManagement } from '@/components/marketplace/OrderManagement';
+import { MarketPriceIntelligence } from '@/components/market-intelligence';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Package, ShoppingBag, Store, TrendingUp } from 'lucide-react';
+import { 
+  TrendingUp, 
+  ShoppingBag, 
+  Package, 
+  Store,
+  Leaf,
+  AlertCircle
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { MarketSkeleton } from '@/components/skeletons';
+import { cn } from '@/lib/utils';
 
 export default function Market() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState('browse');
+  const [activeTab, setActiveTab] = useState('prices');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
@@ -103,8 +113,9 @@ export default function Market() {
     if (!user) return;
     
     try {
-      // @ts-ignore - Type inference issue with Supabase query
-      const { data, error } = await supabase
+      // Use any to bypass deep type instantiation issue with large Supabase schema
+      const client: any = supabase;
+      const { data, error } = await client
         .from('wishlist_items')
         .select('product_id')
         .eq('farmer_id', user.id);
@@ -181,70 +192,121 @@ export default function Market() {
     fetchProducts();
   }, [selectedCategory, searchQuery]);
 
-  if (loading && products.length === 0) {
+  if (loading && products.length === 0 && activeTab !== 'prices') {
     return <MarketSkeleton />;
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      <MarketplaceHeader 
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        onCartClick={() => setCartOpen(true)}
-        cartItemCount={cartItems.length}
-      />
+  // Tab configuration for mobile-first design
+  const tabs = [
+    { id: 'prices', icon: TrendingUp, label: 'भाव', labelEn: 'Prices' },
+    { id: 'browse', icon: ShoppingBag, label: 'खरेदी', labelEn: 'Shop' },
+    { id: 'orders', icon: Package, label: 'ऑर्डर', labelEn: 'Orders' },
+    { id: 'sell', icon: Store, label: 'विक्री', labelEn: 'Sell' },
+  ];
 
-      <div className="container mx-auto px-4 py-6">
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+      {/* Compact Header for non-prices tabs */}
+      {activeTab !== 'prices' && (
+        <MarketplaceHeader 
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onCartClick={() => setCartOpen(true)}
+          cartItemCount={cartItems.length}
+        />
+      )}
+
+      <div className={cn(
+        "container mx-auto px-3 md:px-4",
+        activeTab === 'prices' ? 'py-3' : 'py-4'
+      )}>
+        {/* Mobile-First Tab Navigation */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-6">
-            <TabsTrigger value="browse" className="flex items-center gap-2">
-              <ShoppingBag className="w-4 h-4" />
-              {t('market.tabs.browse')}
-            </TabsTrigger>
-            <TabsTrigger value="orders" className="flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              {t('market.tabs.my_orders')}
-            </TabsTrigger>
-            <TabsTrigger value="sell" className="flex items-center gap-2">
-              <Store className="w-4 h-4" />
-              {t('market.tabs.sell')}
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" />
-              {t('market.tabs.analytics')}
-            </TabsTrigger>
+          <TabsList className={cn(
+            "grid grid-cols-4 w-full h-14 rounded-2xl p-1.5 mb-4",
+            "bg-card/80 backdrop-blur-xl border border-border/50",
+            "shadow-sm"
+          )}>
+            {tabs.map((tab) => (
+              <TabsTrigger 
+                key={tab.id}
+                value={tab.id} 
+                className={cn(
+                  "flex flex-col items-center justify-center gap-0.5 rounded-xl",
+                  "text-xs font-medium transition-all duration-200",
+                  "data-[state=active]:bg-primary data-[state=active]:text-primary-foreground",
+                  "data-[state=active]:shadow-md"
+                )}
+              >
+                <tab.icon className="w-4 h-4" />
+                <span className="text-[10px] md:text-xs">{tab.label}</span>
+              </TabsTrigger>
+            ))}
           </TabsList>
 
-          <TabsContent value="browse" className="space-y-6">
-            <CategoryFilter
-              categories={categories}
-              selectedCategory={selectedCategory}
-              onCategorySelect={setSelectedCategory}
-            />
-            
-            <ProductGrid
-              products={products}
-              loading={loading}
-              wishlistItems={wishlistItems}
-              onProductClick={setSelectedProduct}
-              onAddToCart={addToCart}
-              onToggleWishlist={toggleWishlist}
-            />
+          {/* Prices Tab - Main Content */}
+          <TabsContent value="prices" className="mt-0">
+            <MarketPriceIntelligence />
           </TabsContent>
 
-          <TabsContent value="orders">
-            <OrderManagement userId={user?.id} />
+          {/* Browse/Shop Tab */}
+          <TabsContent value="browse" className="mt-0 space-y-4">
+            {products.length > 0 ? (
+              <>
+                <CategoryFilter
+                  categories={categories}
+                  selectedCategory={selectedCategory}
+                  onCategorySelect={setSelectedCategory}
+                />
+                
+                <ProductGrid
+                  products={products}
+                  loading={loading}
+                  wishlistItems={wishlistItems}
+                  onProductClick={setSelectedProduct}
+                  onAddToCart={addToCart}
+                  onToggleWishlist={toggleWishlist}
+                />
+              </>
+            ) : (
+              <EmptyStateCard
+                icon={ShoppingBag}
+                title="बाजारपेठ लवकरच"
+                titleEn="Marketplace Coming Soon"
+                description="शेतकऱ्यांसाठी उत्पादने लवकरच उपलब्ध होतील"
+                descriptionEn="Products for farmers will be available soon"
+              />
+            )}
           </TabsContent>
 
-          <TabsContent value="sell">
-            <SellerDashboard sellerId={user?.id} />
+          {/* Orders Tab */}
+          <TabsContent value="orders" className="mt-0">
+            {user ? (
+              <OrderManagement userId={user.id} />
+            ) : (
+              <EmptyStateCard
+                icon={Package}
+                title="लॉगिन आवश्यक"
+                titleEn="Login Required"
+                description="ऑर्डर पाहण्यासाठी कृपया लॉगिन करा"
+                descriptionEn="Please login to view your orders"
+              />
+            )}
           </TabsContent>
 
-          <TabsContent value="analytics">
-            <div className="text-center py-12">
-              <h3 className="text-lg font-semibold mb-2">{t('market.analytics.title')}</h3>
-              <p className="text-muted-foreground">{t('market.analytics.description')}</p>
-            </div>
+          {/* Sell Tab */}
+          <TabsContent value="sell" className="mt-0">
+            {user ? (
+              <SellerDashboard sellerId={user.id} />
+            ) : (
+              <EmptyStateCard
+                icon={Store}
+                title="विक्रेता व्हा"
+                titleEn="Become a Seller"
+                description="आपली उत्पादने विकण्यासाठी लॉगिन करा"
+                descriptionEn="Login to start selling your products"
+              />
+            )}
           </TabsContent>
         </Tabs>
       </div>
@@ -279,5 +341,41 @@ export default function Market() {
         }}
       />
     </div>
+  );
+}
+
+// Empty state component for consistent UX
+function EmptyStateCard({ 
+  icon: Icon, 
+  title, 
+  titleEn, 
+  description, 
+  descriptionEn 
+}: { 
+  icon: React.ElementType;
+  title: string;
+  titleEn: string;
+  description: string;
+  descriptionEn: string;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      className={cn(
+        "text-center py-16 px-6",
+        "bg-gradient-to-br from-card/80 via-card/60 to-muted/30",
+        "rounded-3xl border border-border/50",
+        "backdrop-blur-xl"
+      )}
+    >
+      <div className="p-4 rounded-2xl bg-primary/10 w-fit mx-auto mb-4">
+        <Icon className="w-10 h-10 text-primary" />
+      </div>
+      <h3 className="text-xl font-bold mb-1 text-foreground">{title}</h3>
+      <p className="text-sm text-muted-foreground mb-2">{titleEn}</p>
+      <p className="text-sm text-muted-foreground max-w-md mx-auto">{description}</p>
+      <p className="text-xs text-muted-foreground/70 mt-1">{descriptionEn}</p>
+    </motion.div>
   );
 }

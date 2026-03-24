@@ -1,0 +1,499 @@
+{
+  "metadata": {
+    "crop_code": "SUGARCANE",
+    "category": "disease",
+    "version": "3.0.0",
+    "source": "ICAR-SBI/IISR/TNAU/VSI",
+    "last_updated": "2025-01-09",
+    "total_rules": 35
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_RED_ROT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GERMINATION", "TILLERING", "GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["red_internal_tissue", "drying_third_fourth_leaf", "white_patches_in_red", "alcohol_smell"],
+          "stalk_split": true
+        },
+        "weather": { "humidity": ">80%", "waterlogging": true }
+      },
+      "condition_code": "red_internal_tissue AND white_patches AND alcohol_smell",
+      "cause": "Red Rot (Colletotrichum falcatum) - most destructive sugarcane disease",
+      "priority": 98,
+      "confidence_score": 0.95,
+      "etl_threshold": "Any confirmed case",
+      "phi_days": null,
+      "ipm_level": 1,
+      "active_ingredient": "Carbendazim 50% WP (sett treatment)",
+      "organic_alternative": "Hot water treatment 50°C for 2 hours",
+      "scientific_source": "ICAR-SBI Red Rot Management",
+      "icar_package_ref": "SBI-RR-2023",
+      "response_en": "⚠️ RED ROT CONFIRMED - serious disease. DO NOT ratoon this field. Remove and burn all affected canes immediately. Treat healthy setts with Carbendazim 0.1% for 30 min before planting. Use resistant varieties (CoC 671, Co 0238). Improve drainage. Do not spread to other fields via implements.",
+      "response_hi": "⚠️ लाल सड़न की पुष्टि - गंभीर बीमारी। इस खेत में रैटून न करें। सभी प्रभावित गन्नों को तुरंत हटाकर जला दें। रोपण से पहले स्वस्थ पौधों को कार्बेन्डाजिम 0.1% में 30 मिनट के लिए डुबोएं। प्रतिरोधी किस्मों का उपयोग करें।",
+      "response_mr": "⚠️ लाल कूज पुष्टी - गंभीर रोग. या शेतात खोडवा घेऊ नका. सर्व प्रभावित ऊस ताबडतोब काढून जाळा. लागवडीपूर्वी निरोगी बेणे कार्बेन्डाझिम 0.1% मध्ये 30 मिनिटे बुडवा. प्रतिरोधक वाण वापरा.",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SMUT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["black_whip_from_top", "grass_like_shoots", "thin_canes"],
+          "whip_structure": true
+        }
+      },
+      "condition_code": "black_whip_at_top AND thin_canes",
+      "cause": "Whip Smut (Sporisorium scitamineum) - systemic fungal disease",
+      "priority": 95,
+      "confidence_score": 0.95,
+      "etl_threshold": "Any infected clump",
+      "phi_days": null,
+      "ipm_level": 1,
+      "active_ingredient": "Propiconazole 25% EC (sett treatment)",
+      "organic_alternative": "Hot air treatment 54°C for 8 hours",
+      "scientific_source": "ICAR-IISR Smut Management",
+      "icar_package_ref": "IISR-SMUT-2023",
+      "response_en": "⚠️ WHIP SMUT DETECTED - rogue immediately! Cut and burn all smutted clumps BEFORE whip opens (spreads spores). Do NOT use as seed cane. Treat setts with Propiconazole 0.1% or hot air 54°C/8hr. Use certified disease-free seed. Resistant varieties: Co 86032, CoC 671.",
+      "response_hi": "⚠️ व्हिप स्मट का पता चला - तुरंत उखाड़ें! चाबुक खुलने से पहले सभी प्रभावित गुच्छों को काटकर जला दें। बीज गन्ने के रूप में उपयोग न करें। पौधों को प्रोपिकोनाज़ोल 0.1% से उपचारित करें। प्रतिरोधी किस्में उपयोग करें।",
+      "response_mr": "⚠️ व्हिप स्मट आढळला - ताबडतोब उपटा! चाबूक उघडण्यापूर्वी सर्व प्रभावित झुडपे कापून जाळा. बेणे म्हणून वापरू नका. बेणे प्रोपिकोनाझोल 0.1% ने उपचारित करा. प्रतिरोधक वाण वापरा.",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_WILT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["gradual_yellowing", "internal_browning", "hollow_pith", "boat_shaped_cavities"],
+          "progressive": true
+        },
+        "weather": { "drought_stress": true }
+      },
+      "condition_code": "gradual_yellowing AND hollow_pith AND boat_cavities",
+      "cause": "Wilt (Fusarium sacchari) - vascular fungal disease",
+      "priority": 88,
+      "confidence_score": 0.88,
+      "etl_threshold": ">5% plant mortality",
+      "phi_days": null,
+      "ipm_level": 2,
+      "active_ingredient": "No effective chemical control",
+      "organic_alternative": "Trichoderma viride 2.5 kg/ha soil application",
+      "scientific_source": "ICAR-SBI Wilt Management",
+      "icar_package_ref": "SBI-WILT-2022",
+      "response_en": "Wilt disease detected (yellowing, hollow pith). No chemical cure available. Remove affected clumps. Improve drainage - wilt is severe in waterlogged then drought conditions. Apply Trichoderma viride 2.5 kg/ha. Use resistant varieties. Avoid water stress during grand growth.",
+      "response_hi": "विल्ट रोग का पता चला (पीलापन, खोखला गूदा)। कोई रासायनिक इलाज उपलब्ध नहीं। प्रभावित गुच्छे हटाएं। जल निकासी में सुधार करें। ट्राइकोडर्मा विरिडी 2.5 kg/हेक्टेयर डालें। प्रतिरोधी किस्में उपयोग करें।",
+      "response_mr": "विल्ट रोग आढळला (पिवळेपणा, पोकळ गाभा). कोणताही रासायनिक उपचार नाही. प्रभावित झुडपे काढा. निचरा सुधारा. ट्रायकोडर्मा विरिडी 2.5 kg/हेक्टर टाका. प्रतिरोधक वाण वापरा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SETT_ROT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GERMINATION"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["poor_germination", "rotting_setts", "pineapple_smell", "red_brown_internal"],
+          "germination_failure": true
+        },
+        "soil": { "waterlogged": true, "temperature": "<20C" }
+      },
+      "condition_code": "rotting_setts AND pineapple_smell AND poor_germination",
+      "cause": "Sett Rot/Pineapple Disease (Ceratocystis paradoxa)",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "etl_threshold": ">10% germination failure",
+      "phi_days": null,
+      "ipm_level": 1,
+      "active_ingredient": "Carbendazim 50% WP + Mancozeb 75% WP",
+      "organic_alternative": "Hot water treatment 52°C for 30 min",
+      "scientific_source": "ICAR-SBI Sett Rot Management",
+      "icar_package_ref": "SBI-SR-2023",
+      "response_en": "Sett Rot detected (pineapple smell, rotting setts). For replanting: dip setts in Carbendazim 0.1% + Mancozeb 0.25% for 15 min. Avoid planting in cold waterlogged soil. Use 3-budded setts from healthy crop. Hot water treatment 52°C/30 min prevents infection.",
+      "response_hi": "सेट रॉट का पता चला (अनानास जैसी गंध, सड़ते पौधे)। पुनः रोपण के लिए: पौधों को कार्बेन्डाजिम 0.1% + मैंकोजेब 0.25% में 15 मिनट के लिए डुबोएं। ठंडी जलभराव वाली मिट्टी में रोपण से बचें।",
+      "response_mr": "बेणे कूज आढळला (अननसासारखा वास, कुजलेले बेणे). पुनर्लागवडीसाठी: बेणे कार्बेन्डाझिम 0.1% + मॅन्कोझेब 0.25% मध्ये 15 मिनिटे बुडवा. थंड पाणथळ जमिनीत लागवड टाळा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_POKKAH_BOENG_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["chlorotic_leaf_base", "wrinkled_twisted_leaves", "knife_cut_lesions", "top_rot"],
+          "young_leaves_affected": true
+        },
+        "weather": { "high_humidity": true, "warm_temperature": true }
+      },
+      "condition_code": "chlorotic_base AND twisted_leaves AND knife_cut",
+      "cause": "Pokkah Boeng (Fusarium moniliforme)",
+      "priority": 75,
+      "confidence_score": 0.85,
+      "etl_threshold": ">10% plant infection",
+      "phi_days": null,
+      "ipm_level": 2,
+      "active_ingredient": "Carbendazim 50% WP spray",
+      "organic_alternative": "Remove affected leaves, improve ventilation",
+      "scientific_source": "TNAU Pokkah Boeng Management",
+      "icar_package_ref": "TNAU-PB-2022",
+      "response_en": "Pokkah Boeng detected (twisted leaves, knife-cut lesions). Remove and destroy affected leaves. Spray Carbendazim 0.1% on young leaves. Improve air circulation by detrashing. Avoid excess nitrogen. Usually self-limiting but monitor for top rot stage.",
+      "response_hi": "पोक्काह बोएंग का पता चला (मुड़े पत्ते, चाकू जैसे घाव)। प्रभावित पत्तियां हटाकर नष्ट करें। युवा पत्तियों पर कार्बेन्डाजिम 0.1% छिड़कें। हवा का संचार बढ़ाने के लिए पत्तियां हटाएं।",
+      "response_mr": "पोक्काह बोएंग आढळला (वळलेली पाने, चाकूसारखे घाव). प्रभावित पाने काढून नष्ट करा. कोवळ्या पानांवर कार्बेन्डाझिम 0.1% फवारा. हवा खेळती करण्यासाठी पाने काढा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RSD_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["stunted_growth", "thin_canes", "poor_ratooning", "orange_red_dots_at_nodes"],
+          "progressive_decline": true
+        }
+      },
+      "condition_code": "stunted_thin_canes AND poor_ratooning AND nodal_dots",
+      "cause": "Ratoon Stunting Disease (Leifsonia xyli subsp. xyli) - bacterial",
+      "priority": 82,
+      "confidence_score": 0.80,
+      "etl_threshold": "Lab confirmation required",
+      "phi_days": null,
+      "ipm_level": 1,
+      "active_ingredient": "No chemical control - hot water treatment only",
+      "organic_alternative": "Hot water treatment 50°C for 2 hours",
+      "scientific_source": "ICAR-SBI RSD Management",
+      "icar_package_ref": "SBI-RSD-2023",
+      "response_en": "RSD suspected (stunted thin canes, poor ratoon). CRITICAL: Sterilize cutting tools with bleach between fields. Use certified disease-free seed. Hot water treatment 50°C/2hr eliminates bacteria. Avoid ratooning beyond 2 cycles. Lab diagnosis confirms infection.",
+      "response_hi": "RSD का संदेह (बौने पतले गन्ने, खराब रैटून)। महत्वपूर्ण: खेतों के बीच काटने के उपकरणों को ब्लीच से स्टेरलाइज करें। प्रमाणित रोग-मुक्त बीज उपयोग करें। गर्म पानी उपचार 50°C/2hr बैक्टीरिया को खत्म करता है।",
+      "response_mr": "RSD चा संशय (खुरटलेले पातळ ऊस, खराब खोडवा). महत्त्वाचे: शेतांमध्ये कापणी साधने ब्लीचने निर्जंतुक करा. प्रमाणित रोगमुक्त बेणे वापरा. गरम पाणी उपचार 50°C/2hr जीवाणू नष्ट करतो.",
+      "action_type": "prevention",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_LEAF_SCALD_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["white_pencil_lines_on_leaves", "scalded_appearance", "side_shooting", "wilting"],
+          "vascular_discoloration": true
+        }
+      },
+      "condition_code": "white_pencil_lines AND scalded_leaves AND side_shoots",
+      "cause": "Leaf Scald (Xanthomonas albilineans) - bacterial",
+      "priority": 78,
+      "confidence_score": 0.85,
+      "etl_threshold": "Any confirmed case",
+      "phi_days": null,
+      "ipm_level": 1,
+      "active_ingredient": "No chemical control",
+      "organic_alternative": "Hot water treatment 50°C for 3 hours",
+      "scientific_source": "ICAR-IISR Leaf Scald Management",
+      "icar_package_ref": "IISR-LS-2022",
+      "response_en": "Leaf Scald detected (white pencil lines, scalded leaves). No chemical cure. Rogue infected stools. Use disease-free setts from heat-treated nursery. Sterilize cutting implements. Hot water treatment 50°C/3hr effective. Avoid susceptible varieties in endemic areas.",
+      "response_hi": "लीफ स्काल्ड का पता चला (सफेद पेंसिल लाइनें, झुलसी पत्तियां)। कोई रासायनिक इलाज नहीं। संक्रमित पौधे उखाड़ें। गर्म उपचारित नर्सरी से रोग-मुक्त पौधे उपयोग करें।",
+      "response_mr": "लीफ स्काल्ड आढळला (पांढऱ्या पेन्सिल रेषा, करपलेली पाने). कोणताही रासायनिक उपचार नाही. संक्रमित झुडपे उपटा. उष्णता उपचारित रोपवाटिकेतून रोगमुक्त बेणे वापरा.",
+      "action_type": "prevention",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_MOSAIC_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GERMINATION", "TILLERING", "GRAND_GROWTH"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["mosaic_pattern_on_leaves", "light_dark_green_patches", "stunted_growth"],
+          "pattern": "irregular_mosaic"
+        }
+      },
+      "condition_code": "mosaic_pattern AND light_dark_green_patches",
+      "cause": "Sugarcane Mosaic Virus (SCMV) - transmitted by aphids",
+      "priority": 72,
+      "confidence_score": 0.82,
+      "etl_threshold": ">5% plant infection",
+      "phi_days": null,
+      "ipm_level": 2,
+      "active_ingredient": "Imidacloprid 0.3ml/L (vector control)",
+      "organic_alternative": "Rogue infected plants + control aphid vectors",
+      "scientific_source": "ICAR-SBI Mosaic Management",
+      "icar_package_ref": "SBI-MOS-2022",
+      "response_en": "Mosaic virus detected (light-dark green mosaic pattern). Rogue and destroy infected plants. Control aphid vectors with Imidacloprid 0.3ml/L or Neem oil 2%. Use virus-free seed cane from meristem culture. Resistant varieties available.",
+      "response_hi": "मोज़ेक वायरस का पता चला (हल्के-गहरे हरे मोज़ेक पैटर्न)। संक्रमित पौधों को उखाड़कर नष्ट करें। इमिडाक्लोप्रिड 0.3ml/L से एफिड वाहकों को नियंत्रित करें। वायरस-मुक्त बीज गन्ना उपयोग करें।",
+      "response_mr": "मोझॅक विषाणू आढळला (फिक्या-गडद हिरवा मोझॅक नमुना). संक्रमित रोपे उपटून नष्ट करा. इमिडाक्लोप्रिड 0.3ml/L ने माव वाहक नियंत्रित करा. विषाणूमुक्त बेणे वापरा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_GRASSY_SHOOT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["profuse_thin_tillers", "grass_like_appearance", "no_millable_canes", "white_leaves"],
+          "growth_pattern": "bushy_grassy"
+        }
+      },
+      "condition_code": "profuse_thin_tillers AND grass_like AND no_millable_canes",
+      "cause": "Grassy Shoot Disease (Phytoplasma) - transmitted by leafhoppers",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "etl_threshold": "Any infected clump",
+      "phi_days": null,
+      "ipm_level": 1,
+      "active_ingredient": "No chemical cure",
+      "organic_alternative": "Rogue + destroy infected clumps, control leafhoppers",
+      "scientific_source": "ICAR-IISR GSD Management",
+      "icar_package_ref": "IISR-GSD-2023",
+      "response_en": "⚠️ GRASSY SHOOT detected - rogue immediately! Affected clumps produce NO millable canes. Uproot and burn entire stool. Control leafhopper vectors. Use disease-free planting material. Do not ratoon infected fields. No chemical treatment exists.",
+      "response_hi": "⚠️ ग्रासी शूट का पता चला - तुरंत उखाड़ें! प्रभावित गुच्छे कोई पेराई योग्य गन्ना नहीं देते। पूरे पौधे को उखाड़कर जला दें। लीफहॉपर वाहकों को नियंत्रित करें। रोग-मुक्त रोपण सामग्री उपयोग करें।",
+      "response_mr": "⚠️ ग्रासी शूट आढळला - ताबडतोब उपटा! प्रभावित झुडपे गाळप योग्य ऊस देत नाहीत. संपूर्ण बुंधा उपटून जाळा. पानफुदका वाहक नियंत्रित करा. रोगमुक्त लागवड साहित्य वापरा.",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_YELLOW_LEAF_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["yellowing_midrib", "necrotic_leaf_tips", "bunchy_top", "stunting"],
+          "midrib_yellowing": true
+        }
+      },
+      "condition_code": "midrib_yellowing AND necrotic_tips AND bunchy_top",
+      "cause": "Yellow Leaf Disease (Sugarcane Yellow Leaf Virus - ScYLV)",
+      "priority": 80,
+      "confidence_score": 0.85,
+      "etl_threshold": ">5% plant infection",
+      "phi_days": null,
+      "ipm_level": 2,
+      "active_ingredient": "Imidacloprid (aphid vector control)",
+      "organic_alternative": "Rogue + meristem culture derived seed",
+      "scientific_source": "ICAR-SBI YLD Management",
+      "icar_package_ref": "SBI-YLD-2022",
+      "response_en": "Yellow Leaf Disease suspected (midrib yellowing, necrotic tips). Rogue severely affected plants. Control aphid vectors. Use meristem-derived virus-free seed. Resistant varieties: CoC 671, Co 0238. Yield loss can reach 20-50% in susceptible varieties.",
+      "response_hi": "पीली पत्ती रोग का संदेह (मध्यशिरा पीलापन, सूखी पत्ती के सिरे)। गंभीर रूप से प्रभावित पौधों को उखाड़ें। एफिड वाहकों को नियंत्रित करें। मेरिस्टेम-व्युत्पन्न वायरस-मुक्त बीज उपयोग करें।",
+      "response_mr": "पिवळ्या पानांचा रोग संशयित (मध्यशीर पिवळेपणा, करपलेले टोक). तीव्र प्रभावित रोपे उपटा. माव वाहक नियंत्रित करा. मेरिस्टेम-व्युत्पन्न विषाणूमुक्त बेणे वापरा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RUST_COMMON_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["orange_brown_pustules", "pustules_on_underside", "leaf_yellowing"],
+          "pustule_color": "orange_brown"
+        },
+        "weather": { "humidity": ">80%", "temperature": "20-25C" }
+      },
+      "condition_code": "orange_brown_pustules AND high_humidity",
+      "cause": "Common Rust (Puccinia melanocephala)",
+      "priority": 68,
+      "confidence_score": 0.85,
+      "etl_threshold": ">25% leaf area affected",
+      "phi_days": 14,
+      "ipm_level": 2,
+      "active_ingredient": "Propiconazole 25% EC",
+      "organic_alternative": "Detrash + improve air circulation",
+      "scientific_source": "TNAU Rust Management",
+      "icar_package_ref": "TNAU-RUST-2022",
+      "response_en": "Common Rust detected (orange-brown pustules on leaves). Detrash to improve air circulation. If >25% leaf area affected, spray Propiconazole 0.1% or Mancozeb 0.25%. Usually mild and self-limiting. Monitor for spread in humid conditions.",
+      "response_hi": "सामान्य रस्ट का पता चला (पत्तियों पर नारंगी-भूरे दाने)। हवा का संचार बढ़ाने के लिए पत्तियां हटाएं। 25% से अधिक पत्ती क्षेत्र प्रभावित होने पर प्रोपिकोनाज़ोल 0.1% या मैंकोजेब 0.25% छिड़कें।",
+      "response_mr": "सामान्य तांबेरा आढळला (पानांवर नारंगी-तपकिरी फोड). हवा खेळती करण्यासाठी पाने काढा. 25% पेक्षा जास्त पान क्षेत्र प्रभावित असल्यास प्रोपिकोनाझोल 0.1% किंवा मॅन्कोझेब 0.25% फवारा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RUST_ORANGE_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["bright_orange_pustules", "severe_defoliation", "rapid_spread"],
+          "pustule_color": "bright_orange"
+        },
+        "weather": { "humidity": ">85%", "temperature": "22-28C" }
+      },
+      "condition_code": "bright_orange_pustules AND rapid_spread",
+      "cause": "Orange Rust (Puccinia kuehnii) - more aggressive than common rust",
+      "priority": 82,
+      "confidence_score": 0.88,
+      "etl_threshold": ">15% leaf area affected",
+      "phi_days": 14,
+      "ipm_level": 2,
+      "active_ingredient": "Tebuconazole 25% EC",
+      "organic_alternative": "Resistant varieties essential",
+      "scientific_source": "ICAR-SBI Orange Rust Advisory",
+      "icar_package_ref": "SBI-ORUST-2023",
+      "response_en": "⚠️ Orange Rust detected - more aggressive than common rust! Spray Tebuconazole 0.1% or Trifloxystrobin + Tebuconazole immediately. Repeat after 15 days if humid. Use resistant varieties in future. Report to agricultural department for surveillance.",
+      "response_hi": "⚠️ ऑरेंज रस्ट का पता चला - सामान्य रस्ट से अधिक आक्रामक! तुरंत टेबुकोनाज़ोल 0.1% छिड़कें। आर्द्र होने पर 15 दिनों बाद दोहराएं। भविष्य में प्रतिरोधी किस्में उपयोग करें।",
+      "response_mr": "⚠️ ऑरेंज तांबेरा आढळला - सामान्य तांबेऱ्यापेक्षा अधिक आक्रमक! ताबडतोब टेबुकोनाझोल 0.1% फवारा. ओलसर असल्यास 15 दिवसांनी पुन्हा करा. भविष्यात प्रतिरोधक वाण वापरा.",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_EYE_SPOT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["TILLERING", "GRAND_GROWTH"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["eye_shaped_lesions", "straw_center_red_margin", "lesion_coalescence"],
+          "lesion_shape": "eye_oval"
+        },
+        "weather": { "high_humidity": true }
+      },
+      "condition_code": "eye_shaped_lesions AND straw_center_red_margin",
+      "cause": "Eye Spot (Bipolaris sacchari)",
+      "priority": 65,
+      "confidence_score": 0.82,
+      "etl_threshold": ">20% leaf area affected",
+      "phi_days": 14,
+      "ipm_level": 3,
+      "active_ingredient": "Mancozeb 75% WP",
+      "organic_alternative": "Detrash + balanced nutrition",
+      "scientific_source": "TNAU Eye Spot Management",
+      "icar_package_ref": "TNAU-ES-2022",
+      "response_en": "Eye Spot detected (oval lesions with straw center, red margin). Usually minor disease. Detrash lower leaves. If severe, spray Mancozeb 0.25%. Ensure balanced nutrition - excess N increases susceptibility. Monitor in humid weather.",
+      "response_hi": "आई स्पॉट का पता चला (भूसे जैसे केंद्र और लाल किनारे वाले अंडाकार घाव)। आमतौर पर मामूली बीमारी। निचली पत्तियां हटाएं। गंभीर होने पर मैंकोजेब 0.25% छिड़कें।",
+      "response_mr": "आय स्पॉट आढळला (पेंढासारखे मध्य आणि लाल किनारा असलेले अंडाकार घाव). सामान्यतः किरकोळ रोग. खालची पाने काढा. तीव्र असल्यास मॅन्कोझेब 0.25% फवारा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_BROWN_SPOT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["brown_spots_on_leaves", "spots_with_yellow_halo", "older_leaves_affected"],
+          "spot_color": "brown"
+        }
+      },
+      "condition_code": "brown_spots AND yellow_halo AND older_leaves",
+      "cause": "Brown Spot (Cercospora longipes)",
+      "priority": 58,
+      "confidence_score": 0.78,
+      "etl_threshold": ">30% leaf area affected",
+      "phi_days": 14,
+      "ipm_level": 3,
+      "active_ingredient": "Carbendazim 50% WP",
+      "organic_alternative": "Remove affected leaves",
+      "scientific_source": "TNAU Brown Spot Management",
+      "icar_package_ref": "TNAU-BS-2022",
+      "response_en": "Brown Spot detected (brown spots with yellow halo on older leaves). Minor disease with limited yield impact. Remove heavily spotted lower leaves. If spreading to upper leaves, spray Carbendazim 0.1%. Ensure adequate potassium nutrition.",
+      "response_hi": "ब्राउन स्पॉट का पता चला (पुरानी पत्तियों पर पीले हेलो के साथ भूरे धब्बे)। सीमित उपज प्रभाव वाली मामूली बीमारी। भारी धब्बेदार निचली पत्तियां हटाएं। ऊपरी पत्तियों में फैलने पर कार्बेन्डाजिम 0.1% छिड़कें।",
+      "response_mr": "ब्राउन स्पॉट आढळला (जुन्या पानांवर पिवळ्या वलयासह तपकिरी डाग). मर्यादित उत्पादन परिणाम असलेला किरकोळ रोग. जास्त डाग असलेली खालची पाने काढा. वरच्या पानांवर पसरत असल्यास कार्बेन्डाझिम 0.1% फवारा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RED_LEAF_SPOT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["red_spots_on_leaves", "spots_on_midrib", "elongated_lesions"],
+          "spot_color": "red"
+        }
+      },
+      "condition_code": "red_spots AND midrib_lesions",
+      "cause": "Red Leaf Spot (Dimeriella sacchari)",
+      "priority": 55,
+      "confidence_score": 0.75,
+      "etl_threshold": ">30% leaf area affected",
+      "phi_days": 14,
+      "ipm_level": 3,
+      "active_ingredient": "Mancozeb 75% WP",
+      "organic_alternative": "Improve field sanitation",
+      "scientific_source": "ICAR-SBI Red Leaf Spot",
+      "icar_package_ref": "SBI-RLS-2022",
+      "response_en": "Red Leaf Spot detected (red elongated spots on leaves and midrib). Usually a minor disease. Detrash lower leaves. If severe, spray Mancozeb 0.25%. Maintain balanced nutrition. Resistant varieties recommended for endemic areas.",
+      "response_hi": "रेड लीफ स्पॉट का पता चला (पत्तियों और मध्यशिरा पर लाल लंबे धब्बे)। आमतौर पर मामूली बीमारी। निचली पत्तियां हटाएं। गंभीर होने पर मैंकोजेब 0.25% छिड़कें।",
+      "response_mr": "रेड लीफ स्पॉट आढळला (पाने आणि मध्यशिरेवर लाल लांबट डाग). सामान्यतः किरकोळ रोग. खालची पाने काढा. तीव्र असल्यास मॅन्कोझेब 0.25% फवारा.",
+      "action_type": "treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_RING_SPOT_001",
+      "crop_code": "SUGARCANE",
+      "crop_group": "sugarcane",
+      "category": "disease",
+      "canonical_group": "disease",
+      "stage_applicable": ["GRAND_GROWTH", "MATURITY"],
+      "conditions_json": {
+        "observations": {
+          "visual_symptoms": ["ring_shaped_lesions", "concentric_rings", "straw_colored_center"],
+          "lesion_pattern": "ring"
+        }
+      },
+      "condition_code": "ring_shaped_lesions AND concentric_pattern",
+      "cause": "Ring Spot (Leptosphaeria sacchari)",
+      "priority": 52,
+      "confidence_score": 0.75,
+      "etl_threshold": ">30% leaf area affected",
+      "phi_days": 14,
+      "ipm_level": 3,
+      "active_ingredient": "Mancozeb 75% WP",
+      "organic_alternative": "Remove affected leaves",
+      "scientific_source": "TNAU Ring Spot",
+      "icar_package_ref": "TNAU-RS-2022",
+      "response_en": "Ring Spot detected (ring-shaped lesions with concentric rings). Minor disease, rarely requires treatment. Remove heavily affected lower leaves. If spreading significantly, spray Mancozeb 0.25%. Maintain good field sanitation.",
+      "response_hi": "रिंग स्पॉट का पता चला (संकेंद्रित वलय के साथ रिंग के आकार के घाव)। मामूली बीमारी, शायद ही कभी उपचार की आवश्यकता होती है। भारी प्रभावित निचली पत्तियां हटाएं।",
+      "response_mr": "रिंग स्पॉट आढळला (संकेंद्रित वलयांसह रिंग आकाराचे घाव). किरकोळ रोग, क्वचितच उपचार आवश्यक. जास्त प्रभावित खालची पाने काढा.",
+      "action_type": "treatment",
+      "is_active": true
+    }
+  ]
+}

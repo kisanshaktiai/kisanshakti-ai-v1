@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, updateSupabaseHeaders } from '@/integrations/supabase/client';
 import { useTenant } from '@/contexts/TenantContext';
 import { useAuthFlowStore } from '@/stores/authFlowStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -79,6 +79,9 @@ export default function AuthScreen() {
         tenant_name: tenant.name
       });
 
+      // Set tenant header for RLS policy before pre-auth query
+      updateSupabaseHeaders(undefined, tenant.id);
+      
       // MULTI-TENANT QUERY: Always filter by tenant_id + mobile_number
       // Mobile numbers are stored as strings without country code
       const { data: farmer, error: fetchError } = await supabase
@@ -114,7 +117,7 @@ export default function AuthScreen() {
       } else {
         // User not found, switch to register mode
         setMode('register');
-        setError(t('auth.noAccount') || 'No account found. Click Continue to register.');
+        setError(t('auth.accountNotFound') || 'No account found with this number. Click Continue to register.');
       }
     } catch (err: any) {
       console.error('Error in auth:', err);

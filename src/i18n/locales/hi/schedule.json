@@ -174,12 +174,14 @@
       "notes_label": "नोट्स",
       "notes_optional": "(वैकल्पिक)",
       "notes_placeholder": "इस कार्य के बारे में कोई नोट्स जोड़ें...",
-      "done": "पूर्ण",
+      "done": "पुष्टि करें",
       "skipped": "छोड़ा गया",
       "weather": "मौसम",
       "high": "उच्च",
       "medium": "मध्यम",
-      "low": "कम"
+      "low": "कम",
+      "hours": "घंटे",
+      "persons": "व्यक्ति"
     },
     "land_selector": {
       "ai_schedule_ready": "AI अनुसूची तैयार",

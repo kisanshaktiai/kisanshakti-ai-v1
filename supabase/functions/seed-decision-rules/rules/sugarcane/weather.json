@@ -1,0 +1,265 @@
+{
+  "metadata": {
+    "crop": "sugarcane",
+    "category": "weather",
+    "canonical_group": "09_weather",
+    "version": "3.1.0",
+    "scientific_source": "IMD, ICAR-SBI, CRIDA",
+    "last_updated": "2026-01-10",
+    "total_rules": 12
+  },
+  "rules": [
+    {
+      "rule_id": "SUGARCANE_MONSOON_ONSET_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "weather": {"event": "monsoon_onset"},
+        "context": "seasonal_advisory"
+      },
+      "cause": "Monsoon onset advisory",
+      "priority": 85,
+      "confidence_score": 0.90,
+      "scientific_source": "IMD Monsoon Guidelines",
+      "response_en": "🌧️ MONSOON ONSET - SUGARCANE ADVISORY:\n\n✅ PREPARATION:\n• Complete earthing up before heavy rains\n• Apply remaining N-fertilizer in splits\n• Clean drainage channels\n• Install light traps for borer moths\n\n⚠️ WATCH FOR:\n• Waterlogging after heavy rains\n• Fungal diseases (Pokkah Boeng)\n• Reduced pest spraying opportunity\n• Weed flush - timely control needed\n\n📋 Monsoon is GRAND GROWTH phase - critical for yield!",
+      "response_hi": "🌧️ मानसून शुरू - गन्ना सलाह:\n\n✅ भारी बारिश से पहले मिट्टी चढ़ाएं, जल निकासी साफ करें\n⚠️ जलभराव, फफूंद रोग, खरपतवार पर ध्यान दें",
+      "response_mr": "🌧️ मान्सून सुरुवात - ऊस सल्ला:\n\n✅ जोरदार पावसापूर्वी मातीची भर द्या, निचरा स्वच्छ करा\n⚠️ पाणी साचणे, बुरशीजन्य रोग, तणांवर लक्ष ठेवा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_HEAVY_RAIN_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "weather": {"rainfall": ">100mm", "duration": "24hours"},
+        "context": "heavy_rain_alert"
+      },
+      "cause": "Heavy rainfall alert",
+      "priority": 90,
+      "confidence_score": 0.92,
+      "scientific_source": "IMD Weather Alerts",
+      "response_en": "🌧️ HEAVY RAIN ALERT (>100mm expected):\n\n✅ BEFORE RAIN:\n• Open all drainage outlets\n• Postpone any scheduled spraying\n• Prop tall canes if possible\n\n✅ AFTER RAIN:\n• Drain excess water within 48 hours\n• Check for lodging - prop immediately\n• Monitor for disease outbreak (3-5 days later)\n• Spray fungicide if prolonged wet weather\n\n⚠️ Heavy rain + wind = lodging risk\n⚠️ Stagnant water >5 days = major yield loss",
+      "response_hi": "🌧️ भारी बारिश चेतावनी (>100mm):\n\n✅ पहले: जल निकासी खोलें, छिड़काव टालें\n✅ बाद में: 48 घंटे में पानी निकालें, गिरने की जांच करें",
+      "response_mr": "🌧️ जोरदार पाऊस इशारा (>100mm):\n\n✅ आधी: निचरा उघडा, फवारणी पुढे ढकला\n✅ नंतर: 48 तासांत पाणी काढा, पडणे तपासा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_DRY_SPELL_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["grand_growth"],
+      "conditions_json": {
+        "weather": {"rainfall": "nil", "duration": ">15days"},
+        "context": "monsoon_break"
+      },
+      "cause": "Monsoon break / dry spell",
+      "priority": 92,
+      "confidence_score": 0.90,
+      "scientific_source": "CRIDA Dry Spell Management",
+      "response_en": "☀️ DRY SPELL DURING MONSOON (No rain >15 days):\n\n⚠️ CRITICAL for Grand Growth stage!\n\n✅ IMMEDIATE:\n• Life-saving irrigation essential\n• One irrigation can save 30% yield loss\n• Apply mulch if available\n\n✅ SPRAY:\n• KCl 1% for stress tolerance\n• Reduce N-fertilizer by 25%\n\n📊 Yield loss: 5-7% per day of stress during this phase\n\n⚠️ July-August dry spells are common - keep irrigation ready!",
+      "response_hi": "☀️ मानसून में सूखा (15+ दिन बारिश नहीं):\n\n⚠️ भव्य वृद्धि के लिए गंभीर!\n✅ तुरंत सिंचाई करें - एक सिंचाई 30% नुकसान बचा सकती है",
+      "response_mr": "☀️ मान्सूनमध्ये खंड (15+ दिवस पाऊस नाही):\n\n⚠️ ग्रँड ग्रोथसाठी गंभीर!\n✅ तात्काळ पाणी द्या - एक पाणी 30% नुकसान वाचवू शकते",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_HEATWAVE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["germination", "tillering", "grand_growth"],
+      "conditions_json": {
+        "weather": {"temperature": ">42C", "duration": ">3days"},
+        "context": "heatwave"
+      },
+      "cause": "Heatwave alert",
+      "priority": 88,
+      "confidence_score": 0.88,
+      "scientific_source": "IMD Heatwave Guidelines",
+      "response_en": "🌡️ HEATWAVE ALERT (>42°C for 3+ days):\n\n✅ MANAGEMENT:\n• Increase irrigation frequency (every 5-7 days)\n• Irrigate in evening (cooler soil overnight)\n• Apply trash mulch (reduces soil temperature by 5-8°C)\n• Spray 2% Kaolin (reflective coating)\n• Avoid fertilizer application during peak heat\n\n⚠️ AVOID:\n• Spraying pesticides (phytotoxicity risk)\n• Field operations during afternoon\n\n📊 Growth stops above 45°C",
+      "response_hi": "🌡️ लू चेतावनी (>42°C):\n\n✅ सिंचाई बढ़ाएं, शाम को पानी दें, मल्चिंग करें\n⚠️ दोपहर में छिड़काव/खेत कार्य टालें",
+      "response_mr": "🌡️ उष्णतेची लाट (>42°C):\n\n✅ पाणी वाढवा, संध्याकाळी पाणी द्या, आच्छादन करा\n⚠️ दुपारी फवारणी/शेतकाम टाळा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_COLD_WAVE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["germination", "tillering", "maturity"],
+      "conditions_json": {
+        "weather": {"temperature": "<10C", "duration": ">3days"},
+        "context": "cold_wave"
+      },
+      "cause": "Cold wave alert",
+      "priority": 85,
+      "confidence_score": 0.88,
+      "scientific_source": "IMD Cold Wave Guidelines",
+      "response_en": "❄️ COLD WAVE ALERT (<10°C for 3+ days):\n\n✅ PROTECTION:\n• Light irrigation before cold night (soil releases heat)\n• Trash mulch protects roots\n• Avoid nitrogen during cold (can't be utilized)\n• Create smoke screens on coldest nights (traditional method)\n\n⚠️ FROST RISK:\n• If ground frost expected, irrigate in evening\n• Harvest mature cane before severe frost\n\n📊 Germination stops below 12°C\n📊 Frost damages leaves and inverts sugar",
+      "response_hi": "❄️ शीत लहर चेतावनी (<10°C):\n\n✅ ठंडी रात से पहले सिंचाई, मल्चिंग, धुआं\n⚠️ पाला जोखिम: गंभीर पाले से पहले परिपक्व गन्ना काटें",
+      "response_mr": "❄️ थंडीची लाट (<10°C):\n\n✅ थंड रात्रीपूर्वी पाणी, आच्छादन, धूर\n⚠️ दव धोका: तीव्र दवापूर्वी परिपक्व ऊस कापा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_CYCLONE_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["grand_growth", "maturity"],
+      "conditions_json": {
+        "weather": {"event": "cyclone", "wind": ">80kmph"},
+        "context": "cyclone_alert"
+      },
+      "cause": "Cyclone/severe storm alert",
+      "priority": 95,
+      "confidence_score": 0.92,
+      "scientific_source": "IMD Cyclone Guidelines",
+      "response_en": "🌀 CYCLONE/STORM ALERT:\n\n✅ BEFORE STORM:\n• Harvest mature cane if time permits\n• Open all drainage outlets\n• Secure farm equipment\n\n✅ AFTER STORM:\n• Assess damage for insurance (photo document)\n• Prop lodged canes within 48 hours\n• Drain waterlogged areas immediately\n• Spray fungicide to prevent disease\n• Apply 25 kg N/ha for recovery\n\n📋 INSURANCE: Report to insurance within 48-72 hours\n\n⚠️ Don't enter field until safe",
+      "response_hi": "🌀 चक्रवात/तूफान चेतावनी:\n\n✅ पहले: परिपक्व गन्ना काटें, जल निकासी खोलें\n✅ बाद में: बीमा के लिए फोटो, 48 घंटे में गिरे गन्ने उठाएं",
+      "response_mr": "🌀 चक्रीवादळ/वादळ इशारा:\n\n✅ आधी: परिपक्व ऊस कापा, निचरा उघडा\n✅ नंतर: विम्यासाठी फोटो, 48 तासांत पडलेले ऊस उभे करा",
+      "action_type": "urgent_treatment",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_OPTIMAL_PLANTING_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["planting"],
+      "conditions_json": {
+        "weather": {"context": "planting_window"},
+        "context": "optimal_timing"
+      },
+      "cause": "Optimal planting weather",
+      "priority": 80,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR-SBI Planting Guidelines",
+      "response_en": "📅 OPTIMAL PLANTING WEATHER:\n\n✅ BEST CONDITIONS:\n• Temperature: 25-32°C\n• Soil moisture: Adequate (not waterlogged)\n• Season: Feb-Mar (Adsali), Oct-Nov (Pre-seasonal), Jan-Feb (Seasonal)\n\n📊 REGIONAL TIMING:\n• Maharashtra: Oct-Nov (best), Feb-Mar\n• UP/Bihar: Feb-Mar, Oct\n• Tamil Nadu: Dec-Jan\n• Karnataka: Jul-Aug\n\n⚠️ Avoid planting during:\n• Peak summer (>40°C) - poor germination\n• Heavy monsoon - waterlogging\n• Winter (<15°C) - slow germination",
+      "response_hi": "📅 इष्टतम रोपण मौसम:\n\n✅ सर्वोत्तम: तापमान 25-32°C, पर्याप्त नमी\n📊 क्षेत्र के अनुसार समय चुनें",
+      "response_mr": "📅 इष्टतम लागवड हवामान:\n\n✅ सर्वोत्तम: तापमान 25-32°C, पुरेसा ओलावा\n📊 प्रदेशानुसार वेळ निवडा",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_HARVEST_WEATHER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["maturity", "harvest"],
+      "conditions_json": {
+        "weather": {"context": "harvest_timing"},
+        "context": "optimal_harvest"
+      },
+      "cause": "Harvest weather considerations",
+      "priority": 78,
+      "confidence_score": 0.90,
+      "scientific_source": "ICAR-SBI Harvest Guidelines",
+      "response_en": "🌾 HARVEST WEATHER CONSIDERATIONS:\n\n✅ IDEAL HARVEST WEATHER:\n• Dry conditions (no rain expected 3-4 days)\n• Cool mornings (early cutting easier)\n• Road access for transport\n\n⚠️ AVOID HARVEST WHEN:\n• Frost just occurred (wait 24 hours)\n• Heavy rain expected (muddy fields)\n• During heatwave (rapid sugar loss)\n\n📊 SUGAR RECOVERY:\n• Best: Cool, dry months (Nov-Mar)\n• Worst: Peak summer, monsoon\n\n⚠️ Stop irrigation 15-20 days before harvest for sugar concentration",
+      "response_hi": "🌾 कटाई मौसम:\n\n✅ आदर्श: सूखी स्थिति, ठंडी सुबह\n⚠️ टालें: पाला, भारी बारिश, लू के दौरान",
+      "response_mr": "🌾 कापणी हवामान:\n\n✅ आदर्श: कोरडी स्थिती, थंड सकाळ\n⚠️ टाळा: दव, जोरदार पाऊस, उष्णतेच्या लाटेत",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_SPRAY_WEATHER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "weather": {"context": "spray_timing"},
+        "context": "pesticide_application"
+      },
+      "cause": "Weather for pesticide spraying",
+      "priority": 82,
+      "confidence_score": 0.92,
+      "scientific_source": "ICAR Spray Guidelines",
+      "response_en": "💨 SPRAY WEATHER GUIDELINES:\n\n✅ IDEAL CONDITIONS:\n• Temperature: 25-30°C\n• Wind: <10 km/hr\n• Humidity: 60-80%\n• Time: Early morning (6-9 AM) or late evening (4-6 PM)\n• No rain for 4-6 hours after spray\n\n🚫 AVOID SPRAYING:\n• Wind >15 km/hr (drift to other crops)\n• Temperature >35°C (evaporation loss)\n• Bright midday sun (phytotoxicity)\n• Rain expected within 4 hours\n\n📋 Check weather forecast before mixing pesticides!",
+      "response_hi": "💨 छिड़काव मौसम:\n\n✅ आदर्श: 25-30°C, हवा <10 km/hr, सुबह/शाम\n🚫 तेज हवा, गर्मी, दोपहर धूप, बारिश से बचें",
+      "response_mr": "💨 फवारणी हवामान:\n\n✅ आदर्श: 25-30°C, वारा <10 km/hr, सकाळ/संध्याकाळ\n🚫 तीव्र वारा, उष्णता, दुपारचे ऊन, पाऊस टाळा",
+      "action_type": "safety_gate",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_IRRIGATION_WEATHER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "weather": {"context": "irrigation_timing"},
+        "context": "water_management"
+      },
+      "cause": "Weather-based irrigation adjustment",
+      "priority": 80,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Irrigation Guidelines",
+      "response_en": "💧 WEATHER-BASED IRRIGATION:\n\n📊 ADJUSTMENTS:\n• Hot/windy day: Increase frequency by 20-30%\n• Cloudy/cool day: Reduce by 20%\n• After rain: Skip irrigation if >25mm received\n• Winter: Extend interval by 3-5 days\n\n✅ BEST PRACTICE:\n• Monitor soil moisture, not calendar\n• Night irrigation in summer (less evaporation)\n• Morning irrigation in winter (warmer soil)\n\n📋 ET-based scheduling saves 15-20% water",
+      "response_hi": "💧 मौसम आधारित सिंचाई:\n\n📊 गर्म दिन: 20-30% बढ़ाएं | ठंडा दिन: 20% कम करें\n✅ मिट्टी नमी देखें, कैलेंडर नहीं",
+      "response_mr": "💧 हवामानावर आधारित सिंचन:\n\n📊 उष्ण दिवस: 20-30% वाढवा | थंड दिवस: 20% कमी करा\n✅ माती ओलावा बघा, कॅलेंडर नाही",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_PEST_WEATHER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["all"],
+      "conditions_json": {
+        "weather": {"context": "pest_forecast"},
+        "context": "pest_risk"
+      },
+      "cause": "Weather-pest relationship",
+      "priority": 82,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR-SBI Pest Forecasting",
+      "response_en": "🐛 WEATHER-PEST FORECAST:\n\n📊 HIGH PEST RISK CONDITIONS:\n\n🌧️ HUMID/RAINY:\n• Pyrilla, Woolly Aphid outbreak\n• Fungal diseases (Red Rot, Smut)\n• Release biocontrol before monsoon\n\n☀️ HOT/DRY:\n• Scale insects, Mites\n• Termite activity increases\n• Borer moth emergence after first rain\n\n❄️ COOL:\n• Reduced pest activity (good for IPM)\n• Disease spread slower\n\n✅ Install light traps 2-3 weeks before expected moth emergence",
+      "response_hi": "🐛 मौसम-कीट पूर्वानुमान:\n\n📊 आर्द्र/वर्षा: पायरिला, ऊनी मोहा, फफूंद रोग\n📊 गर्म/सूखा: स्केल, दीमक, छेदक",
+      "response_mr": "🐛 हवामान-कीटक अंदाज:\n\n📊 दमट/पाऊस: पायरिला, लोकरी माव, बुरशी रोग\n📊 उष्ण/कोरडे: स्केल, वाळवी, पोखरणारे",
+      "action_type": "advisory",
+      "is_active": true
+    },
+    {
+      "rule_id": "SUGARCANE_FERTILIZER_WEATHER_001",
+      "crop_code": "sugarcane",
+      "crop_group": "sugarcane",
+      "category": "weather",
+      "canonical_group": "09_weather",
+      "stage_applicable": ["tillering", "grand_growth"],
+      "conditions_json": {
+        "weather": {"context": "fertilizer_timing"},
+        "context": "nutrient_application"
+      },
+      "cause": "Weather for fertilizer application",
+      "priority": 78,
+      "confidence_score": 0.88,
+      "scientific_source": "ICAR Fertilizer Guidelines",
+      "response_en": "🧪 FERTILIZER APPLICATION WEATHER:\n\n✅ IDEAL:\n• After light rain or irrigation\n• Soil moist but not waterlogged\n• No heavy rain expected for 24 hours\n\n🚫 AVOID:\n• Dry soil (fertilizer won't dissolve)\n• Waterlogged soil (N loss by leaching)\n• Before heavy rain (wash-off)\n• During drought stress (plant can't utilize)\n• Peak heat (volatilization loss)\n\n📋 Best: Apply N in 2-3 splits with earthing up",
+      "response_hi": "🧪 उर्वरक मौसम:\n\n✅ आदर्श: हल्की बारिश/सिंचाई के बाद, नम मिट्टी\n🚫 सूखी/जलभराव, भारी बारिश से पहले, सूखे में टालें",
+      "response_mr": "🧪 खत हवामान:\n\n✅ आदर्श: हलक्या पावसानंतर/पाण्यानंतर, ओलसर माती\n🚫 कोरडी/पाणथळ, जोरदार पावसापूर्वी, दुष्काळात टाळा",
+      "action_type": "advisory",
+      "is_active": true
+    }
+  ]
+}

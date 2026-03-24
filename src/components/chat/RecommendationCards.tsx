@@ -7,6 +7,7 @@ import {
   CheckCircle, Info, Heart, Shield, Sprout
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { safeString } from './utils/safe-render';
 
 export interface RecommendationCategory {
   type: 'organic' | 'fertilizer' | 'pesticide' | 'hormone' | 'irrigation' | 'warning' | 'success' | 'info' | 'hybrid';
@@ -211,7 +212,7 @@ function RecommendationCard({ category, language }: { category: RecommendationCa
                 {product.timing && (
                   <div>
                     <span className="text-muted-foreground">{labels.timing}:</span>
-                    <span className="ml-1">{product.timing}</span>
+                    <span className="ml-1">{safeString(product.timing)}</span>
                   </div>
                 )}
                 

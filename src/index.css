@@ -1,6 +1,59 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap');
 
 @tailwind base;
+
+/* Community Page Theme */
+:root {
+  --community-bg-start: 142 76% 96%;
+  --community-bg-mid: 142 50% 94%;
+  --community-bg-end: 142 30% 92%;
+}
+
+.dark {
+  --community-bg-start: 142 30% 8%;
+  --community-bg-mid: 142 20% 6%;
+  --community-bg-end: 142 15% 4%;
+}
+
+/* Blinking Photo Button Animation */
+@keyframes photo-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 hsl(var(--primary) / 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 20px 8px hsl(var(--primary) / 0.3);
+    transform: scale(1.02);
+  }
+}
+
+/* 2030 Gradient animation for loading states */
+@keyframes gradient-x {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.animate-photo-pulse {
+  animation: photo-pulse 2s ease-in-out infinite;
+}
+
+/* Glowing border animation for photo button */
+@keyframes glow-border {
+  0%, 100% {
+    border-color: hsl(var(--primary));
+    box-shadow: 0 0 5px hsl(var(--primary) / 0.5), 0 0 20px hsl(var(--primary) / 0.2);
+  }
+  50% {
+    border-color: hsl(var(--accent));
+    box-shadow: 0 0 10px hsl(var(--accent) / 0.6), 0 0 30px hsl(var(--accent) / 0.3);
+  }
+}
+
+.animate-glow-border {
+  animation: glow-border 2.5s ease-in-out infinite;
+}
+
 @tailwind components;
 @tailwind utilities;
 
@@ -773,5 +826,30 @@
   
   .animate-fade-in {
     animation: fade-in 0.3s ease-out;
+  }
+  
+  /* Safe area padding for mobile notches */
+  .pb-safe {
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  }
+  
+  .pt-safe {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  
+  /* Chat scroll area improvements */
+  .scroll-smooth {
+    scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 }

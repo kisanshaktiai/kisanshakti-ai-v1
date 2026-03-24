@@ -135,6 +135,11 @@ export default {
           'ai-border': "hsl(var(--chat-bubble-ai-border))",
           'ai-glass': "var(--chat-bubble-ai-glass)",
         },
+        'community': {
+          'bg-start': "hsl(var(--community-bg-start))",
+          'bg-mid': "hsl(var(--community-bg-mid))",
+          'bg-end': "hsl(var(--community-bg-end))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

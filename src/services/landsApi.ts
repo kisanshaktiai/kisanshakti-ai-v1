@@ -210,19 +210,53 @@ class LandsApiService {
   }
 
   async deleteLand(id: string): Promise<void> {
+    console.log('🗑️ [LandsAPI] Initiating soft delete for land:', id);
+    
+    // Check network connectivity first
+    if (!navigator.onLine) {
+      throw new Error('No internet connection. Please connect and try again.');
+    }
+    
     try {
       const headers = await this.getHeaders();
+      console.log('🗑️ [LandsAPI] Making DELETE request to:', `${LANDS_API_URL}/${id}`);
+      
       const response = await this.fetchWithRetry(`${LANDS_API_URL}/${id}`, {
         method: 'DELETE',
         headers,
       });
 
+      console.log('🗑️ [LandsAPI] DELETE response status:', response.status);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to delete land');
+        let errorMessage = 'Failed to remove land';
+        try {
+          const error = await response.json();
+          errorMessage = error.error || error.message || errorMessage;
+          console.error('❌ [LandsAPI] Delete failed:', error);
+        } catch (parseError) {
+          console.error('❌ [LandsAPI] Failed to parse error response');
+        }
+        
+        // Handle specific HTTP status codes
+        if (response.status === 401 || response.status === 403) {
+          throw new Error('Session expired. Please log in again.');
+        } else if (response.status === 404) {
+          throw new Error('Land not found or already removed.');
+        } else if (response.status >= 500) {
+          throw new Error('Server error. Please try again later.');
+        }
+        
+        throw new Error(errorMessage);
       }
-    } catch (error) {
-      console.error('❌ [LandsAPI] Error deleting land:', error);
+      
+      console.log('✅ [LandsAPI] Land soft deleted successfully:', id);
+    } catch (error: any) {
+      console.error('❌ [LandsAPI] Error deleting land:', {
+        landId: id,
+        error: error?.message || error,
+        stack: error?.stack
+      });
       throw error;
     }
   }

@@ -32,7 +32,8 @@ import {
   Sparkles,
   ChevronRight,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Camera
 } from 'lucide-react';
 import { format, isToday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -46,6 +47,7 @@ interface TaskCardProps {
   onSpeak: () => void;
   isSpeaking?: boolean;
   readOnly?: boolean;
+  onTakePhoto?: () => void;
 }
 
 const taskTypeConfig = {
@@ -76,7 +78,8 @@ export default function ModernTaskCard({
   daysUntil, 
   onSpeak,
   isSpeaking = false,
-  readOnly = false
+  readOnly = false,
+  onTakePhoto
 }: TaskCardProps) {
   const { t } = useTranslation();
   const [showDetails, setShowDetails] = useState(false);
@@ -168,23 +171,53 @@ export default function ModernTaskCard({
                 </div>
               </div>
               
-              {/* Speaker button */}
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className={cn(
-                  "h-9 w-9 rounded-full shrink-0 transition-all",
-                  isSpeaking ? "bg-primary/20 text-primary" : "hover:bg-primary/10"
+              {/* Action buttons */}
+              <div className="flex items-center gap-1">
+                {/* Camera button for task photo */}
+                {onTakePhoto && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-9 w-9 rounded-full shrink-0 hover:bg-primary/10 text-primary"
+                    onClick={(e) => { e.stopPropagation(); onTakePhoto(); }}
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
                 )}
-                onClick={(e) => { e.stopPropagation(); onSpeak(); }}
-              >
-                {isSpeaking ? <VolumeX className="h-4 w-4 animate-pulse" /> : <Volume2 className="h-4 w-4" />}
-              </Button>
+                
+                {/* Speaker button */}
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className={cn(
+                    "h-9 w-9 rounded-full shrink-0 transition-all",
+                    isSpeaking ? "bg-primary/20 text-primary" : "hover:bg-primary/10"
+                  )}
+                  onClick={(e) => { e.stopPropagation(); onSpeak(); }}
+                >
+                  {isSpeaking ? <VolumeX className="h-4 w-4 animate-pulse" /> : <Volume2 className="h-4 w-4" />}
+                </Button>
+              </div>
             </div>
 
             {/* Description preview */}
             {task.task_description && (
               <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 pl-1">{task.task_description}</p>
+            )}
+
+            {/* Scientific Confidence Badge */}
+            {task.confidence_score != null && (
+              <div className="flex items-center gap-2">
+                <div className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold",
+                  Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
+                  Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400" :
+                  "bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400"
+                )}>
+                  <Sparkles className="h-3 w-3" />
+                  {Math.round(task.confidence_score * 100)}% {t('schedule.task_card.confidence', 'confident')}
+                </div>
+              </div>
             )}
 
             {/* Quick Info Pills */}
@@ -251,6 +284,61 @@ export default function ModernTaskCard({
 
           {/* Scrollable content */}
           <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+            {/* Scientific Metadata Section */}
+            {(task.confidence_score || task.based_on || task.scientific_reason) && (
+              <div className="space-y-3 p-4 rounded-xl bg-gradient-to-r from-primary/5 to-accent/5 border border-primary/20">
+                {/* Confidence Score */}
+                {task.confidence_score != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">{t('schedule.task_card.confidence_level', 'Confidence Level')}</span>
+                    <Badge className={cn(
+                      "text-xs",
+                      Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
+                      Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30" :
+                      "bg-red-500/20 text-red-700 dark:text-red-300 border-red-500/30"
+                    )}>
+                      {Math.round(task.confidence_score * 100)}%
+                    </Badge>
+                  </div>
+                )}
+
+                {/* Based On */}
+                {task.based_on && Array.isArray(task.based_on) && task.based_on.length > 0 && (
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">{t('schedule.task_card.based_on', 'Based on')}</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {task.based_on.map((factor: string, idx: number) => (
+                        <Badge key={idx} variant="outline" className="text-[10px] px-2 py-0.5 bg-background/50">
+                          {factor}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Scientific Reason */}
+                {task.scientific_reason && (
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-medium text-muted-foreground">{t('schedule.task_card.scientific_reason', 'Scientific Reason')}</span>
+                    <p className="text-xs text-foreground/80 leading-relaxed">{task.scientific_reason}</p>
+                  </div>
+                )}
+
+                {/* Risk if Ignored */}
+                {task.risk_if_ignored && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-[10px] font-semibold text-destructive">{t('schedule.task_card.risk_if_ignored', 'Risk if ignored')}</span>
+                        <p className="text-xs text-destructive/80">{task.risk_if_ignored}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Description */}
             {task.task_description && (

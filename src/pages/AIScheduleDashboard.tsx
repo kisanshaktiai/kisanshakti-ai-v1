@@ -27,7 +27,8 @@ export default function AIScheduleDashboard() {
       setMonitoring(true);
       toast.info('Starting AI monitoring of all active schedules...');
       
-      const { data, error } = await supabase.functions.invoke('ai-schedule-monitor');
+      // Use unified ai-schedule-ops function with action=monitor
+      const { data, error } = await supabase.functions.invoke('ai-schedule-ops?action=monitor');
       
       if (error) throw error;
       

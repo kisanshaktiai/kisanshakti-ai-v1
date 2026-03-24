@@ -133,6 +133,14 @@
     "wizard": {
       "step_of_total": "चरण {{current}} / {{total}}: {{title}}",
       "voice_guide": "ध्वनि मार्गदर्शक",
+      "tap_to_select": "चयन करने के लिए टैप करें",
+      "select_crop_category": "फसल श्रेणी चुनें",
+      "select_crop": "अपनी फसल चुनें",
+      "search_crops": "फसलें खोजें...",
+      "crop_selection": "फसल चयन",
+      "current_crop": "वर्तमान फसल",
+      "previous_crop": "पिछली फसल",
+      "popular": "लोकप्रिय",
       "steps": {
         "basic_info": "मूल जानकारी",
         "location": "स्थान",

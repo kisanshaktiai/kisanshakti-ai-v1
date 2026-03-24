@@ -1,9 +1,9 @@
 {
   "__meta": {
     "page": "market",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2025-12-19"
   },
   "market": {
     "tabs": {
@@ -107,6 +107,60 @@
       "analytics_tab": "विश्लेषण",
       "order_management_soon": "ऑर्डर प्रबंधन जल्द आ रहा है",
       "analytics_dashboard_soon": "विश्लेषण डैशबोर्ड जल्द आ रहा है"
+    },
+    "intelligence": {
+      "title": "बाजार भाव जानकारी",
+      "subtitle": "MSAMB से रियल-टाइम कीमतें",
+      "selectFilters": "फ़िल्टर चुनें",
+      "cropType": "फसल प्रकार",
+      "selectMarket": "बाजार चुनें",
+      "allMarkets": "सभी बाजार",
+      "selectCrop": "फसल चुनें",
+      "crops": "फसलें",
+      "more": "और",
+      "clearSelection": "चयन हटाएं",
+      "selectCropType": "ऊपर फसल प्रकार चुनें",
+      "date": "तारीख",
+      "search": "खोजें...",
+      "refresh": "रिफ्रेश",
+      "aiAdvice": "AI सलाह",
+      "prices": "भाव",
+      "nearby": "नजदीक",
+      "comparison": "तुलना",
+      "ai": "AI",
+      "noPrices": "चयनित फ़िल्टर के लिए कीमत डेटा नहीं मिला",
+      "arrival": "आवक",
+      "other": "अन्य",
+      "locationRequired": "स्थान आवश्यक",
+      "locationRequiredDesc": "50 किमी के भीतर बाजार देखने के लिए अपनी भूमि सेटिंग में निर्देशांक जोड़ें",
+      "nearbyTitle": "50 किमी के भीतर बाजार",
+      "noNearbyMarkets": "50 किमी के भीतर कोई बाजार नहीं मिला",
+      "selectCropFirst": "फसल चुनें",
+      "selectCropFirstDesc": "ऐतिहासिक मूल्य तुलना देखने के लिए फसल चुनें",
+      "priceComparison": "मूल्य तुलना",
+      "loadData": "डेटा लोड करें",
+      "week": "सप्ताह",
+      "month": "महीना",
+      "year": "वर्ष",
+      "avgPrice": "औसत मूल्य",
+      "priceRange": "श्रेणी",
+      "trend": "रुझान",
+      "dataPoints": "डेटा पॉइंट",
+      "noHistoricalData": "कोई ऐतिहासिक डेटा नहीं",
+      "viewAllCrops": "सभी फसलें देखें",
+      "viewAllMarkets": "सभी बाजार देखें",
+      "cropGroups": {
+        "grains": "अनाज",
+        "pulses": "दालें",
+        "vegetables": "सब्जियां",
+        "fruits": "फल",
+        "spices": "मसाले",
+        "oilseeds": "तिलहन",
+        "jaggerySugar": "गुड़ और चीनी",
+        "cotton": "कपास",
+        "others": "अन्य",
+        "all": "सभी फसलें"
+      }
     }
   },
   "__qa": {

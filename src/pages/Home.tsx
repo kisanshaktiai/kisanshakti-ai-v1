@@ -188,7 +188,7 @@ export default function Home() {
     {
       title: t('home.features.community.title'),
       icon: Users,
-      path: '/app/social',
+      path: '/app/community',
       description: t('home.features.community.description'),
       stats: '1.2k ' + t('home.badge.active').toLowerCase(),
       color: 'bg-secondary/10',

@@ -12,7 +12,8 @@ import {
   Shield,
   DollarSign,
   Leaf,
-  FileText
+  FileText,
+  Sprout
 } from 'lucide-react';
 
 export interface FeatureItem {
@@ -39,6 +40,15 @@ export const defaultFeatures: FeatureItem[] = [
     path: '/app/lands',
     enabled: true, // Enabled by default
     order: 1,
+    category: 'farm-management'
+  },
+  {
+    id: 'crop-growth',
+    icon: Sprout,
+    labelKey: 'fab.cropGrowth',
+    path: '/app/crop-growth',
+    enabled: true, // Enabled by default
+    order: 1.5,
     category: 'farm-management'
   },
   {
@@ -78,10 +88,10 @@ export const defaultFeatures: FeatureItem[] = [
     category: 'tools'
   },
   {
-    id: 'social',
+    id: 'community',
     icon: Users,
     labelKey: 'fab.community',
-    path: '/app/social',
+    path: '/app/community',
     enabled: true, // Enabled by default
     order: 6,
     category: 'community'

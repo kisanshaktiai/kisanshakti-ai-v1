@@ -1,9 +1,9 @@
 {
   "__meta": {
     "page": "market",
-    "version": "1.0",
+    "version": "2.0",
     "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "last_updated": "2025-12-19"
   },
   "market": {
     "tabs": {
@@ -107,6 +107,60 @@
       "analytics_tab": "विश्लेषण",
       "order_management_soon": "ऑर्डर व्यवस्थापन लवकरच येत आहे",
       "analytics_dashboard_soon": "विश्लेषण डॅशबोर्ड लवकरच येत आहे"
+    },
+    "intelligence": {
+      "title": "बाजारभाव माहिती",
+      "subtitle": "MSAMB कडून रियल-टाइम किमती",
+      "selectFilters": "फिल्टर निवडा",
+      "cropType": "पीक प्रकार",
+      "selectMarket": "बाजार निवडा",
+      "allMarkets": "सर्व बाजार",
+      "selectCrop": "पीक निवडा",
+      "crops": "पिके",
+      "more": "आणखी",
+      "clearSelection": "निवड रद्द करा",
+      "selectCropType": "वरील पीक प्रकार निवडा",
+      "date": "तारीख",
+      "search": "शोधा...",
+      "refresh": "रिफ्रेश",
+      "aiAdvice": "AI सल्ला",
+      "prices": "भाव",
+      "nearby": "जवळ",
+      "comparison": "तुलना",
+      "ai": "AI",
+      "noPrices": "निवडलेल्या फिल्टरसाठी किंमत डेटा उपलब्ध नाही",
+      "arrival": "आवक",
+      "other": "इतर",
+      "locationRequired": "स्थान आवश्यक",
+      "locationRequiredDesc": "50 किमी आतील बाजार पाहण्यासाठी तुमच्या जमीन सेटिंगमध्ये निर्देशांक जोडा",
+      "nearbyTitle": "50 किमी आतील बाजार",
+      "noNearbyMarkets": "50 किमी आतील बाजार डेटा सापडला नाही",
+      "selectCropFirst": "पीक निवडा",
+      "selectCropFirstDesc": "ऐतिहासिक किंमत तुलना पाहण्यासाठी पीक निवडा",
+      "priceComparison": "किंमत तुलना",
+      "loadData": "डेटा लोड करा",
+      "week": "आठवडा",
+      "month": "महिना",
+      "year": "वर्ष",
+      "avgPrice": "सरासरी किंमत",
+      "priceRange": "श्रेणी",
+      "trend": "ट्रेंड",
+      "dataPoints": "डेटा पॉइंट",
+      "noHistoricalData": "ऐतिहासिक डेटा उपलब्ध नाही",
+      "viewAllCrops": "सर्व पिके पहा",
+      "viewAllMarkets": "सर्व बाजार पहा",
+      "cropGroups": {
+        "grains": "धान्ये",
+        "pulses": "डाळी",
+        "vegetables": "भाज्या",
+        "fruits": "फळे",
+        "spices": "मसाले",
+        "oilseeds": "तेलबिया",
+        "jaggerySugar": "गूळ व साखर",
+        "cotton": "कापूस",
+        "others": "इतर",
+        "all": "सर्व पिके"
+      }
     }
   },
   "__qa": {
