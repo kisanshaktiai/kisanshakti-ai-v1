@@ -3445,6 +3445,7 @@ export class AIAgentOrchestrator {
           'LEAF_DAMAGE_VISIBLE',
           'LEAF_MARKS_OR_SPOTS',
           'STEM_DAMAGE',
+          'BORER_IDENTIFICATION',
           'ROOT_OR_BASE_PROBLEM',
           'GROWTH_ANOMALY',
           'WATER_STRESS_SIGNAL',
