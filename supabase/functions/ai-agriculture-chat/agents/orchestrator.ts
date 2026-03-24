@@ -2782,7 +2782,7 @@ export class AIAgentOrchestrator {
       // is WRONG — the symptoms alone are sufficient for rule matching.
       // Instead, use a default stage ('VEGETATIVE') and let the rule engine handle it.
       const DIAGNOSTIC_INTENTS = new Set([
-        'STEM_DAMAGE', 'LEAF_DAMAGE', 'ROOT_DAMAGE', 'FRUIT_DAMAGE',
+        'STEM_DAMAGE', 'BORER_IDENTIFICATION', 'LEAF_DAMAGE', 'ROOT_DAMAGE', 'FRUIT_DAMAGE',
         'PEST_OBSERVATION', 'DISEASE_OBSERVATION', 'REPORT_SYMPTOM',
         'GROWTH_ANOMALY', 'WILTING_DRYING', 'YELLOWING', 'NUTRIENT_DEFICIENCY',
         'BORER_DAMAGE', 'DEAD_HEART', 'INSECT_DAMAGE', 'FUNGAL_INFECTION',
