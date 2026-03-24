@@ -152,7 +152,8 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
         .from('decision_rules')
         .select('observable_characteristics')
         .eq('crop_code', cropCode)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .limit(2000);
       
       if (error) {
         console.error(`[LLM_VALIDATOR] Failed to load crop-applicable observations for ${cropCode}: ${error.message}`);

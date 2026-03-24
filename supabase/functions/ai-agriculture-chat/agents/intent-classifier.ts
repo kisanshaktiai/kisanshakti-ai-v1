@@ -359,7 +359,7 @@ export async function classifyFarmerIntent(
           model,
           messages: [
             { role: 'system', content: 'You are a JSON-only classifier. Output MUST be valid JSON. Nothing else. Format: {"intent_code": "CATEGORY", "confidence": 0.8}' },
-            { role: 'user', content: `Classify this agricultural query. Query: "${farmerMessage}"\n\nValid intent_codes: EMERGENCE_FAILURE, GROWTH_ANOMALY, COLOR_CHANGE, WILTING_OR_DROOPING, LEAF_DAMAGE_VISIBLE, LEAF_MARKS_OR_SPOTS, STEM_DAMAGE, ROOT_OR_BASE_PROBLEM, PEST_PRESENCE_VISIBLE, DISEASE_LIKE_PATTERN, WATER_STRESS_SIGNAL, NUTRIENT_STRESS_SIGNAL, WEED_PROBLEM, FERTILIZER_SCHEDULE, IRRIGATION_QUERY, HARVEST_TIMING, GENERAL_CROP_INFO, UNKNOWN_OBSERVATION\n\nJSON:` }
+            { role: 'user', content: `Classify this agricultural query. Query: "${farmerMessage}"\n\nValid intent_codes: EMERGENCE_FAILURE, GROWTH_ANOMALY, COLOR_CHANGE, WILTING_OR_DROOPING, LEAF_DAMAGE_VISIBLE, LEAF_MARKS_OR_SPOTS, STEM_DAMAGE, BORER_IDENTIFICATION, ROOT_OR_BASE_PROBLEM, PEST_PRESENCE_VISIBLE, DISEASE_LIKE_PATTERN, WATER_STRESS_SIGNAL, NUTRIENT_STRESS_SIGNAL, WEED_PROBLEM, FERTILIZER_SCHEDULE, IRRIGATION_QUERY, HARVEST_TIMING, GENERAL_CROP_INFO, UNKNOWN_OBSERVATION\n\nJSON:` }
           ],
           temperature: 0,
           max_tokens: 1024,

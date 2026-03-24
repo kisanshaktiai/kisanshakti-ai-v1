@@ -607,14 +607,48 @@ export async function evaluateCandidateHypotheses(
     
     console.log(`   🎯 [StageFilter] After stage filtering: ${stageFilteredRules.length}/${rulesRaw.length} rules`);
     
-    if (stageFilteredRules.length === 0) {
-      console.log(`   ⚠️ [HypothesisEval] No rules match stage: ${growth_stage}`);
-      // Fall back to all rules (stage-agnostic) rather than returning empty
-      // This ensures we always have some options
-    }
+    // Graduated stage proximity fallback (never allow SEEDLING rules for DAS > 60)
+    let rulesToEvaluate = stageFilteredRules;
     
-    // Use stage-filtered rules if available, otherwise use all rules
-    let rulesToEvaluate = stageFilteredRules.length > 0 ? stageFilteredRules : rulesRaw;
+    if (stageFilteredRules.length === 0) {
+      console.log(`   ⚠️ [HypothesisEval] No rules match stage: ${growth_stage} — trying adjacent stages`);
+      
+      const STAGE_ORDER = ['SEEDLING', 'GERMINATION', 'TILLERING', 'GRAND_GROWTH', 'MATURITY', 'RIPENING', 'HARVEST'];
+      const currentIdx = STAGE_ORDER.indexOf(growth_stage.toUpperCase());
+      
+      if (currentIdx >= 0) {
+        // Get adjacent stages (±1 in phenology order)
+        const adjacentStages = new Set<string>();
+        if (currentIdx > 0) adjacentStages.add(STAGE_ORDER[currentIdx - 1]);
+        if (currentIdx < STAGE_ORDER.length - 1) adjacentStages.add(STAGE_ORDER[currentIdx + 1]);
+        
+        const adjacentFiltered = rulesRaw.filter((rule: any) => {
+          const sa = rule.stage_applicable;
+          if (!sa || !Array.isArray(sa) || sa.length === 0) return true;
+          return sa.some((s: string) => adjacentStages.has(s.toUpperCase()) || s === 'ALL' || s === '*');
+        });
+        
+        if (adjacentFiltered.length > 0) {
+          rulesToEvaluate = adjacentFiltered;
+          console.log(`   🔄 [StageFallback] Using ${adjacentFiltered.length} adjacent-stage rules`);
+        }
+      }
+      
+      // Final fallback: use all rules BUT exclude early-stage rules for mature crops
+      if (rulesToEvaluate.length === 0) {
+        const das = input.days_since_sowing || 0;
+        rulesToEvaluate = rulesRaw.filter((rule: any) => {
+          if (das > 60) {
+            const sa = rule.stage_applicable;
+            if (Array.isArray(sa) && sa.some((s: string) => ['SEEDLING', 'GERMINATION'].includes(s.toUpperCase())) && sa.length <= 2) {
+              return false; // Exclude SEEDLING-only rules for mature crops
+            }
+          }
+          return true;
+        });
+        console.log(`   ⚠️ [StageFallback] Final fallback: ${rulesToEvaluate.length} rules (excluded early-stage for DAS ${das})`);
+      }
+    }
     
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 1.7: OBSERVATION LAYER PRE-FILTER (category + plant-part)
