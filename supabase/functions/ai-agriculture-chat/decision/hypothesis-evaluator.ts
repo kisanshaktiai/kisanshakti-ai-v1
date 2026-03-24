@@ -321,7 +321,8 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
       // Convert {dead_heart: true, stem_hollow: true} → ["DEAD_HEART", "STEM_HOLLOW"]
       raw = keys
         .filter(k => raw[k] === true)
-        .map(k => k.toUpperCase().replace(/[\s-]/g, '_'));
+        .map(k => k.toUpperCase().replace(/[\s-]/g, '_'))
+        .filter(k => k.length <= 30); // Reject overly long synthetic keys from boolean conversion
       console.log(`   [ExtractObs] Converted to array: [${raw.slice(0, 3).join(', ')}${raw.length > 3 ? '...' : ''}]`);
     }
     // CASE 2.5: Object with nested 'symptoms' array: {symptoms: ["INTERVEINAL_CHLOROSIS", "LEAF_YELLOWING"]}
