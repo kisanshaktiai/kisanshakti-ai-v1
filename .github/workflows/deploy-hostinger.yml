@@ -28,9 +28,15 @@ jobs:
 
       - name: 📦 Install dependencies
         run: |
-          if [ -f package-lock.json ]; then 
-            npm ci --prefer-offline --no-audit
-          else 
+          echo "Installing dependencies..."
+      
+          if [ -f package-lock.json ]; then
+            npm ci --prefer-offline --no-audit || (
+              echo "⚠️ npm ci failed, attempting recovery..."
+              rm -rf node_modules package-lock.json
+              npm install --no-audit
+            )
+          else
             npm install --no-audit
           fi
 
