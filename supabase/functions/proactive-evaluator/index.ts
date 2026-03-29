@@ -365,7 +365,10 @@ Deno.serve(async (req) => {
           action_text_en: fillTemplate(rule.action_template_en, templateVars),
           risk_score: result.riskScore,
           confidence: result.confidence,
-          trigger_data: enrichTriggerDataWithIrrigation(result.triggerData, rule.alert_category, ctx),
+          trigger_data: addSymbolicSolution(
+            enrichTriggerDataWithIrrigation(result.triggerData, rule.alert_category, ctx),
+            null, rule, ctx, decisionRules
+          ),
           decision_reasoning: result.reasoning,
           status: 'PENDING',
           dedup_key: dedupKey,
@@ -440,7 +443,10 @@ Deno.serve(async (req) => {
           action_text_hi: trilingualAction.hi,
           risk_score: result.riskScore,
           confidence: result.confidence,
-          trigger_data: enrichTriggerDataWithIrrigation({ ...result.triggerData, knowledge: dr.knowledge_text, decision_rule_id: dr.id }, alertCategory, ctx),
+          trigger_data: addSymbolicSolution(
+            enrichTriggerDataWithIrrigation({ ...result.triggerData, knowledge: dr.knowledge_text, decision_rule_id: dr.id }, alertCategory, ctx),
+            dr, null, ctx, decisionRules
+          ),
           decision_reasoning: result.reasoning,
           status: 'PENDING',
           dedup_key: dedupKey,
