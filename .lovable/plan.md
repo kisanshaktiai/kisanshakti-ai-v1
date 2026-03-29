@@ -1,123 +1,109 @@
 
 
-# Proactive Intelligence System — Deep Audit Report + Fix Plan
+# Proactive Neuro-Symbolic Intelligence System — Production-Ready Upgrade Plan
 
-## Audit Status: 7 Issues Found (3 Critical, 2 High, 2 Medium)
+## Current State Assessment
 
----
+**Working**: Frontend inbox, 10 template rules, 6 condition types, dedup/throttle, trilingual fields, TTS, priority sorting, 5-state lifecycle.
 
-## What Was Built (Sprint 1 Checklist)
+**Broken**: `crop_schedules` query uses `crop_code` (correct: `crop_name`). `ndvi_data` query uses `recorded_at` (correct: `date`). No trigger/cron exists. No realtime push. N*M sequential DB queries will timeout at scale.
 
-| Item | Status |
-|------|--------|
-| DB tables: `proactive_rules`, `proactive_alerts`, `proactive_events`, `proactive_evaluation_log`, `disease_risk_model` | Done |
-| `decision_rules` enhanced with `is_proactive_rule`, `prediction_type`, `forecast_horizon_days` | Done |
-| Edge function: `proactive-evaluator` | Done (with bugs) |
-| Frontend: `ProactiveAlerts.tsx` page | Done (with gaps) |
-| Hook: `useProactiveAlerts.ts` | Done |
-| Route: `/app/proactive-alerts` | Done |
-| Config: `supabase/config.toml` entry | Done |
-| RLS policies on `proactive_rules` | Done |
-| 10 initial rules seeded | Done |
+**Missing**: Soil NPK/pH/OC signals. 72h forecast rain probability. GDD accumulation. 578 `decision_rules` completely disconnected. Stage computation hardcoded to 4 crops. No "Why this alert?" evidence display. No chat deeplink CTA. No realtime subscription.
 
 ---
 
-## Critical Issues Found
+## Execution Plan (7 Steps, Priority Order)
 
-### Bug 1: Edge Function Queries WRONG Column Names (CRITICAL — Will Fail)
+### Step 1: Fix Critical Schema Bugs + Batch Query Pattern (G4 + data fixes)
 
-The `proactive-evaluator` queries `lands` table with these columns:
-- `crop_type` — **DOES NOT EXIST** (correct: `current_crop`)
-- `land_name` — **DOES NOT EXIST** (correct: `name`)
-- `sowing_date` — **DOES NOT EXIST** (correct: `last_sowing_date` or from `crop_schedules`)
-- `coordinates` — **DOES NOT EXIST** (correct: `center_lat` + `center_lon`)
+**File**: `supabase/functions/proactive-evaluator/index.ts`
 
-The query will silently return null for all these fields, meaning:
-- DAS = 0 for all lands (no sowing_date)
-- Stage = always wrong
-- Weather = never loaded (no coordinates)
-- Crop matching = never matches (no crop_type)
+- Fix `crop_schedules` query: `crop_code` → `crop_name`
+- Fix `ndvi_data` query: `recorded_at` → `date`
+- **Batch-load all dedup/cooldown data upfront**: Single query to load all recent alerts for all `land_ids` in the last 72h into a `Map<string, Alert[]>`. All dedup, cooldown, and daily-count checks happen in-memory. Eliminates the N*M sequential DB round-trip problem.
+- Batch-load weather for all unique `location_key`s in one query
+- Batch-load NDVI for all `land_ids` in one query
+- Batch-load soil health for all `land_ids` in one query
 
-**Result: ZERO alerts will ever be generated.**
+### Step 2: Extend LandContext with Missing Signals (G1)
 
-### Bug 2: No Home Page Navigation (CRITICAL — Feature Unreachable)
+**File**: `supabase/functions/proactive-evaluator/index.ts`
 
-- No alert bell icon on Home page
-- No entry in `featureConfig.ts` for proactive alerts
-- No navigation link anywhere in the app
-- User can only reach `/app/proactive-alerts` by typing the URL manually
+Add to `LandContext`:
+- `soil_n`, `soil_p`, `soil_k`, `soil_ph`, `organic_carbon` — from `soil_health` table (batch-loaded per land_id)
+- `forecast_rain_probability_72h` — from `weather_forecasts` table (max `rain_probability_percent` in next 72h)
+- `gdd_accumulated` — computed from `weather_forecasts.growing_degree_days` or calculated from daily temp data
 
-### Bug 3: Priority Labels Hardcoded in Marathi Only (HIGH)
+Add corresponding evaluation logic in `evaluateRule()`:
+- `SOIL` condition type: evaluate `soil_n_min`, `soil_ph_min/max`, `organic_carbon_min` thresholds
+- Extend `DISEASE_RISK`/`COMPOUND` to check `forecast_rain_probability_72h`
+- Extend `PEST_RISK` to use GDD accumulation instead of simple DAS+temp
 
-`PRIORITY_CONFIG` in `ProactiveAlerts.tsx` has hardcoded Marathi labels:
-- `'🔴 अत्यंत महत्त्वाचे'` — only Marathi
-- `'🟠 महत्त्वाचे'` — only Marathi
+### Step 3: Bridge `decision_rules` to Proactive Engine (G2)
 
-Hindi and English users see Marathi priority labels regardless of their language setting.
+**File**: `supabase/functions/proactive-evaluator/index.ts`
 
-### Bug 4: No i18n Translation Keys (HIGH)
+- Load rules from `decision_rules` WHERE `is_proactive_rule = true AND is_active = true`, filtered by crop_code and stage
+- Map `decision_rules` fields to the evaluation interface: `conditions_json` → conditions, `etl_value_min/max` for ETL threshold checks, `phi_days` for spray-window timing
+- Evaluate in priority order (SAFETY > URGENT > TREATMENT > NUTRIENT > MONITORING)
+- Merge fired `decision_rules` into the same alert pipeline alongside `proactive_rules`
+- Use `rule_id` from `decision_rules` as the `rule_id` field in generated alerts
 
-Zero translation entries exist in any locale file (`en`, `hi`, `mr`) for the `proactive.*` namespace. All fallback strings are hardcoded Marathi in the component.
+### Step 4: Dynamic Stage Computation (G3)
 
-### Bug 5: Weather Location Key Mismatch (MEDIUM)
+**File**: `supabase/functions/proactive-evaluator/index.ts`
 
-Edge function builds `location_key` from `coordinates` (which doesn't exist). Even if fixed to use `center_lat`/`center_lon`, it rounds to 2 decimals. Must verify this matches the format stored by the weather edge function.
+- Replace hardcoded `computeStage()` with a database-driven approach
+- Query `intent_observation_mapping` for `crop_code` × `das_min/das_max` × `growth_stage` to resolve the correct stage
+- Fallback to hardcoded table only if no DB mapping exists
+- Support all crops in the system, not just 4
 
-### Bug 6: No Crop Schedule Integration (MEDIUM)
+### Step 5: Realtime Push + "Why this alert?" + Chat Deeplink (G7 + G6 partial)
 
-The edge function tries to get `sowing_date` from the `lands` table directly, but actual sowing dates are in `crop_schedules` table. Should JOIN with `crop_schedules` to get accurate DAS and crop stage.
+**File**: `src/hooks/useProactiveAlerts.ts`
+- Add Supabase realtime channel subscription for `proactive_alerts` INSERT events filtered by `farmer_id`
+- Auto-append new alerts to state and increment unread count
 
-### Bug 7: RLS Missing on `proactive_alerts` for farmer SELECT (MEDIUM)
+**File**: `src/pages/ProactiveAlerts.tsx`
+- Add expandable "Why this alert?" section rendering `trigger_data` and `decision_reasoning` in human-readable form (e.g., "Temperature: 39°C exceeds 35°C threshold", "Humidity: 88% creates disease-favorable conditions")
+- Add inline CTA button: "Ask AI about this" that navigates to `/app/chat` with pre-filled query based on alert category + crop + land name
+- Add land name display on each alert card so farmer knows which field
 
-The hook queries `proactive_alerts` with `.eq('farmer_id', user.id)`, but we need to verify RLS allows authenticated users to read their own alerts.
+### Step 6: Set Up Cron Trigger (Production Activation)
 
----
+**Database**: Use `pg_cron` + `pg_net` to schedule the evaluator
+- Schedule: every 15 minutes during 5AM-9PM IST (farmer active hours), every 60 minutes at night
+- Call `proactive-evaluator` with `action: 'scheduled'`
+- This is a data INSERT operation (cron.schedule), not a schema migration
 
-## Fix Plan
+### Step 7: Neural Enrichment for High-Risk Alerts (G6)
 
-### Step 1: Fix Edge Function Column Names
-Update `proactive-evaluator/index.ts`:
-- `crop_type` → `current_crop`
-- `land_name` → `name`
-- Remove `sowing_date, coordinates` from lands query
-- Use `center_lat, center_lon` for weather lookup
-- JOIN `crop_schedules` to get `sowing_date` and crop info per land
+**File**: `supabase/functions/proactive-evaluator/index.ts`
 
-### Step 2: Add Home Page Navigation
-- Add proactive alerts entry to `featureConfig.ts` with Bell icon
-- Add alert bell with unread badge to the Home page header area
-- Link to `/app/proactive-alerts`
-
-### Step 3: Fix Multilingual Priority Labels
-Replace hardcoded Marathi with i18n-aware labels:
-- Use `getLocalizedText` pattern or i18n keys for CRITICAL/HIGH/MEDIUM/LOW
-- Add translation keys for all 3 languages
-
-### Step 4: Add i18n Translation Entries
-Add `proactive.*` keys to `en.json`, `hi.json`, `mr.json` locale files covering:
-- `proactive.title`, `proactive.subtitle`, `proactive.allClear`, `proactive.noAlerts`, `proactive.done`
-- Priority labels in all 3 languages
-
-### Step 5: Fix Weather Location Matching
-Use `center_lat, center_lon` from lands table, round to 2 decimals to match `weather_current.location_key` format.
-
-### Step 6: Add RLS Policy for Farmer Alert Access
-Add SELECT policy on `proactive_alerts`: farmers can only read their own alerts (migration).
-
-### Step 7: Add Crop Schedule Join
-Modify edge function to fetch from `crop_schedules` WHERE `land_id` matches AND `status = 'active'` to get accurate sowing date and crop code.
+- For alerts where `risk_score >= 70` OR `priority === 'CRITICAL'`, call Lovable AI (Gemini Flash) with a structured prompt containing:
+  - Rule's `reason_text`, `knowledge_text`, `action_text`
+  - Land's crop + stage + DAS + weather values
+  - Evidence values from trigger_data
+- Ask it to return trilingual title/message/action (mr, hi, en) with farmer-friendly language
+- For lower-risk alerts, continue using existing template system
+- Cost-bounded: only enriches ~10-20% of alerts
 
 ---
 
 ## Files Changed
 
-| File | Change |
-|------|--------|
-| `supabase/functions/proactive-evaluator/index.ts` | Fix column names, add crop_schedule join, fix weather lookup |
-| `src/pages/ProactiveAlerts.tsx` | Fix priority labels to be multilingual |
-| `src/config/featureConfig.ts` | Add proactive alerts feature entry |
-| `src/pages/Home.tsx` | Add alert bell icon with unread badge |
-| `src/i18n/locales/mr.json` | Add `proactive.*` translations |
-| `src/i18n/locales/hi/advisory.json` (or equivalent) | Add `proactive.*` Hindi translations |
-| New migration | RLS SELECT policy on `proactive_alerts` for authenticated farmers |
+| File | Changes |
+|------|---------|
+| `supabase/functions/proactive-evaluator/index.ts` | Complete rewrite: batch queries, extended LandContext (soil/GDD/forecast), decision_rules bridge, dynamic stage, neural enrichment |
+| `src/hooks/useProactiveAlerts.ts` | Add Supabase realtime subscription, land_name in interface |
+| `src/pages/ProactiveAlerts.tsx` | "Why this alert?" expandable, chat deeplink CTA, land name display |
+| Database (INSERT via tool) | `pg_cron` schedule for evaluator trigger |
+
+## What This Does NOT Change
+
+- No modifications to existing AI Chat pipeline
+- No changes to existing crop schedule system
+- No changes to `decision_rules` data (only reads `is_proactive_rule = true`)
+- No new database tables or schema changes
+- No changes to LLM formatter or narration layer
 
