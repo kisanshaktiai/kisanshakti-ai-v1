@@ -26,6 +26,7 @@ import {
   CloudRain,
   CloudSnow
 } from 'lucide-react';
+import { Bell } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { VideoHelpCard } from '@/components/home/VideoHelpCard';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
+import { useProactiveAlerts } from '@/hooks/useProactiveAlerts';
 
 interface FeatureCard {
   title: string;
@@ -67,6 +69,7 @@ export default function Home() {
   
   // Fetch featured videos for video reels
   const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
+  const { unreadCount: alertUnreadCount } = useProactiveAlerts();
 
   // Update current time every minute
   useEffect(() => {
@@ -255,6 +258,20 @@ export default function Home() {
 
   return (
     <div className="relative bg-gradient-subtle min-h-screen">
+      {/* Alert Bell - Fixed top-right */}
+      <Link to="/app/proactive-alerts" className="fixed top-[72px] right-5 z-40">
+        <motion.div 
+          className="relative p-2 rounded-full bg-card/90 backdrop-blur-sm border border-border/50 shadow-md"
+          whileTap={{ scale: 0.9 }}
+        >
+          <Bell className="h-5 w-5 text-primary" />
+          {alertUnreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
+              {alertUnreadCount > 9 ? '9+' : alertUnreadCount}
+            </span>
+          )}
+        </motion.div>
+      </Link>
       {/* Futuristic Floating Weather Card - 2030 UI */}
       <motion.div 
         className="fixed top-16 left-4 right-4 z-30 pointer-events-auto"
