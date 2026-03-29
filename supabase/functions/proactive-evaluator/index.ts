@@ -920,68 +920,211 @@ function evaluateRule(rule: ProactiveRule, ctx: LandContext): RuleEvalResult {
 }
 
 // =====================================================
-// DECISION RULES EVALUATION (G2 bridge)
+// CONDITIONS_JSON PARSER (translates string formats → numeric thresholds)
+// =====================================================
+
+function parseDecisionRuleConditions(cj: Record<string, any>): {
+  temp_min: number | null; temp_max: number | null;
+  humidity_min: number | null; humidity_max: number | null;
+  rain_min: number | null; wind_max: number | null;
+  frost: boolean; soil_moisture_low: boolean; soil_moisture_high: boolean;
+  ndvi_below: number | null;
+} {
+  const result = {
+    temp_min: null as number | null, temp_max: null as number | null,
+    humidity_min: null as number | null, humidity_max: null as number | null,
+    rain_min: null as number | null, wind_max: null as number | null,
+    frost: false, soil_moisture_low: false, soil_moisture_high: false,
+    ndvi_below: null as number | null,
+  };
+
+  const weather = cj.weather || {};
+  
+  // Parse temperature: ">38", "<15C", "22-28C", ">40C", "<0C"
+  const tempStr = weather.temperature || weather.temperature_c || null;
+  if (tempStr && typeof tempStr === 'string') {
+    const rangeMatch = tempStr.match(/(\d+)\s*-\s*(\d+)/);
+    if (rangeMatch) {
+      result.temp_min = parseFloat(rangeMatch[1]);
+      result.temp_max = parseFloat(rangeMatch[2]);
+    } else {
+      const gtMatch = tempStr.match(/>(\d+)/);
+      const ltMatch = tempStr.match(/<(\d+)/);
+      if (gtMatch) result.temp_min = parseFloat(gtMatch[1]);
+      if (ltMatch) result.temp_max = parseFloat(ltMatch[1]);
+    }
+  }
+  if (weather.warm_temperature === true && result.temp_min === null) result.temp_min = 25;
+  if (weather.high === true || (typeof weather.temperature === 'string' && weather.temperature === 'high')) result.temp_min = 35;
+
+  // Parse humidity: ">80%", ">95", ">90", "40-80"
+  const humStr = weather.humidity || null;
+  if (humStr && typeof humStr === 'string') {
+    const rangeMatch = humStr.match(/(\d+)\s*-\s*(\d+)/);
+    if (rangeMatch) {
+      result.humidity_min = parseFloat(rangeMatch[1]);
+      result.humidity_max = parseFloat(rangeMatch[2]);
+    } else {
+      const gtMatch = humStr.match(/>(\d+)/);
+      if (gtMatch) result.humidity_min = parseFloat(gtMatch[1]);
+    }
+  }
+  if (cj.high_humidity === true || weather.high_humidity === true) {
+    if (result.humidity_min === null) result.humidity_min = 80;
+  }
+
+  // Parse wind: "<10", ">20"
+  const windStr = weather.wind_speed_kmph || weather.wind || null;
+  if (windStr && typeof windStr === 'string') {
+    const gtMatch = windStr.match(/>(\d+)/);
+    const ltMatch = windStr.match(/<(\d+)/);
+    if (gtMatch) result.wind_max = parseFloat(gtMatch[1]);
+    if (ltMatch) result.wind_max = parseFloat(ltMatch[1]);
+  }
+
+  // Parse rain
+  const rainStr = weather.rain_forecast_4h || weather.rainfall || null;
+  if (rainStr === 'deficit') result.rain_min = 0; // drought condition
+  if (typeof rainStr === 'string' && rainStr.match(/>\d+/)) {
+    const m = rainStr.match(/>(\d+)/);
+    if (m) result.rain_min = parseFloat(m[1]);
+  }
+  if (cj.waterlogging === true || cj.soil_moisture === 'excess' || cj.soil_moisture === 'HIGH') {
+    result.rain_min = 50;
+    result.soil_moisture_high = true;
+  }
+
+  // Frost
+  if (weather.frost === true || weather.frost_warning === true) result.frost = true;
+
+  // Soil moisture
+  if (cj.soil_moisture === 'low' || cj.soil_moisture === 'LOW' || cj.soil_moisture_low === true) result.soil_moisture_low = true;
+
+  // NDVI
+  if (cj.ndvi_decline === true || cj.ndvi_before_rain != null) result.ndvi_below = cj.ndvi_current_max || 0.5;
+
+  return result;
+}
+
+// =====================================================
+// DECISION RULES EVALUATION (G2 bridge — with conditions_json parser)
 // =====================================================
 
 function evaluateDecisionRule(dr: DecisionRuleProactive, ctx: LandContext): RuleEvalResult {
   const triggerData: Record<string, any> = { decision_rule_id: dr.id, condition_code: dr.condition_code };
   const reasons: string[] = [];
 
-  // Parse conditions_json
   const cj = dr.conditions_json || {};
+  const parsed = parseDecisionRuleConditions(cj);
   let condMet = 0;
   let condTotal = 0;
 
-  // Weather conditions from conditions_json
-  if (cj.temp_min != null || cj.temp_max != null) {
+  // Temperature check (parsed from string formats)
+  if (parsed.temp_min != null || parsed.temp_max != null) {
     condTotal++;
     if (ctx.weather.temp != null) {
-      const inRange = (cj.temp_min == null || ctx.weather.temp >= cj.temp_min) &&
-                      (cj.temp_max == null || ctx.weather.temp <= cj.temp_max);
-      if (inRange) { condMet++; triggerData.temp = ctx.weather.temp; reasons.push(`Temp ${ctx.weather.temp}°C in range`); }
+      const tooHot = parsed.temp_min != null && ctx.weather.temp >= parsed.temp_min;
+      const tooCold = parsed.temp_max != null && ctx.weather.temp <= parsed.temp_max;
+      // For range conditions (both min and max), both must be true
+      // For single threshold, only that check matters
+      const rangeCheck = parsed.temp_min != null && parsed.temp_max != null
+        ? (ctx.weather.temp >= parsed.temp_min && ctx.weather.temp <= parsed.temp_max)
+        : (tooHot || tooCold);
+      if (rangeCheck) {
+        condMet++; triggerData.temp = ctx.weather.temp;
+        reasons.push(`Temp ${ctx.weather.temp}°C matches threshold`);
+      }
     }
   }
-  if (cj.humidity_min != null) {
+
+  // Humidity check
+  if (parsed.humidity_min != null) {
     condTotal++;
-    if (ctx.weather.humidity != null && ctx.weather.humidity >= cj.humidity_min) {
-      condMet++; triggerData.humidity = ctx.weather.humidity; reasons.push(`Humidity ${ctx.weather.humidity}%`);
+    if (ctx.weather.humidity != null && ctx.weather.humidity >= parsed.humidity_min) {
+      condMet++; triggerData.humidity = ctx.weather.humidity;
+      reasons.push(`Humidity ${ctx.weather.humidity}% ≥ ${parsed.humidity_min}%`);
     }
   }
-  if (cj.ndvi_below != null) {
+
+  // Rain check
+  if (parsed.rain_min != null && parsed.rain_min > 0) {
     condTotal++;
-    if (ctx.ndvi != null && ctx.ndvi < cj.ndvi_below) {
-      condMet++; triggerData.ndvi = ctx.ndvi; reasons.push(`NDVI ${ctx.ndvi.toFixed(2)} < ${cj.ndvi_below}`);
+    if (ctx.weather.rain_mm != null && ctx.weather.rain_mm >= parsed.rain_min) {
+      condMet++; triggerData.rain_mm = ctx.weather.rain_mm;
+      reasons.push(`Rain ${ctx.weather.rain_mm}mm ≥ ${parsed.rain_min}mm`);
+    }
+  }
+
+  // Wind check
+  if (parsed.wind_max != null) {
+    condTotal++;
+    if (ctx.weather.wind_speed != null && ctx.weather.wind_speed >= parsed.wind_max) {
+      condMet++; triggerData.wind = ctx.weather.wind_speed;
+      reasons.push(`Wind ${ctx.weather.wind_speed}km/h ≥ ${parsed.wind_max}km/h`);
+    }
+  }
+
+  // Frost check
+  if (parsed.frost) {
+    condTotal++;
+    if (ctx.weather.temp != null && ctx.weather.temp <= 5) {
+      condMet++; triggerData.temp = ctx.weather.temp;
+      reasons.push(`Frost risk: ${ctx.weather.temp}°C`);
+    }
+  }
+
+  // Soil moisture (proxy via rain + humidity)
+  if (parsed.soil_moisture_low) {
+    condTotal++;
+    if (ctx.weather.rain_mm != null && ctx.weather.rain_mm < 2 && ctx.weather.humidity != null && ctx.weather.humidity < 50) {
+      condMet++; reasons.push('Low soil moisture conditions');
+    }
+  }
+  if (parsed.soil_moisture_high) {
+    condTotal++;
+    if ((ctx.weather.rain_mm != null && ctx.weather.rain_mm > 30) || (ctx.forecast_rain_probability_72h != null && ctx.forecast_rain_probability_72h > 70)) {
+      condMet++; triggerData.rain_mm = ctx.weather.rain_mm; reasons.push('Excess moisture/waterlogging risk');
+    }
+  }
+
+  // NDVI check
+  if (parsed.ndvi_below != null) {
+    condTotal++;
+    if (ctx.ndvi != null && ctx.ndvi < parsed.ndvi_below) {
+      condMet++; triggerData.ndvi = ctx.ndvi;
+      reasons.push(`NDVI ${ctx.ndvi.toFixed(2)} < ${parsed.ndvi_below}`);
     }
   }
 
   // ETL threshold check
   if (dr.etl_value_min != null) {
     condTotal++;
-    // ETL is typically pest count - we check weather proxy (temp+humidity as pest-favorable)
-    if (ctx.weather.temp != null && ctx.weather.temp >= 25 && ctx.weather.humidity != null && ctx.weather.humidity >= 60) {
+    // Use GDD as pest-pressure proxy when available
+    if (ctx.gdd_accumulated != null && ctx.gdd_accumulated >= (dr.etl_value_min * 10)) {
+      condMet++; triggerData.gdd = ctx.gdd_accumulated;
+      reasons.push(`GDD ${ctx.gdd_accumulated} indicates pest pressure`);
+    } else if (ctx.weather.temp != null && ctx.weather.temp >= 25 && ctx.weather.humidity != null && ctx.weather.humidity >= 60) {
       condMet++; reasons.push('ETL-favorable conditions (T≥25°C, H≥60%)');
     }
   }
 
-  // PHI window check (spray timing)
+  // PHI window check
   if (dr.phi_days != null && ctx.das > 0) {
-    // If harvest is within PHI days, alert about pre-harvest interval
     const estimatedHarvestDas = getEstimatedHarvestDas(ctx.crop_code);
     if (estimatedHarvestDas > 0) {
       const daysToHarvest = estimatedHarvestDas - ctx.das;
       if (daysToHarvest > 0 && daysToHarvest <= dr.phi_days) {
         condTotal++; condMet++;
         triggerData.days_to_harvest = daysToHarvest; triggerData.phi_days = dr.phi_days;
-        reasons.push(`${daysToHarvest} days to harvest, PHI ${dr.phi_days} days — no spray window`);
+        reasons.push(`${daysToHarvest} days to harvest, PHI ${dr.phi_days} days`);
       }
     }
   }
 
-  // If no conditions to evaluate, don't fire
   if (condTotal === 0) return { fired: false, riskScore: 0, confidence: 0, reasoning: '', triggerData };
 
   const ratio = condMet / condTotal;
-  const fired = ratio >= 0.5; // decision rules fire at 50% threshold
+  const fired = ratio >= 0.5;
   return { fired, riskScore: Math.round(ratio * 100), confidence: ratio * 0.85, reasoning: reasons.join('; '), triggerData };
 }
 
