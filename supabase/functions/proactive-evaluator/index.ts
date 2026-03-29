@@ -141,6 +141,7 @@ Deno.serve(async (req) => {
       .eq('is_active', true);
 
     if (targetLandId) landsQuery = landsQuery.eq('id', targetLandId);
+    if (tenantId && tenantId !== 'default') landsQuery = landsQuery.eq('tenant_id', tenantId);
 
     const { data: lands, error: landsError } = await landsQuery.limit(500);
     if (landsError) throw new Error(`Lands load failed: ${landsError.message}`);
@@ -196,21 +197,33 @@ Deno.serve(async (req) => {
     const ndviMap = buildNdviMap(ndviRes.data);
     const stageMap = buildStageMap(stageMapRes.data);
 
-    // Batch-load weather: collect unique location keys, then load all at once
+    // Batch-load weather: collect unique location keys + build land→locationKey mapping
     const locationKeys = new Set<string>();
+    const landToLocKey = new Map<string, string>();
     for (const land of lands) {
       if (land.center_lat != null && land.center_lon != null) {
-        locationKeys.add(makeLocationKey(land.center_lat, land.center_lon));
+        const locKey = makeLocationKey(land.center_lat, land.center_lon);
+        locationKeys.add(locKey);
+        landToLocKey.set(land.id, locKey);
       }
     }
-    const weatherMap = await batchLoadWeather(supabase, Array.from(locationKeys));
+    const locKeyArray = Array.from(locationKeys);
+    const weatherMap = await batchLoadWeather(supabase, locKeyArray);
     
-    // Batch-load forecast rain probability (72h)
-    // Batch-load forecast rain probability (72h) and GDD (30d)
-    const [forecastMap, gddMap] = await Promise.all([
-      batchLoadForecast(supabase, landIds),
-      batchLoadGDD(supabase, landIds),
+    // Batch-load forecast rain probability (72h) and GDD (30d) — by location_key
+    const [forecastLocMap, gddLocMap] = await Promise.all([
+      batchLoadForecast(supabase, locKeyArray),
+      batchLoadGDD(supabase, locKeyArray),
     ]);
+    // Map location_key results back to land_ids
+    const forecastMap = new Map<string, number>();
+    const gddMap = new Map<string, number>();
+    for (const [landId, locKey] of landToLocKey) {
+      const fVal = forecastLocMap.get(locKey);
+      if (fVal != null) forecastMap.set(landId, fVal);
+      const gVal = gddLocMap.get(locKey);
+      if (gVal != null) gddMap.set(landId, gVal);
+    }
 
     // Batch daily alert counts per farmer
     const todayStr = new Date().toISOString().split('T')[0];
@@ -390,8 +403,16 @@ Deno.serve(async (req) => {
           processed: true,
         });
 
-        // For decision rules, use reason_text/action_text as template
+        // For decision rules, generate trilingual templates
         const templateVars = buildTemplateVars(ctx);
+        const titleEn = `${dr.condition_code.replace(/_/g, ' ')} Alert`;
+        const messageEn = dr.reason_text || result.reasoning;
+        const actionEn = dr.action_text || null;
+        // Generate basic Marathi/Hindi from category templates
+        const trilingualTitle = generateTrilingualTitle(dr.category, alertCategory, ctx);
+        const trilingualMsg = generateTrilingualMessage(dr.category, messageEn, ctx);
+        const trilingualAction = generateTrilingualAction(dr.category, actionEn, ctx);
+        
         alertsToInsert.push({
           tenant_id: ctx.tenant_id,
           land_id: ctx.land_id,
@@ -399,15 +420,15 @@ Deno.serve(async (req) => {
           rule_id: dr.condition_code,
           alert_category: alertCategory,
           priority: priority,
-          title_en: `${dr.condition_code.replace(/_/g, ' ')} Alert`,
-          title_mr: null,
-          title_hi: null,
-          message_en: dr.reason_text || result.reasoning,
-          message_mr: null,
-          message_hi: null,
-          action_text_en: dr.action_text || null,
-          action_text_mr: null,
-          action_text_hi: null,
+          title_en: titleEn,
+          title_mr: trilingualTitle.mr,
+          title_hi: trilingualTitle.hi,
+          message_en: messageEn,
+          message_mr: trilingualMsg.mr,
+          message_hi: trilingualMsg.hi,
+          action_text_en: actionEn,
+          action_text_mr: trilingualAction.mr,
+          action_text_hi: trilingualAction.hi,
           risk_score: result.riskScore,
           confidence: result.confidence,
           trigger_data: { ...result.triggerData, knowledge: dr.knowledge_text, decision_rule_id: dr.id },
@@ -430,14 +451,20 @@ Deno.serve(async (req) => {
       if (evErr) console.error('[ProactiveEvaluator] Events insert error:', evErr.message);
     }
 
-    // Neural enrichment for high-risk alerts (G6 - Step 7)
-    if (LOVABLE_API_KEY) {
-      await enrichHighRiskAlerts(alertsToInsert);
-    }
-
+    // Insert alerts FIRST (non-blocking enrichment — P0-3 fix)
     if (alertsToInsert.length > 0) {
-      const { error: alErr } = await supabase.from('proactive_alerts').insert(alertsToInsert);
+      const { data: insertedAlerts, error: alErr } = await supabase
+        .from('proactive_alerts')
+        .insert(alertsToInsert)
+        .select('id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr');
       if (alErr) console.error('[ProactiveEvaluator] Alerts insert error:', alErr.message);
+      
+      // Async neural enrichment for high-risk alerts (non-blocking — fire and forget)
+      if (LOVABLE_API_KEY && insertedAlerts && insertedAlerts.length > 0) {
+        enrichAndUpdateAlerts(supabase, insertedAlerts).catch(e => 
+          console.warn('[NeuralEnrichment] Background enrichment failed:', e.message)
+        );
+      }
     }
 
     // =========================================================
