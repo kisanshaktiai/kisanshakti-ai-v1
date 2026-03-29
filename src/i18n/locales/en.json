@@ -355,6 +355,8 @@
     "noAlerts": "No threats detected for your farm. We are continuously monitoring.",
     "done": "Done ✅",
     "dismiss": "Dismiss",
+    "askAI": "Ask AI",
+    "whyThisAlert": "Why this alert?",
     "priority": {
       "critical": "Critical",
       "high": "Important",
