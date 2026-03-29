@@ -1220,12 +1220,20 @@ function mapDecisionCategory(category: string): string {
   const map: Record<string, string> = {
     'proactive_monitoring': 'CROP_STRESS',
     'proactive_pest': 'PEST_RISK',
+    'proactive_irrigation': 'IRRIGATION_ALERT',
     'ipm': 'PEST_RISK',
+    'pest': 'PEST_RISK',
     'disease': 'DISEASE_RISK',
     'nutrient': 'FERTILIZER_WINDOW',
+    'nutrition': 'FERTILIZER_WINDOW',
     'safety': 'SPRAY_WINDOW',
     'advisory': 'STAGE_ADVISORY',
     'stage_problems': 'CROP_STRESS',
+    'stress': 'CROP_STRESS',
+    'weather': 'WEATHER_ALERT',
+    'irrigation': 'IRRIGATION_ALERT',
+    'soil': 'SOIL_HEALTH',
+    'physiology': 'CROP_STRESS',
   };
   return map[category] || 'GENERAL';
 }
@@ -1234,6 +1242,7 @@ function mapDecisionPriority(priority: number): string {
   if (priority <= 1) return 'CRITICAL';
   if (priority <= 2) return 'HIGH';
   if (priority <= 3) return 'MEDIUM';
+  if (priority <= 5) return 'LOW';
   return 'LOW';
 }
 
