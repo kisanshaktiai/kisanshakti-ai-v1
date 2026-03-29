@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useProactiveAlerts, ProactiveAlert } from '@/hooks/useProactiveAlerts';
@@ -47,6 +48,7 @@ export default function ProactiveAlerts() {
   const { alerts, loading, unreadCount, markSeen, markActed, dismissAlert } = useProactiveAlerts();
   const { speak, isSpeaking, stop } = useEnhancedTTS();
   const lang = i18n.language || 'en';
+  const [selectedLand, setSelectedLand] = useState<string | null>(null);
 
   const handleSpeak = (alert: ProactiveAlert) => {
     if (isSpeaking) { stop(); return; }
@@ -95,13 +97,18 @@ export default function ProactiveAlerts() {
     );
   }
 
-  const sortedAlerts = [...alerts].sort((a, b) => {
-    const priorityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
-    const pA = priorityOrder[a.priority as keyof typeof priorityOrder] ?? 2;
-    const pB = priorityOrder[b.priority as keyof typeof priorityOrder] ?? 2;
-    if (pA !== pB) return pA - pB;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  });
+  // Build unique land names for filter chips
+  const landNames = [...new Set(alerts.map(a => a.land_name).filter(Boolean))] as string[];
+
+  const sortedAlerts = [...alerts]
+    .filter(a => !selectedLand || a.land_name === selectedLand)
+    .sort((a, b) => {
+      const priorityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+      const pA = priorityOrder[a.priority as keyof typeof priorityOrder] ?? 2;
+      const pB = priorityOrder[b.priority as keyof typeof priorityOrder] ?? 2;
+      if (pA !== pB) return pA - pB;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
 
   return (
     <div className="p-4 pb-24 space-y-4">
@@ -117,6 +124,37 @@ export default function ProactiveAlerts() {
           <p className="text-xs text-muted-foreground mt-1">{t('proactive.subtitle')}</p>
         </div>
       </div>
+
+      {/* Land filter chips */}
+      {landNames.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+          <button
+            onClick={() => setSelectedLand(null)}
+            className={cn(
+              'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+              !selectedLand ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+            )}
+          >
+            {lang === 'mr' ? 'सर्व' : lang === 'hi' ? 'सभी' : 'All'} ({alerts.length})
+          </button>
+          {landNames.map(name => {
+            const count = alerts.filter(a => a.land_name === name).length;
+            return (
+              <button
+                key={name}
+                onClick={() => setSelectedLand(selectedLand === name ? null : name)}
+                className={cn(
+                  'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1',
+                  selectedLand === name ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+                )}
+              >
+                <MapPin className="h-3 w-3" />
+                {name} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <AnimatePresence>
         {sortedAlerts.map((alert, index) => {
