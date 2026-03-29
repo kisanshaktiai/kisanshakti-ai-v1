@@ -253,9 +253,8 @@ Deno.serve(async (req) => {
       // Forecast rain probability 72h
       const forecastRain = forecastMap.get(land.id) ?? null;
 
-      // GDD from forecast data (sum growing_degree_days over last 30 days)
-      // This is a simplified approach; in production you'd compute from daily temps
-      const gdd = forecastRain !== null ? null : null; // GDD loaded separately below
+      // GDD from batch-loaded forecast data
+      const gdd = gddMap.get(land.id) ?? null;
 
       landContexts.push({
         land_id: land.id,
