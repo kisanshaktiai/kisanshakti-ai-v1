@@ -13,7 +13,8 @@ import {
   DollarSign,
   Leaf,
   FileText,
-  Sprout
+  Sprout,
+  Bell
 } from 'lucide-react';
 
 export interface FeatureItem {

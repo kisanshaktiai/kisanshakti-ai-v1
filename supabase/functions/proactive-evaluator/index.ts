@@ -76,10 +76,10 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
-    // 2. Load active lands with crop schedules
+    // 2. Load active lands with CORRECT column names
     let landsQuery = supabase
       .from('lands')
-      .select('id, farmer_id, tenant_id, crop_type, land_name, sowing_date, coordinates')
+      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon')
       .eq('is_active', true);
 
     if (targetLandId) {
@@ -95,40 +95,59 @@ Deno.serve(async (req) => {
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
 
+    // 2b. Load crop schedules for accurate sowing dates
+    const landIds = lands.map(l => l.id);
+    const { data: cropSchedules } = await supabase
+      .from('crop_schedules')
+      .select('land_id, sowing_date, crop_code, status')
+      .in('land_id', landIds)
+      .eq('status', 'active')
+      .order('created_at', { ascending: false });
+
+    // Build schedule map: land_id -> latest active schedule
+    const scheduleMap = new Map<string, { sowing_date: string; crop_code: string }>();
+    if (cropSchedules) {
+      for (const cs of cropSchedules) {
+        if (!scheduleMap.has(cs.land_id) && cs.sowing_date) {
+          scheduleMap.set(cs.land_id, { sowing_date: cs.sowing_date, crop_code: cs.crop_code });
+        }
+      }
+    }
+
     // 3. Build land contexts with weather + NDVI
     const landContexts: LandContext[] = [];
 
     for (const land of lands) {
-      const das = land.sowing_date 
-        ? Math.floor((Date.now() - new Date(land.sowing_date).getTime()) / (1000 * 60 * 60 * 24))
+      // Use crop_schedule sowing_date first, then lands.last_sowing_date as fallback
+      const schedule = scheduleMap.get(land.id);
+      const sowingDate = schedule?.sowing_date || land.last_sowing_date;
+      const cropSource = schedule?.crop_code || land.current_crop;
+
+      const das = sowingDate 
+        ? Math.floor((Date.now() - new Date(sowingDate).getTime()) / (1000 * 60 * 60 * 24))
         : 0;
 
-      const currentStage = computeStage(land.crop_type, das);
+      const currentStage = computeStage(cropSource, das);
 
-      // Get latest weather
+      // Get latest weather using center_lat, center_lon
       let weather = { temp: null as number | null, humidity: null as number | null, rain_mm: null as number | null, wind_speed: null as number | null, description: null as string | null };
-      if (land.coordinates) {
-        const coords = typeof land.coordinates === 'string' ? JSON.parse(land.coordinates) : land.coordinates;
-        const lat = coords?.center?.lat || coords?.lat || coords?.[0]?.lat;
-        const lon = coords?.center?.lng || coords?.lng || coords?.[0]?.lng;
-        if (lat && lon) {
-          const locationKey = `${Number(lat).toFixed(2)},${Number(lon).toFixed(2)}`;
-          const { data: weatherData } = await supabase
-            .from('weather_current')
-            .select('temperature, humidity, rain_1h, wind_speed, description')
-            .eq('location_key', locationKey)
-            .order('fetched_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (weatherData) {
-            weather = {
-              temp: weatherData.temperature,
-              humidity: weatherData.humidity,
-              rain_mm: weatherData.rain_1h,
-              wind_speed: weatherData.wind_speed,
-              description: weatherData.description,
-            };
-          }
+      if (land.center_lat != null && land.center_lon != null) {
+        const locationKey = `${(Math.round(land.center_lat * 100) / 100)},${(Math.round(land.center_lon * 100) / 100)}`;
+        const { data: weatherData } = await supabase
+          .from('weather_current')
+          .select('temperature_celsius, humidity_percent, rain_1h_mm, wind_speed_kmh, weather_description')
+          .eq('location_key', locationKey)
+          .order('observation_time', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (weatherData) {
+          weather = {
+            temp: weatherData.temperature_celsius,
+            humidity: weatherData.humidity_percent,
+            rain_mm: weatherData.rain_1h_mm,
+            wind_speed: weatherData.wind_speed_kmh,
+            description: weatherData.weather_description,
+          };
         }
       }
 
@@ -150,14 +169,14 @@ Deno.serve(async (req) => {
         land_id: land.id,
         farmer_id: land.farmer_id,
         tenant_id: land.tenant_id || tenantId,
-        crop_code: normalizeCropCode(land.crop_type),
-        sowing_date: land.sowing_date,
+        crop_code: normalizeCropCode(cropSource),
+        sowing_date: sowingDate,
         current_stage: currentStage,
         das,
         weather,
         ndvi,
         ndvi_previous,
-        land_name: land.land_name,
+        land_name: land.name,
       });
     }
 
@@ -231,7 +250,7 @@ Deno.serve(async (req) => {
 
         // Generate alert with template substitution
         const templateVars: Record<string, string> = {
-          '{{crop}}': ctx.crop_code || 'पीक',
+          '{{crop}}': ctx.crop_code || 'crop',
           '{{temp}}': ctx.weather.temp?.toString() || '--',
           '{{humidity}}': ctx.weather.humidity?.toString() || '--',
           '{{rain}}': ctx.weather.rain_mm?.toString() || '0',
@@ -239,7 +258,7 @@ Deno.serve(async (req) => {
           '{{ndvi}}': ctx.ndvi?.toFixed(2) || '--',
           '{{das}}': ctx.das.toString(),
           '{{stage}}': ctx.current_stage || 'unknown',
-          '{{land}}': ctx.land_name || 'तुमची शेत',
+          '{{land}}': ctx.land_name || 'your field',
         };
 
         const fillTemplate = (tpl: string | null): string => {
@@ -500,7 +519,6 @@ function evaluateRule(rule: ProactiveRule, ctx: LandContext): { fired: boolean; 
     }
 
     case 'SOIL': {
-      // Placeholder for soil-based rules
       return { fired: false, riskScore: 0, confidence: 0, reasoning: 'Soil evaluation not yet implemented', triggerData };
     }
 
