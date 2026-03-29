@@ -365,7 +365,10 @@ Deno.serve(async (req) => {
           action_text_en: fillTemplate(rule.action_template_en, templateVars),
           risk_score: result.riskScore,
           confidence: result.confidence,
-          trigger_data: enrichTriggerDataWithIrrigation(result.triggerData, rule.alert_category, ctx),
+          trigger_data: addSymbolicSolution(
+            enrichTriggerDataWithIrrigation(result.triggerData, rule.alert_category, ctx),
+            null, rule, ctx, decisionRules
+          ),
           decision_reasoning: result.reasoning,
           status: 'PENDING',
           dedup_key: dedupKey,
@@ -440,7 +443,10 @@ Deno.serve(async (req) => {
           action_text_hi: trilingualAction.hi,
           risk_score: result.riskScore,
           confidence: result.confidence,
-          trigger_data: enrichTriggerDataWithIrrigation({ ...result.triggerData, knowledge: dr.knowledge_text, decision_rule_id: dr.id }, alertCategory, ctx),
+          trigger_data: addSymbolicSolution(
+            enrichTriggerDataWithIrrigation({ ...result.triggerData, knowledge: dr.knowledge_text, decision_rule_id: dr.id }, alertCategory, ctx),
+            dr, null, ctx, decisionRules
+          ),
           decision_reasoning: result.reasoning,
           status: 'PENDING',
           dedup_key: dedupKey,
@@ -1470,6 +1476,267 @@ function mapDecisionEventType(category: string): string {
     'stage_problems': 'STAGE_TRANSITION',
   };
   return map[category] || 'SCHEDULED_CHECK';
+}
+
+// =====================================================
+// SYMBOLIC SOLUTION BUILDER — from decision_rules (SSOT)
+// =====================================================
+
+function addSymbolicSolution(
+  triggerData: Record<string, any>,
+  dr: DecisionRuleProactive | null,
+  rule: ProactiveRule | null,
+  ctx: LandContext,
+  allDecisionRules: DecisionRuleProactive[]
+): Record<string, any> {
+  // If we already have a solution (from previous enrichment), keep it
+  if (triggerData.solution) return triggerData;
+
+  let sourceRule = dr;
+
+  // For proactive_rules, find best matching decision_rule
+  if (!sourceRule && rule) {
+    sourceRule = findBestMatchingDecisionRule(rule, ctx, allDecisionRules);
+  }
+
+  const solution = buildSolutionFromSymbolicData(sourceRule, ctx, triggerData);
+  triggerData.solution = solution;
+  return triggerData;
+}
+
+function findBestMatchingDecisionRule(
+  rule: ProactiveRule,
+  ctx: LandContext,
+  decisionRules: DecisionRuleProactive[]
+): DecisionRuleProactive | null {
+  const candidates = decisionRules.filter(dr => {
+    // Must match crop
+    if (dr.crop_code && ctx.crop_code && dr.crop_code !== ctx.crop_code) return false;
+    // Must match stage if specified
+    if (dr.stage_applicable?.length && ctx.current_stage) {
+      if (!dr.stage_applicable.includes(ctx.current_stage) && !dr.stage_applicable.includes('ALL')) return false;
+    }
+    // Match by category mapping
+    const drAlertCat = mapDecisionCategory(dr.category);
+    if (rule.alert_category === drAlertCat) return true;
+    // Match by condition code keywords
+    const cc = dr.condition_code.toUpperCase();
+    if (rule.condition_type === 'NDVI' && (cc.includes('STRESS') || cc.includes('NDVI') || cc.includes('WATER') || cc.includes('DROUGHT'))) return true;
+    if (rule.condition_type === 'WEATHER' && (cc.includes('WEATHER') || cc.includes('RAIN') || cc.includes('HEAT'))) return true;
+    if (rule.condition_type === 'DISEASE_RISK' && (cc.includes('DISEASE') || cc.includes('BLIGHT') || cc.includes('SMUT') || cc.includes('RUST'))) return true;
+    if (rule.condition_type === 'PEST_RISK' && (cc.includes('PEST') || cc.includes('BORER') || cc.includes('INSECT'))) return true;
+    if (rule.condition_type === 'SOIL' && (cc.includes('NUTRIENT') || cc.includes('NITROGEN') || cc.includes('PHOSPHORUS'))) return true;
+    return false;
+  });
+
+  if (candidates.length === 0) return null;
+  // Sort by priority (lower = higher priority)
+  candidates.sort((a, b) => (a.priority || 99) - (b.priority || 99));
+  return candidates[0];
+}
+
+function buildSolutionFromSymbolicData(
+  dr: DecisionRuleProactive | null,
+  ctx: LandContext,
+  triggerData: Record<string, any>
+): Record<string, any> {
+  const areaStr = ctx.area_acres ? `${ctx.area_acres} acres` : '';
+  const areaMr = ctx.area_acres ? `${ctx.area_acres} एकर` : '';
+  const areaHi = ctx.area_acres ? `${ctx.area_acres} एकड़` : '';
+  const cropEn = ctx.crop_code || 'crop';
+  const stage = ctx.current_stage || 'current stage';
+  const landName = ctx.land_name || 'your field';
+
+  // If no decision rule found, build from context data
+  if (!dr) {
+    return buildContextualSolution(ctx, triggerData);
+  }
+
+  // Parse action_text into steps
+  const actionText = dr.action_text || '';
+  const steps = actionText
+    .split(/(?:\.\s+|\n|;)/)
+    .map((s: string) => s.trim())
+    .filter((s: string) => s.length > 10)
+    .slice(0, 5);
+
+  // Build area-specific steps (multiply per-acre dosages)
+  const areaSpecificSteps = steps.map((step: string) => {
+    if (ctx.area_acres && ctx.area_acres > 0) {
+      // Look for per-acre patterns and add total
+      const perAcreMatch = step.match(/(\d+(?:\.\d+)?)\s*(ml|g|kg|l|liter|litre)\s*(?:per|\/)\s*acre/i);
+      if (perAcreMatch) {
+        const qty = parseFloat(perAcreMatch[1]);
+        const unit = perAcreMatch[2];
+        const total = Math.round(qty * ctx.area_acres * 10) / 10;
+        return `${step} (Total for ${ctx.area_acres} acres: ${total} ${unit})`;
+      }
+    }
+    return step;
+  });
+
+  const reasonText = dr.reason_text || '';
+  const knowledgeText = dr.knowledge_text || '';
+  const conditionName = dr.condition_code.replace(/_/g, ' ').toLowerCase();
+
+  // Problem description
+  const problemEn = reasonText.split('.')[0] || `${conditionName} detected on ${landName}`;
+
+  // Cause from knowledge_text or reason_text
+  const causeEn = knowledgeText
+    ? knowledgeText.split('.').slice(0, 2).join('. ')
+    : (reasonText.split('.').slice(1, 3).join('. ') || `Environmental conditions favor ${conditionName}`);
+
+  // Safety (PHI + general)
+  let safetyEn = '';
+  if (dr.phi_days) {
+    safetyEn = `Pre-harvest interval: ${dr.phi_days} days. Do not harvest before this period after application.`;
+  }
+  if (actionText.toLowerCase().includes('spray') || actionText.toLowerCase().includes('insecticide') || actionText.toLowerCase().includes('fungicide')) {
+    safetyEn += safetyEn ? ' ' : '';
+    safetyEn += 'Wear gloves, mask, and full-sleeve clothing during application. Do not eat, drink, or smoke while spraying.';
+  }
+
+  // Expected benefit
+  const benefitEn = `Following these steps should help manage ${conditionName} on your ${areaStr} ${cropEn} field. Monitor after 5-7 days for improvement.`;
+
+  // Followup
+  const followupEn = `Check ${landName} after 5-7 days. Look for improvement in crop health indicators. If condition persists, consult local agricultural extension officer.`;
+
+  // Build Marathi solution using CATEGORY_TITLES mapping
+  const catMr = CATEGORY_TITLES[mapDecisionCategory(dr.category)]?.mr || 'सूचना';
+  const catHi = CATEGORY_TITLES[mapDecisionCategory(dr.category)]?.hi || 'सूचना';
+
+  // Irrigation data if available
+  const irrigation = triggerData.irrigation;
+  let irrigationStepMr = '';
+  let irrigationStepHi = '';
+  let irrigationStepEn = '';
+  if (irrigation) {
+    const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
+    const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
+    irrigationStepEn = `Irrigate with ${irrigation.water_liters_total.toLocaleString()} liters via ${irrigation.method} (${irrigation.duration_hours} hrs)`;
+    irrigationStepMr = `${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास)`;
+    irrigationStepHi = `${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे)`;
+  }
+
+  return {
+    problem_en: problemEn,
+    problem_mr: `${landName} ${areaMr} शेतात ${catMr} आढळले. ${cropEn} पिकावर परिणाम होत आहे.`,
+    problem_hi: `${landName} ${areaHi} खेत में ${catHi} पाया गया. ${cropEn} फसल पर असर हो रहा है.`,
+    cause_en: causeEn,
+    cause_mr: `तापमान ${ctx.weather.temp ?? '--'}°C, आर्द्रता ${ctx.weather.humidity ?? '--'}% - या हवामानामुळे ही समस्या उद्भवली.`,
+    cause_hi: `तापमान ${ctx.weather.temp ?? '--'}°C, नमी ${ctx.weather.humidity ?? '--'}% - इस मौसम के कारण यह समस्या हुई.`,
+    steps_en: irrigationStepEn ? [...areaSpecificSteps, irrigationStepEn] : areaSpecificSteps,
+    steps_mr: irrigationStepMr
+      ? [`शेताची तपासणी करा आणि ${catMr} ओळखा`, `कृषी तज्ञांचा सल्ला घ्या`, irrigationStepMr]
+      : [`शेताची तपासणी करा आणि ${catMr} ओळखा`, `कृषी विभागाचा सल्ला घ्या`, `5-7 दिवसांनी पुन्हा तपासा`],
+    steps_hi: irrigationStepHi
+      ? [`खेत की जांच करें और ${catHi} की पहचान करें`, `कृषि विशेषज्ञ से सलाह लें`, irrigationStepHi]
+      : [`खेत की जांच करें और ${catHi} की पहचान करें`, `कृषि विभाग से सलाह लें`, `5-7 दिन बाद फिर जांचें`],
+    safety_en: safetyEn || 'Wear protective equipment when applying any chemical treatment.',
+    safety_mr: 'फवारणी करताना हातमोजे, मास्क आणि पूर्ण बाह्यांचे कपडे घाला. फवारणी दरम्यान खाणे-पिणे टाळा.',
+    safety_hi: 'छिड़काव करते समय दस्ताने, मास्क और पूरी बाजू के कपड़े पहनें. छिड़काव के दौरान खाना-पीना न करें.',
+    organic_alt_en: '',
+    organic_alt_mr: '',
+    organic_alt_hi: '',
+    expected_benefit_en: benefitEn,
+    expected_benefit_mr: `या उपायांनी ${landName} शेतातील ${areaMr} ${cropEn} पिकाची स्थिती सुधारेल. 5-7 दिवसांनी तपासा.`,
+    expected_benefit_hi: `इन उपायों से ${landName} खेत के ${areaHi} ${cropEn} फसल की स्थिति सुधरेगी. 5-7 दिन बाद जांचें.`,
+    followup_en: followupEn,
+    followup_mr: `${landName} शेत 5-7 दिवसांनी तपासा. सुधारणा न झाल्यास स्थानिक कृषी अधिकाऱ्यांशी संपर्क करा.`,
+    followup_hi: `${landName} खेत 5-7 दिन बाद जांचें. सुधार न हो तो स्थानीय कृषि अधिकारी से संपर्क करें.`,
+  };
+}
+
+function buildContextualSolution(
+  ctx: LandContext,
+  triggerData: Record<string, any>
+): Record<string, any> {
+  const landName = ctx.land_name || 'your field';
+  const areaMr = ctx.area_acres ? `${ctx.area_acres} एकर` : '';
+  const areaHi = ctx.area_acres ? `${ctx.area_acres} एकड़` : '';
+  const cropEn = ctx.crop_code || 'crop';
+
+  const irrigation = triggerData.irrigation;
+
+  // NDVI-specific solution
+  if (triggerData.ndvi != null || triggerData.drop != null) {
+    const ndviVal = triggerData.ndvi ?? '--';
+    const steps_en: string[] = [
+      'Inspect the field for visible stress signs: wilting, yellowing, or dry patches',
+      'Check soil moisture level by pressing soil between fingers — it should feel moist',
+    ];
+    const steps_mr: string[] = [
+      'शेतात जाऊन पिकाची स्थिती तपासा — पाने पिवळी, सुकलेली किंवा कोमेजलेली आहेत का पहा',
+      'जमिनीतील ओलावा तपासा — माती बोटांनी दाबून ओलसर आहे का पहा',
+    ];
+    const steps_hi: string[] = [
+      'खेत में जाकर फसल की स्थिति जांचें — पत्तियां पीली, सूखी या मुरझाई हुई हैं क्या देखें',
+      'मिट्टी की नमी जांचें — उंगलियों से दबाकर देखें गीली है या सूखी',
+    ];
+
+    if (irrigation) {
+      const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
+      const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
+      steps_en.push(`Irrigate immediately: ${irrigation.water_liters_total.toLocaleString()} liters via ${irrigation.method} for ${irrigation.duration_hours} hours`);
+      steps_mr.push(`ताबडतोब ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास)`);
+      steps_hi.push(`तुरंत ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे)`);
+    }
+
+    steps_en.push('If stress persists after 5 days, take a photo and consult via AI Chat');
+    steps_mr.push('5 दिवसांनी सुधारणा नसल्यास फोटो काढून AI चॅटवर विचारा');
+    steps_hi.push('5 दिन बाद सुधार न हो तो फोटो लेकर AI चैट पर पूछें');
+
+    return {
+      problem_en: `Satellite data shows crop health decline (NDVI: ${ndviVal}) on ${landName}. This indicates possible water stress, nutrient deficiency, or pest/disease damage.`,
+      problem_mr: `${landName} ${areaMr} शेतातील पिकाचे उपग्रह आरोग्य (NDVI: ${ndviVal}) कमी झाले आहे. पाणी कमतरता, अन्नद्रव्य कमतरता किंवा कीड-रोगामुळे असू शकते.`,
+      problem_hi: `${landName} ${areaHi} खेत में उपग्रह फसल स्वास्थ्य (NDVI: ${ndviVal}) कम हुआ है. पानी की कमी, पोषक तत्वों की कमी या कीट-रोग के कारण हो सकता है.`,
+      cause_en: `NDVI value ${ndviVal} indicates reduced photosynthetic activity. Weather: ${ctx.weather.temp ?? '--'}°C, humidity ${ctx.weather.humidity ?? '--'}%. Soil type: ${ctx.soil_type || 'unknown'}.`,
+      cause_mr: `NDVI ${ndviVal} म्हणजे पिकाची प्रकाशसंश्लेषण क्रिया कमी झाली. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. माती: ${ctx.soil_type || '--'}.`,
+      cause_hi: `NDVI ${ndviVal} यानी फसल की प्रकाश संश्लेषण गतिविधि कम हुई. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. मिट्टी: ${ctx.soil_type || '--'}.`,
+      steps_en,
+      steps_mr,
+      steps_hi,
+      safety_en: 'If applying any chemical treatment, wear gloves and mask. Do not spray during windy conditions.',
+      safety_mr: 'कोणतीही रासायनिक फवारणी करताना हातमोजे आणि मास्क वापरा. वाऱ्यात फवारणी करू नका.',
+      safety_hi: 'कोई भी रासायनिक छिड़काव करते समय दस्ताने और मास्क पहनें. हवा में छिड़काव न करें.',
+      organic_alt_en: 'Apply vermicompost (500 kg/acre) or jeevamrut (200 liters/acre) to boost soil biology and crop recovery.',
+      organic_alt_mr: 'गांडूळखत (500 किलो/एकर) किंवा जीवामृत (200 लिटर/एकर) वापरा.',
+      organic_alt_hi: 'वर्मीकम्पोस्ट (500 किलो/एकड़) या जीवामृत (200 लीटर/एकड़) डालें.',
+      expected_benefit_en: `With proper irrigation and care, crop health on ${landName} should improve within 7-10 days. NDVI should show recovery in next satellite pass.`,
+      expected_benefit_mr: `योग्य सिंचन आणि काळजीने ${landName} शेतातील पिकाचे आरोग्य 7-10 दिवसांत सुधारेल.`,
+      expected_benefit_hi: `उचित सिंचाई और देखभाल से ${landName} खेत में फसल स्वास्थ्य 7-10 दिनों में सुधरेगा.`,
+      followup_en: `Re-check ${landName} after 5-7 days. Look for greener leaves and new growth. Next NDVI update will confirm recovery.`,
+      followup_mr: `5-7 दिवसांनी ${landName} शेत पुन्हा तपासा. हिरवी पाने आणि नवी वाढ दिसायला हवी.`,
+      followup_hi: `5-7 दिन बाद ${landName} खेत फिर जांचें. हरी पत्तियां और नई वृद्धि दिखनी चाहिए.`,
+    };
+  }
+
+  // Generic solution for other alert types
+  return {
+    problem_en: `Alert condition detected on ${landName}. Immediate field inspection recommended.`,
+    problem_mr: `${landName} ${areaMr} शेतात समस्या आढळली. शेताची तपासणी करा.`,
+    problem_hi: `${landName} ${areaHi} खेत में समस्या पाई गई. खेत की जांच करें.`,
+    cause_en: `Weather: ${ctx.weather.temp ?? '--'}°C, humidity ${ctx.weather.humidity ?? '--'}%. Crop stage: ${ctx.current_stage || 'unknown'}.`,
+    cause_mr: `तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. पीक टप्पा: ${ctx.current_stage || '--'}.`,
+    cause_hi: `तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. फसल चरण: ${ctx.current_stage || '--'}.`,
+    steps_en: ['Inspect the field thoroughly', 'Check for any visible damage or stress signs', 'Consult AI Chat with a photo for specific advice'],
+    steps_mr: ['शेताची संपूर्ण तपासणी करा', 'कोणतेही नुकसान किंवा ताण चिन्हे तपासा', 'फोटो काढून AI चॅटवर विचारा'],
+    steps_hi: ['खेत की पूरी जांच करें', 'किसी भी नुकसान या तनाव के संकेत देखें', 'फोटो लेकर AI चैट पर पूछें'],
+    safety_en: '',
+    safety_mr: '',
+    safety_hi: '',
+    organic_alt_en: '',
+    organic_alt_mr: '',
+    organic_alt_hi: '',
+    expected_benefit_en: '',
+    expected_benefit_mr: '',
+    expected_benefit_hi: '',
+    followup_en: `Check ${landName} again after 3-5 days.`,
+    followup_mr: `3-5 दिवसांनी ${landName} शेत पुन्हा तपासा.`,
+    followup_hi: `3-5 दिन बाद ${landName} खेत फिर जांचें.`,
+  };
 }
 
 // =====================================================
