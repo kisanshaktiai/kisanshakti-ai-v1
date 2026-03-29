@@ -1,12 +1,14 @@
 import { useTranslation } from 'react-i18next';
+import { useNavigate } from 'react-router-dom';
 import { useProactiveAlerts, ProactiveAlert } from '@/hooks/useProactiveAlerts';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { AlertEvidenceSection } from '@/components/proactive/AlertEvidenceSection';
 import { 
   AlertTriangle, Bell, CheckCircle, CloudRain, Bug, 
   Droplets, Thermometer, Leaf, Clock, Volume2, 
-  ChevronRight, Sprout, Wind, X
+  ChevronRight, Sprout, Wind, X, MessageCircle, MapPin
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -41,22 +43,26 @@ function getLocalizedText(alert: ProactiveAlert, field: 'title' | 'message' | 'a
 
 export default function ProactiveAlerts() {
   const { t, i18n } = useTranslation();
+  const navigate = useNavigate();
   const { alerts, loading, unreadCount, markSeen, markActed, dismissAlert } = useProactiveAlerts();
   const { speak, isSpeaking, stop } = useEnhancedTTS();
   const lang = i18n.language || 'en';
 
   const handleSpeak = (alert: ProactiveAlert) => {
-    if (isSpeaking) {
-      stop();
-      return;
-    }
+    if (isSpeaking) { stop(); return; }
     const title = getLocalizedText(alert, 'title', lang);
     const message = getLocalizedText(alert, 'message', lang);
     const action = getLocalizedText(alert, 'action_text', lang);
     speak(`${title}. ${message}. ${action}`, lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN');
   };
 
-  // Get priority label using i18n
+  const handleAskAI = (alert: ProactiveAlert) => {
+    const category = alert.alert_category.replace(/_/g, ' ').toLowerCase();
+    const landName = alert.land_name || 'my field';
+    const query = `Tell me more about ${category} on ${landName}`;
+    navigate(`/app/chat?q=${encodeURIComponent(query)}`);
+  };
+
   const getPriorityLabel = (priority: string): string => {
     const emoji: Record<string, string> = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
     return `${emoji[priority] || '⚪'} ${t(`proactive.priority.${priority.toLowerCase()}`, priority)}`;
@@ -78,17 +84,12 @@ export default function ProactiveAlerts() {
         <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
           <CheckCircle className="h-10 w-10 text-primary" />
         </div>
-        <h2 className="text-xl font-bold mb-2">
-          {t('proactive.allClear')}
-        </h2>
-        <p className="text-muted-foreground text-sm max-w-xs">
-          {t('proactive.noAlerts')}
-        </p>
+        <h2 className="text-xl font-bold mb-2">{t('proactive.allClear')}</h2>
+        <p className="text-muted-foreground text-sm max-w-xs">{t('proactive.noAlerts')}</p>
       </div>
     );
   }
 
-  // Sort: CRITICAL first, then by date
   const sortedAlerts = [...alerts].sort((a, b) => {
     const priorityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
     const pA = priorityOrder[a.priority as keyof typeof priorityOrder] ?? 2;
@@ -99,25 +100,19 @@ export default function ProactiveAlerts() {
 
   return (
     <div className="p-4 pb-24 space-y-4">
-      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
             {t('proactive.title')}
             {unreadCount > 0 && (
-              <Badge className="bg-destructive text-destructive-foreground text-xs px-2">
-                {unreadCount}
-              </Badge>
+              <Badge className="bg-destructive text-destructive-foreground text-xs px-2">{unreadCount}</Badge>
             )}
           </h1>
-          <p className="text-xs text-muted-foreground mt-1">
-            {t('proactive.subtitle')}
-          </p>
+          <p className="text-xs text-muted-foreground mt-1">{t('proactive.subtitle')}</p>
         </div>
       </div>
 
-      {/* Alert Cards */}
       <AnimatePresence>
         {sortedAlerts.map((alert, index) => {
           const config = CATEGORY_CONFIG[alert.alert_category] || CATEGORY_CONFIG.GENERAL;
@@ -149,7 +144,7 @@ export default function ProactiveAlerts() {
                 onClick={() => isUnread && markSeen(alert.id)}
               >
                 <CardContent className="p-4">
-                  {/* Top row: icon + title + priority */}
+                  {/* Top row */}
                   <div className="flex items-start gap-3">
                     <div className={cn(
                       'w-10 h-10 rounded-full flex items-center justify-center shrink-0',
@@ -159,37 +154,32 @@ export default function ProactiveAlerts() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-sm leading-tight line-clamp-2">
-                          {title}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          onClick={(e) => { e.stopPropagation(); handleSpeak(alert); }}
-                        >
+                        <span className="font-semibold text-sm leading-tight line-clamp-2">{title}</span>
+                        <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0"
+                          onClick={(e) => { e.stopPropagation(); handleSpeak(alert); }}>
                           <Volume2 className={cn('h-4 w-4', isSpeaking ? 'text-primary animate-pulse' : 'text-muted-foreground')} />
                         </Button>
                       </div>
-
-                      <Badge className={cn('text-[10px] px-1.5 py-0', badgeClass)}>
-                        {getPriorityLabel(alert.priority)}
-                      </Badge>
+                      <div className="flex items-center gap-2">
+                        <Badge className={cn('text-[10px] px-1.5 py-0', badgeClass)}>
+                          {getPriorityLabel(alert.priority)}
+                        </Badge>
+                        {alert.land_name && (
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                            <MapPin className="h-2.5 w-2.5" />
+                            {alert.land_name}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6 shrink-0 opacity-50"
-                      onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}
-                    >
+                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 opacity-50"
+                      onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}>
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
 
                   {/* Message */}
-                  <p className="text-sm text-foreground/80 mt-3 leading-relaxed">
-                    {message}
-                  </p>
+                  <p className="text-sm text-foreground/80 mt-3 leading-relaxed">{message}</p>
 
                   {/* Action */}
                   {actionText && (
@@ -199,6 +189,12 @@ export default function ProactiveAlerts() {
                     </div>
                   )}
 
+                  {/* Why this alert? (evidence section) */}
+                  <AlertEvidenceSection 
+                    triggerData={alert.trigger_data || {}} 
+                    reasoning={alert.decision_reasoning} 
+                  />
+
                   {/* Footer */}
                   <div className="flex items-center justify-between mt-3 pt-2 border-t border-border/30">
                     <span className="text-[10px] text-muted-foreground flex items-center gap-1">
@@ -207,13 +203,15 @@ export default function ProactiveAlerts() {
                     </span>
 
                     <div className="flex gap-2">
+                      {/* Ask AI deeplink CTA */}
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 rounded-full"
+                        onClick={(e) => { e.stopPropagation(); handleAskAI(alert); }}>
+                        <MessageCircle className="h-3 w-3" />
+                        {t('proactive.askAI', 'Ask AI')}
+                      </Button>
                       {alert.status !== 'ACTED' && (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          className="h-7 text-xs gap-1 rounded-full"
-                          onClick={(e) => { e.stopPropagation(); markActed(alert.id); }}
-                        >
+                        <Button variant="default" size="sm" className="h-7 text-xs gap-1 rounded-full"
+                          onClick={(e) => { e.stopPropagation(); markActed(alert.id); }}>
                           <CheckCircle className="h-3 w-3" />
                           {t('proactive.done')}
                         </Button>
