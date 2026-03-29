@@ -10,6 +10,7 @@ interface AlertEvidenceSectionProps {
   reasoning: string | null;
 }
 
+// All labels are trilingual — no hardcoded sentences
 const EVIDENCE_LABELS: Record<string, { icon: string; unit: string; en: string; mr: string; hi: string }> = {
   temp: { icon: '🌡️', unit: '°C', en: 'Temperature', mr: 'तापमान', hi: 'तापमान' },
   humidity: { icon: '💧', unit: '%', en: 'Humidity', mr: 'आर्द्रता', hi: 'नमी' },
@@ -32,6 +33,27 @@ const EVIDENCE_LABELS: Record<string, { icon: string; unit: string; en: string; 
   area_acres: { icon: '📐', unit: ' acres', en: 'Field Area', mr: 'शेत क्षेत्र', hi: 'खेत का क्षेत्रफल' },
   soil_type: { icon: '🏔️', unit: '', en: 'Soil Type', mr: 'माती प्रकार', hi: 'मिट्टी का प्रकार' },
   irrigation_method: { icon: '🚿', unit: '', en: 'Irrigation Method', mr: 'सिंचन पद्धत', hi: 'सिंचाई विधि' },
+  threshold: { icon: '📏', unit: '', en: 'Threshold', mr: 'मर्यादा', hi: 'सीमा' },
+  crop: { icon: '🌾', unit: '', en: 'Crop', mr: 'पीक', hi: 'फसल' },
+  water_source: { icon: '💧', unit: '', en: 'Water Source', mr: 'पाण्याचा स्रोत', hi: 'पानी का स्रोत' },
+};
+
+// Trilingual section headers
+const SECTION_HEADERS: Record<string, { mr: string; hi: string; en: string }> = {
+  problem: { mr: 'समस्या', hi: 'समस्या', en: 'Problem' },
+  cause: { mr: 'कारण', hi: 'कारण', en: 'Why' },
+  steps: { mr: 'काय करावे', hi: 'क्या करें', en: 'What To Do' },
+  safety: { mr: 'सुरक्षा', hi: 'सुरक्षा', en: 'Safety' },
+  organic_alt: { mr: 'सेंद्रिय पर्याय', hi: 'जैविक विकल्प', en: 'Organic Alternative' },
+  expected_benefit: { mr: 'अपेक्षित फायदा', hi: 'अपेक्षित लाभ', en: 'Expected Result' },
+  followup: { mr: 'पुढील तपासणी', hi: 'अगली जांच', en: 'Follow-up' },
+  irrigation: { mr: 'सिंचन सल्ला', hi: 'सिंचाई सलाह', en: 'Irrigation Advice' },
+  evidence: { mr: 'हा इशारा का? (पुरावा)', hi: 'यह अलर्ट क्यों? (प्रमाण)', en: 'Why this alert? (Evidence)' },
+  total_water: { mr: 'एकूण पाणी', hi: 'कुल पानी', en: 'Total Water' },
+  per_acre: { mr: 'प्रति एकर', hi: 'प्रति एकड़', en: 'Per Acre' },
+  duration: { mr: 'कालावधी', hi: 'अवधि', en: 'Duration' },
+  method: { mr: 'पद्धत', hi: 'विधि', en: 'Method' },
+  hours: { mr: 'तास', hi: 'घंटे', en: 'hrs' },
 };
 
 const URGENCY_LABELS: Record<string, { en: string; mr: string; hi: string; color: string }> = {
@@ -46,6 +68,12 @@ function getLabel(key: string, lang: string): string {
   if (lang === 'mr') return config.mr;
   if (lang === 'hi') return config.hi;
   return config.en;
+}
+
+function getHeader(key: string, lang: string): string {
+  const h = SECTION_HEADERS[key];
+  if (!h) return key;
+  return h[lang as 'mr' | 'hi' | 'en'] || h.en;
 }
 
 function getSolutionField(solution: any, field: string, lang: string): string {
@@ -82,12 +110,11 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
   const expectedBenefit = getSolutionField(solution, 'expected_benefit', lang);
   const followup = getSolutionField(solution, 'followup', lang);
 
-  const sectionTitle = (icon: React.ReactNode, titleMr: string, titleHi: string, titleEn: string) => {
-    const t = lang === 'mr' ? titleMr : lang === 'hi' ? titleHi : titleEn;
+  const sectionTitle = (icon: React.ReactNode, headerKey: string) => {
     return (
       <div className="flex items-center gap-1.5 mb-1">
         {icon}
-        <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wide">{t}</span>
+        <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wide">{getHeader(headerKey, lang)}</span>
       </div>
     );
   };
@@ -97,28 +124,26 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
       {/* === SOLUTION CARD (from neural enrichment) === */}
       {solution && (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/20 p-3 space-y-3">
-          {/* Problem & Cause */}
           {(problem || cause) && (
             <div className="space-y-1.5">
               {problem && (
                 <div>
-                  {sectionTitle(<AlertTriangle className="h-3 w-3 text-amber-600" />, 'समस्या', 'समस्या', 'Problem')}
+                  {sectionTitle(<AlertTriangle className="h-3 w-3 text-amber-600" />, 'problem')}
                   <p className="text-xs text-foreground/80 leading-relaxed">{problem}</p>
                 </div>
               )}
               {cause && (
                 <div>
-                  {sectionTitle(<Lightbulb className="h-3 w-3 text-yellow-600" />, 'कारण', 'कारण', 'Why')}
+                  {sectionTitle(<Lightbulb className="h-3 w-3 text-yellow-600" />, 'cause')}
                   <p className="text-xs text-foreground/70 leading-relaxed">{cause}</p>
                 </div>
               )}
             </div>
           )}
 
-          {/* Action Steps */}
           {steps.length > 0 && (
             <div>
-              {sectionTitle(<Target className="h-3 w-3 text-primary" />, 'काय करावे', 'क्या करें', 'What To Do')}
+              {sectionTitle(<Target className="h-3 w-3 text-primary" />, 'steps')}
               <div className="space-y-1.5">
                 {steps.map((step, i) => (
                   <div key={i} className="flex items-start gap-2 text-xs">
@@ -132,34 +157,31 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
             </div>
           )}
 
-          {/* Safety Warning */}
           {safety && (
             <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-2">
-              {sectionTitle(<Shield className="h-3 w-3 text-red-600" />, '⚠️ सुरक्षा', '⚠️ सुरक्षा', '⚠️ Safety')}
+              {sectionTitle(<Shield className="h-3 w-3 text-red-600" />, 'safety')}
               <p className="text-[11px] text-red-700 dark:text-red-300 leading-relaxed">{safety}</p>
             </div>
           )}
 
-          {/* Organic Alternative */}
           {organicAlt && (
             <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-2">
-              {sectionTitle(<Leaf className="h-3 w-3 text-green-600" />, '🌿 सेंद्रिय पर्याय', '🌿 जैविक विकल्प', '🌿 Organic Alternative')}
+              {sectionTitle(<Leaf className="h-3 w-3 text-green-600" />, 'organic_alt')}
               <p className="text-[11px] text-green-700 dark:text-green-300 leading-relaxed">{organicAlt}</p>
             </div>
           )}
 
-          {/* Expected Benefit + Followup */}
           {(expectedBenefit || followup) && (
             <div className="flex gap-2">
               {expectedBenefit && (
                 <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
-                  {sectionTitle(<CheckCircle2 className="h-3 w-3 text-emerald-600" />, 'अपेक्षित फायदा', 'अपेक्षित लाभ', 'Expected Result')}
+                  {sectionTitle(<CheckCircle2 className="h-3 w-3 text-emerald-600" />, 'expected_benefit')}
                   <p className="text-[10px] text-foreground/70 leading-relaxed">{expectedBenefit}</p>
                 </div>
               )}
               {followup && (
                 <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
-                  {sectionTitle(<Clock className="h-3 w-3 text-blue-600" />, 'पुढील तपासणी', 'अगली जांच', 'Follow-up')}
+                  {sectionTitle(<Clock className="h-3 w-3 text-blue-600" />, 'followup')}
                   <p className="text-[10px] text-foreground/70 leading-relaxed">{followup}</p>
                 </div>
               )}
@@ -177,7 +199,7 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
             </div>
             <div className="flex-1">
               <p className="text-xs font-semibold text-cyan-800 dark:text-cyan-200">
-                {lang === 'mr' ? '💧 सिंचन सल्ला' : lang === 'hi' ? '💧 सिंचाई सलाह' : '💧 Irrigation Advice'}
+                💧 {getHeader('irrigation', lang)}
               </p>
               {irrigation.urgency && (
                 <Badge className={cn('text-[9px] px-1.5 py-0 mt-0.5', URGENCY_LABELS[irrigation.urgency]?.color || 'bg-muted')}>
@@ -189,33 +211,25 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
           
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">
-                {lang === 'mr' ? 'एकूण पाणी' : lang === 'hi' ? 'कुल पानी' : 'Total Water'}
-              </p>
+              <p className="text-[10px] text-muted-foreground">{getHeader('total_water', lang)}</p>
               <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
                 {Number(irrigation.water_liters_total).toLocaleString()} L
               </p>
             </div>
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">
-                {lang === 'mr' ? 'प्रति एकर' : lang === 'hi' ? 'प्रति एकड़' : 'Per Acre'}
-              </p>
+              <p className="text-[10px] text-muted-foreground">{getHeader('per_acre', lang)}</p>
               <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
                 {Number(irrigation.water_liters_per_acre).toLocaleString()} L
               </p>
             </div>
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">
-                {lang === 'mr' ? 'कालावधी' : lang === 'hi' ? 'अवधि' : 'Duration'}
-              </p>
+              <p className="text-[10px] text-muted-foreground">{getHeader('duration', lang)}</p>
               <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
-                {irrigation.duration_hours} {lang === 'mr' ? 'तास' : lang === 'hi' ? 'घंटे' : 'hrs'}
+                {irrigation.duration_hours} {getHeader('hours', lang)}
               </p>
             </div>
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
-              <p className="text-[10px] text-muted-foreground">
-                {lang === 'mr' ? 'पद्धत' : lang === 'hi' ? 'विधि' : 'Method'}
-              </p>
+              <p className="text-[10px] text-muted-foreground">{getHeader('method', lang)}</p>
               <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
                 {irrigation.method}
               </p>
@@ -235,7 +249,7 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
         <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
           <CollapsibleTrigger className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
             <Eye className="h-3 w-3" />
-            <span>{lang === 'mr' ? 'हा इशारा का? (पुरावा)' : lang === 'hi' ? 'यह अलर्ट क्यों? (प्रमाण)' : 'Why this alert? (Evidence)'}</span>
+            <span>{getHeader('evidence', lang)}</span>
             <ChevronDown className={`h-3 w-3 transition-transform ${isEvidenceOpen ? 'rotate-180' : ''}`} />
           </CollapsibleTrigger>
           <CollapsibleContent className="mt-2">
