@@ -9,7 +9,8 @@ import { AlertEvidenceSection } from '@/components/proactive/AlertEvidenceSectio
 import { 
   AlertTriangle, Bell, CheckCircle, CloudRain, Bug, 
   Droplets, Thermometer, Leaf, Clock, Volume2, 
-  ChevronRight, Sprout, Wind, X, MessageCircle, MapPin
+  ChevronRight, Sprout, Wind, X, MessageCircle, MapPin,
+  ArrowLeft, Share2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -70,6 +71,17 @@ export default function ProactiveAlerts() {
     navigate(`/app/chat?q=${encodeURIComponent(query)}`);
   };
 
+  const handleWhatsAppShare = (alert: ProactiveAlert) => {
+    const title = getLocalizedText(alert, 'title', lang);
+    const message = getLocalizedText(alert, 'message', lang);
+    const action = getLocalizedText(alert, 'action_text', lang);
+    const landName = alert.land_name ? ` (${alert.land_name})` : '';
+    const appName = 'KisanShakti AI';
+    const fullMessage = `🌾 *${appName}*${landName}\n\n⚠️ *${title}*\n\n${message}${action ? `\n\n✅ ${action}` : ''}`;
+    const encoded = encodeURIComponent(fullMessage);
+    window.open(`https://api.whatsapp.com/send?text=${encoded}`, '_blank');
+  };
+
   const getPriorityLabel = (priority: string): string => {
     const emoji: Record<string, string> = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
     return `${emoji[priority] || '⚪'} ${t(`proactive.priority.${priority.toLowerCase()}`, priority)}`;
@@ -111,19 +123,34 @@ export default function ProactiveAlerts() {
     });
 
   return (
-    <div className="p-4 pb-24 space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            <Bell className="h-5 w-5 text-primary" />
-            {t('proactive.title')}
-            {unreadCount > 0 && (
-              <Badge className="bg-destructive text-destructive-foreground text-xs px-2">{unreadCount}</Badge>
-            )}
-          </h1>
-          <p className="text-xs text-muted-foreground mt-1">{t('proactive.subtitle')}</p>
+    <div className="min-h-screen bg-gradient-to-br from-background via-accent/5 to-primary/5">
+      {/* Sticky Header */}
+      <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
+        <div className="px-3 py-3">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/app/home')}
+              className="h-9 w-9 rounded-xl"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex-1">
+              <h1 className="text-lg font-bold flex items-center gap-2">
+                <Bell className="h-4 w-4 text-primary" />
+                {t('proactive.title', 'Proactive Alerts')}
+                {unreadCount > 0 && (
+                  <Badge className="bg-destructive text-destructive-foreground text-xs px-2">{unreadCount}</Badge>
+                )}
+              </h1>
+              <p className="text-[11px] text-muted-foreground">{t('proactive.subtitle', 'AI-powered farm intelligence')}</p>
+            </div>
+          </div>
         </div>
       </div>
+
+      <div className="pt-20 px-4 pb-24 space-y-4">
 
       {/* Land filter chips */}
       {landNames.length > 1 && (
@@ -246,6 +273,12 @@ export default function ProactiveAlerts() {
                     </span>
 
                     <div className="flex gap-2">
+                      {/* WhatsApp Share */}
+                      <Button variant="outline" size="sm" className="h-7 text-xs gap-1 rounded-full text-green-600 border-green-200 hover:bg-green-50"
+                        onClick={(e) => { e.stopPropagation(); handleWhatsAppShare(alert); }}>
+                        <Share2 className="h-3 w-3" />
+                        WhatsApp
+                      </Button>
                       {/* Ask AI deeplink CTA */}
                       <Button variant="outline" size="sm" className="h-7 text-xs gap-1 rounded-full"
                         onClick={(e) => { e.stopPropagation(); handleAskAI(alert); }}>
@@ -267,6 +300,7 @@ export default function ProactiveAlerts() {
           );
         })}
       </AnimatePresence>
+      </div>
     </div>
   );
 }

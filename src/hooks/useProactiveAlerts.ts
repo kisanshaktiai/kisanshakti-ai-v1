@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
+import { toast } from '@/hooks/use-toast';
 
 export interface ProactiveAlert {
   id: string;
@@ -100,6 +101,30 @@ export function useProactiveAlerts() {
           const newAlert = payload.new as ProactiveAlert;
           setAlerts(prev => [newAlert, ...prev]);
           setUnreadCount(prev => prev + 1);
+
+          // In-app toast notification
+          const alertTitle = newAlert.title_en || 'New Alert';
+          const priorityEmoji: Record<string, string> = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
+          const emoji = priorityEmoji[newAlert.priority] || '📢';
+
+          toast({
+            title: `${emoji} ${alertTitle}`,
+            description: newAlert.message_en?.substring(0, 100) || 'You have a new proactive alert',
+            variant: newAlert.priority === 'CRITICAL' ? 'destructive' : 'default',
+          });
+
+          // For CRITICAL alerts, also open WhatsApp compose prompt
+          if (newAlert.priority === 'CRITICAL') {
+            const landName = newAlert.land_name ? ` (${newAlert.land_name})` : '';
+            const msg = `🌾 *KisanShakti AI*${landName}\n\n🔴 *${alertTitle}*\n\n${newAlert.message_en || ''}`;
+            const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+            // Small delay so toast shows first
+            setTimeout(() => {
+              if (window.confirm('Critical alert! Share on WhatsApp?')) {
+                window.open(waUrl, '_blank');
+              }
+            }, 1500);
+          }
         }
       )
       .subscribe();

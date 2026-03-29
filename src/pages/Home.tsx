@@ -258,15 +258,22 @@ export default function Home() {
 
   return (
     <div className="relative bg-gradient-subtle min-h-screen">
-      {/* Alert Bell - Fixed top-right */}
-      <Link to="/app/proactive-alerts" className="fixed top-[72px] right-5 z-40">
+      {/* Alert Bell - Fixed top-right, elevated z-index and prominent styling */}
+      <Link to="/app/proactive-alerts" className="fixed top-[18px] right-4 z-50">
         <motion.div 
-          className="relative p-2 rounded-full bg-card/90 backdrop-blur-sm border border-border/50 shadow-md"
+          className={cn(
+            "relative p-2.5 rounded-2xl backdrop-blur-xl border shadow-lg transition-colors",
+            alertUnreadCount > 0
+              ? "bg-destructive/10 border-destructive/30 shadow-destructive/20"
+              : "bg-card/90 border-border/50 shadow-md"
+          )}
           whileTap={{ scale: 0.9 }}
+          animate={alertUnreadCount > 0 ? { scale: [1, 1.1, 1] } : {}}
+          transition={alertUnreadCount > 0 ? { repeat: Infinity, duration: 2, repeatDelay: 3 } : {}}
         >
-          <Bell className="h-5 w-5 text-primary" />
+          <Bell className={cn("h-5 w-5", alertUnreadCount > 0 ? "text-destructive" : "text-primary")} />
           {alertUnreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
+            <span className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse ring-2 ring-background">
               {alertUnreadCount > 9 ? '9+' : alertUnreadCount}
             </span>
           )}
