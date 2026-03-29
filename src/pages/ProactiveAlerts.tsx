@@ -58,8 +58,13 @@ export default function ProactiveAlerts() {
 
   const handleAskAI = (alert: ProactiveAlert) => {
     const category = alert.alert_category.replace(/_/g, ' ').toLowerCase();
-    const landName = alert.land_name || 'my field';
-    const query = `Tell me more about ${category} on ${landName}`;
+    const landName = alert.land_name || (lang === 'mr' ? 'माझे शेत' : lang === 'hi' ? 'मेरा खेत' : 'my field');
+    const queryTemplates: Record<string, string> = {
+      mr: `${landName} वर ${category} बद्दल अधिक सांगा`,
+      hi: `${landName} पर ${category} के बारे में बताएं`,
+      en: `Tell me more about ${category} on ${landName}`,
+    };
+    const query = queryTemplates[lang] || queryTemplates.en;
     navigate(`/app/chat?q=${encodeURIComponent(query)}`);
   };
 

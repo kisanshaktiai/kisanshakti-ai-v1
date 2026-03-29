@@ -141,6 +141,7 @@ Deno.serve(async (req) => {
       .eq('is_active', true);
 
     if (targetLandId) landsQuery = landsQuery.eq('id', targetLandId);
+    if (tenantId && tenantId !== 'default') landsQuery = landsQuery.eq('tenant_id', tenantId);
 
     const { data: lands, error: landsError } = await landsQuery.limit(500);
     if (landsError) throw new Error(`Lands load failed: ${landsError.message}`);
@@ -196,21 +197,33 @@ Deno.serve(async (req) => {
     const ndviMap = buildNdviMap(ndviRes.data);
     const stageMap = buildStageMap(stageMapRes.data);
 
-    // Batch-load weather: collect unique location keys, then load all at once
+    // Batch-load weather: collect unique location keys + build land→locationKey mapping
     const locationKeys = new Set<string>();
+    const landToLocKey = new Map<string, string>();
     for (const land of lands) {
       if (land.center_lat != null && land.center_lon != null) {
-        locationKeys.add(makeLocationKey(land.center_lat, land.center_lon));
+        const locKey = makeLocationKey(land.center_lat, land.center_lon);
+        locationKeys.add(locKey);
+        landToLocKey.set(land.id, locKey);
       }
     }
-    const weatherMap = await batchLoadWeather(supabase, Array.from(locationKeys));
+    const locKeyArray = Array.from(locationKeys);
+    const weatherMap = await batchLoadWeather(supabase, locKeyArray);
     
-    // Batch-load forecast rain probability (72h)
-    // Batch-load forecast rain probability (72h) and GDD (30d)
-    const [forecastMap, gddMap] = await Promise.all([
-      batchLoadForecast(supabase, landIds),
-      batchLoadGDD(supabase, landIds),
+    // Batch-load forecast rain probability (72h) and GDD (30d) — by location_key
+    const [forecastLocMap, gddLocMap] = await Promise.all([
+      batchLoadForecast(supabase, locKeyArray),
+      batchLoadGDD(supabase, locKeyArray),
     ]);
+    // Map location_key results back to land_ids
+    const forecastMap = new Map<string, number>();
+    const gddMap = new Map<string, number>();
+    for (const [landId, locKey] of landToLocKey) {
+      const fVal = forecastLocMap.get(locKey);
+      if (fVal != null) forecastMap.set(landId, fVal);
+      const gVal = gddLocMap.get(locKey);
+      if (gVal != null) gddMap.set(landId, gVal);
+    }
 
     // Batch daily alert counts per farmer
     const todayStr = new Date().toISOString().split('T')[0];
@@ -390,8 +403,16 @@ Deno.serve(async (req) => {
           processed: true,
         });
 
-        // For decision rules, use reason_text/action_text as template
+        // For decision rules, generate trilingual templates
         const templateVars = buildTemplateVars(ctx);
+        const titleEn = `${dr.condition_code.replace(/_/g, ' ')} Alert`;
+        const messageEn = dr.reason_text || result.reasoning;
+        const actionEn = dr.action_text || null;
+        // Generate basic Marathi/Hindi from category templates
+        const trilingualTitle = generateTrilingualTitle(dr.category, alertCategory, ctx);
+        const trilingualMsg = generateTrilingualMessage(dr.category, messageEn, ctx);
+        const trilingualAction = generateTrilingualAction(dr.category, actionEn, ctx);
+        
         alertsToInsert.push({
           tenant_id: ctx.tenant_id,
           land_id: ctx.land_id,
@@ -399,15 +420,15 @@ Deno.serve(async (req) => {
           rule_id: dr.condition_code,
           alert_category: alertCategory,
           priority: priority,
-          title_en: `${dr.condition_code.replace(/_/g, ' ')} Alert`,
-          title_mr: null,
-          title_hi: null,
-          message_en: dr.reason_text || result.reasoning,
-          message_mr: null,
-          message_hi: null,
-          action_text_en: dr.action_text || null,
-          action_text_mr: null,
-          action_text_hi: null,
+          title_en: titleEn,
+          title_mr: trilingualTitle.mr,
+          title_hi: trilingualTitle.hi,
+          message_en: messageEn,
+          message_mr: trilingualMsg.mr,
+          message_hi: trilingualMsg.hi,
+          action_text_en: actionEn,
+          action_text_mr: trilingualAction.mr,
+          action_text_hi: trilingualAction.hi,
           risk_score: result.riskScore,
           confidence: result.confidence,
           trigger_data: { ...result.triggerData, knowledge: dr.knowledge_text, decision_rule_id: dr.id },
@@ -430,14 +451,20 @@ Deno.serve(async (req) => {
       if (evErr) console.error('[ProactiveEvaluator] Events insert error:', evErr.message);
     }
 
-    // Neural enrichment for high-risk alerts (G6 - Step 7)
-    if (LOVABLE_API_KEY) {
-      await enrichHighRiskAlerts(alertsToInsert);
-    }
-
+    // Insert alerts FIRST (non-blocking enrichment — P0-3 fix)
     if (alertsToInsert.length > 0) {
-      const { error: alErr } = await supabase.from('proactive_alerts').insert(alertsToInsert);
+      const { data: insertedAlerts, error: alErr } = await supabase
+        .from('proactive_alerts')
+        .insert(alertsToInsert)
+        .select('id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr');
       if (alErr) console.error('[ProactiveEvaluator] Alerts insert error:', alErr.message);
+      
+      // Async neural enrichment for high-risk alerts (non-blocking — fire and forget)
+      if (LOVABLE_API_KEY && insertedAlerts && insertedAlerts.length > 0) {
+        enrichAndUpdateAlerts(supabase, insertedAlerts).catch(e => 
+          console.warn('[NeuralEnrichment] Background enrichment failed:', e.message)
+        );
+      }
     }
 
     // =========================================================
@@ -574,47 +601,55 @@ async function batchLoadWeather(supabase: any, locationKeys: string[]): Promise<
   return map;
 }
 
-async function batchLoadForecast(supabase: any, landIds: string[]): Promise<Map<string, number>> {
+async function batchLoadForecast(supabase: any, locationKeys: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>();
-  if (landIds.length === 0) return map;
+  if (locationKeys.length === 0) return map;
 
   const futureTime = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
   const { data } = await supabase
     .from('weather_forecasts')
-    .select('land_id, rain_probability_percent')
-    .in('land_id', landIds)
+    .select('location_key, rain_probability_percent')
+    .in('location_key', locationKeys)
     .gte('forecast_time', new Date().toISOString())
     .lte('forecast_time', futureTime)
     .not('rain_probability_percent', 'is', null);
 
   if (data) {
     for (const f of data) {
-      if (!f.land_id) continue;
-      const existing = map.get(f.land_id) ?? 0;
+      if (!f.location_key) continue;
+      const existing = map.get(f.location_key) ?? 0;
       if (f.rain_probability_percent > existing) {
-        map.set(f.land_id, f.rain_probability_percent);
+        map.set(f.location_key, f.rain_probability_percent);
       }
     }
   }
   return map;
 }
 
-async function batchLoadGDD(supabase: any, landIds: string[]): Promise<Map<string, number>> {
+async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>();
-  if (landIds.length === 0) return map;
+  if (locationKeys.length === 0) return map;
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  
+  // GDD from weather_forecasts if available
   const { data } = await supabase
     .from('weather_forecasts')
-    .select('land_id, growing_degree_days')
-    .in('land_id', landIds)
-    .gte('forecast_time', thirtyDaysAgo)
-    .not('growing_degree_days', 'is', null);
+    .select('location_key, growing_degree_days, temperature_max_celsius, temperature_min_celsius')
+    .in('location_key', locationKeys)
+    .gte('forecast_time', thirtyDaysAgo);
 
   if (data) {
     for (const f of data) {
-      if (!f.land_id) continue;
-      map.set(f.land_id, (map.get(f.land_id) || 0) + (f.growing_degree_days || 0));
+      if (!f.location_key) continue;
+      // Use stored GDD if available, otherwise compute from temp
+      let gdd = f.growing_degree_days;
+      if (gdd == null && f.temperature_max_celsius != null && f.temperature_min_celsius != null) {
+        gdd = Math.max(0, (f.temperature_max_celsius + f.temperature_min_celsius) / 2 - 10);
+      }
+      if (gdd != null && gdd > 0) {
+        map.set(f.location_key, (map.get(f.location_key) || 0) + gdd);
+      }
     }
   }
   return map;
@@ -1136,14 +1171,13 @@ function getEstimatedHarvestDas(cropCode: string | null): number {
 }
 
 // =====================================================
-// NEURAL ENRICHMENT (G6 - Step 7)
+// NEURAL ENRICHMENT — ASYNC (updates DB after insert)
 // =====================================================
 
-async function enrichHighRiskAlerts(alerts: any[]): Promise<void> {
-  const highRisk = alerts.filter(a => a.risk_score >= 70 || a.priority === 'CRITICAL');
+async function enrichAndUpdateAlerts(supabase: any, insertedAlerts: any[]): Promise<void> {
+  const highRisk = insertedAlerts.filter(a => a.risk_score >= 70 || a.priority === 'CRITICAL');
   if (highRisk.length === 0 || !LOVABLE_API_KEY) return;
 
-  // Enrich max 5 per batch to bound costs
   const toEnrich = highRisk.slice(0, 5);
 
   for (const alert of toEnrich) {
@@ -1156,7 +1190,6 @@ Context:
 - Risk Score: ${alert.risk_score}
 - Evidence: ${JSON.stringify(alert.trigger_data)}
 - Current message: ${alert.message_en}
-- Current action: ${alert.action_text_en || 'none'}
 
 Return a JSON with exactly these fields:
 {
@@ -1171,7 +1204,7 @@ Return a JSON with exactly these fields:
   "action_en": "Actionable step in English (max 20 words)"
 }
 
-Important: Use simple village language. Tell the farmer exactly what to do physically. Be specific about timing (today, tomorrow, this week).`;
+Important: Use simple village language. Tell the farmer exactly what to do physically. Be specific about timing.`;
 
       const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -1188,7 +1221,7 @@ Important: Use simple village language. Tell the farmer exactly what to do physi
 
       if (!response.ok) {
         console.warn(`[NeuralEnrichment] API returned ${response.status}`);
-        await response.text(); // consume body
+        await response.text();
         continue;
       }
 
@@ -1197,19 +1230,83 @@ Important: Use simple village language. Tell the farmer exactly what to do physi
       if (!content) continue;
 
       const enriched = JSON.parse(content);
-      if (enriched.title_mr) alert.title_mr = enriched.title_mr;
-      if (enriched.title_hi) alert.title_hi = enriched.title_hi;
-      if (enriched.title_en) alert.title_en = enriched.title_en;
-      if (enriched.message_mr) alert.message_mr = enriched.message_mr;
-      if (enriched.message_hi) alert.message_hi = enriched.message_hi;
-      if (enriched.message_en) alert.message_en = enriched.message_en;
-      if (enriched.action_mr) alert.action_text_mr = enriched.action_mr;
-      if (enriched.action_hi) alert.action_text_hi = enriched.action_hi;
-      if (enriched.action_en) alert.action_text_en = enriched.action_en;
+      const updateData: Record<string, string> = {};
+      if (enriched.title_mr) updateData.title_mr = enriched.title_mr;
+      if (enriched.title_hi) updateData.title_hi = enriched.title_hi;
+      if (enriched.title_en) updateData.title_en = enriched.title_en;
+      if (enriched.message_mr) updateData.message_mr = enriched.message_mr;
+      if (enriched.message_hi) updateData.message_hi = enriched.message_hi;
+      if (enriched.message_en) updateData.message_en = enriched.message_en;
+      if (enriched.action_mr) updateData.action_text_mr = enriched.action_mr;
+      if (enriched.action_hi) updateData.action_text_hi = enriched.action_hi;
+      if (enriched.action_en) updateData.action_text_en = enriched.action_en;
+
+      // Update the already-inserted alert with enriched content
+      await supabase.from('proactive_alerts').update(updateData).eq('id', alert.id);
+      console.log(`[NeuralEnrichment] Enriched alert ${alert.id}`);
     } catch (e) {
       console.warn('[NeuralEnrichment] Error:', e.message);
     }
   }
+}
+
+// =====================================================
+// TRILINGUAL TEMPLATE GENERATORS (for decision rules without enrichment)
+// =====================================================
+
+const CATEGORY_TITLES: Record<string, { mr: string; hi: string }> = {
+  PEST_RISK: { mr: '🐛 कीड चेतावणी', hi: '🐛 कीट चेतावनी' },
+  DISEASE_RISK: { mr: '🦠 रोग धोका', hi: '🦠 रोग का खतरा' },
+  WEATHER_WARNING: { mr: '⛈️ हवामान इशारा', hi: '⛈️ मौसम चेतावनी' },
+  IRRIGATION: { mr: '💧 पाणी व्यवस्थापन', hi: '💧 पानी प्रबंधन' },
+  FERTILIZER_WINDOW: { mr: '🌿 खत व्यवस्थापन', hi: '🌿 उर्वरक प्रबंधन' },
+  SPRAY_WINDOW: { mr: '🔫 फवारणी वेळ', hi: '🔫 छिड़काव का समय' },
+  CROP_STRESS: { mr: '🌡️ पीक ताण', hi: '🌡️ फसल तनाव' },
+  STAGE_ADVISORY: { mr: '🌱 टप्पा सल्ला', hi: '🌱 चरण सलाह' },
+  HARVEST_TIMING: { mr: '🌾 कापणी वेळ', hi: '🌾 कटाई का समय' },
+  GENERAL: { mr: '📢 सूचना', hi: '📢 सूचना' },
+};
+
+const CATEGORY_ACTIONS: Record<string, { mr: string; hi: string }> = {
+  PEST_RISK: { mr: 'शेताची तपासणी करा आणि कीडनाशक फवारणी करा', hi: 'खेत की जांच करें और कीटनाशक छिड़काव करें' },
+  DISEASE_RISK: { mr: 'प्रभावित पाने काढून बुरशीनाशक फवारा', hi: 'प्रभावित पत्तियां हटाएं और फफूंदनाशक छिड़कें' },
+  WEATHER_WARNING: { mr: 'पिकाला संरक्षण द्या, सिंचन थांबवा', hi: 'फसल को सुरक्षा दें, सिंचाई रोकें' },
+  IRRIGATION: { mr: 'आज सिंचन करा', hi: 'आज सिंचाई करें' },
+  FERTILIZER_WINDOW: { mr: 'खत द्यायची योग्य वेळ आहे', hi: 'खाद देने का सही समय है' },
+  SPRAY_WINDOW: { mr: 'आज फवारणीसाठी योग्य हवामान', hi: 'आज छिड़काव के लिए उपयुक्त मौसम' },
+  CROP_STRESS: { mr: 'पिकाची स्थिती तपासा', hi: 'फसल की स्थिति जांचें' },
+  STAGE_ADVISORY: { mr: 'या टप्प्यात विशेष काळजी घ्या', hi: 'इस चरण में विशेष देखभाल करें' },
+  HARVEST_TIMING: { mr: 'कापणी नियोजन करा', hi: 'कटाई की योजना बनाएं' },
+  GENERAL: { mr: 'तपासणी करा', hi: 'जांच करें' },
+};
+
+function generateTrilingualTitle(category: string, alertCategory: string, ctx: LandContext): { mr: string; hi: string } {
+  const templates = CATEGORY_TITLES[alertCategory] || CATEGORY_TITLES.GENERAL;
+  const landMr = ctx.land_name || 'शेत';
+  const landHi = ctx.land_name || 'खेत';
+  return {
+    mr: `${templates.mr} - ${landMr}`,
+    hi: `${templates.hi} - ${landHi}`,
+  };
+}
+
+function generateTrilingualMessage(category: string, messageEn: string, ctx: LandContext): { mr: string; hi: string } {
+  // For decision rules, create a basic Marathi/Hindi message from context
+  const landMr = ctx.land_name || 'तुमच्या शेतात';
+  const landHi = ctx.land_name || 'आपके खेत में';
+  const catTitleMr = CATEGORY_TITLES[mapDecisionCategory(category)]?.mr || 'सूचना';
+  const catTitleHi = CATEGORY_TITLES[mapDecisionCategory(category)]?.hi || 'सूचना';
+  
+  return {
+    mr: `${landMr} - ${catTitleMr}. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. शेताची तपासणी करा.`,
+    hi: `${landHi} - ${catTitleHi}. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. खेत की जांच करें.`,
+  };
+}
+
+function generateTrilingualAction(category: string, actionEn: string | null, ctx: LandContext): { mr: string; hi: string } {
+  const alertCat = mapDecisionCategory(category);
+  const templates = CATEGORY_ACTIONS[alertCat] || CATEGORY_ACTIONS.GENERAL;
+  return { mr: templates.mr, hi: templates.hi };
 }
 
 // =====================================================
