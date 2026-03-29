@@ -1260,6 +1260,29 @@ Important: Use simple village language. Tell the farmer exactly what to do physi
 }
 
 // =====================================================
+// IRRIGATION-ENRICHED TRIGGER DATA
+// =====================================================
+
+function enrichTriggerDataWithIrrigation(triggerData: Record<string, any>, alertCategory: string, ctx: LandContext): Record<string, any> {
+  const irrigationCategories = ['CROP_STRESS', 'IRRIGATION', 'WEATHER_WARNING', 'STAGE_ADVISORY'];
+  const hasNdviDrop = triggerData.drop != null || triggerData.ndvi != null;
+  
+  if (irrigationCategories.includes(alertCategory) || hasNdviDrop) {
+    const irrigation = calculateIrrigationForLand(ctx);
+    if (irrigation) {
+      triggerData.irrigation = irrigation;
+    }
+  }
+  
+  // Always add land context to trigger_data
+  if (ctx.area_acres) triggerData.area_acres = ctx.area_acres;
+  if (ctx.soil_type) triggerData.soil_type = ctx.soil_type;
+  if (ctx.irrigation_type) triggerData.irrigation_method = ctx.irrigation_type;
+  
+  return triggerData;
+}
+
+// =====================================================
 // TRILINGUAL TEMPLATE GENERATORS (for decision rules without enrichment)
 // =====================================================
 
@@ -1289,31 +1312,63 @@ const CATEGORY_ACTIONS: Record<string, { mr: string; hi: string }> = {
   GENERAL: { mr: 'तपासणी करा', hi: 'जांच करें' },
 };
 
+const IRRIGATION_METHOD_MR: Record<string, string> = {
+  DRIP: 'ठिबक सिंचन', SPRINKLER: 'तुषार सिंचन', FLOOD: 'पाट पाणी', FURROW: 'सरी सिंचन', SURFACE: 'पृष्ठभाग सिंचन',
+};
+const IRRIGATION_METHOD_HI: Record<string, string> = {
+  DRIP: 'ड्रिप सिंचाई', SPRINKLER: 'स्प्रिंकलर सिंचाई', FLOOD: 'बाढ़ सिंचाई', FURROW: 'नाली सिंचाई', SURFACE: 'सतही सिंचाई',
+};
+
 function generateTrilingualTitle(category: string, alertCategory: string, ctx: LandContext): { mr: string; hi: string } {
   const templates = CATEGORY_TITLES[alertCategory] || CATEGORY_TITLES.GENERAL;
   const landMr = ctx.land_name || 'शेत';
   const landHi = ctx.land_name || 'खेत';
+  const areaSuffix = ctx.area_acres ? ` (${ctx.area_acres} एकर)` : '';
   return {
-    mr: `${templates.mr} - ${landMr}`,
-    hi: `${templates.hi} - ${landHi}`,
+    mr: `${templates.mr} - ${landMr}${areaSuffix}`,
+    hi: `${templates.hi} - ${landHi}${areaSuffix}`,
   };
 }
 
 function generateTrilingualMessage(category: string, messageEn: string, ctx: LandContext): { mr: string; hi: string } {
-  // For decision rules, create a basic Marathi/Hindi message from context
   const landMr = ctx.land_name || 'तुमच्या शेतात';
   const landHi = ctx.land_name || 'आपके खेत में';
+  const areaMr = ctx.area_acres ? ` (${ctx.area_acres} एकर)` : '';
+  const areaHi = ctx.area_acres ? ` (${ctx.area_acres} एकर)` : '';
+  
+  // If irrigation data is calculable, include it in the message
+  const irrigation = calculateIrrigationForLand(ctx);
+  if (irrigation && (mapDecisionCategory(category) === 'IRRIGATION' || mapDecisionCategory(category) === 'CROP_STRESS')) {
+    const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
+    const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
+    return {
+      mr: `"${landMr}"${areaMr} शेतात ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास). तापमान: ${ctx.weather.temp ?? '--'}°C.`,
+      hi: `"${landHi}"${areaHi} खेत में ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे). तापमान: ${ctx.weather.temp ?? '--'}°C.`,
+    };
+  }
+  
   const catTitleMr = CATEGORY_TITLES[mapDecisionCategory(category)]?.mr || 'सूचना';
   const catTitleHi = CATEGORY_TITLES[mapDecisionCategory(category)]?.hi || 'सूचना';
-  
   return {
-    mr: `${landMr} - ${catTitleMr}. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. शेताची तपासणी करा.`,
-    hi: `${landHi} - ${catTitleHi}. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. खेत की जांच करें.`,
+    mr: `"${landMr}"${areaMr} - ${catTitleMr}. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. शेताची तपासणी करा.`,
+    hi: `"${landHi}"${areaHi} - ${catTitleHi}. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. खेत की जांच करें.`,
   };
 }
 
 function generateTrilingualAction(category: string, actionEn: string | null, ctx: LandContext): { mr: string; hi: string } {
   const alertCat = mapDecisionCategory(category);
+  
+  // For irrigation-related categories, provide specific action with water quantity
+  const irrigation = calculateIrrigationForLand(ctx);
+  if (irrigation && (alertCat === 'IRRIGATION' || alertCat === 'CROP_STRESS')) {
+    const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
+    const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
+    return {
+      mr: `${methodMr}ने ${irrigation.water_liters_per_acre.toLocaleString()} लिटर/एकर पाणी द्या (${irrigation.duration_hours} तास)`,
+      hi: `${methodHi} से ${irrigation.water_liters_per_acre.toLocaleString()} लीटर/एकर पानी दें (${irrigation.duration_hours} घंटे)`,
+    };
+  }
+  
   const templates = CATEGORY_ACTIONS[alertCat] || CATEGORY_ACTIONS.GENERAL;
   return { mr: templates.mr, hi: templates.hi };
 }
