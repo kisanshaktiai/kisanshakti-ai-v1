@@ -10,7 +10,7 @@ import {
   AlertTriangle, Bell, CheckCircle, CloudRain, Bug, 
   Droplets, Thermometer, Leaf, Clock, Volume2, 
   ChevronRight, Sprout, Wind, X, MessageCircle, MapPin,
-  ArrowLeft, Share2
+  ArrowLeft, Share2, History, RotateCcw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -43,10 +43,16 @@ function getLocalizedText(alert: ProactiveAlert, field: 'title' | 'message' | 'a
   return (alert as any)[`${field}_en`] || '';
 }
 
+const STATUS_LABELS: Record<string, { mr: string; hi: string; en: string; color: string }> = {
+  ACTED: { mr: '✅ केले', hi: '✅ किया', en: '✅ Done', color: 'bg-green-100 text-green-700' },
+  DISMISSED: { mr: '❌ नाकारले', hi: '❌ खारिज', en: '❌ Dismissed', color: 'bg-gray-100 text-gray-600' },
+  SEEN: { mr: '👁️ पाहिले', hi: '👁️ देखा', en: '👁️ Seen', color: 'bg-blue-100 text-blue-600' },
+};
+
 export default function ProactiveAlerts() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { alerts, loading, unreadCount, markSeen, markActed, dismissAlert } = useProactiveAlerts();
+  const { alerts, loading, unreadCount, showHistory, setShowHistory, markSeen, markActed, dismissAlert } = useProactiveAlerts();
   const { speak, isSpeaking, stop } = useEnhancedTTS();
   const lang = i18n.language || 'en';
   const [selectedLand, setSelectedLand] = useState<string | null>(null);
@@ -97,14 +103,37 @@ export default function ProactiveAlerts() {
     );
   }
 
-  if (alerts.length === 0) {
+  if (alerts.length === 0 && !showHistory) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
-        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-          <CheckCircle className="h-10 w-10 text-primary" />
+      <div className="min-h-screen bg-gradient-to-br from-background via-accent/5 to-primary/5">
+        {/* Header */}
+        <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
+          <div className="px-3 py-3">
+            <div className="flex items-center gap-3">
+              <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-9 w-9 rounded-xl">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex-1">
+                <h1 className="text-lg font-bold flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-primary" />
+                  {t('proactive.title', 'Proactive Alerts')}
+                </h1>
+              </div>
+              <Button variant="outline" size="sm" className="h-8 text-xs gap-1 rounded-full" onClick={() => setShowHistory(true)}>
+                <History className="h-3 w-3" />
+                {lang === 'mr' ? 'जुने' : lang === 'hi' ? 'पुराने' : 'History'}
+              </Button>
+            </div>
+          </div>
         </div>
-        <h2 className="text-xl font-bold mb-2">{t('proactive.allClear')}</h2>
-        <p className="text-muted-foreground text-sm max-w-xs">{t('proactive.noAlerts')}</p>
+
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center pt-20">
+          <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+            <CheckCircle className="h-10 w-10 text-primary" />
+          </div>
+          <h2 className="text-xl font-bold mb-2">{t('proactive.allClear')}</h2>
+          <p className="text-muted-foreground text-sm max-w-xs">{t('proactive.noAlerts')}</p>
+        </div>
       </div>
     );
   }
@@ -146,6 +175,18 @@ export default function ProactiveAlerts() {
               </h1>
               <p className="text-[11px] text-muted-foreground">{t('proactive.subtitle', 'AI-powered farm intelligence')}</p>
             </div>
+            <Button
+              variant={showHistory ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 text-xs gap-1 rounded-full"
+              onClick={() => setShowHistory(!showHistory)}
+            >
+              {showHistory ? <RotateCcw className="h-3 w-3" /> : <History className="h-3 w-3" />}
+              {showHistory
+                ? (lang === 'mr' ? 'सध्याचे' : lang === 'hi' ? 'वर्तमान' : 'Current')
+                : (lang === 'mr' ? 'जुने' : lang === 'hi' ? 'पुराने' : 'History')
+              }
+            </Button>
           </div>
         </div>
       </div>
@@ -183,6 +224,14 @@ export default function ProactiveAlerts() {
         </div>
       )}
 
+      {/* History banner */}
+      {showHistory && (
+        <div className="bg-muted/50 rounded-lg px-3 py-2 text-xs text-muted-foreground flex items-center gap-2">
+          <History className="h-3 w-3" />
+          {lang === 'mr' ? 'सर्व जुन्या सूचना दाखवत आहे' : lang === 'hi' ? 'सभी पुरानी सूचनाएं दिखा रहा है' : 'Showing all alerts including history'}
+        </div>
+      )}
+
       <AnimatePresence>
         {sortedAlerts.map((alert, index) => {
           const config = CATEGORY_CONFIG[alert.alert_category] || CATEGORY_CONFIG.GENERAL;
@@ -192,6 +241,8 @@ export default function ProactiveAlerts() {
           const message = getLocalizedText(alert, 'message', lang);
           const actionText = getLocalizedText(alert, 'action_text', lang);
           const isUnread = alert.status === 'PENDING' || alert.status === 'DELIVERED';
+          const isHistorical = alert.status === 'ACTED' || alert.status === 'DISMISSED';
+          const statusLabel = STATUS_LABELS[alert.status];
 
           return (
             <motion.div
@@ -206,6 +257,7 @@ export default function ProactiveAlerts() {
                   'border-l-4 transition-all',
                   config.bgColor,
                   isUnread && 'shadow-md',
+                  isHistorical && 'opacity-70',
                   alert.priority === 'CRITICAL' && 'border-l-red-500 ring-1 ring-red-200',
                   alert.priority === 'HIGH' && 'border-l-orange-500',
                   alert.priority === 'MEDIUM' && 'border-l-yellow-500',
@@ -230,7 +282,7 @@ export default function ProactiveAlerts() {
                           <Volume2 className={cn('h-4 w-4', isSpeaking ? 'text-primary animate-pulse' : 'text-muted-foreground')} />
                         </Button>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <Badge className={cn('text-[10px] px-1.5 py-0', badgeClass)}>
                           {getPriorityLabel(alert.priority)}
                         </Badge>
@@ -240,12 +292,25 @@ export default function ProactiveAlerts() {
                             {alert.land_name}
                           </span>
                         )}
+                        {statusLabel && isHistorical && (
+                          <Badge variant="outline" className={cn('text-[9px] px-1.5 py-0', statusLabel.color)}>
+                            {statusLabel[lang as 'mr' | 'hi' | 'en'] || statusLabel.en}
+                          </Badge>
+                        )}
+                        {/* Rule traceability */}
+                        {alert.rule_id && (
+                          <span className="text-[9px] text-muted-foreground/50">
+                            #{alert.rule_id}
+                          </span>
+                        )}
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 opacity-50"
-                      onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}>
-                      <X className="h-3 w-3" />
-                    </Button>
+                    {!isHistorical && (
+                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 opacity-50"
+                        onClick={(e) => { e.stopPropagation(); dismissAlert(alert.id); }}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    )}
                   </div>
 
                   {/* Message */}
@@ -285,7 +350,7 @@ export default function ProactiveAlerts() {
                         <MessageCircle className="h-3 w-3" />
                         {t('proactive.askAI', 'Ask AI')}
                       </Button>
-                      {alert.status !== 'ACTED' && (
+                      {!isHistorical && alert.status !== 'ACTED' && (
                         <Button variant="default" size="sm" className="h-7 text-xs gap-1 rounded-full"
                           onClick={(e) => { e.stopPropagation(); markActed(alert.id); }}>
                           <CheckCircle className="h-3 w-3" />

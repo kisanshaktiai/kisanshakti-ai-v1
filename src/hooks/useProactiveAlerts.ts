@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from '@/hooks/use-toast';
+import { useTranslation } from 'react-i18next';
 
 export interface ProactiveAlert {
   id: string;
@@ -26,49 +27,70 @@ export interface ProactiveAlert {
   land_name?: string | null;
 }
 
+function getAlertTitle(alert: ProactiveAlert, lang: string): string {
+  if (lang === 'mr') return alert.title_mr || alert.title_en || '';
+  if (lang === 'hi') return alert.title_hi || alert.title_en || '';
+  return alert.title_en || '';
+}
+
+function getAlertMessage(alert: ProactiveAlert, lang: string): string {
+  if (lang === 'mr') return alert.message_mr || alert.message_en || '';
+  if (lang === 'hi') return alert.message_hi || alert.message_en || '';
+  return alert.message_en || '';
+}
+
 export function useProactiveAlerts() {
   const { user } = useAuthStore();
+  const { i18n } = useTranslation();
+  const lang = i18n.language || 'en';
   const [alerts, setAlerts] = useState<ProactiveAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
   const channelRef = useRef<any>(null);
 
   const fetchAlerts = useCallback(async () => {
     if (!user?.id) return;
 
     try {
-      // Fetch alerts with land name via a join
-      const { data, error } = await supabase
+      // Build query — include historical if toggled
+      let query = supabase
         .from('proactive_alerts')
-        .select('*, lands:land_id(name)')
+        .select('*')
         .eq('farmer_id', user.id)
-        .in('status', ['PENDING', 'DELIVERED', 'SEEN'])
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
+
+      if (!showHistory) {
+        query = query.in('status', ['PENDING', 'DELIVERED', 'SEEN']);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         console.error('[ProactiveAlerts] Fetch error:', error);
-        // Fallback without join
-        const { data: fallbackData } = await supabase
-          .from('proactive_alerts')
-          .select('*')
-          .eq('farmer_id', user.id)
-          .in('status', ['PENDING', 'DELIVERED', 'SEEN'])
-          .order('created_at', { ascending: false })
-          .limit(50);
-        
-        if (fallbackData) {
-          setAlerts(fallbackData as ProactiveAlert[]);
-          setUnreadCount(fallbackData.filter((a: any) => a.status === 'PENDING' || a.status === 'DELIVERED').length);
-        }
+        setLoading(false);
         return;
       }
 
-      // Map land name from join
+      // Fetch land names separately for reliability (avoids RLS join issues)
+      const landIds = [...new Set((data || []).map((a: any) => a.land_id).filter(Boolean))];
+      let landNameMap: Record<string, string> = {};
+
+      if (landIds.length > 0) {
+        const { data: lands } = await supabase
+          .from('lands')
+          .select('id, name')
+          .in('id', landIds);
+
+        if (lands) {
+          landNameMap = Object.fromEntries(lands.map((l: any) => [l.id, l.name]));
+        }
+      }
+
       const mapped = (data || []).map((a: any) => ({
         ...a,
-        land_name: a.lands?.name || null,
-        lands: undefined,
+        land_name: a.land_id ? landNameMap[a.land_id] || null : null,
       })) as ProactiveAlert[];
 
       setAlerts(mapped);
@@ -78,15 +100,14 @@ export function useProactiveAlerts() {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, showHistory]);
 
-  // Realtime subscription (G7)
+  // Realtime subscription
   useEffect(() => {
     if (!user?.id) return;
 
     fetchAlerts();
 
-    // Subscribe to new alerts via Supabase realtime
     const channel = supabase
       .channel(`proactive_alerts:${user.id}`)
       .on(
@@ -102,25 +123,29 @@ export function useProactiveAlerts() {
           setAlerts(prev => [newAlert, ...prev]);
           setUnreadCount(prev => prev + 1);
 
-          // In-app toast notification
-          const alertTitle = newAlert.title_en || 'New Alert';
+          // Localized toast notification
+          const title = getAlertTitle(newAlert, lang);
+          const message = getAlertMessage(newAlert, lang);
           const priorityEmoji: Record<string, string> = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
           const emoji = priorityEmoji[newAlert.priority] || '📢';
 
           toast({
-            title: `${emoji} ${alertTitle}`,
-            description: newAlert.message_en?.substring(0, 100) || 'You have a new proactive alert',
+            title: `${emoji} ${title}`,
+            description: message?.substring(0, 100) || '',
             variant: newAlert.priority === 'CRITICAL' ? 'destructive' : 'default',
           });
 
-          // For CRITICAL alerts, also open WhatsApp compose prompt
+          // For CRITICAL alerts, prompt WhatsApp share
           if (newAlert.priority === 'CRITICAL') {
             const landName = newAlert.land_name ? ` (${newAlert.land_name})` : '';
-            const msg = `🌾 *KisanShakti AI*${landName}\n\n🔴 *${alertTitle}*\n\n${newAlert.message_en || ''}`;
+            const msg = `🌾 *KisanShakti AI*${landName}\n\n🔴 *${title}*\n\n${message}`;
             const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
-            // Small delay so toast shows first
             setTimeout(() => {
-              if (window.confirm('Critical alert! Share on WhatsApp?')) {
+              if (window.confirm(
+                lang === 'mr' ? 'गंभीर सूचना! WhatsApp वर पाठवायचे?' :
+                lang === 'hi' ? 'गंभीर सूचना! WhatsApp पर भेजें?' :
+                'Critical alert! Share on WhatsApp?'
+              )) {
                 window.open(waUrl, '_blank');
               }
             }, 1500);
@@ -136,7 +161,7 @@ export function useProactiveAlerts() {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [user?.id, fetchAlerts]);
+  }, [user?.id, fetchAlerts, lang]);
 
   const markSeen = useCallback(async (alertId: string) => {
     await supabase
@@ -154,7 +179,7 @@ export function useProactiveAlerts() {
       .update({ status: 'ACTED', acted_at: new Date().toISOString() } as any)
       .eq('id', alertId);
 
-    setAlerts(prev => prev.filter(a => a.id !== alertId));
+    setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'ACTED' } : a));
     setUnreadCount(prev => Math.max(0, prev - 1));
   }, []);
 
@@ -164,9 +189,19 @@ export function useProactiveAlerts() {
       .update({ status: 'DISMISSED' } as any)
       .eq('id', alertId);
 
-    setAlerts(prev => prev.filter(a => a.id !== alertId));
+    setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'DISMISSED' } : a));
     setUnreadCount(prev => Math.max(0, prev - 1));
   }, []);
 
-  return { alerts, loading, unreadCount, markSeen, markActed, dismissAlert, refetch: fetchAlerts };
+  return {
+    alerts,
+    loading,
+    unreadCount,
+    showHistory,
+    setShowHistory,
+    markSeen,
+    markActed,
+    dismissAlert,
+    refetch: fetchAlerts,
+  };
 }
