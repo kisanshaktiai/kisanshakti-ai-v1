@@ -13,7 +13,8 @@ import {
   DollarSign,
   Leaf,
   FileText,
-  Sprout
+  Sprout,
+  Bell
 } from 'lucide-react';
 
 export interface FeatureItem {
@@ -47,9 +48,18 @@ export const defaultFeatures: FeatureItem[] = [
     icon: Sprout,
     labelKey: 'fab.cropGrowth',
     path: '/app/crop-growth',
-    enabled: true, // Enabled by default
+    enabled: true,
     order: 1.5,
     category: 'farm-management'
+  },
+  {
+    id: 'proactive-alerts',
+    icon: Bell,
+    labelKey: 'fab.proactiveAlerts',
+    path: '/app/proactive-alerts',
+    enabled: true,
+    order: 1.6,
+    category: 'ai-tools'
   },
   {
     id: 'schedule',

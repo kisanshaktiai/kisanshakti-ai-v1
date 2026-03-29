@@ -26,11 +26,11 @@ const CATEGORY_CONFIG: Record<string, { icon: React.ElementType; color: string; 
   GENERAL: { icon: Bell, color: 'text-gray-600', bgColor: 'bg-gray-50 border-gray-200' },
 };
 
-const PRIORITY_CONFIG: Record<string, { label: string; badgeClass: string }> = {
-  CRITICAL: { label: '🔴 अत्यंत महत्त्वाचे', badgeClass: 'bg-red-500 text-white' },
-  HIGH: { label: '🟠 महत्त्वाचे', badgeClass: 'bg-orange-500 text-white' },
-  MEDIUM: { label: '🟡 सामान्य', badgeClass: 'bg-yellow-500 text-white' },
-  LOW: { label: '🟢 माहिती', badgeClass: 'bg-green-500 text-white' },
+const PRIORITY_BADGE_CLASS: Record<string, string> = {
+  CRITICAL: 'bg-red-500 text-white',
+  HIGH: 'bg-orange-500 text-white',
+  MEDIUM: 'bg-yellow-500 text-white',
+  LOW: 'bg-green-500 text-white',
 };
 
 function getLocalizedText(alert: ProactiveAlert, field: 'title' | 'message' | 'action_text', lang: string): string {
@@ -56,6 +56,12 @@ export default function ProactiveAlerts() {
     speak(`${title}. ${message}. ${action}`, lang === 'mr' ? 'mr-IN' : lang === 'hi' ? 'hi-IN' : 'en-IN');
   };
 
+  // Get priority label using i18n
+  const getPriorityLabel = (priority: string): string => {
+    const emoji: Record<string, string> = { CRITICAL: '🔴', HIGH: '🟠', MEDIUM: '🟡', LOW: '🟢' };
+    return `${emoji[priority] || '⚪'} ${t(`proactive.priority.${priority.toLowerCase()}`, priority)}`;
+  };
+
   if (loading) {
     return (
       <div className="p-4 space-y-3">
@@ -73,10 +79,10 @@ export default function ProactiveAlerts() {
           <CheckCircle className="h-10 w-10 text-primary" />
         </div>
         <h2 className="text-xl font-bold mb-2">
-          {t('proactive.allClear', 'सर्व ठीक आहे! 🌾')}
+          {t('proactive.allClear')}
         </h2>
         <p className="text-muted-foreground text-sm max-w-xs">
-          {t('proactive.noAlerts', 'तुमच्या शेतासाठी सध्या कोणताही धोका नाही. आम्ही सतत लक्ष ठेवत आहोत.')}
+          {t('proactive.noAlerts')}
         </p>
       </div>
     );
@@ -98,7 +104,7 @@ export default function ProactiveAlerts() {
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Bell className="h-5 w-5 text-primary" />
-            {t('proactive.title', 'सूचना')}
+            {t('proactive.title')}
             {unreadCount > 0 && (
               <Badge className="bg-destructive text-destructive-foreground text-xs px-2">
                 {unreadCount}
@@ -106,7 +112,7 @@ export default function ProactiveAlerts() {
             )}
           </h1>
           <p className="text-xs text-muted-foreground mt-1">
-            {t('proactive.subtitle', 'तुमच्या शेतासाठी स्वयंचलित सल्ला')}
+            {t('proactive.subtitle')}
           </p>
         </div>
       </div>
@@ -115,7 +121,7 @@ export default function ProactiveAlerts() {
       <AnimatePresence>
         {sortedAlerts.map((alert, index) => {
           const config = CATEGORY_CONFIG[alert.alert_category] || CATEGORY_CONFIG.GENERAL;
-          const priorityConfig = PRIORITY_CONFIG[alert.priority] || PRIORITY_CONFIG.MEDIUM;
+          const badgeClass = PRIORITY_BADGE_CLASS[alert.priority] || PRIORITY_BADGE_CLASS.MEDIUM;
           const Icon = config.icon;
           const title = getLocalizedText(alert, 'title', lang);
           const message = getLocalizedText(alert, 'message', lang);
@@ -166,8 +172,8 @@ export default function ProactiveAlerts() {
                         </Button>
                       </div>
 
-                      <Badge className={cn('text-[10px] px-1.5 py-0', priorityConfig.badgeClass)}>
-                        {priorityConfig.label}
+                      <Badge className={cn('text-[10px] px-1.5 py-0', badgeClass)}>
+                        {getPriorityLabel(alert.priority)}
                       </Badge>
                     </div>
                     <Button
@@ -209,7 +215,7 @@ export default function ProactiveAlerts() {
                           onClick={(e) => { e.stopPropagation(); markActed(alert.id); }}
                         >
                           <CheckCircle className="h-3 w-3" />
-                          {t('proactive.done', 'केले ✅')}
+                          {t('proactive.done')}
                         </Button>
                       )}
                     </div>
