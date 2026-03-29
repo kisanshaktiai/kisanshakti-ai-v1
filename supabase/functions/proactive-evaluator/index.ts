@@ -297,6 +297,10 @@ Deno.serve(async (req) => {
         organic_carbon: soil?.organic_carbon ?? null,
         forecast_rain_probability_72h: forecastRain,
         gdd_accumulated: gdd,
+        area_acres: land.area_acres ?? null,
+        soil_type: land.soil_type ?? null,
+        irrigation_type: land.irrigation_type ?? null,
+        water_source: land.water_source ?? null,
       });
     }
 
