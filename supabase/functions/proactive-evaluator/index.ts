@@ -206,7 +206,11 @@ Deno.serve(async (req) => {
     const weatherMap = await batchLoadWeather(supabase, Array.from(locationKeys));
     
     // Batch-load forecast rain probability (72h)
-    const forecastMap = await batchLoadForecast(supabase, landIds);
+    // Batch-load forecast rain probability (72h) and GDD (30d)
+    const [forecastMap, gddMap] = await Promise.all([
+      batchLoadForecast(supabase, landIds),
+      batchLoadGDD(supabase, landIds),
+    ]);
 
     // Batch daily alert counts per farmer
     const todayStr = new Date().toISOString().split('T')[0];
@@ -274,7 +278,7 @@ Deno.serve(async (req) => {
         soil_ph: soil?.ph_level ?? null,
         organic_carbon: soil?.organic_carbon ?? null,
         forecast_rain_probability_72h: forecastRain,
-        gdd_accumulated: null, // TODO: compute from weather_forecasts.growing_degree_days
+        gdd_accumulated: gdd,
       });
     }
 
