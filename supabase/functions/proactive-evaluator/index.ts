@@ -1184,14 +1184,14 @@ function getEstimatedHarvestDas(cropCode: string | null): number {
 // =====================================================
 
 async function enrichAndUpdateAlerts(supabase: any, insertedAlerts: any[]): Promise<void> {
-  const highRisk = insertedAlerts.filter(a => a.risk_score >= 70 || a.priority === 'CRITICAL');
+  const highRisk = insertedAlerts.filter(a => a.risk_score >= 50 || a.priority === 'CRITICAL' || a.priority === 'HIGH');
   if (highRisk.length === 0 || !LOVABLE_API_KEY) return;
 
-  const toEnrich = highRisk.slice(0, 5);
+  const toEnrich = highRisk.slice(0, 8);
 
   for (const alert of toEnrich) {
     try {
-      const prompt = `You are an expert Indian agronomist helping a rural farmer. Generate a brief, actionable alert in 3 languages.
+      const prompt = `You are a world-class Indian agronomist (25 years experience). Generate a DETAILED, structured advisory for a rural farmer based on this alert data.
 
 Context:
 - Alert Category: ${alert.alert_category}
@@ -1199,21 +1199,51 @@ Context:
 - Risk Score: ${alert.risk_score}
 - Evidence: ${JSON.stringify(alert.trigger_data)}
 - Current message: ${alert.message_en}
+- Land: ${alert.title_mr || 'Field'}
 
-Return a JSON with exactly these fields:
+Return JSON with these fields:
 {
-  "title_mr": "Short Marathi title (max 15 words)",
-  "title_hi": "Short Hindi title (max 15 words)",
-  "title_en": "Short English title (max 15 words)",
-  "message_mr": "Farmer-friendly Marathi message (max 40 words, use simple rural Marathi)",
-  "message_hi": "Farmer-friendly Hindi message (max 40 words, use simple rural Hindi)",
-  "message_en": "Farmer-friendly English message (max 40 words)",
-  "action_mr": "Actionable step in Marathi (max 20 words)",
-  "action_hi": "Actionable step in Hindi (max 20 words)",
-  "action_en": "Actionable step in English (max 20 words)"
+  "title_mr": "Marathi title (max 15 words, simple rural language)",
+  "title_hi": "Hindi title (max 15 words)",
+  "title_en": "English title (max 15 words)",
+  "message_mr": "Detailed Marathi message - include SPECIFIC action steps, product names if applicable, quantities for the farmer's field size, timing. Min 50 words, max 120 words. Use simple rural Marathi.",
+  "message_hi": "Detailed Hindi message - same detail level. Min 50 words, max 120 words. Simple rural Hindi.",
+  "message_en": "Detailed English message - same detail level. Min 50 words, max 120 words.",
+  "action_mr": "Primary action step in Marathi with specific quantity/timing (max 30 words)",
+  "action_hi": "Primary action step in Hindi with specific quantity/timing (max 30 words)",
+  "action_en": "Primary action step in English with specific quantity/timing (max 30 words)",
+  "solution": {
+    "problem_en": "What is happening to the crop (1-2 sentences)",
+    "problem_mr": "मराठी मध्ये समस्या",
+    "problem_hi": "हिंदी में समस्या",
+    "cause_en": "Why this is happening based on evidence data",
+    "cause_mr": "कारण मराठीत",
+    "cause_hi": "कारण हिंदी में",
+    "steps_en": ["Step 1 with specific product/dosage", "Step 2 with timing", "Step 3 if applicable"],
+    "steps_mr": ["मराठीत पायरी 1", "पायरी 2", "पायरी 3"],
+    "steps_hi": ["हिंदी में कदम 1", "कदम 2", "कदम 3"],
+    "safety_en": "Safety precautions if chemicals involved, otherwise general field safety",
+    "safety_mr": "सुरक्षा मराठीत",
+    "safety_hi": "सुरक्षा हिंदी में",
+    "organic_alt_en": "Organic/natural alternative if available",
+    "organic_alt_mr": "सेंद्रिय पर्याय",
+    "organic_alt_hi": "जैविक विकल्प",
+    "expected_benefit_en": "What farmer should expect after following advice",
+    "expected_benefit_mr": "अपेक्षित फायदा",
+    "expected_benefit_hi": "अपेक्षित लाभ",
+    "followup_en": "When to check again and what to look for",
+    "followup_mr": "पुन्हा कधी तपासायचे",
+    "followup_hi": "दोबारा कब जांचें"
+  }
 }
 
-Important: Use simple village language. Tell the farmer exactly what to do physically. Be specific about timing.`;
+CRITICAL RULES:
+- Be SPECIFIC: "Apply 2ml Chlorpyrifos 20EC per liter of water, spray on stems" NOT "use pesticide"
+- Include quantities relative to field area from evidence data
+- Use trade names farmers know, with active ingredient in brackets
+- Give calendar-specific timing: "Today before 5pm" or "Tomorrow 6-8am"
+- Safety warnings are MANDATORY for any chemical suggestion
+- If the alert is about irrigation, use the irrigation data from evidence to give exact liters and hours`;
 
       const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -1239,7 +1269,7 @@ Important: Use simple village language. Tell the farmer exactly what to do physi
       if (!content) continue;
 
       const enriched = JSON.parse(content);
-      const updateData: Record<string, string> = {};
+      const updateData: Record<string, any> = {};
       if (enriched.title_mr) updateData.title_mr = enriched.title_mr;
       if (enriched.title_hi) updateData.title_hi = enriched.title_hi;
       if (enriched.title_en) updateData.title_en = enriched.title_en;
@@ -1249,10 +1279,15 @@ Important: Use simple village language. Tell the farmer exactly what to do physi
       if (enriched.action_mr) updateData.action_text_mr = enriched.action_mr;
       if (enriched.action_hi) updateData.action_text_hi = enriched.action_hi;
       if (enriched.action_en) updateData.action_text_en = enriched.action_en;
+      
+      // Store solution in trigger_data (merge with existing)
+      if (enriched.solution) {
+        const existingTriggerData = alert.trigger_data || {};
+        updateData.trigger_data = { ...existingTriggerData, solution: enriched.solution };
+      }
 
-      // Update the already-inserted alert with enriched content
       await supabase.from('proactive_alerts').update(updateData).eq('id', alert.id);
-      console.log(`[NeuralEnrichment] Enriched alert ${alert.id}`);
+      console.log(`[NeuralEnrichment] Enriched alert ${alert.id} with detailed solution`);
     } catch (e) {
       console.warn('[NeuralEnrichment] Error:', e.message);
     }

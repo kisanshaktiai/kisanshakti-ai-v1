@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { ChevronDown, Eye, Droplets } from 'lucide-react';
+import { ChevronDown, Eye, Droplets, Shield, Leaf, Target, Clock, CheckCircle2, AlertTriangle, Lightbulb } from 'lucide-react';
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,6 @@ interface AlertEvidenceSectionProps {
   reasoning: string | null;
 }
 
-// Localized evidence labels for farmer-friendly display
 const EVIDENCE_LABELS: Record<string, { icon: string; unit: string; en: string; mr: string; hi: string }> = {
   temp: { icon: '🌡️', unit: '°C', en: 'Temperature', mr: 'तापमान', hi: 'तापमान' },
   humidity: { icon: '💧', unit: '%', en: 'Humidity', mr: 'आर्द्रता', hi: 'नमी' },
@@ -49,23 +48,127 @@ function getLabel(key: string, lang: string): string {
   return config.en;
 }
 
+function getSolutionField(solution: any, field: string, lang: string): string {
+  if (!solution) return '';
+  const key = `${field}_${lang === 'mr' ? 'mr' : lang === 'hi' ? 'hi' : 'en'}`;
+  return solution[key] || solution[`${field}_en`] || '';
+}
+
+function getSolutionSteps(solution: any, lang: string): string[] {
+  if (!solution) return [];
+  const key = `steps_${lang === 'mr' ? 'mr' : lang === 'hi' ? 'hi' : 'en'}`;
+  return solution[key] || solution.steps_en || [];
+}
+
 export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSectionProps) {
-  const { t, i18n } = useTranslation();
-  const [isOpen, setIsOpen] = useState(false);
+  const { i18n } = useTranslation();
+  const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const lang = i18n.language || 'en';
 
   const irrigation = triggerData.irrigation;
+  const solution = triggerData.solution;
 
-  // Filter out non-displayable keys
   const displayKeys = Object.keys(triggerData).filter(
-    k => !['decision_rule_id', 'condition_code', 'knowledge', 'threshold', 'irrigation'].includes(k)
+    k => !['decision_rule_id', 'condition_code', 'knowledge', 'threshold', 'irrigation', 'solution'].includes(k)
   );
 
-  if (displayKeys.length === 0 && !reasoning && !irrigation) return null;
+  if (displayKeys.length === 0 && !reasoning && !irrigation && !solution) return null;
+
+  const problem = getSolutionField(solution, 'problem', lang);
+  const cause = getSolutionField(solution, 'cause', lang);
+  const steps = getSolutionSteps(solution, lang);
+  const safety = getSolutionField(solution, 'safety', lang);
+  const organicAlt = getSolutionField(solution, 'organic_alt', lang);
+  const expectedBenefit = getSolutionField(solution, 'expected_benefit', lang);
+  const followup = getSolutionField(solution, 'followup', lang);
+
+  const sectionTitle = (icon: React.ReactNode, titleMr: string, titleHi: string, titleEn: string) => {
+    const t = lang === 'mr' ? titleMr : lang === 'hi' ? titleHi : titleEn;
+    return (
+      <div className="flex items-center gap-1.5 mb-1">
+        {icon}
+        <span className="text-[11px] font-semibold text-foreground/80 uppercase tracking-wide">{t}</span>
+      </div>
+    );
+  };
 
   return (
     <div className="mt-3 space-y-2">
-      {/* Irrigation Solution Card — always visible when present */}
+      {/* === SOLUTION CARD (from neural enrichment) === */}
+      {solution && (
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/20 p-3 space-y-3">
+          {/* Problem & Cause */}
+          {(problem || cause) && (
+            <div className="space-y-1.5">
+              {problem && (
+                <div>
+                  {sectionTitle(<AlertTriangle className="h-3 w-3 text-amber-600" />, 'समस्या', 'समस्या', 'Problem')}
+                  <p className="text-xs text-foreground/80 leading-relaxed">{problem}</p>
+                </div>
+              )}
+              {cause && (
+                <div>
+                  {sectionTitle(<Lightbulb className="h-3 w-3 text-yellow-600" />, 'कारण', 'कारण', 'Why')}
+                  <p className="text-xs text-foreground/70 leading-relaxed">{cause}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Action Steps */}
+          {steps.length > 0 && (
+            <div>
+              {sectionTitle(<Target className="h-3 w-3 text-primary" />, 'काय करावे', 'क्या करें', 'What To Do')}
+              <div className="space-y-1.5">
+                {steps.map((step, i) => (
+                  <div key={i} className="flex items-start gap-2 text-xs">
+                    <span className="shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold mt-0.5">
+                      {i + 1}
+                    </span>
+                    <p className="text-foreground/80 leading-relaxed">{step}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Safety Warning */}
+          {safety && (
+            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-2">
+              {sectionTitle(<Shield className="h-3 w-3 text-red-600" />, '⚠️ सुरक्षा', '⚠️ सुरक्षा', '⚠️ Safety')}
+              <p className="text-[11px] text-red-700 dark:text-red-300 leading-relaxed">{safety}</p>
+            </div>
+          )}
+
+          {/* Organic Alternative */}
+          {organicAlt && (
+            <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-2">
+              {sectionTitle(<Leaf className="h-3 w-3 text-green-600" />, '🌿 सेंद्रिय पर्याय', '🌿 जैविक विकल्प', '🌿 Organic Alternative')}
+              <p className="text-[11px] text-green-700 dark:text-green-300 leading-relaxed">{organicAlt}</p>
+            </div>
+          )}
+
+          {/* Expected Benefit + Followup */}
+          {(expectedBenefit || followup) && (
+            <div className="flex gap-2">
+              {expectedBenefit && (
+                <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
+                  {sectionTitle(<CheckCircle2 className="h-3 w-3 text-emerald-600" />, 'अपेक्षित फायदा', 'अपेक्षित लाभ', 'Expected Result')}
+                  <p className="text-[10px] text-foreground/70 leading-relaxed">{expectedBenefit}</p>
+                </div>
+              )}
+              {followup && (
+                <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
+                  {sectionTitle(<Clock className="h-3 w-3 text-blue-600" />, 'पुढील तपासणी', 'अगली जांच', 'Follow-up')}
+                  <p className="text-[10px] text-foreground/70 leading-relaxed">{followup}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* === IRRIGATION CARD === */}
       {irrigation && (
         <div className="rounded-lg border border-cyan-200 bg-cyan-50 dark:bg-cyan-950/30 dark:border-cyan-800 p-3 space-y-2">
           <div className="flex items-center gap-2">
@@ -127,42 +230,44 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
         </div>
       )}
 
-      {/* Evidence collapsible */}
-      <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-        <CollapsibleTrigger className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
-          <Eye className="h-3 w-3" />
-          <span>{t('proactive.whyThisAlert', 'Why this alert?')}</span>
-          <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-2">
-          <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs">
-            {reasoning && (
-              <p className="text-foreground/70 italic mb-2">{reasoning}</p>
-            )}
-            {displayKeys.map(key => {
-              const config = EVIDENCE_LABELS[key];
-              const value = triggerData[key];
-              if (value === null || value === undefined) return null;
-              const displayValue = typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(2)) : String(value);
-              return (
-                <div key={key} className="flex items-center justify-between">
-                  <span className="text-muted-foreground">
-                    {config?.icon || '📊'} {getLabel(key, lang)}
-                  </span>
-                  <span className="font-medium text-foreground">
-                    {displayValue}{config?.unit || ''}
-                  </span>
-                </div>
-              );
-            })}
-            {triggerData.knowledge && (
-              <p className="text-foreground/60 text-[10px] mt-2 pt-2 border-t border-border/30">
-                {triggerData.knowledge}
-              </p>
-            )}
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
+      {/* === EVIDENCE COLLAPSIBLE === */}
+      {(displayKeys.length > 0 || reasoning) && (
+        <Collapsible open={isEvidenceOpen} onOpenChange={setIsEvidenceOpen}>
+          <CollapsibleTrigger className="flex items-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors">
+            <Eye className="h-3 w-3" />
+            <span>{lang === 'mr' ? 'हा इशारा का? (पुरावा)' : lang === 'hi' ? 'यह अलर्ट क्यों? (प्रमाण)' : 'Why this alert? (Evidence)'}</span>
+            <ChevronDown className={`h-3 w-3 transition-transform ${isEvidenceOpen ? 'rotate-180' : ''}`} />
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-2">
+            <div className="bg-muted/50 rounded-lg p-3 space-y-1.5 text-xs">
+              {reasoning && (
+                <p className="text-foreground/70 italic mb-2">{reasoning}</p>
+              )}
+              {displayKeys.map(key => {
+                const config = EVIDENCE_LABELS[key];
+                const value = triggerData[key];
+                if (value === null || value === undefined) return null;
+                const displayValue = typeof value === 'number' ? (Number.isInteger(value) ? value : value.toFixed(2)) : String(value);
+                return (
+                  <div key={key} className="flex items-center justify-between">
+                    <span className="text-muted-foreground">
+                      {config?.icon || '📊'} {getLabel(key, lang)}
+                    </span>
+                    <span className="font-medium text-foreground">
+                      {displayValue}{config?.unit || ''}
+                    </span>
+                  </div>
+                );
+              })}
+              {triggerData.knowledge && (
+                <p className="text-foreground/60 text-[10px] mt-2 pt-2 border-t border-border/30">
+                  📚 {triggerData.knowledge}
+                </p>
+              )}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
+      )}
     </div>
   );
 }
