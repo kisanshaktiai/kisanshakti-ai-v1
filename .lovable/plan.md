@@ -1,136 +1,191 @@
 
 
+# World-Class Proactive Agriculture AI — Full System Audit Report
 
-# Proactive Neuro-Symbolic Intelligence System — Production-Ready Upgrade Plan
+## Executive Summary
 
-## Current State Assessment
-
-**Working**: Frontend inbox, 10 template rules, 6 condition types, dedup/throttle, trilingual fields, TTS, priority sorting, 5-state lifecycle.
-
-**Broken**: `crop_schedules` query uses `crop_code` (correct: `crop_name`). `ndvi_data` query uses `recorded_at` (correct: `date`). No trigger/cron exists. No realtime push. N*M sequential DB queries will timeout at scale.
-
-**Missing**: Soil NPK/pH/OC signals. 72h forecast rain probability. GDD accumulation. 578 `decision_rules` completely disconnected. Stage computation hardcoded to 4 crops. No "Why this alert?" evidence display. No chat deeplink CTA. No realtime subscription.
+The system has a solid architectural foundation: 125 proactive-enabled decision rules, batch-parallel data loading, neural enrichment via Gemini Flash, realtime Supabase push, trilingual content, and a clean 5-state alert lifecycle. However, **3 critical data-wiring bugs** prevent 90% of the intelligence from reaching farmers. All 15 existing alerts are identical NDVI-stress type. The 125 weather-dependent decision rules literally cannot fire because forecast and GDD data is unreachable.
 
 ---
 
-## Execution Plan (7 Steps, Priority Order)
+## A. Codebase Audit
 
-### Step 1: Fix Critical Schema Bugs + Batch Query Pattern (G4 + data fixes) ✅ DONE
+### Critical Issues (P0)
 
-**File**: `supabase/functions/proactive-evaluator/index.ts`
+**P0-1: Forecast/GDD queries return ZERO rows — `weather_forecasts.land_id` is always NULL**
 
-- Fix `crop_schedules` query: `crop_code` → `crop_name`
-- Fix `ndvi_data` query: `recorded_at` → `date`
-- **Batch-load all dedup/cooldown data upfront**: Single query to load all recent alerts for all `land_ids` in the last 72h into a `Map<string, Alert[]>`. All dedup, cooldown, and daily-count checks happen in-memory. Eliminates the N*M sequential DB round-trip problem.
-- Batch-load weather for all unique `location_key`s in one query
-- Batch-load NDVI for all `land_ids` in one query
-- Batch-load soil health for all `land_ids` in one query
+`batchLoadForecast()` and `batchLoadGDD()` (lines 577-621) query `weather_forecasts` filtering by `land_id IN (landIds)`. But weather forecasts are stored with `location_key` only — `land_id` is NULL for all 196 rows. Result: `forecast_rain_probability_72h` and `gdd_accumulated` are always `null` for every land. Every disease-risk, pest-emergence, and waterlogging rule that depends on these signals silently fails.
 
-### Step 2: Extend LandContext with Missing Signals (G1) ✅ DONE
+**Fix**: Rewrite `batchLoadForecast()` and `batchLoadGDD()` to query by `location_key` (matching the land's coordinates via `makeLocationKey()`), not `land_id`. Map results back to land IDs using the same coordinate→land mapping used for weather_current.
 
-**File**: `supabase/functions/proactive-evaluator/index.ts`
+**P0-2: Decision rules produce English-only alerts (title_mr/hi = null)**
 
-Add to `LandContext`:
-- `soil_n`, `soil_p`, `soil_k`, `soil_ph`, `organic_carbon` — from `soil_health` table (batch-loaded per land_id)
-- `forecast_rain_probability_72h` — from `weather_forecasts` table (max `rain_probability_percent` in next 72h)
-- `gdd_accumulated` — computed from `weather_forecasts.growing_degree_days` or calculated from daily temp data
+Lines 402-410: When decision rules fire, they set `title_mr: null`, `title_hi: null`, `message_mr: null`, `message_hi: null`. Only English fields are populated. The neural enrichment (line 434) only runs for `risk_score >= 70`, so medium/low risk decision-rule alerts are English-only. For a rural Indian farmer, this means most alerts are unreadable.
 
-Add corresponding evaluation logic in `evaluateRule()`:
-- `SOIL` condition type: evaluate `soil_n_min`, `soil_ph_min/max`, `organic_carbon_min` thresholds
-- Extend `DISEASE_RISK`/`COMPOUND` to check `forecast_rain_probability_72h`
-- Extend `PEST_RISK` to use GDD accumulation instead of simple DAS+temp
+**Fix**: For decision rules without neural enrichment, generate template-based Marathi/Hindi messages using the rule's `reason_text`/`action_text` and a basic translation mapping, or always run enrichment for decision-rule alerts since they lack templates.
 
-### Step 3: Bridge `decision_rules` to Proactive Engine (G2) ✅ DONE
+**P0-3: Neural enrichment blocks alert insertion (synchronous)**
 
-**File**: `supabase/functions/proactive-evaluator/index.ts`
+Lines 433-436: `enrichHighRiskAlerts()` is awaited BEFORE `alertsToInsert` are written to the database. If Gemini Flash takes 3-5 seconds per alert (×5 max), that's 15-25 seconds of blocking. Combined with the current avg execution time of 5.5s, this risks edge function timeout (60s limit).
 
-- Load rules from `decision_rules` WHERE `is_proactive_rule = true AND is_active = true`, filtered by crop_code and stage
-- Map `decision_rules` fields to the evaluation interface: `conditions_json` → conditions, `etl_value_min/max` for ETL threshold checks, `phi_days` for spray-window timing
-- Evaluate in priority order (SAFETY > URGENT > TREATMENT > NUTRIENT > MONITORING)
-- Merge fired `decision_rules` into the same alert pipeline alongside `proactive_rules`
-- Use `rule_id` from `decision_rules` as the `rule_id` field in generated alerts
+**Fix**: Insert alerts first with template text at status='PENDING', then enrich asynchronously. Or move enrichment to a separate post-processing edge function triggered by a database webhook.
 
-### Step 4: Dynamic Stage Computation (G3) ✅ DONE
+### High Issues (P1)
 
-**File**: `supabase/functions/proactive-evaluator/index.ts`
+**P1-1: `growing_degree_days` is NULL for all 196 forecast rows**
 
-- Replace hardcoded `computeStage()` with a database-driven approach
-- Query `intent_observation_mapping` for `crop_code` × `das_min/das_max` × `growth_stage` to resolve the correct stage
-- Fallback to hardcoded table only if no DB mapping exists
-- Support all crops in the system, not just 4
+Even if the land_id query were fixed, GDD would still be null because the weather edge function never computes/stores `growing_degree_days`. All pest-emergence rules depending on GDD accumulation are dead.
 
-### Step 5: Realtime Push + "Why this alert?" + Chat Deeplink (G7 + G6 partial) ✅ DONE
+**Fix**: Compute GDD in the weather edge function: `max(0, (temp_max + temp_min)/2 - base_temp)` where `base_temp` varies by crop (10°C for sugarcane, 5°C for wheat). Store in `weather_forecasts.growing_degree_days` or `weather_aggregates`.
 
-**File**: `src/hooks/useProactiveAlerts.ts`
-- Add Supabase realtime channel subscription for `proactive_alerts` INSERT events filtered by `farmer_id`
-- Auto-append new alerts to state and increment unread count
+**P1-2: `handleAskAI` sends English-only query regardless of farmer's language**
 
-**File**: `src/pages/ProactiveAlerts.tsx`
-- Add expandable "Why this alert?" section rendering `trigger_data` and `decision_reasoning` in human-readable form (e.g., "Temperature: 39°C exceeds 35°C threshold", "Humidity: 88% creates disease-favorable conditions")
-- Add inline CTA button: "Ask AI about this" that navigates to `/app/chat` with pre-filled query based on alert category + crop + land name
-- Add land name display on each alert card so farmer knows which field
+Line 62: `const query = \`Tell me more about ${category} on ${landName}\`` — always English. A Marathi-speaking farmer clicking "Ask AI" will send an English query to the chat, breaking the multilingual experience.
 
-### Step 6: Set Up Cron Trigger (Production Activation) ✅ DONE
+**Fix**: Use i18n translation with template variables or compose in the farmer's detected language.
 
-**Database**: Use `pg_cron` + `pg_net` to schedule the evaluator
-- Schedule: every 15 minutes during 5AM-9PM IST (farmer active hours), every 60 minutes at night
-- Call `proactive-evaluator` with `action: 'scheduled'`
-- This is a data INSERT operation (cron.schedule), not a schema migration
+**P1-3: No tenant filtering in evaluator's land query**
 
-### Step 7: Neural Enrichment for High-Risk Alerts (G6) ✅ DONE
+Line 138-141: `supabase.from('lands').select(...).eq('is_active', true)` loads ALL active lands across ALL tenants. In a multi-tenant system with 1M+ users, this will load millions of lands per evaluation run.
 
-**File**: `supabase/functions/proactive-evaluator/index.ts`
+**Fix**: Filter by `tenant_id` when provided. For cron runs, iterate tenants or use a tenant queue pattern.
 
-- For alerts where `risk_score >= 70` OR `priority === 'CRITICAL'`, call Lovable AI (Gemini Flash) with a structured prompt containing:
-  - Rule's `reason_text`, `knowledge_text`, `action_text`
-  - Land's crop + stage + DAS + weather values
-  - Evidence values from trigger_data
-- Ask it to return trilingual title/message/action (mr, hi, en) with farmer-friendly language
-- For lower-risk alerts, continue using existing template system
-- Cost-bounded: only enriches ~10-20% of alerts
+### Medium Issues (P2)
+
+**P2-1: Duplicate RLS INSERT policies on `proactive_alerts`**
+
+Two INSERT policies exist: "Service can insert proactive alerts" and "Service insert proactive_alerts" — both with `qual: null`. Redundant and confusing for audits.
+
+**P2-2: `rain_probability_percent` is 0 for all forecast rows**
+
+All 196 forecast rows have `rain_probability_percent = 0`. Either the API doesn't provide this or the weather function doesn't map it. The forecast rain signal is effectively dead even if the query were fixed.
+
+**P2-3: 500-land limit on evaluator**
+
+Line 145: `.limit(500)` — a hard cap. If a tenant has >500 active lands, the remaining are silently skipped.
+
+### Low Issues (P3)
+
+**P3-1: Evidence section uses raw key names** — `soil_n` shown as "soil n" instead of "Nitrogen (N)".
+
+**P3-2: No pagination on alert inbox** — loading 50 alerts at once; fine for now but not for power users.
 
 ---
 
-## Phase 2: conditions_json Parser + Rule Enablement ✅ DONE
+## B. Database Audit
 
-### N1: Bulk-enable proactive rules (DB UPDATE) ✅ DONE
-- 124 decision_rules now have `is_proactive_rule = true` and `forecast_horizon_days = 3`
-- Categories: pest, disease, nutrition, irrigation, stress, weather, safety, stage_problems, physiology, soil
+### Data Integrity Issues
 
-### N2: conditions_json format parser ✅ DONE
-- Added `parseDecisionRuleConditions()` that translates:
-  - `"humidity": ">80%"` → `humidity_min: 80`
-  - `"temperature": "22-28C"` → `temp_min: 22, temp_max: 28`
-  - `"temperature_c": ">38"` → `temp_min: 38`
-  - `"frost": true` → frost check at ≤5°C
-  - `"soil_moisture": "excess"` → rain/humidity proxy
-  - `"high_humidity": true` → `humidity_min: 80`
+| Issue | Table | Finding |
+|-------|-------|---------|
+| land_id always NULL | weather_forecasts | 196 rows, 0 with land_id set. Breaks forecast/GDD queries. |
+| growing_degree_days always NULL | weather_forecasts | Never computed by weather edge function |
+| rain_probability_percent always 0 | weather_forecasts | API mapping issue — no actual probability data |
+| 0 soil_health for most lands | soil_health | 36 rows across 25 lands — some lands missing soil data |
+| Duplicate INSERT RLS policies | proactive_alerts | Two identical INSERT policies |
 
-### N3: GDD computation ✅ DONE
-- Added `batchLoadGDD()` to sum `growing_degree_days` from `weather_forecasts` over last 30 days
-- GDD now feeds into pest emergence rules
+### Rule Coverage Analysis
 
-### N4: Category mappings ✅ DONE
-- Extended `mapDecisionCategory()` to map all 14 categories to valid DB check constraint values
-- Added `mapDecisionEventType()` for proactive_events table
+| Category | Proactive-Enabled | Total Active | Gap |
+|----------|------------------|-------------|-----|
+| pest | 3 | 84 | 81 pest rules not proactive |
+| disease | 7 | 60 | 53 disease rules not proactive |
+| nutrition | 3 | 62 | 59 nutrition rules not proactive |
+| irrigation | 25 | 42 | 17 irrigation rules not proactive |
+| safety | 16 | 36 | 20 safety rules not proactive |
+| stress | 15 | 31 | 16 stress rules not proactive |
+| weather | 18 | 20 | 2 weather rules not proactive |
+| soil | 0 | 21 | 21 soil rules completely missing from proactive |
+| harvest | 0 | 13 | 13 harvest rules missing |
+| stage_problems | 1 | 27 | 26 stage rules missing |
+
+**Key gap**: Soil (21 rules), harvest timing (13 rules), and diagnosis (36 rules) are completely absent from proactive evaluation.
+
+### Agronomic Issues
+
+- All 15 alerts are CROP_STRESS/NDVI. Zero pest, disease, irrigation, or weather alerts have ever been generated despite 125 enabled rules — because weather/forecast signals never reach the evaluator.
+- No ETL (Economic Threshold Level) alerts have fired — GDD is always null, and ETL fallback requires temp ≥ 25°C AND humidity ≥ 60%, but current humidity across locations is 15-48% (dry season), so the fallback also fails.
 
 ---
 
-## Files Changed
+## C. Proactive Intelligence System Audit
 
-| File | Changes |
-|------|---------|
-| `supabase/functions/proactive-evaluator/index.ts` | Complete rewrite: batch queries, extended LandContext (soil/GDD/forecast), decision_rules bridge, dynamic stage, neural enrichment, conditions_json parser |
-| `src/hooks/useProactiveAlerts.ts` | Add Supabase realtime subscription, land_name in interface |
-| `src/pages/ProactiveAlerts.tsx` | "Why this alert?" expandable, chat deeplink CTA, land name display |
-| `src/components/proactive/AlertEvidenceSection.tsx` | New component for evidence display |
-| Database (INSERT via tool) | `pg_cron` schedule for evaluator trigger |
-| Database (migration) | Bulk-enable 124 decision_rules as proactive |
+### Missing Capabilities
 
-## What This Does NOT Change
+1. **Forecast signals completely disconnected** — land_id query mismatch
+2. **GDD never computed** — pest emergence timing impossible
+3. **No cross-land collective intelligence** — no regional trend analysis
+4. **No feedback loop** — ACTED/DISMISSED outcomes not tracked for rule effectiveness
+5. **No seasonal calendar integration** — missing sowing-window, harvest-window advisory triggers
 
-- No modifications to existing AI Chat pipeline
-- No changes to existing crop schedule system
-- No changes to `decision_rules` data (only reads `is_proactive_rule = true`)
-- No new database tables or schema changes
-- No changes to LLM formatter or narration layer
+### Rule Evaluation Gaps
+
+- 60% threshold for COMPOUND/DISEASE_RISK is correct agronomically
+- 50% threshold for decision rules (line 1127) may be too loose — could produce false positives
+- ETL evaluation (lines 1100-1108) uses `gdd >= etl_value_min * 10` — the multiplier of 10 is an unexplained magic number without agronomic justification
+
+### Symbolic vs LLM Boundary
+
+- Correctly enforced: LLM only used for enrichment text, never for decision-making
+- Neural enrichment correctly bounded to 5 alerts per batch
+- Template fallback exists for non-enriched alerts
+
+---
+
+## D. UI/UX Audit
+
+### What Works Well
+- Priority sorting (CRITICAL first), animated cards, TTS integration
+- "Why this alert?" evidence section with collapsible UI
+- Alert bell with unread badge on Home page
+- Clean mobile-first layout (390px viewport compatible)
+
+### Issues
+
+1. **All alerts look identical** — only CROP_STRESS category, no variety in icons/colors
+2. **Decision-rule alerts are English-only** for non-enriched alerts
+3. **"Ask AI" sends English query** regardless of farmer language
+4. **No land-specific filtering** — farmer sees all alerts in one list, no way to filter by field
+5. **No date grouping** — all alerts in one flat list, no "Today"/"Yesterday" sections
+6. **Evidence labels not localized** — "soil n", "humidity" shown as English keys
+
+---
+
+## Execution Plan
+
+### Phase 1: Critical Fixes (P0 — must fix immediately)
+
+| # | Fix | File | Type |
+|---|-----|------|------|
+| 1 | Rewrite `batchLoadForecast()` and `batchLoadGDD()` to query by `location_key` instead of `land_id`, mapping results back to lands via coordinate lookup | `supabase/functions/proactive-evaluator/index.ts` | Code |
+| 2 | Add trilingual template fallback for decision-rule alerts when neural enrichment is skipped | `supabase/functions/proactive-evaluator/index.ts` | Code |
+| 3 | Make neural enrichment non-blocking: insert alerts first, then enrich and update | `supabase/functions/proactive-evaluator/index.ts` | Code |
+| 4 | Fix "Ask AI" deeplink to use farmer's language | `src/pages/ProactiveAlerts.tsx` | Code |
+| 5 | Add tenant_id filter to lands query in evaluator | `supabase/functions/proactive-evaluator/index.ts` | Code |
+
+### Phase 2: Signal Completeness (P1)
+
+| # | Fix | File | Type |
+|---|-----|------|------|
+| 6 | Compute and store GDD in weather edge function | `supabase/functions/weather/index.ts` | Code |
+| 7 | Fix rain_probability_percent mapping from OpenWeather API | `supabase/functions/weather/index.ts` | Code |
+| 8 | Enable soil category rules as proactive (21 rules) | Database UPDATE | DB |
+| 9 | Enable harvest timing rules as proactive (13 rules) | Database UPDATE | DB |
+
+### Phase 3: World-Class Features (P2/P3)
+
+| # | Feature | Impact |
+|---|---------|--------|
+| 10 | Localize evidence labels in AlertEvidenceSection | Farmer readability |
+| 11 | Add land-filter tabs on ProactiveAlerts page | Usability |
+| 12 | Add "Today"/"Earlier" date grouping | Cognitive load reduction |
+| 13 | Feedback loop: track ACTED/DISMISSED per rule for confidence tuning | System learning |
+| 14 | Remove duplicate INSERT RLS policy | DB hygiene |
+
+### Expected Outcome After Phase 1
+
+- Alert diversity increases from 1 type (NDVI) to 6+ types (disease, pest, irrigation, weather, stress, safety)
+- Forecast rain probability and GDD signals become available to all 125 proactive rules
+- Decision-rule alerts become readable in Marathi/Hindi
+- System scales correctly per-tenant instead of loading all lands globally
+
