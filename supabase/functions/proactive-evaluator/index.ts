@@ -384,7 +384,7 @@ Deno.serve(async (req) => {
           tenant_id: ctx.tenant_id,
           land_id: ctx.land_id,
           farmer_id: ctx.farmer_id,
-          event_type: 'DECISION_RULE_TRIGGER',
+          event_type: mapDecisionEventType(dr.category),
           event_data: { rule_id: dr.id, condition_code: dr.condition_code, trigger: result.triggerData },
           alerts_generated: 1,
           processed: true,
