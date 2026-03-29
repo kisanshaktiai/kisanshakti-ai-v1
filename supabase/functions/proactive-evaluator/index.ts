@@ -599,6 +599,27 @@ async function batchLoadForecast(supabase: any, landIds: string[]): Promise<Map<
   return map;
 }
 
+async function batchLoadGDD(supabase: any, landIds: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (landIds.length === 0) return map;
+
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { data } = await supabase
+    .from('weather_forecasts')
+    .select('land_id, growing_degree_days')
+    .in('land_id', landIds)
+    .gte('forecast_time', thirtyDaysAgo)
+    .not('growing_degree_days', 'is', null);
+
+  if (data) {
+    for (const f of data) {
+      if (!f.land_id) continue;
+      map.set(f.land_id, (map.get(f.land_id) || 0) + (f.growing_degree_days || 0));
+    }
+  }
+  return map;
+}
+
 function nullWeather() {
   return { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null };
 }
