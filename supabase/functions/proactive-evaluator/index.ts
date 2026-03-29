@@ -1171,14 +1171,13 @@ function getEstimatedHarvestDas(cropCode: string | null): number {
 }
 
 // =====================================================
-// NEURAL ENRICHMENT (G6 - Step 7)
+// NEURAL ENRICHMENT — ASYNC (updates DB after insert)
 // =====================================================
 
-async function enrichHighRiskAlerts(alerts: any[]): Promise<void> {
-  const highRisk = alerts.filter(a => a.risk_score >= 70 || a.priority === 'CRITICAL');
+async function enrichAndUpdateAlerts(supabase: any, insertedAlerts: any[]): Promise<void> {
+  const highRisk = insertedAlerts.filter(a => a.risk_score >= 70 || a.priority === 'CRITICAL');
   if (highRisk.length === 0 || !LOVABLE_API_KEY) return;
 
-  // Enrich max 5 per batch to bound costs
   const toEnrich = highRisk.slice(0, 5);
 
   for (const alert of toEnrich) {
@@ -1191,7 +1190,6 @@ Context:
 - Risk Score: ${alert.risk_score}
 - Evidence: ${JSON.stringify(alert.trigger_data)}
 - Current message: ${alert.message_en}
-- Current action: ${alert.action_text_en || 'none'}
 
 Return a JSON with exactly these fields:
 {
@@ -1206,7 +1204,7 @@ Return a JSON with exactly these fields:
   "action_en": "Actionable step in English (max 20 words)"
 }
 
-Important: Use simple village language. Tell the farmer exactly what to do physically. Be specific about timing (today, tomorrow, this week).`;
+Important: Use simple village language. Tell the farmer exactly what to do physically. Be specific about timing.`;
 
       const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
         method: 'POST',
@@ -1223,7 +1221,7 @@ Important: Use simple village language. Tell the farmer exactly what to do physi
 
       if (!response.ok) {
         console.warn(`[NeuralEnrichment] API returned ${response.status}`);
-        await response.text(); // consume body
+        await response.text();
         continue;
       }
 
@@ -1232,19 +1230,83 @@ Important: Use simple village language. Tell the farmer exactly what to do physi
       if (!content) continue;
 
       const enriched = JSON.parse(content);
-      if (enriched.title_mr) alert.title_mr = enriched.title_mr;
-      if (enriched.title_hi) alert.title_hi = enriched.title_hi;
-      if (enriched.title_en) alert.title_en = enriched.title_en;
-      if (enriched.message_mr) alert.message_mr = enriched.message_mr;
-      if (enriched.message_hi) alert.message_hi = enriched.message_hi;
-      if (enriched.message_en) alert.message_en = enriched.message_en;
-      if (enriched.action_mr) alert.action_text_mr = enriched.action_mr;
-      if (enriched.action_hi) alert.action_text_hi = enriched.action_hi;
-      if (enriched.action_en) alert.action_text_en = enriched.action_en;
+      const updateData: Record<string, string> = {};
+      if (enriched.title_mr) updateData.title_mr = enriched.title_mr;
+      if (enriched.title_hi) updateData.title_hi = enriched.title_hi;
+      if (enriched.title_en) updateData.title_en = enriched.title_en;
+      if (enriched.message_mr) updateData.message_mr = enriched.message_mr;
+      if (enriched.message_hi) updateData.message_hi = enriched.message_hi;
+      if (enriched.message_en) updateData.message_en = enriched.message_en;
+      if (enriched.action_mr) updateData.action_text_mr = enriched.action_mr;
+      if (enriched.action_hi) updateData.action_text_hi = enriched.action_hi;
+      if (enriched.action_en) updateData.action_text_en = enriched.action_en;
+
+      // Update the already-inserted alert with enriched content
+      await supabase.from('proactive_alerts').update(updateData).eq('id', alert.id);
+      console.log(`[NeuralEnrichment] Enriched alert ${alert.id}`);
     } catch (e) {
       console.warn('[NeuralEnrichment] Error:', e.message);
     }
   }
+}
+
+// =====================================================
+// TRILINGUAL TEMPLATE GENERATORS (for decision rules without enrichment)
+// =====================================================
+
+const CATEGORY_TITLES: Record<string, { mr: string; hi: string }> = {
+  PEST_RISK: { mr: '🐛 कीड चेतावणी', hi: '🐛 कीट चेतावनी' },
+  DISEASE_RISK: { mr: '🦠 रोग धोका', hi: '🦠 रोग का खतरा' },
+  WEATHER_WARNING: { mr: '⛈️ हवामान इशारा', hi: '⛈️ मौसम चेतावनी' },
+  IRRIGATION: { mr: '💧 पाणी व्यवस्थापन', hi: '💧 पानी प्रबंधन' },
+  FERTILIZER_WINDOW: { mr: '🌿 खत व्यवस्थापन', hi: '🌿 उर्वरक प्रबंधन' },
+  SPRAY_WINDOW: { mr: '🔫 फवारणी वेळ', hi: '🔫 छिड़काव का समय' },
+  CROP_STRESS: { mr: '🌡️ पीक ताण', hi: '🌡️ फसल तनाव' },
+  STAGE_ADVISORY: { mr: '🌱 टप्पा सल्ला', hi: '🌱 चरण सलाह' },
+  HARVEST_TIMING: { mr: '🌾 कापणी वेळ', hi: '🌾 कटाई का समय' },
+  GENERAL: { mr: '📢 सूचना', hi: '📢 सूचना' },
+};
+
+const CATEGORY_ACTIONS: Record<string, { mr: string; hi: string }> = {
+  PEST_RISK: { mr: 'शेताची तपासणी करा आणि कीडनाशक फवारणी करा', hi: 'खेत की जांच करें और कीटनाशक छिड़काव करें' },
+  DISEASE_RISK: { mr: 'प्रभावित पाने काढून बुरशीनाशक फवारा', hi: 'प्रभावित पत्तियां हटाएं और फफूंदनाशक छिड़कें' },
+  WEATHER_WARNING: { mr: 'पिकाला संरक्षण द्या, सिंचन थांबवा', hi: 'फसल को सुरक्षा दें, सिंचाई रोकें' },
+  IRRIGATION: { mr: 'आज सिंचन करा', hi: 'आज सिंचाई करें' },
+  FERTILIZER_WINDOW: { mr: 'खत द्यायची योग्य वेळ आहे', hi: 'खाद देने का सही समय है' },
+  SPRAY_WINDOW: { mr: 'आज फवारणीसाठी योग्य हवामान', hi: 'आज छिड़काव के लिए उपयुक्त मौसम' },
+  CROP_STRESS: { mr: 'पिकाची स्थिती तपासा', hi: 'फसल की स्थिति जांचें' },
+  STAGE_ADVISORY: { mr: 'या टप्प्यात विशेष काळजी घ्या', hi: 'इस चरण में विशेष देखभाल करें' },
+  HARVEST_TIMING: { mr: 'कापणी नियोजन करा', hi: 'कटाई की योजना बनाएं' },
+  GENERAL: { mr: 'तपासणी करा', hi: 'जांच करें' },
+};
+
+function generateTrilingualTitle(category: string, alertCategory: string, ctx: LandContext): { mr: string; hi: string } {
+  const templates = CATEGORY_TITLES[alertCategory] || CATEGORY_TITLES.GENERAL;
+  const landMr = ctx.land_name || 'शेत';
+  const landHi = ctx.land_name || 'खेत';
+  return {
+    mr: `${templates.mr} - ${landMr}`,
+    hi: `${templates.hi} - ${landHi}`,
+  };
+}
+
+function generateTrilingualMessage(category: string, messageEn: string, ctx: LandContext): { mr: string; hi: string } {
+  // For decision rules, create a basic Marathi/Hindi message from context
+  const landMr = ctx.land_name || 'तुमच्या शेतात';
+  const landHi = ctx.land_name || 'आपके खेत में';
+  const catTitleMr = CATEGORY_TITLES[mapDecisionCategory(category)]?.mr || 'सूचना';
+  const catTitleHi = CATEGORY_TITLES[mapDecisionCategory(category)]?.hi || 'सूचना';
+  
+  return {
+    mr: `${landMr} - ${catTitleMr}. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. शेताची तपासणी करा.`,
+    hi: `${landHi} - ${catTitleHi}. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. खेत की जांच करें.`,
+  };
+}
+
+function generateTrilingualAction(category: string, actionEn: string | null, ctx: LandContext): { mr: string; hi: string } {
+  const alertCat = mapDecisionCategory(category);
+  const templates = CATEGORY_ACTIONS[alertCat] || CATEGORY_ACTIONS.GENERAL;
+  return { mr: templates.mr, hi: templates.hi };
 }
 
 // =====================================================
