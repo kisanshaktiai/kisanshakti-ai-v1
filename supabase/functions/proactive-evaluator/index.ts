@@ -1220,7 +1220,7 @@ function mapDecisionCategory(category: string): string {
   const map: Record<string, string> = {
     'proactive_monitoring': 'CROP_STRESS',
     'proactive_pest': 'PEST_RISK',
-    'proactive_irrigation': 'IRRIGATION_ALERT',
+    'proactive_irrigation': 'IRRIGATION',
     'ipm': 'PEST_RISK',
     'pest': 'PEST_RISK',
     'disease': 'DISEASE_RISK',
@@ -1230,9 +1230,9 @@ function mapDecisionCategory(category: string): string {
     'advisory': 'STAGE_ADVISORY',
     'stage_problems': 'CROP_STRESS',
     'stress': 'CROP_STRESS',
-    'weather': 'WEATHER_ALERT',
-    'irrigation': 'IRRIGATION_ALERT',
-    'soil': 'SOIL_HEALTH',
+    'weather': 'WEATHER_WARNING',
+    'irrigation': 'IRRIGATION',
+    'soil': 'CROP_STRESS',
     'physiology': 'CROP_STRESS',
   };
   return map[category] || 'GENERAL';
@@ -1244,6 +1244,36 @@ function mapDecisionPriority(priority: number): string {
   if (priority <= 3) return 'MEDIUM';
   if (priority <= 5) return 'LOW';
   return 'LOW';
+}
+
+function mapConditionToEventType(conditionType: string): string {
+  const map: Record<string, string> = {
+    'WEATHER': 'WEATHER_CHANGE',
+    'NDVI': 'NDVI_DROP',
+    'STAGE': 'STAGE_TRANSITION',
+    'COMPOUND': 'DISEASE_RISK_WINDOW',
+    'DISEASE_RISK': 'DISEASE_RISK_WINDOW',
+    'PEST_RISK': 'PEST_EMERGENCE',
+    'SOIL': 'SOIL_CHANGE',
+  };
+  return map[conditionType] || 'SCHEDULED_CHECK';
+}
+
+function mapDecisionEventType(category: string): string {
+  const map: Record<string, string> = {
+    'pest': 'PEST_EMERGENCE',
+    'disease': 'DISEASE_RISK_WINDOW',
+    'weather': 'WEATHER_CHANGE',
+    'stress': 'WEATHER_CHANGE',
+    'irrigation': 'IRRIGATION_NEEDED',
+    'safety': 'SPRAY_WINDOW',
+    'soil': 'SOIL_CHANGE',
+    'nutrition': 'SCHEDULED_CHECK',
+    'nutrient': 'SCHEDULED_CHECK',
+    'physiology': 'SCHEDULED_CHECK',
+    'stage_problems': 'STAGE_TRANSITION',
+  };
+  return map[category] || 'SCHEDULED_CHECK';
 }
 
 // =====================================================
