@@ -601,47 +601,55 @@ async function batchLoadWeather(supabase: any, locationKeys: string[]): Promise<
   return map;
 }
 
-async function batchLoadForecast(supabase: any, landIds: string[]): Promise<Map<string, number>> {
+async function batchLoadForecast(supabase: any, locationKeys: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>();
-  if (landIds.length === 0) return map;
+  if (locationKeys.length === 0) return map;
 
   const futureTime = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
   const { data } = await supabase
     .from('weather_forecasts')
-    .select('land_id, rain_probability_percent')
-    .in('land_id', landIds)
+    .select('location_key, rain_probability_percent')
+    .in('location_key', locationKeys)
     .gte('forecast_time', new Date().toISOString())
     .lte('forecast_time', futureTime)
     .not('rain_probability_percent', 'is', null);
 
   if (data) {
     for (const f of data) {
-      if (!f.land_id) continue;
-      const existing = map.get(f.land_id) ?? 0;
+      if (!f.location_key) continue;
+      const existing = map.get(f.location_key) ?? 0;
       if (f.rain_probability_percent > existing) {
-        map.set(f.land_id, f.rain_probability_percent);
+        map.set(f.location_key, f.rain_probability_percent);
       }
     }
   }
   return map;
 }
 
-async function batchLoadGDD(supabase: any, landIds: string[]): Promise<Map<string, number>> {
+async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>();
-  if (landIds.length === 0) return map;
+  if (locationKeys.length === 0) return map;
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  
+  // GDD from weather_forecasts if available
   const { data } = await supabase
     .from('weather_forecasts')
-    .select('land_id, growing_degree_days')
-    .in('land_id', landIds)
-    .gte('forecast_time', thirtyDaysAgo)
-    .not('growing_degree_days', 'is', null);
+    .select('location_key, growing_degree_days, temperature_max_celsius, temperature_min_celsius')
+    .in('location_key', locationKeys)
+    .gte('forecast_time', thirtyDaysAgo);
 
   if (data) {
     for (const f of data) {
-      if (!f.land_id) continue;
-      map.set(f.land_id, (map.get(f.land_id) || 0) + (f.growing_degree_days || 0));
+      if (!f.location_key) continue;
+      // Use stored GDD if available, otherwise compute from temp
+      let gdd = f.growing_degree_days;
+      if (gdd == null && f.temperature_max_celsius != null && f.temperature_min_celsius != null) {
+        gdd = Math.max(0, (f.temperature_max_celsius + f.temperature_min_celsius) / 2 - 10);
+      }
+      if (gdd != null && gdd > 0) {
+        map.set(f.location_key, (map.get(f.location_key) || 0) + gdd);
+      }
     }
   }
   return map;
