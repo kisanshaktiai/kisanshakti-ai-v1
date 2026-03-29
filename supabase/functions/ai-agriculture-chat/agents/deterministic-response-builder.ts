@@ -520,6 +520,20 @@ export function computeSafetyScore(ruleData: RichRuleData, cropContext?: CropCon
   if (regStatus === 'BANNED' || regStatus === 'PROHIBITED') score -= 0.3;
   else if (regStatus === 'RESTRICTED') score -= 0.15;
   else if (regStatus === 'WATCH_LIST') score -= 0.05;
+  else if (regStatus === 'UNKNOWN' && ruleData.active_ingredient) {
+    score -= 0.1; // P1-2: Penalty for unverified chemicals
+  }
+  
+  // P0-3: Cross-validate bee_toxicity vs farmer_safety_level
+  const farmerSafety = (ruleData.farmer_safety_level || '').toUpperCase();
+  if (beeTox === 'HIGH' && farmerSafety === 'SAFE') {
+    console.error(`⚠️ [SafetyScore] CONTRADICTION: ${ruleData.rule_id} has bee_toxicity=HIGH but safety=SAFE`);
+    score -= 0.2; // Additional penalty for contradictory safety data
+  }
+  if (regStatus === 'RESTRICTED' && farmerSafety === 'SAFE') {
+    console.error(`⚠️ [SafetyScore] CONTRADICTION: ${ruleData.rule_id} has regulatory=RESTRICTED but safety=SAFE`);
+    score -= 0.15; // P1-3: RESTRICTED + SAFE contradiction
+  }
   
   // Resistance rotation (0.2 weight) — penalize if no resistance group info for chemical
   if (TREATMENT_ACTIONS.has((ruleData.action_type || '').toUpperCase()) && 
