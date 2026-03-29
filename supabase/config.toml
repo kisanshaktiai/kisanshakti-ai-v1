@@ -68,3 +68,6 @@ verify_jwt = false
 
 [functions.seed-decision-rules]
 verify_jwt = false
+
+[functions.proactive-evaluator]
+verify_jwt = false
