@@ -76,6 +76,11 @@ interface LandContext {
   organic_carbon: number | null;
   forecast_rain_probability_72h: number | null;
   gdd_accumulated: number | null;
+  // Land-specific fields for actionable alerts
+  area_acres: number | null;
+  soil_type: string | null;
+  irrigation_type: string | null;
+  water_source: string | null;
 }
 
 interface RuleEvalResult {
@@ -137,7 +142,7 @@ Deno.serve(async (req) => {
     // =========================================================
     let landsQuery = supabase
       .from('lands')
-      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon')
+      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
       .eq('is_active', true);
 
     if (targetLandId) landsQuery = landsQuery.eq('id', targetLandId);
