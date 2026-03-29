@@ -1308,18 +1308,7 @@ function fillTemplate(tpl: string | null, vars: Record<string, string>): string 
   return result;
 }
 
-function mapConditionToEventType(conditionType: string): string {
-  const map: Record<string, string> = {
-    'WEATHER': 'WEATHER_CHANGE',
-    'NDVI': 'NDVI_DROP',
-    'STAGE': 'STAGE_TRANSITION',
-    'COMPOUND': 'DISEASE_RISK_WINDOW',
-    'DISEASE_RISK': 'DISEASE_RISK_WINDOW',
-    'PEST_RISK': 'PEST_EMERGENCE',
-    'SOIL': 'SOIL_CHANGE',
-  };
-  return map[conditionType] || 'SCHEDULED_CHECK';
-}
+// mapConditionToEventType moved to category mapping section above
 
 function jsonResponse(data: any, status = 200): Response {
   return new Response(JSON.stringify(data), {
