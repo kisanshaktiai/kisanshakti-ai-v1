@@ -1383,6 +1383,92 @@ function mapDecisionEventType(category: string): string {
 }
 
 // =====================================================
+// IRRIGATION CALCULATION MODULE (ICAR-based)
+// =====================================================
+
+const CROP_WATER_NEED_MM_PER_DAY: Record<string, Record<string, number>> = {
+  SUGARCANE: { GERMINATION: 3, SEEDLING: 4, TILLERING: 6, GRAND_GROWTH: 8, MATURITY: 4, HARVEST: 2, VEGETATIVE: 5 },
+  WHEAT: { GERMINATION: 2, SEEDLING: 3, TILLERING: 4, HEADING: 5, GRAIN_FILLING: 4, MATURITY: 2, VEGETATIVE: 3 },
+  COTTON: { GERMINATION: 2, SEEDLING: 3, SQUARING: 5, FLOWERING: 6, BOLL_DEVELOPMENT: 5, MATURITY: 3, VEGETATIVE: 4 },
+  RICE: { GERMINATION: 5, SEEDLING: 6, TILLERING: 8, PANICLE_INITIATION: 8, FLOWERING: 7, GRAIN_FILLING: 5, MATURITY: 3, VEGETATIVE: 6 },
+  SOYBEAN: { GERMINATION: 2, SEEDLING: 3, FLOWERING: 5, POD_FILLING: 4, MATURITY: 2, VEGETATIVE: 3 },
+  ONION: { GERMINATION: 2, SEEDLING: 3, BULB_FORMATION: 5, MATURITY: 2, VEGETATIVE: 3 },
+};
+
+const IRRIGATION_EFFICIENCY: Record<string, number> = {
+  DRIP: 0.90, SPRINKLER: 0.75, FURROW: 0.55, FLOOD: 0.45, MICRO_SPRINKLER: 0.80, SURFACE: 0.50,
+};
+
+const SOIL_WATER_FACTOR: Record<string, number> = {
+  BLACK: 0.85, RED: 1.1, LATERITE: 1.15, ALLUVIAL: 0.95, SANDY: 1.3, CLAY: 0.8, LOAMY: 1.0, MEDIUM_BLACK: 0.9,
+};
+
+function calculateIrrigationForLand(ctx: LandContext): {
+  water_liters_per_acre: number;
+  water_liters_total: number;
+  duration_hours: number;
+  urgency: string;
+  timing: string;
+  frequency_days: number;
+  method: string;
+} | null {
+  const cropCode = ctx.crop_code || 'SUGARCANE';
+  const stage = ctx.current_stage || 'VEGETATIVE';
+  const area = ctx.area_acres || 1;
+  const irrigationType = (ctx.irrigation_type || 'FLOOD').toUpperCase();
+  const soilType = (ctx.soil_type || 'MEDIUM_BLACK').toUpperCase().replace(/\s+/g, '_');
+
+  const cropNeeds = CROP_WATER_NEED_MM_PER_DAY[cropCode] || CROP_WATER_NEED_MM_PER_DAY.SUGARCANE;
+  const dailyNeedMm = cropNeeds[stage] || cropNeeds.VEGETATIVE || 5;
+  
+  const efficiency = IRRIGATION_EFFICIENCY[irrigationType] || 0.55;
+  const soilFactor = SOIL_WATER_FACTOR[soilType] || 1.0;
+
+  // ICAR formula: water_need = (ETcrop * soil_factor) / irrigation_efficiency
+  // 1 acre = 4047 m², 1mm on 1 acre = 4047 liters
+  const frequencyDays = irrigationType === 'DRIP' ? 1 : irrigationType === 'SPRINKLER' ? 3 : 7;
+  const totalMmPerCycle = dailyNeedMm * frequencyDays * soilFactor;
+  const appliedMm = totalMmPerCycle / efficiency;
+  
+  // Subtract recent rainfall
+  const rainMm = ctx.weather.rain_mm || 0;
+  const effectiveAppliedMm = Math.max(0, appliedMm - (rainMm * 0.7)); // 70% effective rainfall
+  
+  if (effectiveAppliedMm <= 0) return null;
+
+  const litersPerAcre = Math.round(effectiveAppliedMm * 4047);
+  const totalLiters = Math.round(litersPerAcre * area);
+
+  // Duration based on typical flow rates
+  const flowRateLPH: Record<string, number> = { DRIP: 4000, SPRINKLER: 12000, FLOOD: 30000, FURROW: 20000, SURFACE: 25000 };
+  const flowRate = flowRateLPH[irrigationType] || 20000;
+  const durationHours = Math.round((totalLiters / flowRate) * 10) / 10;
+
+  // Urgency based on temp + humidity + NDVI
+  let urgency = 'TOMORROW';
+  if (ctx.weather.temp != null && ctx.weather.temp > 38) urgency = 'IMMEDIATE';
+  else if (ctx.ndvi != null && ctx.ndvi < 0.3) urgency = 'IMMEDIATE';
+  else if (ctx.weather.temp != null && ctx.weather.temp > 33) urgency = 'TODAY';
+  else if (ctx.weather.humidity != null && ctx.weather.humidity < 30) urgency = 'TODAY';
+
+  const timingMap: Record<string, string> = {
+    IMMEDIATE: 'Do it now / आत्ताच करा',
+    TODAY: 'Before sunset today / आज सूर्यास्तापूर्वी',
+    TOMORROW: 'Early morning tomorrow / उद्या सकाळी',
+  };
+
+  return {
+    water_liters_per_acre: litersPerAcre,
+    water_liters_total: totalLiters,
+    duration_hours: durationHours,
+    urgency,
+    timing: timingMap[urgency] || timingMap.TOMORROW,
+    frequency_days: frequencyDays,
+    method: irrigationType,
+  };
+}
+
+// =====================================================
 // TEMPLATE HELPERS
 // =====================================================
 
@@ -1402,6 +1488,8 @@ function buildTemplateVars(ctx: LandContext): Record<string, string> {
     '{{soil_k}}': ctx.soil_k?.toString() || '--',
     '{{soil_ph}}': ctx.soil_ph?.toString() || '--',
     '{{forecast_rain}}': ctx.forecast_rain_probability_72h?.toString() || '--',
+    '{{area}}': ctx.area_acres?.toString() || '--',
+    '{{irrigation_type}}': ctx.irrigation_type || '--',
   };
 }
 
