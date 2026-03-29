@@ -8,29 +8,40 @@ interface AlertEvidenceSectionProps {
   reasoning: string | null;
 }
 
-const EVIDENCE_LABELS: Record<string, { icon: string; unit: string }> = {
-  temp: { icon: '🌡️', unit: '°C' },
-  humidity: { icon: '💧', unit: '%' },
-  rain_mm: { icon: '🌧️', unit: 'mm' },
-  wind: { icon: '💨', unit: 'km/h' },
-  ndvi: { icon: '🛰️', unit: '' },
-  ndvi_previous: { icon: '🛰️', unit: '' },
-  drop: { icon: '📉', unit: '' },
-  das: { icon: '📅', unit: ' days' },
-  soil_n: { icon: '🧪', unit: ' kg/ha' },
-  soil_p: { icon: '🧪', unit: ' kg/ha' },
-  soil_k: { icon: '🧪', unit: ' kg/ha' },
-  soil_ph: { icon: '⚗️', unit: '' },
-  organic_carbon: { icon: '🌱', unit: '%' },
-  forecast_rain_72h: { icon: '🌦️', unit: '%' },
-  gdd: { icon: '🔥', unit: '' },
-  days_to_harvest: { icon: '🌾', unit: ' days' },
-  phi_days: { icon: '⚠️', unit: ' days' },
+// Localized evidence labels for farmer-friendly display
+const EVIDENCE_LABELS: Record<string, { icon: string; unit: string; en: string; mr: string; hi: string }> = {
+  temp: { icon: '🌡️', unit: '°C', en: 'Temperature', mr: 'तापमान', hi: 'तापमान' },
+  humidity: { icon: '💧', unit: '%', en: 'Humidity', mr: 'आर्द्रता', hi: 'नमी' },
+  rain_mm: { icon: '🌧️', unit: 'mm', en: 'Rainfall', mr: 'पाऊस', hi: 'वर्षा' },
+  wind: { icon: '💨', unit: 'km/h', en: 'Wind Speed', mr: 'वाऱ्याचा वेग', hi: 'हवा की गति' },
+  ndvi: { icon: '🛰️', unit: '', en: 'Crop Health (NDVI)', mr: 'पीक आरोग्य (NDVI)', hi: 'फसल स्वास्थ्य (NDVI)' },
+  ndvi_previous: { icon: '🛰️', unit: '', en: 'Previous NDVI', mr: 'मागील NDVI', hi: 'पिछला NDVI' },
+  drop: { icon: '📉', unit: '', en: 'NDVI Drop', mr: 'NDVI घट', hi: 'NDVI गिरावट' },
+  das: { icon: '📅', unit: '', en: 'Days After Sowing', mr: 'पेरणीनंतर दिवस', hi: 'बुवाई के बाद दिन' },
+  soil_n: { icon: '🧪', unit: ' kg/ha', en: 'Nitrogen (N)', mr: 'नायट्रोजन (N)', hi: 'नाइट्रोजन (N)' },
+  soil_p: { icon: '🧪', unit: ' kg/ha', en: 'Phosphorus (P)', mr: 'स्फुरद (P)', hi: 'फॉस्फोरस (P)' },
+  soil_k: { icon: '🧪', unit: ' kg/ha', en: 'Potassium (K)', mr: 'पालाश (K)', hi: 'पोटैशियम (K)' },
+  soil_ph: { icon: '⚗️', unit: '', en: 'Soil pH', mr: 'माती pH', hi: 'मिट्टी pH' },
+  organic_carbon: { icon: '🌱', unit: '%', en: 'Organic Carbon', mr: 'सेंद्रिय कर्ब', hi: 'जैविक कार्बन' },
+  forecast_rain_72h: { icon: '🌦️', unit: '%', en: 'Rain Forecast (72h)', mr: 'पावसाचा अंदाज (72h)', hi: 'वर्षा पूर्वानुमान (72h)' },
+  gdd: { icon: '🔥', unit: '', en: 'Growth Degree Days', mr: 'वाढ डिग्री दिवस', hi: 'ग्रोथ डिग्री डेज' },
+  days_to_harvest: { icon: '🌾', unit: '', en: 'Days to Harvest', mr: 'कापणीसाठी दिवस', hi: 'कटाई तक दिन' },
+  phi_days: { icon: '⚠️', unit: '', en: 'Pre-Harvest Interval', mr: 'कापणीपूर्व कालावधी', hi: 'कटाई पूर्व अंतराल' },
+  stage: { icon: '🌱', unit: '', en: 'Growth Stage', mr: 'वाढीचा टप्पा', hi: 'विकास चरण' },
 };
 
+function getLabel(key: string, lang: string): string {
+  const config = EVIDENCE_LABELS[key];
+  if (!config) return key.replace(/_/g, ' ');
+  if (lang === 'mr') return config.mr;
+  if (lang === 'hi') return config.hi;
+  return config.en;
+}
+
 export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSectionProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
+  const lang = i18n.language || 'en';
 
   // Filter out non-displayable keys
   const displayKeys = Object.keys(triggerData).filter(
@@ -59,7 +70,7 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
             return (
               <div key={key} className="flex items-center justify-between">
                 <span className="text-muted-foreground">
-                  {config?.icon || '📊'} {key.replace(/_/g, ' ')}
+                  {config?.icon || '📊'} {getLabel(key, lang)}
                 </span>
                 <span className="font-medium text-foreground">
                   {displayValue}{config?.unit || ''}
