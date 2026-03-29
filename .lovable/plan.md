@@ -1,112 +1,81 @@
 
 
-# Proactive Intelligence System — Land-Specific Actionable Alerts Fix Plan
+# Proactive Alerts Visibility + Notification + WhatsApp Fix Plan
 
-## The Critical Gap
+## Issues Found
 
-The proactive evaluator loads only 8 columns from `lands`:
-```
-id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon
-```
+### 1. ProactiveAlerts page has no header/back navigation
+The page is a raw content component with no way to navigate back. Farmers reaching it via the bell icon have no way to return except browser back.
 
-But the `lands` table has **65+ columns** including:
-- `area_acres` — needed for "how many liters of water"
-- `soil_type` — needed for water retention calculations
-- `irrigation_type` — DRIP/FLOOD/SPRINKLER efficiency
-- `water_source` — well/canal/borewell capacity
-- `soil_ph`, `nitrogen_kg_per_ha`, `phosphorus_kg_per_ha`, `potassium_kg_per_ha` — inline soil data
-- `current_moisture_status` — direct moisture signal
+### 2. Bell icon competes with floating weather card
+The bell is `fixed top-[72px] right-5 z-40` while the weather card is `fixed top-16 left-4 right-4 z-30`. On small screens, the bell may be obscured or visually lost.
 
-**Result**: Every alert is generic. An NDVI-drop alert says "check your field" instead of "your 2.5 acre Sugarcane field needs 40,500 liters of water via drip irrigation over 1.5 hours."
+### 3. No in-app toast/notification when new alerts arrive
+The realtime subscription in `useProactiveAlerts` updates state silently. When a new alert arrives, the farmer sees nothing unless they're already on the alerts page or notice the badge count change.
 
-The existing `irrigation-decision-module.ts` already has ICAR-based water calculation logic, but it is NEVER called by the proactive evaluator.
+### 4. No WhatsApp alert delivery exists
+No WhatsApp integration anywhere. The farmer's `mobile_number` is available in the `farmers` table.
 
-## What Changes
+---
 
-### 1. Expand LandContext with land-specific columns (evaluator)
+## Execution Plan
 
-**File**: `supabase/functions/proactive-evaluator/index.ts`
-
-Add to `LandContext` interface:
-- `area_acres`, `soil_type`, `irrigation_type`, `water_source`
-
-Update the lands query (line 140) to also select these 4 columns. Populate them in the context-building loop (line 244-296).
-
-### 2. Integrate irrigation-decision-module into evaluator
-
-**File**: `supabase/functions/proactive-evaluator/index.ts`
-
-When an NDVI-drop, CROP_STRESS, or IRRIGATION alert fires, call `calculateIrrigationRecommendation()` with the land's actual data:
-- `crop_code` from context
-- `growth_stage` from computed stage
-- `days_after_sowing` from DAS
-- `soil_type` from land
-- `irrigation_type` from land (DRIP/FLOOD/SPRINKLER/FURROW)
-- `area_acres` from land
-- Weather forecast data from context
-
-Embed the result into `trigger_data` so the UI can display it:
-```json
-{
-  "irrigation": {
-    "water_liters_total": 101175,
-    "water_liters_per_acre": 40470,
-    "urgency": "TODAY",
-    "duration_hours": 1.5,
-    "timing": "Before sunset today",
-    "frequency_days": 7
-  }
-}
-```
-
-### 3. Enrich alert messages with land-specific solutions
-
-**File**: `supabase/functions/proactive-evaluator/index.ts`
-
-Update `generateTrilingualMessage()` and `generateTrilingualAction()` to include computed irrigation/fertilizer quantities using `area_acres`. Example output:
-
-- **MR**: `तुमच्या "शिवार 1" शेतात (2.5 एकर) NDVI कमी झाला. ठिबक सिंचनाने 40,470 लिटर पाणी द्या (1.5 तास).`
-- **HI**: `आपके "शिवार 1" खेत (2.5 एकर) में NDVI कम हुआ. ड्रिप सिंचाई से 40,470 लीटर पानी दें (1.5 घंटे).`
-- **EN**: `NDVI dropped on "Shivar 1" (2.5 acres). Give 40,470 liters via drip irrigation (1.5 hours).`
-
-### 4. Add irrigation solution card to AlertEvidenceSection UI
-
-**File**: `src/components/proactive/AlertEvidenceSection.tsx`
-
-Add display logic for `trigger_data.irrigation` object:
-- Show water amount in liters (total for farmer's area)
-- Show urgency badge (IMMEDIATE/TODAY/TOMORROW)
-- Show duration and timing
-- Show irrigation method icon
-
-Add new evidence labels: `water_liters_total`, `irrigation_urgency`, `irrigation_duration`, `irrigation_timing`, `irrigation_method`.
-
-### 5. Add land-filter tabs to ProactiveAlerts page
-
+### Fix 1: Add proper header to ProactiveAlerts page
 **File**: `src/pages/ProactiveAlerts.tsx`
 
-Add horizontal scrollable land-name filter chips at the top. Farmer taps a land name to see only that land's alerts. "All" chip shown by default. Uses the existing `land_name` field from the alert join.
+Add a sticky header with back button (same pattern as `NotificationSettingsPage.tsx`):
+- Back arrow → navigates to `/app/home`
+- Title: localized "Proactive Alerts"
+- Subtitle: localized "AI-powered farm intelligence"
+- Adjust content padding for header
+
+### Fix 2: Make bell icon more prominent on Home
+**File**: `src/pages/Home.tsx`
+
+Move the bell icon to be part of the header row instead of a fixed overlay competing with the weather card. Or increase its visual prominence with a colored background when `alertUnreadCount > 0`.
+
+### Fix 3: In-app toast notification on new alert arrival
+**File**: `src/hooks/useProactiveAlerts.ts`
+
+When the realtime INSERT listener fires, show a toast notification with:
+- Alert title (in farmer's language)
+- Priority badge color
+- Tap action → navigate to `/app/proactive-alerts`
+
+This gives immediate feedback even when the farmer is on any other page.
+
+### Fix 4: WhatsApp alert sharing via `wa.me` deep link
+**File**: `src/pages/ProactiveAlerts.tsx`
+**File**: `src/components/proactive/AlertEvidenceSection.tsx`
+
+Add a "Share on WhatsApp" button on each alert card that:
+- Composes a message with: alert title + message + action text (in farmer's language)
+- Opens `https://wa.me/?text=...` (self-share) or `https://api.whatsapp.com/send?text=...`
+- This uses the farmer's own WhatsApp app — no API key needed
+- Works on both mobile (opens WhatsApp app) and desktop (opens web.whatsapp.com)
+
+**Note**: Auto-sending WhatsApp messages without user action is NOT possible without a WhatsApp Business API (paid service requiring Meta verification). The `wa.me` deep link approach is the best option — it pre-fills the message and the farmer taps "Send".
+
+### Fix 5: Auto-compose WhatsApp for critical alerts
+**File**: `src/hooks/useProactiveAlerts.ts`
+
+When a CRITICAL priority alert arrives via realtime, show a toast with a "Send to WhatsApp" action button that opens the pre-composed `wa.me` link. This nudges farmers to share critical alerts with family/advisors.
+
+---
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `supabase/functions/proactive-evaluator/index.ts` | Expand lands query + LandContext, integrate irrigation module, enrich messages with quantities |
-| `src/components/proactive/AlertEvidenceSection.tsx` | Add irrigation solution display card |
-| `src/pages/ProactiveAlerts.tsx` | Add land-filter tabs |
+| `src/pages/ProactiveAlerts.tsx` | Add sticky header with back button, add WhatsApp share button per alert |
+| `src/pages/Home.tsx` | Improve bell icon visibility |
+| `src/hooks/useProactiveAlerts.ts` | Add toast notification on new alert arrival |
+| `src/components/proactive/AlertEvidenceSection.tsx` | No changes needed |
 
 ## What This Does NOT Change
-
 - No changes to AI Chat pipeline
 - No changes to crop schedule system
-- No new database tables or schema changes
-- No changes to `irrigation-decision-module.ts` (used as-is)
-- No changes to LLM formatter or narration layer
-
-## Expected Outcome
-
-- NDVI-drop alert on a 2.5-acre sugarcane drip field → "Give 40,470 liters via drip (1.5 hrs)"
-- Irrigation alert on a 5-acre cotton flood field → "Give 161,880 liters via flood (3 hrs)"
-- Every alert shows the land name prominently and includes computed quantities
-- Farmer can filter alerts by specific land/field
+- No changes to the proactive evaluator edge function
+- No new database tables or API keys needed
+- No WhatsApp Business API required — uses native `wa.me` deep links
 
