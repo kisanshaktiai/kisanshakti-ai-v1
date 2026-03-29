@@ -833,6 +833,14 @@ export async function runCausalHypothesisArbitration(
   // Arbitrate
   const result = arbitrateHypotheses(scores, data.conditions, cropHasHypotheses);
 
+  // P1-1: Guard against orphan hypotheses (survived arbitration but have no rule mappings)
+  if (result.best_hypothesis && result.best_hypothesis.mapped_rule_ids.length === 0) {
+    console.warn(`⚠️ [HypothesisEngine] ORPHAN: ${result.best_hypothesis.hypothesis_id} has no rule mappings — triggering fallback`);
+    result.decision_path = 'ORPHAN_HYPOTHESIS_FALLBACK';
+    result.needs_clarification = true;
+    result.clarification_reason = `Hypothesis ${result.best_hypothesis.hypothesis_id} matched but has no associated treatment rules`;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // OBSERVABILITY BLOCK
   // ═══════════════════════════════════════════════════════════════════════════
