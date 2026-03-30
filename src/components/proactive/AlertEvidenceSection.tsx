@@ -121,7 +121,7 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
   };
 
   return (
-    <div className="mt-3 space-y-2">
+    <div ref={ref} className="mt-3 space-y-2">
       {/* === SOLUTION CARD (from neural enrichment) === */}
       {solution && (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/20 p-3 space-y-3">

@@ -10,7 +10,7 @@ import {
   AlertTriangle, Bell, CheckCircle, CloudRain, Bug, 
   Droplets, Thermometer, Leaf, Clock, Volume2, 
   ChevronRight, Sprout, Wind, X, MessageCircle, MapPin,
-  ArrowLeft, Share2, History, RotateCcw
+  ArrowLeft, History, RotateCcw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
