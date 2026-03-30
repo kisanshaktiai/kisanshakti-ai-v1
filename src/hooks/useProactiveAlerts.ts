@@ -83,15 +83,24 @@ export function useProactiveAlerts() {
           .select('id, name')
           .in('id', landIds);
 
-        if (lands) {
+        if (lands && lands.length > 0) {
           landNameMap = Object.fromEntries(lands.map((l: any) => [l.id, l.name]));
         }
       }
 
-      const mapped = (data || []).map((a: any) => ({
-        ...a,
-        land_name: a.land_id ? landNameMap[a.land_id] || null : null,
-      })) as ProactiveAlert[];
+      const mapped = (data || []).map((a: any) => {
+        // Primary: from lands table. Fallback: extract from trigger_data
+        let landName = a.land_id ? landNameMap[a.land_id] || null : null;
+        if (!landName && a.trigger_data?.land_name) {
+          landName = a.trigger_data.land_name;
+        }
+        // Secondary fallback: parse from solution problem text
+        if (!landName && a.trigger_data?.solution?.problem_en) {
+          const match = a.trigger_data.solution.problem_en.match(/on\s+(\S+)\s+\(/);
+          if (match) landName = match[1];
+        }
+        return { ...a, land_name: landName };
+      }) as ProactiveAlert[];
 
       setAlerts(mapped);
       setUnreadCount(mapped.filter(a => a.status === 'PENDING' || a.status === 'DELIVERED').length);
