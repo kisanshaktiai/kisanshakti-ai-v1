@@ -48,6 +48,16 @@ interface DecisionRuleProactive {
   i18n_key: string | null;
   prediction_type: string | null;
   forecast_horizon_days: number | null;
+  // Fix 1: Expanded treatment/safety columns
+  active_ingredient: string | null;
+  dosage_per_acre: string | null;
+  water_volume_per_acre: string | null;
+  application_method: string | null;
+  organic_alternative: string | null;
+  bee_toxicity: string | null;
+  farmer_safety_level: string | null;
+  treatment_type: string | null;
+  chemical_class: string | null;
 }
 
 interface LandContext {
@@ -124,7 +134,7 @@ Deno.serve(async (req) => {
     // =========================================================
     const [rulesRes, decisionRulesRes] = await Promise.all([
       supabase.from('proactive_rules').select('*').eq('is_active', true),
-      supabase.from('decision_rules').select('id, crop_code, category, priority, condition_code, stage_applicable, conditions_json, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days').eq('is_proactive_rule', true).eq('is_active', true),
+      supabase.from('decision_rules').select('id, crop_code, category, priority, condition_code, stage_applicable, conditions_json, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days, active_ingredient, dosage_per_acre, water_volume_per_acre, application_method, organic_alternative, bee_toxicity, farmer_safety_level, treatment_type, chemical_class').eq('is_proactive_rule', true).eq('is_active', true),
     ]);
 
     if (rulesRes.error) throw new Error(`Rules load failed: ${rulesRes.error.message}`);
