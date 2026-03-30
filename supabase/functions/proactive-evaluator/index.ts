@@ -125,16 +125,83 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const action = body.action || 'scheduled';
     const targetLandId = body.land_id || null;
-    const tenantId = body.tenant_id || 'default';
+    const rawTenantId = body.tenant_id || null;
 
     console.log(`[ProactiveEvaluator] Action: ${action}, Land: ${targetLandId || 'ALL'}`);
 
+    // =========================================================
+    // FIX 1: Multi-tenant isolation — resolve tenant list
+    // =========================================================
+    let tenantIds: string[] = [];
+    if (rawTenantId && rawTenantId !== 'default') {
+      tenantIds = [rawTenantId];
+    } else {
+      // No valid tenant_id — query all distinct active tenants
+      const { data: tenantRows } = await supabase
+        .from('lands')
+        .select('tenant_id')
+        .eq('is_active', true)
+        .not('tenant_id', 'is', null);
+      const uniqueTenants = new Set<string>();
+      (tenantRows || []).forEach((r: any) => { if (r.tenant_id) uniqueTenants.add(r.tenant_id); });
+      tenantIds = Array.from(uniqueTenants);
+      console.log(`[ProactiveEvaluator] Multi-tenant mode: ${tenantIds.length} tenants`);
+    }
+
+    if (tenantIds.length === 0) {
+      return jsonResponse({ success: true, message: 'No active tenants', alerts_generated: 0 });
+    }
+
+    // Process each tenant independently for data isolation
+    let totalAlerts = 0;
+    let totalLands = 0;
+    let totalRulesFired = 0;
+
+    for (const tenantId of tenantIds) {
+      const tenantResult = await processOneTenant(supabase, tenantId, targetLandId, action);
+      totalAlerts += tenantResult.alerts;
+      totalLands += tenantResult.lands;
+      totalRulesFired += tenantResult.rulesFired;
+    }
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[ProactiveEvaluator] Done: ${totalLands} lands, ${totalRulesFired} rules fired, ${totalAlerts} alerts in ${elapsed}ms`);
+
+    // Log evaluation
+    await supabase.from('proactive_evaluation_log').insert({
+      trigger_type: action === 'scheduled' ? 'CRON' : 'MANUAL',
+      lands_evaluated: totalLands,
+      rules_fired: totalRulesFired,
+      alerts_generated: totalAlerts,
+      execution_time_ms: elapsed,
+      metadata: { tenants_processed: tenantIds.length },
+    }).then(() => {});
+
+    return jsonResponse({
+      success: true,
+      tenants_processed: tenantIds.length,
+      lands_evaluated: totalLands,
+      rules_fired: totalRulesFired,
+      alerts_generated: totalAlerts,
+      execution_time_ms: elapsed,
+    });
+  } catch (error) {
+    console.error('[ProactiveEvaluator] Fatal error:', error.message);
+    return jsonResponse({ success: false, error: error.message }, 500);
+  }
+});
+
+// =====================================================
+// PROCESS ONE TENANT (isolated)
+// =====================================================
+
+async function processOneTenant(supabase: any, tenantId: string, targetLandId: string | null, action: string): Promise<{ alerts: number; lands: number; rulesFired: number }> {
     // =========================================================
     // STEP 1: Load proactive rules + decision_rules (is_proactive_rule=true)
     // =========================================================
     const [rulesRes, decisionRulesRes] = await Promise.all([
       supabase.from('proactive_rules').select('*').eq('is_active', true),
-      supabase.from('decision_rules').select('id, crop_code, category, priority, condition_code, stage_applicable, conditions_json, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days, active_ingredient, dosage_per_acre, water_volume_per_acre, application_method, organic_alternative, bee_toxicity, farmer_safety_level, treatment_type, chemical_class').eq('is_proactive_rule', true).eq('is_active', true),
+      supabase.from('decision_rules').select('id, crop_code, category, priority, condition_code, stage_applicable, conditions_json, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days, active_ingredient, dosage_per_acre, water_volume_per_acre, application_method, organic_alternative, bee_toxicity, farmer_safety_level, treatment_type, chemical_class, confidence_score').eq('is_proactive_rule', true).eq('is_active', true),
     ]);
 
     if (rulesRes.error) throw new Error(`Rules load failed: ${rulesRes.error.message}`);
@@ -142,26 +209,26 @@ Deno.serve(async (req) => {
     const decisionRules: DecisionRuleProactive[] = decisionRulesRes.data || [];
 
     if (rules.length === 0 && decisionRules.length === 0) {
-      return jsonResponse({ success: true, message: 'No active proactive rules', alerts_generated: 0 });
+      return { alerts: 0, lands: 0, rulesFired: 0 };
     }
 
-    console.log(`[ProactiveEvaluator] Loaded ${rules.length} proactive rules, ${decisionRules.length} decision rules`);
+    console.log(`[ProactiveEvaluator][${tenantId.slice(0,8)}] Loaded ${rules.length} proactive rules, ${decisionRules.length} decision rules`);
 
     // =========================================================
-    // STEP 2: Load active lands
+    // STEP 2: Load active lands — STRICT tenant filter
     // =========================================================
     let landsQuery = supabase
       .from('lands')
       .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .eq('tenant_id', tenantId);
 
     if (targetLandId) landsQuery = landsQuery.eq('id', targetLandId);
-    if (tenantId && tenantId !== 'default') landsQuery = landsQuery.eq('tenant_id', tenantId);
 
     const { data: lands, error: landsError } = await landsQuery.limit(500);
     if (landsError) throw new Error(`Lands load failed: ${landsError.message}`);
     if (!lands || lands.length === 0) {
-      return jsonResponse({ success: true, message: 'No active lands', alerts_generated: 0 });
+      return { alerts: 0, lands: 0, rulesFired: 0 };
     }
 
     const landIds = lands.map(l => l.id);
@@ -1219,7 +1286,62 @@ function evaluateDecisionRule(dr: DecisionRuleProactive, ctx: LandContext): Rule
     }
   }
 
-  if (condTotal === 0) return { fired: false, riskScore: 0, confidence: 0, reasoning: '', triggerData };
+  // FIX 2: Category-based fallback evaluation when no parseable conditions matched
+  if (condTotal === 0) {
+    // Secondary evaluation path: use category + environmental cross-checks
+    const cat = dr.category?.toLowerCase() || '';
+    const stageMatch = dr.stage_applicable && ctx.current_stage
+      ? dr.stage_applicable.some(s => s === ctx.current_stage || s === 'ALL')
+      : false;
+
+    // Disease rules: humidity > 75% + temp 20-35°C → favorable for fungal/bacterial disease
+    if ((cat === 'disease' || cat === 'proactive_monitoring') && ctx.weather.humidity != null && ctx.weather.temp != null) {
+      if (ctx.weather.humidity > 75 && ctx.weather.temp >= 20 && ctx.weather.temp <= 35) {
+        const conf = stageMatch ? 0.55 : 0.40;
+        reasons.push(`Disease-favorable: humidity ${ctx.weather.humidity}% >75%, temp ${ctx.weather.temp}°C`);
+        if (stageMatch) reasons.push(`Stage match: ${ctx.current_stage}`);
+        triggerData.humidity = ctx.weather.humidity;
+        triggerData.temp = ctx.weather.temp;
+        return { fired: true, riskScore: 55, confidence: conf, reasoning: reasons.join('; '), triggerData };
+      }
+    }
+
+    // Pest rules: warm temps + GDD threshold or DAS within susceptible window
+    if ((cat === 'pest' || cat === 'ipm' || cat === 'proactive_pest') && ctx.weather.temp != null) {
+      const warmEnough = ctx.weather.temp >= 25;
+      const gddSignal = ctx.gdd_accumulated != null && ctx.gdd_accumulated > 300;
+      const dasWindow = ctx.das >= 30 && ctx.das <= 250; // most pest-susceptible window
+      if (warmEnough && (gddSignal || dasWindow) && stageMatch) {
+        reasons.push(`Pest-favorable: temp ${ctx.weather.temp}°C, DAS ${ctx.das}, GDD ${ctx.gdd_accumulated ?? 'N/A'}`);
+        triggerData.temp = ctx.weather.temp;
+        triggerData.das = ctx.das;
+        return { fired: true, riskScore: 50, confidence: 0.45, reasoning: reasons.join('; '), triggerData };
+      }
+    }
+
+    // Nutrition rules: stage-based fertilizer windows
+    if ((cat === 'nutrition' || cat === 'nutrient') && stageMatch && ctx.das > 0) {
+      reasons.push(`Nutrition window: stage ${ctx.current_stage}, DAS ${ctx.das}`);
+      if (ctx.soil_n != null) { triggerData.soil_n = ctx.soil_n; reasons.push(`Soil N: ${ctx.soil_n}`); }
+      if (ctx.soil_p != null) { triggerData.soil_p = ctx.soil_p; }
+      if (ctx.soil_k != null) { triggerData.soil_k = ctx.soil_k; }
+      return { fired: true, riskScore: 45, confidence: 0.50, reasoning: reasons.join('; '), triggerData };
+    }
+
+    // Irrigation rules: high temp + low humidity or forecast rain
+    if ((cat === 'irrigation' || cat === 'proactive_irrigation') && ctx.weather.temp != null) {
+      const highTemp = ctx.weather.temp >= 32;
+      const lowHumidity = ctx.weather.humidity != null && ctx.weather.humidity < 40;
+      const noForecastRain = ctx.forecast_rain_probability_72h != null && ctx.forecast_rain_probability_72h < 20;
+      if (highTemp && (lowHumidity || noForecastRain)) {
+        reasons.push(`Irrigation needed: temp ${ctx.weather.temp}°C, humidity ${ctx.weather.humidity ?? '--'}%, rain prob ${ctx.forecast_rain_probability_72h ?? '--'}%`);
+        triggerData.temp = ctx.weather.temp;
+        return { fired: true, riskScore: 60, confidence: 0.55, reasoning: reasons.join('; '), triggerData };
+      }
+    }
+
+    return { fired: false, riskScore: 0, confidence: 0, reasoning: '', triggerData };
+  }
 
   const ratio = condMet / condTotal;
   const fired = ratio >= 0.5;
@@ -1323,16 +1445,17 @@ CRITICAL RULES:
       if (!content) continue;
 
       const enriched = JSON.parse(content);
+      // FIX 3: Protect symbolic data — neural enrichment only fills NULL/empty fields
       const updateData: Record<string, any> = {};
-      if (enriched.title_mr) updateData.title_mr = enriched.title_mr;
-      if (enriched.title_hi) updateData.title_hi = enriched.title_hi;
-      if (enriched.title_en) updateData.title_en = enriched.title_en;
-      if (enriched.message_mr) updateData.message_mr = enriched.message_mr;
-      if (enriched.message_hi) updateData.message_hi = enriched.message_hi;
-      if (enriched.message_en) updateData.message_en = enriched.message_en;
-      if (enriched.action_mr) updateData.action_text_mr = enriched.action_mr;
-      if (enriched.action_hi) updateData.action_text_hi = enriched.action_hi;
-      if (enriched.action_en) updateData.action_text_en = enriched.action_en;
+      if (enriched.title_mr && !alert.title_mr) updateData.title_mr = enriched.title_mr;
+      if (enriched.title_hi && !alert.title_hi) updateData.title_hi = enriched.title_hi;
+      if (enriched.title_en && !alert.title_en) updateData.title_en = enriched.title_en;
+      if (enriched.message_mr && !alert.message_mr) updateData.message_mr = enriched.message_mr;
+      if (enriched.message_hi && !alert.message_hi) updateData.message_hi = enriched.message_hi;
+      if (enriched.message_en && !alert.message_en) updateData.message_en = enriched.message_en;
+      if (enriched.action_mr && !alert.action_text_mr) updateData.action_text_mr = enriched.action_mr;
+      if (enriched.action_hi && !alert.action_text_hi) updateData.action_text_hi = enriched.action_hi;
+      if (enriched.action_en && !alert.action_text_en) updateData.action_text_en = enriched.action_en;
       
       // Fix 2: Protect symbolic solution — neural enrichment only fills NULL fields
       if (enriched.solution) {

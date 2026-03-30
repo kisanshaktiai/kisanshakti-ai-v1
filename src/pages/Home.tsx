@@ -114,8 +114,17 @@ export default function Home() {
   // Get next crop from lands
   const nextCrop = lands.find(land => land.current_crop)?.current_crop || 'Not planned';
   
-  // Calculate NDVI average
-  const avgNdvi = lands.length > 0 ? 0.85 : 0;
+  // Calculate NDVI average from actual land data
+  const avgNdvi = lands.length > 0
+    ? (() => {
+        const ndviValues = lands
+          .map(l => (l as any).latest_ndvi ?? (l as any).ndvi_value)
+          .filter((v: any) => typeof v === 'number' && v > 0);
+        return ndviValues.length > 0
+          ? Math.round((ndviValues.reduce((s: number, v: number) => s + v, 0) / ndviValues.length) * 100) / 100
+          : 0;
+      })()
+    : 0;
 
   // Quick stats for weather card
   const quickStats = [
