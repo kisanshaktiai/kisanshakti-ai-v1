@@ -58,6 +58,7 @@ interface DecisionRuleProactive {
   farmer_safety_level: string | null;
   treatment_type: string | null;
   chemical_class: string | null;
+  confidence_score: number | null;
 }
 
 interface LandContext {
