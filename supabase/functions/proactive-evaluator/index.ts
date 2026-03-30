@@ -1460,6 +1460,7 @@ function enrichTriggerDataWithIrrigation(triggerData: Record<string, any>, alert
   }
   
   // Always add land context to trigger_data
+  if (ctx.name) triggerData.land_name = ctx.name;
   if (ctx.area_acres) triggerData.area_acres = ctx.area_acres;
   if (ctx.soil_type) triggerData.soil_type = ctx.soil_type;
   if (ctx.irrigation_type) triggerData.irrigation_method = ctx.irrigation_type;

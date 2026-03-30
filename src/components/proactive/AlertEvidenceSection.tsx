@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ChevronDown, Eye, Droplets, Shield, Leaf, Target, Clock, CheckCircle2, AlertTriangle, Lightbulb } from 'lucide-react';
-import { useState } from 'react';
+import { useState, forwardRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
@@ -88,7 +88,8 @@ function getSolutionSteps(solution: any, lang: string): string[] {
   return solution[key] || solution.steps_en || [];
 }
 
-export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSectionProps) {
+export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSectionProps>(
+  function AlertEvidenceSection({ triggerData, reasoning }, ref) {
   const { i18n } = useTranslation();
   const [isEvidenceOpen, setIsEvidenceOpen] = useState(false);
   const lang = i18n.language || 'en';
@@ -120,7 +121,7 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
   };
 
   return (
-    <div className="mt-3 space-y-2">
+    <div ref={ref} className="mt-3 space-y-2">
       {/* === SOLUTION CARD (from neural enrichment) === */}
       {solution && (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/20 p-3 space-y-3">
@@ -284,4 +285,4 @@ export function AlertEvidenceSection({ triggerData, reasoning }: AlertEvidenceSe
       )}
     </div>
   );
-}
+});
