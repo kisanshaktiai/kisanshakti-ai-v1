@@ -217,6 +217,13 @@ interface ObservationMetadata {
   affected_plant_part: string | null;
   canonical_group: string | null;
   is_diagnostic: boolean;
+  observation_type: string | null;       // PRIMARY, SECONDARY, GENERIC
+  symptom_type: string | null;           // e.g., VISUAL, GROWTH, DAMAGE
+  symptom_pattern: string | null;        // e.g., UNIFORM, PATCHY, RING
+  severity_level: string | null;         // e.g., MILD, MODERATE, SEVERE
+  discriminator_score: number;           // 0-100, how uniquely diagnostic
+  frequency_score: number;               // 0-100, how common in field
+  clarity_score: number;                 // 0-100, how easy to observe
   engine_groups: { engine_group: string; confidence: number }[];
 }
 
@@ -419,19 +426,29 @@ export class SymbolicReasoner {
         );
         
         // ═══════════════════════════════════════════════════════════════════════
-        // DIAGNOSTIC CONFIDENCE BOOST (1.4x multiplicative, capped at 1.0)
-        // If any matched observation has is_diagnostic=true in observation_master
+        // DIAGNOSTIC CONFIDENCE BOOST (graduated by discriminator_score)
+        // Uses observation_master.discriminator_score (0-100) + observation_type
+        // PRIMARY obs with high discriminator → up to 1.5x boost
         // ═══════════════════════════════════════════════════════════════════════
         if (matches) {
           const obsMeta = (this as any)._currentObsMetadata as Map<string, ObservationMetadata> | undefined;
           if (obsMeta && obsMeta.size > 0) {
-            const hasDiagnostic = (facts.all_observations || []).some(obs => {
+            let maxBoost = 1.0;
+            for (const obs of (facts.all_observations || [])) {
               const meta = obsMeta.get(obs);
-              return meta?.is_diagnostic === true;
-            });
-            if (hasDiagnostic) {
-              matchConfidence = Math.min(1.0, matchConfidence * 1.4);
-              console.log(`   🔬 [DiagBoost] Diagnostic observation detected → confidence boosted to ${(matchConfidence * 100).toFixed(0)}%`);
+              if (!meta) continue;
+              const disc = meta.discriminator_score ?? 50;
+              // Graduated boost: disc=100 → 1.5x, disc=75 → 1.4x, disc=50 → 1.25x, disc=25 → 1.1x
+              let boost = 1.0 + (disc / 200); // Maps 0-100 → 1.0-1.5
+              // PRIMARY observations get extra 0.05 boost
+              if (meta.observation_type === 'PRIMARY') boost += 0.05;
+              // is_diagnostic legacy flag also boosts
+              if (meta.is_diagnostic) boost = Math.max(boost, 1.4);
+              maxBoost = Math.max(maxBoost, boost);
+            }
+            if (maxBoost > 1.0) {
+              matchConfidence = Math.min(1.0, matchConfidence * maxBoost);
+              console.log(`   🔬 [DiagBoost] discriminator_score boost ${maxBoost.toFixed(2)}x → confidence ${(matchConfidence * 100).toFixed(0)}%`);
             }
           }
         }
@@ -677,7 +694,7 @@ export class SymbolicReasoner {
       // Query observation_master for metadata
       const { data: obsData, error: obsError } = await this.supabase
         .from('observation_master')
-        .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+        .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
         .in('observation_code', observationCodes);
       
       if (obsError) {
@@ -713,6 +730,13 @@ export class SymbolicReasoner {
           affected_plant_part: obs.affected_plant_part,
           canonical_group: obs.canonical_group,
           is_diagnostic: obs.is_diagnostic === true,
+          observation_type: obs.observation_type || 'GENERIC',
+          symptom_type: obs.symptom_type || null,
+          symptom_pattern: obs.symptom_pattern || null,
+          severity_level: obs.severity_level || null,
+          discriminator_score: obs.discriminator_score ?? 50,
+          frequency_score: obs.frequency_score ?? 50,
+          clarity_score: obs.clarity_score ?? 50,
           engine_groups: engineGroups
         });
       }

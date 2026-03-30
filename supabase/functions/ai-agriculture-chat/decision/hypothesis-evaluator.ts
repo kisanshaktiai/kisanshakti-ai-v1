@@ -349,10 +349,16 @@ function extractObservableCharacteristics(raw: any, obsMetadata?: Map<string, an
   const getDiagnosticPower = (key: string): 'HIGH' | 'MEDIUM' | 'LOW' => {
     const normalized = key.toUpperCase().replace(/[\s-]/g, '_');
     
-    // PRIORITY: Check observation_master.is_diagnostic from database
+    // PRIORITY 1: Use observation_master columns from database
     if (obsMetadata && obsMetadata.size > 0) {
       const meta = obsMetadata.get(normalized) || obsMetadata.get(key);
-      if (meta?.is_diagnostic === true) return 'HIGH';
+      if (meta) {
+        // Use discriminator_score (0-100) from observation_master
+        const discScore = meta.discriminator_score ?? 50;
+        if (discScore >= 75 || meta.is_diagnostic === true || meta.observation_type === 'PRIMARY') return 'HIGH';
+        if (discScore >= 40 || meta.observation_type === 'SECONDARY') return 'MEDIUM';
+        return 'LOW';
+      }
     }
     
     // FALLBACK: Hardcoded pathognomonic indicators
@@ -661,7 +667,7 @@ export async function evaluateCandidateHypotheses(
         // Load observation metadata
         const { data: obsMetaData } = await supabaseClient
           .from('observation_master')
-          .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+          .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
           .in('observation_code', input.known_observations);
         
         if (obsMetaData && obsMetaData.length > 0) {

@@ -15186,45 +15186,66 @@ export type Database = {
           affected_plant_part: string | null
           applicable_crop_groups: string[] | null
           canonical_group: string | null
+          clarity_score: number | null
           created_at: string | null
           crop_group: string | null
           description: string
+          discriminator_score: number | null
+          frequency_score: number | null
           is_active: boolean
           is_diagnostic: boolean | null
           is_farmer_observable: boolean | null
           observation_category: string | null
           observation_code: string
+          observation_type: string | null
+          severity_level: string | null
           symptom_category: string | null
+          symptom_pattern: string | null
+          symptom_type: string | null
           updated_at: string | null
         }
         Insert: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
           canonical_group?: string | null
+          clarity_score?: number | null
           created_at?: string | null
           crop_group?: string | null
           description: string
+          discriminator_score?: number | null
+          frequency_score?: number | null
           is_active?: boolean
           is_diagnostic?: boolean | null
           is_farmer_observable?: boolean | null
           observation_category?: string | null
           observation_code: string
+          observation_type?: string | null
+          severity_level?: string | null
           symptom_category?: string | null
+          symptom_pattern?: string | null
+          symptom_type?: string | null
           updated_at?: string | null
         }
         Update: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
           canonical_group?: string | null
+          clarity_score?: number | null
           created_at?: string | null
           crop_group?: string | null
           description?: string
+          discriminator_score?: number | null
+          frequency_score?: number | null
           is_active?: boolean
           is_diagnostic?: boolean | null
           is_farmer_observable?: boolean | null
           observation_category?: string | null
           observation_code?: string
+          observation_type?: string | null
+          severity_level?: string | null
           symptom_category?: string | null
+          symptom_pattern?: string | null
+          symptom_type?: string | null
           updated_at?: string | null
         }
         Relationships: []
