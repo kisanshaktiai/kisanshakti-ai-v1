@@ -1632,6 +1632,22 @@ function buildSolutionFromSymbolicData(
     return step;
   });
 
+  // Fix 4: Add specific product/dosage step from expanded DB columns
+  if (dr.active_ingredient && dr.dosage_per_acre) {
+    const doseMatch = dr.dosage_per_acre.match(/(\d+(?:\.\d+)?)\s*(ml|g|kg|l|liter|litre)/i);
+    if (doseMatch && ctx.area_acres && ctx.area_acres > 0) {
+      const qtyPerAcre = parseFloat(doseMatch[1]);
+      const unit = doseMatch[2];
+      const total = Math.round(qtyPerAcre * ctx.area_acres * 10) / 10;
+      const waterVol = dr.water_volume_per_acre || '200 liters';
+      const method = dr.application_method || 'foliar spray';
+      const productStep = `Apply ${dr.active_ingredient}: ${qtyPerAcre} ${unit}/acre × ${ctx.area_acres} acres = ${total} ${unit} total, in ${waterVol} water via ${method}`;
+      if (!areaSpecificSteps.some(s => s.toLowerCase().includes(dr.active_ingredient!.toLowerCase()))) {
+        areaSpecificSteps.unshift(productStep);
+      }
+    }
+  }
+
   const reasonText = dr.reason_text || '';
   const knowledgeText = dr.knowledge_text || '';
   const conditionName = dr.condition_code.replace(/_/g, ' ').toLowerCase();
