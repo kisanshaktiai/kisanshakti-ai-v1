@@ -1296,10 +1296,19 @@ CRITICAL RULES:
       if (enriched.action_hi) updateData.action_text_hi = enriched.action_hi;
       if (enriched.action_en) updateData.action_text_en = enriched.action_en;
       
-      // Store solution in trigger_data (merge with existing)
+      // Fix 2: Protect symbolic solution — neural enrichment only fills NULL fields
       if (enriched.solution) {
         const existingTriggerData = alert.trigger_data || {};
-        updateData.trigger_data = { ...existingTriggerData, solution: enriched.solution };
+        if (existingTriggerData.solution) {
+          // Symbolic solution exists — preserve it, only fill gaps
+          const merged = { ...existingTriggerData.solution };
+          for (const [k, v] of Object.entries(enriched.solution)) {
+            if (!merged[k] || merged[k] === '') merged[k] = v;
+          }
+          updateData.trigger_data = { ...existingTriggerData, solution: merged };
+        } else {
+          updateData.trigger_data = { ...existingTriggerData, solution: enriched.solution };
+        }
       }
 
       await supabase.from('proactive_alerts').update(updateData).eq('id', alert.id);
