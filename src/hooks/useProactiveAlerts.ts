@@ -174,14 +174,22 @@ export function useProactiveAlerts() {
   }, []);
 
   const markActed = useCallback(async (alertId: string) => {
+    const now = new Date().toISOString();
     await supabase
       .from('proactive_alerts')
-      .update({ status: 'ACTED', acted_at: new Date().toISOString() } as any)
+      .update({ status: 'ACTED', acted_at: now } as any)
       .eq('id', alertId);
+
+    // Fix 5: Log feedback for learning loop
+    const alert = alerts.find(a => a.id === alertId);
+    if (alert) {
+      const responseTimeMs = Date.now() - new Date(alert.created_at).getTime();
+      console.log(`[ProactiveFeedback] ACTED on rule=${alert.rule_id}, responseTime=${Math.round(responseTimeMs / 1000)}s`);
+    }
 
     setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'ACTED' } : a));
     setUnreadCount(prev => Math.max(0, prev - 1));
-  }, []);
+  }, [alerts]);
 
   const dismissAlert = useCallback(async (alertId: string) => {
     await supabase
@@ -189,9 +197,15 @@ export function useProactiveAlerts() {
       .update({ status: 'DISMISSED' } as any)
       .eq('id', alertId);
 
+    // Fix 5: Log dismissal for confidence adjustment
+    const alert = alerts.find(a => a.id === alertId);
+    if (alert) {
+      console.log(`[ProactiveFeedback] DISMISSED rule=${alert.rule_id}, category=${alert.alert_category}`);
+    }
+
     setAlerts(prev => prev.map(a => a.id === alertId ? { ...a, status: 'DISMISSED' } : a));
     setUnreadCount(prev => Math.max(0, prev - 1));
-  }, []);
+  }, [alerts]);
 
   return {
     alerts,

@@ -48,6 +48,16 @@ interface DecisionRuleProactive {
   i18n_key: string | null;
   prediction_type: string | null;
   forecast_horizon_days: number | null;
+  // Fix 1: Expanded treatment/safety columns
+  active_ingredient: string | null;
+  dosage_per_acre: string | null;
+  water_volume_per_acre: string | null;
+  application_method: string | null;
+  organic_alternative: string | null;
+  bee_toxicity: string | null;
+  farmer_safety_level: string | null;
+  treatment_type: string | null;
+  chemical_class: string | null;
 }
 
 interface LandContext {
@@ -124,7 +134,7 @@ Deno.serve(async (req) => {
     // =========================================================
     const [rulesRes, decisionRulesRes] = await Promise.all([
       supabase.from('proactive_rules').select('*').eq('is_active', true),
-      supabase.from('decision_rules').select('id, crop_code, category, priority, condition_code, stage_applicable, conditions_json, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days').eq('is_proactive_rule', true).eq('is_active', true),
+      supabase.from('decision_rules').select('id, crop_code, category, priority, condition_code, stage_applicable, conditions_json, etl_value_min, etl_value_max, phi_days, action_text, reason_text, knowledge_text, i18n_key, prediction_type, forecast_horizon_days, active_ingredient, dosage_per_acre, water_volume_per_acre, application_method, organic_alternative, bee_toxicity, farmer_safety_level, treatment_type, chemical_class').eq('is_proactive_rule', true).eq('is_active', true),
     ]);
 
     if (rulesRes.error) throw new Error(`Rules load failed: ${rulesRes.error.message}`);
@@ -647,7 +657,28 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   
-  // GDD from weather_forecasts if available
+  // Fix 3: Try weather_daily_aggregate first for pre-computed GDD
+  const { data: dailyData } = await supabase
+    .from('weather_daily_aggregate')
+    .select('location_key, gdd, temp_max_c, temp_min_c')
+    .in('location_key', locationKeys)
+    .gte('date', thirtyDaysAgo.split('T')[0]);
+
+  if (dailyData && dailyData.length > 0) {
+    for (const d of dailyData) {
+      if (!d.location_key) continue;
+      let gdd = d.gdd;
+      if (gdd == null && d.temp_max_c != null && d.temp_min_c != null) {
+        gdd = Math.max(0, (d.temp_max_c + d.temp_min_c) / 2 - 10);
+      }
+      if (gdd != null && gdd > 0) {
+        map.set(d.location_key, (map.get(d.location_key) || 0) + gdd);
+      }
+    }
+    if (map.size > 0) return map;
+  }
+
+  // Fallback: weather_forecasts
   const { data } = await supabase
     .from('weather_forecasts')
     .select('location_key, growing_degree_days, temperature_max_celsius, temperature_min_celsius')
@@ -657,7 +688,6 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
   if (data) {
     for (const f of data) {
       if (!f.location_key) continue;
-      // Use stored GDD if available, otherwise compute from temp
       let gdd = f.growing_degree_days;
       if (gdd == null && f.temperature_max_celsius != null && f.temperature_min_celsius != null) {
         gdd = Math.max(0, (f.temperature_max_celsius + f.temperature_min_celsius) / 2 - 10);
@@ -667,6 +697,24 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
       }
     }
   }
+
+  // Fallback: compute from weather_current if still empty
+  if (map.size === 0) {
+    const { data: currentData } = await supabase
+      .from('weather_current')
+      .select('location_key, temperature_celsius')
+      .in('location_key', locationKeys);
+    if (currentData) {
+      for (const c of currentData) {
+        if (c.temperature_celsius != null) {
+          // Rough daily GDD estimate from current temp × 30 days
+          const dailyGDD = Math.max(0, c.temperature_celsius - 10);
+          map.set(c.location_key, dailyGDD * 30);
+        }
+      }
+    }
+  }
+
   return map;
 }
 
@@ -1286,10 +1334,19 @@ CRITICAL RULES:
       if (enriched.action_hi) updateData.action_text_hi = enriched.action_hi;
       if (enriched.action_en) updateData.action_text_en = enriched.action_en;
       
-      // Store solution in trigger_data (merge with existing)
+      // Fix 2: Protect symbolic solution — neural enrichment only fills NULL fields
       if (enriched.solution) {
         const existingTriggerData = alert.trigger_data || {};
-        updateData.trigger_data = { ...existingTriggerData, solution: enriched.solution };
+        if (existingTriggerData.solution) {
+          // Symbolic solution exists — preserve it, only fill gaps
+          const merged = { ...existingTriggerData.solution };
+          for (const [k, v] of Object.entries(enriched.solution)) {
+            if (!merged[k] || merged[k] === '') merged[k] = v;
+          }
+          updateData.trigger_data = { ...existingTriggerData, solution: merged };
+        } else {
+          updateData.trigger_data = { ...existingTriggerData, solution: enriched.solution };
+        }
       }
 
       await supabase.from('proactive_alerts').update(updateData).eq('id', alert.id);
@@ -1575,6 +1632,22 @@ function buildSolutionFromSymbolicData(
     return step;
   });
 
+  // Fix 4: Add specific product/dosage step from expanded DB columns
+  if (dr.active_ingredient && dr.dosage_per_acre) {
+    const doseMatch = dr.dosage_per_acre.match(/(\d+(?:\.\d+)?)\s*(ml|g|kg|l|liter|litre)/i);
+    if (doseMatch && ctx.area_acres && ctx.area_acres > 0) {
+      const qtyPerAcre = parseFloat(doseMatch[1]);
+      const unit = doseMatch[2];
+      const total = Math.round(qtyPerAcre * ctx.area_acres * 10) / 10;
+      const waterVol = dr.water_volume_per_acre || '200 liters';
+      const method = dr.application_method || 'foliar spray';
+      const productStep = `Apply ${dr.active_ingredient}: ${qtyPerAcre} ${unit}/acre × ${ctx.area_acres} acres = ${total} ${unit} total, in ${waterVol} water via ${method}`;
+      if (!areaSpecificSteps.some(s => s.toLowerCase().includes(dr.active_ingredient!.toLowerCase()))) {
+        areaSpecificSteps.unshift(productStep);
+      }
+    }
+  }
+
   const reasonText = dr.reason_text || '';
   const knowledgeText = dr.knowledge_text || '';
   const conditionName = dr.condition_code.replace(/_/g, ' ').toLowerCase();
@@ -1587,15 +1660,25 @@ function buildSolutionFromSymbolicData(
     ? knowledgeText.split('.').slice(0, 2).join('. ')
     : (reasonText.split('.').slice(1, 3).join('. ') || `Environmental conditions favor ${conditionName}`);
 
-  // Safety (PHI + general)
+  // Safety (PHI + bee_toxicity + farmer_safety_level)
   let safetyEn = '';
   if (dr.phi_days) {
     safetyEn = `Pre-harvest interval: ${dr.phi_days} days. Do not harvest before this period after application.`;
   }
-  if (actionText.toLowerCase().includes('spray') || actionText.toLowerCase().includes('insecticide') || actionText.toLowerCase().includes('fungicide')) {
+  if (dr.bee_toxicity && dr.bee_toxicity !== 'SAFE' && dr.bee_toxicity !== 'LOW') {
+    safetyEn += safetyEn ? ' ' : '';
+    safetyEn += `⚠️ Bee toxicity: ${dr.bee_toxicity}. Do not spray during flowering or when bees are active.`;
+  }
+  if (dr.farmer_safety_level && dr.farmer_safety_level !== 'SAFE') {
+    safetyEn += safetyEn ? ' ' : '';
+    safetyEn += 'Wear gloves, mask, and full-sleeve clothing during application. Do not eat, drink, or smoke while spraying.';
+  } else if (actionText.toLowerCase().includes('spray') || actionText.toLowerCase().includes('insecticide') || actionText.toLowerCase().includes('fungicide')) {
     safetyEn += safetyEn ? ' ' : '';
     safetyEn += 'Wear gloves, mask, and full-sleeve clothing during application. Do not eat, drink, or smoke while spraying.';
   }
+
+  // Organic alternative from DB column
+  const organicAltEn = dr.organic_alternative || '';
 
   // Expected benefit
   const benefitEn = `Following these steps should help manage ${conditionName} on your ${areaStr} ${cropEn} field. Monitor after 5-7 days for improvement.`;
@@ -1637,9 +1720,9 @@ function buildSolutionFromSymbolicData(
     safety_en: safetyEn || 'Wear protective equipment when applying any chemical treatment.',
     safety_mr: 'फवारणी करताना हातमोजे, मास्क आणि पूर्ण बाह्यांचे कपडे घाला. फवारणी दरम्यान खाणे-पिणे टाळा.',
     safety_hi: 'छिड़काव करते समय दस्ताने, मास्क और पूरी बाजू के कपड़े पहनें. छिड़काव के दौरान खाना-पीना न करें.',
-    organic_alt_en: '',
-    organic_alt_mr: '',
-    organic_alt_hi: '',
+    organic_alt_en: organicAltEn,
+    organic_alt_mr: organicAltEn ? 'सेंद्रिय पर्याय उपलब्ध - कृषी तज्ञांचा सल्ला घ्या.' : '',
+    organic_alt_hi: organicAltEn ? 'जैविक विकल्प उपलब्ध - कृषि विशेषज्ञ से सलाह लें.' : '',
     expected_benefit_en: benefitEn,
     expected_benefit_mr: `या उपायांनी ${landName} शेतातील ${areaMr} ${cropEn} पिकाची स्थिती सुधारेल. 5-7 दिवसांनी तपासा.`,
     expected_benefit_hi: `इन उपायों से ${landName} खेत के ${areaHi} ${cropEn} फसल की स्थिति सुधरेगी. 5-7 दिन बाद जांचें.`,
