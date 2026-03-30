@@ -217,6 +217,13 @@ interface ObservationMetadata {
   affected_plant_part: string | null;
   canonical_group: string | null;
   is_diagnostic: boolean;
+  observation_type: string | null;       // PRIMARY, SECONDARY, GENERIC
+  symptom_type: string | null;           // e.g., VISUAL, GROWTH, DAMAGE
+  symptom_pattern: string | null;        // e.g., UNIFORM, PATCHY, RING
+  severity_level: string | null;         // e.g., MILD, MODERATE, SEVERE
+  discriminator_score: number;           // 0-100, how uniquely diagnostic
+  frequency_score: number;               // 0-100, how common in field
+  clarity_score: number;                 // 0-100, how easy to observe
   engine_groups: { engine_group: string; confidence: number }[];
 }
 
@@ -677,7 +684,7 @@ export class SymbolicReasoner {
       // Query observation_master for metadata
       const { data: obsData, error: obsError } = await this.supabase
         .from('observation_master')
-        .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+        .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
         .in('observation_code', observationCodes);
       
       if (obsError) {
@@ -713,6 +720,13 @@ export class SymbolicReasoner {
           affected_plant_part: obs.affected_plant_part,
           canonical_group: obs.canonical_group,
           is_diagnostic: obs.is_diagnostic === true,
+          observation_type: obs.observation_type || 'GENERIC',
+          symptom_type: obs.symptom_type || null,
+          symptom_pattern: obs.symptom_pattern || null,
+          severity_level: obs.severity_level || null,
+          discriminator_score: obs.discriminator_score ?? 50,
+          frequency_score: obs.frequency_score ?? 50,
+          clarity_score: obs.clarity_score ?? 50,
           engine_groups: engineGroups
         });
       }

@@ -661,7 +661,7 @@ export async function evaluateCandidateHypotheses(
         // Load observation metadata
         const { data: obsMetaData } = await supabaseClient
           .from('observation_master')
-          .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic')
+          .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
           .in('observation_code', input.known_observations);
         
         if (obsMetaData && obsMetaData.length > 0) {
