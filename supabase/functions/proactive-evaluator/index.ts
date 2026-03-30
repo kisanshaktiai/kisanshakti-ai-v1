@@ -657,7 +657,28 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
 
   const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   
-  // GDD from weather_forecasts if available
+  // Fix 3: Try weather_daily_aggregate first for pre-computed GDD
+  const { data: dailyData } = await supabase
+    .from('weather_daily_aggregate')
+    .select('location_key, gdd, temp_max_c, temp_min_c')
+    .in('location_key', locationKeys)
+    .gte('date', thirtyDaysAgo.split('T')[0]);
+
+  if (dailyData && dailyData.length > 0) {
+    for (const d of dailyData) {
+      if (!d.location_key) continue;
+      let gdd = d.gdd;
+      if (gdd == null && d.temp_max_c != null && d.temp_min_c != null) {
+        gdd = Math.max(0, (d.temp_max_c + d.temp_min_c) / 2 - 10);
+      }
+      if (gdd != null && gdd > 0) {
+        map.set(d.location_key, (map.get(d.location_key) || 0) + gdd);
+      }
+    }
+    if (map.size > 0) return map;
+  }
+
+  // Fallback: weather_forecasts
   const { data } = await supabase
     .from('weather_forecasts')
     .select('location_key, growing_degree_days, temperature_max_celsius, temperature_min_celsius')
@@ -667,7 +688,6 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
   if (data) {
     for (const f of data) {
       if (!f.location_key) continue;
-      // Use stored GDD if available, otherwise compute from temp
       let gdd = f.growing_degree_days;
       if (gdd == null && f.temperature_max_celsius != null && f.temperature_min_celsius != null) {
         gdd = Math.max(0, (f.temperature_max_celsius + f.temperature_min_celsius) / 2 - 10);
@@ -677,6 +697,24 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
       }
     }
   }
+
+  // Fallback: compute from weather_current if still empty
+  if (map.size === 0) {
+    const { data: currentData } = await supabase
+      .from('weather_current')
+      .select('location_key, temperature_celsius')
+      .in('location_key', locationKeys);
+    if (currentData) {
+      for (const c of currentData) {
+        if (c.temperature_celsius != null) {
+          // Rough daily GDD estimate from current temp × 30 days
+          const dailyGDD = Math.max(0, c.temperature_celsius - 10);
+          map.set(c.location_key, dailyGDD * 30);
+        }
+      }
+    }
+  }
+
   return map;
 }
 
