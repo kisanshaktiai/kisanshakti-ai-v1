@@ -560,47 +560,10 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     }
 
     // =========================================================
-    // STEP 7: Log evaluation
+    // STEP 7: Return tenant result
     // =========================================================
-    const executionTime = Date.now() - startTime;
-    await supabase.from('proactive_evaluation_log').insert({
-      tenant_id: tenantId,
-      evaluation_type: action,
-      lands_evaluated: landContexts.length,
-      rules_evaluated: rules.length + decisionRules.length,
-      rules_fired: totalRulesFired,
-      alerts_generated: totalAlerts,
-      execution_time_ms: executionTime,
-    });
-
-    console.log(`[ProactiveEvaluator] Done: ${landContexts.length} lands, ${totalRulesFired} rules fired, ${totalAlerts} alerts in ${executionTime}ms`);
-
-    return jsonResponse({
-      success: true,
-      lands_evaluated: landContexts.length,
-      rules_evaluated: rules.length + decisionRules.length,
-      rules_fired: totalRulesFired,
-      alerts_generated: totalAlerts,
-      execution_time_ms: executionTime,
-    });
-
-  } catch (error) {
-    console.error('[ProactiveEvaluator] Error:', error);
-    const executionTime = Date.now() - startTime;
-
-    await supabase.from('proactive_evaluation_log').insert({
-      tenant_id: 'default',
-      evaluation_type: 'error',
-      execution_time_ms: executionTime,
-      error_message: error.message,
-    }).catch(() => {});
-
-    return new Response(JSON.stringify({ success: false, error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-});
+    return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired };
+}
 
 // =====================================================
 // BATCH LOADING HELPERS
