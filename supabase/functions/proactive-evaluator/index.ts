@@ -1660,15 +1660,25 @@ function buildSolutionFromSymbolicData(
     ? knowledgeText.split('.').slice(0, 2).join('. ')
     : (reasonText.split('.').slice(1, 3).join('. ') || `Environmental conditions favor ${conditionName}`);
 
-  // Safety (PHI + general)
+  // Safety (PHI + bee_toxicity + farmer_safety_level)
   let safetyEn = '';
   if (dr.phi_days) {
     safetyEn = `Pre-harvest interval: ${dr.phi_days} days. Do not harvest before this period after application.`;
   }
-  if (actionText.toLowerCase().includes('spray') || actionText.toLowerCase().includes('insecticide') || actionText.toLowerCase().includes('fungicide')) {
+  if (dr.bee_toxicity && dr.bee_toxicity !== 'SAFE' && dr.bee_toxicity !== 'LOW') {
+    safetyEn += safetyEn ? ' ' : '';
+    safetyEn += `⚠️ Bee toxicity: ${dr.bee_toxicity}. Do not spray during flowering or when bees are active.`;
+  }
+  if (dr.farmer_safety_level && dr.farmer_safety_level !== 'SAFE') {
+    safetyEn += safetyEn ? ' ' : '';
+    safetyEn += 'Wear gloves, mask, and full-sleeve clothing during application. Do not eat, drink, or smoke while spraying.';
+  } else if (actionText.toLowerCase().includes('spray') || actionText.toLowerCase().includes('insecticide') || actionText.toLowerCase().includes('fungicide')) {
     safetyEn += safetyEn ? ' ' : '';
     safetyEn += 'Wear gloves, mask, and full-sleeve clothing during application. Do not eat, drink, or smoke while spraying.';
   }
+
+  // Organic alternative from DB column
+  const organicAltEn = dr.organic_alternative || '';
 
   // Expected benefit
   const benefitEn = `Following these steps should help manage ${conditionName} on your ${areaStr} ${cropEn} field. Monitor after 5-7 days for improvement.`;
