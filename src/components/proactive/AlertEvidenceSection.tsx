@@ -285,4 +285,4 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
       )}
     </div>
   );
-}
+});
