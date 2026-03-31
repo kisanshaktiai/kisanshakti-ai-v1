@@ -170,8 +170,10 @@ Deno.serve(async (req) => {
 
     // Log evaluation
     await supabase.from('proactive_evaluation_log').insert({
-      trigger_type: action === 'scheduled' ? 'CRON' : 'MANUAL',
+      tenant_id: tenantIds[0] || 'default',
+      evaluation_type: action === 'scheduled' ? 'scheduled' : 'manual',
       lands_evaluated: totalLands,
+      rules_evaluated: totalRulesFired,
       rules_fired: totalRulesFired,
       alerts_generated: totalAlerts,
       execution_time_ms: elapsed,
