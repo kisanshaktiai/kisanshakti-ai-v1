@@ -550,9 +550,9 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     if (alertsToInsert.length > 0) {
       const { data: insertedAlerts, error: alErr } = await supabase
         .from('proactive_alerts')
-        .insert(alertsToInsert)
+        .upsert(alertsToInsert, { onConflict: 'dedup_key', ignoreDuplicates: true })
         .select('id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr');
-      if (alErr) console.error('[ProactiveEvaluator] Alerts insert error:', alErr.message);
+      if (alErr) console.error('[ProactiveEvaluator] Alerts upsert error:', alErr.message);
       
       // Async neural enrichment for high-risk alerts (non-blocking — fire and forget)
       if (LOVABLE_API_KEY && insertedAlerts && insertedAlerts.length > 0) {
