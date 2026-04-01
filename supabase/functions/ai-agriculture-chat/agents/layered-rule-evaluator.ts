@@ -682,7 +682,7 @@ export function evaluateRulesLayered(
       // PHASE-17: FARMER SAFETY WARNING GENERATION
       // ═══════════════════════════════════════════════════════════════════════
       const farmerSafetyLevel = rule.then.action_details?.farmer_safety_level as SafetyLevel | undefined;
-      if (farmerSafetyLevel && farmerSafetyLevel > 1) {
+      if (farmerSafetyLevel && farmerSafetyLevel !== 'SAFE') {
         const safetyWarning = getSafetyWarning(farmerSafetyLevel, 'en');
         if (safetyWarning) {
           const warningText = formatSafetyWarning(safetyWarning, 'en');

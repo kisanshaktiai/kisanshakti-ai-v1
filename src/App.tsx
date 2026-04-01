@@ -57,6 +57,7 @@ const VideoReels = lazy(() => import("./pages/VideoReels"));
 const InstallPWA = lazy(() => import("./pages/InstallPWA"));
 const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const CropGrowthTracking = lazy(() => import("./pages/CropGrowthTracking"));
+const ProactiveAlerts = lazy(() => import("./pages/ProactiveAlerts"));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -368,6 +369,7 @@ const router = createBrowserRouter([
       { path: "notifications/settings", element: <Suspense fallback={<PageLoader />}><NotificationSettingsPage /></Suspense> },
       { path: "crop-growth", element: <Suspense fallback={<PageLoader />}><CropGrowthTracking /></Suspense> },
       { path: "growth-tracking", element: <Suspense fallback={<PageLoader />}><CropGrowthTracking /></Suspense> },
+      { path: "proactive-alerts", element: <Suspense fallback={<PageLoader />}><ProactiveAlerts /></Suspense> },
     ],
   },
   {

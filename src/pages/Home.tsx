@@ -26,6 +26,7 @@ import {
   CloudRain,
   CloudSnow
 } from 'lucide-react';
+
 import { useAuthStore } from '@/stores/authStore';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,8 @@ import { Button } from '@/components/ui/button';
 import { VideoHelpCard } from '@/components/home/VideoHelpCard';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
+import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
+
 
 interface FeatureCard {
   title: string;
@@ -67,6 +70,7 @@ export default function Home() {
   
   // Fetch featured videos for video reels
   const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
+  
 
   // Update current time every minute
   useEffect(() => {
@@ -111,8 +115,17 @@ export default function Home() {
   // Get next crop from lands
   const nextCrop = lands.find(land => land.current_crop)?.current_crop || 'Not planned';
   
-  // Calculate NDVI average
-  const avgNdvi = lands.length > 0 ? 0.85 : 0;
+  // Calculate NDVI average from actual land data
+  const avgNdvi = lands.length > 0
+    ? (() => {
+        const ndviValues = lands
+          .map(l => (l as any).latest_ndvi ?? (l as any).ndvi_value)
+          .filter((v: any) => typeof v === 'number' && v > 0);
+        return ndviValues.length > 0
+          ? Math.round((ndviValues.reduce((s: number, v: number) => s + v, 0) / ndviValues.length) * 100) / 100
+          : 0;
+      })()
+    : 0;
 
   // Quick stats for weather card
   const quickStats = [
@@ -255,6 +268,7 @@ export default function Home() {
 
   return (
     <div className="relative bg-gradient-subtle min-h-screen">
+      {/* Bell icon removed — alerts delivered via toast notifications globally */}
       {/* Futuristic Floating Weather Card - 2030 UI */}
       <motion.div 
         className="fixed top-16 left-4 right-4 z-30 pointer-events-auto"
@@ -812,6 +826,9 @@ export default function Home() {
             </div>
           </Card>
         </motion.div>
+
+        {/* Alerts Summary Card */}
+        <AlertsSummaryCard />
 
         {/* Video Help Card */}
         <motion.div
