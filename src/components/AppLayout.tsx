@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Leaf } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
+import { useProactiveAlerts } from '@/hooks/useProactiveAlerts';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
 import { ModernVoiceAssistant } from '@/components/voice';
@@ -21,6 +22,9 @@ export function AppLayout() {
   const { t } = useTranslation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
+  
+  // Global real-time alert listener — fires toasts + WhatsApp nudges on ALL pages
+  useProactiveAlerts();
   
   // Check if we're on the AI chat page or community chat
   const isAIChat = location.pathname === '/app/chat';

@@ -321,6 +321,14 @@ export const VALID_INTENT_CODES = [
   'SEED_SELECTION',
   'MARKET_PRICE_QUERY',
   'WEATHER_QUERY',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ORPHAN FIX: Intent codes used in intent_observation_mapping but missing
+  // from whitelist. Without these, mapped observations are unreachable.
+  // ═══════════════════════════════════════════════════════════════════════════
+  'BORER_IDENTIFICATION',
+  'FLOOD_DROUGHT_DAMAGE',
+  'ANIMAL_DAMAGE',
+  'RATOON_MANAGEMENT_QUERY',
   'UNKNOWN_OBSERVATION'
 ] as const;
 

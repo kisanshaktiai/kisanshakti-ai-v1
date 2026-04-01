@@ -41,7 +41,6 @@
     "messages": "Messages",
     "finance": "Finance",
     "schemes": "Schemes",
-    "resources": "Resources",
     "machinery": "Machinery",
     "irrigation": "Irrigation",
     "solar": "Solar",
@@ -61,22 +60,7 @@
     "logout": "Logout"
   },
   "common": {
-    "loading": "Loading...",
-    "error": "Something went wrong",
-    "retry": "Retry",
-    "back": "Back",
-    "next": "Next",
-    "save": "Save",
-    "cancel": "Cancel",
-    "search": "Search",
-    "filter": "Filter",
-    "online": "Online",
-    "copied": "Copied!",
-    "offline": "Offline",
-    "comingSoon": "Coming Soon",
-    "getStarted": "Get Started",
-    "swipeLeft": "Swipe left to continue",
-    "loadingFeatures": "Loading features..."
+    "notNow": "Not Now"
   },
   "fab": {
     "myLands": "My Lands",
@@ -93,7 +77,8 @@
     "loan": "Loan",
     "open": "Open Menu",
     "close": "Close Menu",
-    "menuOpened": "Feature menu opened"
+    "menuOpened": "Feature menu opened",
+    "proactiveAlerts": "Alerts"
   },
   "home": {
     "greeting": "Hello, {{name}}",
@@ -116,16 +101,16 @@
     "weatherAlert": "Weather Alert",
     "aiAssistant": "AI Farming Assistant",
     "irrigationPrompt": "What are the best irrigation practices for my current crop?",
-    "fertilizerPrompt": "What fertilizer should I use now?",
+    "fertilizerPrompt": "What fertilizers should I use for optimal crop growth?",
     "pestPrompt": "Are there any pest risks I should be aware of?",
-    "weatherPrompt": "What's the weather forecast for farming?",
+    "weatherPrompt": "What is the weather forecast for my area?",
     "whenToIrrigate": "When should I irrigate?",
     "bestFertilizerNow": "Best fertilizer now?",
     "pestAlert": "Any pest alerts?",
     "yieldEstimate": "Yield estimate?",
     "weatherToday": "How's the weather today?",
     "cropSuggestion": "What crop should I plant?",
-    "marketPrices": "Current market prices?",
+    "marketPrices": "Market Prices",
     "offlineMessage": "You're offline. Messages will sync when connected.",
     "irrigation": "Irrigation",
     "fertilizer": "Fertilizer",
@@ -141,29 +126,24 @@
     "selectOrCreate": "Select a chat or create a new one",
     "capturePhoto": "Capture Photo",
     "capture": "Capture",
-    "title": "AI Agriculture Assistant",
-    "welcome": "Welcome to AI Agriculture Assistant",
+    "title": "KisanShakti AI",
+    "welcome": "Welcome to KisanShakti AI",
     "askAnything": "Ask me anything about farming, crops, weather, or upload images for analysis",
     "addLandHint": "Add lands for personalized advice",
     "checkWeather": "Check Weather",
     "soilReport": "Soil Report",
-    "fertilizerAdvice": "Fertilizer Advice",
     "diseaseDetection": "Disease Detection",
     "lastSynced": "Last synced",
     "online": "Online",
     "offline": "Offline",
     "aiTyping": "AI is typing...",
     "feedbackHelps": "This helps us improve our AI responses.",
-    "title": "KisanShakti AI",
     "general": "General",
     "adviceFor": "Advice for",
     "cached": "Cached",
-    "welcome": "Welcome to KisanShakti AI",
     "addLandPrompt": "Add your lands to get personalized farming advice",
     "startPrompt": "Ask me anything about farming, weather, or your crops",
-    "weatherPrompt": "What is the weather forecast for my area?",
     "soilPrompt": "Can you analyze my soil condition and provide recommendations?",
-    "fertilizerPrompt": "What fertilizers should I use for optimal crop growth?",
     "diseasePrompt": "Help me identify any diseases in my crops.",
     "welcomeTitle": "Agriculture AI Assistant",
     "askAgricultureQueries": "Your expert guide for farming queries",
@@ -180,7 +160,6 @@
     "weatherUpdates": "Weather Updates",
     "cropScheduling": "Crop Scheduling",
     "soilHealth": "Soil Health",
-    "marketPrices": "Market Prices",
     "microphonePermissionRequired": "Microphone permission is required for voice input",
     "messageCopied": "Message copied to clipboard",
     "copyFailed": "Failed to copy message",
@@ -270,65 +249,6 @@
     "chilli": "Chilli"
   },
   "instaScan": {
-    "title": "Instant Crop Scan",
-    "instruction": "Point camera at crop or pest",
-    "analyzing": "Analyzing Image...",
-    "aiWorking": "AI is examining your crop",
-    "results": "Scan Results",
-    "confidence": "Confidence",
-    "cropIdentified": "Crop Identified",
-    "condition": "Crop Condition",
-    "conditions": {
-      "healthy": "Healthy",
-      "warning": "Needs Attention",
-      "critical": "Critical"
-    },
-    "diseasesDetected": "Issues Detected",
-    "noDiseasesDetected": "No diseases detected",
-    "smartSuggestions": "AI Recommendations",
-    "detailedGuidance": "Detailed Guidance",
-    "continueInChat": "Continue in AI Chat",
-    "unknownCrop": "Unknown Crop",
-    "defaultSuggestion": "Consult agricultural expert for detailed advice",
-    "analysisError": "Analysis Failed",
-    "tryAgain": "Please try again or take a clearer photo",
-    "lowConfidence": "Could not identify crop clearly. Please take a clearer photo with better lighting.",
-    "permissionDenied": "Camera Permission Denied",
-    "enableCamera": "Please enable camera access in settings",
-    "cameraRequired": "Camera Access Required",
-    "enableCameraInSettings": "Enable camera in your device settings to use InstaScan"
-  },
-  "voice": {
-    "enabled": "Voice navigation enabled",
-    "disabled": "Voice navigation disabled",
-    "listening": "Listening...",
-    "speakNow": "Speak now",
-    "commandExecuted": "Voice command executed",
-    "commandNotRecognized": "Command not recognized",
-    "tapToSpeak": "Tap to speak",
-    "stopListening": "Stop listening",
-    "startVoiceCommand": "Start voice command",
-    "enableVoiceNav": "Enable voice navigation",
-    "disableVoiceNav": "Disable voice navigation",
-    "voiceInputActive": "Voice input active",
-    "close": "Close Voice",
-    "start": "Voice Assistant",
-    "commands": {
-      "home": "Home",
-      "lands": "My lands",
-      "weather": "Weather",
-      "schedule": "Schedule",
-      "chat": "AI assistant",
-      "market": "Market",
-      "profile": "Profile",
-      "community": "Community",
-      "analytics": "Analytics"
-    }
-  },
-  "feature": {
-    "title": "Features"
-  },
-  "instaScan": {
     "title": "InstaScan",
     "results": "Scan Results",
     "analyzing": "Analyzing...",
@@ -376,6 +296,36 @@
     "shareNotSupported": "Share not supported",
     "labTestRequested": "Lab test requested"
   },
+  "voice": {
+    "enabled": "Voice navigation enabled",
+    "disabled": "Voice navigation disabled",
+    "listening": "Listening...",
+    "speakNow": "Speak now",
+    "commandExecuted": "Voice command executed",
+    "commandNotRecognized": "Command not recognized",
+    "tapToSpeak": "Tap to speak",
+    "stopListening": "Stop listening",
+    "startVoiceCommand": "Start voice command",
+    "enableVoiceNav": "Enable voice navigation",
+    "disableVoiceNav": "Disable voice navigation",
+    "voiceInputActive": "Voice input active",
+    "close": "Close Voice",
+    "start": "Voice Assistant",
+    "commands": {
+      "home": "Home",
+      "lands": "My lands",
+      "weather": "Weather",
+      "schedule": "Schedule",
+      "chat": "AI assistant",
+      "market": "Market",
+      "profile": "Profile",
+      "community": "Community",
+      "analytics": "Analytics"
+    }
+  },
+  "feature": {
+    "title": "Features"
+  },
   "tts": {
     "enhanceVoice": "Enhance Voice Quality",
     "downloadPrompt": "Download high-quality voices for clearer, more natural speech",
@@ -398,7 +348,20 @@
     "testVoice": "Test Voice",
     "playing": "Playing..."
   },
-  "common": {
-    "notNow": "Not Now"
+  "proactive": {
+    "title": "Alerts",
+    "subtitle": "Automated advisory for your farm",
+    "allClear": "All Clear! 🌾",
+    "noAlerts": "No threats detected for your farm. We are continuously monitoring.",
+    "done": "Done ✅",
+    "dismiss": "Dismiss",
+    "askAI": "Ask AI",
+    "whyThisAlert": "Why this alert?",
+    "priority": {
+      "critical": "Critical",
+      "high": "Important",
+      "medium": "Normal",
+      "low": "Info"
+    }
   }
 }
