@@ -23,6 +23,9 @@ export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   
+  // Global real-time alert listener — fires toasts + WhatsApp nudges on ALL pages
+  useProactiveAlerts();
+  
   // Check if we're on the AI chat page or community chat
   const isAIChat = location.pathname === '/app/chat';
   const isCommunityChat = location.pathname.includes('/app/community/') && location.pathname.includes('/chat');
