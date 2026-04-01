@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { Leaf } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { SyncButton } from '@/components/sync/SyncButton';
+import { useProactiveAlerts } from '@/hooks/useProactiveAlerts';
 import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
 import { ModernVoiceAssistant } from '@/components/voice';

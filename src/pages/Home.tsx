@@ -826,6 +826,9 @@ export default function Home() {
           </Card>
         </motion.div>
 
+        {/* Alerts Summary Card */}
+        <AlertsSummaryCard />
+
         {/* Video Help Card */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
