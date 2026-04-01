@@ -69,7 +69,7 @@ export default function Home() {
   
   // Fetch featured videos for video reels
   const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
-  const { unreadCount: alertUnreadCount } = useProactiveAlerts();
+  
 
   // Update current time every minute
   useEffect(() => {
