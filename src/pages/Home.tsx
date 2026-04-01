@@ -26,7 +26,7 @@ import {
   CloudRain,
   CloudSnow
 } from 'lucide-react';
-import { Bell } from 'lucide-react';
+
 import { useAuthStore } from '@/stores/authStore';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
@@ -40,7 +40,8 @@ import { Button } from '@/components/ui/button';
 import { VideoHelpCard } from '@/components/home/VideoHelpCard';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
-import { useProactiveAlerts } from '@/hooks/useProactiveAlerts';
+import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
+
 
 interface FeatureCard {
   title: string;
@@ -69,7 +70,7 @@ export default function Home() {
   
   // Fetch featured videos for video reels
   const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
-  const { unreadCount: alertUnreadCount } = useProactiveAlerts();
+  
 
   // Update current time every minute
   useEffect(() => {
@@ -267,27 +268,7 @@ export default function Home() {
 
   return (
     <div className="relative bg-gradient-subtle min-h-screen">
-      {/* Alert Bell - Fixed top-right, elevated z-index and prominent styling */}
-      <Link to="/app/proactive-alerts" className="fixed top-[18px] right-4 z-50">
-        <motion.div 
-          className={cn(
-            "relative p-2.5 rounded-2xl backdrop-blur-xl border shadow-lg transition-colors",
-            alertUnreadCount > 0
-              ? "bg-destructive/10 border-destructive/30 shadow-destructive/20"
-              : "bg-card/90 border-border/50 shadow-md"
-          )}
-          whileTap={{ scale: 0.9 }}
-          animate={alertUnreadCount > 0 ? { scale: [1, 1.1, 1] } : {}}
-          transition={alertUnreadCount > 0 ? { repeat: Infinity, duration: 2, repeatDelay: 3 } : {}}
-        >
-          <Bell className={cn("h-5 w-5", alertUnreadCount > 0 ? "text-destructive" : "text-primary")} />
-          {alertUnreadCount > 0 && (
-            <span className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse ring-2 ring-background">
-              {alertUnreadCount > 9 ? '9+' : alertUnreadCount}
-            </span>
-          )}
-        </motion.div>
-      </Link>
+      {/* Bell icon removed — alerts delivered via toast notifications globally */}
       {/* Futuristic Floating Weather Card - 2030 UI */}
       <motion.div 
         className="fixed top-16 left-4 right-4 z-30 pointer-events-auto"
@@ -845,6 +826,9 @@ export default function Home() {
             </div>
           </Card>
         </motion.div>
+
+        {/* Alerts Summary Card */}
+        <AlertsSummaryCard />
 
         {/* Video Help Card */}
         <motion.div
