@@ -26,7 +26,7 @@ import {
   CloudRain,
   CloudSnow
 } from 'lucide-react';
-import { AlertTriangle, ChevronRight } from 'lucide-react';
+
 import { useAuthStore } from '@/stores/authStore';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '@/lib/utils';
