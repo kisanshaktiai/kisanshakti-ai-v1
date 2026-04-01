@@ -1,71 +1,64 @@
 
 
-# UX Fix: Remove Bell from Header + 3-Layer Alert System
+# Fix: White Screen Crash — `re is not a function` in `ui-forms` Chunk
 
-## Problem
+## Root Cause Analysis
 
-The bell icon is `fixed top-[18px] right-4 z-50` in `Home.tsx`, overlapping with the AppLayout header's right-side controls (Language, Sync, Connection). This:
-- Hides the language selector (critical farmer control)
-- Gives passive alerts prime header real estate
-- Violates mobile UX hierarchy for farmer users
+**Three issues found in `vite.config.ts` and `package.json`:**
 
-## Current State
+### 1. Dual React Vite Plugins (PRIMARY CAUSE)
 
-```text
-Header:  [Logo + Name]                    [Connection] [Sync] [Language]
-Home:    [Bell icon overlapping header at z-50]  ← PROBLEM
-```
+Both are installed simultaneously:
+- `@vitejs/plugin-react` (`^4.3.0`) — in **dependencies**, used in `vite.config.ts`
+- `@vitejs/plugin-react-swc` (`^4.3.0`) — in **devDependencies**
+
+Both transform JSX, but use different runtimes (Babel vs SWC). In production builds, the SWC plugin can interfere with how React primitives are compiled. When Rollup splits the `ui-forms` chunk (Checkbox, RadioGroup, Switch, Slider), the JSX runtime reference (`re` in minified code = `React.createElement` or `jsxRuntime`) resolves to `undefined` because the two plugins conflict on which JSX transform to use.
+
+**This is the exact `re is not a function` crash.**
+
+### 2. `vite-plugin-pwa` Version Mismatch
+
+`vite-plugin-pwa: ^1.0.3` is for **Vite 6**. The project uses `vite: ^5.4.19`. This version mismatch can cause build-time warnings and subtle runtime issues with the generated service worker and precache manifest.
+
+### 3. Dangerous `external` Rollup Option
+
+The `external` function in `rollupOptions` tells Vite to NOT bundle certain modules. If any code path (even through a transitive dependency) imports from a matching path, the import resolves to `undefined` at runtime. While current `src/` code doesn't directly import these paths, this is a ticking time bomb.
 
 ## Fix Plan
 
-### 1. Remove Bell Icon from Home Page Header
+### Fix 1 — Remove Duplicate React Plugin (P0)
 
-**File**: `src/pages/Home.tsx`
-- Remove the entire `<Link to="/app/proactive-alerts">` bell icon block (lines 270-290)
-- Remove the `Bell` import from lucide-react (line 29)
-- Remove `useProactiveAlerts` import and usage from Home.tsx (line 43, 72) — alert listening moves to AppLayout
+**File**: `package.json`
+- Remove `@vitejs/plugin-react-swc` from `devDependencies`
+- Keep `@vitejs/plugin-react` (Babel-based, used in `vite.config.ts`)
 
-### 2. Move Real-Time Alert Listener to AppLayout (Global)
+### Fix 2 — Downgrade vite-plugin-pwa to Vite 5 Compatible Version
 
-**File**: `src/components/AppLayout.tsx`
-- Import and call `useProactiveAlerts()` at the layout level so real-time toast notifications work on ALL pages, not just Home
-- This ensures the realtime Supabase listener + toast + WhatsApp critical nudge fires globally
-- No bell icon rendered — alerts come TO the user via toast
+**File**: `package.json`
+- Change `"vite-plugin-pwa": "^1.0.3"` → `"vite-plugin-pwa": "^0.21.1"`
 
-### 3. Add Alerts Summary Section in Home Page (Inside Recent Activity Area)
+### Fix 3 — Remove Dangerous `external` Rollup Option
 
-**File**: `src/pages/Home.tsx`
-- After the "Recent Activity" card (line ~846), add an "Alerts Summary" card
-- Shows latest 2-3 alerts inline with priority badges, land name, and "View All" link
-- Tapping opens `/app/proactive-alerts`
-- Only renders if `alertUnreadCount > 0`
+**File**: `vite.config.ts`
+- Remove the entire `external: (id) => { ... }` block (lines 51-57)
+- These rule files don't exist in `src/` imports anyway (confirmed by search), so this config does nothing useful but poses risk
 
-### 4. Restore Clean Header
+### Fix 4 — Move test dependencies to devDependencies
 
-**File**: `src/components/AppLayout.tsx` — already correct:
-```text
-[Logo + Name]          [Connection] [Sync] [Language]
-```
-No changes needed here — removing the z-50 bell overlay fixes it.
-
-## Architecture After Fix
-
-```text
-Layer 1 — Push Notification:  (existing PWA/browser notification via notificationService)
-Layer 2 — In-App Toast:       useProactiveAlerts() in AppLayout → sonner toast on INSERT
-Layer 3 — Alerts History:     Home page "Recent Alerts" card + /app/proactive-alerts page
-```
+**File**: `package.json`
+- `@testing-library/jest-dom` and `jsdom` are in both `dependencies` and `devDependencies` — remove from `dependencies`
 
 ## Files Changed
 
 | File | Change |
 |---|---|
-| `src/pages/Home.tsx` | Remove bell icon block; add alerts summary card in content area |
-| `src/components/AppLayout.tsx` | Add `useProactiveAlerts()` for global real-time listening |
+| `package.json` | Remove `@vitejs/plugin-react-swc` from devDeps; downgrade `vite-plugin-pwa` to `^0.21.1`; clean up duplicate test deps |
+| `vite.config.ts` | Remove `external` rollup option (lines 49-57) |
 
-## What Does NOT Change
-- `useProactiveAlerts.ts` hook — already has toast + WhatsApp logic
-- `ProactiveAlerts.tsx` page — remains the full alerts center
-- `proactive-evaluator` edge function — no changes
-- AppLayout header structure — already correct without the bell overlay
+## Expected Outcome
+
+- The `ui-forms` chunk compiles with a single consistent JSX runtime
+- `re is not a function` crash eliminated
+- App loads correctly on production/Hostinger deployment
+- No white screen
 

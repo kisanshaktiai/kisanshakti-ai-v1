@@ -46,15 +46,6 @@ export default defineConfig(({ mode }) => ({
           'tanstack': ['@tanstack/react-query'],
         },
       },
-      // SECURITY: Exclude agricultural rule source files from frontend bundle
-      // Rules should only be accessed via the backend edge function
-      external: (id) => {
-        // Exclude rule definition files (conditions, scientific basis)
-        if (id.includes('/crop-group-rules/') && !id.includes('index.ts')) return true;
-        if (id.includes('/safety-rules/') && !id.includes('index.ts')) return true;
-        if (id.includes('/advanced-rules/') && !id.includes('index.ts')) return true;
-        return false;
-      },
     },
   },
   plugins: [
