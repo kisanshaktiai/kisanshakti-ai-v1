@@ -40,6 +40,7 @@ import { Button } from '@/components/ui/button';
 import { VideoHelpCard } from '@/components/home/VideoHelpCard';
 import { useVideoTutorials } from '@/hooks/useVideoTutorials';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
+import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
 
 
 interface FeatureCard {
