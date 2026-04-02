@@ -39,6 +39,8 @@ export function AlertsSummaryCard() {
     if (!user?.id) return;
 
     const fetchRecentAlerts = async () => {
+      console.log('[AlertsSummaryCard] Fetching alerts for farmer:', user.id);
+      
       const { data, error } = await supabase
         .from('proactive_alerts')
         .select('id, title_en, title_mr, title_hi, priority, alert_category, created_at, land_id')
@@ -47,7 +49,15 @@ export function AlertsSummaryCard() {
         .order('created_at', { ascending: false })
         .limit(3);
 
-      if (error || !data) return;
+      if (error) {
+        console.error('[AlertsSummaryCard] Query error:', error);
+        return;
+      }
+      if (!data || data.length === 0) {
+        console.log('[AlertsSummaryCard] No alerts found for this farmer');
+        return;
+      }
+      console.log('[AlertsSummaryCard] Found', data.length, 'alerts');
 
       // Count total unread
       const { count } = await supabase
