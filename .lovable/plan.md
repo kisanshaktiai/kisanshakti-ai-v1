@@ -1,91 +1,101 @@
 
 
-# Fix: White Screen on Hostinger/Mobile — Remaining Root Causes
+# Production Audit & Fix Plan: KisanShaktiAI V6
 
-## Findings
+## Critical Findings
 
-### 1. `vitest.config.ts` Still Imports Removed Package (Build Interference)
+### Finding 1: Circular Chunk `ui-forms -> ui-vendor -> ui-forms` (P0 — Build/Runtime)
 
-**File**: `vitest.config.ts` line 2
-```
-import react from "@vitejs/plugin-react-swc";
-```
+**Root Cause**: The `manualChunks` function routes `@radix-ui/*` to `ui-vendor` and `lucide-react` to `lucide`. But `src/components/ui/checkbox.tsx` and `src/components/ui/radio-group.tsx` import BOTH. Rollup can't place these source files in either chunk, so it creates a phantom `ui-forms` chunk that cross-references both — causing the circular dependency warning and potential runtime crashes.
 
-`@vitejs/plugin-react-swc` was removed from `package.json` but `vitest.config.ts` still imports it. While this file is only for tests, some build tooling may resolve it during `npm ci`, causing install failures or phantom resolution in the GitHub Actions pipeline.
-
-**Fix**: Change to `@vitejs/plugin-react` (the one that's actually installed).
-
-### 2. `manualChunks` Splitting Radix UI Causes Shared Context Duplication (PRIMARY CRASH CAUSE)
-
-The `ui-forms` chunk isolates 4 Radix packages (`checkbox`, `radio-group`, `switch`, `slider`) away from `ui-vendor` (`dialog`, `dropdown-menu`, `select`, `tooltip`). All Radix packages share internal dependencies:
-- `@radix-ui/react-primitive`
-- `@radix-ui/react-compose-refs`
-- `@radix-ui/react-context`
-
-When Rollup splits them into separate manual chunks, these shared internals can be **duplicated** across chunks, each getting their own React reference. In minified production output, the duplicated React reference becomes `re` — and if it resolves to the wrong copy, `re is not a function`.
-
-**Fix**: Merge `ui-forms` into `ui-vendor` as a single chunk, so all Radix packages share one copy of internal primitives.
-
-### 3. GitHub Actions `.htaccess` Has Broken Indentation
-
-The deploy workflow (lines 61-92) creates `.htaccess` with a heredoc that has leading whitespace on every directive line. Apache may silently ignore malformed directives, causing JS files to be served without proper MIME types or caching headers — which on some setups causes the browser to reject the script.
-
-**Fix**: Use `<<-'EOF'` (dash heredoc) or remove leading whitespace.
-
-### 4. Old Service Worker Serving Stale Chunks
-
-The PWA service worker precaches all `*.js` files (`globPatterns: ['**/*.{js,css,html,...}']`). After a new deploy, if the old SW is still active, it may serve a cached `ui-forms-OldHash.js` that doesn't match the new `index.html`'s import map — causing `undefined` function references.
-
-The `navigateFallbackDenylist` doesn't include `/~oauth`, which is also a PWA best practice gap.
-
-**Fix**: Add `skipWaiting: true` and `clientsClaim: true` to workbox config; add `/~oauth` to denylist.
-
-## Fix Plan
-
-### Fix 1 — Merge `ui-forms` into `ui-vendor` chunk
-
-**File**: `vite.config.ts`
-- Remove the `'ui-forms'` manual chunk entry entirely
-- Add its 4 packages to the `'ui-vendor'` chunk
+**Fix**: Add explicit routing for `src/components/ui/checkbox`, `src/components/ui/radio-group`, `src/components/ui/switch`, and `src/components/ui/slider` source files into `ui-vendor` in the `manualChunks` function. This collapses the phantom chunk.
 
 ```typescript
-'ui-vendor': [
-  '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu',
-  '@radix-ui/react-select', '@radix-ui/react-tooltip',
-  '@radix-ui/react-checkbox', '@radix-ui/react-radio-group',
-  '@radix-ui/react-switch', '@radix-ui/react-slider'
-],
+manualChunks(id) {
+  // Route UI form wrapper components into ui-vendor to prevent circular chunks
+  if (id.includes('src/components/ui/checkbox') ||
+      id.includes('src/components/ui/radio-group') ||
+      id.includes('src/components/ui/switch') ||
+      id.includes('src/components/ui/slider')) return 'ui-vendor';
+  if (id.includes('@radix-ui/')) return 'ui-vendor';
+  // ... rest unchanged
+}
 ```
 
-### Fix 2 — Fix `vitest.config.ts` import
+### Finding 2: No ScrollToTop Component (P0 — Mobile UX)
 
-**File**: `vitest.config.ts`
-- Change `import react from "@vitejs/plugin-react-swc"` → `import react from "@vitejs/plugin-react"`
+**Root Cause**: `createBrowserRouter` with `RouterProvider` does NOT auto-scroll to top on navigation. No `ScrollToTop` component exists anywhere in the codebase. When a farmer scrolls down on Home and navigates to Weather, the scroll position carries over — appearing as "can't scroll" or broken scrolling.
 
-### Fix 3 — Fix GitHub Actions `.htaccess` indentation
+**Fix**: Since `createBrowserRouter` doesn't support a `ScrollToTop` child component the way `BrowserRouter` does, we need to add scroll restoration inside `AppLayout` using `useLocation`:
 
-**File**: `.github/workflows/deploy-hostinger.yml`
-- Remove leading whitespace from heredoc content (lines 62-92)
-- Use proper heredoc without indentation
+```typescript
+// Inside AppLayout, after useLocation()
+useEffect(() => {
+  window.scrollTo({ top: 0, left: 0 });
+}, [location.pathname]);
+```
 
-### Fix 4 — Force service worker update on deploy
+### Finding 3: `PullRefreshController` Blocks Touch Scroll (P1 — Mobile)
 
-**File**: `vite.config.ts` (VitePWA workbox config)
-- Add `skipWaiting: true` and `clientsClaim: true`
-- Add `/~oauth` to `navigateFallbackDenylist`
+**Root Cause**: In `PullRefreshController.tsx` line 130, `touchmove` is registered with `{ passive: false }`. The `e.preventDefault()` on line 115 fires whenever `diff > 0 && container.scrollTop === 0`. On mobile, this blocks the browser's native scroll when the user starts at the top — even if they intend to scroll down normally. The condition is too aggressive.
 
-## Files Changed
+**Fix**: Add a minimum threshold (e.g., 10px) before calling `preventDefault`, so small downward touches still allow normal scroll:
+
+```typescript
+if (diff > 10 && container.scrollTop === 0) {
+  e.preventDefault();
+  setPullDistance(Math.min(diff, threshold + 20));
+}
+```
+
+### Finding 4: `mobile-scroll-container` CSS Has No Height Context (P1)
+
+**Root Cause**: The `.mobile-scroll-container` class sets `height: 100%` + `overflow-y: auto`. But the parent `<main>` in AppLayout has no explicit height — it's inside a `min-h-mobile-screen` div. `height: 100%` on a child of `min-height` parent resolves to `auto`, making `overflow-y: auto` ineffective. The scroll container never constrains, so on some pages content may not scroll properly.
+
+**Fix**: Change the AppLayout structure so the main content area uses flex layout with overflow:
+
+```css
+.mobile-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+}
+```
+
+And update the parent div in AppLayout to use `flex flex-col h-mobile-screen` instead of `min-h-mobile-screen`.
+
+### Finding 5: 84 Files Use `backdrop-blur` (P2 — Performance)
+
+**Root Cause**: `backdrop-blur` forces GPU compositing of all underlying layers on every frame. On low-end Android devices (farmer primary devices), this causes frame drops during scroll, especially on Home page with weather cards, glassmorphism nav, and animated content.
+
+**Impact**: Scroll jank on budget Android phones. Not a blocker but degrades "world-class" feel.
+
+**Fix (Quick Win)**: Replace `backdrop-blur` with solid semi-transparent backgrounds on the most performance-critical elements — the bottom nav and fixed header. These are painted on every scroll frame. Keep `backdrop-blur` on modals/overlays (painted once).
+
+Specifically in `AppLayout.tsx` header (line 54): replace `bg-card` with explicit solid color (already solid, good). In `index.css` `.glassmorphism-nav` (line 616): replace `backdrop-blur-2xl` with a solid `bg-background/95`.
+
+## Files to Change
 
 | File | Change |
 |---|---|
-| `vite.config.ts` | Merge ui-forms into ui-vendor; add skipWaiting + clientsClaim to workbox |
-| `vitest.config.ts` | Fix import to use `@vitejs/plugin-react` |
-| `.github/workflows/deploy-hostinger.yml` | Fix `.htaccess` heredoc indentation |
+| `vite.config.ts` | Add src/components/ui form files to ui-vendor manualChunks |
+| `src/components/AppLayout.tsx` | Add `useEffect` for scroll-to-top on pathname change; change container to flex layout |
+| `src/index.css` | Fix `.mobile-scroll-container` to use `flex: 1` instead of `height: 100%`; reduce `backdrop-blur` on `.glassmorphism-nav` |
+| `src/components/weather/PullRefreshController.tsx` | Add 10px minimum threshold before `preventDefault` |
+
+## What Does NOT Change
+
+- Decision brain / symbolic engine — zero changes
+- Data pipeline / sync service — zero changes
+- Multi-tenant isolation — zero changes
+- Route structure — zero changes
+- Any edge functions — zero changes
 
 ## Expected Outcome
 
-- Single Radix UI chunk eliminates shared-context duplication crash
-- Service worker auto-updates on deploy, no stale chunk serving
-- Correct `.htaccess` on Hostinger ensures proper MIME types
-- No more white screen on mobile or any browser
+- Circular chunk warning eliminated → clean production build
+- Mobile scroll works on all pages (scroll-to-top + proper container)
+- Pull-to-refresh no longer blocks normal scroll
+- Smoother scroll on low-end devices (reduced backdrop-blur on fixed elements)
 
