@@ -26,6 +26,11 @@ export function AppLayout() {
   // Global real-time alert listener — fires toasts + WhatsApp nudges on ALL pages
   useProactiveAlerts();
   
+  // Scroll to top on route change — RouterProvider doesn't do this automatically
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
+  
   // Check if we're on the AI chat page or community chat
   const isAIChat = location.pathname === '/app/chat';
   const isCommunityChat = location.pathname.includes('/app/community/') && location.pathname.includes('/chat');
@@ -48,7 +53,7 @@ export function AppLayout() {
 
   return (
     <ModernVoiceProvider>
-      <div className="min-h-mobile-screen bg-background">
+      <div className="flex flex-col h-mobile-screen bg-background">
         {/* Header - Hidden on AI Chat and Community Chat */}
         {!isAIChat && !isCommunityChat && (
           <header className="fixed top-0 left-0 right-0 h-14 bg-card border-b border-border z-40 flex items-center justify-between px-4 pt-safe">
