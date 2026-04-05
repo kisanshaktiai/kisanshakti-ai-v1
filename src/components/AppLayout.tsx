@@ -26,6 +26,11 @@ export function AppLayout() {
   // Global real-time alert listener — fires toasts + WhatsApp nudges on ALL pages
   useProactiveAlerts();
   
+  // Scroll to top on route change — RouterProvider doesn't do this automatically
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0 });
+  }, [location.pathname]);
+  
   // Check if we're on the AI chat page or community chat
   const isAIChat = location.pathname === '/app/chat';
   const isCommunityChat = location.pathname.includes('/app/community/') && location.pathname.includes('/chat');
