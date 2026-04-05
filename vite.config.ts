@@ -27,22 +27,20 @@ export default defineConfig(({ mode }) => ({
     chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          // Core React bundle
-          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
-          // UI components - split for better caching
-          'ui-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-select', '@radix-ui/react-tooltip', '@radix-ui/react-checkbox', '@radix-ui/react-radio-group', '@radix-ui/react-switch', '@radix-ui/react-slider'],
-          // PERFORMANCE: Separate heavy libraries into their own chunks
-          'framer-motion': ['framer-motion'],
-          'date-fns': ['date-fns'],
-          'i18next': ['i18next', 'react-i18next'],
-          'lucide': ['lucide-react'],
-          // Map and chart libraries
-          'map-vendor': ['@react-google-maps/api', '@turf/turf'],
-          'chart-vendor': ['chart.js', 'react-chartjs-2', 'recharts'],
-          // Backend/data
-          'supabase': ['@supabase/supabase-js'],
-          'tanstack': ['@tanstack/react-query'],
+        manualChunks(id) {
+          // ALL Radix UI into one chunk — prevents circular ui-forms <-> ui-vendor
+          if (id.includes('@radix-ui/')) return 'ui-vendor';
+          // Core React
+          if (id.includes('react-dom') || id.includes('react-router-dom')) return 'react-vendor';
+          // Heavy libs
+          if (id.includes('framer-motion')) return 'framer-motion';
+          if (id.includes('date-fns')) return 'date-fns';
+          if (id.includes('i18next') || id.includes('react-i18next')) return 'i18next';
+          if (id.includes('lucide-react')) return 'lucide';
+          if (id.includes('@react-google-maps') || id.includes('@turf/')) return 'map-vendor';
+          if (id.includes('chart.js') || id.includes('react-chartjs-2') || id.includes('recharts')) return 'chart-vendor';
+          if (id.includes('@supabase/')) return 'supabase';
+          if (id.includes('@tanstack/react-query')) return 'tanstack';
         },
       },
     },
