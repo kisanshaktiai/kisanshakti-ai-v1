@@ -28,7 +28,14 @@ export default defineConfig(({ mode }) => ({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // ALL Radix UI into one chunk — prevents circular ui-forms <-> ui-vendor
+          // Route UI form wrapper components into ui-vendor to prevent circular chunks
+          // These files import BOTH @radix-ui/* AND lucide-react, causing Rollup to
+          // create a phantom "ui-forms" chunk that cross-references both
+          if (id.includes('src/components/ui/checkbox') ||
+              id.includes('src/components/ui/radio-group') ||
+              id.includes('src/components/ui/switch') ||
+              id.includes('src/components/ui/slider')) return 'ui-vendor';
+          // ALL Radix UI into one chunk
           if (id.includes('@radix-ui/')) return 'ui-vendor';
           // Core React
           if (id.includes('react-dom') || id.includes('react-router-dom')) return 'react-vendor';

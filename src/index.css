@@ -613,7 +613,7 @@
   
   /* Bottom Navigation Glassmorphism */
   .glassmorphism-nav {
-    @apply bg-background/85 backdrop-blur-2xl;
+    @apply bg-background/95;
     background: linear-gradient(
       to top,
       hsl(var(--background) / 0.95),
