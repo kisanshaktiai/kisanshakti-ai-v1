@@ -57,6 +57,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========================================
+   2030-Ready Touch Foundation
+   ======================================== */
+html, body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Eliminate 300ms tap delay on all interactive elements */
+button, a, [role="button"], input, select, textarea, label,
+[tabindex], summary {
+  touch-action: manipulation;
+}
+
+/* Universal scroll container pattern */
+.scroll-container {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  will-change: scroll-position;
+}
+
 /* Hide scrollbar for horizontal scrolling weather cards */
 .scrollbar-hide {
   -ms-overflow-style: none;
