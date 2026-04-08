@@ -235,7 +235,12 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   };
 
   const handlePressStart = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
+    // Only preventDefault for touch events on this button — don't block page scroll
+    if ('touches' in e) {
+      e.stopPropagation();
+    } else {
+      e.preventDefault();
+    }
     console.log('[Voice] Press START, isReady:', isReady, 'isSupported:', isSupported);
     
     // Check if service is ready
@@ -275,7 +280,11 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   };
 
   const handlePressEnd = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
+    if ('touches' in e) {
+      e.stopPropagation();
+    } else {
+      e.preventDefault();
+    }
     console.log('[Voice] Press END');
     isPressedRef.current = false;
     setShowPanel(false);
@@ -288,7 +297,7 @@ export const SimpleVoiceMicButton: React.FC<SimpleVoiceMicButtonProps> = ({
   };
 
   const handlePressCancel = (e: React.TouchEvent) => {
-    e.preventDefault();
+    e.stopPropagation();
     console.log('[Voice] Press CANCEL');
     isPressedRef.current = false;
     setShowPanel(false);
