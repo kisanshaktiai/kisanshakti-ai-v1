@@ -52,7 +52,7 @@ const STATUS_LABELS: Record<string, { mr: string; hi: string; en: string; color:
 export default function ProactiveAlerts() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const { alerts, loading, unreadCount, showHistory, setShowHistory, markSeen, markActed, dismissAlert } = useProactiveAlerts();
+  const { alerts, loading, unreadCount, showHistory, setShowHistory, markSeen, markActed, dismissAlert } = useProactiveAlerts({ skipRealtime: true });
   const { speak, isSpeaking, stop } = useEnhancedTTS();
   const lang = i18n.language || 'en';
   const [selectedLand, setSelectedLand] = useState<string | null>(null);

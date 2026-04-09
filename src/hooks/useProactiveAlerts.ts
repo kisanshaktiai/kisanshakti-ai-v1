@@ -112,11 +112,14 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
     }
   }, [user?.id, showHistory]);
 
-  // Realtime subscription
+  // Realtime subscription — skipped when another instance (AppLayout) already handles it
   useEffect(() => {
     if (!user?.id) return;
 
     fetchAlerts();
+
+    // Skip realtime subscription to prevent duplicate channel errors
+    if (skipRealtime) return;
 
     const channel = supabase
       .channel(`proactive_alerts:${user.id}`)
@@ -171,7 +174,7 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
         supabase.removeChannel(channelRef.current);
       }
     };
-  }, [user?.id, fetchAlerts, lang]);
+  }, [user?.id, fetchAlerts, lang, skipRealtime]);
 
   const markSeen = useCallback(async (alertId: string) => {
     await supabase
