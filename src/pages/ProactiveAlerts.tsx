@@ -55,7 +55,7 @@ export default function ProactiveAlerts() {
   const { alerts, loading, unreadCount, showHistory, setShowHistory, markSeen, markActed, dismissAlert } = useProactiveAlerts({ skipRealtime: true });
   const { speak, isSpeaking, stop } = useEnhancedTTS();
   const lang = i18n.language || 'en';
-  const [selectedLand, setSelectedLand] = useState<string | null>(null);
+  const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
 
   const handleSpeak = (alert: ProactiveAlert) => {
     if (isSpeaking) { stop(); return; }
@@ -138,11 +138,35 @@ export default function ProactiveAlerts() {
     );
   }
 
-  // Build unique land names for filter chips
-  const landNames = [...new Set(alerts.map(a => a.land_name).filter(Boolean))] as string[];
+  // Build unique lands by land_id (not land_name — multiple lands can share a name)
+  const landMap = new Map<string, { id: string; name: string; count: number }>();
+  alerts.forEach(a => {
+    if (!a.land_id) return;
+    const existing = landMap.get(a.land_id);
+    if (existing) {
+      existing.count++;
+    } else {
+      landMap.set(a.land_id, { id: a.land_id, name: a.land_name || a.land_id.slice(0, 6), count: 1 });
+    }
+  });
+  const uniqueLands = Array.from(landMap.values());
+  // If multiple lands share the same name, append a suffix to differentiate
+  const nameCount = new Map<string, number>();
+  uniqueLands.forEach(l => nameCount.set(l.name, (nameCount.get(l.name) || 0) + 1));
+  const landLabels = new Map<string, string>();
+  const nameIndex = new Map<string, number>();
+  uniqueLands.forEach(l => {
+    if ((nameCount.get(l.name) || 0) > 1) {
+      const idx = (nameIndex.get(l.name) || 0) + 1;
+      nameIndex.set(l.name, idx);
+      landLabels.set(l.id, `${l.name} #${idx}`);
+    } else {
+      landLabels.set(l.id, l.name);
+    }
+  });
 
   const sortedAlerts = [...alerts]
-    .filter(a => !selectedLand || a.land_name === selectedLand)
+    .filter(a => !selectedLandId || a.land_id === selectedLandId)
     .sort((a, b) => {
       const priorityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
       const pA = priorityOrder[a.priority as keyof typeof priorityOrder] ?? 2;
@@ -194,33 +218,30 @@ export default function ProactiveAlerts() {
       <div className="pt-20 px-4 pb-24 space-y-4">
 
       {/* Land filter chips */}
-      {landNames.length > 1 && (
+      {uniqueLands.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
           <button
-            onClick={() => setSelectedLand(null)}
+            onClick={() => setSelectedLandId(null)}
             className={cn(
               'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
-              !selectedLand ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+              !selectedLandId ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
             )}
           >
             {lang === 'mr' ? 'सर्व' : lang === 'hi' ? 'सभी' : 'All'} ({alerts.length})
           </button>
-          {landNames.map(name => {
-            const count = alerts.filter(a => a.land_name === name).length;
-            return (
-              <button
-                key={name}
-                onClick={() => setSelectedLand(selectedLand === name ? null : name)}
-                className={cn(
-                  'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1',
-                  selectedLand === name ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
-                )}
-              >
-                <MapPin className="h-3 w-3" />
-                {name} ({count})
-              </button>
-            );
-          })}
+          {uniqueLands.map(land => (
+            <button
+              key={land.id}
+              onClick={() => setSelectedLandId(selectedLandId === land.id ? null : land.id)}
+              className={cn(
+                'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1',
+                selectedLandId === land.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+              )}
+            >
+              <MapPin className="h-3 w-3" />
+              {landLabels.get(land.id) || land.name} ({land.count})
+            </button>
+          ))}
         </div>
       )}
 
