@@ -39,7 +39,8 @@ function getAlertMessage(alert: ProactiveAlert, lang: string): string {
   return alert.message_en || '';
 }
 
-export function useProactiveAlerts() {
+export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
+  const skipRealtime = options?.skipRealtime ?? false;
   const { user } = useAuthStore();
   const { i18n } = useTranslation();
   const lang = i18n.language || 'en';
