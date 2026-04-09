@@ -218,33 +218,30 @@ export default function ProactiveAlerts() {
       <div className="pt-20 px-4 pb-24 space-y-4">
 
       {/* Land filter chips */}
-      {landNames.length > 1 && (
+      {uniqueLands.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
           <button
-            onClick={() => setSelectedLand(null)}
+            onClick={() => setSelectedLandId(null)}
             className={cn(
               'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
-              !selectedLand ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+              !selectedLandId ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
             )}
           >
             {lang === 'mr' ? 'सर्व' : lang === 'hi' ? 'सभी' : 'All'} ({alerts.length})
           </button>
-          {landNames.map(name => {
-            const count = alerts.filter(a => a.land_name === name).length;
-            return (
-              <button
-                key={name}
-                onClick={() => setSelectedLand(selectedLand === name ? null : name)}
-                className={cn(
-                  'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1',
-                  selectedLand === name ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
-                )}
-              >
-                <MapPin className="h-3 w-3" />
-                {name} ({count})
-              </button>
-            );
-          })}
+          {uniqueLands.map(land => (
+            <button
+              key={land.id}
+              onClick={() => setSelectedLandId(selectedLandId === land.id ? null : land.id)}
+              className={cn(
+                'shrink-0 px-3 py-1.5 rounded-full text-xs font-medium border transition-colors flex items-center gap-1',
+                selectedLandId === land.id ? 'bg-primary text-primary-foreground border-primary' : 'bg-muted text-muted-foreground border-border hover:bg-accent'
+              )}
+            >
+              <MapPin className="h-3 w-3" />
+              {landLabels.get(land.id) || land.name} ({land.count})
+            </button>
+          ))}
         </div>
       )}
 
