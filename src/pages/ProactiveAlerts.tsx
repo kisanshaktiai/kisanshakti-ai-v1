@@ -55,7 +55,7 @@ export default function ProactiveAlerts() {
   const { alerts, loading, unreadCount, showHistory, setShowHistory, markSeen, markActed, dismissAlert } = useProactiveAlerts({ skipRealtime: true });
   const { speak, isSpeaking, stop } = useEnhancedTTS();
   const lang = i18n.language || 'en';
-  const [selectedLand, setSelectedLand] = useState<string | null>(null);
+  const [selectedLandId, setSelectedLandId] = useState<string | null>(null);
 
   const handleSpeak = (alert: ProactiveAlert) => {
     if (isSpeaking) { stop(); return; }
