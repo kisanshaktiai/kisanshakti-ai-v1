@@ -409,7 +409,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
 
         // In-memory dedup check
         const dedupKey = `${rule.rule_code}:${ctx.land_id}:${todayStr}`;
-        if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || 72, alertMap)) continue;
+        if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || 24, alertMap)) continue;
 
         // Daily throttle check (in-memory)
         const dailyCount = farmerDailyCounts.get(ctx.farmer_id) || 0;
