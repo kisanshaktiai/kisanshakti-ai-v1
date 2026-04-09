@@ -111,7 +111,7 @@ export const PullRefreshController: React.FC<PullRefreshControllerProps> = ({
       const currentY = e.touches[0].clientY;
       const diff = currentY - startYRef.current;
       
-      if (diff > 0 && container.scrollTop === 0) {
+      if (diff > 10 && container.scrollTop === 0) {
         e.preventDefault();
         setPullDistance(Math.min(diff, threshold + 20));
       }
