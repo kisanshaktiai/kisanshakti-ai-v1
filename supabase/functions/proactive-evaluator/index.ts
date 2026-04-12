@@ -157,6 +157,7 @@ Deno.serve(async (req) => {
     let totalAlerts = 0;
     let totalLands = 0;
     let totalRulesFired = 0;
+    let totalRulesEvaluated = 0;
 
     for (const tenantId of tenantIds) {
       const tenantResult = await processOneTenant(supabase, tenantId, targetLandId, action);
