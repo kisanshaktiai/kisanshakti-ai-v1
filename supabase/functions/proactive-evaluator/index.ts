@@ -254,11 +254,11 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         .in('land_id', landIds)
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
-      // Recent alerts for dedup/cooldown (72h)
+      // Recent alerts for dedup/cooldown (24h)
       supabase.from('proactive_alerts')
         .select('id, rule_id, land_id, farmer_id, dedup_key, created_at, status')
         .in('land_id', landIds)
-        .gte('created_at', new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()),
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
       // Soil health per land
       supabase.from('soil_health')
         .select('land_id, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon')
