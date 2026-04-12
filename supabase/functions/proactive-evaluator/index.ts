@@ -175,7 +175,7 @@ Deno.serve(async (req) => {
       tenant_id: tenantIds[0] || 'default',
       evaluation_type: action === 'scheduled' ? 'scheduled' : 'manual',
       lands_evaluated: totalLands,
-      rules_evaluated: totalRulesFired,
+      rules_evaluated: totalRulesEvaluated,
       rules_fired: totalRulesFired,
       alerts_generated: totalAlerts,
       execution_time_ms: elapsed,
