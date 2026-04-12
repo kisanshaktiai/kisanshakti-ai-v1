@@ -404,6 +404,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         }
         return true;
       });
+      totalRulesEvaluated += applicableRules.length;
 
       for (const rule of applicableRules) {
         const result = evaluateRule(rule, ctx);
@@ -470,6 +471,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         }
         return true;
       });
+      totalRulesEvaluated += applicableDecisionRules.length;
 
       // Sort by priority (lower = higher priority)
       applicableDecisionRules.sort((a, b) => (a.priority || 99) - (b.priority || 99));
@@ -480,7 +482,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         totalRulesFired++;
 
         const dedupKey = `DR:${dr.condition_code}:${ctx.land_id}:${todayStr}`;
-        if (isDuplicate(dedupKey, dr.condition_code, ctx.land_id, 72, alertMap)) continue;
+        if (isDuplicate(dedupKey, dr.condition_code, ctx.land_id, 24, alertMap)) continue;
 
         const dailyCount = farmerDailyCounts.get(ctx.farmer_id) || 0;
         if (dailyCount >= 5 && dr.priority > 1) continue;
