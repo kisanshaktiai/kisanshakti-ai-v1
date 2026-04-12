@@ -164,6 +164,7 @@ Deno.serve(async (req) => {
       totalAlerts += tenantResult.alerts;
       totalLands += tenantResult.lands;
       totalRulesFired += tenantResult.rulesFired;
+      totalRulesEvaluated += tenantResult.rulesEvaluated;
     }
 
     const elapsed = Date.now() - startTime;
