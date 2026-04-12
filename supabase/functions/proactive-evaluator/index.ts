@@ -224,7 +224,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     let landsQuery = supabase
       .from('lands')
-      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
+      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, cultivation_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
       .eq('is_active', true)
       .eq('tenant_id', tenantId);
 
@@ -233,7 +233,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const { data: lands, error: landsError } = await landsQuery.limit(500);
     if (landsError) throw new Error(`Lands load failed: ${landsError.message}`);
     if (!lands || lands.length === 0) {
-      return { alerts: 0, lands: 0, rulesFired: 0 };
+      return { alerts: 0, lands: 0, rulesFired: 0, rulesEvaluated: 0 };
     }
 
     const landIds = lands.map(l => l.id);
