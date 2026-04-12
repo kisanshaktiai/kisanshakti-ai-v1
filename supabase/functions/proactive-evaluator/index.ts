@@ -214,7 +214,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const decisionRules: DecisionRuleProactive[] = decisionRulesRes.data || [];
 
     if (rules.length === 0 && decisionRules.length === 0) {
-      return { alerts: 0, lands: 0, rulesFired: 0 };
+      return { alerts: 0, lands: 0, rulesFired: 0, rulesEvaluated: 0 };
     }
 
     console.log(`[ProactiveEvaluator][${tenantId.slice(0,8)}] Loaded ${rules.length} proactive rules, ${decisionRules.length} decision rules`);
