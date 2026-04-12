@@ -200,7 +200,7 @@ Deno.serve(async (req) => {
 // PROCESS ONE TENANT (isolated)
 // =====================================================
 
-async function processOneTenant(supabase: any, tenantId: string, targetLandId: string | null, action: string): Promise<{ alerts: number; lands: number; rulesFired: number }> {
+async function processOneTenant(supabase: any, tenantId: string, targetLandId: string | null, action: string): Promise<{ alerts: number; lands: number; rulesFired: number; rulesEvaluated: number }> {
     // =========================================================
     // STEP 1: Load proactive rules + decision_rules (is_proactive_rule=true)
     // =========================================================
