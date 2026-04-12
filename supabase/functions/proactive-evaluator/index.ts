@@ -391,6 +391,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     let totalAlerts = 0;
     let totalRulesFired = 0;
+    let totalRulesEvaluated = 0;
     const alertsToInsert: any[] = [];
     const eventsToInsert: any[] = [];
 
