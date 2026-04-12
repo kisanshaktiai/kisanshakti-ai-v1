@@ -330,7 +330,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
 
     for (const land of lands) {
       const schedule = scheduleMap.get(land.id);
-      const sowingDate = schedule?.sowing_date || land.last_sowing_date;
+      const sowingDate = schedule?.sowing_date || land.last_sowing_date || land.cultivation_date;
       const cropSource = schedule?.crop_name || land.current_crop;
       const cropCode = normalizeCropCode(cropSource);
 
