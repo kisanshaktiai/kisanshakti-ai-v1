@@ -570,7 +570,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     // STEP 7: Return tenant result
     // =========================================================
-    return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired };
+    return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated };
 }
 
 // =====================================================
@@ -844,14 +844,22 @@ function computeStageHardcoded(cropCode: string, das: number): string {
 function normalizeCropCode(crop: string | null): string | null {
   if (!crop) return null;
   const upper = crop.toUpperCase().trim();
-  if (upper.includes('SUGARCANE') || upper.includes('ऊस') || upper === 'SC') return 'SUGARCANE';
-  if (upper.includes('WHEAT') || upper.includes('गहू') || upper === 'WH') return 'WHEAT';
-  if (upper.includes('COTTON') || upper.includes('कापूस') || upper === 'CT') return 'COTTON';
-  if (upper.includes('RICE') || upper.includes('भात') || upper === 'RC') return 'RICE';
-  if (upper.includes('SOYBEAN') || upper.includes('सोयाबीन') || upper === 'SB') return 'SOYBEAN';
-  if (upper.includes('ONION') || upper.includes('कांदा') || upper === 'ON') return 'ONION';
-  if (upper.includes('TURMERIC') || upper.includes('हळद') || upper === 'TU') return 'TURMERIC';
-  if (upper.includes('GRAPE') || upper.includes('द्राक्ष') || upper === 'GR') return 'GRAPE';
+  if (upper.includes('SUGARCANE') || upper.includes('ऊस') || upper.includes('गन्ना') || upper.includes('ईख') || upper === 'SC') return 'SUGARCANE';
+  if (upper.includes('WHEAT') || upper.includes('गहू') || upper.includes('गेहूं') || upper.includes('गेहूँ') || upper === 'WH') return 'WHEAT';
+  if (upper.includes('COTTON') || upper.includes('कापूस') || upper.includes('कपास') || upper.includes('रुई') || upper === 'CT') return 'COTTON';
+  if (upper.includes('RICE') || upper.includes('भात') || upper.includes('तांदूळ') || upper.includes('धान') || upper.includes('चावल') || upper === 'RC') return 'RICE';
+  if (upper.includes('SOYBEAN') || upper.includes('सोयाबीन') || upper.includes('सोयाबिन') || upper === 'SB') return 'SOYBEAN';
+  if (upper.includes('ONION') || upper.includes('कांदा') || upper.includes('प्याज') || upper === 'ON') return 'ONION';
+  if (upper.includes('TURMERIC') || upper.includes('हळद') || upper.includes('हल्दी') || upper === 'TU') return 'TURMERIC';
+  if (upper.includes('GRAPE') || upper.includes('द्राक्ष') || upper.includes('अंगूर') || upper === 'GR') return 'GRAPE';
+  if (upper.includes('MAIZE') || upper.includes('CORN') || upper.includes('मका') || upper.includes('मक्का') || upper === 'MZ') return 'MAIZE';
+  if (upper.includes('GROUNDNUT') || upper.includes('PEANUT') || upper.includes('भुईमूग') || upper.includes('मूंगफली') || upper === 'GN') return 'GROUNDNUT';
+  if (upper.includes('BANANA') || upper.includes('केळी') || upper.includes('केला') || upper === 'BN') return 'BANANA';
+  if (upper.includes('POMEGRANATE') || upper.includes('डाळिंब') || upper.includes('अनार') || upper === 'PM') return 'POMEGRANATE';
+  if (upper.includes('CHILLI') || upper.includes('CHILI') || upper.includes('मिरची') || upper.includes('मिर्च') || upper === 'CH') return 'CHILLI';
+  if (upper.includes('TOMATO') || upper.includes('टोमॅटो') || upper.includes('टमाटर') || upper === 'TM') return 'TOMATO';
+  if (upper.includes('POTATO') || upper.includes('बटाटा') || upper.includes('आलू') || upper === 'PT') return 'POTATO';
+  if (upper.includes('MANGO') || upper.includes('आंबा') || upper.includes('आम') || upper === 'MG') return 'MANGO';
   return upper;
 }
 
