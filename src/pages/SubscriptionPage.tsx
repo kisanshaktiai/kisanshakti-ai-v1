@@ -279,7 +279,7 @@ export default function SubscriptionPage() {
                             className={cn(
                               'w-10 h-10 rounded-xl flex items-center justify-center',
                               plan.name === 'AI PRO'
-                                ? 'bg-gradient-to-br from-amber-500/20 to-orange-500/20 text-amber-600 dark:text-amber-400'
+                                ? 'bg-gradient-to-br from-warning/20 to-warning/10 text-warning'
                                 : plan.name === 'Shakti'
                                 ? 'bg-gradient-to-br from-primary/20 to-accent/20 text-primary'
                                 : 'bg-success/15 text-success'
