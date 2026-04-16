@@ -19,12 +19,12 @@ export function UsageMeter({ label, current, limit, icon, unit = '' }: UsageMete
   const numericLimit = isUnlimited ? Infinity : Number(limit);
   const percent = isUnlimited ? 0 : Math.min(100, Math.round((current / numericLimit) * 100));
 
-  const barColor =
+  const barColorClass =
     percent >= 90
-      ? 'bg-destructive'
+      ? '[&>div]:bg-destructive'
       : percent >= 75
-      ? 'bg-warning'
-      : 'bg-primary';
+      ? '[&>div]:bg-warning'
+      : '[&>div]:bg-primary';
 
   return (
     <div className="space-y-1.5">
@@ -46,8 +46,7 @@ export function UsageMeter({ label, current, limit, icon, unit = '' }: UsageMete
       {!isUnlimited && (
         <Progress
           value={percent}
-          className={cn('h-1.5', '[&>div]:transition-colors')}
-          indicatorClassName={barColor}
+          className={cn('h-1.5 [&>div]:transition-colors', barColorClass)}
         />
       )}
     </div>

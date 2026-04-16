@@ -79,30 +79,35 @@ export default function SubscriptionPage() {
     const client = supabaseWithAuth(user.id, user.tenantId);
 
     (async () => {
-      const [{ data: planData }, { data: usageData }, { data: paymentData }] = await Promise.all([
-        client
+      try {
+        const planRes: any = await client
           .from('subscription_plans')
           .select('id, name, plan_type, price_monthly, price_quarterly, price_annually, features, limits, sort_order')
           .eq('is_active', true)
-          .order('price_monthly', { ascending: true }),
-        client
+          .order('price_monthly', { ascending: true });
+
+        const usageRes: any = await client
           .from('subscription_usage_logs')
           .select('metric_name, quantity, billing_period_start, billing_period_end')
           .eq('farmer_id', user.id)
           .gte('billing_period_end', new Date().toISOString())
-          .limit(50),
-        client
+          .limit(50);
+
+        const paymentRes: any = await client
           .from('payment_records')
           .select('id, amount, currency, status, payment_method, created_at')
           .eq('farmer_id', user.id)
           .order('created_at', { ascending: false })
-          .limit(10),
-      ]);
+          .limit(10);
 
-      if (planData) setPlans(planData as any);
-      if (usageData) setUsage(usageData as any);
-      if (paymentData) setPayments(paymentData as any);
-      setLoadingPlans(false);
+        if (planRes?.data) setPlans(planRes.data as PlanRow[]);
+        if (usageRes?.data) setUsage(usageRes.data as UsageRow[]);
+        if (paymentRes?.data) setPayments(paymentRes.data as PaymentRow[]);
+      } catch (e) {
+        console.warn('[Subscription] Load error:', e);
+      } finally {
+        setLoadingPlans(false);
+      }
     })();
   }, [user?.id, user?.tenantId]);
 
