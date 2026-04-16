@@ -113,6 +113,11 @@ export default function SubscriptionPage() {
   }, [user?.id, user?.tenantId]);
 
   const currentLimits = (data?.limits ?? {}) as Record<string, number | string>;
+  const normalizeLimit = (val: number | string | undefined): number | 'unlimited' => {
+    if (val === 'unlimited') return 'unlimited';
+    const n = Number(val);
+    return Number.isFinite(n) ? n : 0;
+  };
   const aiUsage = usage.find((u) => u.metric_name === 'ai_chat_limit')?.quantity ?? 0;
   const landUsage = usage.find((u) => u.metric_name === 'land_limit')?.quantity ?? 0;
   const soilUsage = usage.find((u) => u.metric_name === 'soil_reports_per_month')?.quantity ?? 0;
@@ -198,19 +203,19 @@ export default function SubscriptionPage() {
             <UsageMeter
               label="AI Chat Queries"
               current={aiUsage}
-              limit={currentLimits.ai_queries_per_month ?? 0}
+              limit={normalizeLimit(currentLimits.ai_queries_per_month)}
               icon={<MessageSquare className="w-3.5 h-3.5" />}
             />
             <UsageMeter
               label="Lands Registered"
               current={landUsage}
-              limit={currentLimits.land_limit ?? 0}
+              limit={normalizeLimit(currentLimits.land_limit)}
               icon={<MapPin className="w-3.5 h-3.5" />}
             />
             <UsageMeter
               label="Soil Reports"
               current={soilUsage}
-              limit={currentLimits.soil_reports_per_month ?? 0}
+              limit={normalizeLimit(currentLimits.soil_reports_per_month)}
               icon={<Database className="w-3.5 h-3.5" />}
             />
           </CardContent>
