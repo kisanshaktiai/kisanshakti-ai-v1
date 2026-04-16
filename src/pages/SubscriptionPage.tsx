@@ -79,21 +79,22 @@ export default function SubscriptionPage() {
     const client = supabaseWithAuth(user.id, user.tenantId);
 
     (async () => {
+      const anyClient = client as any;
       try {
-        const planRes: any = await client
+        const planRes = await anyClient
           .from('subscription_plans')
           .select('id, name, plan_type, price_monthly, price_quarterly, price_annually, features, limits, sort_order')
           .eq('is_active', true)
           .order('price_monthly', { ascending: true });
 
-        const usageRes: any = await client
+        const usageRes = await anyClient
           .from('subscription_usage_logs')
           .select('metric_name, quantity, billing_period_start, billing_period_end')
           .eq('farmer_id', user.id)
           .gte('billing_period_end', new Date().toISOString())
           .limit(50);
 
-        const paymentRes: any = await client
+        const paymentRes = await anyClient
           .from('payment_records')
           .select('id, amount, currency, status, payment_method, created_at')
           .eq('farmer_id', user.id)
