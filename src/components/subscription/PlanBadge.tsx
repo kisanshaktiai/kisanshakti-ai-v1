@@ -16,7 +16,7 @@ export function PlanBadge({ planName = 'Free', className, size = 'sm' }: PlanBad
   const lower = planName.toLowerCase();
 
   const config = lower.includes('pro')
-    ? { Icon: Crown, gradient: 'from-amber-500/20 to-orange-500/20', text: 'text-amber-700 dark:text-amber-400', border: 'border-amber-500/30' }
+    ? { Icon: Crown, gradient: 'from-warning/20 to-warning/10', text: 'text-warning', border: 'border-warning/30' }
     : lower.includes('shakti')
     ? { Icon: Sparkles, gradient: 'from-primary/20 to-accent/20', text: 'text-primary', border: 'border-primary/30' }
     : { Icon: Leaf, gradient: 'from-success/15 to-success/5', text: 'text-success', border: 'border-success/30' };
