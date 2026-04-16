@@ -45,6 +45,7 @@ import {
 } from 'recharts';
 import { SyncStatus } from '@/components/sync/SyncStatus';
 import { AvatarUpload } from '@/components/profile/AvatarUpload';
+import { SubscriptionCard } from '@/components/subscription/SubscriptionCard';
 
 export default function Profile() {
   const { t } = useTranslation();
@@ -151,6 +152,10 @@ export default function Profile() {
       <div className="p-4 space-y-6 pb-24 animate-fade-in">
         {/* Sync Status Card */}
         <SyncStatus />
+
+        {/* Subscription Card — entry point to /app/subscription */}
+        <SubscriptionCard />
+
         {/* Header Section */}
       <div className="relative">
         <div className="absolute inset-0 bg-gradient-to-r from-primary/20 to-primary/10 rounded-2xl blur-2xl" />
