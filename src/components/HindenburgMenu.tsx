@@ -9,7 +9,7 @@ import {
   Home, MapPin, Cloud, Users, Bot, TrendingUp, User,
   Calendar, FileText, Award, Bell, Settings, HelpCircle,
   Wallet, BarChart3, Sprout, Tractor, Droplets, Sun,
-  MessageSquare, Store, BookOpen, Shield, Phone, Mail
+  MessageSquare, Store, BookOpen, Shield, Phone, Mail, Crown
 } from 'lucide-react';
 
 interface MenuItemType {
@@ -52,6 +52,7 @@ const defaultMenuItems: MenuItemType[] = [
   
   // Account & Settings
   { id: 'profile', icon: User, labelKey: 'menu.profile', path: '/app/profile', category: 'account' },
+  { id: 'subscription', icon: Crown, labelKey: 'menu.subscription', path: '/app/subscription', category: 'account', isNew: true },
   { id: 'notifications', icon: Bell, labelKey: 'menu.notifications', path: '/app/notifications/settings', category: 'account' },
   { id: 'settings', icon: Settings, labelKey: 'menu.settings', path: '/app/profile', category: 'account' },
   
