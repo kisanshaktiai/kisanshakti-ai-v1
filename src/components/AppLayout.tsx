@@ -17,6 +17,7 @@ import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
 import { useVoiceNavigationStore } from '@/stores/voiceNavigationStore';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
+import { SubscriptionHeaderChip } from '@/components/subscription/SubscriptionHeaderChip';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();
@@ -83,6 +84,7 @@ export function AppLayout() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
+                <SubscriptionHeaderChip />
                 <ConnectionStatusIcon />
                 <SyncButton />
                 <LanguageSelector />
