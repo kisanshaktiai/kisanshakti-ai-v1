@@ -676,6 +676,110 @@ export interface FarmerAlertData {
 }
 
 /**
+ * Farmer Subscription - mirrors Supabase farmer_subscriptions table
+ */
+export interface FarmerSubscriptionData {
+  id: string;
+  farmer_id: string;
+  tenant_id: string;
+  tenant_subscription_id: string | null;
+  plan_id: string;
+  billing_interval: string | null;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  trial_end_date: string | null;
+  auto_renew: boolean | null;
+  payment_method: any;
+  metadata: any;
+  stripe_subscription_id: string | null;
+  stripe_customer_id: string | null;
+  paid_by_tenant: boolean | null;
+  paying_tenant_id: string | null;
+  grace_period_ends_at: string | null;
+  next_billing_date: string | null;
+  last_payment_date: string | null;
+  last_payment_amount: number | null;
+  payment_method_id: string | null;
+  cancellation_reason: string | null;
+  trial_days: number | null;
+  payment_provider: string | null;
+  payment_order_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lastModified: number;
+  syncStatus: 'synced' | 'pending' | 'conflict';
+}
+
+/**
+ * Subscription Plan - mirrors Supabase subscription_plans table
+ */
+export interface SubscriptionPlanData {
+  id: string;
+  name: string;
+  description: string | null;
+  plan_type: string;
+  price_monthly: number | null;
+  price_quarterly: number | null;
+  price_annually: number | null;
+  features: any;
+  limits: any;
+  is_active: boolean | null;
+  is_custom: boolean | null;
+  is_public: boolean | null;
+  tenant_id: string | null;
+  stripe_product_id: string | null;
+  stripe_price_id_monthly: string | null;
+  stripe_price_id_annually: string | null;
+  plan_category: string | null;
+  billing_interval: string | null;
+  trial_days: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lastModified: number;
+}
+
+/**
+ * Subscription Usage Log - mirrors Supabase subscription_usage_logs table
+ */
+export interface SubscriptionUsageLogData {
+  id: string;
+  tenant_id: string;
+  farmer_id: string | null;
+  subscription_id: string;
+  metric_name: string;
+  quantity: number;
+  unit: string | null;
+  usage_date: string | null;
+  billing_period_start: string | null;
+  billing_period_end: string | null;
+  metadata: any;
+  created_at: string | null;
+  lastModified: number;
+}
+
+/**
+ * Payment Record - mirrors Supabase payment_records table
+ */
+export interface PaymentRecordData {
+  id: string;
+  tenant_id: string;
+  invoice_id: string | null;
+  amount: number;
+  currency: string | null;
+  payment_method: string | null;
+  transaction_id: string | null;
+  gateway_response: any;
+  status: string;
+  processed_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  // Locally derived (joined via invoice → subscription → farmer)
+  farmer_id: string | null;
+  lastModified: number;
+}
+
+/**
  * Tenant Configuration (local cache only)
  */
 export interface TenantConfigData {
@@ -808,6 +912,50 @@ interface KisanDB extends DBSchema {
     };
   };
   
+  // farmerSubscriptions table (maps to farmer_subscriptions in Supabase)
+  farmerSubscriptions: {
+    key: string;
+    value: FarmerSubscriptionData;
+    indexes: {
+      'by-farmer': string;
+      'by-tenant': string;
+      'by-status': string;
+      'by-sync-status': string;
+    };
+  };
+
+  // subscriptionPlans table (reference data)
+  subscriptionPlans: {
+    key: string;
+    value: SubscriptionPlanData;
+    indexes: {
+      'by-plan-type': string;
+      'by-active': string;
+    };
+  };
+
+  // subscriptionUsageLogs table
+  subscriptionUsageLogs: {
+    key: string;
+    value: SubscriptionUsageLogData;
+    indexes: {
+      'by-farmer': string;
+      'by-subscription': string;
+      'by-metric': string;
+    };
+  };
+
+  // paymentRecords table
+  paymentRecords: {
+    key: string;
+    value: PaymentRecordData;
+    indexes: {
+      'by-farmer': string;
+      'by-tenant': string;
+      'by-status': string;
+    };
+  };
+
   // tenantConfig table (local cache only)
   tenantConfig: {
     key: string;
@@ -829,8 +977,8 @@ interface KisanDB extends DBSchema {
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 10; // Bumped for land/schedule/crop schema parity + crops/alerts sync (2026-03-11)
-const SCHEMA_VERSION = 8; // Bumped for full offline schema parity with Supabase
+const DB_VERSION = 11; // Bumped for subscription/plans/usage/payments offline mirroring (2026-04-19)
+const SCHEMA_VERSION = 9; // Bumped for offline subscription parity
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
