@@ -1843,11 +1843,6 @@ class LocalDatabase {
       'farmerAlerts', 'tenantConfig',
       'farmerSubscriptions', 'subscriptionPlans', 'subscriptionUsageLogs', 'paymentRecords'
     ];
-    const _legacyStoreNames: Array<string> = [
-      'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 
-      'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 
-      'farmerAlerts', 'tenantConfig'
-    ];
     
     // Get list of existing stores from the database
     const existingStores = Array.from(this.db!.objectStoreNames);
