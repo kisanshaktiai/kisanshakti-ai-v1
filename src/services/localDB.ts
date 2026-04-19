@@ -1958,6 +1958,85 @@ class LocalDatabase {
       console.log('🗑️ [LocalDB] Cleared all tenant config caches');
     }
   }
+
+  // ========== SUBSCRIPTION OPERATIONS ==========
+
+  async saveFarmerSubscriptions(subs: Omit<FarmerSubscriptionData, 'lastModified' | 'syncStatus'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('farmerSubscriptions', 'readwrite');
+    for (const s of subs) {
+      await tx.objectStore('farmerSubscriptions').put({
+        ...s,
+        lastModified: Date.now(),
+        syncStatus: 'synced',
+      });
+    }
+    await tx.done;
+  }
+
+  async getActiveSubscription(farmerId: string): Promise<FarmerSubscriptionData | undefined> {
+    if (!this.db) await this.initialize();
+    const all = await this.db!.getAllFromIndex('farmerSubscriptions', 'by-farmer', farmerId);
+    // Prefer 'active', then 'trial', then 'grace_period'
+    const priority = ['active', 'trial', 'grace_period'];
+    for (const status of priority) {
+      const match = all.find(s => s.status === status);
+      if (match) return match;
+    }
+    return all[0];
+  }
+
+  async getFarmerSubscriptions(farmerId: string): Promise<FarmerSubscriptionData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('farmerSubscriptions', 'by-farmer', farmerId);
+  }
+
+  async saveSubscriptionPlans(plans: Omit<SubscriptionPlanData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('subscriptionPlans', 'readwrite');
+    for (const p of plans) {
+      await tx.objectStore('subscriptionPlans').put({ ...p, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getPlans(): Promise<SubscriptionPlanData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAll('subscriptionPlans');
+  }
+
+  async getPlanById(planId: string): Promise<SubscriptionPlanData | undefined> {
+    if (!this.db) await this.initialize();
+    return await this.db!.get('subscriptionPlans', planId);
+  }
+
+  async saveUsageLogs(logs: Omit<SubscriptionUsageLogData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('subscriptionUsageLogs', 'readwrite');
+    for (const l of logs) {
+      await tx.objectStore('subscriptionUsageLogs').put({ ...l, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getUsageLogs(farmerId: string): Promise<SubscriptionUsageLogData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('subscriptionUsageLogs', 'by-farmer', farmerId);
+  }
+
+  async savePaymentRecords(records: Omit<PaymentRecordData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('paymentRecords', 'readwrite');
+    for (const r of records) {
+      await tx.objectStore('paymentRecords').put({ ...r, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getPaymentRecords(farmerId: string): Promise<PaymentRecordData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('paymentRecords', 'by-farmer', farmerId);
+  }
 }
 
 export const localDB = new LocalDatabase();
