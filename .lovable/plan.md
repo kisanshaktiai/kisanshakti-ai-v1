@@ -1,131 +1,90 @@
 
 
-# Updated Subscription System Implementation Plan
+## Investigation Goal
 
-## Changes from Previous Plan
+Audit online (Supabase) vs offline (IndexedDB / `localDB`) schema parity, sync coverage, and known drift. Then propose a focused fix plan to bring offline DB into alignment without breaking existing flows.
 
-Two critical gaps added, performance strategy updated, and phase ordering revised per your findings.
+## Step 1 — Read current state
 
----
+Inspect:
+- `src/services/localDB.ts` (interfaces, stores, schema version, upgrade logic)
+- `src/services/syncService.ts` (download/upload, tables covered, mapping)
+- `src/services/offlineDataService.ts` (field mappings)
+- Supabase schema for: `lands`, `crop_schedules`, `schedule_tasks`, `farmers`, `farmer_subscriptions`, `subscription_plans`, `subscription_usage_logs`, `payment_records`, `ai_chat_messages`, `weather_current`, `soil_health`
+- `docs/OFFLINE_DATABASE_AUDIT_REPORT.md` (already flags 80+ missing columns + missing `schedule_tasks` download)
 
-## Revised Phase Ordering (8 Phases)
+## Step 2 — Compare schemas
 
-| Phase | Name | Priority |
-|---|---|---|
-| 1 | Seed farmer_subscriptions for existing farmers | Data foundation |
-| 2 | useSubscription hook + SubscriptionContext (with caching) | Frontend core |
-| 3 | Payment webhook edge function (Razorpay/PhonePe) | **NEW - Payment activation** |
-| 4 | Backend subscription middleware for edge functions | API enforcement |
-| 5 | Realtime subscription sync | **NEW - Live plan updates** |
-| 6 | Usage metering | Limit enforcement |
-| 7 | Offline HMAC validation (72h TTL) | Security |
-| 8 | Grace period + degradation UI | UX polish |
+For each synced table, build a column-by-column diff:
+- Online column → present in LocalDB interface? → mapped in syncService download? → mapped in syncService upload?
+- Identify: missing columns, type mismatches, missing tenant_id/farmer_id (isolation risk), missing tables entirely.
 
----
+## Step 3 — Identify gaps
 
-## Phase 1: Seed Existing Farmers (Migration)
+Expected gaps based on prior audit + recent subscription work:
+1. `crop_schedules` — 70+ missing columns (weather_data, soil_recommendations, ai_confidence, etc.)
+2. `schedule_tasks` — 17 missing columns including `tenant_id`, `farmer_id` (RLS/isolation risk offline)
+3. `schedule_tasks` — not downloaded by syncService at all
+4. **NEW**: `farmer_subscriptions` + `subscription_plans` — not mirrored offline → useSubscription falls back to cached `localStorage` only, no IndexedDB store
+5. **NEW**: `subscription_usage_logs` — not mirrored → usage meters break offline
+6. `payment_records` — not mirrored
+7. Schema version bump needed to force IndexedDB upgrade
+8. Sync order: subscription tables must download BEFORE other tables (gating depends on it)
 
-Create migration to assign all existing farmers a default subscription (Shakti plan as baseline):
-- INSERT into `farmer_subscriptions` for each farmer in `farmers` table
-- Set `status = 'active'`, `start_date = now()`, `end_date = now() + interval '30 days'`
-- Link to the correct `plan_id` from `subscription_plans`
-- Set `tenant_id` from the farmer's tenant
+## Step 4 — Design fix plan
 
-## Phase 2: useSubscription Hook + SubscriptionContext
+### Phase 1 — Schema alignment in `localDB.ts`
+- Expand `Land`, `CropSchedule`, `ScheduleTask` interfaces to mirror Supabase columns 1:1 (use existing types from `src/integrations/supabase/types.ts` as source of truth)
+- Add new IndexedDB stores:
+  - `farmerSubscriptions` (keyPath: id; index: farmer_id, tenant_id, status)
+  - `subscriptionPlans` (keyPath: id; index: plan_type)
+  - `subscriptionUsageLogs` (keyPath: id; index: farmer_id, billing_period_start)
+  - `paymentRecords` (keyPath: id; index: farmer_id, created_at)
+- Bump `SCHEMA_VERSION` to 5, add upgrade migration that wipes & re-syncs affected stores
+- Add getter methods: `getActiveSubscription(farmerId)`, `getUsageLogs(farmerId)`, `getPlans()`
 
-**New file: `src/hooks/useSubscription.ts`**
-- Fetch `farmer_subscriptions` joined with `subscription_plans` to get features/limits
-- **5-minute stale-while-revalidate caching** via React Query `staleTime: 5 * 60 * 1000`
-- Persist subscription state to `localDB` on every successful fetch for offline fallback
-- Invalidate cache on: payment events, Realtime changes, app foreground after 5+ min background
-- Expose: `hasFeature(name)`, `isWithinLimit(name)`, `subscriptionStatus`, `daysRemaining`, `planName`
+### Phase 2 — Sync coverage in `syncService.ts`
+- Add download steps for: `schedule_tasks`, `farmer_subscriptions`, `subscription_plans`, `subscription_usage_logs`, `payment_records`
+- Reorder `downloadServerData()`: subscriptions FIRST → then lands → schedules → tasks
+- Map ALL columns (not just hand-picked subset) — use `...row` spread + explicit overrides for renamed fields
+- Tenant/farmer isolation: enforce `eq('tenant_id', user.tenantId)` and `eq('farmer_id', user.id)` on subscription queries
 
-**New file: `src/contexts/SubscriptionContext.tsx`**
-- Wraps app with subscription state from the hook
-- Provides `<SubscriptionGate feature="ai_chat">` component for declarative gating
-- Shows upgrade prompt for gated features instead of hiding them
+### Phase 3 — Update `useSubscription` for IndexedDB-backed offline
+- Replace `localStorage` cache with `localDB.getActiveSubscription(farmerId)` for richer fallback
+- Keep 72h HMAC TTL logic intact
+- On sync completion, refetch subscription query
 
-## Phase 3: Payment Webhook Edge Function (NEW)
+### Phase 4 — Field mapping audit in `offlineDataService.ts`
+- Replace hand-picked field maps with full row spreads to prevent silent column drops on future schema changes
+- Add a single `mapSupabaseRow` utility per table
 
-**New file: `supabase/functions/payment-webhook/index.ts`**
-- Support Razorpay and PhonePe webhook signatures (Indian payment providers for rural farmers)
-- Verify HMAC signature from payment provider using stored webhook secret
-- On successful payment:
-  - UPDATE `farmer_subscriptions` SET `status = 'active'`, `start_date = now()`, `end_date` based on plan interval
-  - Record in `payment_records` table
-  - Send push notification to farmer via existing `notificationService` pattern
-- On failed/refund:
-  - UPDATE status accordingly, trigger grace period if needed
-- Security: Validate `x-razorpay-signature` / PhonePe checksum before any DB write
-- Idempotency: Use payment `order_id` as idempotency key to prevent double-activation
+### Phase 5 — Verification
+- Add `__debugSchema()` console helper that dumps column counts: online vs offline per table
+- Confirm `useSubscription` works offline after sync
+- Confirm `schedule_tasks` populate offline
+- Confirm tenant isolation: query localDB with wrong farmer_id returns nothing
 
-**New secret required**: `RAZORPAY_WEBHOOK_SECRET` (or `PHONEPE_SALT_KEY`)
+## Files to modify
 
-**Migration**: Add `payment_provider` and `payment_order_id` columns to `farmer_subscriptions` if not present; add `payment_records` table if not present.
-
-## Phase 4: Backend Subscription Middleware
-
-**New file: `supabase/functions/_shared/subscriptionMiddleware.ts`**
-- `validateSubscription(farmerId, tenantId)` RPC that returns plan features + status + expiry
-- Cross-tenant safeguard: RPC enforces `farmer.tenant_id = provided_tenant_id`
-- Returns 402 Payment Required for expired subscriptions
-- Add to: `ai-chat-enhanced`, `proactive-evaluator`, `schedules-api`
-
-## Phase 5: Realtime Subscription Sync (NEW)
-
-**In `SubscriptionContext.tsx`**:
-```text
-Subscribe to postgres_changes on farmer_subscriptions
-filtered by farmer_id=eq.${currentFarmerId}
-On UPDATE event -> refetchSubscription() + invalidate React Query cache
-```
-- Handles tenant admin upgrades/downgrades in real-time without requiring re-login
-- Auto-unsubscribe on unmount and logout
-
-## Phase 6: Usage Metering
-
-The `subscription_usage_logs` table already exists with correct schema (metric_name, quantity, billing_period_start/end).
-
-- Create `increment_usage` RPC: atomic increment of usage counter per metric per billing period
-- Add usage check before AI chat calls (`ai_queries_per_month`) and land creation (`land_limit`)
-- Frontend: show usage indicator in settings ("15/100 AI queries used this month")
-
-## Phase 7: Offline HMAC Validation
-
-- Server signs subscription claim with HMAC using edge function secret on every fetch
-- Cache signed claim in `localDB` with 72-hour TTL (not 24h -- rural areas may have multi-day outages)
-- On offline access: validate HMAC signature locally, check TTL
-- After TTL expires offline: degrade to read-only mode (view existing data, no new AI chats)
-- Force re-validation on reconnect
-
-## Phase 8: Grace Period + Degradation
-
-- 7-day grace period after subscription expires
-- During grace: read-only access (view lands, schedules, weather) but no new AI chats or NDVI requests
-- Show countdown banner: "Your plan expires in X days"
-- After grace: restrict to free-tier features only (basic weather, land list)
-- Never fully lock out -- farmers need weather data regardless of plan
-
----
-
-## Files Created/Modified
-
-| File | Action |
+| File | Change |
 |---|---|
-| `supabase/migrations/xxx_seed_subscriptions.sql` | Seed farmer_subscriptions |
-| `src/hooks/useSubscription.ts` | New hook with caching |
-| `src/contexts/SubscriptionContext.tsx` | New context + SubscriptionGate |
-| `supabase/functions/payment-webhook/index.ts` | New edge function |
-| `supabase/functions/_shared/subscriptionMiddleware.ts` | New middleware |
-| `src/contexts/SubscriptionContext.tsx` | Add Realtime channel |
-| `supabase/functions/ai-chat-enhanced/index.ts` | Add subscription check |
-| `supabase/functions/proactive-evaluator/index.ts` | Add subscription check |
-| `supabase/functions/schedules-api/index.ts` | Add subscription check |
+| `src/services/localDB.ts` | Expand interfaces, add 4 stores, bump schema to v5, add getters |
+| `src/services/syncService.ts` | Add 5 table downloads, fix order, full row mapping |
+| `src/services/offlineDataService.ts` | Use full row spreads |
+| `src/hooks/useSubscription.ts` | IndexedDB-backed offline fallback |
+| `src/services/syncService.ts` | (Same file) Reorder + add subscription tables FIRST |
 
-## No Changes To
-- Existing tenant isolation architecture
-- RLS policies (already correct on farmer_subscriptions)
-- Decision brain / symbolic engine
-- Multi-tenant middleware
-- Existing localDB or syncService architecture
+## No changes to
+
+- RLS policies (already correct)
+- Edge functions
+- Subscription middleware / payment webhook
+- UI components
+- Auth / tenant isolation services
+
+## Risk & rollback
+
+- Schema v5 upgrade wipes affected IndexedDB stores → next sync repopulates from server (safe, server is SSOT)
+- No destructive changes to Supabase
+- Pending offline writes (queued mutations) preserved by keeping `pendingChanges` store untouched in upgrade
 
