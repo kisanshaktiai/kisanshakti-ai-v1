@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
+import { localDB } from '@/services/localDB';
 import { useCallback, useEffect, useRef } from 'react';
 
 export interface SubscriptionData {
@@ -64,13 +65,14 @@ export function useSubscription(): SubscriptionState {
 
       if (error) {
         console.error('❌ [Subscription] RPC error:', error);
-        // Try offline fallback
-        return await getOfflineFallback(farmerId) || { valid: false, error: error.message };
+        // Try IndexedDB fallback first, then localStorage
+        const offline = await getOfflineFallback(farmerId);
+        return offline || { valid: false, error: error.message };
       }
 
       const subData = result as unknown as SubscriptionData;
 
-      // Persist to localStorage for offline fallback
+      // Persist to localStorage for legacy fast-path
       try {
         localStorage.setItem(
           `subscription_cache_${farmerId}`,
@@ -139,6 +141,40 @@ export function useSubscription(): SubscriptionState {
 }
 
 async function getOfflineFallback(farmerId: string): Promise<SubscriptionData | null> {
+  // 1) Try IndexedDB (rich, full row)
+  try {
+    const sub = await localDB.getActiveSubscription(farmerId);
+    if (sub) {
+      const plan = sub.plan_id ? await localDB.getPlanById(sub.plan_id) : undefined;
+      const now = Date.now();
+      const endTs = sub.end_date ? new Date(sub.end_date).getTime() : null;
+      const graceTs = sub.grace_period_ends_at ? new Date(sub.grace_period_ends_at).getTime() : null;
+      const isActive = sub.status === 'active' && (!endTs || endTs > now);
+      const isInGrace = !!graceTs && graceTs > now && (!endTs || endTs <= now);
+      const daysRemaining = endTs ? Math.max(0, Math.ceil((endTs - now) / 86400000)) : 0;
+
+      console.log('📴 [Subscription] Using IndexedDB offline fallback');
+      return {
+        valid: isActive || isInGrace,
+        subscription_id: sub.id,
+        plan_id: sub.plan_id,
+        plan_name: plan?.name ?? 'Unknown',
+        plan_type: plan?.plan_type,
+        status: sub.status,
+        start_date: sub.start_date ?? undefined,
+        end_date: sub.end_date ?? undefined,
+        grace_period_ends_at: sub.grace_period_ends_at ?? undefined,
+        features: plan?.features ?? {},
+        limits: plan?.limits ?? {},
+        days_remaining: daysRemaining,
+        is_in_grace_period: isInGrace,
+      };
+    }
+  } catch (e) {
+    console.warn('⚠️ [Subscription] IndexedDB fallback failed:', e);
+  }
+
+  // 2) Legacy localStorage fallback (72h TTL)
   try {
     const cached = localStorage.getItem(`subscription_cache_${farmerId}`);
     if (!cached) return null;
@@ -152,7 +188,7 @@ async function getOfflineFallback(farmerId: string): Promise<SubscriptionData | 
       return { valid: false, error: 'offline_cache_expired' };
     }
 
-    console.log('📴 [Subscription] Using offline cached data, age:', Math.round(age / 60000), 'min');
+    console.log('📴 [Subscription] Using localStorage offline fallback, age:', Math.round(age / 60000), 'min');
     return data;
   } catch {
     return null;
