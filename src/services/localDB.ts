@@ -1144,6 +1144,42 @@ class LocalDatabase {
           console.log('✅ [LocalDB] Created tenantConfig store for offline theme support');
         }
 
+        // Create farmerSubscriptions store (offline subscription mirror)
+        if (!db.objectStoreNames.contains('farmerSubscriptions')) {
+          const subStore = db.createObjectStore('farmerSubscriptions', { keyPath: 'id' });
+          subStore.createIndex('by-farmer', 'farmer_id');
+          subStore.createIndex('by-tenant', 'tenant_id');
+          subStore.createIndex('by-status', 'status');
+          subStore.createIndex('by-sync-status', 'syncStatus');
+          console.log('✅ [LocalDB] Created farmerSubscriptions store');
+        }
+
+        // Create subscriptionPlans store (reference data)
+        if (!db.objectStoreNames.contains('subscriptionPlans')) {
+          const planStore = db.createObjectStore('subscriptionPlans', { keyPath: 'id' });
+          planStore.createIndex('by-plan-type', 'plan_type');
+          planStore.createIndex('by-active', 'is_active');
+          console.log('✅ [LocalDB] Created subscriptionPlans store');
+        }
+
+        // Create subscriptionUsageLogs store
+        if (!db.objectStoreNames.contains('subscriptionUsageLogs')) {
+          const usageStore = db.createObjectStore('subscriptionUsageLogs', { keyPath: 'id' });
+          usageStore.createIndex('by-farmer', 'farmer_id');
+          usageStore.createIndex('by-subscription', 'subscription_id');
+          usageStore.createIndex('by-metric', 'metric_name');
+          console.log('✅ [LocalDB] Created subscriptionUsageLogs store');
+        }
+
+        // Create paymentRecords store
+        if (!db.objectStoreNames.contains('paymentRecords')) {
+          const payStore = db.createObjectStore('paymentRecords', { keyPath: 'id' });
+          payStore.createIndex('by-farmer', 'farmer_id');
+          payStore.createIndex('by-tenant', 'tenant_id');
+          payStore.createIndex('by-status', 'status');
+          console.log('✅ [LocalDB] Created paymentRecords store');
+        }
+
         // Create syncMetadata store
         if (!db.objectStoreNames.contains('syncMetadata')) {
           db.createObjectStore('syncMetadata', { keyPath: 'key' });
@@ -1801,7 +1837,13 @@ class LocalDatabase {
     console.log('🗑️ [LocalDB] Clearing all data stores...');
     
     // List of all object stores that may exist
-    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig'> = [
+    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig' | 'farmerSubscriptions' | 'subscriptionPlans' | 'subscriptionUsageLogs' | 'paymentRecords'> = [
+      'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 
+      'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 
+      'farmerAlerts', 'tenantConfig',
+      'farmerSubscriptions', 'subscriptionPlans', 'subscriptionUsageLogs', 'paymentRecords'
+    ];
+    const _legacyStoreNames: Array<string> = [
       'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 
       'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 
       'farmerAlerts', 'tenantConfig'
