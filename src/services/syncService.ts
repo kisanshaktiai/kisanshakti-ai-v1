@@ -1066,7 +1066,89 @@ class SyncService {
     }
   }
 
-  getSyncStatus(): boolean {
+  /**
+   * Download subscription, plans, usage logs and payment records for offline use.
+   * Runs FIRST so feature gating works during the rest of the sync.
+   */
+  private async downloadSubscriptionData(client: any, userId: string, tenantId: string): Promise<void> {
+    console.log('📥 [Sync] Fetching subscription data (gating layer)...');
+
+    // 1) Subscription plans (reference data — fetch all active + tenant-specific)
+    try {
+      const { data: plans, error } = await client
+        .from('subscription_plans')
+        .select('*')
+        .eq('is_active', true);
+      if (error) {
+        console.warn('⚠️ [Sync] Failed to fetch plans:', error);
+      } else if (plans && plans.length > 0) {
+        await localDB.saveSubscriptionPlans(plans.map((p: any) => ({ ...p })));
+        console.log(`✅ [Sync] Saved ${plans.length} subscription plans`);
+      }
+    } catch (e) {
+      console.warn('⚠️ [Sync] Plans download failed (non-critical):', e);
+    }
+
+    // 2) Farmer subscriptions (strict tenant + farmer isolation)
+    try {
+      const { data: subs, error } = await client
+        .from('farmer_subscriptions')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('farmer_id', userId);
+      if (error) {
+        console.warn('⚠️ [Sync] Failed to fetch subscriptions:', error);
+      } else if (subs && subs.length > 0) {
+        await localDB.saveFarmerSubscriptions(subs.map((s: any) => ({ ...s })));
+        console.log(`✅ [Sync] Saved ${subs.length} farmer subscriptions`);
+      } else {
+        console.log('ℹ️ [Sync] No active subscription on server for farmer');
+      }
+    } catch (e) {
+      console.warn('⚠️ [Sync] Subscription download failed (non-critical):', e);
+    }
+
+    // 3) Usage logs (current billing period only — last 90 days for safety)
+    try {
+      const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: logs, error } = await client
+        .from('subscription_usage_logs')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('farmer_id', userId)
+        .gte('created_at', ninetyDaysAgo);
+      if (error) {
+        console.warn('⚠️ [Sync] Failed to fetch usage logs:', error);
+      } else if (logs && logs.length > 0) {
+        await localDB.saveUsageLogs(logs.map((l: any) => ({ ...l })));
+        console.log(`✅ [Sync] Saved ${logs.length} usage logs`);
+      }
+    } catch (e) {
+      console.warn('⚠️ [Sync] Usage logs download failed (non-critical):', e);
+    }
+
+    // 4) Payment records (tenant-scoped — farmer linkage via invoice/subscription)
+    try {
+      const { data: payments, error } = await client
+        .from('payment_records')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) {
+        console.warn('⚠️ [Sync] Failed to fetch payment records:', error);
+      } else if (payments && payments.length > 0) {
+        await localDB.savePaymentRecords(
+          payments.map((p: any) => ({ ...p, farmer_id: userId }))
+        );
+        console.log(`✅ [Sync] Saved ${payments.length} payment records`);
+      }
+    } catch (e) {
+      console.warn('⚠️ [Sync] Payment records download failed (non-critical):', e);
+    }
+  }
+
+
     return this.syncInProgress;
   }
 
