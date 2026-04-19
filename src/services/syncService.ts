@@ -471,7 +471,12 @@ class SyncService {
       }
       
       console.log('✅ [Sync] Database access verified, proceeding with download');
-      
+
+      // ====================================================================
+      // STEP 0: Download subscription data FIRST (gating depends on it)
+      // ====================================================================
+      await this.downloadSubscriptionData(client, userId, tenant);
+
       // Download farmers data
       console.log('📥 [Sync] Fetching farmers from server...');
       const { data: farmers, error: farmersError } = await client
