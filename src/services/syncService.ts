@@ -1148,7 +1148,7 @@ class SyncService {
     }
   }
 
-
+  getSyncStatus(): boolean {
     return this.syncInProgress;
   }
 
