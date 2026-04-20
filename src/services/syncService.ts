@@ -477,6 +477,9 @@ class SyncService {
       // ====================================================================
       await this.downloadSubscriptionData(client, userId, tenant);
 
+      // STEP 0.5: Download proactive alerts (offline-resilient inbox)
+      await this.downloadProactiveAlerts(client, userId);
+
       // Download farmers data
       console.log('📥 [Sync] Fetching farmers from server...');
       const { data: farmers, error: farmersError } = await client
@@ -1145,6 +1148,30 @@ class SyncService {
       }
     } catch (e) {
       console.warn('⚠️ [Sync] Payment records download failed (non-critical):', e);
+    }
+  }
+
+  /**
+   * Download last 100 proactive alerts for the farmer for offline access.
+   */
+  private async downloadProactiveAlerts(client: any, userId: string): Promise<void> {
+    try {
+      const { data, error } = await client
+        .from('proactive_alerts')
+        .select('*')
+        .eq('farmer_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) {
+        console.warn('⚠️ [Sync] Failed to fetch proactive alerts:', error);
+        return;
+      }
+      if (data && data.length > 0) {
+        await localDB.saveProactiveAlerts(data.map((a: any) => ({ ...a })));
+        console.log(`✅ [Sync] Saved ${data.length} proactive alerts offline`);
+      }
+    } catch (e) {
+      console.warn('⚠️ [Sync] Proactive alerts download failed (non-critical):', e);
     }
   }
 

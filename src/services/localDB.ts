@@ -965,6 +965,17 @@ interface KisanDB extends DBSchema {
     };
   };
   
+  // proactiveAlerts table (maps to proactive_alerts in Supabase)
+  proactiveAlerts: {
+    key: string;
+    value: ProactiveAlertData;
+    indexes: {
+      'by-farmer': string;
+      'by-status': string;
+      'by-created': string;
+    };
+  };
+
   // syncMetadata table (local only)
   syncMetadata: {
     key: string;
@@ -972,13 +983,41 @@ interface KisanDB extends DBSchema {
   };
 }
 
+/**
+ * Proactive Alerts - mirrors Supabase proactive_alerts table (subset, last 100 per farmer).
+ */
+export interface ProactiveAlertData {
+  id: string;
+  farmer_id: string;
+  tenant_id: string | null;
+  land_id: string | null;
+  alert_category: string;
+  priority: string;
+  title_mr: string | null;
+  title_hi: string | null;
+  title_en: string;
+  message_mr: string | null;
+  message_hi: string | null;
+  message_en: string;
+  action_text_mr: string | null;
+  action_text_hi: string | null;
+  action_text_en: string | null;
+  risk_score: number;
+  status: string;
+  created_at: string;
+  rule_id: string | null;
+  trigger_data: any;
+  decision_reasoning: string | null;
+  lastModified: number;
+}
+
 // ============================================================================
 // LOCAL DATABASE CLASS
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 11; // Bumped for subscription/plans/usage/payments offline mirroring (2026-04-19)
-const SCHEMA_VERSION = 9; // Bumped for offline subscription parity
+const DB_VERSION = 12; // Bumped for proactive_alerts offline mirror (2026-04-20)
+const SCHEMA_VERSION = 10; // Bumped for proactive alerts parity
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -1178,6 +1217,15 @@ class LocalDatabase {
           payStore.createIndex('by-tenant', 'tenant_id');
           payStore.createIndex('by-status', 'status');
           console.log('✅ [LocalDB] Created paymentRecords store');
+        }
+
+        // Create proactiveAlerts store (offline alerts mirror)
+        if (!db.objectStoreNames.contains('proactiveAlerts')) {
+          const paStore = db.createObjectStore('proactiveAlerts', { keyPath: 'id' });
+          paStore.createIndex('by-farmer', 'farmer_id');
+          paStore.createIndex('by-status', 'status');
+          paStore.createIndex('by-created', 'created_at');
+          console.log('✅ [LocalDB] Created proactiveAlerts store');
         }
 
         // Create syncMetadata store
@@ -2036,6 +2084,29 @@ class LocalDatabase {
   async getPaymentRecords(farmerId: string): Promise<PaymentRecordData[]> {
     if (!this.db) await this.initialize();
     return await this.db!.getAllFromIndex('paymentRecords', 'by-farmer', farmerId);
+  }
+
+  // ========== PROACTIVE ALERTS OPERATIONS ==========
+
+  async saveProactiveAlerts(alerts: Omit<ProactiveAlertData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('proactiveAlerts', 'readwrite');
+    for (const a of alerts) {
+      await tx.objectStore('proactiveAlerts').put({ ...a, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getProactiveAlerts(farmerId: string, includeHistory = false): Promise<ProactiveAlertData[]> {
+    if (!this.db) await this.initialize();
+    const all = await this.db!.getAllFromIndex('proactiveAlerts', 'by-farmer', farmerId);
+    const filtered = includeHistory
+      ? all
+      : all.filter(a => ['PENDING', 'DELIVERED', 'SEEN'].includes(a.status));
+    // Sort newest first
+    return filtered.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }
 }
 

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
@@ -11,17 +11,20 @@ interface UseRealtimeDataOptions {
   enabled?: boolean;
 }
 
+const RETRY_DELAYS = [2000, 5000, 10000];
+
 /**
  * Hook to subscribe to real-time updates from Supabase tables
- * Automatically invalidates React Query cache when data changes
+ * Automatically invalidates React Query cache when data changes.
+ * Adds exponential-backoff retry on CHANNEL_ERROR / TIMED_OUT.
  */
 export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptions) {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const { tenant } = useTenant();
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    // Don't subscribe if disabled or no auth context
     if (!enabled || !user?.id) {
       console.log('🔕 [Realtime] Subscription disabled:', { enabled, userId: user?.id });
       return;
@@ -29,68 +32,79 @@ export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptio
 
     console.log('🔔 [Realtime] Setting up subscriptions for:', tables, 'tenant:', tenant?.id);
 
-    const channels = tables.map((table) => {
-      // Create tenant-specific channel name for better isolation
-      const channelName = `realtime-${tenant?.id || 'default'}-${table}-${user.id}`;
-      
+    const activeChannels = new Map<RealtimeTable, ReturnType<typeof supabase.channel>>();
+    const retryTimers = new Map<RealtimeTable, NodeJS.Timeout>();
+    const attempts = new Map<RealtimeTable, number>();
+
+    const handlePayload = (table: RealtimeTable, payload: any) => {
+      const recordId = payload.new?.id || payload.old?.id || 'unknown';
+      console.log(`🔄 [Realtime] ${table} changed:`, payload.eventType, 'record:', recordId);
+
+      switch (table) {
+        case 'lands':
+          queryClient.invalidateQueries({ queryKey: ['lands'] });
+          queryClient.invalidateQueries({ queryKey: ['land'] });
+          queryClient.refetchQueries({ queryKey: ['lands'] });
+          break;
+        case 'crop_schedules':
+          queryClient.invalidateQueries({ queryKey: ['schedules'] });
+          queryClient.invalidateQueries({ queryKey: ['schedule'] });
+          queryClient.refetchQueries({ queryKey: ['schedules'] });
+          break;
+        case 'schedule_tasks':
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['schedules'] });
+          queryClient.refetchQueries({ queryKey: ['tasks'] });
+          break;
+      }
+    };
+
+    const setupChannel = (table: RealtimeTable) => {
+      const channelName = `realtime-${tenant?.id || 'default'}-${table}-${user.id}-${Date.now()}`;
+
       const channel = supabase
         .channel(channelName)
         .on(
           'postgres_changes',
-          {
-            event: '*', // Listen to INSERT, UPDATE, DELETE
-            schema: 'public',
-            table: table,
-          },
-          (payload) => {
-            const recordId = (payload.new as any)?.id || (payload.old as any)?.id || 'unknown';
-            console.log(`🔄 [Realtime] ${table} changed:`, payload.eventType, 'record:', recordId);
-            
-            // Invalidate all relevant queries to trigger immediate refetch
-            switch (table) {
-              case 'lands':
-                queryClient.invalidateQueries({ queryKey: ['lands'] });
-                queryClient.invalidateQueries({ queryKey: ['land'] });
-                // Also refetch to ensure UI updates immediately
-                queryClient.refetchQueries({ queryKey: ['lands'] });
-                console.log('✅ [Realtime] Invalidated and refetched lands cache');
-                break;
-              case 'crop_schedules':
-                queryClient.invalidateQueries({ queryKey: ['schedules'] });
-                queryClient.invalidateQueries({ queryKey: ['schedule'] });
-                queryClient.refetchQueries({ queryKey: ['schedules'] });
-                console.log('✅ [Realtime] Invalidated and refetched schedules cache');
-                break;
-              case 'schedule_tasks':
-                queryClient.invalidateQueries({ queryKey: ['tasks'] });
-                queryClient.invalidateQueries({ queryKey: ['schedules'] });
-                queryClient.refetchQueries({ queryKey: ['tasks'] });
-                console.log('✅ [Realtime] Invalidated and refetched tasks cache');
-                break;
-            }
-          }
+          { event: '*', schema: 'public', table },
+          (payload) => handlePayload(table, payload)
         )
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            console.log(`✅ [Realtime] Successfully subscribed to ${channelName}`);
-          } else if (status === 'CHANNEL_ERROR') {
-            console.error(`❌ [Realtime] Error subscribing to ${channelName}`);
-          } else if (status === 'TIMED_OUT') {
-            console.warn(`⏱️ [Realtime] Subscription timed out for ${channelName}`);
-          } else {
-            console.log(`📡 [Realtime] ${channelName} status:`, status);
+            attempts.set(table, 0);
+            console.log(`✅ [Realtime] Subscribed to ${channelName}`);
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            const attempt = attempts.get(table) || 0;
+            console.warn(`⚠️ [Realtime] ${table} ${status}, attempt ${attempt + 1}`);
+            const existing = activeChannels.get(table);
+            if (existing) {
+              supabase.removeChannel(existing);
+              activeChannels.delete(table);
+            }
+            if (attempt < RETRY_DELAYS.length) {
+              attempts.set(table, attempt + 1);
+              const timer = setTimeout(() => setupChannel(table), RETRY_DELAYS[attempt]);
+              retryTimers.set(table, timer);
+            } else {
+              console.warn(`⚠️ [Realtime] ${table} exhausted retries — query cache will rely on manual invalidation`);
+            }
           }
         });
 
-      return channel;
-    });
-
-    // Cleanup subscriptions on unmount
-    return () => {
-      console.log('🔌 [Realtime] Cleaning up', channels.length, 'subscriptions');
-      channels.forEach((channel) => {
-        supabase.removeChannel(channel);
-      });
+      activeChannels.set(table, channel);
     };
+
+    tables.forEach(setupChannel);
+
+    cleanupRef.current = () => {
+      console.log('🔌 [Realtime] Cleaning up', activeChannels.size, 'subscriptions');
+      retryTimers.forEach(clearTimeout);
+      retryTimers.clear();
+      activeChannels.forEach((ch) => supabase.removeChannel(ch));
+      activeChannels.clear();
+      attempts.clear();
+    };
+
+    return cleanupRef.current;
   }, [tables, enabled, user?.id, tenant?.id, queryClient]);
 }
