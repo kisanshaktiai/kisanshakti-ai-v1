@@ -1174,6 +1174,8 @@ class SyncService {
       console.warn('⚠️ [Sync] Proactive alerts download failed (non-critical):', e);
     }
   }
+
+  getSyncStatus(): boolean {
     return this.syncInProgress;
   }
 
