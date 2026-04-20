@@ -20,32 +20,67 @@ export function SubscriptionProvider({ children }: SubscriptionProviderProps) {
   const queryClient = useQueryClient();
   const farmerId = user?.id;
 
-  // Phase 5: Realtime subscription sync
+  // Phase 5: Realtime subscription sync with retry-on-error
   useEffect(() => {
     if (!farmerId) return;
 
-    const channel = supabase
-      .channel(`subscription:${farmerId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'farmer_subscriptions',
-          filter: `farmer_id=eq.${farmerId}`,
-        },
-        (payload) => {
-          console.log('🔔 [Subscription] Realtime update received:', payload);
-          queryClient.invalidateQueries({ queryKey: [SUBSCRIPTION_QUERY_KEY] });
-        }
-      )
-      .subscribe((status) => {
-        console.log('📡 [Subscription] Realtime channel status:', status);
-      });
+    const RETRY_DELAYS = [2000, 5000, 10000];
+    let attempt = 0;
+    let retryTimer: NodeJS.Timeout | null = null;
+    let currentChannel: ReturnType<typeof supabase.channel> | null = null;
+
+    const setupChannel = () => {
+      const channel = supabase
+        .channel(`subscription:${farmerId}:${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'farmer_subscriptions',
+            filter: `farmer_id=eq.${farmerId}`,
+          },
+          (payload) => {
+            console.log('🔔 [Subscription] Realtime update received:', payload);
+            queryClient.invalidateQueries({ queryKey: [SUBSCRIPTION_QUERY_KEY] });
+          }
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            attempt = 0;
+            console.log('📡 [Subscription] Realtime subscribed');
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.warn(`⚠️ [Subscription] Channel ${status}, attempt ${attempt + 1}`);
+            if (currentChannel) {
+              supabase.removeChannel(currentChannel);
+              currentChannel = null;
+            }
+            if (attempt < RETRY_DELAYS.length) {
+              const delay = RETRY_DELAYS[attempt];
+              attempt += 1;
+              retryTimer = setTimeout(setupChannel, delay);
+            } else {
+              console.warn('⚠️ [Subscription] Retries exhausted — relying on visibility refetch');
+            }
+          }
+        });
+      currentChannel = channel;
+    };
+
+    setupChannel();
+
+    // Refetch when network comes back online
+    const onOnline = () => {
+      console.log('🌐 [Subscription] Online — invalidating cache');
+      queryClient.invalidateQueries({ queryKey: [SUBSCRIPTION_QUERY_KEY] });
+    };
+    window.addEventListener('online', onOnline);
 
     return () => {
       console.log('📡 [Subscription] Unsubscribing realtime channel');
-      supabase.removeChannel(channel);
+      if (retryTimer) clearTimeout(retryTimer);
+      if (currentChannel) supabase.removeChannel(currentChannel);
+      window.removeEventListener('online', onOnline);
     };
   }, [farmerId, queryClient]);
 

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSubscriptionContext } from '@/contexts/SubscriptionContext';
 import { Crown, Sparkles, Leaf, AlertTriangle } from 'lucide-react';
@@ -7,34 +8,46 @@ import { cn } from '@/lib/utils';
  * Compact subscription chip for the app header.
  * Always visible — gives farmers a one-tap entry to /app/subscription.
  * Color-coded by status (active/grace/expired) and plan tier.
+ *
+ * Resilience: if loading >3s with no data, render an optimistic "Free"
+ * chip instead of an indefinite skeleton.
  */
 export function SubscriptionHeaderChip() {
   const navigate = useNavigate();
   const { data, planName, daysRemaining, isInGracePeriod, subscriptionStatus, isLoading } =
     useSubscriptionContext();
+  const [loadTimeoutHit, setLoadTimeoutHit] = useState(false);
 
-  if (isLoading) {
-    return (
-      <div className="h-7 w-16 rounded-full bg-muted/40 animate-pulse" />
-    );
+  useEffect(() => {
+    if (!isLoading || data) {
+      setLoadTimeoutHit(false);
+      return;
+    }
+    const timer = setTimeout(() => setLoadTimeoutHit(true), 3000);
+    return () => clearTimeout(timer);
+  }, [isLoading, data]);
+
+  // Show skeleton only briefly
+  if (isLoading && !data && !loadTimeoutHit) {
+    return <div className="h-7 w-16 rounded-full bg-muted/40 animate-pulse" />;
   }
 
-  const isExpired = subscriptionStatus === 'expired' || (data && !data.valid);
+  // Optimistic fallback: render "Free" chip if data never arrived
+  const effectivePlanName = data ? planName : 'Free';
+  const isExpired = data ? (subscriptionStatus === 'expired' || !data.valid) : false;
   const isExpiringSoon =
-    subscriptionStatus === 'active' && daysRemaining > 0 && daysRemaining <= 7;
+    !!data && subscriptionStatus === 'active' && daysRemaining > 0 && daysRemaining <= 7;
 
-  // Pick icon by plan tier
   const Icon =
-    planName === 'AI PRO' ? Crown : planName === 'Shakti' ? Sparkles : Leaf;
+    effectivePlanName === 'AI PRO' ? Crown : effectivePlanName === 'Shakti' ? Sparkles : Leaf;
 
-  // Pick color by status
   const tone = isExpired
     ? 'bg-destructive/15 text-destructive border-destructive/30'
     : isInGracePeriod || isExpiringSoon
     ? 'bg-warning/15 text-warning border-warning/30'
-    : planName === 'AI PRO'
+    : effectivePlanName === 'AI PRO'
     ? 'bg-gradient-to-r from-warning/20 to-warning/10 text-warning border-warning/30'
-    : planName === 'Shakti'
+    : effectivePlanName === 'Shakti'
     ? 'bg-gradient-to-r from-primary/15 to-accent/15 text-primary border-primary/30'
     : 'bg-success/15 text-success border-success/30';
 
@@ -44,7 +57,7 @@ export function SubscriptionHeaderChip() {
     ? `Grace ${daysRemaining}d`
     : isExpiringSoon
     ? `${daysRemaining}d left`
-    : planName;
+    : effectivePlanName;
 
   return (
     <button
@@ -55,6 +68,7 @@ export function SubscriptionHeaderChip() {
         tone
       )}
       aria-label="View subscription"
+      title={!data ? 'Tap to refresh subscription' : undefined}
     >
       {(isExpired || isExpiringSoon || isInGracePeriod) ? (
         <AlertTriangle className="w-3 h-3" />
