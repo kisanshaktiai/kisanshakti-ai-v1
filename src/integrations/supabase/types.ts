@@ -22798,6 +22798,68 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_alert_actions: {
+        Row: {
+          action_type: string
+          alert_id: string
+          channel: string | null
+          created_at: string
+          delivery_status: string | null
+          farmer_id: string
+          id: string
+          land_id: string | null
+          message: string | null
+          metadata: Json | null
+          performed_by: string
+          response_received: boolean | null
+          response_text: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          action_type: string
+          alert_id: string
+          channel?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          farmer_id: string
+          id?: string
+          land_id?: string | null
+          message?: string | null
+          metadata?: Json | null
+          performed_by: string
+          response_received?: boolean | null
+          response_text?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          action_type?: string
+          alert_id?: string
+          channel?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          farmer_id?: string
+          id?: string
+          land_id?: string | null
+          message?: string | null
+          metadata?: Json | null
+          performed_by?: string
+          response_received?: boolean | null
+          response_text?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_alert_actions_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "proactive_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_archive_jobs: {
         Row: {
           archive_location: string
