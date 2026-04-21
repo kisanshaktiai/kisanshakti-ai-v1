@@ -480,553 +480,529 @@ class SyncService {
       // STEP 0.5: Download proactive alerts (offline-resilient inbox)
       await this.downloadProactiveAlerts(client, userId);
 
-      // Download farmers data
-      console.log('📥 [Sync] Fetching farmers from server...');
-      const { data: farmers, error: farmersError } = await client
-        .from('farmers')
-        .select('*')
-        .eq('tenant_id', tenant)
-        .eq('id', userId);
+      // ====================================================================
+      // PERF: Run independent downloads in PARALLEL.
+      // - farmers, lands, alerts, crops are fully independent.
+      // - schedules must finish before tasks (data dependency).
+      // ====================================================================
+      const phaseStart = Date.now();
 
-      if (farmersError) {
-        console.error('❌ [Sync] Failed to fetch farmers:', farmersError);
-      } else {
-        console.log(`✅ [Sync] Fetched ${farmers?.length || 0} farmers from server`);
-      }
-
-      if (farmers && farmers.length > 0) {
-        await localDB.bulkSave({
-          farmers: farmers.map(f => ({
-            id: f.id,
-            tenant_id: tenantId,
-            farmer_name: f.farmer_name,
-            farmer_code: f.farmer_code,
-            mobile_number: f.mobile_number,
-            aadhaar_number: f.aadhaar_number,
-            shc_id: f.shc_id,
-            location: f.location,
-            pin: f.pin,
-            pin_hash: f.pin_hash,
-            pin_updated_at: f.pin_updated_at,
-            failed_login_attempts: f.failed_login_attempts,
-            last_failed_login: f.last_failed_login,
-            last_login_at: f.last_login_at,
-            login_attempts: f.login_attempts,
-            farming_experience_years: f.farming_experience_years,
-            farm_type: f.farm_type,
-            total_land_acres: f.total_land_acres,
-            primary_crops: f.primary_crops,
-            annual_income_range: f.annual_income_range,
-            has_loan: f.has_loan,
-            loan_amount: f.loan_amount,
-            has_tractor: f.has_tractor,
-            has_irrigation: f.has_irrigation,
-            irrigation_type: f.irrigation_type,
-            has_storage: f.has_storage,
-            associated_tenants: f.associated_tenants,
-            preferred_dealer_id: f.preferred_dealer_id,
-            is_verified: f.is_verified,
-            verified_at: f.verified_at,
-            verified_by: f.verified_by,
-            verification_documents: f.verification_documents,
-            app_install_date: f.app_install_date,
-            last_app_open: f.last_app_open,
-            total_app_opens: f.total_app_opens,
-            total_queries: f.total_queries,
-            language_preference: f.language_preference,
-            preferred_contact_method: f.preferred_contact_method,
-            notes: f.notes,
-            metadata: f.metadata,
-            seller_profile: f.seller_profile,
-            seller_rating: f.seller_rating,
-            seller_verified: f.seller_verified,
-            total_sales: f.total_sales,
-            store_name: f.store_name,
-            store_description: f.store_description,
-            current_subscription_id: f.current_subscription_id,
-            subscription_status: f.subscription_status,
-            subscription_expires_at: f.subscription_expires_at,
-            is_active: f.is_active,
-            archived: f.archived,
-            user_profile_id: f.user_profile_id,
-            created_at: f.created_at,
-            updated_at: f.updated_at,
-            lastModified: new Date(f.updated_at || f.created_at).getTime(),
-            syncStatus: 'synced' as const,
-          })),
-        });
-      }
-
-      // Download lands data using edge function (bypasses RLS issues)
-      console.log('📥 [Sync] Fetching lands via lands-api edge function...');
-      let lands: any[] = [];
-      let landsError: Error | null = null;
-      
-      try {
-        lands = await landsApi.fetchLands();
-        console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API`);
-      } catch (error) {
-        landsError = error as Error;
-        console.error('❌ [Sync] Failed to fetch lands via API:', landsError);
-      }
-
-      // CRITICAL: Clear existing lands before saving new data from server
-      console.log('🗑️ [Sync] Clearing existing lands before server data download...');
-      const existingLands = await localDB.getLands(undefined, userId);
-      console.log(`📊 [Sync] Found ${existingLands.length} existing lands to clear`);
-      
-      // Clear all lands from the store
-      if (existingLands.length > 0) {
-        const db = (localDB as any).db;
-        if (db) {
-          const tx = db.transaction('lands', 'readwrite');
-          const store = tx.objectStore('lands');
-          for (const land of existingLands) {
-            await store.delete(land.id);
-          }
-          await tx.done;
-          console.log(`✅ [Sync] Cleared ${existingLands.length} existing lands`);
-        }
-      }
-
-      if (lands && lands.length > 0) {
-        console.log('💾 [Sync] Saving lands to localDB...');
-        await localDB.bulkSave({
-          lands: lands.map(l => ({
-            id: l.id,
-            tenant_id: tenantId,
-            farmer_id: l.farmer_id,
-            name: l.name,
-            area_acres: l.area_acres,
-            area_guntas: l.area_guntas,
-            area_sqft: l.area_sqft,
-            state: l.state,
-            state_id: l.state_id,
-            district: l.district,
-            district_id: l.district_id,
-            taluka: l.taluka,
-            taluka_id: l.taluka_id,
-            village: l.village,
-            village_id: l.village_id,
-            survey_number: l.survey_number,
-            boundary: l.boundary,
-            boundary_geom: l.boundary_geom,
-            boundary_polygon_old: l.boundary_polygon_old,
-            boundary_method: l.boundary_method,
-            center_lat: l.center_lat,
-            center_lon: l.center_lon,
-            center_point_old: l.center_point_old,
-            location_coords: l.location_coords,
-            location_context: l.location_context,
-            gps_accuracy_meters: l.gps_accuracy_meters,
-            gps_recorded_at: l.gps_recorded_at,
-            elevation_meters: l.elevation_meters,
-            slope_percentage: l.slope_percentage,
-            ownership_type: l.ownership_type,
-            land_type: l.land_type,
-            soil_type: l.soil_type,
-            soil_tested: l.soil_tested,
-            last_soil_test_date: l.last_soil_test_date,
-            soil_ph: l.soil_ph,
-            organic_carbon_percent: l.organic_carbon_percent,
-            nitrogen_kg_per_ha: l.nitrogen_kg_per_ha,
-            phosphorus_kg_per_ha: l.phosphorus_kg_per_ha,
-            potassium_kg_per_ha: l.potassium_kg_per_ha,
-            water_source: l.water_source,
-            irrigation_source: l.irrigation_source,
-            irrigation_type: l.irrigation_type,
-            current_crop: l.current_crop,
-            current_crop_id: l.current_crop_id,
-            crop_stage: l.crop_stage,
-            planting_date: l.planting_date,
-            cultivation_date: l.cultivation_date,
-            last_sowing_date: l.last_sowing_date,
-            harvest_date: l.harvest_date,
-            expected_harvest_date: l.expected_harvest_date,
-            previous_crop: l.previous_crop,
-            previous_crop_id: l.previous_crop_id,
-            last_crop: l.last_crop,
-            last_harvest_date: l.last_harvest_date,
-            ndvi_tested: l.ndvi_tested,
-            last_ndvi_calculation: l.last_ndvi_calculation,
-            last_ndvi_value: l.last_ndvi_value,
-            ndvi_thumbnail_url: l.ndvi_thumbnail_url,
-            ndvi_geotiff_url: l.ndvi_geotiff_url || null,
-            ndvi_status: l.ndvi_status || null,
-            last_processed_at: l.last_processed_at,
-            tile_id: l.tile_id,
-            tile_ids: l.tile_ids,
-            mgrs_tile_id: l.mgrs_tile_id,
-            land_documents: l.land_documents,
-            notes: l.notes,
-            marketplace_enabled: l.marketplace_enabled,
-            soil_confidence_level: l.soil_confidence_level || null,
-            soil_data_source: l.soil_data_source || null,
-            current_moisture_status: l.current_moisture_status || null,
-            last_moisture_update: l.last_moisture_update || null,
-            is_active: l.is_active,
-            deleted_at: l.deleted_at,
-            created_at: l.created_at,
-            updated_at: l.updated_at,
-            lastModified: new Date(l.updated_at || l.created_at).getTime(),
-            syncStatus: 'synced' as const,
-          })),
-        });
-        console.log(`✅ [Sync] Saved ${lands.length} lands to localDB`);
-      } else {
-        console.log('ℹ️ [Sync] No lands to save from server');
-      }
-
-      // Download schedules data using edge function (bypasses RLS issues)
-      console.log('📥 [Sync] Fetching schedules via schedules-api edge function...');
-      let schedules: any[] = [];
-      let schedulesError: Error | null = null;
-      
-      try {
-        schedules = await schedulesApi.fetchSchedules();
-        console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API`);
-      } catch (error) {
-        schedulesError = error as Error;
-        console.error('❌ [Sync] Failed to fetch schedules via API:', schedulesError);
-      }
-
-      // Clear existing schedules before saving
-      console.log('🗑️ [Sync] Clearing existing schedules before server data download...');
-      const existingSchedules = await localDB.getAllSchedules(userId);
-      console.log(`📊 [Sync] Found ${existingSchedules.length} existing schedules to clear`);
-      
-      // Clear all schedules from the store
-      if (existingSchedules.length > 0) {
-        const db = (localDB as any).db;
-        if (db) {
-          const tx = db.transaction('cropSchedules', 'readwrite');
-          const store = tx.objectStore('cropSchedules');
-          for (const schedule of existingSchedules) {
-            await store.delete(schedule.id);
-          }
-          await tx.done;
-          console.log(`✅ [Sync] Cleared ${existingSchedules.length} existing schedules`);
-        }
-      }
-
-      if (schedules && schedules.length > 0) {
-        console.log('💾 [Sync] Saving schedules to localDB...');
-        await localDB.bulkSave({
-          schedules: schedules.map(s => ({
-            // Core fields
-            id: s.id,
-            tenant_id: tenantId,
-            farmer_id: s.farmer_id,
-            land_id: s.land_id,
-            crop_name: s.crop_name,
-            crop_variety: s.crop_variety,
-            sowing_date: s.sowing_date || new Date().toISOString(),
-            expected_harvest_date: s.expected_harvest_date,
-            schedule_version: s.schedule_version,
-            generated_at: s.generated_at,
-            generation_language: s.generation_language,
-            generation_params: s.generation_params,
-            country: s.country,
-            // Weather
-            last_weather_update: s.last_weather_update,
-            last_weather_check: s.last_weather_check || null,
-            weather_data: s.weather_data,
-            weather_auto_update_enabled: s.weather_auto_update_enabled || null,
-            ai_model: s.ai_model,
-            // Status
-            is_active: s.is_active,
-            completed_at: s.completed_at,
-            status: s.status || null,
-            // Actual outcomes
-            actual_harvest_date: s.actual_harvest_date || null,
-            actual_profit: s.actual_profit || null,
-            actual_total_cost: s.actual_total_cost || null,
-            actual_yield_quintals: s.actual_yield_quintals || null,
-            outcome_recorded_at: s.outcome_recorded_at || null,
-            // Expected yields
-            expected_gross_revenue: s.expected_gross_revenue || null,
-            expected_market_price_per_quintal: s.expected_market_price_per_quintal || null,
-            expected_net_profit: s.expected_net_profit || null,
-            expected_profit: s.expected_profit || null,
-            expected_yield_per_acre: s.expected_yield_per_acre || null,
-            expected_yield_quintals: s.expected_yield_quintals || null,
-            // Farm inputs - Fertilizers
-            fertilizer_k_kg: s.fertilizer_k_kg || null,
-            fertilizer_n_kg: s.fertilizer_n_kg || null,
-            fertilizer_p_kg: s.fertilizer_p_kg || null,
-            organic_fertilizer_kg: s.organic_fertilizer_kg || null,
-            organic_manure_kg: s.organic_manure_kg || null,
-            vermicompost_kg: s.vermicompost_kg || null,
-            bio_fertilizer_units: s.bio_fertilizer_units || null,
-            // Farm inputs - Pesticides
-            bio_pesticide_ml: s.bio_pesticide_ml || null,
-            fungicide_gm: s.fungicide_gm || null,
-            herbicide_ml: s.herbicide_ml || null,
-            insecticide_ml: s.insecticide_ml || null,
-            pesticide_requirements: s.pesticide_requirements || null,
-            // Farm inputs - Other
-            seed_quantity_kg: s.seed_quantity_kg || null,
-            pgr_hormone_ml: s.pgr_hormone_ml || null,
-            growth_regulators: s.growth_regulators || null,
-            organic_input_details: s.organic_input_details || null,
-            // Water and irrigation
-            irrigation_count_total: s.irrigation_count_total || null,
-            water_per_irrigation_liters: s.water_per_irrigation_liters || null,
-            water_requirement_liters_total: s.water_requirement_liters_total || null,
-            total_water_requirement_liters: s.total_water_requirement_liters || null,
-            // Cost breakdown
-            cost_by_category: s.cost_by_category || null,
-            cost_by_stage: s.cost_by_stage || null,
-            total_estimated_cost: s.total_estimated_cost || null,
-            total_labor_cost: s.total_labor_cost || null,
-            total_material_cost: s.total_material_cost || null,
-            labor_rate_used: s.labor_rate_used || null,
-            // Task tracking
-            tasks_completed_count: s.tasks_completed_count || null,
-            tasks_on_time_count: s.tasks_on_time_count || null,
-            tasks_total_count: s.tasks_total_count || null,
-            total_duration_days: s.total_duration_days || null,
-            stages_covered: s.stages_covered || null,
-            // Location context
-            agro_climatic_zone: s.agro_climatic_zone || null,
-            district_name: s.district_name || null,
-            state_region: s.state_region || null,
-            taluka_name: s.taluka_name || null,
-            regional_dialect_zone: s.regional_dialect_zone || null,
-            // Farming details
-            farming_type: s.farming_type || null,
-            calculated_for_area_acres: s.calculated_for_area_acres || null,
-            // Suitability and quality
-            suitability_score: s.suitability_score || null,
-            suitability_warnings: s.suitability_warnings || null,
-            data_quality_score: s.data_quality_score || null,
-            schedule_accuracy_score: s.schedule_accuracy_score || null,
-            // Yield optimization
-            yield_boosting_techniques: s.yield_boosting_techniques || null,
-            yield_multiplier_target: s.yield_multiplier_target || null,
-            // Product recommendations
-            products_recommended_count: s.products_recommended_count || null,
-            recommendation_order: s.recommendation_order || null,
-            recommended_products: s.recommended_products || null,
-            // Training data flags
-            is_training_candidate: s.is_training_candidate || null,
-            training_batch_id: s.training_batch_id || null,
-            training_excluded_reason: s.training_excluded_reason || null,
-            training_processed: s.training_processed || null,
-            // Farmer feedback
-            farmer_feedback: s.farmer_feedback || null,
-            farmer_rating: s.farmer_rating || null,
-            // Input data snapshots
-            input_land_coordinates: s.input_land_coordinates || null,
-            input_soil_data: s.input_soil_data || null,
-            input_weather_data: s.input_weather_data || null,
-            // Intercrop data
-            backdated_consent: s.backdated_consent ?? null,
-            backdated_consent_at: s.backdated_consent_at || null,
-            intercrop_name: s.intercrop_name || null,
-            intercrop_variety: s.intercrop_variety || null,
-            intercrop_sowing_date: s.intercrop_sowing_date || null,
-            intercrop_area_percent: s.intercrop_area_percent || null,
-            intercrop_2_name: s.intercrop_2_name || null,
-            intercrop_2_variety: s.intercrop_2_variety || null,
-            intercrop_2_sowing_date: s.intercrop_2_sowing_date || null,
-            intercrop_2_area_percent: s.intercrop_2_area_percent || null,
-            intercrop_3_name: s.intercrop_3_name || null,
-            intercrop_3_variety: s.intercrop_3_variety || null,
-            intercrop_3_sowing_date: s.intercrop_3_sowing_date || null,
-            intercrop_3_area_percent: s.intercrop_3_area_percent || null,
-            // Additional metadata
-            metadata: s.metadata || null,
-            // Timestamps
-            created_at: s.created_at,
-            updated_at: s.updated_at,
-            lastModified: new Date(s.updated_at || s.created_at).getTime(),
-            syncStatus: 'synced' as const,
-          })),
-        });
-        console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
-      } else {
-        console.log('ℹ️ [Sync] No schedules to save from server');
-      }
-
-      // Download schedule_tasks for all schedules
-      console.log('📥 [Sync] Fetching schedule tasks...');
-      let tasks: any[] = [];
-      
-      try {
-        tasks = await schedulesApi.fetchTasks();
-        console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server`);
-      } catch (error) {
-        console.warn('⚠️ [Sync] Failed to fetch tasks (may not be implemented yet):', error);
-      }
-
-      // Clear existing tasks before saving
-      if (tasks && tasks.length > 0) {
-        console.log('🗑️ [Sync] Clearing existing tasks before server data download...');
-        const db = (localDB as any).db;
-        if (db) {
-          const tx = db.transaction('scheduleTasks', 'readwrite');
-          const store = tx.objectStore('scheduleTasks');
-          await store.clear();
-          await tx.done;
-        }
-
-        console.log('💾 [Sync] Saving tasks to localDB...');
-        await localDB.bulkSave({
-          tasks: tasks.map(t => ({
-            id: t.id,
-            schedule_id: t.schedule_id,
-            tenant_id: tenantId,
-            farmer_id: t.farmer_id || null,
-            task_name: t.task_name,
-            task_type: t.task_type,
-            task_date: t.task_date,
-            task_description: t.task_description || null,
-            days_from_sowing: t.days_from_sowing || null,
-            sequence_order: t.sequence_order || null,
-            stage_key: t.stage_key || null,
-            stage_name: t.stage_name || null,
-            stage_order: t.stage_order || null,
-            duration_hours: t.duration_hours || null,
-            priority: t.priority || null,
-            weather_dependent: t.weather_dependent || null,
-            detailed_steps: t.detailed_steps || null,
-            resources: t.resources || null,
-            estimated_cost: t.estimated_cost || null,
-            currency: t.currency || null,
-            water_required_liters: t.water_required_liters || null,
-            instructions: t.instructions || null,
-            precautions: t.precautions || null,
-            regional_terms: t.regional_terms || null,
-            ideal_weather: t.ideal_weather || null,
-            weather_risk_level: t.weather_risk_level || null,
-            status: t.status || null,
-            completed_at: t.completed_at || null,
-            completed_by: t.completed_by || null,
-            completion_notes: t.completion_notes || null,
-            original_date: t.original_date || null,
-            reschedule_reason: t.reschedule_reason || null,
-            auto_rescheduled: t.auto_rescheduled || null,
-            climate_adjusted: t.climate_adjusted || null,
-            original_date_before_climate_adjust: t.original_date_before_climate_adjust || null,
-            climate_adjustment_reason: t.climate_adjustment_reason || null,
-            product_recommendations: t.product_recommendations || null,
-            product_type: t.product_type || null,
-            yield_boost_technique: t.yield_boost_technique || null,
-            yield_impact: t.yield_impact || null,
-            yield_impact_details: t.yield_impact_details || null,
-            skip_penalty: t.skip_penalty || null,
-            skip_penalty_details: t.skip_penalty_details || null,
-            language: t.language || null,
-            created_at: t.created_at || null,
-            updated_at: t.updated_at || null,
-            lastModified: new Date(t.updated_at || t.created_at || Date.now()).getTime(),
-            syncStatus: 'synced' as const,
-          })),
-        });
-        console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
-      }
-      
-      // Download crops reference data
-      console.log('📥 [Sync] Fetching crops reference data...');
-      try {
-        const { data: crops, error: cropsError } = await client
-          .from('crops')
-          .select('*')
-          .eq('is_active', true)
-          .order('display_order', { ascending: true });
-
-        if (cropsError) {
-          console.warn('⚠️ [Sync] Failed to fetch crops:', cropsError);
-        } else if (crops && crops.length > 0) {
-          console.log(`✅ [Sync] Fetched ${crops.length} crops from server`);
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('crops', 'readwrite');
-            const store = tx.objectStore('crops');
-            await store.clear();
-            for (const c of crops) {
-              await store.put({
-                id: c.id,
-                value: c.value,
-                label: c.label,
-                label_local: c.label_local || null,
-                label_hi: c.label_hi || null,
-                label_mr: c.label_mr || null,
-                local_name: c.local_name || null,
-                icon: c.icon || '🌾',
-                description: c.description || null,
-                duration_days: c.duration_days || null,
-                season: c.season || null,
-                crop_group_id: c.crop_group_id || null,
-                display_order: c.display_order || 0,
-                is_active: c.is_active,
-                is_popular: c.is_popular || null,
-                metadata: c.metadata || null,
-                created_at: c.created_at || null,
-                updated_at: c.updated_at || new Date().toISOString(),
-                lastModified: new Date(c.updated_at || c.created_at || Date.now()).getTime(),
-                syncStatus: 'synced' as const,
-              });
-            }
-            await tx.done;
-            console.log(`✅ [Sync] Saved ${crops.length} crops to localDB`);
-          }
-        }
-      } catch (cropError) {
-        console.warn('⚠️ [Sync] Crops download failed (non-critical):', cropError);
-      }
-
-      // Download farmer alerts
-      console.log('📥 [Sync] Fetching farmer alerts...');
-      try {
-        const { data: alerts, error: alertsError } = await client
-          .from('farmer_alerts')
+      const downloadFarmers = async () => {
+        console.log('📥 [Sync] Fetching farmers from server...');
+        const { data: farmers, error: farmersError } = await client
+          .from('farmers')
           .select('*')
           .eq('tenant_id', tenant)
-          .eq('farmer_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(100);
+          .eq('id', userId);
 
-        if (alertsError) {
-          console.warn('⚠️ [Sync] Failed to fetch alerts:', alertsError);
-        } else if (alerts && alerts.length > 0) {
-          console.log(`✅ [Sync] Fetched ${alerts.length} alerts from server`);
+        if (farmersError) {
+          console.error('❌ [Sync] Failed to fetch farmers:', farmersError);
+          return;
+        }
+        console.log(`✅ [Sync] Fetched ${farmers?.length || 0} farmers from server`);
+
+        if (farmers && farmers.length > 0) {
+          await localDB.bulkSave({
+            farmers: farmers.map(f => ({
+              id: f.id,
+              tenant_id: tenantId,
+              farmer_name: f.farmer_name,
+              farmer_code: f.farmer_code,
+              mobile_number: f.mobile_number,
+              aadhaar_number: f.aadhaar_number,
+              shc_id: f.shc_id,
+              location: f.location,
+              pin: f.pin,
+              pin_hash: f.pin_hash,
+              pin_updated_at: f.pin_updated_at,
+              failed_login_attempts: f.failed_login_attempts,
+              last_failed_login: f.last_failed_login,
+              last_login_at: f.last_login_at,
+              login_attempts: f.login_attempts,
+              farming_experience_years: f.farming_experience_years,
+              farm_type: f.farm_type,
+              total_land_acres: f.total_land_acres,
+              primary_crops: f.primary_crops,
+              annual_income_range: f.annual_income_range,
+              has_loan: f.has_loan,
+              loan_amount: f.loan_amount,
+              has_tractor: f.has_tractor,
+              has_irrigation: f.has_irrigation,
+              irrigation_type: f.irrigation_type,
+              has_storage: f.has_storage,
+              associated_tenants: f.associated_tenants,
+              preferred_dealer_id: f.preferred_dealer_id,
+              is_verified: f.is_verified,
+              verified_at: f.verified_at,
+              verified_by: f.verified_by,
+              verification_documents: f.verification_documents,
+              app_install_date: f.app_install_date,
+              last_app_open: f.last_app_open,
+              total_app_opens: f.total_app_opens,
+              total_queries: f.total_queries,
+              language_preference: f.language_preference,
+              preferred_contact_method: f.preferred_contact_method,
+              notes: f.notes,
+              metadata: f.metadata,
+              seller_profile: f.seller_profile,
+              seller_rating: f.seller_rating,
+              seller_verified: f.seller_verified,
+              total_sales: f.total_sales,
+              store_name: f.store_name,
+              store_description: f.store_description,
+              current_subscription_id: f.current_subscription_id,
+              subscription_status: f.subscription_status,
+              subscription_expires_at: f.subscription_expires_at,
+              is_active: f.is_active,
+              archived: f.archived,
+              user_profile_id: f.user_profile_id,
+              created_at: f.created_at,
+              updated_at: f.updated_at,
+              lastModified: new Date(f.updated_at || f.created_at).getTime(),
+              syncStatus: 'synced' as const,
+            })),
+          });
+        }
+      };
+
+      // Lands download (uses edge function); returns count for verification
+      let lands: any[] = [];
+      const downloadLands = async () => {
+        console.log('📥 [Sync] Fetching lands via lands-api edge function...');
+        try {
+          lands = await landsApi.fetchLands();
+          console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API`);
+        } catch (error) {
+          console.error('❌ [Sync] Failed to fetch lands via API:', error);
+        }
+
+        // Clear existing lands before saving new data from server
+        const existingLands = await localDB.getLands(undefined, userId);
+        if (existingLands.length > 0) {
           const db = (localDB as any).db;
           if (db) {
-            const tx = db.transaction('farmerAlerts', 'readwrite');
-            const store = tx.objectStore('farmerAlerts');
-            await store.clear();
-            for (const a of alerts) {
-              await store.put({
-                id: a.id,
-                tenant_id: a.tenant_id,
-                farmer_id: a.farmer_id,
-                land_id: a.land_id,
-                title: a.title,
-                message: a.message,
-                alert_type: a.alert_type,
-                priority: a.priority,
-                ai_reasoning: a.ai_reasoning || null,
-                action_required: a.action_required || null,
-                data_source: a.data_source || null,
-                schedule_id: a.schedule_id || null,
-                is_read: a.is_read || false,
-                is_actioned: a.is_actioned || false,
-                actioned_at: a.actioned_at || null,
-                expires_at: a.expires_at || null,
-                created_at: a.created_at || null,
-                lastModified: new Date(a.created_at || Date.now()).getTime(),
-                syncStatus: 'synced' as const,
-              });
+            const tx = db.transaction('lands', 'readwrite');
+            const store = tx.objectStore('lands');
+            for (const land of existingLands) {
+              await store.delete(land.id);
             }
             await tx.done;
-            console.log(`✅ [Sync] Saved ${alerts.length} alerts to localDB`);
           }
         }
-      } catch (alertError) {
-        console.warn('⚠️ [Sync] Alerts download failed (non-critical):', alertError);
-      }
+
+        if (lands && lands.length > 0) {
+          await localDB.bulkSave({
+            lands: lands.map(l => ({
+              id: l.id,
+              tenant_id: tenantId,
+              farmer_id: l.farmer_id,
+              name: l.name,
+              area_acres: l.area_acres,
+              area_guntas: l.area_guntas,
+              area_sqft: l.area_sqft,
+              state: l.state,
+              state_id: l.state_id,
+              district: l.district,
+              district_id: l.district_id,
+              taluka: l.taluka,
+              taluka_id: l.taluka_id,
+              village: l.village,
+              village_id: l.village_id,
+              survey_number: l.survey_number,
+              boundary: l.boundary,
+              boundary_geom: l.boundary_geom,
+              boundary_polygon_old: l.boundary_polygon_old,
+              boundary_method: l.boundary_method,
+              center_lat: l.center_lat,
+              center_lon: l.center_lon,
+              center_point_old: l.center_point_old,
+              location_coords: l.location_coords,
+              location_context: l.location_context,
+              gps_accuracy_meters: l.gps_accuracy_meters,
+              gps_recorded_at: l.gps_recorded_at,
+              elevation_meters: l.elevation_meters,
+              slope_percentage: l.slope_percentage,
+              ownership_type: l.ownership_type,
+              land_type: l.land_type,
+              soil_type: l.soil_type,
+              soil_tested: l.soil_tested,
+              last_soil_test_date: l.last_soil_test_date,
+              soil_ph: l.soil_ph,
+              organic_carbon_percent: l.organic_carbon_percent,
+              nitrogen_kg_per_ha: l.nitrogen_kg_per_ha,
+              phosphorus_kg_per_ha: l.phosphorus_kg_per_ha,
+              potassium_kg_per_ha: l.potassium_kg_per_ha,
+              water_source: l.water_source,
+              irrigation_source: l.irrigation_source,
+              irrigation_type: l.irrigation_type,
+              current_crop: l.current_crop,
+              current_crop_id: l.current_crop_id,
+              crop_stage: l.crop_stage,
+              planting_date: l.planting_date,
+              cultivation_date: l.cultivation_date,
+              last_sowing_date: l.last_sowing_date,
+              harvest_date: l.harvest_date,
+              expected_harvest_date: l.expected_harvest_date,
+              previous_crop: l.previous_crop,
+              previous_crop_id: l.previous_crop_id,
+              last_crop: l.last_crop,
+              last_harvest_date: l.last_harvest_date,
+              ndvi_tested: l.ndvi_tested,
+              last_ndvi_calculation: l.last_ndvi_calculation,
+              last_ndvi_value: l.last_ndvi_value,
+              ndvi_thumbnail_url: l.ndvi_thumbnail_url,
+              ndvi_geotiff_url: l.ndvi_geotiff_url || null,
+              ndvi_status: l.ndvi_status || null,
+              last_processed_at: l.last_processed_at,
+              tile_id: l.tile_id,
+              tile_ids: l.tile_ids,
+              mgrs_tile_id: l.mgrs_tile_id,
+              land_documents: l.land_documents,
+              notes: l.notes,
+              marketplace_enabled: l.marketplace_enabled,
+              soil_confidence_level: l.soil_confidence_level || null,
+              soil_data_source: l.soil_data_source || null,
+              current_moisture_status: l.current_moisture_status || null,
+              last_moisture_update: l.last_moisture_update || null,
+              is_active: l.is_active,
+              deleted_at: l.deleted_at,
+              created_at: l.created_at,
+              updated_at: l.updated_at,
+              lastModified: new Date(l.updated_at || l.created_at).getTime(),
+              syncStatus: 'synced' as const,
+            })),
+          });
+          console.log(`✅ [Sync] Saved ${lands.length} lands to localDB`);
+        }
+      };
+
+      // Schedules + tasks (sequential within this branch — tasks depend on schedules)
+      let schedules: any[] = [];
+      const downloadSchedulesAndTasks = async () => {
+        console.log('📥 [Sync] Fetching schedules via schedules-api edge function...');
+        try {
+          schedules = await schedulesApi.fetchSchedules();
+          console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API`);
+        } catch (error) {
+          console.error('❌ [Sync] Failed to fetch schedules via API:', error);
+        }
+
+        // Clear existing schedules before saving
+        const existingSchedules = await localDB.getAllSchedules(userId);
+        if (existingSchedules.length > 0) {
+          const db = (localDB as any).db;
+          if (db) {
+            const tx = db.transaction('cropSchedules', 'readwrite');
+            const store = tx.objectStore('cropSchedules');
+            for (const schedule of existingSchedules) {
+              await store.delete(schedule.id);
+            }
+            await tx.done;
+          }
+        }
+
+        if (schedules && schedules.length > 0) {
+          await localDB.bulkSave({
+            schedules: schedules.map(s => ({
+              id: s.id,
+              tenant_id: tenantId,
+              farmer_id: s.farmer_id,
+              land_id: s.land_id,
+              crop_name: s.crop_name,
+              crop_variety: s.crop_variety,
+              sowing_date: s.sowing_date || new Date().toISOString(),
+              expected_harvest_date: s.expected_harvest_date,
+              schedule_version: s.schedule_version,
+              generated_at: s.generated_at,
+              generation_language: s.generation_language,
+              generation_params: s.generation_params,
+              country: s.country,
+              last_weather_update: s.last_weather_update,
+              last_weather_check: s.last_weather_check || null,
+              weather_data: s.weather_data,
+              weather_auto_update_enabled: s.weather_auto_update_enabled || null,
+              ai_model: s.ai_model,
+              is_active: s.is_active,
+              completed_at: s.completed_at,
+              status: s.status || null,
+              actual_harvest_date: s.actual_harvest_date || null,
+              actual_profit: s.actual_profit || null,
+              actual_total_cost: s.actual_total_cost || null,
+              actual_yield_quintals: s.actual_yield_quintals || null,
+              outcome_recorded_at: s.outcome_recorded_at || null,
+              expected_gross_revenue: s.expected_gross_revenue || null,
+              expected_market_price_per_quintal: s.expected_market_price_per_quintal || null,
+              expected_net_profit: s.expected_net_profit || null,
+              expected_profit: s.expected_profit || null,
+              expected_yield_per_acre: s.expected_yield_per_acre || null,
+              expected_yield_quintals: s.expected_yield_quintals || null,
+              fertilizer_k_kg: s.fertilizer_k_kg || null,
+              fertilizer_n_kg: s.fertilizer_n_kg || null,
+              fertilizer_p_kg: s.fertilizer_p_kg || null,
+              organic_fertilizer_kg: s.organic_fertilizer_kg || null,
+              organic_manure_kg: s.organic_manure_kg || null,
+              vermicompost_kg: s.vermicompost_kg || null,
+              bio_fertilizer_units: s.bio_fertilizer_units || null,
+              bio_pesticide_ml: s.bio_pesticide_ml || null,
+              fungicide_gm: s.fungicide_gm || null,
+              herbicide_ml: s.herbicide_ml || null,
+              insecticide_ml: s.insecticide_ml || null,
+              pesticide_requirements: s.pesticide_requirements || null,
+              seed_quantity_kg: s.seed_quantity_kg || null,
+              pgr_hormone_ml: s.pgr_hormone_ml || null,
+              growth_regulators: s.growth_regulators || null,
+              organic_input_details: s.organic_input_details || null,
+              irrigation_count_total: s.irrigation_count_total || null,
+              water_per_irrigation_liters: s.water_per_irrigation_liters || null,
+              water_requirement_liters_total: s.water_requirement_liters_total || null,
+              total_water_requirement_liters: s.total_water_requirement_liters || null,
+              cost_by_category: s.cost_by_category || null,
+              cost_by_stage: s.cost_by_stage || null,
+              total_estimated_cost: s.total_estimated_cost || null,
+              total_labor_cost: s.total_labor_cost || null,
+              total_material_cost: s.total_material_cost || null,
+              labor_rate_used: s.labor_rate_used || null,
+              tasks_completed_count: s.tasks_completed_count || null,
+              tasks_on_time_count: s.tasks_on_time_count || null,
+              tasks_total_count: s.tasks_total_count || null,
+              total_duration_days: s.total_duration_days || null,
+              stages_covered: s.stages_covered || null,
+              agro_climatic_zone: s.agro_climatic_zone || null,
+              district_name: s.district_name || null,
+              state_region: s.state_region || null,
+              taluka_name: s.taluka_name || null,
+              regional_dialect_zone: s.regional_dialect_zone || null,
+              farming_type: s.farming_type || null,
+              calculated_for_area_acres: s.calculated_for_area_acres || null,
+              suitability_score: s.suitability_score || null,
+              suitability_warnings: s.suitability_warnings || null,
+              data_quality_score: s.data_quality_score || null,
+              schedule_accuracy_score: s.schedule_accuracy_score || null,
+              yield_boosting_techniques: s.yield_boosting_techniques || null,
+              yield_multiplier_target: s.yield_multiplier_target || null,
+              products_recommended_count: s.products_recommended_count || null,
+              recommendation_order: s.recommendation_order || null,
+              recommended_products: s.recommended_products || null,
+              is_training_candidate: s.is_training_candidate || null,
+              training_batch_id: s.training_batch_id || null,
+              training_excluded_reason: s.training_excluded_reason || null,
+              training_processed: s.training_processed || null,
+              farmer_feedback: s.farmer_feedback || null,
+              farmer_rating: s.farmer_rating || null,
+              input_land_coordinates: s.input_land_coordinates || null,
+              input_soil_data: s.input_soil_data || null,
+              input_weather_data: s.input_weather_data || null,
+              backdated_consent: s.backdated_consent ?? null,
+              backdated_consent_at: s.backdated_consent_at || null,
+              intercrop_name: s.intercrop_name || null,
+              intercrop_variety: s.intercrop_variety || null,
+              intercrop_sowing_date: s.intercrop_sowing_date || null,
+              intercrop_area_percent: s.intercrop_area_percent || null,
+              intercrop_2_name: s.intercrop_2_name || null,
+              intercrop_2_variety: s.intercrop_2_variety || null,
+              intercrop_2_sowing_date: s.intercrop_2_sowing_date || null,
+              intercrop_2_area_percent: s.intercrop_2_area_percent || null,
+              intercrop_3_name: s.intercrop_3_name || null,
+              intercrop_3_variety: s.intercrop_3_variety || null,
+              intercrop_3_sowing_date: s.intercrop_3_sowing_date || null,
+              intercrop_3_area_percent: s.intercrop_3_area_percent || null,
+              metadata: s.metadata || null,
+              created_at: s.created_at,
+              updated_at: s.updated_at,
+              lastModified: new Date(s.updated_at || s.created_at).getTime(),
+              syncStatus: 'synced' as const,
+            })),
+          });
+          console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
+        }
+
+        // Tasks depend on schedules — must run AFTER schedules complete
+        console.log('📥 [Sync] Fetching schedule tasks...');
+        let tasks: any[] = [];
+        try {
+          tasks = await schedulesApi.fetchTasks();
+          console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server`);
+        } catch (error) {
+          console.warn('⚠️ [Sync] Failed to fetch tasks (may not be implemented yet):', error);
+        }
+
+        if (tasks && tasks.length > 0) {
+          const db = (localDB as any).db;
+          if (db) {
+            const tx = db.transaction('scheduleTasks', 'readwrite');
+            const store = tx.objectStore('scheduleTasks');
+            await store.clear();
+            await tx.done;
+          }
+
+          await localDB.bulkSave({
+            tasks: tasks.map(t => ({
+              id: t.id,
+              schedule_id: t.schedule_id,
+              tenant_id: tenantId,
+              farmer_id: t.farmer_id || null,
+              task_name: t.task_name,
+              task_type: t.task_type,
+              task_date: t.task_date,
+              task_description: t.task_description || null,
+              days_from_sowing: t.days_from_sowing || null,
+              sequence_order: t.sequence_order || null,
+              stage_key: t.stage_key || null,
+              stage_name: t.stage_name || null,
+              stage_order: t.stage_order || null,
+              duration_hours: t.duration_hours || null,
+              priority: t.priority || null,
+              weather_dependent: t.weather_dependent || null,
+              detailed_steps: t.detailed_steps || null,
+              resources: t.resources || null,
+              estimated_cost: t.estimated_cost || null,
+              currency: t.currency || null,
+              water_required_liters: t.water_required_liters || null,
+              instructions: t.instructions || null,
+              precautions: t.precautions || null,
+              regional_terms: t.regional_terms || null,
+              ideal_weather: t.ideal_weather || null,
+              weather_risk_level: t.weather_risk_level || null,
+              status: t.status || null,
+              completed_at: t.completed_at || null,
+              completed_by: t.completed_by || null,
+              completion_notes: t.completion_notes || null,
+              original_date: t.original_date || null,
+              reschedule_reason: t.reschedule_reason || null,
+              auto_rescheduled: t.auto_rescheduled || null,
+              climate_adjusted: t.climate_adjusted || null,
+              original_date_before_climate_adjust: t.original_date_before_climate_adjust || null,
+              climate_adjustment_reason: t.climate_adjustment_reason || null,
+              product_recommendations: t.product_recommendations || null,
+              product_type: t.product_type || null,
+              yield_boost_technique: t.yield_boost_technique || null,
+              yield_impact: t.yield_impact || null,
+              yield_impact_details: t.yield_impact_details || null,
+              skip_penalty: t.skip_penalty || null,
+              skip_penalty_details: t.skip_penalty_details || null,
+              language: t.language || null,
+              created_at: t.created_at || null,
+              updated_at: t.updated_at || null,
+              lastModified: new Date(t.updated_at || t.created_at || Date.now()).getTime(),
+              syncStatus: 'synced' as const,
+            })),
+          });
+          console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
+        }
+      };
+
+      const downloadCrops = async () => {
+        console.log('📥 [Sync] Fetching crops reference data...');
+        try {
+          const { data: crops, error: cropsError } = await client
+            .from('crops')
+            .select('*')
+            .eq('is_active', true)
+            .order('display_order', { ascending: true });
+
+          if (cropsError) {
+            console.warn('⚠️ [Sync] Failed to fetch crops:', cropsError);
+          } else if (crops && crops.length > 0) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('crops', 'readwrite');
+              const store = tx.objectStore('crops');
+              await store.clear();
+              for (const c of crops) {
+                await store.put({
+                  id: c.id,
+                  value: c.value,
+                  label: c.label,
+                  label_local: c.label_local || null,
+                  label_hi: c.label_hi || null,
+                  label_mr: c.label_mr || null,
+                  local_name: c.local_name || null,
+                  icon: c.icon || '🌾',
+                  description: c.description || null,
+                  duration_days: c.duration_days || null,
+                  season: c.season || null,
+                  crop_group_id: c.crop_group_id || null,
+                  display_order: c.display_order || 0,
+                  is_active: c.is_active,
+                  is_popular: c.is_popular || null,
+                  metadata: c.metadata || null,
+                  created_at: c.created_at || null,
+                  updated_at: c.updated_at || new Date().toISOString(),
+                  lastModified: new Date(c.updated_at || c.created_at || Date.now()).getTime(),
+                  syncStatus: 'synced' as const,
+                });
+              }
+              await tx.done;
+              console.log(`✅ [Sync] Saved ${crops.length} crops to localDB`);
+            }
+          }
+        } catch (cropError) {
+          console.warn('⚠️ [Sync] Crops download failed (non-critical):', cropError);
+        }
+      };
+
+      const downloadAlerts = async () => {
+        console.log('📥 [Sync] Fetching farmer alerts...');
+        try {
+          const { data: alerts, error: alertsError } = await client
+            .from('farmer_alerts')
+            .select('*')
+            .eq('tenant_id', tenant)
+            .eq('farmer_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(100);
+
+          if (alertsError) {
+            console.warn('⚠️ [Sync] Failed to fetch alerts:', alertsError);
+          } else if (alerts && alerts.length > 0) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('farmerAlerts', 'readwrite');
+              const store = tx.objectStore('farmerAlerts');
+              await store.clear();
+              for (const a of alerts) {
+                await store.put({
+                  id: a.id,
+                  tenant_id: a.tenant_id,
+                  farmer_id: a.farmer_id,
+                  land_id: a.land_id,
+                  title: a.title,
+                  message: a.message,
+                  alert_type: a.alert_type,
+                  priority: a.priority,
+                  ai_reasoning: a.ai_reasoning || null,
+                  action_required: a.action_required || null,
+                  data_source: a.data_source || null,
+                  schedule_id: a.schedule_id || null,
+                  is_read: a.is_read || false,
+                  is_actioned: a.is_actioned || false,
+                  actioned_at: a.actioned_at || null,
+                  expires_at: a.expires_at || null,
+                  created_at: a.created_at || null,
+                  lastModified: new Date(a.created_at || Date.now()).getTime(),
+                  syncStatus: 'synced' as const,
+                });
+              }
+              await tx.done;
+              console.log(`✅ [Sync] Saved ${alerts.length} alerts to localDB`);
+            }
+          }
+        } catch (alertError) {
+          console.warn('⚠️ [Sync] Alerts download failed (non-critical):', alertError);
+        }
+      };
+
+      // PERF: Run all independent downloads in parallel.
+      // schedulesAndTasks is one branch (tasks depend on schedules within it).
+      await Promise.all([
+        downloadFarmers(),
+        downloadLands(),
+        downloadSchedulesAndTasks(),
+        downloadCrops(),
+        downloadAlerts(),
+      ]);
+
+      console.log(`⏱️ [Sync] Parallel download phase completed in ${Date.now() - phaseStart}ms`);
 
       // VERIFY data was actually saved correctly
       const verifyLands = await localDB.getLands(undefined, userId);
