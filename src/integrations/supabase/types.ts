@@ -27909,6 +27909,42 @@ export type Database = {
       get_current_user_email: { Args: never; Returns: string }
       get_current_user_id: { Args: never; Returns: string }
       get_farmer_id_from_header: { Args: never; Returns: string }
+      get_farmer_subscription_plans: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          billing_interval: string | null
+          created_at: string | null
+          created_by_tenant_id: string | null
+          description: string | null
+          features: Json | null
+          id: string
+          is_active: boolean | null
+          is_custom: boolean | null
+          is_custom_plan: boolean | null
+          is_public: boolean | null
+          limits: Json | null
+          name: string
+          parent_plan_id: string | null
+          plan_category: string | null
+          plan_type: Database["public"]["Enums"]["subscription_plan_type"]
+          price_annually: number | null
+          price_monthly: number | null
+          price_quarterly: number | null
+          sort_order: number | null
+          stripe_price_id_annually: string | null
+          stripe_price_id_monthly: string | null
+          stripe_product_id: string | null
+          tenant_id: string | null
+          trial_days: number | null
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "subscription_plans"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_geometry_bbox: { Args: { geom: unknown }; Returns: number[] }
       get_header_farmer_id: { Args: never; Returns: string }
       get_header_tenant_id: { Args: never; Returns: string }
