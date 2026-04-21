@@ -1,82 +1,110 @@
 
 
-## Root Cause Analysis
+## Re-audited Performance Optimization Plan
 
-From console logs + code audit, the subscription chip and proactive alerts intermittently fail to appear because of **Supabase Realtime channel saturation and dropouts**, not data issues. DB has 10+ pending alerts and an active Shakti subscription — both are healthy.
-
-### Confirmed issues
-
-1. **Realtime channel storm** — At least 5 separate channels open simultaneously per session:
-   - `realtime-{tenant}-lands-{user}` (useRealtimeData)
-   - `realtime-{tenant}-crop_schedules-{user}` (useRealtimeData)
-   - `realtime-{tenant}-schedule_tasks-{user}` (useRealtimeData)
-   - `subscription:{farmerId}` (SubscriptionContext)
-   - `proactive_alerts:{user.id}` (useProactiveAlerts in AppLayout)
-   
-   Console shows repeated `CHANNEL_ERROR`, `TIMED_OUT` for all of them. When a channel times out, its hook silently stops receiving updates → chip/alerts go blank on next state change.
-
-2. **No realtime fallback for proactive alerts** — `useProactiveAlerts` only fetches once on mount. If the user opens the app while alerts exist but the channel times out, they show on mount but never refresh. There is no polling fallback, no visibility-based refetch, no offline cache.
-
-3. **Subscription chip blank during reconnect** — `SubscriptionHeaderChip` returns `null` while `isLoading`. If RPC call fails during a network blip and offline IndexedDB has nothing yet (first login), chip shows pulsing skeleton forever.
-
-4. **Proactive alerts not mirrored offline** — Unlike subscriptions (now in IndexedDB), `proactive_alerts` is not synced to localDB. Going offline = empty alerts page even if 10 alerts exist on server.
-
-5. **Channel name collision risk** — `useProactiveAlerts` is called twice: once in `AppLayout` (with realtime) and once in `ProactiveAlerts` page (with `skipRealtime: true`). Safe, but if user navigates fast, AppLayout's channel can leak before remount.
-
-6. **No retry on `CHANNEL_ERROR`** — `useRealtimeData` and SubscriptionContext just log the error. No reconnection logic. Once dropped, channel stays dead until full page reload.
+### Critical revision
+The previous plan included DB index drops and additions on shared tables (`tenants`, `crop_schedules`, `lands`, `white_label_configs`, `user_tenants`). These tables are also used by the **tenants portal** and **SaaS admin** apps. Schema-level changes (DROP INDEX, ALTER) could break or slow those apps. **All shared-DB mutations are removed from this plan.** Only **additive, safe** DB changes remain (CREATE INDEX IF NOT EXISTS on columns this app queries, with `CONCURRENTLY` semantics where supported by migration). Anything that could regress other apps is out.
 
 ---
 
-## Fix Plan (5 targeted changes)
-
-### Phase 1 — Realtime resilience (`useRealtimeData.ts`, `SubscriptionContext.tsx`, `useProactiveAlerts.ts`)
-- On `CHANNEL_ERROR` / `TIMED_OUT` → exponential backoff retry (3 attempts: 2s, 5s, 10s), then give up and rely on polling.
-- Single shared cleanup pattern (use `removeChannel` + null the ref before retry).
-
-### Phase 2 — Polling fallback when realtime fails
-- `useProactiveAlerts`: 60s `setInterval` refetch as safety net (cheap, only when tab visible).
-- `useSubscription`: visibility-change refetch is already there → keep, plus invalidate on window `online` event.
-- `SubscriptionHeaderChip`: when `isLoading && !data` for >5s, fall back to "Free" tone instead of skeleton.
-
-### Phase 3 — Offline mirror for proactive alerts
-- Add `proactiveAlerts` store to `localDB.ts` (schema bump v9 → v10).
-  - Indexes: `farmer_id`, `status`, `created_at`.
-  - Methods: `saveProactiveAlerts(alerts[])`, `getProactiveAlerts(farmerId, includeHistory)`.
-- `syncService.downloadServerData()`: add proactive alerts download (last 100 per farmer) right after subscription data.
-- `useProactiveAlerts.fetchAlerts`: if Supabase query fails OR `navigator.onLine === false`, fall back to `localDB.getProactiveAlerts(user.id, showHistory)`.
-
-### Phase 4 — Header chip visibility hardening (`SubscriptionHeaderChip.tsx`)
-- Replace infinite skeleton with: after 3s loading and no data → render compact "Free" chip optimistically (will reconcile on data arrival).
-- Add tooltip showing last-sync time on hover/tap so user knows why a stale value might display.
-
-### Phase 5 — Channel consolidation (defensive)
-- `useProactiveAlerts` in `AppLayout`: keep realtime ON.
-- Document that any other mount of `useProactiveAlerts` MUST pass `skipRealtime: true` (already done in `ProactiveAlerts.tsx`).
-- Add a console warn if a second realtime instance is created in the same session.
+## Scope rule
+- ✅ Allowed: code-only changes inside this repo; additive indexes that ONLY help (never drop, never alter existing).
+- ❌ Forbidden: dropping any existing index, altering existing tables, modifying RLS, touching shared functions/triggers.
 
 ---
 
-## Files to modify
+## Phase 1 — Code-only optimizations (zero DB risk)
+
+### 1.1 Sync parallelization — `src/services/syncService.ts`
+- Keep `downloadSubscriptionData()` FIRST (gating dependency).
+- Then run `Promise.all([lands, schedules, alerts, crops, farmers])`.
+- Tasks run AFTER schedules (data dependency).
+- Add timing logs per phase.
+- **Expected:** login-to-ready ~6s → ~2.2s.
+
+### 1.2 Realtime channel consolidation — `src/hooks/useRealtimeData.ts`
+- Replace 3 separate channels (lands / crop_schedules / schedule_tasks) with **one** channel having 3 `.on('postgres_changes', …)` handlers.
+- Stable channel name keyed by `${tenantId}:${userId}` (drop `Date.now()`).
+- Net: 5 channels per session → 3.
+- **Expected:** fewer `CHANNEL_ERROR` storms, lower Realtime quota usage.
+
+### 1.3 Reference-data caching — `src/hooks/useLandFormData.ts`
+- Convert manual `useState` + `useEffect` to `useQuery` with `staleTime: Infinity`, `gcTime: Infinity`, shared `queryKey: ['ref','soil-water-irrigation']`.
+- **Expected:** eliminate 3 redundant SELECTs on every land-form mount.
+
+### 1.4 Log noise reduction (hot paths)
+- `src/services/dataIsolationService.ts`: drop the per-call `console.log` (keep WARN/ERROR).
+- `src/integrations/supabase/client.ts`: drop verbose header-ready logs in steady state.
+- **Expected:** less GC pressure, cleaner production logs.
+
+### 1.5 React `Home` ref warning
+- Locate the child inside `<AnimatePresence>` that receives a ref and wrap with `React.forwardRef`.
+- **Expected:** no remount cycles, console clean.
+
+### 1.6 (Optional, this-app only) `schedules-api` batching
+- Edge function in this repo: `supabase/functions/schedules-api/index.ts`.
+- Add a `?include=tasks` query param that returns `{schedules, tasks}` in one round-trip.
+- Frontend keeps current 2-call path as default; new path is opt-in. Zero impact on other apps.
+
+---
+
+## Phase 2 — Safe additive indexes only (no drops, no alters)
+
+All indexes use `CREATE INDEX IF NOT EXISTS` and only add — they cannot break existing apps. They will only be added if confirmed missing.
+
+```sql
+-- This-app workload only; benefits any reader of these columns.
+CREATE INDEX IF NOT EXISTS idx_proactive_alerts_farmer_status_created
+  ON public.proactive_alerts(farmer_id, status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_farmer_subscriptions_farmer_status
+  ON public.farmer_subscriptions(farmer_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_subscription_usage_logs_farmer_period
+  ON public.subscription_usage_logs(farmer_id, billing_period_start DESC);
+```
+
+### Explicitly removed from previous plan (would impact other apps)
+- ❌ DROP INDEX on `crop_schedules` (5 unused) — could regress admin reports.
+- ❌ CREATE INDEX on `tenants(custom_domain)`, `tenants(subdomain)` — owned by tenants portal; let that team manage.
+- ❌ CREATE INDEX on `white_label_configs(domain)` — owned by tenants portal.
+- ❌ CREATE INDEX on `user_tenants(user_id)` — admin-portal table.
+- ❌ ANALYZE on shared tables — let DB autovacuum handle; manual ANALYZE could shift plans for other apps.
+- ❌ Anything touching `spatial_ref_sys` (PostGIS system table — never modify).
+
+---
+
+## Files to modify (this codebase only)
 
 | File | Change |
 |---|---|
-| `src/hooks/useRealtimeData.ts` | Add retry-with-backoff on error/timeout |
-| `src/hooks/useProactiveAlerts.ts` | Polling fallback + offline read + retry on channel error |
-| `src/contexts/SubscriptionContext.tsx` | Retry on channel error |
-| `src/components/subscription/SubscriptionHeaderChip.tsx` | Loading-timeout → optimistic "Free" chip |
-| `src/services/localDB.ts` | Add `proactiveAlerts` store, bump schema, add getters/savers |
-| `src/services/syncService.ts` | Download proactive alerts after subscription data |
+| `src/services/syncService.ts` | Parallelize independent downloads |
+| `src/hooks/useRealtimeData.ts` | Single multi-table channel, stable name |
+| `src/hooks/useLandFormData.ts` | React Query w/ infinite staleTime |
+| `src/services/dataIsolationService.ts` | Reduce hot-path logging |
+| `src/integrations/supabase/client.ts` | Reduce hot-path logging |
+| `src/pages/Home.tsx` (+ child) | `forwardRef` fix |
+| `supabase/functions/schedules-api/index.ts` | Optional `?include=tasks` |
+| New migration | 3 additive indexes (Phase 2) only |
 
-## No changes to
+---
 
-- DB schema, RLS, edge functions
-- Subscription RPC / payment webhook
-- Existing localDB stores for subscriptions (already in place)
-- UI structure of pages
+## Expected gains
 
-## Risk & rollback
+| Metric | Before | After |
+|---|---|---|
+| Login → app ready | ~6.0s | ~2.2s |
+| Realtime channels | 5 | 3 |
+| Land-form ref data fetches | 3 per mount | 0 (cached) |
+| Subscription/alerts query latency | baseline | improved (additive idx) |
+| Console noise (per sync) | ~12 logs | ~2 logs |
 
-- Schema bump wipes only `proactiveAlerts` store (new) → no data loss.
-- Retry logic is additive: if it fails, behaviour is identical to current (silent dead channel).
-- Polling at 60s adds ~1 read/min per user (RLS-scoped, indexed) — negligible cost.
+---
+
+## Guarantees
+- ✅ No DROP/ALTER on shared tables.
+- ✅ No business logic changes; AI/symbolic engine untouched.
+- ✅ Only this app's code paths and frontend hooks modified.
+- ✅ Indexes are additive — cannot break tenants portal or SaaS admin.
+- ✅ Realtime/sync changes are local; data contracts preserved.
 
