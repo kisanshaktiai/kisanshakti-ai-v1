@@ -9,21 +9,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { PlanBadge } from '@/components/subscription/PlanBadge';
 import { UsageMeter } from '@/components/subscription/UsageMeter';
+import { useFarmerPlans, type FarmerPlanRow } from '@/hooks/useFarmerPlans';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
-interface PlanRow {
-  id: string;
-  name: string;
-  plan_type: string;
-  price_monthly: number;
-  price_quarterly: number | null;
-  price_annually: number | null;
-  features: Record<string, boolean>;
-  limits: Record<string, number | string>;
-  sort_order: number | null;
-}
+type PlanRow = FarmerPlanRow;
 
 interface UsageRow {
   metric_name: string;
@@ -68,11 +59,13 @@ export default function SubscriptionPage() {
   const { data, planName, daysRemaining, isInGracePeriod, subscriptionStatus, isLoading } =
     useSubscriptionContext();
 
-  const [plans, setPlans] = useState<PlanRow[]>([]);
   const [usage, setUsage] = useState<UsageRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly' | 'annually'>('monthly');
-  const [loadingPlans, setLoadingPlans] = useState(true);
+
+  // Server-filtered, cached, RLS-protected farmer plans only
+  const { data: plansData, isLoading: loadingPlans } = useFarmerPlans();
+  const plans: PlanRow[] = (plansData ?? []).filter((p) => p.plan_category === 'farmer');
 
   useEffect(() => {
     if (!user?.id || !user?.tenantId) return;
@@ -81,12 +74,6 @@ export default function SubscriptionPage() {
     (async () => {
       const anyClient = client as any;
       try {
-        const planRes = await anyClient
-          .from('subscription_plans')
-          .select('id, name, plan_type, price_monthly, price_quarterly, price_annually, features, limits, sort_order')
-          .eq('is_active', true)
-          .order('price_monthly', { ascending: true });
-
         const usageRes = await anyClient
           .from('subscription_usage_logs')
           .select('metric_name, quantity, billing_period_start, billing_period_end')
@@ -101,13 +88,10 @@ export default function SubscriptionPage() {
           .order('created_at', { ascending: false })
           .limit(10);
 
-        if (planRes?.data) setPlans(planRes.data as PlanRow[]);
         if (usageRes?.data) setUsage(usageRes.data as UsageRow[]);
         if (paymentRes?.data) setPayments(paymentRes.data as PaymentRow[]);
       } catch (e) {
         console.warn('[Subscription] Load error:', e);
-      } finally {
-        setLoadingPlans(false);
       }
     })();
   }, [user?.id, user?.tenantId]);
@@ -247,6 +231,16 @@ export default function SubscriptionPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
+          ) : plans.length === 0 ? (
+            <Card className="border-dashed border-border/60">
+              <CardContent className="p-6 text-center space-y-2">
+                <Leaf className="w-8 h-8 text-muted-foreground mx-auto" />
+                <p className="text-sm font-medium">No plans available right now</p>
+                <p className="text-xs text-muted-foreground">
+                  Please check back shortly or contact your tenant administrator.
+                </p>
+              </CardContent>
+            </Card>
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {plans.map((plan) => {
