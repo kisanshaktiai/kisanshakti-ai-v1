@@ -1,23 +1,17 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { BottomNavigation } from './BottomNavigation';
 import { HindenburgMenu } from './HindenburgMenu';
-import { LanguageSelector } from './LanguageSelector';
-import { useTenant } from '@/contexts/TenantContext';
-import { useAuthStore } from '@/stores/authStore';
-import { useTranslation } from 'react-i18next';
-import { Leaf } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { SyncButton } from '@/components/sync/SyncButton';
 import { useProactiveAlerts } from '@/hooks/useProactiveAlerts';
-import { ConnectionStatusIcon } from '@/components/ConnectionStatusIcon';
 import { ModernVoiceProvider } from '@/contexts/ModernVoiceContext';
 import { ModernVoiceAssistant } from '@/components/voice';
 import { VoiceIndicator } from '@/components/VoiceIndicator';
 import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
-import { useVoiceNavigationStore } from '@/stores/voiceNavigationStore';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
 import { SubscriptionHeaderChip } from '@/components/subscription/SubscriptionHeaderChip';
+import { BrandBlock } from '@/components/header/BrandBlock';
+import { HeaderActionsSheet } from '@/components/header/HeaderActionsSheet';
 
 export function AppLayout() {
   const { tenant, branding } = useTenant();

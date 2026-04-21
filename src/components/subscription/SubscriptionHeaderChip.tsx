@@ -5,18 +5,25 @@ import { Crown, Sparkles, Leaf, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 /**
- * Compact subscription chip for the app header.
- * Always visible — gives farmers a one-tap entry to /app/subscription.
- * Color-coded by status (active/grace/expired) and plan tier.
- *
- * Resilience: if loading >3s with no data, render an optimistic "Free"
- * chip instead of an indefinite skeleton.
+ * 2030-ready subscription chip for the app header.
+ * - Tier-themed gradient ring + shimmer when active.
+ * - Pulsing dot when expiring/grace; destructive ring when expired.
+ * - Icon-only mode below 340px viewport.
+ * - Optimistic Free fallback if data never arrives within 3s.
  */
 export function SubscriptionHeaderChip() {
   const navigate = useNavigate();
   const { data, planName, daysRemaining, isInGracePeriod, subscriptionStatus, isLoading } =
     useSubscriptionContext();
   const [loadTimeoutHit, setLoadTimeoutHit] = useState(false);
+  const [iconOnly, setIconOnly] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIconOnly(window.innerWidth < 340);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => {
     if (!isLoading || data) {
@@ -27,55 +34,90 @@ export function SubscriptionHeaderChip() {
     return () => clearTimeout(timer);
   }, [isLoading, data]);
 
-  // Show skeleton only briefly
   if (isLoading && !data && !loadTimeoutHit) {
     return <div className="h-7 w-16 rounded-full bg-muted/40 animate-pulse" />;
   }
 
-  // Optimistic fallback: render "Free" chip if data never arrived
   const effectivePlanName = data ? planName : 'Free';
-  const isExpired = data ? (subscriptionStatus === 'expired' || !data.valid) : false;
+  const isExpired = data ? subscriptionStatus === 'expired' || !data.valid : false;
   const isExpiringSoon =
     !!data && subscriptionStatus === 'active' && daysRemaining > 0 && daysRemaining <= 7;
+  const isWarn = isExpired || isInGracePeriod || isExpiringSoon;
 
-  const Icon =
-    effectivePlanName === 'AI PRO' ? Crown : effectivePlanName === 'Shakti' ? Sparkles : Leaf;
+  const tier =
+    effectivePlanName === 'AI PRO' ? 'pro' : effectivePlanName === 'Shakti' ? 'shakti' : 'free';
 
-  const tone = isExpired
-    ? 'bg-destructive/15 text-destructive border-destructive/30'
+  const Icon = tier === 'pro' ? Crown : tier === 'shakti' ? Sparkles : Leaf;
+
+  // Ring gradients per tier (semantic tokens only)
+  const ringGradient = isExpired
+    ? 'from-destructive/60 to-destructive/30'
     : isInGracePeriod || isExpiringSoon
-    ? 'bg-warning/15 text-warning border-warning/30'
-    : effectivePlanName === 'AI PRO'
-    ? 'bg-gradient-to-r from-warning/20 to-warning/10 text-warning border-warning/30'
-    : effectivePlanName === 'Shakti'
-    ? 'bg-gradient-to-r from-primary/15 to-accent/15 text-primary border-primary/30'
-    : 'bg-success/15 text-success border-success/30';
+    ? 'from-warning/60 to-warning/30'
+    : tier === 'pro'
+    ? 'from-warning/70 via-warning/40 to-warning/70'
+    : tier === 'shakti'
+    ? 'from-primary/70 via-accent/50 to-primary/70'
+    : 'from-success/60 to-success/30';
+
+  const innerTone = isExpired
+    ? 'bg-destructive/10 text-destructive'
+    : isInGracePeriod || isExpiringSoon
+    ? 'bg-warning/10 text-warning'
+    : tier === 'pro'
+    ? 'bg-gradient-to-r from-warning/15 to-warning/5 text-warning'
+    : tier === 'shakti'
+    ? 'bg-gradient-to-r from-primary/10 to-accent/10 text-primary'
+    : 'bg-success/10 text-success';
 
   const label = isExpired
     ? 'Expired'
     : isInGracePeriod
     ? `Grace ${daysRemaining}d`
     : isExpiringSoon
-    ? `${daysRemaining}d left`
+    ? `${daysRemaining}d`
     : effectivePlanName;
+
+  const showDot = isWarn;
 
   return (
     <button
       onClick={() => navigate('/app/subscription')}
+      aria-label={`Subscription: ${label}`}
+      title={!data ? 'Tap to refresh subscription' : `Plan: ${effectivePlanName}`}
       className={cn(
-        'flex items-center gap-1 px-2 py-1 rounded-full border text-[10px] font-semibold',
-        'transition-all hover:scale-105 active:scale-95 shadow-sm',
-        tone
+        'relative shrink-0 rounded-full p-[1.5px] bg-gradient-to-r transition-all',
+        'hover:scale-105 active:scale-95 shadow-sm',
+        ringGradient,
+        !isWarn && tier !== 'free' && 'motion-safe:animate-[gradient-x_4s_ease_infinite] bg-[length:200%_200%]'
       )}
-      aria-label="View subscription"
-      title={!data ? 'Tap to refresh subscription' : undefined}
     >
-      {(isExpired || isExpiringSoon || isInGracePeriod) ? (
-        <AlertTriangle className="w-3 h-3" />
-      ) : (
-        <Icon className="w-3 h-3" />
+      <span
+        className={cn(
+          'flex items-center gap-1 rounded-full font-semibold',
+          'h-7',
+          iconOnly ? 'px-1.5' : 'px-2.5',
+          'text-[10px]',
+          innerTone
+        )}
+      >
+        {isWarn ? (
+          <AlertTriangle className="w-3 h-3 shrink-0" />
+        ) : (
+          <Icon className="w-3 h-3 shrink-0" />
+        )}
+        {!iconOnly && <span className="whitespace-nowrap">{label}</span>}
+      </span>
+      {showDot && (
+        <span
+          className={cn(
+            'absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-card',
+            isExpired ? 'bg-destructive' : 'bg-warning',
+            'motion-safe:animate-ping-slow'
+          )}
+          style={{ animation: 'photo-pulse 1.8s ease-in-out infinite' }}
+        />
       )}
-      <span className="whitespace-nowrap">{label}</span>
     </button>
   );
 }
