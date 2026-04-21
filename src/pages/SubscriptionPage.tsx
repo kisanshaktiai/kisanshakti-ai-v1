@@ -9,21 +9,12 @@ import { useAuthStore } from '@/stores/authStore';
 import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { PlanBadge } from '@/components/subscription/PlanBadge';
 import { UsageMeter } from '@/components/subscription/UsageMeter';
+import { useFarmerPlans, type FarmerPlanRow } from '@/hooks/useFarmerPlans';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
-interface PlanRow {
-  id: string;
-  name: string;
-  plan_type: string;
-  price_monthly: number;
-  price_quarterly: number | null;
-  price_annually: number | null;
-  features: Record<string, boolean>;
-  limits: Record<string, number | string>;
-  sort_order: number | null;
-}
+type PlanRow = FarmerPlanRow;
 
 interface UsageRow {
   metric_name: string;
