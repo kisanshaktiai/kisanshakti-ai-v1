@@ -1,63 +1,59 @@
-import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
-interface SoilType {
+interface RefItem {
   id: string;
   label: string;
   value: string;
   description?: string;
 }
 
-interface WaterSource {
-  id: string;
-  label: string;
-  value: string;
-  description?: string;
+interface LandFormRefData {
+  soilTypes: RefItem[];
+  waterSources: RefItem[];
+  irrigationTypes: RefItem[];
 }
 
-interface IrrigationType {
-  id: string;
-  label: string;
-  value: string;
-  description?: string;
+const REF_QUERY_KEY = ['ref', 'soil-water-irrigation'] as const;
+
+async function fetchLandFormRefData(): Promise<LandFormRefData> {
+  const [soilTypesRes, waterSourcesRes, irrigationTypesRes] = await Promise.all([
+    supabase.from('soil_types').select('*').eq('is_active', true).order('id'),
+    supabase.from('water_sources').select('*').eq('is_active', true).order('id'),
+    supabase.from('irrigation_types').select('*').eq('is_active', true).order('id'),
+  ]);
+
+  if (soilTypesRes.error) throw soilTypesRes.error;
+  if (waterSourcesRes.error) throw waterSourcesRes.error;
+  if (irrigationTypesRes.error) throw irrigationTypesRes.error;
+
+  return {
+    soilTypes: (soilTypesRes.data || []) as RefItem[],
+    waterSources: (waterSourcesRes.data || []) as RefItem[],
+    irrigationTypes: (irrigationTypesRes.data || []) as RefItem[],
+  };
 }
 
+/**
+ * Reference data for land forms — soil types, water sources, irrigation types.
+ * Cached for the entire session (staleTime: Infinity) since this is static reference data.
+ */
 export function useLandFormData() {
-  const [soilTypes, setSoilTypes] = useState<SoilType[]>([]);
-  const [waterSources, setWaterSources] = useState<WaterSource[]>([]);
-  const [irrigationTypes, setIrrigationTypes] = useState<IrrigationType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, isLoading, error } = useQuery({
+    queryKey: REF_QUERY_KEY,
+    queryFn: fetchLandFormRefData,
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: 1,
+  });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        // Fetch all data in parallel
-        const [soilTypesRes, waterSourcesRes, irrigationTypesRes] = await Promise.all([
-          supabase.from('soil_types').select('*').eq('is_active', true).order('id'),
-          supabase.from('water_sources').select('*').eq('is_active', true).order('id'),
-          supabase.from('irrigation_types').select('*').eq('is_active', true).order('id')
-        ]);
-
-        if (soilTypesRes.error) throw soilTypesRes.error;
-        if (waterSourcesRes.error) throw waterSourcesRes.error;
-        if (irrigationTypesRes.error) throw irrigationTypesRes.error;
-
-        setSoilTypes(soilTypesRes.data || []);
-        setWaterSources(waterSourcesRes.data || []);
-        setIrrigationTypes(irrigationTypesRes.data || []);
-      } catch (err) {
-        console.error('Error fetching land form data:', err);
-        setError('Failed to load form data');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, []);
-
-  return { soilTypes, waterSources, irrigationTypes, loading, error };
+  return {
+    soilTypes: data?.soilTypes || [],
+    waterSources: data?.waterSources || [],
+    irrigationTypes: data?.irrigationTypes || [],
+    loading: isLoading,
+    error: error ? 'Failed to load form data' : null,
+  };
 }
