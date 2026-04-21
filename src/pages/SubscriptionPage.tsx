@@ -231,6 +231,16 @@ export default function SubscriptionPage() {
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
+          ) : plans.length === 0 ? (
+            <Card className="border-dashed border-border/60">
+              <CardContent className="p-6 text-center space-y-2">
+                <Leaf className="w-8 h-8 text-muted-foreground mx-auto" />
+                <p className="text-sm font-medium">No plans available right now</p>
+                <p className="text-xs text-muted-foreground">
+                  Please check back shortly or contact your tenant administrator.
+                </p>
+              </CardContent>
+            </Card>
           ) : (
             <div className="grid grid-cols-1 gap-3">
               {plans.map((plan) => {
