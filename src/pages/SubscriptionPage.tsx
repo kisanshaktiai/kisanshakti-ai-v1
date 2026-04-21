@@ -59,11 +59,13 @@ export default function SubscriptionPage() {
   const { data, planName, daysRemaining, isInGracePeriod, subscriptionStatus, isLoading } =
     useSubscriptionContext();
 
-  const [plans, setPlans] = useState<PlanRow[]>([]);
   const [usage, setUsage] = useState<UsageRow[]>([]);
   const [payments, setPayments] = useState<PaymentRow[]>([]);
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'quarterly' | 'annually'>('monthly');
-  const [loadingPlans, setLoadingPlans] = useState(true);
+
+  // Server-filtered, cached, RLS-protected farmer plans only
+  const { data: plansData, isLoading: loadingPlans } = useFarmerPlans();
+  const plans: PlanRow[] = (plansData ?? []).filter((p) => p.plan_category === 'farmer');
 
   useEffect(() => {
     if (!user?.id || !user?.tenantId) return;
@@ -72,12 +74,6 @@ export default function SubscriptionPage() {
     (async () => {
       const anyClient = client as any;
       try {
-        const planRes = await anyClient
-          .from('subscription_plans')
-          .select('id, name, plan_type, price_monthly, price_quarterly, price_annually, features, limits, sort_order')
-          .eq('is_active', true)
-          .order('price_monthly', { ascending: true });
-
         const usageRes = await anyClient
           .from('subscription_usage_logs')
           .select('metric_name, quantity, billing_period_start, billing_period_end')
@@ -92,13 +88,10 @@ export default function SubscriptionPage() {
           .order('created_at', { ascending: false })
           .limit(10);
 
-        if (planRes?.data) setPlans(planRes.data as PlanRow[]);
         if (usageRes?.data) setUsage(usageRes.data as UsageRow[]);
         if (paymentRes?.data) setPayments(paymentRes.data as PaymentRow[]);
       } catch (e) {
         console.warn('[Subscription] Load error:', e);
-      } finally {
-        setLoadingPlans(false);
       }
     })();
   }, [user?.id, user?.tenantId]);
