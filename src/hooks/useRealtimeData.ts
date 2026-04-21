@@ -14,9 +14,11 @@ interface UseRealtimeDataOptions {
 const RETRY_DELAYS = [2000, 5000, 10000];
 
 /**
- * Hook to subscribe to real-time updates from Supabase tables
- * Automatically invalidates React Query cache when data changes.
- * Adds exponential-backoff retry on CHANNEL_ERROR / TIMED_OUT.
+ * Hook to subscribe to real-time updates from Supabase tables.
+ * PERF: Consolidates all requested tables into a SINGLE channel with multiple
+ *   `.on('postgres_changes', ...)` handlers — reduces 3 channels → 1.
+ * Stable channel name keyed by `${tenantId}:${userId}` so re-renders don't
+ *   create orphan channels.
  */
 export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptions) {
   const queryClient = useQueryClient();
@@ -25,21 +27,15 @@ export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptio
   const cleanupRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    if (!enabled || !user?.id) {
-      console.log('🔕 [Realtime] Subscription disabled:', { enabled, userId: user?.id });
-      return;
-    }
+    if (!enabled || !user?.id) return;
 
-    console.log('🔔 [Realtime] Setting up subscriptions for:', tables, 'tenant:', tenant?.id);
-
-    const activeChannels = new Map<RealtimeTable, ReturnType<typeof supabase.channel>>();
-    const retryTimers = new Map<RealtimeTable, NodeJS.Timeout>();
-    const attempts = new Map<RealtimeTable, number>();
+    const tenantKey = tenant?.id || 'default';
+    const channelName = `realtime:${tenantKey}:${user.id}`;
+    let attempts = 0;
+    let retryTimer: NodeJS.Timeout | null = null;
+    let activeChannel: ReturnType<typeof supabase.channel> | null = null;
 
     const handlePayload = (table: RealtimeTable, payload: any) => {
-      const recordId = payload.new?.id || payload.old?.id || 'unknown';
-      console.log(`🔄 [Realtime] ${table} changed:`, payload.eventType, 'record:', recordId);
-
       switch (table) {
         case 'lands':
           queryClient.invalidateQueries({ queryKey: ['lands'] });
@@ -59,50 +55,45 @@ export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptio
       }
     };
 
-    const setupChannel = (table: RealtimeTable) => {
-      const channelName = `realtime-${tenant?.id || 'default'}-${table}-${user.id}-${Date.now()}`;
-
-      const channel = supabase
-        .channel(channelName)
-        .on(
-          'postgres_changes',
+    const setupChannel = () => {
+      let channel = supabase.channel(channelName);
+      tables.forEach((table) => {
+        channel = channel.on(
+          'postgres_changes' as any,
           { event: '*', schema: 'public', table },
           (payload) => handlePayload(table, payload)
-        )
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            attempts.set(table, 0);
-            console.log(`✅ [Realtime] Subscribed to ${channelName}`);
-          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            const attempt = attempts.get(table) || 0;
-            console.warn(`⚠️ [Realtime] ${table} ${status}, attempt ${attempt + 1}`);
-            const existing = activeChannels.get(table);
-            if (existing) {
-              supabase.removeChannel(existing);
-              activeChannels.delete(table);
-            }
-            if (attempt < RETRY_DELAYS.length) {
-              attempts.set(table, attempt + 1);
-              const timer = setTimeout(() => setupChannel(table), RETRY_DELAYS[attempt]);
-              retryTimers.set(table, timer);
-            } else {
-              console.warn(`⚠️ [Realtime] ${table} exhausted retries — query cache will rely on manual invalidation`);
-            }
-          }
-        });
+        );
+      });
 
-      activeChannels.set(table, channel);
+      activeChannel = channel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          attempts = 0;
+          console.log(`✅ [Realtime] Subscribed: ${channelName} (${tables.length} tables)`);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.warn(`⚠️ [Realtime] ${status} on ${channelName}, attempt ${attempts + 1}`);
+          if (activeChannel) {
+            supabase.removeChannel(activeChannel);
+            activeChannel = null;
+          }
+          if (attempts < RETRY_DELAYS.length) {
+            const delay = RETRY_DELAYS[attempts];
+            attempts += 1;
+            retryTimer = setTimeout(setupChannel, delay);
+          } else {
+            console.warn(`⚠️ [Realtime] ${channelName} retries exhausted`);
+          }
+        }
+      });
     };
 
-    tables.forEach(setupChannel);
+    setupChannel();
 
     cleanupRef.current = () => {
-      console.log('🔌 [Realtime] Cleaning up', activeChannels.size, 'subscriptions');
-      retryTimers.forEach(clearTimeout);
-      retryTimers.clear();
-      activeChannels.forEach((ch) => supabase.removeChannel(ch));
-      activeChannels.clear();
-      attempts.clear();
+      if (retryTimer) clearTimeout(retryTimer);
+      if (activeChannel) {
+        supabase.removeChannel(activeChannel);
+        activeChannel = null;
+      }
     };
 
     return cleanupRef.current;
