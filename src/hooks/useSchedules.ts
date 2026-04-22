@@ -271,8 +271,10 @@ export function useSchedules(landId?: string) {
       return localData || [];
     },
     enabled: !!user?.id && headersReady, // Wait for user and headers only - no sync blocking
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
+    // PHASE 1A: Long stale window — realtime + manual refetch will invalidate when needed.
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     retry: 2, // Retry twice
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 3000), // Exponential backoff

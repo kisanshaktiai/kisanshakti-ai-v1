@@ -162,8 +162,10 @@ export function useLands() {
       return localData || [];
     },
     enabled: !!(user?.id && tenantId), // Wait for both user and tenant
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
+    // PHASE 1A: Long stale window — realtime + manual refetch will invalidate when needed.
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     retry: 1, // Reduced retry for faster fallback
     retryDelay: 1000, // Quick retry

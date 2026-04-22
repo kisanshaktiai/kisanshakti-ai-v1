@@ -18,6 +18,11 @@ class SyncService {
   private syncInterval: NodeJS.Timeout | null = null;
   private syncInProgress: boolean = false;
   private isInitialized: boolean = false;
+  // PHASE 1C: Debounce + throttle visibility-triggered syncs.
+  private lastSyncAt: number = 0;
+  private visibilityDebounceTimer: NodeJS.Timeout | null = null;
+  private static readonly VISIBILITY_DEBOUNCE_MS = 30 * 1000; // 30s debounce
+  private static readonly VISIBILITY_MIN_GAP_MS = 5 * 60 * 1000; // 5min throttle
 
   constructor() {
     // PERFORMANCE FIX: Don't initialize listeners in constructor
@@ -48,12 +53,24 @@ class SyncService {
       }
     });
 
-    // Sync on app visibility change
+    // PHASE 1C: Sync on visibility change — debounced 30s + only if last sync > 5min ago.
+    // Prevents redundant 9.5s cold-syncs on every tab focus (huge egress saver at scale).
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden && networkStatusService.getStatus()) {
-        console.log('👁️ [Sync] Tab visible - performing sync');
-        this.performSync();
+      if (document.hidden || !networkStatusService.getStatus()) return;
+
+      const sinceLast = Date.now() - this.lastSyncAt;
+      if (sinceLast < SyncService.VISIBILITY_MIN_GAP_MS) {
+        // Recent sync — skip silently to avoid log spam
+        return;
       }
+
+      if (this.visibilityDebounceTimer) clearTimeout(this.visibilityDebounceTimer);
+      this.visibilityDebounceTimer = setTimeout(() => {
+        if (!document.hidden && networkStatusService.getStatus()) {
+          console.log('👁️ [Sync] Tab visible >5min idle — debounced sync');
+          this.performSync();
+        }
+      }, SyncService.VISIBILITY_DEBOUNCE_MS);
     });
   }
 
@@ -244,6 +261,8 @@ class SyncService {
       };
     } finally {
       this.syncInProgress = false;
+      // PHASE 1C: Stamp last sync time so visibility-change throttle can skip recent syncs.
+      this.lastSyncAt = Date.now();
       await localDB.updateSyncMetadata({ syncInProgress: false });
     }
   }
