@@ -722,25 +722,27 @@ class SyncService {
       // Schedules + tasks (sequential within this branch — tasks depend on schedules)
       let schedules: any[] = [];
       const downloadSchedulesAndTasks = async () => {
-        console.log('📥 [Sync] Fetching schedules via schedules-api edge function...');
+        console.log('📥 [Sync] Fetching schedules via schedules-api edge function...', { since: schedulesSince });
         try {
-          schedules = await schedulesApi.fetchSchedules();
-          console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API`);
+          schedules = await schedulesApi.fetchSchedules(undefined, { since: schedulesSince });
+          console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API (delta=${!!schedulesSince})`);
         } catch (error) {
           console.error('❌ [Sync] Failed to fetch schedules via API:', error);
         }
 
-        // Clear existing schedules before saving
-        const existingSchedules = await localDB.getAllSchedules(userId);
-        if (existingSchedules.length > 0) {
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('cropSchedules', 'readwrite');
-            const store = tx.objectStore('cropSchedules');
-            for (const schedule of existingSchedules) {
-              await store.delete(schedule.id);
+        // PHASE 3C: Only wipe local schedules on full-sync (no since cursor).
+        if (!schedulesSince) {
+          const existingSchedules = await localDB.getAllSchedules(userId);
+          if (existingSchedules.length > 0) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('cropSchedules', 'readwrite');
+              const store = tx.objectStore('cropSchedules');
+              for (const schedule of existingSchedules) {
+                await store.delete(schedule.id);
+              }
+              await tx.done;
             }
-            await tx.done;
           }
         }
 
