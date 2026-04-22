@@ -142,7 +142,7 @@ serve(async (req) => {
           );
         } else {
           // List schedules
-          console.log('📅 [SchedulesAPI] Fetching schedules list');
+          console.log('📅 [SchedulesAPI] Fetching schedules list', { sinceParam, parsedLimit });
           let query = supabase
             .from('crop_schedules')
             .select('*')
@@ -153,6 +153,13 @@ serve(async (req) => {
 
           if (landIdParam) {
             query = query.eq('land_id', landIdParam);
+          }
+          // PHASE 3A: Optional incremental delta sync
+          if (sinceParam) {
+            query = query.gt('updated_at', sinceParam);
+          }
+          if (parsedLimit) {
+            query = query.limit(parsedLimit);
           }
 
           const { data, error } = await query;
@@ -165,7 +172,7 @@ serve(async (req) => {
             );
           }
 
-          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} schedules`);
+          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} schedules (since=${sinceParam || 'none'})`);
           return new Response(
             JSON.stringify({ data: data || [] }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
