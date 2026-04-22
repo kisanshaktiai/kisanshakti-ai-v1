@@ -74,22 +74,21 @@ serve(async (req) => {
         if (isTasksRoute) {
           console.log('📋 [SchedulesAPI] Fetching tasks:', { scheduleIdParam, sinceParam, parsedLimit, cursorParam });
           
+          const isDeltaMode = Boolean(sinceParam || cursorParam || parsedLimit);
           let query = supabase
             .from('schedule_tasks')
             .select('*')
             .eq('tenant_id', tenantId)
             .eq('farmer_id', farmerId)
-            .order('updated_at', { ascending: true });
+            // Delta/pagination requires updated_at ordering; legacy callers keep task_date order.
+            .order(isDeltaMode ? 'updated_at' : 'task_date', { ascending: true });
 
           if (scheduleIdParam) {
             query = query.eq('schedule_id', scheduleIdParam);
           }
-
-          // PHASE 3A: Incremental delta sync — only rows updated after `since`
           if (sinceParam) {
             query = query.gt('updated_at', sinceParam);
           }
-          // Cursor for pagination (last seen updated_at)
           if (cursorParam) {
             query = query.gt('updated_at', cursorParam);
           }
@@ -111,7 +110,7 @@ serve(async (req) => {
             ? (data[data.length - 1] as any)?.updated_at ?? null
             : null;
 
-          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} tasks (since=${sinceParam || 'none'})`);
+          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} tasks (delta=${isDeltaMode})`);
           return new Response(
             JSON.stringify({ data: data || [], next_cursor: nextCursor }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
