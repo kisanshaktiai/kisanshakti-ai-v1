@@ -35,24 +35,32 @@ export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptio
     let retryTimer: NodeJS.Timeout | null = null;
     let activeChannel: ReturnType<typeof supabase.channel> | null = null;
 
-    const handlePayload = (table: RealtimeTable, payload: any) => {
+    // PHASE 1B: Debounce invalidations per table to prevent thrash on bulk writes.
+    // Drop explicit refetchQueries — React Query refetches automatically when consumers
+    // are mounted and the query becomes stale via invalidateQueries.
+    const debounceTimers: Partial<Record<RealtimeTable, NodeJS.Timeout>> = {};
+    const DEBOUNCE_MS = 250;
+
+    const flushInvalidate = (table: RealtimeTable) => {
       switch (table) {
         case 'lands':
           queryClient.invalidateQueries({ queryKey: ['lands'] });
           queryClient.invalidateQueries({ queryKey: ['land'] });
-          queryClient.refetchQueries({ queryKey: ['lands'] });
           break;
         case 'crop_schedules':
           queryClient.invalidateQueries({ queryKey: ['schedules'] });
           queryClient.invalidateQueries({ queryKey: ['schedule'] });
-          queryClient.refetchQueries({ queryKey: ['schedules'] });
           break;
         case 'schedule_tasks':
           queryClient.invalidateQueries({ queryKey: ['tasks'] });
           queryClient.invalidateQueries({ queryKey: ['schedules'] });
-          queryClient.refetchQueries({ queryKey: ['tasks'] });
           break;
       }
+    };
+
+    const handlePayload = (table: RealtimeTable, _payload: any) => {
+      if (debounceTimers[table]) clearTimeout(debounceTimers[table]!);
+      debounceTimers[table] = setTimeout(() => flushInvalidate(table), DEBOUNCE_MS);
     };
 
     const setupChannel = () => {
@@ -90,6 +98,8 @@ export function useRealtimeData({ tables, enabled = true }: UseRealtimeDataOptio
 
     cleanupRef.current = () => {
       if (retryTimer) clearTimeout(retryTimer);
+      // PHASE 1B: clear any pending debounced invalidations on unmount
+      Object.values(debounceTimers).forEach((t) => t && clearTimeout(t));
       if (activeChannel) {
         supabase.removeChannel(activeChannel);
         activeChannel = null;
