@@ -585,27 +585,36 @@ class SyncService {
       };
 
       // Lands download (uses edge function); returns count for verification
+      // PHASE 3C: Read per-entity lastSync to request only delta rows.
+      const syncMeta = await localDB.getSyncMetadata();
+      const landsSince = syncMeta?.entityLastSync?.lands ?? null;
+      const schedulesSince = syncMeta?.entityLastSync?.schedules ?? null;
+      const tasksSince = syncMeta?.entityLastSync?.tasks ?? null;
+
       let lands: any[] = [];
       const downloadLands = async () => {
-        console.log('📥 [Sync] Fetching lands via lands-api edge function...');
+        console.log('📥 [Sync] Fetching lands via lands-api edge function...', { since: landsSince });
         try {
-          lands = await landsApi.fetchLands();
-          console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API`);
+          lands = await landsApi.fetchLands({ since: landsSince });
+          console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API (delta=${!!landsSince})`);
         } catch (error) {
           console.error('❌ [Sync] Failed to fetch lands via API:', error);
         }
 
-        // Clear existing lands before saving new data from server
-        const existingLands = await localDB.getLands(undefined, userId);
-        if (existingLands.length > 0) {
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('lands', 'readwrite');
-            const store = tx.objectStore('lands');
-            for (const land of existingLands) {
-              await store.delete(land.id);
+        // PHASE 3C: In delta mode (since present), DO NOT clear local lands.
+        // Only full-sync (no since) should wipe and replace.
+        if (!landsSince) {
+          const existingLands = await localDB.getLands(undefined, userId);
+          if (existingLands.length > 0) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('lands', 'readwrite');
+              const store = tx.objectStore('lands');
+              for (const land of existingLands) {
+                await store.delete(land.id);
+              }
+              await tx.done;
             }
-            await tx.done;
           }
         }
 
@@ -692,6 +701,21 @@ class SyncService {
             })),
           });
           console.log(`✅ [Sync] Saved ${lands.length} lands to localDB`);
+
+          // PHASE 3C: Advance the lands cursor to the newest updated_at we received.
+          const maxUpdatedAt = lands
+            .map(l => l.updated_at)
+            .filter(Boolean)
+            .sort()
+            .pop();
+          if (maxUpdatedAt) {
+            await localDB.updateSyncMetadata({
+              entityLastSync: {
+                ...(syncMeta?.entityLastSync || {}),
+                lands: maxUpdatedAt,
+              },
+            });
+          }
         }
       };
 
