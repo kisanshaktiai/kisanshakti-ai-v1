@@ -800,6 +800,14 @@ export interface SyncMetadata {
   pendingChanges: number;
   syncInProgress: boolean;
   schemaVersion: number;
+  // PHASE 3C: Per-entity incremental sync timestamps (ISO8601). Optional/additive.
+  // When present, the next sync sends `?since=<value>` and only downloads delta rows.
+  entityLastSync?: {
+    lands?: string | null;
+    schedules?: string | null;
+    tasks?: string | null;
+    proactive_alerts?: string | null;
+  };
 }
 
 // ============================================================================

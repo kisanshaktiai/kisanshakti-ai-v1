@@ -585,27 +585,36 @@ class SyncService {
       };
 
       // Lands download (uses edge function); returns count for verification
+      // PHASE 3C: Read per-entity lastSync to request only delta rows.
+      const syncMeta = await localDB.getSyncMetadata();
+      const landsSince = syncMeta?.entityLastSync?.lands ?? null;
+      const schedulesSince = syncMeta?.entityLastSync?.schedules ?? null;
+      const tasksSince = syncMeta?.entityLastSync?.tasks ?? null;
+
       let lands: any[] = [];
       const downloadLands = async () => {
-        console.log('📥 [Sync] Fetching lands via lands-api edge function...');
+        console.log('📥 [Sync] Fetching lands via lands-api edge function...', { since: landsSince });
         try {
-          lands = await landsApi.fetchLands();
-          console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API`);
+          lands = await landsApi.fetchLands({ since: landsSince });
+          console.log(`✅ [Sync] Fetched ${lands?.length || 0} lands from server via API (delta=${!!landsSince})`);
         } catch (error) {
           console.error('❌ [Sync] Failed to fetch lands via API:', error);
         }
 
-        // Clear existing lands before saving new data from server
-        const existingLands = await localDB.getLands(undefined, userId);
-        if (existingLands.length > 0) {
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('lands', 'readwrite');
-            const store = tx.objectStore('lands');
-            for (const land of existingLands) {
-              await store.delete(land.id);
+        // PHASE 3C: In delta mode (since present), DO NOT clear local lands.
+        // Only full-sync (no since) should wipe and replace.
+        if (!landsSince) {
+          const existingLands = await localDB.getLands(undefined, userId);
+          if (existingLands.length > 0) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('lands', 'readwrite');
+              const store = tx.objectStore('lands');
+              for (const land of existingLands) {
+                await store.delete(land.id);
+              }
+              await tx.done;
             }
-            await tx.done;
           }
         }
 
@@ -692,31 +701,48 @@ class SyncService {
             })),
           });
           console.log(`✅ [Sync] Saved ${lands.length} lands to localDB`);
+
+          // PHASE 3C: Advance the lands cursor to the newest updated_at we received.
+          const maxUpdatedAt = lands
+            .map(l => l.updated_at)
+            .filter(Boolean)
+            .sort()
+            .pop();
+          if (maxUpdatedAt) {
+            await localDB.updateSyncMetadata({
+              entityLastSync: {
+                ...(syncMeta?.entityLastSync || {}),
+                lands: maxUpdatedAt,
+              },
+            });
+          }
         }
       };
 
       // Schedules + tasks (sequential within this branch — tasks depend on schedules)
       let schedules: any[] = [];
       const downloadSchedulesAndTasks = async () => {
-        console.log('📥 [Sync] Fetching schedules via schedules-api edge function...');
+        console.log('📥 [Sync] Fetching schedules via schedules-api edge function...', { since: schedulesSince });
         try {
-          schedules = await schedulesApi.fetchSchedules();
-          console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API`);
+          schedules = await schedulesApi.fetchSchedules(undefined, { since: schedulesSince });
+          console.log(`✅ [Sync] Fetched ${schedules?.length || 0} schedules from server via API (delta=${!!schedulesSince})`);
         } catch (error) {
           console.error('❌ [Sync] Failed to fetch schedules via API:', error);
         }
 
-        // Clear existing schedules before saving
-        const existingSchedules = await localDB.getAllSchedules(userId);
-        if (existingSchedules.length > 0) {
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('cropSchedules', 'readwrite');
-            const store = tx.objectStore('cropSchedules');
-            for (const schedule of existingSchedules) {
-              await store.delete(schedule.id);
+        // PHASE 3C: Only wipe local schedules on full-sync (no since cursor).
+        if (!schedulesSince) {
+          const existingSchedules = await localDB.getAllSchedules(userId);
+          if (existingSchedules.length > 0) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('cropSchedules', 'readwrite');
+              const store = tx.objectStore('cropSchedules');
+              for (const schedule of existingSchedules) {
+                await store.delete(schedule.id);
+              }
+              await tx.done;
             }
-            await tx.done;
           }
         }
 
@@ -833,25 +859,37 @@ class SyncService {
             })),
           });
           console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
+
+          // PHASE 3C: Advance schedules cursor.
+          const maxSchedUpdated = schedules.map(s => s.updated_at).filter(Boolean).sort().pop();
+          if (maxSchedUpdated) {
+            const meta = await localDB.getSyncMetadata();
+            await localDB.updateSyncMetadata({
+              entityLastSync: { ...(meta?.entityLastSync || {}), schedules: maxSchedUpdated },
+            });
+          }
         }
 
         // Tasks depend on schedules — must run AFTER schedules complete
-        console.log('📥 [Sync] Fetching schedule tasks...');
+        console.log('📥 [Sync] Fetching schedule tasks...', { since: tasksSince });
         let tasks: any[] = [];
         try {
-          tasks = await schedulesApi.fetchTasks();
-          console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server`);
+          tasks = await schedulesApi.fetchTasks(undefined, { since: tasksSince });
+          console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server (delta=${!!tasksSince})`);
         } catch (error) {
           console.warn('⚠️ [Sync] Failed to fetch tasks (may not be implemented yet):', error);
         }
 
         if (tasks && tasks.length > 0) {
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('scheduleTasks', 'readwrite');
-            const store = tx.objectStore('scheduleTasks');
-            await store.clear();
-            await tx.done;
+          // PHASE 3C: Only clear tasks store on full-sync.
+          if (!tasksSince) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('scheduleTasks', 'readwrite');
+              const store = tx.objectStore('scheduleTasks');
+              await store.clear();
+              await tx.done;
+            }
           }
 
           await localDB.bulkSave({
@@ -907,6 +945,15 @@ class SyncService {
             })),
           });
           console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
+
+          // PHASE 3C: Advance tasks cursor.
+          const maxTaskUpdated = tasks.map(t => t.updated_at).filter(Boolean).sort().pop();
+          if (maxTaskUpdated) {
+            const meta = await localDB.getSyncMetadata();
+            await localDB.updateSyncMetadata({
+              entityLastSync: { ...(meta?.entityLastSync || {}), tasks: maxTaskUpdated },
+            });
+          }
         }
       };
 

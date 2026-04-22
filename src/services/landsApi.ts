@@ -98,10 +98,14 @@ class LandsApiService {
     throw lastError || new Error('Request failed after retries');
   }
 
-  async fetchLands(): Promise<LandData[]> {
+  async fetchLands(opts?: { since?: string | null }): Promise<LandData[]> {
     try {
       const headers = await this.getHeaders();
-      const response = await this.fetchWithRetry(LANDS_API_URL, {
+      const url = opts?.since
+        ? `${LANDS_API_URL}?since=${encodeURIComponent(opts.since)}`
+        : LANDS_API_URL;
+
+      const response = await this.fetchWithRetry(url, {
         method: 'GET',
         headers,
       });

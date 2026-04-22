@@ -170,15 +170,24 @@ serve(async (req) => {
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         } else {
-          // List all lands for the farmer with enriched context
-          const { data: lands, error } = await supabase
+          // PHASE 3B: Optional incremental delta sync via ?since=ISO8601
+          const sinceParam = url.searchParams.get('since');
+          console.log('📋 [LandsAPI] Listing lands', { sinceParam });
+
+          let listQuery = supabase
             .from('lands')
             .select('*')
             .eq('tenant_id', tenantId)
             .eq('farmer_id', farmerId)
             .eq('is_active', true)
             .is('deleted_at', null)
-            .order('created_at', { ascending: false });
+            .order('updated_at', { ascending: false });
+
+          if (sinceParam) {
+            listQuery = listQuery.gt('updated_at', sinceParam);
+          }
+
+          const { data: lands, error } = await listQuery;
 
           if (error) {
             console.error('Error fetching lands:', error);
