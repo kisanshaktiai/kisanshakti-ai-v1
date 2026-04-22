@@ -6,10 +6,9 @@ import { Activity } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import type { Land } from '@/types/land';
 
 interface Props {
-  lands: Land[];
+  lands: any[];
   currentActivityIndex: number;
   currentWeatherDescription?: string;
   currentWeatherTemp?: number;
