@@ -40,13 +40,22 @@ serve(async (req) => {
     const landIdParam = url.searchParams.get('land_id');
     const scheduleIdParam = url.searchParams.get('schedule_id');
 
+    // PHASE 3A: Optional incremental + pagination params (backward-compatible)
+    const sinceParam = url.searchParams.get('since'); // ISO8601 timestamp
+    const limitParam = url.searchParams.get('limit');
+    const cursorParam = url.searchParams.get('cursor'); // ISO8601 of last seen updated_at
+    const parsedLimit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 0, 1), 500) : null;
+
     console.log(`📅 [SchedulesAPI] ${req.method} request:`, { 
       isTasksRoute,
       scheduleId, 
       scheduleIdParam,
       landIdParam, 
       tenantId, 
-      farmerId 
+      farmerId,
+      sinceParam,
+      parsedLimit,
+      cursorParam,
     });
 
     // Try to set app session context
