@@ -859,25 +859,37 @@ class SyncService {
             })),
           });
           console.log(`✅ [Sync] Saved ${schedules.length} schedules to localDB`);
+
+          // PHASE 3C: Advance schedules cursor.
+          const maxSchedUpdated = schedules.map(s => s.updated_at).filter(Boolean).sort().pop();
+          if (maxSchedUpdated) {
+            const meta = await localDB.getSyncMetadata();
+            await localDB.updateSyncMetadata({
+              entityLastSync: { ...(meta?.entityLastSync || {}), schedules: maxSchedUpdated },
+            });
+          }
         }
 
         // Tasks depend on schedules — must run AFTER schedules complete
-        console.log('📥 [Sync] Fetching schedule tasks...');
+        console.log('📥 [Sync] Fetching schedule tasks...', { since: tasksSince });
         let tasks: any[] = [];
         try {
-          tasks = await schedulesApi.fetchTasks();
-          console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server`);
+          tasks = await schedulesApi.fetchTasks(undefined, { since: tasksSince });
+          console.log(`✅ [Sync] Fetched ${tasks?.length || 0} tasks from server (delta=${!!tasksSince})`);
         } catch (error) {
           console.warn('⚠️ [Sync] Failed to fetch tasks (may not be implemented yet):', error);
         }
 
         if (tasks && tasks.length > 0) {
-          const db = (localDB as any).db;
-          if (db) {
-            const tx = db.transaction('scheduleTasks', 'readwrite');
-            const store = tx.objectStore('scheduleTasks');
-            await store.clear();
-            await tx.done;
+          // PHASE 3C: Only clear tasks store on full-sync.
+          if (!tasksSince) {
+            const db = (localDB as any).db;
+            if (db) {
+              const tx = db.transaction('scheduleTasks', 'readwrite');
+              const store = tx.objectStore('scheduleTasks');
+              await store.clear();
+              await tx.done;
+            }
           }
 
           await localDB.bulkSave({
