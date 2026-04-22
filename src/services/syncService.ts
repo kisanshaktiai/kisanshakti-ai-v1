@@ -261,6 +261,8 @@ class SyncService {
       };
     } finally {
       this.syncInProgress = false;
+      // PHASE 1C: Stamp last sync time so visibility-change throttle can skip recent syncs.
+      this.lastSyncAt = Date.now();
       await localDB.updateSyncMetadata({ syncInProgress: false });
     }
   }
