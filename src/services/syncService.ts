@@ -945,6 +945,15 @@ class SyncService {
             })),
           });
           console.log(`✅ [Sync] Saved ${tasks.length} tasks to localDB`);
+
+          // PHASE 3C: Advance tasks cursor.
+          const maxTaskUpdated = tasks.map(t => t.updated_at).filter(Boolean).sort().pop();
+          if (maxTaskUpdated) {
+            const meta = await localDB.getSyncMetadata();
+            await localDB.updateSyncMetadata({
+              entityLastSync: { ...(meta?.entityLastSync || {}), tasks: maxTaskUpdated },
+            });
+          }
         }
       };
 
