@@ -8,6 +8,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
+import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
 
 // Import orchestrator
@@ -260,52 +261,38 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SECURITY: Extract and validate tenant and farmer IDs
+    // PHASE 5 SECURITY GUARD: JWT + tenant + farmer-spoof check (one call)
+    //   - Validates Bearer token via getUser()
+    //   - Asserts x-tenant-id / x-farmer-id are valid UUIDs
+    //   - Verifies farmer.tenant_id === x-tenant-id
+    //   - Verifies jwt.sub === x-farmer-id (service-role bypass for cron)
     // ═══════════════════════════════════════════════════════════════════════════
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
+    const guard = await guardTenantAccess(req);
+    if (guard instanceof Response) return guard;
 
-    if (!tenantId || !farmerId) {
-      console.error('🚨 [Security] Missing required headers:', { tenantId, farmerId });
+    // metadata.* overrides are still honored, but only after the guard has
+    // validated the *header* identity. If metadata disagrees, the override
+    // must still belong to the same authenticated farmer.
+    const finalTenantId = metadata.tenantId || guard.tenantId;
+    const finalFarmerId = metadata.farmerId || guard.farmerId;
+
+    if (
+      !guard.isServiceRole &&
+      (finalTenantId !== guard.tenantId || finalFarmerId !== guard.farmerId)
+    ) {
+      console.error('🚨 [Security] metadata.* override mismatch with guarded identity');
       return new Response(
-        JSON.stringify({ 
-          error: 'Authentication required',
-          details: 'x-tenant-id and x-farmer-id headers are required'
+        JSON.stringify({
+          error: 'Forbidden',
+          details: 'metadata.tenantId / metadata.farmerId must match authenticated identity',
+          code: 'METADATA_IDENTITY_MISMATCH',
         }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    const finalTenantId = metadata.tenantId || tenantId;
-    const finalFarmerId = metadata.farmerId || farmerId;
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SECURITY: Validate tenant-farmer association
-    // ═══════════════════════════════════════════════════════════════════════════
-    const { data: farmer, error: farmerError } = await supabase
-      .from('farmers')
-      .select('id, tenant_id, farmer_name')
-      .eq('id', finalFarmerId)
-      .eq('tenant_id', finalTenantId)
-      .single();
-
-    if (farmerError || !farmer) {
-      console.error('🚨 [Security] INVALID TENANT-FARMER ASSOCIATION');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Unauthorized: Invalid tenant-farmer association',
-          details: 'Security validation failed'
-        }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('✅ [Security] Tenant-farmer validated:', farmer.farmer_name);
+    const supabase = guard.supabase;
+    console.log('✅ [Security] Phase-5 guard passed for farmer:', finalFarmerId);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // RATE LIMITING
