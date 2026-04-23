@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -9,31 +9,18 @@ serve(async (req) => {
   }
 
   try {
-    // Create Supabase client with service role key for RLS bypass
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PHASE 5 SECURITY GUARD: JWT + tenant + farmer-spoof check (one call)
+    //   - Validates Bearer token via getUser()
+    //   - Asserts x-tenant-id / x-farmer-id are valid UUIDs
+    //   - Verifies farmer.tenant_id === x-tenant-id
+    //   - Verifies jwt.sub === x-farmer-id (service-role bypass for cron)
+    // ═══════════════════════════════════════════════════════════════════════════
+    const guard = await guardTenantAccess(req);
+    if (guard instanceof Response) return guard;
 
-    // Extract authentication context from headers
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
-    const sessionToken = req.headers.get('x-session-token');
+    const { tenantId, farmerId, sessionToken, supabase } = guard;
 
-    console.log('Request context:', { tenantId, farmerId, sessionToken, method: req.method });
-
-    // Validate required headers
-    if (!tenantId || !farmerId) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Missing required headers', 
-          details: 'x-tenant-id and x-farmer-id headers are required' 
-        }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
 
     // Parse request URL - extract only the path after '/lands-api'
     const url = new URL(req.url);
