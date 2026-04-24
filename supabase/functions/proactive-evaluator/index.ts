@@ -157,12 +157,14 @@ Deno.serve(async (req) => {
     let totalAlerts = 0;
     let totalLands = 0;
     let totalRulesFired = 0;
+    let totalRulesEvaluated = 0;
 
     for (const tenantId of tenantIds) {
       const tenantResult = await processOneTenant(supabase, tenantId, targetLandId, action);
       totalAlerts += tenantResult.alerts;
       totalLands += tenantResult.lands;
       totalRulesFired += tenantResult.rulesFired;
+      totalRulesEvaluated += tenantResult.rulesEvaluated;
     }
 
     const elapsed = Date.now() - startTime;
@@ -173,7 +175,7 @@ Deno.serve(async (req) => {
       tenant_id: tenantIds[0] || 'default',
       evaluation_type: action === 'scheduled' ? 'scheduled' : 'manual',
       lands_evaluated: totalLands,
-      rules_evaluated: totalRulesFired,
+      rules_evaluated: totalRulesEvaluated,
       rules_fired: totalRulesFired,
       alerts_generated: totalAlerts,
       execution_time_ms: elapsed,
@@ -198,7 +200,7 @@ Deno.serve(async (req) => {
 // PROCESS ONE TENANT (isolated)
 // =====================================================
 
-async function processOneTenant(supabase: any, tenantId: string, targetLandId: string | null, action: string): Promise<{ alerts: number; lands: number; rulesFired: number }> {
+async function processOneTenant(supabase: any, tenantId: string, targetLandId: string | null, action: string): Promise<{ alerts: number; lands: number; rulesFired: number; rulesEvaluated: number }> {
     // =========================================================
     // STEP 1: Load proactive rules + decision_rules (is_proactive_rule=true)
     // =========================================================
@@ -212,7 +214,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const decisionRules: DecisionRuleProactive[] = decisionRulesRes.data || [];
 
     if (rules.length === 0 && decisionRules.length === 0) {
-      return { alerts: 0, lands: 0, rulesFired: 0 };
+      return { alerts: 0, lands: 0, rulesFired: 0, rulesEvaluated: 0 };
     }
 
     console.log(`[ProactiveEvaluator][${tenantId.slice(0,8)}] Loaded ${rules.length} proactive rules, ${decisionRules.length} decision rules`);
@@ -222,7 +224,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     let landsQuery = supabase
       .from('lands')
-      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
+      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, cultivation_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
       .eq('is_active', true)
       .eq('tenant_id', tenantId);
 
@@ -231,7 +233,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const { data: lands, error: landsError } = await landsQuery.limit(500);
     if (landsError) throw new Error(`Lands load failed: ${landsError.message}`);
     if (!lands || lands.length === 0) {
-      return { alerts: 0, lands: 0, rulesFired: 0 };
+      return { alerts: 0, lands: 0, rulesFired: 0, rulesEvaluated: 0 };
     }
 
     const landIds = lands.map(l => l.id);
@@ -252,11 +254,11 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         .in('land_id', landIds)
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
-      // Recent alerts for dedup/cooldown (72h)
+      // Recent alerts for dedup/cooldown (24h)
       supabase.from('proactive_alerts')
         .select('id, rule_id, land_id, farmer_id, dedup_key, created_at, status')
         .in('land_id', landIds)
-        .gte('created_at', new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()),
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
       // Soil health per land
       supabase.from('soil_health')
         .select('land_id, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon')
@@ -328,7 +330,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
 
     for (const land of lands) {
       const schedule = scheduleMap.get(land.id);
-      const sowingDate = schedule?.sowing_date || land.last_sowing_date;
+      const sowingDate = schedule?.sowing_date || land.last_sowing_date || land.cultivation_date;
       const cropSource = schedule?.crop_name || land.current_crop;
       const cropCode = normalizeCropCode(cropSource);
 
@@ -389,6 +391,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     let totalAlerts = 0;
     let totalRulesFired = 0;
+    let totalRulesEvaluated = 0;
     const alertsToInsert: any[] = [];
     const eventsToInsert: any[] = [];
 
@@ -401,6 +404,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         }
         return true;
       });
+      totalRulesEvaluated += applicableRules.length;
 
       for (const rule of applicableRules) {
         const result = evaluateRule(rule, ctx);
@@ -409,7 +413,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
 
         // In-memory dedup check
         const dedupKey = `${rule.rule_code}:${ctx.land_id}:${todayStr}`;
-        if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || 72, alertMap)) continue;
+        if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || 24, alertMap)) continue;
 
         // Daily throttle check (in-memory)
         const dailyCount = farmerDailyCounts.get(ctx.farmer_id) || 0;
@@ -467,6 +471,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         }
         return true;
       });
+      totalRulesEvaluated += applicableDecisionRules.length;
 
       // Sort by priority (lower = higher priority)
       applicableDecisionRules.sort((a, b) => (a.priority || 99) - (b.priority || 99));
@@ -477,7 +482,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         totalRulesFired++;
 
         const dedupKey = `DR:${dr.condition_code}:${ctx.land_id}:${todayStr}`;
-        if (isDuplicate(dedupKey, dr.condition_code, ctx.land_id, 72, alertMap)) continue;
+        if (isDuplicate(dedupKey, dr.condition_code, ctx.land_id, 24, alertMap)) continue;
 
         const dailyCount = farmerDailyCounts.get(ctx.farmer_id) || 0;
         if (dailyCount >= 5 && dr.priority > 1) continue;
@@ -565,7 +570,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     // STEP 7: Return tenant result
     // =========================================================
-    return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired };
+    return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated };
 }
 
 // =====================================================
@@ -839,14 +844,22 @@ function computeStageHardcoded(cropCode: string, das: number): string {
 function normalizeCropCode(crop: string | null): string | null {
   if (!crop) return null;
   const upper = crop.toUpperCase().trim();
-  if (upper.includes('SUGARCANE') || upper.includes('ऊस') || upper === 'SC') return 'SUGARCANE';
-  if (upper.includes('WHEAT') || upper.includes('गहू') || upper === 'WH') return 'WHEAT';
-  if (upper.includes('COTTON') || upper.includes('कापूस') || upper === 'CT') return 'COTTON';
-  if (upper.includes('RICE') || upper.includes('भात') || upper === 'RC') return 'RICE';
-  if (upper.includes('SOYBEAN') || upper.includes('सोयाबीन') || upper === 'SB') return 'SOYBEAN';
-  if (upper.includes('ONION') || upper.includes('कांदा') || upper === 'ON') return 'ONION';
-  if (upper.includes('TURMERIC') || upper.includes('हळद') || upper === 'TU') return 'TURMERIC';
-  if (upper.includes('GRAPE') || upper.includes('द्राक्ष') || upper === 'GR') return 'GRAPE';
+  if (upper.includes('SUGARCANE') || upper.includes('ऊस') || upper.includes('गन्ना') || upper.includes('ईख') || upper === 'SC') return 'SUGARCANE';
+  if (upper.includes('WHEAT') || upper.includes('गहू') || upper.includes('गेहूं') || upper.includes('गेहूँ') || upper === 'WH') return 'WHEAT';
+  if (upper.includes('COTTON') || upper.includes('कापूस') || upper.includes('कपास') || upper.includes('रुई') || upper === 'CT') return 'COTTON';
+  if (upper.includes('RICE') || upper.includes('भात') || upper.includes('तांदूळ') || upper.includes('धान') || upper.includes('चावल') || upper === 'RC') return 'RICE';
+  if (upper.includes('SOYBEAN') || upper.includes('सोयाबीन') || upper.includes('सोयाबिन') || upper === 'SB') return 'SOYBEAN';
+  if (upper.includes('ONION') || upper.includes('कांदा') || upper.includes('प्याज') || upper === 'ON') return 'ONION';
+  if (upper.includes('TURMERIC') || upper.includes('हळद') || upper.includes('हल्दी') || upper === 'TU') return 'TURMERIC';
+  if (upper.includes('GRAPE') || upper.includes('द्राक्ष') || upper.includes('अंगूर') || upper === 'GR') return 'GRAPE';
+  if (upper.includes('MAIZE') || upper.includes('CORN') || upper.includes('मका') || upper.includes('मक्का') || upper === 'MZ') return 'MAIZE';
+  if (upper.includes('GROUNDNUT') || upper.includes('PEANUT') || upper.includes('भुईमूग') || upper.includes('मूंगफली') || upper === 'GN') return 'GROUNDNUT';
+  if (upper.includes('BANANA') || upper.includes('केळी') || upper.includes('केला') || upper === 'BN') return 'BANANA';
+  if (upper.includes('POMEGRANATE') || upper.includes('डाळिंब') || upper.includes('अनार') || upper === 'PM') return 'POMEGRANATE';
+  if (upper.includes('CHILLI') || upper.includes('CHILI') || upper.includes('मिरची') || upper.includes('मिर्च') || upper === 'CH') return 'CHILLI';
+  if (upper.includes('TOMATO') || upper.includes('टोमॅटो') || upper.includes('टमाटर') || upper === 'TM') return 'TOMATO';
+  if (upper.includes('POTATO') || upper.includes('बटाटा') || upper.includes('आलू') || upper === 'PT') return 'POTATO';
+  if (upper.includes('MANGO') || upper.includes('आंबा') || upper.includes('आम') || upper === 'MG') return 'MANGO';
   return upper;
 }
 

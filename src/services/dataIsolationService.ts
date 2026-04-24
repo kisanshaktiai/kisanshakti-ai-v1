@@ -28,16 +28,7 @@ class DataIsolationService {
     // CRITICAL: farmerId should come from user.id (which is the farmer's ID)
     // The session.farmerId should match user.id
     const farmerId = user?.id || session?.farmerId || null;
-    
-    console.log('🔍 [DataIsolation] Getting isolation context:', {
-      tenantId,
-      farmerId,
-      userId: user?.id,
-      sessionFarmerId: session?.farmerId,
-      hasSession: !!session,
-      hasUser: !!user
-    });
-    
+
     return {
       tenantId: tenantId || null,
       farmerId: farmerId,

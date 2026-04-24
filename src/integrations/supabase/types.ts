@@ -9431,6 +9431,8 @@ export type Database = {
           paying_tenant_id: string | null
           payment_method: Json | null
           payment_method_id: string | null
+          payment_order_id: string | null
+          payment_provider: string | null
           plan_id: string
           start_date: string
           status: string
@@ -9459,6 +9461,8 @@ export type Database = {
           paying_tenant_id?: string | null
           payment_method?: Json | null
           payment_method_id?: string | null
+          payment_order_id?: string | null
+          payment_provider?: string | null
           plan_id: string
           start_date?: string
           status?: string
@@ -9487,6 +9491,8 @@ export type Database = {
           paying_tenant_id?: string | null
           payment_method?: Json | null
           payment_method_id?: string | null
+          payment_order_id?: string | null
+          payment_provider?: string | null
           plan_id?: string
           start_date?: string
           status?: string
@@ -21968,6 +21974,7 @@ export type Database = {
           billing_period_end: string
           billing_period_start: string
           created_at: string
+          farmer_id: string | null
           id: string
           metadata: Json | null
           metric_name: string
@@ -21981,6 +21988,7 @@ export type Database = {
           billing_period_end: string
           billing_period_start: string
           created_at?: string
+          farmer_id?: string | null
           id?: string
           metadata?: Json | null
           metric_name: string
@@ -21994,6 +22002,7 @@ export type Database = {
           billing_period_end?: string
           billing_period_start?: string
           created_at?: string
+          farmer_id?: string | null
           id?: string
           metadata?: Json | null
           metric_name?: string
@@ -22004,6 +22013,20 @@ export type Database = {
           usage_date?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "subscription_usage_logs_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "farmers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subscription_usage_logs_farmer_id_fkey"
+            columns: ["farmer_id"]
+            isOneToOne: false
+            referencedRelation: "ndvi_full_view"
+            referencedColumns: ["farmer_id"]
+          },
           {
             foreignKeyName: "subscription_usage_logs_subscription_id_fkey"
             columns: ["subscription_id"]
@@ -22774,6 +22797,68 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      tenant_alert_actions: {
+        Row: {
+          action_type: string
+          alert_id: string
+          channel: string | null
+          created_at: string
+          delivery_status: string | null
+          farmer_id: string
+          id: string
+          land_id: string | null
+          message: string | null
+          metadata: Json | null
+          performed_by: string
+          response_received: boolean | null
+          response_text: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          action_type: string
+          alert_id: string
+          channel?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          farmer_id: string
+          id?: string
+          land_id?: string | null
+          message?: string | null
+          metadata?: Json | null
+          performed_by: string
+          response_received?: boolean | null
+          response_text?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          action_type?: string
+          alert_id?: string
+          channel?: string | null
+          created_at?: string
+          delivery_status?: string | null
+          farmer_id?: string
+          id?: string
+          land_id?: string | null
+          message?: string | null
+          metadata?: Json | null
+          performed_by?: string
+          response_received?: boolean | null
+          response_text?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_alert_actions_alert_id_fkey"
+            columns: ["alert_id"]
+            isOneToOne: false
+            referencedRelation: "proactive_alerts"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tenant_archive_jobs: {
         Row: {
@@ -27394,6 +27479,10 @@ export type Database = {
         Returns: undefined
       }
       check_bootstrap_status: { Args: never; Returns: Json }
+      check_farmer_subscription: {
+        Args: { p_farmer_id: string; p_tenant_id: string }
+        Returns: Json
+      }
       check_harvest_quota: { Args: { p_tenant_id: string }; Returns: Json }
       check_mobile_number_exists: {
         Args: { mobile_num: string }
@@ -27820,6 +27909,42 @@ export type Database = {
       get_current_user_email: { Args: never; Returns: string }
       get_current_user_id: { Args: never; Returns: string }
       get_farmer_id_from_header: { Args: never; Returns: string }
+      get_farmer_subscription_plans: {
+        Args: { p_tenant_id?: string }
+        Returns: {
+          billing_interval: string | null
+          created_at: string | null
+          created_by_tenant_id: string | null
+          description: string | null
+          features: Json | null
+          id: string
+          is_active: boolean | null
+          is_custom: boolean | null
+          is_custom_plan: boolean | null
+          is_public: boolean | null
+          limits: Json | null
+          name: string
+          parent_plan_id: string | null
+          plan_category: string | null
+          plan_type: Database["public"]["Enums"]["subscription_plan_type"]
+          price_annually: number | null
+          price_monthly: number | null
+          price_quarterly: number | null
+          sort_order: number | null
+          stripe_price_id_annually: string | null
+          stripe_price_id_monthly: string | null
+          stripe_product_id: string | null
+          tenant_id: string | null
+          trial_days: number | null
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "subscription_plans"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       get_geometry_bbox: { Args: { geom: unknown }; Returns: number[] }
       get_header_farmer_id: { Args: never; Returns: string }
       get_header_tenant_id: { Args: never; Returns: string }
@@ -28055,6 +28180,16 @@ export type Database = {
       }
       gettransactionid: { Args: never; Returns: unknown }
       has_tenant_access: { Args: { check_tenant_id: string }; Returns: boolean }
+      increment_usage: {
+        Args: {
+          p_farmer_id: string
+          p_metric_name: string
+          p_quantity?: number
+          p_subscription_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       insert_land_with_geometry: {
         Args: {
           p_area_acres: number
