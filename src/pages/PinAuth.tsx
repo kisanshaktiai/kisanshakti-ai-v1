@@ -225,7 +225,7 @@ export default function PinAuth() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6 shadow-xl">
         {/* Header */}
         <div className="space-y-4">

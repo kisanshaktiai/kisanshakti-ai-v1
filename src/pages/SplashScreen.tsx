@@ -162,7 +162,7 @@ export default function SplashScreen() {
   
   return (
     <div 
-      className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
+      className="min-h-mobile-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
       style={{ 
         backgroundColor: backgroundColor || undefined,
         background: !backgroundColor ? 'hsl(var(--background))' : undefined

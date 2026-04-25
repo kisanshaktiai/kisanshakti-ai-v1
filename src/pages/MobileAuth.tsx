@@ -209,7 +209,7 @@ export default function MobileAuth() {
   // Show loading state while tenant is loading
   if (tenantLoading || !isReady) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex items-center justify-center">
+      <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex items-center justify-center">
         <Card className="p-8">
           <div className="flex items-center space-x-3">
             <Loader2 className="w-5 h-5 animate-spin text-primary" />
@@ -221,7 +221,7 @@ export default function MobileAuth() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6">
         {/* Header */}
         <div className="space-y-4">
