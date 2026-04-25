@@ -28,6 +28,7 @@ import { WeatherMap } from '@/components/weather/WeatherMap';
 import { VoiceWeatherSummary } from '@/components/weather/VoiceWeatherSummary';
 import { WeatherHeroCard } from '@/components/weather/WeatherHeroCard';
 import { FarmingRecommendations } from '@/components/weather/FarmingRecommendations';
+import { PageShell } from '@/components/layout/PageShell';
 import { HourlyTimeline } from '@/components/weather/HourlyTimeline';
 import { useWeather } from '@/hooks/useWeather';
 // Weather sync now handled by backend edge function
@@ -130,7 +131,7 @@ export default function Weather() {
 
   if (error || !currentWeather) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-destructive/5">
+      <PageShell variant="gradient-soft" className="flex items-center justify-center">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="max-w-md w-full bg-background/60 backdrop-blur-xl border-border/50 shadow-2xl">
             <CardHeader>
@@ -150,7 +151,7 @@ export default function Weather() {
             </CardContent>
           </Card>
         </motion.div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -178,12 +179,12 @@ export default function Weather() {
   };
 
   return (
-    <div className="h-screen relative bg-gradient-to-br from-background to-background/95 flex flex-col overflow-hidden">
-      <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30" />
-      
-      {/* FIX: PullRefreshController wraps everything with proper scroll */}
+    <PageShell variant="plain" padding="none" spacing="none" className="relative">
+      <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30 fixed inset-0 pointer-events-none" />
+
+      {/* PullRefreshController inherits the global scroll container — no nested scroller. */}
       <PullRefreshController onRefresh={handleManualSync} threshold={80}>
-        <div className="relative z-10 min-h-full">
+        <div className="relative z-10">
           {/* Hero Section with Weather Info */}
           <WeatherHeroCard
             currentWeather={currentWeather}
@@ -413,6 +414,6 @@ export default function Weather() {
           </div>
         </div>
       </PullRefreshController>
-    </div>
+    </PageShell>
   );
 };
