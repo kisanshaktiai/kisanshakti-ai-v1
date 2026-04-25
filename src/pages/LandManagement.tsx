@@ -196,10 +196,10 @@ export default function LandManagement() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="pb-6">
       {/* Compact Stats Bar - Mobile optimized */}
       {showStats && (
-        <div className="flex-shrink-0 bg-gradient-to-r from-primary/5 to-primary/10 border-b border-primary/10 px-4 py-2">
+        <div className="bg-gradient-to-r from-primary/5 to-primary/10 border-b border-primary/10 px-4 py-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 overflow-x-auto">
               <div className="flex items-center gap-1.5 flex-shrink-0">
