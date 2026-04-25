@@ -548,7 +548,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         }}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select State" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_state')} />
                         </SelectTrigger>
                         <SelectContent>
                           {states.map((state) => (
@@ -561,7 +561,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">District</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.district')}</Label>
                       <Select
                         value={formData.district_id}
                         onValueChange={(value) => {
@@ -577,7 +577,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         disabled={!formData.state_id}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select District" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_district')} />
                         </SelectTrigger>
                         <SelectContent>
                           {districts.map((district) => (
@@ -590,7 +590,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Taluka</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.taluka')}</Label>
                       <Select
                         value={formData.taluka_id}
                         onValueChange={(value) => {
@@ -604,7 +604,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         disabled={!formData.district_id}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Taluka" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_taluka')} />
                         </SelectTrigger>
                         <SelectContent>
                           {talukas.map((taluka) => (
@@ -617,7 +617,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Village</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.village')}</Label>
                       <Select
                         value={formData.village_id}
                         onValueChange={(value) => {
@@ -628,7 +628,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         disabled={!formData.taluka_id}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Village" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_village')} />
                         </SelectTrigger>
                         <SelectContent>
                           {villages.map((village) => (
