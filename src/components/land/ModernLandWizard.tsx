@@ -390,7 +390,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
+    <div className="min-h-full bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4 pb-24">
       {/* Progress Bar */}
       <div className="max-w-4xl mx-auto mb-6">
         <div className="flex items-center justify-between mb-4">
@@ -415,7 +415,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         </div>
         <div className="text-center">
           <h2 className="text-xl font-bold text-foreground">
-            Step {currentStep} of 4: {steps[currentStep - 1].title}
+            {t('lands.wizard.step_of_total', { current: currentStep, total: 4 })}: {steps[currentStep - 1].title}
           </h2>
         </div>
       </div>
