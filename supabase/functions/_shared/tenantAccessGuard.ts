@@ -85,16 +85,35 @@ function isServiceRoleRequest(req: Request): boolean {
  * Detect whether the Authorization header is the project's ANON key.
  * The farmer app uses custom auth (x-farmer-id / x-tenant-id headers); when
  * no real Supabase session JWT exists the client falls back to the anon key
- * as Bearer. In that case we skip JWT/spoof checks and rely on header
- * validation + farmer↔tenant association lookup for authorization.
+ * (or publishable key) as Bearer. In that case we skip JWT/spoof checks and
+ * rely on header validation + farmer↔tenant association lookup.
+ *
+ * Detection strategy: decode the JWT payload and check for `role: "anon"`
+ * with no `sub` claim. This is more reliable than string-comparing the env
+ * var (which may differ between deployments / publishable vs anon keys).
  */
 function isAnonKeyRequest(req: Request): boolean {
   const auth = req.headers.get('authorization');
   if (!auth?.startsWith('Bearer ')) return false;
   const token = auth.slice('Bearer '.length).trim();
+  if (!token) return false;
+
+  // Fast-path: env equality
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
-  if (!anonKey || !token) return false;
-  return token.length === anonKey.length && token === anonKey;
+  if (anonKey && token === anonKey) return true;
+
+  // Decode JWT payload (no signature check — only used to classify the token)
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return false;
+    const payloadB64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payloadB64 + '='.repeat((4 - (payloadB64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded));
+    // Anon/publishable keys have role=anon and no sub claim
+    return payload?.role === 'anon' && !payload?.sub;
+  } catch {
+    return false;
+  }
 }
 
 /**
