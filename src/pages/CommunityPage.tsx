@@ -65,7 +65,7 @@ const CommunityPage: React.FC = () => {
   }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/20">
+    <div className="min-h-full bg-gradient-to-b from-background via-background to-secondary/20 pb-nav-safe">
       {/* Glassmorphism Header */}
       <CommunityHeader 
         viewLanguage={viewLanguage}
