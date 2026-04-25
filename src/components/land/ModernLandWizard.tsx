@@ -747,7 +747,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     <div>
                       <Label htmlFor="cultivation_date" className="text-base mb-2 block">
-                        Cultivation Date
+                        {t('lands.wizard.fields.cultivation_date')}
                       </Label>
                       <Input
                         id="cultivation_date"
@@ -760,7 +760,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     <div>
                       <Label htmlFor="last_harvest_date" className="text-base mb-2 block">
-                        Last Harvest Date
+                        {t('lands.wizard.fields.last_harvest_date')}
                       </Label>
                       <Input
                         id="last_harvest_date"
@@ -780,16 +780,16 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <Save className="w-5 h-5 text-primary" />
-                      Review & Save
+                      {t('lands.wizard.sections.review')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Review your land details and save')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.review'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
@@ -798,19 +798,19 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     <Card className="p-4 bg-primary/5 border-primary/20">
                       <h4 className="font-semibold mb-3 flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
-                        Land Area
+                        {t('lands.wizard.review.land_area')}
                       </h4>
                       <div className="grid grid-cols-3 gap-4">
                         <div>
-                          <p className="text-sm text-muted-foreground">Acres</p>
+                          <p className="text-sm text-muted-foreground">{t('lands.wizard.review_labels.acres')}</p>
                           <p className="text-lg font-bold">{area.acres.toFixed(2)}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">Guntha</p>
+                          <p className="text-sm text-muted-foreground">{t('lands.wizard.review_labels.guntha')}</p>
                           <p className="text-lg font-bold">{area.guntha.toFixed(1)}</p>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">Sq.ft</p>
+                          <p className="text-sm text-muted-foreground">{t('lands.wizard.review_labels.sqft')}</p>
                           <p className="text-lg font-bold">{area.sqft.toLocaleString()}</p>
                         </div>
                       </div>
@@ -818,41 +818,41 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     {/* Basic Info Review */}
                     <Card className="p-4">
-                      <h4 className="font-semibold mb-3">Basic Information</h4>
+                      <h4 className="font-semibold mb-3">{t('lands.wizard.review.basic_info')}</h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Name:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.name')}:</span>
                           <span className="font-medium">{formData.name || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Survey Number:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.survey_number')}:</span>
                           <span className="font-medium">{formData.survey_number || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Ownership:</span>
-                          <span className="font-medium capitalize">{formData.ownership_type}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.ownership')}:</span>
+                          <span className="font-medium">{t(`lands.wizard.ownership.${formData.ownership_type}`)}</span>
                         </div>
                       </div>
                     </Card>
 
                     {/* Location Review */}
                     <Card className="p-4">
-                      <h4 className="font-semibold mb-3">Location</h4>
+                      <h4 className="font-semibold mb-3">{t('lands.wizard.review.location')}</h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">State:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.state')}:</span>
                           <span className="font-medium">{formData.state || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">District:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.district')}:</span>
                           <span className="font-medium">{formData.district || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Taluka:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.taluka')}:</span>
                           <span className="font-medium">{formData.taluka || '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Village:</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.village')}:</span>
                           <span className="font-medium">{formData.village || '-'}</span>
                         </div>
                       </div>
@@ -860,19 +860,19 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
                     {/* Land Details Review */}
                     <Card className="p-4">
-                      <h4 className="font-semibold mb-3">Land Details</h4>
+                      <h4 className="font-semibold mb-3">{t('lands.wizard.review.land_details')}</h4>
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Soil Type:</span>
-                          <span className="font-medium capitalize">{formData.soil_type || '-'}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.soil_type')}:</span>
+                          <span className="font-medium">{formData.soil_type ? t(`lands.wizard.soil_types.${formData.soil_type}`) : '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Water Source:</span>
-                          <span className="font-medium capitalize">{formData.water_source || '-'}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.water_source')}:</span>
+                          <span className="font-medium">{formData.water_source ? t(`lands.wizard.water_sources.${formData.water_source}`) : '-'}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Current Crop:</span>
-                          <span className="font-medium capitalize">{formData.current_crop || '-'}</span>
+                          <span className="text-muted-foreground">{t('lands.wizard.review_labels.current_crop')}:</span>
+                          <span className="font-medium">{formData.current_crop || '-'}</span>
                         </div>
                       </div>
                     </Card>
@@ -881,10 +881,10 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     <Card className="p-4 bg-secondary/5 border-secondary/20">
                       <h4 className="font-semibold mb-2 flex items-center gap-2">
                         <MapPin className="w-4 h-4" />
-                        Boundary Points
+                        {t('lands.wizard.review.boundary_points')}
                       </h4>
                       <p className="text-sm text-muted-foreground">
-                        {boundary.length} points captured from map
+                        {t('lands.wizard.review.points_captured', { count: boundary.length })}
                       </p>
                     </Card>
                   </div>
@@ -901,7 +901,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
               className="gap-2"
             >
               <ChevronLeft className="w-4 h-4" />
-              {currentStep === 1 ? 'Cancel' : 'Previous'}
+              {currentStep === 1 ? t('lands.wizard.buttons.cancel') : t('lands.wizard.buttons.previous')}
             </Button>
 
             {currentStep < 4 ? (
@@ -913,7 +913,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   (currentStep === 2 && (!formData.state || !formData.district))
                 }
               >
-                Next
+                {t('lands.wizard.buttons.next')}
                 <ChevronRight className="w-4 h-4" />
               </Button>
             ) : (
@@ -923,11 +923,11 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                 className="gap-2 bg-success hover:bg-success/90"
               >
                 {isSaving ? (
-                  <>Saving...</>
+                  <>{t('lands.wizard.buttons.saving')}</>
                 ) : (
                   <>
                     <Check className="w-4 h-4" />
-                    Save Land
+                    {t('lands.wizard.buttons.save_land')}
                   </>
                 )}
               </Button>
