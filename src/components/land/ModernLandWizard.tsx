@@ -649,28 +649,28 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <Sprout className="w-5 h-5 text-primary" />
-                      Land Characteristics
+                      {t('lands.wizard.sections.land_details')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Enter soil type, water source, crops, and dates')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.land_details'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-base mb-2 block">Soil Type</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.soil_type')}</Label>
                       <Select
                         value={formData.soil_type}
                         onValueChange={(value) => handleInputChange('soil_type', value)}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Soil Type" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_soil')} />
                         </SelectTrigger>
                         <SelectContent>
                           {soilTypes.map((type) => (
@@ -683,13 +683,13 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Water Source</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.water_source')}</Label>
                       <Select
                         value={formData.water_source}
                         onValueChange={(value) => handleInputChange('water_source', value)}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Water Source" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_water')} />
                         </SelectTrigger>
                         <SelectContent>
                           {waterSources.map((source) => (
@@ -702,13 +702,13 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                     </div>
 
                     <div>
-                      <Label className="text-base mb-2 block">Irrigation Type</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.irrigation_type')}</Label>
                       <Select
                         value={formData.irrigation_type}
                         onValueChange={(value) => handleInputChange('irrigation_type', value)}
                       >
                         <SelectTrigger className="h-12 text-base">
-                          <SelectValue placeholder="Select Irrigation" />
+                          <SelectValue placeholder={t('lands.wizard.placeholders.select_irrigation')} />
                         </SelectTrigger>
                         <SelectContent>
                           {irrigationTypes.map((type) => (
