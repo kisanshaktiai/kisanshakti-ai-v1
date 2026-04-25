@@ -82,6 +82,22 @@ function isServiceRoleRequest(req: Request): boolean {
 }
 
 /**
+ * Detect whether the Authorization header is the project's ANON key.
+ * The farmer app uses custom auth (x-farmer-id / x-tenant-id headers); when
+ * no real Supabase session JWT exists the client falls back to the anon key
+ * as Bearer. In that case we skip JWT/spoof checks and rely on header
+ * validation + farmer↔tenant association lookup for authorization.
+ */
+function isAnonKeyRequest(req: Request): boolean {
+  const auth = req.headers.get('authorization');
+  if (!auth?.startsWith('Bearer ')) return false;
+  const token = auth.slice('Bearer '.length).trim();
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!anonKey || !token) return false;
+  return token.length === anonKey.length && token === anonKey;
+}
+
+/**
  * Main guard entry point. Call at the top of any Class A handler.
  */
 export async function guardTenantAccess(
@@ -105,10 +121,14 @@ export async function guardTenantAccess(
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const isServiceRole = isServiceRoleRequest(req);
+  const isAnonKey = !isServiceRole && isAnonKeyRequest(req);
 
-  // ── Step 1: JWT validation (skipped for service-role callers) ──────────
+  // ── Step 1: JWT validation ─────────────────────────────────────────────
+  // Skipped for service-role callers (cron/admin) AND for anon-key callers
+  // (the farmer app uses custom auth via x-farmer-id / x-tenant-id headers,
+  // which are validated against the farmers table in Step 3 below).
   let jwtUserId: string | null = null;
-  if (!isServiceRole) {
+  if (!isServiceRole && !isAnonKey) {
     const jwtResult = await validateJWT(req);
     if (!jwtResult.valid) {
       console.warn('🚫 [TenantAccessGuard] JWT validation failed:', jwtResult.errorCode);
@@ -125,8 +145,10 @@ export async function guardTenantAccess(
       );
     }
     jwtUserId = jwtResult.userId ?? null;
-  } else {
+  } else if (isServiceRole) {
     console.log('🔑 [TenantAccessGuard] Service-role request — JWT/spoof checks bypassed');
+  } else {
+    console.log('🔓 [TenantAccessGuard] Anon-key request — relying on custom-auth headers (x-farmer-id / x-tenant-id)');
   }
 
   // ── Step 2: Header validation (always required) ────────────────────────
