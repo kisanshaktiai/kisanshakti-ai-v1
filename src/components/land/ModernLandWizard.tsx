@@ -516,22 +516,22 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <MapPin className="w-5 h-5 text-primary" />
-                      Location Details
+                      {t('lands.wizard.sections.location')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Select your state, district, taluka, and village')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.location'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-base mb-2 block">State</Label>
+                      <Label className="text-base mb-2 block">{t('lands.wizard.sections.state')}</Label>
                       <Select
                         value={formData.state_id}
                         onValueChange={(value) => {
