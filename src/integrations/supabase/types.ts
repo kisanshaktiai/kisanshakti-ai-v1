@@ -1670,6 +1670,45 @@ export type Database = {
           },
         ]
       }
+      ai_model_pricing: {
+        Row: {
+          created_at: string
+          currency: string
+          effective_from: string
+          id: string
+          input_cost_per_1k: number
+          is_active: boolean
+          model_name: string
+          notes: string | null
+          output_cost_per_1k: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          effective_from?: string
+          id?: string
+          input_cost_per_1k?: number
+          is_active?: boolean
+          model_name: string
+          notes?: string | null
+          output_cost_per_1k?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          effective_from?: string
+          id?: string
+          input_cost_per_1k?: number
+          is_active?: boolean
+          model_name?: string
+          notes?: string | null
+          output_cost_per_1k?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_schedule_refinements: {
         Row: {
           ai_reasoning: string
@@ -2371,6 +2410,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      backup_events: {
+        Row: {
+          created_at: string
+          finished_at: string | null
+          id: string
+          kind: string
+          metadata: Json
+          notes: string | null
+          size_bytes: number | null
+          started_at: string
+          status: string
+          triggered_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          kind: string
+          metadata?: Json
+          notes?: string | null
+          size_bytes?: number | null
+          started_at?: string
+          status: string
+          triggered_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          metadata?: Json
+          notes?: string | null
+          size_bytes?: number | null
+          started_at?: string
+          status?: string
+          triggered_by?: string | null
+        }
+        Relationships: []
       }
       billing_analytics: {
         Row: {
@@ -10854,6 +10932,59 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "hypothesis_master"
             referencedColumns: ["hypothesis_id"]
+          },
+        ]
+      }
+      impersonation_sessions: {
+        Row: {
+          ended_at: string | null
+          expires_at: string
+          id: string
+          ip: unknown
+          metadata: Json
+          reason: string
+          scope: string
+          started_at: string
+          super_admin_id: string
+          target_tenant_id: string | null
+          target_user_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          ended_at?: string | null
+          expires_at?: string
+          id?: string
+          ip?: unknown
+          metadata?: Json
+          reason: string
+          scope?: string
+          started_at?: string
+          super_admin_id: string
+          target_tenant_id?: string | null
+          target_user_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          ended_at?: string | null
+          expires_at?: string
+          id?: string
+          ip?: unknown
+          metadata?: Json
+          reason?: string
+          scope?: string
+          started_at?: string
+          super_admin_id?: string
+          target_tenant_id?: string | null
+          target_user_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "impersonation_sessions_target_tenant_id_fkey"
+            columns: ["target_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -23333,6 +23464,41 @@ export type Database = {
           },
         ]
       }
+      tenant_health_snapshots: {
+        Row: {
+          breakdown: Json
+          computed_at: string
+          created_at: string
+          id: string
+          score: number
+          tenant_id: string
+        }
+        Insert: {
+          breakdown?: Json
+          computed_at?: string
+          created_at?: string
+          id?: string
+          score: number
+          tenant_id: string
+        }
+        Update: {
+          breakdown?: Json
+          computed_at?: string
+          created_at?: string
+          id?: string
+          score?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_health_snapshots_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_legal_documents: {
         Row: {
           created_at: string
@@ -28232,6 +28398,7 @@ export type Database = {
         Args: { _farmer_id: string; _group_id: string }
         Returns: boolean
       }
+      is_impersonating: { Args: never; Returns: boolean }
       is_invite_valid: { Args: { invite_token: string }; Returns: boolean }
       is_moderator: { Args: never; Returns: boolean }
       is_super_admin: { Args: never; Returns: boolean }
