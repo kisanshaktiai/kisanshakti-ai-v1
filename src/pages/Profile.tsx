@@ -149,7 +149,7 @@ export default function Profile() {
   const profileCompletion = calculateProfileCompletion();
 
   return (
-    <PageShell padding="default" spacing="default">
+    <PageShell padding="default" spacing="none">
       <div className="space-y-6 animate-fade-in">
         {/* Sync Status Card */}
         <SyncStatus />
