@@ -29,6 +29,37 @@ serve(async (req) => {
       );
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Tenant-Farmer Association Guard (F7 hardening)
+    // Verify the claimed farmer actually belongs to the claimed tenant.
+    // Prevents anon-key holders from spoofing arbitrary farmer IDs.
+    // ─────────────────────────────────────────────────────────────────
+    const { data: farmerRow, error: farmerErr } = await supabase
+      .from('farmers')
+      .select('id, tenant_id')
+      .eq('id', farmerId)
+      .maybeSingle();
+
+    if (farmerErr || !farmerRow) {
+      console.warn('🚫 [SchedulesAPI] Farmer lookup failed:', { farmerId, error: farmerErr?.message });
+      return new Response(
+        JSON.stringify({ error: 'Forbidden', details: 'Invalid farmer context' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (farmerRow.tenant_id !== tenantId) {
+      console.warn('🚫 [SchedulesAPI] Tenant mismatch:', {
+        claimed_tenant: tenantId,
+        actual_tenant: farmerRow.tenant_id,
+        farmer_id: farmerId,
+      });
+      return new Response(
+        JSON.stringify({ error: 'Forbidden', details: 'Farmer does not belong to claimed tenant' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Parse URL to get path segments
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(Boolean);

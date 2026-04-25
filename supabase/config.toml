@@ -31,9 +31,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ai-smart-schedule]
-verify_jwt = true
-
-[functions.ai-schedule-ops]
 verify_jwt = false
 
 [functions.ai-marketing-insights]
