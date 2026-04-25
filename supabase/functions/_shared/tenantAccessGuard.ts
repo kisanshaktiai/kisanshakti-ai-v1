@@ -82,6 +82,22 @@ function isServiceRoleRequest(req: Request): boolean {
 }
 
 /**
+ * Detect whether the Authorization header is the project's ANON key.
+ * The farmer app uses custom auth (x-farmer-id / x-tenant-id headers); when
+ * no real Supabase session JWT exists the client falls back to the anon key
+ * as Bearer. In that case we skip JWT/spoof checks and rely on header
+ * validation + farmer↔tenant association lookup for authorization.
+ */
+function isAnonKeyRequest(req: Request): boolean {
+  const auth = req.headers.get('authorization');
+  if (!auth?.startsWith('Bearer ')) return false;
+  const token = auth.slice('Bearer '.length).trim();
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!anonKey || !token) return false;
+  return token.length === anonKey.length && token === anonKey;
+}
+
+/**
  * Main guard entry point. Call at the top of any Class A handler.
  */
 export async function guardTenantAccess(
