@@ -122,7 +122,7 @@ class VersionService {
   async fetchVersionFromDatabase(): Promise<{ version: string; buildHash: string; forceUpdate: boolean } | null> {
     try {
       const response = await fetch(
-        getSupabaseFunctionUrl('app-version'),
+        `${getSupabaseFunctionUrl('app-version')}?app_key=farmer_app`,
         {
           method: 'GET',
           headers: {
