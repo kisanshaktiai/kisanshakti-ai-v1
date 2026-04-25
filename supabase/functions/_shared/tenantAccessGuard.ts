@@ -121,10 +121,14 @@ export async function guardTenantAccess(
 
   const supabase = createClient(supabaseUrl, serviceRoleKey);
   const isServiceRole = isServiceRoleRequest(req);
+  const isAnonKey = !isServiceRole && isAnonKeyRequest(req);
 
-  // ── Step 1: JWT validation (skipped for service-role callers) ──────────
+  // ── Step 1: JWT validation ─────────────────────────────────────────────
+  // Skipped for service-role callers (cron/admin) AND for anon-key callers
+  // (the farmer app uses custom auth via x-farmer-id / x-tenant-id headers,
+  // which are validated against the farmers table in Step 3 below).
   let jwtUserId: string | null = null;
-  if (!isServiceRole) {
+  if (!isServiceRole && !isAnonKey) {
     const jwtResult = await validateJWT(req);
     if (!jwtResult.valid) {
       console.warn('🚫 [TenantAccessGuard] JWT validation failed:', jwtResult.errorCode);
@@ -141,8 +145,10 @@ export async function guardTenantAccess(
       );
     }
     jwtUserId = jwtResult.userId ?? null;
-  } else {
+  } else if (isServiceRole) {
     console.log('🔑 [TenantAccessGuard] Service-role request — JWT/spoof checks bypassed');
+  } else {
+    console.log('🔓 [TenantAccessGuard] Anon-key request — relying on custom-auth headers (x-farmer-id / x-tenant-id)');
   }
 
   // ── Step 2: Header validation (always required) ────────────────────────
