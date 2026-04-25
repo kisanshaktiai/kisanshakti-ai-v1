@@ -302,7 +302,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
+      <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
         {/* Header Skeleton */}
         <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
           <div className="px-4 py-3">
@@ -370,7 +370,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   if (!schedule) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
+      <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
         {/* Header */}
         <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
           <div className="px-4 py-3">
@@ -439,7 +439,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const realHarvestDate = harvestTask?.task_date || schedule.expected_harvest_date;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
+    <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
       {/* Modern Mobile-First Header - 2025 Design */}
       <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
         <div className="px-4 py-3">

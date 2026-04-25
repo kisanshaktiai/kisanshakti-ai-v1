@@ -171,7 +171,7 @@ export function MarketPriceIntelligence() {
   const dateKeys = Object.keys(groupedPrices).sort().reverse();
 
   return (
-    <div className="min-h-screen pb-20">
+    <div className="min-h-full pb-20">
       {/* Hero Header - Compact & Informative */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}

@@ -44,7 +44,7 @@ export function RouteErrorBoundary() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-subtle">
+    <div className="min-h-mobile-screen flex items-center justify-center p-4 bg-gradient-subtle">
       <Card className="max-w-md w-full shadow-elegant">
         <CardHeader className="text-center pb-4">
           <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center">
