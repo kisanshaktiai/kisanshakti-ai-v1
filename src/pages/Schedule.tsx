@@ -353,120 +353,113 @@ export default function Schedule() {
 
   const stickyHeader = (
     <div className="px-3 py-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-                className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
-                  {t('schedule.main.ai_crop_schedule')}
-                </h1>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {flowStep === 'land-selection' && t('schedule.steps.land_selection')}
-                  {flowStep === 'crop-input' && t('schedule.steps.crop_input')}
-                  {flowStep === 'schedule-view' && t('schedule.steps.schedule_view')}
-                </p>
-              </div>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
+            className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <div>
+            <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
+              {t('schedule.main.ai_crop_schedule')}
+            </h1>
+            <p className="text-xs text-muted-foreground font-medium">
+              {flowStep === 'land-selection' && t('schedule.steps.land_selection')}
+              {flowStep === 'crop-input' && t('schedule.steps.crop_input')}
+              {flowStep === 'schedule-view' && t('schedule.steps.schedule_view')}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {flowStep === 'land-selection' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                refetchLands();
+                toast({
+                  title: t('schedule.main.refreshing'),
+                  description: t('schedule.main.syncing_latest'),
+                  className: 'bg-accent/10 border-accent/20',
+                });
+              }}
+              className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
+
+          <div className="flex flex-col items-end gap-1">
+            <div className="flex items-center gap-1.5">
+              {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
+                <div
+                  key={step}
+                  className={`h-1.5 rounded-full transition-all duration-500 ${
+                    flowStep === step
+                      ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50'
+                      : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
+                      ? 'w-6 bg-primary/60'
+                      : 'w-6 bg-primary/20'
+                  }`}
+                />
+              ))}
             </div>
-            
-            <div className="flex items-center gap-2">
-              {/* Manual Refresh Button */}
-              {flowStep === 'land-selection' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    refetchLands();
-                    toast({
-                      title: t('schedule.main.refreshing'),
-                      description: t('schedule.main.syncing_latest'),
-                      className: 'bg-accent/10 border-accent/20',
-                    });
-                  }}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              )}
-              
-              {/* Modern Step Progress Bar */}
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
-                  {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
-                    <div 
-                      key={step}
-                      className={`h-1.5 rounded-full transition-all duration-500 ${
-                        flowStep === step 
-                          ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50' 
-                          : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
-                          ? 'w-6 bg-primary/60'
-                          : 'w-6 bg-primary/20'
-                      }`} 
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] text-muted-foreground font-medium">
-                  {t('schedule.steps.of_total', { current: ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1, total: 3 })}
-                </span>
-              </div>
-            </div>
+            <span className="text-[10px] text-muted-foreground font-medium">
+              {t('schedule.steps.of_total', { current: ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1, total: 3 })}
+            </span>
           </div>
         </div>
       </div>
+    </div>
+  );
 
-      {/* Full Screen Content Area */}
-      <div className="fixed inset-0 pt-14 pb-16 overflow-y-auto">
-        <div className="min-h-full">
-          {/* Flow Steps with Enhanced Animations */}
-          <div className="relative">
-            {flowStep === 'land-selection' && (
-              <div className="animate-fade-in">
-                <LandSelector 
-                  lands={lands}
-                  onSelectLand={handleLandSelect}
-                  onViewSchedule={handleViewSchedule}
-                  onEditSchedule={handleEditSchedule}
-                />
-              </div>
-            )}
-
-            {flowStep === 'crop-input' && selectedLand && (
-              <div className="animate-slide-in-right">
-                <CropDateInput
-                  land={selectedLand}
-                  onSubmit={handleCropDateSubmit}
-                  onBack={handleBack}
-                  loading={generating}
-                />
-              </div>
-            )}
-
-            {flowStep === 'schedule-view' && selectedLand && (
-              <div className="animate-slide-in-right">
-                <CropScheduleView
-                  landId={selectedLand.id}
-                  landName={selectedLand.name}
-                  currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
-                  onBack={handleBack}
-                />
-              </div>
-            )}
+  return (
+    <PageShell variant="gradient-primary" padding="none" spacing="none" stickyHeader={stickyHeader}>
+      <div className="relative">
+        {flowStep === 'land-selection' && (
+          <div className="animate-fade-in">
+            <LandSelector
+              lands={lands}
+              onSelectLand={handleLandSelect}
+              onViewSchedule={handleViewSchedule}
+              onEditSchedule={handleEditSchedule}
+            />
           </div>
-        </div>
+        )}
+
+        {flowStep === 'crop-input' && selectedLand && (
+          <div className="animate-slide-in-right">
+            <CropDateInput
+              land={selectedLand}
+              onSubmit={handleCropDateSubmit}
+              onBack={handleBack}
+              loading={generating}
+            />
+          </div>
+        )}
+
+        {flowStep === 'schedule-view' && selectedLand && (
+          <div className="animate-slide-in-right">
+            <CropScheduleView
+              landId={selectedLand.id}
+              landName={selectedLand.name}
+              currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
+              onBack={handleBack}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Global Loading Overlay - shows during API call */}
       <ScheduleLoadingOverlay
         isLoading={generating}
         cropName={generatingCropName || scheduleData?.cropName || ''}
         farmingType={generatingFarmingType || scheduleData?.farmingType || 'organic_fertilizer'}
       />
-    </div>
+    </PageShell>
   );
 }
