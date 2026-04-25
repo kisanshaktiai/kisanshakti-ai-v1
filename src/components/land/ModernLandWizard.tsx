@@ -415,7 +415,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
         </div>
         <div className="text-center">
           <h2 className="text-xl font-bold text-foreground">
-            {t('lands.wizard.step_of_total', { current: currentStep, total: 4 })}: {steps[currentStep - 1].title}
+            {t('lands.wizard.step_of_total', { current: currentStep, total: 4, title: steps[currentStep - 1].title })}
           </h2>
         </div>
       </div>
