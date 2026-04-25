@@ -105,9 +105,9 @@ export default function ProactiveAlerts() {
 
   if (alerts.length === 0 && !showHistory) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-accent/5 to-primary/5">
-        {/* Header */}
-        <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
+      <div className="min-h-full bg-gradient-to-br from-background via-accent/5 to-primary/5 pb-nav-safe">
+        {/* Sticky sub-header (sticks to top of <main> scroller, below global header) */}
+        <div className="sticky top-0 z-20 bg-background/85 backdrop-blur-md border-b border-border/40">
           <div className="px-3 py-3">
             <div className="flex items-center gap-3">
               <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-9 w-9 rounded-xl">
@@ -127,7 +127,7 @@ export default function ProactiveAlerts() {
           </div>
         </div>
 
-        <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center pt-20">
+        <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
           <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-4">
             <CheckCircle className="h-10 w-10 text-primary" />
           </div>
@@ -176,9 +176,9 @@ export default function ProactiveAlerts() {
     });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-accent/5 to-primary/5">
-      {/* Sticky Header */}
-      <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
+    <div className="min-h-full bg-gradient-to-br from-background via-accent/5 to-primary/5 pb-nav-safe">
+      {/* Sticky sub-header */}
+      <div className="sticky top-0 z-20 bg-background/85 backdrop-blur-md border-b border-border/40">
         <div className="px-3 py-3">
           <div className="flex items-center gap-3">
             <Button
