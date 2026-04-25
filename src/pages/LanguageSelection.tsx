@@ -96,7 +96,7 @@ export default function LanguageSelection() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5 flex flex-col">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/5 via-background to-accent/5 flex flex-col">
       <AppHeader />
 
       <main className="flex-1 overflow-y-auto px-4 py-6">

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export const ProfileSkeleton = () => {
   return (
-    <div className="min-h-screen bg-background animate-fade-in">
+    <div className="min-h-full bg-background animate-fade-in">
       <div className="container mx-auto px-4 py-6 space-y-6">
         {/* Header Skeleton */}
         <div className="flex items-center justify-between">

@@ -205,7 +205,7 @@ export default function Market() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20 pb-nav-safe">
       {/* Compact Header for non-prices tabs */}
       {activeTab !== 'prices' && (
         <MarketplaceHeader 

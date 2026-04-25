@@ -897,4 +897,29 @@ button, a, [role="button"], input, select, textarea, label,
       -webkit-backdrop-filter: blur(12px) saturate(140%);
     }
   }
+
+  /* 2030 a11y: prevent iOS auto-zoom on input focus (font-size must be ≥16px) */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
+
+  /* Universal focus-visible ring for keyboard / accessibility users */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--primary) / 0.6);
+    border-radius: inherit;
+  }
+
+  /* Multi-tenant auth gradient — single source for tenant theming */
+  .bg-auth-gradient {
+    background: linear-gradient(135deg,
+      hsl(var(--primary) / 0.10),
+      hsl(var(--background)),
+      hsl(var(--accent) / 0.10));
+  }
 }
+

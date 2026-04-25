@@ -13,6 +13,7 @@ import { supabaseWithAuth } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { ArrowLeft, Save, Loader2 } from 'lucide-react';
 import { AvatarUpload } from '@/components/profile/AvatarUpload';
+import { PageShell } from '@/components/layout/PageShell';
 
 export default function ProfileEdit() {
   const { t } = useTranslation();
@@ -332,8 +333,8 @@ export default function ProfileEdit() {
   };
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-4 pb-24">
+    <PageShell padding="default" spacing="none">
+      <div className="space-y-4">
         {dataLoading ? (
           <div className="flex items-center justify-center h-64">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
@@ -785,6 +786,6 @@ export default function ProfileEdit() {
           </>
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

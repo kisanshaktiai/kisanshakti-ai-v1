@@ -1,94 +1,79 @@
+# 🛠 Scroll Architecture + 2030 UX Refresh — Master Plan
 
-# Lands Feature — Deep Audit & Fix Plan
+## Phase 1 — Establish the Single Scroll Contract (foundation)
 
-## Audit Findings
+**Rule (to be enforced everywhere):**
+> The ONLY scroll container is `<main className="mobile-scroll-container">` in `AppLayout.tsx`.  
+> Pages render natural-height content. **No** `h-screen`, `min-h-screen`, `h-full overflow-y-auto`, or `fixed inset-0 overflow-y-auto` inside pages.
 
-### Bug 1 — Sticky search bar overlaps land cards
-File: `src/pages/LandManagement.tsx` (line 247)
+### 1a. Fix scroll restoration in `AppLayout.tsx`
+- Replace `window.scrollTo` (broken — window doesn't scroll) with a ref to `<main>` and `mainRef.current?.scrollTo({top:0})` on route change.
+- Add `scroll-pt-14` so anchored sections respect the fixed header.
 
-```tsx
-<div className="sticky top-14 z-10 bg-background/95 backdrop-blur-sm py-3 px-4">
-```
+### 1b. Add a reusable `<PageShell>` component
+- `src/components/layout/PageShell.tsx` providing `bg-gradient`, optional `sticky` sub-header slot, consistent `px-4 py-4 space-y-4`, and `pb-nav-safe`.
+- Migrate every page to use it (eliminates the `min-h-screen` copy-paste).
 
-`top-14` is correct relative to the global header **only** when the page is the body scroller. But `AppLayout` wraps `<Outlet />` in `<main className="pt-14 pb-nav-safe mobile-scroll-container">`, which is itself the scroll container (`overflow-y: auto`). Inside that scroller, `sticky top-14` measures from the top of the scroller, not from the header — so the search bar sticks 56px **below** the visible top, hiding the first land card behind it as the user scrolls.
+---
 
-**Fix:** Change to `sticky top-0` (relative to the `<main>` scroller, which already has `pt-14`). The bar will pin flush to the top of the scroll viewport, directly under the global header. Also add `-mx-4 px-4` is unnecessary; keep `px-4 py-3 bg-background/95 backdrop-blur-sm border-b border-border/40` so the bar fully covers the cards beneath it (no transparency leak).
+## Phase 2 — Page-by-Page Fixes
 
-### Bug 2 — Add Land wizard cannot scroll
-File: `src/components/land/ModernLandWizard.tsx` (line 393)
+| # | File | Change |
+|---|---|---|
+| 1 | `src/pages/Weather.tsx` | Remove `h-screen ... overflow-hidden flex flex-col`. Wrap content in `PageShell`. Keep `PullRefreshController` but let it inherit page scroll instead of owning it. |
+| 2 | `src/pages/Home.tsx` | Replace `min-h-screen` with `PageShell`. Convert `fixed top-16` weather card to `sticky top-14` so it scrolls with content (no longer overlaps cards). |
+| 3 | `src/pages/Schedule.tsx` | Remove both `fixed inset-0 pt-14 pb-16 overflow-y-auto` blocks (lines 324 & 466). Use `PageShell` with `pb-nav-safe`. |
+| 4 | `src/pages/Profile.tsx` | Replace `h-full overflow-y-auto` with `PageShell`. Eliminates nested scroller. |
+| 5 | `src/pages/ProfileEdit.tsx` | Same as Profile. Re-anchor sticky header to `<main>`. |
+| 6 | `src/pages/Market.tsx` | Replace `min-h-screen` with `PageShell`. Standardize search bar to `sticky top-0`. |
+| 7 | `src/pages/CommunityPage.tsx` | Replace `min-h-screen` with `PageShell` (note: `/app/community/*/chat` keeps full-screen behavior). |
+| 8 | `src/pages/SubscriptionPage.tsx`, `ProactiveAlerts.tsx`, `NDVIAnalysis.tsx`, `Analytics.tsx`, `SoilHealthReport.tsx`, `NotificationSettingsPage.tsx`, `AIScheduleDashboard.tsx`, `CropGrowthTracking.tsx`, `LandDetails.tsx`, `InstallPWA.tsx`, `Schemes.tsx`, `VideoReels.tsx` | Replace `min-h-screen` with `PageShell`. Remove redundant `pb-20` (handled by `pb-nav-safe`). |
+| 9 | `src/pages/SplashScreen.tsx`, `AuthScreen.tsx`, `MobileAuth.tsx`, `PinAuth.tsx`, `SetPin.tsx`, `LanguageSelection.tsx`, `NotFound.tsx` | These render OUTSIDE `AppLayout` — keep `min-h-screen` but switch to `min-h-mobile-screen` (uses `100dvh`) so iOS dynamic chrome doesn't clip them. |
 
-```tsx
-<div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-secondary/5 p-4">
-```
+---
 
-The wizard is rendered inside `<main className="… mobile-scroll-container">` (which is `overflow-y: auto; flex: 1`). `min-h-screen` forces height to 100vh but the global header is `pt-14`, so the wizard renders 56px **taller** than the available viewport. On Step 3 (Land Details has 7 fields + crop cards) and Step 4 (Review with 5 cards), the bottom navigation buttons fall below the fold and the inner scroll cannot reach them because the parent flex container clips.
+## Phase 3 — 2030 UX Upgrades (No-1 UX-expert recommendations)
 
-**Fix:** Replace `min-h-screen` with `min-h-full` and remove the artificial overflow. Let the natural document flow + `<main>`'s scroller handle scrolling. Also add `pb-24` to the wrapper so the sticky nav buttons clear the bottom navigation bar.
+### 3a. Motion & Feedback
+- Capacitor `Haptics.impact({style: Light})` on all primary actions, nav taps, and toggles (graceful no-op on web).
+- Page-transition shared layout with `framer-motion` `<AnimatePresence mode="wait">` in `AppLayout` (slide-fade per route).
+- Replace skeletons with **shimmer + content-shape morph** (skeleton blocks transition to real components in place).
 
-### Bug 3 — ModernLandWizard hardcoded in English (Marathi shows English)
-File: `src/components/land/ModernLandWizard.tsx`
+### 3b. Header & Navigation
+- Make the glass header **adaptive**: shrinks brand to icon when scrolled >40px (more screen real-estate).
+- Add a **scroll-to-top FAB** that appears when user scrolls past 400px.
+- Bottom nav: add subtle **scroll-aware hide-on-down / show-on-up** (Instagram-style) for max content visibility.
 
-All 4 steps use **hardcoded English strings** instead of `t()`. Examples:
-- Line 359-363: `steps` array → `'Basic Info'`, `'Location'`, `'Land Details'`, `'Review & Save'`
-- Line 366-390: `soilTypes`, `waterSources`, `irrigationTypes` arrays → English `label` literals
-- Line 418: `Step {currentStep} of 4: {steps[currentStep - 1].title}`
-- Line 441, 457, 470, 483, 487-489, 519, 534, 551, 564, 580, 593, 607, 620, 631, 652, 667, 673, 686, 692, 705, 711, 750, 763, 783, 801, 805, 809, 813, 821, 824, 828, 832, 840, 843, 847, 851, 855, 863, 866, 870, 874, 884, 887, 904, 916, 926, 930
-- Voice guide messages (lines 446, 524, 657, 788) — English only
+### 3c. Content Patterns
+- **Universal `<EmptyState />` component**: illustration + 1-line + CTA. Roll into Schemes, VideoReels, Analytics, Saved posts, etc.
+- **Universal `<PullRefresh />` wrapper** baked into `PageShell` (opt-out via prop). Reuses Weather logic.
+- **Sticky filter chips** standardization: every page that has filters uses the same `sticky top-0 z-10 bg-background/95 backdrop-blur-md` pattern.
+- **Section headers** unified: `text-sm font-semibold uppercase tracking-wide text-muted-foreground` with optional "See all" link.
 
-The translation **keys already exist** in `mr/lands.json` under `lands.wizard.*`:
-- `lands.wizard.steps.basic_info`, `.location`, `.land_details`, `.review_save`
-- `lands.wizard.soil_types.alluvial|black|red|laterite|desert|mountain`
-- `lands.wizard.water_sources.*`, `.irrigation_types.*`
-- `lands.wizard.review.land_area|basic_info|location|land_details|boundary_points|points_captured`
-- `lands.wizard.buttons.previous|next|cancel|save_land|saving|start_mapping`
-- `lands.wizard.voice_guide`, `step_of_total`, `crop_selection`, `current_crop`, `previous_crop`
+### 3d. Accessibility & Inputs
+- Force all `<input>` `font-size: 16px` minimum to stop iOS auto-zoom.
+- Add visible focus rings (`focus-visible:ring-2 ring-primary ring-offset-2`) on all icon buttons.
+- Add `aria-label` audit pass for icon-only buttons across nav, header, action menus.
+- Respect `prefers-reduced-motion` everywhere we use `framer-motion` (already partial in Home — extend).
 
-What's **missing** in MR (and HI/EN):
-- `lands.wizard.fields.land_name`, `.survey_number`, `.cultivation_date`, `.last_harvest_date`, `.required`, `.land_name_placeholder`, `.survey_placeholder`
-- `lands.wizard.ownership.owned|leased|shared`
-- `lands.wizard.placeholders.select_state|select_district|select_taluka|select_village|select_soil|select_water|select_irrigation`
-- `lands.wizard.voice_guides.basic_info|location|land_details|review`
-- `lands.wizard.toast.validation_title|name_required|boundary_required|offline_title|offline_message|success_title|success_message|error_title|error_generic|error_timeout|error_session`
+### 3e. Theming polish (multi-tenant ready)
+- Audit gradient overuse (`from-primary/10 via-background to-accent/10` repeated 12× across auth pages) → centralize as `bg-auth-gradient` semantic class so each tenant theme automatically restyles.
+- Add `data-theme` attribute on `<html>` so per-tenant CSS variable overrides cascade cleanly without re-rendering.
 
-### Bug 4 — Missing Marathi crop_management & edit keys (32 keys)
-The CropManagementDialog and EditLandWizard reference these keys but they're absent from `mr/lands.json`:
-- `lands.crop_management.*` (20 keys: title, description, current/previous_crop, planting_date, expected_harvest, duration_days, save_changes, saving, back, select_*, toast.success/error/load_error, etc.)
-- `lands.edit.*` (10 keys: title, basic_details, area_display, area_detail, basic_land_info, land_characteristics, review, toast.success/error/session_error)
-- `lands.list_item.acres`, `lands.list_item.ownership_default`
+---
 
-## Fix Plan (3 files)
+## Phase 4 — Verification
 
-### 1. `src/pages/LandManagement.tsx`
-- Line 247: change `sticky top-14` → `sticky top-0`, add `border-b border-border/40` to the sticky wrapper for visual separation and to prevent card bleed-through.
+- TypeScript compile + Vite build.
+- Manual scroll test on every route at 390x688 (current preview viewport).
+- Confirm: (a) only one scrollbar per page, (b) bottom-nav never overlaps content, (c) sticky elements stick to top of `<main>`, (d) route changes scroll-to-top.
+- Verify Marathi/Hindi translations still render across the redesigned shells (no regression from prior work).
 
-### 2. `src/components/land/ModernLandWizard.tsx`
-- Line 393: replace `min-h-screen … p-4` → `min-h-full … p-4 pb-24` (allow natural scrolling inside `<main>`, clear bottom nav).
-- Replace all hardcoded English strings with `t('lands.wizard.…')` calls. Specifically:
-  - `steps` array → translated titles via `t('lands.wizard.steps.*')`
-  - `soilTypes`, `waterSources`, `irrigationTypes` `label` → `t('lands.wizard.soil_types.*')`, etc.
-  - All `<Label>` text, `<SelectValue placeholder>`, `<Input placeholder>`, section headings, review-card labels, voice-guide messages, navigation buttons (Previous/Next/Cancel/Save Land/Saving), and toast messages.
-  - Step counter: `t('lands.wizard.step_of_total', { current: currentStep, total: 4, title: t(...) })`.
-- Ownership cards (line 487-489): use `t('lands.wizard.ownership.owned|leased|shared')`.
+---
 
-### 3. Translation files — add missing keys to **all** locales (`en`, `hi`, `mr`, `pa`, `ta`)
-Add a complete `lands.wizard` namespace covering:
-- `fields.*` (land_name, land_name_placeholder, survey_number, survey_placeholder, cultivation_date, last_harvest_date, required)
-- `ownership.owned|leased|shared`
-- `placeholders.select_state|select_district|select_taluka|select_village|select_soil|select_water|select_irrigation`
-- `voice_guides.basic_info|location|land_details|review`
-- `toast.validation_title|name_required|boundary_required|offline_title|offline_message|success_title|success_message|error_title|error_generic|error_timeout|error_session`
+## Files Touched (estimate)
+- **New**: `src/components/layout/PageShell.tsx`, `src/components/layout/EmptyState.tsx`, `src/components/layout/ScrollToTopFab.tsx`
+- **Modified**: `src/components/AppLayout.tsx` + all 24 pages listed above
+- **CSS**: minor additions to `src/index.css` (`bg-auth-gradient`, focus utilities)
 
-Also backfill the **32 missing MR keys** under `lands.crop_management.*`, `lands.edit.*`, and `lands.list_item.*` so CropManagementDialog and EditLandWizard render fully in Marathi. Use the EN values as the source and translate to MR (mirror existing tone — Devanagari, conversational rural Marathi consistent with `mem://ui/farmer-centric-content-rules`).
-
-## Verification Checklist
-- 390×688 viewport: search bar pins flush under the global header; cards scroll cleanly underneath without being clipped; "Add Land" button still flows after the last card.
-- Add Land wizard scrolls naturally on all 4 steps; Previous/Next/Save buttons are always reachable; on Step 3 and Step 4 nothing falls behind the bottom nav.
-- Switch language to Marathi → every label, placeholder, button, voice-guide, toast, and review row in `ModernLandWizard`, `LandInstructionDialog`, `CropManagementDialog`, and `EditLandWizard` renders in Devanagari with no English fallback.
-- Hindi/Punjabi/Tamil also receive the new keys (translated) so no English leakage in any language.
-- No TypeScript errors; no console warnings about missing translation keys.
-
-## Out of Scope (no changes needed)
-- `LandManagement.tsx` outer layout (already fixed in previous turn — no nested scroll wrapper).
-- `GoogleMapBoundaryDrawer.tsx` (uses `t()` already and runs full-screen).
-- `LandInstructionDialog.tsx` (already fully translated via existing keys).
-- Edge functions / DB / RLS — UI-only fixes.
+No DB changes. No edge-function changes. Pure frontend layout/UX refactor.

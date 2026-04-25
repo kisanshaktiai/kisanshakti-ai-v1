@@ -68,7 +68,7 @@ class ErrorBoundary extends Component<Props, State> {
                            this.state.error?.message?.includes('Loading CSS chunk');
       
       return (
-        <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted">
+        <div className="min-h-mobile-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted">
           <Card className="max-w-md w-full p-6 text-center space-y-4 shadow-xl">
             <div className="flex justify-center">
               <div className="w-16 h-16 bg-destructive/10 rounded-full flex items-center justify-center">
