@@ -233,8 +233,8 @@ export default function LandManagement() {
         </div>
       )}
 
-      {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Page Content (scrolls with global <main>) */}
+      <div>
         {/* Offline Indicator */}
         {!isOnline && (
           <div className="mx-4 mt-2 mb-3 bg-warning/10 border-l-4 border-warning rounded-md p-2 flex items-center gap-2">
@@ -243,8 +243,8 @@ export default function LandManagement() {
           </div>
         )}
 
-        {/* Search and Actions Bar - Sticky */}
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-3 px-4">
+        {/* Search and Actions Bar - Sticky under global header */}
+        <div className="sticky top-14 z-10 bg-background/95 backdrop-blur-sm py-3 px-4">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
