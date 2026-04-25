@@ -532,6 +532,7 @@ export default function Profile() {
           {t('auth.logout')}
         </Button>
       </div>
+      </div>
     </PageShell>
   );
 }
