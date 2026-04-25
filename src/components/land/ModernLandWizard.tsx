@@ -237,8 +237,8 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
     // Validate required fields
     if (!formData.name?.trim()) {
       toast({
-        title: "Validation Error",
-        description: "Please enter a land name",
+        title: t('lands.wizard.toast.validation_title'),
+        description: t('lands.wizard.toast.name_required'),
         variant: "destructive",
       });
       return;
@@ -246,8 +246,8 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
 
     if (!area.acres || area.acres <= 0) {
       toast({
-        title: "Validation Error", 
-        description: "Please draw a valid boundary on the map",
+        title: t('lands.wizard.toast.validation_title'),
+        description: t('lands.wizard.toast.boundary_required'),
         variant: "destructive",
       });
       return;
@@ -256,8 +256,8 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
     // Check network connectivity
     if (!navigator.onLine) {
       toast({
-        title: "No Internet Connection",
-        description: "Please connect to the internet to save your land. Your data is saved locally.",
+        title: t('lands.wizard.toast.offline_title'),
+        description: t('lands.wizard.toast.offline_message'),
         variant: "destructive",
       });
       return;
@@ -324,8 +324,8 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
       await Promise.race([savePromise, timeoutPromise]);
 
       toast({
-        title: "Success",
-        description: "Your land has been saved successfully!",
+        title: t('lands.wizard.toast.success_title'),
+        description: t('lands.wizard.toast.success_message'),
       });
 
       // Clear draft
@@ -335,18 +335,18 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
     } catch (error: any) {
       console.error('❌ [ModernLandWizard] Save error:', error);
       
-      let errorMessage = "Failed to save land. Please try again.";
+      let errorMessage = t('lands.wizard.toast.error_generic');
       
       if (error.message?.includes('timeout')) {
-        errorMessage = "Request timed out. Please check your connection and try again.";
+        errorMessage = t('lands.wizard.toast.error_timeout');
       } else if (error.message?.includes('logged in')) {
-        errorMessage = "Please log in again to save your land.";
+        errorMessage = t('lands.wizard.toast.error_session');
       } else if (error.message) {
         errorMessage = error.message;
       }
       
       toast({
-        title: "Error Saving Land",
+        title: t('lands.wizard.toast.error_title'),
         description: errorMessage,
         variant: "destructive",
       });
@@ -356,37 +356,37 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
   };
 
   const steps = [
-    { number: 1, title: 'Basic Info', icon: Home },
-    { number: 2, title: 'Location', icon: MapPin },
-    { number: 3, title: 'Land Details', icon: Sprout },
-    { number: 4, title: 'Review & Save', icon: Save },
+    { number: 1, title: t('lands.wizard.steps.basic_info'), icon: Home },
+    { number: 2, title: t('lands.wizard.steps.location'), icon: MapPin },
+    { number: 3, title: t('lands.wizard.steps.land_details'), icon: Sprout },
+    { number: 4, title: t('lands.wizard.steps.review_save'), icon: Save },
   ];
 
   const soilTypes = [
-    { value: 'alluvial', label: 'Alluvial' },
-    { value: 'black', label: 'Black (Regur)' },
-    { value: 'red', label: 'Red' },
-    { value: 'laterite', label: 'Laterite' },
-    { value: 'desert', label: 'Desert' },
-    { value: 'mountain', label: 'Mountain' },
+    { value: 'alluvial', label: t('lands.wizard.soil_types.alluvial') },
+    { value: 'black', label: t('lands.wizard.soil_types.black') },
+    { value: 'red', label: t('lands.wizard.soil_types.red') },
+    { value: 'laterite', label: t('lands.wizard.soil_types.laterite') },
+    { value: 'desert', label: t('lands.wizard.soil_types.desert') },
+    { value: 'mountain', label: t('lands.wizard.soil_types.mountain') },
   ];
 
   const waterSources = [
-    { value: 'well', label: 'Well' },
-    { value: 'borewell', label: 'Borewell' },
-    { value: 'canal', label: 'Canal' },
-    { value: 'river', label: 'River' },
-    { value: 'rain', label: 'Rain-fed' },
-    { value: 'tank', label: 'Tank' },
+    { value: 'well', label: t('lands.wizard.water_sources.well') },
+    { value: 'borewell', label: t('lands.wizard.water_sources.borewell') },
+    { value: 'canal', label: t('lands.wizard.water_sources.canal') },
+    { value: 'river', label: t('lands.wizard.water_sources.river') },
+    { value: 'rain', label: t('lands.wizard.water_sources.rain') },
+    { value: 'tank', label: t('lands.wizard.water_sources.tank') },
   ];
 
   const irrigationTypes = [
-    { value: 'drip', label: 'Drip' },
-    { value: 'sprinkler', label: 'Sprinkler' },
-    { value: 'flood', label: 'Flood' },
-    { value: 'furrow', label: 'Furrow' },
-    { value: 'manual', label: 'Manual' },
-    { value: 'none', label: 'None' },
+    { value: 'drip', label: t('lands.wizard.irrigation_types.drip') },
+    { value: 'sprinkler', label: t('lands.wizard.irrigation_types.sprinkler') },
+    { value: 'flood', label: t('lands.wizard.irrigation_types.flood') },
+    { value: 'furrow', label: t('lands.wizard.irrigation_types.furrow') },
+    { value: 'manual', label: t('lands.wizard.irrigation_types.manual') },
+    { value: 'none', label: t('lands.wizard.irrigation_types.none') },
   ];
 
   return (
