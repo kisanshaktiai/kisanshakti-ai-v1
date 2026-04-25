@@ -215,7 +215,7 @@ export default function ProactiveAlerts() {
         </div>
       </div>
 
-      <div className="pt-20 px-4 pb-24 space-y-4">
+      <div className="pt-4 px-4 pb-4 space-y-4">
 
       {/* Land filter chips */}
       {uniqueLands.length > 1 && (
