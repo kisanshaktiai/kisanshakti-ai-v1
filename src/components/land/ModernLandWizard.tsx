@@ -438,55 +438,55 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-lg font-semibold flex items-center gap-2">
                       <Home className="w-5 h-5 text-primary" />
-                      Basic Information
+                      {t('lands.wizard.sections.basic_info')}
                     </h3>
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => playVoiceGuide('Enter your land name, survey number, and ownership type')}
+                      onClick={() => playVoiceGuide(t('lands.wizard.voice_guides.basic_info'))}
                       className="gap-2"
                     >
                       <Volume2 className="w-4 h-4" />
-                      Voice Guide
+                      {t('lands.wizard.voice_guide')}
                     </Button>
                   </div>
 
                   <div className="space-y-4">
                     <div>
                       <Label htmlFor="name" className="text-base mb-2 block">
-                        Land Name <span className="text-destructive">*</span>
+                        {t('lands.wizard.fields.land_name')} <span className="text-destructive">*</span>
                       </Label>
                       <Input
                         id="name"
                         value={formData.name}
                         onChange={(e) => handleInputChange('name', e.target.value)}
-                        placeholder="e.g., North Field"
+                        placeholder={t('lands.wizard.fields.land_name_placeholder')}
                         className="h-12 text-base"
                       />
                     </div>
 
                     <div>
                       <Label htmlFor="survey_number" className="text-base mb-2 block">
-                        Survey/Gat Number
+                        {t('lands.wizard.fields.survey_number')}
                       </Label>
                       <Input
                         id="survey_number"
                         value={formData.survey_number}
                         onChange={(e) => handleInputChange('survey_number', e.target.value)}
-                        placeholder="e.g., 123/A"
+                        placeholder={t('lands.wizard.fields.survey_placeholder')}
                         className="h-12 text-base"
                       />
                     </div>
 
                     <div>
                       <Label className="text-base mb-3 block">
-                        Ownership Type <span className="text-destructive">*</span>
+                        {t('lands.wizard.ownership.label')} <span className="text-destructive">*</span>
                       </Label>
                       <div className="grid grid-cols-3 gap-3">
                         {[
-                          { value: 'owned', label: 'Owned', icon: '🏡' },
-                          { value: 'leased', label: 'Leased', icon: '📝' },
-                          { value: 'shared', label: 'Shared', icon: '🤝' },
+                          { value: 'owned', label: t('lands.wizard.ownership.owned'), icon: '🏡' },
+                          { value: 'leased', label: t('lands.wizard.ownership.leased'), icon: '📝' },
+                          { value: 'shared', label: t('lands.wizard.ownership.shared'), icon: '🤝' },
                         ].map((type) => (
                           <Card
                             key={type.value}
