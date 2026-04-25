@@ -362,8 +362,8 @@ export default function LandManagement() {
           </div>
         </div>
 
-        {/* Lands Display - Inside scrollable area */}
-        <div className="px-4 pb-24">
+        {/* Lands Display */}
+        <div className="px-4">
           {filteredLands.length === 0 ? (
             <Card className="border-dashed mx-auto mt-8">
               <CardContent className="p-8 text-center">
@@ -397,19 +397,21 @@ export default function LandManagement() {
               </AnimatePresence>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* Add Land Button - Below Last Card */}
-      <div className="flex justify-center py-6 mb-20">
-        <Button
-          onClick={() => navigate('/app/lands/add')}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-8 py-6 flex items-center gap-3"
-          size="lg"
-        >
-          <Plus className="h-5 w-5" />
-          <span className="font-medium">{t('lands.cta.add')}</span>
-        </Button>
+          {/* Add Land Button - Inline, below last card (only when there are lands) */}
+          {filteredLands.length > 0 && (
+            <div className="flex justify-center pt-6">
+              <Button
+                onClick={() => navigate('/app/lands/add')}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-8 py-6 flex items-center gap-3"
+                size="lg"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="font-medium">{t('lands.cta.add')}</span>
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
