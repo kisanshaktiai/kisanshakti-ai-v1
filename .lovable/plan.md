@@ -1,79 +1,84 @@
-# 🛠 Scroll Architecture + 2030 UX Refresh — Master Plan
+# Deep Audit: Post-Login "Old View / No Farmer Data" Bug
 
-## Phase 1 — Establish the Single Scroll Contract (foundation)
+## 🔴 Root Causes Found (confirmed from code + edge logs)
 
-**Rule (to be enforced everywhere):**
-> The ONLY scroll container is `<main className="mobile-scroll-container">` in `AppLayout.tsx`.  
-> Pages render natural-height content. **No** `h-screen`, `min-h-screen`, `h-full overflow-y-auto`, or `fixed inset-0 overflow-y-auto` inside pages.
+### Bug #1 — `src/utils/supabase.ts` uses the WRONG env var name (CRITICAL)
+```ts
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';   // ❌ undefined
+// .env actually exports VITE_SUPABASE_PUBLISHABLE_KEY
+export const supabase = supabaseUrl && supabaseAnonKey ? createClient(...) : null;  // ⇒ null
+```
+**Effect:** `supabase` exported from `@/utils/supabase` is **`null`** in production.
 
-### 1a. Fix scroll restoration in `AppLayout.tsx`
-- Replace `window.scrollTo` (broken — window doesn't scroll) with a ref to `<main>` and `mainRef.current?.scrollTo({top:0})` on route change.
-- Add `scroll-pt-14` so anchored sections respect the fixed header.
+### Bug #2 — `landsApi.getHeaders()` crashes on that null client
+```ts
+// src/services/landsApi.ts line 56
+const { data: { session } } = await supabase.auth.getSession();
+//                                    ^^^^^^^^^^^^^ TypeError: null
+```
+The `try/catch` at line 70 swallows the TypeError as "context error", retries 10× over ~5s, then throws **"Session expired. Please log in again to manage lands."** Result: `useLands` falls back to **empty localDB** (first login has nothing cached) → home shows zero lands → user sees "old view / no data".
 
-### 1b. Add a reusable `<PageShell>` component
-- `src/components/layout/PageShell.tsx` providing `bg-gradient`, optional `sticky` sub-header slot, consistent `px-4 py-4 space-y-4`, and `pb-nav-safe`.
-- Migrate every page to use it (eliminates the `min-h-screen` copy-paste).
+This is asymmetric with `schedulesApi` (which doesn't import `@/utils/supabase` and doesn't try `getSession()` — that's why **schedules work but lands don't**, exactly as the edge logs prove: schedules-api succeeds, lands-api logs `NO_AUTH_HEADER`.)
 
----
+### Bug #3 — Edge auth log noise: `403: invalid claim: missing sub claim`
+This is the Supabase Auth REST endpoint (`/auth/v1/user`) being called with the **anon key** as a Bearer (anon JWT has no `sub`). Source: `landsApi.ts` falling back to `bearer = ANON_KEY` and Supabase JS internally sometimes calling `getUser()` with it. Harmless once Bug #1 is fixed because we'll stop calling auth at all from landsApi.
 
-## Phase 2 — Page-by-Page Fixes
+### Bug #4 — `useLands` enabled gate is too tight after restoration race
+`enabled: !!(user?.id && tenantId)` — fine, but on a fresh login the React Query may fire **before** `setGlobalAuthData` has been observed by `dataIsolation.getIsolationContext()`. Then `landsApi.getHeaders()` throws. We add a small "headers-ready" gate.
 
-| # | File | Change |
-|---|---|---|
-| 1 | `src/pages/Weather.tsx` | Remove `h-screen ... overflow-hidden flex flex-col`. Wrap content in `PageShell`. Keep `PullRefreshController` but let it inherit page scroll instead of owning it. |
-| 2 | `src/pages/Home.tsx` | Replace `min-h-screen` with `PageShell`. Convert `fixed top-16` weather card to `sticky top-14` so it scrolls with content (no longer overlaps cards). |
-| 3 | `src/pages/Schedule.tsx` | Remove both `fixed inset-0 pt-14 pb-16 overflow-y-auto` blocks (lines 324 & 466). Use `PageShell` with `pb-nav-safe`. |
-| 4 | `src/pages/Profile.tsx` | Replace `h-full overflow-y-auto` with `PageShell`. Eliminates nested scroller. |
-| 5 | `src/pages/ProfileEdit.tsx` | Same as Profile. Re-anchor sticky header to `<main>`. |
-| 6 | `src/pages/Market.tsx` | Replace `min-h-screen` with `PageShell`. Standardize search bar to `sticky top-0`. |
-| 7 | `src/pages/CommunityPage.tsx` | Replace `min-h-screen` with `PageShell` (note: `/app/community/*/chat` keeps full-screen behavior). |
-| 8 | `src/pages/SubscriptionPage.tsx`, `ProactiveAlerts.tsx`, `NDVIAnalysis.tsx`, `Analytics.tsx`, `SoilHealthReport.tsx`, `NotificationSettingsPage.tsx`, `AIScheduleDashboard.tsx`, `CropGrowthTracking.tsx`, `LandDetails.tsx`, `InstallPWA.tsx`, `Schemes.tsx`, `VideoReels.tsx` | Replace `min-h-screen` with `PageShell`. Remove redundant `pb-20` (handled by `pb-nav-safe`). |
-| 9 | `src/pages/SplashScreen.tsx`, `AuthScreen.tsx`, `MobileAuth.tsx`, `PinAuth.tsx`, `SetPin.tsx`, `LanguageSelection.tsx`, `NotFound.tsx` | These render OUTSIDE `AppLayout` — keep `min-h-screen` but switch to `min-h-mobile-screen` (uses `100dvh`) so iOS dynamic chrome doesn't clip them. |
-
----
-
-## Phase 3 — 2030 UX Upgrades (No-1 UX-expert recommendations)
-
-### 3a. Motion & Feedback
-- Capacitor `Haptics.impact({style: Light})` on all primary actions, nav taps, and toggles (graceful no-op on web).
-- Page-transition shared layout with `framer-motion` `<AnimatePresence mode="wait">` in `AppLayout` (slide-fade per route).
-- Replace skeletons with **shimmer + content-shape morph** (skeleton blocks transition to real components in place).
-
-### 3b. Header & Navigation
-- Make the glass header **adaptive**: shrinks brand to icon when scrolled >40px (more screen real-estate).
-- Add a **scroll-to-top FAB** that appears when user scrolls past 400px.
-- Bottom nav: add subtle **scroll-aware hide-on-down / show-on-up** (Instagram-style) for max content visibility.
-
-### 3c. Content Patterns
-- **Universal `<EmptyState />` component**: illustration + 1-line + CTA. Roll into Schemes, VideoReels, Analytics, Saved posts, etc.
-- **Universal `<PullRefresh />` wrapper** baked into `PageShell` (opt-out via prop). Reuses Weather logic.
-- **Sticky filter chips** standardization: every page that has filters uses the same `sticky top-0 z-10 bg-background/95 backdrop-blur-md` pattern.
-- **Section headers** unified: `text-sm font-semibold uppercase tracking-wide text-muted-foreground` with optional "See all" link.
-
-### 3d. Accessibility & Inputs
-- Force all `<input>` `font-size: 16px` minimum to stop iOS auto-zoom.
-- Add visible focus rings (`focus-visible:ring-2 ring-primary ring-offset-2`) on all icon buttons.
-- Add `aria-label` audit pass for icon-only buttons across nav, header, action menus.
-- Respect `prefers-reduced-motion` everywhere we use `framer-motion` (already partial in Home — extend).
-
-### 3e. Theming polish (multi-tenant ready)
-- Audit gradient overuse (`from-primary/10 via-background to-accent/10` repeated 12× across auth pages) → centralize as `bg-auth-gradient` semantic class so each tenant theme automatically restyles.
-- Add `data-theme` attribute on `<html>` so per-tenant CSS variable overrides cascade cleanly without re-rendering.
+### Bug #5 — `PinAuth` navigates with `setTimeout(100)` and `replace: true` AFTER `setUser` triggered a partial re-render
+This works most of the time, but the navigation sometimes lands on `/app` while the `useLands` query is already mid-flight with stale (logged-out) state, producing the "old view" flash. We'll await one tick and let the global headers settle.
 
 ---
 
-## Phase 4 — Verification
+## ✅ The Fix (4 small, surgical changes)
 
-- TypeScript compile + Vite build.
-- Manual scroll test on every route at 390x688 (current preview viewport).
-- Confirm: (a) only one scrollbar per page, (b) bottom-nav never overlaps content, (c) sticky elements stick to top of `<main>`, (d) route changes scroll-to-top.
-- Verify Marathi/Hindi translations still render across the redesigned shells (no regression from prior work).
+### Fix 1 — Repair `src/utils/supabase.ts` so the fallback client is real
+- Read `VITE_SUPABASE_PUBLISHABLE_KEY` (current env name) with `VITE_SUPABASE_ANON_KEY` as a backwards-compat fallback.
+- Re-export the **same singleton** from `@/integrations/supabase/client` instead of creating a parallel client. This eliminates the "Multiple GoTrueClient instances" warning forever and removes the `null` failure mode.
+
+### Fix 2 — Stop calling `supabase.auth.getSession()` in `landsApi.getHeaders()`
+The app uses **custom auth** (x-farmer-id / x-tenant-id headers). The edge guard already has a fast-path for anon-key Bearer (`isAnonKeyRequest()` in `tenantAccessGuard.ts`). So we just send `Bearer ${ANON_KEY}` unconditionally — exactly what `schedulesApi` does (which works). No reason to involve `auth.getSession()` at all.
+
+### Fix 3 — Make `landsApi` symmetrical with `schedulesApi`
+- Same retry budget (5 attempts × 300 ms instead of 10 × variable).
+- Same headers shape.
+- Throw a clearer error after exhaustion.
+
+### Fix 4 — Tighten the post-login navigation in `PinAuth.tsx`
+Replace the `setTimeout(100)` + `navigate(replace)` with an `await waitForHeaders()` immediately after `setUser/setSession`, then `navigate('/app', { replace: true })` synchronously. This guarantees the next render of `Home` sees the correct user and `useLands` fires with valid headers on the first attempt.
+
+### Fix 5 — Invalidate React Query cache on login
+After `setUser` in `PinAuth`, call `queryClient.invalidateQueries()` so any stale cache from a previous user/session is purged. This eliminates the "old view" flash entirely.
+
+### Fix 6 — Add a `useAuthReady()` selector and gate `useLands`/`useSchedules` on it
+A tiny zustand selector that returns `isAuthenticated && !!user?.id && !!user?.tenantId && globalHeadersReady`. Wires into the `enabled` flag of every authenticated query. Prevents queries from firing in the gap between `setSession` and `setGlobalAuthData`.
 
 ---
 
-## Files Touched (estimate)
-- **New**: `src/components/layout/PageShell.tsx`, `src/components/layout/EmptyState.tsx`, `src/components/layout/ScrollToTopFab.tsx`
-- **Modified**: `src/components/AppLayout.tsx` + all 24 pages listed above
-- **CSS**: minor additions to `src/index.css` (`bg-auth-gradient`, focus utilities)
+## Files to change (6 total — all small, all surgical)
 
-No DB changes. No edge-function changes. Pure frontend layout/UX refactor.
+1. `src/utils/supabase.ts` — re-export singleton, fix env name
+2. `src/services/landsApi.ts` — drop `auth.getSession()`, mirror schedulesApi
+3. `src/pages/PinAuth.tsx` — await `waitForHeaders`, `invalidateQueries`, drop setTimeout
+4. `src/hooks/useAuthReady.ts` — **new** tiny hook (10 lines)
+5. `src/hooks/useLands.ts` — gate `enabled` on `useAuthReady()`
+6. `src/hooks/useSchedules.ts` — same gate (defensive — already mostly OK)
+
+## Out of scope (already correct)
+- `tenantAccessGuard.ts` — the anon-key bypass works correctly; schedules-api proves it
+- `authStore.checkAuth()` — restoration is synchronous and sets headers immediately
+- `TenantContext` — loads cleanly per logs
+- Edge functions — no changes needed, no redeploy needed
+
+## Verification after fix
+1. Hard refresh, log in fresh → `Home` shows lands within ~1s, no "old view" flash
+2. Edge logs: `lands-api` calls succeed (200) instead of `NO_AUTH_HEADER` (401)
+3. No more "Multiple GoTrueClient instances" warning
+4. No more "invalid claim: missing sub claim" auth log spam
+
+## Production-scale notes (1M+ users)
+- Single Supabase client singleton (memory + WebSocket savings)
+- Anon-key Bearer + custom headers means **zero round-trips to /auth/v1/user** per request
+- React Query stale-time of 5 min + realtime invalidation already in place
+- No additional indexes/migrations needed for this fix
