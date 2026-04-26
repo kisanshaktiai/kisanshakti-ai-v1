@@ -21,15 +21,15 @@ export function LanguageSelector() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="gap-2 hover:bg-accent/50 transition-colors"
+        <button
           aria-label={`Current language: ${currentLang?.nativeName || currentLanguage}`}
+          className="shrink-0 h-9 w-9 sm:w-auto sm:px-3 rounded-full flex items-center justify-center gap-1.5 bg-card/80 border border-border/60 shadow-sm hover:bg-accent/50 active:scale-95 transition-all"
         >
           <Languages className="w-4 h-4 text-primary" aria-hidden="true" />
-          <span className="hidden sm:inline font-medium">{currentLang?.nativeName}</span>
-        </Button>
+          <span className="hidden sm:inline text-xs font-semibold text-foreground">
+            {currentLang?.nativeName}
+          </span>
+        </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent 
         align="end" 
