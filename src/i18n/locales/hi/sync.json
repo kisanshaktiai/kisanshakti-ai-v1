@@ -28,7 +28,12 @@
     "pending_changes": "{{count}} लंबित परिवर्तन",
     "pending_changes_plural": "{{count}} लंबित परिवर्तन",
     "all_synced": "सभी डेटा सिंक किया गया",
-    "last_synced": "अंतिम सिंक: {{time}}"
+    "last_synced": "अंतिम सिंक",
+    "syncing": "सिंक हो रहा है...",
+    "sync_data": "डेटा सिंक करें",
+    "never_synced": "कभी सिंक नहीं हुआ",
+    "just_now": "अभी",
+    "pending": "लंबित"
   },
   "__qa": {
     "voice_examples_en": [

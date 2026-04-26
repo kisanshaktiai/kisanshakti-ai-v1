@@ -57,6 +57,11 @@
     "noResults": "No results found",
     "pageNotFound": "Page not found",
     "returnToHome": "Return to Home",
-    "swipeLeft": "Swipe left to continue"
+    "swipeLeft": "Swipe left to continue",
+    "connection": "Connection",
+    "more": "More actions",
+    "quickActions": "Quick Actions",
+    "sync": "Sync data",
+    "language": "Language"
   }
 }
