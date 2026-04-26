@@ -1,11 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ToastAction } from '@/components/ui/toast';
 import { useToast } from '@/hooks/use-toast';
 import { syncService } from '@/services/syncService';
 import { localDB } from '@/services/localDB';
-import React from 'react';
 
 /**
  * Shared sync handler used by SyncButton and UnifiedSyncButton.
@@ -60,11 +58,7 @@ export function useSyncAction() {
               toast({
                 title: t('sync.tip'),
                 description: t('sync.refresh_suggestion'),
-                action: React.createElement(
-                  ToastAction,
-                  { altText: t('sync.refresh_now'), onClick: () => window.location.reload() },
-                  t('sync.refresh_now')
-                ),
+                duration: 5000,
               });
             }, 2000);
           }
