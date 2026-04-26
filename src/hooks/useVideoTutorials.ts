@@ -60,7 +60,7 @@ export function useVideoTutorials(options: UseVideoTutorialsOptions = {}) {
 
 export async function incrementVideoViewCount(videoId: string) {
   try {
-    const { error } = await supabase.rpc('increment_video_view_count', {
+    const { error } = await (supabase as any).rpc('increment_video_view_count', {
       video_id: videoId,
     });
     
