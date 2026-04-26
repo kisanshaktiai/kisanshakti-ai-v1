@@ -40,7 +40,8 @@ class SchedulesApiService {
         });
         return {
           ...headers,
-          'apikey': SUPABASE_CONFIG.ANON_KEY
+          apikey: SUPABASE_CONFIG.ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_CONFIG.ANON_KEY}`,
         };
       }
       
