@@ -11,7 +11,9 @@ import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
 import { SubscriptionHeaderChip } from '@/components/subscription/SubscriptionHeaderChip';
 import { BrandBlock } from '@/components/header/BrandBlock';
-import { HeaderActionsSheet } from '@/components/header/HeaderActionsSheet';
+import { HeaderStatusDot } from '@/components/header/HeaderStatusDot';
+import { UnifiedSyncButton } from '@/components/header/UnifiedSyncButton';
+import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from './layout/ScrollContext';
 import { ScrollToTopFab } from './layout/ScrollToTopFab';
 
@@ -42,11 +44,13 @@ export function AppLayout() {
           <div className="flex flex-col h-mobile-screen bg-background">
             {/* 2030-ready compact glass header */}
             {!isFullScreenRoute && (
-              <header className="glass-header fixed top-0 left-0 right-0 h-14 z-40 flex items-center gap-2 px-3 pt-safe">
+              <header className="glass-header fixed top-0 left-0 right-0 h-14 z-40 flex items-center gap-1.5 px-3 pt-safe">
                 <BrandBlock />
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0">
                   <SubscriptionHeaderChip />
-                  <HeaderActionsSheet />
+                  <HeaderStatusDot />
+                  <UnifiedSyncButton />
+                  <LanguageSelector />
                 </div>
               </header>
             )}

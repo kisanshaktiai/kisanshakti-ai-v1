@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Button } from '@/components/ui/button';
+import { ToastAction } from '@/components/ui/toast';
 import { useToast } from '@/hooks/use-toast';
 import { syncService } from '@/services/syncService';
 import { localDB } from '@/services/localDB';
@@ -61,8 +61,8 @@ export function useSyncAction() {
                 title: t('sync.tip'),
                 description: t('sync.refresh_suggestion'),
                 action: React.createElement(
-                  Button,
-                  { size: 'sm', onClick: () => window.location.reload() },
+                  ToastAction,
+                  { altText: t('sync.refresh_now'), onClick: () => window.location.reload() },
                   t('sync.refresh_now')
                 ),
               });
