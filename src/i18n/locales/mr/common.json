@@ -56,6 +56,11 @@
     "optional": "पर्यायी",
     "noResults": "कोणतेही परिणाम सापडले नाहीत",
     "pageNotFound": "पृष्ठ सापडले नाही",
-    "returnToHome": "होम वर परत जा"
+    "returnToHome": "होम वर परत जा",
+    "connection": "कनेक्शन",
+    "more": "अधिक क्रिया",
+    "quickActions": "त्वरित क्रिया",
+    "sync": "डेटा सिंक करा",
+    "language": "भाषा"
   }
 }
