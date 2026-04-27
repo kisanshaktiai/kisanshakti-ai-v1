@@ -63,5 +63,7 @@
     "quickActions": "Quick Actions",
     "sync": "Sync data",
     "language": "Language"
-  }
+  },
+  "speak_this_page": "Speak this page",
+  "stop_speaking": "Stop speaking"
 }

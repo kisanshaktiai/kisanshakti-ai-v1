@@ -62,5 +62,7 @@
     "quickActions": "त्वरित क्रिया",
     "sync": "डेटा सिंक करा",
     "language": "भाषा"
-  }
+  },
+  "speak_this_page": "हे पान वाचून दाखव",
+  "stop_speaking": "वाचन थांबवा"
 }

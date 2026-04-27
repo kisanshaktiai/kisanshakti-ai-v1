@@ -63,5 +63,7 @@
     "quickActions": "त्वरित क्रियाएँ",
     "sync": "डेटा सिंक करें",
     "language": "भाषा"
-  }
+  },
+  "speak_this_page": "यह पृष्ठ पढ़ें",
+  "stop_speaking": "पढ़ना बंद करें"
 }
