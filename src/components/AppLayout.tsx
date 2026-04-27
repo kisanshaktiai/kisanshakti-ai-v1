@@ -15,7 +15,6 @@ import { HeaderStatusDot } from '@/components/header/HeaderStatusDot';
 import { UnifiedSyncButton } from '@/components/header/UnifiedSyncButton';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from './layout/ScrollContext';
-import { ScrollToTopFab } from './layout/ScrollToTopFab';
 
 export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -63,13 +62,19 @@ export function AppLayout() {
             )}
 
             {/* Main Content - the SINGLE scroll container for the entire app.
-                Pages must NOT add their own scrollers. Use <PageShell>. */}
+                Pages must NOT add their own scrollers. Use <PageShell>.
+                Top padding = header (56px) + dynamic banner height var. */}
             <main
               ref={mainRef}
               className={
                 isFullScreenRoute
                   ? 'flex-1 min-h-0'
-                  : 'pt-14 pb-nav-safe mobile-scroll-container scroll-pt-14'
+                  : 'pb-nav-safe mobile-scroll-container'
+              }
+              style={
+                isFullScreenRoute
+                  ? undefined
+                  : { paddingTop: 'calc(3.5rem + var(--banner-h, 0px))' }
               }
             >
               <Outlet />
@@ -78,9 +83,6 @@ export function AppLayout() {
             {/* Voice Assistant */}
             <ModernVoiceAssistant />
             <VoiceIndicator />
-
-            {/* Floating actions */}
-            {!isFullScreenRoute && <ScrollToTopFab />}
 
             {/* Native Voice Navigation Button - Floating */}
             <NativeVoiceButton
