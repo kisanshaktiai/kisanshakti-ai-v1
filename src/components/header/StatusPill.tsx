@@ -171,12 +171,12 @@ export function StatusPill() {
             <div className="text-sm font-bold leading-tight">{planLabel}</div>
             <div className="text-[11px] opacity-90">
               {isExpired
-                ? t('subscription.expired_tap_renew', 'Tap to renew')
+                ? t('common.subscription.expired_tap_renew', 'Tap to renew')
                 : showDays
                 ? isInGracePeriod
-                  ? t('subscription.grace_period', 'Grace period · {{d}} days left', { d: daysRemaining })
-                  : t('subscription.days_remaining', '{{d}} days remaining', { d: daysRemaining })
-                : t('subscription.tap_to_manage', 'Tap to manage plan')}
+                  ? t('common.subscription.grace_period', 'Grace period · {{d}} days left', { d: daysRemaining })
+                  : t('common.subscription.days_remaining', '{{d}} days remaining', { d: daysRemaining })
+                : t('common.subscription.tap_to_manage', 'Tap to manage plan')}
             </div>
           </div>
         </button>
