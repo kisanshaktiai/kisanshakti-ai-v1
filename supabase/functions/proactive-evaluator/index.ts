@@ -290,7 +290,9 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const ndviMap = buildNdviMap(ndviRes.data);
     const stageMap = buildStageMap(stageMapRes.data);
 
-    // Batch-load weather: collect unique location keys + build land→locationKey mapping
+    // Batch-load weather: per-land via geo-proximity (≤55 km, ≤6 h freshness).
+    // Aligned with mem://weather/live-weather-context-resolution so AI Chat and
+    // proactive alerts see the same temperature/humidity for each land.
     const locationKeys = new Set<string>();
     const landToLocKey = new Map<string, string>();
     for (const land of lands) {
@@ -301,7 +303,10 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
       }
     }
     const locKeyArray = Array.from(locationKeys);
-    const weatherMap = await batchLoadWeather(supabase, locKeyArray);
+    const landWeatherMap = await batchLoadWeatherByLand(
+      supabase,
+      lands.map((l: any) => ({ id: l.id, center_lat: l.center_lat, center_lon: l.center_lon })),
+    );
     
     // Batch-load forecast rain probability (72h) and GDD (30d) — by location_key
     const [forecastLocMap, gddLocMap] = await Promise.all([
