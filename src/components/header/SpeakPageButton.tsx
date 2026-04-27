@@ -34,16 +34,17 @@ export function SpeakPageButton() {
 
     const viewportTop = root.scrollTop;
     const viewportBottom = viewportTop + root.clientHeight;
-    const SELECTOR =
-      'h1, h2, h3, h4, p, li, [role="heading"], button, a, [data-tts]';
+    // Meaningful content only — skip interactive chrome (button/a) which
+    // is usually English UI text and would be mispronounced in Marathi mode.
+    const SELECTOR = 'h1, h2, h3, h4, p, li, [role="heading"], [data-tts]';
     const nodes = Array.from(root.querySelectorAll<HTMLElement>(SELECTOR));
     const seen = new Set<string>();
     const parts: string[] = [];
 
     for (const el of nodes) {
       if (el.getAttribute('aria-hidden') === 'true') continue;
-      if (el.dataset?.ttsSkip === 'true') continue;
-      // skip if computed display is none
+      if (el.closest('[data-tts-skip="true"]')) continue;
+      if (el.closest('header')) continue; // skip global app header
       const style = window.getComputedStyle(el);
       if (style.display === 'none' || style.visibility === 'hidden') continue;
 
@@ -53,23 +54,36 @@ export function SpeakPageButton() {
 
       const txt = (el.textContent || '').replace(/\s+/g, ' ').trim();
       if (!txt || txt.length < 2) continue;
+      // Skip numeric / icon-only blobs
+      if (/^[\d\s.,:%°/+\-]+$/.test(txt)) continue;
       if (seen.has(txt)) continue;
       seen.add(txt);
       parts.push(txt);
-      if (parts.join(' ').length > 1200) break; // cap ~1200 chars
+      if (parts.join(' ').length > 1200) break;
     }
     return parts.join('. ');
   }, [mainRef]);
 
-  const onClick = useCallback(() => {
+  const onClick = useCallback(async () => {
     if (isSpeaking || isLoading) {
       stop();
       return;
     }
     const text = collectVisibleText();
-    if (!text) return;
+    if (!text) {
+      console.info('[SpeakPageButton] No readable text in viewport');
+      return;
+    }
     lastSpokeRef.current = text;
-    void speak(text, currentLanguage);
+    console.info(
+      `[SpeakPageButton] Speaking ${text.length} chars in "${currentLanguage}"`
+    );
+    const result = await speak(text, currentLanguage);
+    if (!result.success) {
+      console.warn('[SpeakPageButton] TTS failed:', result.error);
+    } else {
+      console.info(`[SpeakPageButton] TTS provider: ${result.provider}`);
+    }
   }, [collectVisibleText, currentLanguage, isLoading, isSpeaking, speak, stop]);
 
   return (
