@@ -2055,32 +2055,53 @@ function buildSolutionFromSymbolicData(
     irrigationStepHi = `${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे)`;
   }
 
+  // Localize crop name (no ALL_CAPS) and weather evidence (only when fresh data exists)
+  const cropMr = cropLabel(ctx.crop_code, 'mr');
+  const cropHi = cropLabel(ctx.crop_code, 'hi');
+  const cropEnLabel = cropLabel(ctx.crop_code, 'en');
+  const wxMr = weatherEvidenceLine(ctx, 'mr');
+  const wxHi = weatherEvidenceLine(ctx, 'hi');
+  const wxEn = weatherEvidenceLine(ctx, 'en');
+
+  // Cause = brain text (knowledge_text/reason_text), then weather as separate evidence line
+  const baseCauseMr = knowledgeText
+    ? localizeStep(knowledgeText.split('.').slice(0, 2).join('. '), 'mr')
+    : (reasonText ? localizeStep(reasonText.split('.').slice(0, 2).join('. '), 'mr') : `${dr.condition_code.replace(/_/g, ' ').toLowerCase()} - ${cropMr} पिकाची तपासणी आवश्यक.`);
+  const baseCauseHi = knowledgeText
+    ? localizeStep(knowledgeText.split('.').slice(0, 2).join('. '), 'hi')
+    : (reasonText ? localizeStep(reasonText.split('.').slice(0, 2).join('. '), 'hi') : `${dr.condition_code.replace(/_/g, ' ').toLowerCase()} - ${cropHi} फसल की जांच आवश्यक.`);
+
+  // Steps from action_text (decision-brain SSOT), localized deterministically
+  const stepsEnFinal = irrigationStepEn ? [...areaSpecificSteps, irrigationStepEn] : [...areaSpecificSteps];
+  const stepsMrFinal = areaSpecificSteps.map((s: string) => localizeStep(s, 'mr'));
+  const stepsHiFinal = areaSpecificSteps.map((s: string) => localizeStep(s, 'hi'));
+  if (irrigationStepMr) stepsMrFinal.push(irrigationStepMr);
+  if (irrigationStepHi) stepsHiFinal.push(irrigationStepHi);
+
   return {
     problem_en: problemEn,
-    problem_mr: `${landName} ${areaMr} शेतात ${catMr} आढळले. ${cropEn} पिकावर परिणाम होत आहे.`,
-    problem_hi: `${landName} ${areaHi} खेत में ${catHi} पाया गया. ${cropEn} फसल पर असर हो रहा है.`,
-    cause_en: causeEn,
-    cause_mr: `तापमान ${ctx.weather.temp ?? '--'}°C, आर्द्रता ${ctx.weather.humidity ?? '--'}% - या हवामानामुळे ही समस्या उद्भवली.`,
-    cause_hi: `तापमान ${ctx.weather.temp ?? '--'}°C, नमी ${ctx.weather.humidity ?? '--'}% - इस मौसम के कारण यह समस्या हुई.`,
-    steps_en: irrigationStepEn ? [...areaSpecificSteps, irrigationStepEn] : areaSpecificSteps,
-    steps_mr: irrigationStepMr
-      ? [`शेताची तपासणी करा आणि ${catMr} ओळखा`, `कृषी तज्ञांचा सल्ला घ्या`, irrigationStepMr]
-      : [`शेताची तपासणी करा आणि ${catMr} ओळखा`, `कृषी विभागाचा सल्ला घ्या`, `5-7 दिवसांनी पुन्हा तपासा`],
-    steps_hi: irrigationStepHi
-      ? [`खेत की जांच करें और ${catHi} की पहचान करें`, `कृषि विशेषज्ञ से सलाह लें`, irrigationStepHi]
-      : [`खेत की जांच करें और ${catHi} की पहचान करें`, `कृषि विभाग से सलाह लें`, `5-7 दिन बाद फिर जांचें`],
+    problem_mr: `${landName} ${areaMr} शेतात ${catMr} आढळले. ${cropMr} पिकावर परिणाम होत आहे.`,
+    problem_hi: `${landName} ${areaHi} खेत में ${catHi} पाया गया. ${cropHi} फसल पर असर हो रहा है.`,
+    cause_en: causeEn + (wxEn ? ` ${wxEn}` : ''),
+    cause_mr: baseCauseMr + (wxMr ? ` ${wxMr}` : ''),
+    cause_hi: baseCauseHi + (wxHi ? ` ${wxHi}` : ''),
+    steps_en: stepsEnFinal,
+    steps_mr: stepsMrFinal.length ? stepsMrFinal : [`${cropMr} पिकाची तपासणी करा`],
+    steps_hi: stepsHiFinal.length ? stepsHiFinal : [`${cropHi} फसल की जांच करें`],
     safety_en: safetyEn || 'Wear protective equipment when applying any chemical treatment.',
     safety_mr: 'फवारणी करताना हातमोजे, मास्क आणि पूर्ण बाह्यांचे कपडे घाला. फवारणी दरम्यान खाणे-पिणे टाळा.',
     safety_hi: 'छिड़काव करते समय दस्ताने, मास्क और पूरी बाजू के कपड़े पहनें. छिड़काव के दौरान खाना-पीना न करें.',
     organic_alt_en: organicAltEn,
-    organic_alt_mr: organicAltEn ? 'सेंद्रिय पर्याय उपलब्ध - कृषी तज्ञांचा सल्ला घ्या.' : '',
-    organic_alt_hi: organicAltEn ? 'जैविक विकल्प उपलब्ध - कृषि विशेषज्ञ से सलाह लें.' : '',
-    expected_benefit_en: benefitEn,
-    expected_benefit_mr: `या उपायांनी ${landName} शेतातील ${areaMr} ${cropEn} पिकाची स्थिती सुधारेल. 5-7 दिवसांनी तपासा.`,
-    expected_benefit_hi: `इन उपायों से ${landName} खेत के ${areaHi} ${cropEn} फसल की स्थिति सुधरेगी. 5-7 दिन बाद जांचें.`,
+    organic_alt_mr: organicAltEn ? localizeStep(organicAltEn, 'mr') : '',
+    organic_alt_hi: organicAltEn ? localizeStep(organicAltEn, 'hi') : '',
+    expected_benefit_en: `Following these steps should help on your ${areaStr} ${cropEnLabel} field. Monitor after 5-7 days.`,
+    expected_benefit_mr: `या उपायांनी ${landName} शेतातील ${areaMr} ${cropMr} पिकाची स्थिती सुधारेल. ५-७ दिवसांनी तपासा.`,
+    expected_benefit_hi: `इन उपायों से ${landName} खेत के ${areaHi} ${cropHi} फसल की स्थिति सुधरेगी. 5-7 दिन बाद जांचें.`,
     followup_en: followupEn,
-    followup_mr: `${landName} शेत 5-7 दिवसांनी तपासा. सुधारणा न झाल्यास स्थानिक कृषी अधिकाऱ्यांशी संपर्क करा.`,
+    followup_mr: `${landName} शेत ५-७ दिवसांनी तपासा. सुधारणा न झाल्यास स्थानिक कृषी अधिकाऱ्यांशी संपर्क करा.`,
     followup_hi: `${landName} खेत 5-7 दिन बाद जांचें. सुधार न हो तो स्थानीय कृषि अधिकारी से संपर्क करें.`,
+    weather_source: ctx.weather.source,
+    weather_distance_km: ctx.weather.distance_km,
   };
 }
 
