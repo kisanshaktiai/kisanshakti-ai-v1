@@ -52,20 +52,13 @@ export function SubscriptionStatusBanner() {
   const isExpiringSoon =
     subscriptionStatus === 'active' && daysRemaining > 0 && daysRemaining <= 7;
 
-  if (!isExpired && !isInGracePeriod && !isExpiringSoon) return null;
-
-  const tone = isExpired
-    ? 'bg-destructive/10 border-destructive/30 text-destructive-foreground'
-    : 'bg-warning/10 border-warning/30 text-warning-foreground';
-
-  const message = isExpired
-    ? 'Your plan has expired. Renew to restore premium features.'
-    : isInGracePeriod
-    ? `Grace period: ${daysRemaining} days left before features lock.`
-    : `Your plan expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`;
+  const visible = !!(isExpired || isInGracePeriod || isExpiringSoon);
+  const ref = useBannerHeightVar(visible);
+  if (!visible) return null;
 
   return (
     <div
+      ref={ref}
       className={cn(
         'flex items-center gap-2 px-3 py-2 border-b text-xs animate-fade-in',
         tone
