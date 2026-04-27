@@ -231,8 +231,8 @@ export default function Home() {
   const formattedTime = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="relative bg-gradient-subtle min-h-screen">
-      {/* Bell icon removed — alerts delivered via toast notifications globally */}
+    <div className="relative bg-gradient-subtle min-h-full pb-8">
+      {/* Note: floating weather card uses position:fixed; main scroll container is <main> in AppLayout */}
       {/* Futuristic Floating Weather Card - 2030 UI */}
       <motion.div
         className="fixed top-16 left-4 right-4 z-30 pointer-events-auto"

@@ -318,7 +318,7 @@ export default function Analytics() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background/95 to-primary/5">
+    <div className="min-h-full bg-gradient-to-b from-background via-background/95 to-primary/5">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-lg border-b border-border/50">
         <div className="px-4 py-3">

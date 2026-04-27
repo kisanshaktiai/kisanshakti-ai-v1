@@ -1,6 +1,4 @@
-import { supabase } from '@/utils/supabase';
-import { useAuthStore } from '@/stores/authStore';
-import { dataIsolation, isolatedSupabase } from './dataIsolationService';
+import { dataIsolation } from './dataIsolationService';
 import { SUPABASE_CONFIG, getSupabaseFunctionUrl } from '@/config/supabase';
 
 const LANDS_API_URL = getSupabaseFunctionUrl('lands-api');
@@ -38,40 +36,49 @@ interface LandData {
 }
 
 class LandsApiService {
+  /**
+   * Build the auth header set for an edge-function call.
+   *
+   * The farmer app uses CUSTOM auth via `x-farmer-id` / `x-tenant-id` headers
+   * (validated against the `farmers` table inside `tenantAccessGuard.ts`).
+   * The edge guard treats requests bearing the project's anon key as
+   * "custom-auth" and skips JWT validation. So we send:
+   *   - Authorization: Bearer <ANON_KEY>      → satisfies guard
+   *   - apikey:        <ANON_KEY>             → satisfies Supabase router
+   *   - x-tenant-id, x-farmer-id, x-session-token → set by dataIsolation
+   *
+   * We deliberately do NOT call `supabase.auth.getSession()` here — that path
+   * was the source of a TypeError after a previous refactor and gave us no
+   * benefit (the guard ignores session JWTs from this app).
+   *
+   * Mirrors `schedulesApi.getHeaders()` exactly so behaviour is identical.
+   */
   private async getHeaders(): Promise<HeadersInit> {
-    // Wait for context to be available (handles race condition during app init)
-    let attempts = 0;
-    const maxAttempts = 10; // Increased attempts
-    const baseDelay = 200;
-    
-    while (attempts < maxAttempts) {
-      try {
-        const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
-        
-        if (isValid && tenantId && farmerId) {
-          const headers = dataIsolation.getIsolationHeaders();
-          console.log('🌐 [LandsAPI] Headers ready:', { 
-            tenantId: headers['x-tenant-id']?.substring(0, 8) + '...', 
-            farmerId: headers['x-farmer-id']?.substring(0, 8) + '...'
-          });
-          return {
-            ...headers,
-            'apikey': SUPABASE_CONFIG.ANON_KEY,
-            'Content-Type': 'application/json'
-          };
-        }
-      } catch (contextError) {
-        console.warn(`🌐 [LandsAPI] Context error on attempt ${attempts + 1}:`, contextError);
+    const maxAttempts = 5;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
+
+      if (isValid && tenantId && farmerId) {
+        const headers = dataIsolation.getIsolationHeaders();
+        console.log('🌐 [LandsAPI] Headers ready:', {
+          tenantId: headers['x-tenant-id']?.substring(0, 8) + '…',
+          farmerId: headers['x-farmer-id']?.substring(0, 8) + '…',
+        });
+        return {
+          ...headers,
+          apikey: SUPABASE_CONFIG.ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_CONFIG.ANON_KEY}`,
+          'Content-Type': 'application/json',
+        };
       }
-      
-      const delay = baseDelay * Math.min(attempts + 1, 3); // Progressive delay, max 600ms
-      console.log(`🌐 [LandsAPI] Waiting for context (attempt ${attempts + 1}/${maxAttempts}, delay: ${delay}ms)...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      attempts++;
+
+      console.log(`🌐 [LandsAPI] Waiting for auth context (attempt ${attempt}/${maxAttempts})…`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
-    
-    console.error('❌ [LandsAPI] Context never became valid after', maxAttempts, 'attempts');
-    throw new Error('Session expired. Please log in again to manage lands.');
+
+    console.error('❌ [LandsAPI] Auth context never became valid');
+    throw new Error('Please ensure you are logged in before accessing lands.');
   }
 
   private async fetchWithRetry(

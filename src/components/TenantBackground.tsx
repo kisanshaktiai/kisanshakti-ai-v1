@@ -19,7 +19,7 @@ export function TenantBackground({
   className 
 }: TenantBackgroundProps) {
   
-  const baseClass = "min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden";
+  const baseClass = "min-h-mobile-screen flex flex-col items-center justify-center p-4 relative overflow-hidden";
   
   const variantClasses = {
     primary: "bg-gradient-to-br from-primary/10 via-background to-accent/10",

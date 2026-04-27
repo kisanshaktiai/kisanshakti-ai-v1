@@ -96,7 +96,7 @@ export default function InstallPWA() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/20">
+    <div className="min-h-full bg-gradient-to-b from-background to-muted/20">
       <div className="max-w-2xl mx-auto px-4 py-12">
         {/* Header */}
         <motion.div

@@ -181,7 +181,7 @@ export default function SoilHealthReport() {
 
   if (!data) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
+      <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center space-y-4">
             <h2 className="text-xl font-semibold">No Data Available</h2>
@@ -193,7 +193,7 @@ export default function SoilHealthReport() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20">
       <SoilReportHeader
         landName={data.lands?.name}
         exporting={exporting}

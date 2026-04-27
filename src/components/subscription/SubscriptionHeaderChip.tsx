@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSubscriptionContext } from '@/contexts/SubscriptionContext';
-import { Crown, Sparkles, Leaf, AlertTriangle } from 'lucide-react';
+import { Crown, Sparkles, Leaf, AlertTriangle, Clock } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
 /**
  * 2030-ready subscription chip for the app header.
- * - Tier-themed gradient ring + shimmer when active.
- * - Pulsing dot when expiring/grace; destructive ring when expired.
- * - Icon-only mode below 340px viewport.
- * - Optimistic Free fallback if data never arrives within 3s.
+ * - Solid filled pill with foreground tokens for high contrast.
+ * - Rotating label: alternates between plan name and days remaining.
+ * - Tier-themed gradient ring + warning state.
  */
 export function SubscriptionHeaderChip() {
   const navigate = useNavigate();
@@ -17,6 +17,7 @@ export function SubscriptionHeaderChip() {
     useSubscriptionContext();
   const [loadTimeoutHit, setLoadTimeoutHit] = useState(false);
   const [iconOnly, setIconOnly] = useState(false);
+  const [showDays, setShowDays] = useState(false);
 
   useEffect(() => {
     const check = () => setIconOnly(window.innerWidth < 340);
@@ -34,10 +35,6 @@ export function SubscriptionHeaderChip() {
     return () => clearTimeout(timer);
   }, [isLoading, data]);
 
-  if (isLoading && !data && !loadTimeoutHit) {
-    return <div className="h-7 w-16 rounded-full bg-muted/40 animate-pulse" />;
-  }
-
   const effectivePlanName = data ? planName : 'Free';
   const isExpired = data ? subscriptionStatus === 'expired' || !data.valid : false;
   const isExpiringSoon =
@@ -47,43 +44,62 @@ export function SubscriptionHeaderChip() {
   const tier =
     effectivePlanName === 'AI PRO' ? 'pro' : effectivePlanName === 'Shakti' ? 'shakti' : 'free';
 
-  const Icon = tier === 'pro' ? Crown : tier === 'shakti' ? Sparkles : Leaf;
+  // Rotate between plan name and days every 4s when meaningful.
+  const canRotate =
+    !isExpired && !!data && daysRemaining > 0 && (subscriptionStatus === 'active' || isInGracePeriod);
 
-  // Ring gradients per tier (semantic tokens only)
+  useEffect(() => {
+    if (!canRotate) {
+      setShowDays(false);
+      return;
+    }
+    const id = setInterval(() => setShowDays((s) => !s), 4000);
+    return () => clearInterval(id);
+  }, [canRotate]);
+
+  if (isLoading && !data && !loadTimeoutHit) {
+    return <div className="h-7 w-20 rounded-full bg-muted/40 animate-pulse" />;
+  }
+
+  const PlanIcon = tier === 'pro' ? Crown : tier === 'shakti' ? Sparkles : Leaf;
+  const StateIcon = isWarn ? AlertTriangle : showDays ? Clock : PlanIcon;
+
+  // Ring gradients per tier
   const ringGradient = isExpired
-    ? 'from-destructive/60 to-destructive/30'
+    ? 'from-destructive/70 to-destructive/40'
     : isInGracePeriod || isExpiringSoon
-    ? 'from-warning/60 to-warning/30'
+    ? 'from-warning/70 to-warning/40'
     : tier === 'pro'
-    ? 'from-warning/70 via-warning/40 to-warning/70'
+    ? 'from-warning/80 via-warning/50 to-warning/80'
     : tier === 'shakti'
-    ? 'from-primary/70 via-accent/50 to-primary/70'
-    : 'from-success/60 to-success/30';
+    ? 'from-primary/80 via-accent/60 to-primary/80'
+    : 'from-success/70 to-success/40';
 
+  // Solid filled pill — high contrast (foreground tokens)
   const innerTone = isExpired
-    ? 'bg-destructive/10 text-destructive'
+    ? 'bg-destructive text-destructive-foreground'
     : isInGracePeriod || isExpiringSoon
-    ? 'bg-warning/10 text-warning'
+    ? 'bg-warning text-warning-foreground'
     : tier === 'pro'
-    ? 'bg-gradient-to-r from-warning/15 to-warning/5 text-warning'
+    ? 'bg-warning text-warning-foreground'
     : tier === 'shakti'
-    ? 'bg-gradient-to-r from-primary/10 to-accent/10 text-primary'
-    : 'bg-success/10 text-success';
+    ? 'bg-gradient-to-r from-primary to-accent text-primary-foreground'
+    : 'bg-success text-success-foreground';
 
-  const label = isExpired
-    ? 'Expired'
-    : isInGracePeriod
+  // Determine visible label
+  const planLabel = effectivePlanName;
+  const daysLabel = isInGracePeriod
     ? `Grace ${daysRemaining}d`
-    : isExpiringSoon
-    ? `${daysRemaining}d`
-    : effectivePlanName;
+    : `${daysRemaining}d left`;
 
-  const showDot = isWarn;
+  const staticLabel = isExpired ? 'Expired' : null;
+  const visibleLabel = staticLabel ?? (canRotate ? (showDays ? daysLabel : planLabel) : planLabel);
+  const labelKey = staticLabel ? 'static' : showDays ? 'days' : 'plan';
 
   return (
     <button
       onClick={() => navigate('/app/subscription')}
-      aria-label={`Subscription: ${label}`}
+      aria-label={`Subscription: ${visibleLabel}`}
       title={!data ? 'Tap to refresh subscription' : `Plan: ${effectivePlanName}`}
       className={cn(
         'relative shrink-0 rounded-full p-[1.5px] bg-gradient-to-r transition-all',
@@ -97,23 +113,33 @@ export function SubscriptionHeaderChip() {
           'flex items-center gap-1 rounded-full font-semibold',
           'h-7',
           iconOnly ? 'px-1.5' : 'px-2.5',
-          'text-[10px]',
+          'text-[11px]',
           innerTone
         )}
       >
-        {isWarn ? (
-          <AlertTriangle className="w-3 h-3 shrink-0" />
-        ) : (
-          <Icon className="w-3 h-3 shrink-0" />
+        <StateIcon className="w-3 h-3 shrink-0" />
+        {!iconOnly && (
+          <span className="relative inline-block min-w-[42px] h-4 overflow-hidden">
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.span
+                key={labelKey}
+                initial={{ y: 8, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: -8, opacity: 0 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className="absolute inset-0 whitespace-nowrap leading-4"
+              >
+                {visibleLabel}
+              </motion.span>
+            </AnimatePresence>
+          </span>
         )}
-        {!iconOnly && <span className="whitespace-nowrap">{label}</span>}
       </span>
-      {showDot && (
+      {isWarn && (
         <span
           className={cn(
             'absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full border border-card',
-            isExpired ? 'bg-destructive' : 'bg-warning',
-            'motion-safe:animate-ping-slow'
+            isExpired ? 'bg-destructive' : 'bg-warning'
           )}
           style={{ animation: 'photo-pulse 1.8s ease-in-out infinite' }}
         />

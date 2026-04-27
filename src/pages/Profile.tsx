@@ -24,6 +24,7 @@ import {
   Clock
 } from 'lucide-react';
 import { TTSSettingsPanel } from '@/components/tts';
+import { PageShell } from '@/components/layout/PageShell';
 import { useNavigate } from 'react-router-dom';
 import { format, formatDistanceToNow } from 'date-fns';
 import { 
@@ -148,8 +149,8 @@ export default function Profile() {
   const profileCompletion = calculateProfileCompletion();
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="p-4 space-y-6 pb-24 animate-fade-in">
+    <PageShell padding="default" spacing="none">
+      <div className="space-y-6 animate-fade-in">
         {/* Sync Status Card */}
         <SyncStatus />
 
@@ -532,6 +533,6 @@ export default function Profile() {
         </Button>
       </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
