@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useSubscriptionContext } from '@/contexts/SubscriptionContext';
 import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -55,6 +55,16 @@ export function SubscriptionStatusBanner() {
   const visible = !!(isExpired || isInGracePeriod || isExpiringSoon);
   const ref = useBannerHeightVar(visible);
   if (!visible) return null;
+
+  const tone = isExpired
+    ? 'bg-destructive/10 border-destructive/30 text-destructive-foreground'
+    : 'bg-warning/10 border-warning/30 text-warning-foreground';
+
+  const message = isExpired
+    ? 'Your plan has expired. Renew to restore premium features.'
+    : isInGracePeriod
+    ? `Grace period: ${daysRemaining} days left before features lock.`
+    : `Your plan expires in ${daysRemaining} ${daysRemaining === 1 ? 'day' : 'days'}.`;
 
   return (
     <div
