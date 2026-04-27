@@ -75,6 +75,12 @@ interface LandContext {
     rain_mm: number | null;
     wind_speed: number | null;
     description: string | null;
+    /** 'exact' = key match, 'proximity' = nearest within 55km, 'unavailable' = no data */
+    source: 'exact' | 'proximity' | 'unavailable';
+    /** Distance in km from land centroid to weather station (null if exact/unavailable) */
+    distance_km: number | null;
+    /** Age of observation in hours (null if unavailable) */
+    age_hours: number | null;
   };
   ndvi: number | null;
   ndvi_previous: number | null;
