@@ -901,7 +901,7 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
 }
 
 function nullWeather() {
-  return { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null };
+  return { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null, source: 'unavailable' as const, distance_km: null, age_hours: null };
 }
 
 // =====================================================
