@@ -644,16 +644,154 @@ function makeLocationKey(lat: number, lon: number): string {
   return `${(Math.round(lat * 100) / 100)},${(Math.round(lon * 100) / 100)}`;
 }
 
+/**
+ * Haversine distance in kilometers between two lat/lon points.
+ */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius km
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * Per-land weather lookup using exact location_key first, then geo-proximity within
+ * 55 km on observations newer than 6 hours. Returns a Map keyed by land_id.
+ *
+ * Aligned with the AI Chat policy in mem://weather/live-weather-context-resolution
+ * (proximity lookup) so all surfaces of the app see the same temperature/humidity.
+ */
+async function batchLoadWeatherByLand(
+  supabase: any,
+  lands: Array<{ id: string; center_lat: number | null; center_lon: number | null }>,
+): Promise<Map<string, { temp: number | null; humidity: number | null; rain_mm: number | null; wind_speed: number | null; description: string | null; source: 'exact' | 'proximity' | 'unavailable'; distance_km: number | null; age_hours: number | null }>> {
+  const result = new Map();
+  const FRESHNESS_HOURS = 6;
+  const MAX_KM = 55;
+  const BBOX_DEG = 0.5; // ≈ 55 km at this latitude band
+
+  // Collect candidate keys (exact-match fast path)
+  const exactKeys = new Set<string>();
+  for (const land of lands) {
+    if (land.center_lat != null && land.center_lon != null) {
+      exactKeys.add(makeLocationKey(land.center_lat, land.center_lon));
+    }
+  }
+
+  const freshCutoff = new Date(Date.now() - FRESHNESS_HOURS * 60 * 60 * 1000).toISOString();
+
+  // Pull all candidate observations once: by exact key OR by global lat/lon bbox of all lands.
+  // We build the bbox as the union of every land's ±0.5° window.
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const land of lands) {
+    if (land.center_lat == null || land.center_lon == null) continue;
+    minLat = Math.min(minLat, land.center_lat - BBOX_DEG);
+    maxLat = Math.max(maxLat, land.center_lat + BBOX_DEG);
+    minLon = Math.min(minLon, land.center_lon - BBOX_DEG);
+    maxLon = Math.max(maxLon, land.center_lon + BBOX_DEG);
+  }
+
+  const obsRows: any[] = [];
+
+  // 1. Fresh observations within bounding box (proximity candidates)
+  if (Number.isFinite(minLat)) {
+    const { data: bboxData, error: bboxErr } = await supabase
+      .from('weather_current')
+      .select('location_key, latitude, longitude, temperature_celsius, humidity_percent, rain_1h_mm, wind_speed_kmh, weather_description, observation_time')
+      .gte('observation_time', freshCutoff)
+      .gte('latitude', minLat)
+      .lte('latitude', maxLat)
+      .gte('longitude', minLon)
+      .lte('longitude', maxLon)
+      .order('observation_time', { ascending: false })
+      .limit(500);
+    if (bboxErr) {
+      console.error('[batchLoadWeatherByLand] bbox query error:', bboxErr.message);
+    } else if (bboxData) {
+      obsRows.push(...bboxData);
+    }
+  }
+
+  // 2. If a row has no latitude/longitude column populated, fall back to parsing location_key
+  for (const r of obsRows) {
+    if ((r.latitude == null || r.longitude == null) && typeof r.location_key === 'string') {
+      const parts = r.location_key.split(',');
+      if (parts.length === 2) {
+        const lat = parseFloat(parts[0]);
+        const lon = parseFloat(parts[1]);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          r.latitude = lat;
+          r.longitude = lon;
+        }
+      }
+    }
+  }
+
+  // 3. For each land, pick exact match (if fresh) else nearest fresh row within 55 km
+  const now = Date.now();
+  for (const land of lands) {
+    if (land.center_lat == null || land.center_lon == null) {
+      result.set(land.id, { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null, source: 'unavailable' as const, distance_km: null, age_hours: null });
+      continue;
+    }
+    const exactKey = makeLocationKey(land.center_lat, land.center_lon);
+
+    // Exact match (still must be fresh)
+    let best: { row: any; distKm: number; isExact: boolean } | null = null;
+    for (const row of obsRows) {
+      if (row.location_key === exactKey) {
+        best = { row, distKm: 0, isExact: true };
+        break;
+      }
+    }
+
+    // Nearest match within 55 km
+    if (!best) {
+      for (const row of obsRows) {
+        if (row.latitude == null || row.longitude == null) continue;
+        const d = haversineKm(land.center_lat, land.center_lon, row.latitude, row.longitude);
+        if (d > MAX_KM) continue;
+        if (!best || d < best.distKm) {
+          best = { row, distKm: d, isExact: false };
+        }
+      }
+    }
+
+    if (best) {
+      const ageHours = best.row.observation_time
+        ? (now - new Date(best.row.observation_time).getTime()) / (1000 * 60 * 60)
+        : null;
+      result.set(land.id, {
+        temp: best.row.temperature_celsius,
+        humidity: best.row.humidity_percent,
+        rain_mm: best.row.rain_1h_mm,
+        wind_speed: best.row.wind_speed_kmh,
+        description: best.row.weather_description,
+        source: best.isExact ? 'exact' : 'proximity',
+        distance_km: best.isExact ? 0 : Math.round(best.distKm * 10) / 10,
+        age_hours: ageHours == null ? null : Math.round(ageHours * 10) / 10,
+      });
+    } else {
+      result.set(land.id, { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null, source: 'unavailable' as const, distance_km: null, age_hours: null });
+    }
+  }
+
+  return result;
+}
+
+// Legacy key-only path retained for forecast/GDD code that already keys by location_key.
 async function batchLoadWeather(supabase: any, locationKeys: string[]): Promise<Map<string, any>> {
   const map = new Map();
   if (locationKeys.length === 0) return map;
-  
   const { data } = await supabase
     .from('weather_current')
     .select('location_key, temperature_celsius, humidity_percent, rain_1h_mm, wind_speed_kmh, weather_description, observation_time')
     .in('location_key', locationKeys)
     .order('observation_time', { ascending: false });
-
   if (data) {
     for (const w of data) {
       if (!map.has(w.location_key)) {
