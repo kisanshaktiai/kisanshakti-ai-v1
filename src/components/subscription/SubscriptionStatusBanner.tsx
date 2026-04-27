@@ -46,14 +46,16 @@ export function SubscriptionStatusBanner() {
     useSubscriptionContext();
   const [dismissed, setDismissed] = useState(false);
 
-  if (isLoading || dismissed || !data) return null;
-
-  const isExpired = subscriptionStatus === 'expired' || !data.valid;
+  // Compute visibility WITHOUT short-circuiting before hooks below.
+  const isExpired = !!data && (subscriptionStatus === 'expired' || !data.valid);
   const isExpiringSoon =
-    subscriptionStatus === 'active' && daysRemaining > 0 && daysRemaining <= 7;
+    !!data && subscriptionStatus === 'active' && daysRemaining > 0 && daysRemaining <= 7;
+  const visible =
+    !isLoading && !dismissed && !!data && (isExpired || isInGracePeriod || isExpiringSoon);
 
-  const visible = !!(isExpired || isInGracePeriod || isExpiringSoon);
+  // Hooks must run on every render — pass `visible` as input.
   const ref = useBannerHeightVar(visible);
+
   if (!visible) return null;
 
   const tone = isExpired
