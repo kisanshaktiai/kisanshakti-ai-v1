@@ -2116,45 +2116,23 @@ function buildContextualSolution(
   const landName = ctx.land_name || 'your field';
   const areaMr = ctx.area_acres ? `${ctx.area_acres} एकर` : '';
   const areaHi = ctx.area_acres ? `${ctx.area_acres} एकड़` : '';
-  const cropEn = ctx.crop_code || 'crop';
+  const cropMrL = cropLabel(ctx.crop_code, 'mr');
+  const cropHiL = cropLabel(ctx.crop_code, 'hi');
+  const cropEnL = cropLabel(ctx.crop_code, 'en');
+  const wxEn = weatherEvidenceLine(ctx, 'en');
+  const wxMr = weatherEvidenceLine(ctx, 'mr');
+  const wxHi = weatherEvidenceLine(ctx, 'hi');
 
   const irrigation = triggerData.irrigation;
 
   // NDVI-specific solution
   if (triggerData.ndvi != null || triggerData.drop != null) {
     const ndviVal = triggerData.ndvi ?? '--';
-    const steps_en: string[] = [
-      'Inspect the field for visible stress signs: wilting, yellowing, or dry patches',
-      'Check soil moisture level by pressing soil between fingers — it should feel moist',
-    ];
-    const steps_mr: string[] = [
-      'शेतात जाऊन पिकाची स्थिती तपासा — पाने पिवळी, सुकलेली किंवा कोमेजलेली आहेत का पहा',
-      'जमिनीतील ओलावा तपासा — माती बोटांनी दाबून ओलसर आहे का पहा',
-    ];
-    const steps_hi: string[] = [
-      'खेत में जाकर फसल की स्थिति जांचें — पत्तियां पीली, सूखी या मुरझाई हुई हैं क्या देखें',
-      'मिट्टी की नमी जांचें — उंगलियों से दबाकर देखें गीली है या सूखी',
-    ];
-
-    if (irrigation) {
-      const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
-      const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
-      steps_en.push(`Irrigate immediately: ${irrigation.water_liters_total.toLocaleString()} liters via ${irrigation.method} for ${irrigation.duration_hours} hours`);
-      steps_mr.push(`ताबडतोब ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास)`);
-      steps_hi.push(`तुरंत ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे)`);
-    }
-
-    steps_en.push('If stress persists after 5 days, take a photo and consult via AI Chat');
-    steps_mr.push('5 दिवसांनी सुधारणा नसल्यास फोटो काढून AI चॅटवर विचारा');
-    steps_hi.push('5 दिन बाद सुधार न हो तो फोटो लेकर AI चैट पर पूछें');
-
-    return {
-      problem_en: `Satellite data shows crop health decline (NDVI: ${ndviVal}) on ${landName}. This indicates possible water stress, nutrient deficiency, or pest/disease damage.`,
-      problem_mr: `${landName} ${areaMr} शेतातील पिकाचे उपग्रह आरोग्य (NDVI: ${ndviVal}) कमी झाले आहे. पाणी कमतरता, अन्नद्रव्य कमतरता किंवा कीड-रोगामुळे असू शकते.`,
+...
       problem_hi: `${landName} ${areaHi} खेत में उपग्रह फसल स्वास्थ्य (NDVI: ${ndviVal}) कम हुआ है. पानी की कमी, पोषक तत्वों की कमी या कीट-रोग के कारण हो सकता है.`,
-      cause_en: `NDVI value ${ndviVal} indicates reduced photosynthetic activity. Weather: ${ctx.weather.temp ?? '--'}°C, humidity ${ctx.weather.humidity ?? '--'}%. Soil type: ${ctx.soil_type || 'unknown'}.`,
-      cause_mr: `NDVI ${ndviVal} म्हणजे पिकाची प्रकाशसंश्लेषण क्रिया कमी झाली. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. माती: ${ctx.soil_type || '--'}.`,
-      cause_hi: `NDVI ${ndviVal} यानी फसल की प्रकाश संश्लेषण गतिविधि कम हुई. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. मिट्टी: ${ctx.soil_type || '--'}.`,
+      cause_en: `Satellite shows the ${cropEnL} crop looks weak (NDVI ${ndviVal}). Soil: ${ctx.soil_type || 'unknown'}.${wxEn ? ' ' + wxEn : ''}`,
+      cause_mr: `उपग्रहावरून ${cropMrL} पीक कमजोर दिसत आहे (NDVI ${ndviVal}). माती: ${ctx.soil_type || '—'}.${wxMr ? ' ' + wxMr : ''}`,
+      cause_hi: `उपग्रह से ${cropHiL} फसल कमजोर दिख रही है (NDVI ${ndviVal}). मिट्टी: ${ctx.soil_type || '—'}.${wxHi ? ' ' + wxHi : ''}`,
       steps_en,
       steps_mr,
       steps_hi,
