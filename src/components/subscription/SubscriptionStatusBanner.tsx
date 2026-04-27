@@ -2,8 +2,39 @@ import { useNavigate } from 'react-router-dom';
 import { useSubscriptionContext } from '@/contexts/SubscriptionContext';
 import { AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+
+/**
+ * Publishes the banner's measured height to a CSS custom property so that
+ * `<main>` (in AppLayout) can offset itself precisely without a hardcoded gap.
+ *  - Sets `--banner-h` to the rendered px height when visible
+ *  - Resets to `0px` when hidden / unmounted
+ */
+function useBannerHeightVar(visible: boolean) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    if (!visible || !ref.current) {
+      root.style.setProperty('--banner-h', '0px');
+      return;
+    }
+    const update = () => {
+      const h = ref.current?.offsetHeight ?? 0;
+      root.style.setProperty('--banner-h', `${h}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(ref.current);
+    return () => {
+      ro.disconnect();
+      root.style.setProperty('--banner-h', '0px');
+    };
+  }, [visible]);
+
+  return ref;
+}
 
 /**
  * Top-of-app warning banner — only renders during expiring/grace/expired states.
@@ -21,7 +52,9 @@ export function SubscriptionStatusBanner() {
   const isExpiringSoon =
     subscriptionStatus === 'active' && daysRemaining > 0 && daysRemaining <= 7;
 
-  if (!isExpired && !isInGracePeriod && !isExpiringSoon) return null;
+  const visible = !!(isExpired || isInGracePeriod || isExpiringSoon);
+  const ref = useBannerHeightVar(visible);
+  if (!visible) return null;
 
   const tone = isExpired
     ? 'bg-destructive/10 border-destructive/30 text-destructive-foreground'
@@ -35,6 +68,7 @@ export function SubscriptionStatusBanner() {
 
   return (
     <div
+      ref={ref}
       className={cn(
         'flex items-center gap-2 px-3 py-2 border-b text-xs animate-fade-in',
         tone

@@ -1,80 +1,239 @@
-# Header Modernization Plan — 2030-Ready Mobile-First
+# KisanShaktiAI — UX Plan v3 (Land-Boundary-First, Voice-Assisted)
 
-## Issues Audited
-1. **SubscriptionHeaderChip** — Inner text uses tinted text on tinted background (`bg-success/10 text-success`, `bg-warning/10 text-warning`) → low contrast, hard to read on light/dark.
-2. **Static label** — Chip only shows plan name OR days; user wants it to **rotate** between plan name and days remaining over time.
-3. **HeaderActionsSheet** — A `MoreHorizontal` button opens a **bottom drawer** for Connection / Sync / Language. This is two clicks for a single dropdown choice and is not "2030-ready". Should be **inline icons with native dropdowns** opening directly from the header.
-4. **Duplicate sync logic** — `ConnectionStatusIcon` and `SyncButton` both poll `localDB.getSyncMetadata()` every 5 s, both render online/offline/sync state. Two competing sources of truth.
-5. **Online status hidden** — Connection icon is buried inside the bottom drawer. Should be **always visible on the top bar** as a small live status dot.
+> Persona lock: **Amarsinh, 48, Solapur — cracked screen, intermittent 3G, limited Marathi reading, one muddy hand.**
+> Architecture lock: **This is an AI agronomic advisory app. Without an accurate land boundary + crop + irrigation + soil context, every downstream prediction (NDVI, weather micro-forecast, irrigation liters, disease risk, schedule, advisory) is invalid. Onboarding cannot be shortcut.**
 
-## Changes
+---
 
-### 1. `SubscriptionHeaderChip.tsx` — readability + rotating label
-- **Contrast fix**: Replace `bg-x/10 text-x` with **solid filled pill** using foreground tokens:
-  - Free → `bg-success text-success-foreground`
-  - Shakti → `bg-gradient-to-r from-primary to-accent text-primary-foreground`
-  - Pro → `bg-warning text-warning-foreground`
-  - Expired → `bg-destructive text-destructive-foreground`
-  - Warn (grace/expiring) → `bg-warning text-warning-foreground`
-- **Rotating label**: Add a `useEffect` interval (4 s) that alternates between two states:
-  - State A: plan name + tier icon (e.g., "Shakti" + Sparkles)
-  - State B: days remaining (e.g., "23d left" + Clock icon)
-  - Use `AnimatePresence` + slide/fade for smooth swap (motion-safe only).
-  - Only rotate when there's meaningful days info (`daysRemaining > 0` and active/grace). For Free or Expired, show static label.
-- Keep ring gradient + warning dot; bump font to `text-[11px]` and `h-7` for clarity.
+## ⚠ Critical Correction to v2 — Section 3 (Voice-First Onboarding)
 
-### 2. New `src/components/header/HeaderStatusDot.tsx` — always-visible online indicator
-- Tiny 8 px pulsing dot + tooltip on tap (popover) showing: Online/Offline, Last sync, Pending changes.
-- Colors: `bg-success` online, `bg-muted-foreground` offline, `bg-warning animate-spin` syncing.
-- Replaces `ConnectionStatusIcon` for header use (existing component stays for backward compat, but no longer mounted).
+The previous plan implied a farmer could speak "साडे सात एकर ऊस" and have a land created. **That is wrong for this app.** All proactive intelligence (`proactive-evaluator`, NDVI tiles, weather micro-forecasting at the polygon centroid, irrigation liter calculations, soil_health joins) requires:
 
-### 3. New `src/components/header/UnifiedSyncButton.tsx` — merge Connection + Sync
-- **Single icon button** on the header (RefreshCw + small status dot overlay).
-- Opens **DropdownMenu** (not drawer) directly from the header — anchored, inline, mobile-first.
-- Menu items:
-  - 🔄 Quick Sync
-  - 🗄️ Full Reload
-  - ───
-  - Status block: "● Online · Last sync: 5m ago · 2 pending"
-- Reuses sync logic from current `SyncButton.tsx` (extract handler into `useSyncAction()` hook so we don't fork code).
-- Eliminates the duplicate `localDB.getSyncMetadata()` poller — single shared hook `useSyncMetadata()`.
+1. **Polygon boundary on the map** — not just an acre count. NDVI/satellite, weather centroid, area calc, neighbor-disease modeling all key off this.
+2. **Current crop + variety + sowing date** — drives stage-aware decision rules, schedule, IPM windows.
+3. **Irrigation system** (drip / flood / sprinkler / rainfed) — drives liter calculations and irrigation rule arms.
+4. **Soil type / last crop** — drives nutrient baseline and rotation logic.
 
-### 4. New `src/hooks/useSyncMetadata.ts` and `src/hooks/useSyncAction.ts`
-- `useSyncMetadata`: single 5 s poll, returns `{ lastSyncTime, pendingChanges, syncInProgress }`. Used by both the header status dot and the dropdown.
-- `useSyncAction`: extracts the `handleSync(forceFull)` logic from `SyncButton.tsx` so it can be reused without duplicating ~100 lines.
+These are **not optional fields**. Voice **assists** the form, it does not **replace** it. Fix below in §3.
 
-### 5. `LanguageSelector` — keep as-is (already a proper dropdown)
-- Just mount it inline in the header instead of inside the drawer. Hide the text label on mobile (`<sm`) → icon-only with native dropdown opening from anchor.
+---
 
-### 6. `AppLayout.tsx` — header layout swap
-Replace:
-```tsx
-<SubscriptionHeaderChip />
-<HeaderActionsSheet />
+## 0. P0 — Ship Today (no design review)
+
+### 0.1 `social.json` namespace fix
+Wrap each of `src/i18n/locales/{en,hi,mr}/social.json` content under top-level `"social": { … }` (keep `__meta` outside). Kills raw `social.header.title` rendering across Community/Schedule/Market/Alerts.
+
+### 0.2 Subscription banner overlap
+Banner publishes its measured height to CSS var `--banner-h` (`0px` ↔ `36px`). `<main>` uses `paddingTop: 'calc(56px + var(--banner-h, 0px))'`. No clipped first card.
+
+### 0.3 Remove duplicate scroll-to-top FAB
+Delete `ScrollToTopFab` mount in `AppLayout`. Mic FAB is the only persistent floating control. Replace with a slim "back to top" pill that fades in under the header after 800px scroll.
+
+---
+
+## 1. Bottom Navigation — final
+```text
+[ 🏠 Home ] [ 🌾 My Land ] [ 🎤 MIC ] [ 👥 Community ] [ 👤 Profile ]
+                              ^ center FAB, 64×64, always-on
 ```
-With:
-```tsx
-<SubscriptionHeaderChip />            {/* rotating, high-contrast */}
-<HeaderStatusDot />                   {/* always-visible online dot */}
-<UnifiedSyncButton />                 {/* sync dropdown, inline */}
-<LanguageSelector />                  {/* lang dropdown, inline icon-only */}
+- Market → Home card + Land-detail tile (NOT in nav).
+- AI Chat → IS the mic (tap = ask, long-press = "ask about this screen").
+- Community stays — peer trust drives retention.
+- Hindenburg hamburger removed; its items become tiles on Home or Land Detail Hub.
+
+---
+
+## 2. Land Switcher — first-class surface
+
+- **Header chip:** `[ 🌾 Mala 7.59ac ▾ ]` — active land, persistent, never UUID.
+- **Home top section:** horizontal swipeable land carousel — one card per land showing crop emoji, area, ONE priority action ("पाणी द्या · 2,436L"). Swipe = global context switch.
+- AI urgency = small amber/red dot on the card. **Never reshuffle order** (breaks muscle memory).
+- New `<LandRef land={…} />` is the only sanctioned way to render a land identifier. UUID slip → `🌾 (unknown)` + dev `console.warn`.
+
+---
+
+## 3. Onboarding — Land-Boundary-Mandatory, Voice-Assisted (REVISED)
+
+### 3.1 Hard contract: a farmer cannot reach the Home dashboard without at least one fully-qualified land.
+
+The "fully-qualified" record requires every field below. Each is a separate, non-skippable step in the wizard:
+
+| Step | Field | Source of truth | Voice assist |
+|---|---|---|---|
+| 1 | **Polygon boundary** (≥3 vertices) on Google Map | `lands.boundary_polygon_old` + `center_lat/lon` (auto) + `area_acres` (auto-calc from polygon) | Voice: "draw boundary" → opens map with mic-narrated instructions; farmer walks the perimeter (GPS-walk mode) OR taps vertices |
+| 2 | **Land name** | `lands.name` | Voice → STT → field |
+| 3 | **Current crop + variety** | `lands.current_crop`, `crop_variety` | Voice → STT → matched against `crop_synonyms` (193 aliases) |
+| 4 | **Sowing date / DAS** | `lands.sowing_date` | Voice ("दोन महिन्यापूर्वी लावलं") → date picker pre-filled |
+| 5 | **Irrigation system** | `lands.irrigation_type` (drip / flood / sprinkler / rainfed) | Visual icons + voice — single tap |
+| 6 | **Soil type** | `lands.soil_type` (auto-prefilled from `soil_health` if available) | Confirm/override |
+| 7 | **Last crop** | `lands.previous_crop` | Voice → STT → `crop_synonyms` |
+
+**Rules:**
+- No "skip for now" on any step. The wizard refuses to commit a partial record.
+- Boundary step is the gate — until a polygon is closed and area is calculated, steps 2–7 are visually locked.
+- Voice **fills** fields; the farmer must still **see and confirm** each value before proceeding (literacy-safe — visual icons + TTS readback).
+- For low-literacy users, every step has a "🔊 हे ऐका" button that reads the field label, hint, and current value.
+
+### 3.2 GPS-Walk boundary mode (high-leverage feature)
+Farmer taps "मी शेताच्या बांधावर चालतो" → app records GPS points every 2 m → auto-closes polygon when farmer returns within 5 m of start point. Solves the "tap-on-tiny-map" problem for cracked screens and muddy fingers. Falls back to vertex-tap mode if location accuracy >15 m.
+
+### 3.3 Empty-state voice prompts (revised wording)
+- Home with zero lands: large CTA card "तुमची पहिली जमीन नकाशावर काढूया" → opens the 7-step wizard at Step 1 (boundary). The voice prompt tells the farmer this will take ~3 minutes and explains why each field matters in one line.
+- **Voice does NOT create a land record.** It only helps fill the wizard.
+
+### 3.4 Edit land
+Same wizard, same fields, same validation. Boundary edit re-triggers area recalculation and invalidates cached NDVI/weather for that polygon.
+
+---
+
+## 4. Header — StatusPill consolidation
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│ 🌾 KS  [🌱 Mala 7.59ac ▾]    [🔊]  [文]  [Shakti·17d·●] │
+└──────────────────────────────────────────────────────────┘
 ```
-- Use `gap-1.5` to keep all four within the 390 px viewport.
-- Remove `HeaderActionsSheet` import (file kept for now in case of rollback; can be deleted in follow-up).
+- **StatusPill** merges `SubscriptionHeaderChip` + `HeaderStatusDot` + `UnifiedSyncButton`. Static label `Shakti · 17d · ●` — no rotation. Tap → popover (subscription, online/offline, last-sync, pending count, Sync now / Full reload).
+- **🔊 Speak-this-page** as permanent header control (uses `useTTSFacade`) — biggest accessibility win for non-Devanagari readers.
+- **Language** stays icon-only.
+- Header height **14 → 56 px** to meet 44×44 tap targets.
 
-## Files
-- ✏️ `src/components/subscription/SubscriptionHeaderChip.tsx` — solid colors + rotating label
-- 🆕 `src/components/header/HeaderStatusDot.tsx`
-- 🆕 `src/components/header/UnifiedSyncButton.tsx`
-- 🆕 `src/hooks/useSyncMetadata.ts`
-- 🆕 `src/hooks/useSyncAction.ts`
-- ✏️ `src/components/sync/SyncButton.tsx` — refactor to use `useSyncAction` (no behavior change for other callers)
-- ✏️ `src/components/LanguageSelector.tsx` — icon-only on mobile
-- ✏️ `src/components/AppLayout.tsx` — swap drawer for inline icons
+---
 
-## Out of Scope
-- Deleting `HeaderActionsSheet.tsx` and `ConnectionStatusIcon.tsx` — kept for any other callers; can be cleaned up after verification.
-- i18n keys for the new "23d left" / "Online" / "Last sync" strings will be added in `en/sync.json` + `hi/sync.json` + `mr/sync.json` (small, ~6 keys each).
+## 5. Voice-First Elevation (input modality, not feature)
 
-## Result
-Top bar (single row, 390 px): `[Logo + name]  [🌟 Shakti / 23d left ⇄]  [● dot]  [⟳]  [🌐]` — every action one tap, dropdowns open inline (no bottom sheet), high-contrast labels, and a single source of truth for sync state.
+- Mic FAB **64×64**, always-on, center-bottom, above bottom-nav. Idle = ambient pulse. Press-and-hold = record (haptic on start). Release = transcribe → AI Chat with screen context.
+- "Speak this page" header button reads the visible viewport in active language.
+- Voice notes record to local IndexedDB first, sync when online — never block on network.
+- **Voice assists land wizard** (§3) but never replaces map drawing.
+
+---
+
+## 6. Offline & Low-Bandwidth (first-class)
+
+- Skeletons only — no spinners.
+- Honest staleness: `📡 ऑफलाइन · 2 तासांपूर्वीची माहिती` per affected card.
+- StatusPill popover lists queue in plain language ("3 आवाज नोट्स · 1 जमीन अपडेट प्रतीक्षेत").
+- Boundary capture works fully offline — polygon + GPS track stored locally, synced on reconnect.
+- Network-aware media: low-quality image placeholders; voice notes preload only on Wi-Fi.
+
+---
+
+## 7. Accessibility for 50+ Farmers
+
+- Body min **16 px**, headings 18–24 px, Marathi/Hindi line-height **1.55**.
+- **Large Text mode** toggle in Profile → `data-large-text="true"` on `<html>`, base 16→18.
+- Contrast ≥ 4.5:1 — flatten gradients on text-bearing containers; gradient survives only as page background.
+- Touch targets: standard 44×44, primary (mic, land switcher, speak-page, active nav) **56×56**.
+
+---
+
+## 8. Card Design Tokens (semantic four)
+
+| Token | Use | Visual |
+|---|---|---|
+| `card-data` | NDVI, soil moisture, weather metrics | Flat, `bg-card border border-border/40 rounded-xl` |
+| `card-action` | "Today's irrigation", "Pending advisory" | `shadow-sm border-l-4 border-primary rounded-xl` |
+| `card-content` | Community posts, articles, schemes | `bg-card rounded-2xl shadow-sm` |
+| `card-alert` | Proactive warnings | `border-l-4 border-warning/destructive bg-card` |
+
+Ban: triple-nested Card + `rounded-3xl` + `shadow-2xl` + gradient backgrounds (current NDVI/Schedule). One gradient per screen, page-bg only.
+
+---
+
+## 9. PageShell migration
+`NDVIAnalysis`, `ProactiveAlerts`, `CommunityPage`, `Market` → wrap in `<PageShell variant="gradient-soft">`. No scroll-behavior change.
+
+---
+
+## 10. Land Detail = the hub (2×3 grid with live data)
+```text
+┌──────────┬──────────┐
+│ ☀ Weather│ 🛰 NDVI   │
+├──────────┼──────────┤
+│ 🌱 Soil   │ 📅 Schedule│
+├──────────┼──────────┤
+│ ⚠ Alerts │ 🛒 Market │
+└──────────┴──────────┘
+```
+Each tile shows a live data point (NDVI 0.62 ↑, soil moisture 42 %, etc.).
+
+---
+
+## 11. Screen-Specific Fixes
+
+| Screen | Fix |
+|---|---|
+| Community | social.json fix; remove inner Home/Community/Trending duplicate IA; collapse composer to mic + single text row |
+| Schedule | `<LandRef>` replaces UUID; "AI वेळापत्रक तयार" chip → single-line truncate; flatten triple Cards; thin segmented progress bar |
+| Market | PageShell; 4-up 88px crop tiles, virtualized; sticky filter chip row |
+| Proactive Alerts | PageShell + banner-aware padding; "Mark all read" inline; severity filter chips |
+| NDVI | One flat `card-data` per metric, 16px gap, inline sparkline; kill `shadow-2xl rounded-3xl` |
+| Home | Above-the-fold = greeting + land carousel + AI hero; weather/market/tutorials as collapsible sections |
+| Profile | Account / Subscription / Preferences (Large Text toggle) / Support |
+| **Land Wizard** (NEW) | 7-step mandatory; GPS-walk boundary mode; voice-assist on every step; offline-capable |
+
+---
+
+## 12. Execution Order (locked)
+
+### Today — P0
+1. `social.json` namespace fix
+2. Banner CSS-var height push
+3. Remove duplicate `ScrollToTopFab`
+
+### This week — P1
+4. Build `StatusPill` (consolidate 3 header components)
+5. Migrate 4 pages to `PageShell`
+6. Build `<LandRef>`, replace every UUID render site
+7. Flatten triple-nested cards on NDVI + Schedule
+8. Header height 14→56px; Speak-this-page button
+
+### Next sprint — P2 (visual sign-off first)
+9. Bottom nav refactor (Home · My Land · Mic · Community · Profile)
+10. Land Switcher header chip + Home carousel
+11. Land Detail hub (2×3 live grid)
+12. Remove Hindenburg hamburger
+
+### Sprint after — P3 (Land Wizard hardening — HIGH IMPACT)
+13. **7-step mandatory Add/Edit Land wizard** with hard validation gates
+14. **GPS-Walk boundary capture** mode + offline storage
+15. **Voice-assist on every wizard step** (STT → field, TTS readback, no auto-commit)
+16. Empty-state voice-aware CTAs (mic helps fill the wizard, never bypasses it)
+
+### Final — P4 (polish)
+17. Offline staleness banners + honest sync queue language
+18. Accessibility pass: Large Text toggle, contrast audit, 56×56 primary targets
+19. Four-token card system rollout
+
+---
+
+## 13. What we explicitly are NOT doing
+
+- No voice-only land creation (boundary + crop + irrigation + soil are mandatory).
+- No "skip for now" on wizard steps.
+- No 4-second rotating chip animation.
+- No bottom-drawer header sheets.
+- No reshuffling land order based on urgency.
+- No spinners.
+- No hidden offline state.
+- No UUIDs in UI.
+- No Market in bottom nav.
+- No AI Chat as a tab.
+
+---
+
+## Technical Notes (engineers)
+
+- **i18n fix:** wrap each `{en,hi,mr}/social.json` content under top-level `"social"` key; no component changes.
+- **Banner var:** `SubscriptionStatusBanner` sets `document.documentElement.style.setProperty('--banner-h', visible ? '36px' : '0px')` on mount/unmount; `AppLayout`'s `<main>` uses `style={{ paddingTop: 'calc(56px + var(--banner-h, 0px))' }}`.
+- **StatusPill:** `src/components/header/StatusPill.tsx` wrapping `useSubscription`, `useSyncMetadata`, `useOfflineStatus`, `useSyncAction`.
+- **`<LandRef>`:** `src/components/land/LandRef.tsx`, falls back to `🌾 (unknown)` + warn.
+- **Land Wizard rebuild:** extend existing `AddLand.tsx` + `EditLandWizard.tsx` to a 7-step state machine; persist draft to IndexedDB after each step (resilient to app kill / network drop). Validation enforced server-side too (lands insert RLS + check constraint on required columns).
+- **GPS-Walk:** new `src/services/gpsWalkRecorder.ts` using `navigator.geolocation.watchPosition` with `enableHighAccuracy: true`; auto-close polygon when distance to start <5 m and points ≥10. Smoothing via Ramer-Douglas-Peucker (epsilon 1.5 m). Fallback to vertex-tap when accuracy >15 m.
+- **Voice-assist:** wrap each wizard field in a `<VoiceField>` primitive that opens `nativeSpeechRecognition`, fills the field, then calls TTS readback before the user taps "पुढे".
+- **Crop matching:** STT result → query `crop_synonyms` (existing 193-alias table) for fuzzy match; show top 3 suggestions for tap-confirm.
+- **Card tokens:** four utility classes in `src/index.css` `@layer components`.
+- **Large Text mode:** `data-large-text="true"` on `<html>` + Tailwind variant.
+
+Awaiting approval to begin **P0 today**, **P1 this week**, and confirmation that the **mandatory 7-step Land Wizard with GPS-Walk + voice-assist (P3)** is the right shape before we build it.
