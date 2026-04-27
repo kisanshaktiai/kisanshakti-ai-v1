@@ -352,10 +352,10 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
       // Dynamic stage computation (G3) — DB-driven first, then fallback
       const currentStage = computeStageDynamic(cropCode, das, stageMap);
 
-      // Weather from batch map
+      // Weather: per-land geo-proximity result (exact / proximity / unavailable)
       const locKey = (land.center_lat != null && land.center_lon != null)
         ? makeLocationKey(land.center_lat, land.center_lon) : null;
-      const weather = locKey ? (weatherMap.get(locKey) || nullWeather()) : nullWeather();
+      const weather = landWeatherMap.get(land.id) || nullWeather();
 
       // NDVI from batch map
       const ndviArr = ndviMap.get(land.id) || [];
