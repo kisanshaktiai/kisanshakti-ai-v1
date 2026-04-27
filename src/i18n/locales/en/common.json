@@ -62,6 +62,14 @@
     "more": "More actions",
     "quickActions": "Quick Actions",
     "sync": "Sync data",
-    "language": "Language"
+    "language": "Language",
+    "speak_this_page": "Speak this page",
+    "stop_speaking": "Stop speaking",
+    "subscription": {
+      "tap_to_manage": "Tap to manage plan",
+      "days_remaining": "{{d}} days remaining",
+      "grace_period": "Grace period · {{d}} days left",
+      "expired_tap_renew": "Tap to renew"
+    }
   }
 }

@@ -195,10 +195,10 @@ const NDVIAnalysis = () => {
             exit={{ opacity: 0, y: -20 }}
             className="p-4"
           >
-            <Card className="border-0 shadow-2xl rounded-3xl bg-gradient-to-br from-card via-card to-muted/30 overflow-hidden">
+            <Card className="bg-card border border-border/40 rounded-xl shadow-sm overflow-hidden">
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <div className="p-2 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5">
+                  <div className="p-2 rounded-xl bg-primary/10">
                     <MapPin className="h-5 w-5 text-primary" />
                   </div>
                   {t('ndvi.select_your_field', 'Select Your Field')}
@@ -208,7 +208,7 @@ const NDVIAnalysis = () => {
               <CardContent className="space-y-3 pb-6">
                 {landsLoading ? (
                   <div className="space-y-3">
-                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 rounded-xl" />)}
                   </div>
                 ) : lands && lands.length > 0 ? (
                   lands.map((land, i) => {
@@ -222,11 +222,11 @@ const NDVIAnalysis = () => {
                       onClick={() => setSelectedLandId(land.id)}
                       className="group cursor-pointer"
                     >
-                      <Card className="border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:scale-[1.02] active:scale-[0.98] rounded-2xl overflow-hidden bg-gradient-to-r from-card to-muted/20">
+                      <Card className="bg-card border border-border/40 shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.99] rounded-xl overflow-hidden">
                         <CardContent className="p-4 flex items-center gap-4">
                           <div className={cn(
-                            "w-14 h-14 rounded-2xl flex items-center justify-center bg-gradient-to-br",
-                            landHealth ? landHealth.bgColor : "from-muted to-muted/50"
+                            "w-12 h-12 rounded-xl flex items-center justify-center",
+                            landHealth ? landHealth.bgColor : "bg-muted"
                           )}>
                             <Leaf className={cn(
                               "h-6 w-6",
