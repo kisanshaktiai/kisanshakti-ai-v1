@@ -1,239 +1,155 @@
-# KisanShaktiAI — UX Plan v3 (Land-Boundary-First, Voice-Assisted)
+# Proactive Alert: Fix Weather Fetch + Decision-Brain-Only Narration
 
-> Persona lock: **Amarsinh, 48, Solapur — cracked screen, intermittent 3G, limited Marathi reading, one muddy hand.**
-> Architecture lock: **This is an AI agronomic advisory app. Without an accurate land boundary + crop + irrigation + soil context, every downstream prediction (NDVI, weather micro-forecast, irrigation liters, disease risk, schedule, advisory) is invalid. Onboarding cannot be shortcut.**
+## What you saw vs what is wrong
 
----
+The Marathi alert in the screenshot showed:
+- `तापमान --°C, आर्द्रता --%` (temperature/humidity blank)
+- The Marathi sentence still contained the raw English word `SUGARCANE`
+- `कारण` (cause) and `काय करावे` (what to do) were generic templates ("शेताची तपासणी करा", "कृषी तज्ञांचा सल्ला घ्या") — none of the specific Sugarcane wisdom that exists in the decision brain rule (`NDVI_NON_RECOVERY` → "check shoot borer / red rot / wilt / nutrient deficiency, field inspection within 48 hours").
 
-## ⚠ Critical Correction to v2 — Section 3 (Voice-First Onboarding)
+## Root causes (verified with DB + code reads)
 
-The previous plan implied a farmer could speak "साडे सात एकर ऊस" and have a land created. **That is wrong for this app.** All proactive intelligence (`proactive-evaluator`, NDVI tiles, weather micro-forecasting at the polygon centroid, irrigation liter calculations, soil_health joins) requires:
+### 1. Weather data IS in the database, but the lookup misses it
+The land **Mala (7.59 acre, Sugarcane)** sits at `(16.7396, 74.2266)`. The evaluator builds `location_key = "16.74,74.23"` and runs:
 
-1. **Polygon boundary on the map** — not just an acre count. NDVI/satellite, weather centroid, area calc, neighbor-disease modeling all key off this.
-2. **Current crop + variety + sowing date** — drives stage-aware decision rules, schedule, IPM windows.
-3. **Irrigation system** (drip / flood / sprinkler / rainfed) — drives liter calculations and irrigation rule arms.
-4. **Soil type / last crop** — drives nutrient baseline and rotation logic.
-
-These are **not optional fields**. Voice **assists** the form, it does not **replace** it. Fix below in §3.
-
----
-
-## 0. P0 — Ship Today (no design review)
-
-### 0.1 `social.json` namespace fix
-Wrap each of `src/i18n/locales/{en,hi,mr}/social.json` content under top-level `"social": { … }` (keep `__meta` outside). Kills raw `social.header.title` rendering across Community/Schedule/Market/Alerts.
-
-### 0.2 Subscription banner overlap
-Banner publishes its measured height to CSS var `--banner-h` (`0px` ↔ `36px`). `<main>` uses `paddingTop: 'calc(56px + var(--banner-h, 0px))'`. No clipped first card.
-
-### 0.3 Remove duplicate scroll-to-top FAB
-Delete `ScrollToTopFab` mount in `AppLayout`. Mic FAB is the only persistent floating control. Replace with a slim "back to top" pill that fades in under the header after 800px scroll.
-
----
-
-## 1. Bottom Navigation — final
-```text
-[ 🏠 Home ] [ 🌾 My Land ] [ 🎤 MIC ] [ 👥 Community ] [ 👤 Profile ]
-                              ^ center FAB, 64×64, always-on
+```ts
+.from('weather_current').select(...).in('location_key', ['16.74,74.23'])
 ```
-- Market → Home card + Land-detail tile (NOT in nav).
-- AI Chat → IS the mic (tap = ask, long-press = "ask about this screen").
-- Community stays — peer trust drives retention.
-- Hindenburg hamburger removed; its items become tiles on Home or Land Detail Hub.
+
+But `weather_current` only has nearby keys: `16.71,74.23`, `16.7,74.23`, `16.72,74.23`, `16.84,74.22`. **Strict equality returns 0 rows → temp/humidity null → UI prints `--°C, --%`.**
+
+This contradicts the established rule in memory `weather/live-weather-context-resolution` ("AI Chat resolves weather via 55km proximity lookup"). The proactive evaluator is the only path that still uses strict key match — it must use the same proximity logic.
+
+A second issue: even when a key matches, some rows are months old (Jan / Dec / July). We need a freshness window so 4-month-old data does not silently power today's "कारण".
+
+### 2. Cause/steps are not coming from the decision brain
+For rule `NDVI_NON_RECOVERY` (the rule that actually fired):
+- `decision_rules.action_text` is rich and Sugarcane-specific (shoot borer, red rot, smut, nitrogen, 48h inspection).
+- `decision_rules.reason_text` and `knowledge_text` are **NULL**.
+
+Code path in `proactive-evaluator/index.ts` lines 1754-1834 (`buildSolutionFromRule`) then falls back to:
+- `cause_mr = "तापमान --°C, आर्द्रता --% - या हवामानामुळे ही समस्या उद्भवली."` (a hard-coded weather template — not from the brain)
+- `steps_mr = ["शेताची तपासणी करा...", "कृषी तज्ञांचा सल्ला घ्या", ...]` (generic placeholders — not from the brain)
+
+So even after fixing weather, the cause and steps would still be generic. The fix is: **always source `cause` and `steps` from `decision_rules.knowledge_text` / `reason_text` / `action_text`, and only append weather as a small "evidence" line — never as the entire cause.**
+
+### 3. Crop name leaking as English ALL-CAPS in Marathi sentences
+Lines 1811-1812, 1830-1831 use raw `cropEn = ctx.crop_code || 'crop'` ("SUGARCANE") inside Marathi/Hindi strings. Violates memory `architecture/canonical-language-governance` (strip ALL_CAPS technical codes from output). Needs a `cropLabel(lang, code)` lookup using the existing `crop_synonyms` table (memory `logic/multilingual-crop-synonym-detection`).
 
 ---
 
-## 2. Land Switcher — first-class surface
+## The fix (all in `supabase/functions/proactive-evaluator/index.ts`)
 
-- **Header chip:** `[ 🌾 Mala 7.59ac ▾ ]` — active land, persistent, never UUID.
-- **Home top section:** horizontal swipeable land carousel — one card per land showing crop emoji, area, ONE priority action ("पाणी द्या · 2,436L"). Swipe = global context switch.
-- AI urgency = small amber/red dot on the card. **Never reshuffle order** (breaks muscle memory).
-- New `<LandRef land={…} />` is the only sanctioned way to render a land identifier. UUID slip → `🌾 (unknown)` + dev `console.warn`.
+### Fix A — Geo-proximity weather lookup with freshness gate
 
----
-
-## 3. Onboarding — Land-Boundary-Mandatory, Voice-Assisted (REVISED)
-
-### 3.1 Hard contract: a farmer cannot reach the Home dashboard without at least one fully-qualified land.
-
-The "fully-qualified" record requires every field below. Each is a separate, non-skippable step in the wizard:
-
-| Step | Field | Source of truth | Voice assist |
-|---|---|---|---|
-| 1 | **Polygon boundary** (≥3 vertices) on Google Map | `lands.boundary_polygon_old` + `center_lat/lon` (auto) + `area_acres` (auto-calc from polygon) | Voice: "draw boundary" → opens map with mic-narrated instructions; farmer walks the perimeter (GPS-walk mode) OR taps vertices |
-| 2 | **Land name** | `lands.name` | Voice → STT → field |
-| 3 | **Current crop + variety** | `lands.current_crop`, `crop_variety` | Voice → STT → matched against `crop_synonyms` (193 aliases) |
-| 4 | **Sowing date / DAS** | `lands.sowing_date` | Voice ("दोन महिन्यापूर्वी लावलं") → date picker pre-filled |
-| 5 | **Irrigation system** | `lands.irrigation_type` (drip / flood / sprinkler / rainfed) | Visual icons + voice — single tap |
-| 6 | **Soil type** | `lands.soil_type` (auto-prefilled from `soil_health` if available) | Confirm/override |
-| 7 | **Last crop** | `lands.previous_crop` | Voice → STT → `crop_synonyms` |
-
-**Rules:**
-- No "skip for now" on any step. The wizard refuses to commit a partial record.
-- Boundary step is the gate — until a polygon is closed and area is calculated, steps 2–7 are visually locked.
-- Voice **fills** fields; the farmer must still **see and confirm** each value before proceeding (literacy-safe — visual icons + TTS readback).
-- For low-literacy users, every step has a "🔊 हे ऐका" button that reads the field label, hint, and current value.
-
-### 3.2 GPS-Walk boundary mode (high-leverage feature)
-Farmer taps "मी शेताच्या बांधावर चालतो" → app records GPS points every 2 m → auto-closes polygon when farmer returns within 5 m of start point. Solves the "tap-on-tiny-map" problem for cracked screens and muddy fingers. Falls back to vertex-tap mode if location accuracy >15 m.
-
-### 3.3 Empty-state voice prompts (revised wording)
-- Home with zero lands: large CTA card "तुमची पहिली जमीन नकाशावर काढूया" → opens the 7-step wizard at Step 1 (boundary). The voice prompt tells the farmer this will take ~3 minutes and explains why each field matters in one line.
-- **Voice does NOT create a land record.** It only helps fill the wizard.
-
-### 3.4 Edit land
-Same wizard, same fields, same validation. Boundary edit re-triggers area recalculation and invalidates cached NDVI/weather for that polygon.
-
----
-
-## 4. Header — StatusPill consolidation
+Replace `batchLoadWeather()` (lines 641-665):
 
 ```text
-┌──────────────────────────────────────────────────────────┐
-│ 🌾 KS  [🌱 Mala 7.59ac ▾]    [🔊]  [文]  [Shakti·17d·●] │
-└──────────────────────────────────────────────────────────┘
+For each land's (lat, lon):
+  1. Try exact location_key  (cheap path)
+  2. If miss → SELECT location_key, lat, lon, temp, humidity, ...
+       FROM weather_current
+       WHERE observation_time > now() - interval '6 hours'   ← freshness gate
+       (limit by bounding box: lat ± 0.5°, lon ± 0.5°  ≈ 55 km)
+     Then in JS: keep the nearest row by haversine distance, max 55 km
+  3. If still no row → return nullWeather()
+     AND set ctx.weather_source = 'unavailable' so the
+     narrator can write "हवामान माहिती सध्या उपलब्ध नाही"
+     instead of "तापमान --°C, आर्द्रता --%"
 ```
-- **StatusPill** merges `SubscriptionHeaderChip` + `HeaderStatusDot` + `UnifiedSyncButton`. Static label `Shakti · 17d · ●` — no rotation. Tap → popover (subscription, online/offline, last-sync, pending count, Sync now / Full reload).
-- **🔊 Speak-this-page** as permanent header control (uses `useTTSFacade`) — biggest accessibility win for non-Devanagari readers.
-- **Language** stays icon-only.
-- Header height **14 → 56 px** to meet 44×44 tap targets.
 
----
+Apply the same proximity + freshness logic to `batchLoadForecast` and the `weather_current` fallback inside `batchLoadGDD`.
 
-## 5. Voice-First Elevation (input modality, not feature)
+Add `weather_source: 'exact' | 'proximity' | 'unavailable'` and `weather_distance_km` to the `weather` shape so the audit trail shows where the number came from.
 
-- Mic FAB **64×64**, always-on, center-bottom, above bottom-nav. Idle = ambient pulse. Press-and-hold = record (haptic on start). Release = transcribe → AI Chat with screen context.
-- "Speak this page" header button reads the visible viewport in active language.
-- Voice notes record to local IndexedDB first, sync when online — never block on network.
-- **Voice assists land wizard** (§3) but never replaces map drawing.
+### Fix B — Cause / steps strictly from the decision brain
 
----
+Rewrite `buildSolutionFromRule()` so the structure is:
 
-## 6. Offline & Low-Bandwidth (first-class)
-
-- Skeletons only — no spinners.
-- Honest staleness: `📡 ऑफलाइन · 2 तासांपूर्वीची माहिती` per affected card.
-- StatusPill popover lists queue in plain language ("3 आवाज नोट्स · 1 जमीन अपडेट प्रतीक्षेत").
-- Boundary capture works fully offline — polygon + GPS track stored locally, synced on reconnect.
-- Network-aware media: low-quality image placeholders; voice notes preload only on Wi-Fi.
-
----
-
-## 7. Accessibility for 50+ Farmers
-
-- Body min **16 px**, headings 18–24 px, Marathi/Hindi line-height **1.55**.
-- **Large Text mode** toggle in Profile → `data-large-text="true"` on `<html>`, base 16→18.
-- Contrast ≥ 4.5:1 — flatten gradients on text-bearing containers; gradient survives only as page background.
-- Touch targets: standard 44×44, primary (mic, land switcher, speak-page, active nav) **56×56**.
-
----
-
-## 8. Card Design Tokens (semantic four)
-
-| Token | Use | Visual |
-|---|---|---|
-| `card-data` | NDVI, soil moisture, weather metrics | Flat, `bg-card border border-border/40 rounded-xl` |
-| `card-action` | "Today's irrigation", "Pending advisory" | `shadow-sm border-l-4 border-primary rounded-xl` |
-| `card-content` | Community posts, articles, schemes | `bg-card rounded-2xl shadow-sm` |
-| `card-alert` | Proactive warnings | `border-l-4 border-warning/destructive bg-card` |
-
-Ban: triple-nested Card + `rounded-3xl` + `shadow-2xl` + gradient backgrounds (current NDVI/Schedule). One gradient per screen, page-bg only.
-
----
-
-## 9. PageShell migration
-`NDVIAnalysis`, `ProactiveAlerts`, `CommunityPage`, `Market` → wrap in `<PageShell variant="gradient-soft">`. No scroll-behavior change.
-
----
-
-## 10. Land Detail = the hub (2×3 grid with live data)
 ```text
-┌──────────┬──────────┐
-│ ☀ Weather│ 🛰 NDVI   │
-├──────────┼──────────┤
-│ 🌱 Soil   │ 📅 Schedule│
-├──────────┼──────────┤
-│ ⚠ Alerts │ 🛒 Market │
-└──────────┴──────────┘
+problem  ← decision_rules.condition_code  →  human label
+                                              from a small DB-driven map
+                                              (intent_observation_mapping)
+
+cause    ← decision_rules.knowledge_text  (preferred)
+       OR decision_rules.reason_text     (fallback)
+       OR  a single short line built from the actual triggered
+           condition: e.g. "NDVI 0.10 < 0.30 — पीक 7 दिवस पावसानंतरही
+           सावरले नाही"  (this is the rule's firing reason, not weather)
+
+           Append weather ONLY as evidence on a separate line
+           when ctx.weather_source !== 'unavailable':
+               "आजचे हवामान: 24°C, आर्द्रता 80%."
+
+steps    ← split decision_rules.action_text on '\n' / numbered list
+           Each step is ONE short Marathi sentence (≤ 12 words)
+           Translate via the same nano translator we already use
+           for AI Chat narration (LLM is render-only, per memory
+           `architecture/symbolic-engine-strict-invariants`).
+
+           If action_text is missing, fall back to the existing
+           generic 3-step list — but log a `decision_rules` data
+           gap so we can backfill.
+
+safety   ← phi_days + bee_toxicity + farmer_safety_level (already correct)
+
+organic  ← decision_rules.organic_alternative (already correct)
 ```
-Each tile shows a live data point (NDVI 0.62 ↑, soil moisture 42 %, etc.).
+
+Hard rule (matches existing memory `architecture/symbolic-engine-strict-invariants`):
+**no agronomic phrase in `cause`/`steps` may originate outside `decision_rules`.** Weather is environmental evidence, not a cause.
+
+### Fix C — Strip ALL-CAPS crop codes from farmer text
+
+Add `cropLabel(lang, ctx.crop_code)` that:
+1. Looks up `crop_synonyms` for the localized name (`ऊस` for Marathi, `गन्ना` for Hindi).
+2. Falls back to title-case (`Sugarcane`, never `SUGARCANE`) if no row.
+
+Replace every interpolation of `cropEn` inside `_mr` / `_hi` strings with the localized label. Same treatment for `irrigation.method` in English steps (`FLOOD` → `flood irrigation`).
+
+### Fix D — Simpler farmer language (the "rural Indian farmer" rule)
+
+Apply per memory `ui/farmer-centric-content-rules`:
+- One idea per sentence, max ~12 words.
+- No technical tokens (`NDVI`, `GDD`, `DAS`, `ETL`) in the visible Marathi/Hindi text. Replace with farmer-friendly phrases:
+  - `NDVI 0.10` → `उपग्रहावरून पीक खूप कमजोर दिसतंय` (with the number kept in a small "तांत्रिक तपशील" expandable line for power users).
+  - `GDD` → `उष्णता एकूण` (hidden under tech-detail).
+- Numbers stay in Devanagari numerals when the rest of the sentence is Devanagari (the LLM Output Validator already supports this — memory `logic/llm-output-validation-gate`).
+- Keep the 8-section `2030-Ready` structure unchanged (समस्या, कारण, काय करावे, सुरक्षा, अपेक्षित फायदा, पुढील तपासणी, सेंद्रिय पर्याय, तांत्रिक तपशील).
+
+### Fix E — Backfill mission for `decision_rules`
+
+Open a follow-up task (no code today) to fill `reason_text` + `knowledge_text` for the proactive rules that are currently NULL:
+- `NDVI_STRESS_DETECTION` (sugarcane)
+- `NDVI_NON_RECOVERY` (sugarcane)
+- and any other `is_proactive_rule = true` row where either column is null.
+
+Until that backfill lands, Fix B's "build cause from the firing condition" branch keeps the output safe and brain-sourced.
 
 ---
 
-## 11. Screen-Specific Fixes
+## Files I will edit
 
-| Screen | Fix |
-|---|---|
-| Community | social.json fix; remove inner Home/Community/Trending duplicate IA; collapse composer to mic + single text row |
-| Schedule | `<LandRef>` replaces UUID; "AI वेळापत्रक तयार" chip → single-line truncate; flatten triple Cards; thin segmented progress bar |
-| Market | PageShell; 4-up 88px crop tiles, virtualized; sticky filter chip row |
-| Proactive Alerts | PageShell + banner-aware padding; "Mark all read" inline; severity filter chips |
-| NDVI | One flat `card-data` per metric, 16px gap, inline sparkline; kill `shadow-2xl rounded-3xl` |
-| Home | Above-the-fold = greeting + land carousel + AI hero; weather/market/tutorials as collapsible sections |
-| Profile | Account / Subscription / Preferences (Large Text toggle) / Support |
-| **Land Wizard** (NEW) | 7-step mandatory; GPS-walk boundary mode; voice-assist on every step; offline-capable |
+- `supabase/functions/proactive-evaluator/index.ts`
+  - `batchLoadWeather` → proximity + freshness
+  - `batchLoadForecast`, `batchLoadGDD` (current-fallback) → same
+  - `buildSolutionFromRule` → cause/steps from `decision_rules` only
+  - `buildContextualSolution` (NDVI generic path) → same
+  - new helpers: `findNearestWeather`, `cropLabel`, `simplifyForFarmer`
+- New small migration (read-only sanity): index `weather_current(observation_time desc)` to keep the proximity query fast (only if EXPLAIN shows it is needed — I'll check before adding).
 
----
+## Out of scope for this pass
 
-## 12. Execution Order (locked)
+- Re-seeding `decision_rules.knowledge_text` / `reason_text` (separate task; flagged above).
+- Changing the proactive cron frequency or notification UI — they already work.
+- Touching AI Chat (its weather lookup is already correct per memory).
 
-### Today — P0
-1. `social.json` namespace fix
-2. Banner CSS-var height push
-3. Remove duplicate `ScrollToTopFab`
+## Acceptance check after implementation
 
-### This week — P1
-4. Build `StatusPill` (consolidate 3 header components)
-5. Migrate 4 pages to `PageShell`
-6. Build `<LandRef>`, replace every UUID render site
-7. Flatten triple-nested cards on NDVI + Schedule
-8. Header height 14→56px; Speak-this-page button
+1. Trigger the evaluator for Mala (16.74, 74.23) → alert shows `तापमान 24°C, आर्द्रता 80%` (the real `16.71,74.23` reading) **with a small "≈ 3 km away" tag**, not `--°C, --%`.
+2. The Marathi `कारण` paragraph quotes the sugarcane `NDVI_NON_RECOVERY` text from `decision_rules`, not the generic weather template.
+3. The Marathi `काय करावे` list mirrors `action_text` (shoot borer / red rot / nitrogen / 48-hour inspection), not "शेताची तपासणी करा / कृषी तज्ञांचा सल्ला घ्या".
+4. The word `SUGARCANE` no longer appears in any Marathi/Hindi sentence — replaced with `ऊस` / `गन्ना`.
+5. If both proximity and exact lookup fail, the alert says `हवामान माहिती सध्या उपलब्ध नाही` — never `--°C`.
 
-### Next sprint — P2 (visual sign-off first)
-9. Bottom nav refactor (Home · My Land · Mic · Community · Profile)
-10. Land Switcher header chip + Home carousel
-11. Land Detail hub (2×3 live grid)
-12. Remove Hindenburg hamburger
-
-### Sprint after — P3 (Land Wizard hardening — HIGH IMPACT)
-13. **7-step mandatory Add/Edit Land wizard** with hard validation gates
-14. **GPS-Walk boundary capture** mode + offline storage
-15. **Voice-assist on every wizard step** (STT → field, TTS readback, no auto-commit)
-16. Empty-state voice-aware CTAs (mic helps fill the wizard, never bypasses it)
-
-### Final — P4 (polish)
-17. Offline staleness banners + honest sync queue language
-18. Accessibility pass: Large Text toggle, contrast audit, 56×56 primary targets
-19. Four-token card system rollout
-
----
-
-## 13. What we explicitly are NOT doing
-
-- No voice-only land creation (boundary + crop + irrigation + soil are mandatory).
-- No "skip for now" on wizard steps.
-- No 4-second rotating chip animation.
-- No bottom-drawer header sheets.
-- No reshuffling land order based on urgency.
-- No spinners.
-- No hidden offline state.
-- No UUIDs in UI.
-- No Market in bottom nav.
-- No AI Chat as a tab.
-
----
-
-## Technical Notes (engineers)
-
-- **i18n fix:** wrap each `{en,hi,mr}/social.json` content under top-level `"social"` key; no component changes.
-- **Banner var:** `SubscriptionStatusBanner` sets `document.documentElement.style.setProperty('--banner-h', visible ? '36px' : '0px')` on mount/unmount; `AppLayout`'s `<main>` uses `style={{ paddingTop: 'calc(56px + var(--banner-h, 0px))' }}`.
-- **StatusPill:** `src/components/header/StatusPill.tsx` wrapping `useSubscription`, `useSyncMetadata`, `useOfflineStatus`, `useSyncAction`.
-- **`<LandRef>`:** `src/components/land/LandRef.tsx`, falls back to `🌾 (unknown)` + warn.
-- **Land Wizard rebuild:** extend existing `AddLand.tsx` + `EditLandWizard.tsx` to a 7-step state machine; persist draft to IndexedDB after each step (resilient to app kill / network drop). Validation enforced server-side too (lands insert RLS + check constraint on required columns).
-- **GPS-Walk:** new `src/services/gpsWalkRecorder.ts` using `navigator.geolocation.watchPosition` with `enableHighAccuracy: true`; auto-close polygon when distance to start <5 m and points ≥10. Smoothing via Ramer-Douglas-Peucker (epsilon 1.5 m). Fallback to vertex-tap when accuracy >15 m.
-- **Voice-assist:** wrap each wizard field in a `<VoiceField>` primitive that opens `nativeSpeechRecognition`, fills the field, then calls TTS readback before the user taps "पुढे".
-- **Crop matching:** STT result → query `crop_synonyms` (existing 193-alias table) for fuzzy match; show top 3 suggestions for tap-confirm.
-- **Card tokens:** four utility classes in `src/index.css` `@layer components`.
-- **Large Text mode:** `data-large-text="true"` on `<html>` + Tailwind variant.
-
-Awaiting approval to begin **P0 today**, **P1 this week**, and confirmation that the **mandatory 7-step Land Wizard with GPS-Walk + voice-assist (P3)** is the right shape before we build it.
+Awaiting approval to switch to default mode and apply Fixes A–D.
