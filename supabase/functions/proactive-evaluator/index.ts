@@ -2116,7 +2116,12 @@ function buildContextualSolution(
   const landName = ctx.land_name || 'your field';
   const areaMr = ctx.area_acres ? `${ctx.area_acres} एकर` : '';
   const areaHi = ctx.area_acres ? `${ctx.area_acres} एकड़` : '';
-  const cropEn = ctx.crop_code || 'crop';
+  const cropMrL = cropLabel(ctx.crop_code, 'mr');
+  const cropHiL = cropLabel(ctx.crop_code, 'hi');
+  const cropEnL = cropLabel(ctx.crop_code, 'en');
+  const wxEn = weatherEvidenceLine(ctx, 'en');
+  const wxMr = weatherEvidenceLine(ctx, 'mr');
+  const wxHi = weatherEvidenceLine(ctx, 'hi');
 
   const irrigation = triggerData.irrigation;
 
@@ -2152,9 +2157,9 @@ function buildContextualSolution(
       problem_en: `Satellite data shows crop health decline (NDVI: ${ndviVal}) on ${landName}. This indicates possible water stress, nutrient deficiency, or pest/disease damage.`,
       problem_mr: `${landName} ${areaMr} शेतातील पिकाचे उपग्रह आरोग्य (NDVI: ${ndviVal}) कमी झाले आहे. पाणी कमतरता, अन्नद्रव्य कमतरता किंवा कीड-रोगामुळे असू शकते.`,
       problem_hi: `${landName} ${areaHi} खेत में उपग्रह फसल स्वास्थ्य (NDVI: ${ndviVal}) कम हुआ है. पानी की कमी, पोषक तत्वों की कमी या कीट-रोग के कारण हो सकता है.`,
-      cause_en: `NDVI value ${ndviVal} indicates reduced photosynthetic activity. Weather: ${ctx.weather.temp ?? '--'}°C, humidity ${ctx.weather.humidity ?? '--'}%. Soil type: ${ctx.soil_type || 'unknown'}.`,
-      cause_mr: `NDVI ${ndviVal} म्हणजे पिकाची प्रकाशसंश्लेषण क्रिया कमी झाली. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. माती: ${ctx.soil_type || '--'}.`,
-      cause_hi: `NDVI ${ndviVal} यानी फसल की प्रकाश संश्लेषण गतिविधि कम हुई. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. मिट्टी: ${ctx.soil_type || '--'}.`,
+      cause_en: `Satellite shows the ${cropEnL} crop looks weak (NDVI ${ndviVal}). Soil: ${ctx.soil_type || 'unknown'}.${wxEn ? ' ' + wxEn : ''}`,
+      cause_mr: `उपग्रहावरून ${cropMrL} पीक कमजोर दिसत आहे (NDVI ${ndviVal}). माती: ${ctx.soil_type || '—'}.${wxMr ? ' ' + wxMr : ''}`,
+      cause_hi: `उपग्रह से ${cropHiL} फसल कमजोर दिख रही है (NDVI ${ndviVal}). मिट्टी: ${ctx.soil_type || '—'}.${wxHi ? ' ' + wxHi : ''}`,
       steps_en,
       steps_mr,
       steps_hi,
@@ -2178,9 +2183,9 @@ function buildContextualSolution(
     problem_en: `Alert condition detected on ${landName}. Immediate field inspection recommended.`,
     problem_mr: `${landName} ${areaMr} शेतात समस्या आढळली. शेताची तपासणी करा.`,
     problem_hi: `${landName} ${areaHi} खेत में समस्या पाई गई. खेत की जांच करें.`,
-    cause_en: `Weather: ${ctx.weather.temp ?? '--'}°C, humidity ${ctx.weather.humidity ?? '--'}%. Crop stage: ${ctx.current_stage || 'unknown'}.`,
-    cause_mr: `तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. पीक टप्पा: ${ctx.current_stage || '--'}.`,
-    cause_hi: `तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. फसल चरण: ${ctx.current_stage || '--'}.`,
+    cause_en: `Crop stage: ${ctx.current_stage || 'unknown'}.${wxEn ? ' ' + wxEn : ''}`,
+    cause_mr: `पीक टप्पा: ${ctx.current_stage || '—'}.${wxMr ? ' ' + wxMr : ''}`,
+    cause_hi: `फसल चरण: ${ctx.current_stage || '—'}.${wxHi ? ' ' + wxHi : ''}`,
     steps_en: ['Inspect the field thoroughly', 'Check for any visible damage or stress signs', 'Consult AI Chat with a photo for specific advice'],
     steps_mr: ['शेताची संपूर्ण तपासणी करा', 'कोणतेही नुकसान किंवा ताण चिन्हे तपासा', 'फोटो काढून AI चॅटवर विचारा'],
     steps_hi: ['खेत की पूरी जांच करें', 'किसी भी नुकसान या तनाव के संकेत देखें', 'फोटो लेकर AI चैट पर पूछें'],
