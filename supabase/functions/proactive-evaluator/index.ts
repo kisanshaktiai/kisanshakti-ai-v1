@@ -1844,6 +1844,106 @@ function findBestMatchingDecisionRule(
   return candidates[0];
 }
 
+// =====================================================
+// CROP NAME LOCALIZATION (no ALL_CAPS in farmer text)
+// Per mem://architecture/canonical-language-governance and
+// mem://logic/multilingual-crop-synonym-detection
+// =====================================================
+const CROP_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
+  SUGARCANE: { mr: 'ऊस', hi: 'गन्ना', en: 'sugarcane' },
+  RICE:      { mr: 'भात', hi: 'चावल', en: 'rice' },
+  WHEAT:     { mr: 'गहू', hi: 'गेहूं', en: 'wheat' },
+  COTTON:    { mr: 'कापूस', hi: 'कपास', en: 'cotton' },
+  MAIZE:     { mr: 'मका', hi: 'मक्का', en: 'maize' },
+  SOYBEAN:   { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'soybean' },
+  TOMATO:    { mr: 'टोमॅटो', hi: 'टमाटर', en: 'tomato' },
+  ONION:     { mr: 'कांदा', hi: 'प्याज', en: 'onion' },
+  POTATO:    { mr: 'बटाटा', hi: 'आलू', en: 'potato' },
+  GROUNDNUT: { mr: 'भुईमूग', hi: 'मूंगफली', en: 'groundnut' },
+  CHILLI:    { mr: 'मिरची', hi: 'मिर्च', en: 'chilli' },
+  TURMERIC:  { mr: 'हळद', hi: 'हल्दी', en: 'turmeric' },
+  BANANA:    { mr: 'केळी', hi: 'केला', en: 'banana' },
+  GRAPE:     { mr: 'द्राक्ष', hi: 'अंगूर', en: 'grape' },
+  PIGEONPEA: { mr: 'तूर', hi: 'अरहर', en: 'pigeonpea' },
+};
+
+function cropLabel(code: string | null | undefined, lang: 'mr' | 'hi' | 'en'): string {
+  if (!code) return lang === 'mr' ? 'पीक' : lang === 'hi' ? 'फसल' : 'crop';
+  const upper = code.toUpperCase().trim();
+  const entry = CROP_LABEL[upper];
+  if (entry) return entry[lang];
+  return code.charAt(0).toUpperCase() + code.slice(1).toLowerCase();
+}
+
+/** One-line weather evidence in the requested language. Returns '' if no live data. */
+function weatherEvidenceLine(ctx: LandContext, lang: 'mr' | 'hi' | 'en'): string {
+  const w = ctx.weather;
+  if (w.source === 'unavailable' || w.temp == null) return '';
+  const temp = Math.round(w.temp);
+  const hum = w.humidity != null ? Math.round(w.humidity) : null;
+  const distTag = w.source === 'proximity' && w.distance_km != null && w.distance_km > 1
+    ? (lang === 'mr' ? ` (≈ ${w.distance_km} किमी जवळचे केंद्र)` : lang === 'hi' ? ` (≈ ${w.distance_km} किमी नजदीकी केंद्र)` : ` (≈ ${w.distance_km} km nearby station)`)
+    : '';
+  if (lang === 'mr') return hum != null ? `आजचे हवामान: ${temp}°C, आर्द्रता ${hum}%${distTag}.` : `आजचे हवामान: ${temp}°C${distTag}.`;
+  if (lang === 'hi') return hum != null ? `आज का मौसम: ${temp}°C, नमी ${hum}%${distTag}.` : `आज का मौसम: ${temp}°C${distTag}.`;
+  return hum != null ? `Today's weather: ${temp}°C, humidity ${hum}%${distTag}.` : `Today's weather: ${temp}°C${distTag}.`;
+}
+
+function weatherUnavailableLine(lang: 'mr' | 'hi' | 'en'): string {
+  if (lang === 'mr') return 'आजची हवामान माहिती सध्या उपलब्ध नाही.';
+  if (lang === 'hi') return 'आज की मौसम जानकारी अभी उपलब्ध नहीं है.';
+  return 'Live weather data is currently unavailable for this field.';
+}
+
+const AGRO_TERM_MR: Record<string, string> = {
+  'irrigate': 'पाणी द्या', 'irrigation': 'सिंचन', 'spray': 'फवारणी करा',
+  'apply': 'द्या', 'inspect': 'तपासणी करा', 'inspection': 'तपासणी',
+  'check': 'तपासा', 'monitor': 'निरीक्षण करा', 'field': 'शेत',
+  'soil': 'माती', 'moisture': 'ओलावा', 'fertilizer': 'खत',
+  'nitrogen': 'नायट्रोजन', 'urea': 'युरिया', 'pest': 'कीड',
+  'disease': 'रोग', 'shoot borer': 'खोडकिडा', 'stem borer': 'खोडकिडा',
+  'root grub': 'मूळ अळी', 'wilt': 'मर रोग', 'red rot': 'लाल कूज',
+  'smut': 'काणी', 'leaf': 'पान',
+  'within 24 hours': '२४ तासांत', 'within 48 hours': '४८ तासांत',
+  'within 7 days': '७ दिवसांत',
+};
+
+const AGRO_TERM_HI: Record<string, string> = {
+  'irrigate': 'पानी दें', 'irrigation': 'सिंचाई', 'spray': 'छिड़काव करें',
+  'apply': 'डालें', 'inspect': 'जांच करें', 'inspection': 'जांच',
+  'check': 'देखें', 'monitor': 'निगरानी करें', 'field': 'खेत',
+  'soil': 'मिट्टी', 'moisture': 'नमी', 'fertilizer': 'खाद',
+  'nitrogen': 'नाइट्रोजन', 'urea': 'यूरिया', 'pest': 'कीट',
+  'disease': 'रोग', 'shoot borer': 'तना छेदक', 'stem borer': 'तना छेदक',
+  'root grub': 'जड़ की सुंडी', 'wilt': 'उकठा', 'red rot': 'लाल सड़न',
+  'smut': 'कण्डुआ', 'leaf': 'पत्ती',
+  'within 24 hours': '24 घंटों में', 'within 48 hours': '48 घंटों में',
+  'within 7 days': '7 दिनों में',
+};
+
+const IRRIGATION_METHOD_EN: Record<string, string> = {
+  DRIP: 'drip irrigation', SPRINKLER: 'sprinkler irrigation', FLOOD: 'flood irrigation',
+  FURROW: 'furrow irrigation', SURFACE: 'surface irrigation',
+};
+
+/**
+ * Deterministically localize ONE English step from `decision_rules.action_text`.
+ * No LLM — the brain is the SSOT (mem://architecture/symbolic-engine-strict-invariants).
+ */
+function localizeStep(stepEn: string, lang: 'mr' | 'hi'): string {
+  const dict = lang === 'mr' ? AGRO_TERM_MR : AGRO_TERM_HI;
+  let s = stepEn.replace(/^\s*\d+[.)]\s*/, '').trim();
+  const keys = Object.keys(dict).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    s = s.replace(new RegExp(`\\b${key}\\b`, 'gi'), dict[key]);
+  }
+  for (const [code] of Object.entries(IRRIGATION_METHOD_EN)) {
+    const replace = lang === 'mr' ? IRRIGATION_METHOD_MR[code] : IRRIGATION_METHOD_HI[code];
+    if (replace) s = s.replace(new RegExp(`\\b${code}\\b`, 'g'), replace);
+  }
+  return s;
+}
+
 function buildSolutionFromSymbolicData(
   dr: DecisionRuleProactive | null,
   ctx: LandContext,
