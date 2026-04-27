@@ -9,10 +9,9 @@ import { VoiceIndicator } from '@/components/VoiceIndicator';
 import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
-import { SubscriptionHeaderChip } from '@/components/subscription/SubscriptionHeaderChip';
 import { BrandBlock } from '@/components/header/BrandBlock';
-import { HeaderStatusDot } from '@/components/header/HeaderStatusDot';
-import { UnifiedSyncButton } from '@/components/header/UnifiedSyncButton';
+import { StatusPill } from '@/components/header/StatusPill';
+import { SpeakPageButton } from '@/components/header/SpeakPageButton';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from './layout/ScrollContext';
 
@@ -41,20 +40,20 @@ export function AppLayout() {
       <SubscriptionProvider>
         <ScrollContext.Provider value={mainRef}>
           <div className="flex flex-col h-mobile-screen bg-background">
-            {/* 2030-ready compact glass header */}
+            {/* 2030-ready compact glass header — 56px tall, single StatusPill */}
             {!isFullScreenRoute && (
               <header className="glass-header fixed top-0 left-0 right-0 h-14 z-40 flex items-center gap-1.5 px-3 pt-safe">
                 <BrandBlock />
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <SubscriptionHeaderChip />
-                  <HeaderStatusDot />
-                  <UnifiedSyncButton />
+                  <SpeakPageButton />
                   <LanguageSelector />
+                  <StatusPill />
                 </div>
               </header>
             )}
 
-            {/* Subscription Status Banner — only renders when warning state */}
+            {/* Subscription Status Banner — only renders when warning state.
+                Publishes its measured height to --banner-h so <main> offsets precisely. */}
             {!isFullScreenRoute && (
               <div className="fixed top-14 left-0 right-0 z-30">
                 <SubscriptionStatusBanner />
