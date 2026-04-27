@@ -1691,17 +1691,21 @@ function generateTrilingualMessage(category: string, messageEn: string, ctx: Lan
   if (irrigation && (mapDecisionCategory(category) === 'IRRIGATION' || mapDecisionCategory(category) === 'CROP_STRESS')) {
     const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
     const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
+    const wxMr = weatherEvidenceLine(ctx, 'mr');
+    const wxHi = weatherEvidenceLine(ctx, 'hi');
     return {
-      mr: `"${landMr}"${areaMr} शेतात ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास). तापमान: ${ctx.weather.temp ?? '--'}°C.`,
-      hi: `"${landHi}"${areaHi} खेत में ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे). तापमान: ${ctx.weather.temp ?? '--'}°C.`,
+      mr: `"${landMr}"${areaMr} शेतात ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास).${wxMr ? ' ' + wxMr : ''}`,
+      hi: `"${landHi}"${areaHi} खेत में ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे).${wxHi ? ' ' + wxHi : ''}`,
     };
   }
   
   const catTitleMr = CATEGORY_TITLES[mapDecisionCategory(category)]?.mr || 'सूचना';
   const catTitleHi = CATEGORY_TITLES[mapDecisionCategory(category)]?.hi || 'सूचना';
+  const wxMr2 = weatherEvidenceLine(ctx, 'mr');
+  const wxHi2 = weatherEvidenceLine(ctx, 'hi');
   return {
-    mr: `"${landMr}"${areaMr} - ${catTitleMr}. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. शेताची तपासणी करा.`,
-    hi: `"${landHi}"${areaHi} - ${catTitleHi}. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. खेत की जांच करें.`,
+    mr: `"${landMr}"${areaMr} - ${catTitleMr}.${wxMr2 ? ' ' + wxMr2 : ''} शेताची तपासणी करा.`,
+    hi: `"${landHi}"${areaHi} - ${catTitleHi}.${wxHi2 ? ' ' + wxHi2 : ''} खेत की जांच करें.`,
   };
 }
 
