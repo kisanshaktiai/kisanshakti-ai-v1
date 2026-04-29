@@ -59,97 +59,10 @@ i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { 
-        translation: mergeTranslations(en, {
-          auth: enAuth,
-          toast: enToast,
-          weather: enWeather,
-          home: enHome,
-          lands: enLands,
-          profile: enProfile,
-          market: enMarket,
-          social: enSocial,
-          schedule: enSchedule,
-          analytics: enAnalytics,
-          chat: enChat,
-          instascan: enInstascan,
-          pwa: enPwa,
-          ndvi: enNdvi,
-          schemes: enSchemes,
-          advisory: enAdvisory,
-          video: enVideo,
-          error: enError,
-          sync: enSync,
-          common: enCommon,
-          voice: enVoice,
-          notification: enNotification,
-          soil: enSoil,
-          profile_edit: enProfileEdit,
-          cropGrowth: enCropGrowth,
-          chatCards: enChatCards,
-        })
-      },
-      hi: { 
-        translation: mergeTranslations(hi, {
-          auth: hiAuth,
-          toast: hiToast,
-          weather: hiWeather,
-          home: hiHome,
-          lands: hiLands,
-          profile: hiProfile,
-          market: hiMarket,
-          social: hiSocial,
-          schedule: hiSchedule,
-          analytics: hiAnalytics,
-          chat: hiChat,
-          instascan: hiInstascan,
-          pwa: hiPwa,
-          ndvi: hiNdvi,
-          schemes: hiSchemes,
-          advisory: hiAdvisory,
-          video: hiVideo,
-          error: hiError,
-          sync: hiSync,
-          common: hiCommon,
-          voice: hiVoice,
-          notification: hiNotification,
-          soil: hiSoil,
-          profile_edit: hiProfileEdit,
-          cropGrowth: hiCropGrowth,
-          chatCards: hiChatCards,
-        })
-      },
+      en: { translation: en },
+      hi: { translation: hi },
       pa: { translation: pa },
-      mr: { 
-        translation: mergeTranslations(mr, {
-          auth: mrAuth,
-          toast: mrToast,
-          weather: mrWeather,
-          home: mrHome,
-          lands: mrLands,
-          profile: mrProfile,
-          market: mrMarket,
-          social: mrSocial,
-          schedule: mrSchedule,
-          analytics: mrAnalytics,
-          chat: mrChat,
-          instascan: mrInstascan,
-          pwa: mrPwa,
-          ndvi: mrNdvi,
-          schemes: mrSchemes,
-          advisory: mrAdvisory,
-          video: mrVideo,
-          error: mrError,
-          sync: mrSync,
-          common: mrCommon,
-          voice: mrVoice,
-          notification: mrNotification,
-          soil: mrSoil,
-          profile_edit: mrProfileEdit,
-          cropGrowth: mrCropGrowth,
-          chatCards: mrChatCards,
-        })
-      },
+      mr: { translation: mr },
       ta: { translation: ta },
     },
     lng: getInitialLanguage(), // Initialize with persisted language
@@ -158,5 +71,15 @@ i18n
       escapeValue: false,
     },
   });
+
+loadPageTranslations(i18n.language).catch((error) => {
+  console.warn('⚠️ [i18n] Deferred translation load failed:', error);
+});
+
+i18n.on('languageChanged', (lang) => {
+  loadPageTranslations(lang).catch((error) => {
+    console.warn('⚠️ [i18n] Deferred translation load failed:', error);
+  });
+});
 
 export default i18n;
