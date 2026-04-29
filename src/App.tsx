@@ -2,11 +2,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
 import { useEffect, useState, lazy, Suspense } from "react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/i18n/config";
-import { getSupabaseFunctionUrl } from "@/config/supabase";
 
 // Components - Keep critical path components eager loaded
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -71,12 +70,6 @@ const PageLoader = () => (
 import { useAuthStore } from "@/stores/authStore";
 import { useLanguageStore } from "@/stores/languageStore";
 import { toast } from "@/hooks/use-toast";
-import LocationService from "@/services/LocationService";
-// Removed: useLocationPermission - now using contextual PermissionManager
-import { WhiteLabelService } from "@/services/WhiteLabelService";
-import { useLocationPreloader } from "@/hooks/useLocationPreloader";
-import { syncService } from "@/services/syncService";
-import { localDB } from "@/services/localDB";
 import { tenantIsolationService } from "@/services/tenantIsolationService";
 import { useGlobalRealtimeSync } from "@/hooks/useGlobalRealtimeSync";
 import { TenantProvider, useTenant } from "@/contexts/TenantContext";
