@@ -21,6 +21,17 @@ export default function AddLand() {
   const [boundary, setBoundary] = useState<LatLng[]>([]);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
 
+  // Mark <body> while the map drawer is open so any residual app overlays
+  // (FABs, banners) can opt out via CSS: body[data-fullscreen="map"] { ... }
+  useEffect(() => {
+    if (showMap) {
+      document.body.dataset.fullscreen = 'map';
+      return () => {
+        delete document.body.dataset.fullscreen;
+      };
+    }
+  }, [showMap]);
+
   const handleInstructionStart = () => {
     setShowInstructions(false);
     setShowMap(true);
