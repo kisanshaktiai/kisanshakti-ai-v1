@@ -302,6 +302,32 @@ export function GoogleMapBoundaryDrawer({
     setBoundary([]);
   }, []);
 
+  // Drag a numbered point to a new position — live area recalculation
+  const handleMarkerDragEnd = useCallback((index: number, e: google.maps.MapMouseEvent) => {
+    if (!e.latLng) return;
+    const next: LatLng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    setBoundary(prev => prev.map((p, i) => (i === index ? next : p)));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(10);
+  }, []);
+
+  // Long-press / right-click on a vertex removes it
+  const handleMarkerRightClick = useCallback((index: number) => {
+    setBoundary(prev => prev.filter((_, i) => i !== index));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(20);
+  }, []);
+
+  // Sync polygon path back to state after the user drags a vertex/midpoint
+  // via Google's native editable-polygon UI
+  const handlePolygonEdit = useCallback((polygon: google.maps.Polygon) => {
+    const path = polygon.getPath();
+    const next: LatLng[] = [];
+    for (let i = 0; i < path.getLength(); i++) {
+      const ll = path.getAt(i);
+      next.push({ lat: ll.lat(), lng: ll.lng() });
+    }
+    setBoundary(next);
+  }, []);
+
   // GPS tracking
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
