@@ -628,20 +628,22 @@ export function GoogleMapBoundaryDrawer({
         </div>
       )}
 
-      {/* Location center button */}
+      {/* Location center button — sits above the bottom action sheet, safe-area aware */}
       <button
         onClick={handleCenterOnLocation}
-        className="absolute bottom-24 right-3 h-10 w-10 bg-background/95 backdrop-blur-sm shadow-lg z-10 rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border"
+        aria-label="Center on my location"
+        className="absolute right-3 z-20 h-12 w-12 bg-background/95 backdrop-blur-md shadow-xl rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border/60"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 220px)' }}
         disabled={isCentering}
       >
         {isCentering ? (
           <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
         ) : (
-          <svg 
-            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`} 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
             strokeWidth="2"
           >
             <circle cx="12" cy="12" r="10" />
@@ -666,26 +668,45 @@ export function GoogleMapBoundaryDrawer({
           />
         )}
 
-        {/* Boundary markers */}
+        {/* Boundary markers — draggable in draw mode, long-press to delete */}
         {isGoogleReady && boundary.map((point, index) => (
           <Marker
             key={`marker-${index}`}
             position={point}
+            draggable={mode === 'draw'}
+            onDragEnd={(e) => handleMarkerDragEnd(index, e)}
+            onRightClick={() => handleMarkerRightClick(index)}
             label={{
               text: (index + 1).toString(),
               color: 'white',
-              fontSize: '12px',
+              fontSize: '13px',
               fontWeight: 'bold',
             }}
             icon={getMarkerIcon()}
+            zIndex={10}
           />
         ))}
 
-        {/* Polygon or Polyline */}
+        {/* Polygon (editable) or Polyline preview */}
         {isGoogleReady && boundary.length >= 3 ? (
           <Polygon
             paths={boundary}
             options={polygonOptions}
+            onMouseUp={(e) => {
+              // After dragging a vertex/midpoint, sync the path back to state
+              const target = (e as unknown as { overlay?: google.maps.Polygon }).overlay;
+              if (target && typeof target.getPath === 'function') {
+                handlePolygonEdit(target);
+              }
+            }}
+            onLoad={(polygon) => {
+              // Listen to native edit events on the polygon path
+              const path = polygon.getPath();
+              const sync = () => handlePolygonEdit(polygon);
+              path.addListener('set_at', sync);
+              path.addListener('insert_at', sync);
+              path.addListener('remove_at', sync);
+            }}
           />
         ) : boundary.length >= 2 && isGoogleReady ? (
           <Polyline
