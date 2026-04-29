@@ -87,13 +87,15 @@ export function AppLayout() {
             <ModernVoiceAssistant />
             <VoiceIndicator />
 
-            {/* Native Voice Navigation Button - Floating */}
-            <NativeVoiceButton
-              className="bottom-24 right-4"
-              size="md"
-              showTranscript={true}
-              showExamples={true}
-            />
+            {/* Native Voice Navigation Button - Floating (hidden on full-screen routes) */}
+            {!isFullScreenRoute && (
+              <NativeVoiceButton
+                className="bottom-24 right-4"
+                size="md"
+                showTranscript={true}
+                showExamples={true}
+              />
+            )}
 
             {/* Bottom Navigation - Hidden on full-screen routes */}
             <BottomNavigation
