@@ -5,96 +5,36 @@ import hi from './locales/hi.json';
 import pa from './locales/pa.json';
 import mr from './locales/mr.json';
 import ta from './locales/ta.json';
-// Page-level imports
-import enWeather from './locales/en/weather.json';
-import hiWeather from './locales/hi/weather.json';
-import mrWeather from './locales/mr/weather.json';
-import enHome from './locales/en/home.json';
-import hiHome from './locales/hi/home.json';
-import mrHome from './locales/mr/home.json';
-import enLands from './locales/en/lands.json';
-import hiLands from './locales/hi/lands.json';
-import mrLands from './locales/mr/lands.json';
-import enProfile from './locales/en/profile.json';
-import hiProfile from './locales/hi/profile.json';
-import mrProfile from './locales/mr/profile.json';
-import enMarket from './locales/en/market.json';
-import hiMarket from './locales/hi/market.json';
-import mrMarket from './locales/mr/market.json';
-import enSocial from './locales/en/social.json';
-import hiSocial from './locales/hi/social.json';
-import mrSocial from './locales/mr/social.json';
-import enSchedule from './locales/en/schedule.json';
-import hiSchedule from './locales/hi/schedule.json';
-import mrSchedule from './locales/mr/schedule.json';
-import enAnalytics from './locales/en/analytics.json';
-import hiAnalytics from './locales/hi/analytics.json';
-import mrAnalytics from './locales/mr/analytics.json';
-import enChat from './locales/en/chat.json';
-import hiChat from './locales/hi/chat.json';
-import mrChat from './locales/mr/chat.json';
-import enInstascan from './locales/en/instascan.json';
-import hiInstascan from './locales/hi/instascan.json';
-import mrInstascan from './locales/mr/instascan.json';
-import enAuth from './locales/en/auth.json';
-import hiAuth from './locales/hi/auth.json';
-import mrAuth from './locales/mr/auth.json';
-import enToast from './locales/en/toast.json';
-import hiToast from './locales/hi/toast.json';
-import mrToast from './locales/mr/toast.json';
-import enPwa from './locales/en/pwa.json';
-import hiPwa from './locales/hi/pwa.json';
-import mrPwa from './locales/mr/pwa.json';
-import enNdvi from './locales/en/ndvi.json';
-import hiNdvi from './locales/hi/ndvi.json';
-import mrNdvi from './locales/mr/ndvi.json';
-import enSchemes from './locales/en/schemes.json';
-import hiSchemes from './locales/hi/schemes.json';
-import mrSchemes from './locales/mr/schemes.json';
-import enAdvisory from './locales/en/advisory.json';
-import hiAdvisory from './locales/hi/advisory.json';
-import mrAdvisory from './locales/mr/advisory.json';
-import enVideo from './locales/en/video.json';
-import hiVideo from './locales/hi/video.json';
-import mrVideo from './locales/mr/video.json';
-import enError from './locales/en/error.json';
-import hiError from './locales/hi/error.json';
-import mrError from './locales/mr/error.json';
-import enSync from './locales/en/sync.json';
-import hiSync from './locales/hi/sync.json';
-import mrSync from './locales/mr/sync.json';
-// New locale files
-import enCommon from './locales/en/common.json';
-import hiCommon from './locales/hi/common.json';
-import mrCommon from './locales/mr/common.json';
-import enVoice from './locales/en/voice.json';
-import hiVoice from './locales/hi/voice.json';
-import mrVoice from './locales/mr/voice.json';
-import enNotification from './locales/en/notification.json';
-import hiNotification from './locales/hi/notification.json';
-import mrNotification from './locales/mr/notification.json';
-import enSoil from './locales/en/soil.json';
-import hiSoil from './locales/hi/soil.json';
-import mrSoil from './locales/mr/soil.json';
-import enProfileEdit from './locales/en/profile_edit.json';
-import hiProfileEdit from './locales/hi/profile_edit.json';
-import mrProfileEdit from './locales/mr/profile_edit.json';
-import enCropGrowth from './locales/en/cropGrowth.json';
-import hiCropGrowth from './locales/hi/cropGrowth.json';
-import mrCropGrowth from './locales/mr/cropGrowth.json';
-import enChatCards from './locales/en/chat-cards.json';
-import hiChatCards from './locales/hi/chat-cards.json';
-import mrChatCards from './locales/mr/chat-cards.json';
 
-// Helper function to dynamically merge base and page-level translations
-// This makes adding new languages in the future seamless - just add JSON files!
-const mergeTranslations = (base: any, pageModules: Record<string, any>) => {
-  const result = { ...base };
-  for (const [key, module] of Object.entries(pageModules)) {
-    result[key] = { ...(base[key] || {}), ...(module[key] || {}) };
-  }
-  return result;
+type SupportedPageLocale = 'en' | 'hi' | 'mr';
+
+const pageImporters: Record<SupportedPageLocale, Record<string, () => Promise<any>>> = {
+  en: {
+    auth: () => import('./locales/en/auth.json'), toast: () => import('./locales/en/toast.json'), weather: () => import('./locales/en/weather.json'), home: () => import('./locales/en/home.json'), lands: () => import('./locales/en/lands.json'), profile: () => import('./locales/en/profile.json'), market: () => import('./locales/en/market.json'), social: () => import('./locales/en/social.json'), schedule: () => import('./locales/en/schedule.json'), analytics: () => import('./locales/en/analytics.json'), chat: () => import('./locales/en/chat.json'), instascan: () => import('./locales/en/instascan.json'), pwa: () => import('./locales/en/pwa.json'), ndvi: () => import('./locales/en/ndvi.json'), schemes: () => import('./locales/en/schemes.json'), advisory: () => import('./locales/en/advisory.json'), video: () => import('./locales/en/video.json'), error: () => import('./locales/en/error.json'), sync: () => import('./locales/en/sync.json'), common: () => import('./locales/en/common.json'), voice: () => import('./locales/en/voice.json'), notification: () => import('./locales/en/notification.json'), soil: () => import('./locales/en/soil.json'), profile_edit: () => import('./locales/en/profile_edit.json'), cropGrowth: () => import('./locales/en/cropGrowth.json'), chatCards: () => import('./locales/en/chat-cards.json'),
+  },
+  hi: {
+    auth: () => import('./locales/hi/auth.json'), toast: () => import('./locales/hi/toast.json'), weather: () => import('./locales/hi/weather.json'), home: () => import('./locales/hi/home.json'), lands: () => import('./locales/hi/lands.json'), profile: () => import('./locales/hi/profile.json'), market: () => import('./locales/hi/market.json'), social: () => import('./locales/hi/social.json'), schedule: () => import('./locales/hi/schedule.json'), analytics: () => import('./locales/hi/analytics.json'), chat: () => import('./locales/hi/chat.json'), instascan: () => import('./locales/hi/instascan.json'), pwa: () => import('./locales/hi/pwa.json'), ndvi: () => import('./locales/hi/ndvi.json'), schemes: () => import('./locales/hi/schemes.json'), advisory: () => import('./locales/hi/advisory.json'), video: () => import('./locales/hi/video.json'), error: () => import('./locales/hi/error.json'), sync: () => import('./locales/hi/sync.json'), common: () => import('./locales/hi/common.json'), voice: () => import('./locales/hi/voice.json'), notification: () => import('./locales/hi/notification.json'), soil: () => import('./locales/hi/soil.json'), profile_edit: () => import('./locales/hi/profile_edit.json'), cropGrowth: () => import('./locales/hi/cropGrowth.json'), chatCards: () => import('./locales/hi/chat-cards.json'),
+  },
+  mr: {
+    auth: () => import('./locales/mr/auth.json'), toast: () => import('./locales/mr/toast.json'), weather: () => import('./locales/mr/weather.json'), home: () => import('./locales/mr/home.json'), lands: () => import('./locales/mr/lands.json'), profile: () => import('./locales/mr/profile.json'), market: () => import('./locales/mr/market.json'), social: () => import('./locales/mr/social.json'), schedule: () => import('./locales/mr/schedule.json'), analytics: () => import('./locales/mr/analytics.json'), chat: () => import('./locales/mr/chat.json'), instascan: () => import('./locales/mr/instascan.json'), pwa: () => import('./locales/mr/pwa.json'), ndvi: () => import('./locales/mr/ndvi.json'), schemes: () => import('./locales/mr/schemes.json'), advisory: () => import('./locales/mr/advisory.json'), video: () => import('./locales/mr/video.json'), error: () => import('./locales/mr/error.json'), sync: () => import('./locales/mr/sync.json'), common: () => import('./locales/mr/common.json'), voice: () => import('./locales/mr/voice.json'), notification: () => import('./locales/mr/notification.json'), soil: () => import('./locales/mr/soil.json'), profile_edit: () => import('./locales/mr/profile_edit.json'), cropGrowth: () => import('./locales/mr/cropGrowth.json'), chatCards: () => import('./locales/mr/chat-cards.json'),
+  },
 };
+
+const loadedPageLocales = new Set<string>();
+
+async function loadPageTranslations(lang: string) {
+  if (!(lang in pageImporters) || loadedPageLocales.has(lang)) return;
+  const importers = pageImporters[lang as SupportedPageLocale];
+  const entries = await Promise.all(
+    Object.entries(importers).map(async ([key, loader]) => [key, (await loader()).default] as const)
+  );
+  const merged = { ...(i18n.getResourceBundle(lang, 'translation') || {}) };
+  for (const [key, module] of entries) {
+    merged[key] = { ...(merged[key] || {}), ...(module[key] || module || {}) };
+  }
+  i18n.addResourceBundle(lang, 'translation', merged, true, true);
+  loadedPageLocales.add(lang);
+}
 
 // Read persisted language from localStorage before initializing i18n
 const getInitialLanguage = (): string => {
