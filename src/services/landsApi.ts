@@ -324,6 +324,41 @@ class LandsApiService {
       return null;
     }
   }
+
+  /**
+   * AI context inference for a brand-new land.
+   * Calls lands-api?action=infer-context with the polygon centroid and
+   * returns reverse-geocoded location, elevation and neighbour-mode
+   * suggestions for soil / water / irrigation / current crop.
+   */
+  async inferLandContext(
+    centroid: { lat: number; lng: number },
+    language: string = 'en',
+  ): Promise<any> {
+    if (!navigator.onLine) {
+      throw new Error('No internet connection. AI suggestions unavailable.');
+    }
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(
+      `${LANDS_API_URL}?action=infer-context`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ centroid, language }),
+      },
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'AI suggestion failed');
+    }
+    const result = await response.json();
+    return {
+      fields: result.fields || {},
+      confidence: result.confidence || {},
+      sources: result.sources || {},
+      crops: result.crops || [],
+    };
+  }
 }
 
 export const landsApi = new LandsApiService();
