@@ -1,155 +1,161 @@
-# Proactive Alert: Fix Weather Fetch + Decision-Brain-Only Narration
+# Ask AI from Proactive Alerts → Land-Scoped, AI-Generated, Multilingual Question
 
-## What you saw vs what is wrong
+## Problem (recap)
 
-The Marathi alert in the screenshot showed:
-- `तापमान --°C, आर्द्रता --%` (temperature/humidity blank)
-- The Marathi sentence still contained the raw English word `SUGARCANE`
-- `कारण` (cause) and `काय करावे` (what to do) were generic templates ("शेताची तपासणी करा", "कृषी तज्ञांचा सल्ला घ्या") — none of the specific Sugarcane wisdom that exists in the decision brain rule (`NDVI_NON_RECOVERY` → "check shoot borer / red rot / wilt / nutrient deficiency, field inspection within 48 hours").
+Tapping **Ask AI** on a proactive alert card today:
+1. Always opens **General Chat** (ignores `alert.land_id`).
+2. Sends a static templated string ("Tell me more about {category} on {land}") — not a real, actionable farmer question.
+3. Does not guarantee a fresh session — may append to an old, unrelated conversation.
+4. Language coverage is hard-coded to en/hi/mr; ignores other supported languages.
 
-## Root causes (verified with DB + code reads)
+## Goal (2030-Ready)
 
-### 1. Weather data IS in the database, but the lookup misses it
-The land **Mala (7.59 acre, Sugarcane)** sits at `(16.7396, 74.2266)`. The evaluator builds `location_key = "16.74,74.23"` and runs:
+When a farmer taps **Ask AI** on a proactive alert:
+- Open the **AI Chat for that exact land** (not general).
+- The AI itself **generates a smart, farmer-friendly question** seeded from the alert's content (title, message, category, evidence, decision_reasoning, trigger_data) — in the farmer's working language.
+- A **new chat session starts** so the conversation begins clean, with the alert as authoritative context.
+- The composer is prefilled with that AI-generated question; farmer reviews, edits if they want, then sends (or taps "Send" with one tap).
+
+---
+
+## Architecture
+
+```text
+ProactiveAlerts card
+        │ tap "Ask AI"
+        ▼
+handleAskAI(alert)
+        │  • guarantees alert.land_id is propagated
+        │  • opens fresh session for that land
+        ▼
+navigate(`/app/chat?landId=…&fromAlert=…&seedSession=new`)
+        ▼
+EnhancedAIChatInterface  (reads URL params)
+        │  • setActiveTab(landId) once lands list contains it
+        │  • forces NEW session (skips loading old messages)
+        │  • calls edge fn `proactive-question-seed`
+        ▼
+Edge: proactive-question-seed
+        │  • loads alert by id (RLS-safe, tenant+farmer scoped)
+        │  • loads farmer language from profile (SSOT)
+        │  • Decision-Brain-first: build question from rule metadata
+        │  • LLM = NARRATION ONLY (translate + simplify, no agronomy)
+        │  • returns { question, language, sessionHint }
+        ▼
+Chat composer prefilled, focused, one-tap Send
+```
+
+Follows existing memory rules:
+- `architecture/symbolic-engine-strict-invariants` — agronomy from DB only; LLM only narrates.
+- `architecture/canonical-language-governance` — language locked from farmer profile.
+- `architecture/proactive-alerts-realtime-singleton-contract` — no new realtime channels.
+
+---
+
+## Implementation Plan
+
+### 1. `src/pages/ProactiveAlerts.tsx` — pass land + alert id, force new session
+
+Replace `handleAskAI` (lines ~68–78):
 
 ```ts
-.from('weather_current').select(...).in('location_key', ['16.74,74.23'])
+const handleAskAI = (alert: ProactiveAlert) => {
+  const params = new URLSearchParams({
+    fromAlert: alert.id,
+    seedSession: 'new',
+  });
+  if (alert.land_id) params.set('landId', alert.land_id);
+  navigate(`/app/chat?${params.toString()}`);
+};
 ```
 
-But `weather_current` only has nearby keys: `16.71,74.23`, `16.7,74.23`, `16.72,74.23`, `16.84,74.22`. **Strict equality returns 0 rows → temp/humidity null → UI prints `--°C, --%`.**
+No client-side template strings anymore — the AI builds the question.
 
-This contradicts the established rule in memory `weather/live-weather-context-resolution` ("AI Chat resolves weather via 55km proximity lookup"). The proactive evaluator is the only path that still uses strict key match — it must use the same proximity logic.
+### 2. `src/components/chat/EnhancedAIChatInterface.tsx` — consume params + new session
 
-A second issue: even when a key matches, some rows are months old (Jan / Dec / July). We need a freshness window so 4-month-old data does not silently power today's "कारण".
+- Add `useSearchParams` from `react-router-dom`.
+- New `useEffect` (runs once `lands` loaded):
+  1. Read `landId`, `fromAlert`, `seedSession`.
+  2. If `landId` exists in `lands` → `setActiveTab(landId)`. Otherwise toast "Land not found, opening general chat" and stay on `general` (multi-tenant safety).
+  3. If `seedSession === 'new'` → start a fresh session for that land (clear `sessionIds[landId]`, `messages[landId] = []`, `loadedSessionIds.delete(landId)`).
+  4. If `fromAlert` is present → call edge function `proactive-question-seed` with `{ alertId, landId, language }`; on success, set `inputValue` with returned question and auto-focus composer. Show a small "Generated from your alert" chip above composer.
+  5. `setSearchParams({}, { replace: true })` so a refresh doesn't replay.
+- Do NOT auto-send. Farmer reviews → taps Send. (Reason: rural connectivity + farmer's right to edit.)
 
-### 2. Cause/steps are not coming from the decision brain
-For rule `NDVI_NON_RECOVERY` (the rule that actually fired):
-- `decision_rules.action_text` is rich and Sugarcane-specific (shoot borer, red rot, smut, nitrogen, 48h inspection).
-- `decision_rules.reason_text` and `knowledge_text` are **NULL**.
+### 3. New edge function `supabase/functions/proactive-question-seed/index.ts`
 
-Code path in `proactive-evaluator/index.ts` lines 1754-1834 (`buildSolutionFromRule`) then falls back to:
-- `cause_mr = "तापमान --°C, आर्द्रता --% - या हवामानामुळे ही समस्या उद्भवली."` (a hard-coded weather template — not from the brain)
-- `steps_mr = ["शेताची तपासणी करा...", "कृषी तज्ञांचा सल्ला घ्या", ...]` (generic placeholders — not from the brain)
+Responsibilities:
+- Validate JWT, enforce tenant + farmer isolation.
+- Load `proactive_alerts` row by `alertId` (must match `farmer_id`).
+- Load farmer language from `farmers.preferred_language` (fallback to alert's localized fields).
+- Build the question deterministically from Decision Brain data (no LLM agronomy):
+  - `alert_category`, `priority`, `decision_reasoning`, `trigger_data` (weather, NDVI, growth stage, crop, land name).
+- Pass that structured context to the LLM with strict instruction:
+  > "You are a NARRATOR. Convert the agronomic facts below into ONE short, simple, conversational question (max 18 words) a rural Indian farmer would naturally ask their advisor. Output ONLY the question in `{language}` script. No greetings, no explanations, no English fallback."
+- Validate LLM output (script ratio, length, single sentence, ends with `?` / `?` / Devanagari `?` equivalent).
+- Return `{ question: string, language: string, alertSnapshot: {...} }`.
+- Cache by `alertId + language` for 24h (alerts are immutable post-creation) → instant on repeat taps.
 
-So even after fixing weather, the cause and steps would still be generic. The fix is: **always source `cause` and `steps` from `decision_rules.knowledge_text` / `reason_text` / `action_text`, and only append weather as a small "evidence" line — never as the entire cause.**
+Example output (Marathi alert about Shoot Borer on "मधले शेत"):
+> "मधले शेत मधील ऊसावर शेंडा पोखर किडीचा प्रादुर्भाव कसा थांबवू?"
 
-### 3. Crop name leaking as English ALL-CAPS in Marathi sentences
-Lines 1811-1812, 1830-1831 use raw `cropEn = ctx.crop_code || 'crop'` ("SUGARCANE") inside Marathi/Hindi strings. Violates memory `architecture/canonical-language-governance` (strip ALL_CAPS technical codes from output). Needs a `cropLabel(lang, code)` lookup using the existing `crop_synonyms` table (memory `logic/multilingual-crop-synonym-detection`).
+Example (English, NDVI stress on "North Plot"):
+> "North Plot looks weak on satellite — what should I do today to recover it?"
+
+### 4. Multilingual coverage
+
+Use the farmer's `preferred_language` (already canonical SSOT in profiles). Supported: en, hi, mr, pa, ta, te, kn, gu, bn, or, ml — same set as `src/i18n/locales/`. The edge function passes the language to the LLM and validates the script ratio per `architecture/multilingual-symbolic-governance-v3`. If validation fails, fall back to a deterministic DB-built question in the alert's localized title.
+
+### 5. New-session enforcement
+
+In `EnhancedAIChatInterface`:
+- Add a helper `startFreshLandSession(landId)` that:
+  - Clears in-memory state for that land tab.
+  - Inserts a new row in `ai_chat_sessions` with `session_type: 'land_specific'`, `session_title: 'From Alert: <category>'`, `metadata: { source: 'proactive_alert', alert_id }`.
+  - Stores it in `sessionIds[landId]`.
+- This guarantees the alert-driven conversation is never mixed with prior land chat history (clean audit trail + better LLM context window).
 
 ---
 
-## The fix (all in `supabase/functions/proactive-evaluator/index.ts`)
+## Files Touched
 
-### Fix A — Geo-proximity weather lookup with freshness gate
+| File | Change |
+|---|---|
+| `src/pages/ProactiveAlerts.tsx` | Replace `handleAskAI` to pass `landId` + `fromAlert` + `seedSession=new` |
+| `src/components/chat/EnhancedAIChatInterface.tsx` | URL param consumption, fresh-session helper, seed-question fetch, prefill |
+| `supabase/functions/proactive-question-seed/index.ts` | NEW edge function (DB-first, LLM-narration-only, multilingual) |
+| `supabase/config.toml` | Register new function (`verify_jwt = true`) |
 
-Replace `batchLoadWeather()` (lines 641-665):
-
-```text
-For each land's (lat, lon):
-  1. Try exact location_key  (cheap path)
-  2. If miss → SELECT location_key, lat, lon, temp, humidity, ...
-       FROM weather_current
-       WHERE observation_time > now() - interval '6 hours'   ← freshness gate
-       (limit by bounding box: lat ± 0.5°, lon ± 0.5°  ≈ 55 km)
-     Then in JS: keep the nearest row by haversine distance, max 55 km
-  3. If still no row → return nullWeather()
-     AND set ctx.weather_source = 'unavailable' so the
-     narrator can write "हवामान माहिती सध्या उपलब्ध नाही"
-     instead of "तापमान --°C, आर्द्रता --%"
-```
-
-Apply the same proximity + freshness logic to `batchLoadForecast` and the `weather_current` fallback inside `batchLoadGDD`.
-
-Add `weather_source: 'exact' | 'proximity' | 'unavailable'` and `weather_distance_km` to the `weather` shape so the audit trail shows where the number came from.
-
-### Fix B — Cause / steps strictly from the decision brain
-
-Rewrite `buildSolutionFromRule()` so the structure is:
-
-```text
-problem  ← decision_rules.condition_code  →  human label
-                                              from a small DB-driven map
-                                              (intent_observation_mapping)
-
-cause    ← decision_rules.knowledge_text  (preferred)
-       OR decision_rules.reason_text     (fallback)
-       OR  a single short line built from the actual triggered
-           condition: e.g. "NDVI 0.10 < 0.30 — पीक 7 दिवस पावसानंतरही
-           सावरले नाही"  (this is the rule's firing reason, not weather)
-
-           Append weather ONLY as evidence on a separate line
-           when ctx.weather_source !== 'unavailable':
-               "आजचे हवामान: 24°C, आर्द्रता 80%."
-
-steps    ← split decision_rules.action_text on '\n' / numbered list
-           Each step is ONE short Marathi sentence (≤ 12 words)
-           Translate via the same nano translator we already use
-           for AI Chat narration (LLM is render-only, per memory
-           `architecture/symbolic-engine-strict-invariants`).
-
-           If action_text is missing, fall back to the existing
-           generic 3-step list — but log a `decision_rules` data
-           gap so we can backfill.
-
-safety   ← phi_days + bee_toxicity + farmer_safety_level (already correct)
-
-organic  ← decision_rules.organic_alternative (already correct)
-```
-
-Hard rule (matches existing memory `architecture/symbolic-engine-strict-invariants`):
-**no agronomic phrase in `cause`/`steps` may originate outside `decision_rules`.** Weather is environmental evidence, not a cause.
-
-### Fix C — Strip ALL-CAPS crop codes from farmer text
-
-Add `cropLabel(lang, ctx.crop_code)` that:
-1. Looks up `crop_synonyms` for the localized name (`ऊस` for Marathi, `गन्ना` for Hindi).
-2. Falls back to title-case (`Sugarcane`, never `SUGARCANE`) if no row.
-
-Replace every interpolation of `cropEn` inside `_mr` / `_hi` strings with the localized label. Same treatment for `irrigation.method` in English steps (`FLOOD` → `flood irrigation`).
-
-### Fix D — Simpler farmer language (the "rural Indian farmer" rule)
-
-Apply per memory `ui/farmer-centric-content-rules`:
-- One idea per sentence, max ~12 words.
-- No technical tokens (`NDVI`, `GDD`, `DAS`, `ETL`) in the visible Marathi/Hindi text. Replace with farmer-friendly phrases:
-  - `NDVI 0.10` → `उपग्रहावरून पीक खूप कमजोर दिसतंय` (with the number kept in a small "तांत्रिक तपशील" expandable line for power users).
-  - `GDD` → `उष्णता एकूण` (hidden under tech-detail).
-- Numbers stay in Devanagari numerals when the rest of the sentence is Devanagari (the LLM Output Validator already supports this — memory `logic/llm-output-validation-gate`).
-- Keep the 8-section `2030-Ready` structure unchanged (समस्या, कारण, काय करावे, सुरक्षा, अपेक्षित फायदा, पुढील तपासणी, सेंद्रिय पर्याय, तांत्रिक तपशील).
-
-### Fix E — Backfill mission for `decision_rules`
-
-Open a follow-up task (no code today) to fill `reason_text` + `knowledge_text` for the proactive rules that are currently NULL:
-- `NDVI_STRESS_DETECTION` (sugarcane)
-- `NDVI_NON_RECOVERY` (sugarcane)
-- and any other `is_proactive_rule = true` row where either column is null.
-
-Until that backfill lands, Fix B's "build cause from the firing condition" branch keeps the output safe and brain-sourced.
+No DB schema changes required. (Optional: add a partial index `ai_chat_sessions(metadata->>'alert_id')` later if alert-traceability becomes a frequent query — not in this phase.)
 
 ---
 
-## Files I will edit
+## 2030-Ready Innovations (recommendations for rural Indian farmers)
 
-- `supabase/functions/proactive-evaluator/index.ts`
-  - `batchLoadWeather` → proximity + freshness
-  - `batchLoadForecast`, `batchLoadGDD` (current-fallback) → same
-  - `buildSolutionFromRule` → cause/steps from `decision_rules` only
-  - `buildContextualSolution` (NDVI generic path) → same
-  - new helpers: `findNearestWeather`, `cropLabel`, `simplifyForFarmer`
-- New small migration (read-only sanity): index `weather_current(observation_time desc)` to keep the proximity query fast (only if EXPLAIN shows it is needed — I'll check before adding).
+Pick any combo — happy to scope into follow-up phases:
 
-## Out of scope for this pass
+1. **One-tap voice question.** Beside the prefilled text, show a glowing mic. Farmer can press once and the AI-generated question is *spoken aloud* in their dialect via TTS, then the farmer can press-and-hold to reply by voice (STT → same chat). Zero typing required for non-literate users.
 
-- Re-seeding `decision_rules.knowledge_text` / `reason_text` (separate task; flagged above).
-- Changing the proactive cron frequency or notification UI — they already work.
-- Touching AI Chat (its weather lookup is already correct per memory).
+2. **Visual evidence carousel.** The seeded message in the chat shows the alert's evidence as small chips: 🌡 32°C · 💧 78% · 🛰 NDVI 0.41 · 📅 90-day stage. Tappable — each chip expands into a one-line rural-language explanation. Farmer instantly *sees why* the AI is asking.
 
-## Acceptance check after implementation
+3. **WhatsApp / SMS bridge.** A "Continue on WhatsApp" button on the seeded question — opens WhatsApp with the same question + a deep-link back into the app. Critical for farmers who lose data connectivity in the field.
 
-1. Trigger the evaluator for Mala (16.74, 74.23) → alert shows `तापमान 24°C, आर्द्रता 80%` (the real `16.71,74.23` reading) **with a small "≈ 3 km away" tag**, not `--°C, --%`.
-2. The Marathi `कारण` paragraph quotes the sugarcane `NDVI_NON_RECOVERY` text from `decision_rules`, not the generic weather template.
-3. The Marathi `काय करावे` list mirrors `action_text` (shoot borer / red rot / nitrogen / 48-hour inspection), not "शेताची तपासणी करा / कृषी तज्ञांचा सल्ला घ्या".
-4. The word `SUGARCANE` no longer appears in any Marathi/Hindi sentence — replaced with `ऊस` / `गन्ना`.
-5. If both proximity and exact lookup fail, the alert says `हवामान माहिती सध्या उपलब्ध नाही` — never `--°C`.
+4. **Offline question seeding.** Cache the last 20 alerts + their AI-generated questions in IndexedDB. When farmer taps "Ask AI" offline, the prefilled question appears immediately; the actual chat reply is queued and delivered when online (already aligns with `chat-sync-service` retry queue).
 
-Awaiting approval to switch to default mode and apply Fixes A–D.
+5. **Family / agronomist co-pilot.** Long-press "Ask AI" → "Ask together" — opens the same seeded question in a 3-way chat with the farmer's son/daughter or village agronomist (uses existing `group_chat_messages` table). Decisions on chemicals/spend get a second pair of eyes — directly addresses the agronomic-safety memory.
+
+6. **Hyper-local proof.** Below the seeded question, a small line: *"3 farmers near you acted on this alert in the last 24h."* Anonymous, opt-in, builds trust. Pulls from `proactive_alerts.status = 'ACTED'` aggregated by `pin_code`.
+
+7. **Spoken alert preview before chat opens.** Tapping "Ask AI" first plays a 3-second TTS of the question in the farmer's language, *then* opens the chat. Reinforces understanding for low-literacy users.
+
+8. **"Why this question?" ghost-text.** Sub-text under the prefilled composer: *"This question was made from your North Plot alert (NDVI 0.41, no rain 6 days)."* Total transparency — farmer always knows the AI is grounded in *their* field, not generic advice.
+
+My top picks for **Phase 1 next**: #1 (voice), #2 (evidence chips), #8 (transparency). They are the highest-leverage for rural literacy + trust and reuse infrastructure that already exists.
+
+---
+
+## Open Questions
+
+1. **Auto-send vs review-and-send?** Default = review (farmer taps Send). Confirm.
+2. **Which 2030 innovations** (1–8 above) should I bundle into this phase vs follow-ups? Default = none in this phase, ship the core fix first.
+3. **Cache TTL for the seed question** — 24h ok, or longer? Default = 24h.

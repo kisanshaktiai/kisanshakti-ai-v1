@@ -13,7 +13,7 @@ import {
   Search, X, Clock, MessageCircle, Check, AlertCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
@@ -242,6 +242,86 @@ export function EnhancedAIChatInterface() {
   } | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Record<string, Date>>({});
   const [isLoadingSuggestion, setIsLoadingSuggestion] = useState(false);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🔔 PROACTIVE-ALERT → CHAT ENTRY (land-scoped, fresh session, AI question)
+  // URL: /app/chat?landId=<uuid>&fromAlert=<uuid>&seedSession=new
+  // 1) Switch to the correct land tab.
+  // 2) Force a brand-new session for that land.
+  // 3) Ask the `proactive-question-seed` edge fn to generate the question
+  //    in the farmer's language and prefill the composer.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const [searchParams, setSearchParams] = useSearchParams();
+  const seededAlertRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const fromAlert = searchParams.get('fromAlert');
+    const landIdParam = searchParams.get('landId');
+    const seedSession = searchParams.get('seedSession');
+
+    if (!fromAlert && !landIdParam) return;
+    if (seededAlertRef.current === (fromAlert || `land:${landIdParam}`)) return;
+    if (lands.length === 0 && landIdParam) return; // wait for lands to load
+    if (!user?.id || !tenant?.id) return;
+
+    seededAlertRef.current = fromAlert || `land:${landIdParam}`;
+
+    // 1) Switch to the right land tab (fall back to general if invalid)
+    if (landIdParam) {
+      const landExists = lands.some(l => l.id === landIdParam);
+      if (landExists) {
+        setActiveTab(landIdParam);
+      } else {
+        toast({
+          title: t('chat.landNotFound', 'Land not found'),
+          description: t('chat.openingGeneralChat', 'Opening general chat instead.'),
+        });
+      }
+    }
+
+    const targetTab = (landIdParam && lands.some(l => l.id === landIdParam)) ? landIdParam : 'general';
+
+    // 2) Force a fresh session for this land (clean conversation from the alert)
+    if (seedSession === 'new') {
+      setMessages(prev => ({ ...prev, [targetTab]: [] }));
+      setSessionIds(prev => {
+        const next = { ...prev };
+        delete next[targetTab];
+        return next;
+      });
+      setLoadedSessionIds(prev => {
+        const next = new Set(prev);
+        next.delete(targetTab);
+        return next;
+      });
+      setHasEverHadMessages(prev => ({ ...prev, [targetTab]: false }));
+    }
+
+    // 3) Ask the AI to generate the farmer-friendly question in their language
+    if (fromAlert) {
+      (async () => {
+        try {
+          const { data, error } = await supabase.functions.invoke('proactive-question-seed', {
+            body: { alertId: fromAlert, landId: landIdParam || null, language },
+          });
+          if (error) throw error;
+          const q = (data as any)?.question?.toString().trim();
+          if (q) {
+            setInputValue(q);
+            // Focus composer so farmer can review and tap Send
+            setTimeout(() => inputRef.current?.focus(), 250);
+          }
+        } catch (err) {
+          console.error('[chat] proactive-question-seed failed', err);
+          // Soft-fail: leave composer empty, farmer can type their own question
+        }
+      })();
+    }
+
+    // Clear params so refresh doesn't replay the seed
+    setSearchParams({}, { replace: true });
+  }, [searchParams, lands, user?.id, tenant?.id, language, t, setSearchParams]);
+
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);

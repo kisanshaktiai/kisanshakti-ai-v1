@@ -66,15 +66,16 @@ export default function ProactiveAlerts() {
   };
 
   const handleAskAI = (alert: ProactiveAlert) => {
-    const category = alert.alert_category.replace(/_/g, ' ').toLowerCase();
-    const landName = alert.land_name || (lang === 'mr' ? 'माझे शेत' : lang === 'hi' ? 'मेरा खेत' : 'my field');
-    const queryTemplates: Record<string, string> = {
-      mr: `${landName} वर ${category} बद्दल अधिक सांगा`,
-      hi: `${landName} पर ${category} के बारे में बताएं`,
-      en: `Tell me more about ${category} on ${landName}`,
-    };
-    const query = queryTemplates[lang] || queryTemplates.en;
-    navigate(`/app/chat?q=${encodeURIComponent(query)}`);
+    // Land-scoped, fresh-session, AI-generated multilingual question.
+    // The chat opens the correct land's tab, starts a NEW session, and
+    // calls the `proactive-question-seed` edge fn to prefill a smart question
+    // built from this alert's Decision-Brain payload in the farmer's language.
+    const params = new URLSearchParams({
+      fromAlert: alert.id,
+      seedSession: 'new',
+    });
+    if (alert.land_id) params.set('landId', alert.land_id);
+    navigate(`/app/chat?${params.toString()}`);
   };
 
   const handleWhatsAppShare = (alert: ProactiveAlert) => {
