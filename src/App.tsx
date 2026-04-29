@@ -249,10 +249,12 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       });
       
       // Run sync in background without blocking app load
-      syncService.performSync(false).catch(() => {
-        // Silent fail - user will sync on next login or manual refresh
-        console.log('[Sync] Background sync skipped - will retry on next interaction');
-      });
+      import("@/services/syncService")
+        .then(({ syncService }) => syncService.performSync(false))
+        .catch(() => {
+          // Silent fail - user will sync on next login or manual refresh
+          console.log('[Sync] Background sync skipped - will retry on next interaction');
+        });
     };
     
     // Only trigger sync when session is available (after auth completes)
