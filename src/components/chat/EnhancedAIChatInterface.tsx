@@ -253,6 +253,9 @@ export function EnhancedAIChatInterface() {
   // ═══════════════════════════════════════════════════════════════════════════
   const [searchParams, setSearchParams] = useSearchParams();
   const seededAlertRef = useRef<string | null>(null);
+  // Holds the proactive-alert payload to attach to the NEXT outgoing user message,
+  // keyed by tab. Cleared after one use so it never bleeds into subsequent turns.
+  const proactiveAlertRef = useRef<Record<string, any>>({});
 
   useEffect(() => {
     const fromAlert = searchParams.get('fromAlert');
