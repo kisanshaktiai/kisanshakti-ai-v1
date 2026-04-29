@@ -84,15 +84,17 @@ Deno.serve(async (req: Request) => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
 
-    // Caller-context client (validates JWT)
+    // Caller-context client (validates JWT via signing-keys system)
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: auth } },
     });
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) {
+    const token = auth.replace("Bearer ", "");
+    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
+    if (claimsErr || !claimsData?.claims?.sub) {
+      console.warn("[proactive-question-seed] JWT validation failed", claimsErr);
       return json({ error: "Unauthorized" }, 401);
     }
-    const userId = userData.user.id;
+    const userId = claimsData.claims.sub;
 
     const body = await req.json().catch(() => ({}));
     const alertId = String(body.alertId || "").trim();
