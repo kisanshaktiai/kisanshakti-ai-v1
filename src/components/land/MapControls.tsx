@@ -197,7 +197,7 @@ export function MapControls({
               disabled={!saveEnabled}
               className={cn(
                 'flex-1 h-12 rounded-2xl text-base font-semibold bg-primary text-primary-foreground shadow-lg',
-                saveEnabled && 'animate-pulse-soft'
+                saveEnabled && 'ring-2 ring-primary/30'
               )}
             >
               <Save className="h-4 w-4 mr-2" />
