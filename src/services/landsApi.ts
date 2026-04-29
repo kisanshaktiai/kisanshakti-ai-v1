@@ -7,33 +7,57 @@ const RETRY_DELAY = 1000;
 
 interface LandData {
   id?: string;
+  // Identity & ownership
   name: string;
   ownership_type: string;
   area_acres: number;
   survey_number?: string;
-  state?: string;
-  district?: string;
-  taluka?: string;
-  village?: string;
+  // Administrative location
+  state?: string; state_id?: string;
+  district?: string; district_id?: string;
+  taluka?: string; taluka_id?: string;
+  village?: string; village_id?: string;
+  location_context?: any;
+  // Land character
+  land_type?: string;
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  irrigation_source?: string;
+  // Crop cycle (current + previous) — REQUIRED for downstream pipelines
   current_crop?: string;
-  previous_crop?: string;
+  current_crop_id?: string;
+  crop_stage?: string;
+  planting_date?: string;
   cultivation_date?: string;
+  last_sowing_date?: string;
+  expected_harvest_date?: string;
+  previous_crop?: string;
+  previous_crop_id?: string;
+  last_crop?: string;
   last_harvest_date?: string;
+  // Geometry / GPS
   area_guntas?: number;
   area_sqft?: number;
   boundary_polygon_old?: any;
   center_point_old?: any;
+  center_lat?: number;
+  center_lon?: number;
   boundary_method?: string;
   gps_accuracy_meters?: number;
   gps_recorded_at?: string;
+  elevation_meters?: number;
+  slope_percentage?: number;
+  // Misc
+  notes?: string;
+  land_documents?: any;
+  marketplace_enabled?: boolean;
   is_active?: boolean;
   deleted_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
+
 
 class LandsApiService {
   /**
