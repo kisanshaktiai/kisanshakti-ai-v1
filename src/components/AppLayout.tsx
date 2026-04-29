@@ -32,8 +32,12 @@ export function AppLayout() {
   const isAIChat = location.pathname === '/app/chat';
   const isCommunityChat =
     location.pathname.includes('/app/community/') && location.pathname.includes('/chat');
+  // Add Land / Edit Land map drawer needs full viewport (no header, no bottom nav)
+  const isLandMapRoute =
+    location.pathname === '/app/lands/add' ||
+    /^\/app\/lands\/[^/]+\/edit$/.test(location.pathname);
 
-  const isFullScreenRoute = isAIChat || isCommunityChat;
+  const isFullScreenRoute = isAIChat || isCommunityChat || isLandMapRoute;
 
   return (
     <ModernVoiceProvider>
