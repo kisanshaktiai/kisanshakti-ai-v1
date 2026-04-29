@@ -75,40 +75,32 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const auth = req.headers.get("Authorization") || "";
-    if (!auth.startsWith("Bearer ")) {
+    // This app uses a CUSTOM auth system (not Supabase Auth JWT).
+    // The frontend identifies the caller via `x-farmer-id` + `x-tenant-id`
+    // headers (see src/integrations/supabase/client.ts → supabaseWithAuth).
+    const farmerIdHeader = (req.headers.get("x-farmer-id") || "").trim();
+    const tenantIdHeader = (req.headers.get("x-tenant-id") || "").trim();
+    if (!farmerIdHeader || !tenantIdHeader) {
       return json({ error: "Unauthorized" }, 401);
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-    // Caller-context client (validates JWT via signing-keys system)
-    const userClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: auth } },
-    });
-    const token = auth.replace("Bearer ", "");
-    const { data: claimsData, error: claimsErr } = await userClient.auth.getClaims(token);
-    if (claimsErr || !claimsData?.claims?.sub) {
-      console.warn("[proactive-question-seed] JWT validation failed", claimsErr);
-      return json({ error: "Unauthorized" }, 401);
-    }
-    const userId = claimsData.claims.sub;
 
     const body = await req.json().catch(() => ({}));
     const alertId = String(body.alertId || "").trim();
     if (!alertId) return json({ error: "alertId required" }, 400);
 
-    // Service client for cross-table reads (farmer ownership enforced manually)
+    // Service client for cross-table reads (ownership enforced manually below).
     const admin = createClient(supabaseUrl, serviceKey);
 
-    // Resolve farmer for this user. In this schema, `farmers.user_profile_id`
-    // is the auth user id (user_profiles.id == auth.users.id).
+    // Resolve farmer by id and validate it belongs to the claimed tenant.
+    // `user.id` from the auth store IS the farmer id in this app.
     const { data: farmer } = await admin
       .from("farmers")
       .select("id, language_preference, tenant_id")
-      .eq("user_profile_id", userId)
+      .eq("id", farmerIdHeader)
+      .eq("tenant_id", tenantIdHeader)
       .maybeSingle();
 
     if (!farmer) return json({ error: "Farmer profile not found" }, 403);

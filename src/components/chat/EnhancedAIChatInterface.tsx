@@ -303,6 +303,10 @@ export function EnhancedAIChatInterface() {
         try {
           const { data, error } = await supabase.functions.invoke('proactive-question-seed', {
             body: { alertId: fromAlert, landId: landIdParam || null, language },
+            headers: {
+              'x-farmer-id': user?.id || '',
+              'x-tenant-id': tenant?.id || '',
+            },
           });
           if (error) throw error;
           const q = (data as any)?.question?.toString().trim();
