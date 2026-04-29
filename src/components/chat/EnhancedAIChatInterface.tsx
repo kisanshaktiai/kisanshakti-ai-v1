@@ -1613,6 +1613,16 @@ export function EnhancedAIChatInterface() {
       
       const sessionToken = localStorage.getItem('app_session_token') || '';
       
+      // CRITICAL: If this send originated from a proactive alert, attach the
+      // alert's Decision-Brain payload so the orchestrator narrates from
+      // authoritative facts instead of re-diagnosing from the seeded question.
+      // Consume-once: clear after attaching so subsequent turns are not biased.
+      const proactiveAlertPayload = proactiveAlertRef.current[activeTab];
+      if (proactiveAlertPayload) {
+        delete proactiveAlertRef.current[activeTab];
+        console.log('[chat] Attaching proactive alert to outgoing message:', proactiveAlertPayload.id);
+      }
+      
       // ═══════════════════════════════════════════════════════════════════════
       // 🤖 ALL QUERIES → 9-AGENT ORCHESTRATOR
       // NLU → Visual → Context → Diagnostic → Fusion → Rules → Safety → Communication
@@ -1627,7 +1637,8 @@ export function EnhancedAIChatInterface() {
             tenantId: tenant?.id,
             farmerId: user?.id,
             landContext,
-            source: 'orchestrator_v2'
+            source: 'orchestrator_v2',
+            proactiveAlert: proactiveAlertPayload || undefined,
           }
         },
         headers: {
