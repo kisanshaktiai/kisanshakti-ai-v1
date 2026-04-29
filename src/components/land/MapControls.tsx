@@ -11,7 +11,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { triggerHaptic } from '@/lib/haptics';
+import { hapticFeedback } from '@/lib/haptics';
 
 interface MapControlsProps {
   mode: 'draw' | 'walk';
