@@ -158,7 +158,7 @@ Deno.serve(async (req: Request) => {
     };
 
     // Always-available safe answer
-    const fallback = deterministicQuestion(alert, lang, landName);
+    const fallback = deterministicQuestion(enrichedAlert, lang, landName);
 
     // LLM narration (translation + simplification ONLY)
     const lovableKey = Deno.env.get("LOVABLE_API_KEY");
