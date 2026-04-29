@@ -93,9 +93,6 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
   const [isInitializing, setIsInitializing] = useState(true);
   const [currentStep, setCurrentStep] = useState('Initializing...');
   
-  // Preload location data for faster form loading
-  useLocationPreloader();
-
   // Initialize global real-time sync
   useGlobalRealtimeSync();
 
@@ -174,6 +171,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
         
         // STEP 2: Initialize tenant-scoped local storage (potentially slow - run in background)
         runInBackground(async () => {
+          const { localDB } = await import("@/services/localDB");
           await localDB.initializeWithTenant(activeTenant.id);
         }, 100);
         
@@ -193,15 +191,22 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
           useAuthStore.getState().logout();
           tenantIsolationService.clearContext();
           runInBackground(async () => {
+            const { localDB } = await import("@/services/localDB");
             await localDB.clearAll();
           });
         }
         
         // STEP 4: Start location service in background (non-blocking, delayed)
         setCurrentStep('Almost ready...');
-        runInBackground(() => {
+        runInBackground(async () => {
+          const LocationService = (await import("@/services/LocationService")).default;
           LocationService.getCurrentLocation(true).catch(() => null);
         }, 2000); // Delay by 2 seconds
+
+        runInBackground(async () => {
+          const { preloadAllLocationData } = await import("@/hooks/useLocationPreloader");
+          preloadAllLocationData().catch(() => null);
+        }, 5000);
         
         // PERFORMANCE FIX: Minimal delay for smooth transition (reduced from 150ms)
         await new Promise(resolve => setTimeout(resolve, 50));
