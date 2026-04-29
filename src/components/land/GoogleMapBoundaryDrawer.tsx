@@ -431,19 +431,19 @@ export function GoogleMapBoundaryDrawer({
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   };
 
-  // Memoized polygon/polyline options
+  // Memoized polygon options — editable when 3+ points so users can drag vertices/midpoints
   const polygonOptions = useMemo(() => ({
     fillColor: getThemeColor('--primary', '#22c55e'),
-    fillOpacity: 0.35,
+    fillOpacity: 0.3,
     strokeColor: getThemeColor('--primary', '#22c55e'),
     strokeOpacity: 1,
-    strokeWeight: 2,
-    clickable: false,
+    strokeWeight: 2.5,
+    clickable: true,
     draggable: false,
-    editable: false,
+    editable: mode === 'draw' && boundary.length >= 3,
     geodesic: false,
     zIndex: 1,
-  }), []);
+  }), [mode, boundary.length]);
 
   const polylineOptions = useMemo(() => ({
     strokeColor: getThemeColor('--primary', '#22c55e'),
