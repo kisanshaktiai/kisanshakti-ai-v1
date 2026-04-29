@@ -304,14 +304,41 @@ export function EnhancedAIChatInterface() {
     if (fromAlert) {
       (async () => {
         try {
-          const { data, error } = await supabase.functions.invoke('proactive-question-seed', {
-            body: { alertId: fromAlert, landId: landIdParam || null, language },
-            headers: {
-              'x-farmer-id': user?.id || '',
-              'x-tenant-id': tenant?.id || '',
-            },
-          });
+          // Fetch full alert row in parallel so the next outgoing message can carry
+          // its Decision-Brain context (NDVI, condition_code, action_text, etc.)
+          // straight to the orchestrator. Without this the orchestrator sees a
+          // generic free-text question and falls back to monitoring advice.
+          const authClient = supabaseWithAuth(user.id, tenant.id);
+          const alertPromise = authClient
+            .from('proactive_alerts')
+            .select('id, alert_category, priority, title_en, title_hi, title_mr, message_en, message_hi, message_mr, action_text_en, action_text_hi, action_text_mr, decision_reasoning, trigger_data, land_id')
+            .eq('id', fromAlert)
+            .maybeSingle();
+
+          const [seedResult, alertResult] = await Promise.all([
+            supabase.functions.invoke('proactive-question-seed', {
+              body: { alertId: fromAlert, landId: landIdParam || null, language },
+              headers: {
+                'x-farmer-id': user?.id || '',
+                'x-tenant-id': tenant?.id || '',
+              },
+            }),
+            alertPromise,
+          ]);
+
+          const { data, error } = seedResult;
           if (error) throw error;
+
+          // Stash the alert payload for the next user-send to attach to metadata.
+          if (alertResult?.data) {
+            proactiveAlertRef.current[targetTab] = alertResult.data;
+            console.log('[chat] Cached proactive alert for next send:', {
+              alert_id: alertResult.data.id,
+              category: alertResult.data.alert_category,
+              condition_code: alertResult.data.trigger_data?.condition_code,
+            });
+          }
+
           const q = (data as any)?.question?.toString().trim();
           if (q) {
             setInputValue(q);
