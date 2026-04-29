@@ -4,7 +4,17 @@ import { useTranslation } from 'react-i18next';
 import { GoogleMapsScriptProvider } from '@/components/maps/GoogleMapsScriptProvider';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { ModernLandWizard } from '@/components/land/ModernLandWizard';
+import { SmartLandConfirmCard } from '@/components/land/SmartLandConfirmCard';
 import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
+
+// Feature flag: when true, use the AI-prefilled single-screen confirm card.
+// Falls back to the legacy 4-step wizard via localStorage override
+// `localStorage.setItem('smartLandConfirm', 'off')` for emergency rollback.
+const USE_SMART_CONFIRM =
+  typeof window === 'undefined'
+    ? true
+    : window.localStorage.getItem('smartLandConfirm') !== 'off';
+
 
 interface LatLng {
   lat: number;
@@ -70,6 +80,16 @@ export default function AddLand() {
 
   // Show form if boundary is drawn
   if (showForm) {
+    if (USE_SMART_CONFIRM) {
+      return (
+        <SmartLandConfirmCard
+          boundary={boundary}
+          area={area}
+          onComplete={handleFormComplete}
+          onCancel={() => setShowForm(false)}
+        />
+      );
+    }
     return (
       <ModernLandWizard
         boundary={boundary}

@@ -43,6 +43,168 @@ serve(async (req) => {
       // This allows the API to work even if the RPC function doesn't exist
     }
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // ACTION: infer-context  (POST /lands-api?action=infer-context)
+    // Returns AI-derived suggestions for a new land based on its centroid:
+    //   • reverse-geocoded village/taluka/district/state (+ matched IDs)
+    //   • elevation in meters
+    //   • mode of soil_type / water_source / irrigation_type / current_crop
+    //     among neighbour lands within 5km for THIS tenant
+    // No new edge function — runs inside the existing lands-api function.
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (req.method === 'POST' && url.searchParams.get('action') === 'infer-context') {
+      try {
+        const { centroid, language = 'en' } = await req.json();
+        if (!centroid?.lat || !centroid?.lng) {
+          return new Response(
+            JSON.stringify({ error: 'centroid {lat,lng} is required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const GOOGLE_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') ?? '';
+        const fields: Record<string, any> = {};
+        const confidence: Record<string, number> = {};
+        const sources: Record<string, string> = {};
+
+        // 1) Reverse geocode (Google) — vernacular language hint included
+        if (GOOGLE_KEY) {
+          try {
+            const geoUrl = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${centroid.lat},${centroid.lng}&language=${encodeURIComponent(language)}&key=${GOOGLE_KEY}`;
+            const geoRes = await fetch(geoUrl);
+            const geo = await geoRes.json();
+            const result = geo?.results?.[0];
+            if (result?.address_components) {
+              const get = (type: string) =>
+                result.address_components.find((c: any) => c.types.includes(type))?.long_name || null;
+              fields.state = get('administrative_area_level_1');
+              fields.district = get('administrative_area_level_2');
+              fields.taluka = get('administrative_area_level_3') || get('sublocality_level_1');
+              fields.village = get('locality') || get('sublocality') || get('administrative_area_level_4');
+              fields.location_context = {
+                formatted_address: result.formatted_address,
+                place_id: result.place_id,
+                address_components: result.address_components,
+                language,
+              };
+              confidence.location = 0.9;
+              sources.location = 'google_reverse_geocode';
+
+              // Try to resolve administrative IDs from villages/talukas/districts/states tables.
+              try {
+                if (fields.state) {
+                  const { data: st } = await supabase
+                    .from('states').select('id').ilike('name', fields.state).maybeSingle();
+                  if (st?.id) fields.state_id = st.id;
+                }
+                if (fields.district) {
+                  const { data: dt } = await supabase
+                    .from('districts').select('id')
+                    .ilike('name', fields.district).maybeSingle();
+                  if (dt?.id) fields.district_id = dt.id;
+                }
+                if (fields.taluka) {
+                  const { data: tk } = await supabase
+                    .from('talukas').select('id').ilike('name', fields.taluka).maybeSingle();
+                  if (tk?.id) fields.taluka_id = tk.id;
+                }
+                if (fields.village) {
+                  const { data: vl } = await supabase
+                    .from('villages').select('id').ilike('name', fields.village).maybeSingle();
+                  if (vl?.id) fields.village_id = vl.id;
+                }
+              } catch (idErr) {
+                console.warn('[infer-context] admin ID resolution skipped:', idErr);
+              }
+            }
+          } catch (err) {
+            console.warn('[infer-context] reverse-geocode failed:', err);
+          }
+
+          // 2) Elevation
+          try {
+            const elevUrl = `https://maps.googleapis.com/maps/api/elevation/json?locations=${centroid.lat},${centroid.lng}&key=${GOOGLE_KEY}`;
+            const elevRes = await fetch(elevUrl);
+            const elev = await elevRes.json();
+            const m = elev?.results?.[0]?.elevation;
+            if (typeof m === 'number') {
+              fields.elevation_meters = Math.round(m);
+              confidence.elevation = 0.95;
+              sources.elevation = 'google_elevation';
+            }
+          } catch (err) {
+            console.warn('[infer-context] elevation failed:', err);
+          }
+        } else {
+          console.warn('[infer-context] GOOGLE_MAPS_API_KEY missing — skipping geocode/elevation');
+        }
+
+        // 3) Neighbour summary via Postgres helper
+        try {
+          const { data: nbr, error: nbrErr } = await supabase.rpc('nearest_lands_summary', {
+            p_lat: centroid.lat,
+            p_lng: centroid.lng,
+            p_radius_m: 5000,
+            p_tenant_id: tenantId,
+          });
+          if (nbrErr) {
+            console.warn('[infer-context] nearest_lands_summary error:', nbrErr.message);
+          } else if (nbr && (nbr as any).neighbor_count > 0) {
+            const n = nbr as any;
+            // Confidence scales with how many neighbours agree.
+            const c = Math.min(0.95, 0.5 + n.neighbor_count * 0.08);
+            if (n.soil_type) {
+              fields.soil_type = n.soil_type;
+              confidence.soil_type = c;
+              sources.soil_type = `neighbours(${n.neighbor_count})`;
+            }
+            if (n.water_source) {
+              fields.water_source = n.water_source;
+              confidence.water_source = c;
+              sources.water_source = `neighbours(${n.neighbor_count})`;
+            }
+            if (n.irrigation_type) {
+              fields.irrigation_type = n.irrigation_type;
+              confidence.irrigation_type = c;
+              sources.irrigation_type = `neighbours(${n.neighbor_count})`;
+            }
+            if (n.current_crop) {
+              fields.current_crop = n.current_crop;
+              if (n.current_crop_id) fields.current_crop_id = n.current_crop_id;
+              confidence.current_crop = c;
+              sources.current_crop = `neighbours(${n.neighbor_count})`;
+            }
+          }
+        } catch (err) {
+          console.warn('[infer-context] neighbour query failed:', err);
+        }
+
+        // 4) Crops reference (return list so client can render picker without re-fetch)
+        let crops: any[] = [];
+        try {
+          const { data } = await supabase
+            .from('crops')
+            .select('id, value, label, label_local, label_hi, label_mr, duration_days, season, is_popular')
+            .eq('is_active', true)
+            .order('is_popular', { ascending: false })
+            .order('display_order', { ascending: true })
+            .limit(50);
+          crops = data || [];
+        } catch { /* non-fatal */ }
+
+        return new Response(
+          JSON.stringify({ fields, confidence, sources, crops, success: true }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      } catch (err: any) {
+        console.error('[infer-context] fatal:', err);
+        return new Response(
+          JSON.stringify({ error: err?.message || 'infer-context failed' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     // Handle different HTTP methods
     switch (req.method) {
       case 'GET': {
