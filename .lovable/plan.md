@@ -1,161 +1,100 @@
-# Ask AI from Proactive Alerts → Land-Scoped, AI-Generated, Multilingual Question
 
-## Problem (recap)
+## Root-cause audit — Ask AI from Proactive Alerts (Sugarcane / "Mala" land)
 
-Tapping **Ask AI** on a proactive alert card today:
-1. Always opens **General Chat** (ignores `alert.land_id`).
-2. Sends a static templated string ("Tell me more about {category} on {land}") — not a real, actionable farmer question.
-3. Does not guarantee a fresh session — may append to an old, unrelated conversation.
-4. Language coverage is hard-coded to en/hi/mr; ignores other supported languages.
+### Evidence collected
 
-## Goal (2030-Ready)
+**1. The actual alert that the farmer tapped (`proactive_alerts.id = 18b70900…`)**
+- `land_id`: `6b0d9b65…` (Mala, 7.59 acres, Sugarcane)
+- `alert_category`: `CROP_STRESS`, `priority`: HIGH
+- `trigger_data.ndvi`: **0.097** (severe stress)
+- `trigger_data.condition_code`: **`NDVI_NON_RECOVERY`** (rain happened, NDVI did not recover → rules out water stress)
+- `action_text_en` (Decision-Brain output):
+  > DIAGNOSTIC INVESTIGATION: Rainfall occurred but crop health did not improve. This rules out water stress. Investigate: 1) Pest infestation (early shoot borer, stem borer, root grubs) 2) Disease (wilt, red rot, smut) 3) Severe N/K deficiency 4) Root damage / soil compaction 5) Waterlogging damage. Field inspection within 48 hours.
+- `trigger_data.solution.cause_mr`: "ndvi non recovery - ऊस पिकाची तपासणी आवश्यक."
+- `trigger_data.irrigation`: 24,36,861 L flood, 81.2 hrs (this is a *secondary* fallback action; the primary action is **diagnostic field inspection**, NOT irrigation)
 
-When a farmer taps **Ask AI** on a proactive alert:
-- Open the **AI Chat for that exact land** (not general).
-- The AI itself **generates a smart, farmer-friendly question** seeded from the alert's content (title, message, category, evidence, decision_reasoning, trigger_data) — in the farmer's working language.
-- A **new chat session starts** so the conversation begins clean, with the alert as authoritative context.
-- The composer is prefilled with that AI-generated question; farmer reviews, edits if they want, then sends (or taps "Send" with one tap).
+**2. Seeded question that landed in the composer**
+> "माझ्या 'मला' रानातल्या उसाला आता तातडीने पाट पाणी देण्याची गरज आहे का?"
+> ("Does my Mala field sugarcane need urgent flood irrigation?")
 
----
+This is **dead wrong**. The Decision-Brain explicitly ruled out water stress. The farmer is being primed to ask the opposite of what the alert says.
 
-## Architecture
+**3. AI response stored in DB**
+> "भाऊ, तुमच्या ऊसाला आता १२२ दिवस झाले आहेत. हा काळ ग्रँड ग्रोथ स्टेज आहे. … जर माती कोरडी झाली असेल, तर पाट पाणी द्या. ⚠️ तुमच्या रानात पाण्याची गरज आहे का ते तपासायला हवे. तुमच्या मातीची स्थिती कशी आहे?"
 
-```text
-ProactiveAlerts card
-        │ tap "Ask AI"
-        ▼
-handleAskAI(alert)
-        │  • guarantees alert.land_id is propagated
-        │  • opens fresh session for that land
-        ▼
-navigate(`/app/chat?landId=…&fromAlert=…&seedSession=new`)
-        ▼
-EnhancedAIChatInterface  (reads URL params)
-        │  • setActiveTab(landId) once lands list contains it
-        │  • forces NEW session (skips loading old messages)
-        │  • calls edge fn `proactive-question-seed`
-        ▼
-Edge: proactive-question-seed
-        │  • loads alert by id (RLS-safe, tenant+farmer scoped)
-        │  • loads farmer language from profile (SSOT)
-        │  • Decision-Brain-first: build question from rule metadata
-        │  • LLM = NARRATION ONLY (translate + simplify, no agronomy)
-        │  • returns { question, language, sessionHint }
-        ▼
-Chat composer prefilled, focused, one-tap Send
+Pure generic narration. Zero mention of NDVI 0.10, zero mention of the 5-point diagnostic protocol, zero mention of pest/disease/nutrient investigation, zero mention of the 48-hr inspection window.
+
+**4. Orchestrator log confirms why**
 ```
-
-Follows existing memory rules:
-- `architecture/symbolic-engine-strict-invariants` — agronomy from DB only; LLM only narrates.
-- `architecture/canonical-language-governance` — language locked from farmer profile.
-- `architecture/proactive-alerts-realtime-singleton-contract` — no new realtime channels.
-
----
-
-## Implementation Plan
-
-### 1. `src/pages/ProactiveAlerts.tsx` — pass land + alert id, force new session
-
-Replace `handleAskAI` (lines ~68–78):
-
-```ts
-const handleAskAI = (alert: ProactiveAlert) => {
-  const params = new URLSearchParams({
-    fromAlert: alert.id,
-    seedSession: 'new',
-  });
-  if (alert.land_id) params.set('landId', alert.land_id);
-  navigate(`/app/chat?${params.toString()}`);
-};
+ReferenceError: preAuthorityResult is not defined
+  at orchestrator.ts:2828
 ```
+Orchestration crashed mid-flow → fell back to a non-Decision-Brain generic LLM narration.
+Also: `Has Symptoms: false`, `Authority: NONE (UNCONFIRMED)`, `Decision Confidence: 0`.
+The orchestrator never received the alert payload, so it had no symbolic anchor to reason from.
 
-No client-side template strings anymore — the AI builds the question.
+### Three independent bugs causing the symptom
 
-### 2. `src/components/chat/EnhancedAIChatInterface.tsx` — consume params + new session
+**BUG #1 — Wrong question synthesis in `proactive-question-seed`**
+The seed prompt sends `category=CROP_STRESS` + `message_mr` (which contains the *secondary* irrigation fallback text) to the LLM. With no explicit guidance about the *primary action* (`action_text` = diagnostic) the LLM picks up the irrigation numbers from `message_mr` and produces an irrigation question. The `condition_code` (`NDVI_NON_RECOVERY`), the diagnostic checklist, and the explicit "rules out water stress" sentence are never injected into the LLM context.
 
-- Add `useSearchParams` from `react-router-dom`.
-- New `useEffect` (runs once `lands` loaded):
-  1. Read `landId`, `fromAlert`, `seedSession`.
-  2. If `landId` exists in `lands` → `setActiveTab(landId)`. Otherwise toast "Land not found, opening general chat" and stay on `general` (multi-tenant safety).
-  3. If `seedSession === 'new'` → start a fresh session for that land (clear `sessionIds[landId]`, `messages[landId] = []`, `loadedSessionIds.delete(landId)`).
-  4. If `fromAlert` is present → call edge function `proactive-question-seed` with `{ alertId, landId, language }`; on success, set `inputValue` with returned question and auto-focus composer. Show a small "Generated from your alert" chip above composer.
-  5. `setSearchParams({}, { replace: true })` so a refresh doesn't replay.
-- Do NOT auto-send. Farmer reviews → taps Send. (Reason: rural connectivity + farmer's right to edit.)
+**BUG #2 — Alert context is dropped at the chat→orchestrator boundary**
+In `EnhancedAIChatInterface.tsx` (line ~1590), when the seeded question is sent, the body has only `messages`, `sessionId`, `landId`, `language`, `metadata.landContext`. The originating `alertId` and the rich `trigger_data` (NDVI value, condition code, decision_reasoning, action_text, solution.steps_mr) are **never forwarded**. The orchestrator therefore treats it as a brand-new free-text question with zero symptoms → falls into "MONITORING_ADVISED / NONE" branch → generic narration.
 
-### 3. New edge function `supabase/functions/proactive-question-seed/index.ts`
-
-Responsibilities:
-- Validate JWT, enforce tenant + farmer isolation.
-- Load `proactive_alerts` row by `alertId` (must match `farmer_id`).
-- Load farmer language from `farmers.preferred_language` (fallback to alert's localized fields).
-- Build the question deterministically from Decision Brain data (no LLM agronomy):
-  - `alert_category`, `priority`, `decision_reasoning`, `trigger_data` (weather, NDVI, growth stage, crop, land name).
-- Pass that structured context to the LLM with strict instruction:
-  > "You are a NARRATOR. Convert the agronomic facts below into ONE short, simple, conversational question (max 18 words) a rural Indian farmer would naturally ask their advisor. Output ONLY the question in `{language}` script. No greetings, no explanations, no English fallback."
-- Validate LLM output (script ratio, length, single sentence, ends with `?` / `?` / Devanagari `?` equivalent).
-- Return `{ question: string, language: string, alertSnapshot: {...} }`.
-- Cache by `alertId + language` for 24h (alerts are immutable post-creation) → instant on repeat taps.
-
-Example output (Marathi alert about Shoot Borer on "मधले शेत"):
-> "मधले शेत मधील ऊसावर शेंडा पोखर किडीचा प्रादुर्भाव कसा थांबवू?"
-
-Example (English, NDVI stress on "North Plot"):
-> "North Plot looks weak on satellite — what should I do today to recover it?"
-
-### 4. Multilingual coverage
-
-Use the farmer's `preferred_language` (already canonical SSOT in profiles). Supported: en, hi, mr, pa, ta, te, kn, gu, bn, or, ml — same set as `src/i18n/locales/`. The edge function passes the language to the LLM and validates the script ratio per `architecture/multilingual-symbolic-governance-v3`. If validation fails, fall back to a deterministic DB-built question in the alert's localized title.
-
-### 5. New-session enforcement
-
-In `EnhancedAIChatInterface`:
-- Add a helper `startFreshLandSession(landId)` that:
-  - Clears in-memory state for that land tab.
-  - Inserts a new row in `ai_chat_sessions` with `session_type: 'land_specific'`, `session_title: 'From Alert: <category>'`, `metadata: { source: 'proactive_alert', alert_id }`.
-  - Stores it in `sessionIds[landId]`.
-- This guarantees the alert-driven conversation is never mixed with prior land chat history (clean audit trail + better LLM context window).
+**BUG #3 — Orchestrator runtime crash**
+`orchestrator.ts:2828` references `preAuthorityResult` which was deleted in v5.1 (lines 3615 & 3665 explicitly mark it as removed) but one residual call site remained. This crashes the proactive-alert path and silently downgrades responses.
 
 ---
 
-## Files Touched
+## Fix plan
 
-| File | Change |
-|---|---|
-| `src/pages/ProactiveAlerts.tsx` | Replace `handleAskAI` to pass `landId` + `fromAlert` + `seedSession=new` |
-| `src/components/chat/EnhancedAIChatInterface.tsx` | URL param consumption, fresh-session helper, seed-question fetch, prefill |
-| `supabase/functions/proactive-question-seed/index.ts` | NEW edge function (DB-first, LLM-narration-only, multilingual) |
-| `supabase/config.toml` | Register new function (`verify_jwt = true`) |
+### Fix 1 — Make `proactive-question-seed` Decision-Brain-faithful
+File: `supabase/functions/proactive-question-seed/index.ts`
 
-No DB schema changes required. (Optional: add a partial index `ai_chat_sessions(metadata->>'alert_id')` later if alert-traceability becomes a frequent query — not in this phase.)
+- Extract from `alert.trigger_data`:
+  - `condition_code` (e.g. `NDVI_NON_RECOVERY`)
+  - `ndvi` value
+  - `solution.cause_<lang>`, `solution.problem_<lang>`, `solution.steps_<lang>`
+  - `irrigation` block (only if `condition_code` is irrigation-class)
+- Build a **classified `primary_action`** (DIAGNOSTIC | IRRIGATION | NUTRITION | PROTECTION) from `condition_code` + `alert_category`. For `NDVI_NON_RECOVERY` → `DIAGNOSTIC`, never irrigation.
+- Pass that classification to the LLM with a strict rule: *"The question must reflect the primary_action. If primary_action=DIAGNOSTIC, the farmer must ask about inspection / what is wrong, NOT about irrigation."*
+- Strip large numeric figures (lakhs of liters, hours) from the LLM input so the model cannot anchor on them.
+- Strengthen the deterministic fallback templates with action-aware phrasing per category.
 
----
+### Fix 2 — Forward the alert payload through the chat pipeline
+Files: `EnhancedAIChatInterface.tsx`, `supabase/functions/ai-agriculture-chat/index.ts`, `agents/orchestrator.ts`
 
-## 2030-Ready Innovations (recommendations for rural Indian farmers)
+- In the proactive-seed effect (line ~301), persist `fromAlertId` and the loaded alert row into a `proactiveContext` ref keyed by the target tab.
+- In the send handler (line ~1590), when `proactiveContext` exists for the active tab and this is the first user message of the session, attach `metadata.proactiveAlert = { alert_id, category, priority, condition_code, ndvi, decision_reasoning, action_text_<lang>, solution_steps_<lang>, trigger_data }` and clear the ref so it only seeds once.
+- In the orchestrator entry (`index.ts`), pull `metadata.proactiveAlert` and feed it into the context-builder as **pre-evidence**: seed `observations` with the symbolic codes derived from `condition_code` (e.g. `NDVI_LOW_CONFIRMED`, `NDVI_NON_RECOVERY`, `RAINFALL_RECENT`), set `symbolic_confidence` from the alert's confidence, and bypass the "no symptoms → MONITORING_ADVISED" branch when a HIGH-priority alert is the originating event.
+- Inject `decision_reasoning` + `action_text_<lang>` into the LLM narrator's authoritative facts block, with the same hard rule that's already in `farmer-response-json-contract`: narrate, do not invent.
 
-Pick any combo — happy to scope into follow-up phases:
+### Fix 3 — Repair the orchestrator runtime crash
+File: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` line 2828
 
-1. **One-tap voice question.** Beside the prefilled text, show a glowing mic. Farmer can press once and the AI-generated question is *spoken aloud* in their dialect via TTS, then the farmer can press-and-hold to reply by voice (STT → same chat). Zero typing required for non-literate users.
+- Remove the residual `preAuthorityResult.nlu_bypassed` check (it's the same symbol the v5.1 cleanup removed at lines 3615/3665). Replace with the v5 authority-aware detector result that is already in scope at that point.
+- Add a defensive `typeof === 'undefined'` guard so any future refactor does not crash the whole flow.
 
-2. **Visual evidence carousel.** The seeded message in the chat shows the alert's evidence as small chips: 🌡 32°C · 💧 78% · 🛰 NDVI 0.41 · 📅 90-day stage. Tappable — each chip expands into a one-line rural-language explanation. Farmer instantly *sees why* the AI is asking.
-
-3. **WhatsApp / SMS bridge.** A "Continue on WhatsApp" button on the seeded question — opens WhatsApp with the same question + a deep-link back into the app. Critical for farmers who lose data connectivity in the field.
-
-4. **Offline question seeding.** Cache the last 20 alerts + their AI-generated questions in IndexedDB. When farmer taps "Ask AI" offline, the prefilled question appears immediately; the actual chat reply is queued and delivered when online (already aligns with `chat-sync-service` retry queue).
-
-5. **Family / agronomist co-pilot.** Long-press "Ask AI" → "Ask together" — opens the same seeded question in a 3-way chat with the farmer's son/daughter or village agronomist (uses existing `group_chat_messages` table). Decisions on chemicals/spend get a second pair of eyes — directly addresses the agronomic-safety memory.
-
-6. **Hyper-local proof.** Below the seeded question, a small line: *"3 farmers near you acted on this alert in the last 24h."* Anonymous, opt-in, builds trust. Pulls from `proactive_alerts.status = 'ACTED'` aggregated by `pin_code`.
-
-7. **Spoken alert preview before chat opens.** Tapping "Ask AI" first plays a 3-second TTS of the question in the farmer's language, *then* opens the chat. Reinforces understanding for low-literacy users.
-
-8. **"Why this question?" ghost-text.** Sub-text under the prefilled composer: *"This question was made from your North Plot alert (NDVI 0.41, no rain 6 days)."* Total transparency — farmer always knows the AI is grounded in *their* field, not generic advice.
-
-My top picks for **Phase 1 next**: #1 (voice), #2 (evidence chips), #8 (transparency). They are the highest-leverage for rural literacy + trust and reuse infrastructure that already exists.
+### Fix 4 — Defensive logging + telemetry
+- In `proactive-question-seed`, log `{ alertId, condition_code, primary_action, source }` so we can audit drift.
+- In the orchestrator, log when `metadata.proactiveAlert` is received and how many symbolic observations it seeded. This makes regressions visible immediately in edge logs.
 
 ---
 
-## Open Questions
+## Acceptance criteria (replay the same alert)
 
-1. **Auto-send vs review-and-send?** Default = review (farmer taps Send). Confirm.
-2. **Which 2030 innovations** (1–8 above) should I bundle into this phase vs follow-ups? Default = none in this phase, ship the core fix first.
-3. **Cache TTL for the seed question** — 24h ok, or longer? Default = 24h.
+For alert `18b70900…` in Marathi the seed must produce something like:
+> "Mala शेतातील ऊसाची NDVI खूप कमी आहे (०.१०), पाऊस होऊनही सुधारणा नाही — कीड, रोग की अन्नद्रव्य कमतरता आहे का तपासायला हवं?"
+
+And the AI response must:
+1. Reference NDVI 0.10 / severe stress explicitly.
+2. State that water stress is ruled out (rain occurred, no recovery).
+3. List the 5-point diagnostic checklist (early shoot borer, stem borer, root grubs, wilt/red rot/smut, N/K deficiency, root/soil compaction, waterlogging) in the farmer's language.
+4. Recommend field inspection within 48 hours.
+5. Carry `decision_brain_source = true` and `actions_returned ≥ 1` in `ai_chat_messages`.
+6. Orchestrator log shows no `preAuthorityResult is not defined` error.
+
+### Technical references
+- Decision-Brain SSOT memory: `mem://architecture/symbolic-engine-strict-invariants` — narration only, no LLM agronomy.
+- Mode-driven UI: `mem://architecture/mode-driven-ui-interaction-contract` — confidence ≥ 50% required for free-text.
+- Proactive symbolic enrichment: `mem://architecture/proactive-deterministic-symbolic-enrichment` — exactly the bridge this fix implements.
