@@ -98,14 +98,15 @@ Deno.serve(async (req: Request) => {
     const alertId = String(body.alertId || "").trim();
     if (!alertId) return json({ error: "alertId required" }, 400);
 
-    // Service client for cross-table reads (we still enforce farmer ownership manually)
+    // Service client for cross-table reads (farmer ownership enforced manually)
     const admin = createClient(supabaseUrl, serviceKey);
 
-    // Resolve farmer for this user (tenant isolation enforced via farmer_id)
+    // Resolve farmer for this user. In this schema, `farmers.user_profile_id`
+    // is the auth user id (user_profiles.id == auth.users.id).
     const { data: farmer } = await admin
       .from("farmers")
-      .select("id, preferred_language, tenant_id")
-      .eq("user_id", userId)
+      .select("id, language_preference, tenant_id")
+      .eq("user_profile_id", userId)
       .maybeSingle();
 
     if (!farmer) return json({ error: "Farmer profile not found" }, 403);
@@ -122,13 +123,31 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Alert not found" }, 404);
     }
 
-    const lang: Lang = pickLang(body.language || farmer.preferred_language, "en");
-    const landName = (alert.land_name || "").toString().trim();
+    const lang: Lang = pickLang(body.language || farmer.language_preference, "en");
+
+    // Land + crop come from the JOINED `lands` row, not from proactive_alerts.
+    let landName = "";
+    let cropName: string | null = null;
+    if (alert.land_id) {
+      const { data: land } = await admin
+        .from("lands")
+        .select("name, current_crop")
+        .eq("id", alert.land_id)
+        .maybeSingle();
+      if (land) {
+        landName = (land.name || "").toString().trim();
+        cropName = land.current_crop ? String(land.current_crop) : null;
+      }
+    }
+
+    // Inject land/crop into the alert object so the deterministic fallback
+    // (which references alert.title etc.) has full context too.
+    const enrichedAlert = { ...alert, land_name: landName, crop_name: cropName };
 
     // Build authoritative agronomic context from Decision-Brain row (NO INVENTION)
     const ctx = {
       land_name: landName,
-      crop: alert.crop_name || alert.crop || null,
+      crop: cropName,
       category: alert.alert_category,
       priority: alert.priority,
       title: getLocalized(alert, "title", lang),
@@ -139,7 +158,7 @@ Deno.serve(async (req: Request) => {
     };
 
     // Always-available safe answer
-    const fallback = deterministicQuestion(alert, lang, landName);
+    const fallback = deterministicQuestion(enrichedAlert, lang, landName);
 
     // LLM narration (translation + simplification ONLY)
     const lovableKey = Deno.env.get("LOVABLE_API_KEY");
