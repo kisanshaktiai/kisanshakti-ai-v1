@@ -306,6 +306,11 @@ const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
   },
   {
+    path: "/index",
+    element: <Navigate to="/" replace />,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
     path: "/language-selection",
     element: <Suspense fallback={<PageLoader />}><LanguageSelection /></Suspense>,
     errorElement: <RouteErrorBoundary />,
