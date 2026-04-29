@@ -1,100 +1,68 @@
+## Root Cause Analysis
 
-## Root-cause audit — Ask AI from Proactive Alerts (Sugarcane / "Mala" land)
+### Issue 1 — Save & Back buttons hidden behind bottom navigation
+The route `/app/lands/add` is rendered inside `AppLayout`, which always shows the global `BottomNavigation` (~64px tall, `fixed bottom-0`). The map drawer's controls in `MapControls.tsx` use `absolute bottom-0 left-0 right-0`, so they're pinned to the **map container's** bottom — which sits behind the global bottom nav. The header (`fixed top-0`) similarly overlaps the map's "Back" arrow. Result: Save Boundary, Undo, Clear, and Back are all clipped by/under the home–community–scan–analytics–profile bar shown in the screenshot.
 
-### Evidence collected
+`AppLayout.tsx` only treats `ai-chat` and `community` as `isFullScreenRoute` — `lands/add` is not in that list, so nav and header still render.
 
-**1. The actual alert that the farmer tapped (`proactive_alerts.id = 18b70900…`)**
-- `land_id`: `6b0d9b65…` (Mala, 7.59 acres, Sugarcane)
-- `alert_category`: `CROP_STRESS`, `priority`: HIGH
-- `trigger_data.ndvi`: **0.097** (severe stress)
-- `trigger_data.condition_code`: **`NDVI_NON_RECOVERY`** (rain happened, NDVI did not recover → rules out water stress)
-- `action_text_en` (Decision-Brain output):
-  > DIAGNOSTIC INVESTIGATION: Rainfall occurred but crop health did not improve. This rules out water stress. Investigate: 1) Pest infestation (early shoot borer, stem borer, root grubs) 2) Disease (wilt, red rot, smut) 3) Severe N/K deficiency 4) Root damage / soil compaction 5) Waterlogging damage. Field inspection within 48 hours.
-- `trigger_data.solution.cause_mr`: "ndvi non recovery - ऊस पिकाची तपासणी आवश्यक."
-- `trigger_data.irrigation`: 24,36,861 L flood, 81.2 hrs (this is a *secondary* fallback action; the primary action is **diagnostic field inspection**, NOT irrigation)
+### Issue 2 — Boundary points not draggable / not editable
+In `GoogleMapBoundaryDrawer.tsx`:
+- The corner markers (lines 644–656) are plain `<Marker>` components with **no `draggable` prop** and no `onDragEnd` handler.
+- The `<Polygon>` itself (line 660) is created with `editable: false, draggable: false` (lines 442–443 of `polygonOptions`). Google Maps therefore renders no edit handles, and farmers cannot move points to refine the field shape.
 
-**2. Seeded question that landed in the composer**
-> "माझ्या 'मला' रानातल्या उसाला आता तातडीने पाट पाणी देण्याची गरज आहे का?"
-> ("Does my Mala field sugarcane need urgent flood irrigation?")
-
-This is **dead wrong**. The Decision-Brain explicitly ruled out water stress. The farmer is being primed to ask the opposite of what the alert says.
-
-**3. AI response stored in DB**
-> "भाऊ, तुमच्या ऊसाला आता १२२ दिवस झाले आहेत. हा काळ ग्रँड ग्रोथ स्टेज आहे. … जर माती कोरडी झाली असेल, तर पाट पाणी द्या. ⚠️ तुमच्या रानात पाण्याची गरज आहे का ते तपासायला हवे. तुमच्या मातीची स्थिती कशी आहे?"
-
-Pure generic narration. Zero mention of NDVI 0.10, zero mention of the 5-point diagnostic protocol, zero mention of pest/disease/nutrient investigation, zero mention of the 48-hr inspection window.
-
-**4. Orchestrator log confirms why**
-```
-ReferenceError: preAuthorityResult is not defined
-  at orchestrator.ts:2828
-```
-Orchestration crashed mid-flow → fell back to a non-Decision-Brain generic LLM narration.
-Also: `Has Symptoms: false`, `Authority: NONE (UNCONFIRMED)`, `Decision Confidence: 0`.
-The orchestrator never received the alert payload, so it had no symbolic anchor to reason from.
-
-### Three independent bugs causing the symptom
-
-**BUG #1 — Wrong question synthesis in `proactive-question-seed`**
-The seed prompt sends `category=CROP_STRESS` + `message_mr` (which contains the *secondary* irrigation fallback text) to the LLM. With no explicit guidance about the *primary action* (`action_text` = diagnostic) the LLM picks up the irrigation numbers from `message_mr` and produces an irrigation question. The `condition_code` (`NDVI_NON_RECOVERY`), the diagnostic checklist, and the explicit "rules out water stress" sentence are never injected into the LLM context.
-
-**BUG #2 — Alert context is dropped at the chat→orchestrator boundary**
-In `EnhancedAIChatInterface.tsx` (line ~1590), when the seeded question is sent, the body has only `messages`, `sessionId`, `landId`, `language`, `metadata.landContext`. The originating `alertId` and the rich `trigger_data` (NDVI value, condition code, decision_reasoning, action_text, solution.steps_mr) are **never forwarded**. The orchestrator therefore treats it as a brand-new free-text question with zero symptoms → falls into "MONITORING_ADVISED / NONE" branch → generic narration.
-
-**BUG #3 — Orchestrator runtime crash**
-`orchestrator.ts:2828` references `preAuthorityResult` which was deleted in v5.1 (lines 3615 & 3665 explicitly mark it as removed) but one residual call site remained. This crashes the proactive-alert path and silently downgrades responses.
+There is also no "long-press to delete a single point" or visual hit-area large enough for a fingertip (current marker `scale: 6` ≈ 12px diameter — below the 44px touch target standard).
 
 ---
 
-## Fix plan
+## Fix Plan — Mobile-First 2030-Ready Map UI
 
-### Fix 1 — Make `proactive-question-seed` Decision-Brain-faithful
-File: `supabase/functions/proactive-question-seed/index.ts`
+### A. Make Add-Land a true full-screen route
+1. In `src/components/AppLayout.tsx`, extend `isFullScreenRoute` to also include `/app/lands/add` and `/app/lands/:id/edit` (when in the boundary-draw step). This hides the global header + bottom navigation while drawing, giving the map the entire viewport.
+2. Add a small safety: in `AddLand.tsx`, while `showMap === true`, set `document.body.dataset.fullscreen = 'map'` so any residual overlays (FAB, voice button) can be CSS-hidden via `body[data-fullscreen='map']`.
 
-- Extract from `alert.trigger_data`:
-  - `condition_code` (e.g. `NDVI_NON_RECOVERY`)
-  - `ndvi` value
-  - `solution.cause_<lang>`, `solution.problem_<lang>`, `solution.steps_<lang>`
-  - `irrigation` block (only if `condition_code` is irrigation-class)
-- Build a **classified `primary_action`** (DIAGNOSTIC | IRRIGATION | NUTRITION | PROTECTION) from `condition_code` + `alert_category`. For `NDVI_NON_RECOVERY` → `DIAGNOSTIC`, never irrigation.
-- Pass that classification to the LLM with a strict rule: *"The question must reflect the primary_action. If primary_action=DIAGNOSTIC, the farmer must ask about inspection / what is wrong, NOT about irrigation."*
-- Strip large numeric figures (lakhs of liters, hours) from the LLM input so the model cannot anchor on them.
-- Strengthen the deterministic fallback templates with action-aware phrasing per category.
+### B. Reposition map chrome above safe areas (defense-in-depth)
+Even with full-screen mode, account for iOS notch / home-indicator:
+- `MapControls` bottom container: change to `absolute bottom-0 ... pb-[max(env(safe-area-inset-bottom),12px)]`.
+- Back button: `top-[max(env(safe-area-inset-top),16px)]`.
+- Floating "center on me" + zoom: shift to `bottom-[calc(env(safe-area-inset-bottom)+96px)]` so they sit above the action bar.
 
-### Fix 2 — Forward the alert payload through the chat pipeline
-Files: `EnhancedAIChatInterface.tsx`, `supabase/functions/ai-agriculture-chat/index.ts`, `agents/orchestrator.ts`
+### C. Make boundary points draggable + the polygon editable
+In `GoogleMapBoundaryDrawer.tsx`:
+1. Add a new handler:
+   ```ts
+   const handleMarkerDragEnd = (index: number, e: google.maps.MapMouseEvent) => {
+     if (!e.latLng) return;
+     const next = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+     setBoundary(prev => prev.map((p, i) => (i === index ? next : p)));
+   };
+   ```
+2. Update the corner `<Marker>` (lines 644–656):
+   - `draggable={mode === 'draw'}`
+   - `onDragEnd={(e) => handleMarkerDragEnd(index, e)}`
+   - Increase `scale` from 6 → 11 (≈22px) and add a transparent 44×44 hit-area via a custom SVG `path` so fingertips can grab it.
+3. Update `polygonOptions` (lines 435–446):
+   - `editable: true` once `boundary.length >= 3` (memo dependency added).
+   - Listen for `onMouseUp` on the polygon to read the path back into `boundary` state — this enables drag-to-add midpoint vertices, which is the standard Google Maps editable-polygon UX.
+4. Long-press on a point → remove it: add `onRightClick` (Google Maps maps right-click to long-press on touch) calling `setBoundary(prev => prev.filter((_, i) => i !== index))`.
 
-- In the proactive-seed effect (line ~301), persist `fromAlertId` and the loaded alert row into a `proactiveContext` ref keyed by the target tab.
-- In the send handler (line ~1590), when `proactiveContext` exists for the active tab and this is the first user message of the session, attach `metadata.proactiveAlert = { alert_id, category, priority, condition_code, ndvi, decision_reasoning, action_text_<lang>, solution_steps_<lang>, trigger_data }` and clear the ref so it only seeds once.
-- In the orchestrator entry (`index.ts`), pull `metadata.proactiveAlert` and feed it into the context-builder as **pre-evidence**: seed `observations` with the symbolic codes derived from `condition_code` (e.g. `NDVI_LOW_CONFIRMED`, `NDVI_NON_RECOVERY`, `RAINFALL_RECENT`), set `symbolic_confidence` from the alert's confidence, and bypass the "no symptoms → MONITORING_ADVISED" branch when a HIGH-priority alert is the originating event.
-- Inject `decision_reasoning` + `action_text_<lang>` into the LLM narrator's authoritative facts block, with the same hard rule that's already in `farmer-response-json-contract`: narrate, do not invent.
+### D. 2030-ready visual polish (mobile-first)
+1. Replace the gradient action bar with a glass card pinned to bottom: rounded-t-2xl, `bg-background/80 backdrop-blur-xl`, soft shadow, 16px padding, `pb-safe`.
+2. Larger primary CTA: full-width "Save Boundary" pill (h-12, font-semibold), with a subtle pulse when `canSave && !validationError`.
+3. Add a slim top pill showing `4 बिंदू • 0.430 एकर` always visible (currently hidden behind the AreaDisplay card overlapping the back button — see screenshot). Move `AreaDisplay` from top-left to a centred top pill below the safe area.
+4. Add haptic feedback on point-add, point-drag-end, undo, and save (`navigator.vibrate?.(10)` — already used elsewhere via `@/lib/haptics`).
+5. Mode switcher → segmented control style (single rounded container, sliding indicator) instead of two separate buttons.
 
-### Fix 3 — Repair the orchestrator runtime crash
-File: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` line 2828
+### E. Files to edit
+- `src/components/AppLayout.tsx` — extend `isFullScreenRoute`.
+- `src/pages/AddLand.tsx` — set body fullscreen flag while map is open.
+- `src/components/land/GoogleMapBoundaryDrawer.tsx` — draggable markers, editable polygon, polygon path sync, reposition AreaDisplay/center button with safe-area insets.
+- `src/components/land/MapControls.tsx` — glass card, segmented mode switch, safe-area padding, larger CTA, haptics.
+- `src/components/land/AreaDisplay.tsx` — restyle to centred top pill.
 
-- Remove the residual `preAuthorityResult.nlu_bypassed` check (it's the same symbol the v5.1 cleanup removed at lines 3615/3665). Replace with the v5 authority-aware detector result that is already in scope at that point.
-- Add a defensive `typeof === 'undefined'` guard so any future refactor does not crash the whole flow.
-
-### Fix 4 — Defensive logging + telemetry
-- In `proactive-question-seed`, log `{ alertId, condition_code, primary_action, source }` so we can audit drift.
-- In the orchestrator, log when `metadata.proactiveAlert` is received and how many symbolic observations it seeded. This makes regressions visible immediately in edge logs.
-
----
-
-## Acceptance criteria (replay the same alert)
-
-For alert `18b70900…` in Marathi the seed must produce something like:
-> "Mala शेतातील ऊसाची NDVI खूप कमी आहे (०.१०), पाऊस होऊनही सुधारणा नाही — कीड, रोग की अन्नद्रव्य कमतरता आहे का तपासायला हवं?"
-
-And the AI response must:
-1. Reference NDVI 0.10 / severe stress explicitly.
-2. State that water stress is ruled out (rain occurred, no recovery).
-3. List the 5-point diagnostic checklist (early shoot borer, stem borer, root grubs, wilt/red rot/smut, N/K deficiency, root/soil compaction, waterlogging) in the farmer's language.
-4. Recommend field inspection within 48 hours.
-5. Carry `decision_brain_source = true` and `actions_returned ≥ 1` in `ai_chat_messages`.
-6. Orchestrator log shows no `preAuthorityResult is not defined` error.
-
-### Technical references
-- Decision-Brain SSOT memory: `mem://architecture/symbolic-engine-strict-invariants` — narration only, no LLM agronomy.
-- Mode-driven UI: `mem://architecture/mode-driven-ui-interaction-contract` — confidence ≥ 50% required for free-text.
-- Proactive symbolic enrichment: `mem://architecture/proactive-deterministic-symbolic-enrichment` — exactly the bridge this fix implements.
+### Acceptance criteria
+- Save Boundary, Undo, Clear, Back are fully visible and tappable on iPhone (notch + home indicator) and Android.
+- Tapping and dragging any numbered point smoothly updates the polygon and recalculates area live.
+- Dragging an edge midpoint inserts a new vertex (Google's native editable-polygon behaviour).
+- Long-press on a vertex removes it.
+- Bottom navigation does NOT appear while the map is open.
+- All controls respect `env(safe-area-inset-*)`.

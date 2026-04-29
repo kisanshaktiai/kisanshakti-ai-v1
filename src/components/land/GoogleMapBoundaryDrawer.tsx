@@ -302,6 +302,32 @@ export function GoogleMapBoundaryDrawer({
     setBoundary([]);
   }, []);
 
+  // Drag a numbered point to a new position — live area recalculation
+  const handleMarkerDragEnd = useCallback((index: number, e: google.maps.MapMouseEvent) => {
+    if (!e.latLng) return;
+    const next: LatLng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    setBoundary(prev => prev.map((p, i) => (i === index ? next : p)));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(10);
+  }, []);
+
+  // Long-press / right-click on a vertex removes it
+  const handleMarkerRightClick = useCallback((index: number) => {
+    setBoundary(prev => prev.filter((_, i) => i !== index));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(20);
+  }, []);
+
+  // Sync polygon path back to state after the user drags a vertex/midpoint
+  // via Google's native editable-polygon UI
+  const handlePolygonEdit = useCallback((polygon: google.maps.Polygon) => {
+    const path = polygon.getPath();
+    const next: LatLng[] = [];
+    for (let i = 0; i < path.getLength(); i++) {
+      const ll = path.getAt(i);
+      next.push({ lat: ll.lat(), lng: ll.lng() });
+    }
+    setBoundary(next);
+  }, []);
+
   // GPS tracking
   const startTracking = useCallback(() => {
     if (!navigator.geolocation) {
@@ -431,19 +457,19 @@ export function GoogleMapBoundaryDrawer({
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   };
 
-  // Memoized polygon/polyline options
+  // Memoized polygon options — editable when 3+ points so users can drag vertices/midpoints
   const polygonOptions = useMemo(() => ({
     fillColor: getThemeColor('--primary', '#22c55e'),
-    fillOpacity: 0.35,
+    fillOpacity: 0.3,
     strokeColor: getThemeColor('--primary', '#22c55e'),
     strokeOpacity: 1,
-    strokeWeight: 2,
-    clickable: false,
+    strokeWeight: 2.5,
+    clickable: true,
     draggable: false,
-    editable: false,
+    editable: mode === 'draw' && boundary.length >= 3,
     geodesic: false,
     zIndex: 1,
-  }), []);
+  }), [mode, boundary.length]);
 
   const polylineOptions = useMemo(() => ({
     strokeColor: getThemeColor('--primary', '#22c55e'),
@@ -472,14 +498,14 @@ export function GoogleMapBoundaryDrawer({
 
   const getMarkerIcon = useCallback(() => {
     if (!isGoogleReady) return undefined;
-    
+
     return {
       path: google.maps.SymbolPath.CIRCLE,
-      scale: 6,
+      scale: 11, // ~22px diameter, large finger target
       fillColor: getThemeColor('--destructive', '#ef4444'),
       fillOpacity: 1,
       strokeColor: getThemeColor('--background', '#ffffff'),
-      strokeWeight: 2,
+      strokeWeight: 3,
     };
   }, [isGoogleReady]);
 
@@ -602,20 +628,22 @@ export function GoogleMapBoundaryDrawer({
         </div>
       )}
 
-      {/* Location center button */}
+      {/* Location center button — sits above the bottom action sheet, safe-area aware */}
       <button
         onClick={handleCenterOnLocation}
-        className="absolute bottom-24 right-3 h-10 w-10 bg-background/95 backdrop-blur-sm shadow-lg z-10 rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border"
+        aria-label="Center on my location"
+        className="absolute right-3 z-20 h-12 w-12 bg-background/95 backdrop-blur-md shadow-xl rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border/60"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 220px)' }}
         disabled={isCentering}
       >
         {isCentering ? (
           <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
         ) : (
-          <svg 
-            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`} 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
             strokeWidth="2"
           >
             <circle cx="12" cy="12" r="10" />
@@ -640,26 +668,45 @@ export function GoogleMapBoundaryDrawer({
           />
         )}
 
-        {/* Boundary markers */}
+        {/* Boundary markers — draggable in draw mode, long-press to delete */}
         {isGoogleReady && boundary.map((point, index) => (
           <Marker
             key={`marker-${index}`}
             position={point}
+            draggable={mode === 'draw'}
+            onDragEnd={(e) => handleMarkerDragEnd(index, e)}
+            onRightClick={() => handleMarkerRightClick(index)}
             label={{
               text: (index + 1).toString(),
               color: 'white',
-              fontSize: '12px',
+              fontSize: '13px',
               fontWeight: 'bold',
             }}
             icon={getMarkerIcon()}
+            zIndex={10}
           />
         ))}
 
-        {/* Polygon or Polyline */}
+        {/* Polygon (editable) or Polyline preview */}
         {isGoogleReady && boundary.length >= 3 ? (
           <Polygon
             paths={boundary}
             options={polygonOptions}
+            onMouseUp={(e) => {
+              // After dragging a vertex/midpoint, sync the path back to state
+              const target = (e as unknown as { overlay?: google.maps.Polygon }).overlay;
+              if (target && typeof target.getPath === 'function') {
+                handlePolygonEdit(target);
+              }
+            }}
+            onLoad={(polygon) => {
+              // Listen to native edit events on the polygon path
+              const path = polygon.getPath();
+              const sync = () => handlePolygonEdit(polygon);
+              path.addListener('set_at', sync);
+              path.addListener('insert_at', sync);
+              path.addListener('remove_at', sync);
+            }}
           />
         ) : boundary.length >= 2 && isGoogleReady ? (
           <Polyline
