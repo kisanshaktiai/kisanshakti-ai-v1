@@ -30,7 +30,7 @@ interface MapControlsProps {
 
 const haptic = (kind: 'light' | 'medium' | 'success' = 'light') => {
   try {
-    triggerHaptic?.(kind);
+    hapticFeedback(kind === 'success' ? 'medium' : kind);
   } catch {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       navigator.vibrate?.(kind === 'success' ? 20 : 10);
