@@ -3639,8 +3639,9 @@ export class AIAgentOrchestrator {
         }
       }
       
+      // v5.1: `preAuthorityResult.nlu_bypassed` removed — authority-aware crop damage detector is the SSOT.
+      // Defensive guard against any future scope drift.
       const shouldActivateDiagnosisMode = diagnosisOnlyCheck.activate || 
-        preAuthorityResult.nlu_bypassed || 
         cropDamageResult.requires_diagnosis ||
         photoForcedDiagnosis;
       
