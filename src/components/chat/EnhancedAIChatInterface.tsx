@@ -335,7 +335,7 @@ export function EnhancedAIChatInterface() {
             console.log('[chat] Cached proactive alert for next send:', {
               alert_id: alertResult.data.id,
               category: alertResult.data.alert_category,
-              condition_code: alertResult.data.trigger_data?.condition_code,
+              condition_code: (alertResult.data.trigger_data as any)?.condition_code,
             });
           }
 
