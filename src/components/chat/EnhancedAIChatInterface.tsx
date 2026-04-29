@@ -13,7 +13,7 @@ import {
   Search, X, Clock, MessageCircle, Check, AlertCircle
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { supabase, supabaseWithAuth } from '@/integrations/supabase/client';
