@@ -28507,6 +28507,15 @@ export type Database = {
         Args: never
         Returns: undefined
       }
+      nearest_lands_summary: {
+        Args: {
+          p_lat: number
+          p_lng: number
+          p_radius_m: number
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
