@@ -606,6 +606,183 @@ serve(async (req) => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // PROACTIVE-ALERT NARRATION SHORT-CIRCUIT (v1)
+    // ─────────────────────────────────────────────────────────────────────────
+    // When the user opened the chat from a proactive alert AND this is their
+    // first message in the session, the alert payload is attached to
+    // `metadata.proactiveAlert`. The Decision-Brain has ALREADY produced the
+    // authoritative agronomic answer (action_text_<lang>, decision_reasoning,
+    // trigger_data). We narrate that answer directly — LLM is restricted to
+    // translation/simplification. This avoids the orchestrator re-diagnosing
+    // from a vague seeded question and falling back to generic monitoring.
+    //
+    // Honors the SSOT invariant: 100% of agronomic advice comes from the DB.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const proactiveAlert = metadata?.proactiveAlert;
+    const isFirstTurnFromAlert =
+      !!proactiveAlert &&
+      conversationHistory.length === 0 && // truly first turn in this session
+      !!(proactiveAlert.action_text_en || proactiveAlert.action_text_hi || proactiveAlert.action_text_mr);
+
+    if (isFirstTurnFromAlert) {
+      console.log(`🔔 [${traceId}] PROACTIVE_ALERT_NARRATION: Bypassing orchestrator for first-turn alert response`, {
+        alert_id: proactiveAlert.id,
+        category: proactiveAlert.alert_category,
+        priority: proactiveAlert.priority,
+        condition_code: proactiveAlert.trigger_data?.condition_code,
+      });
+
+      try {
+        const lang = (detectedLanguage || language || 'en').toString().slice(0, 2);
+        const langName: Record<string, string> = {
+          en: 'English', hi: 'Hindi (Devanagari)', mr: 'Marathi (Devanagari)',
+          pa: 'Punjabi (Gurmukhi)', ta: 'Tamil', te: 'Telugu', kn: 'Kannada',
+          gu: 'Gujarati', bn: 'Bengali', or: 'Odia', ml: 'Malayalam',
+        };
+        const pickLocalized = (field: string) =>
+          (proactiveAlert[`${field}_${lang}`] ||
+            proactiveAlert[`${field}_en`] ||
+            proactiveAlert[`${field}_mr`] ||
+            proactiveAlert[`${field}_hi`] ||
+            '').toString();
+
+        const td = proactiveAlert.trigger_data || {};
+        const sol = td.solution || {};
+        const pickSol = (field: string) =>
+          (sol[`${field}_${lang}`] || sol[`${field}_en`] || sol[`${field}_mr`] || sol[`${field}_hi`] || '').toString();
+
+        // Authoritative facts block (Decision-Brain SSOT)
+        const facts = {
+          land_name: proactiveAlert.land_name || null,
+          alert_category: proactiveAlert.alert_category,
+          priority: proactiveAlert.priority,
+          condition_code: td.condition_code || null,
+          ndvi: typeof td.ndvi === 'number' ? td.ndvi : null,
+          title: pickLocalized('title'),
+          message: pickLocalized('message'),
+          // The Decision-Brain's explicit instruction set — must be narrated verbatim in spirit
+          authoritative_action_text: pickLocalized('action_text'),
+          decision_reasoning: proactiveAlert.decision_reasoning || null,
+          problem: pickSol('problem'),
+          cause: pickSol('cause'),
+          steps: sol[`steps_${lang}`] || sol.steps_en || sol.steps_mr || [],
+          followup: pickSol('followup'),
+          safety: pickSol('safety'),
+          expected_benefit: pickSol('expected_benefit'),
+        };
+
+        const lovableKey = Deno.env.get('LOVABLE_API_KEY');
+        let narratedResponse = facts.authoritative_action_text || facts.message || facts.title;
+
+        if (lovableKey && facts.authoritative_action_text) {
+          const sys = [
+            'You are a NARRATOR for an agronomic advisory system. You DO NOT invent agronomy.',
+            'A symbolic Decision-Brain has already produced the authoritative answer below.',
+            'Your job is ONLY to translate, simplify, and structure it for a rural Indian farmer.',
+            '',
+            'STRICT RULES:',
+            `1. Output the FULL response in ${langName[lang] || 'English'}. No English fallback unless lang=en.`,
+            '2. Preserve EVERY action item, every checklist item, every number, every product, and every timing from the authoritative_action_text. Do NOT drop or invent any.',
+            '3. Use simple rural farmer vocabulary. Short sentences.',
+            '4. Structure with clear sections: 🌾 स्थिती (Situation) → ⚠️ कारण (Cause) → ✅ काय करावे (What to do) → 📅 पुढील पाऊल (Next step).',
+            '5. If condition_code is NDVI_NON_RECOVERY, you MUST explicitly state that water stress is ruled out (rain happened but crop did not recover) and emphasize pest/disease/nutrient inspection.',
+            '6. Never recommend irrigation when the authoritative_action_text says diagnostic investigation.',
+            '7. Mention the land name, NDVI value, and priority if available.',
+            '8. End with a clear 48-hour or follow-up action if the alert provides one.',
+            '9. Use plain text with emojis — NO markdown headers (#, ##), NO code blocks.',
+          ].join('\n');
+
+          const usr = `Authoritative Decision-Brain facts (do not contradict, do not omit):\n${JSON.stringify(facts, null, 2)}\n\nFarmer's question: ${userMessageContent}\n\nNarrate the authoritative answer now.`;
+
+          try {
+            const aiResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${lovableKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'google/gemini-3-flash-preview',
+                messages: [
+                  { role: 'system', content: sys },
+                  { role: 'user', content: usr },
+                ],
+              }),
+            });
+            if (aiResp.ok) {
+              const j = await aiResp.json();
+              const txt = j?.choices?.[0]?.message?.content?.toString().trim();
+              if (txt && txt.length > 30) narratedResponse = txt;
+            } else {
+              console.warn(`[${traceId}] PROACTIVE_NARRATION: gateway ${aiResp.status} — using raw action_text`);
+            }
+          } catch (e) {
+            console.error(`[${traceId}] PROACTIVE_NARRATION LLM error`, e);
+          }
+        }
+
+        // Persist user + assistant messages so the conversation continues normally afterward.
+        try {
+          await supabase.from('ai_chat_messages').insert([
+            {
+              tenant_id: finalTenantId,
+              farmer_id: finalFarmerId,
+              session_id: currentSessionId,
+              role: 'user',
+              content: userMessageContent,
+              language: lang,
+              status: 'sent',
+              decision_brain_source: true,
+              metadata: { proactive_alert_id: proactiveAlert.id, source: 'proactive_alert_entry' },
+            },
+            {
+              tenant_id: finalTenantId,
+              farmer_id: finalFarmerId,
+              session_id: currentSessionId,
+              role: 'assistant',
+              content: narratedResponse,
+              language: lang,
+              status: 'sent',
+              decision_brain_source: true,
+              ai_model: 'proactive-narration',
+              actions_returned: 1,
+              metadata: {
+                proactive_alert_id: proactiveAlert.id,
+                alert_category: proactiveAlert.alert_category,
+                condition_code: td.condition_code,
+                priority: proactiveAlert.priority,
+                source: 'PROACTIVE_ALERT_NARRATION',
+              },
+            },
+          ]);
+        } catch (persistErr) {
+          console.error(`[${traceId}] PROACTIVE_NARRATION persist error`, persistErr);
+        }
+
+        return new Response(
+          JSON.stringify({
+            response: narratedResponse,
+            sessionId: currentSessionId,
+            responseTime: Date.now() - startTime,
+            metadata: {
+              type: 'DECISION_PROVIDED',
+              orchestrator_type: 'PROACTIVE_ALERT_NARRATION',
+              decision_brain_source: true,
+              source: 'PROACTIVE_ALERT_NARRATION',
+              alert_id: proactiveAlert.id,
+              alert_category: proactiveAlert.alert_category,
+              condition_code: td.condition_code,
+              priority: proactiveAlert.priority,
+              trace_id: traceId,
+              language: lang,
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+        );
+      } catch (alertErr) {
+        console.error(`[${traceId}] PROACTIVE_NARRATION fatal — falling through to orchestrator`, alertErr);
+        // Fall through: the regular orchestrator path runs as a safety net.
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
     // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();

@@ -253,6 +253,9 @@ export function EnhancedAIChatInterface() {
   // ═══════════════════════════════════════════════════════════════════════════
   const [searchParams, setSearchParams] = useSearchParams();
   const seededAlertRef = useRef<string | null>(null);
+  // Holds the proactive-alert payload to attach to the NEXT outgoing user message,
+  // keyed by tab. Cleared after one use so it never bleeds into subsequent turns.
+  const proactiveAlertRef = useRef<Record<string, any>>({});
 
   useEffect(() => {
     const fromAlert = searchParams.get('fromAlert');
@@ -301,14 +304,41 @@ export function EnhancedAIChatInterface() {
     if (fromAlert) {
       (async () => {
         try {
-          const { data, error } = await supabase.functions.invoke('proactive-question-seed', {
-            body: { alertId: fromAlert, landId: landIdParam || null, language },
-            headers: {
-              'x-farmer-id': user?.id || '',
-              'x-tenant-id': tenant?.id || '',
-            },
-          });
+          // Fetch full alert row in parallel so the next outgoing message can carry
+          // its Decision-Brain context (NDVI, condition_code, action_text, etc.)
+          // straight to the orchestrator. Without this the orchestrator sees a
+          // generic free-text question and falls back to monitoring advice.
+          const authClient = supabaseWithAuth(user.id, tenant.id);
+          const alertPromise = authClient
+            .from('proactive_alerts')
+            .select('id, alert_category, priority, title_en, title_hi, title_mr, message_en, message_hi, message_mr, action_text_en, action_text_hi, action_text_mr, decision_reasoning, trigger_data, land_id')
+            .eq('id', fromAlert)
+            .maybeSingle();
+
+          const [seedResult, alertResult] = await Promise.all([
+            supabase.functions.invoke('proactive-question-seed', {
+              body: { alertId: fromAlert, landId: landIdParam || null, language },
+              headers: {
+                'x-farmer-id': user?.id || '',
+                'x-tenant-id': tenant?.id || '',
+              },
+            }),
+            alertPromise,
+          ]);
+
+          const { data, error } = seedResult;
           if (error) throw error;
+
+          // Stash the alert payload for the next user-send to attach to metadata.
+          if (alertResult?.data) {
+            proactiveAlertRef.current[targetTab] = alertResult.data;
+            console.log('[chat] Cached proactive alert for next send:', {
+              alert_id: alertResult.data.id,
+              category: alertResult.data.alert_category,
+              condition_code: (alertResult.data.trigger_data as any)?.condition_code,
+            });
+          }
+
           const q = (data as any)?.question?.toString().trim();
           if (q) {
             setInputValue(q);
@@ -1583,6 +1613,16 @@ export function EnhancedAIChatInterface() {
       
       const sessionToken = localStorage.getItem('app_session_token') || '';
       
+      // CRITICAL: If this send originated from a proactive alert, attach the
+      // alert's Decision-Brain payload so the orchestrator narrates from
+      // authoritative facts instead of re-diagnosing from the seeded question.
+      // Consume-once: clear after attaching so subsequent turns are not biased.
+      const proactiveAlertPayload = proactiveAlertRef.current[activeTab];
+      if (proactiveAlertPayload) {
+        delete proactiveAlertRef.current[activeTab];
+        console.log('[chat] Attaching proactive alert to outgoing message:', proactiveAlertPayload.id);
+      }
+      
       // ═══════════════════════════════════════════════════════════════════════
       // 🤖 ALL QUERIES → 9-AGENT ORCHESTRATOR
       // NLU → Visual → Context → Diagnostic → Fusion → Rules → Safety → Communication
@@ -1597,7 +1637,8 @@ export function EnhancedAIChatInterface() {
             tenantId: tenant?.id,
             farmerId: user?.id,
             landContext,
-            source: 'orchestrator_v2'
+            source: 'orchestrator_v2',
+            proactiveAlert: proactiveAlertPayload || undefined,
           }
         },
         headers: {
