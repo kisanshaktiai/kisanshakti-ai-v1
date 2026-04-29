@@ -498,14 +498,14 @@ export function GoogleMapBoundaryDrawer({
 
   const getMarkerIcon = useCallback(() => {
     if (!isGoogleReady) return undefined;
-    
+
     return {
       path: google.maps.SymbolPath.CIRCLE,
-      scale: 6,
+      scale: 11, // ~22px diameter, large finger target
       fillColor: getThemeColor('--destructive', '#ef4444'),
       fillOpacity: 1,
       strokeColor: getThemeColor('--background', '#ffffff'),
-      strokeWeight: 2,
+      strokeWeight: 3,
     };
   }, [isGoogleReady]);
 
