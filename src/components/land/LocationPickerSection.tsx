@@ -51,16 +51,26 @@ export function LocationPickerSection({
   const [picker, setPicker] = useState<PickerKind>(null);
   const [search, setSearch] = useState('');
   const [villageFreeText, setVillageFreeText] = useState('');
+  // Block taps for ~350ms after the sheet opens so the chip's mouseup
+  // doesn't "click through" onto the first item rendered under the cursor.
+  const [tapsArmed, setTapsArmed] = useState(false);
 
   // Pre-load cascading data so the picker is instant when opened.
   useEffect(() => { if (value.state_id) loadDistricts(value.state_id); }, [value.state_id, loadDistricts]);
   useEffect(() => { if (value.district_id) loadTalukas(value.district_id); }, [value.district_id, loadTalukas]);
   useEffect(() => { if (value.taluka_id) loadVillages(value.taluka_id); }, [value.taluka_id, loadVillages]);
 
-  // Reset search when picker changes
+  // Reset search when picker changes; arm taps after the open animation.
   useEffect(() => {
     setSearch('');
     setVillageFreeText('');
+    if (picker === null) {
+      setTapsArmed(false);
+      return;
+    }
+    setTapsArmed(false);
+    const id = window.setTimeout(() => setTapsArmed(true), 350);
+    return () => window.clearTimeout(id);
   }, [picker]);
 
   const items = useMemo(() => {
@@ -252,12 +262,17 @@ export function LocationPickerSection({
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pb-4">
+          <div
+            className={cn(
+              'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pb-4 transition-opacity',
+              !tapsArmed && 'pointer-events-none opacity-60',
+            )}
+          >
             {items.map((it: any) => (
               <button
                 key={it.id || it.code}
                 type="button"
-                onClick={() => apply(it)}
+                onClick={() => { if (tapsArmed) apply(it); }}
                 className={cn(
                   'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
                   'border-border hover:border-primary/40 min-h-[52px]',
@@ -277,6 +292,7 @@ export function LocationPickerSection({
               </div>
             )}
           </div>
+
         </SheetContent>
       </Sheet>
     </div>
