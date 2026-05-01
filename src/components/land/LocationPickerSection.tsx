@@ -260,7 +260,7 @@ export function LocationPickerSection({
       </div>
 
       <Sheet open={picker !== null} onOpenChange={(o) => !o && setPicker(null)}>
-        <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto p-0">
+        <SheetContent side="bottom" className="z-[70] rounded-t-3xl max-h-[85vh] overflow-y-auto p-0">
           {/* Sticky header + search */}
           <div className="sticky top-0 z-10 bg-background border-b border-border px-4 pt-4 pb-3 space-y-3">
             <SheetHeader className="text-left">
