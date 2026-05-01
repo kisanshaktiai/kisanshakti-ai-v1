@@ -359,7 +359,7 @@ export function SmartLandConfirmCard({
 
   return (
     <div
-      className="fixed inset-0 z-[60] bg-background flex flex-col"
+      className="fixed inset-0 z-40 bg-background flex flex-col"
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
       {/* ───────── Sticky header with map thumb ───────── */}
@@ -711,7 +711,7 @@ export function SmartLandConfirmCard({
         <SheetContent
           side="bottom"
           className={cn(
-            'rounded-t-3xl overflow-hidden p-0',
+            'z-[70] rounded-t-3xl overflow-hidden p-0',
             picker === 'crop' || picker === 'previous_crop' ? 'h-[85vh]' : 'max-h-[75vh] overflow-y-auto',
           )}
         >
