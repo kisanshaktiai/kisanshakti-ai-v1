@@ -18,14 +18,21 @@ export function FieldChip({
 }: FieldChipProps) {
   const needsAttention = required && !value;
   const isAi = !!value && source && source !== 'farmer';
+  const handle = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.stopPropagation();
+    onClick?.();
+  };
   return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onClick?.(); }}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handle}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handle(e); } }}
       data-confidence={confidence ?? ''}
+      aria-label={`${label}${value ? `: ${value}` : ''}. Tap to edit.`}
       className={cn(
-        'w-full flex items-center justify-between gap-3 px-4 py-3 text-left',
-        'rounded-2xl border bg-card transition-colors min-h-[60px] active:scale-[0.98]',
+        'w-full flex items-center justify-between gap-3 px-4 py-3 text-left cursor-pointer',
+        'rounded-2xl border bg-card transition-colors min-h-[60px] active:scale-[0.98] select-none',
         needsAttention
           ? 'border-destructive/60 bg-destructive/5'
           : isAi
@@ -54,7 +61,20 @@ export function FieldChip({
           </div>
         </div>
       </div>
-      <Pencil className="h-4 w-4 text-muted-foreground shrink-0" />
-    </button>
+      {/* Explicit Edit affordance — 44px tap target inside the chip */}
+      <button
+        type="button"
+        onClick={handle}
+        aria-label={`Edit ${label}`}
+        className={cn(
+          'shrink-0 h-11 w-11 rounded-xl inline-flex items-center justify-center',
+          'text-muted-foreground hover:text-foreground hover:bg-muted active:scale-90 transition',
+          isAi && 'text-amber-700 dark:text-amber-400',
+        )}
+        tabIndex={-1}
+      >
+        <Pencil className="h-5 w-5" />
+      </button>
+    </div>
   );
 }
