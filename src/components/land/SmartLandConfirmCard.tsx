@@ -231,6 +231,9 @@ export function SmartLandConfirmCard({
   const validate = (): string | null => {
     if (!form.name?.trim()) return t('lands.smartConfirm.errors.name', { defaultValue: 'Land name is required' });
     if (!form.ownership_type) return t('lands.smartConfirm.errors.ownership', { defaultValue: 'Ownership is required' });
+    if (!form.country) return t('lands.smartConfirm.errors.country', { defaultValue: 'Country is required' });
+    if (!form.state) return t('lands.smartConfirm.errors.state', { defaultValue: 'State is required' });
+    if (!form.district) return t('lands.smartConfirm.errors.district', { defaultValue: 'District is required' });
     if (!form.current_crop) return t('lands.smartConfirm.errors.crop', { defaultValue: 'Current crop is required' });
     if (!form.sowing_date) return t('lands.smartConfirm.errors.sowing', { defaultValue: 'Sowing date is required' });
     return null;
@@ -273,7 +276,9 @@ export function SmartLandConfirmCard({
         gps_accuracy_meters: 10,
         gps_recorded_at: new Date().toISOString(),
         elevation_meters: form.elevation_meters,
-        // Location (strings + IDs together — closes data-loss gap from old wizard)
+        // Location (full chain — country first, IDs alongside strings)
+        country: form.country,
+        country_code: form.country_code,
         state: form.state, state_id: form.state_id,
         district: form.district, district_id: form.district_id,
         taluka: form.taluka, taluka_id: form.taluka_id,
