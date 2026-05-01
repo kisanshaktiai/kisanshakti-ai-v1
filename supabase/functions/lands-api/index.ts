@@ -154,14 +154,11 @@ serve(async (req) => {
                 sources.state = 'google_reverse_geocode';
               }
 
-              // 2) DISTRICT — try every candidate against districts WHERE state_id=...
-              //    Skip values containing "Division" entirely.
-              const districtPool = [cand.l2, cand.l3, cand.l1].filter(
-                (v): v is string => !!v && !/division/i.test(get('administrative_area_level_2') || ''),
+              // 2) DISTRICT — try cleaned candidates against districts scoped by state.
+              // "Pune Division" → cleaned "Pune" often IS the district name.
+              const districtCandidates = Array.from(
+                new Set([cand.l2, cand.l3, cand.l1].filter(Boolean) as string[]),
               );
-              // Re-include l2 even if division-flagged after cleaning, since
-              // "Pune Division" → cleaned "Pune" often IS the district.
-              const districtCandidates = Array.from(new Set([cand.l2, cand.l3, cand.l1].filter(Boolean) as string[]));
               let districtRow: { id: string; name: string } | null = null;
               for (const c of districtCandidates) {
                 if (stateRow?.id) {
