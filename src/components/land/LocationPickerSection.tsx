@@ -284,8 +284,29 @@ export function LocationPickerSection({
           </div>
 
           <div className="px-4 pb-6">
+            {/* Missing-parent banner — instead of silently doing nothing, point the farmer at the right level. */}
+            {missingParent && (
+              <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
+                <div className="flex-1 text-xs text-amber-900 dark:text-amber-100">
+                  {missingParent === 'district' && t('lands.location.selectStateFirst', { defaultValue: 'Select State first to see districts.' })}
+                  {missingParent === 'taluka'   && t('lands.location.selectDistrictFirst', { defaultValue: 'Select District first to see talukas.' })}
+                  {missingParent === 'village'  && t('lands.location.selectTalukaFirst', { defaultValue: 'Select Taluka first to see villages.' })}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 rounded-xl shrink-0"
+                  onClick={() => setPicker(parentLevel(missingParent))}
+                >
+                  {missingParent === 'district' && t('lands.location.pickState', { defaultValue: 'Pick State' })}
+                  {missingParent === 'taluka'   && t('lands.location.pickDistrict', { defaultValue: 'Pick District' })}
+                  {missingParent === 'village'  && t('lands.location.pickTaluka', { defaultValue: 'Pick Taluka' })}
+                </Button>
+              </div>
+            )}
+
             {/* Free-text fallback (works for district / taluka / village — sparse rows in DB) */}
-            {(picker === 'village' || picker === 'district' || picker === 'taluka') && (
+            {!missingParent && (picker === 'village' || picker === 'district' || picker === 'taluka') && (
               <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/40 p-3 space-y-2">
                 <div className="text-xs text-muted-foreground">
                   {picker === 'village' && t('lands.location.villageNotListed', { defaultValue: 'Not in the list? Type your village name and tap Use.' })}
@@ -317,34 +338,37 @@ export function LocationPickerSection({
               </div>
             )}
 
-            <div
-              className={cn(
-                'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 transition-opacity',
-                !tapsArmed && 'pointer-events-none opacity-60',
-              )}
-            >
-              {items.map((it: any) => (
-                <button
-                  key={it.id || it.code}
-                  type="button"
-                  onClick={() => { if (tapsArmed) apply(it); }}
-                  className={cn(
-                    'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
-                    'border-border hover:border-primary/40 min-h-[52px]',
-                  )}
-                >
-                  <div className="font-medium truncate">{it.name}</div>
-                </button>
-              ))}
-            </div>
+            {!missingParent && (
+              <div
+                className={cn(
+                  'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 transition-opacity',
+                  !tapsArmed && 'pointer-events-none opacity-60',
+                )}
+              >
+                {items.map((it: any) => (
+                  <button
+                    key={it.id || it.code}
+                    type="button"
+                    onClick={() => { if (tapsArmed) apply(it); }}
+                    className={cn(
+                      'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
+                      'border-border hover:border-primary/40 min-h-[52px]',
+                    )}
+                  >
+                    <div className="font-medium truncate">{it.name}</div>
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {items.length === 0 && (
+            {!missingParent && items.length === 0 && (
               <div className="col-span-full text-center py-8 px-3">
-                {(picker === 'state'    && loading.states) ||
-                 (picker === 'district' && loading.districts) ||
-                 (picker === 'taluka'   && loading.talukas) ||
-                 (picker === 'village'  && loading.villages) ? (
-                  <div className="text-sm text-muted-foreground">
+                {(picker === 'state'    && (loading.states    || states.length === 0)) ||
+                 (picker === 'district' && (loading.districts || (value.state_id && districts.length === 0))) ||
+                 (picker === 'taluka'   && (loading.talukas   || (value.district_id && talukas.length === 0))) ||
+                 (picker === 'village'  && (loading.villages  || (value.taluka_id && villages.length === 0))) ? (
+                  <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
                     {t('common.loading', { defaultValue: 'Loading…' })}
                   </div>
                 ) : (
