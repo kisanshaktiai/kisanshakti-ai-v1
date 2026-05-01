@@ -25,6 +25,10 @@ interface Props {
   sources?: Record<string, string>;
   /** Mark which manual edits should flip confidence to 1.0 + source='farmer' */
   onManualEdit?: (field: keyof LocationValue) => void;
+  /** Show the Country chip. Default false — country defaults to India and is hidden. */
+  showCountry?: boolean;
+  /** Hide the section heading (when embedded inside a ReviewCard) */
+  hideHeading?: boolean;
 }
 
 type PickerKind = 'country' | 'state' | 'district' | 'taluka' | 'village' | null;
@@ -35,6 +39,7 @@ const COUNTRIES = [
 
 export function LocationPickerSection({
   value, onChange, confidence = {}, sources = {}, onManualEdit,
+  showCountry = false, hideHeading = false,
 }: Props) {
   const { t } = useTranslation();
   const {
@@ -138,19 +143,23 @@ export function LocationPickerSection({
 
   return (
     <div>
-      <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-        {t('lands.location.title', { defaultValue: 'Location' })} *
-      </h3>
+      {!hideHeading && (
+        <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
+          {t('lands.location.title', { defaultValue: 'Location' })} *
+        </h3>
+      )}
       <div className="space-y-2">
-        <FieldChip
-          icon={<Globe className="h-5 w-5" />}
-          label={t('lands.location.country', { defaultValue: 'Country' })}
-          value={value.country}
-          confidence={confidence.country}
-          source={sources.country}
-          onClick={() => openPicker('country')}
-          required
-        />
+        {showCountry && (
+          <FieldChip
+            icon={<Globe className="h-5 w-5" />}
+            label={t('lands.location.country', { defaultValue: 'Country' })}
+            value={value.country}
+            confidence={confidence.country}
+            source={sources.country}
+            onClick={() => openPicker('country')}
+            required
+          />
+        )}
         <FieldChip
           icon={<MapPin className="h-5 w-5" />}
           label={t('lands.location.state', { defaultValue: 'State' })}
