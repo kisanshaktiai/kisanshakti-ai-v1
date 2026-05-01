@@ -414,7 +414,8 @@ export function SmartLandConfirmCard({
           state={locationState}
           required
           collapsible
-          defaultOpen={!locationFilled}
+          defaultOpen={!locationFilled || locationFromAi}
+          alwaysShowChildrenWhenAi
           onConfirm={() => {
             setConfirmed(c => ({ ...c, location: true }));
             (['country','state','district','taluka','village'] as const).forEach(k => {
