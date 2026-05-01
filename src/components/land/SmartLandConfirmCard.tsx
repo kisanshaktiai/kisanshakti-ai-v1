@@ -753,9 +753,9 @@ export function SmartLandConfirmCard({
                 </div>
               )}
               {/* Full Group → Crop selector backed by Supabase crop_groups + crops tables */}
-              <div className="flex-1 min-h-0 border-t border-border">
+              <div className="flex-1 min-h-0 border-t border-border overflow-hidden">
                 <CentralizedCropSelector
-                  variant="modal"
+                  variant="compact"
                   showHeader
                   showSearch
                   selectedCropId={picker === 'crop' ? form.current_crop_id : form.previous_crop_id}
