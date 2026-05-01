@@ -262,12 +262,17 @@ export function LocationPickerSection({
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pb-4">
+          <div
+            className={cn(
+              'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pb-4 transition-opacity',
+              !tapsArmed && 'pointer-events-none opacity-60',
+            )}
+          >
             {items.map((it: any) => (
               <button
                 key={it.id || it.code}
                 type="button"
-                onClick={() => apply(it)}
+                onClick={() => { if (tapsArmed) apply(it); }}
                 className={cn(
                   'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
                   'border-border hover:border-primary/40 min-h-[52px]',
@@ -287,6 +292,7 @@ export function LocationPickerSection({
               </div>
             )}
           </div>
+
         </SheetContent>
       </Sheet>
     </div>
