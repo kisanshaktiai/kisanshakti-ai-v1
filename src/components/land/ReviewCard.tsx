@@ -34,6 +34,7 @@ const STATE_STYLES: Record<ReviewCardState, string> = {
 export function ReviewCard({
   icon, title, summary, children, state,
   onConfirm, onEdit, collapsible, defaultOpen, required,
+  alwaysShowChildrenWhenAi,
 }: Props) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(defaultOpen ?? !collapsible);
@@ -132,7 +133,7 @@ export function ReviewCard({
       )}
 
       {/* Body */}
-      {open && children && (
+      {(open || (state === 'ai' && alwaysShowChildrenWhenAi)) && children && (
         <div className="mt-4 space-y-3">
           {children}
         </div>
