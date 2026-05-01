@@ -132,8 +132,26 @@ export function LocationPickerSection({
   const applyVillageFreeText = () => {
     const name = villageFreeText.trim();
     if (!name) return;
-    onChange({ ...value, village: name, village_id: undefined });
-    onManualEdit?.('village');
+    const next: LocationValue = { ...value };
+    switch (picker) {
+      case 'district':
+        next.district = name; next.district_id = undefined;
+        next.taluka = undefined; next.taluka_id = undefined;
+        next.village = undefined; next.village_id = undefined;
+        onManualEdit?.('district');
+        break;
+      case 'taluka':
+        next.taluka = name; next.taluka_id = undefined;
+        next.village = undefined; next.village_id = undefined;
+        onManualEdit?.('taluka');
+        break;
+      case 'village':
+      default:
+        next.village = name; next.village_id = undefined;
+        onManualEdit?.('village');
+        break;
+    }
+    onChange(next);
     setPicker(null);
   };
 
