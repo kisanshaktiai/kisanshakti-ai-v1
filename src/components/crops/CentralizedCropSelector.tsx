@@ -402,8 +402,7 @@ export function CentralizedCropSelector({
                 </motion.div>
               );
             })}
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </ScrollArea>
     </div>
   );
