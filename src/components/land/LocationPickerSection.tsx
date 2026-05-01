@@ -51,6 +51,9 @@ export function LocationPickerSection({
   const [picker, setPicker] = useState<PickerKind>(null);
   const [search, setSearch] = useState('');
   const [villageFreeText, setVillageFreeText] = useState('');
+  // Block taps for ~350ms after the sheet opens so the chip's mouseup
+  // doesn't "click through" onto the first item rendered under the cursor.
+  const [tapsArmed, setTapsArmed] = useState(false);
 
   // Pre-load cascading data so the picker is instant when opened.
   useEffect(() => { if (value.state_id) loadDistricts(value.state_id); }, [value.state_id, loadDistricts]);
