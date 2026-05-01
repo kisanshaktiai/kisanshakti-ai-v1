@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowLeft, Loader2, Save, Mountain, Tag, FileText,
-  Sprout, Droplet, GlassWater, Tractor, CalendarDays, History,
-  ChevronDown, Sparkles,
+  ArrowLeft, Loader2, Save, Tag, FileText, Sprout, Droplet,
+  Tractor, History, ChevronDown, Sparkles, MapPin, Wheat,
+  Mountain, Globe, Store,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,9 +19,11 @@ import { useLandFormData } from '@/hooks/useLandFormData';
 import { useLandContextInference, type CropRef, type InferContextResult } from '@/hooks/useLandContextInference';
 import { deriveCropCycle } from '@/lib/cropStage';
 import { FieldChip } from './FieldChip';
-import { SeasonPicker } from './SeasonPicker';
 import { LandVoiceCapture } from './LandVoiceCapture';
 import { LocationPickerSection, type LocationValue } from './LocationPickerSection';
+import { SeasonMonthPicker } from './SeasonMonthPicker';
+import { LandMapThumb } from './LandMapThumb';
+import { ReviewCard, type ReviewCardState } from './ReviewCard';
 
 interface LatLng { lat: number; lng: number; }
 interface Area { sqft: number; guntha: number; acres: number; }
@@ -39,7 +41,6 @@ interface FormState {
   name: string;
   survey_number: string;
   ownership_type: OwnershipType;
-  // Location — full administrative chain
   country: string; country_code: string;
   state?: string; state_id?: string;
   district?: string; district_id?: string;
@@ -47,21 +48,17 @@ interface FormState {
   village?: string; village_id?: string;
   location_context?: any;
   elevation_meters?: number;
-  // Land character
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
-  // Current crop cycle
   current_crop?: string;
   current_crop_id?: string;
   current_crop_duration?: number | null;
   sowing_date?: string;
-  land_prep_offset_days: number; // 0/7/14
-  // Previous cycle
+  land_prep_offset_days: number;
   previous_crop?: string;
   previous_crop_id?: string;
   last_harvest_date?: string;
-  // Misc
   notes: string;
   marketplace_enabled: boolean;
 }
@@ -85,25 +82,21 @@ export function SmartLandConfirmCard({
   }, [boundary]);
 
   const [form, setForm] = useState<FormState>({
-    name: '',
-    survey_number: '',
-    ownership_type: 'owned',
-    notes: '',
-    marketplace_enabled: false,
-    land_prep_offset_days: 0,
-    country: 'India',
-    country_code: 'IN',
+    name: '', survey_number: '', ownership_type: 'owned',
+    notes: '', marketplace_enabled: false, land_prep_offset_days: 0,
+    country: 'India', country_code: 'IN',
   });
-
   const [confidence, setConfidence] = useState<Record<string, number>>({});
   const [sources, setSources] = useState<Record<string, string>>({});
   const [crops, setCrops] = useState<CropRef[]>([]);
   const [picker, setPicker] = useState<PickerKind>(null);
-  const [showMore, setShowMore] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Per-section confirmation state — when true, AI guess accepted as-is
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
   const ranInfer = useRef(false);
 
-  // Run AI inference exactly once when card mounts.
+  // ───────── AI inference (single-flight) ─────────
   useEffect(() => {
     if (ranInfer.current || !centroid.lat) return;
     ranInfer.current = true;
@@ -117,7 +110,6 @@ export function SmartLandConfirmCard({
           setForm((f) => {
             const next: FormState = { ...f };
             const fld = res.fields || {};
-            // Location
             if (fld.country) next.country = fld.country;
             if (fld.country_code) next.country_code = fld.country_code;
             if (fld.state) next.state = fld.state;
@@ -130,72 +122,40 @@ export function SmartLandConfirmCard({
             if (fld.village_id) next.village_id = fld.village_id;
             if (fld.location_context) next.location_context = fld.location_context;
             if (typeof fld.elevation_meters === 'number') next.elevation_meters = fld.elevation_meters;
-            // Land character — only fill if confidence is high enough
             if (fld.soil_type) next.soil_type = fld.soil_type;
             if (fld.water_source) next.water_source = fld.water_source;
             if (fld.irrigation_type) next.irrigation_type = fld.irrigation_type;
-            // Crop suggestion (do NOT auto-set if low confidence)
             if (fld.current_crop && (res.confidence?.current_crop ?? 0) >= 0.6) {
               next.current_crop = fld.current_crop;
               if (fld.current_crop_id) next.current_crop_id = fld.current_crop_id;
               const c = (res.crops || []).find(c => c.id === fld.current_crop_id || c.value === fld.current_crop);
               if (c?.duration_days) next.current_crop_duration = c.duration_days;
             }
-            // Suggest a default name from village
             if (!next.name && fld.village) next.name = `${fld.village} field`;
             return next;
           });
         },
-        onError: (err) => {
-          console.warn('Land inference unavailable:', err.message);
-        },
+        onError: (err) => console.warn('Land inference unavailable:', err.message),
       },
     );
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [centroid.lat, centroid.lng]);
 
-  // Derived crop cycle preview
   const cycle = useMemo(() => deriveCropCycle(
-    form.sowing_date,
-    form.current_crop_duration ?? null,
-    form.land_prep_offset_days,
+    form.sowing_date, form.current_crop_duration ?? null, form.land_prep_offset_days,
   ), [form.sowing_date, form.current_crop_duration, form.land_prep_offset_days]);
 
-  // (location is rendered by LocationPickerSection — no inline label needed)
-  const elevationLabel = typeof form.elevation_meters === 'number'
-    ? `${form.elevation_meters} m`
-    : null;
-
-  // ───────────────────────── Voice slot extraction ─────────────────────────
-  // Lightweight client-side extractor — no LLM agronomic generation. Maps the
-  // farmer's spoken phrase to known reference values in the same script.
+  // ───────── Voice ─────────
   const handleVoiceTranscript = (text: string) => {
     if (!text) return;
     const lower = text.toLowerCase();
     const updates: Partial<FormState> = {};
-
-    // Soil
-    const soil = soilTypes.find(s =>
-      lower.includes(s.value.toLowerCase()) ||
-      (s.label && lower.includes(s.label.toLowerCase())),
-    );
+    const soil = soilTypes.find(s => lower.includes(s.value.toLowerCase()) || (s.label && lower.includes(s.label.toLowerCase())));
     if (soil) updates.soil_type = soil.value;
-
-    // Water
-    const water = waterSources.find(w =>
-      lower.includes(w.value.toLowerCase()) ||
-      (w.label && lower.includes(w.label.toLowerCase())),
-    );
+    const water = waterSources.find(w => lower.includes(w.value.toLowerCase()) || (w.label && lower.includes(w.label.toLowerCase())));
     if (water) updates.water_source = water.value;
-
-    // Irrigation
-    const irr = irrigationTypes.find(i =>
-      lower.includes(i.value.toLowerCase()) ||
-      (i.label && lower.includes(i.label.toLowerCase())),
-    );
+    const irr = irrigationTypes.find(i => lower.includes(i.value.toLowerCase()) || (i.label && lower.includes(i.label.toLowerCase())));
     if (irr) updates.irrigation_type = irr.value;
-
-    // Crop
     const crop = crops.find(c =>
       lower.includes(c.value.toLowerCase()) ||
       (c.label && lower.includes(c.label.toLowerCase())) ||
@@ -208,17 +168,12 @@ export function SmartLandConfirmCard({
       updates.current_crop_id = crop.id;
       updates.current_crop_duration = crop.duration_days ?? null;
     }
-
-    // Ownership
     if (/lease|rent|भाडे|किराया/i.test(text)) updates.ownership_type = 'leased';
     else if (/share|बटाई|वाटा/i.test(text)) updates.ownership_type = 'shared';
     else if (/own|मालक|खुद/i.test(text)) updates.ownership_type = 'owned';
-
     if (Object.keys(updates).length === 0) {
-      // Fallback: put into notes so we never lose what the farmer said.
       updates.notes = ((form.notes || '') + ' ' + text).trim();
     }
-
     setForm((f) => ({ ...f, ...updates }));
     if (navigator.vibrate) navigator.vibrate(15);
     toast({
@@ -227,10 +182,9 @@ export function SmartLandConfirmCard({
     });
   };
 
-  // ───────────────────────── Save ─────────────────────────
+  // ───────── Save ─────────
   const validate = (): string | null => {
     if (!form.name?.trim()) return t('lands.smartConfirm.errors.name', { defaultValue: 'Land name is required' });
-    if (!form.ownership_type) return t('lands.smartConfirm.errors.ownership', { defaultValue: 'Ownership is required' });
     if (!form.country) return t('lands.smartConfirm.errors.country', { defaultValue: 'Country is required' });
     if (!form.state) return t('lands.smartConfirm.errors.state', { defaultValue: 'State is required' });
     if (!form.district) return t('lands.smartConfirm.errors.district', { defaultValue: 'District is required' });
@@ -254,20 +208,17 @@ export function SmartLandConfirmCard({
           [boundary[0].lng, boundary[0].lat],
         ]],
       } : null;
-      const centerGeoJSON = boundary.length >= 3 ? {
-        type: 'Point',
-        coordinates: [centroid.lng, centroid.lat],
-      } : null;
+      const centerGeoJSON = boundary.length >= 3
+        ? { type: 'Point', coordinates: [centroid.lng, centroid.lat] }
+        : null;
 
       await landsApi.createLand({
-        // Identity
         name: form.name.trim(),
         survey_number: form.survey_number?.trim() || undefined,
         ownership_type: form.ownership_type,
         area_acres: area.acres,
         area_guntas: area.guntha,
         area_sqft: area.sqft,
-        // Geometry
         boundary_polygon_old: boundaryGeoJSON,
         center_point_old: centerGeoJSON,
         center_lat: centroid.lat,
@@ -276,19 +227,15 @@ export function SmartLandConfirmCard({
         gps_accuracy_meters: 10,
         gps_recorded_at: new Date().toISOString(),
         elevation_meters: form.elevation_meters,
-        // Location (full chain — country first, IDs alongside strings)
-        country: form.country,
-        country_code: form.country_code,
+        country: form.country, country_code: form.country_code,
         state: form.state, state_id: form.state_id,
         district: form.district, district_id: form.district_id,
         taluka: form.taluka, taluka_id: form.taluka_id,
         village: form.village, village_id: form.village_id,
         location_context: form.location_context,
-        // Character
         soil_type: form.soil_type,
         water_source: form.water_source,
         irrigation_type: form.irrigation_type,
-        // CURRENT crop cycle — write all 3 dates so downstream pipelines never see NULL
         current_crop: form.current_crop,
         current_crop_id: form.current_crop_id,
         crop_stage: cycle.stage !== '—' ? cycle.stage : undefined,
@@ -296,16 +243,13 @@ export function SmartLandConfirmCard({
         last_sowing_date: cycle.lastSowingDate || undefined,
         cultivation_date: cycle.cultivationDate || undefined,
         expected_harvest_date: cycle.expectedHarvestDate || undefined,
-        // Previous cycle
         previous_crop: form.previous_crop,
         previous_crop_id: form.previous_crop_id,
         last_crop: form.previous_crop,
         last_harvest_date: form.last_harvest_date,
-        // Misc
         notes: form.notes?.trim() || undefined,
         marketplace_enabled: form.marketplace_enabled,
       });
-
       localStorage.removeItem('landFormDraft');
       if (navigator.vibrate) navigator.vibrate(30);
       toast({
@@ -324,7 +268,7 @@ export function SmartLandConfirmCard({
     }
   };
 
-  // ───────────────────────── Picker (bottom sheet) ─────────────────────────
+  // ───────── Picker (soil / water / irrigation / crop) ─────────
   const pickerItems = useMemo(() => {
     switch (picker) {
       case 'soil': return soilTypes.map(s => ({ value: s.value, label: s.label, id: s.id }));
@@ -365,322 +309,402 @@ export function SmartLandConfirmCard({
     setPicker(null);
   };
 
-  const ownershipBtn = (kind: OwnershipType, label: string, emoji: string) => (
-    <button
-      key={kind}
-      type="button"
-      onClick={() => setForm(f => ({ ...f, ownership_type: kind }))}
-      className={cn(
-        'flex flex-col items-center justify-center rounded-2xl px-2 py-3 border min-h-[68px]',
-        'transition-colors active:scale-[0.97]',
-        form.ownership_type === kind
-          ? 'bg-primary text-primary-foreground border-primary'
-          : 'bg-card border-border',
-      )}
-    >
-      <span className="text-xl">{emoji}</span>
-      <span className="text-xs font-medium mt-1">{label}</span>
-    </button>
-  );
+  // ───────── Per-section state derivation ─────────
+  const locationFilled = !!(form.state && form.district);
+  const locationFromAi = locationFilled && (sources.state !== 'farmer' || sources.district !== 'farmer');
+  const locationState: ReviewCardState = !locationFilled
+    ? 'empty'
+    : confirmed.location ? 'confirmed'
+    : locationFromAi ? 'ai' : 'manual';
+
+  const cropFilled = !!(form.current_crop && form.sowing_date);
+  const cropFromAi = !!form.current_crop && sources.current_crop && sources.current_crop !== 'farmer';
+  const cropState: ReviewCardState = !cropFilled
+    ? 'empty'
+    : confirmed.crop ? 'confirmed'
+    : cropFromAi ? 'ai' : 'manual';
+
+  const characterFilled = !!(form.soil_type || form.water_source || form.irrigation_type);
+  const characterState: ReviewCardState = !characterFilled ? 'empty' : 'manual';
+
+  // Summaries
+  const locationSummary = useMemo(() => {
+    if (!locationFilled) return t('lands.smartConfirm.tapToSet', { defaultValue: 'Tap to set' });
+    return [form.village, form.taluka, form.district, form.state]
+      .filter(Boolean).join(' · ');
+  }, [form.village, form.taluka, form.district, form.state, locationFilled, t]);
+
+  const cropSummary = useMemo(() => {
+    if (!form.current_crop) return t('lands.smartConfirm.tapToAdd', { defaultValue: 'Tap to add crop' });
+    const cropLabel = labelFor(crops as any, form.current_crop);
+    const dt = form.sowing_date ? formatMonth(form.sowing_date, i18n.language) : null;
+    return dt ? `${cropLabel} · ${t('lands.smartConfirm.sowed', { defaultValue: 'Sowed' })} ${dt}` : cropLabel;
+  }, [form.current_crop, form.sowing_date, crops, i18n.language, t]);
+
+  const characterSummary = useMemo(() => {
+    if (!characterFilled) return t('lands.smartConfirm.tapToAddCharacter', { defaultValue: 'Add soil, water, irrigation' });
+    const parts: string[] = [];
+    if (form.soil_type) parts.push(labelFor(soilTypes, form.soil_type));
+    if (form.water_source) parts.push(labelFor(waterSources, form.water_source));
+    if (form.irrigation_type) parts.push(labelFor(irrigationTypes, form.irrigation_type));
+    return parts.join(' · ');
+  }, [form.soil_type, form.water_source, form.irrigation_type, soilTypes, waterSources, irrigationTypes, characterFilled, t]);
+
+  const onLocationManualEdit = (field: keyof LocationValue) => {
+    setConfidence(c => ({ ...c, [field]: 1 }));
+    setSources(s => ({ ...s, [field]: 'farmer' }));
+    setConfirmed(c => ({ ...c, location: false })); // reset confirmation after edit
+  };
 
   return (
     <div
       className="fixed inset-0 z-[60] bg-background flex flex-col"
       style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
-      {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-border bg-background">
-        <Button variant="ghost" size="icon" onClick={onCancel} aria-label="Back">
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-base font-semibold truncate">
+      {/* ───────── Sticky header with map thumb ───────── */}
+      <div className="border-b border-border bg-background">
+        <div className="flex items-center gap-2 px-3 py-2">
+          <Button variant="ghost" size="icon" onClick={onCancel} aria-label="Back" className="shrink-0">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <h1 className="text-base font-semibold flex-1 truncate">
             {t('lands.smartConfirm.title', { defaultValue: 'Confirm your land' })}
           </h1>
-          <p className="text-xs text-muted-foreground truncate">
-            {area.acres.toFixed(2)} ac · {area.guntha.toFixed(1)} guntha · {Math.round(area.sqft).toLocaleString()} sqft
-          </p>
+          {inference.isPending && (
+            <div className="flex items-center gap-1 text-[11px] text-muted-foreground shrink-0">
+              <Sparkles className="h-3 w-3 animate-pulse" />
+              {t('lands.smartConfirm.thinking', { defaultValue: 'AI…' })}
+            </div>
+          )}
         </div>
-        {inference.isPending && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Sparkles className="h-3.5 w-3.5 animate-pulse" />
-            {t('lands.smartConfirm.thinking', { defaultValue: 'AI…' })}
+        <div className="flex items-center gap-3 px-3 pb-3">
+          <LandMapThumb boundary={boundary} size={64} onClick={onCancel} />
+          <div className="min-w-0 flex-1">
+            <Input
+              id="land-name"
+              value={form.name}
+              onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
+              placeholder={t('lands.smartConfirm.namePlaceholder', { defaultValue: 'Name this land' })}
+              className="h-11 rounded-xl text-sm font-semibold"
+              aria-label={t('lands.smartConfirm.name', { defaultValue: 'Land name' })}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1 truncate">
+              {area.acres.toFixed(2)} ac · {area.guntha.toFixed(1)} guntha
+              {typeof form.elevation_meters === 'number' && (
+                <span className="inline-flex items-center gap-0.5 ml-2">
+                  <Mountain className="h-2.5 w-2.5" />
+                  {form.elevation_meters} m
+                </span>
+              )}
+            </p>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* Scrollable body */}
+      {/* ───────── Scrollable body ───────── */}
       <div
-        className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-4"
-        style={{ paddingBottom: '160px' }}
+        className="flex-1 overflow-y-auto overscroll-contain px-3 py-3 space-y-3"
+        style={{ paddingBottom: '140px' }}
       >
-        {/* Location — fully editable Country → Village chain */}
-        <LocationPickerSection
-          value={{
-            country: form.country, country_code: form.country_code,
-            state: form.state, state_id: form.state_id,
-            district: form.district, district_id: form.district_id,
-            taluka: form.taluka, taluka_id: form.taluka_id,
-            village: form.village, village_id: form.village_id,
+        {/* Location card */}
+        <ReviewCard
+          icon={<MapPin className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />}
+          title={t('lands.smartConfirm.whereIsIt', { defaultValue: 'Where is it?' })}
+          summary={locationSummary}
+          state={locationState}
+          required
+          collapsible
+          defaultOpen={!locationFilled}
+          onConfirm={() => {
+            setConfirmed(c => ({ ...c, location: true }));
+            (['country','state','district','taluka','village'] as const).forEach(k => {
+              setSources(s => ({ ...s, [k]: 'farmer' }));
+              setConfidence(c => ({ ...c, [k]: 1 }));
+            });
+            if (navigator.vibrate) navigator.vibrate(15);
           }}
-          onChange={(loc: LocationValue) => setForm(f => ({ ...f, ...loc }))}
-          confidence={confidence}
-          sources={sources}
-          onManualEdit={(field) => {
-            setConfidence(c => ({ ...c, [field]: 1 }));
-            setSources(s => ({ ...s, [field]: 'farmer' }));
+        >
+          <LocationPickerSection
+            value={{
+              country: form.country, country_code: form.country_code,
+              state: form.state, state_id: form.state_id,
+              district: form.district, district_id: form.district_id,
+              taluka: form.taluka, taluka_id: form.taluka_id,
+              village: form.village, village_id: form.village_id,
+            }}
+            onChange={(loc: LocationValue) => setForm(f => ({ ...f, ...loc }))}
+            confidence={confidence}
+            sources={sources}
+            onManualEdit={onLocationManualEdit}
+            showCountry={showCountryPicker}
+            hideHeading
+          />
+          {!showCountryPicker && (
+            <button
+              type="button"
+              onClick={() => setShowCountryPicker(true)}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground mt-1"
+            >
+              <Globe className="h-3 w-3" />
+              {t('lands.smartConfirm.outsideIndia', { defaultValue: 'Outside India?' })}
+            </button>
+          )}
+        </ReviewCard>
+
+        {/* Crop & dates card */}
+        <ReviewCard
+          icon={<Wheat className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+          title={t('lands.smartConfirm.whatsGrowing', { defaultValue: "What's growing?" })}
+          summary={cropSummary}
+          state={cropState}
+          required
+          collapsible
+          defaultOpen={!cropFilled}
+          onConfirm={() => {
+            setConfirmed(c => ({ ...c, crop: true }));
+            setSources(s => ({ ...s, current_crop: 'farmer' }));
+            setConfidence(c => ({ ...c, current_crop: 1 }));
+            if (navigator.vibrate) navigator.vibrate(15);
           }}
-        />
-        {elevationLabel && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground -mt-2 px-1">
-            <Mountain className="h-3.5 w-3.5" />
-            {t('lands.smartConfirm.elevation', { defaultValue: 'Elevation' })}: {elevationLabel}
-          </div>
-        )}
-
-        {/* Identity */}
-        <div className="space-y-2">
-          <Label htmlFor="land-name" className="text-xs">
-            {t('lands.smartConfirm.name', { defaultValue: 'Land name' })} *
-          </Label>
-          <Input
-            id="land-name"
-            value={form.name}
-            onChange={(e) => setForm(f => ({ ...f, name: e.target.value }))}
-            placeholder={t('lands.smartConfirm.namePlaceholder', { defaultValue: 'e.g. North field' })}
-            className="h-12 rounded-xl"
+        >
+          <FieldChip
+            icon={<Tag className="h-5 w-5" />}
+            label={t('lands.smartConfirm.currentCrop', { defaultValue: 'Current crop' })}
+            value={form.current_crop ? labelFor(crops as any, form.current_crop) : null}
+            confidence={confidence.current_crop}
+            source={sources.current_crop}
+            onClick={() => setPicker('crop')}
+            required
           />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="survey" className="text-xs">
-            {t('lands.smartConfirm.survey', { defaultValue: 'Survey number (optional)' })}
-          </Label>
-          <Input
-            id="survey"
-            value={form.survey_number}
-            onChange={(e) => setForm(f => ({ ...f, survey_number: e.target.value }))}
-            placeholder="e.g. 123/A"
-            className="h-12 rounded-xl"
-          />
-        </div>
-
-        {/* Ownership tiles */}
-        <div>
-          <Label className="text-xs mb-2 block">
-            {t('lands.smartConfirm.ownership', { defaultValue: 'Ownership' })} *
-          </Label>
-          <div className="grid grid-cols-3 gap-2">
-            {ownershipBtn('owned',  t('lands.smartConfirm.owned',  { defaultValue: 'Owned' }),  '🏡')}
-            {ownershipBtn('leased', t('lands.smartConfirm.leased', { defaultValue: 'Leased' }), '📜')}
-            {ownershipBtn('shared', t('lands.smartConfirm.shared', { defaultValue: 'Shared' }), '🤝')}
-          </div>
-        </div>
-
-        {/* Land character */}
-        <div>
-          <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            {t('lands.smartConfirm.character', { defaultValue: 'Land character' })}
-          </h3>
-          <div className="space-y-2">
-            <FieldChip
-              icon={<Sprout className="h-5 w-5" />}
-              label={t('lands.smartConfirm.soil', { defaultValue: 'Soil type' })}
-              value={form.soil_type ? labelFor(soilTypes, form.soil_type) : null}
-              confidence={confidence.soil_type}
-              source={sources.soil_type}
-              onClick={() => setPicker('soil')}
-            />
-            <FieldChip
-              icon={<Droplet className="h-5 w-5" />}
-              label={t('lands.smartConfirm.water', { defaultValue: 'Water source' })}
-              value={form.water_source ? labelFor(waterSources, form.water_source) : null}
-              confidence={confidence.water_source}
-              source={sources.water_source}
-              onClick={() => setPicker('water')}
-            />
-            <FieldChip
-              icon={<Tractor className="h-5 w-5" />}
-              label={t('lands.smartConfirm.irrigation', { defaultValue: 'Irrigation type' })}
-              value={form.irrigation_type ? labelFor(irrigationTypes, form.irrigation_type) : null}
-              confidence={confidence.irrigation_type}
-              source={sources.irrigation_type}
-              onClick={() => setPicker('irrigation')}
-            />
-          </div>
-        </div>
-
-        {/* Current crop cycle — REQUIRED */}
-        <div>
-          <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2">
-            {t('lands.smartConfirm.currentCycle', { defaultValue: 'Current crop cycle' })} *
-          </h3>
-          <div className="space-y-2">
-            <FieldChip
-              icon={<Tag className="h-5 w-5" />}
-              label={t('lands.smartConfirm.currentCrop', { defaultValue: 'Current crop' })}
-              value={form.current_crop ? labelFor(crops as any, form.current_crop) : null}
-              confidence={confidence.current_crop}
-              source={sources.current_crop}
-              onClick={() => setPicker('crop')}
-              required
-            />
-
-            <div className="rounded-2xl border border-border bg-card p-3 space-y-3">
-              <div>
-                <Label className="text-xs">
-                  {t('lands.smartConfirm.sowedOn', { defaultValue: 'Sowed on' })} *
-                </Label>
-                <SeasonPicker
-                  value={form.sowing_date}
-                  onChange={(iso) => setForm(f => ({ ...f, sowing_date: iso }))}
-                />
-                <Input
-                  type="date"
-                  value={form.sowing_date || ''}
-                  onChange={(e) => setForm(f => ({ ...f, sowing_date: e.target.value }))}
-                  className="h-11 rounded-xl mt-2"
-                />
-              </div>
-
-              <div>
-                <Label className="text-xs">
-                  {t('lands.smartConfirm.landPrep', { defaultValue: 'Land prepared' })}
-                </Label>
-                <div className="grid grid-cols-3 gap-2 mt-1.5">
-                  {[
-                    { d: 0,  label: t('lands.smartConfirm.sameDay', { defaultValue: 'Same day' }) },
-                    { d: 7,  label: '7 days earlier' },
-                    { d: 14, label: '14 days earlier' },
-                  ].map(opt => (
-                    <button
-                      key={opt.d}
-                      type="button"
-                      onClick={() => setForm(f => ({ ...f, land_prep_offset_days: opt.d }))}
-                      className={cn(
-                        'rounded-xl px-2 py-2 text-xs border min-h-[44px]',
-                        form.land_prep_offset_days === opt.d
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-card border-border',
-                      )}
-                    >
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {cycle.expectedHarvestDate && (
-                <div className="text-xs text-muted-foreground bg-muted/50 rounded-xl p-2.5 space-y-1">
-                  <div className="flex items-center gap-1.5">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    {t('lands.smartConfirm.expectedHarvest', { defaultValue: 'Expected harvest' })}:
-                    <span className="font-medium text-foreground">{cycle.expectedHarvestDate}</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Sprout className="h-3.5 w-3.5" />
-                    {t('lands.smartConfirm.stageNow', { defaultValue: 'Stage now' })}:
-                    <span className="font-medium text-foreground">{cycle.stage}</span>
-                    <span className="text-muted-foreground">({cycle.daysSinceSowing}d)</span>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Previous cycle */}
-        <div>
-          <h3 className="text-xs uppercase tracking-wide text-muted-foreground mb-2 flex items-center gap-1.5">
-            <History className="h-3.5 w-3.5" />
-            {t('lands.smartConfirm.previousCycle', { defaultValue: 'Previous cycle (recommended)' })}
-          </h3>
-          <div className="space-y-2">
-            <FieldChip
-              label={t('lands.smartConfirm.previousCrop', { defaultValue: 'Previous crop' })}
-              value={form.previous_crop ? labelFor(crops as any, form.previous_crop) : null}
-              onClick={() => setPicker('previous_crop')}
-            />
+          <div className="rounded-2xl border border-border bg-card p-3 space-y-3">
             <div>
               <Label className="text-xs">
-                {t('lands.smartConfirm.lastHarvest', { defaultValue: 'Last harvest date' })}
+                {t('lands.smartConfirm.sowedOn', { defaultValue: 'When was it sowed?' })} *
               </Label>
-              <Input
-                type="date"
-                value={form.last_harvest_date || ''}
-                onChange={(e) => setForm(f => ({ ...f, last_harvest_date: e.target.value }))}
-                className="h-11 rounded-xl mt-1"
-              />
+              <div className="mt-2">
+                <SeasonMonthPicker
+                  value={form.sowing_date}
+                  onChange={(iso) => setForm(f => ({ ...f, sowing_date: iso }))}
+                  ariaLabel={t('lands.smartConfirm.sowedOn', { defaultValue: 'When was it sowed?' })}
+                />
+              </div>
             </div>
-          </div>
-        </div>
 
-        {/* More details */}
-        <button
-          type="button"
-          onClick={() => setShowMore(s => !s)}
-          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border border-border bg-card text-sm"
-        >
-          <span className="flex items-center gap-2">
-            <FileText className="h-4 w-4" />
-            {t('lands.smartConfirm.moreDetails', { defaultValue: 'More details' })}
-          </span>
-          <ChevronDown className={cn('h-4 w-4 transition-transform', showMore && 'rotate-180')} />
-        </button>
-        {showMore && (
-          <div className="space-y-3 px-1">
             <div>
-              <Label htmlFor="notes" className="text-xs">
-                {t('lands.smartConfirm.notes', { defaultValue: 'Notes' })}
+              <Label className="text-xs">
+                {t('lands.smartConfirm.landPrep', { defaultValue: 'Land prepared' })}
               </Label>
-              <Textarea
-                id="notes"
-                value={form.notes}
-                onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
-                rows={3}
-                className="rounded-xl mt-1"
-                placeholder={t('lands.smartConfirm.notesPlaceholder', { defaultValue: 'Anything else worth remembering…' })}
+              <div className="grid grid-cols-3 gap-2 mt-1.5">
+                {[
+                  { d: 0,  label: t('lands.smartConfirm.sameDay', { defaultValue: 'Same day' }) },
+                  { d: 7,  label: t('lands.smartConfirm.7days', { defaultValue: '7 days before' }) },
+                  { d: 14, label: t('lands.smartConfirm.14days', { defaultValue: '14 days before' }) },
+                ].map(opt => (
+                  <button
+                    key={opt.d}
+                    type="button"
+                    onClick={() => setForm(f => ({ ...f, land_prep_offset_days: opt.d }))}
+                    className={cn(
+                      'rounded-xl px-2 py-2.5 text-xs border min-h-[44px] active:scale-[0.97]',
+                      form.land_prep_offset_days === opt.d
+                        ? 'bg-primary text-primary-foreground border-primary'
+                        : 'bg-card border-border',
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {cycle.expectedHarvestDate && (
+              <div className="text-xs text-muted-foreground bg-muted/60 rounded-xl p-2.5 space-y-1">
+                <div>
+                  <span className="font-medium text-foreground">
+                    {t('lands.smartConfirm.expectedHarvest', { defaultValue: 'Expected harvest' })}:
+                  </span>{' '}
+                  {formatMonth(cycle.expectedHarvestDate, i18n.language)}
+                </div>
+                <div>
+                  <span className="font-medium text-foreground">
+                    {t('lands.smartConfirm.stageNow', { defaultValue: 'Stage now' })}:
+                  </span>{' '}
+                  {cycle.stage} ({cycle.daysSinceSowing}d)
+                </div>
+              </div>
+            )}
+          </div>
+        </ReviewCard>
+
+        {/* Land character — collapsed by default */}
+        <ReviewCard
+          icon={<Sprout className="h-5 w-5 text-lime-700 dark:text-lime-400" />}
+          title={t('lands.smartConfirm.character', { defaultValue: 'Land character' })}
+          summary={characterSummary}
+          state={characterState}
+          collapsible
+          defaultOpen={false}
+        >
+          <FieldChip
+            icon={<Sprout className="h-5 w-5" />}
+            label={t('lands.smartConfirm.soil', { defaultValue: 'Soil type' })}
+            value={form.soil_type ? labelFor(soilTypes, form.soil_type) : null}
+            confidence={confidence.soil_type}
+            source={sources.soil_type}
+            onClick={() => setPicker('soil')}
+          />
+          <FieldChip
+            icon={<Droplet className="h-5 w-5" />}
+            label={t('lands.smartConfirm.water', { defaultValue: 'Water source' })}
+            value={form.water_source ? labelFor(waterSources, form.water_source) : null}
+            confidence={confidence.water_source}
+            source={sources.water_source}
+            onClick={() => setPicker('water')}
+          />
+          <FieldChip
+            icon={<Tractor className="h-5 w-5" />}
+            label={t('lands.smartConfirm.irrigation', { defaultValue: 'Irrigation type' })}
+            value={form.irrigation_type ? labelFor(irrigationTypes, form.irrigation_type) : null}
+            confidence={confidence.irrigation_type}
+            source={sources.irrigation_type}
+            onClick={() => setPicker('irrigation')}
+          />
+        </ReviewCard>
+
+        {/* Ownership + survey — collapsed by default */}
+        <ReviewCard
+          icon={<FileText className="h-5 w-5 text-slate-700 dark:text-slate-300" />}
+          title={t('lands.smartConfirm.ownershipTitle', { defaultValue: 'Ownership & survey' })}
+          summary={ownershipLabel(form.ownership_type, t) + (form.survey_number ? ` · #${form.survey_number}` : '')}
+          state={'manual'}
+          collapsible
+          defaultOpen={false}
+        >
+          <div className="grid grid-cols-3 gap-2">
+            {(['owned','leased','shared'] as OwnershipType[]).map(kind => (
+              <button
+                key={kind}
+                type="button"
+                onClick={() => setForm(f => ({ ...f, ownership_type: kind }))}
+                className={cn(
+                  'flex flex-col items-center justify-center rounded-2xl px-2 py-3 border min-h-[68px]',
+                  'transition-colors active:scale-[0.97]',
+                  form.ownership_type === kind
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-card border-border',
+                )}
+              >
+                <span className="text-xl">{ownershipEmoji(kind)}</span>
+                <span className="text-xs font-medium mt-1">{ownershipLabel(kind, t)}</span>
+              </button>
+            ))}
+          </div>
+          <div>
+            <Label htmlFor="survey" className="text-xs">
+              {t('lands.smartConfirm.survey', { defaultValue: 'Survey number (optional)' })}
+            </Label>
+            <Input
+              id="survey"
+              value={form.survey_number}
+              onChange={(e) => setForm(f => ({ ...f, survey_number: e.target.value }))}
+              placeholder="e.g. 123/A"
+              className="h-11 rounded-xl mt-1"
+            />
+          </div>
+        </ReviewCard>
+
+        {/* Previous cycle — collapsed */}
+        <ReviewCard
+          icon={<History className="h-5 w-5 text-purple-700 dark:text-purple-300" />}
+          title={t('lands.smartConfirm.previousCycle', { defaultValue: 'Previous cycle' })}
+          summary={
+            form.previous_crop
+              ? `${labelFor(crops as any, form.previous_crop)}${form.last_harvest_date ? ' · ' + formatMonth(form.last_harvest_date, i18n.language) : ''}`
+              : t('lands.smartConfirm.tapAddPrevious', { defaultValue: 'Tap to add (helps AI)' })
+          }
+          state={form.previous_crop ? 'manual' : 'empty'}
+          collapsible
+          defaultOpen={false}
+        >
+          <FieldChip
+            label={t('lands.smartConfirm.previousCrop', { defaultValue: 'Previous crop' })}
+            value={form.previous_crop ? labelFor(crops as any, form.previous_crop) : null}
+            onClick={() => setPicker('previous_crop')}
+          />
+          <div>
+            <Label className="text-xs">
+              {t('lands.smartConfirm.lastHarvest', { defaultValue: 'Last harvest month' })}
+            </Label>
+            <div className="mt-2">
+              <SeasonMonthPicker
+                value={form.last_harvest_date}
+                onChange={(iso) => setForm(f => ({ ...f, last_harvest_date: iso }))}
+                yearsBack={3}
+                yearsForward={0}
               />
             </div>
-            <label className="flex items-center justify-between rounded-2xl border border-border bg-card px-4 py-3">
-              <span className="flex items-center gap-2 text-sm">
-                <GlassWater className="h-4 w-4" />
-                {t('lands.smartConfirm.marketplace', { defaultValue: 'List on marketplace' })}
-              </span>
-              <input
-                type="checkbox"
-                checked={form.marketplace_enabled}
-                onChange={(e) => setForm(f => ({ ...f, marketplace_enabled: e.target.checked }))}
-                className="h-5 w-5"
-              />
-            </label>
           </div>
-        )}
+        </ReviewCard>
+
+        {/* Notes + marketplace */}
+        <ReviewCard
+          icon={<Store className="h-5 w-5 text-orange-600 dark:text-orange-300" />}
+          title={t('lands.smartConfirm.moreDetails', { defaultValue: 'More details' })}
+          summary={form.notes ? form.notes.slice(0, 60) : t('lands.smartConfirm.optional', { defaultValue: 'Notes & marketplace (optional)' })}
+          state={form.notes ? 'manual' : 'empty'}
+          collapsible
+          defaultOpen={false}
+        >
+          <Textarea
+            value={form.notes}
+            onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))}
+            rows={3}
+            className="rounded-xl"
+            placeholder={t('lands.smartConfirm.notesPlaceholder', { defaultValue: 'Anything else worth remembering…' })}
+          />
+          <label className="flex items-center justify-between rounded-2xl border border-border bg-background px-4 py-3">
+            <span className="text-sm">
+              {t('lands.smartConfirm.marketplace', { defaultValue: 'List on marketplace' })}
+            </span>
+            <input
+              type="checkbox"
+              checked={form.marketplace_enabled}
+              onChange={(e) => setForm(f => ({ ...f, marketplace_enabled: e.target.checked }))}
+              className="h-5 w-5"
+            />
+          </label>
+        </ReviewCard>
       </div>
 
-      {/* Bottom action bar */}
+      {/* ───────── Floating voice mic ───────── */}
       <div
-        className="absolute bottom-0 inset-x-0 border-t border-border bg-background px-4 pt-3"
+        className="absolute right-3 z-[5]"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 88px)' }}
+      >
+        <LandVoiceCapture
+          language={i18n.language?.split('-')[0] || 'en'}
+          onTranscript={handleVoiceTranscript}
+        />
+      </div>
+
+      {/* ───────── Sticky save bar ───────── */}
+      <div
+        className="absolute bottom-0 inset-x-0 border-t border-border bg-background px-3 pt-3"
         style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}
       >
-        <div className="flex items-center gap-3">
-          <LandVoiceCapture
-            language={i18n.language?.split('-')[0] || 'en'}
-            onTranscript={handleVoiceTranscript}
-          />
-          <Button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 h-14 rounded-2xl text-base font-semibold"
-          >
-            {saving
-              ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" />{t('common.saving', { defaultValue: 'Saving…' })}</>
-              : <><Save className="h-5 w-5 mr-2" />{t('lands.smartConfirm.save', { defaultValue: 'Save Land' })}</>
-            }
-          </Button>
-        </div>
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-full h-14 rounded-2xl text-base font-semibold"
+        >
+          {saving
+            ? <><Loader2 className="h-5 w-5 mr-2 animate-spin" />{t('common.saving', { defaultValue: 'Saving…' })}</>
+            : <><Save className="h-5 w-5 mr-2" />{t('lands.smartConfirm.save', { defaultValue: 'Save Land' })}</>
+          }
+        </Button>
       </div>
 
-      {/* Picker bottom sheet */}
+      {/* ───────── Picker sheet (soil/water/irrigation/crop) ───────── */}
       <Sheet open={picker !== null} onOpenChange={(o) => !o && setPicker(null)}>
         <SheetContent side="bottom" className="rounded-t-3xl max-h-[75vh] overflow-y-auto">
           <SheetHeader>
@@ -692,13 +716,13 @@ export function SmartLandConfirmCard({
               {picker === 'previous_crop' && t('lands.smartConfirm.previousCrop', { defaultValue: 'Previous crop' })}
             </SheetTitle>
           </SheetHeader>
-          <div className="grid grid-cols-2 gap-2 mt-4">
+          <div className="grid grid-cols-2 gap-2 mt-4 pb-4">
             {pickerItems.map((it: any) => (
               <button
                 key={it.id || it.value}
                 type="button"
                 onClick={() => applyPick(it)}
-                className="rounded-2xl border border-border bg-card px-3 py-3 text-sm text-left active:scale-[0.97]"
+                className="rounded-2xl border border-border bg-card px-3 py-3.5 text-sm text-left active:scale-[0.97] min-h-[60px]"
               >
                 <div className="font-medium truncate">{it.label}</div>
                 {it.meta && <div className="text-[11px] text-muted-foreground mt-0.5">{it.meta}</div>}
@@ -716,6 +740,7 @@ export function SmartLandConfirmCard({
   );
 }
 
+// ───────── helpers ─────────
 function pickerToConfKey(p: Exclude<PickerKind, null>): string {
   switch (p) {
     case 'soil': return 'soil_type';
@@ -728,4 +753,23 @@ function pickerToConfKey(p: Exclude<PickerKind, null>): string {
 
 function labelFor(items: { value: string; label: string }[], value: string): string {
   return items.find(i => i.value === value)?.label || value;
+}
+
+function formatMonth(iso: string, lang?: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return new Intl.DateTimeFormat(lang || 'en', { month: 'short', year: 'numeric' }).format(d);
+  } catch {
+    return iso;
+  }
+}
+
+function ownershipLabel(kind: OwnershipType, t: any): string {
+  if (kind === 'owned')  return t('lands.smartConfirm.owned',  { defaultValue: 'Owned' });
+  if (kind === 'leased') return t('lands.smartConfirm.leased', { defaultValue: 'Leased' });
+  return t('lands.smartConfirm.shared', { defaultValue: 'Shared' });
+}
+function ownershipEmoji(kind: OwnershipType): string {
+  return kind === 'owned' ? '🏡' : kind === 'leased' ? '📜' : '🤝';
 }
