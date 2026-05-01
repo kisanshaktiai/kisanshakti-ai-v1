@@ -2,6 +2,8 @@ import { useMutation } from '@tanstack/react-query';
 import { landsApi } from '@/services/landsApi';
 
 export interface InferredFields {
+  country?: string;
+  country_code?: string;
   state?: string; state_id?: string;
   district?: string; district_id?: string;
   taluka?: string; taluka_id?: string;

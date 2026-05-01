@@ -77,6 +77,10 @@ serve(async (req) => {
             if (result?.address_components) {
               const get = (type: string) =>
                 result.address_components.find((c: any) => c.types.includes(type))?.long_name || null;
+              const getShort = (type: string) =>
+                result.address_components.find((c: any) => c.types.includes(type))?.short_name || null;
+              fields.country = get('country') || 'India';
+              fields.country_code = getShort('country') || 'IN';
               fields.state = get('administrative_area_level_1');
               fields.district = get('administrative_area_level_2');
               fields.taluka = get('administrative_area_level_3') || get('sublocality_level_1');
@@ -88,34 +92,63 @@ serve(async (req) => {
                 language,
               };
               confidence.location = 0.9;
+              confidence.country = 0.99;
+              confidence.state = fields.state ? 0.9 : 0;
+              confidence.district = fields.district ? 0.85 : 0;
+              confidence.taluka = fields.taluka ? 0.7 : 0;
+              confidence.village = fields.village ? 0.6 : 0;
               sources.location = 'google_reverse_geocode';
+              sources.country = 'google_reverse_geocode';
+              sources.state = 'google_reverse_geocode';
+              sources.district = 'google_reverse_geocode';
+              sources.taluka = 'google_reverse_geocode';
+              sources.village = 'google_reverse_geocode';
 
-              // Try to resolve administrative IDs from villages/talukas/districts/states tables.
+              // Two-pass admin-ID resolver: exact → fuzzy contains, scoped to parent.
+              const resolveId = async (
+                table: string, name: string,
+                parentField?: string, parentId?: string,
+              ): Promise<string | null> => {
+                try {
+                  let q = supabase.from(table).select('id').eq('is_active', true).limit(1);
+                  if (parentField && parentId) q = q.eq(parentField, parentId);
+                  // Pass 1: exact case-insensitive
+                  const { data: exact } = await q.ilike('name', name).maybeSingle();
+                  if (exact?.id) return exact.id;
+                  // Pass 2: fuzzy contains
+                  let q2 = supabase.from(table).select('id').eq('is_active', true).limit(1);
+                  if (parentField && parentId) q2 = q2.eq(parentField, parentId);
+                  const { data: fuzzy } = await q2.ilike('name', `%${name}%`).maybeSingle();
+                  return fuzzy?.id || null;
+                } catch { return null; }
+              };
+
               try {
                 if (fields.state) {
-                  const { data: st } = await supabase
-                    .from('states').select('id').ilike('name', fields.state).maybeSingle();
-                  if (st?.id) fields.state_id = st.id;
+                  const id = await resolveId('states', fields.state);
+                  if (id) fields.state_id = id;
                 }
                 if (fields.district) {
-                  const { data: dt } = await supabase
-                    .from('districts').select('id')
-                    .ilike('name', fields.district).maybeSingle();
-                  if (dt?.id) fields.district_id = dt.id;
+                  const id = await resolveId('districts', fields.district, 'state_id', fields.state_id);
+                  if (id) fields.district_id = id;
                 }
                 if (fields.taluka) {
-                  const { data: tk } = await supabase
-                    .from('talukas').select('id').ilike('name', fields.taluka).maybeSingle();
-                  if (tk?.id) fields.taluka_id = tk.id;
+                  const id = await resolveId('talukas', fields.taluka, 'district_id', fields.district_id);
+                  if (id) fields.taluka_id = id;
                 }
                 if (fields.village) {
-                  const { data: vl } = await supabase
-                    .from('villages').select('id').ilike('name', fields.village).maybeSingle();
-                  if (vl?.id) fields.village_id = vl.id;
+                  const id = await resolveId('villages', fields.village, 'taluka_id', fields.taluka_id);
+                  if (id) fields.village_id = id;
                 }
               } catch (idErr) {
                 console.warn('[infer-context] admin ID resolution skipped:', idErr);
               }
+            } else {
+              // No geocode result — still default the country so the form has a value.
+              fields.country = 'India';
+              fields.country_code = 'IN';
+              confidence.country = 0.5;
+              sources.country = 'default';
             }
           } catch (err) {
             console.warn('[infer-context] reverse-geocode failed:', err);
