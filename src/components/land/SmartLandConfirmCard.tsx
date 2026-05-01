@@ -21,6 +21,7 @@ import { deriveCropCycle } from '@/lib/cropStage';
 import { FieldChip } from './FieldChip';
 import { SeasonPicker } from './SeasonPicker';
 import { LandVoiceCapture } from './LandVoiceCapture';
+import { LocationPickerSection, type LocationValue } from './LocationPickerSection';
 
 interface LatLng { lat: number; lng: number; }
 interface Area { sqft: number; guntha: number; acres: number; }
@@ -38,7 +39,8 @@ interface FormState {
   name: string;
   survey_number: string;
   ownership_type: OwnershipType;
-  // Location
+  // Location — full administrative chain
+  country: string; country_code: string;
   state?: string; state_id?: string;
   district?: string; district_id?: string;
   taluka?: string; taluka_id?: string;
@@ -89,6 +91,8 @@ export function SmartLandConfirmCard({
     notes: '',
     marketplace_enabled: false,
     land_prep_offset_days: 0,
+    country: 'India',
+    country_code: 'IN',
   });
 
   const [confidence, setConfidence] = useState<Record<string, number>>({});
@@ -114,6 +118,8 @@ export function SmartLandConfirmCard({
             const next: FormState = { ...f };
             const fld = res.fields || {};
             // Location
+            if (fld.country) next.country = fld.country;
+            if (fld.country_code) next.country_code = fld.country_code;
             if (fld.state) next.state = fld.state;
             if (fld.state_id) next.state_id = fld.state_id;
             if (fld.district) next.district = fld.district;
