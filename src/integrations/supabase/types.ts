@@ -12132,6 +12132,8 @@ export type Database = {
           center_lat: number | null
           center_lon: number | null
           center_point_old: Json | null
+          country: string
+          country_code: string
           created_at: string
           crop_stage: string | null
           cultivation_date: string | null
@@ -12209,6 +12211,8 @@ export type Database = {
           center_lat?: number | null
           center_lon?: number | null
           center_point_old?: Json | null
+          country?: string
+          country_code?: string
           created_at?: string
           crop_stage?: string | null
           cultivation_date?: string | null
@@ -12286,6 +12290,8 @@ export type Database = {
           center_lat?: number | null
           center_lon?: number | null
           center_point_old?: Json | null
+          country?: string
+          country_code?: string
           created_at?: string
           crop_stage?: string | null
           cultivation_date?: string | null
