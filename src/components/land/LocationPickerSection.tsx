@@ -162,18 +162,24 @@ export function LocationPickerSection({
   const openPicker = (kind: Exclude<PickerKind, null>) => {
     // Try to back-fill missing parent ids from already-loaded lists by name match.
     // This unblocks the cascade when AI prefilled names but couldn't resolve canonical ids.
+    let nextValue = value;
     if (kind === 'district' && !value.state_id && value.state) {
       const match = states.find(s => s.name.toLowerCase() === value.state!.toLowerCase());
-      if (match) { onChange({ ...value, state_id: match.id }); loadDistricts(match.id); }
+      if (match) { nextValue = { ...nextValue, state_id: match.id }; onChange(nextValue); }
     }
     if (kind === 'taluka' && !value.district_id && value.district) {
       const match = districts.find(d => d.name.toLowerCase() === value.district!.toLowerCase());
-      if (match) { onChange({ ...value, district_id: match.id }); loadTalukas(match.id); }
+      if (match) { nextValue = { ...nextValue, district_id: match.id }; onChange(nextValue); }
     }
     if (kind === 'village' && !value.taluka_id && value.taluka) {
       const match = talukas.find(tk => tk.name.toLowerCase() === value.taluka!.toLowerCase());
-      if (match) { onChange({ ...value, taluka_id: match.id }); loadVillages(match.id); }
+      if (match) { nextValue = { ...nextValue, taluka_id: match.id }; onChange(nextValue); }
     }
+    // ALWAYS trigger a fresh load for the level being opened — covers the case
+    // where parent_id is set but child arrays are stale/empty (e.g. user reopened sheet).
+    if (kind === 'district' && nextValue.state_id) loadDistricts(nextValue.state_id);
+    if (kind === 'taluka'   && nextValue.district_id) loadTalukas(nextValue.district_id);
+    if (kind === 'village'  && nextValue.taluka_id) loadVillages(nextValue.taluka_id);
     // Always open the sheet — even if parent id is still missing, user gets clear guidance inside.
     setPicker(kind);
   };
