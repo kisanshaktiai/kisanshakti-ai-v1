@@ -81,10 +81,7 @@ serve(async (req) => {
                 result.address_components.find((c: any) => c.types.includes(type))?.short_name || null;
               fields.country = get('country') || 'India';
               fields.country_code = getShort('country') || 'IN';
-              fields.state = get('administrative_area_level_1');
-              fields.district = get('administrative_area_level_2');
-              fields.taluka = get('administrative_area_level_3') || get('sublocality_level_1');
-              fields.village = get('locality') || get('sublocality') || get('administrative_area_level_4');
+
               fields.location_context = {
                 formatted_address: result.formatted_address,
                 place_id: result.place_id,
@@ -93,55 +90,140 @@ serve(async (req) => {
               };
               confidence.location = 0.9;
               confidence.country = 0.99;
-              confidence.state = fields.state ? 0.9 : 0;
-              confidence.district = fields.district ? 0.85 : 0;
-              confidence.taluka = fields.taluka ? 0.7 : 0;
-              confidence.village = fields.village ? 0.6 : 0;
               sources.location = 'google_reverse_geocode';
               sources.country = 'google_reverse_geocode';
-              sources.state = 'google_reverse_geocode';
-              sources.district = 'google_reverse_geocode';
-              sources.taluka = 'google_reverse_geocode';
-              sources.village = 'google_reverse_geocode';
 
-              // Two-pass admin-ID resolver: exact → fuzzy contains, scoped to parent.
-              const resolveId = async (
-                table: string, name: string,
-                parentField?: string, parentId?: string,
-              ): Promise<string | null> => {
+              // ──────────────────────────────────────────────────────────────
+              // CANONICAL-DB-FIRST admin-level classifier.
+              // Google may return "<District> Division" at level_2 or shift
+              // district→level_3 / taluka→level_4. We resolve each label
+              // against our own states/districts/talukas tables and place
+              // each value into the correct slot regardless of source level.
+              // ──────────────────────────────────────────────────────────────
+
+              // Strip noisy admin suffixes ("Division", "Tehsil", "Taluka", "District")
+              const clean = (raw: string | null): string | null => {
+                if (!raw) return null;
+                return raw
+                  .replace(/\b(division|tehsil|taluka|taluk|mandal|district|zilla|sub[- ]?division)\b/gi, '')
+                  .replace(/\s+/g, ' ')
+                  .trim();
+              };
+
+              // Candidate pool from Google, ordered by likelihood per slot
+              const cand = {
+                l1: clean(get('administrative_area_level_1')),
+                l2: clean(get('administrative_area_level_2')),
+                l3: clean(get('administrative_area_level_3')),
+                l4: clean(get('administrative_area_level_4')),
+                locality: clean(get('locality')),
+                sublocality: clean(get('sublocality') || get('sublocality_level_1')),
+              };
+
+              // Lookup helpers — exact ilike, optionally scoped to a parent.
+              const lookup = async (
+                table: string,
+                name: string,
+                parentField?: string,
+                parentId?: string,
+              ): Promise<{ id: string; name: string } | null> => {
+                if (!name) return null;
                 try {
-                  let q = supabase.from(table).select('id').eq('is_active', true).limit(1);
+                  let q = supabase.from(table).select('id, name').eq('is_active', true).limit(1);
                   if (parentField && parentId) q = q.eq(parentField, parentId);
-                  // Pass 1: exact case-insensitive
                   const { data: exact } = await q.ilike('name', name).maybeSingle();
-                  if (exact?.id) return exact.id;
-                  // Pass 2: fuzzy contains
-                  let q2 = supabase.from(table).select('id').eq('is_active', true).limit(1);
+                  if (exact?.id) return exact as any;
+                  let q2 = supabase.from(table).select('id, name').eq('is_active', true).limit(1);
                   if (parentField && parentId) q2 = q2.eq(parentField, parentId);
                   const { data: fuzzy } = await q2.ilike('name', `%${name}%`).maybeSingle();
-                  return fuzzy?.id || null;
+                  return (fuzzy as any) || null;
                 } catch { return null; }
               };
 
-              try {
-                if (fields.state) {
-                  const id = await resolveId('states', fields.state);
-                  if (id) fields.state_id = id;
+              // 1) STATE — try l1 first, then l2 (some places put state at l2)
+              let stateRow = await lookup('states', cand.l1 || '');
+              if (!stateRow && cand.l2) stateRow = await lookup('states', cand.l2);
+              if (stateRow) {
+                fields.state = stateRow.name;
+                fields.state_id = stateRow.id;
+                confidence.state = 0.95;
+                sources.state = 'google_reverse_geocode';
+              } else if (cand.l1) {
+                fields.state = cand.l1;
+                confidence.state = 0.5;
+                sources.state = 'google_reverse_geocode';
+              }
+
+              // 2) DISTRICT — try every candidate against districts WHERE state_id=...
+              //    Skip values containing "Division" entirely.
+              const districtPool = [cand.l2, cand.l3, cand.l1].filter(
+                (v): v is string => !!v && !/division/i.test(get('administrative_area_level_2') || ''),
+              );
+              // Re-include l2 even if division-flagged after cleaning, since
+              // "Pune Division" → cleaned "Pune" often IS the district.
+              const districtCandidates = Array.from(new Set([cand.l2, cand.l3, cand.l1].filter(Boolean) as string[]));
+              let districtRow: { id: string; name: string } | null = null;
+              for (const c of districtCandidates) {
+                if (stateRow?.id) {
+                  districtRow = await lookup('districts', c, 'state_id', stateRow.id);
+                  if (districtRow) break;
                 }
-                if (fields.district) {
-                  const id = await resolveId('districts', fields.district, 'state_id', fields.state_id);
-                  if (id) fields.district_id = id;
+              }
+              if (districtRow) {
+                fields.district = districtRow.name;
+                fields.district_id = districtRow.id;
+                confidence.district = 0.9;
+                sources.district = 'google_reverse_geocode';
+              } else if (cand.l2 || cand.l3) {
+                fields.district = clean(cand.l2 || cand.l3) || undefined;
+                confidence.district = 0.5;
+                sources.district = 'google_reverse_geocode';
+              }
+
+              // 3) TALUKA — try l3, l4, locality WHERE district_id=...
+              //    Skip any value already used as district.
+              const used = new Set<string>();
+              if (districtRow) used.add(districtRow.name.toLowerCase());
+              const talukaCandidates = [cand.l3, cand.l4, cand.locality, cand.l2]
+                .filter((c): c is string => !!c && !used.has(c.toLowerCase()));
+              let talukaRow: { id: string; name: string } | null = null;
+              for (const c of talukaCandidates) {
+                if (districtRow?.id) {
+                  talukaRow = await lookup('talukas', c, 'district_id', districtRow.id);
+                  if (talukaRow) break;
                 }
-                if (fields.taluka) {
-                  const id = await resolveId('talukas', fields.taluka, 'district_id', fields.district_id);
-                  if (id) fields.taluka_id = id;
+              }
+              if (talukaRow) {
+                fields.taluka = talukaRow.name;
+                fields.taluka_id = talukaRow.id;
+                confidence.taluka = 0.85;
+                sources.taluka = 'google_reverse_geocode';
+                used.add(talukaRow.name.toLowerCase());
+              } else if (talukaCandidates[0]) {
+                fields.taluka = talukaCandidates[0];
+                confidence.taluka = 0.4;
+                sources.taluka = 'google_reverse_geocode';
+              }
+
+              // 4) VILLAGE — locality / sublocality / l4
+              const villageCandidates = [cand.locality, cand.sublocality, cand.l4]
+                .filter((c): c is string => !!c && !used.has(c.toLowerCase()));
+              let villageRow: { id: string; name: string } | null = null;
+              for (const c of villageCandidates) {
+                if (talukaRow?.id) {
+                  villageRow = await lookup('villages', c, 'taluka_id', talukaRow.id);
+                  if (villageRow) break;
                 }
-                if (fields.village) {
-                  const id = await resolveId('villages', fields.village, 'taluka_id', fields.taluka_id);
-                  if (id) fields.village_id = id;
-                }
-              } catch (idErr) {
-                console.warn('[infer-context] admin ID resolution skipped:', idErr);
+              }
+              if (villageRow) {
+                fields.village = villageRow.name;
+                fields.village_id = villageRow.id;
+                confidence.village = 0.8;
+                sources.village = 'google_reverse_geocode';
+              } else if (villageCandidates[0]) {
+                fields.village = villageCandidates[0];
+                confidence.village = 0.4;
+                sources.village = 'google_reverse_geocode';
               }
             } else {
               // No geocode result — still default the country so the form has a value.
