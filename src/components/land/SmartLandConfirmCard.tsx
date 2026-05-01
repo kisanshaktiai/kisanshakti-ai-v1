@@ -676,10 +676,10 @@ export function SmartLandConfirmCard({
         </ReviewCard>
       </div>
 
-      {/* ───────── Floating voice mic ───────── */}
+      {/* ───────── Floating voice mic FAB ───────── */}
       <div
-        className="absolute right-3 z-[5]"
-        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 88px)' }}
+        className="absolute right-3 z-[5] rounded-full bg-background/90 shadow-lg p-1.5"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom) + 92px)' }}
       >
         <LandVoiceCapture
           language={i18n.language?.split('-')[0] || 'en'}
