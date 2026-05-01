@@ -13,6 +13,8 @@ interface LandData {
   area_acres: number;
   survey_number?: string;
   // Administrative location
+  country?: string;
+  country_code?: string;
   state?: string; state_id?: string;
   district?: string; district_id?: string;
   taluka?: string; taluka_id?: string;

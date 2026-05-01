@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowLeft, Loader2, Save, MapPin, Mountain, Tag, FileText,
+  ArrowLeft, Loader2, Save, Mountain, Tag, FileText,
   Sprout, Droplet, GlassWater, Tractor, CalendarDays, History,
   ChevronDown, Sparkles,
 } from 'lucide-react';
@@ -21,6 +21,7 @@ import { deriveCropCycle } from '@/lib/cropStage';
 import { FieldChip } from './FieldChip';
 import { SeasonPicker } from './SeasonPicker';
 import { LandVoiceCapture } from './LandVoiceCapture';
+import { LocationPickerSection, type LocationValue } from './LocationPickerSection';
 
 interface LatLng { lat: number; lng: number; }
 interface Area { sqft: number; guntha: number; acres: number; }
@@ -38,7 +39,8 @@ interface FormState {
   name: string;
   survey_number: string;
   ownership_type: OwnershipType;
-  // Location
+  // Location — full administrative chain
+  country: string; country_code: string;
   state?: string; state_id?: string;
   district?: string; district_id?: string;
   taluka?: string; taluka_id?: string;
@@ -89,6 +91,8 @@ export function SmartLandConfirmCard({
     notes: '',
     marketplace_enabled: false,
     land_prep_offset_days: 0,
+    country: 'India',
+    country_code: 'IN',
   });
 
   const [confidence, setConfidence] = useState<Record<string, number>>({});
@@ -114,6 +118,8 @@ export function SmartLandConfirmCard({
             const next: FormState = { ...f };
             const fld = res.fields || {};
             // Location
+            if (fld.country) next.country = fld.country;
+            if (fld.country_code) next.country_code = fld.country_code;
             if (fld.state) next.state = fld.state;
             if (fld.state_id) next.state_id = fld.state_id;
             if (fld.district) next.district = fld.district;
@@ -155,7 +161,7 @@ export function SmartLandConfirmCard({
     form.land_prep_offset_days,
   ), [form.sowing_date, form.current_crop_duration, form.land_prep_offset_days]);
 
-  const locationLabel = [form.village, form.taluka, form.district].filter(Boolean).join(' › ') || null;
+  // (location is rendered by LocationPickerSection — no inline label needed)
   const elevationLabel = typeof form.elevation_meters === 'number'
     ? `${form.elevation_meters} m`
     : null;
@@ -225,6 +231,9 @@ export function SmartLandConfirmCard({
   const validate = (): string | null => {
     if (!form.name?.trim()) return t('lands.smartConfirm.errors.name', { defaultValue: 'Land name is required' });
     if (!form.ownership_type) return t('lands.smartConfirm.errors.ownership', { defaultValue: 'Ownership is required' });
+    if (!form.country) return t('lands.smartConfirm.errors.country', { defaultValue: 'Country is required' });
+    if (!form.state) return t('lands.smartConfirm.errors.state', { defaultValue: 'State is required' });
+    if (!form.district) return t('lands.smartConfirm.errors.district', { defaultValue: 'District is required' });
     if (!form.current_crop) return t('lands.smartConfirm.errors.crop', { defaultValue: 'Current crop is required' });
     if (!form.sowing_date) return t('lands.smartConfirm.errors.sowing', { defaultValue: 'Sowing date is required' });
     return null;
@@ -267,7 +276,9 @@ export function SmartLandConfirmCard({
         gps_accuracy_meters: 10,
         gps_recorded_at: new Date().toISOString(),
         elevation_meters: form.elevation_meters,
-        // Location (strings + IDs together — closes data-loss gap from old wizard)
+        // Location (full chain — country first, IDs alongside strings)
+        country: form.country,
+        country_code: form.country_code,
         state: form.state, state_id: form.state_id,
         district: form.district, district_id: form.district_id,
         taluka: form.taluka, taluka_id: form.taluka_id,
@@ -403,21 +414,29 @@ export function SmartLandConfirmCard({
         className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-4"
         style={{ paddingBottom: '160px' }}
       >
-        {/* Location pill */}
-        <div className="rounded-2xl border border-border bg-card p-3">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium truncate">
-              {locationLabel || t('lands.smartConfirm.locationDetecting', { defaultValue: 'Detecting location…' })}
-            </span>
+        {/* Location — fully editable Country → Village chain */}
+        <LocationPickerSection
+          value={{
+            country: form.country, country_code: form.country_code,
+            state: form.state, state_id: form.state_id,
+            district: form.district, district_id: form.district_id,
+            taluka: form.taluka, taluka_id: form.taluka_id,
+            village: form.village, village_id: form.village_id,
+          }}
+          onChange={(loc: LocationValue) => setForm(f => ({ ...f, ...loc }))}
+          confidence={confidence}
+          sources={sources}
+          onManualEdit={(field) => {
+            setConfidence(c => ({ ...c, [field]: 1 }));
+            setSources(s => ({ ...s, [field]: 'farmer' }));
+          }}
+        />
+        {elevationLabel && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground -mt-2 px-1">
+            <Mountain className="h-3.5 w-3.5" />
+            {t('lands.smartConfirm.elevation', { defaultValue: 'Elevation' })}: {elevationLabel}
           </div>
-          {elevationLabel && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1.5">
-              <Mountain className="h-3.5 w-3.5" />
-              {t('lands.smartConfirm.elevation', { defaultValue: 'Elevation' })}: {elevationLabel}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Identity */}
         <div className="space-y-2">
