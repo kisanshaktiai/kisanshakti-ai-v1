@@ -414,21 +414,29 @@ export function SmartLandConfirmCard({
         className="flex-1 overflow-y-auto overscroll-contain px-4 py-4 space-y-4"
         style={{ paddingBottom: '160px' }}
       >
-        {/* Location pill */}
-        <div className="rounded-2xl border border-border bg-card p-3">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium truncate">
-              {locationLabel || t('lands.smartConfirm.locationDetecting', { defaultValue: 'Detecting location…' })}
-            </span>
+        {/* Location — fully editable Country → Village chain */}
+        <LocationPickerSection
+          value={{
+            country: form.country, country_code: form.country_code,
+            state: form.state, state_id: form.state_id,
+            district: form.district, district_id: form.district_id,
+            taluka: form.taluka, taluka_id: form.taluka_id,
+            village: form.village, village_id: form.village_id,
+          }}
+          onChange={(loc: LocationValue) => setForm(f => ({ ...f, ...loc }))}
+          confidence={confidence}
+          sources={sources}
+          onManualEdit={(field) => {
+            setConfidence(c => ({ ...c, [field]: 1 }));
+            setSources(s => ({ ...s, [field]: 'farmer' }));
+          }}
+        />
+        {elevationLabel && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground -mt-2 px-1">
+            <Mountain className="h-3.5 w-3.5" />
+            {t('lands.smartConfirm.elevation', { defaultValue: 'Elevation' })}: {elevationLabel}
           </div>
-          {elevationLabel && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1.5">
-              <Mountain className="h-3.5 w-3.5" />
-              {t('lands.smartConfirm.elevation', { defaultValue: 'Elevation' })}: {elevationLabel}
-            </div>
-          )}
-        </div>
+        )}
 
         {/* Identity */}
         <div className="space-y-2">
