@@ -228,89 +228,124 @@ export function LocationPickerSection({
       </div>
 
       <Sheet open={picker !== null} onOpenChange={(o) => !o && setPicker(null)}>
-        <SheetContent side="bottom" className="rounded-t-3xl max-h-[80vh] overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>
-              {picker === 'country'  && t('lands.location.country',  { defaultValue: 'Country' })}
-              {picker === 'state'    && t('lands.location.state',    { defaultValue: 'State' })}
-              {picker === 'district' && t('lands.location.district', { defaultValue: 'District' })}
-              {picker === 'taluka'   && t('lands.location.taluka',   { defaultValue: 'Taluka / Tehsil' })}
-              {picker === 'village'  && t('lands.location.village',  { defaultValue: 'Village' })}
-            </SheetTitle>
-          </SheetHeader>
+        <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto p-0">
+          {/* Sticky header + search */}
+          <div className="sticky top-0 z-10 bg-background border-b border-border px-4 pt-4 pb-3 space-y-3">
+            <SheetHeader className="text-left">
+              <SheetTitle className="text-base">
+                {picker === 'country'  && t('lands.location.country',  { defaultValue: 'Select country' })}
+                {picker === 'state'    && t('lands.location.state',    { defaultValue: 'Select state' })}
+                {picker === 'district' && t('lands.location.district', { defaultValue: 'Select district' })}
+                {picker === 'taluka'   && t('lands.location.taluka',   { defaultValue: 'Select taluka / tehsil' })}
+                {picker === 'village'  && t('lands.location.village',  { defaultValue: 'Select village' })}
+              </SheetTitle>
+            </SheetHeader>
 
-          {/* Search box (skip for country) */}
-          {picker && picker !== 'country' && (
-            <div className="relative mt-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t('common.search', { defaultValue: 'Search…' })}
-                className="h-11 pl-9 rounded-xl"
-                autoFocus
-              />
-            </div>
-          )}
-
-          {/* Village free-text fallback (villages table is sparse) */}
-          {picker === 'village' && (
-            <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/40 p-3 space-y-2">
-              <div className="text-xs text-muted-foreground">
-                {t('lands.location.villageNotListed', {
-                  defaultValue: 'Village not in the list? Type it below.',
-                })}
-              </div>
-              <div className="flex gap-2">
+            {picker && picker !== 'country' && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <Input
-                  value={villageFreeText}
-                  onChange={(e) => setVillageFreeText(e.target.value)}
-                  placeholder={t('lands.location.villageTypeName', { defaultValue: 'Type village name' })}
-                  className="h-11 rounded-xl"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                    // Mirror search into village free-text so "Use" button is enabled
+                    if (picker === 'village' || picker === 'district' || picker === 'taluka') {
+                      setVillageFreeText(e.target.value);
+                    }
+                  }}
+                  placeholder={t('lands.location.searchPlaceholder', { defaultValue: 'Type to search…' })}
+                  className="h-12 pl-10 rounded-xl text-base"
+                  autoFocus
                 />
-                <Button
-                  type="button"
-                  onClick={applyVillageFreeText}
-                  disabled={!villageFreeText.trim()}
-                  className="h-11 rounded-xl"
-                >
-                  {t('common.use', { defaultValue: 'Use' })}
-                </Button>
-              </div>
-            </div>
-          )}
-
-          <div
-            className={cn(
-              'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 pb-4 transition-opacity',
-              !tapsArmed && 'pointer-events-none opacity-60',
-            )}
-          >
-            {items.map((it: any) => (
-              <button
-                key={it.id || it.code}
-                type="button"
-                onClick={() => { if (tapsArmed) apply(it); }}
-                className={cn(
-                  'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
-                  'border-border hover:border-primary/40 min-h-[52px]',
-                )}
-              >
-                <div className="font-medium truncate">{it.name}</div>
-              </button>
-            ))}
-            {items.length === 0 && (
-              <div className="col-span-full text-center text-sm text-muted-foreground py-8">
-                {(picker === 'state'    && loading.states) ||
-                 (picker === 'district' && loading.districts) ||
-                 (picker === 'taluka'   && loading.talukas) ||
-                 (picker === 'village'  && loading.villages)
-                  ? t('common.loading', { defaultValue: 'Loading…' })
-                  : t('common.noResults', { defaultValue: 'No matches' })}
               </div>
             )}
           </div>
 
+          <div className="px-4 pb-6">
+            {/* Free-text fallback (works for district / taluka / village — sparse rows in DB) */}
+            {(picker === 'village' || picker === 'district' || picker === 'taluka') && (
+              <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/40 p-3 space-y-2">
+                <div className="text-xs text-muted-foreground">
+                  {picker === 'village' && t('lands.location.villageNotListed', { defaultValue: 'Not in the list? Type your village name and tap Use.' })}
+                  {picker === 'district' && t('lands.location.districtNotListed', { defaultValue: 'Wrong district? Type the correct one and tap Use.' })}
+                  {picker === 'taluka' && t('lands.location.talukaNotListed', { defaultValue: 'Wrong taluka? Type the correct one and tap Use.' })}
+                </div>
+                <div className="flex gap-2">
+                  <Input
+                    value={villageFreeText}
+                    onChange={(e) => setVillageFreeText(e.target.value)}
+                    placeholder={
+                      picker === 'village'
+                        ? t('lands.location.villageTypeName', { defaultValue: 'Type village name' })
+                        : picker === 'district'
+                          ? t('lands.location.districtTypeName', { defaultValue: 'Type district name' })
+                          : t('lands.location.talukaTypeName', { defaultValue: 'Type taluka name' })
+                    }
+                    className="h-11 rounded-xl"
+                  />
+                  <Button
+                    type="button"
+                    onClick={applyVillageFreeText}
+                    disabled={!villageFreeText.trim()}
+                    className="h-11 rounded-xl shrink-0"
+                  >
+                    {t('common.use', { defaultValue: 'Use' })}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div
+              className={cn(
+                'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 transition-opacity',
+                !tapsArmed && 'pointer-events-none opacity-60',
+              )}
+            >
+              {items.map((it: any) => (
+                <button
+                  key={it.id || it.code}
+                  type="button"
+                  onClick={() => { if (tapsArmed) apply(it); }}
+                  className={cn(
+                    'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
+                    'border-border hover:border-primary/40 min-h-[52px]',
+                  )}
+                >
+                  <div className="font-medium truncate">{it.name}</div>
+                </button>
+              ))}
+            </div>
+
+            {items.length === 0 && (
+              <div className="col-span-full text-center py-8 px-3">
+                {(picker === 'state'    && loading.states) ||
+                 (picker === 'district' && loading.districts) ||
+                 (picker === 'taluka'   && loading.talukas) ||
+                 (picker === 'village'  && loading.villages) ? (
+                  <div className="text-sm text-muted-foreground">
+                    {t('common.loading', { defaultValue: 'Loading…' })}
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-sm font-medium">
+                      {search
+                        ? t('lands.location.noMatchesFor', { defaultValue: 'No matches for "{{q}}"', q: search })
+                        : t('common.noResults', { defaultValue: 'No matches' })}
+                    </div>
+                    {picker === 'state' ? (
+                      <div className="text-xs text-muted-foreground mt-2">
+                        {t('lands.location.stateMustPick', { defaultValue: 'Try clearing the search — all 36 states are available.' })}
+                      </div>
+                    ) : (
+                      <div className="text-xs text-muted-foreground mt-2">
+                        {t('lands.location.useTypedAbove', { defaultValue: 'Use the box above to enter it manually.' })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
     </div>
