@@ -156,9 +156,21 @@ export function LocationPickerSection({
   };
 
   const openPicker = (kind: Exclude<PickerKind, null>) => {
-    if (kind === 'district' && !value.state_id) return;
-    if (kind === 'taluka'   && !value.district_id) return;
-    if (kind === 'village'  && !value.taluka_id) return;
+    // Try to back-fill missing parent ids from already-loaded lists by name match.
+    // This unblocks the cascade when AI prefilled names but couldn't resolve canonical ids.
+    if (kind === 'district' && !value.state_id && value.state) {
+      const match = states.find(s => s.name.toLowerCase() === value.state!.toLowerCase());
+      if (match) { onChange({ ...value, state_id: match.id }); loadDistricts(match.id); }
+    }
+    if (kind === 'taluka' && !value.district_id && value.district) {
+      const match = districts.find(d => d.name.toLowerCase() === value.district!.toLowerCase());
+      if (match) { onChange({ ...value, district_id: match.id }); loadTalukas(match.id); }
+    }
+    if (kind === 'village' && !value.taluka_id && value.taluka) {
+      const match = talukas.find(tk => tk.name.toLowerCase() === value.taluka!.toLowerCase());
+      if (match) { onChange({ ...value, taluka_id: match.id }); loadVillages(match.id); }
+    }
+    // Always open the sheet — even if parent id is still missing, user gets clear guidance inside.
     setPicker(kind);
   };
 
@@ -168,6 +180,16 @@ export function LocationPickerSection({
     if (kind === 'village'  && !value.taluka_id) return t('lands.location.selectTalukaFirst', { defaultValue: 'Select Taluka first' });
     return undefined;
   };
+
+  // Within-sheet guard: when the user opens District/Taluka/Village without a resolvable parent.
+  const missingParent: Exclude<PickerKind, 'country' | 'state' | null> | null =
+    picker === 'district' && !value.state_id ? 'district'
+    : picker === 'taluka' && !value.district_id ? 'taluka'
+    : picker === 'village' && !value.taluka_id ? 'village'
+    : null;
+
+  const parentLevel = (kind: typeof missingParent): Exclude<PickerKind, null> =>
+    kind === 'district' ? 'state' : kind === 'taluka' ? 'district' : 'taluka';
 
   return (
     <div>
