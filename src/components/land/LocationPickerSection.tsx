@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, MapPin, Building2, Map, Home, Search } from 'lucide-react';
+import { Globe, MapPin, Building2, Map, Home, Search, Loader2 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -61,6 +61,7 @@ export function LocationPickerSection({
   useEffect(() => { if (value.taluka_id) loadVillages(value.taluka_id); }, [value.taluka_id, loadVillages]);
 
   // Reset search when picker changes; arm taps after the open animation.
+  // Also kick off a load for the current level if its parent is known but data is empty.
   useEffect(() => {
     setSearch('');
     setVillageFreeText('');
@@ -68,6 +69,9 @@ export function LocationPickerSection({
       setTapsArmed(false);
       return;
     }
+    if (picker === 'district' && value.state_id && districts.length === 0) loadDistricts(value.state_id);
+    if (picker === 'taluka'   && value.district_id && talukas.length === 0) loadTalukas(value.district_id);
+    if (picker === 'village'  && value.taluka_id && villages.length === 0) loadVillages(value.taluka_id);
     setTapsArmed(false);
     const id = window.setTimeout(() => setTapsArmed(true), 350);
     return () => window.clearTimeout(id);
@@ -156,9 +160,21 @@ export function LocationPickerSection({
   };
 
   const openPicker = (kind: Exclude<PickerKind, null>) => {
-    if (kind === 'district' && !value.state_id) return;
-    if (kind === 'taluka'   && !value.district_id) return;
-    if (kind === 'village'  && !value.taluka_id) return;
+    // Try to back-fill missing parent ids from already-loaded lists by name match.
+    // This unblocks the cascade when AI prefilled names but couldn't resolve canonical ids.
+    if (kind === 'district' && !value.state_id && value.state) {
+      const match = states.find(s => s.name.toLowerCase() === value.state!.toLowerCase());
+      if (match) { onChange({ ...value, state_id: match.id }); loadDistricts(match.id); }
+    }
+    if (kind === 'taluka' && !value.district_id && value.district) {
+      const match = districts.find(d => d.name.toLowerCase() === value.district!.toLowerCase());
+      if (match) { onChange({ ...value, district_id: match.id }); loadTalukas(match.id); }
+    }
+    if (kind === 'village' && !value.taluka_id && value.taluka) {
+      const match = talukas.find(tk => tk.name.toLowerCase() === value.taluka!.toLowerCase());
+      if (match) { onChange({ ...value, taluka_id: match.id }); loadVillages(match.id); }
+    }
+    // Always open the sheet — even if parent id is still missing, user gets clear guidance inside.
     setPicker(kind);
   };
 
@@ -168,6 +184,16 @@ export function LocationPickerSection({
     if (kind === 'village'  && !value.taluka_id) return t('lands.location.selectTalukaFirst', { defaultValue: 'Select Taluka first' });
     return undefined;
   };
+
+  // Within-sheet guard: when the user opens District/Taluka/Village without a resolvable parent.
+  const missingParent: Exclude<PickerKind, 'country' | 'state' | null> | null =
+    picker === 'district' && !value.state_id ? 'district'
+    : picker === 'taluka' && !value.district_id ? 'taluka'
+    : picker === 'village' && !value.taluka_id ? 'village'
+    : null;
+
+  const parentLevel = (kind: typeof missingParent): Exclude<PickerKind, null> =>
+    kind === 'district' ? 'state' : kind === 'taluka' ? 'district' : 'taluka';
 
   return (
     <div>
@@ -262,8 +288,29 @@ export function LocationPickerSection({
           </div>
 
           <div className="px-4 pb-6">
+            {/* Missing-parent banner — instead of silently doing nothing, point the farmer at the right level. */}
+            {missingParent && (
+              <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
+                <div className="flex-1 text-xs text-amber-900 dark:text-amber-100">
+                  {missingParent === 'district' && t('lands.location.selectStateFirst', { defaultValue: 'Select State first to see districts.' })}
+                  {missingParent === 'taluka'   && t('lands.location.selectDistrictFirst', { defaultValue: 'Select District first to see talukas.' })}
+                  {missingParent === 'village'  && t('lands.location.selectTalukaFirst', { defaultValue: 'Select Taluka first to see villages.' })}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-9 rounded-xl shrink-0"
+                  onClick={() => setPicker(parentLevel(missingParent))}
+                >
+                  {missingParent === 'district' && t('lands.location.pickState', { defaultValue: 'Pick State' })}
+                  {missingParent === 'taluka'   && t('lands.location.pickDistrict', { defaultValue: 'Pick District' })}
+                  {missingParent === 'village'  && t('lands.location.pickTaluka', { defaultValue: 'Pick Taluka' })}
+                </Button>
+              </div>
+            )}
+
             {/* Free-text fallback (works for district / taluka / village — sparse rows in DB) */}
-            {(picker === 'village' || picker === 'district' || picker === 'taluka') && (
+            {!missingParent && (picker === 'village' || picker === 'district' || picker === 'taluka') && (
               <div className="mt-3 rounded-2xl border border-dashed border-border bg-muted/40 p-3 space-y-2">
                 <div className="text-xs text-muted-foreground">
                   {picker === 'village' && t('lands.location.villageNotListed', { defaultValue: 'Not in the list? Type your village name and tap Use.' })}
@@ -295,34 +342,37 @@ export function LocationPickerSection({
               </div>
             )}
 
-            <div
-              className={cn(
-                'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 transition-opacity',
-                !tapsArmed && 'pointer-events-none opacity-60',
-              )}
-            >
-              {items.map((it: any) => (
-                <button
-                  key={it.id || it.code}
-                  type="button"
-                  onClick={() => { if (tapsArmed) apply(it); }}
-                  className={cn(
-                    'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
-                    'border-border hover:border-primary/40 min-h-[52px]',
-                  )}
-                >
-                  <div className="font-medium truncate">{it.name}</div>
-                </button>
-              ))}
-            </div>
+            {!missingParent && (
+              <div
+                className={cn(
+                  'grid grid-cols-1 sm:grid-cols-2 gap-2 mt-4 transition-opacity',
+                  !tapsArmed && 'pointer-events-none opacity-60',
+                )}
+              >
+                {items.map((it: any) => (
+                  <button
+                    key={it.id || it.code}
+                    type="button"
+                    onClick={() => { if (tapsArmed) apply(it); }}
+                    className={cn(
+                      'rounded-2xl border bg-card px-4 py-3 text-sm text-left active:scale-[0.97]',
+                      'border-border hover:border-primary/40 min-h-[52px]',
+                    )}
+                  >
+                    <div className="font-medium truncate">{it.name}</div>
+                  </button>
+                ))}
+              </div>
+            )}
 
-            {items.length === 0 && (
+            {!missingParent && items.length === 0 && (
               <div className="col-span-full text-center py-8 px-3">
-                {(picker === 'state'    && loading.states) ||
-                 (picker === 'district' && loading.districts) ||
-                 (picker === 'taluka'   && loading.talukas) ||
-                 (picker === 'village'  && loading.villages) ? (
-                  <div className="text-sm text-muted-foreground">
+                {(picker === 'state'    && (loading.states    || states.length === 0)) ||
+                 (picker === 'district' && (loading.districts || (value.state_id && districts.length === 0))) ||
+                 (picker === 'taluka'   && (loading.talukas   || (value.district_id && talukas.length === 0))) ||
+                 (picker === 'village'  && (loading.villages  || (value.taluka_id && villages.length === 0))) ? (
+                  <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
                     {t('common.loading', { defaultValue: 'Loading…' })}
                   </div>
                 ) : (

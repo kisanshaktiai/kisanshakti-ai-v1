@@ -1,61 +1,50 @@
-# Add Land — fix edit affordance, picker UX, and AI admin-level mismatch
 
-Three confirmed problems on `/app/lands/add` after AI prefill:
+# Fix Location Pickers + Use Existing Crop Group Selector
 
-1. **Pen icon does nothing.** On the Location `ReviewCard`, when AI fills the values the card renders in `state='ai'` collapsed, so only "Yes / Change" appear — tapping the pen on individual fields (State / District / Taluka / Village) is impossible until the farmer first presses "Change". Worse: inside `FieldChip` the `<Pencil />` is purely decorative (the whole chip is the button). Farmers tap the pen, see no visual feedback, and conclude the form is broken.
-2. **Picker has no clear Search + no "Select manually" path** for State / District / Taluka. Only Village has a free-text fallback. The search input is also visually undersized.
-3. **AI mis-labels admin levels.** Google reverse-geocode returns:
-   - `administrative_area_level_1` → State (mostly correct)
-   - `administrative_area_level_2` → District **OR Division** (e.g., "Pune Division")
-   - `administrative_area_level_3` → Taluka **OR District** (varies by region)
-   For many rural centroids the form ends up showing a *Division* in the State chip and a *District* name in the Taluka chip. The current `resolveId` only does name lookup; it never reclassifies when a value belongs to a different table.
+Two confirmed bugs on `/app/lands/add`:
 
-## What we'll change
+## Problem 1 — Pickers show nothing when tapped
 
-### A. Picker UX (`LocationPickerSection.tsx`)
-- Always render a sticky **Search** input at the top of the bottom-sheet (already there, but enlarge to 48px and pin under the title).
-- When `items.length === 0` after a search, show a clear empty state:
-  - "No matches for *xyz*"
-  - A primary button **"Use 'xyz' as <level>"** (free-text path, sets the typed value, leaves `*_id` undefined). Today this only exists for Village; extend it to **District** and **Taluka** as well so a farmer can override an AI mistake even when the local DB is incomplete.
-  - State stays DB-only (we have all 36 states; free-text would corrupt downstream joins).
-- Keep the 350ms tap-arm guard.
-- Add a small "Select manually" hint chip under the AI-prefilled chip when `source !== 'farmer'`, so the farmer sees an explicit invitation to override.
-
-### B. Edit affordance
-- `FieldChip.tsx`: convert the trailing `<Pencil>` into a real focusable affordance — bigger (h-5 w-5), wrapped in a 44px hit area, `aria-label="Edit"`. Tapping it calls the same `onClick` (the chip already does, but the icon now reads as the explicit edit handle).
-- `ReviewCard.tsx` (Location card path): when `state === 'ai'` and the section contains required sub-fields (Location only), auto-expand the body alongside the "Yes / Change" row, so individual State/District/Taluka/Village chips are always reachable. Add a new prop `alwaysShowChildrenWhenAi?: boolean` and set it true on the Location card. This eliminates the "tap pen → nothing happens" perception.
-- `SmartLandConfirmCard.tsx`: pass `alwaysShowChildrenWhenAi` for Location, and ensure `defaultOpen=true` for Location whenever any of state/district/taluka came from AI (not just when empty).
-
-### C. AI admin-level reclassification (`supabase/functions/lands-api/index.ts`)
-Replace the naive level→field mapping with a **canonical-DB-first** classifier:
-
+`LocationPickerSection` only fetches the next admin level when the parent `*_id` exists:
+```ts
+useEffect(() => { if (value.state_id) loadDistricts(value.state_id); }, [value.state_id]);
 ```
-candidates from Google: { l1, l2, l3, locality, sublocality, area_l4 }
-1. state := first candidate that matches a row in states (ilike). Fallback l1.
-2. district := first candidate that matches districts WHERE state_id = stateId (ilike).
-   - excludes anything containing "Division".
-3. taluka := first remaining candidate matching talukas WHERE district_id = districtId.
-4. village := first remaining candidate matching villages WHERE taluka_id = talukaId,
-   else locality / sublocality as free-text village.
-```
+And `openPicker('district')` early-returns when `!value.state_id`, so tapping the District chip silently does nothing. This happens whenever AI prefills the *name* but cannot resolve the canonical `*_id` (very common — Google returns "Pune Division" → no district_id).
 
-This way, if Google returns "Pune Division" at l2 and "Pune" at l3, we correctly classify Pune as the district. If l3 is actually the taluka name ("Haveli"), it lands in taluka. The classifier runs once with one query per level, server-side. Confidence drops to 0.5 for any value that didn't resolve to a canonical row, so the UI still flags it as needing review.
+Tapping **State** also feels broken because the section is mounted lazily inside the `ReviewCard`. On first open the `loadStates` effect has just kicked off, the sheet appears, the `items` array is still empty, and the empty state takes over before data arrives.
 
-### D. i18n strings (added to `en.json` only; other locales use defaultValue)
-- `lands.location.noMatches` — "No matches for "{q}""
-- `lands.location.useAsDistrict` / `useAsTaluka` / `useAsVillage`
-- `lands.location.selectManually` — "Select manually"
-- `lands.smartConfirm.aiPickedWrong` — "AI picked the wrong one? Tap to change"
+## Problem 2 — Crop picker is a flat list
+
+The current `picker === 'crop'` sheet renders `crops` (only the AI-suggested 5–10) in a flat 2-column grid. The codebase already ships `CentralizedCropSelector` (`src/components/crops/CentralizedCropSelector.tsx`) which is the documented two-step **Crop Group → Crop** UX (loads `crop_groups` then `crops` from Supabase, with search, localized labels, popular badges).
+
+## Fix
+
+### A. `LocationPickerSection.tsx` — always allow opening the picker
+
+1. **Remove the gating in `openPicker`.** Tapping any chip must always open the sheet. The hint becomes inline guidance inside the sheet, not a silent no-op.
+2. **Auto-load on picker open**, not only when `*_id` is set:
+   - `state` picker → `loadStates` already runs on mount; if `states` is empty when sheet opens, show a `Loader2` spinner instead of "No matches".
+   - `district` picker → if `value.state_id` exists, ensure `loadDistricts(state_id)` is called when the sheet opens. If `value.state_id` is missing but `value.state` (name) is set, **resolve state_id from the loaded `states` list by name match (case-insensitive)** and trigger `loadDistricts` with that id. Same pattern for `taluka` and `village`.
+   - If still no parent id resolvable, render a clear in-sheet message: *"Select State first to see districts"* with a button **"Pick State"** that switches the picker to `state`. No silent close.
+3. **Preserve loading state in the empty UI** (already half-done — extend so the spinner shows during the very first load even when `loading.states` is briefly false).
+4. Keep the 350ms tap-arm guard, sticky search, and free-text fallback for District/Taluka/Village.
+
+### B. `SmartLandConfirmCard.tsx` — wire the existing CentralizedCropSelector
+
+1. When `picker === 'crop'` (or `'previous_crop'`), render `<CentralizedCropSelector>` inside the existing `Sheet` instead of the flat grid. Use `variant="modal"` and `selectedCropId={form.current_crop_id}`.
+2. `onSelect(cropId, englishLabel, localizedLabel) =>` set `current_crop` (english label, since downstream rules key off it), `current_crop_id`, and look up `duration_days` from the existing `crops` (AI inference) array — fallback `null` if not in the AI list (rules engine can fetch later).
+3. Drop the `pickerItems` branch for `'crop'`/`'previous_crop'`; keep soil/water/irrigation flat grids unchanged.
+4. Keep the AI-suggested crops visible as a **"Suggested for your field"** strip at the top of the crop sheet (chips from `crops` array) so farmers get one-tap selection without drilling into groups, but the full Group→Crop browser is right below.
+
+### C. Minor — keep cascading reset semantics
+When farmer changes State via the picker, existing logic clears district/taluka/village. Keep. Same for District → clears taluka/village, etc. Confirm `apply()` still does this after the new auto-load logic runs.
 
 ## Files to edit
-- `src/components/land/LocationPickerSection.tsx` — picker empty state, free-text for District/Taluka, larger search, "Select manually" hint.
-- `src/components/land/FieldChip.tsx` — real Edit hit-area on the pen icon.
-- `src/components/land/ReviewCard.tsx` — `alwaysShowChildrenWhenAi` prop.
-- `src/components/land/SmartLandConfirmCard.tsx` — pass new prop, force Location card open when AI-prefilled.
-- `supabase/functions/lands-api/index.ts` — canonical-DB-first admin-level classifier (replace lines 82-145).
-- `src/i18n/locales/en.json` — new picker strings.
+
+- `src/components/land/LocationPickerSection.tsx` — remove gating, add name→id resolution, add "Pick State" CTA in empty state, clearer loading.
+- `src/components/land/SmartLandConfirmCard.tsx` — replace crop sheet body with `CentralizedCropSelector` + suggested chips strip.
 
 ## Out of scope
-- Voice editing of admin levels (already handled by free-text + speech).
-- Adding new villages to the DB (the 8-row villages table is intentionally sparse; free-text already works).
-- EditLand page (same components are reused; fix carries over automatically).
+- Editing the `CentralizedCropSelector` itself (it works as-is).
+- Adding new entries to states/districts/talukas/villages tables (free-text fallback already exists for D/T/V).
+- Changing the AI inference / classifier in `lands-api` (already shipped last round).

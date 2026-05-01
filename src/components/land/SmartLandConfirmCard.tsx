@@ -24,6 +24,7 @@ import { LocationPickerSection, type LocationValue } from './LocationPickerSecti
 import { SeasonMonthPicker } from './SeasonMonthPicker';
 import { LandMapThumb } from './LandMapThumb';
 import { ReviewCard, type ReviewCardState } from './ReviewCard';
+import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 
 interface LatLng { lat: number; lng: number; }
 interface Area { sqft: number; guntha: number; acres: number; }
@@ -707,8 +708,14 @@ export function SmartLandConfirmCard({
 
       {/* ───────── Picker sheet (soil/water/irrigation/crop) ───────── */}
       <Sheet open={picker !== null} onOpenChange={(o) => !o && setPicker(null)}>
-        <SheetContent side="bottom" className="rounded-t-3xl max-h-[75vh] overflow-y-auto">
-          <SheetHeader>
+        <SheetContent
+          side="bottom"
+          className={cn(
+            'rounded-t-3xl overflow-hidden p-0',
+            picker === 'crop' || picker === 'previous_crop' ? 'h-[85vh]' : 'max-h-[75vh] overflow-y-auto',
+          )}
+        >
+          <SheetHeader className="px-4 pt-4 pb-2">
             <SheetTitle>
               {picker === 'soil'          && t('lands.smartConfirm.soil', { defaultValue: 'Soil type' })}
               {picker === 'water'         && t('lands.smartConfirm.water', { defaultValue: 'Water source' })}
@@ -717,24 +724,74 @@ export function SmartLandConfirmCard({
               {picker === 'previous_crop' && t('lands.smartConfirm.previousCrop', { defaultValue: 'Previous crop' })}
             </SheetTitle>
           </SheetHeader>
-          <div className="grid grid-cols-2 gap-2 mt-4 pb-4">
-            {pickerItems.map((it: any) => (
-              <button
-                key={it.id || it.value}
-                type="button"
-                onClick={() => applyPick(it)}
-                className="rounded-2xl border border-border bg-card px-3 py-3.5 text-sm text-left active:scale-[0.97] min-h-[60px]"
-              >
-                <div className="font-medium truncate">{it.label}</div>
-                {it.meta && <div className="text-[11px] text-muted-foreground mt-0.5">{it.meta}</div>}
-              </button>
-            ))}
-            {pickerItems.length === 0 && (
-              <div className="col-span-2 text-center text-sm text-muted-foreground py-6">
-                {t('common.loading', { defaultValue: 'Loading…' })}
+
+          {(picker === 'crop' || picker === 'previous_crop') ? (
+            <div className="flex flex-col h-[calc(85vh-3.5rem)]">
+              {/* AI suggestions strip — one-tap shortcut to the crops inferred for this land */}
+              {crops.length > 0 && (
+                <div className="px-4 pb-2">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1.5 flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" />
+                    {t('lands.smartConfirm.suggestedCrops', { defaultValue: 'Suggested for your field' })}
+                  </div>
+                  <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-1">
+                    {crops.slice(0, 8).map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => applyPick({
+                          id: c.id, value: c.value, label: c.label,
+                          duration_days: c.duration_days,
+                        })}
+                        className="shrink-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs active:scale-[0.97]"
+                      >
+                        {c.label_local || c.label_hi || c.label_mr || c.label}
+                        {c.duration_days ? <span className="text-muted-foreground ml-1">· {c.duration_days}d</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {/* Full Group → Crop selector backed by Supabase crop_groups + crops tables */}
+              <div className="flex-1 min-h-0 border-t border-border">
+                <CentralizedCropSelector
+                  variant="modal"
+                  showHeader
+                  showSearch
+                  selectedCropId={picker === 'crop' ? form.current_crop_id : form.previous_crop_id}
+                  onSelect={(cropId, englishLabel /* , localizedLabel */) => {
+                    const known = crops.find(c => c.id === cropId);
+                    applyPick({
+                      id: cropId,
+                      value: englishLabel,
+                      label: englishLabel,
+                      duration_days: known?.duration_days ?? null,
+                    });
+                  }}
+                  className="h-full"
+                />
               </div>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 mt-2 px-4 pb-4">
+              {pickerItems.map((it: any) => (
+                <button
+                  key={it.id || it.value}
+                  type="button"
+                  onClick={() => applyPick(it)}
+                  className="rounded-2xl border border-border bg-card px-3 py-3.5 text-sm text-left active:scale-[0.97] min-h-[60px]"
+                >
+                  <div className="font-medium truncate">{it.label}</div>
+                  {it.meta && <div className="text-[11px] text-muted-foreground mt-0.5">{it.meta}</div>}
+                </button>
+              ))}
+              {pickerItems.length === 0 && (
+                <div className="col-span-2 text-center text-sm text-muted-foreground py-6">
+                  {t('common.loading', { defaultValue: 'Loading…' })}
+                </div>
+              )}
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </div>
