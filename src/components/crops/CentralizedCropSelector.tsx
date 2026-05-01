@@ -288,13 +288,7 @@ export function CentralizedCropSelector({
       )}
 
       <ScrollArea className="flex-1 h-full">
-        <AnimatePresence mode="wait">
-          <motion.div 
-            className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 sm:p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 sm:p-4">
             {filteredCrops.map((crop, index) => {
               const isSelected = selectedCrop?.id === crop.id || selectedCropId === crop.id;
               
