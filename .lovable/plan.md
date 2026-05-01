@@ -1,225 +1,89 @@
-# 2030-Ready Land Capture — Voice-First, AI-Assisted, Data-Complete (Revised)
+## Problem (audit findings)
 
-## Constraints Honored
-- **No new edge functions.** Reuse `lands-api`, `ai-query-understanding`, `transcribe-voice`, `text-to-speech`, `weather`, `google-maps-config`. One extension only: add a `?action=infer-context` branch to **`lands-api`** (same function, new code path).
-- **Data completeness is non-negotiable.** Every existing column on the `lands` table is captured — directly, AI-prefilled, or as a deferred follow-up — but never silently dropped.
+Looking at `SmartLandConfirmCard.tsx` + `lands-api?action=infer-context` + `lands` table schema:
 
----
+1. **`country` is never stored.** The `lands` table currently has `state, district, taluka, village` (text) and `state_id, district_id, taluka_id, village_id` (uuid) — but **no `country` / `country_id` column at all.** Country is also not in the form payload.
+2. **Location is read-only.** AI-inferred Village › Taluka › District is shown as a tiny pill with no way to correct it. If Google returns the wrong village (very common in rural India) the farmer is stuck.
+3. **Admin-ID resolution is fragile.** `lands-api` uses `ilike '<name>'` (exact match) against `states/districts/talukas/villages` to map names → UUIDs. Result on real data: `state_id` usually resolves, `district_id` sometimes, `taluka_id`/`village_id` almost never (villages table only has 8 rows total). So most lands get saved with text-only location and no FK linkage — breaks downstream joins (weather zones, market prices, govt scheme matching).
+4. **Soil / Water / Irrigation are editable** (bottom-sheet picker) — that pattern works well and we'll re-use it for location.
+5. **No "AI suggested vs farmer-confirmed" distinction** for location chips, even though the rest of the card already uses `FieldChip` with confidence + source badges.
 
-## `lands` Table — What We Must Capture (74 columns audited)
+## Goals
 
-Grouped by responsibility:
+- Every saved land carries the **full administrative chain**: Country → State → District → Taluka → Village (both display name + FK id where available).
+- Farmer can **correct any auto-filled location field** in one tap, with the same bottom-sheet UX used for soil/water/irrigation.
+- Default country = **India** (single-country app today) but stored explicitly so future expansion is trivial.
+- AI inference still pre-fills, but every value is overridable; manual edits flip confidence to 1.0 + source to `farmer` (already wired for the other chips).
 
-**A. Identity & ownership (must collect now)**
-`name, survey_number, ownership_type, farmer_id, tenant_id`
+## Plan
 
-**B. Geometry (already captured by map)**
-`area_acres, area_guntas, area_sqft, boundary_polygon_old, center_point_old, center_lat, center_lon, boundary_geom, location_coords, boundary_method, gps_accuracy_meters, gps_recorded_at, elevation_meters, slope_percentage`
+### 1. Database — add country columns to `lands`
 
-**C. Administrative location (AI prefills, farmer confirms)**
-`state, state_id, district, district_id, taluka, taluka_id, village, village_id, location_context (jsonb)`
+Migration:
+- `ALTER TABLE public.lands ADD COLUMN country text NOT NULL DEFAULT 'India';`
+- `ALTER TABLE public.lands ADD COLUMN country_code text NOT NULL DEFAULT 'IN';`
+- Backfill is automatic via DEFAULT.
+- No RLS change needed (existing policies cover the row).
 
-**D. Land character (AI prefills with confidence)**
-`land_type, soil_type, water_source, irrigation_type, irrigation_source`
+(We do **not** add a `countries` reference table — overkill for a single-country app. `country_code` ISO-2 is enough for future filtering.)
 
-**E. Soil chemistry (deferred — separate flow)**
-`soil_tested, soil_ph, organic_carbon_percent, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, last_soil_test_date, soil_data_source, soil_confidence_level`
+### 2. Edge function — harden `lands-api?action=infer-context`
 
-**F. Crop lifecycle — CRITICAL per your note (must collect now, with dates)**
-`current_crop, current_crop_id, crop_stage, planting_date, cultivation_date, last_sowing_date, expected_harvest_date, harvest_date, previous_crop, previous_crop_id, last_crop, last_harvest_date`
+In `supabase/functions/lands-api/index.ts`:
+- Add `country` + `country_code` to the response (`'India'` / `'IN'` derived from Google `country` address component, defaulting to India if missing).
+- Replace the brittle `ilike '<exact>'` admin-ID resolution with a **two-pass** match: (a) exact, then (b) `ilike '%<name>%'` scoped to the parent ID. This dramatically improves district/taluka hit-rate.
+- When village can't be resolved against the (mostly empty) `villages` table, still return the Google `village` string — the form will treat it as free text.
 
-**G. NDVI / processing (system-managed)**
-`ndvi_tested, last_ndvi_value, last_ndvi_calculation, ndvi_thumbnail_url, ndvi_geotiff_url, ndvi_status, last_processed_at, tile_id, tile_ids, mgrs_tile_id`
+### 3. Frontend — make location fully editable
 
-**H. Moisture (system-managed)**
-`current_moisture_status, last_moisture_update`
+**`useUnifiedLocation` is already in the codebase** (states/districts/talukas/villages with caching + cascade). Re-use it — no new hook needed.
 
-**I. Misc**
-`notes, land_documents (jsonb), marketplace_enabled, is_active, deleted_at, created_at, updated_at`
+In `SmartLandConfirmCard.tsx`:
+- Add a new **"Location"** section above "Land character" with 5 `FieldChip` rows:
+  Country · State · District · Taluka · Village
+  Each shows current value + AI confidence badge + a tap target.
+- Extend `PickerKind` with `'country' | 'state' | 'district' | 'taluka' | 'village'`.
+- Picker bottom sheet:
+  - Country: fixed list `[India]` for now (locked but visible — explicit beats hidden).
+  - State: list from `useUnifiedLocation().states`.
+  - District: list from `loadDistricts(state_id)` — picker is disabled with hint "Select State first" if `state_id` missing.
+  - Taluka: list from `loadTalukas(district_id)` — same gating.
+  - Village: list from `loadVillages(taluka_id)` **plus** a free-text input at the top (`Use "<typed>"`) because the villages table is sparse. Free text saves into `village` (string) without `village_id`.
+- Cascading reset: changing State clears district/taluka/village; changing District clears taluka/village; etc.
+- Add a search input inside the picker sheet (states ≈36, districts ≈767, talukas ≈3547 → search is mandatory for talukas).
+- Manual selection sets `confidence[location] = 1.0`, `sources[location] = 'farmer'` (matches existing soil/water pattern).
 
-### Crop date contract (your explicit requirement)
-For Group F we will store **all four canonical dates**:
-- `last_harvest_date` + `last_crop` / `previous_crop` / `previous_crop_id` → records the **previous cycle**.
-- `cultivation_date` (land prep) **and** `planting_date` / `last_sowing_date` (sowing) → records the **current cycle start**. We populate all three from a single farmer input ("when did you sow?") plus an optional "land preparation was X days earlier" chip; otherwise `cultivation_date = planting_date`.
-- `expected_harvest_date` → auto-derived from `crops.duration_days` table (already exists) at save-time, editable.
-- `crop_stage` → derived from `(today − planting_date) / duration_days` and stored.
+### 4. Save payload
 
-This guarantees downstream NDVI scheduling, scheduler, proactive evaluator, and decision graph all have the dates they need.
+Update `landsApi.createLand` call in the card to include:
+- `country: form.country || 'India'`
+- `country_code: form.country_code || 'IN'`
+All existing string + id fields for state/district/taluka/village stay (already wired).
 
----
+### 5. Service layer
 
-## Audit of Current Wizard (`ModernLandWizard.tsx`) — Data Loss Risks
+`src/services/landsApi.ts`: extend the create payload type with `country?: string; country_code?: string;`. The edge function passes the body straight to Supabase insert, so no further wiring needed.
 
-| Issue | Impact |
-|---|---|
-| `state_id/district_id/taluka_id/village_id` collected but **`state/district/taluka/village` strings sent without IDs** in `landsApi.createLand` payload | Joins to `villages` table fail; weather + decision graph cannot resolve location |
-| `cultivation_date` collected, `planting_date` and `last_sowing_date` **never set** | NDVI scheduler + crop-stage engine read `planting_date` → silently degraded |
-| `expected_harvest_date` **never computed** | Harvest reminders & PHI calculations broken |
-| `crop_stage` **never set on create** | Decision graph stage matching fails on day 0 |
-| `previous_crop_id` **never resolved** from `previous_crop` string | Crop rotation rules can't fire |
-| `elevation_meters`, `slope_percentage` **never captured** despite Google Elevation API being available | Drainage + irrigation rules degraded |
-| `location_context` jsonb **never populated** with reverse-geocoded address | Weather function falls back to coarse lookup |
-| Hardcoded soil/water/irrigation lists in component | Drift from `soil_types/water_sources/irrigation_types` reference tables |
-| `notes`, `land_documents`, `marketplace_enabled` not exposed | Lost forever after creation unless edited |
+### 6. Edit page parity
 
----
+`src/pages/EditLand.tsx` already exists. Add the same 5 location chips + picker so corrections after creation are also possible (uses the exact same component logic — extract `LocationPickerSection` for reuse between Add and Edit).
 
-## New Flow (Single Screen, Progressive)
+## Files to touch
 
-```text
-[Map Save tapped → boundary + area in hand]
-        ↓
-[lands-api?action=infer-context  POST {centroid, boundary, language}]
-   server-side, no new function:
-     1. Reverse-geocode via Google (key from google-maps-config) → village/taluka/district/state + IDs
-     2. Google Elevation API (same key) → elevation_meters, derived slope
-     3. weather function (internal fetch) → current weather + season hint
-     4. Nearest 5 lands within 5km (PostGIS ST_DWithin, tenant-scoped)
-        → mode of soil_type / water_source / irrigation_type / common current_crop
-     5. SoilGrids REST → soil_type fallback if no neighbors
-     6. crops table lookup → if neighbor crop dominates, surface as suggestion
-     7. Return { fields:{...}, confidence:{...}, sources:{...} }
-        ↓
-[SmartLandConfirmCard.tsx — single scrollable screen, mobile-first]
+- **migration (new)** — add `country`, `country_code` to `lands`
+- **edit** `supabase/functions/lands-api/index.ts` — country in infer-context, fuzzy ID resolver
+- **edit** `src/services/landsApi.ts` — payload type
+- **new** `src/components/land/LocationPickerSection.tsx` — 5 chips + picker sheet, reusable
+- **edit** `src/components/land/SmartLandConfirmCard.tsx` — mount LocationPickerSection, pass country in save
+- **edit** `src/pages/EditLand.tsx` — mount the same section
 
-  ┌─ Map thumbnail + 1.24 ac (2.4 guntha · 54k sqft) ────┐
-  │                                                      │
-  │  📍 Pune › Haveli › Wagholi              [edit ▸]   │  ← prefilled chip
-  │  ⛰  Elevation 562 m · Slope 1.8%                     │  (auto, hidden detail)
-  │                                                      │
-  │  🏷  Name:  [ North Field ▾ ]   🎤                  │  ← AI suggests 3, voice override
-  │  🧾  Survey No: [ 123/A ]       🎤  (optional)      │
-  │  🏡  Owned ●  Leased ○  Shared ○                     │  ← required, big tiles
-  │                                                      │
-  │  ─── Land character (AI suggested) ───              │
-  │  🌱 Soil: Black ●●●●○ (95%)             [change ▸] │  ← confidence dot
-  │  💧 Water: Borewell ●●●○○ (70%)        [change ▸] │
-  │  🚜 Irrigation: Drip ●●●●● (98%)       [change ▸] │
-  │                                                      │
-  │  ─── Crop cycle (REQUIRED for accuracy) ───         │
-  │  🌾 Current crop:  [ Sugarcane ▾ ]   🎤             │  ← from crops table
-  │  📅 Sowed on:  [ Kharif '26 ▾ ] or pick date        │  ← season chip OR date
-  │  🛠  Land prepared:  [ same day ▾ | 7d earlier | 14d ] │
-  │  📆 Expected harvest: 2027-01-15 (auto, editable)   │
-  │  🌿 Stage now: Tillering (auto)                     │
-  │                                                      │
-  │  ─── Previous cycle (optional but recommended) ───  │
-  │  🌾 Previous crop: [ — ▾ ]                          │
-  │  📅 Last harvest:  [ — ▾ ]                          │
-  │                                                      │
-  │  ▸ More details (notes, documents, marketplace)     │  ← collapsed accordion
-  │                                                      │
-  │  [🎤 Hold to talk]              [💾 Save Land]      │
-  └──────────────────────────────────────────────────────┘
-```
+## Out of scope (intentionally)
 
-### Voice layer (uses existing functions)
-- **Hold-to-talk mic** → `transcribe-voice` → vernacular text.
-- Text → `ai-query-understanding` (existing) with a new *intent profile* `LAND_FORM_FILL` that returns slot JSON (`crop`, `sowing_date`, `irrigation`, `water_source`, `previous_crop`, `last_harvest_date`, `ownership`).
-- Slots merge into form state with confidence; TTS confirms via `text-to-speech` ("ठीक आहे, पीक ऊस म्हणून जतन केले").
-- Falls back to typing if mic permission denied.
+- A real `countries` reference table — single-country app today, deferred.
+- Bulk-importing villages — separate data-quality task; the free-text fallback in the village picker handles it for now.
+- Renaming `irrigation_source` (legacy column) — already superseded by `irrigation_type`, keep both for back-compat.
 
-### Offline-safe save
-- Reuse existing `useSyncAction` + `offlineDataService` (already in repo).
-- Online → `landsApi.createLand` (existing).
-- Offline → local IndexedDB write, optimistic id, sync when reconnected.
+## Rollback
 
-### Draft resume
-- Replace silent `localStorage` overwrite with a one-time modal: "Continue 'North Field' draft from 2 hours ago?" [Resume] [Start fresh].
-
----
-
-## Edge Function Changes (zero new functions)
-
-### `supabase/functions/lands-api/index.ts` — add ONE branch
-```ts
-// At top of switch, before existing cases:
-if (req.method === 'POST' && url.searchParams.get('action') === 'infer-context') {
-  // Body: { centroid:{lat,lng}, boundary:LatLng[], language:string }
-  // 1. Google reverse-geocode  (key from Deno.env GOOGLE_MAPS_API_KEY)
-  // 2. Google elevation
-  // 3. Internal: supabase.rpc('nearest_lands_summary', { lat, lng, radius_m: 5000, p_tenant_id: tenantId })
-  // 4. Internal fetch to /weather function (cached)
-  // 5. crops table lookup for canonical crop names + duration_days
-  // Return { fields:{...}, confidence:{...}, sources:{...} } with corsHeaders
-}
-```
-- All work happens **inside the existing `lands-api` function**; no new function file, no new deploy target.
-- Reuses the same `guardTenantAccess` so multi-tenant isolation is automatic.
-
-### New Postgres function (migration only, not an edge function)
-`nearest_lands_summary(lat, lng, radius_m, p_tenant_id)` — returns mode of soil/water/irrigation/crop within radius for that tenant. Pure SQL, called from the inference branch.
-
-### No changes to other edge functions
-`transcribe-voice`, `text-to-speech`, `ai-query-understanding`, `weather`, `google-maps-config` are used as-is. We only add a new **intent profile name** `LAND_FORM_FILL` recognized inside `ai-query-understanding` (which already accepts a `mode` parameter — verified by reading the existing function in earlier turns).
-
----
-
-## Files to Create / Edit
-
-**New (frontend only):**
-- `src/components/land/SmartLandConfirmCard.tsx` — the single-screen UI.
-- `src/components/land/FieldChip.tsx` — confidence dot + inline bottom-sheet picker.
-- `src/components/land/SeasonPicker.tsx` — Kharif/Rabi/Summer chips that map to dates.
-- `src/components/land/LandVoiceCapture.tsx` — hold-to-talk wrapper around existing voice hooks.
-- `src/components/land/CropCycleSection.tsx` — current + previous cycle with date derivation.
-- `src/hooks/useLandContextInference.ts` — React Query wrapper that calls `lands-api?action=infer-context`.
-- `src/lib/cropStage.ts` — pure helper: `(planting_date, duration_days) → stage_label + expected_harvest_date`.
-
-**Edit:**
-- `supabase/functions/lands-api/index.ts` — add `action=infer-context` branch + Google reverse-geocode + elevation + internal proximity SQL.
-- `src/services/landsApi.ts` — add `inferLandContext(centroid, boundary, language)` method.
-- `src/services/landsApi.ts` `createLand()` — extend to accept and forward all Group A–F + I fields (currently it strips many).
-- `src/pages/AddLand.tsx` — render `SmartLandConfirmCard` instead of `ModernLandWizard` (behind feature flag `smartLandConfirm`).
-- `src/i18n/locales/{en,hi,mr,pa,ta}.json` — add `lands.smartConfirm.*` strings + season names.
-- `src/config/featureConfig.ts` — add `smartLandConfirm: true` flag.
-
-**Database migration (no edge function impact):**
-- `nearest_lands_summary(lat, lng, radius_m, p_tenant_id)` Postgres function (SECURITY DEFINER, search_path locked).
-
-**Keep as fallback (don't delete):**
-- `ModernLandWizard.tsx` — behind the off state of the feature flag for safe rollback.
-
----
-
-## Field-by-field Capture Strategy (closes the data-loss gaps)
-
-| Column | How it's set | When |
-|---|---|---|
-| `state/district/taluka/village` + `*_id` | `infer-context` reverse-geocode → matched against `villages` table for IDs | Auto, farmer can correct |
-| `location_context` jsonb | Filled with full Google address_components + raw response | Auto |
-| `elevation_meters`, `slope_percentage` | Google Elevation API (4 sample points) | Auto |
-| `soil_type`, `water_source`, `irrigation_type`, `irrigation_source`, `land_type` | Neighbor-mode + SoilGrids; confidence chip; from `useLandFormData` reference lists | Confirmed |
-| `current_crop` + `current_crop_id` | From `crops` table picker, AI suggests neighbor's crop | Required |
-| `planting_date` + `last_sowing_date` + `cultivation_date` | Single sowing date input → all three populated; `cultivation_date = planting_date − landPrepDays` | Required |
-| `expected_harvest_date` | `planting_date + crops.duration_days` (live preview) | Auto, editable |
-| `crop_stage` | `cropStage()` helper at save | Auto |
-| `previous_crop` + `previous_crop_id` + `last_crop` | Optional picker | Optional |
-| `last_harvest_date` | Optional date / season chip | Optional |
-| `notes`, `land_documents`, `marketplace_enabled` | Inside collapsed "More details" | Optional |
-| `gps_accuracy_meters`, `gps_recorded_at`, `boundary_method` | Already set by map drawer | Auto |
-| Soil chemistry (Group E) | **Out of scope here** — separate "Add soil test" CTA on land card | Deferred |
-| NDVI/moisture (Groups G,H) | System-managed by existing pipelines | Background |
-
----
-
-## Technical Section
-
-- **Confidence model:** 0–1 float per **Confidence Scoring Migrations** memory. UI dots: ≥0.8 green, 0.5–0.8 amber, <0.5 red (red forces explicit pick).
-- **Vernacular voice extractor (in `ai-query-understanding`):** new `mode: 'LAND_FORM_FILL'` returns strict JSON schema, post-validated against reference enums per **LLM Output Validation Gate**. No agronomic generation — translation/extraction only, per **Symbolic Engine Strict Invariants**.
-- **Canonical script enforced** per **Canonical Language Governance** — Devanagari for hi/mr farmers throughout chips and TTS.
-- **Mobile invariants:** opaque cards (no `backdrop-blur`), `e.stopPropagation()` on touch, max-scale=5.0, safe-area insets, 48 px min targets — all per **Mobile Viewport Standard** & **System Optimization** memories.
-- **Performance budget:** `infer-context` p95 ≤ 1.5 s. UI renders the card immediately with skeleton chips and streams suggestions in (`useDeferredValue`) so the farmer is never blocked.
-- **Multi-tenant safety:** every neighbor query uses `tenant_id = $tenant` filter inside `nearest_lands_summary`; `guardTenantAccess` already enforces tenant scoping for the edge call. Honors **Proactive Multi-Tenant Isolation**.
-- **Telemetry:** log `land_infer_accepted_fields`, `land_infer_overridden_fields`, `voice_slot_fill_success` to feed the **Proactive Feedback Learning Loop**.
-- **Feature flag rollout:** `smartLandConfirm` on in dev, gradual canary in prod; old wizard remains one toggle away.
-
----
-
-## Out of Scope (future iterations)
-- WhatsApp Bridge to add land via voice note.
-- Drone-photo auto-boundary.
-- Co-ownership flow with OTP consent.
-- Soil test result capture flow (separate "Add soil test" card on land detail).
-
-After approval, I will implement in this order: (1) `lands-api` infer branch + Postgres helper, (2) `SmartLandConfirmCard` + sub-components, (3) voice layer, (4) offline-safe save + draft-resume, (5) i18n strings, (6) feature-flag wiring.
+- DB: `ALTER TABLE lands DROP COLUMN country, DROP COLUMN country_code;` (defaults make this safe).
+- UI: `localStorage.setItem('smartLandConfirm','off')` already falls back to the legacy wizard.
