@@ -60,10 +60,17 @@ export function LocationPickerSection({
   useEffect(() => { if (value.district_id) loadTalukas(value.district_id); }, [value.district_id, loadTalukas]);
   useEffect(() => { if (value.taluka_id) loadVillages(value.taluka_id); }, [value.taluka_id, loadVillages]);
 
-  // Reset search when picker changes
+  // Reset search when picker changes; arm taps after the open animation.
   useEffect(() => {
     setSearch('');
     setVillageFreeText('');
+    if (picker === null) {
+      setTapsArmed(false);
+      return;
+    }
+    setTapsArmed(false);
+    const id = window.setTimeout(() => setTapsArmed(true), 350);
+    return () => window.clearTimeout(id);
   }, [picker]);
 
   const items = useMemo(() => {
