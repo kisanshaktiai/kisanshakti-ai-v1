@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ArrowLeft, Loader2, Save, MapPin, Mountain, Tag, FileText,
+  ArrowLeft, Loader2, Save, Mountain, Tag, FileText,
   Sprout, Droplet, GlassWater, Tractor, CalendarDays, History,
   ChevronDown, Sparkles,
 } from 'lucide-react';
@@ -161,7 +161,7 @@ export function SmartLandConfirmCard({
     form.land_prep_offset_days,
   ), [form.sowing_date, form.current_crop_duration, form.land_prep_offset_days]);
 
-  const locationLabel = [form.village, form.taluka, form.district].filter(Boolean).join(' › ') || null;
+  // (location is rendered by LocationPickerSection — no inline label needed)
   const elevationLabel = typeof form.elevation_meters === 'number'
     ? `${form.elevation_meters} m`
     : null;
