@@ -19,6 +19,9 @@ interface Props {
   collapsible?: boolean;
   defaultOpen?: boolean;
   required?: boolean;
+  /** When state is 'ai', also render children below the Yes/Change row so
+   * fields are reachable without first tapping "Change". Used by Location. */
+  alwaysShowChildrenWhenAi?: boolean;
 }
 
 const STATE_STYLES: Record<ReviewCardState, string> = {
