@@ -162,18 +162,24 @@ export function LocationPickerSection({
   const openPicker = (kind: Exclude<PickerKind, null>) => {
     // Try to back-fill missing parent ids from already-loaded lists by name match.
     // This unblocks the cascade when AI prefilled names but couldn't resolve canonical ids.
+    let nextValue = value;
     if (kind === 'district' && !value.state_id && value.state) {
       const match = states.find(s => s.name.toLowerCase() === value.state!.toLowerCase());
-      if (match) { onChange({ ...value, state_id: match.id }); loadDistricts(match.id); }
+      if (match) { nextValue = { ...nextValue, state_id: match.id }; onChange(nextValue); }
     }
     if (kind === 'taluka' && !value.district_id && value.district) {
       const match = districts.find(d => d.name.toLowerCase() === value.district!.toLowerCase());
-      if (match) { onChange({ ...value, district_id: match.id }); loadTalukas(match.id); }
+      if (match) { nextValue = { ...nextValue, district_id: match.id }; onChange(nextValue); }
     }
     if (kind === 'village' && !value.taluka_id && value.taluka) {
       const match = talukas.find(tk => tk.name.toLowerCase() === value.taluka!.toLowerCase());
-      if (match) { onChange({ ...value, taluka_id: match.id }); loadVillages(match.id); }
+      if (match) { nextValue = { ...nextValue, taluka_id: match.id }; onChange(nextValue); }
     }
+    // ALWAYS trigger a fresh load for the level being opened — covers the case
+    // where parent_id is set but child arrays are stale/empty (e.g. user reopened sheet).
+    if (kind === 'district' && nextValue.state_id) loadDistricts(nextValue.state_id);
+    if (kind === 'taluka'   && nextValue.district_id) loadTalukas(nextValue.district_id);
+    if (kind === 'village'  && nextValue.taluka_id) loadVillages(nextValue.taluka_id);
     // Always open the sheet — even if parent id is still missing, user gets clear guidance inside.
     setPicker(kind);
   };
@@ -367,32 +373,41 @@ export function LocationPickerSection({
 
             {!missingParent && items.length === 0 && (
               <div className="col-span-full text-center py-8 px-3">
-                {(picker === 'state'    && (loading.states    || states.length === 0)) ||
-                 (picker === 'district' && (loading.districts || (value.state_id && districts.length === 0))) ||
-                 (picker === 'taluka'   && (loading.talukas   || (value.district_id && talukas.length === 0))) ||
-                 (picker === 'village'  && (loading.villages  || (value.taluka_id && villages.length === 0))) ? (
-                  <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    {t('common.loading', { defaultValue: 'Loading…' })}
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-sm font-medium">
-                      {search
-                        ? t('lands.location.noMatchesFor', { defaultValue: 'No matches for "{{q}}"', q: search })
-                        : t('common.noResults', { defaultValue: 'No matches' })}
-                    </div>
-                    {picker === 'state' ? (
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {t('lands.location.stateMustPick', { defaultValue: 'Try clearing the search — all 36 states are available.' })}
+                {(() => {
+                  // Show loader when the relevant array is empty and either the
+                  // hook is loading OR the parent id is set (data is on its way).
+                  const isLoadingNow =
+                    (picker === 'state'    && (loading.states    || states.length === 0)) ||
+                    (picker === 'district' && (loading.districts || (value.state_id && districts.length === 0))) ||
+                    (picker === 'taluka'   && (loading.talukas   || (value.district_id && talukas.length === 0))) ||
+                    (picker === 'village'  && (loading.villages  || (value.taluka_id && villages.length === 0)));
+                  if (isLoadingNow && !search) {
+                    return (
+                      <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        {t('common.loading', { defaultValue: 'Loading…' })}
                       </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {t('lands.location.useTypedAbove', { defaultValue: 'Use the box above to enter it manually.' })}
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="text-sm font-medium">
+                        {search
+                          ? t('lands.location.noMatchesFor', { defaultValue: 'No matches for "{{q}}"', q: search })
+                          : t('common.noResults', { defaultValue: 'No matches' })}
                       </div>
-                    )}
-                  </>
-                )}
+                      {picker === 'state' ? (
+                        <div className="text-xs text-muted-foreground mt-2">
+                          {t('lands.location.stateMustPick', { defaultValue: 'Try clearing the search — all 36 states are available.' })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground mt-2">
+                          {t('lands.location.useTypedAbove', { defaultValue: 'Use the box above to enter it manually.' })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
