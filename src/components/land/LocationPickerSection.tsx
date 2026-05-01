@@ -61,6 +61,7 @@ export function LocationPickerSection({
   useEffect(() => { if (value.taluka_id) loadVillages(value.taluka_id); }, [value.taluka_id, loadVillages]);
 
   // Reset search when picker changes; arm taps after the open animation.
+  // Also kick off a load for the current level if its parent is known but data is empty.
   useEffect(() => {
     setSearch('');
     setVillageFreeText('');
@@ -68,6 +69,9 @@ export function LocationPickerSection({
       setTapsArmed(false);
       return;
     }
+    if (picker === 'district' && value.state_id && districts.length === 0) loadDistricts(value.state_id);
+    if (picker === 'taluka'   && value.district_id && talukas.length === 0) loadTalukas(value.district_id);
+    if (picker === 'village'  && value.taluka_id && villages.length === 0) loadVillages(value.taluka_id);
     setTapsArmed(false);
     const id = window.setTimeout(() => setTapsArmed(true), 350);
     return () => window.clearTimeout(id);
