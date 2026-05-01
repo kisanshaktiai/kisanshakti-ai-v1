@@ -373,32 +373,41 @@ export function LocationPickerSection({
 
             {!missingParent && items.length === 0 && (
               <div className="col-span-full text-center py-8 px-3">
-                {(picker === 'state'    && (loading.states    || states.length === 0)) ||
-                 (picker === 'district' && (loading.districts || (value.state_id && districts.length === 0))) ||
-                 (picker === 'taluka'   && (loading.talukas   || (value.district_id && talukas.length === 0))) ||
-                 (picker === 'village'  && (loading.villages  || (value.taluka_id && villages.length === 0))) ? (
-                  <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin" />
-                    {t('common.loading', { defaultValue: 'Loading…' })}
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-sm font-medium">
-                      {search
-                        ? t('lands.location.noMatchesFor', { defaultValue: 'No matches for "{{q}}"', q: search })
-                        : t('common.noResults', { defaultValue: 'No matches' })}
-                    </div>
-                    {picker === 'state' ? (
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {t('lands.location.stateMustPick', { defaultValue: 'Try clearing the search — all 36 states are available.' })}
+                {(() => {
+                  // Show loader when the relevant array is empty and either the
+                  // hook is loading OR the parent id is set (data is on its way).
+                  const isLoadingNow =
+                    (picker === 'state'    && (loading.states    || states.length === 0)) ||
+                    (picker === 'district' && (loading.districts || (value.state_id && districts.length === 0))) ||
+                    (picker === 'taluka'   && (loading.talukas   || (value.district_id && talukas.length === 0))) ||
+                    (picker === 'village'  && (loading.villages  || (value.taluka_id && villages.length === 0)));
+                  if (isLoadingNow && !search) {
+                    return (
+                      <div className="flex flex-col items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        {t('common.loading', { defaultValue: 'Loading…' })}
                       </div>
-                    ) : (
-                      <div className="text-xs text-muted-foreground mt-2">
-                        {t('lands.location.useTypedAbove', { defaultValue: 'Use the box above to enter it manually.' })}
+                    );
+                  }
+                  return (
+                    <>
+                      <div className="text-sm font-medium">
+                        {search
+                          ? t('lands.location.noMatchesFor', { defaultValue: 'No matches for "{{q}}"', q: search })
+                          : t('common.noResults', { defaultValue: 'No matches' })}
                       </div>
-                    )}
-                  </>
-                )}
+                      {picker === 'state' ? (
+                        <div className="text-xs text-muted-foreground mt-2">
+                          {t('lands.location.stateMustPick', { defaultValue: 'Try clearing the search — all 36 states are available.' })}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground mt-2">
+                          {t('lands.location.useTypedAbove', { defaultValue: 'Use the box above to enter it manually.' })}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
