@@ -101,8 +101,7 @@ export default function SetPin() {
         
         const farmerData = {
           mobile_number: mobile!,
-          pin_hash: pinHash, // Store hashed PIN
-          pin: pin, // Store plain PIN for development/debugging (remove in production)
+          pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
           tenant_id: tenantId!,
           farmer_code: farmerCode,
           language_preference: localStorage.getItem('i18nextLng') || 'hi',
