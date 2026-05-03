@@ -86,7 +86,7 @@ export default function AuthScreen() {
       // Mobile numbers are stored as strings without country code
       const { data: farmer, error: fetchError } = await supabase
         .from('farmers')
-        .select('id, mobile_number, pin, pin_hash, tenant_id, farmer_code')
+        .select('id, mobile_number, pin_hash, tenant_id, farmer_code')
         .eq('mobile_number', cleanMobile)
         .eq('tenant_id', tenant.id)
         .maybeSingle();
