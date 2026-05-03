@@ -9711,7 +9711,6 @@ export type Database = {
           metadata: Json | null
           mobile_number: string | null
           notes: string | null
-          pin: string | null
           pin_hash: string | null
           pin_updated_at: string | null
           preferred_contact_method: string | null
@@ -9767,7 +9766,6 @@ export type Database = {
           metadata?: Json | null
           mobile_number?: string | null
           notes?: string | null
-          pin?: string | null
           pin_hash?: string | null
           pin_updated_at?: string | null
           preferred_contact_method?: string | null
@@ -9823,7 +9821,6 @@ export type Database = {
           metadata?: Json | null
           mobile_number?: string | null
           notes?: string | null
-          pin?: string | null
           pin_hash?: string | null
           pin_updated_at?: string | null
           preferred_contact_method?: string | null
