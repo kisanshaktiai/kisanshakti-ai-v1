@@ -272,16 +272,13 @@ class OfflineAuthService {
       });
 
     if (validationError || !isValid) {
-      // Fallback to direct comparison of hashed PINs
+      // Fallback: compare salted hash directly (matches SetPin.tsx hashing scheme)
       if (farmer.pin_hash !== pinHash) {
-        // Also check plain PIN for backward compatibility during migration
-        if (farmer.pin !== pin) {
-          return {
-            success: false,
-            isOffline: false,
-            error: 'Incorrect PIN'
-          };
-        }
+        return {
+          success: false,
+          isOffline: false,
+          error: 'Incorrect PIN'
+        };
       }
     }
 
