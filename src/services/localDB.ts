@@ -22,7 +22,7 @@ export interface FarmerData {
   location: string | null;
   
   // Authentication
-  pin: string | null;
+  pin?: string | null;
   pin_hash: string | null;
   pin_updated_at: string | null;
   failed_login_attempts: number | null;
