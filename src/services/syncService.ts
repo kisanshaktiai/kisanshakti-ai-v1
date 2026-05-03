@@ -531,7 +531,6 @@ class SyncService {
               aadhaar_number: f.aadhaar_number,
               shc_id: f.shc_id,
               location: f.location,
-              pin: f.pin,
               pin_hash: f.pin_hash,
               pin_updated_at: f.pin_updated_at,
               failed_login_attempts: f.failed_login_attempts,

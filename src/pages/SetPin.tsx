@@ -101,8 +101,7 @@ export default function SetPin() {
         
         const farmerData = {
           mobile_number: mobile!,
-          pin_hash: pinHash, // Store hashed PIN
-          pin: pin, // Store plain PIN for development/debugging (remove in production)
+          pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
           tenant_id: tenantId!,
           farmer_code: farmerCode,
           language_preference: localStorage.getItem('i18nextLng') || 'hi',
@@ -156,8 +155,7 @@ export default function SetPin() {
         const { data: updatedFarmer, error: updateError } = await supabase
           .from('farmers')
           .update({
-            pin_hash: pinHash, // Store hashed PIN
-            pin: pin, // Store plain PIN for development/debugging (remove in production)
+            pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
             pin_updated_at: new Date().toISOString(),
             last_login_at: new Date().toISOString(),
             total_app_opens: 1
@@ -291,10 +289,10 @@ export default function SetPin() {
                 disabled={isLoading}
               >
                 <InputOTPGroup className="gap-2">
-                  <InputOTPSlot index={0} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={1} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={2} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={3} className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={0} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={1} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={2} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={3} mask className="w-14 h-14 text-lg" />
                 </InputOTPGroup>
               </InputOTP>
             </div>
