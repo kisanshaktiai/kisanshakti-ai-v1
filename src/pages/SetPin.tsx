@@ -155,8 +155,7 @@ export default function SetPin() {
         const { data: updatedFarmer, error: updateError } = await supabase
           .from('farmers')
           .update({
-            pin_hash: pinHash, // Store hashed PIN
-            pin: pin, // Store plain PIN for development/debugging (remove in production)
+            pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
             pin_updated_at: new Date().toISOString(),
             last_login_at: new Date().toISOString(),
             total_app_opens: 1
