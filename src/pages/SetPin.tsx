@@ -291,10 +291,10 @@ export default function SetPin() {
                 disabled={isLoading}
               >
                 <InputOTPGroup className="gap-2">
-                  <InputOTPSlot index={0} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={1} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={2} className="w-14 h-14 text-lg" />
-                  <InputOTPSlot index={3} className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={0} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={1} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={2} mask className="w-14 h-14 text-lg" />
+                  <InputOTPSlot index={3} mask className="w-14 h-14 text-lg" />
                 </InputOTPGroup>
               </InputOTP>
             </div>
