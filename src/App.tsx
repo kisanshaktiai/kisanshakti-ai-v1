@@ -39,6 +39,7 @@ const LanguageSelection = lazy(() => import("./pages/LanguageSelection"));
 const AuthScreen = lazy(() => import("./pages/AuthScreen"));
 const PinAuth = lazy(() => import("./pages/PinAuth"));
 const SetPin = lazy(() => import("./pages/SetPin"));
+const ForgotPin = lazy(() => import("./pages/ForgotPin"));
 const LandManagement = lazy(() => import("./pages/LandManagement"));
 const AddLand = lazy(() => import("./pages/AddLand"));
 const EditLand = lazy(() => import("./pages/EditLand"));
@@ -338,6 +339,11 @@ const router = createBrowserRouter([
   {
     path: "/set-pin",
     element: <Suspense fallback={<PageLoader />}><SetPin /></Suspense>,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/forgot-pin",
+    element: <Suspense fallback={<PageLoader />}><ForgotPin /></Suspense>,
     errorElement: <RouteErrorBoundary />,
   },
   {
