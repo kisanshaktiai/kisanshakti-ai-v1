@@ -1,94 +1,104 @@
-# Mask Farmer PIN Input + Safely Remove Plaintext PIN Column
+# Login regression — root-cause audit and fix plan
 
-## Audit findings (verified)
+## What I verified
 
-### 1. PIN digits visible on screen
-`src/pages/PinAuth.tsx` and `src/pages/SetPin.tsx` use `<InputOTPSlot>` from `src/components/ui/input-otp.tsx`, which renders the raw typed character in a `<div>`. As the farmer types the 4-digit PIN, real digits like `1·2·3·4` appear on screen — a shoulder-surfing risk.
-
-### 2. How farmer login actually works (custom auth — NOT changing it)
-- **Set/Reset PIN** (`SetPin.tsx`): computes `pinHash = SHA256(pin + 'kisan_shakti_2024')` and writes BOTH `pin_hash` (the salted hash) AND `pin` (plaintext, labelled "remove in production").
-- **Login** (`PinAuth.tsx` → `offlineAuthService.performOnlineAuth`):
-  1. Fetches farmer row by id+tenant.
-  2. Calls RPC `validate_farmer_pin(p_farmer_id, p_pin, p_tenant_id)`.
-  3. **Fallback**: if RPC fails/false, compares `farmer.pin_hash !== this.hashPin(pin)` (salted SHA256). If that also mismatches, it last-resorts to `farmer.pin !== pin` plaintext.
-- **Offline login** (`offlineAuthService.authenticateOffline`): uses ONLY the salted `pin_hash` from IndexedDB.
-
-### 3. Database state (verified via `SELECT`)
-- All 24 farmer rows have `pin_hash` populated (64-char SHA256). 23/24 also have plaintext `pin`.
-- The salted-hash login path **already works for every farmer** — no farmer depends on the plaintext column to log in.
-
-### 4. Risk of dropping `pin` column blindly (must fix first)
-- `validate_farmer_pin(uuid, text, uuid)` RPC selects `pin` and `pin_hash`, then checks `v_stored_pin = p_pin` OR `v_stored_hash = encode(digest(p_pin,'sha256'),'hex')` (unsalted). Neither branch matches our client's *salted* hash → today this RPC effectively returns true only via the plaintext branch. If we drop `pin` without rewriting the RPC, the function will error (`column "pin" does not exist`).
-- `src/services/syncService.ts:534` writes `pin: f.pin` into IndexedDB during pull-sync. Will produce undefined column on the server SELECT once dropped (the `select('*')` is fine, but the local mapping just stores `undefined` — harmless, but we'll clean it up).
-- `src/services/offlineAuthService.ts:278` has the `farmer.pin !== pin` plaintext fallback — needs removal.
-- `src/pages/AuthScreen.tsx:89` selects `pin` in its column list — will error after drop; remove from the select.
-- `src/pages/SetPin.tsx:105,160` writes `pin: pin` on insert/update — will error after drop; remove.
-
-## Changes (ordered — code first, DB last)
-
-### A. Mask PIN slots visually
-`src/components/ui/input-otp.tsx` — extend `InputOTPSlot` props with optional `mask?: boolean`. When true, render `•` in place of the typed char. Value flowing through `OTPInput.onChange` is unchanged, so verification logic is untouched.
-
-```tsx
-{char ? (mask ? <span aria-hidden className="text-2xl leading-none">•</span> : char) : null}
+### Bug 1 — `validate_farmer_pin` RPC returns 404 / SQL error
+Network log of the live login attempt shows:
 ```
+POST /rpc/validate_farmer_pin → 404
+{"code":"42883","message":"function digest(text, unknown) does not exist"}
+```
+The new RPC body uses `digest(p_pin || 'kisan_shakti_2024', 'sha256')`, but `pgcrypto` is installed in the `extensions` schema, while the function's `search_path` is set to `'public'` only. Postgres can't resolve `digest`, so the RPC always errors. The client then falls into its hash-compare fallback, which works for most farmers — but on this account the stored value is wrong (Bug 2), so the user sees "Incorrect PIN".
 
-Apply `mask` to:
-- `src/pages/PinAuth.tsx` — 4 slots.
-- `src/pages/SetPin.tsx` — both "create PIN" and "confirm PIN" groups.
+### Bug 2 — 2 farmers have plaintext (4-char) PINs in `pin_hash`
+```
+SELECT id, mobile_number, pin_hash, length(pin_hash) FROM farmers
+ WHERE length(pin_hash) <> 64;
+-- 155588c4… 9860989495  pin_hash='1234'  (the user logging in right now)
+-- fca5a67d… 8485019495  pin_hash='9898'
+```
+These two rows were created/updated by an old code path that wrote the raw PIN into `pin_hash`. The salted-SHA256 client compare can never match, so login is permanently broken for them until the value is re-hashed.
 
-(Existing OTP usages elsewhere keep digits visible — opt-in.)
+The console log confirms it for the affected user:
+```
+Farmer search result: { mobile_number: "9860989495", pin_hash: "1234" }
+Error verifying PIN: "Incorrect PIN"
+```
+(The leftover `pin_hash` selection in the log comes from `AuthScreen` — informational only, login itself reads the row again inside `offlineAuthService.performOnlineAuth`.)
 
-### B. Stop writing & reading plaintext `pin` in app code
-- `src/pages/SetPin.tsx` (lines 105 & 160): remove the `pin: pin,` field from both insert and update payloads. Keep `pin_hash` and `pin_updated_at`.
-- `src/pages/AuthScreen.tsx` (line 89): change select list from `'id, mobile_number, pin, pin_hash, tenant_id, farmer_code'` to drop `pin`.
-- `src/services/offlineAuthService.ts` (lines 274–286): remove the `if (farmer.pin !== pin)` plaintext fallback. Final check is just `farmer.pin_hash !== pinHash` → return Incorrect PIN.
-- `src/services/syncService.ts` (line 534): remove `pin: f.pin,` from the bulkSave mapping.
+### Bug 3 — `/forgot-pin` route does not exist → 404 page
+`PinAuth.tsx:309` calls `navigate('/forgot-pin')`, but `src/App.tsx` has no such route, so React Router falls through to the catch-all NotFound page (the screenshot you sent). There is also no ForgotPin component anywhere in the codebase.
 
-### C. Rewrite `validate_farmer_pin` RPC to match client's salted scheme
-The client uses `SHA256(pin + 'kisan_shakti_2024')`. Update the 3-arg RPC so it checks only `pin_hash` against the same salted scheme; drop the plaintext branch:
+## Fixes
+
+### A. Repair the RPC so it actually executes
+Migration — replace the 3-arg `validate_farmer_pin` so it can resolve `digest`:
 
 ```sql
 CREATE OR REPLACE FUNCTION public.validate_farmer_pin(
   p_farmer_id uuid, p_pin text, p_tenant_id uuid
 ) RETURNS boolean
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
 DECLARE v_hash text;
 BEGIN
   SELECT pin_hash INTO v_hash
   FROM public.farmers
   WHERE id = p_farmer_id AND tenant_id = p_tenant_id;
   IF NOT FOUND OR v_hash IS NULL THEN RETURN false; END IF;
-  RETURN v_hash = encode(digest(p_pin || 'kisan_shakti_2024', 'sha256'), 'hex');
+  RETURN v_hash = encode(
+    extensions.digest((p_pin || 'kisan_shakti_2024')::bytea, 'sha256'),
+    'hex'
+  );
 END $$;
 ```
+Two changes vs current: include `extensions` on `search_path`, and cast the input to `bytea` so the `digest(bytea,text)` overload matches unambiguously.
 
-Net effect on login flow: identical to the client-side fallback that already works for all 24 farmers.
+### B. Re-hash the 2 plaintext PINs in place
+Same migration (one-time data fix) — only touches rows whose `pin_hash` is not 64 chars, so it's idempotent and safe:
 
-### D. Drop the plaintext column (last step)
 ```sql
-ALTER TABLE public.farmers DROP COLUMN IF EXISTS pin;
+UPDATE public.farmers
+SET pin_hash = encode(
+  extensions.digest((pin_hash || 'kisan_shakti_2024')::bytea, 'sha256'),
+  'hex'
+),
+    pin_updated_at = now()
+WHERE pin_hash IS NOT NULL AND length(pin_hash) <> 64;
 ```
+After this, farmer `9860989495` logs in with PIN `1234`, farmer `8485019495` with PIN `9898` — exactly what they originally set. No farmer is forced to reset.
 
-Pre-flight verified: every farmer's `pin_hash` is present and matches the salted scheme that both `SetPin.tsx` and `offlineAuthService.hashPin` use, so login continues to work for every existing farmer after the drop.
+### C. Build the missing `/forgot-pin` page
+1. New file `src/pages/ForgotPin.tsx` — mobile-only screen that:
+   - Pre-fills the mobile from `localStorage.authMobile`.
+   - Confirms identity by re-checking the farmer row exists for that mobile + active tenant (same query as `AuthScreen`).
+   - Sends the user to `/set-pin` with `localStorage.farmerId` and `localStorage.tenantId` set, in **reset mode** (a flag like `localStorage.setItem('pinResetMode','1')`).
+   - `SetPin.tsx` already supports updating an existing farmer (line 160 path); it just needs to read the reset flag, skip the "create new farmer" branch, and clear the flag after success.
+   - Clear cached offline auth (`offlineAuthService.clearCachedAuth()`) on success so the new PIN takes effect immediately offline too.
+2. Register the route in `src/App.tsx` next to `/pin-auth`:
+   ```tsx
+   { path: "/forgot-pin",
+     element: <Suspense fallback={<PageLoader/>}><ForgotPin/></Suspense>,
+     errorElement: <RouteErrorBoundary/> }
+   ```
+3. Use existing i18n keys (`auth.forgotPin`, `auth.contactSupport`, `auth.createPin`, etc.) — no new translations needed.
 
-## Login regression test (manual, after deploy)
-1. Existing farmer logs in with their current 4-digit PIN → success via `pin_hash` (RPC or client fallback).
-2. New farmer registers via `SetPin` → row inserted with `pin_hash` only; immediately logs out and back in → success.
-3. Offline login (airplane mode) using cached IndexedDB `pin_hash` → success (already only uses hash).
-4. Wrong PIN → "Incorrect PIN" + attempt counter increments.
-5. PIN slots render `•` instead of digits while typing on both screens.
+## Out of scope (per your standing instructions)
+- Custom farmer auth model (mobile + PIN + `pin_hash`) — unchanged.
+- Supabase Auth for SaaS admin / tenant — untouched.
+- PIN masking, plaintext column drop, RLS — already shipped in the previous round.
 
-## Out of scope (per user instruction)
-- Custom farmer auth model untouched (mobile + PIN + `pin_hash`).
-- Supabase Auth (SaaS admin / tenant) untouched.
-- No RLS, store, or routing changes.
+## Files / objects touched
+1. Migration: replace `validate_farmer_pin(uuid,text,uuid)` body + one-row UPDATE for the 2 stale hashes.
+2. `src/pages/ForgotPin.tsx` — new component.
+3. `src/pages/SetPin.tsx` — honour `pinResetMode` flag (skip insert branch, clear cached offline auth on save).
+4. `src/App.tsx` — register `/forgot-pin` route + lazy import.
 
-## Files touched
-1. `src/components/ui/input-otp.tsx` — add `mask` prop.
-2. `src/pages/PinAuth.tsx` — pass `mask` on 4 slots.
-3. `src/pages/SetPin.tsx` — pass `mask` on 8 slots; remove `pin: pin` from 2 payloads.
-4. `src/pages/AuthScreen.tsx` — drop `pin` from one select list.
-5. `src/services/offlineAuthService.ts` — remove plaintext fallback.
-6. `src/services/syncService.ts` — drop `pin: f.pin` from bulkSave map.
-7. Migration: replace `validate_farmer_pin(uuid,text,uuid)` body, then `ALTER TABLE farmers DROP COLUMN pin`.
+## Verification after deploy
+1. Login as `9860989495` with PIN `1234` → success via RPC (no more "Incorrect PIN").
+2. Login as `8485019495` with PIN `9898` → success.
+3. All other farmers (already 64-char hashed) continue to log in normally.
+4. Wrong PIN → "Incorrect PIN" + attempt counter, no 500.
+5. Tap "Forgot PIN?" → `/forgot-pin` renders (no 404), reset flow lands on `/set-pin`, new PIN works on next login.
