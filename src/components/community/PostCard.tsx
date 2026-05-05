@@ -461,6 +461,11 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         </div>
       </motion.article>
+      <CommentsSheet
+        postId={post.id}
+        isOpen={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+      />
     </motion.div>
   );
 };
