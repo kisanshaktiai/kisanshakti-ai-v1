@@ -140,6 +140,21 @@ export function useCreatePost() {
       // Use supabaseWithAuth to set custom headers for RLS
       const authClient = supabaseWithAuth(user.id, tenant.id);
 
+      // AI moderation pre-publish (fail-open on any error)
+      try {
+        const { data: mod } = await authClient.functions.invoke('community-moderate', {
+          body: { content: input.content },
+        });
+        if (mod && mod.allowed === false) {
+          throw new Error(mod.reason || 'Post blocked by community guidelines');
+        }
+      } catch (modErr: any) {
+        if (modErr?.message?.includes('blocked') || modErr?.message?.includes('guidelines')) {
+          throw modErr;
+        }
+        console.warn('[Community] Moderation skipped:', modErr);
+      }
+
       const { data, error } = await authClient
         .from('social_posts')
         .insert({
