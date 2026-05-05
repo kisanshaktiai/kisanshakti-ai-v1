@@ -211,34 +211,14 @@ export function useSavePost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ postId, isSaved }: { postId: string; isSaved: boolean }) => {
-      if (!user?.id || !tenant?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Use supabaseWithAuth for RLS
+    mutationFn: async ({ postId }: { postId: string; isSaved: boolean }) => {
+      if (!user?.id || !tenant?.id) throw new Error('User not authenticated');
       const authClient = supabaseWithAuth(user.id, tenant.id);
-
-      if (isSaved) {
-        // Unsave - remove from post_saves
-        const { error } = await authClient
-          .from('post_saves')
-          .delete()
-          .eq('post_id', postId)
-          .eq('farmer_id', user.id);
-
-        if (error) throw error;
-      } else {
-        // Save - add to post_saves
-        const { error } = await authClient
-          .from('post_saves')
-          .insert({
-            post_id: postId,
-            farmer_id: user.id,
-          });
-
-        if (error) throw error;
-      }
+      const { error } = await authClient.rpc('toggle_post_save' as any, {
+        p_post_id: postId,
+        p_farmer_id: user.id,
+      });
+      if (error) throw error;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
