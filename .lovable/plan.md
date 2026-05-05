@@ -1,104 +1,152 @@
-# Login regression — root-cause audit and fix plan
 
-## What I verified
+# Community Feature — Forensic Audit & 2030-Ready Modernization Plan
 
-### Bug 1 — `validate_farmer_pin` RPC returns 404 / SQL error
-Network log of the live login attempt shows:
+## 1. Audit Findings
+
+### A. Architecture & Data Layer (`useCommunityPosts.ts`, Supabase)
+
+**Bugs / Risks**
+- **Race-condition counters**: `useLikePost` does manual `select → update` for `likes_count`. Two concurrent likes will lose increments. Same risk in any reaction counter path.
+- **Stale closure bug in `handleLike` / `handleSave` (PostCard)**: `setIsLiked(newIsLiked)` then `mutate({ isLiked })` passes the OLD state. The mutation receives `isLiked` not `newIsLiked`, so the toggle direction is inverted on rapid taps after first render.
+- **Duplicate realtime channel**: `useCommunityPosts` opens its own `community-posts-${tenant.id}` channel while a global singleton already runs in `AppLayout` (per memory `proactive-alerts-realtime-singleton-contract`). Violates the "singleton subscription" core rule → channel conflicts.
+- **No pagination**: Hard `limit(50)` with no infinite scroll. Will not scale to 1M users.
+- **N+1 image storage**: `media_urls` stores raw base64 data URLs (QuickPostCreator passes the FileReader result straight into the post). Bloats DB rows, breaks CDN caching, kills bandwidth on 2G/3G.
+- **No comments table query / no actual comments UI** — `MessageCircle` shows count only.
+- **`saved-posts-full` does two round-trips** instead of a single join.
+- **Translation cached only in memory** (`useTranslateText`); same post re-translated for every viewer.
+- **TTS cost**: regenerated per user per play, no audio cache key.
+- **Backdrop-blur everywhere** (`backdrop-blur-xl`) — violates project core rule "opaque backgrounds for FPS on mobile".
+
+**Schema gaps to verify**
+- Missing `post_comments`, `post_reports`, `post_translations` (cache), `post_media` (separate from row), `community_groups_members`.
+- No moderation flags (`is_flagged`, `moderation_status`, `ai_safety_score`).
+
+### B. UI / UX Friction for Rural Farmers
+
+| Issue | Impact |
+|---|---|
+| Two stacked headers + language pill + tabs = ~180px wasted before first post on a 390×844 screen | Cognitive overload, low content density |
+| 5 tabs (Feed/Groups/Trending/Saved/My Posts) with English labels in `social.json` defaults | Low-literacy users can't map tabs to function |
+| Voice button is press-and-hold on touch — works on Android but unreliable on iOS Safari (no `onTouchEnd` if finger moves out) | Voice fails silently — the #1 input mode for the target user |
+| `QuickPostCreator` shows a textarea by default — pushes typing as primary action | Conflicts with voice-first mandate |
+| Reactions (🙏🌾💚) + Like + Comment + Share + Save + TTS = **7 tap targets** in one row | Decision paralysis; thumbs hit wrong target |
+| Swipe-to-save / swipe-to-translate is undiscoverable; no onboarding hint | Feature dead on arrival |
+| `authorAvatar: '👨‍🌾'` hardcoded for every farmer | No personalization, no trust signal |
+| English-only timestamps (`formatDistanceToNow` w/ no locale) | "5 minutes ago" never shown in Marathi |
+| No empty-state CTA pointing to voice button | Cold-start farmers see "🌱 No posts yet" and bounce |
+| `displayContent` falls back to original silently if translation fails | Marathi farmer sees Hindi/Punjabi posts with no warning |
+| No image lightbox, no pinch-zoom — farmers can't inspect a disease photo | Kills the most useful use case |
+| FAB + QuickPostCreator both create posts — duplicate entry points | Confusion |
+
+### C. AI Integration — Currently Almost None
+- Only translation (generic) and TTS exist.
+- No use of the project's **Symbolic Decision Brain** for community posts.
+- No auto-tagging of crop/disease from photo, no smart-reply, no moderation, no duplicate-question detection, no expert-routing.
+
+---
+
+## 2. Redesign — 2030-Ready, Voice-First, Rural-Indian
+
+### Information architecture (collapse 5 tabs → 3)
 ```
-POST /rpc/validate_farmer_pin → 404
-{"code":"42883","message":"function digest(text, unknown) does not exist"}
+[ Feed ]   [ Ask AI ]   [ Groups ]
+   ↑           ↑            ↑
+default   new — routes   merges Trending+
+          to symbolic    Saved+MyPosts
+          brain          into profile sheet
 ```
-The new RPC body uses `digest(p_pin || 'kisan_shakti_2024', 'sha256')`, but `pgcrypto` is installed in the `extensions` schema, while the function's `search_path` is set to `'public'` only. Postgres can't resolve `digest`, so the RPC always errors. The client then falls into its hash-compare fallback, which works for most farmers — but on this account the stored value is wrong (Bug 2), so the user sees "Incorrect PIN".
+- Saved + My Posts move into a **profile sheet** opened from header avatar.
+- Trending becomes a **horizontal chip strip above the feed**, not a full tab.
 
-### Bug 2 — 2 farmers have plaintext (4-char) PINs in `pin_hash`
-```
-SELECT id, mobile_number, pin_hash, length(pin_hash) FROM farmers
- WHERE length(pin_hash) <> 64;
--- 155588c4… 9860989495  pin_hash='1234'  (the user logging in right now)
--- fca5a67d… 8485019495  pin_hash='9898'
-```
-These two rows were created/updated by an old code path that wrote the raw PIN into `pin_hash`. The salted-SHA256 client compare can never match, so login is permanently broken for them until the value is re-hashed.
+### Post Card v2 (one card = one decision)
+- **Big photo first** (4:3, full-bleed, tap to lightbox + pinch-zoom).
+- **Single primary action**: 🙏 *Helped me* (one merged reaction). Long-press reveals 🌾/💚.
+- **Voice play** = persistent floating speaker on the card edge, auto-detect language.
+- **Translate badge** is opt-out, not opt-in (auto-translated by default to farmer's app language; "show original" link).
+- **Author row**: real photo when available, district + crop badge ("🌾 Sugarcane, Pune"), trust score.
+- **Comments collapsed to count + voice-comment quick reply**.
 
-The console log confirms it for the affected user:
-```
-Farmer search result: { mobile_number: "9860989495", pin_hash: "1234" }
-Error verifying PIN: "Incorrect PIN"
-```
-(The leftover `pin_hash` selection in the log comes from `AuthScreen` — informational only, login itself reads the row again inside `offlineAuthService.performOnlineAuth`.)
+### Quick Post v2 — Voice-first, image-first
+- Default state shows **two huge buttons**: 🎤 *Speak* (60% width) and 📷 *Photo* (40%). No textarea visible.
+- Tapping speak opens a **full-screen voice sheet** with waveform, language auto-detect, live transcript, edit-after-stop. Avoids press-and-hold reliability issues.
+- Photo flow: select → AI auto-tags crop, suggests caption + hashtags via Lovable AI (`google/gemini-3-flash-preview`) → farmer confirms.
 
-### Bug 3 — `/forgot-pin` route does not exist → 404 page
-`PinAuth.tsx:309` calls `navigate('/forgot-pin')`, but `src/App.tsx` has no such route, so React Router falls through to the catch-all NotFound page (the screenshot you sent). There is also no ForgotPin component anywhere in the codebase.
+### AI features (via edge functions only, Lovable AI Gateway)
+1. **`community-ai-enrich`** — on post insert trigger:
+   - Caption suggestion from photo
+   - Crop + likely disease detection (feeds Symbolic Decision Brain)
+   - Auto-hashtags + auto-translation into 8 supported languages, cached in `post_translations`
+   - Safety/moderation score (block hate, spam, misinformation)
+2. **`community-smart-reply`** — context-aware suggested replies in farmer's language ("Try neem oil 2ml/L", "I had same issue last kharif").
+3. **`community-ask-ai` tab** — routes question into existing Symbolic Decision Brain; the AI's answer is posted as a community post authored by "KisanShakti AI" so other farmers benefit (semantic deduplication of FAQs).
+4. **Duplicate question detection** at post time: "3 farmers asked this — see answers" → redirects, reduces noise.
+5. **Expert routing**: posts with low AI confidence get flagged for human agronomist queue.
 
-## Fixes
+### Mobile-first rules applied
+- Opaque card backgrounds (no `backdrop-blur-xl`) per project core rule.
+- All tap targets ≥ 48×48, thumb zone bottom-third.
+- Skeleton loaders, optimistic UI for like/save/reaction.
+- `react-window` virtualized feed with cursor pagination (`created_at` keyset).
+- All copy via i18n; date-fns locale per `currentLanguage`.
 
-### A. Repair the RPC so it actually executes
-Migration — replace the 3-arg `validate_farmer_pin` so it can resolve `digest`:
+---
 
-```sql
-CREATE OR REPLACE FUNCTION public.validate_farmer_pin(
-  p_farmer_id uuid, p_pin text, p_tenant_id uuid
-) RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, extensions
-AS $$
-DECLARE v_hash text;
-BEGIN
-  SELECT pin_hash INTO v_hash
-  FROM public.farmers
-  WHERE id = p_farmer_id AND tenant_id = p_tenant_id;
-  IF NOT FOUND OR v_hash IS NULL THEN RETURN false; END IF;
-  RETURN v_hash = encode(
-    extensions.digest((p_pin || 'kisan_shakti_2024')::bytea, 'sha256'),
-    'hex'
-  );
-END $$;
-```
-Two changes vs current: include `extensions` on `search_path`, and cast the input to `bytea` so the `digest(bytea,text)` overload matches unambiguously.
+## 3. Implementation Plan (phased, non-breaking)
 
-### B. Re-hash the 2 plaintext PINs in place
-Same migration (one-time data fix) — only touches rows whose `pin_hash` is not 64 chars, so it's idempotent and safe:
+### Phase 1 — Stability & Correctness (no UI change)
+1. Fix `handleLike` / `handleSave` stale-state bug (pass `newIsLiked`/`newIsSaved`).
+2. Replace manual counter updates with **Postgres RPC `toggle_post_like(post_id)`** that uses `INSERT … ON CONFLICT DO NOTHING` + atomic `UPDATE … SET likes_count = likes_count ± 1`. Same for saves & reactions.
+3. Remove the per-component realtime channel from `useCommunityPosts`; subscribe through the existing global singleton in `AppLayout`, dispatch `queryClient.invalidateQueries` from one place.
+4. Add cursor pagination (`useInfiniteQuery`, keyset on `created_at,id`).
+5. Move base64 images to **Supabase Storage bucket `community-media`** (public read, RLS write); store only the public URL in `media_urls`.
+6. Strip `backdrop-blur-*` from PostCard, QuickPostCreator, CommunityHeader, LanguageSelector pill.
 
-```sql
-UPDATE public.farmers
-SET pin_hash = encode(
-  extensions.digest((pin_hash || 'kisan_shakti_2024')::bytea, 'sha256'),
-  'hex'
-),
-    pin_updated_at = now()
-WHERE pin_hash IS NOT NULL AND length(pin_hash) <> 64;
-```
-After this, farmer `9860989495` logs in with PIN `1234`, farmer `8485019495` with PIN `9898` — exactly what they originally set. No farmer is forced to reset.
+### Phase 2 — Schema additions (migrations)
+- `post_translations(post_id, language_code, content, generated_at)` — unique (post_id, language_code).
+- `post_comments(id, post_id, farmer_id, tenant_id, content, language_code, parent_id, created_at)` + RLS.
+- `post_reports(id, post_id, farmer_id, reason, created_at)`.
+- Add columns to `social_posts`: `ai_crop text, ai_disease text, ai_safety_score numeric, ai_confidence numeric, moderation_status text default 'approved', primary_media_url text`.
+- RPCs: `toggle_post_like`, `toggle_post_save`, `toggle_post_reaction`, `feed_cursor(p_tenant, p_after timestamptz, p_limit int)`.
 
-### C. Build the missing `/forgot-pin` page
-1. New file `src/pages/ForgotPin.tsx` — mobile-only screen that:
-   - Pre-fills the mobile from `localStorage.authMobile`.
-   - Confirms identity by re-checking the farmer row exists for that mobile + active tenant (same query as `AuthScreen`).
-   - Sends the user to `/set-pin` with `localStorage.farmerId` and `localStorage.tenantId` set, in **reset mode** (a flag like `localStorage.setItem('pinResetMode','1')`).
-   - `SetPin.tsx` already supports updating an existing farmer (line 160 path); it just needs to read the reset flag, skip the "create new farmer" branch, and clear the flag after success.
-   - Clear cached offline auth (`offlineAuthService.clearCachedAuth()`) on success so the new PIN takes effect immediately offline too.
-2. Register the route in `src/App.tsx` next to `/pin-auth`:
-   ```tsx
-   { path: "/forgot-pin",
-     element: <Suspense fallback={<PageLoader/>}><ForgotPin/></Suspense>,
-     errorElement: <RouteErrorBoundary/> }
-   ```
-3. Use existing i18n keys (`auth.forgotPin`, `auth.contactSupport`, `auth.createPin`, etc.) — no new translations needed.
+### Phase 3 — Voice-first Quick Post v2
+- Replace press-and-hold with **full-screen voice sheet** (tap to start, tap to stop, abort button).
+- Two-button default state (Speak / Photo); textarea only after voice transcript or on explicit "Type" toggle.
+- Wire transcript → optimistic post → background AI enrichment.
 
-## Out of scope (per your standing instructions)
-- Custom farmer auth model (mobile + PIN + `pin_hash`) — unchanged.
-- Supabase Auth for SaaS admin / tenant — untouched.
-- PIN masking, plaintext column drop, RLS — already shipped in the previous round.
+### Phase 4 — Post Card v2
+- Photo-first layout, lightbox with pinch-zoom, single primary reaction with long-press menu.
+- Auto-translate-by-default with per-user preference stored in `farmer_preferences`.
+- Inline comments thread (lazy-loaded), voice-comment quick reply.
 
-## Files / objects touched
-1. Migration: replace `validate_farmer_pin(uuid,text,uuid)` body + one-row UPDATE for the 2 stale hashes.
-2. `src/pages/ForgotPin.tsx` — new component.
-3. `src/pages/SetPin.tsx` — honour `pinResetMode` flag (skip insert branch, clear cached offline auth on save).
-4. `src/App.tsx` — register `/forgot-pin` route + lazy import.
+### Phase 5 — AI edge functions (Lovable AI Gateway)
+- `supabase/functions/community-ai-enrich/index.ts` — triggered by DB webhook on `social_posts` insert. Uses `google/gemini-3-flash-preview` for text + `google/gemini-2.5-flash-image` analysis tools. Writes back enrichment columns + populates `post_translations` for the 8 supported languages.
+- `supabase/functions/community-smart-reply/index.ts` — on demand from comment composer.
+- `supabase/functions/community-ask-ai/index.ts` — bridges to existing Symbolic Decision Brain; persists AI answer as a community post.
+- All three: CORS, JWT validation, 429/402 surfaced to client toasts, no client-side prompts.
 
-## Verification after deploy
-1. Login as `9860989495` with PIN `1234` → success via RPC (no more "Incorrect PIN").
-2. Login as `8485019495` with PIN `9898` → success.
-3. All other farmers (already 64-char hashed) continue to log in normally.
-4. Wrong PIN → "Incorrect PIN" + attempt counter, no 500.
-5. Tap "Forgot PIN?" → `/forgot-pin` renders (no 404), reset flow lands on `/set-pin`, new PIN works on next login.
+### Phase 6 — IA collapse & navigation
+- Tabs: Feed / Ask AI / Groups. Trending → chip strip. Saved + My Posts → profile sheet from header avatar.
+- One creation entry-point: keep FAB only; remove duplicate inline composer on Feed tab (move composer into FAB sheet).
+
+### Phase 7 — Polish & growth
+- Localized timestamps (date-fns `hi`, `mr`, `pa`, `ta`, `te`, `bn`, `gu`, `kn`).
+- Skeleton loaders, virtualized list.
+- Onboarding coach-marks for swipe and voice (one-time, dismissible).
+- Trust badges (verified expert, top contributor) with localized labels.
+
+---
+
+## 4. Backwards-compatibility guarantees
+- Existing `social_posts`, `post_likes`, `post_saves`, `post_reactions`, `farmers` schema preserved — only **additive** columns/tables.
+- Existing hooks keep their signatures; internal implementation swapped.
+- Symbolic Decision Brain untouched; community AI edge functions are new and isolated.
+- Multi-tenant RLS preserved on every new table (`tenant_id` + `has_role` patterns).
+
+---
+
+## 5. Out of scope (call out before building)
+- Real-time chat/messaging inside Community (separate feature).
+- Marketplace integration in posts.
+- Video posts (planned for later phase).
+
+If you approve this plan, I will start with **Phase 1 (stability) + Phase 2 (schema migrations)** in the next message — these are non-breaking and unlock everything else.
