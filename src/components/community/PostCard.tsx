@@ -12,8 +12,14 @@ import { useTranslateText } from '@/hooks/useTranslateText';
 import { useCommunityTTS } from '@/hooks/useCommunityTTS';
 import { useLikePost, useSavePost } from '@/hooks/useCommunityPosts';
 import { useToggleReaction, useUserReactions, ReactionType } from '@/hooks/usePostReactions';
+import { useReportPost } from '@/hooks/useCommunityComments';
 import { CommunityPost } from '@/types/community';
 import { toast } from 'sonner';
+import { CommentsSheet } from './CommentsSheet';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Flag } from 'lucide-react';
 
 interface PostCardProps {
   post: CommunityPost;
@@ -45,11 +51,13 @@ export const PostCard: React.FC<PostCardProps> = ({
     thanks: post.reactions.thanks,
   });
   const [userReactionsList, setUserReactionsList] = useState<ReactionType[]>([]);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   
   // Mutations
   const likePostMutation = useLikePost();
   const savePostMutation = useSavePost();
   const toggleReactionMutation = useToggleReaction();
+  const reportPostMutation = useReportPost();
   
   // Fetch user's reactions
   const { data: allUserReactions } = useUserReactions();
@@ -235,9 +243,22 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => reportPostMutation.mutate({ postId: post.id, reason: 'inappropriate' })}
+                className="text-destructive"
+              >
+                <Flag className="w-4 h-4 mr-2" />
+                {t('social.post.report') || 'Report post'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Content */}
@@ -382,6 +403,7 @@ export const PostCard: React.FC<PostCardProps> = ({
               <Button 
                 variant="ghost" 
                 size="sm"
+                onClick={() => setCommentsOpen(true)}
                 className="rounded-full gap-1.5 text-muted-foreground"
               >
                 <MessageCircle className="w-4 h-4" />
@@ -439,6 +461,11 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         </div>
       </motion.article>
+      <CommentsSheet
+        postId={post.id}
+        isOpen={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+      />
     </motion.div>
   );
 };
