@@ -51,11 +51,13 @@ export const PostCard: React.FC<PostCardProps> = ({
     thanks: post.reactions.thanks,
   });
   const [userReactionsList, setUserReactionsList] = useState<ReactionType[]>([]);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   
   // Mutations
   const likePostMutation = useLikePost();
   const savePostMutation = useSavePost();
   const toggleReactionMutation = useToggleReaction();
+  const reportPostMutation = useReportPost();
   
   // Fetch user's reactions
   const { data: allUserReactions } = useUserReactions();
