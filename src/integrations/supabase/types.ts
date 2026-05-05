@@ -17457,6 +17457,7 @@ export type Database = {
           id: string
           language_code: string
           post_id: string
+          tenant_id: string | null
         }
         Insert: {
           content: string
@@ -17464,6 +17465,7 @@ export type Database = {
           id?: string
           language_code: string
           post_id: string
+          tenant_id?: string | null
         }
         Update: {
           content?: string
@@ -17471,6 +17473,7 @@ export type Database = {
           id?: string
           language_code?: string
           post_id?: string
+          tenant_id?: string | null
         }
         Relationships: []
       }
