@@ -33,6 +33,22 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   
   const createPostMutation = useCreatePost();
+  const { suggest, isLoading: isSuggesting } = useCaptionSuggest();
+
+  const handleAISuggest = async () => {
+    let imageBase64: string | undefined;
+    if (selectedImage?.startsWith('data:')) {
+      imageBase64 = selectedImage.split(',')[1];
+    }
+    if (!content.trim() && !imageBase64) {
+      toast.info(t('social.post.add_text_or_image') || 'Add text or an image first');
+      return;
+    }
+    const result = await suggest({ text: content, imageBase64, language });
+    if (result) {
+      setContent(result.caption + (result.hashtags?.length ? '\n\n' + result.hashtags.map(h => `#${h}`).join(' ') : ''));
+    }
+  };
 
   const startRecording = async () => {
     try {
