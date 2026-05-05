@@ -12,8 +12,14 @@ import { useTranslateText } from '@/hooks/useTranslateText';
 import { useCommunityTTS } from '@/hooks/useCommunityTTS';
 import { useLikePost, useSavePost } from '@/hooks/useCommunityPosts';
 import { useToggleReaction, useUserReactions, ReactionType } from '@/hooks/usePostReactions';
+import { useReportPost } from '@/hooks/useCommunityComments';
 import { CommunityPost } from '@/types/community';
 import { toast } from 'sonner';
+import { CommentsSheet } from './CommentsSheet';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Flag } from 'lucide-react';
 
 interface PostCardProps {
   post: CommunityPost;
