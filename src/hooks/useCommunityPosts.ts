@@ -103,33 +103,13 @@ export function useCommunityPosts(options?: {
     refetchOnWindowFocus: true,
   });
 
-  // Set up realtime subscription
+  // Realtime handled by global singleton subscription in AppLayout (per project core rule).
+  // Listen for a window event the singleton broadcasts when social_posts changes.
   useEffect(() => {
     if (!tenant?.id) return;
-
-    console.log('[Community] Setting up realtime subscription');
-    
-    const channel = supabase
-      .channel(`community-posts-${tenant.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'social_posts',
-          filter: `tenant_id=eq.${tenant.id}`,
-        },
-        (payload) => {
-          console.log('[Community] Realtime event:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: ['community-posts'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      console.log('[Community] Cleaning up realtime subscription');
-      supabase.removeChannel(channel);
-    };
+    const handler = () => queryClient.invalidateQueries({ queryKey: ['community-posts'] });
+    window.addEventListener('community-posts-changed', handler);
+    return () => window.removeEventListener('community-posts-changed', handler);
   }, [tenant?.id, queryClient]);
 
   return query;
@@ -208,62 +188,14 @@ export function useLikePost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ postId, isLiked }: { postId: string; isLiked: boolean }) => {
-      if (!user?.id || !tenant?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Use supabaseWithAuth for RLS
+    mutationFn: async ({ postId }: { postId: string; isLiked: boolean }) => {
+      if (!user?.id || !tenant?.id) throw new Error('User not authenticated');
       const authClient = supabaseWithAuth(user.id, tenant.id);
-
-      if (isLiked) {
-        // Unlike - remove from post_likes
-        const { error } = await authClient
-          .from('post_likes')
-          .delete()
-          .eq('post_id', postId)
-          .eq('farmer_id', user.id);
-
-        if (error) throw error;
-
-        // Decrement likes_count manually
-        const { data: post } = await authClient
-          .from('social_posts')
-          .select('likes_count')
-          .eq('id', postId)
-          .single();
-
-        if (post) {
-          await authClient
-            .from('social_posts')
-            .update({ likes_count: Math.max(0, (post.likes_count || 1) - 1) })
-            .eq('id', postId);
-        }
-      } else {
-        // Like - add to post_likes
-        const { error } = await authClient
-          .from('post_likes')
-          .insert({
-            post_id: postId,
-            farmer_id: user.id,
-          });
-
-        if (error) throw error;
-
-        // Increment likes_count manually
-        const { data: post } = await authClient
-          .from('social_posts')
-          .select('likes_count')
-          .eq('id', postId)
-          .single();
-
-        if (post) {
-          await authClient
-            .from('social_posts')
-            .update({ likes_count: (post.likes_count || 0) + 1 })
-            .eq('id', postId);
-        }
-      }
+      const { error } = await authClient.rpc('toggle_post_like' as any, {
+        p_post_id: postId,
+        p_farmer_id: user.id,
+      });
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
@@ -279,34 +211,14 @@ export function useSavePost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ postId, isSaved }: { postId: string; isSaved: boolean }) => {
-      if (!user?.id || !tenant?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Use supabaseWithAuth for RLS
+    mutationFn: async ({ postId }: { postId: string; isSaved: boolean }) => {
+      if (!user?.id || !tenant?.id) throw new Error('User not authenticated');
       const authClient = supabaseWithAuth(user.id, tenant.id);
-
-      if (isSaved) {
-        // Unsave - remove from post_saves
-        const { error } = await authClient
-          .from('post_saves')
-          .delete()
-          .eq('post_id', postId)
-          .eq('farmer_id', user.id);
-
-        if (error) throw error;
-      } else {
-        // Save - add to post_saves
-        const { error } = await authClient
-          .from('post_saves')
-          .insert({
-            post_id: postId,
-            farmer_id: user.id,
-          });
-
-        if (error) throw error;
-      }
+      const { error } = await authClient.rpc('toggle_post_save' as any, {
+        p_post_id: postId,
+        p_farmer_id: user.id,
+      });
+      if (error) throw error;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });

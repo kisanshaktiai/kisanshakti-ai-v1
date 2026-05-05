@@ -127,15 +127,22 @@ export const PostCard: React.FC<PostCardProps> = ({
   };
 
   const handleLike = () => {
-    const newIsLiked = !isLiked;
-    setIsLiked(newIsLiked);
-    likePostMutation.mutate({ postId: post.id, isLiked });
+    // Pass the CURRENT state (before toggle) so the mutation knows whether to like or unlike
+    const wasLiked = isLiked;
+    setIsLiked(!wasLiked);
+    likePostMutation.mutate(
+      { postId: post.id, isLiked: wasLiked },
+      { onError: () => setIsLiked(wasLiked) }
+    );
   };
 
   const handleSave = () => {
-    const newIsSaved = !isSaved;
-    setIsSaved(newIsSaved);
-    savePostMutation.mutate({ postId: post.id, isSaved });
+    const wasSaved = isSaved;
+    setIsSaved(!wasSaved);
+    savePostMutation.mutate(
+      { postId: post.id, isSaved: wasSaved },
+      { onError: () => setIsSaved(wasSaved) }
+    );
   };
 
   const handleShare = async () => {

@@ -17123,6 +17123,7 @@ export type Database = {
           likes_count: number | null
           parent_comment_id: string | null
           post_id: string
+          tenant_id: string | null
           translations: Json | null
           updated_at: string | null
         }
@@ -17136,6 +17137,7 @@ export type Database = {
           likes_count?: number | null
           parent_comment_id?: string | null
           post_id: string
+          tenant_id?: string | null
           translations?: Json | null
           updated_at?: string | null
         }
@@ -17149,6 +17151,7 @@ export type Database = {
           likes_count?: number | null
           parent_comment_id?: string | null
           post_id?: string
+          tenant_id?: string | null
           translations?: Json | null
           updated_at?: string | null
         }
@@ -17344,6 +17347,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      post_reports: {
+        Row: {
+          created_at: string
+          details: string | null
+          farmer_id: string
+          id: string
+          post_id: string
+          reason: string
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: string | null
+          farmer_id: string
+          id?: string
+          post_id: string
+          reason: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: string | null
+          farmer_id?: string
+          id?: string
+          post_id?: string
+          reason?: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
       }
       post_saves: {
         Row: {
@@ -29225,6 +29261,14 @@ export type Database = {
         Returns: Json
       }
       test_lead_auto_assignment: { Args: never; Returns: Json }
+      toggle_post_like: {
+        Args: { p_farmer_id: string; p_post_id: string }
+        Returns: boolean
+      }
+      toggle_post_save: {
+        Args: { p_farmer_id: string; p_post_id: string }
+        Returns: boolean
+      }
       track_admin_session: { Args: { session_data?: Json }; Returns: undefined }
       track_failed_login: {
         Args: {
