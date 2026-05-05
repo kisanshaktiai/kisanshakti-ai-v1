@@ -17450,6 +17450,30 @@ export type Database = {
           },
         ]
       }
+      post_translations: {
+        Row: {
+          content: string
+          generated_at: string
+          id: string
+          language_code: string
+          post_id: string
+        }
+        Insert: {
+          content: string
+          generated_at?: string
+          id?: string
+          language_code: string
+          post_id: string
+        }
+        Update: {
+          content?: string
+          generated_at?: string
+          id?: string
+          language_code?: string
+          post_id?: string
+        }
+        Relationships: []
+      }
       posts: {
         Row: {
           comments_count: number | null
