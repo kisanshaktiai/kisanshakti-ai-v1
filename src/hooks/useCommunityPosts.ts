@@ -103,33 +103,13 @@ export function useCommunityPosts(options?: {
     refetchOnWindowFocus: true,
   });
 
-  // Set up realtime subscription
+  // Realtime handled by global singleton subscription in AppLayout (per project core rule).
+  // Listen for a window event the singleton broadcasts when social_posts changes.
   useEffect(() => {
     if (!tenant?.id) return;
-
-    console.log('[Community] Setting up realtime subscription');
-    
-    const channel = supabase
-      .channel(`community-posts-${tenant.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'social_posts',
-          filter: `tenant_id=eq.${tenant.id}`,
-        },
-        (payload) => {
-          console.log('[Community] Realtime event:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: ['community-posts'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      console.log('[Community] Cleaning up realtime subscription');
-      supabase.removeChannel(channel);
-    };
+    const handler = () => queryClient.invalidateQueries({ queryKey: ['community-posts'] });
+    window.addEventListener('community-posts-changed', handler);
+    return () => window.removeEventListener('community-posts-changed', handler);
   }, [tenant?.id, queryClient]);
 
   return query;
