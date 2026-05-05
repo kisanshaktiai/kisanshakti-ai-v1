@@ -188,62 +188,14 @@ export function useLikePost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ postId, isLiked }: { postId: string; isLiked: boolean }) => {
-      if (!user?.id || !tenant?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Use supabaseWithAuth for RLS
+    mutationFn: async ({ postId }: { postId: string; isLiked: boolean }) => {
+      if (!user?.id || !tenant?.id) throw new Error('User not authenticated');
       const authClient = supabaseWithAuth(user.id, tenant.id);
-
-      if (isLiked) {
-        // Unlike - remove from post_likes
-        const { error } = await authClient
-          .from('post_likes')
-          .delete()
-          .eq('post_id', postId)
-          .eq('farmer_id', user.id);
-
-        if (error) throw error;
-
-        // Decrement likes_count manually
-        const { data: post } = await authClient
-          .from('social_posts')
-          .select('likes_count')
-          .eq('id', postId)
-          .single();
-
-        if (post) {
-          await authClient
-            .from('social_posts')
-            .update({ likes_count: Math.max(0, (post.likes_count || 1) - 1) })
-            .eq('id', postId);
-        }
-      } else {
-        // Like - add to post_likes
-        const { error } = await authClient
-          .from('post_likes')
-          .insert({
-            post_id: postId,
-            farmer_id: user.id,
-          });
-
-        if (error) throw error;
-
-        // Increment likes_count manually
-        const { data: post } = await authClient
-          .from('social_posts')
-          .select('likes_count')
-          .eq('id', postId)
-          .single();
-
-        if (post) {
-          await authClient
-            .from('social_posts')
-            .update({ likes_count: (post.likes_count || 0) + 1 })
-            .eq('id', postId);
-        }
-      }
+      const { error } = await authClient.rpc('toggle_post_like' as any, {
+        p_post_id: postId,
+        p_farmer_id: user.id,
+      });
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
