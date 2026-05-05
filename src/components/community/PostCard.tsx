@@ -403,6 +403,7 @@ export const PostCard: React.FC<PostCardProps> = ({
               <Button 
                 variant="ghost" 
                 size="sm"
+                onClick={() => setCommentsOpen(true)}
                 className="rounded-full gap-1.5 text-muted-foreground"
               >
                 <MessageCircle className="w-4 h-4" />
