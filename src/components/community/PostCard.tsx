@@ -243,9 +243,22 @@ export const PostCard: React.FC<PostCardProps> = ({
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full">
+                <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem
+                onClick={() => reportPostMutation.mutate({ postId: post.id, reason: 'inappropriate' })}
+                className="text-destructive"
+              >
+                <Flag className="w-4 h-4 mr-2" />
+                {t('social.post.report') || 'Report post'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Content */}
