@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCreatePost } from '@/hooks/useCommunityPosts';
+import { useCaptionSuggest } from '@/hooks/useCaptionSuggest';
 
 interface QuickPostCreatorProps {
   language: string;
