@@ -8,6 +8,9 @@
     "next": "आगे",
     "previous": "पिछला",
     "edit": "संपादित करें",
+    "change": "बदलें",
+    "use": "इसी का उपयोग करें",
+    "selectManually": "खुद से चुनें",
     "delete": "हटाएं",
     "share": "साझा करें",
     "copy": "कॉपी करें",
@@ -15,6 +18,7 @@
     "download": "डाउनलोड करें",
     "upload": "अपलोड करें",
     "loading": "लोड हो रहा है...",
+    "saving": "सेव हो रहा है…",
     "error": "त्रुटि",
     "success": "सफल",
     "failed": "असफल",
@@ -62,6 +66,14 @@
     "more": "अधिक क्रियाएँ",
     "quickActions": "त्वरित क्रियाएँ",
     "sync": "डेटा सिंक करें",
-    "language": "भाषा"
+    "language": "भाषा",
+    "speak_this_page": "यह पृष्ठ पढ़ें",
+    "stop_speaking": "पढ़ना बंद करें",
+    "subscription": {
+      "tap_to_manage": "योजना प्रबंधित करें",
+      "days_remaining": "{{d}} दिन शेष",
+      "grace_period": "छूट अवधि · {{d}} दिन बचे",
+      "expired_tap_renew": "नवीनीकरण करें"
+    }
   }
 }

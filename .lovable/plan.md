@@ -1,80 +1,104 @@
-# Header Modernization Plan — 2030-Ready Mobile-First
+# Login regression — root-cause audit and fix plan
 
-## Issues Audited
-1. **SubscriptionHeaderChip** — Inner text uses tinted text on tinted background (`bg-success/10 text-success`, `bg-warning/10 text-warning`) → low contrast, hard to read on light/dark.
-2. **Static label** — Chip only shows plan name OR days; user wants it to **rotate** between plan name and days remaining over time.
-3. **HeaderActionsSheet** — A `MoreHorizontal` button opens a **bottom drawer** for Connection / Sync / Language. This is two clicks for a single dropdown choice and is not "2030-ready". Should be **inline icons with native dropdowns** opening directly from the header.
-4. **Duplicate sync logic** — `ConnectionStatusIcon` and `SyncButton` both poll `localDB.getSyncMetadata()` every 5 s, both render online/offline/sync state. Two competing sources of truth.
-5. **Online status hidden** — Connection icon is buried inside the bottom drawer. Should be **always visible on the top bar** as a small live status dot.
+## What I verified
 
-## Changes
-
-### 1. `SubscriptionHeaderChip.tsx` — readability + rotating label
-- **Contrast fix**: Replace `bg-x/10 text-x` with **solid filled pill** using foreground tokens:
-  - Free → `bg-success text-success-foreground`
-  - Shakti → `bg-gradient-to-r from-primary to-accent text-primary-foreground`
-  - Pro → `bg-warning text-warning-foreground`
-  - Expired → `bg-destructive text-destructive-foreground`
-  - Warn (grace/expiring) → `bg-warning text-warning-foreground`
-- **Rotating label**: Add a `useEffect` interval (4 s) that alternates between two states:
-  - State A: plan name + tier icon (e.g., "Shakti" + Sparkles)
-  - State B: days remaining (e.g., "23d left" + Clock icon)
-  - Use `AnimatePresence` + slide/fade for smooth swap (motion-safe only).
-  - Only rotate when there's meaningful days info (`daysRemaining > 0` and active/grace). For Free or Expired, show static label.
-- Keep ring gradient + warning dot; bump font to `text-[11px]` and `h-7` for clarity.
-
-### 2. New `src/components/header/HeaderStatusDot.tsx` — always-visible online indicator
-- Tiny 8 px pulsing dot + tooltip on tap (popover) showing: Online/Offline, Last sync, Pending changes.
-- Colors: `bg-success` online, `bg-muted-foreground` offline, `bg-warning animate-spin` syncing.
-- Replaces `ConnectionStatusIcon` for header use (existing component stays for backward compat, but no longer mounted).
-
-### 3. New `src/components/header/UnifiedSyncButton.tsx` — merge Connection + Sync
-- **Single icon button** on the header (RefreshCw + small status dot overlay).
-- Opens **DropdownMenu** (not drawer) directly from the header — anchored, inline, mobile-first.
-- Menu items:
-  - 🔄 Quick Sync
-  - 🗄️ Full Reload
-  - ───
-  - Status block: "● Online · Last sync: 5m ago · 2 pending"
-- Reuses sync logic from current `SyncButton.tsx` (extract handler into `useSyncAction()` hook so we don't fork code).
-- Eliminates the duplicate `localDB.getSyncMetadata()` poller — single shared hook `useSyncMetadata()`.
-
-### 4. New `src/hooks/useSyncMetadata.ts` and `src/hooks/useSyncAction.ts`
-- `useSyncMetadata`: single 5 s poll, returns `{ lastSyncTime, pendingChanges, syncInProgress }`. Used by both the header status dot and the dropdown.
-- `useSyncAction`: extracts the `handleSync(forceFull)` logic from `SyncButton.tsx` so it can be reused without duplicating ~100 lines.
-
-### 5. `LanguageSelector` — keep as-is (already a proper dropdown)
-- Just mount it inline in the header instead of inside the drawer. Hide the text label on mobile (`<sm`) → icon-only with native dropdown opening from anchor.
-
-### 6. `AppLayout.tsx` — header layout swap
-Replace:
-```tsx
-<SubscriptionHeaderChip />
-<HeaderActionsSheet />
+### Bug 1 — `validate_farmer_pin` RPC returns 404 / SQL error
+Network log of the live login attempt shows:
 ```
-With:
-```tsx
-<SubscriptionHeaderChip />            {/* rotating, high-contrast */}
-<HeaderStatusDot />                   {/* always-visible online dot */}
-<UnifiedSyncButton />                 {/* sync dropdown, inline */}
-<LanguageSelector />                  {/* lang dropdown, inline icon-only */}
+POST /rpc/validate_farmer_pin → 404
+{"code":"42883","message":"function digest(text, unknown) does not exist"}
 ```
-- Use `gap-1.5` to keep all four within the 390 px viewport.
-- Remove `HeaderActionsSheet` import (file kept for now in case of rollback; can be deleted in follow-up).
+The new RPC body uses `digest(p_pin || 'kisan_shakti_2024', 'sha256')`, but `pgcrypto` is installed in the `extensions` schema, while the function's `search_path` is set to `'public'` only. Postgres can't resolve `digest`, so the RPC always errors. The client then falls into its hash-compare fallback, which works for most farmers — but on this account the stored value is wrong (Bug 2), so the user sees "Incorrect PIN".
 
-## Files
-- ✏️ `src/components/subscription/SubscriptionHeaderChip.tsx` — solid colors + rotating label
-- 🆕 `src/components/header/HeaderStatusDot.tsx`
-- 🆕 `src/components/header/UnifiedSyncButton.tsx`
-- 🆕 `src/hooks/useSyncMetadata.ts`
-- 🆕 `src/hooks/useSyncAction.ts`
-- ✏️ `src/components/sync/SyncButton.tsx` — refactor to use `useSyncAction` (no behavior change for other callers)
-- ✏️ `src/components/LanguageSelector.tsx` — icon-only on mobile
-- ✏️ `src/components/AppLayout.tsx` — swap drawer for inline icons
+### Bug 2 — 2 farmers have plaintext (4-char) PINs in `pin_hash`
+```
+SELECT id, mobile_number, pin_hash, length(pin_hash) FROM farmers
+ WHERE length(pin_hash) <> 64;
+-- 155588c4… 9860989495  pin_hash='1234'  (the user logging in right now)
+-- fca5a67d… 8485019495  pin_hash='9898'
+```
+These two rows were created/updated by an old code path that wrote the raw PIN into `pin_hash`. The salted-SHA256 client compare can never match, so login is permanently broken for them until the value is re-hashed.
 
-## Out of Scope
-- Deleting `HeaderActionsSheet.tsx` and `ConnectionStatusIcon.tsx` — kept for any other callers; can be cleaned up after verification.
-- i18n keys for the new "23d left" / "Online" / "Last sync" strings will be added in `en/sync.json` + `hi/sync.json` + `mr/sync.json` (small, ~6 keys each).
+The console log confirms it for the affected user:
+```
+Farmer search result: { mobile_number: "9860989495", pin_hash: "1234" }
+Error verifying PIN: "Incorrect PIN"
+```
+(The leftover `pin_hash` selection in the log comes from `AuthScreen` — informational only, login itself reads the row again inside `offlineAuthService.performOnlineAuth`.)
 
-## Result
-Top bar (single row, 390 px): `[Logo + name]  [🌟 Shakti / 23d left ⇄]  [● dot]  [⟳]  [🌐]` — every action one tap, dropdowns open inline (no bottom sheet), high-contrast labels, and a single source of truth for sync state.
+### Bug 3 — `/forgot-pin` route does not exist → 404 page
+`PinAuth.tsx:309` calls `navigate('/forgot-pin')`, but `src/App.tsx` has no such route, so React Router falls through to the catch-all NotFound page (the screenshot you sent). There is also no ForgotPin component anywhere in the codebase.
+
+## Fixes
+
+### A. Repair the RPC so it actually executes
+Migration — replace the 3-arg `validate_farmer_pin` so it can resolve `digest`:
+
+```sql
+CREATE OR REPLACE FUNCTION public.validate_farmer_pin(
+  p_farmer_id uuid, p_pin text, p_tenant_id uuid
+) RETURNS boolean
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, extensions
+AS $$
+DECLARE v_hash text;
+BEGIN
+  SELECT pin_hash INTO v_hash
+  FROM public.farmers
+  WHERE id = p_farmer_id AND tenant_id = p_tenant_id;
+  IF NOT FOUND OR v_hash IS NULL THEN RETURN false; END IF;
+  RETURN v_hash = encode(
+    extensions.digest((p_pin || 'kisan_shakti_2024')::bytea, 'sha256'),
+    'hex'
+  );
+END $$;
+```
+Two changes vs current: include `extensions` on `search_path`, and cast the input to `bytea` so the `digest(bytea,text)` overload matches unambiguously.
+
+### B. Re-hash the 2 plaintext PINs in place
+Same migration (one-time data fix) — only touches rows whose `pin_hash` is not 64 chars, so it's idempotent and safe:
+
+```sql
+UPDATE public.farmers
+SET pin_hash = encode(
+  extensions.digest((pin_hash || 'kisan_shakti_2024')::bytea, 'sha256'),
+  'hex'
+),
+    pin_updated_at = now()
+WHERE pin_hash IS NOT NULL AND length(pin_hash) <> 64;
+```
+After this, farmer `9860989495` logs in with PIN `1234`, farmer `8485019495` with PIN `9898` — exactly what they originally set. No farmer is forced to reset.
+
+### C. Build the missing `/forgot-pin` page
+1. New file `src/pages/ForgotPin.tsx` — mobile-only screen that:
+   - Pre-fills the mobile from `localStorage.authMobile`.
+   - Confirms identity by re-checking the farmer row exists for that mobile + active tenant (same query as `AuthScreen`).
+   - Sends the user to `/set-pin` with `localStorage.farmerId` and `localStorage.tenantId` set, in **reset mode** (a flag like `localStorage.setItem('pinResetMode','1')`).
+   - `SetPin.tsx` already supports updating an existing farmer (line 160 path); it just needs to read the reset flag, skip the "create new farmer" branch, and clear the flag after success.
+   - Clear cached offline auth (`offlineAuthService.clearCachedAuth()`) on success so the new PIN takes effect immediately offline too.
+2. Register the route in `src/App.tsx` next to `/pin-auth`:
+   ```tsx
+   { path: "/forgot-pin",
+     element: <Suspense fallback={<PageLoader/>}><ForgotPin/></Suspense>,
+     errorElement: <RouteErrorBoundary/> }
+   ```
+3. Use existing i18n keys (`auth.forgotPin`, `auth.contactSupport`, `auth.createPin`, etc.) — no new translations needed.
+
+## Out of scope (per your standing instructions)
+- Custom farmer auth model (mobile + PIN + `pin_hash`) — unchanged.
+- Supabase Auth for SaaS admin / tenant — untouched.
+- PIN masking, plaintext column drop, RLS — already shipped in the previous round.
+
+## Files / objects touched
+1. Migration: replace `validate_farmer_pin(uuid,text,uuid)` body + one-row UPDATE for the 2 stale hashes.
+2. `src/pages/ForgotPin.tsx` — new component.
+3. `src/pages/SetPin.tsx` — honour `pinResetMode` flag (skip insert branch, clear cached offline auth on save).
+4. `src/App.tsx` — register `/forgot-pin` route + lazy import.
+
+## Verification after deploy
+1. Login as `9860989495` with PIN `1234` → success via RPC (no more "Incorrect PIN").
+2. Login as `8485019495` with PIN `9898` → success.
+3. All other farmers (already 64-char hashed) continue to log in normally.
+4. Wrong PIN → "Incorrect PIN" + attempt counter, no 500.
+5. Tap "Forgot PIN?" → `/forgot-pin` renders (no 404), reset flow lands on `/set-pin`, new PIN works on next login.

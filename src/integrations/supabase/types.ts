@@ -9711,7 +9711,6 @@ export type Database = {
           metadata: Json | null
           mobile_number: string | null
           notes: string | null
-          pin: string | null
           pin_hash: string | null
           pin_updated_at: string | null
           preferred_contact_method: string | null
@@ -9767,7 +9766,6 @@ export type Database = {
           metadata?: Json | null
           mobile_number?: string | null
           notes?: string | null
-          pin?: string | null
           pin_hash?: string | null
           pin_updated_at?: string | null
           preferred_contact_method?: string | null
@@ -9823,7 +9821,6 @@ export type Database = {
           metadata?: Json | null
           mobile_number?: string | null
           notes?: string | null
-          pin?: string | null
           pin_hash?: string | null
           pin_updated_at?: string | null
           preferred_contact_method?: string | null
@@ -12132,6 +12129,8 @@ export type Database = {
           center_lat: number | null
           center_lon: number | null
           center_point_old: Json | null
+          country: string
+          country_code: string
           created_at: string
           crop_stage: string | null
           cultivation_date: string | null
@@ -12209,6 +12208,8 @@ export type Database = {
           center_lat?: number | null
           center_lon?: number | null
           center_point_old?: Json | null
+          country?: string
+          country_code?: string
           created_at?: string
           crop_stage?: string | null
           cultivation_date?: string | null
@@ -12286,6 +12287,8 @@ export type Database = {
           center_lat?: number | null
           center_lon?: number | null
           center_point_old?: Json | null
+          country?: string
+          country_code?: string
           created_at?: string
           crop_stage?: string | null
           cultivation_date?: string | null
@@ -28506,6 +28509,15 @@ export type Database = {
       migrate_theme_data_to_appearance_settings: {
         Args: never
         Returns: undefined
+      }
+      nearest_lands_summary: {
+        Args: {
+          p_lat: number
+          p_lng: number
+          p_radius_m: number
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }

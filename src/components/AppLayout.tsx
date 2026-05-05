@@ -9,13 +9,11 @@ import { VoiceIndicator } from '@/components/VoiceIndicator';
 import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
-import { SubscriptionHeaderChip } from '@/components/subscription/SubscriptionHeaderChip';
 import { BrandBlock } from '@/components/header/BrandBlock';
-import { HeaderStatusDot } from '@/components/header/HeaderStatusDot';
-import { UnifiedSyncButton } from '@/components/header/UnifiedSyncButton';
+import { StatusPill } from '@/components/header/StatusPill';
+import { SpeakPageButton } from '@/components/header/SpeakPageButton';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from './layout/ScrollContext';
-import { ScrollToTopFab } from './layout/ScrollToTopFab';
 
 export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -34,28 +32,32 @@ export function AppLayout() {
   const isAIChat = location.pathname === '/app/chat';
   const isCommunityChat =
     location.pathname.includes('/app/community/') && location.pathname.includes('/chat');
+  // Add Land / Edit Land map drawer needs full viewport (no header, no bottom nav)
+  const isLandMapRoute =
+    location.pathname === '/app/lands/add' ||
+    /^\/app\/lands\/[^/]+\/edit$/.test(location.pathname);
 
-  const isFullScreenRoute = isAIChat || isCommunityChat;
+  const isFullScreenRoute = isAIChat || isCommunityChat || isLandMapRoute;
 
   return (
     <ModernVoiceProvider>
       <SubscriptionProvider>
         <ScrollContext.Provider value={mainRef}>
           <div className="flex flex-col h-mobile-screen bg-background">
-            {/* 2030-ready compact glass header */}
+            {/* 2030-ready compact glass header — 56px tall, single StatusPill */}
             {!isFullScreenRoute && (
               <header className="glass-header fixed top-0 left-0 right-0 h-14 z-40 flex items-center gap-1.5 px-3 pt-safe">
                 <BrandBlock />
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <SubscriptionHeaderChip />
-                  <HeaderStatusDot />
-                  <UnifiedSyncButton />
+                  <SpeakPageButton />
                   <LanguageSelector />
+                  <StatusPill />
                 </div>
               </header>
             )}
 
-            {/* Subscription Status Banner — only renders when warning state */}
+            {/* Subscription Status Banner — only renders when warning state.
+                Publishes its measured height to --banner-h so <main> offsets precisely. */}
             {!isFullScreenRoute && (
               <div className="fixed top-14 left-0 right-0 z-30">
                 <SubscriptionStatusBanner />
@@ -63,13 +65,19 @@ export function AppLayout() {
             )}
 
             {/* Main Content - the SINGLE scroll container for the entire app.
-                Pages must NOT add their own scrollers. Use <PageShell>. */}
+                Pages must NOT add their own scrollers. Use <PageShell>.
+                Top padding = header (56px) + dynamic banner height var. */}
             <main
               ref={mainRef}
               className={
                 isFullScreenRoute
                   ? 'flex-1 min-h-0'
-                  : 'pt-14 pb-nav-safe mobile-scroll-container scroll-pt-14'
+                  : 'pb-nav-safe mobile-scroll-container'
+              }
+              style={
+                isFullScreenRoute
+                  ? undefined
+                  : { paddingTop: 'calc(3.5rem + var(--banner-h, 0px))' }
               }
             >
               <Outlet />
@@ -79,16 +87,15 @@ export function AppLayout() {
             <ModernVoiceAssistant />
             <VoiceIndicator />
 
-            {/* Floating actions */}
-            {!isFullScreenRoute && <ScrollToTopFab />}
-
-            {/* Native Voice Navigation Button - Floating */}
-            <NativeVoiceButton
-              className="bottom-24 right-4"
-              size="md"
-              showTranscript={true}
-              showExamples={true}
-            />
+            {/* Native Voice Navigation Button - Floating (hidden on full-screen routes) */}
+            {!isFullScreenRoute && (
+              <NativeVoiceButton
+                className="bottom-24 right-4"
+                size="md"
+                showTranscript={true}
+                showExamples={true}
+              />
+            )}
 
             {/* Bottom Navigation - Hidden on full-screen routes */}
             <BottomNavigation

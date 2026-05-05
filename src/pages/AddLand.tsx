@@ -1,10 +1,20 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { GoogleMapsScriptProvider } from '@/components/maps/GoogleMapsScriptProvider';
 import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDrawer';
 import { ModernLandWizard } from '@/components/land/ModernLandWizard';
+import { SmartLandConfirmCard } from '@/components/land/SmartLandConfirmCard';
 import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
+
+// Feature flag: when true, use the AI-prefilled single-screen confirm card.
+// Falls back to the legacy 4-step wizard via localStorage override
+// `localStorage.setItem('smartLandConfirm', 'off')` for emergency rollback.
+const USE_SMART_CONFIRM =
+  typeof window === 'undefined'
+    ? true
+    : window.localStorage.getItem('smartLandConfirm') !== 'off';
+
 
 interface LatLng {
   lat: number;
@@ -20,6 +30,17 @@ export default function AddLand() {
   const [showForm, setShowForm] = useState(false);
   const [boundary, setBoundary] = useState<LatLng[]>([]);
   const [area, setArea] = useState({ sqft: 0, guntha: 0, acres: 0 });
+
+  // Mark <body> while the map drawer is open so any residual app overlays
+  // (FABs, banners) can opt out via CSS: body[data-fullscreen="map"] { ... }
+  useEffect(() => {
+    if (showMap) {
+      document.body.dataset.fullscreen = 'map';
+      return () => {
+        delete document.body.dataset.fullscreen;
+      };
+    }
+  }, [showMap]);
 
   const handleInstructionStart = () => {
     setShowInstructions(false);
@@ -59,6 +80,16 @@ export default function AddLand() {
 
   // Show form if boundary is drawn
   if (showForm) {
+    if (USE_SMART_CONFIRM) {
+      return (
+        <SmartLandConfirmCard
+          boundary={boundary}
+          area={area}
+          onComplete={handleFormComplete}
+          onCancel={() => setShowForm(false)}
+        />
+      );
+    }
     return (
       <ModernLandWizard
         boundary={boundary}

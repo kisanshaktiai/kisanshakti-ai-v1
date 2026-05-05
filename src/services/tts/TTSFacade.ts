@@ -165,39 +165,92 @@ class TTSFacadeService {
   }
   
   /**
-   * Try Web Speech API
+   * Try Web Speech API — but ONLY if the browser actually has a voice
+   * matching the requested language. Otherwise speechSynthesis silently
+   * falls back to the default (usually English) voice and reads
+   * Marathi/Hindi text with an English voice, which is unintelligible.
    */
   private async tryWebSpeech(
-    text: string, 
-    language: string, 
+    text: string,
+    language: string,
     options: TTSOptions
   ): Promise<TTSResult> {
+    if (!('speechSynthesis' in window)) {
+      return { success: false, provider: 'web', error: 'Web Speech not supported' };
+    }
+
+    const targetLang = this.getWebSpeechLang(language);
+    const voice = await this.findVoiceForLang(targetLang, language);
+
+    if (!voice) {
+      console.warn(
+        `[TTSFacade] No Web Speech voice for "${targetLang}" — skipping to Cloud TTS`
+      );
+      return {
+        success: false,
+        provider: 'web',
+        error: `No installed voice for ${targetLang}`,
+      };
+    }
+
     return new Promise((resolve) => {
-      if (!('speechSynthesis' in window)) {
-        resolve({ success: false, provider: 'web', error: 'Web Speech not supported' });
-        return;
-      }
-      
       try {
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = this.getWebSpeechLang(language);
+        utterance.voice = voice;
+        utterance.lang = voice.lang || targetLang;
         utterance.rate = options.rate || 1.0;
         utterance.pitch = options.pitch || 1.0;
         utterance.volume = options.volume || 1.0;
-        
+
         utterance.onend = () => resolve({ success: true, provider: 'web' });
-        utterance.onerror = (e) => resolve({ 
-          success: false, 
-          provider: 'web', 
-          error: e.error 
-        });
-        
+        utterance.onerror = (e) =>
+          resolve({ success: false, provider: 'web', error: e.error });
+
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utterance);
-        
       } catch (error) {
         resolve({ success: false, provider: 'web', error: 'Web Speech failed' });
       }
+    });
+  }
+
+  /**
+   * Resolve a SpeechSynthesisVoice that actually matches the target
+   * language. Some browsers populate voices asynchronously, so we wait
+   * up to ~600ms for them to load before giving up.
+   */
+  private async findVoiceForLang(
+    targetLang: string,
+    baseLang: string
+  ): Promise<SpeechSynthesisVoice | null> {
+    const pick = (): SpeechSynthesisVoice | null => {
+      const voices = window.speechSynthesis.getVoices() || [];
+      if (voices.length === 0) return null;
+      const lc = targetLang.toLowerCase();
+      const base = baseLang.toLowerCase();
+      // exact match (e.g. mr-IN), then base prefix (mr*), then base lang token
+      return (
+        voices.find((v) => v.lang?.toLowerCase() === lc) ||
+        voices.find((v) => v.lang?.toLowerCase().startsWith(base + '-')) ||
+        voices.find((v) => v.lang?.toLowerCase().startsWith(base)) ||
+        null
+      );
+    };
+
+    let v = pick();
+    if (v) return v;
+
+    // Wait for voices to load (Chrome quirk)
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (val: SpeechSynthesisVoice | null) => {
+        if (settled) return;
+        settled = true;
+        window.speechSynthesis.onvoiceschanged = null;
+        resolve(val);
+      };
+      window.speechSynthesis.onvoiceschanged = () => finish(pick());
+      setTimeout(() => finish(pick()), 600);
     });
   }
   

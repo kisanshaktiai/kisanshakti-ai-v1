@@ -2,10 +2,6 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-// Import debug utilities (makes window.__debugAuth available)
-import "@/utils/debugAuth";
-import { getSupabaseFunctionUrl } from "@/config/supabase";
-
 // Import Capacitor initialization
 import { initializeCapacitor, isNativeApp, getPlatform } from "@/utils/capacitorInit";
 
@@ -126,6 +122,12 @@ console.log('🔧 [PWA] beforeinstallprompt supported:', 'onbeforeinstallprompt'
 window.addEventListener('load', () => {
   registerServiceWorker();
 });
+
+if (import.meta.env.DEV) {
+  setTimeout(() => {
+    import("@/utils/debugAuth").catch(() => null);
+  }, 4000);
+}
 
 const rootElement = document.getElementById("root")!;
 

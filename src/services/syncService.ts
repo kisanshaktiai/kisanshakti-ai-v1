@@ -531,7 +531,6 @@ class SyncService {
               aadhaar_number: f.aadhaar_number,
               shc_id: f.shc_id,
               location: f.location,
-              pin: f.pin,
               pin_hash: f.pin_hash,
               pin_updated_at: f.pin_updated_at,
               failed_login_attempts: f.failed_login_attempts,
@@ -1086,21 +1085,23 @@ class SyncService {
         tenant,
       });
 
-      // Verify that what we saved matches what we fetched
-      if (verifyLands.length !== expectedLands) {
+      // Verify save integrity ONLY when the server returned new rows in this sync.
+      // Delta syncs legitimately return 0 new rows while localDB retains prior data,
+      // so we must NOT compare local total against the delta payload size.
+      if (expectedLands > 0 && verifyLands.length < expectedLands) {
         console.error('❌ [Sync] Land save mismatch!', {
           expected: expectedLands,
           actual: verifyLands.length
         });
-        throw new Error(`LocalDB save verification failed for lands: expected ${expectedLands}, got ${verifyLands.length}`);
+        throw new Error(`LocalDB save verification failed for lands: expected at least ${expectedLands}, got ${verifyLands.length}`);
       }
 
-      if (verifySchedules.length !== expectedSchedules) {
+      if (expectedSchedules > 0 && verifySchedules.length < expectedSchedules) {
         console.error('❌ [Sync] Schedule save mismatch!', {
           expected: expectedSchedules,
           actual: verifySchedules.length
         });
-        throw new Error(`LocalDB save verification failed for schedules: expected ${expectedSchedules}, got ${verifySchedules.length}`);
+        throw new Error(`LocalDB save verification failed for schedules: expected at least ${expectedSchedules}, got ${verifySchedules.length}`);
       }
       
       console.log('✅ [Sync] Data verification passed - LocalDB matches server data');

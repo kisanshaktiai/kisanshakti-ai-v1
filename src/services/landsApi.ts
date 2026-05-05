@@ -7,33 +7,59 @@ const RETRY_DELAY = 1000;
 
 interface LandData {
   id?: string;
+  // Identity & ownership
   name: string;
   ownership_type: string;
   area_acres: number;
   survey_number?: string;
-  state?: string;
-  district?: string;
-  taluka?: string;
-  village?: string;
+  // Administrative location
+  country?: string;
+  country_code?: string;
+  state?: string; state_id?: string;
+  district?: string; district_id?: string;
+  taluka?: string; taluka_id?: string;
+  village?: string; village_id?: string;
+  location_context?: any;
+  // Land character
+  land_type?: string;
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  irrigation_source?: string;
+  // Crop cycle (current + previous) — REQUIRED for downstream pipelines
   current_crop?: string;
-  previous_crop?: string;
+  current_crop_id?: string;
+  crop_stage?: string;
+  planting_date?: string;
   cultivation_date?: string;
+  last_sowing_date?: string;
+  expected_harvest_date?: string;
+  previous_crop?: string;
+  previous_crop_id?: string;
+  last_crop?: string;
   last_harvest_date?: string;
+  // Geometry / GPS
   area_guntas?: number;
   area_sqft?: number;
   boundary_polygon_old?: any;
   center_point_old?: any;
+  center_lat?: number;
+  center_lon?: number;
   boundary_method?: string;
   gps_accuracy_meters?: number;
   gps_recorded_at?: string;
+  elevation_meters?: number;
+  slope_percentage?: number;
+  // Misc
+  notes?: string;
+  land_documents?: any;
+  marketplace_enabled?: boolean;
   is_active?: boolean;
   deleted_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
+
 
 class LandsApiService {
   /**
@@ -299,6 +325,41 @@ class LandsApiService {
       console.error('❌ [LandsAPI] Error fetching land by ID:', error);
       return null;
     }
+  }
+
+  /**
+   * AI context inference for a brand-new land.
+   * Calls lands-api?action=infer-context with the polygon centroid and
+   * returns reverse-geocoded location, elevation and neighbour-mode
+   * suggestions for soil / water / irrigation / current crop.
+   */
+  async inferLandContext(
+    centroid: { lat: number; lng: number },
+    language: string = 'en',
+  ): Promise<any> {
+    if (!navigator.onLine) {
+      throw new Error('No internet connection. AI suggestions unavailable.');
+    }
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(
+      `${LANDS_API_URL}?action=infer-context`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ centroid, language }),
+      },
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'AI suggestion failed');
+    }
+    const result = await response.json();
+    return {
+      fields: result.fields || {},
+      confidence: result.confidence || {},
+      sources: result.sources || {},
+      crops: result.crops || [],
+    };
   }
 }
 
