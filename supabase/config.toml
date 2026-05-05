@@ -71,3 +71,12 @@ verify_jwt = false
 
 [functions.proactive-question-seed]
 verify_jwt = false
+
+[functions.community-translate]
+verify_jwt = false
+
+[functions.community-caption-suggest]
+verify_jwt = false
+
+[functions.community-moderate]
+verify_jwt = false

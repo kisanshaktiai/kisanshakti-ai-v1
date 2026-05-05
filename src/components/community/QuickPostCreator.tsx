@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCreatePost } from '@/hooks/useCommunityPosts';
+import { useCaptionSuggest } from '@/hooks/useCaptionSuggest';
 
 interface QuickPostCreatorProps {
   language: string;
@@ -32,6 +33,22 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
   const audioChunksRef = useRef<Blob[]>([]);
   
   const createPostMutation = useCreatePost();
+  const { suggest, isLoading: isSuggesting } = useCaptionSuggest();
+
+  const handleAISuggest = async () => {
+    let imageBase64: string | undefined;
+    if (selectedImage?.startsWith('data:')) {
+      imageBase64 = selectedImage.split(',')[1];
+    }
+    if (!content.trim() && !imageBase64) {
+      toast.info(t('social.post.add_text_or_image') || 'Add text or an image first');
+      return;
+    }
+    const result = await suggest({ text: content, imageBase64, language });
+    if (result) {
+      setContent(result.caption + (result.hashtags?.length ? '\n\n' + result.hashtags.map(h => `#${h}`).join(' ') : ''));
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -271,6 +288,16 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                   className="rounded-full h-10 w-10"
                 >
                   <Camera className="w-5 h-5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAISuggest}
+                  disabled={isSuggesting}
+                  className="rounded-full gap-1.5 text-primary"
+                >
+                  {isSuggesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {t('social.post.improve_ai') || 'AI'}
                 </Button>
                 <Button 
                   variant="ghost" 
