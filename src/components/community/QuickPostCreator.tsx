@@ -289,6 +289,16 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                 >
                   <Camera className="w-5 h-5" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAISuggest}
+                  disabled={isSuggesting}
+                  className="rounded-full gap-1.5 text-primary"
+                >
+                  {isSuggesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  {t('social.post.improve_ai') || 'AI'}
+                </Button>
                 <Button 
                   variant="ghost" 
                   size="sm"
