@@ -65,23 +65,13 @@ const CommunityPage: React.FC = () => {
   }));
 
   return (
-    <div className="min-h-full bg-gradient-to-b from-background via-background to-secondary/20 pb-nav-safe">
-      {/* Glassmorphism Header */}
-      <CommunityHeader 
+    <div className="min-h-full bg-background pb-nav-safe">
+      <CommunityHeader
         viewLanguage={viewLanguage}
         onLanguageChange={setViewLanguage}
       />
 
-      {/* Language Selector Pill */}
-      <div className="sticky top-16 z-40 px-4 py-2 bg-background/80 backdrop-blur-2xl border-b border-border/20">
-        <LanguageSelector 
-          selectedLanguage={viewLanguage}
-          onLanguageChange={setViewLanguage}
-        />
-      </div>
-
-      {/* Navigation Tabs */}
-      <CommunityTabs 
+      <CommunityTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
