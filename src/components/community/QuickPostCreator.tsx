@@ -24,16 +24,19 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
   onExpandToFull
 }) => {
   const { t } = useTranslation();
+  const { user } = useAuthStore();
   const [content, setContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  
+  const [recordSeconds, setRecordSeconds] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  
+  const recordTimerRef = useRef<number | null>(null);
+
   const createPostMutation = useCreatePost();
   const { suggest, isLoading: isSuggesting } = useCaptionSuggest();
 
