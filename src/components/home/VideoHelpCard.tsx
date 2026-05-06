@@ -37,7 +37,11 @@ export function VideoHelpCard({ videos, onClick }: VideoHelpCardProps) {
         {/* Horizontal Scrollable Thumbnails - Facebook Style */}
         <div className="relative -mx-4 px-4">
           <div className="flex gap-3 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-2">
-            {videos.slice(0, 8).map((video, index) => (
+            {videos.slice(0, 8).map((video) => {
+              const ytId = video.video_url ? getYouTubeId(video.video_url) : null;
+              const thumb = video.thumbnail_url || (ytId ? youTubeThumb(ytId, 'hq') : null);
+              const views = video.total_views ?? video.view_count ?? 0;
+              return (
               <motion.div
                 key={video.id}
                 onClick={onClick}
@@ -46,10 +50,11 @@ export function VideoHelpCard({ videos, onClick }: VideoHelpCardProps) {
                 className="flex-shrink-0 w-36 snap-start cursor-pointer group"
               >
                 <div className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-gradient-to-br from-primary/10 via-accent/5 to-secondary/10 shadow-lg border border-border/20">
-                  {video.thumbnail_url ? (
+                  {thumb ? (
                     <img 
-                      src={video.thumbnail_url} 
+                      src={thumb} 
                       alt={video.title}
+                      loading="lazy"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     />
                   ) : (
