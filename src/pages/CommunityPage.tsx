@@ -179,10 +179,11 @@ const CommunityPage: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      {/* Floating Create Post Button - Hide when modals are open */}
-      {!isCreatePostOpen && !isGroupModalOpen && (
-        <CreatePostFAB onClick={() => setIsCreatePostOpen(true)} />
-      )}
+      {/* FAB only on tabs that don't already show QuickPostCreator inline */}
+      {!isCreatePostOpen && !isGroupModalOpen &&
+        activeTab !== 'feed' && activeTab !== 'my-posts' && (
+          <CreatePostFAB onClick={() => setIsCreatePostOpen(true)} />
+        )}
 
       {/* Create Post Modal */}
       <CreatePostModal 
