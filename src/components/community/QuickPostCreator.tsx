@@ -346,19 +346,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
               </div>
             </div>
 
-              <Button
-                onClick={handleSubmit}
-                disabled={(!content.trim() && !selectedImage) || createPostMutation.isPending}
-                className="rounded-full gap-2 px-6"
-              >
-                {createPostMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Send className="w-4 h-4" />
-                )}
-                {t('social.post.publish')}
-              </Button>
-            </div>
+
           </motion.div>
         )}
       </AnimatePresence>
