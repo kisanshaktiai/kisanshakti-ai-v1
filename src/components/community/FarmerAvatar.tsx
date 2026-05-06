@@ -16,15 +16,16 @@ const hashString = (s: string): number => {
   return Math.abs(h);
 };
 
+// Use semantic theme tokens so avatars adapt to light/dark theme
 const PALETTE = [
-  'hsl(142 60% 45%)', // green
-  'hsl(28 80% 55%)',  // amber
-  'hsl(199 75% 50%)', // sky
-  'hsl(340 65% 55%)', // pink
-  'hsl(265 55% 55%)', // purple
-  'hsl(15 75% 55%)',  // orange
-  'hsl(170 55% 40%)', // teal
-  'hsl(45 80% 50%)',  // yellow
+  'hsl(var(--primary))',
+  'hsl(var(--accent))',
+  'hsl(var(--info))',
+  'hsl(var(--warning))',
+  'hsl(var(--success))',
+  'hsl(var(--crop-stage-flowering))',
+  'hsl(var(--crop-stage-fruiting))',
+  'hsl(var(--crop-stage-vegetative))',
 ];
 
 const SIZES = {
@@ -56,7 +57,7 @@ export const FarmerAvatar: React.FC<FarmerAvatarProps> = ({
   return (
     <div
       className={cn(
-        'rounded-full flex items-center justify-center font-semibold text-white select-none',
+        'rounded-full flex items-center justify-center font-semibold text-primary-foreground select-none',
         SIZES[size],
         className
       )}

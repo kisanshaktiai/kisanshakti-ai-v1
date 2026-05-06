@@ -28,11 +28,11 @@ export const ImageLightbox: React.FC<Props> = ({ src, onClose, alt }) => {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 z-[200] bg-black flex items-center justify-center"
+          className="fixed inset-0 z-[200] bg-overlay-dark flex items-center justify-center"
         >
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-3 rounded-full bg-white/10 text-white"
+            className="absolute top-4 right-4 p-3 rounded-full bg-overlay-light/10 text-overlay-light"
             aria-label="Close"
           >
             <X className="w-6 h-6" />
