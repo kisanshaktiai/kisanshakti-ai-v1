@@ -69,6 +69,9 @@
     "language": "भाषा",
     "speak_this_page": "यह पृष्ठ पढ़ें",
     "stop_speaking": "पढ़ना बंद करें",
+    "no_readable_text": "यहाँ पढ़ने के लिए कुछ नहीं है",
+    "no_readable_text_hint": "किसी पाठ वाले भाग पर जाएँ और पुनः प्रयास करें।",
+    "tts_failed": "यह पृष्ठ पढ़ा नहीं जा सका",
     "subscription": {
       "tap_to_manage": "योजना प्रबंधित करें",
       "days_remaining": "{{d}} दिन शेष",
