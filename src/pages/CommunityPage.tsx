@@ -151,10 +151,10 @@ const CommunityPage: React.FC = () => {
                     <Bookmark className="w-10 h-10 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">
-                    {t('empty.saved')}
+                    {t('social.empty.saved')}
                   </h3>
                   <p className="text-muted-foreground text-sm">
-                    {t('empty.saved_hint')}
+                    {t('social.empty.saved_hint')}
                   </p>
                 </div>
               )}
