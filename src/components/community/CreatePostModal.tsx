@@ -155,7 +155,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 bg-overlay-dark/60 backdrop-blur-sm"
           />
 
           <motion.div
@@ -218,7 +218,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               {selectedImage && (
                 <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="relative mt-4 rounded-2xl overflow-hidden">
                   <img src={selectedImage} alt="Selected" className="w-full h-48 object-cover" />
-                  <button onClick={() => setSelectedImage(null)} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white">
+                  <button onClick={() => setSelectedImage(null)} className="absolute top-2 right-2 p-1.5 bg-overlay-dark/50 rounded-full text-overlay-light">
                     <X className="w-4 h-4" />
                   </button>
                 </motion.div>

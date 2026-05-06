@@ -274,7 +274,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                   <img src={selectedImage} alt="Selected" className="w-full h-32 object-cover" />
                   <button 
                     onClick={() => setSelectedImage(null)} 
-                    className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white"
+                    className="absolute top-2 right-2 p-1.5 bg-overlay-dark/50 rounded-full text-overlay-light"
                   >
                     <X className="w-4 h-4" />
                   </button>
