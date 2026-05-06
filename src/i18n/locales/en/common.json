@@ -69,6 +69,9 @@
     "language": "Language",
     "speak_this_page": "Speak this page",
     "stop_speaking": "Stop speaking",
+    "no_readable_text": "Nothing to read here",
+    "no_readable_text_hint": "Scroll to a section with text and try again.",
+    "tts_failed": "Could not read this page",
     "subscription": {
       "tap_to_manage": "Tap to manage plan",
       "days_remaining": "{{d}} days remaining",
