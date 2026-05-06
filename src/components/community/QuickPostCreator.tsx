@@ -282,50 +282,69 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
               </div>
             )}
 
-            {/* Action Bar */}
-            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border mt-2">
-              <div className="flex items-center gap-2">
-                <input 
-                  ref={fileInputRef} 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleImageSelect} 
-                  className="hidden" 
-                />
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={() => fileInputRef.current?.click()} 
-                  className="rounded-full h-10 w-10"
-                >
-                  <Image className="w-5 h-5" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="rounded-full h-10 w-10"
-                >
-                  <Camera className="w-5 h-5" />
-                </Button>
+            {/* Action Bar - mobile-first 2-row layout to keep Post always visible */}
+            <div className="flex flex-col gap-2 px-3 py-3 border-t border-border mt-2">
+              <Button
+                onClick={handleSubmit}
+                disabled={(!content.trim() && !selectedImage) || createPostMutation.isPending}
+                className="w-full rounded-full gap-2 h-11 text-base font-semibold shadow-md"
+              >
+                {createPostMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4" />
+                )}
+                {t('social.post.publish') || 'Post'}
+              </Button>
+
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-full h-9 w-9 text-muted-foreground"
+                    aria-label={t('social.post.add_photo') || 'Add photo'}
+                  >
+                    <Image className="w-5 h-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="rounded-full h-9 w-9 text-muted-foreground"
+                    aria-label="Camera"
+                  >
+                    <Camera className="w-5 h-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleAISuggest}
+                    disabled={isSuggesting}
+                    className="rounded-full gap-1.5 text-primary h-9 px-2"
+                  >
+                    {isSuggesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    <span className="text-xs">{t('social.post.improve_ai') || 'AI'}</span>
+                  </Button>
+                </div>
+
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={handleAISuggest}
-                  disabled={isSuggesting}
-                  className="rounded-full gap-1.5 text-primary"
-                >
-                  {isSuggesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                  {t('social.post.improve_ai') || 'AI'}
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
                   onClick={handleClear}
-                  className="text-muted-foreground"
+                  className="text-muted-foreground h-9 px-3"
                 >
-                  {t('social.post.clear')}
+                  {t('social.post.clear') || 'Clear'}
                 </Button>
               </div>
+            </div>
 
               <Button
                 onClick={handleSubmit}
