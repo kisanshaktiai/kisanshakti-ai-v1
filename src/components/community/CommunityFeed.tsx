@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
+import { PostCardSkeletonList } from './PostCardSkeleton';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCommunityPosts, useUserLikedPosts, useUserSavedPosts, SocialPost } from '@/hooks/useCommunityPosts';
