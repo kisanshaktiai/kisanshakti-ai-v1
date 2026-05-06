@@ -131,5 +131,11 @@ if (import.meta.env.DEV) {
 
 const rootElement = document.getElementById("root")!;
 
-// Signal that React is mounting (loader removal is handled by index.html event listener)
-createRoot(rootElement).render(<App />);
+// Wait for the initial language's page-bundles (home/weather/common/...) to load
+// BEFORE first paint. This prevents the "translation key flash" where users
+// momentarily see raw keys like `home.welcome` until the JSON chunk arrives.
+import("@/i18n/config").then(({ i18nReady }) => {
+  i18nReady.finally(() => {
+    createRoot(rootElement).render(<App />);
+  });
+});
