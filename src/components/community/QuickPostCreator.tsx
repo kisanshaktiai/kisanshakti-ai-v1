@@ -283,7 +283,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
             )}
 
             {/* Action Bar */}
-            <div className="flex items-center justify-between p-4 pt-0 border-t border-border/30 mt-2 pt-3">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border mt-2">
               <div className="flex items-center gap-2">
                 <input 
                   ref={fileInputRef} 
