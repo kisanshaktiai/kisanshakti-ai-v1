@@ -10,11 +10,11 @@ import { CommunityTabs } from '@/components/community/CommunityTabs';
 import { TrendingTopics } from '@/components/community/TrendingTopics';
 import { CommunityGroups } from '@/components/community/CommunityGroups';
 import { QuickPostCreator } from '@/components/community/QuickPostCreator';
-import { LanguageSelector } from '@/components/community/LanguageSelector';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { CommunityTab } from '@/types/community';
 import { useSavedPostsFull } from '@/hooks/useCommunityPosts';
 import { PostCard } from '@/components/community/PostCard';
+import { PostCardSkeletonList } from '@/components/community/PostCardSkeleton';
 import { formatDistanceToNow } from 'date-fns';
 import { Bookmark } from 'lucide-react';
 
