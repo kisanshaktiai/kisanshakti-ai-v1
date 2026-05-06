@@ -36,7 +36,7 @@ export const ReportReasonSheet: React.FC<Props> = ({ open, onClose, onSubmit }) 
                 onSubmit(key);
                 onClose();
               }}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl bg-card hover:bg-secondary border border-border text-left transition-colors"
+              className="w-full flex items-center gap-3 p-4 rounded-2xl bg-card hover:bg-muted border border-border text-left transition-colors"
             >
               <Icon className="w-5 h-5 text-destructive" />
               <span className="font-medium text-foreground">{label}</span>

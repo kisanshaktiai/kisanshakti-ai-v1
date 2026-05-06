@@ -191,7 +191,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                         "transition-all duration-200",
                         selectedEmoji === emoji
                           ? "bg-primary/20 ring-2 ring-primary scale-110"
-                          : "bg-secondary/50 hover:bg-secondary"
+                          : "bg-muted/50 hover:bg-muted"
                       )}
                     >
                       {emoji}

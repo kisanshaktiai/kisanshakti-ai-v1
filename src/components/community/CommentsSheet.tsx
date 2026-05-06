@@ -49,7 +49,7 @@ export const CommentsSheet: React.FC<CommentsSheetProps> = ({ postId, isOpen, on
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-lg flex-shrink-0">
                   👨‍🌾
                 </div>
-                <div className="flex-1 bg-secondary/40 rounded-2xl px-3 py-2">
+                <div className="flex-1 bg-muted/40 rounded-2xl px-3 py-2">
                   <div className="flex items-baseline gap-2 mb-0.5">
                     <span className="text-sm font-semibold text-foreground">
                       {c.farmer?.farmer_name || 'Farmer'}

@@ -147,7 +147,7 @@ const CommunityPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="text-center py-16">
-                  <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-secondary/50 flex items-center justify-center">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-muted/50 flex items-center justify-center">
                     <Bookmark className="w-10 h-10 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">

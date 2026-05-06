@@ -3261,7 +3261,15 @@ export type Database = {
           version?: string | null
           weight_modifier?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "canonical_hint_mapping_observation_code_fkey"
+            columns: ["observation_code"]
+            isOneToOne: false
+            referencedRelation: "observation_master"
+            referencedColumns: ["observation_code"]
+          },
+        ]
       }
       cart_items: {
         Row: {
