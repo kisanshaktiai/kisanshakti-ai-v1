@@ -10418,6 +10418,48 @@ export type Database = {
           },
         ]
       }
+      governance_audit_reports: {
+        Row: {
+          created_at: string
+          findings: Json
+          generated_at: string
+          generated_by: string | null
+          id: string
+          metrics: Json
+          report_type: string
+          severity: string
+          summary: string | null
+          title: string
+          total_issues: number
+        }
+        Insert: {
+          created_at?: string
+          findings?: Json
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          metrics?: Json
+          report_type: string
+          severity?: string
+          summary?: string | null
+          title: string
+          total_issues?: number
+        }
+        Update: {
+          created_at?: string
+          findings?: Json
+          generated_at?: string
+          generated_by?: string | null
+          id?: string
+          metrics?: Json
+          report_type?: string
+          severity?: string
+          summary?: string | null
+          title?: string
+          total_issues?: number
+        }
+        Relationships: []
+      }
       group_chat_members: {
         Row: {
           farmer_id: string
@@ -10939,6 +10981,39 @@ export type Database = {
             referencedColumns: ["hypothesis_id"]
           },
         ]
+      }
+      hypothesis_versions: {
+        Row: {
+          change_reason: string | null
+          change_type: string
+          changed_by: string | null
+          created_at: string
+          hypothesis_id: string
+          id: string
+          snapshot: Json
+          version_number: number
+        }
+        Insert: {
+          change_reason?: string | null
+          change_type: string
+          changed_by?: string | null
+          created_at?: string
+          hypothesis_id: string
+          id?: string
+          snapshot: Json
+          version_number: number
+        }
+        Update: {
+          change_reason?: string | null
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string
+          hypothesis_id?: string
+          id?: string
+          snapshot?: Json
+          version_number?: number
+        }
+        Relationships: []
       }
       impersonation_sessions: {
         Row: {
@@ -15598,6 +15673,39 @@ export type Database = {
         }
         Relationships: []
       }
+      observation_versions: {
+        Row: {
+          change_reason: string | null
+          change_type: string
+          changed_by: string | null
+          created_at: string
+          id: string
+          observation_id: string
+          snapshot: Json
+          version_number: number
+        }
+        Insert: {
+          change_reason?: string | null
+          change_type: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          observation_id: string
+          snapshot: Json
+          version_number: number
+        }
+        Update: {
+          change_reason?: string | null
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          observation_id?: string
+          snapshot?: Json
+          version_number?: number
+        }
+        Relationships: []
+      }
       offline_sync_queue: {
         Row: {
           action_type: string
@@ -19610,6 +19718,143 @@ export type Database = {
           },
         ]
       }
+      rule_approval_workflow: {
+        Row: {
+          agronomist_notes: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          rule_id: string
+          rule_version_id: string | null
+          state: string
+          submitted_at: string | null
+          submitted_by: string | null
+          updated_at: string
+        }
+        Insert: {
+          agronomist_notes?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          rule_id: string
+          rule_version_id?: string | null
+          state?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+        }
+        Update: {
+          agronomist_notes?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          rejection_reason?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          rule_id?: string
+          rule_version_id?: string | null
+          state?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rule_approval_workflow_rule_version_id_fkey"
+            columns: ["rule_version_id"]
+            isOneToOne: false
+            referencedRelation: "rule_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      rule_conflict_matrix: {
+        Row: {
+          conflict_details: Json
+          conflict_type: string
+          detected_at: string
+          id: string
+          resolution_notes: string | null
+          resolved: boolean
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_a_id: string
+          rule_b_id: string
+          severity: string
+        }
+        Insert: {
+          conflict_details?: Json
+          conflict_type: string
+          detected_at?: string
+          id?: string
+          resolution_notes?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_a_id: string
+          rule_b_id: string
+          severity?: string
+        }
+        Update: {
+          conflict_details?: Json
+          conflict_type?: string
+          detected_at?: string
+          id?: string
+          resolution_notes?: string | null
+          resolved?: boolean
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_a_id?: string
+          rule_b_id?: string
+          severity?: string
+        }
+        Relationships: []
+      }
+      rule_explainability: {
+        Row: {
+          confidence_breakdown: Json | null
+          created_at: string
+          evidence_path: Json
+          execution_id: string | null
+          fired: boolean
+          id: string
+          input_context: Json | null
+          rule_id: string
+          why_fired: Json | null
+          why_not_fired: Json | null
+        }
+        Insert: {
+          confidence_breakdown?: Json | null
+          created_at?: string
+          evidence_path?: Json
+          execution_id?: string | null
+          fired: boolean
+          id?: string
+          input_context?: Json | null
+          rule_id: string
+          why_fired?: Json | null
+          why_not_fired?: Json | null
+        }
+        Update: {
+          confidence_breakdown?: Json | null
+          created_at?: string
+          evidence_path?: Json
+          execution_id?: string | null
+          fired?: boolean
+          id?: string
+          input_context?: Json | null
+          rule_id?: string
+          why_fired?: Json | null
+          why_not_fired?: Json | null
+        }
+        Relationships: []
+      }
       rule_id_fix_mapping_safe: {
         Row: {
           category: string | null
@@ -19637,6 +19882,36 @@ export type Database = {
           new_rule_id?: string | null
           old_rule_id?: string | null
           reference_check?: string | null
+        }
+        Relationships: []
+      }
+      rule_lineage: {
+        Row: {
+          child_rule_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          notes: string | null
+          parent_rule_id: string
+          relation_type: string
+        }
+        Insert: {
+          child_rule_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          parent_rule_id: string
+          relation_type?: string
+        }
+        Update: {
+          child_rule_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          parent_rule_id?: string
+          relation_type?: string
         }
         Relationships: []
       }
@@ -19806,6 +20081,39 @@ export type Database = {
           last_audit_date?: string | null
           rule_id?: string
           validation_trial_count?: number | null
+        }
+        Relationships: []
+      }
+      rule_versions: {
+        Row: {
+          change_reason: string | null
+          change_type: string
+          changed_by: string | null
+          created_at: string
+          id: string
+          rule_id: string
+          snapshot: Json
+          version_number: number
+        }
+        Insert: {
+          change_reason?: string | null
+          change_type: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          rule_id: string
+          snapshot: Json
+          version_number: number
+        }
+        Update: {
+          change_reason?: string | null
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string
+          id?: string
+          rule_id?: string
+          snapshot?: Json
+          version_number?: number
         }
         Relationships: []
       }
