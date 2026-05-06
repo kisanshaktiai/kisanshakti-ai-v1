@@ -78,10 +78,13 @@ i18n
     },
   });
 
-loadPageTranslations(i18n.language).catch((error) => {
-  console.warn('⚠️ [i18n] Deferred translation load failed:', error);
+// Kick off the initial-language page bundle load. main.tsx awaits `i18nReady`
+// before mounting React, ensuring no key-flash on first paint.
+export const i18nReady: Promise<void> = loadPageTranslations(i18n.language).catch((error) => {
+  console.warn('⚠️ [i18n] Initial translation load failed:', error);
 });
 
+// Safety net: if a language change slips through without preloading, fetch on demand.
 i18n.on('languageChanged', (lang) => {
   loadPageTranslations(lang).catch((error) => {
     console.warn('⚠️ [i18n] Deferred translation load failed:', error);
