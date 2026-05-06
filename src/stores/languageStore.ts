@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import i18n from '@/i18n/config';
+import i18n, { loadPageTranslations } from '@/i18n/config';
 import { supabase } from '@/integrations/supabase/client';
 
 interface Language {
