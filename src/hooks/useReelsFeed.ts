@@ -112,6 +112,30 @@ export function useReelsFeed(opts: UseReelsFeedOptions = {}) {
   });
 }
 
+/**
+ * Lightweight hook for the Home page "featured reels" carousel.
+ * Returns up to N most-engaging reels in the user's language (with English fallback).
+ */
+export function useFeaturedReels(limit: number = 8) {
+  const { currentLanguage } = useLanguageStore();
+  return useQuery({
+    queryKey: ['reels-featured', currentLanguage, limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('reels_videos')
+        .select('*')
+        .in('language_code', [currentLanguage, 'en'])
+        .order('is_featured', { ascending: false })
+        .order('trending_score', { ascending: false })
+        .order('total_views', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data || []) as Reel[];
+    },
+    staleTime: 60_000,
+  });
+}
+
 export function useReelCategories() {
   return useQuery({
     queryKey: ['reels-categories'],
