@@ -2,7 +2,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { PlayCircle, Video } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { useTranslation } from 'react-i18next';
+import { youTubeThumb, getYouTubeId } from '@/lib/youtube';
 
 interface VideoHelpCardProps {
   videos: any[];
@@ -10,18 +11,22 @@ interface VideoHelpCardProps {
 }
 
 export function VideoHelpCard({ videos, onClick }: VideoHelpCardProps) {
+  const { t } = useTranslation();
   const videoCount = videos.length;
+
+  if (!videos || videos.length === 0) return null;
 
   return (
     <Card 
-      className="overflow-hidden border-border/40 backdrop-blur-sm hover:shadow-[0_10px_40px_-10px_rgba(var(--primary-rgb),0.3)] transition-all duration-300"
+      className="overflow-hidden border-border/40 backdrop-blur-sm hover:shadow-[0_10px_40px_-10px_rgba(var(--primary-rgb),0.3)] transition-all duration-300 cursor-pointer"
+      onClick={onClick}
     >
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h4 className="font-semibold text-sm mb-0.5">Video Tutorials</h4>
+            <h4 className="font-semibold text-sm mb-0.5">{t('reels.home.title', 'Farming Reels')}</h4>
             <p className="text-xs text-muted-foreground">
-              Learn farming techniques with step-by-step guides
+              {t('reels.home.subtitle', 'Short videos to learn modern farming')}
             </p>
           </div>
           <Badge variant="secondary" className="text-xs">
