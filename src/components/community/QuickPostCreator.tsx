@@ -198,7 +198,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
 
           <div
             className={cn(
-              'flex-1 min-h-[44px] px-4 py-2.5 bg-secondary rounded-2xl cursor-text transition-colors'
+              'flex-1 min-h-[44px] px-4 py-2.5 bg-muted rounded-2xl cursor-text transition-colors'
             )}
             onClick={() => setIsExpanded(true)}
           >

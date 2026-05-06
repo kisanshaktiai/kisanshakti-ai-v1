@@ -109,7 +109,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                       "transition-all duration-200",
                       selectedLanguage === lang.code
                         ? "bg-primary/15 text-primary"
-                        : "hover:bg-secondary/50 text-foreground"
+                        : "hover:bg-muted/50 text-foreground"
                     )}
                   >
                     <span className="text-lg">{lang.flag}</span>
@@ -124,7 +124,7 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                 ))}
               </div>
 
-              <div className="p-3 border-t border-border bg-secondary/30">
+              <div className="p-3 border-t border-border bg-muted/30">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Volume2 className="w-3.5 h-3.5" />
                   <span>{t('social.language.listen_hint')}</span>

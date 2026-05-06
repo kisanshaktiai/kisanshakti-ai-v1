@@ -263,7 +263,7 @@ export const PostCard: React.FC<PostCardProps> = ({
                 <button
                   key={i}
                   onClick={() => onHashtagTap?.(tag)}
-                  className="px-2.5 py-1 bg-secondary text-secondary-foreground text-xs rounded-full active:scale-95 transition-transform"
+                  className="px-2.5 py-1 bg-muted text-foreground text-xs rounded-full active:scale-95 transition-transform"
                 >
                   #{tag}
                 </button>

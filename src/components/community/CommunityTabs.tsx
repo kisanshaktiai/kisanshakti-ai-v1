@@ -26,7 +26,7 @@ export const CommunityTabs: React.FC<CommunityTabsProps> = ({
 
   return (
     <div className="sticky top-14 z-30 px-3 py-2 bg-background border-b border-border">
-      <div className="flex items-center gap-1 p-1 bg-secondary rounded-2xl">
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-2xl">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;

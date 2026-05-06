@@ -191,7 +191,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                       "px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-all",
                       selectedLanguage === lang.code
                         ? "bg-primary text-primary-foreground"
-                        : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
+                        : "bg-muted/50 text-muted-foreground hover:bg-muted"
                     )}
                   >
                     {lang.name}
@@ -225,17 +225,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               )}
 
               {voiceNoteUrl && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-3 bg-secondary/50 rounded-xl flex items-center gap-3">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-3 bg-muted/50 rounded-xl flex items-center gap-3">
                   <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center"><Mic className="w-5 h-5 text-primary" /></div>
                   <div className="flex-1">
                     <p className="text-sm font-medium">{t('social.post.voice')}</p>
                   </div>
-                  <button onClick={() => setVoiceNoteUrl(null)} className="p-1.5 hover:bg-secondary rounded-full"><X className="w-4 h-4 text-muted-foreground" /></button>
+                  <button onClick={() => setVoiceNoteUrl(null)} className="p-1.5 hover:bg-muted rounded-full"><X className="w-4 h-4 text-muted-foreground" /></button>
                 </motion.div>
               )}
             </div>
 
-            <div className="p-4 border-t border-border bg-secondary/30">
+            <div className="p-4 border-t border-border bg-muted/30">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />

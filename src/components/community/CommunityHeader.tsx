@@ -63,7 +63,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowLangs(true)}
-            className="flex items-center gap-1 px-2.5 h-9 rounded-full bg-secondary text-foreground text-sm font-medium"
+            className="flex items-center gap-1 px-2.5 h-9 rounded-full bg-muted text-foreground text-sm font-medium"
             aria-label="Change language"
           >
             <Globe className="w-3.5 h-3.5 text-primary" />
@@ -127,7 +127,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
                       'w-full flex items-center justify-between px-4 py-3 rounded-2xl transition-colors',
                       viewLanguage === lang.code
                         ? 'bg-primary/10 text-primary'
-                        : 'hover:bg-secondary text-foreground'
+                        : 'hover:bg-muted text-foreground'
                     )}
                   >
                     <span className="font-medium">{lang.native}</span>
@@ -162,7 +162,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t('social.header.search_placeholder') || 'Search'}
-                className="flex-1 h-12 rounded-2xl bg-secondary border-0"
+                className="flex-1 h-12 rounded-2xl bg-muted border-0"
                 autoFocus
               />
               {searchQuery && (
