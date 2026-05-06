@@ -54,6 +54,7 @@ const NDVIAnalysis = lazy(() => import("./pages/NDVIAnalysis"));
 const SoilHealthReport = lazy(() => import("./pages/SoilHealthReport"));
 const AIScheduleDashboard = lazy(() => import("./pages/AIScheduleDashboard"));
 const VideoReels = lazy(() => import("./pages/VideoReels"));
+const ReelsPage = lazy(() => import("./pages/ReelsPage"));
 const InstallPWA = lazy(() => import("./pages/InstallPWA"));
 const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const CropGrowthTracking = lazy(() => import("./pages/CropGrowthTracking"));
@@ -377,7 +378,9 @@ const router = createBrowserRouter([
       { path: "schedule", element: <Suspense fallback={<PageLoader />}><Schedule /></Suspense> },
       { path: "ai-dashboard", element: <Suspense fallback={<PageLoader />}><AIScheduleDashboard /></Suspense> },
       { path: "ndvi", element: <Suspense fallback={<PageLoader />}><NDVIAnalysis /></Suspense> },
-      { path: "videos", element: <Suspense fallback={<PageLoader />}><VideoReels /></Suspense> },
+      { path: "videos", element: <Suspense fallback={<PageLoader />}><ReelsPage /></Suspense> },
+      { path: "reels", element: <Suspense fallback={<PageLoader />}><ReelsPage /></Suspense> },
+      { path: "videos/legacy", element: <Suspense fallback={<PageLoader />}><VideoReels /></Suspense> },
       { path: "notifications/settings", element: <Suspense fallback={<PageLoader />}><NotificationSettingsPage /></Suspense> },
       { path: "crop-growth", element: <Suspense fallback={<PageLoader />}><CropGrowthTracking /></Suspense> },
       { path: "growth-tracking", element: <Suspense fallback={<PageLoader />}><CropGrowthTracking /></Suspense> },
