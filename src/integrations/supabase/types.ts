@@ -19724,6 +19724,7 @@ export type Database = {
           created_at: string
           id: string
           metadata: Json | null
+          proposed_payload: Json | null
           rejection_reason: string | null
           reviewed_at: string | null
           reviewer_id: string | null
@@ -19739,6 +19740,7 @@ export type Database = {
           created_at?: string
           id?: string
           metadata?: Json | null
+          proposed_payload?: Json | null
           rejection_reason?: string | null
           reviewed_at?: string | null
           reviewer_id?: string | null
@@ -19754,6 +19756,7 @@ export type Database = {
           created_at?: string
           id?: string
           metadata?: Json | null
+          proposed_payload?: Json | null
           rejection_reason?: string | null
           reviewed_at?: string | null
           reviewer_id?: string | null
@@ -29202,6 +29205,60 @@ export type Database = {
         }[]
       }
       gettransactionid: { Args: never; Returns: unknown }
+      governance_rollback_rule_to_version: {
+        Args: { p_notes?: string; p_version_id: string }
+        Returns: {
+          agronomist_notes: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          proposed_payload: Json | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          rule_id: string
+          rule_version_id: string | null
+          state: string
+          submitted_at: string | null
+          submitted_by: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rule_approval_workflow"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      governance_simulate_rule: {
+        Args: { p_rule_id: string; p_sample_input: Json }
+        Returns: Json
+      }
+      governance_transition_approval_state: {
+        Args: { p_new_state: string; p_notes?: string; p_workflow_id: string }
+        Returns: {
+          agronomist_notes: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          proposed_payload: Json | null
+          rejection_reason: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          rule_id: string
+          rule_version_id: string | null
+          state: string
+          submitted_at: string | null
+          submitted_by: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "rule_approval_workflow"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       has_tenant_access: { Args: { check_tenant_id: string }; Returns: boolean }
       increment_usage: {
         Args: {
