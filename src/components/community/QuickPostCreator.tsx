@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCreatePost } from '@/hooks/useCommunityPosts';
 import { useCaptionSuggest } from '@/hooks/useCaptionSuggest';
+import { FarmerAvatar } from './FarmerAvatar';
+import { useAuthStore } from '@/stores/authStore';
 
 interface QuickPostCreatorProps {
   language: string;
@@ -22,16 +24,19 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
   onExpandToFull
 }) => {
   const { t } = useTranslation();
+  const { user } = useAuthStore();
   const [content, setContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  
+  const [recordSeconds, setRecordSeconds] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  
+  const recordTimerRef = useRef<number | null>(null);
+
   const createPostMutation = useCreatePost();
   const { suggest, isLoading: isSuggesting } = useCaptionSuggest();
 
@@ -50,12 +55,14 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
     }
   };
 
+  const MAX_RECORD_SEC = 60;
+
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { echoCancellation: true, noiseSuppression: true } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
       });
-      
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -67,23 +74,43 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         await transcribeAudio(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       setIsExpanded(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((s) => {
+          if (s + 1 >= MAX_RECORD_SEC) {
+            stopRecording();
+            return MAX_RECORD_SEC;
+          }
+          return s + 1;
+        });
+      }, 1000);
     } catch (err) {
       toast.error(t('social.post.recording_error'));
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
     }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
   };
+
+  const toggleRecording = () => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  };
+
 
   const transcribeAudio = async (audioBlob: Blob) => {
     setIsTranscribing(true);
@@ -157,24 +184,21 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
     <motion.div
       layout
       className={cn(
-        "mx-4 mb-4 bg-card/80 backdrop-blur-xl rounded-3xl border border-border/50",
-        "shadow-lg shadow-black/5 overflow-hidden"
+        'mx-3 mb-4 bg-card rounded-3xl border border-border overflow-hidden shadow-sm'
       )}
     >
-      {/* Compact Mode - Voice First */}
       <div className="p-4">
         <div className="flex items-center gap-3">
-          {/* User Avatar */}
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl flex-shrink-0">
-            👨‍🌾
-          </div>
+          <FarmerAvatar
+            name={user?.farmerName || user?.fullName || user?.name}
+            seed={user?.id}
+            imageUrl={user?.avatarUrl}
+            size="md"
+          />
 
-          {/* Input Area */}
-          <div 
+          <div
             className={cn(
-              "flex-1 min-h-[48px] px-4 py-3 bg-secondary/30 rounded-2xl",
-              "cursor-text transition-all",
-              isExpanded && "bg-secondary/50"
+              'flex-1 min-h-[44px] px-4 py-2.5 bg-secondary rounded-2xl cursor-text transition-colors'
             )}
             onClick={() => setIsExpanded(true)}
           >
@@ -182,60 +206,54 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={t('social.post.whats_on_mind')}
-                className="w-full bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground min-h-[60px]"
+                placeholder={t('social.post.whats_on_mind') || "What's on your mind?"}
+                className="w-full bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground min-h-[44px]"
                 autoFocus
               />
             ) : (
-              <p className="text-muted-foreground">
-                {t('social.post.tap_or_speak')}
+              <p className="text-muted-foreground text-sm">
+                {t('social.post.tap_or_speak') || 'Tap to write or speak'}
               </p>
             )}
           </div>
 
-          {/* Big Voice Button */}
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onMouseLeave={() => isRecording && stopRecording()}
+            onClick={toggleRecording}
             disabled={isTranscribing}
+            aria-label={isRecording ? 'Stop recording' : 'Start recording'}
             className={cn(
-              "relative w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0",
-              "transition-all duration-200 shadow-lg",
-              isRecording 
-                ? "bg-destructive text-destructive-foreground scale-110" 
-                : "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground"
+              'relative w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0',
+              'transition-colors shadow-md',
+              isRecording
+                ? 'bg-destructive text-destructive-foreground'
+                : 'bg-primary text-primary-foreground'
             )}
           >
             {isTranscribing ? (
-              <Sparkles className="w-6 h-6 animate-spin" />
+              <Sparkles className="w-5 h-5 animate-spin" />
             ) : isRecording ? (
-              <StopCircle className="w-6 h-6" />
+              <StopCircle className="w-5 h-5" />
             ) : (
-              <Mic className="w-6 h-6" />
+              <Mic className="w-5 h-5" />
             )}
 
-            {/* Recording Pulse */}
             {isRecording && (
               <motion.div
-                className="absolute inset-0 rounded-full bg-destructive/30"
-                animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0, 0.5] }}
-                transition={{ duration: 1, repeat: Infinity }}
+                className="absolute inset-0 rounded-full bg-destructive/30 -z-10"
+                animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0, 0.6] }}
+                transition={{ duration: 1.2, repeat: Infinity }}
               />
             )}
           </motion.button>
         </div>
 
-        {/* Voice Hint */}
         <p className="text-center text-xs text-muted-foreground mt-2">
-          {isRecording 
-            ? t('social.post.release_to_stop')
+          {isRecording
+            ? `${t('social.post.recording') || 'Recording'} ${recordSeconds}s · ${t('social.post.tap_to_stop') || 'Tap to stop'}`
             : isTranscribing
-            ? t('social.post.converting')
-            : t('social.post.hold_mic')}
+            ? t('social.post.converting') || 'Converting voice…'
+            : t('social.post.tap_mic') || 'Tap mic to record'}
         </p>
       </div>
 
@@ -265,7 +283,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
             )}
 
             {/* Action Bar */}
-            <div className="flex items-center justify-between p-4 pt-0 border-t border-border/30 mt-2 pt-3">
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-border mt-2">
               <div className="flex items-center gap-2">
                 <input 
                   ref={fileInputRef} 
