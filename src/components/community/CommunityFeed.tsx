@@ -28,7 +28,7 @@ const transformPost = (post: SocialPost): CommunityPost => {
     id: post.id,
     authorId: post.farmer_id,
     authorName: post.farmer?.farmer_name || 'Anonymous Farmer',
-    authorAvatar: '👨‍🌾', // Default avatar emoji
+    authorAvatar: '',
     authorLocation: post.farmer?.location || 'Unknown location',
     authorBadge: post.farmer?.is_verified ? 'verified' : null,
     originalLanguage: post.language_code || 'en',
