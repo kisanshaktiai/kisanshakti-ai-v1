@@ -185,13 +185,45 @@ export function useCreatePost() {
       console.log('[Community] Post created:', data.id);
       return data;
     },
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: ['community-posts'] });
+      const previous = queryClient.getQueriesData({ queryKey: ['community-posts'] });
+      const optimistic: any = {
+        id: `optimistic-${Date.now()}`,
+        farmer_id: user?.id,
+        tenant_id: tenant?.id,
+        content: input.content,
+        language_code: input.language_code,
+        media_urls: input.media_urls ? { images: input.media_urls } : null,
+        hashtags: null,
+        post_type: input.post_type || 'text',
+        likes_count: 0,
+        comments_count: 0,
+        shares_count: 0,
+        saves_count: 0,
+        is_published: true,
+        status: 'sending',
+        created_at: new Date().toISOString(),
+        farmer: {
+          id: user?.id,
+          farmer_name: user?.farmerName || user?.fullName || user?.name,
+          location: user?.village || user?.district || '',
+          is_verified: false,
+        },
+      };
+      queryClient.setQueriesData({ queryKey: ['community-posts'] }, (old: any) =>
+        Array.isArray(old) ? [optimistic, ...old] : old
+      );
+      return { previous };
+    },
+    onError: (error, _v, ctx) => {
+      console.error('[Community] Create post error:', error);
+      ctx?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast.error('Failed to create post. Please try again.');
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
       toast.success('Post shared with the community!');
-    },
-    onError: (error) => {
-      console.error('[Community] Create post error:', error);
-      toast.error('Failed to create post. Please try again.');
     },
   });
 }
