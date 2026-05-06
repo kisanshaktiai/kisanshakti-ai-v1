@@ -27,7 +27,7 @@ import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useVideoTutorials } from '@/hooks/useVideoTutorials';
+import { useFeaturedReels } from '@/hooks/useReelsFeed';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
 import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFeaturesGrid';
@@ -53,8 +53,8 @@ export default function Home() {
   const [currentMetricIndex, setCurrentMetricIndex] = useState(0);
   const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
 
-  // Fetch featured videos for video reels
-  const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
+  // Fetch featured reels for the home carousel (new reels_videos pipeline)
+  const { data: featuredVideos = [] } = useFeaturedReels(8);
 
   // Auto-collapse weather card after 4 seconds
   useEffect(() => {
@@ -617,7 +617,7 @@ export default function Home() {
           className="mb-8"
         >
           <Suspense fallback={<div className="h-32" aria-hidden />}>
-            <VideoHelpCard videos={featuredVideos} onClick={() => navigate('/app/videos')} />
+            <VideoHelpCard videos={featuredVideos} onClick={() => navigate('/app/reels')} />
           </Suspense>
         </motion.div>
       </motion.div>

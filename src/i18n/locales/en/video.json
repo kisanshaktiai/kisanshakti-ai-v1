@@ -1,5 +1,9 @@
 {
-  "__meta": { "page": "video", "version": "2.0", "last_updated": "2026-05-06" },
+  "__meta": {
+    "page": "video",
+    "version": "2.0",
+    "last_updated": "2026-05-06"
+  },
   "video": {
     "title": "Video Tutorials",
     "subtitle": "Learn farming techniques",
@@ -16,7 +20,9 @@
     "featured": "Featured",
     "from_org": "From your organization",
     "shared": "Shared",
-    "category": { "all": "All" },
+    "category": {
+      "all": "All"
+    },
     "empty": {
       "title": "No videos yet",
       "hint": "Check back later for new farming videos"
@@ -38,6 +44,12 @@
       "thanks": "Reported. Thank you.",
       "failed": "Could not submit report"
     },
-    "comment": { "failed": "Could not post comment" }
+    "comment": {
+      "failed": "Could not post comment"
+    },
+    "home": {
+      "title": "Farming Reels",
+      "subtitle": "Short videos to learn modern farming"
+    }
   }
 }
