@@ -74,6 +74,7 @@
       "days_remaining": "{{d}} दिन शेष",
       "grace_period": "छूट अवधि · {{d}} दिन बचे",
       "expired_tap_renew": "नवीनीकरण करें"
-    }
+    },
+    "undo": "वापस लें"
   }
 }
