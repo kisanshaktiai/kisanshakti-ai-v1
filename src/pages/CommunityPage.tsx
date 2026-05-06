@@ -133,9 +133,7 @@ const CommunityPage: React.FC = () => {
               className="px-4 py-4"
             >
               {savedLoading ? (
-                <div className="flex justify-center py-16">
-                  <div className="w-8 h-8 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
-                </div>
+                <PostCardSkeletonList count={3} />
               ) : transformedSavedPosts.length > 0 ? (
                 <div className="space-y-4">
                   {transformedSavedPosts.map((post: any) => (
