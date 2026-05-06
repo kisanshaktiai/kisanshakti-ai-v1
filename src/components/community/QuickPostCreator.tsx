@@ -11,6 +11,8 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCreatePost } from '@/hooks/useCommunityPosts';
 import { useCaptionSuggest } from '@/hooks/useCaptionSuggest';
+import { FarmerAvatar } from './FarmerAvatar';
+import { useAuthStore } from '@/stores/authStore';
 
 interface QuickPostCreatorProps {
   language: string;
