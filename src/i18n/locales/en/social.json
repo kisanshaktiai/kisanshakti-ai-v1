@@ -77,6 +77,11 @@
       "recording_error": "Unable to access microphone",
       "transcribed": "Voice converted to text!",
       "transcription_error": "Failed to convert voice",
+      "tap_mic": "Tap mic to record voice",
+      "tap_to_stop": "Tap to stop",
+      "recording": "Recording",
+      "improve_ai": "Improve with AI",
+      "add_text_or_image": "Add text or an image first",
       "hold_mic": "Hold 🎤 button to speak in your language",
       "release_to_stop": "🎤 Recording... Release to stop",
       "converting": "✨ Converting voice to text..."
