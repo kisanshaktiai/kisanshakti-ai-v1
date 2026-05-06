@@ -21,19 +21,25 @@ const pageImporters: Record<SupportedPageLocale, Record<string, () => Promise<an
 };
 
 const loadedPageLocales = new Set<string>();
+const inflightLoads = new Map<string, Promise<void>>();
 
-async function loadPageTranslations(lang: string) {
+export async function loadPageTranslations(lang: string): Promise<void> {
   if (!(lang in pageImporters) || loadedPageLocales.has(lang)) return;
-  const importers = pageImporters[lang as SupportedPageLocale];
-  const entries = await Promise.all(
-    Object.entries(importers).map(async ([key, loader]) => [key, (await loader()).default] as const)
-  );
-  const merged = { ...(i18n.getResourceBundle(lang, 'translation') || {}) };
-  for (const [key, module] of entries) {
-    merged[key] = { ...(merged[key] || {}), ...(module[key] || module || {}) };
-  }
-  i18n.addResourceBundle(lang, 'translation', merged, true, true);
-  loadedPageLocales.add(lang);
+  if (inflightLoads.has(lang)) return inflightLoads.get(lang)!;
+  const promise = (async () => {
+    const importers = pageImporters[lang as SupportedPageLocale];
+    const entries = await Promise.all(
+      Object.entries(importers).map(async ([key, loader]) => [key, (await loader()).default] as const)
+    );
+    const merged = { ...(i18n.getResourceBundle(lang, 'translation') || {}) };
+    for (const [key, module] of entries) {
+      merged[key] = { ...(merged[key] || {}), ...(module[key] || module || {}) };
+    }
+    i18n.addResourceBundle(lang, 'translation', merged, true, true);
+    loadedPageLocales.add(lang);
+  })();
+  inflightLoads.set(lang, promise);
+  try { await promise; } finally { inflightLoads.delete(lang); }
 }
 
 // Read persisted language from localStorage before initializing i18n
@@ -72,10 +78,13 @@ i18n
     },
   });
 
-loadPageTranslations(i18n.language).catch((error) => {
-  console.warn('⚠️ [i18n] Deferred translation load failed:', error);
+// Kick off the initial-language page bundle load. main.tsx awaits `i18nReady`
+// before mounting React, ensuring no key-flash on first paint.
+export const i18nReady: Promise<void> = loadPageTranslations(i18n.language).catch((error) => {
+  console.warn('⚠️ [i18n] Initial translation load failed:', error);
 });
 
+// Safety net: if a language change slips through without preloading, fetch on demand.
 i18n.on('languageChanged', (lang) => {
   loadPageTranslations(lang).catch((error) => {
     console.warn('⚠️ [i18n] Deferred translation load failed:', error);
