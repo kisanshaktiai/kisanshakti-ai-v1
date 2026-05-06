@@ -21,8 +21,9 @@ const pageImporters: Record<SupportedPageLocale, Record<string, () => Promise<an
 };
 
 const loadedPageLocales = new Set<string>();
+const inflightLoads = new Map<string, Promise<void>>();
 
-async function loadPageTranslations(lang: string) {
+export async function loadPageTranslations(lang: string): Promise<void> {
   if (!(lang in pageImporters) || loadedPageLocales.has(lang)) return;
   const importers = pageImporters[lang as SupportedPageLocale];
   const entries = await Promise.all(
