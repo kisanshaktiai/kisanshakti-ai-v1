@@ -47,9 +47,9 @@ const CommunityPage: React.FC = () => {
     imageUrl: post.media_urls?.images?.[0],
     mediaUrls: post.media_urls?.images || [],
     reactions: {
-      helpful: Math.floor((post.likes_count || 0) * 0.5),
-      tried: Math.floor((post.likes_count || 0) * 0.3),
-      thanks: Math.floor((post.likes_count || 0) * 0.2),
+      helpful: (post as any).helpful_count || 0,
+      tried: (post as any).tried_count || 0,
+      thanks: (post as any).thanks_count || 0,
     },
     likesCount: post.likes_count || 0,
     commentCount: post.comments_count || 0,
