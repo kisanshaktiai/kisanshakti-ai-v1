@@ -25,16 +25,21 @@ const inflightLoads = new Map<string, Promise<void>>();
 
 export async function loadPageTranslations(lang: string): Promise<void> {
   if (!(lang in pageImporters) || loadedPageLocales.has(lang)) return;
-  const importers = pageImporters[lang as SupportedPageLocale];
-  const entries = await Promise.all(
-    Object.entries(importers).map(async ([key, loader]) => [key, (await loader()).default] as const)
-  );
-  const merged = { ...(i18n.getResourceBundle(lang, 'translation') || {}) };
-  for (const [key, module] of entries) {
-    merged[key] = { ...(merged[key] || {}), ...(module[key] || module || {}) };
-  }
-  i18n.addResourceBundle(lang, 'translation', merged, true, true);
-  loadedPageLocales.add(lang);
+  if (inflightLoads.has(lang)) return inflightLoads.get(lang)!;
+  const promise = (async () => {
+    const importers = pageImporters[lang as SupportedPageLocale];
+    const entries = await Promise.all(
+      Object.entries(importers).map(async ([key, loader]) => [key, (await loader()).default] as const)
+    );
+    const merged = { ...(i18n.getResourceBundle(lang, 'translation') || {}) };
+    for (const [key, module] of entries) {
+      merged[key] = { ...(merged[key] || {}), ...(module[key] || module || {}) };
+    }
+    i18n.addResourceBundle(lang, 'translation', merged, true, true);
+    loadedPageLocales.add(lang);
+  })();
+  inflightLoads.set(lang, promise);
+  try { await promise; } finally { inflightLoads.delete(lang); }
 }
 
 // Read persisted language from localStorage before initializing i18n
