@@ -95,16 +95,17 @@ export function VideoHelpCard({ videos, onClick }: VideoHelpCardProps) {
                   </div>
 
                   {/* View count */}
-                  {video.view_count > 0 && (
+                  {views > 0 && (
                     <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm rounded-full px-2.5 py-1">
                       <p className="text-white text-[10px] font-semibold">
-                        {video.view_count} views
+                        {views} views
                       </p>
                     </div>
                   )}
                 </div>
               </motion.div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </CardContent>
