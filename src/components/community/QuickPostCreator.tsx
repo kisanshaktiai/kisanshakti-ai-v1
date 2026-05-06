@@ -55,12 +55,14 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
     }
   };
 
+  const MAX_RECORD_SEC = 60;
+
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { echoCancellation: true, noiseSuppression: true } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
       });
-      
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -72,23 +74,43 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         await transcribeAudio(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       setIsExpanded(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((s) => {
+          if (s + 1 >= MAX_RECORD_SEC) {
+            stopRecording();
+            return MAX_RECORD_SEC;
+          }
+          return s + 1;
+        });
+      }, 1000);
     } catch (err) {
       toast.error(t('social.post.recording_error'));
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
     }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
   };
+
+  const toggleRecording = () => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  };
+
 
   const transcribeAudio = async (audioBlob: Blob) => {
     setIsTranscribing(true);
