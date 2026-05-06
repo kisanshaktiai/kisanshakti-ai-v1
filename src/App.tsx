@@ -54,6 +54,7 @@ const NDVIAnalysis = lazy(() => import("./pages/NDVIAnalysis"));
 const SoilHealthReport = lazy(() => import("./pages/SoilHealthReport"));
 const AIScheduleDashboard = lazy(() => import("./pages/AIScheduleDashboard"));
 const VideoReels = lazy(() => import("./pages/VideoReels"));
+const ReelsPage = lazy(() => import("./pages/ReelsPage"));
 const InstallPWA = lazy(() => import("./pages/InstallPWA"));
 const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettingsPage"));
 const CropGrowthTracking = lazy(() => import("./pages/CropGrowthTracking"));
