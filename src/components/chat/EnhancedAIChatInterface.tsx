@@ -2519,6 +2519,10 @@ export function EnhancedAIChatInterface() {
               - Input in center
               - Violet mic button on right (inside pill)
               ═══════════════════════════════════════════════════════════════════════════ */}
+          {/* Daily quota indicator + over-limit blocker (no-op when unlimited) */}
+          <ChatQuotaHeader />
+          <ChatQuotaBanner />
+
           <div className="flex items-center bg-card border border-border/60 rounded-full pl-2 pr-1.5 py-1.5 shadow-sm mb-3">
             {/* Left: Attachment Icon */}
             <button
