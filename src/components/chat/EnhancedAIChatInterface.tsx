@@ -187,6 +187,7 @@ export function EnhancedAIChatInterface() {
     general: []
   });
   const [inputValue, setInputValue] = useState('');
+  const { aiChat: aiChatEntitlement, bumpUsage, refresh: refreshEntitlements } = useEntitlements();
   const [isLoading, setIsLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
   const [sessionIds, setSessionIds] = useState<Record<string, string>>({});
@@ -1519,6 +1520,24 @@ export function EnhancedAIChatInterface() {
     }
     
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
+
+    // ─── Subscription quota gate ──────────────────────────────────────────
+    // Block sends when farmer is over their daily AI-chat quota or when the
+    // tenant has disabled the AI Chat feature. Server-side enforcement in
+    // `ai-agriculture-chat` is the authoritative check; this is a fast UX guard.
+    if (!aiChatEntitlement.allowed) {
+      const reason = aiChatEntitlement.reason;
+      toast({
+        title: reason === 'feature_disabled'
+          ? t('chat.quota.tenant_disabled_title', 'AI Chat unavailable')
+          : t('chat.quota.exceeded_title', "Today's chats are over"),
+        description: reason === 'feature_disabled'
+          ? t('chat.quota.tenant_disabled_body', 'AI Chat is not enabled for your organisation.')
+          : t('chat.quota.exceeded_body_short', 'New chats unlock automatically at midnight.'),
+        variant: 'destructive',
+      });
+      return;
+    }
     
     // ⚡ OPTIMISTIC UPDATE: Generate temp ID and show message INSTANTLY
     const tempId = `temp_${Date.now()}`;
