@@ -333,6 +333,42 @@ serve(async (req) => {
     // Mark this request as in-flight
     inFlightRequests.set(dedupeKey, { promise: Promise.resolve(new Response()), expiresAt: Date.now() + DEDUP_WINDOW_MS });
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUBSCRIPTION QUOTA — atomic 20-per-day check (IST-aware via DB function)
+    // Uses `check_farmer_quota('ai_chat', 1, commit:true)` which locks the
+    // usage row, validates the per-tenant plan limit, and increments. A 402
+    // response tells the client to render the upgrade banner.
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const { data: quotaResult, error: quotaErr } = await supabase.rpc('check_farmer_quota', {
+        _farmer: finalFarmerId,
+        _feature: 'ai_chat',
+        _delta: 1,
+        _tokens: 0,
+        _commit: true,
+      });
+      if (quotaErr) {
+        console.warn(`⚠️ [Quota] RPC error (allow-on-error):`, quotaErr.message);
+      } else if (quotaResult && (quotaResult as any).allowed === false) {
+        const reason = (quotaResult as any).reason || 'quota_exceeded';
+        const status = reason === 'feature_disabled' ? 403 : 402;
+        inFlightRequests.delete(dedupeKey);
+        return new Response(
+          JSON.stringify({
+            error: 'subscription_quota',
+            code: reason,
+            quota: (quotaResult as any).quota,
+            used: (quotaResult as any).used,
+            remaining: (quotaResult as any).remaining,
+            resets_at: (quotaResult as any).period,
+          }),
+          { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    } catch (e) {
+      console.warn('⚠️ [Quota] guard threw, allowing request:', (e as Error).message);
+    }
+
     //
     // CRITICAL: Enforce sessionId ↔ landId binding to prevent cross-land contamination
     // ═══════════════════════════════════════════════════════════════════════════
