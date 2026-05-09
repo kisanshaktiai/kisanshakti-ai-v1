@@ -123,9 +123,21 @@ export function useEntitlements() {
 
   const aiChat = useMemo(() => viewFromFeature(data?.features?.ai_chat), [data]);
   const lands = useMemo(() => {
+    // Lands are a stocked resource (count), not a daily-reset quota — always
+    // prefer the live `lands.used` count over the feature's used_today.
     const f = data?.features?.my_land;
     const used = data?.lands?.used ?? 0;
-    return viewFromFeature(f, used);
+    const limit = f?.quota ?? null;
+    const remaining = limit === null ? null : Math.max(limit - used, 0);
+    const enabled = f?.enabled ?? true;
+    return {
+      allowed: enabled && (limit === null || remaining! > 0),
+      reason: !enabled ? 'feature_disabled' : (limit !== null && remaining === 0 ? 'quota_exceeded' : null),
+      used,
+      limit,
+      remaining,
+      resetsAt: f?.resets_at ?? null,
+    };
   }, [data]);
 
   // Optimistic increment after a successful chat send (server is authoritative)
