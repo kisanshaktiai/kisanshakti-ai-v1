@@ -38,6 +38,9 @@ import { useLanguageStore } from '@/stores/languageStore';
 import { useVoiceInitialization } from '@/hooks/useVoiceInitialization';
 import { VoiceDownloadCard } from '@/components/onboarding/VoiceDownloadCard';
 import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage';
+import { useEntitlements } from '@/hooks/useEntitlements';
+import { ChatQuotaHeader } from '@/components/subscription/ChatQuotaHeader';
+import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
