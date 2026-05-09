@@ -26,9 +26,9 @@ export function TenantSuspendedScreen() {
             "Your organisation's plan needs renewal. Please contact your administrator to restore access.",
         })}
       </p>
-      {branding?.app_name && (
+      {branding?.company_name && (
         <p className="text-xs text-muted-foreground">
-          {t('tenant_suspended.org', { defaultValue: 'Organisation' })}: <b>{branding.app_name}</b>
+          {t('tenant_suspended.org', { defaultValue: 'Organisation' })}: <b>{branding.company_name}</b>
         </p>
       )}
       <Button variant="outline" onClick={() => window.location.reload()}>
