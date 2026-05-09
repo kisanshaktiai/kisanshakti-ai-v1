@@ -1709,6 +1709,122 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_prompt_runs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          duplicates: Json
+          error: string | null
+          id: string
+          input_variables: Json
+          raw_output: Json | null
+          status: string
+          target_record_id: string | null
+          target_table: string | null
+          template_id: string
+          warnings: Json
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          duplicates?: Json
+          error?: string | null
+          id?: string
+          input_variables?: Json
+          raw_output?: Json | null
+          status?: string
+          target_record_id?: string | null
+          target_table?: string | null
+          template_id: string
+          warnings?: Json
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          duplicates?: Json
+          error?: string | null
+          id?: string
+          input_variables?: Json
+          raw_output?: Json | null
+          status?: string
+          target_record_id?: string | null
+          target_table?: string | null
+          template_id?: string
+          warnings?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_prompt_runs_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "ai_prompt_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_prompt_templates: {
+        Row: {
+          auto_apply: boolean
+          created_at: string
+          created_by: string | null
+          dedupe_keys: Json
+          description: string | null
+          id: string
+          is_active: boolean
+          key: string
+          model: string
+          name: string
+          output_schema: Json
+          system_prompt: string
+          target_table: string
+          temperature: number
+          updated_at: string
+          updated_by: string | null
+          user_prompt_template: string
+          variables_schema: Json
+        }
+        Insert: {
+          auto_apply?: boolean
+          created_at?: string
+          created_by?: string | null
+          dedupe_keys?: Json
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key: string
+          model?: string
+          name: string
+          output_schema?: Json
+          system_prompt: string
+          target_table: string
+          temperature?: number
+          updated_at?: string
+          updated_by?: string | null
+          user_prompt_template: string
+          variables_schema?: Json
+        }
+        Update: {
+          auto_apply?: boolean
+          created_at?: string
+          created_by?: string | null
+          dedupe_keys?: Json
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          key?: string
+          model?: string
+          name?: string
+          output_schema?: Json
+          system_prompt?: string
+          target_table?: string
+          temperature?: number
+          updated_at?: string
+          updated_by?: string | null
+          user_prompt_template?: string
+          variables_schema?: Json
+        }
+        Relationships: []
+      }
       ai_schedule_refinements: {
         Row: {
           ai_reasoning: string
@@ -9128,6 +9244,44 @@ export type Database = {
           },
         ]
       }
+      farmer_feature_usage: {
+        Row: {
+          count: number
+          farmer_id: string
+          feature_code: string
+          period: string
+          tenant_id: string
+          tokens: number
+          updated_at: string
+        }
+        Insert: {
+          count?: number
+          farmer_id: string
+          feature_code: string
+          period?: string
+          tenant_id: string
+          tokens?: number
+          updated_at?: string
+        }
+        Update: {
+          count?: number
+          farmer_id?: string
+          feature_code?: string
+          period?: string
+          tenant_id?: string
+          tokens?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "farmer_feature_usage_feature_code_fkey"
+            columns: ["feature_code"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       farmer_follows: {
         Row: {
           created_at: string | null
@@ -10208,6 +10362,56 @@ export type Database = {
           },
         ]
       }
+      features: {
+        Row: {
+          category: string
+          code: string
+          created_at: string
+          default_pricing: string
+          description: string | null
+          is_active: boolean
+          name: string
+          parent_code: string | null
+          quota_unit: string | null
+          sort_order: number
+          updated_at: string
+        }
+        Insert: {
+          category?: string
+          code: string
+          created_at?: string
+          default_pricing?: string
+          description?: string | null
+          is_active?: boolean
+          name: string
+          parent_code?: string | null
+          quota_unit?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          code?: string
+          created_at?: string
+          default_pricing?: string
+          description?: string | null
+          is_active?: boolean
+          name?: string
+          parent_code?: string | null
+          quota_unit?: string | null
+          sort_order?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "features_parent_code_fkey"
+            columns: ["parent_code"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["code"]
+          },
+        ]
+      }
       financial_analytics: {
         Row: {
           amount: number
@@ -10460,6 +10664,93 @@ export type Database = {
         }
         Relationships: []
       }
+      governance_cron_jobs: {
+        Row: {
+          created_at: string
+          description: string | null
+          enabled: boolean
+          id: string
+          job_name: string
+          last_error: string | null
+          last_run_at: string | null
+          last_status: string | null
+          schedule: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          job_name: string
+          last_error?: string | null
+          last_run_at?: string | null
+          last_status?: string | null
+          schedule: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          job_name?: string
+          last_error?: string | null
+          last_run_at?: string | null
+          last_status?: string | null
+          schedule?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      governance_migration_drafts: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          metadata: Json
+          rationale: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          reviewer_notes: string | null
+          severity: string
+          sql_draft: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          rationale?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_notes?: string | null
+          severity?: string
+          sql_draft: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          metadata?: Json
+          rationale?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_notes?: string | null
+          severity?: string
+          sql_draft?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       group_chat_members: {
         Row: {
           farmer_id: string
@@ -10665,6 +10956,66 @@ export type Database = {
             referencedColumns: ["farmer_id"]
           },
         ]
+      }
+      hallucination_detection_logs: {
+        Row: {
+          ai_content: string
+          created_at: string
+          farmer_id: string | null
+          flagged_terms: Json
+          hallucination_score: number
+          id: string
+          judge_model: string | null
+          judge_reasoning: string | null
+          reviewed_at: string | null
+          reviewer_id: string | null
+          reviewer_notes: string | null
+          rules_applied: Json
+          source_id: string | null
+          source_type: string
+          tenant_id: string | null
+          updated_at: string
+          verdict: string
+        }
+        Insert: {
+          ai_content: string
+          created_at?: string
+          farmer_id?: string | null
+          flagged_terms?: Json
+          hallucination_score?: number
+          id?: string
+          judge_model?: string | null
+          judge_reasoning?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_notes?: string | null
+          rules_applied?: Json
+          source_id?: string | null
+          source_type: string
+          tenant_id?: string | null
+          updated_at?: string
+          verdict?: string
+        }
+        Update: {
+          ai_content?: string
+          created_at?: string
+          farmer_id?: string | null
+          flagged_terms?: Json
+          hallucination_score?: number
+          id?: string
+          judge_model?: string | null
+          judge_reasoning?: string | null
+          reviewed_at?: string | null
+          reviewer_id?: string | null
+          reviewer_notes?: string | null
+          rules_applied?: Json
+          source_id?: string | null
+          source_type?: string
+          tenant_id?: string | null
+          updated_at?: string
+          verdict?: string
+        }
+        Relationships: []
       }
       hypothesis_conditions: {
         Row: {
@@ -17001,6 +17352,48 @@ export type Database = {
           status?: string
         }
         Relationships: []
+      }
+      plan_features: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          feature_code: string
+          plan_id: string
+          quota: number | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          feature_code: string
+          plan_id: string
+          quota?: number | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          feature_code?: string
+          plan_id?: string
+          quota?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_features_feature_code_fkey"
+            columns: ["feature_code"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "plan_features_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       plans: {
         Row: {
@@ -24109,6 +24502,54 @@ export type Database = {
           },
         ]
       }
+      tenant_farmer_plan_features: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          feature_code: string
+          plan_id: string
+          quota: number | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          feature_code: string
+          plan_id: string
+          quota?: number | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          feature_code?: string
+          plan_id?: string
+          quota?: number | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_farmer_plan_features_feature_code_fkey"
+            columns: ["feature_code"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["code"]
+          },
+          {
+            foreignKeyName: "tenant_farmer_plan_features_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "subscription_plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_farmer_pricing: {
         Row: {
           base_plan_id: string
@@ -24163,6 +24604,50 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_feature_grants: {
+        Row: {
+          created_at: string
+          enabled: boolean | null
+          expires_at: string | null
+          feature_code: string
+          pricing_type: string | null
+          quota: number | null
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean | null
+          expires_at?: string | null
+          feature_code: string
+          pricing_type?: string | null
+          quota?: number | null
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean | null
+          expires_at?: string | null
+          feature_code?: string
+          pricing_type?: string | null
+          quota?: number | null
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_feature_grants_feature_code_fkey"
+            columns: ["feature_code"]
+            isOneToOne: false
+            referencedRelation: "features"
+            referencedColumns: ["code"]
           },
         ]
       }
@@ -25672,6 +26157,30 @@ export type Database = {
             referencedColumns: ["farmer_id"]
           },
         ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       user_sessions: {
         Row: {
@@ -28505,6 +29014,16 @@ export type Database = {
         Returns: undefined
       }
       check_bootstrap_status: { Args: never; Returns: Json }
+      check_farmer_quota: {
+        Args: {
+          _commit?: boolean
+          _delta?: number
+          _farmer: string
+          _feature: string
+          _tokens?: number
+        }
+        Returns: Json
+      }
       check_farmer_subscription: {
         Args: { p_farmer_id: string; p_tenant_id: string }
         Returns: Json
@@ -29259,6 +29778,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _tenant_id: string
+          _user_id: string
+        }
+        Returns: boolean
+      }
       has_tenant_access: { Args: { check_tenant_id: string }; Returns: boolean }
       increment_usage: {
         Args: {
@@ -29505,6 +30032,8 @@ export type Database = {
         Args: { p_workflow_id: string }
         Returns: Json
       }
+      resolve_farmer_features: { Args: { _farmer: string }; Returns: Json }
+      resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
       sanitize_white_label_config: {
         Args: { config_data: Json }
         Returns: Json
@@ -29525,6 +30054,16 @@ export type Database = {
           p_farmer_id: string
           p_session_token?: string
           p_tenant_id: string
+        }
+        Returns: undefined
+      }
+      set_farmer_plan_feature: {
+        Args: {
+          _enabled: boolean
+          _feature: string
+          _plan: string
+          _quota: number
+          _tenant: string
         }
         Returns: undefined
       }
@@ -30302,6 +30841,11 @@ export type Database = {
     Enums: {
       alert_severity: "low" | "medium" | "high" | "critical" | "info"
       alert_status: "active" | "acknowledged" | "resolved"
+      app_role:
+        | "super_admin"
+        | "tenant_admin"
+        | "tenant_manager"
+        | "tenant_viewer"
       billing_interval:
         | "monthly"
         | "quarterly"
@@ -30554,6 +31098,12 @@ export const Constants = {
     Enums: {
       alert_severity: ["low", "medium", "high", "critical", "info"],
       alert_status: ["active", "acknowledged", "resolved"],
+      app_role: [
+        "super_admin",
+        "tenant_admin",
+        "tenant_manager",
+        "tenant_viewer",
+      ],
       billing_interval: [
         "monthly",
         "quarterly",
