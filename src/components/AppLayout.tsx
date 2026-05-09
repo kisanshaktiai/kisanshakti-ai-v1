@@ -9,6 +9,7 @@ import { VoiceIndicator } from '@/components/VoiceIndicator';
 import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
+import { AppBootGate } from '@/components/subscription/AppBootGate';
 import { BrandBlock } from '@/components/header/BrandBlock';
 import { StatusPill } from '@/components/header/StatusPill';
 import { SpeakPageButton } from '@/components/header/SpeakPageButton';
@@ -80,7 +81,9 @@ export function AppLayout() {
                   : { paddingTop: 'calc(3.5rem + var(--banner-h, 0px))' }
               }
             >
-              <Outlet />
+              <AppBootGate>
+                <Outlet />
+              </AppBootGate>
             </main>
 
             {/* Voice Assistant */}
