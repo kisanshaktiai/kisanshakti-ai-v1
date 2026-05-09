@@ -9887,6 +9887,7 @@ export type Database = {
           subscription_expires_at: string | null
           subscription_status: string | null
           tenant_id: string | null
+          timezone: string
           total_app_opens: number | null
           total_land_acres: number | null
           total_queries: number | null
@@ -9942,6 +9943,7 @@ export type Database = {
           subscription_expires_at?: string | null
           subscription_status?: string | null
           tenant_id?: string | null
+          timezone?: string
           total_app_opens?: number | null
           total_land_acres?: number | null
           total_queries?: number | null
@@ -9997,6 +9999,7 @@ export type Database = {
           subscription_expires_at?: string | null
           subscription_status?: string | null
           tenant_id?: string | null
+          timezone?: string
           total_app_opens?: number | null
           total_land_acres?: number | null
           total_queries?: number | null
@@ -28782,6 +28785,10 @@ export type Database = {
       }
     }
     Functions: {
+      _period_for_unit: {
+        Args: { _tz: string; _unit: string }
+        Returns: string
+      }
       _postgis_deprecate: {
         Args: { newname: string; oldname: string; version: string }
         Returns: undefined
@@ -30030,6 +30037,10 @@ export type Database = {
       }
       remove_onboarding_workflow: {
         Args: { p_workflow_id: string }
+        Returns: Json
+      }
+      resolve_farmer_entitlements: {
+        Args: { p_farmer: string; p_tenant: string }
         Returns: Json
       }
       resolve_farmer_features: { Args: { _farmer: string }; Returns: Json }
