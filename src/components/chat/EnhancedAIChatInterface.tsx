@@ -1824,6 +1824,10 @@ export function EnhancedAIChatInterface() {
     } finally {
       setIsLoading(false);
       setLoadingMessage('');
+      // Optimistically bump local quota counter; server-side commit is authoritative.
+      bumpUsage('ai_chat', 1);
+      // Soft-refresh entitlements after a short delay so reset times stay accurate.
+      setTimeout(() => refreshEntitlements(), 1500);
     }
   };
 
