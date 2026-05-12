@@ -117,8 +117,8 @@ export default function Home() {
 
   // Memoized feature lists — prevents re-creating arrays every render and lets
   // memoized children skip work when nothing semantic changed.
-  const mainFeatures = useMemo<HomeFeatureCard[]>(
-    () => ([
+  const mainFeaturesBase = useMemo<HomeFeatureCard[]>(
+    () => [
       {
         title: t('home.myLand'),
         icon: MapPin,
@@ -165,7 +165,7 @@ export default function Home() {
     [t, lands.length, nextCrop],
   );
 
-  const secondaryFeatures = useMemo<HomeFeatureCard[]>(
+  const secondaryFeaturesBase = useMemo<HomeFeatureCard[]>(
     () => [
       {
         title: t('home.features.community.title'),
@@ -210,6 +210,16 @@ export default function Home() {
       },
     ],
     [t, avgNdvi],
+  );
+
+  // Apply plan-gated `locked` flag from useFeatures (SSOT) onto each card.
+  const mainFeatures = useMemo<HomeFeatureCard[]>(
+    () => mainFeaturesBase.map((f) => ({ ...f, locked: lockedPaths.has(f.path) })),
+    [mainFeaturesBase, lockedPaths],
+  );
+  const secondaryFeatures = useMemo<HomeFeatureCard[]>(
+    () => secondaryFeaturesBase.map((f) => ({ ...f, locked: lockedPaths.has(f.path) })),
+    [secondaryFeaturesBase, lockedPaths],
   );
 
   // Auto-scroll Recent Activity every 5 seconds
