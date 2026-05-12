@@ -34,6 +34,7 @@ import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFe
 import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useFeatures } from '@/hooks/useFeatures';
 
 // Lazy-load the heavy video card (carousel + lazy images) to keep initial JS small.
 const VideoHelpCard = lazy(() =>
@@ -107,9 +108,16 @@ export default function Home() {
       : 0;
   }, [lands]);
 
+  // Plan-gated locked-paths set (SSOT: useFeatures + resolve_farmer_entitlements)
+  const { features: planFeatures } = useFeatures();
+  const lockedPaths = useMemo(
+    () => new Set(planFeatures.filter((f) => f.locked).map((f) => f.path)),
+    [planFeatures],
+  );
+
   // Memoized feature lists — prevents re-creating arrays every render and lets
   // memoized children skip work when nothing semantic changed.
-  const mainFeatures = useMemo<HomeFeatureCard[]>(
+  const mainFeaturesBase = useMemo<HomeFeatureCard[]>(
     () => [
       {
         title: t('home.myLand'),
@@ -157,7 +165,7 @@ export default function Home() {
     [t, lands.length, nextCrop],
   );
 
-  const secondaryFeatures = useMemo<HomeFeatureCard[]>(
+  const secondaryFeaturesBase = useMemo<HomeFeatureCard[]>(
     () => [
       {
         title: t('home.features.community.title'),
@@ -202,6 +210,16 @@ export default function Home() {
       },
     ],
     [t, avgNdvi],
+  );
+
+  // Apply plan-gated `locked` flag from useFeatures (SSOT) onto each card.
+  const mainFeatures = useMemo<HomeFeatureCard[]>(
+    () => mainFeaturesBase.map((f) => ({ ...f, locked: lockedPaths.has(f.path) })),
+    [mainFeaturesBase, lockedPaths],
+  );
+  const secondaryFeatures = useMemo<HomeFeatureCard[]>(
+    () => secondaryFeaturesBase.map((f) => ({ ...f, locked: lockedPaths.has(f.path) })),
+    [secondaryFeaturesBase, lockedPaths],
   );
 
   // Auto-scroll Recent Activity every 5 seconds

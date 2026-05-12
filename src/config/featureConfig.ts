@@ -23,6 +23,8 @@ export interface FeatureItem {
   labelKey: string;
   path: string;
   enabled: boolean;
+  /** Plan-gated: visible but greyed-out and routes to /app/subscription */
+  locked?: boolean;
   comingSoon?: boolean;
   order: number;
   category?: string;

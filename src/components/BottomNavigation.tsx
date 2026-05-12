@@ -1,5 +1,5 @@
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Home, Users, TrendingUp, User, Scan, Mic, Grid3x3, MicOff } from 'lucide-react';
+import { Home, Users, TrendingUp, User, Scan, Mic, Grid3x3, MicOff, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -85,9 +85,14 @@ export function BottomNavigation({
     setIsActionMenuOpen(false);
   };
 
-  const handleFeatureClick = (path: string, enabled: boolean, comingSoon?: boolean) => {
-    if (!enabled || comingSoon) return;
-    navigate(path);
+  const handleFeatureClick = (path: string, enabled: boolean, comingSoon?: boolean, locked?: boolean) => {
+    if (comingSoon) return;
+    // Plan-gated → route to single-source-of-truth subscription page.
+    if (locked || !enabled) {
+      navigate('/app/subscription');
+    } else {
+      navigate(path);
+    }
     setShowQuickActions(false);
   };
 
@@ -328,29 +333,41 @@ export function BottomNavigation({
             >
               <div className="glassmorphism-nav-menu rounded-t-3xl mx-4 p-4 border border-border/20 max-h-[60vh] overflow-y-auto">
                 <div className="grid grid-cols-3 gap-3">
-                  {enabledFeatures.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => handleFeatureClick(item.path, item.enabled, item.comingSoon)}
-                      disabled={!item.enabled || item.comingSoon}
-                      className={cn(
-                        "flex flex-col items-center gap-2 p-3 rounded-xl transition-all",
-                        item.enabled && !item.comingSoon
-                          ? "hover:bg-muted/50 active:scale-95"
-                          : "opacity-50 cursor-not-allowed"
-                      )}
-                    >
-                      <div className={cn(
-                        "w-12 h-12 rounded-xl flex items-center justify-center",
-                        "bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary)/0.6)]"
-                      )}>
-                        {item.icon && <item.icon className="w-6 h-6 text-primary-foreground" />}
-                      </div>
-                      <span className="text-[10px] font-medium text-muted-foreground text-center line-clamp-2">
-                        {t(item.labelKey)}
-                      </span>
-                    </button>
-                  ))}
+                  {enabledFeatures.map((item) => {
+                    const isLocked = !!item.locked;
+                    const isComingSoon = !!item.comingSoon;
+                    const isClickable = !isComingSoon; // locked still clickable → /app/subscription
+                    return (
+                      <button
+                        key={item.id}
+                        onClick={() => handleFeatureClick(item.path, item.enabled, item.comingSoon, item.locked)}
+                        disabled={!isClickable}
+                        className={cn(
+                          "flex flex-col items-center gap-2 p-3 rounded-xl transition-all relative",
+                          isClickable
+                            ? "hover:bg-muted/50 active:scale-95"
+                            : "opacity-50 cursor-not-allowed",
+                          isLocked && "opacity-70"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-12 h-12 rounded-xl flex items-center justify-center relative",
+                          "bg-gradient-to-br from-[hsl(var(--primary))] to-[hsl(var(--primary)/0.6)]",
+                          isLocked && "grayscale"
+                        )}>
+                          {item.icon && <item.icon className="w-6 h-6 text-primary-foreground" />}
+                          {isLocked && (
+                            <div className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
+                              <Lock className="w-2.5 h-2.5 text-muted-foreground" />
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-medium text-muted-foreground text-center line-clamp-2">
+                          {t(item.labelKey)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </motion.div>
