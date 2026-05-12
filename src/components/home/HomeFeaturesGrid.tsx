@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ArrowUpRight, ArrowDownRight, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, ArrowDownRight, TrendingUp, Lock } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 
@@ -19,6 +19,8 @@ export interface HomeFeatureCard {
   iconColor?: string;
   badge?: string;
   progress?: number;
+  /** Plan-gated: render greyed and route to /app/subscription on tap */
+  locked?: boolean;
 }
 
 interface Props {
