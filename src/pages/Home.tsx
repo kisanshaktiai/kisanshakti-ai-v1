@@ -108,10 +108,17 @@ export default function Home() {
       : 0;
   }, [lands]);
 
+  // Plan-gated locked-paths set (SSOT: useFeatures + resolve_farmer_entitlements)
+  const { features: planFeatures } = useFeatures();
+  const lockedPaths = useMemo(
+    () => new Set(planFeatures.filter((f) => f.locked).map((f) => f.path)),
+    [planFeatures],
+  );
+
   // Memoized feature lists — prevents re-creating arrays every render and lets
   // memoized children skip work when nothing semantic changed.
   const mainFeatures = useMemo<HomeFeatureCard[]>(
-    () => [
+    () => ([
       {
         title: t('home.myLand'),
         icon: MapPin,
