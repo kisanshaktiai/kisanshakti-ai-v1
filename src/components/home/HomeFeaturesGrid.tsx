@@ -58,14 +58,22 @@ function HomeFeaturesGridImpl({ features, variant, reduceMotion }: Props) {
             ? TrendingUp
             : ArrowDownRight;
 
+        const isLocked = !!feature.locked;
+        const targetPath = isLocked ? '/app/subscription' : feature.path;
+
         return (
-          <Link key={`${variant}-${feature.title}`} to={feature.path}>
+          <Link key={`${variant}-${feature.title}`} to={targetPath} aria-disabled={isLocked}>
             <motion.div
-              whileHover={reduceMotion ? undefined : { scale: isMain ? 1.03 : 1.02, y: isMain ? -4 : -3 }}
+              whileHover={reduceMotion || isLocked ? undefined : { scale: isMain ? 1.03 : 1.02, y: isMain ? -4 : -3 }}
               whileTap={reduceMotion ? undefined : { scale: 0.98 }}
               transition={{ type: 'spring', stiffness: 300 }}
             >
-              <Card className={cardClass}>
+              <Card className={cn(cardClass, isLocked && 'relative opacity-70 grayscale')}>
+                {isLocked && (
+                  <div className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-background/90 border border-border shadow-sm flex items-center justify-center">
+                    <Lock className="w-3 h-3 text-muted-foreground" />
+                  </div>
+                )}
                 <div className={cn(isMain ? 'h-1' : 'h-0.5', feature.color)} />
                 <CardHeader className={isMain ? 'pb-3' : 'pb-2'}>
                   <div className={cn('flex items-start justify-between', isMain ? 'mb-3' : 'mb-2')}>
@@ -82,7 +90,7 @@ function HomeFeaturesGridImpl({ features, variant, reduceMotion }: Props) {
                         )}
                       />
                     </div>
-                    {feature.badge && (
+                    {feature.badge && !isLocked && (
                       <Badge variant={isMain ? 'secondary' : 'outline'} className="text-xs">
                         {feature.badge}
                       </Badge>
@@ -107,8 +115,18 @@ function HomeFeaturesGridImpl({ features, variant, reduceMotion }: Props) {
                 </CardHeader>
                 <CardContent className="pt-0">
                   <div className="flex items-center justify-between">
-                    <span className={cn('font-medium', isMain ? 'text-sm' : 'text-xs')}>{feature.stats}</span>
-                    {feature.trend && (
+                    {isLocked ? (
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] gap-1 border-primary/30 text-primary bg-primary/5"
+                      >
+                        <Lock className="w-2.5 h-2.5" />
+                        Upgrade
+                      </Badge>
+                    ) : (
+                      <span className={cn('font-medium', isMain ? 'text-sm' : 'text-xs')}>{feature.stats}</span>
+                    )}
+                    {!isLocked && feature.trend && (
                       <div className={cn('flex items-center', isMain ? 'gap-1' : 'gap-0.5')}>
                         <TrendIcon
                           className={cn('w-3 h-3', feature.trend === 'up' ? 'text-success' : 'text-destructive')}
@@ -121,7 +139,7 @@ function HomeFeaturesGridImpl({ features, variant, reduceMotion }: Props) {
                       </div>
                     )}
                   </div>
-                  {feature.progress !== undefined && feature.progress > 0 && (
+                  {!isLocked && feature.progress !== undefined && feature.progress > 0 && (
                     <Progress value={feature.progress} className="mt-2 h-1" />
                   )}
                 </CardContent>
