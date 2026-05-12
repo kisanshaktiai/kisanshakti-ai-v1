@@ -34,6 +34,7 @@ import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFe
 import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useFeatures } from '@/hooks/useFeatures';
 
 // Lazy-load the heavy video card (carousel + lazy images) to keep initial JS small.
 const VideoHelpCard = lazy(() =>
