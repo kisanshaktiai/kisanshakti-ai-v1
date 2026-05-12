@@ -1,9 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTenant } from '@/contexts/TenantContext';
 import { defaultFeatures, FeatureItem } from '@/config/featureConfig';
+import { useEntitlements } from '@/hooks/useEntitlements';
+
+// Map app feature IDs to subscription entitlement codes (resolve_farmer_entitlements).
+// Only IDs present here are gated by the farmer's active plan. Unmapped IDs keep
+// the legacy tenant-driven behavior so we don't accidentally hide tenant features.
+const FEATURE_TO_ENTITLEMENT: Record<string, string> = {
+  lands: 'my_land',
+  chat: 'ai_chat',
+  market: 'marketplace',
+  weather: 'weather_forecast',
+  community: 'community',
+  ndvi: 'ndvi',
+  'soil-health': 'soil_health',
+};
 
 export function useFeatures() {
   const { tenant } = useTenant();
+  const { data: entitlements, isReady: entitlementsReady } = useEntitlements();
   const [isLoading, setIsLoading] = useState(false);
 
   // Map database feature keys to app feature IDs for DISABLE overrides
