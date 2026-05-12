@@ -100,10 +100,28 @@ export function useFeatures() {
         enabled: !feature.comingSoon
       }));
     }
-    
+
+    // ─── Subscription/plan overlay (SSOT: resolve_farmer_entitlements) ───
+    // If the farmer's active plan disables a feature, force it off in the UI.
+    // We never re-enable here — tenant DISABLE overrides still win.
+    if (entitlementsReady && entitlements?.features) {
+      processedFeatures = processedFeatures.map(feature => {
+        if (feature.comingSoon) return feature;
+        const code = FEATURE_TO_ENTITLEMENT[feature.id];
+        if (!code) return feature;
+        const ent = entitlements.features[code];
+        if (!ent) return feature; // unknown to plan → leave as-is
+        if (ent.enabled === false) {
+          return { ...feature, enabled: false };
+        }
+        return feature;
+      });
+      console.log('🔒 [useFeatures] Plan overlay applied:', entitlements.farmer?.plan_name);
+    }
+
     const enabledCount = processedFeatures.filter(f => f.enabled).length;
     const comingSoonCount = processedFeatures.filter(f => f.comingSoon).length;
-    
+
     console.log('✅ [useFeatures] Processed features:', {
       total: processedFeatures.length,
       enabled: enabledCount,
@@ -111,9 +129,9 @@ export function useFeatures() {
       enabledIds: processedFeatures.filter(f => f.enabled).map(f => f.id),
       comingSoonIds: processedFeatures.filter(f => f.comingSoon).map(f => f.id)
     });
-    
+
     return processedFeatures;
-  }, [tenant]);
+  }, [tenant, entitlements, entitlementsReady]);
 
   // Get enabled features (including coming soon for display)
   const enabledFeatures = useMemo(() => {
