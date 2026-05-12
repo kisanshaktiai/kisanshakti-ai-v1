@@ -102,19 +102,21 @@ export function useFeatures() {
     }
 
     // ─── Subscription/plan overlay (SSOT: resolve_farmer_entitlements) ───
-    // If the farmer's active plan disables a feature, force it off in the UI.
-    // We never re-enable here — tenant DISABLE overrides still win.
+    // Plan-agnostic: applies to every plan (Free, Kisan, Shakti, AI PRO, …).
+    // If the active plan disables a feature → mark `locked:true` (KEEP visible
+    // so it renders as a greyed tile that routes to /app/subscription).
+    // Tenant-level disables (above) still fully hide the feature.
     if (entitlementsReady && entitlements?.features) {
       processedFeatures = processedFeatures.map(feature => {
         if (feature.comingSoon) return feature;
         const code = FEATURE_TO_ENTITLEMENT[feature.id];
-        if (!code) return feature;
+        if (!code) return { ...feature, locked: false };
         const ent = entitlements.features[code];
-        if (!ent) return feature; // unknown to plan → leave as-is
+        if (!ent) return { ...feature, locked: false };
         if (ent.enabled === false) {
-          return { ...feature, enabled: false };
+          return { ...feature, enabled: true, locked: true };
         }
-        return feature;
+        return { ...feature, locked: false };
       });
       console.log('🔒 [useFeatures] Plan overlay applied:', entitlements.farmer?.plan_name);
     }
