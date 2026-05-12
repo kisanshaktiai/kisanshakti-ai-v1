@@ -1,9 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTenant } from '@/contexts/TenantContext';
 import { defaultFeatures, FeatureItem } from '@/config/featureConfig';
+import { useEntitlements } from '@/hooks/useEntitlements';
+
+// Map app feature IDs to subscription entitlement codes (resolve_farmer_entitlements).
+// Only IDs present here are gated by the farmer's active plan. Unmapped IDs keep
+// the legacy tenant-driven behavior so we don't accidentally hide tenant features.
+const FEATURE_TO_ENTITLEMENT: Record<string, string> = {
+  lands: 'my_land',
+  chat: 'ai_chat',
+  market: 'marketplace',
+  weather: 'weather_forecast',
+  community: 'community',
+  ndvi: 'ndvi',
+  'soil-health': 'soil_health',
+};
 
 export function useFeatures() {
   const { tenant } = useTenant();
+  const { data: entitlements, isReady: entitlementsReady } = useEntitlements();
   const [isLoading, setIsLoading] = useState(false);
 
   // Map database feature keys to app feature IDs for DISABLE overrides
@@ -85,10 +100,28 @@ export function useFeatures() {
         enabled: !feature.comingSoon
       }));
     }
-    
+
+    // ─── Subscription/plan overlay (SSOT: resolve_farmer_entitlements) ───
+    // If the farmer's active plan disables a feature, force it off in the UI.
+    // We never re-enable here — tenant DISABLE overrides still win.
+    if (entitlementsReady && entitlements?.features) {
+      processedFeatures = processedFeatures.map(feature => {
+        if (feature.comingSoon) return feature;
+        const code = FEATURE_TO_ENTITLEMENT[feature.id];
+        if (!code) return feature;
+        const ent = entitlements.features[code];
+        if (!ent) return feature; // unknown to plan → leave as-is
+        if (ent.enabled === false) {
+          return { ...feature, enabled: false };
+        }
+        return feature;
+      });
+      console.log('🔒 [useFeatures] Plan overlay applied:', entitlements.farmer?.plan_name);
+    }
+
     const enabledCount = processedFeatures.filter(f => f.enabled).length;
     const comingSoonCount = processedFeatures.filter(f => f.comingSoon).length;
-    
+
     console.log('✅ [useFeatures] Processed features:', {
       total: processedFeatures.length,
       enabled: enabledCount,
@@ -96,9 +129,9 @@ export function useFeatures() {
       enabledIds: processedFeatures.filter(f => f.enabled).map(f => f.id),
       comingSoonIds: processedFeatures.filter(f => f.comingSoon).map(f => f.id)
     });
-    
+
     return processedFeatures;
-  }, [tenant]);
+  }, [tenant, entitlements, entitlementsReady]);
 
   // Get enabled features (including coming soon for display)
   const enabledFeatures = useMemo(() => {
