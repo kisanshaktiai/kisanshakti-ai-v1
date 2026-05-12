@@ -28785,6 +28785,13 @@ export type Database = {
       }
     }
     Functions: {
+      _farmer_plan_default: {
+        Args: { _feature_code: string; _plan_name: string }
+        Returns: {
+          enabled: boolean
+          quota: number
+        }[]
+      }
       _period_for_unit: {
         Args: { _tz: string; _unit: string }
         Returns: string
@@ -30048,6 +30055,10 @@ export type Database = {
       sanitize_white_label_config: {
         Args: { config_data: Json }
         Returns: Json
+      }
+      seed_tenant_farmer_plan_features: {
+        Args: { _plan?: string; _tenant: string }
+        Returns: undefined
       }
       send_admin_notification: {
         Args: {
