@@ -248,16 +248,27 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
-    // Fetch farmer data
+    // Fetch farmer data — use maybeSingle so a missing row returns null
+    // instead of throwing "JSON object requested, multiple (or no) rows returned".
     const { data: farmer, error: fetchError } = await supabase
       .from('farmers')
       .select('*')
       .eq('id', farmerId)
       .eq('tenant_id', tenantId)
-      .single();
+      .maybeSingle();
 
     if (fetchError) {
       throw fetchError;
+    }
+
+    if (!farmer) {
+      // No farmer row for this (id, tenant) pair — let caller fall back to
+      // offline validation rather than surfacing a Postgres error to the UI.
+      return {
+        success: false,
+        isOffline: false,
+        error: 'Account not found for this tenant. Please re-register or try offline.',
+      };
     }
 
     // Validate PIN - compare hashed versions
