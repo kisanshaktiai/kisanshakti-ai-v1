@@ -76,7 +76,7 @@ export function NativeVoiceButton({
   const examples = getExamples();
 
   return (
-    <div className={cn('fixed z-50', className)}>
+    <div data-tour="mic" className={cn('fixed z-50', className)}>
       {/* Expanded Panel */}
       <AnimatePresence>
         {showPanel && (isActive || partialTranscript) && (

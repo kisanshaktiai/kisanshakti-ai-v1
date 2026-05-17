@@ -15,6 +15,7 @@ import { StatusPill } from '@/components/header/StatusPill';
 import { SpeakPageButton } from '@/components/header/SpeakPageButton';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from './layout/ScrollContext';
+import { FeatureWalkthrough } from '@/components/onboarding/FeatureWalkthrough';
 
 export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -109,6 +110,9 @@ export function AppLayout() {
 
             {/* Hindenburg Menu */}
             <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
+
+            {/* First-run voice-narrated walkthrough — shows once per install */}
+            <FeatureWalkthrough />
           </div>
         </ScrollContext.Provider>
       </SubscriptionProvider>

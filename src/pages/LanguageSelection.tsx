@@ -91,7 +91,9 @@ export default function LanguageSelection() {
       localStorage.setItem('hasSelectedLanguage', 'true');
       markLanguageSelected();
       setStep('mobile');
-      navigate('/auth');
+      // First-run: send through the standard permission onboarding before auth.
+      const permsDone = localStorage.getItem('ks_permissions_onboarded') === 'true';
+      navigate(permsDone ? '/auth' : '/permissions');
     }
   };
 

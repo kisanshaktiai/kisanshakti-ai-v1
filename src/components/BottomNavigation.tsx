@@ -98,7 +98,7 @@ export function BottomNavigation({
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/10 z-50 backdrop-blur-xl pb-safe">
+      <nav data-tour="nav" className="fixed bottom-0 left-0 right-0 glassmorphism-nav border-t border-border/10 z-50 backdrop-blur-xl pb-safe">
         <div className="h-20 flex justify-around items-center px-3 relative">
           {/* First two navigation items */}
           {navItems.slice(0, 2).map(({ path, icon: Icon, labelKey }) => (
@@ -151,6 +151,7 @@ export function BottomNavigation({
           {/* Scan Button - After Community */}
           {!hideAction && (
             <button
+              data-tour="scan"
               onClick={handleScanClick}
               className={cn(
                 "flex flex-col items-center justify-center flex-1 h-full py-2",

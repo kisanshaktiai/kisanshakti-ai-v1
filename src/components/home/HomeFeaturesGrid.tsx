@@ -61,8 +61,19 @@ function HomeFeaturesGridImpl({ features, variant, reduceMotion }: Props) {
         const isLocked = !!feature.locked;
         const targetPath = isLocked ? '/app/subscription' : feature.path;
 
+        const tourTag = feature.path?.includes('weather')
+          ? 'weather'
+          : feature.path?.includes('chat')
+            ? 'chat'
+            : undefined;
+
         return (
-          <Link key={`${variant}-${feature.title}`} to={targetPath} aria-disabled={isLocked}>
+          <Link
+            key={`${variant}-${feature.title}`}
+            to={targetPath}
+            aria-disabled={isLocked}
+            data-tour={tourTag}
+          >
             <motion.div
               whileHover={reduceMotion || isLocked ? undefined : { scale: isMain ? 1.03 : 1.02, y: isMain ? -4 : -3 }}
               whileTap={reduceMotion ? undefined : { scale: 0.98 }}

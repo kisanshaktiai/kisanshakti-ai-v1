@@ -12,7 +12,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { RouteErrorBoundary } from "@/components/RouteErrorBoundary";
 import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
-import { FirstRunOnboardingController } from "@/components/onboarding/FirstRunOnboardingController";
+// FirstRunOnboardingController removed — replaced by PermissionOnboarding + FeatureWalkthrough
 import { OfflineIndicator } from "@/components/OfflineIndicator";
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt";
 import { PWAInstallBanner } from "@/components/PWAInstallBanner";
@@ -60,6 +60,7 @@ const NotificationSettingsPage = lazy(() => import("./pages/NotificationSettings
 const CropGrowthTracking = lazy(() => import("./pages/CropGrowthTracking"));
 const ProactiveAlerts = lazy(() => import("./pages/ProactiveAlerts"));
 const SubscriptionPage = lazy(() => import("./pages/SubscriptionPage"));
+const PermissionOnboarding = lazy(() => import("./pages/PermissionOnboarding"));
 
 // Loading fallback component
 const PageLoader = () => (
@@ -291,8 +292,7 @@ function AppInitializer({ children }: { children: React.ReactNode }) {
       <AppLoadingProgress isLoading={isInitializing} currentStep={currentStep} />
       <OfflineIndicator />
       <PWAUpdatePrompt />
-      {/* PHASE 1 FIX: Single onboarding controller - no duplicates */}
-      <FirstRunOnboardingController />
+      {/* Onboarding popups removed — see PermissionOnboarding page + FeatureWalkthrough overlay */}
       {/* PHASE 2 FIX: Single PWA install component */}
       <PWAInstallBanner />
       {children}
@@ -315,6 +315,11 @@ const router = createBrowserRouter([
   {
     path: "/language-selection",
     element: <Suspense fallback={<PageLoader />}><LanguageSelection /></Suspense>,
+    errorElement: <RouteErrorBoundary />,
+  },
+  {
+    path: "/permissions",
+    element: <Suspense fallback={<PageLoader />}><PermissionOnboarding /></Suspense>,
     errorElement: <RouteErrorBoundary />,
   },
   {
