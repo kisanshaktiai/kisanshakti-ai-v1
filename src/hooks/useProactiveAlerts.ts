@@ -5,6 +5,13 @@ import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { localDB } from '@/services/localDB';
 
+export interface ResolvedLand {
+  id: string;
+  name: string;
+  area_acres: number | null;
+  current_crop: string | null;
+}
+
 export interface ProactiveAlert {
   id: string;
   land_id: string | null;
@@ -26,6 +33,7 @@ export interface ProactiveAlert {
   trigger_data: Record<string, any>;
   decision_reasoning: string | null;
   land_name?: string | null;
+  land?: ResolvedLand | null;
 }
 
 function getAlertTitle(alert: ProactiveAlert, lang: string): string {
