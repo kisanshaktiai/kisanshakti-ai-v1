@@ -114,11 +114,11 @@ export default function SetPin() {
           pin_updated_at: new Date().toISOString()
         };
         
-        const { data: newFarmer, error: insertError } = await supabase
+        const { data: newFarmerRows, error: insertError } = await supabase
           .from('farmers')
           .insert(farmerData)
           .select()
-          .single();
+          .limit(1);
         
         if (insertError) {
           // Handle duplicate mobile number
@@ -130,7 +130,10 @@ export default function SetPin() {
           throw insertError;
         }
         
-        farmer = newFarmer;
+        farmer = newFarmerRows?.[0];
+        if (!farmer) {
+          throw new Error('Farmer account could not be created. Please try again.');
+        }
         
         // Create user profile with mobile and farmer_code
         await supabase
@@ -152,7 +155,7 @@ export default function SetPin() {
         // EXISTING FARMER: Update PIN with hash
         const pinHash = hashPin(pin);
         
-        const { data: updatedFarmer, error: updateError } = await supabase
+        const { data: updatedFarmerRows, error: updateError } = await supabase
           .from('farmers')
           .update({
             pin_hash: pinHash, // Salted SHA256 hash only — plaintext PIN never stored
@@ -163,13 +166,16 @@ export default function SetPin() {
           .eq('id', farmerId)
           .eq('tenant_id', tenantId)
           .select()
-          .single();
+          .limit(1);
 
         if (updateError) {
           throw updateError;
         }
         
-        farmer = updatedFarmer;
+        farmer = updatedFarmerRows?.[0];
+        if (!farmer) {
+          throw new Error('Account not found for this tenant. Please re-register or try offline.');
+        }
         
         // Update user profile with mobile and farmer_code if needed
         await supabase
