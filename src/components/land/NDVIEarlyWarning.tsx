@@ -206,13 +206,13 @@ export function NDVIEarlyWarning({ metadata, prediction, ndviValue, className }:
         </div>
 
         {/* Recommended Actions */}
-        {prediction?.recommended_actions && prediction.recommended_actions.length > 0 && (
+        {prediction?.recommended_action_keys && prediction.recommended_action_keys.length > 0 && (
           <div className="pt-3 border-t border-border/50">
             <h4 className="text-sm font-medium text-muted-foreground mb-2">
               {t('ndvi.early_warning.recommended', 'Recommended Actions')}
             </h4>
             <ul className="space-y-1.5">
-              {prediction.recommended_actions.slice(0, 3).map((action, index) => (
+              {prediction.recommended_action_keys.slice(0, 3).map((actionKey, index) => (
                 <motion.li
                   key={index}
                   initial={{ opacity: 0, y: 10 }}
@@ -221,7 +221,7 @@ export function NDVIEarlyWarning({ metadata, prediction, ndviValue, className }:
                   className="flex items-center gap-2 text-sm"
                 >
                   <ChevronRight className="h-3 w-3 text-primary flex-shrink-0" />
-                  <span>{action}</span>
+                  <span>{t(actionKey)}</span>
                 </motion.li>
               ))}
             </ul>
