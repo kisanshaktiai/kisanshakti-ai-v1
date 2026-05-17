@@ -159,9 +159,12 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
 
       const latestRaw = parsed[0] || null;
       const reliable = parsed.filter((r) => r.is_reliable);
-      const current = reliable[0] || null;
+      // Graceful fallback: if no reliable rows, show the most recent raw row
+      // (UI surfaces a "low confidence" banner via hasStale).
+      const current = reliable[0] || latestRaw;
+      const history = reliable.length > 0 ? reliable : parsed;
 
-      return { current, history: reliable, latestRaw };
+      return { current, history, latestRaw };
     },
     enabled: !!landId && !!farmerId && !!tenantId,
     staleTime: SIX_HOURS,

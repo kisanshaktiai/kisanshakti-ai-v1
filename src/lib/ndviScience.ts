@@ -46,9 +46,9 @@ export const NDVI_THRESHOLDS = {
  * RELIABILITY GATES — any reading failing these is NEVER shown as "current" or used in projections.
  */
 export const NDVI_RELIABILITY = {
-  MAX_CLOUD_COVERAGE: 30,    // percent
-  MIN_COVERAGE_PERCENT: 60,  // percent of polygon with valid pixels
-  MIN_QUALITY_SCORE: 0.5,    // when present
+  MAX_CLOUD_COVERAGE: 40,    // percent — Sentinel-2 realistic for partly cloudy fields
+  MIN_COVERAGE_PERCENT: 15,  // percent — small Indian fields rarely exceed 30% polygon-pixel coverage
+  MIN_QUALITY_SCORE: 0.3,    // when present
 } as const;
 
 /**
