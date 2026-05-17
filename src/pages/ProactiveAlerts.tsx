@@ -450,32 +450,29 @@ function Header({
   t, lang, navigate, showHistory, setShowHistory, unreadCount,
 }: any) {
   return (
-    <div className="sticky top-0 z-20 bg-background/95 border-b border-border">
-      <div className="px-3 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-9 w-9 rounded-xl">
+    <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border">
+      <div className="px-3 py-2 flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-8 w-8 rounded-lg shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold flex items-center gap-2">
-            <Bell className="h-4 w-4 text-primary" />
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          <Bell className="h-4 w-4 text-primary shrink-0" />
+          <h1 className="text-sm font-bold truncate">
             {t('proactive.title', 'Proactive Alerts')}
-            {unreadCount > 0 && (
-              <Badge className="bg-destructive text-destructive-foreground text-xs px-2">{unreadCount}</Badge>
-            )}
           </h1>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {t('proactive.subtitle', 'AI-powered farm intelligence')}
-          </p>
+          {unreadCount > 0 && (
+            <Badge className="bg-destructive text-destructive-foreground text-[10px] h-4 px-1.5 shrink-0">{unreadCount}</Badge>
+          )}
         </div>
         <Button
           variant={showHistory ? 'default' : 'outline'}
           size="sm"
-          className="h-8 text-xs gap-1 rounded-full"
+          className="h-7 text-[11px] gap-1 rounded-full px-2.5 shrink-0"
           onClick={() => setShowHistory(!showHistory)}
         >
           {showHistory ? <RotateCcw className="h-3 w-3" /> : <History className="h-3 w-3" />}
           {showHistory
-            ? localized(lang, 'सध्याचे', 'वर्तमान', 'Current')
+            ? localized(lang, 'सध्या', 'अभी', 'Current')
             : localized(lang, 'जुने', 'पुराने', 'History')}
         </Button>
       </div>
@@ -486,85 +483,47 @@ function Header({
 function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
   const total = summary.total || 0;
   const segments = ([
-    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL' },
-    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH' },
-    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM' },
-    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW' },
-  ] as { tone: Tone; value: number; key: string }[]).filter(s => s.value > 0);
+    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL', short: 'C' },
+    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH',     short: 'H' },
+    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM',   short: 'M' },
+    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW',      short: 'L' },
+  ] as { tone: Tone; value: number; key: string; short: string }[]).filter(s => s.value > 0);
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-3">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="text-xs text-muted-foreground">
-            {localized(lang, 'आजचा अहवाल', 'आज की रिपोर्ट', "Today's report")}
-          </div>
-          <div className="text-lg font-bold leading-tight">
-            {total} {localized(lang, 'सूचना', 'अलर्ट', total === 1 ? 'alert' : 'alerts')}
-            <span className="text-muted-foreground font-normal text-sm"> · {summary.lands} {localized(lang, 'शेत', 'भूमि', summary.lands === 1 ? 'land' : 'lands')}</span>
-          </div>
-        </div>
-        <Donut segments={segments} />
+    <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
+      <div className="flex items-baseline gap-1 shrink-0">
+        <span className="text-xl font-bold leading-none">{total}</span>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+          {localized(lang, 'सूचना', 'अलर्ट', total === 1 ? 'alert' : 'alerts')}
+        </span>
       </div>
-      {/* Stacked priority bar */}
-      {total > 0 && (
-        <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
-          {segments.map(s => (
-            <div
-              key={s.key}
-              style={{ width: `${(s.value / total) * 100}%` }}
-              className={cn(toneRail[s.tone])}
-              title={`${s.key}: ${s.value}`}
-            />
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+      <span className="text-muted-foreground/40 text-xs">·</span>
+      <div className="text-[11px] text-muted-foreground shrink-0">
+        {summary.lands} {localized(lang, 'शेत', 'भूमि', summary.lands === 1 ? 'land' : 'lands')}
+      </div>
+      <div className="flex-1 min-w-0">
+        {total > 0 && (
+          <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
+            {segments.map(s => (
+              <div
+                key={s.key}
+                style={{ width: `${(s.value / total) * 100}%` }}
+                className={cn(toneRail[s.tone])}
+                title={`${s.key}: ${s.value}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
         {segments.map(s => (
-          <span key={s.key} className="inline-flex items-center gap-1">
-            <span className={cn('w-2 h-2 rounded-full', toneRail[s.tone])} />
-            {s.value} {s.key.toLowerCase()}
+          <span key={s.key} className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground">
+            <span className={cn('w-1.5 h-1.5 rounded-full', toneRail[s.tone])} />
+            {s.value}
           </span>
         ))}
       </div>
     </div>
-  );
-}
-
-function Donut({ segments }: { segments: { tone: Tone; value: number }[] }) {
-  const total = segments.reduce((s, x) => s + x.value, 0);
-  if (total === 0) {
-    return <div className="w-12 h-12 rounded-full border-2 border-muted" />;
-  }
-  const C = 2 * Math.PI * 18;
-  let offset = 0;
-  const toneColor: Record<Tone, string> = {
-    destructive: 'hsl(var(--destructive))',
-    warning:     'hsl(var(--warning, var(--primary)))',
-    primary:     'hsl(var(--primary))',
-    success:     'hsl(var(--success, 142 71% 45%))',
-    info:        'hsl(var(--accent))',
-    muted:       'hsl(var(--muted-foreground))',
-  };
-  return (
-    <svg viewBox="0 0 48 48" className="w-12 h-12 -rotate-90">
-      <circle cx="24" cy="24" r="18" fill="none" stroke="hsl(var(--muted))" strokeWidth="6" />
-      {segments.map((s, i) => {
-        const len = (s.value / total) * C;
-        const el = (
-          <circle
-            key={i}
-            cx="24" cy="24" r="18" fill="none"
-            stroke={toneColor[s.tone]} strokeWidth="6"
-            strokeDasharray={`${len} ${C - len}`}
-            strokeDashoffset={-offset}
-            strokeLinecap="butt"
-          />
-        );
-        offset += len;
-        return el;
-      })}
-    </svg>
   );
 }
 
@@ -606,40 +565,36 @@ function LandCard({
     <button
       onClick={onClick}
       className={cn(
-        'shrink-0 snap-start w-[160px] rounded-2xl border p-3 text-left transition-all flex flex-col gap-2',
+        'shrink-0 snap-start w-[118px] rounded-xl border px-2.5 py-2 text-left transition-all flex flex-col gap-1.5',
         active
-          ? 'bg-primary/8 border-primary ring-2 ring-primary/30 shadow-sm'
+          ? 'bg-primary/10 border-primary ring-1 ring-primary/40 shadow-sm'
           : 'bg-card border-border hover:bg-accent/30',
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-2xl leading-none" aria-hidden>{displayEmoji}</div>
-        <div className={cn(
-          'min-w-[28px] h-6 px-2 rounded-full text-[11px] font-bold inline-flex items-center justify-center',
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="text-base leading-none" aria-hidden>{displayEmoji}</span>
+        <span className={cn(
+          'min-w-[20px] h-5 px-1.5 rounded-full text-[10px] font-bold inline-flex items-center justify-center leading-none',
           count === 0 ? 'bg-muted text-muted-foreground' :
           topPriority === 'CRITICAL' ? 'bg-destructive text-destructive-foreground' :
           topPriority === 'HIGH' ? 'bg-warning text-warning-foreground' :
           'bg-primary text-primary-foreground',
         )}>
           {count}
-        </div>
+        </span>
       </div>
       <div className="min-w-0">
-        <div className="text-sm font-semibold text-foreground truncate">{name}</div>
-        {subtitle && <div className="text-[11px] text-muted-foreground truncate">{subtitle}</div>}
+        <div className="text-[12px] font-semibold text-foreground truncate leading-tight">{name}</div>
+        {subtitle && <div className="text-[10px] text-muted-foreground truncate leading-tight">{subtitle}</div>}
       </div>
-      {dotSegs.length > 0 ? (
-        <div className="flex items-center gap-1 mt-auto">
+      {dotSegs.length > 0 && (
+        <div className="flex items-center gap-1 -mt-0.5">
           {dotSegs.map(s => (
             <span key={s.k} className="inline-flex items-center gap-0.5">
-              <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[s.k])} />
-              <span className="text-[10px] text-muted-foreground font-medium">{s.v}</span>
+              <span className={cn('w-1 h-1 rounded-full', PRIORITY_DOT[s.k])} />
+              <span className="text-[9px] text-muted-foreground font-medium leading-none">{s.v}</span>
             </span>
           ))}
-        </div>
-      ) : (
-        <div className="text-[10px] text-muted-foreground mt-auto">
-          {localized(lang, 'सर्व ठीक', 'सब ठीक', 'All clear')}
         </div>
       )}
     </button>
