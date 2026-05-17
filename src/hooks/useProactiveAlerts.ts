@@ -5,6 +5,13 @@ import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { localDB } from '@/services/localDB';
 
+export interface ResolvedLand {
+  id: string;
+  name: string;
+  area_acres: number | null;
+  current_crop: string | null;
+}
+
 export interface ProactiveAlert {
   id: string;
   land_id: string | null;
@@ -26,6 +33,7 @@ export interface ProactiveAlert {
   trigger_data: Record<string, any>;
   decision_reasoning: string | null;
   land_name?: string | null;
+  land?: ResolvedLand | null;
 }
 
 function getAlertTitle(alert: ProactiveAlert, lang: string): string {
@@ -100,31 +108,38 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
         return;
       }
 
-      // Fetch land names separately for reliability (avoids RLS join issues)
+      // Fetch land details separately for reliability (avoids RLS join issues)
       const landIds = [...new Set((data || []).map((a: any) => a.land_id).filter(Boolean))];
-      let landNameMap: Record<string, string> = {};
+      let landMap: Record<string, ResolvedLand> = {};
 
       if (landIds.length > 0) {
         const { data: lands } = await supabase
           .from('lands')
-          .select('id, name')
+          .select('id, name, area_acres, current_crop')
           .in('id', landIds);
 
         if (lands && lands.length > 0) {
-          landNameMap = Object.fromEntries(lands.map((l: any) => [l.id, l.name]));
+          landMap = Object.fromEntries(lands.map((l: any) => [l.id, {
+            id: l.id,
+            name: l.name,
+            area_acres: l.area_acres ?? null,
+            current_crop: l.current_crop ?? null,
+          }]));
+        }
+
+        const unresolved = landIds.filter(id => !landMap[id as string]);
+        if (unresolved.length > 0) {
+          console.warn('[ProactiveAlerts] Unresolved land ids (deleted or RLS-blocked):', unresolved);
         }
       }
 
       const mapped = (data || []).map((a: any) => {
-        let landName = a.land_id ? landNameMap[a.land_id] || null : null;
+        const resolved = a.land_id ? landMap[a.land_id] : null;
+        let landName: string | null = resolved?.name ?? null;
         if (!landName && a.trigger_data?.land_name) {
           landName = a.trigger_data.land_name;
         }
-        if (!landName && a.trigger_data?.solution?.problem_en) {
-          const match = a.trigger_data.solution.problem_en.match(/on\s+(\S+)\s+\(/);
-          if (match) landName = match[1];
-        }
-        return { ...a, land_name: landName };
+        return { ...a, land: resolved ?? null, land_name: landName };
       }) as ProactiveAlert[];
 
       setAlerts(mapped);
