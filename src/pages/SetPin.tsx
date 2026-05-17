@@ -69,13 +69,14 @@ export default function SetPin() {
       
       if (isNewRegistration) {
         // Get the last farmer code for sequential generation
-        const { data: lastFarmer } = await supabase
+        const { data: lastFarmerRows } = await supabase
           .from('farmers')
           .select('farmer_code')
           .eq('tenant_id', tenantId!)
           .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .limit(1);
+
+        const lastFarmer = lastFarmerRows?.[0] ?? null;
 
         // Generate sequential farmer code
         let farmerCode: string;
