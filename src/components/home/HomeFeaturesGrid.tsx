@@ -61,11 +61,20 @@ function HomeFeaturesGridImpl({ features, variant, reduceMotion }: Props) {
         const isLocked = !!feature.locked;
         const targetPath = isLocked ? '/app/subscription' : feature.path;
 
-        const tourTag = feature.path?.includes('weather')
+        const p = feature.path || '';
+        const tourTag = p.includes('weather')
           ? 'weather'
-          : feature.path?.includes('chat')
-            ? 'chat'
-            : undefined;
+          : p.includes('schedule')
+            ? 'schedule'
+            : p.includes('ndvi')
+              ? 'ndvi'
+              : p.includes('chat')
+                ? 'chat'
+                : p.includes('market')
+                  ? 'market'
+                  : p.includes('community')
+                    ? 'community'
+                    : undefined;
 
         return (
           <Link
