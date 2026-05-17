@@ -134,7 +134,7 @@ export function AlertsSummaryCard() {
               return (
                 <Link 
                   key={alert.id} 
-                  to="/app/proactive-alerts"
+                  to={alert.land_id ? `/app/proactive-alerts?landId=${alert.land_id}` : '/app/proactive-alerts'}
                   className="flex items-center gap-2 p-2 rounded-lg bg-background/60 hover:bg-background/80 transition-colors"
                 >
                   <span className="text-sm">{config.label}</span>
