@@ -102,7 +102,17 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
       }
 
       const { data, error } = await query;
-...
+
+      if (error) {
+        console.error('[ProactiveAlerts] Fetch error, falling back to offline cache:', error);
+        const cached = await localDB.getProactiveAlerts(user.id, showHistory);
+        const mapped = cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[];
+        setAlerts(mapped);
+        setUnreadCount(mapped.filter(a => a.status === 'PENDING' || a.status === 'DELIVERED').length);
+        setLoading(false);
+        return;
+      }
+
       // Resolve land details through the SAME path the rest of the app uses
       // (lands-api edge function), because direct supabase.from('lands') is
       // blocked by RLS for our custom session-token auth.
