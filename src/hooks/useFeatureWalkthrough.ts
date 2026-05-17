@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 
-export const WALKTHROUGH_KEY = 'ks_walkthrough_complete';
+export const WALKTHROUGH_KEY = 'ks_walkthrough_v2_complete';
 
 export function useFeatureWalkthrough() {
   const [shouldShow, setShouldShow] = useState(false);
