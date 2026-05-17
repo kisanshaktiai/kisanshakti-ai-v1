@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { localDB } from '@/services/localDB';
+import { landsApi } from '@/services/landsApi';
 
 export interface ResolvedLand {
   id: string;
@@ -91,45 +92,52 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
         .order('created_at', { ascending: false })
         .limit(100);
 
+      // Defensive tenant scoping (in addition to RLS)
+      if ((user as any)?.tenantId) {
+        query = query.eq('tenant_id', (user as any).tenantId);
+      }
+
       if (!showHistory) {
         query = query.in('status', ['PENDING', 'DELIVERED', 'SEEN']);
       }
 
       const { data, error } = await query;
-
-      if (error) {
-        console.error('[ProactiveAlerts] Fetch error, falling back to offline cache:', error);
-        // Fallback to IndexedDB on Supabase failure
-        const cached = await localDB.getProactiveAlerts(user.id, showHistory);
-        const mapped = cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[];
-        setAlerts(mapped);
-        setUnreadCount(mapped.filter(a => a.status === 'PENDING' || a.status === 'DELIVERED').length);
-        setLoading(false);
-        return;
-      }
-
-      // Fetch land details separately for reliability (avoids RLS join issues)
+...
+      // Resolve land details through the SAME path the rest of the app uses
+      // (lands-api edge function), because direct supabase.from('lands') is
+      // blocked by RLS for our custom session-token auth.
       const landIds = [...new Set((data || []).map((a: any) => a.land_id).filter(Boolean))];
       let landMap: Record<string, ResolvedLand> = {};
 
       if (landIds.length > 0) {
-        const { data: lands } = await supabase
-          .from('lands')
-          .select('id, name, area_acres, current_crop')
-          .in('id', landIds);
+        let lands: any[] = [];
+        try {
+          lands = await landsApi.fetchLands();
+        } catch (e) {
+          console.warn('[ProactiveAlerts] landsApi.fetchLands failed, falling back to localDB:', e);
+        }
+        if (!lands || lands.length === 0) {
+          try {
+            lands = await localDB.getLandsByFarmer(user.id);
+          } catch {}
+        }
 
         if (lands && lands.length > 0) {
-          landMap = Object.fromEntries(lands.map((l: any) => [l.id, {
-            id: l.id,
-            name: l.name,
-            area_acres: l.area_acres ?? null,
-            current_crop: l.current_crop ?? null,
-          }]));
+          landMap = Object.fromEntries(
+            lands
+              .filter((l: any) => landIds.includes(l.id))
+              .map((l: any) => [l.id, {
+                id: l.id,
+                name: l.name,
+                area_acres: l.area_acres ?? null,
+                current_crop: l.current_crop ?? null,
+              }])
+          );
         }
 
         const unresolved = landIds.filter(id => !landMap[id as string]);
         if (unresolved.length > 0) {
-          console.warn('[ProactiveAlerts] Unresolved land ids (deleted or RLS-blocked):', unresolved);
+          console.info('[ProactiveAlerts] Lands not in current farmer list:', unresolved.length);
         }
       }
 
