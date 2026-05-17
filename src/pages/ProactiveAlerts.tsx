@@ -483,85 +483,47 @@ function Header({
 function ReportSummary({ summary, lang }: { summary: any; lang: string }) {
   const total = summary.total || 0;
   const segments = ([
-    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL' },
-    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH' },
-    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM' },
-    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW' },
-  ] as { tone: Tone; value: number; key: string }[]).filter(s => s.value > 0);
+    { tone: 'destructive' as Tone, value: summary.CRITICAL || 0, key: 'CRITICAL', short: 'C' },
+    { tone: 'warning' as Tone,     value: summary.HIGH || 0,     key: 'HIGH',     short: 'H' },
+    { tone: 'primary' as Tone,     value: summary.MEDIUM || 0,   key: 'MEDIUM',   short: 'M' },
+    { tone: 'success' as Tone,     value: summary.LOW || 0,      key: 'LOW',      short: 'L' },
+  ] as { tone: Tone; value: number; key: string; short: string }[]).filter(s => s.value > 0);
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-3">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="text-xs text-muted-foreground">
-            {localized(lang, 'आजचा अहवाल', 'आज की रिपोर्ट', "Today's report")}
-          </div>
-          <div className="text-lg font-bold leading-tight">
-            {total} {localized(lang, 'सूचना', 'अलर्ट', total === 1 ? 'alert' : 'alerts')}
-            <span className="text-muted-foreground font-normal text-sm"> · {summary.lands} {localized(lang, 'शेत', 'भूमि', summary.lands === 1 ? 'land' : 'lands')}</span>
-          </div>
-        </div>
-        <Donut segments={segments} />
+    <div className="rounded-xl border border-border bg-card px-3 py-2 flex items-center gap-3">
+      <div className="flex items-baseline gap-1 shrink-0">
+        <span className="text-xl font-bold leading-none">{total}</span>
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+          {localized(lang, 'सूचना', 'अलर्ट', total === 1 ? 'alert' : 'alerts')}
+        </span>
       </div>
-      {/* Stacked priority bar */}
-      {total > 0 && (
-        <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
-          {segments.map(s => (
-            <div
-              key={s.key}
-              style={{ width: `${(s.value / total) * 100}%` }}
-              className={cn(toneRail[s.tone])}
-              title={`${s.key}: ${s.value}`}
-            />
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-2 text-[11px] text-muted-foreground">
+      <span className="text-muted-foreground/40 text-xs">·</span>
+      <div className="text-[11px] text-muted-foreground shrink-0">
+        {summary.lands} {localized(lang, 'शेत', 'भूमि', summary.lands === 1 ? 'land' : 'lands')}
+      </div>
+      <div className="flex-1 min-w-0">
+        {total > 0 && (
+          <div className="flex h-1.5 rounded-full overflow-hidden bg-muted">
+            {segments.map(s => (
+              <div
+                key={s.key}
+                style={{ width: `${(s.value / total) * 100}%` }}
+                className={cn(toneRail[s.tone])}
+                title={`${s.key}: ${s.value}`}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
         {segments.map(s => (
-          <span key={s.key} className="inline-flex items-center gap-1">
-            <span className={cn('w-2 h-2 rounded-full', toneRail[s.tone])} />
-            {s.value} {s.key.toLowerCase()}
+          <span key={s.key} className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-muted-foreground">
+            <span className={cn('w-1.5 h-1.5 rounded-full', toneRail[s.tone])} />
+            {s.value}
           </span>
         ))}
       </div>
     </div>
-  );
-}
-
-function Donut({ segments }: { segments: { tone: Tone; value: number }[] }) {
-  const total = segments.reduce((s, x) => s + x.value, 0);
-  if (total === 0) {
-    return <div className="w-12 h-12 rounded-full border-2 border-muted" />;
-  }
-  const C = 2 * Math.PI * 18;
-  let offset = 0;
-  const toneColor: Record<Tone, string> = {
-    destructive: 'hsl(var(--destructive))',
-    warning:     'hsl(var(--warning, var(--primary)))',
-    primary:     'hsl(var(--primary))',
-    success:     'hsl(var(--success, 142 71% 45%))',
-    info:        'hsl(var(--accent))',
-    muted:       'hsl(var(--muted-foreground))',
-  };
-  return (
-    <svg viewBox="0 0 48 48" className="w-12 h-12 -rotate-90">
-      <circle cx="24" cy="24" r="18" fill="none" stroke="hsl(var(--muted))" strokeWidth="6" />
-      {segments.map((s, i) => {
-        const len = (s.value / total) * C;
-        const el = (
-          <circle
-            key={i}
-            cx="24" cy="24" r="18" fill="none"
-            stroke={toneColor[s.tone]} strokeWidth="6"
-            strokeDasharray={`${len} ${C - len}`}
-            strokeDashoffset={-offset}
-            strokeLinecap="butt"
-          />
-        );
-        offset += len;
-        return el;
-      })}
-    </svg>
   );
 }
 
