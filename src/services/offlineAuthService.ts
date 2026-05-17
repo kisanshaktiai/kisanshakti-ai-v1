@@ -1,5 +1,5 @@
 import { localDB } from './localDB';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integrations/supabase/client';
 import CryptoJS from 'crypto-js';
 
 interface OfflineAuthData {
@@ -248,9 +248,17 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
+    // CRITICAL: RLS on `farmers` requires the `x-tenant-id` header (and ideally
+    // `x-farmer-id`) to be set so `get_current_tenant_id()` resolves. When the
+    // user lands directly on /pin from a restored session they skip /auth where
+    // headers would normally be set, so we set them here and use an auth-scoped
+    // client to guarantee they ride along on this request.
+    updateSupabaseHeaders(farmerId, tenantId);
+    const authedClient = supabaseWithAuth(farmerId, tenantId);
+
     // Fetch farmer data in array mode. PostgREST object mode (`single` / `maybeSingle`)
     // can still surface PGRST116 in production bundles when no rows are visible via RLS.
-    const { data: farmerRows, error: fetchError } = await supabase
+    const { data: farmerRows, error: fetchError } = await authedClient
       .from('farmers')
       .select('*')
       .eq('id', farmerId)
@@ -296,7 +304,7 @@ class OfflineAuthService {
     }
 
     // Fetch profile data
-    const { data: profileRows } = await supabase
+    const { data: profileRows } = await authedClient
       .from('user_profiles')
       .select('*')
       .eq('farmer_id', farmerId)
