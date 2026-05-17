@@ -601,6 +601,82 @@ function FilterChip({
   );
 }
 
+function LandCard({
+  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, lang,
+}: {
+  active: boolean;
+  onClick: () => void;
+  land?: { name?: string | null; area_acres?: number | null; current_crop?: string | null; crop_emoji?: string | null };
+  emoji?: string;
+  name: string;
+  subtitle?: string;
+  count: number;
+  counts: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
+  topPriority?: string;
+  lang: string;
+}) {
+  const cropToEmoji = (crop?: string | null): string => {
+    if (!crop) return '🌾';
+    const c = crop.toLowerCase();
+    if (c.includes('sugarcane') || c.includes('ऊस')) return '🎋';
+    if (c.includes('cotton') || c.includes('कापूस')) return '🪶';
+    if (c.includes('rice') || c.includes('धान')) return '🍚';
+    if (c.includes('wheat') || c.includes('गहू')) return '🌾';
+    if (c.includes('tomato')) return '🍅';
+    if (c.includes('onion') || c.includes('कांदा')) return '🧅';
+    if (c.includes('grape') || c.includes('द्राक्ष')) return '🍇';
+    return '🌾';
+  };
+  const displayEmoji = emoji ?? land?.crop_emoji ?? cropToEmoji(land?.current_crop);
+
+  const dotSegs = (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const)
+    .map(k => ({ k, v: counts[k] }))
+    .filter(s => s.v > 0);
+
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'shrink-0 snap-start w-[160px] rounded-2xl border p-3 text-left transition-all flex flex-col gap-2',
+        active
+          ? 'bg-primary/8 border-primary ring-2 ring-primary/30 shadow-sm'
+          : 'bg-card border-border hover:bg-accent/30',
+      )}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-2xl leading-none" aria-hidden>{displayEmoji}</div>
+        <div className={cn(
+          'min-w-[28px] h-6 px-2 rounded-full text-[11px] font-bold inline-flex items-center justify-center',
+          count === 0 ? 'bg-muted text-muted-foreground' :
+          topPriority === 'CRITICAL' ? 'bg-destructive text-destructive-foreground' :
+          topPriority === 'HIGH' ? 'bg-warning text-warning-foreground' :
+          'bg-primary text-primary-foreground',
+        )}>
+          {count}
+        </div>
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-foreground truncate">{name}</div>
+        {subtitle && <div className="text-[11px] text-muted-foreground truncate">{subtitle}</div>}
+      </div>
+      {dotSegs.length > 0 ? (
+        <div className="flex items-center gap-1 mt-auto">
+          {dotSegs.map(s => (
+            <span key={s.k} className="inline-flex items-center gap-0.5">
+              <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[s.k])} />
+              <span className="text-[10px] text-muted-foreground font-medium">{s.v}</span>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="text-[10px] text-muted-foreground mt-auto">
+          {localized(lang, 'सर्व ठीक', 'सब ठीक', 'All clear')}
+        </div>
+      )}
+    </button>
+  );
+}
+
 function ChipButton({
   children, onClick, icon, variant = 'default',
 }: {
