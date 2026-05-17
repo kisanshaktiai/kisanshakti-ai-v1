@@ -1,64 +1,101 @@
-## Goal
 
-Make plan-based feature gating **uniform across every subscription plan** (Free, Kisan, Shakti, AI PRO, and any future plan). Whatever the active plan disables in `resolve_farmer_entitlements` must render as a **visibly locked tile** in the home grid + bottom-nav quick-actions, and tapping it must go **directly to `/app/subscription`** — the single source of truth for plan selection. No more "navigate into the page → see a separate upgrade card".
+# First-Run Experience Overhaul
 
-This is a **plan-agnostic UX contract**: the same locked styling and redirect apply whether the user is on Free, Kisan, Shakti, or AI PRO.
+Replace the two popup cards (`VoiceHowToCard`, `ReadAloudCard`) with a proper Android-style **first-install permission flow** + a **voice-guided walkthrough** that teaches rural farmers how to use the app in their selected language.
 
-## Root cause
+## Goals
 
-- `useFeatures` currently flips `enabled: false` for plan-disabled features, and the `enabledFeatures` filter then **hides them entirely**. The user can still reach the page via deep link / nav state, lands on `AIChat.tsx`, and sees a second upsell surface (`SubscriptionGate` + `UpgradePrompt`) — duplicate UX, breaks SSOT.
-- Behavior must be identical for every plan: any entitlement with `enabled === false` → locked tile → `/app/subscription`.
+1. On first install, request the standard mobile permissions the same way every Android app does — clear, sequential, with rationale (no random popup cards later).
+2. After permissions, run a short voice-narrated walkthrough so non-literate / low-literacy farmers understand what each feature does.
+3. Persist completion so this runs **once per install**, never again unless reset.
 
-## Fix (frontend only — no DB, no entitlement-logic change)
+## New Flow (one-time, first install)
 
-### 1. `src/config/featureConfig.ts`
-- Add `locked?: boolean` to `FeatureItem`.
+```text
+Splash
+  → Language Selection (existing)
+     → [NEW] PermissionOnboarding screen     ← takes Location, Mic, Camera, Notifications
+        → Auth (mobile + PIN)  (existing)
+           → [NEW] FeatureWalkthrough overlay ← voice-narrated 5–6 step coach-marks on /app
+              → Home (normal app)
+```
 
-### 2. `src/hooks/useFeatures.ts` — plan-agnostic overlay
-- In the entitlements overlay (runs for **every** plan, not just Free):
-  - When `ent.enabled === false` → set `locked: true` and **keep `enabled: true`** so the tile stays visible.
-  - When `ent.enabled === true` → ensure `locked: false`.
-- Tenant-level disables (existing behavior) still fully hide the feature — only **plan** disables become "locked & visible".
-- `enabledFeatures` filter unchanged (it already keeps `enabled || comingSoon`).
+The two old cards (`VoiceHowToCard`, `ReadAloudCard`) and `FirstRunOnboardingController` are removed.
 
-### 3. `src/components/home/HomeFeaturesGrid.tsx` — locked card rendering
-- Add `locked?: boolean` to `HomeFeatureCard`.
-- If `feature.locked`:
-  - Replace outer `<Link to={path}>` with `<Link to="/app/subscription">` (or a `<button>` that navigates).
-  - Apply muted styles: `opacity-60`, `grayscale`, no hover scale-up.
-  - Top-right `Lock` icon badge (small, themed).
-  - Replace `stats/trend` line with a small "Upgrade" pill (use existing `PlanBadge` styling/tokens).
+## 1. Permission Onboarding screen
 
-### 4. `src/pages/Home.tsx`
-- Pass `locked` through when mapping `useFeatures()` → `HomeFeatureCard[]` (both main + secondary grids).
+New route `/permissions` shown after language selection on first run only.
 
-### 5. `src/components/BottomNavigation.tsx` — quick-actions grid
-- For `item.locked`:
-  - Do **not** disable the button. `onClick` → `navigate('/app/subscription')`.
-  - Apply muted style + small `Lock` overlay on the icon tile.
-  - Keep `comingSoon` behavior unchanged (still disabled, no redirect).
+- One full-screen page, one permission per "slide" (swipe / Next button), big icons, large native-language text + a built-in **Speak** button that narrates the rationale via existing `useTextToSpeech`.
+- Order matches the standard rural-farmer-app flow:
+  1. **Location** — "for accurate weather, mandi prices, and crop advice for your village"
+  2. **Microphone** — "to talk to the app in your language"
+  3. **Camera** — "to scan crops, pests, and diseases"
+  4. **Notifications** — "to alert you about rain, pests, and your crop schedule"
+- Each slide: `Allow` (calls existing `PermissionManager.requestPermission`) and `Skip` (records denial, lets user continue — never blocks the app).
+- A persistent footer shows progress dots (1/4 … 4/4).
+- After last slide, set `localStorage['ks_permissions_onboarded'] = 'true'` and navigate to `/auth`.
+- If user revisits later (already onboarded), the route redirects to `/auth` or `/app`.
 
-### 6. `src/pages/AIChat.tsx` (and any future gated page) — remove redundant upsell
-- Remove the `SubscriptionGate` + `UpgradePrompt` wrapper.
-- Defense-in-depth: if a user still reaches the page (deep link), check `useEntitlements().canUse('ai_chat').allowed` and `navigate('/app/subscription', { replace: true })` when not allowed. **No card, no second screen.**
-- Audit confirms only `AIChat.tsx` uses this pattern today; document the contract for future gated pages.
+Uses `Capacitor` permission plugins when `isNativeApp()` is true; falls back to web `PermissionManager` otherwise. No behavior change to permission-request mechanics — only adds an upfront, batched UX.
 
-### 7. SSOT confirmation
-- `/app/subscription` is the **only** plan-upgrade surface, regardless of which plan the user is on.
-- `UpgradePrompt.tsx` is left in place (no longer referenced) for possible future reuse; safe to delete in a follow-up.
+## 2. Voice-guided Feature Walkthrough
 
-## Files to change
+New component `FeatureWalkthrough` mounted once inside `AppLayout` and shown only on first authenticated visit.
 
-- `src/config/featureConfig.ts` — add `locked?: boolean` to `FeatureItem`
-- `src/hooks/useFeatures.ts` — set `locked` (not `enabled:false`) for plan disables; applies to all plans
-- `src/components/home/HomeFeaturesGrid.tsx` — locked card visuals + redirect to `/app/subscription`
-- `src/pages/Home.tsx` — pass `locked` through to `HomeFeatureCard`
-- `src/components/BottomNavigation.tsx` — locked styling + redirect in quick-actions grid
-- `src/pages/AIChat.tsx` — drop `SubscriptionGate`/`UpgradePrompt`, add silent redirect when not entitled
+- Tooltip / coach-mark overlay (semi-transparent backdrop with a highlighted "spotlight" cutout on the target element) using existing motion + tailwind tokens.
+- 6 steps targeted at real DOM elements (via `data-tour` attributes added to existing UI):
+  1. Top header — "This is your home. Tap here anytime."
+  2. Weather card — "Today's weather for your farm."
+  3. AI Chat tile — "Ask any farming question by voice or text."
+  4. Crop scan tile — "Take a photo of your crop to identify pests/disease."
+  5. Mic button (`NativeVoiceButton`) — "Press and hold to speak in your language."
+  6. Bottom nav — "Switch between Home, Weather, Market, and more."
+- Each step **auto-speaks** its narration in the user's selected `i18n.language` using `useTextToSpeech` (already wired). A `Speak again` and `Mute` button is shown.
+- Buttons: `Next`, `Back`, `Skip tour`. Pulsing ring on the highlighted element. Big touch targets, high contrast, no jargon.
+- Persists `localStorage['ks_walkthrough_complete'] = 'true'` on finish or skip; never shown again.
+- Reset entry in Profile → Help (reuses existing `window.__resetOnboarding` pattern but with new keys).
 
-## Out of scope
+## 3. Removals / cleanup
 
-- DB / RPC / `resolve_farmer_entitlements` — already correct, used as-is for every plan
-- Tenant-level disables — still hide entirely (unchanged)
-- `/app/subscription` page UI — already SSOT
-- Any plan-specific copy or theming (one consistent locked treatment for all plans)
+- Delete `src/components/onboarding/VoiceHowToCard.tsx`, `ReadAloudCard.tsx`, `FirstRunOnboardingController.tsx`.
+- Remove `<FirstRunOnboardingController />` from `src/App.tsx`.
+- Remove storage keys `ks_seen_voice_card`, `ks_seen_readaloud_card`, `ks_onboarding_complete` (orphaned — no migration needed; they only blocked the old popups).
+- `VoiceDownloadCard.tsx` stays (different purpose — model download).
+
+## 4. Files touched
+
+```text
+NEW   src/pages/PermissionOnboarding.tsx
+NEW   src/components/onboarding/FeatureWalkthrough.tsx
+NEW   src/components/onboarding/WalkthroughStep.tsx
+NEW   src/hooks/useFeatureWalkthrough.ts
+EDIT  src/App.tsx                     ← add /permissions route, mount walkthrough, remove old controller
+EDIT  src/pages/LanguageSelection.tsx ← navigate('/permissions') instead of '/auth' on first run
+EDIT  src/components/AppLayout.tsx    ← render <FeatureWalkthrough/> once auth ready
+EDIT  src/components/home/* + BottomNavigation.tsx + NativeVoiceButton.tsx
+      ← add data-tour="weather|chat|scan|mic|nav" anchors (no visual change)
+DEL   src/components/onboarding/VoiceHowToCard.tsx
+DEL   src/components/onboarding/ReadAloudCard.tsx
+DEL   src/components/onboarding/FirstRunOnboardingController.tsx
+```
+
+## 5. Storage keys (new)
+
+| Key | Purpose |
+|---|---|
+| `ks_permissions_onboarded` | Set after PermissionOnboarding completes (allow or skip) |
+| `ks_walkthrough_complete` | Set after FeatureWalkthrough finishes or is skipped |
+
+## 6. Out of scope
+
+- Changing how individual features request permissions later (contextual `usePermission` stays for re-prompts).
+- Subscription/entitlement UX (already handled in prior work).
+- TTS engine changes — reuses `useTextToSpeech` as-is.
+- i18n keys for new copy: added to `en` + `hi` + `mr`; other locales fall back to `en` and can be filled later.
+
+## Acceptance
+
+- Fresh install → Splash → Language → 4-step Permission screen → Auth → first `/app` visit shows voice-narrated 6-step walkthrough → completes and never reappears.
+- Existing installed users (have language but no `ks_permissions_onboarded`) see the permission screen once on next launch, then the walkthrough once.
+- No more random popup cards appearing on Home.
