@@ -248,18 +248,20 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
-    // Fetch farmer data — use maybeSingle so a missing row returns null
-    // instead of throwing "JSON object requested, multiple (or no) rows returned".
-    const { data: farmer, error: fetchError } = await supabase
+    // Fetch farmer data in array mode. PostgREST object mode (`single` / `maybeSingle`)
+    // can still surface PGRST116 in production bundles when no rows are visible via RLS.
+    const { data: farmerRows, error: fetchError } = await supabase
       .from('farmers')
       .select('*')
       .eq('id', farmerId)
       .eq('tenant_id', tenantId)
-      .maybeSingle();
+      .limit(2);
 
     if (fetchError) {
       throw fetchError;
     }
+
+    const farmer = farmerRows?.[0] ?? null;
 
     if (!farmer) {
       // No farmer row for this (id, tenant) pair — let caller fall back to
@@ -294,11 +296,13 @@ class OfflineAuthService {
     }
 
     // Fetch profile data
-    const { data: profileData } = await supabase
+    const { data: profileRows } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('farmer_id', farmerId)
-      .maybeSingle();
+      .limit(1);
+
+    const profileData = profileRows?.[0] ?? null;
 
     return {
       success: true,
