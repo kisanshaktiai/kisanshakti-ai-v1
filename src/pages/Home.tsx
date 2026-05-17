@@ -562,7 +562,23 @@ export default function Home() {
                     whileHover={reduceMotion ? undefined : { scale: 1.03, x: 2 }}
                   >
                     <div className="w-7 h-7 rounded-lg bg-primary/20 flex items-center justify-center">
-      {/* Dashboard Content - sits directly below the inline weather card (no fixed-spacer needed) */}
+                      <Leaf className="w-3.5 h-3.5 text-primary" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground font-medium">{t('home.stats.area')}</p>
+                      <p className="text-sm font-bold text-foreground">
+                        {totalArea.toFixed(1)} <span className="text-[10px] font-normal">ac</span>
+                      </p>
+                    </div>
+                  </motion.div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
+      </motion.div>
+
+      {/* Dashboard Content - sits directly below the inline weather card */}
       <div className="pt-1">
         {/* Weather Schedule Alerts - Shows task adjustments due to weather */}
         <WeatherScheduleAlerts className="mb-4" maxAlerts={3} />
@@ -596,7 +612,9 @@ export default function Home() {
             <VideoHelpCard videos={featuredVideos} onClick={() => navigate('/app/reels')} />
           </Suspense>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
+  );
+}
   );
 }
