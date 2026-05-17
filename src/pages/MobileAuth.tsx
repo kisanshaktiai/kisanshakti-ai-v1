@@ -98,14 +98,14 @@ export default function MobileAuth() {
             query = query.eq('tenant_id', tenant.id);
           }
           
-          const { data: farmerData, error: fetchError } = await query.maybeSingle();
+          const { data: farmerRows, error: fetchError } = await query.limit(2);
 
-          if (fetchError && fetchError.code !== 'PGRST116') {
+          if (fetchError) {
             console.error('Error fetching farmer:', fetchError);
             throw fetchError;
           }
           
-          farmer = farmerData;
+          farmer = farmerRows?.[0] ?? null;
           lastNetworkError = null;
           break; // Success, exit retry loop
         } catch (networkError: any) {
