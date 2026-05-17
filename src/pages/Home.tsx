@@ -252,6 +252,7 @@ export default function Home() {
     <div className="relative bg-gradient-subtle min-h-full pb-8 px-4 pt-3">
       {/* Inline Weather Card - sits in normal flow so the Expired banner above it stays visible */}
       <motion.div
+        data-tour="weather"
         className="relative z-10 mb-3"
         initial={reduceMotion ? false : { opacity: 0, y: -20 }}
         animate={{
