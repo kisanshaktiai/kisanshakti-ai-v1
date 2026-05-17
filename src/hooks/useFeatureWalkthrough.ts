@@ -1,5 +1,7 @@
 /**
  * useFeatureWalkthrough - tracks first-run walkthrough completion.
+ * Waits for at least one [data-tour] anchor to be in the DOM before
+ * surfacing the tour, preventing flicker on slow first paints.
  */
 import { useEffect, useState } from 'react';
 
@@ -10,11 +12,29 @@ export function useFeatureWalkthrough() {
 
   useEffect(() => {
     const done = localStorage.getItem(WALKTHROUGH_KEY) === 'true';
-    if (!done) {
-      // Small delay so target DOM nodes have rendered.
-      const id = setTimeout(() => setShouldShow(true), 900);
-      return () => clearTimeout(id);
-    }
+    if (done) return;
+
+    let cancelled = false;
+    const start = Date.now();
+    const poll = () => {
+      if (cancelled) return;
+      const ready = document.querySelector('[data-tour]') !== null;
+      if (ready) {
+        // Tiny settle delay so layout stabilizes
+        setTimeout(() => !cancelled && setShouldShow(true), 250);
+        return;
+      }
+      if (Date.now() - start > 3000) {
+        // Fall back: show anyway, centered modal will handle missing targets
+        setShouldShow(true);
+        return;
+      }
+      setTimeout(poll, 150);
+    };
+    poll();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const finish = () => {
