@@ -1,5 +1,5 @@
 import { localDB } from './localDB';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integrations/supabase/client';
 import CryptoJS from 'crypto-js';
 
 interface OfflineAuthData {
