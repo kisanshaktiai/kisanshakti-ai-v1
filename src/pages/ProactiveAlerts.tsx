@@ -450,32 +450,29 @@ function Header({
   t, lang, navigate, showHistory, setShowHistory, unreadCount,
 }: any) {
   return (
-    <div className="sticky top-0 z-20 bg-background/95 border-b border-border">
-      <div className="px-3 py-3 flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-9 w-9 rounded-xl">
+    <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-sm border-b border-border">
+      <div className="px-3 py-2 flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={() => navigate('/app/home')} className="h-8 w-8 rounded-lg shrink-0">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-bold flex items-center gap-2">
-            <Bell className="h-4 w-4 text-primary" />
+        <div className="flex-1 min-w-0 flex items-center gap-1.5">
+          <Bell className="h-4 w-4 text-primary shrink-0" />
+          <h1 className="text-sm font-bold truncate">
             {t('proactive.title', 'Proactive Alerts')}
-            {unreadCount > 0 && (
-              <Badge className="bg-destructive text-destructive-foreground text-xs px-2">{unreadCount}</Badge>
-            )}
           </h1>
-          <p className="text-[11px] text-muted-foreground truncate">
-            {t('proactive.subtitle', 'AI-powered farm intelligence')}
-          </p>
+          {unreadCount > 0 && (
+            <Badge className="bg-destructive text-destructive-foreground text-[10px] h-4 px-1.5 shrink-0">{unreadCount}</Badge>
+          )}
         </div>
         <Button
           variant={showHistory ? 'default' : 'outline'}
           size="sm"
-          className="h-8 text-xs gap-1 rounded-full"
+          className="h-7 text-[11px] gap-1 rounded-full px-2.5 shrink-0"
           onClick={() => setShowHistory(!showHistory)}
         >
           {showHistory ? <RotateCcw className="h-3 w-3" /> : <History className="h-3 w-3" />}
           {showHistory
-            ? localized(lang, 'सध्याचे', 'वर्तमान', 'Current')
+            ? localized(lang, 'सध्या', 'अभी', 'Current')
             : localized(lang, 'जुने', 'पुराने', 'History')}
         </Button>
       </div>
