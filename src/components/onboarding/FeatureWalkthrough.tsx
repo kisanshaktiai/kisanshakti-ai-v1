@@ -1,31 +1,32 @@
 /**
- * FeatureWalkthrough — 2030-ready, mobile-first, voice-narrated coach tour.
+ * FeatureWalkthrough — 2030-ready compact "Mini-Coach" tour.
  *
- * Premium glass bottom-sheet coach card with cinematic spotlight (corner
- * brackets, rotating halo, aurora backdrop) targeting real DOM elements via
- * `data-tour` attributes. Optimized for low-end Android: ResizeObserver +
- * scroll listeners instead of an always-on RAF loop, single backdrop-blur
- * layer, framer-motion respects prefers-reduced-motion.
+ * Floating pill that auto-positions away from the highlighted element so the
+ * spotlight target is always 100% visible. Lightweight: no aurora, no rotating
+ * halos, single SVG mask, opaque card per project FPS rule.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence, useDragControls } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Volume2,
   VolumeX,
-  ArrowRight,
-  ArrowLeft,
+  ChevronRight,
+  ChevronLeft,
   X,
   Sparkles,
   CloudSun,
+  CalendarDays,
+  Leaf,
   MessageCircle,
   ScanLine,
+  Store,
+  Users,
   Mic,
   LayoutGrid,
   Check,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { useFeatureWalkthrough } from '@/hooks/useFeatureWalkthrough';
@@ -36,7 +37,7 @@ import { cn } from '@/lib/utils';
 type Step = {
   target: string;
   Icon: typeof Sparkles;
-  accent: string; // tailwind classes for chip gradient
+  accent: string;
   titleFallback: string;
   narrations: Record<string, string>;
 };
@@ -48,9 +49,9 @@ const STEPS: Step[] = [
     accent: 'from-primary to-accent',
     titleFallback: 'Welcome 🌾',
     narrations: {
-      hi: 'नमस्ते किसान भाई! आइए मैं आपको ऐप दिखाता हूँ। आगे बढ़ने के लिए अगला दबाएँ।',
-      mr: 'नमस्कार शेतकरी मित्रा! मी तुम्हाला अॅप दाखवतो. पुढे जाण्यासाठी पुढे दाबा।',
-      en: 'Hello farmer! Let me show you the app. Tap Next to continue.',
+      hi: 'नमस्ते किसान भाई! आइए मैं आपको ऐप के सभी फीचर दिखाता हूँ। आगे बढ़ने के लिए अगला दबाएँ।',
+      mr: 'नमस्कार शेतकरी मित्रा! मी तुम्हाला अॅपची सर्व वैशिष्ट्ये दाखवतो. पुढे जाण्यासाठी पुढे दाबा।',
+      en: 'Hello farmer! Let me show you every feature of the app. Tap Next to continue.',
     },
   },
   {
@@ -59,9 +60,31 @@ const STEPS: Step[] = [
     accent: 'from-sky-500 to-primary',
     titleFallback: "Today's Weather",
     narrations: {
-      hi: 'यहाँ आपके खेत के लिए आज का मौसम दिखेगा।',
-      mr: 'इथे तुमच्या शेतासाठी आजचे हवामान दिसेल।',
-      en: "This shows today's weather for your farm.",
+      hi: 'यहाँ आपके खेत के लिए आज का सटीक मौसम दिखेगा।',
+      mr: 'इथे तुमच्या शेतासाठी आजचे अचूक हवामान दिसेल।',
+      en: "Live weather forecast for your farm location.",
+    },
+  },
+  {
+    target: 'schedule',
+    Icon: CalendarDays,
+    accent: 'from-emerald-500 to-primary',
+    titleFallback: 'Crop Schedule',
+    narrations: {
+      hi: 'आज क्या काम करना है — सिंचाई, खाद, छिड़काव — सब AI से तय करके मिलेगा।',
+      mr: 'आज काय करायचे — पाणी, खत, फवारणी — सर्व AI ठरवून देईल।',
+      en: 'Your AI-generated daily tasks: irrigation, fertilizer, spraying.',
+    },
+  },
+  {
+    target: 'ndvi',
+    Icon: Leaf,
+    accent: 'from-green-500 to-emerald-500',
+    titleFallback: 'NDVI Crop Health',
+    narrations: {
+      hi: 'सैटेलाइट से आपकी फसल की सेहत प्रतिशत में देखें।',
+      mr: 'उपग्रहावरून तुमच्या पिकाची आरोग्य टक्केवारी पहा।',
+      en: 'Satellite-based crop health percentage for every field.',
     },
   },
   {
@@ -72,7 +95,7 @@ const STEPS: Step[] = [
     narrations: {
       hi: 'कोई भी खेती का सवाल यहाँ बोलकर या लिखकर पूछें।',
       mr: 'कोणताही शेतीचा प्रश्न इथे बोलून किंवा लिहून विचारा।',
-      en: 'Ask any farming question here, by voice or text.',
+      en: 'Ask any farming question by voice or text.',
     },
   },
   {
@@ -81,9 +104,31 @@ const STEPS: Step[] = [
     accent: 'from-amber-500 to-orange-500',
     titleFallback: 'Scan Crop',
     narrations: {
-      hi: 'फसल की फोटो लेकर कीट और रोग पहचानें।',
-      mr: 'पिकाचा फोटो काढून कीड व रोग ओळखा।',
-      en: 'Take a photo of your crop to identify pests and diseases.',
+      hi: 'फसल की फोटो लेकर कीट और रोग तुरंत पहचानें।',
+      mr: 'पिकाचा फोटो काढून कीड व रोग लगेच ओळखा।',
+      en: 'Photo-scan your crop to instantly identify pests and diseases.',
+    },
+  },
+  {
+    target: 'market',
+    Icon: Store,
+    accent: 'from-orange-500 to-rose-500',
+    titleFallback: 'Market Prices',
+    narrations: {
+      hi: 'पास की मंडियों के आज के भाव यहाँ देखें।',
+      mr: 'जवळच्या बाजारातील आजचे दर इथे पहा।',
+      en: 'Live mandi prices from markets near you.',
+    },
+  },
+  {
+    target: 'community',
+    Icon: Users,
+    accent: 'from-violet-500 to-fuchsia-500',
+    titleFallback: 'Community',
+    narrations: {
+      hi: 'अपने इलाके के किसानों से जुड़ें और अनुभव साझा करें।',
+      mr: 'तुमच्या भागातील शेतकऱ्यांशी जोडा आणि अनुभव शेअर करा।',
+      en: 'Connect with farmers nearby and share experiences.',
     },
   },
   {
@@ -94,7 +139,7 @@ const STEPS: Step[] = [
     narrations: {
       hi: 'इस बटन को दबाकर रखें और अपनी भाषा में बोलें।',
       mr: 'हे बटण दाबून ठेवा आणि आपल्या भाषेत बोला।',
-      en: 'Press and hold this button to speak in your language.',
+      en: 'Press and hold to speak in your own language.',
     },
   },
   {
@@ -105,91 +150,89 @@ const STEPS: Step[] = [
     narrations: {
       hi: 'यहाँ से होम, मौसम, मंडी और अन्य पेज पर जाएँ।',
       mr: 'इथून मुख्यपान, हवामान, बाजार आणि इतर पानांवर जा।',
-      en: 'Switch between Home, Weather, Market and more from here.',
+      en: 'Navigate Home, Weather, Market and more from here.',
     },
   },
 ];
 
-/* -------- Sub-components -------- */
+/* ---------- Helpers ---------- */
 
-function Aurora({ disabled }: { disabled: boolean }) {
-  if (disabled) return null;
+const COACH_W = 300;
+const COACH_H_EST = 180;
+const GAP = 14;
+const PAD = 8;
+
+type Pos = { top: number; left: number; arrow: 'up' | 'down' | 'left' | 'right' | 'none' };
+
+function computeCoachPos(rect: DOMRect | null, vw: number, vh: number): Pos {
+  if (!rect) {
+    return {
+      top: vh / 2 - COACH_H_EST / 2,
+      left: vw / 2 - COACH_W / 2,
+      arrow: 'none',
+    };
+  }
+  const clampLeft = (x: number) =>
+    Math.max(12, Math.min(vw - COACH_W - 12, x));
+  const centerLeft = clampLeft(rect.left + rect.width / 2 - COACH_W / 2);
+
+  // Below
+  if (vh - rect.bottom >= COACH_H_EST + GAP + 24) {
+    return { top: rect.bottom + GAP, left: centerLeft, arrow: 'up' };
+  }
+  // Above
+  if (rect.top >= COACH_H_EST + GAP + 24) {
+    return { top: rect.top - COACH_H_EST - GAP, left: centerLeft, arrow: 'down' };
+  }
+  // Right
+  if (vw - rect.right >= COACH_W + GAP + 16) {
+    return {
+      top: Math.max(12, Math.min(vh - COACH_H_EST - 12, rect.top + rect.height / 2 - COACH_H_EST / 2)),
+      left: rect.right + GAP,
+      arrow: 'left',
+    };
+  }
+  // Left
+  if (rect.left >= COACH_W + GAP + 16) {
+    return {
+      top: Math.max(12, Math.min(vh - COACH_H_EST - 12, rect.top + rect.height / 2 - COACH_H_EST / 2)),
+      left: rect.left - COACH_W - GAP,
+      arrow: 'right',
+    };
+  }
+  // Fallback: bottom-center pinned to safe bottom
+  return {
+    top: vh - COACH_H_EST - 24,
+    left: vw / 2 - COACH_W / 2,
+    arrow: 'none',
+  };
+}
+
+function ProgressBar({ current, total }: { current: number; total: number }) {
   return (
-    <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      <motion.div
-        className="absolute w-[60vw] h-[60vw] rounded-full blur-3xl opacity-30"
-        style={{ background: 'radial-gradient(circle, hsl(var(--primary)) 0%, transparent 70%)' }}
-        animate={{ x: ['-10%', '40%', '-10%'], y: ['10%', '60%', '10%'] }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-      />
-      <motion.div
-        className="absolute w-[55vw] h-[55vw] rounded-full blur-3xl opacity-25"
-        style={{ background: 'radial-gradient(circle, hsl(var(--accent)) 0%, transparent 70%)' }}
-        animate={{ x: ['70%', '20%', '70%'], y: ['60%', '20%', '60%'] }}
-        transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
-      />
+    <div className="flex items-center gap-1 flex-1">
+      {Array.from({ length: total }).map((_, i) => (
+        <div key={i} className="flex-1 h-1 rounded-full bg-white/15 overflow-hidden">
+          <motion.div
+            className="h-full bg-gradient-to-r from-primary to-accent"
+            initial={false}
+            animate={{ width: i < current ? '100%' : i === current ? '50%' : '0%' }}
+            transition={{ duration: 0.45, ease: 'easeOut' }}
+          />
+        </div>
+      ))}
     </div>
   );
 }
 
-function CornerBrackets({ rect, padding }: { rect: DOMRect; padding: number }) {
-  const left = Math.max(0, rect.left - padding);
-  const top = Math.max(0, rect.top - padding);
-  const width = rect.width + padding * 2;
-  const height = rect.height + padding * 2;
-  const size = 22;
-  const stroke = 3;
-  const corner = (style: React.CSSProperties) => (
-    <motion.span
-      initial={{ scale: 0.4, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ duration: 0.35, ease: 'backOut' }}
-      className="absolute border-primary"
-      style={{ width: size, height: size, ...style }}
-    />
-  );
+function SpeakingDots({ active }: { active: boolean }) {
   return (
-    <div
-      className="absolute pointer-events-none"
-      style={{ left, top, width, height }}
-    >
-      {corner({ left: 0, top: 0, borderLeftWidth: stroke, borderTopWidth: stroke, borderTopLeftRadius: 12 })}
-      {corner({ right: 0, top: 0, borderRightWidth: stroke, borderTopWidth: stroke, borderTopRightRadius: 12 })}
-      {corner({ left: 0, bottom: 0, borderLeftWidth: stroke, borderBottomWidth: stroke, borderBottomLeftRadius: 12 })}
-      {corner({ right: 0, bottom: 0, borderRightWidth: stroke, borderBottomWidth: stroke, borderBottomRightRadius: 12 })}
-    </div>
-  );
-}
-
-function Halo({ rect, padding, reduce }: { rect: DOMRect; padding: number; reduce: boolean }) {
-  if (reduce) return null;
-  return (
-    <motion.div
-      className="absolute rounded-2xl border-2 border-dashed border-primary/40 pointer-events-none"
-      style={{
-        left: rect.left - padding - 8,
-        top: rect.top - padding - 8,
-        width: rect.width + padding * 2 + 16,
-        height: rect.height + padding * 2 + 16,
-      }}
-      animate={{ rotate: 360 }}
-      transition={{ duration: 16, repeat: Infinity, ease: 'linear' }}
-    />
-  );
-}
-
-function SpeakingBars({ active }: { active: boolean }) {
-  return (
-    <div className="flex items-end gap-0.5 h-4">
+    <div className="flex items-end gap-0.5 h-3">
       {[0, 1, 2].map((i) => (
         <motion.span
           key={i}
-          className="w-1 rounded-full bg-primary"
-          animate={
-            active
-              ? { height: ['25%', '100%', '40%', '85%', '30%'] }
-              : { height: '25%' }
-          }
+          className="w-0.5 rounded-full bg-primary"
+          animate={active ? { height: ['25%', '100%', '40%', '85%', '30%'] } : { height: '25%' }}
           transition={{
             duration: 0.9,
             repeat: active ? Infinity : 0,
@@ -203,24 +246,7 @@ function SpeakingBars({ active }: { active: boolean }) {
   );
 }
 
-function ProgressSegments({ current, total }: { current: number; total: number }) {
-  return (
-    <div className="flex items-center gap-1.5 flex-1">
-      {Array.from({ length: total }).map((_, i) => (
-        <div key={i} className="flex-1 h-1.5 rounded-full bg-white/15 overflow-hidden">
-          <motion.div
-            className="h-full bg-gradient-to-r from-primary to-accent"
-            initial={false}
-            animate={{ width: i < current ? '100%' : i === current ? '60%' : '0%' }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
-          />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* -------- Main component -------- */
+/* ---------- Main ---------- */
 
 export function FeatureWalkthrough() {
   const { shouldShow, finish } = useFeatureWalkthrough();
@@ -231,8 +257,7 @@ export function FeatureWalkthrough() {
   const [index, setIndex] = useState(0);
   const [muted, setMuted] = useState(false);
   const [rect, setRect] = useState<DOMRect | null>(null);
-  const dragControls = useDragControls();
-  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [vp, setVp] = useState({ w: window.innerWidth, h: window.innerHeight });
 
   const step = STEPS[index];
   const narration = useMemo(
@@ -240,8 +265,15 @@ export function FeatureWalkthrough() {
     [step, lang]
   );
 
-  /* Track target element position via ResizeObserver + scroll/resize */
+  /* Track viewport */
   useEffect(() => {
+    const update = () => setVp({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  /* Track target element */
+  useLayoutEffect(() => {
     if (!shouldShow) return;
 
     const measure = () => {
@@ -250,14 +282,9 @@ export function FeatureWalkthrough() {
         return;
       }
       const el = document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`);
-      if (!el) {
-        setRect(null);
-        return;
-      }
-      setRect(el.getBoundingClientRect());
+      setRect(el ? el.getBoundingClientRect() : null);
     };
 
-    // Initial: scroll target into view, then measure
     const el = step.target
       ? document.querySelector<HTMLElement>(`[data-tour="${step.target}"]`)
       : null;
@@ -270,18 +297,15 @@ export function FeatureWalkthrough() {
     }
     measure();
 
-    // Burst RAF for first 700ms to track scroll/layout settling
+    // Burst RAF for first 600ms to track scroll/layout settling
     let raf: number;
     const t0 = performance.now();
     const burst = () => {
       measure();
-      if (performance.now() - t0 < 700) {
-        raf = requestAnimationFrame(burst);
-      }
+      if (performance.now() - t0 < 600) raf = requestAnimationFrame(burst);
     };
     raf = requestAnimationFrame(burst);
 
-    // Then idle listeners
     const ro = new ResizeObserver(measure);
     if (el) ro.observe(el);
     ro.observe(document.body);
@@ -301,7 +325,7 @@ export function FeatureWalkthrough() {
     if (!shouldShow || muted) return;
     const id = setTimeout(() => {
       speak(narration).catch(() => null);
-    }, 400);
+    }, 350);
     return () => {
       clearTimeout(id);
       stop();
@@ -309,7 +333,7 @@ export function FeatureWalkthrough() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldShow, index, muted, narration]);
 
-  /* Keyboard: Esc skips, arrows nav */
+  /* Keyboard */
   useEffect(() => {
     if (!shouldShow) return;
     const onKey = (e: KeyboardEvent) => {
@@ -352,11 +376,14 @@ export function FeatureWalkthrough() {
     setMuted((m) => !m);
   };
 
-  const padding = 10;
-  const radius = 18;
+  const pos = computeCoachPos(rect, vp.w, vp.h);
   const hasTarget = !!rect;
   const Icon = step.Icon;
   const isLast = index === STEPS.length - 1;
+  const radius = 16;
+
+  // Title from i18n with fallback
+  const title = t(`tour.steps.${step.target || 'welcome'}.title`, step.titleFallback);
 
   return createPortal(
     <AnimatePresence>
@@ -365,210 +392,205 @@ export function FeatureWalkthrough() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[9999] overflow-hidden"
+        transition={{ duration: 0.25 }}
+        className="fixed inset-0 z-[9999]"
         aria-modal="true"
         role="dialog"
         aria-label="App walkthrough"
       >
-        {/* Aurora ambient backdrop */}
-        <Aurora disabled={reduce} />
-
-        {/* Spotlight mask */}
+        {/* Spotlight mask — pointer-events-none so users can still tap nothing */}
         <svg
-          className="absolute inset-0 w-full h-full pointer-events-auto"
+          className="absolute inset-0 w-full h-full pointer-events-none"
           aria-hidden="true"
         >
           <defs>
-            <mask id="tour-mask-2030">
+            <mask id="tour-mask-mini">
               <rect width="100%" height="100%" fill="white" />
               {hasTarget && (
                 <rect
-                  x={Math.max(0, rect!.left - padding)}
-                  y={Math.max(0, rect!.top - padding)}
-                  width={rect!.width + padding * 2}
-                  height={rect!.height + padding * 2}
+                  x={Math.max(0, rect!.left - PAD)}
+                  y={Math.max(0, rect!.top - PAD)}
+                  width={rect!.width + PAD * 2}
+                  height={rect!.height + PAD * 2}
                   rx={radius}
                   ry={radius}
                   fill="black"
                 />
               )}
             </mask>
-            <filter id="tour-glow">
-              <feGaussianBlur stdDeviation="6" />
-            </filter>
           </defs>
           <rect
             width="100%"
             height="100%"
-            fill="rgba(3, 7, 18, 0.82)"
-            mask="url(#tour-mask-2030)"
+            fill="rgba(2, 6, 23, 0.72)"
+            mask="url(#tour-mask-mini)"
           />
         </svg>
 
-        {/* Halo + brackets */}
+        {/* Spotlight ring + soft pulse */}
         {hasTarget && (
           <>
-            <Halo rect={rect!} padding={padding} reduce={reduce} />
-            <CornerBrackets rect={rect!} padding={padding} />
+            <motion.div
+              className="absolute rounded-2xl pointer-events-none ring-2 ring-primary"
+              initial={{ scale: 0.96, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+              style={{
+                left: rect!.left - PAD,
+                top: rect!.top - PAD,
+                width: rect!.width + PAD * 2,
+                height: rect!.height + PAD * 2,
+              }}
+            />
             {!reduce && (
               <motion.div
                 className="absolute rounded-2xl pointer-events-none"
                 style={{
-                  left: rect!.left - padding,
-                  top: rect!.top - padding,
-                  width: rect!.width + padding * 2,
-                  height: rect!.height + padding * 2,
-                  boxShadow: '0 0 0 1px hsl(var(--primary) / 0.6), 0 0 40px hsl(var(--primary) / 0.35)',
+                  left: rect!.left - PAD - 4,
+                  top: rect!.top - PAD - 4,
+                  width: rect!.width + PAD * 2 + 8,
+                  height: rect!.height + PAD * 2 + 8,
+                  boxShadow:
+                    '0 0 0 1px hsl(var(--primary) / 0.4), 0 0 32px hsl(var(--primary) / 0.35)',
                 }}
-                animate={{ opacity: [0.6, 1, 0.6] }}
+                animate={{ opacity: [0.55, 1, 0.55] }}
                 transition={{ duration: 2.2, repeat: Infinity, ease: 'easeInOut' }}
               />
             )}
           </>
         )}
 
-        {/* Top bar: progress + skip */}
-        <div className="absolute top-0 left-0 right-0 pt-safe">
-          <div className="flex items-center gap-3 px-4 pt-4">
-            <ProgressSegments current={index} total={STEPS.length} />
+        {/* Top progress bar + skip */}
+        <div className="absolute top-0 left-0 right-0 pt-safe pointer-events-none">
+          <div className="flex items-center gap-2 px-3 pt-3 pointer-events-auto">
+            <span className="text-[10px] font-bold tracking-wider text-white/80 shrink-0">
+              {index + 1}/{STEPS.length}
+            </span>
+            <ProgressBar current={index} total={STEPS.length} />
             <button
               onClick={handleSkip}
-              className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-white text-xs font-medium hover:bg-white/20 active:scale-95 transition"
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/10 border border-white/20 text-white text-[11px] font-medium active:scale-95 transition"
               aria-label="Skip tour"
             >
               {t('tour.skip', 'Skip')}
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
-          </div>
-          <div className="px-4 pt-2 text-[11px] text-white/60 font-medium tracking-wide">
-            {t('tour.stepLabel', 'STEP')} {index + 1} / {STEPS.length}
           </div>
         </div>
 
-        {/* Coach bottom-sheet */}
+        {/* Mini-Coach pill */}
         <motion.div
-          ref={cardRef}
-          key={`card-${index}`}
-          initial={{ y: 60, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          exit={{ y: 60, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 34 }}
-          drag="y"
-          dragControls={dragControls}
-          dragListener={false}
-          dragConstraints={{ top: 0, bottom: 200 }}
-          dragElastic={0.2}
-          onDragEnd={(_, info) => {
-            if (info.offset.y > 120) handleSkip();
-          }}
+          key={`coach-${index}`}
+          initial={{ opacity: 0, y: 8, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 8, scale: 0.96 }}
+          transition={{ type: 'spring', stiffness: 360, damping: 30 }}
           className={cn(
-            'absolute left-0 right-0 bottom-0 pb-safe',
-            'mx-auto max-w-md',
-            'rounded-t-[28px] overflow-hidden',
-            'bg-card/90 backdrop-blur-xl',
-            'border-t border-x border-white/10',
-            'shadow-[0_-20px_60px_-10px_rgba(0,0,0,0.6)]'
+            'absolute pointer-events-auto rounded-2xl overflow-hidden',
+            'bg-card border border-primary/25',
+            'shadow-[0_18px_50px_-12px_rgba(0,0,0,0.55)]'
           )}
-          style={{ touchAction: 'pan-y' }}
+          style={{
+            top: pos.top,
+            left: pos.left,
+            width: COACH_W,
+          }}
         >
-          {/* Drag handle */}
-          <div
-            className="flex justify-center pt-2.5 pb-1 cursor-grab active:cursor-grabbing"
-            onPointerDown={(e) => dragControls.start(e)}
-          >
-            <span className="w-10 h-1.5 rounded-full bg-muted-foreground/40" />
-          </div>
+          {/* Accent strip */}
+          <div className={cn('h-1 w-full bg-gradient-to-r', step.accent)} />
 
-          <div className="px-5 pt-2 pb-5">
-            {/* Icon chip + title */}
-            <div className="flex items-center gap-3 mb-3">
+          <div className="p-3.5">
+            {/* Header: icon + title + mute */}
+            <div className="flex items-center gap-2.5 mb-2">
               <motion.div
-                initial={{ scale: 0.6, rotate: -8, opacity: 0 }}
-                animate={{ scale: 1, rotate: 0, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 18 }}
+                initial={{ scale: 0.6, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 18 }}
                 className={cn(
-                  'w-12 h-12 rounded-2xl flex items-center justify-center shrink-0',
-                  'bg-gradient-to-br shadow-lg',
+                  'w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm',
+                  'bg-gradient-to-br',
                   step.accent
                 )}
               >
-                <Icon className="w-6 h-6 text-white" strokeWidth={2.4} />
+                <Icon className="w-5 h-5 text-white" strokeWidth={2.4} />
               </motion.div>
               <div className="flex-1 min-w-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground leading-tight">
                   {t('tour.guide', 'KisanShakti Guide')}
                 </div>
-                <h2 className="text-lg font-bold text-foreground leading-tight truncate">
-                  {t(`tour.${step.target || 'welcome'}.title`, step.titleFallback)}
-                </h2>
+                <div className="text-[15px] font-bold text-foreground leading-tight truncate">
+                  {title}
+                </div>
               </div>
+              <button
+                onClick={handleToggleMute}
+                className="shrink-0 w-8 h-8 rounded-full bg-muted/60 hover:bg-muted flex items-center justify-center active:scale-90 transition"
+                aria-label={muted ? 'Unmute' : 'Mute'}
+              >
+                {muted ? (
+                  <VolumeX className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-primary" />
+                )}
+              </button>
             </div>
 
-            {/* Narration */}
+            {/* Narration text */}
             <p
+              className="text-[13px] leading-snug text-foreground/90 mb-3"
               aria-live="polite"
-              className="text-[15px] leading-relaxed text-foreground/85 mb-4 min-h-[3.5rem]"
             >
               {narration}
             </p>
 
-            {/* Voice row */}
-            <div className="flex items-center justify-between gap-3 mb-4 px-3 py-2.5 rounded-2xl bg-primary/8 border border-primary/15">
+            {/* Inline controls row */}
+            <div className="flex items-center gap-2">
               <button
                 onClick={handleSpeakAgain}
-                className="flex items-center gap-2 text-sm font-semibold text-primary active:scale-95 transition"
+                className="flex items-center gap-1.5 px-2.5 h-9 rounded-full bg-primary/10 hover:bg-primary/15 text-primary text-[11px] font-semibold active:scale-95 transition"
+                aria-label="Listen again"
               >
-                <Volume2 className="w-4 h-4" />
-                {t('tour.listen', 'Listen again')}
+                <SpeakingDots active={isSpeaking} />
+                <span>{t('tour.listen', 'Listen')}</span>
               </button>
-              <div className="flex items-center gap-2">
-                <SpeakingBars active={isSpeaking && !muted} />
-                <button
-                  onClick={handleToggleMute}
-                  aria-label={muted ? 'Unmute narration' : 'Mute narration'}
-                  className="w-8 h-8 rounded-full flex items-center justify-center bg-background/60 active:scale-90 transition"
-                >
-                  {muted ? (
-                    <VolumeX className="w-4 h-4 text-muted-foreground" />
-                  ) : (
-                    <Volume2 className="w-4 h-4 text-primary" />
-                  )}
-                </button>
-              </div>
-            </div>
 
-            {/* Nav buttons */}
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
+              <div className="flex-1" />
+
+              <button
                 onClick={handleBack}
                 disabled={index === 0}
-                className="h-14 px-4 rounded-2xl text-base font-semibold disabled:opacity-40"
-                aria-label="Previous step"
+                className={cn(
+                  'w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition',
+                  index === 0
+                    ? 'bg-muted/40 text-muted-foreground/40'
+                    : 'bg-muted text-foreground hover:bg-muted/70'
+                )}
+                aria-label="Previous"
               >
-                <ArrowLeft className="w-5 h-5" />
-              </Button>
-              <Button
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              <button
                 onClick={handleNext}
                 className={cn(
-                  'flex-1 h-14 rounded-2xl text-base font-bold gap-2',
-                  'bg-gradient-to-r shadow-lg',
-                  step.accent,
-                  'text-white hover:opacity-95 active:scale-[0.98] transition'
+                  'h-9 px-4 rounded-full flex items-center gap-1 text-white text-[13px] font-semibold active:scale-95 transition',
+                  'bg-gradient-to-r shadow-md',
+                  step.accent
                 )}
+                aria-label={isLast ? 'Finish tour' : 'Next step'}
               >
                 {isLast ? (
                   <>
-                    <Check className="w-5 h-5" />
-                    {t('tour.done', "Let's Go")}
+                    <Check className="w-4 h-4" />
+                    {t('tour.done', 'Done')}
                   </>
                 ) : (
                   <>
-                    {t('common.next', 'Next')}
-                    <ArrowRight className="w-5 h-5" />
+                    {t('tour.next', 'Next')}
+                    <ChevronRight className="w-4 h-4" />
                   </>
                 )}
-              </Button>
+              </button>
             </div>
           </div>
         </motion.div>
@@ -577,3 +599,5 @@ export function FeatureWalkthrough() {
     document.body
   );
 }
+
+export default FeatureWalkthrough;
