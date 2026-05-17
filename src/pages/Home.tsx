@@ -249,36 +249,21 @@ export default function Home() {
   const formattedTime = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="relative bg-gradient-subtle min-h-full pb-8">
-      {/* Note: floating weather card uses position:fixed; main scroll container is <main> in AppLayout */}
-      {/* Futuristic Floating Weather Card - 2030 UI */}
+    <div className="relative bg-gradient-subtle min-h-full pb-8 px-4 pt-3">
+      {/* Inline Weather Card - sits in normal flow so the Expired banner above it stays visible */}
       <motion.div
-        className="fixed top-16 left-4 right-4 z-30 pointer-events-auto"
-        initial={reduceMotion ? false : { opacity: 0, y: -100, scale: 0.9 }}
+        className="relative z-10 mb-3"
+        initial={reduceMotion ? false : { opacity: 0, y: -20 }}
         animate={{
           opacity: 1,
           y: 0,
-          scale: 1,
           height: isWeatherExpanded ? 'auto' : '68px',
         }}
         transition={{
           type: 'spring',
           stiffness: 260,
-          damping: 20,
-          mass: 0.8,
-        }}
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={0.15}
-        onDragEnd={(_e, { offset, velocity }) => {
-          const swipe = offset.y;
-          const swipeVelocity = velocity.y;
-
-          if (swipe > 50 || swipeVelocity > 500) {
-            setIsWeatherExpanded(false);
-          } else if (swipe < -50 || swipeVelocity < -500) {
-            setIsWeatherExpanded(true);
-          }
+          damping: 22,
+          mass: 0.7,
         }}
       >
         <motion.div
@@ -593,19 +578,8 @@ export default function Home() {
         </motion.div>
       </motion.div>
 
-      {/* Dashboard Content - Smooth transition with weather card state */}
-      <motion.div
-        className="px-4"
-        initial={false}
-        animate={{
-          paddingTop: isWeatherExpanded ? '240px' : '100px',
-        }}
-        transition={{
-          type: 'spring',
-          stiffness: 200,
-          damping: 25,
-        }}
-      >
+      {/* Dashboard Content - sits directly below the inline weather card */}
+      <div className="pt-1">
         {/* Weather Schedule Alerts - Shows task adjustments due to weather */}
         <WeatherScheduleAlerts className="mb-4" maxAlerts={3} />
 
@@ -638,7 +612,7 @@ export default function Home() {
             <VideoHelpCard videos={featuredVideos} onClick={() => navigate('/app/reels')} />
           </Suspense>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
   );
 }
