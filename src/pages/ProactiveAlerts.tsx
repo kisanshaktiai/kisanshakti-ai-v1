@@ -568,38 +568,7 @@ function Donut({ segments }: { segments: { tone: Tone; value: number }[] }) {
   );
 }
 
-function FilterChip({
-  active, onClick, label, count, icon, dotColor,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: React.ReactNode;
-  count: number;
-  icon?: React.ReactNode;
-  dotColor?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'shrink-0 snap-start inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-medium border transition-all',
-        active
-          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-          : 'bg-card text-foreground border-border hover:bg-accent/40',
-      )}
-    >
-      {dotColor && <span className={cn('w-1.5 h-1.5 rounded-full', dotColor)} />}
-      {icon}
-      <span className="truncate max-w-[140px]">{label}</span>
-      <span className={cn(
-        'px-1.5 py-0 rounded-full text-[10px]',
-        active ? 'bg-primary-foreground/20' : 'bg-muted text-muted-foreground',
-      )}>
-        {count}
-      </span>
-    </button>
-  );
-}
+
 
 function LandCard({
   active, onClick, land, emoji, name, subtitle, count, counts, topPriority, lang,
