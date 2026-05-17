@@ -1,77 +1,62 @@
-## Root-cause findings (deep audit)
+## Root cause (confirmed via DB + logs)
 
-### 1. Land name shows as "code" (UUID fragment)
-In `src/pages/ProactiveAlerts.tsx` line 150, the land chip falls back to `a.land_id.slice(0, 6)` whenever `land_name` is null. `land_name` becomes null when the secondary `lands` lookup in `useProactiveAlerts.ts` returns nothing — which happens when:
-- The land was deleted/archived but the alert still references its `land_id`.
-- RLS on `lands` filters the row (tenant/farmer mismatch, soft-deleted).
-- `trigger_data.land_name` is also missing (older alerts pre-name-mirror).
+The DB has all 6 alert lands intact — same `farmer_id`/`tenant_id`, `deleted_at` is null. Yet `useProactiveAlerts` logs `Unresolved land ids (RLS-blocked)` for every single one. Reason:
 
-Result: chips and the alert footer display strings like `a2a595` — looks like a code.
+- This app uses a **custom session-token auth** (not Supabase Auth). `auth.uid()` is therefore **NULL** in client requests.
+- `proactive_alerts` has an open `Service select … qual: true` policy, so direct client reads still work.
+- `lands` has only `auth.uid()`-based SELECT policies (`Users can view their own lands`, `lands_access_policy`). With `auth.uid()` NULL, the direct `supabase.from('lands').select().in('id', …)` in `useProactiveAlerts.ts` returns 0 rows → every alert is "unresolved" → no land buckets → the filter strip is empty / mixed.
+- This is why the rest of the app sees lands fine: `useLands` / Home go through the `lands-api` edge function (server-side, service role), not direct PostgREST.
 
-Additionally the alert card body (line 311) only shows `MapPin + land_name` when `alert.land_name` is truthy, so half the cards have no land label at all even though the chip shows something.
+So the bug isn't the alerts query — it's that we're reading `lands` directly from the browser, which RLS correctly blocks for our custom-auth session.
 
-### 2. Clicking a land doesn't load related alerts "instantly"
-Two distinct paths, both broken:
+## Fix plan
 
-- **From `AlertsSummaryCard` (home):** every alert row links to `/app/proactive-alerts` with **no** `?landId=` param. The destination page has no URL → state sync, so it always opens the full list — the user must scroll, find the chip, and tap it again.
-- **In-page chips:** filtering is instant client-side, but each `motion.div` uses `transition={{ delay: index * 0.05 }}` for entry animation — so when the filter changes and the list re-mounts, 12 items stagger over ~600 ms, *feeling* like a load. There's also no `layoutId` so cards "jump" instead of cross-fading.
+### 1. `src/hooks/useProactiveAlerts.ts` — resolve lands through the existing authoritative source
+- Remove the direct `supabase.from('lands').select(...).in('id', landIds)` call.
+- Resolve lands using the **same path the rest of the app uses**:
+  - Primary: `landsApi.fetchLands()` (edge function, already used by `useLands`). Filter by ids that appear in alerts.
+  - Secondary: read React Query cache `['lands', user.id]` if already populated, to avoid an extra request.
+  - Offline / fallback: `localDB.getLands(user.id)` (already mirrored by `useLands`).
+- Build the `landMap` from whichever source returned data, keep the same `ResolvedLand` shape (`id, name, area_acres, current_crop`).
+- Keep the `trigger_data.land_name` text fallback only as a last-resort label (never as a real `land` object).
+- Demote the `[ProactiveAlerts] Unresolved land ids …` warning to a single info log, since with the new resolver this should normally be empty.
 
-### 3. UI is not 2030-ready mobile-first
-- Hardcoded tailwind palettes (`bg-blue-50`, `text-red-600`, `border-orange-200`) — violate the design-token rule and break dark mode.
-- Card has 4 nested rows with inconsistent spacing on 390 px; action buttons wrap to a second line on the smallest viewport.
-- No per-land summary header (count of CRITICAL / HIGH / MEDIUM, "last updated"), no empty-state for filtered land.
-- Sticky header uses `backdrop-blur-md` — violates the Core memory rule for Android FPS.
+### 2. `src/pages/ProactiveAlerts.tsx` — surface land cards at top (AI-chat style)
+Replace the small horizontally-scrolling "FilterChip" strip with a proper **Land Cards row** modelled on the chat land selector:
 
----
+```text
+┌──────────────────────────────────────────────────────────┐
+│ Report summary (unchanged)                               │
+├──────────────────────────────────────────────────────────┤
+│  ┌─All─┐ ┌─🎋 Mala─┐ ┌─🌾 Khari─┐ ┌─🌾 कोडोलि─┐ …       │
+│  │ 24  │ │ 7.59ac  │ │ 4.20ac   │ │ 2.10ac    │         │
+│  │ ●●● │ │ 12 ● ●  │ │  6 ●     │ │  3 ●      │         │
+│  └─────┘ └─────────┘ └──────────┘ └───────────┘         │
+└──────────────────────────────────────────────────────────┘
+```
 
-## Plan
+- Each card: crop emoji + land name + area + alert count + small priority dot stack (CRITICAL/HIGH/MEDIUM/LOW counts per land).
+- Active card: ring + accent background using semantic tokens (`bg-primary/10 ring-primary`).
+- Snap-x horizontal scroll, ≥ 44px tap target, `pb-safe` margins.
+- Selecting a land instantly filters with `LayoutGroup` (already in place) and syncs `?landId=` in the URL (already in place).
+- "All" card shows total + per-priority dots; "Other lands" card appears only when there are truly unresolved ids (should be rare after fix #1).
+- Reuse `LandRef` for the label so emoji/area logic stays centralised.
 
-### A. Fix the land-name leak (data layer)
+### 3. Tenant scoping (defensive)
+- The hook already filters by `farmer_id=eq.user.id`. Add a second filter `tenant_id=eq.user.tenantId` so cross-tenant rows can never leak even if a future RLS change widens the open `Service select` policy. No DB migration needed.
 
-`src/hooks/useProactiveAlerts.ts`
-- Extend the secondary lands lookup to also pull `area_acres, current_crop` so we can render a proper `LandRef`.
-- Attach a structured `land` object on each alert: `{ id, name, area_acres, current_crop }` (null if unresolved). Keep `land_name` for backwards compat.
-- When the lands query returns nothing for a referenced id, mark `land = null` and add a one-time `console.warn` (don't fabricate a slice of the UUID).
+### 4. Out of scope (explicit)
+- No RLS migration — the broader "custom-auth ↔ RLS" topic is a separate effort. We work around it for `lands` here by going through `lands-api` like every other screen.
+- No changes to `proactive_alerts` schema, alert generation, edge functions, realtime, or the home `AlertsSummaryCard`.
+- No changes to the chat land selector itself; we mirror its visual pattern only.
 
-`src/pages/ProactiveAlerts.tsx`
-- Replace `a.land_id.slice(0, 6)` fallback with the localized literal "Unnamed land" / "अनामिक शेत" / "अनाम भूमि".
-- Replace inline `MapPin + land_name` rows with the existing `<LandRef land={alert.land} />` component (already enforces "🌾 (unknown)" + dev warn — see `src/components/land/LandRef.tsx`).
-- Filter out alerts whose `land_id` is set but unresolved → group them under an "Other lands" chip instead of leaking UUIDs.
+## Files to edit
+- `src/hooks/useProactiveAlerts.ts` — swap direct `lands` query for `landsApi` + cache + localDB; add tenant filter.
+- `src/pages/ProactiveAlerts.tsx` — replace `FilterChip` strip with `LandCard` row; per-land priority counts; keep URL/LayoutGroup behaviour.
 
-### B. Instant per-land loading
-
-`src/components/home/AlertsSummaryCard.tsx`
-- Change each row's `to="/app/proactive-alerts"` to `to={`/app/proactive-alerts?landId=${alert.land_id}`}` when `land_id` is present.
-
-`src/pages/ProactiveAlerts.tsx`
-- Read `landId` from `useSearchParams` on mount; seed `selectedLandId` from it; keep URL in sync via `setSearchParams` when the user taps a chip (so back-button restores the filter).
-- Remove the per-item entry `delay: index * 0.05` and replace with `LayoutGroup` + `layout` prop so filter changes animate via FLIP cross-fade (≤120 ms) instead of staggered re-entry.
-- When filter is active and result is empty, render a compact "No alerts for this land" block instead of nothing.
-
-### C. 2030-ready mobile-first redesign
-
-`src/pages/ProactiveAlerts.tsx` (visual layer only)
-- **Tokens:** swap every `bg-blue-50 / text-red-600 / border-orange-200` etc. for semantic tokens (`bg-card`, `text-foreground`, `border-border`, `bg-destructive/10 text-destructive`, `bg-warning/10`, `bg-primary/10`). Move category color map to `CATEGORY_TOKEN` returning `{ icon, tone: 'destructive'|'warning'|'primary'|'success'|'info' }`.
-- **Header:** drop `backdrop-blur-md` (use opaque `bg-background/95` per the Core mobile-FPS rule). Add a 2-row mini "report" summary: "12 alerts · 2 critical · 4 lands" with tiny donut of priority distribution (SVG, no chart lib).
-- **Land chips:** become pill cards with crop emoji + name + count + tiny priority-dot stack. Selected state uses gradient ring (`from-primary to-primary/60`) — no blur.
-- **Alert card:** single 3-region layout — left rail (4 px priority bar + 36 px icon), middle column (title + LandRef + relative time), right column (round speak button). Message expanded by default; evidence + actions collapse into one row of 32 px chips (`Ask AI`, `Done`, `Share`, `Dismiss`) using `bg-card border border-border` — no per-action color clutter.
-- **Critical alerts:** add subtle `ring-1 ring-destructive/40` + 1× soft pulse on first paint (no continuous animation — saves battery).
-- **Empty/loading skeletons:** match new card shape; remove generic grey blocks.
-- Keep page under 700 lines; no new deps.
-
-### Technical notes
-- All new color usage routed through `index.css` tokens; no raw hex.
-- Realtime/polling logic untouched (memory: singleton subscription contract).
-- No DB / RLS / edge-function changes — purely client read-shape + UI.
-- `LandRef` reused as the single sanctioned land renderer.
-
-### Out of scope
-- Schema or migration changes.
-- Alert generation pipeline.
-- Notifications/WhatsApp deep-link payload format.
-- Onboarding walkthrough (already redesigned).
-
-### Files touched
-- `src/hooks/useProactiveAlerts.ts` — attach resolved `land` object, drop UUID fallback.
-- `src/pages/ProactiveAlerts.tsx` — URL-sync filter, `LandRef` usage, layout animation, full visual rebuild with semantic tokens.
-- `src/components/home/AlertsSummaryCard.tsx` — deep-link `?landId=` per row.
+## Verification
+- After fix, console no longer logs "Unresolved land ids" for the current farmer (6/6 should resolve).
+- Land cards row shows Mala (7.59ac), Khari, कोडोलि field, Mala- with correct per-land counts.
+- Tapping a card filters alerts to that land only and updates `?landId=`.
+- Tapping "All" restores the full list.
+- Tenant switch (different `tenantId`) shows zero of the previous tenant's alerts.

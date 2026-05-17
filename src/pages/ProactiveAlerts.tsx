@@ -11,7 +11,7 @@ import {
   AlertTriangle, Bell, CheckCircle, CloudRain, Bug,
   Droplets, Thermometer, Leaf, Clock, Volume2,
   ChevronRight, Sprout, Wind, X, MessageCircle,
-  ArrowLeft, History, RotateCcw, Share2, Filter,
+  ArrowLeft, History, RotateCcw, Share2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
@@ -117,28 +117,46 @@ export default function ProactiveAlerts() {
   };
 
   // ---- Aggregations --------------------------------------------------------
-  type LandBucket = { id: string; land: ProactiveAlert['land']; name: string; count: number; topPriority: string };
+  type PriCounts = { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
+  type LandBucket = {
+    id: string;
+    land: ProactiveAlert['land'];
+    name: string;
+    count: number;
+    topPriority: string;
+    counts: PriCounts;
+  };
   const { landBuckets, hasUnresolved, summary } = useMemo(() => {
     const map = new Map<string, LandBucket>();
     let unresolved = 0;
-    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    const counts: PriCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as Record<string, number>;
 
     alerts.forEach(a => {
-      counts[(a.priority as keyof typeof counts)] = (counts[a.priority as keyof typeof counts] || 0) + 1;
+      const p = a.priority as keyof PriCounts;
+      if (counts[p] !== undefined) counts[p] += 1;
       if (!a.land_id) return;
       if (!a.land) { unresolved++; return; }
       const ex = map.get(a.land_id);
       if (ex) {
         ex.count++;
-        const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as Record<string, number>;
+        if (ex.counts[p] !== undefined) ex.counts[p] += 1;
         if ((order[a.priority] ?? 9) < (order[ex.topPriority] ?? 9)) ex.topPriority = a.priority;
       } else {
-        map.set(a.land_id, { id: a.land_id, land: a.land, name: a.land.name, count: 1, topPriority: a.priority });
+        const bucketCounts: PriCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+        if (bucketCounts[p] !== undefined) bucketCounts[p] += 1;
+        map.set(a.land_id, {
+          id: a.land_id, land: a.land, name: a.land.name,
+          count: 1, topPriority: a.priority, counts: bucketCounts,
+        });
       }
     });
 
     return {
-      landBuckets: Array.from(map.values()).sort((x, y) => y.count - x.count),
+      landBuckets: Array.from(map.values()).sort((x, y) => {
+        const po = (order[x.topPriority] ?? 9) - (order[y.topPriority] ?? 9);
+        return po !== 0 ? po : y.count - x.count;
+      }),
       hasUnresolved: unresolved > 0,
       summary: { total: alerts.length, lands: map.size, ...counts, unresolved },
     };
@@ -208,33 +226,48 @@ export default function ProactiveAlerts() {
         {/* Mini Report Summary */}
         <ReportSummary summary={summary} lang={lang} />
 
-        {/* Land filter strip */}
+        {/* Land cards row — AI-chat style */}
         {(landBuckets.length > 0 || hasUnresolved) && (
-          <div className="-mx-4 px-4">
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide snap-x">
-              <FilterChip
+          <div className="-mx-4">
+            <div className="flex gap-2.5 overflow-x-auto px-4 pb-2 scrollbar-hide snap-x snap-mandatory">
+              <LandCard
                 active={!selectedLandId}
                 onClick={() => setLandFilter(null)}
-                label={localized(lang, 'सर्व', 'सभी', 'All')}
+                emoji="📋"
+                name={localized(lang, 'सर्व शेत', 'सभी भूमि', 'All lands')}
+                subtitle={`${summary.lands || 0} ${localized(lang, 'शेत', 'भूमि', 'lands')}`}
                 count={alerts.length}
-                icon={<Filter className="h-3 w-3" />}
+                counts={{
+                  CRITICAL: summary.CRITICAL || 0,
+                  HIGH: summary.HIGH || 0,
+                  MEDIUM: summary.MEDIUM || 0,
+                  LOW: summary.LOW || 0,
+                }}
+                lang={lang}
               />
               {landBuckets.map(b => (
-                <FilterChip
+                <LandCard
                   key={b.id}
                   active={selectedLandId === b.id}
                   onClick={() => setLandFilter(selectedLandId === b.id ? null : b.id)}
-                  label={b.land ? <LandRef land={b.land} showArea={false} /> : b.name}
+                  land={b.land || undefined}
+                  name={b.name}
+                  subtitle={b.land?.area_acres ? `${b.land.area_acres.toFixed(2)} ac` : undefined}
                   count={b.count}
-                  dotColor={PRIORITY_DOT[b.topPriority]}
+                  counts={b.counts}
+                  topPriority={b.topPriority}
+                  lang={lang}
                 />
               ))}
               {hasUnresolved && (
-                <FilterChip
+                <LandCard
                   active={selectedLandId === '__unresolved__'}
                   onClick={() => setLandFilter(selectedLandId === '__unresolved__' ? null : '__unresolved__')}
-                  label={localized(lang, 'इतर शेत', 'अन्य भूमि', 'Other lands')}
+                  emoji="🌾"
+                  name={localized(lang, 'इतर शेत', 'अन्य भूमि', 'Other lands')}
                   count={summary.unresolved}
+                  counts={{ CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }}
+                  lang={lang}
                 />
               )}
             </div>
@@ -535,35 +568,80 @@ function Donut({ segments }: { segments: { tone: Tone; value: number }[] }) {
   );
 }
 
-function FilterChip({
-  active, onClick, label, count, icon, dotColor,
+
+
+function LandCard({
+  active, onClick, land, emoji, name, subtitle, count, counts, topPriority, lang,
 }: {
   active: boolean;
   onClick: () => void;
-  label: React.ReactNode;
+  land?: { name?: string | null; area_acres?: number | null; current_crop?: string | null; crop_emoji?: string | null };
+  emoji?: string;
+  name: string;
+  subtitle?: string;
   count: number;
-  icon?: React.ReactNode;
-  dotColor?: string;
+  counts: { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
+  topPriority?: string;
+  lang: string;
 }) {
+  const cropToEmoji = (crop?: string | null): string => {
+    if (!crop) return '🌾';
+    const c = crop.toLowerCase();
+    if (c.includes('sugarcane') || c.includes('ऊस')) return '🎋';
+    if (c.includes('cotton') || c.includes('कापूस')) return '🪶';
+    if (c.includes('rice') || c.includes('धान')) return '🍚';
+    if (c.includes('wheat') || c.includes('गहू')) return '🌾';
+    if (c.includes('tomato')) return '🍅';
+    if (c.includes('onion') || c.includes('कांदा')) return '🧅';
+    if (c.includes('grape') || c.includes('द्राक्ष')) return '🍇';
+    return '🌾';
+  };
+  const displayEmoji = emoji ?? land?.crop_emoji ?? cropToEmoji(land?.current_crop);
+
+  const dotSegs = (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'] as const)
+    .map(k => ({ k, v: counts[k] }))
+    .filter(s => s.v > 0);
+
   return (
     <button
       onClick={onClick}
       className={cn(
-        'shrink-0 snap-start inline-flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-medium border transition-all',
+        'shrink-0 snap-start w-[160px] rounded-2xl border p-3 text-left transition-all flex flex-col gap-2',
         active
-          ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-          : 'bg-card text-foreground border-border hover:bg-accent/40',
+          ? 'bg-primary/8 border-primary ring-2 ring-primary/30 shadow-sm'
+          : 'bg-card border-border hover:bg-accent/30',
       )}
     >
-      {dotColor && <span className={cn('w-1.5 h-1.5 rounded-full', dotColor)} />}
-      {icon}
-      <span className="truncate max-w-[140px]">{label}</span>
-      <span className={cn(
-        'px-1.5 py-0 rounded-full text-[10px]',
-        active ? 'bg-primary-foreground/20' : 'bg-muted text-muted-foreground',
-      )}>
-        {count}
-      </span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-2xl leading-none" aria-hidden>{displayEmoji}</div>
+        <div className={cn(
+          'min-w-[28px] h-6 px-2 rounded-full text-[11px] font-bold inline-flex items-center justify-center',
+          count === 0 ? 'bg-muted text-muted-foreground' :
+          topPriority === 'CRITICAL' ? 'bg-destructive text-destructive-foreground' :
+          topPriority === 'HIGH' ? 'bg-warning text-warning-foreground' :
+          'bg-primary text-primary-foreground',
+        )}>
+          {count}
+        </div>
+      </div>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-foreground truncate">{name}</div>
+        {subtitle && <div className="text-[11px] text-muted-foreground truncate">{subtitle}</div>}
+      </div>
+      {dotSegs.length > 0 ? (
+        <div className="flex items-center gap-1 mt-auto">
+          {dotSegs.map(s => (
+            <span key={s.k} className="inline-flex items-center gap-0.5">
+              <span className={cn('w-1.5 h-1.5 rounded-full', PRIORITY_DOT[s.k])} />
+              <span className="text-[10px] text-muted-foreground font-medium">{s.v}</span>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="text-[10px] text-muted-foreground mt-auto">
+          {localized(lang, 'सर्व ठीक', 'सब ठीक', 'All clear')}
+        </div>
+      )}
     </button>
   );
 }
