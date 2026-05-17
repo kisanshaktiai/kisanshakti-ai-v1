@@ -304,7 +304,7 @@ class OfflineAuthService {
     }
 
     // Fetch profile data
-    const { data: profileRows } = await supabase
+    const { data: profileRows } = await authedClient
       .from('user_profiles')
       .select('*')
       .eq('farmer_id', farmerId)
