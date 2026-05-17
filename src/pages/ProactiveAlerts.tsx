@@ -226,33 +226,48 @@ export default function ProactiveAlerts() {
         {/* Mini Report Summary */}
         <ReportSummary summary={summary} lang={lang} />
 
-        {/* Land filter strip */}
+        {/* Land cards row — AI-chat style */}
         {(landBuckets.length > 0 || hasUnresolved) && (
-          <div className="-mx-4 px-4">
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide snap-x">
-              <FilterChip
+          <div className="-mx-4">
+            <div className="flex gap-2.5 overflow-x-auto px-4 pb-2 scrollbar-hide snap-x snap-mandatory">
+              <LandCard
                 active={!selectedLandId}
                 onClick={() => setLandFilter(null)}
-                label={localized(lang, 'सर्व', 'सभी', 'All')}
+                emoji="📋"
+                name={localized(lang, 'सर्व शेत', 'सभी भूमि', 'All lands')}
+                subtitle={`${summary.lands || 0} ${localized(lang, 'शेत', 'भूमि', 'lands')}`}
                 count={alerts.length}
-                icon={<Filter className="h-3 w-3" />}
+                counts={{
+                  CRITICAL: summary.CRITICAL || 0,
+                  HIGH: summary.HIGH || 0,
+                  MEDIUM: summary.MEDIUM || 0,
+                  LOW: summary.LOW || 0,
+                }}
+                lang={lang}
               />
               {landBuckets.map(b => (
-                <FilterChip
+                <LandCard
                   key={b.id}
                   active={selectedLandId === b.id}
                   onClick={() => setLandFilter(selectedLandId === b.id ? null : b.id)}
-                  label={b.land ? <LandRef land={b.land} showArea={false} /> : b.name}
+                  land={b.land || undefined}
+                  name={b.name}
+                  subtitle={b.land?.area_acres ? `${b.land.area_acres.toFixed(2)} ac` : undefined}
                   count={b.count}
-                  dotColor={PRIORITY_DOT[b.topPriority]}
+                  counts={b.counts}
+                  topPriority={b.topPriority}
+                  lang={lang}
                 />
               ))}
               {hasUnresolved && (
-                <FilterChip
+                <LandCard
                   active={selectedLandId === '__unresolved__'}
                   onClick={() => setLandFilter(selectedLandId === '__unresolved__' ? null : '__unresolved__')}
-                  label={localized(lang, 'इतर शेत', 'अन्य भूमि', 'Other lands')}
+                  emoji="🌾"
+                  name={localized(lang, 'इतर शेत', 'अन्य भूमि', 'Other lands')}
                   count={summary.unresolved}
+                  counts={{ CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 }}
+                  lang={lang}
                 />
               )}
             </div>
