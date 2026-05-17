@@ -1,101 +1,69 @@
+# 2030-Ready Feature Walkthrough Redesign
 
-# First-Run Experience Overhaul
+Redesign `src/components/onboarding/FeatureWalkthrough.tsx` (and supporting hook) into a premium, mobile-first, voice-narrated coach experience built for rural Indian farmers on low-end Android devices.
 
-Replace the two popup cards (`VoiceHowToCard`, `ReadAloudCard`) with a proper Android-style **first-install permission flow** + a **voice-guided walkthrough** that teaches rural farmers how to use the app in their selected language.
+## Design Direction
 
-## Goals
+**Aesthetic:** Glassmorphic, depth-rich, agri-futuristic. Soft organic gradients (sunrise → field green), frosted glass coach card, animated aurora/particle backdrop behind the spotlight, premium typography, haptic-feel motion.
 
-1. On first install, request the standard mobile permissions the same way every Android app does — clear, sequential, with rationale (no random popup cards later).
-2. After permissions, run a short voice-narrated walkthrough so non-literate / low-literacy farmers understand what each feature does.
-3. Persist completion so this runs **once per install**, never again unless reset.
+**Mobile-first:** Built for 360–414px width, one-thumb reachable controls, big tap targets (≥56px), bottom-sheet style coach card with a drag handle, safe-area aware.
 
-## New Flow (one-time, first install)
+**Farmer-friendly:** Big icons, simple Devanagari/Marathi/English typography, persistent voice narration with visible "speaker pulse" indicator while talking, large LISTEN button, simple Next/Back chevrons.
 
-```text
-Splash
-  → Language Selection (existing)
-     → [NEW] PermissionOnboarding screen     ← takes Location, Mic, Camera, Notifications
-        → Auth (mobile + PIN)  (existing)
-           → [NEW] FeatureWalkthrough overlay ← voice-narrated 5–6 step coach-marks on /app
-              → Home (normal app)
-```
-
-The two old cards (`VoiceHowToCard`, `ReadAloudCard`) and `FirstRunOnboardingController` are removed.
-
-## 1. Permission Onboarding screen
-
-New route `/permissions` shown after language selection on first run only.
-
-- One full-screen page, one permission per "slide" (swipe / Next button), big icons, large native-language text + a built-in **Speak** button that narrates the rationale via existing `useTextToSpeech`.
-- Order matches the standard rural-farmer-app flow:
-  1. **Location** — "for accurate weather, mandi prices, and crop advice for your village"
-  2. **Microphone** — "to talk to the app in your language"
-  3. **Camera** — "to scan crops, pests, and diseases"
-  4. **Notifications** — "to alert you about rain, pests, and your crop schedule"
-- Each slide: `Allow` (calls existing `PermissionManager.requestPermission`) and `Skip` (records denial, lets user continue — never blocks the app).
-- A persistent footer shows progress dots (1/4 … 4/4).
-- After last slide, set `localStorage['ks_permissions_onboarded'] = 'true'` and navigate to `/auth`.
-- If user revisits later (already onboarded), the route redirects to `/auth` or `/app`.
-
-Uses `Capacitor` permission plugins when `isNativeApp()` is true; falls back to web `PermissionManager` otherwise. No behavior change to permission-request mechanics — only adds an upfront, batched UX.
-
-## 2. Voice-guided Feature Walkthrough
-
-New component `FeatureWalkthrough` mounted once inside `AppLayout` and shown only on first authenticated visit.
-
-- Tooltip / coach-mark overlay (semi-transparent backdrop with a highlighted "spotlight" cutout on the target element) using existing motion + tailwind tokens.
-- 6 steps targeted at real DOM elements (via `data-tour` attributes added to existing UI):
-  1. Top header — "This is your home. Tap here anytime."
-  2. Weather card — "Today's weather for your farm."
-  3. AI Chat tile — "Ask any farming question by voice or text."
-  4. Crop scan tile — "Take a photo of your crop to identify pests/disease."
-  5. Mic button (`NativeVoiceButton`) — "Press and hold to speak in your language."
-  6. Bottom nav — "Switch between Home, Weather, Market, and more."
-- Each step **auto-speaks** its narration in the user's selected `i18n.language` using `useTextToSpeech` (already wired). A `Speak again` and `Mute` button is shown.
-- Buttons: `Next`, `Back`, `Skip tour`. Pulsing ring on the highlighted element. Big touch targets, high contrast, no jargon.
-- Persists `localStorage['ks_walkthrough_complete'] = 'true'` on finish or skip; never shown again.
-- Reset entry in Profile → Help (reuses existing `window.__resetOnboarding` pattern but with new keys).
-
-## 3. Removals / cleanup
-
-- Delete `src/components/onboarding/VoiceHowToCard.tsx`, `ReadAloudCard.tsx`, `FirstRunOnboardingController.tsx`.
-- Remove `<FirstRunOnboardingController />` from `src/App.tsx`.
-- Remove storage keys `ks_seen_voice_card`, `ks_seen_readaloud_card`, `ks_onboarding_complete` (orphaned — no migration needed; they only blocked the old popups).
-- `VoiceDownloadCard.tsx` stays (different purpose — model download).
-
-## 4. Files touched
+## New Visual Components
 
 ```text
-NEW   src/pages/PermissionOnboarding.tsx
-NEW   src/components/onboarding/FeatureWalkthrough.tsx
-NEW   src/components/onboarding/WalkthroughStep.tsx
-NEW   src/hooks/useFeatureWalkthrough.ts
-EDIT  src/App.tsx                     ← add /permissions route, mount walkthrough, remove old controller
-EDIT  src/pages/LanguageSelection.tsx ← navigate('/permissions') instead of '/auth' on first run
-EDIT  src/components/AppLayout.tsx    ← render <FeatureWalkthrough/> once auth ready
-EDIT  src/components/home/* + BottomNavigation.tsx + NativeVoiceButton.tsx
-      ← add data-tour="weather|chat|scan|mic|nav" anchors (no visual change)
-DEL   src/components/onboarding/VoiceHowToCard.tsx
-DEL   src/components/onboarding/ReadAloudCard.tsx
-DEL   src/components/onboarding/FirstRunOnboardingController.tsx
+┌─────────────────────────────────────┐
+│   ◉ ◉ ● ○ ○ ○   ✕ Skip             │ ← top: progress segments + skip
+│                                      │
+│      [aurora gradient blur]          │
+│                                      │
+│         ╭──────────╮                 │ ← animated spotlight ring
+│         │ TARGET   │                 │   with corner brackets +
+│         ╰──────────╯                 │   rotating dashed halo
+│           ▼ pointer                   │
+│  ╭─────────────────────────────╮     │
+│  │  ▬▬                          │    │ ← drag handle
+│  │  🌾  Step 2 of 6             │    │
+│  │  Today's Weather             │    │
+│  │  ─────────────────           │    │
+│  │  आज के मौसम की जानकारी...    │    │
+│  │                              │    │
+│  │  [🔊 Listen]  ·  pulse ●●●  │    │ ← speaking indicator
+│  │                              │    │
+│  │  ←  Back        Next  →     │    │
+│  ╰─────────────────────────────╯     │ ← glass bottom-sheet card
+└─────────────────────────────────────┘
 ```
 
-## 5. Storage keys (new)
+## Features
 
-| Key | Purpose |
-|---|---|
-| `ks_permissions_onboarded` | Set after PermissionOnboarding completes (allow or skip) |
-| `ks_walkthrough_complete` | Set after FeatureWalkthrough finishes or is skipped |
+1. **Spotlight v2** — SVG mask cutout with feathered edge (gaussian blur), animated corner brackets (top-left/right, bottom-left/right) that "lock on" the element, slow rotating dashed halo, and a subtle finger-tap ripple on the target.
+2. **Aurora backdrop** — Three soft blurred radial gradients (primary/accent/success) drifting via framer-motion to make the dark overlay feel alive without hurting FPS.
+3. **Bottom-sheet coach card** — Glass card (`bg-card/85 backdrop-blur-xl`) anchored bottom on mobile, with drag handle, swipe-down-to-dismiss gesture, and swipe-left/right between steps. Auto-flips above target if target is in lower half.
+4. **Speaking indicator** — 3-bar animated equalizer that pulses while TTS is speaking; tap to replay; long-press to mute.
+5. **Progress segments** — Filled bar segments (not dots) with smooth fill animation, current segment shimmering.
+6. **Step icon + chip** — Each step has a themed icon (Sun, Cloud, MessageCircle, Camera, Mic, LayoutGrid) inside a gradient chip; chip color matches step accent.
+7. **Haptics** — `src/lib/haptics.ts` light tick on Next/Back; success pattern on Done.
+8. **Reduced-motion respect** — uses `useReducedMotion` to disable aurora/halo/ripple.
+9. **Accessibility** — `role="dialog"`, `aria-live="polite"` for narration text, focus trap, ESC to skip, large 56px buttons.
+10. **Performance** — Throttled `getBoundingClientRect` via `ResizeObserver` + `scroll` listener instead of RAF loop (lower battery use on entry-level Android). Per project memory: opaque backgrounds where blur is too costly is acceptable, but coach card uses GPU-friendly single blur layer only.
 
-## 6. Out of scope
+## Files
 
-- Changing how individual features request permissions later (contextual `usePermission` stays for re-prompts).
-- Subscription/entitlement UX (already handled in prior work).
-- TTS engine changes — reuses `useTextToSpeech` as-is.
-- i18n keys for new copy: added to `en` + `hi` + `mr`; other locales fall back to `en` and can be filled later.
+- **Edit** `src/components/onboarding/FeatureWalkthrough.tsx` — full rewrite with new layout, sub-components inline (`Spotlight`, `CoachCard`, `Aurora`, `SpeakingIndicator`, `ProgressSegments`).
+- **Edit** `src/hooks/useFeatureWalkthrough.ts` — add `isSpeaking` state exposure (subscribe to TTS), small DOM-ready wait (poll `[data-tour]` presence up to 3s before showing) to prevent flicker when targets render late.
+- **No changes** to `data-tour` anchors, `PermissionOnboarding`, `AppLayout`, routing, TTS service, i18n keys, or any business logic.
 
-## Acceptance
+## Technical Details
 
-- Fresh install → Splash → Language → 4-step Permission screen → Auth → first `/app` visit shows voice-narrated 6-step walkthrough → completes and never reappears.
-- Existing installed users (have language but no `ks_permissions_onboarded`) see the permission screen once on next launch, then the walkthrough once.
-- No more random popup cards appearing on Home.
+- Uses framer-motion `AnimatePresence`, `motion.div`, `useDragControls` for swipe.
+- Spotlight position via `ResizeObserver` on `document.body` + window `scroll`/`resize` + a 60fps RAF only while the target is animating in (first 600ms after step change), then idle.
+- Coach card position: `target.bottom + 16 < vh - 280 ? below : above`. On very small screens (<360px) always bottom-sheet.
+- All colors via semantic tokens (`--primary`, `--accent`, `--card`, `--background`, `--success`); no hardcoded hex.
+- TTS narration unchanged (same `useTextToSpeech` hook, same per-step `narrations[lang]` map).
+- Bundle impact: ~3KB gzip (no new deps).
+
+## Out of Scope
+
+- Permission flow UI, language selection, TTS engine, data-tour element positions, business logic, subscription gating, copy/i18n keys (we keep the same narration strings).
