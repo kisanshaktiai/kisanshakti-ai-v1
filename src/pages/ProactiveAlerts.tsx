@@ -117,28 +117,46 @@ export default function ProactiveAlerts() {
   };
 
   // ---- Aggregations --------------------------------------------------------
-  type LandBucket = { id: string; land: ProactiveAlert['land']; name: string; count: number; topPriority: string };
+  type PriCounts = { CRITICAL: number; HIGH: number; MEDIUM: number; LOW: number };
+  type LandBucket = {
+    id: string;
+    land: ProactiveAlert['land'];
+    name: string;
+    count: number;
+    topPriority: string;
+    counts: PriCounts;
+  };
   const { landBuckets, hasUnresolved, summary } = useMemo(() => {
     const map = new Map<string, LandBucket>();
     let unresolved = 0;
-    const counts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    const counts: PriCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+    const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as Record<string, number>;
 
     alerts.forEach(a => {
-      counts[(a.priority as keyof typeof counts)] = (counts[a.priority as keyof typeof counts] || 0) + 1;
+      const p = a.priority as keyof PriCounts;
+      if (counts[p] !== undefined) counts[p] += 1;
       if (!a.land_id) return;
       if (!a.land) { unresolved++; return; }
       const ex = map.get(a.land_id);
       if (ex) {
         ex.count++;
-        const order = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 } as Record<string, number>;
+        if (ex.counts[p] !== undefined) ex.counts[p] += 1;
         if ((order[a.priority] ?? 9) < (order[ex.topPriority] ?? 9)) ex.topPriority = a.priority;
       } else {
-        map.set(a.land_id, { id: a.land_id, land: a.land, name: a.land.name, count: 1, topPriority: a.priority });
+        const bucketCounts: PriCounts = { CRITICAL: 0, HIGH: 0, MEDIUM: 0, LOW: 0 };
+        if (bucketCounts[p] !== undefined) bucketCounts[p] += 1;
+        map.set(a.land_id, {
+          id: a.land_id, land: a.land, name: a.land.name,
+          count: 1, topPriority: a.priority, counts: bucketCounts,
+        });
       }
     });
 
     return {
-      landBuckets: Array.from(map.values()).sort((x, y) => y.count - x.count),
+      landBuckets: Array.from(map.values()).sort((x, y) => {
+        const po = (order[x.topPriority] ?? 9) - (order[y.topPriority] ?? 9);
+        return po !== 0 ? po : y.count - x.count;
+      }),
       hasUnresolved: unresolved > 0,
       summary: { total: alerts.length, lands: map.size, ...counts, unresolved },
     };
