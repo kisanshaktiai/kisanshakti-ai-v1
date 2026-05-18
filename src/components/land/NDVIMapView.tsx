@@ -381,6 +381,7 @@ export function NDVIMapView({
         >
           <Satellite className="h-3 w-3 text-primary" />
           {renderMode === 'raster' && t('ndvi.map.mode_raster', 'Per-pixel heatmap')}
+          {renderMode === 'land_thumb' && t('ndvi.map.mode_land_thumb', 'Satellite NDVI thumbnail')}
           {renderMode === 'zonal' && t('ndvi.map.mode_zonal', 'Field-level NDVI')}
           {renderMode === 'boundary' && t('ndvi.map.mode_boundary', 'No clean data')}
         </Badge>
