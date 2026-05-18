@@ -46,9 +46,13 @@ interface NDVIMapViewProps {
   areaAcres?: number;
   soilType?: string;
   currentCrop?: string;
+  /** Latest satellite NDVI thumbnail URL stored on the land row. */
+  landThumbnailUrl?: string | null;
+  /** Acquisition/processing date of the land-level thumbnail. */
+  landThumbnailDate?: string | null;
 }
 
-type RenderMode = 'raster' | 'zonal' | 'boundary';
+type RenderMode = 'raster' | 'land_thumb' | 'zonal' | 'boundary';
 
 const ESRI_SAT_STYLE = {
   version: 8 as const,
