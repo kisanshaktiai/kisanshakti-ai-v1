@@ -29,6 +29,8 @@ export interface NDVIDataComplete {
   savi_value: number | null;
   min_ndvi: number | null;
   max_ndvi: number | null;
+  ndvi_min?: number | null;
+  ndvi_max?: number | null;
   mean_ndvi: number | null;
   median_ndvi: number | null;
   ndvi_std: number | null;
