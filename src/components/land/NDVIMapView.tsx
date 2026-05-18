@@ -106,6 +106,21 @@ function polygonGeoJSON(poly: Array<{ lat: number; lng: number }>) {
   };
 }
 
+function polygonCssClipPath(poly: Array<{ lat: number; lng: number }>): string | undefined {
+  if (!poly?.length) return undefined;
+  const b = computeBounds(poly) as [[number, number], [number, number]] | null;
+  if (!b) return undefined;
+  const [[w, s], [e, n]] = b;
+  const dLng = Math.max(e - w, 1e-9);
+  const dLat = Math.max(n - s, 1e-9);
+  const points = poly.map((p) => {
+    const x = ((p.lng - w) / dLng) * 100;
+    const y = (1 - (p.lat - s) / dLat) * 100;
+    return `${x.toFixed(2)}% ${y.toFixed(2)}%`;
+  });
+  return `polygon(${points.join(', ')})`;
+}
+
 export function NDVIMapView({
   landId,
   boundary = [],
@@ -185,7 +200,9 @@ export function NDVIMapView({
     if (activeThumbnailUrl) return 'land_thumb';
     if (active && active.reliable && active.ndvi != null) return 'zonal';
     return 'boundary';
-  }, [active, activeThumbnailUrl, boundary]);
+  }, [active, activeThumbnailUrl]);
+
+  const thumbnailClipPath = useMemo(() => polygonCssClipPath(boundary), [boundary]);
 
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
   const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(1);
