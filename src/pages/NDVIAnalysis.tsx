@@ -37,6 +37,8 @@ interface LandRow {
   boundary_polygon_old?: any;
   center_point_old?: any;
   last_ndvi_value?: number;
+  ndvi_thumbnail_url?: string | null;
+  last_ndvi_calculation?: string | null;
   planting_date?: string;
   last_sowing_date?: string;
 }
@@ -373,6 +375,8 @@ export default function NDVIAnalysis() {
               centerLng={centerPoint.lng}
               areaAcres={selectedLand?.area_acres}
               currentCrop={selectedLand?.current_crop}
+              landThumbnailUrl={selectedLand?.ndvi_thumbnail_url ?? null}
+              landThumbnailDate={selectedLand?.last_ndvi_calculation ?? null}
             />
           )}
         </TabsContent>
