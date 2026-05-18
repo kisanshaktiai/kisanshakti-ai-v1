@@ -154,13 +154,15 @@ export function NDVIMapView({
     [acquisitions, activeDate],
   );
 
-  // Decide render mode for the active acquisition
+  // Decide render mode for the active acquisition.
+  // Priority: micro-tile pixel raster → land-level satellite thumbnail (clipped to boundary bbox)
+  //         → zonal fill (boundary painted with mean NDVI color) → boundary only.
   const renderMode: RenderMode = useMemo(() => {
-    if (!active || !active.reliable) return 'boundary';
-    if (active.source === 'micro_tile' && (active.raw as NDVIMicroTile).ndvi_thumbnail_url) return 'raster';
-    if (active.ndvi != null) return 'zonal';
+    if (active?.source === 'micro_tile' && (active.raw as NDVIMicroTile).ndvi_thumbnail_url) return 'raster';
+    if (landThumbnailUrl && boundary.length >= 3) return 'land_thumb';
+    if (active && active.reliable && active.ndvi != null) return 'zonal';
     return 'boundary';
-  }, [active]);
+  }, [active, landThumbnailUrl, boundary]);
 
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
   const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(1);
