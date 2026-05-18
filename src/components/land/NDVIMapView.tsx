@@ -154,15 +154,26 @@ export function NDVIMapView({
     [acquisitions, activeDate],
   );
 
+  // Per-date satellite NDVI thumbnail directly from the actively-updated
+  // ndvi_data row (image_url is a public ndvi-thumbnails PNG). This is the
+  // single source of truth for the heatmap when no micro-tile raster exists.
+  const activeThumbnailUrl: string | null = useMemo(() => {
+    if (active?.source === 'ndvi_data') {
+      const r = active.raw as NDVIDataComplete;
+      if (r.image_url && /^https?:\/\//.test(r.image_url)) return r.image_url;
+    }
+    return landThumbnailUrl ?? null;
+  }, [active, landThumbnailUrl]);
+
   // Decide render mode for the active acquisition.
-  // Priority: micro-tile pixel raster → land-level satellite thumbnail (clipped to boundary bbox)
+  // Priority: micro-tile pixel raster → per-date ndvi_data thumbnail (clipped to boundary bbox)
   //         → zonal fill (boundary painted with mean NDVI color) → boundary only.
   const renderMode: RenderMode = useMemo(() => {
     if (active?.source === 'micro_tile' && (active.raw as NDVIMicroTile).ndvi_thumbnail_url) return 'raster';
-    if (landThumbnailUrl && boundary.length >= 3) return 'land_thumb';
+    if (activeThumbnailUrl && boundary.length >= 3) return 'land_thumb';
     if (active && active.reliable && active.ndvi != null) return 'zonal';
     return 'boundary';
-  }, [active, landThumbnailUrl, boundary]);
+  }, [active, activeThumbnailUrl, boundary]);
 
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
   const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(1);
@@ -255,7 +266,7 @@ export function NDVIMapView({
     }
     applyRender();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderMode, active, overlayOpacity, landThumbnailUrl, boundary]);
+  }, [renderMode, active, overlayOpacity, activeThumbnailUrl, boundary]);
 
   function applyRender() {
     const map = mapRef.current;
@@ -294,14 +305,14 @@ export function NDVIMapView({
 
     // LAND-LEVEL THUMBNAIL — actual satellite-derived NDVI PNG for this field,
     // clipped to the boundary bbox. Pure data, no interpolation.
-    if (renderMode === 'land_thumb' && landThumbnailUrl) {
+    if (renderMode === 'land_thumb' && activeThumbnailUrl) {
       const b = computeBounds(boundary) as [[number, number], [number, number]] | null;
       if (b) {
         const [[w, s], [e, n]] = b;
         clearRaster();
         map.addSource('ndvi-raster-src', {
           type: 'image',
-          url: landThumbnailUrl,
+          url: activeThumbnailUrl,
           coordinates: [[w, n], [e, n], [e, s], [w, s]],
         });
         map.addLayer({

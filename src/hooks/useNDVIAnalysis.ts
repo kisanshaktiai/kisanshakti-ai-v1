@@ -215,15 +215,21 @@ export function useNDVIMicroTiles(landId: string | null) {
     queryKey: ['ndvi-micro-tiles', landId, tenantId],
     queryFn: async (): Promise<NDVIMicroTile[]> => {
       if (!landId || !tenantId) return [];
+      // ndvi_micro_tiles is NOT actively updated (last write > 45 days ago).
+      // The farmer app must rely only on `ndvi_data.image_url` for per-date
+      // satellite thumbnails. We keep the hook for forward-compat but only
+      // return rows from the last 45 days so stale data never reaches the map.
       const client = supabaseWithAuth(farmerId, tenantId);
+      const cutoff = new Date(Date.now() - 45 * 86_400_000).toISOString().slice(0, 10);
       const { data, error } = await client
         .from('ndvi_micro_tiles')
         .select('*')
         .eq('land_id', landId)
         .eq('tenant_id', tenantId)
+        .gte('acquisition_date', cutoff)
         .order('acquisition_date', { ascending: false })
         .limit(24);
-      if (error) throw error;
+      if (error) return [];
       return (data || []).map((t: any) => ({
         ...t,
         is_reliable: (t.cloud_cover ?? 0) <= 30,
