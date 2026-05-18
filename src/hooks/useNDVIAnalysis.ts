@@ -15,6 +15,7 @@ export interface NDVIMetadata {
   health_label?: 'Critical' | 'Moderate' | 'Healthy' | 'Excellent';
   ndvi_trend?: number;
   ndre_trend?: number;
+  ndvi_geotiff_url?: string;
   valid_observations?: number;
 }
 
@@ -34,7 +35,9 @@ export interface NDVIDataComplete {
   quality_score: number | null;
   confidence_level: string | null;
   cloud_coverage: number | null;
+  cloud_cover?: number | null;
   coverage_percentage: number | null;
+  coverage?: number | null;
   valid_pixels: number | null;
   total_pixels: number | null;
   satellite_source: string | null;
@@ -54,6 +57,27 @@ export interface NDVIDataComplete {
   is_reliable?: boolean;
 }
 
+export interface NDVIProcessingLog {
+  id: string;
+  land_id: string | null;
+  processing_step: string;
+  step_status: string;
+  completed_at: string | null;
+  created_at: string | null;
+  error_message: string | null;
+  metadata: {
+    thumbnail_url?: string;
+    geotiff_url?: string;
+    health_label?: string;
+  } | null;
+}
+
+export interface NDVIProcessingThumbnail {
+  url: string;
+  date: string;
+  geotiffUrl?: string;
+}
+
 export interface NDVIPrediction {
   days7:  { predicted_ndvi: number; trend_direction: 'improving' | 'declining' | 'stable'; confidence: number };
   days14: { predicted_ndvi: number; trend_direction: 'improving' | 'declining' | 'stable'; confidence: number };
@@ -71,6 +95,10 @@ export interface NDVIAnalysisResult {
   history: NDVIDataComplete[];
   /** Latest raw row, even if unreliable — used to show "stale" banner. */
   latestRaw: NDVIDataComplete | null;
+  /** Latest active processing status from ndvi_processing_logs (last 45 days only). */
+  latestProcessingLog: NDVIProcessingLog | null;
+  /** Fallback thumbnail from successful processing logs, still limited to last 45 days. */
+  processingThumbnail: NDVIProcessingThumbnail | null;
   prediction: NDVIPrediction | null;
   isLoading: boolean;
   error: Error | null;
