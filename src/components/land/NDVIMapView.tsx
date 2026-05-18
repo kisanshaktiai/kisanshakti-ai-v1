@@ -305,14 +305,14 @@ export function NDVIMapView({
 
     // LAND-LEVEL THUMBNAIL — actual satellite-derived NDVI PNG for this field,
     // clipped to the boundary bbox. Pure data, no interpolation.
-    if (renderMode === 'land_thumb' && landThumbnailUrl) {
+    if (renderMode === 'land_thumb' && activeThumbnailUrl) {
       const b = computeBounds(boundary) as [[number, number], [number, number]] | null;
       if (b) {
         const [[w, s], [e, n]] = b;
         clearRaster();
         map.addSource('ndvi-raster-src', {
           type: 'image',
-          url: landThumbnailUrl,
+          url: activeThumbnailUrl,
           coordinates: [[w, n], [e, n], [e, s], [w, s]],
         });
         map.addLayer({
