@@ -37,7 +37,7 @@ import {
   NDVI_INTERPRETATION,
 } from '@/lib/ndviScience';
 import { SUPABASE_CONFIG } from '@/config/supabase';
-import { useNDVIAnalysis, useNDVIMicroTiles, NDVIDataComplete, NDVIMicroTile } from '@/hooks/useNDVIAnalysis';
+import { useNDVIAnalysis, NDVIDataComplete } from '@/hooks/useNDVIAnalysis';
 
 interface NDVIMapViewProps {
   landId: string;
@@ -53,7 +53,7 @@ interface NDVIMapViewProps {
   landThumbnailDate?: string | null;
 }
 
-type RenderMode = 'raster' | 'land_thumb' | 'zonal' | 'boundary';
+type RenderMode = 'land_thumb' | 'zonal' | 'boundary';
 
 function normalizeNdviAssetUrl(url?: string | null): string | null {
   if (!url) return null;
@@ -136,7 +136,6 @@ export function NDVIMapView({
   const mapRef = useRef<MlMap | null>(null);
 
   const { current, history, latestRaw, processingThumbnail } = useNDVIAnalysis(landId);
-  const { data: tiles = [] } = useNDVIMicroTiles(landId);
 
   // Build the chronological list of acquisitions farmers can scrub through.
   const acquisitions = useMemo(() => {
@@ -144,8 +143,8 @@ export function NDVIMapView({
       date: string;
       reliable: boolean;
       ndvi: number | null;
-      source: 'ndvi_data' | 'micro_tile';
-      raw: NDVIDataComplete | NDVIMicroTile;
+      source: 'ndvi_data';
+      raw: NDVIDataComplete;
     };
     const byDate = new Map<string, Acq>();
     for (const r of history) {
@@ -154,20 +153,8 @@ export function NDVIMapView({
     if (latestRaw && !byDate.has(latestRaw.date)) {
       byDate.set(latestRaw.date, { date: latestRaw.date, reliable: false, ndvi: latestRaw.ndvi_value, source: 'ndvi_data', raw: latestRaw });
     }
-    for (const tile of tiles) {
-      const d = tile.acquisition_date;
-      if (!byDate.has(d)) {
-        byDate.set(d, {
-          date: d,
-          reliable: tile.is_reliable,
-          ndvi: tile.ndvi_mean,
-          source: 'micro_tile',
-          raw: tile,
-        });
-      }
-    }
     return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [history, latestRaw, tiles]);
+  }, [history, latestRaw]);
 
   const [activeDate, setActiveDate] = useState<string | null>(null);
   useEffect(() => {
@@ -196,7 +183,6 @@ export function NDVIMapView({
   // Priority: micro-tile pixel raster → per-date ndvi_data thumbnail (clipped to boundary bbox)
   //         → zonal fill (boundary painted with mean NDVI color) → boundary only.
   const renderMode: RenderMode = useMemo(() => {
-    if (active?.source === 'micro_tile' && normalizeNdviAssetUrl((active.raw as NDVIMicroTile).ndvi_thumbnail_url)) return 'raster';
     if (activeThumbnailUrl) return 'land_thumb';
     if (active && active.reliable && active.ndvi != null) return 'zonal';
     return 'boundary';
