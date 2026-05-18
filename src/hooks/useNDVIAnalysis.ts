@@ -164,16 +164,33 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['ndvi-analysis', landId, tenantId],
     queryFn: async () => {
-      if (!landId || !tenantId) return { current: null, history: [], latestRaw: null };
+      if (!landId || !tenantId) {
+        return { current: null, history: [], latestRaw: null, latestProcessingLog: null, processingThumbnail: null };
+      }
       const client = supabaseWithAuth(farmerId, tenantId);
+      const cutoffDate = new Date(Date.now() - 45 * 86_400_000);
+      const cutoffDay = cutoffDate.toISOString().slice(0, 10);
 
-      const { data: rows, error: qErr } = await client
-        .from('ndvi_data')
-        .select('*')
-        .eq('land_id', landId)
-        .eq('tenant_id', tenantId)
-        .order('date', { ascending: false })
-        .limit(60);
+      const [ndviResult, logResult] = await Promise.all([
+        client
+          .from('ndvi_data')
+          .select('*')
+          .eq('land_id', landId)
+          .eq('tenant_id', tenantId)
+          .gte('date', cutoffDay)
+          .order('date', { ascending: false })
+          .limit(60),
+        client
+          .from('ndvi_processing_logs')
+          .select('id, land_id, processing_step, step_status, completed_at, created_at, error_message, metadata')
+          .eq('land_id', landId)
+          .eq('tenant_id', tenantId)
+          .gte('created_at', cutoffDate.toISOString())
+          .order('created_at', { ascending: false })
+          .limit(30),
+      ]);
+
+      const { data: rows, error: qErr } = ndviResult;
       if (qErr) throw qErr;
 
       const parsed = (rows || []).map((item: any) => {
@@ -191,8 +208,27 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
       // (UI surfaces a "low confidence" banner via hasStale).
       const current = reliable[0] || latestRaw;
       const history = reliable.length > 0 ? reliable : parsed;
+      const logs = ((logResult.data || []) as any[]).map((item) => ({
+        ...item,
+        metadata: item.metadata
+          ? (typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata)
+          : null,
+      })) as NDVIProcessingLog[];
+      const latestProcessingLog = logs[0] || null;
+      const successfulThumb = logs.find((log) =>
+        log.processing_step === 'PROCESS_END'
+        && log.step_status === 'completed'
+        && !!log.metadata?.thumbnail_url,
+      );
+      const processingThumbnail = successfulThumb?.metadata?.thumbnail_url
+        ? {
+            url: successfulThumb.metadata.thumbnail_url,
+            date: successfulThumb.completed_at || successfulThumb.created_at || cutoffDay,
+            geotiffUrl: successfulThumb.metadata.geotiff_url,
+          }
+        : null;
 
-      return { current, history, latestRaw };
+      return { current, history, latestRaw, latestProcessingLog, processingThumbnail };
     },
     enabled: !!landId && !!farmerId && !!tenantId,
     staleTime: SIX_HOURS,
@@ -206,6 +242,8 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
     current: data?.current ?? null,
     history: data?.history ?? [],
     latestRaw: data?.latestRaw ?? null,
+    latestProcessingLog: data?.latestProcessingLog ?? null,
+    processingThumbnail: data?.processingThumbnail ?? null,
     prediction,
     isLoading,
     error: error as Error | null,
