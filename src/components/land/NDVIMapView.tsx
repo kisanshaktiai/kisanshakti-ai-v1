@@ -36,7 +36,8 @@ import {
   formatNDVI,
   NDVI_INTERPRETATION,
 } from '@/lib/ndviScience';
-import { useNDVIAnalysis, useNDVIMicroTiles, NDVIDataComplete, NDVIMicroTile } from '@/hooks/useNDVIAnalysis';
+import { SUPABASE_CONFIG } from '@/config/supabase';
+import { useNDVIAnalysis, NDVIDataComplete } from '@/hooks/useNDVIAnalysis';
 
 interface NDVIMapViewProps {
   landId: string;
@@ -52,7 +53,17 @@ interface NDVIMapViewProps {
   landThumbnailDate?: string | null;
 }
 
-type RenderMode = 'raster' | 'land_thumb' | 'zonal' | 'boundary';
+type RenderMode = 'land_thumb' | 'zonal' | 'boundary';
+
+function normalizeNdviAssetUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/storage/v1/')) return `${SUPABASE_CONFIG.URL}${url}`;
+  if (url.startsWith('/thumbnails/ndvi/')) {
+    return `${SUPABASE_CONFIG.URL}/storage/v1/object/public/ndvi-thumbnails/${url.split('/').pop()}`;
+  }
+  return null;
+}
 
 const ESRI_SAT_STYLE = {
   version: 8 as const,
@@ -95,6 +106,21 @@ function polygonGeoJSON(poly: Array<{ lat: number; lng: number }>) {
   };
 }
 
+function polygonCssClipPath(poly: Array<{ lat: number; lng: number }>): string | undefined {
+  if (!poly?.length) return undefined;
+  const b = computeBounds(poly) as [[number, number], [number, number]] | null;
+  if (!b) return undefined;
+  const [[w, s], [e, n]] = b;
+  const dLng = Math.max(e - w, 1e-9);
+  const dLat = Math.max(n - s, 1e-9);
+  const points = poly.map((p) => {
+    const x = ((p.lng - w) / dLng) * 100;
+    const y = (1 - (p.lat - s) / dLat) * 100;
+    return `${x.toFixed(2)}% ${y.toFixed(2)}%`;
+  });
+  return `polygon(${points.join(', ')})`;
+}
+
 export function NDVIMapView({
   landId,
   boundary = [],
@@ -109,8 +135,7 @@ export function NDVIMapView({
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
 
-  const { current, history, latestRaw } = useNDVIAnalysis(landId);
-  const { data: tiles = [] } = useNDVIMicroTiles(landId);
+  const { current, history, latestRaw, processingThumbnail } = useNDVIAnalysis(landId);
 
   // Build the chronological list of acquisitions farmers can scrub through.
   const acquisitions = useMemo(() => {
@@ -118,8 +143,8 @@ export function NDVIMapView({
       date: string;
       reliable: boolean;
       ndvi: number | null;
-      source: 'ndvi_data' | 'micro_tile';
-      raw: NDVIDataComplete | NDVIMicroTile;
+      source: 'ndvi_data';
+      raw: NDVIDataComplete;
     };
     const byDate = new Map<string, Acq>();
     for (const r of history) {
@@ -128,20 +153,8 @@ export function NDVIMapView({
     if (latestRaw && !byDate.has(latestRaw.date)) {
       byDate.set(latestRaw.date, { date: latestRaw.date, reliable: false, ndvi: latestRaw.ndvi_value, source: 'ndvi_data', raw: latestRaw });
     }
-    for (const tile of tiles) {
-      const d = tile.acquisition_date;
-      if (!byDate.has(d)) {
-        byDate.set(d, {
-          date: d,
-          reliable: tile.is_reliable,
-          ndvi: tile.ndvi_mean,
-          source: 'micro_tile',
-          raw: tile,
-        });
-      }
-    }
     return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
-  }, [history, latestRaw, tiles]);
+  }, [history, latestRaw]);
 
   const [activeDate, setActiveDate] = useState<string | null>(null);
   useEffect(() => {
@@ -160,20 +173,22 @@ export function NDVIMapView({
   const activeThumbnailUrl: string | null = useMemo(() => {
     if (active?.source === 'ndvi_data') {
       const r = active.raw as NDVIDataComplete;
-      if (r.image_url && /^https?:\/\//.test(r.image_url)) return r.image_url;
+      const rowUrl = normalizeNdviAssetUrl(r.image_url);
+      if (rowUrl) return rowUrl;
     }
-    return landThumbnailUrl ?? null;
-  }, [active, landThumbnailUrl]);
+    return normalizeNdviAssetUrl(processingThumbnail?.url) ?? normalizeNdviAssetUrl(landThumbnailUrl);
+  }, [active, landThumbnailUrl, processingThumbnail]);
 
   // Decide render mode for the active acquisition.
   // Priority: micro-tile pixel raster → per-date ndvi_data thumbnail (clipped to boundary bbox)
   //         → zonal fill (boundary painted with mean NDVI color) → boundary only.
   const renderMode: RenderMode = useMemo(() => {
-    if (active?.source === 'micro_tile' && (active.raw as NDVIMicroTile).ndvi_thumbnail_url) return 'raster';
-    if (activeThumbnailUrl && boundary.length >= 3) return 'land_thumb';
+    if (activeThumbnailUrl) return 'land_thumb';
     if (active && active.reliable && active.ndvi != null) return 'zonal';
     return 'boundary';
-  }, [active, activeThumbnailUrl, boundary]);
+  }, [active, activeThumbnailUrl]);
+
+  const thumbnailClipPath = useMemo(() => polygonCssClipPath(boundary), [boundary]);
 
   const [overlayOpacity, setOverlayOpacity] = useState(0.7);
   const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(1);
@@ -278,31 +293,6 @@ export function NDVIMapView({
       if (map.getSource('ndvi-raster-src')) map.removeSource('ndvi-raster-src');
     };
 
-    // RASTER (micro-tile) — image overlay clipped to its own bbox
-    if (renderMode === 'raster' && active?.source === 'micro_tile') {
-      const tile = active.raw as NDVIMicroTile;
-      const url = tile.ndvi_thumbnail_url;
-      const bb = tile.bbox; // [west, south, east, north]
-      if (url && Array.isArray(bb) && bb.length === 4) {
-        clearRaster();
-        map.addSource('ndvi-raster-src', {
-          type: 'image',
-          url,
-          coordinates: [
-            [bb[0], bb[3]], [bb[2], bb[3]], [bb[2], bb[1]], [bb[0], bb[1]],
-          ],
-        });
-        map.addLayer({
-          id: 'ndvi-raster',
-          type: 'raster',
-          source: 'ndvi-raster-src',
-          paint: { 'raster-opacity': overlayOpacity, 'raster-fade-duration': 200 },
-        });
-        if (map.getLayer('land-fill')) map.setPaintProperty('land-fill', 'fill-opacity', 0.0);
-        return;
-      }
-    }
-
     // LAND-LEVEL THUMBNAIL — actual satellite-derived NDVI PNG for this field,
     // clipped to the boundary bbox. Pure data, no interpolation.
     if (renderMode === 'land_thumb' && activeThumbnailUrl) {
@@ -360,6 +350,22 @@ export function NDVIMapView({
     >
       {/* ───────── Map canvas ───────── */}
       <div ref={mapContainer} className="absolute inset-0" aria-label={t('ndvi.map.aria', 'NDVI satellite heatmap')} />
+
+      {activeThumbnailUrl && (
+        <div className="absolute inset-4 z-[1] pointer-events-none flex items-center justify-center">
+          <div
+            className="relative w-full max-w-[92%] aspect-square overflow-hidden border border-background/70 shadow-2xl"
+            style={{ opacity: overlayOpacity, clipPath: thumbnailClipPath }}
+          >
+            <img
+              src={activeThumbnailUrl}
+              alt={t('ndvi.map.thumbnail_alt', 'Satellite NDVI vegetation thumbnail')}
+              className="h-full w-full object-cover"
+              loading="eager"
+            />
+          </div>
+        </div>
+      )}
 
       {/* ───────── Top toolbar (right) ───────── */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
@@ -423,7 +429,6 @@ export function NDVIMapView({
           className="bg-background/95 shadow-md text-[11px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5"
         >
           <Satellite className="h-3 w-3 text-primary" />
-          {renderMode === 'raster' && t('ndvi.map.mode_raster', 'Per-pixel heatmap')}
           {renderMode === 'land_thumb' && t('ndvi.map.mode_land_thumb', 'Satellite NDVI thumbnail')}
           {renderMode === 'zonal' && t('ndvi.map.mode_zonal', 'Field-level NDVI')}
           {renderMode === 'boundary' && t('ndvi.map.mode_boundary', 'No clean data')}
@@ -567,28 +572,16 @@ export function NDVIMapView({
             <div className="grid grid-cols-3 gap-2 pt-2">
               <Stat
                 label={t('ndvi.map.min', 'Min')}
-                value={
-                  active.source === 'micro_tile'
-                    ? (active.raw as NDVIMicroTile).ndvi_min
-                    : (active.raw as NDVIDataComplete).min_ndvi
-                }
+                value={(active.raw as NDVIDataComplete).min_ndvi ?? (active.raw as NDVIDataComplete).ndvi_min}
               />
               <Stat
                 label={t('ndvi.map.mean', 'Mean')}
-                value={
-                  active.source === 'micro_tile'
-                    ? (active.raw as NDVIMicroTile).ndvi_mean
-                    : (active.raw as NDVIDataComplete).mean_ndvi ?? (active.raw as NDVIDataComplete).ndvi_value
-                }
+                value={(active.raw as NDVIDataComplete).mean_ndvi ?? (active.raw as NDVIDataComplete).ndvi_value}
                 emphasis
               />
               <Stat
                 label={t('ndvi.map.max', 'Max')}
-                value={
-                  active.source === 'micro_tile'
-                    ? (active.raw as NDVIMicroTile).ndvi_max
-                    : (active.raw as NDVIDataComplete).max_ndvi
-                }
+                value={(active.raw as NDVIDataComplete).max_ndvi ?? (active.raw as NDVIDataComplete).ndvi_max}
               />
             </div>
           )}

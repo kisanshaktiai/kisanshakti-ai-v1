@@ -15,6 +15,7 @@ export interface NDVIMetadata {
   health_label?: 'Critical' | 'Moderate' | 'Healthy' | 'Excellent';
   ndvi_trend?: number;
   ndre_trend?: number;
+  ndvi_geotiff_url?: string;
   valid_observations?: number;
 }
 
@@ -28,13 +29,17 @@ export interface NDVIDataComplete {
   savi_value: number | null;
   min_ndvi: number | null;
   max_ndvi: number | null;
+  ndvi_min?: number | null;
+  ndvi_max?: number | null;
   mean_ndvi: number | null;
   median_ndvi: number | null;
   ndvi_std: number | null;
   quality_score: number | null;
   confidence_level: string | null;
   cloud_coverage: number | null;
+  cloud_cover?: number | null;
   coverage_percentage: number | null;
+  coverage?: number | null;
   valid_pixels: number | null;
   total_pixels: number | null;
   satellite_source: string | null;
@@ -54,6 +59,27 @@ export interface NDVIDataComplete {
   is_reliable?: boolean;
 }
 
+export interface NDVIProcessingLog {
+  id: string;
+  land_id: string | null;
+  processing_step: string;
+  step_status: string;
+  completed_at: string | null;
+  created_at: string | null;
+  error_message: string | null;
+  metadata: {
+    thumbnail_url?: string;
+    geotiff_url?: string;
+    health_label?: string;
+  } | null;
+}
+
+export interface NDVIProcessingThumbnail {
+  url: string;
+  date: string;
+  geotiffUrl?: string;
+}
+
 export interface NDVIPrediction {
   days7:  { predicted_ndvi: number; trend_direction: 'improving' | 'declining' | 'stable'; confidence: number };
   days14: { predicted_ndvi: number; trend_direction: 'improving' | 'declining' | 'stable'; confidence: number };
@@ -71,6 +97,10 @@ export interface NDVIAnalysisResult {
   history: NDVIDataComplete[];
   /** Latest raw row, even if unreliable — used to show "stale" banner. */
   latestRaw: NDVIDataComplete | null;
+  /** Latest active processing status from ndvi_processing_logs (last 45 days only). */
+  latestProcessingLog: NDVIProcessingLog | null;
+  /** Fallback thumbnail from successful processing logs, still limited to last 45 days. */
+  processingThumbnail: NDVIProcessingThumbnail | null;
   prediction: NDVIPrediction | null;
   isLoading: boolean;
   error: Error | null;
@@ -136,16 +166,33 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['ndvi-analysis', landId, tenantId],
     queryFn: async () => {
-      if (!landId || !tenantId) return { current: null, history: [], latestRaw: null };
+      if (!landId || !tenantId) {
+        return { current: null, history: [], latestRaw: null, latestProcessingLog: null, processingThumbnail: null };
+      }
       const client = supabaseWithAuth(farmerId, tenantId);
+      const cutoffDate = new Date(Date.now() - 45 * 86_400_000);
+      const cutoffDay = cutoffDate.toISOString().slice(0, 10);
 
-      const { data: rows, error: qErr } = await client
-        .from('ndvi_data')
-        .select('*')
-        .eq('land_id', landId)
-        .eq('tenant_id', tenantId)
-        .order('date', { ascending: false })
-        .limit(60);
+      const [ndviResult, logResult] = await Promise.all([
+        client
+          .from('ndvi_data')
+          .select('*')
+          .eq('land_id', landId)
+          .eq('tenant_id', tenantId)
+          .gte('date', cutoffDay)
+          .order('date', { ascending: false })
+          .limit(60),
+        client
+          .from('ndvi_processing_logs')
+          .select('id, land_id, processing_step, step_status, completed_at, created_at, error_message, metadata')
+          .eq('land_id', landId)
+          .eq('tenant_id', tenantId)
+          .gte('created_at', cutoffDate.toISOString())
+          .order('created_at', { ascending: false })
+          .limit(30),
+      ]);
+
+      const { data: rows, error: qErr } = ndviResult;
       if (qErr) throw qErr;
 
       const parsed = (rows || []).map((item: any) => {
@@ -163,8 +210,27 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
       // (UI surfaces a "low confidence" banner via hasStale).
       const current = reliable[0] || latestRaw;
       const history = reliable.length > 0 ? reliable : parsed;
+      const logs = ((logResult.data || []) as any[]).map((item) => ({
+        ...item,
+        metadata: item.metadata
+          ? (typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata)
+          : null,
+      })) as NDVIProcessingLog[];
+      const latestProcessingLog = logs[0] || null;
+      const successfulThumb = logs.find((log) =>
+        log.processing_step === 'PROCESS_END'
+        && log.step_status === 'completed'
+        && !!log.metadata?.thumbnail_url,
+      );
+      const processingThumbnail = successfulThumb?.metadata?.thumbnail_url
+        ? {
+            url: successfulThumb.metadata.thumbnail_url,
+            date: successfulThumb.completed_at || successfulThumb.created_at || cutoffDay,
+            geotiffUrl: successfulThumb.metadata.geotiff_url,
+          }
+        : null;
 
-      return { current, history, latestRaw };
+      return { current, history, latestRaw, latestProcessingLog, processingThumbnail };
     },
     enabled: !!landId && !!farmerId && !!tenantId,
     staleTime: SIX_HOURS,
@@ -178,6 +244,8 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
     current: data?.current ?? null,
     history: data?.history ?? [],
     latestRaw: data?.latestRaw ?? null,
+    latestProcessingLog: data?.latestProcessingLog ?? null,
+    processingThumbnail: data?.processingThumbnail ?? null,
     prediction,
     isLoading,
     error: error as Error | null,
