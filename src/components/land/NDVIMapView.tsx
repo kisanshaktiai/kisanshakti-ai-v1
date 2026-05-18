@@ -36,6 +36,7 @@ import {
   formatNDVI,
   NDVI_INTERPRETATION,
 } from '@/lib/ndviScience';
+import { SUPABASE_CONFIG } from '@/config/supabase';
 import { useNDVIAnalysis, useNDVIMicroTiles, NDVIDataComplete, NDVIMicroTile } from '@/hooks/useNDVIAnalysis';
 
 interface NDVIMapViewProps {
@@ -53,6 +54,16 @@ interface NDVIMapViewProps {
 }
 
 type RenderMode = 'raster' | 'land_thumb' | 'zonal' | 'boundary';
+
+function normalizeNdviAssetUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (/^https?:\/\//i.test(url)) return url;
+  if (url.startsWith('/storage/v1/')) return `${SUPABASE_CONFIG.URL}${url}`;
+  if (url.startsWith('/thumbnails/ndvi/')) {
+    return `${SUPABASE_CONFIG.URL}/storage/v1/object/public/ndvi-thumbnails/${url.split('/').pop()}`;
+  }
+  return null;
+}
 
 const ESRI_SAT_STYLE = {
   version: 8 as const,
@@ -109,7 +120,7 @@ export function NDVIMapView({
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MlMap | null>(null);
 
-  const { current, history, latestRaw } = useNDVIAnalysis(landId);
+  const { current, history, latestRaw, processingThumbnail } = useNDVIAnalysis(landId);
   const { data: tiles = [] } = useNDVIMicroTiles(landId);
 
   // Build the chronological list of acquisitions farmers can scrub through.
@@ -160,17 +171,18 @@ export function NDVIMapView({
   const activeThumbnailUrl: string | null = useMemo(() => {
     if (active?.source === 'ndvi_data') {
       const r = active.raw as NDVIDataComplete;
-      if (r.image_url && /^https?:\/\//.test(r.image_url)) return r.image_url;
+      const rowUrl = normalizeNdviAssetUrl(r.image_url);
+      if (rowUrl) return rowUrl;
     }
-    return landThumbnailUrl ?? null;
-  }, [active, landThumbnailUrl]);
+    return normalizeNdviAssetUrl(processingThumbnail?.url) ?? normalizeNdviAssetUrl(landThumbnailUrl);
+  }, [active, landThumbnailUrl, processingThumbnail]);
 
   // Decide render mode for the active acquisition.
   // Priority: micro-tile pixel raster → per-date ndvi_data thumbnail (clipped to boundary bbox)
   //         → zonal fill (boundary painted with mean NDVI color) → boundary only.
   const renderMode: RenderMode = useMemo(() => {
-    if (active?.source === 'micro_tile' && (active.raw as NDVIMicroTile).ndvi_thumbnail_url) return 'raster';
-    if (activeThumbnailUrl && boundary.length >= 3) return 'land_thumb';
+    if (active?.source === 'micro_tile' && normalizeNdviAssetUrl((active.raw as NDVIMicroTile).ndvi_thumbnail_url)) return 'raster';
+    if (activeThumbnailUrl) return 'land_thumb';
     if (active && active.reliable && active.ndvi != null) return 'zonal';
     return 'boundary';
   }, [active, activeThumbnailUrl, boundary]);
