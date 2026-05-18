@@ -102,6 +102,8 @@ export function NDVIMapView({
   centerLng,
   areaAcres,
   currentCrop,
+  landThumbnailUrl,
+  landThumbnailDate,
 }: NDVIMapViewProps) {
   const { t } = useTranslation();
   const mapContainer = useRef<HTMLDivElement | null>(null);
