@@ -293,31 +293,6 @@ export function NDVIMapView({
       if (map.getSource('ndvi-raster-src')) map.removeSource('ndvi-raster-src');
     };
 
-    // RASTER (micro-tile) — image overlay clipped to its own bbox
-    if (renderMode === 'raster' && active?.source === 'micro_tile') {
-      const tile = active.raw as NDVIMicroTile;
-      const url = tile.ndvi_thumbnail_url;
-      const bb = tile.bbox; // [west, south, east, north]
-      if (url && Array.isArray(bb) && bb.length === 4) {
-        clearRaster();
-        map.addSource('ndvi-raster-src', {
-          type: 'image',
-          url,
-          coordinates: [
-            [bb[0], bb[3]], [bb[2], bb[3]], [bb[2], bb[1]], [bb[0], bb[1]],
-          ],
-        });
-        map.addLayer({
-          id: 'ndvi-raster',
-          type: 'raster',
-          source: 'ndvi-raster-src',
-          paint: { 'raster-opacity': overlayOpacity, 'raster-fade-duration': 200 },
-        });
-        if (map.getLayer('land-fill')) map.setPaintProperty('land-fill', 'fill-opacity', 0.0);
-        return;
-      }
-    }
-
     // LAND-LEVEL THUMBNAIL — actual satellite-derived NDVI PNG for this field,
     // clipped to the boundary bbox. Pure data, no interpolation.
     if (renderMode === 'land_thumb' && activeThumbnailUrl) {
@@ -438,7 +413,6 @@ export function NDVIMapView({
           className="bg-background/95 shadow-md text-[11px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5"
         >
           <Satellite className="h-3 w-3 text-primary" />
-          {renderMode === 'raster' && t('ndvi.map.mode_raster', 'Per-pixel heatmap')}
           {renderMode === 'land_thumb' && t('ndvi.map.mode_land_thumb', 'Satellite NDVI thumbnail')}
           {renderMode === 'zonal' && t('ndvi.map.mode_zonal', 'Field-level NDVI')}
           {renderMode === 'boundary' && t('ndvi.map.mode_boundary', 'No clean data')}
