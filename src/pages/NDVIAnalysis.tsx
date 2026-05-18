@@ -375,6 +375,8 @@ export default function NDVIAnalysis() {
               centerLng={centerPoint.lng}
               areaAcres={selectedLand?.area_acres}
               currentCrop={selectedLand?.current_crop}
+              landThumbnailUrl={selectedLand?.ndvi_thumbnail_url ?? null}
+              landThumbnailDate={selectedLand?.last_ndvi_calculation ?? null}
             />
           )}
         </TabsContent>
