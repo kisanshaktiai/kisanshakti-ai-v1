@@ -572,28 +572,16 @@ export function NDVIMapView({
             <div className="grid grid-cols-3 gap-2 pt-2">
               <Stat
                 label={t('ndvi.map.min', 'Min')}
-                value={
-                  active.source === 'micro_tile'
-                    ? (active.raw as NDVIMicroTile).ndvi_min
-                    : (active.raw as NDVIDataComplete).min_ndvi
-                }
+                value={(active.raw as NDVIDataComplete).min_ndvi ?? (active.raw as NDVIDataComplete).ndvi_min}
               />
               <Stat
                 label={t('ndvi.map.mean', 'Mean')}
-                value={
-                  active.source === 'micro_tile'
-                    ? (active.raw as NDVIMicroTile).ndvi_mean
-                    : (active.raw as NDVIDataComplete).mean_ndvi ?? (active.raw as NDVIDataComplete).ndvi_value
-                }
+                value={(active.raw as NDVIDataComplete).mean_ndvi ?? (active.raw as NDVIDataComplete).ndvi_value}
                 emphasis
               />
               <Stat
                 label={t('ndvi.map.max', 'Max')}
-                value={
-                  active.source === 'micro_tile'
-                    ? (active.raw as NDVIMicroTile).ndvi_max
-                    : (active.raw as NDVIDataComplete).max_ndvi
-                }
+                value={(active.raw as NDVIDataComplete).max_ndvi ?? (active.raw as NDVIDataComplete).ndvi_max}
               />
             </div>
           )}
