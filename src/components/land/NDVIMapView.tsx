@@ -351,6 +351,22 @@ export function NDVIMapView({
       {/* ───────── Map canvas ───────── */}
       <div ref={mapContainer} className="absolute inset-0" aria-label={t('ndvi.map.aria', 'NDVI satellite heatmap')} />
 
+      {activeThumbnailUrl && (
+        <div className="absolute inset-4 z-[1] pointer-events-none flex items-center justify-center">
+          <div
+            className="relative w-full max-w-[92%] aspect-square overflow-hidden border border-background/70 shadow-2xl"
+            style={{ opacity: overlayOpacity, clipPath: thumbnailClipPath }}
+          >
+            <img
+              src={activeThumbnailUrl}
+              alt={t('ndvi.map.thumbnail_alt', 'Satellite NDVI vegetation thumbnail')}
+              className="h-full w-full object-cover"
+              loading="eager"
+            />
+          </div>
+        </div>
+      )}
+
       {/* ───────── Top toolbar (right) ───────── */}
       <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
         <Button
