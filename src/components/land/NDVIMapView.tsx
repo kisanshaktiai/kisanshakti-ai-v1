@@ -229,35 +229,24 @@ export function NDVIMapView({
     const map = mapRef.current;
     if (!map) return;
 
-    // ZONAL — paint the boundary fill with the standard NDVI color
-    if (renderMode === 'zonal' && active?.ndvi != null) {
-      const color = ndviToColor(active.ndvi);
-      if (map.getLayer('land-fill')) {
-        map.setPaintProperty('land-fill', 'fill-color', color);
-        map.setPaintProperty('land-fill', 'fill-opacity', overlayOpacity);
-      }
-      // Remove any raster layer if previously added
+    // Helper: remove any previously added raster overlay
+    const clearRaster = () => {
       if (map.getLayer('ndvi-raster')) map.removeLayer('ndvi-raster');
       if (map.getSource('ndvi-raster-src')) map.removeSource('ndvi-raster-src');
-      return;
-    }
+    };
 
-    // RASTER — image overlay clipped to bbox
+    // RASTER (micro-tile) — image overlay clipped to its own bbox
     if (renderMode === 'raster' && active?.source === 'micro_tile') {
       const tile = active.raw as NDVIMicroTile;
       const url = tile.ndvi_thumbnail_url;
-      const bb = tile.bbox; // expecting [west, south, east, north]
+      const bb = tile.bbox; // [west, south, east, north]
       if (url && Array.isArray(bb) && bb.length === 4) {
-        if (map.getLayer('ndvi-raster')) map.removeLayer('ndvi-raster');
-        if (map.getSource('ndvi-raster-src')) map.removeSource('ndvi-raster-src');
+        clearRaster();
         map.addSource('ndvi-raster-src', {
           type: 'image',
           url,
           coordinates: [
-            [bb[0], bb[3]], // top-left  (west, north)
-            [bb[2], bb[3]], // top-right (east, north)
-            [bb[2], bb[1]], // bottom-right
-            [bb[0], bb[1]], // bottom-left
+            [bb[0], bb[3]], [bb[2], bb[3]], [bb[2], bb[1]], [bb[0], bb[1]],
           ],
         });
         map.addLayer({
@@ -266,20 +255,48 @@ export function NDVIMapView({
           source: 'ndvi-raster-src',
           paint: { 'raster-opacity': overlayOpacity, 'raster-fade-duration': 200 },
         });
-        // Keep the boundary outline visible but unfilled
-        if (map.getLayer('land-fill')) {
-          map.setPaintProperty('land-fill', 'fill-opacity', 0.0);
-        }
+        if (map.getLayer('land-fill')) map.setPaintProperty('land-fill', 'fill-opacity', 0.0);
         return;
       }
     }
 
-    // BOUNDARY ONLY — no fill
-    if (map.getLayer('land-fill')) {
-      map.setPaintProperty('land-fill', 'fill-opacity', 0.0);
+    // LAND-LEVEL THUMBNAIL — actual satellite-derived NDVI PNG for this field,
+    // clipped to the boundary bbox. Pure data, no interpolation.
+    if (renderMode === 'land_thumb' && landThumbnailUrl) {
+      const b = computeBounds(boundary) as [[number, number], [number, number]] | null;
+      if (b) {
+        const [[w, s], [e, n]] = b;
+        clearRaster();
+        map.addSource('ndvi-raster-src', {
+          type: 'image',
+          url: landThumbnailUrl,
+          coordinates: [[w, n], [e, n], [e, s], [w, s]],
+        });
+        map.addLayer({
+          id: 'ndvi-raster',
+          type: 'raster',
+          source: 'ndvi-raster-src',
+          paint: { 'raster-opacity': overlayOpacity, 'raster-fade-duration': 200 },
+        });
+        if (map.getLayer('land-fill')) map.setPaintProperty('land-fill', 'fill-opacity', 0.0);
+        return;
+      }
     }
-    if (map.getLayer('ndvi-raster')) map.removeLayer('ndvi-raster');
-    if (map.getSource('ndvi-raster-src')) map.removeSource('ndvi-raster-src');
+
+    // ZONAL — paint boundary fill with mean NDVI color
+    if (renderMode === 'zonal' && active?.ndvi != null) {
+      const color = ndviToColor(active.ndvi);
+      if (map.getLayer('land-fill')) {
+        map.setPaintProperty('land-fill', 'fill-color', color);
+        map.setPaintProperty('land-fill', 'fill-opacity', overlayOpacity);
+      }
+      clearRaster();
+      return;
+    }
+
+    // BOUNDARY ONLY
+    if (map.getLayer('land-fill')) map.setPaintProperty('land-fill', 'fill-opacity', 0.0);
+    clearRaster();
   }
 
   /* ────────────────── Sheet snap points ────────────────── */
