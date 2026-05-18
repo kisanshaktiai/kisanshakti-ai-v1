@@ -266,7 +266,7 @@ export function NDVIMapView({
     }
     applyRender();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderMode, active, overlayOpacity, landThumbnailUrl, boundary]);
+  }, [renderMode, active, overlayOpacity, activeThumbnailUrl, boundary]);
 
   function applyRender() {
     const map = mapRef.current;
