@@ -223,7 +223,7 @@ export function NDVIMapView({
     }
     applyRender();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderMode, active, overlayOpacity]);
+  }, [renderMode, active, overlayOpacity, landThumbnailUrl, boundary]);
 
   function applyRender() {
     const map = mapRef.current;
