@@ -198,6 +198,34 @@ button, a, [role="button"], input, select, textarea, label,
     --gradient-success: linear-gradient(135deg, hsl(142 76% 45%), hsl(180 100% 45%));
     --gradient-warning: linear-gradient(135deg, hsl(38 95% 58%), hsl(45 95% 55%));
     --gradient-danger: linear-gradient(135deg, hsl(0 85% 60%), hsl(38 95% 58%));
+
+    /* ============================================
+       Market Page — Warm Earthy Palette (scoped)
+       Centralized semantic tokens used by /app/market bento UI.
+       Terracotta + Sage + Cream — agricultural, warm, trustworthy.
+       ============================================ */
+    --market-bg: 36 38% 96%;              /* sand cream #faf8f5 */
+    --market-bg-soft: 30 40% 92%;
+    --market-surface: 0 0% 100%;
+    --market-surface-warm: 30 45% 97%;
+    --market-ink: 20 25% 14%;             /* deep cocoa text */
+    --market-ink-soft: 20 12% 38%;
+    --market-line: 28 30% 86%;
+
+    --market-primary: 13 53% 53%;         /* terracotta #c4654a */
+    --market-primary-foreground: 0 0% 100%;
+    --market-primary-soft: 22 70% 70%;    /* warm clay #e8a87c */
+
+    --market-accent: 95 22% 56%;          /* sage #87a878 */
+    --market-accent-foreground: 0 0% 100%;
+    --market-accent-soft: 95 30% 86%;
+
+    --market-up: 95 35% 40%;              /* price up — sage deep */
+    --market-down: 13 60% 48%;            /* price down — terracotta deep */
+    --market-warn: 35 85% 55%;            /* amber */
+    --market-gold: 42 75% 55%;
+
+    --market-shadow: 20 30% 25%;          /* warm shadow base */
     --gradient-cyber: linear-gradient(135deg, hsl(180 100% 45%), hsl(210 100% 56%), hsl(270 75% 60%));
     
     /* Action Button Gradients - 2030 UI */
