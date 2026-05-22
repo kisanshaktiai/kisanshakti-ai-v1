@@ -10,6 +10,7 @@ import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
 import { AppBootGate } from '@/components/subscription/AppBootGate';
+import { FeatureRouteGate } from '@/components/subscription/FeatureRouteGate';
 import { BrandBlock } from '@/components/header/BrandBlock';
 import { StatusPill } from '@/components/header/StatusPill';
 import { SpeakPageButton } from '@/components/header/SpeakPageButton';
@@ -83,7 +84,9 @@ export function AppLayout() {
               }
             >
               <AppBootGate>
-                <Outlet />
+                <FeatureRouteGate>
+                  <Outlet />
+                </FeatureRouteGate>
               </AppBootGate>
             </main>
 
