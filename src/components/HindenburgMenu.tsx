@@ -84,6 +84,7 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [menuItems, setMenuItems] = useState(defaultMenuItems);
   const [activeCategory, setActiveCategory] = useState('all');
+  const { isReady, canUse, farmer } = useEntitlements();
 
   // Load tenant-specific menu items from database
   useEffect(() => {
@@ -92,12 +93,32 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
     setMenuItems(defaultMenuItems);
   }, [tenant]);
 
+  const isItemLocked = (path: string): boolean => {
+    if (!isReady) return false;
+    const code = PATH_TO_ENTITLEMENT[path];
+    if (!code) return false;
+    return !canUse(code).allowed;
+  };
+
   const handleItemClick = (item: MenuItemType) => {
     if (item.comingSoon) {
       toast({
         title: t('common.comingSoon', 'Coming Soon'),
         description: t('common.featureInDevelopment', 'This feature is currently in development'),
       });
+      return;
+    }
+    // Plan-gating: locked items route to subscription page instead of feature.
+    if (isItemLocked(item.path)) {
+      toast({
+        title: t('subscription.gate.feature_disabled.title', 'Premium feature'),
+        description: t('subscription.gate.feature_disabled.body', {
+          defaultValue: 'Upgrade your plan to unlock this feature.',
+          plan: farmer?.plan_name ?? 'Free',
+        }),
+      });
+      navigate('/app/subscription');
+      onClose();
       return;
     }
     navigate(item.path);
