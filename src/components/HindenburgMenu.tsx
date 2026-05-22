@@ -216,6 +216,7 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
           <div className="grid grid-cols-4 gap-3">
             {filteredItems.map((item) => {
               const Icon = item.icon;
+              const locked = isItemLocked(item.path);
               return (
                 <button
                   key={item.id}
@@ -226,16 +227,18 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
                     "transition-all duration-300 group",
                     "hover:scale-105 active:scale-95",
                     "min-h-[90px]",
-                    item.comingSoon && "opacity-60"
+                    item.comingSoon && "opacity-60",
+                    locked && "opacity-75"
                   )}
+                  aria-disabled={locked}
                 >
                   {/* Badge */}
-                  {item.isNew && !item.comingSoon && (
+                  {item.isNew && !item.comingSoon && !locked && (
                     <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[8px] font-bold bg-accent text-white rounded-full animate-pulse">
                       NEW
                     </span>
                   )}
-                  {item.isPremium && (
+                  {item.isPremium && !locked && (
                     <span className="absolute -top-1 -right-1 px-1.5 py-0.5 text-[8px] font-bold bg-gradient-to-r from-primary to-accent text-white rounded-full">
                       PRO
                     </span>
@@ -245,6 +248,11 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
                       SOON
                     </span>
                   )}
+                  {locked && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-background border border-border flex items-center justify-center shadow-sm">
+                      <Lock className="w-2.5 h-2.5 text-muted-foreground" />
+                    </span>
+                  )}
 
                   {/* Icon Container */}
                   <div className={cn(
@@ -252,13 +260,15 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
                     "bg-gradient-to-br from-primary/10 to-accent/10",
                     "group-hover:from-primary/20 group-hover:to-accent/20",
                     "transition-all duration-300",
-                    item.comingSoon && "from-muted/20 to-muted/10 group-hover:from-muted/20 group-hover:to-muted/10"
+                    item.comingSoon && "from-muted/20 to-muted/10 group-hover:from-muted/20 group-hover:to-muted/10",
+                    locked && "grayscale"
                   )}>
                     <Icon className={cn(
                       "w-6 h-6 group-hover:scale-110 transition-transform",
                       item.comingSoon ? "text-muted-foreground" : "text-primary"
                     )} />
                   </div>
+
 
                   {/* Label */}
                   <span className={cn(
