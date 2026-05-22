@@ -88,7 +88,7 @@ export function MarketHome({ cartItemCount, onCartClick }: MarketHomeProps) {
             crop={primaryCrop}
             district={district}
             land={primaryLand}
-            onViewAll={() => navigate('/app/market/prices')}
+            onViewAll={() => navigate('/app/market?view=prices')}
           />
         </motion.div>
 
@@ -97,12 +97,12 @@ export function MarketHome({ cartItemCount, onCartClick }: MarketHomeProps) {
           <NearbyMandisTile
             markets={intel.nearbyMarkets}
             hasLocation={!!(primaryLand?.latitude && primaryLand?.longitude)}
-            onClick={() => navigate('/app/market/prices?tab=nearby')}
+            onClick={() => navigate('/app/market?view=prices')}
           />
           <PriceTrendTile
             crop={primaryCrop}
             district={district}
-            onClick={() => navigate('/app/market/prices?tab=trend')}
+            onClick={() => navigate('/app/market?view=prices')}
           />
         </motion.div>
 
@@ -111,10 +111,10 @@ export function MarketHome({ cartItemCount, onCartClick }: MarketHomeProps) {
           <ShopInputsTile
             locked={!marketplaceAllowed}
             onClick={() =>
-              marketplaceAllowed ? navigate('/app/market/shop') : navigate('/app/subscription')
+              marketplaceAllowed ? navigate('/app/market?view=shop') : navigate('/app/subscription')
             }
           />
-          <MyOrdersTile onClick={() => navigate('/app/market/orders')} />
+          <MyOrdersTile onClick={() => navigate('/app/market?view=orders')} />
         </motion.div>
 
         {/* Sell wide CTA */}
@@ -122,7 +122,7 @@ export function MarketHome({ cartItemCount, onCartClick }: MarketHomeProps) {
           <SellProduceTile
             locked={!marketplaceAllowed}
             onClick={() =>
-              marketplaceAllowed ? navigate('/app/market/sell') : navigate('/app/subscription')
+              marketplaceAllowed ? navigate('/app/market?view=sell') : navigate('/app/subscription')
             }
           />
         </motion.div>
