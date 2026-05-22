@@ -140,6 +140,30 @@ export default {
           'bg-mid': "hsl(var(--community-bg-mid))",
           'bg-end': "hsl(var(--community-bg-end))",
         },
+        // Market page — Warm Earthy palette (scoped to /app/market bento)
+        market: {
+          bg: "hsl(var(--market-bg))",
+          'bg-soft': "hsl(var(--market-bg-soft))",
+          surface: "hsl(var(--market-surface))",
+          'surface-warm': "hsl(var(--market-surface-warm))",
+          ink: "hsl(var(--market-ink))",
+          'ink-soft': "hsl(var(--market-ink-soft))",
+          line: "hsl(var(--market-line))",
+          primary: {
+            DEFAULT: "hsl(var(--market-primary))",
+            foreground: "hsl(var(--market-primary-foreground))",
+            soft: "hsl(var(--market-primary-soft))",
+          },
+          accent: {
+            DEFAULT: "hsl(var(--market-accent))",
+            foreground: "hsl(var(--market-accent-foreground))",
+            soft: "hsl(var(--market-accent-soft))",
+          },
+          up: "hsl(var(--market-up))",
+          down: "hsl(var(--market-down))",
+          warn: "hsl(var(--market-warn))",
+          gold: "hsl(var(--market-gold))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
