@@ -29288,6 +29288,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      expire_farmer_subscriptions: { Args: never; Returns: Json }
       expire_old_invites: { Args: never; Returns: number }
       extract_numeric_quantity: {
         Args: { resources: Json; task_type: string }
