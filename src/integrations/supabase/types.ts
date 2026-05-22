@@ -23237,6 +23237,57 @@ export type Database = {
           },
         ]
       }
+      subscription_reminder_log: {
+        Row: {
+          bulk_operation_id: string | null
+          channel: string
+          created_at: string
+          created_by: string | null
+          error: string | null
+          farmer_id: string
+          id: string
+          metadata: Json
+          sent_at: string
+          status: string
+          subscription_id: string | null
+          template_id: string | null
+          template_name: string | null
+          tenant_id: string
+        }
+        Insert: {
+          bulk_operation_id?: string | null
+          channel: string
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          farmer_id: string
+          id?: string
+          metadata?: Json
+          sent_at?: string
+          status?: string
+          subscription_id?: string | null
+          template_id?: string | null
+          template_name?: string | null
+          tenant_id: string
+        }
+        Update: {
+          bulk_operation_id?: string | null
+          channel?: string
+          created_at?: string
+          created_by?: string | null
+          error?: string | null
+          farmer_id?: string
+          id?: string
+          metadata?: Json
+          sent_at?: string
+          status?: string
+          subscription_id?: string | null
+          template_id?: string | null
+          template_name?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       subscription_renewals: {
         Row: {
           amount: number
@@ -29637,6 +29688,10 @@ export type Database = {
       get_tenant_revenue: {
         Args: { p_date_from?: string; p_date_to?: string; p_tenant_id: string }
         Returns: number
+      }
+      get_tenant_subscription_lifecycle_counts: {
+        Args: { p_tenant_id: string }
+        Returns: Json
       }
       get_tenant_tiles: {
         Args: { p_tenant_id: string }
