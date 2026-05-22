@@ -27,7 +27,7 @@ interface MarketHomeProps {
 export function MarketHome({ cartItemCount, onCartClick }: MarketHomeProps) {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { data: lands = [] } = useLands();
+  const { lands = [] } = useLands();
   const { canUse } = useEntitlements();
 
   const primaryLand = useMemo(
