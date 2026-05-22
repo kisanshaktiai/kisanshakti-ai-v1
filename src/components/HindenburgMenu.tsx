@@ -1,16 +1,27 @@
 import { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Lock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { useTenant } from '@/contexts/TenantContext';
 import { toast } from '@/hooks/use-toast';
+import { useEntitlements } from '@/hooks/useEntitlements';
 import {
   Home, MapPin, Cloud, Users, Bot, TrendingUp, User,
   Calendar, FileText, Award, Bell, Settings, HelpCircle,
   Wallet, BarChart3, Sprout, Tractor, Droplets, Sun,
   MessageSquare, Store, BookOpen, Shield, Phone, Mail, Crown
 } from 'lucide-react';
+
+// Map menu paths to entitlement feature codes (SSOT: resolve_farmer_entitlements)
+const PATH_TO_ENTITLEMENT: Record<string, string> = {
+  '/app/chat': 'ai_chat',
+  '/app/ai-chat': 'ai_chat',
+  '/app/market': 'marketplace',
+  '/app/weather': 'weather_forecast',
+  '/app/community': 'community',
+  '/app/ndvi': 'ndvi',
+};
 
 interface MenuItemType {
   id: string;
