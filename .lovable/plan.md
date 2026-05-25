@@ -1,69 +1,63 @@
-# Market Page — 2030-Ready Mobile Redesign
 
-Redesign `/app/market` as a farmer-first bento-grid experience built on a centralized "Warm Earthy" agricultural theme. Lead with the farmer's own crop price and an AI Sell/Wait decision. Keep all existing data flows, subscription gates, and business logic untouched — this is a presentation-layer rebuild.
+## Root cause (verified)
 
-## Design direction
+The bug has three independent layers, all confirmed against the live DB:
 
-- Palette (added as semantic tokens in `index.css` + `tailwind.config.ts`):
-  - Terracotta `#c4654a` → primary (action, prices up)
-  - Sage `#87a878` → secondary (safe, growth)
-  - Sand cream `#faf8f5` → background surface
-  - Warm clay `#e8a87c` → accent / highlights
-  - Plus semantic `success` (sage), `warning` (amber), `danger` (deep terracotta)
-- Typography: keep current display font, bump base size to 16px, headings 22–28px for outdoor readability.
-- Tap targets ≥48px; opaque cards (no backdrop-blur, per project core rule); rounded-3xl; soft warm shadows.
-- Bilingual labels everywhere (Devanagari first, English secondary) — farmer-friendly, low-literacy safe.
+**1. No expiration job.** `farmer_subscriptions` has 27 rows; 24 of them have `end_date < now()` but `status = 'active'`. There is no `pg_cron` job to flip expired rows to `status = 'expired'` or downgrade them to Free. Existing cron jobs cover NDVI, tiles, proactive evaluator, governance — nothing for billing.
 
-## New layout (bento, mobile-first)
+**2. `resolve_farmer_entitlements` (SSOT RPC) silently grants everything when no active plan exists.** The query at lines 129-138 only selects a subscription where status is active/trial/trialing AND end_date in the future (or expired+in-grace). When the row is expired and out of grace, `_farmer_sub_plan_id` is `NULL`. The features loop then runs `LEFT JOIN tenant_farmer_plan_features … AND tfpf.plan_id = _farmer_sub_plan_id`, which produces NULL rows, and the `enabled` field falls through `COALESCE(..., tfpf.enabled, tfg.enabled, true)` to `true`. Result: expired farmers get **every feature enabled with unlimited quota** — the exact symptom reported.
 
-```text
-+--------------------------------------------+
-| Greeting + location + voice mic            |  Sticky header
-+--------------------------------------------+
-| HERO: My Crop Today                        |  2x full-width
-|  Sugarcane • Nashik Mandi                  |
-|  ₹3,250/qtl   +4.2% ↑                      |
-|  [ SELL NOW ]  (or WAIT / HOLD)            |
-|  AI reasoning chip + confidence            |
-+--------------------------------------------+
-| Nearby Mandis   | Price Trend              |  2 tiles
-| 5 within 50km   | 7-day sparkline          |
-+--------------------------------------------+
-| Shop Inputs     | My Orders                |  2 tiles
-| Seeds/Fert/Pest | 2 active                 |
-+--------------------------------------------+
-| Sell My Produce (wide CTA tile)            |  Full width
-+--------------------------------------------+
-| All Crop Prices ticker (horizontal scroll) |
-+--------------------------------------------+
+**3. Client `AppBootGate` only blocks on `tenant.suspended`** and `useEntitlements` only marks features unallowed via `quota_exceeded`/`feature_disabled`. Because the RPC returns `enabled:true` for all features (bug #2), the client never sees the farmer as downgraded. There is no "farmer subscription expired → force Free plan" branch on the client.
+
+## Fix plan
+
+### A. Database — auto-downgrade on expiry
+
+Migration that:
+
+1. Creates `expire_farmer_subscriptions()` SECURITY DEFINER function that:
+   - For rows with `status IN ('active','trial','trialing')` and `end_date < now()` and `(grace_period_ends_at IS NULL OR grace_period_ends_at < now())` → set `status='expired'`, stamp `updated_at`.
+   - For rows already `status='expired'` with grace ended (or null) → insert a new row pointing the farmer at the Free plan (`e1c484ff-ad87-4f09-a174-8eec05981ebb`) with `status='active'`, `end_date=NULL`, and log to `subscription_change_history`.
+   - Idempotent: skip farmers who already have an active Free-plan row.
+2. Schedules it hourly via `pg_cron` (`0 * * * *`).
+3. Runs it once inline to clean the current 24 stale rows.
+
+### B. Database — fix `resolve_farmer_entitlements` to fall back to Free
+
+Replace the function so that:
+
+- If no eligible farmer subscription row is found, look up the Free plan (`name='Free' AND is_active`) and use **its** `id`, `features`, `limits` as the baseline.
+- The features loop's `COALESCE(..., true)` fallback is changed to `COALESCE(..., (_features ? f.code))` — i.e. a feature is only enabled when explicitly granted by tenant master / tenant plan override / tenant grant / plan base. No more "default true".
+- Quotas similarly fall back to the Free plan's `limits` JSON instead of NULL (NULL today means "unlimited" on the client).
+- Return `farmer.status = 'expired_downgraded'` and `farmer.plan_name = 'Free'` so the UI can show a banner.
+
+### C. Frontend — defense in depth
+
+- `src/hooks/useEntitlements.ts`: treat `data.farmer.status === 'expired'` (and not in grace) as a hard signal — `canUse()` returns `allowed:false, reason:'subscription_expired'` for any feature not in the Free plan's allowlist (derived from the RPC payload, no hardcoding).
+- `src/components/subscription/AppBootGate.tsx`: in addition to `tenant.suspended`, when `farmer.status === 'expired'` and not in grace, render `SubscriptionStatusBanner` at the top (already exists) and continue rendering children — gating happens per-feature.
+- `src/contexts/SubscriptionContext.tsx` `hasFeature()`: stop returning `true` while loading once we have stale cached data showing expired — currently it grants optimistic access which masks the downgrade after a refresh.
+- `src/pages/AIChat.tsx` and `LandLimitGuard`: already route to `/app/subscription` when `canUse` is false — no change needed once the hook is fixed.
+
+### D. Verification
+
+After migration:
+
+```sql
+SELECT status, COUNT(*) FROM farmer_subscriptions GROUP BY status;
+-- expect: active (Free plan rows), expired (old rows), zero "active + end_date<now"
+SELECT resolve_farmer_entitlements('<expired-farmer>','<tenant>')->'farmer'->>'plan_name';
+-- expect: "Free"
+SELECT resolve_farmer_entitlements('<expired-farmer>','<tenant>')->'features'->'ai_chat'->>'enabled';
+-- expect: matches Free plan setting, not "true"
 ```
 
-Tabs (Prices / Shop / Orders / Sell) become deep-link routes opened from tiles instead of a top tab bar — home stays a single scrollable bento.
+Then reload the mobile app as one of the 24 affected farmers and confirm AI Chat / land-add / premium tiles show the upgrade prompt instead of working.
 
-## What gets built
+## Files touched
 
-1. **Theme tokens** — add Warm Earthy HSL tokens to `src/index.css` and `tailwind.config.ts` (semantic only; no hex in components).
-2. **`MarketHome.tsx`** — new bento landing component containing the tiles above.
-3. **Tile components** (`src/components/marketplace/tiles/`):
-   - `MyCropPriceHero` (reuses `useMarketPriceIntelligence` + farmer's primary land/crop)
-   - `NearbyMandisTile`
-   - `PriceTrendTile` (mini sparkline via recharts already in project)
-   - `ShopInputsTile`, `MyOrdersTile`, `SellProduceTile`
-   - `PriceTickerStrip` (horizontal scroll of top crops)
-4. **`Market.tsx` refactor** — render `MarketHome` by default; existing Shop/Orders/Sell views moved to sub-routes (`/app/market/shop`, `/orders`, `/sell`) reusing current `ProductGrid`, `OrderManagement`, `SellerDashboard` components untouched.
-5. **`MarketplaceHeader`** — replaced by a slimmer farmer header with location, language chip, cart icon, and voice mic.
-6. **Empty/loading states** — bilingual `EmptyStateCard` reused; skeletons updated to bento shape.
-7. **Subscription gating** — `marketplace` and `weather_forecast`/`market` entitlements already enforced by `FeatureRouteGate`; locked tiles show a lock badge linking to `/app/subscription`.
+- new migration: expire job + cron + RPC replacement
+- `src/hooks/useEntitlements.ts`
+- `src/contexts/SubscriptionContext.tsx`
+- `src/components/subscription/AppBootGate.tsx`
 
-## Out of scope
-
-- No DB schema changes, no edge function changes, no subscription/entitlement logic changes.
-- No changes to `MarketPriceIntelligence` internal logic — it's reused inside the hero + tiles.
-- Hindi/Marathi/English strings reuse existing `i18n/locales/*/market.json`; new keys added where needed.
-
-## Technical notes
-
-- Use `useLands` to pick farmer's primary crop for the hero; fall back to top mandi crop if none.
-- Cache hero price for 5 min via existing edge function pattern; show "Updated 2 min ago" pill.
-- All animations via `framer-motion` already in project; respect `useReducedMotion`.
-- Files touched: `src/index.css`, `tailwind.config.ts`, `src/pages/Market.tsx`, `src/components/marketplace/MarketplaceHeader.tsx`, new `src/components/marketplace/home/*` and `tiles/*`, `src/i18n/locales/{en,hi,mr}/market.json`.
+No changes to tenant/admin portals (separate codebases) — only the shared RPC, which they also consume correctly once fixed.
