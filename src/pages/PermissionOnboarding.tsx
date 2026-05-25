@@ -196,9 +196,9 @@ async function requestPermission(key: PermKey): Promise<PermState> {
 async function openNativeSettings() {
   if (Capacitor.isNativePlatform()) {
     try {
-      // Best-effort: works on Android; iOS uses app-settings:
       const url = Capacitor.getPlatform() === 'ios' ? 'app-settings:' : 'package:';
-      await CapApp.openUrl({ url });
+      // openUrl is available at runtime on @capacitor/app; types may lag
+      await (CapApp as any).openUrl?.({ url });
       return;
     } catch { /* noop */ }
   }
