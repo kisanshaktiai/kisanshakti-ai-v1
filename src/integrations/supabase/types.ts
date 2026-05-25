@@ -9653,6 +9653,57 @@ export type Database = {
           },
         ]
       }
+      farmer_subscription_events: {
+        Row: {
+          actor_user_id: string | null
+          created_at: string
+          event_type: string
+          farmer_id: string
+          from_interval: string | null
+          from_plan_id: string | null
+          from_status: string | null
+          id: string
+          metadata: Json
+          subscription_id: string | null
+          tenant_id: string
+          to_interval: string | null
+          to_plan_id: string | null
+          to_status: string | null
+        }
+        Insert: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type: string
+          farmer_id: string
+          from_interval?: string | null
+          from_plan_id?: string | null
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          subscription_id?: string | null
+          tenant_id: string
+          to_interval?: string | null
+          to_plan_id?: string | null
+          to_status?: string | null
+        }
+        Update: {
+          actor_user_id?: string | null
+          created_at?: string
+          event_type?: string
+          farmer_id?: string
+          from_interval?: string | null
+          from_plan_id?: string | null
+          from_status?: string | null
+          id?: string
+          metadata?: Json
+          subscription_id?: string | null
+          tenant_id?: string
+          to_interval?: string | null
+          to_plan_id?: string | null
+          to_status?: string | null
+        }
+        Relationships: []
+      }
       farmer_subscriptions: {
         Row: {
           auto_renew: boolean
@@ -23149,6 +23200,7 @@ export type Database = {
           plan_category: string | null
           plan_type: Database["public"]["Enums"]["subscription_plan_type"]
           price_annually: number | null
+          price_half_yearly: number | null
           price_monthly: number | null
           price_quarterly: number | null
           sort_order: number | null
@@ -23176,6 +23228,7 @@ export type Database = {
           plan_category?: string | null
           plan_type: Database["public"]["Enums"]["subscription_plan_type"]
           price_annually?: number | null
+          price_half_yearly?: number | null
           price_monthly?: number | null
           price_quarterly?: number | null
           sort_order?: number | null
@@ -23203,6 +23256,7 @@ export type Database = {
           plan_category?: string | null
           plan_type?: Database["public"]["Enums"]["subscription_plan_type"]
           price_annually?: number | null
+          price_half_yearly?: number | null
           price_monthly?: number | null
           price_quarterly?: number | null
           sort_order?: number | null
@@ -29066,6 +29120,53 @@ export type Database = {
       }
       can_create_admin: { Args: never; Returns: boolean }
       can_self_insert: { Args: never; Returns: boolean }
+      change_farmer_plan: {
+        Args: {
+          p_auto_renew?: boolean
+          p_farmer_id: string
+          p_interval: string
+          p_paid_by_tenant?: boolean
+          p_plan_id: string
+          p_tenant_id: string
+          p_trial_days?: number
+        }
+        Returns: {
+          auto_renew: boolean
+          billing_interval: Database["public"]["Enums"]["billing_interval"]
+          cancellation_reason: string | null
+          created_at: string
+          end_date: string | null
+          farmer_id: string
+          grace_period_ends_at: string | null
+          id: string
+          last_payment_amount: number | null
+          last_payment_date: string | null
+          metadata: Json | null
+          next_billing_date: string | null
+          paid_by_tenant: boolean | null
+          paying_tenant_id: string | null
+          payment_method: Json | null
+          payment_method_id: string | null
+          payment_order_id: string | null
+          payment_provider: string | null
+          plan_id: string
+          start_date: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          tenant_subscription_id: string | null
+          trial_days: number | null
+          trial_end_date: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "farmer_subscriptions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       check_account_lockout: {
         Args: { p_email: string; p_ip_address?: unknown }
         Returns: Json
@@ -29290,6 +29391,49 @@ export type Database = {
       }
       expire_farmer_subscriptions: { Args: never; Returns: Json }
       expire_old_invites: { Args: never; Returns: number }
+      extend_farmer_subscription: {
+        Args: {
+          p_additional_days: number
+          p_subscription_id: string
+          p_tenant_id: string
+        }
+        Returns: {
+          auto_renew: boolean
+          billing_interval: Database["public"]["Enums"]["billing_interval"]
+          cancellation_reason: string | null
+          created_at: string
+          end_date: string | null
+          farmer_id: string
+          grace_period_ends_at: string | null
+          id: string
+          last_payment_amount: number | null
+          last_payment_date: string | null
+          metadata: Json | null
+          next_billing_date: string | null
+          paid_by_tenant: boolean | null
+          paying_tenant_id: string | null
+          payment_method: Json | null
+          payment_method_id: string | null
+          payment_order_id: string | null
+          payment_provider: string | null
+          plan_id: string
+          start_date: string
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          tenant_id: string
+          tenant_subscription_id: string | null
+          trial_days: number | null
+          trial_end_date: string | null
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "farmer_subscriptions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       extract_numeric_quantity: {
         Args: { resources: Json; task_type: string }
         Returns: number
@@ -29539,6 +29683,7 @@ export type Database = {
           plan_category: string | null
           plan_type: Database["public"]["Enums"]["subscription_plan_type"]
           price_annually: number | null
+          price_half_yearly: number | null
           price_monthly: number | null
           price_quarterly: number | null
           sort_order: number | null
