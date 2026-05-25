@@ -74,14 +74,19 @@ export function StatusPill() {
     effectivePlan === 'AI PRO' ? 'pro' : effectivePlan === 'Shakti' ? 'shakti' : 'free';
   const PlanIcon = tier === 'pro' ? Crown : tier === 'shakti' ? Sparkles : Leaf;
 
-  // Static label: "Shakti · 17d" / "Grace 3d" / "Expired" / "Free"
+  // Trigger label: plan name ONLY (no days) to keep header compact.
+  // Days/grace details live in the popover.
   const daysText =
     !!data && daysRemaining > 0
       ? isInGracePeriod
         ? `Grace ${daysRemaining}d`
         : `${daysRemaining}d`
       : null;
-  const planLabel = isExpired ? 'Expired' : effectivePlan;
+  const planLabel = isExpired
+    ? 'Expired'
+    : effectivePlan === 'AI PRO'
+    ? 'Pro'
+    : effectivePlan;
   const showDays = !isExpired && !!daysText;
 
   const innerTone = isExpired
@@ -113,31 +118,27 @@ export function StatusPill() {
     <Popover>
       <PopoverTrigger asChild>
         <button
-          aria-label={`${planLabel} ${showDays ? '· ' + daysText : ''} · ${
+          aria-label={`${planLabel}${showDays ? ' · ' + daysText : ''} · ${
             isOnline ? 'Online' : 'Offline'
           }`}
           className={cn(
-            'relative shrink-0 inline-flex items-center gap-1.5 h-9 px-2.5 rounded-full',
-            'font-semibold text-[11px] transition-all',
+            'relative shrink-0 inline-flex items-center gap-1 h-7 px-2 rounded-full',
+            'font-semibold text-[10px] leading-none transition-all',
             'shadow-sm active:scale-95 hover:brightness-105',
             innerTone
           )}
         >
           {syncSuccess ? (
-            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <CheckCircle2 className="w-3 h-3 shrink-0" />
           ) : syncError ? (
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+            <AlertCircle className="w-3 h-3 shrink-0" />
           ) : isWarn ? (
-            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <AlertTriangle className="w-3 h-3 shrink-0" />
           ) : (
-            <PlanIcon className="w-3.5 h-3.5 shrink-0" />
+            <PlanIcon className="w-3 h-3 shrink-0" />
           )}
-          <span className="whitespace-nowrap leading-none">
-            {planLabel}
-            {showDays && (
-              <span className="opacity-90 font-medium"> · {daysText}</span>
-            )}
-          </span>
+          <span className="whitespace-nowrap">{planLabel}</span>
+
           {/* Live status dot — pulses when online & idle */}
           <span className="relative flex h-2 w-2 ml-0.5">
             <span
