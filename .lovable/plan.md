@@ -1,63 +1,89 @@
 
-## Root cause (verified)
+## Market Page — Farmer-First Redesign
 
-The bug has three independent layers, all confirmed against the live DB:
+Goal: make `/app/market` feel like one cohesive, big-thumb, low-literacy-friendly screen that uses the full mobile viewport, while keeping the 4 main tabs (Prices, Shop, Orders, Sell) equally accessible. Density target: ~3–4 price cards visible per phone screen.
 
-**1. No expiration job.** `farmer_subscriptions` has 27 rows; 24 of them have `end_date < now()` but `status = 'active'`. There is no `pg_cron` job to flip expired rows to `status = 'expired'` or downgrade them to Free. Existing cron jobs cover NDVI, tiles, proactive evaluator, governance — nothing for billing.
+### Scope
 
-**2. `resolve_farmer_entitlements` (SSOT RPC) silently grants everything when no active plan exists.** The query at lines 129-138 only selects a subscription where status is active/trial/trialing AND end_date in the future (or expired+in-grace). When the row is expired and out of grace, `_farmer_sub_plan_id` is `NULL`. The features loop then runs `LEFT JOIN tenant_farmer_plan_features … AND tfpf.plan_id = _farmer_sub_plan_id`, which produces NULL rows, and the `enabled` field falls through `COALESCE(..., tfpf.enabled, tfg.enabled, true)` to `true`. Result: expired farmers get **every feature enabled with unlimited quota** — the exact symptom reported.
+Everything under `src/pages/Market.tsx` and `src/components/market-intelligence/*` plus `src/components/marketplace/MarketplaceHeader.tsx`, `CategoryFilter.tsx`, and the `MarketPriceCard`. No business logic / data hooks change — purely presentation.
 
-**3. Client `AppBootGate` only blocks on `tenant.suspended`** and `useEntitlements` only marks features unallowed via `quota_exceeded`/`feature_disabled`. Because the RPC returns `enabled:true` for all features (bug #2), the client never sees the farmer as downgraded. There is no "farmer subscription expired → force Free plan" branch on the client.
+### Design system (semantic tokens only)
 
-## Fix plan
+- Use existing `--primary`, `--accent`, `--success`, `--card`, `--muted`, `--border` tokens. No hex / `bg-white`.
+- Replace `backdrop-blur-xl` with opaque `bg-card` (core memory: opaque BGs on mobile for FPS).
+- Type scale: crop name `text-lg font-bold`, price `text-2xl font-extrabold tabular-nums`, meta `text-xs text-muted-foreground`.
+- Spacing: `px-4` page gutter on mobile, `px-6 md:px-8` ≥768px. Edge-to-edge filter rails use horizontal scroll with `-mx-4 px-4` bleed.
+- Touch targets: minimum `h-12` for primary chips/buttons; price card whole-card tappable.
 
-### A. Database — auto-downgrade on expiry
+### Page shell (`src/pages/Market.tsx`)
 
-Migration that:
+1. Sticky top bar (`sticky top-0 z-30 bg-background/95`) holding compact title + cart icon + search-toggle icon. Search collapses into a sheet to reclaim space.
+2. The 4-tab nav becomes a **segmented icon+label pill bar** under the header, full-width, equal flex, `h-14`, with bottom-aligned active indicator (no glassy gradient). All four tabs equally weighted.
+3. Tab content area expands to `w-full max-w-screen-md mx-auto` so layouts breathe on tablet but stay edge-to-edge on phone.
 
-1. Creates `expire_farmer_subscriptions()` SECURITY DEFINER function that:
-   - For rows with `status IN ('active','trial','trialing')` and `end_date < now()` and `(grace_period_ends_at IS NULL OR grace_period_ends_at < now())` → set `status='expired'`, stamp `updated_at`.
-   - For rows already `status='expired'` with grace ended (or null) → insert a new row pointing the farmer at the Free plan (`e1c484ff-ad87-4f09-a174-8eec05981ebb`) with `status='active'`, `end_date=NULL`, and log to `subscription_change_history`.
-   - Idempotent: skip farmers who already have an active Free-plan row.
-2. Schedules it hourly via `pg_cron` (`0 * * * *`).
-3. Runs it once inline to clean the current 24 stale rows.
+### Prices tab redesign (`MarketPriceIntelligence.tsx`)
 
-### B. Database — fix `resolve_farmer_entitlements` to fall back to Free
+- Drop the inner 4-tab sub-nav. Replace with a **single scrollable feed** containing stacked sections:
+  - Filter rail (chips for crop group + market, horizontal scroll, sticky under header).
+  - Selected-crop summary card (big price, trend arrow, district, AI advice button if crop selected).
+  - "Today's prices" list (grouped by date, large readable cards).
+  - "Markets near me" horizontal card carousel (uses existing `NearbyMarketsSection` data).
+  - "Price trend" mini chart (uses `PriceComparisonChart` data, collapsed by default).
+  - "AI selling advice" panel (uses `AISellingAdvisor`, surfaces only when crop selected).
+- Removes filter accordion noise; chips ARE the filter.
+- Floating action button: "AI Advice" anchored bottom-right above bottom nav, only when crop selected.
 
-Replace the function so that:
+### Price card redesign (`MarketPriceCard.tsx`)
 
-- If no eligible farmer subscription row is found, look up the Free plan (`name='Free' AND is_active`) and use **its** `id`, `features`, `limits` as the baseline.
-- The features loop's `COALESCE(..., true)` fallback is changed to `COALESCE(..., (_features ? f.code))` — i.e. a feature is only enabled when explicitly granted by tenant master / tenant plan override / tenant grant / plan base. No more "default true".
-- Quotas similarly fall back to the Free plan's `limits` JSON instead of NULL (NULL today means "unlimited" on the client).
-- Return `farmer.status = 'expired_downgraded'` and `farmer.plan_name = 'Free'` so the UI can show a banner.
+Two-row layout, edge-to-edge:
 
-### C. Frontend — defense in depth
-
-- `src/hooks/useEntitlements.ts`: treat `data.farmer.status === 'expired'` (and not in grace) as a hard signal — `canUse()` returns `allowed:false, reason:'subscription_expired'` for any feature not in the Free plan's allowlist (derived from the RPC payload, no hardcoding).
-- `src/components/subscription/AppBootGate.tsx`: in addition to `tenant.suspended`, when `farmer.status === 'expired'` and not in grace, render `SubscriptionStatusBanner` at the top (already exists) and continue rendering children — gating happens per-feature.
-- `src/contexts/SubscriptionContext.tsx` `hasFeature()`: stop returning `true` while loading once we have stale cached data showing expired — currently it grants optimistic access which masks the downgrade after a refresh.
-- `src/pages/AIChat.tsx` and `LandLimitGuard`: already route to `/app/subscription` when `canUse` is false — no change needed once the hook is fixed.
-
-### D. Verification
-
-After migration:
-
-```sql
-SELECT status, COUNT(*) FROM farmer_subscriptions GROUP BY status;
--- expect: active (Free plan rows), expired (old rows), zero "active + end_date<now"
-SELECT resolve_farmer_entitlements('<expired-farmer>','<tenant>')->'farmer'->>'plan_name';
--- expect: "Free"
-SELECT resolve_farmer_entitlements('<expired-farmer>','<tenant>')->'features'->'ai_chat'->>'enabled';
--- expect: matches Free plan setting, not "true"
+```text
+┌────────────────────────────────────────┐
+│ 🌾 कांदा (Onion)              ↑ +4%   │
+│ ₹2,450 / क्विंटल                       │
+│ पुणे APMC • 25 मे                      │
+└────────────────────────────────────────┘
 ```
 
-Then reload the mobile app as one of the 24 affected farmers and confirm AI Chat / land-add / premium tiles show the upgrade prompt instead of working.
+- `rounded-2xl`, `p-4`, `bg-card`, hairline `border-border/60`.
+- Trend badge color uses `success` / `destructive` tokens.
+- Whole card is a button — taps open detail/comparison.
 
-## Files touched
+### Filter components
 
-- new migration: expire job + cron + RPC replacement
-- `src/hooks/useEntitlements.ts`
-- `src/contexts/SubscriptionContext.tsx`
-- `src/components/subscription/AppBootGate.tsx`
+- `CropGroupButtons` / `MarketLocationButtons`: convert to single-row horizontal scroll chips, `snap-x`, `h-12`, large icon + Devanagari label above small English. Active state = filled primary; inactive = `bg-muted`.
+- `CropChips`: same chip styling, wrap on tablet, scroll on mobile.
 
-No changes to tenant/admin portals (separate codebases) — only the shared RPC, which they also consume correctly once fixed.
+### Shop / Orders / Sell tabs
+
+- `MarketplaceHeader`: collapse to slim sticky search bar (icon-only cart + bell), drop oversized padding. Becomes optional — only shown on Shop tab.
+- `CategoryFilter`: switch to chip row matching crop-group chips for visual consistency.
+- `ProductGrid`: keep, just verify it uses `grid-cols-2` on mobile, `grid-cols-3 md:grid-cols-4` from `sm`.
+- Empty states (Orders/Sell when logged out, Shop when no products): use the existing `EmptyStateCard` but with larger illustration area and a single primary CTA button (`h-12 rounded-2xl`).
+
+### Files to edit
+
+- `src/pages/Market.tsx` — shell, sticky header, tab bar, layout container.
+- `src/components/market-intelligence/MarketPriceIntelligence.tsx` — flatten inner tabs into one scroll feed.
+- `src/components/market-intelligence/MarketPriceCard.tsx` — typography + layout rewrite.
+- `src/components/market-intelligence/CropGroupButtons.tsx` — chip rail.
+- `src/components/market-intelligence/MarketLocationButtons.tsx` — chip rail.
+- `src/components/market-intelligence/CropChips.tsx` — chip styling alignment.
+- `src/components/market-intelligence/NearbyMarketsSection.tsx` — horizontal carousel variant for embedded use.
+- `src/components/market-intelligence/PriceComparisonChart.tsx` — collapsible card wrapper.
+- `src/components/market-intelligence/AISellingAdvisor.tsx` — embedded card style (no own tab).
+- `src/components/marketplace/MarketplaceHeader.tsx` — slim search bar.
+- `src/components/marketplace/CategoryFilter.tsx` — chip styling parity.
+
+### Non-goals
+
+- No data, hook, RPC, or edge-function changes.
+- No new translations keys beyond reusing existing `market.intelligence.*`.
+- No subscription/entitlement changes.
+
+### Verification
+
+- View `/app/market` at 390×688 (current viewport) — confirm header + tabs + first 3 price cards visible without scroll.
+- Confirm horizontal chip rails don't overflow page gutters.
+- Switch each of the 4 top tabs and confirm content layout consistency.
+- Confirm no `backdrop-blur` remains on price surfaces (FPS rule).
