@@ -1,5 +1,3 @@
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface Category {
@@ -19,34 +17,35 @@ interface CategoryFilterProps {
 export function CategoryFilter({
   categories,
   selectedCategory,
-  onCategorySelect
+  onCategorySelect,
 }: CategoryFilterProps) {
+  const chip = (id: string | null, label: string, icon?: string) => {
+    const active = selectedCategory === id;
+    return (
+      <button
+        key={id ?? 'all'}
+        type="button"
+        onClick={() => onCategorySelect(id)}
+        className={cn(
+          'flex items-center gap-1.5 px-4 h-11 rounded-2xl flex-shrink-0 snap-start',
+          'border touch-manipulation transition-colors text-sm font-medium',
+          active
+            ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+            : 'bg-card text-foreground border-border/60 active:bg-muted',
+        )}
+      >
+        {icon && <span className="text-base leading-none">{icon}</span>}
+        <span>{label}</span>
+      </button>
+    );
+  };
+
   return (
-    <div className="w-full">
-      <ScrollArea className="w-full whitespace-nowrap rounded-lg border">
-        <div className="flex w-max space-x-2 p-4">
-          <Button
-            variant={selectedCategory === null ? "default" : "outline"}
-            onClick={() => onCategorySelect(null)}
-            className="flex items-center gap-2"
-          >
-            All Products
-          </Button>
-          
-          {categories.map((category) => (
-            <Button
-              key={category.id}
-              variant={selectedCategory === category.id ? "default" : "outline"}
-              onClick={() => onCategorySelect(category.id)}
-              className="flex items-center gap-2"
-            >
-              {category.icon && <span className="text-lg">{category.icon}</span>}
-              {category.name}
-            </Button>
-          ))}
-        </div>
-        <ScrollBar orientation="horizontal" />
-      </ScrollArea>
+    <div className="-mx-4 px-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+      <div className="flex gap-2 pb-1 pr-4">
+        {chip(null, 'सर्व', '🛒')}
+        {categories.map((c) => chip(c.id, c.name, c.icon))}
+      </div>
     </div>
   );
 }
