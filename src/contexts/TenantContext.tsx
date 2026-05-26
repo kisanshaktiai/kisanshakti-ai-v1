@@ -696,7 +696,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             custom_domain: apiConfig.tenant.custom_domain,
             status: apiConfig.tenant.status,
             branding: apiConfig.branding,
-            theme: apiConfig.theme,
+            theme: normalizeThemeConfig(apiConfig.theme),
             pwa: apiConfig.pwa,
             splashScreens: apiConfig.splash_screens,
             features: apiConfig.features,
