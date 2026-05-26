@@ -352,15 +352,20 @@ button, a, [role="button"], input, select, textarea, label,
     
     --success: 142 76% 50%;
     --success-foreground: 0 0% 100%;
+    --success-soft: 142 40% 20%;
     
     --warning: 38 95% 62%;
     --warning-foreground: 38 10% 15%;
+    --warning-soft: 38 50% 20%;
     
     --destructive: 0 85% 65%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 50% 22%;
     
     --info: 210 100% 60%;
     --info-foreground: 0 0% 100%;
+    --info-soft: 210 50% 20%;
+    
     
     --muted: 220 20% 18%;
     --muted-foreground: 220 10% 65%;
