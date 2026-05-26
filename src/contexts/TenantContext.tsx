@@ -192,15 +192,17 @@ export function mergeThemeGroups(
   themeColors?: Record<string, any> | null,
   mobileTheme?: Record<string, any> | null
 ): ThemeConfig | undefined {
-  if (!themeColors && !mobileTheme) return undefined;
+  const normalizedThemeColors = normalizeThemeConfig(themeColors);
+  const normalizedMobileTheme = normalizeThemeConfig(mobileTheme);
+  if (!normalizedThemeColors && !normalizedMobileTheme) return undefined;
   const out: Record<string, any> = {};
   const keys = new Set([
-    ...Object.keys(themeColors || {}),
-    ...Object.keys(mobileTheme || {}),
+    ...Object.keys(normalizedThemeColors || {}),
+    ...Object.keys(normalizedMobileTheme || {}),
   ]);
   for (const k of keys) {
-    const a = (themeColors as any)?.[k];
-    const b = (mobileTheme as any)?.[k];
+    const a = (normalizedThemeColors as any)?.[k];
+    const b = (normalizedMobileTheme as any)?.[k];
     if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
       out[k] = { ...a, ...b };
     } else {
