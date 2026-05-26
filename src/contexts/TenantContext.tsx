@@ -1119,7 +1119,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } finally {
       setIsLoading(false);
     }
-  }, [getCurrentDomain, applyThemeToDOM]);
+  }, [getCurrentDomain, applyThemeToDOM, buildConfigFromWhiteLabelPayload, loadOfflineConfig]);
 
   // Clear cache and refetch (for theme updates)
   const clearCache = useCallback(() => {
