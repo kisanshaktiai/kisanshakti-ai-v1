@@ -55,6 +55,7 @@ export default function LanguageSelection() {
   const [userState, setUserState] = useState<string>('');
   const [sortedLanguages, setSortedLanguages] = useState(availableLanguages);
   const [hasDetectedLocation, setHasDetectedLocation] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
