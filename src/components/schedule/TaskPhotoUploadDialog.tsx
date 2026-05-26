@@ -39,14 +39,14 @@ interface TaskPhotoUploadDialogProps {
 type UploadType = 'crop' | 'soil' | 'land_preparation' | 'irrigation' | 'pest' | 'fertilizer' | 'harvest' | 'general';
 
 const uploadTypeConfig: Record<UploadType, { icon: any; colorClass: string; bgClass: string }> = {
-  crop: { icon: Leaf, colorClass: 'text-emerald-600', bgClass: 'bg-emerald-500/10' },
-  soil: { icon: Sprout, colorClass: 'text-amber-600', bgClass: 'bg-amber-500/10' },
-  land_preparation: { icon: Sprout, colorClass: 'text-orange-600', bgClass: 'bg-orange-500/10' },
-  irrigation: { icon: Droplets, colorClass: 'text-blue-600', bgClass: 'bg-blue-500/10' },
-  pest: { icon: Bug, colorClass: 'text-red-600', bgClass: 'bg-red-500/10' },
-  fertilizer: { icon: Leaf, colorClass: 'text-teal-600', bgClass: 'bg-teal-500/10' },
-  harvest: { icon: Package, colorClass: 'text-amber-600', bgClass: 'bg-amber-500/10' },
-  general: { icon: Camera, colorClass: 'text-slate-600', bgClass: 'bg-slate-500/10' },
+  crop: { icon: Leaf, colorClass: 'text-success', bgClass: 'bg-success/10' },
+  soil: { icon: Sprout, colorClass: 'text-warning', bgClass: 'bg-warning/10' },
+  land_preparation: { icon: Sprout, colorClass: 'text-warning', bgClass: 'bg-warning/10' },
+  irrigation: { icon: Droplets, colorClass: 'text-info', bgClass: 'bg-info/10' },
+  pest: { icon: Bug, colorClass: 'text-destructive', bgClass: 'bg-destructive/10' },
+  fertilizer: { icon: Leaf, colorClass: 'text-success', bgClass: 'bg-success/10' },
+  harvest: { icon: Package, colorClass: 'text-warning', bgClass: 'bg-warning/10' },
+  general: { icon: Camera, colorClass: 'text-foreground/80', bgClass: 'bg-muted-foreground/40/10' },
 };
 
 const taskTypeToUploadType: Record<string, UploadType> = {
@@ -404,23 +404,23 @@ export function TaskPhotoUploadDialog({
                   ) : (
                     <div className="flex items-center gap-2">
                       {locationValidation.level === 'at_land' && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                          <span className="text-xs font-semibold text-emerald-600">{t('cropGrowth.atLand')}</span>
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-success/10 border border-success/30">
+                          <CheckCircle2 className="h-4 w-4 text-success" />
+                          <span className="text-xs font-semibold text-success">{t('cropGrowth.atLand')}</span>
                         </div>
                       )}
                       {locationValidation.level === 'nearby' && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                          <AlertTriangle className="h-4 w-4 text-amber-600" />
-                          <span className="text-xs font-semibold text-amber-600">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-warning/10 border border-warning/30">
+                          <AlertTriangle className="h-4 w-4 text-warning" />
+                          <span className="text-xs font-semibold text-warning">
                             {Math.round(locationValidation.distance || 0)}m
                           </span>
                         </div>
                       )}
                       {locationValidation.level === 'far' && (
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/30">
-                          <XCircle className="h-4 w-4 text-red-600" />
-                          <span className="text-xs font-semibold text-red-600">
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-destructive/10 border border-destructive/30">
+                          <XCircle className="h-4 w-4 text-destructive" />
+                          <span className="text-xs font-semibold text-destructive">
                             {Math.round(locationValidation.distance || 0)}m
                           </span>
                         </div>

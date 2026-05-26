@@ -138,10 +138,10 @@ export default function IntercropSelector({
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl"
+        className="flex items-center gap-2 p-3 bg-success/10 border border-success/30 rounded-xl"
       >
-        <div className="shrink-0 w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
-          <Leaf className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+        <div className="shrink-0 w-8 h-8 rounded-lg bg-success/20 flex items-center justify-center">
+          <Leaf className="h-4 w-4 text-success dark:text-success" />
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium text-foreground truncate">
@@ -155,7 +155,7 @@ export default function IntercropSelector({
           variant="ghost"
           size="icon"
           onClick={handleRemove}
-          className="h-8 w-8 shrink-0 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+          className="h-8 w-8 shrink-0 text-destructive hover:text-destructive hover:bg-destructive/10"
         >
           <X className="h-4 w-4" />
         </Button>
@@ -169,7 +169,7 @@ export default function IntercropSelector({
         variant="outline"
         size="sm"
         onClick={() => setShowDialog(true)}
-        className="w-full border-dashed border-emerald-500/50 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10 hover:border-emerald-500"
+        className="w-full border-dashed border-success/50 text-success dark:text-success hover:bg-success/10 hover:border-success"
       >
         <Plus className="h-4 w-4 mr-2" />
         {t.addIntercrop}
@@ -180,7 +180,7 @@ export default function IntercropSelector({
           {/* Header */}
           <DialogHeader className="px-5 pt-5 pb-3 shrink-0">
             <DialogTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-              <Leaf className="h-5 w-5 text-emerald-500" />
+              <Leaf className="h-5 w-5 text-success" />
               {t.intercropTitle}
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground mt-1">
@@ -209,9 +209,9 @@ export default function IntercropSelector({
                 exit={{ height: 0, opacity: 0 }}
                 className="px-5 py-4 border-t border-border/50 space-y-4"
               >
-                <div className="flex items-center gap-2 p-2 bg-emerald-500/10 rounded-lg">
-                  <Check className="h-4 w-4 text-emerald-500" />
-                  <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                <div className="flex items-center gap-2 p-2 bg-success/10 rounded-lg">
+                  <Check className="h-4 w-4 text-success" />
+                  <span className="text-sm font-medium text-success dark:text-success">
                     {selectedLocalizedName || selectedCropName}
                   </span>
                 </div>
@@ -251,7 +251,7 @@ export default function IntercropSelector({
               className={cn(
                 "w-full",
                 selectedCropName
-                  ? "bg-emerald-500 hover:bg-emerald-600 text-white"
+                  ? "bg-success hover:bg-success text-white"
                   : "bg-muted text-muted-foreground"
               )}
             >

@@ -23,11 +23,11 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
     const rainChance = forecast[0]?.pop || 0;
 
     if (rainChance > 0.6) {
-      return { status: 'low', icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-500/10' };
+      return { status: 'low', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10' };
     } else if (temp > 32 && humidity < 40) {
-      return { status: 'high', icon: AlertTriangle, color: 'text-red-500', bgColor: 'bg-red-500/10' };
+      return { status: 'high', icon: AlertTriangle, color: 'text-destructive', bgColor: 'bg-destructive/10' };
     } else {
-      return { status: 'medium', icon: Droplets, color: 'text-blue-500', bgColor: 'bg-blue-500/10' };
+      return { status: 'medium', icon: Droplets, color: 'text-info', bgColor: 'bg-info/10' };
     }
   };
 
@@ -36,11 +36,11 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
     const rainChance = forecast[0]?.pop || 0;
 
     if (rainChance > 0.5 || windSpeed > 15) {
-      return { status: 'bad', icon: XCircle, color: 'text-red-500', bgColor: 'bg-red-500/10' };
+      return { status: 'bad', icon: XCircle, color: 'text-destructive', bgColor: 'bg-destructive/10' };
     } else if (windSpeed < 8 && rainChance < 0.2) {
-      return { status: 'good', icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-500/10' };
+      return { status: 'good', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10' };
     } else {
-      return { status: 'moderate', icon: Bug, color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' };
+      return { status: 'moderate', icon: Bug, color: 'text-warning', bgColor: 'bg-warning/10' };
     }
   };
 
@@ -49,11 +49,11 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
     const humidity = currentWeather.humidity;
 
     if (temp > 15 && temp < 35 && humidity > 30 && humidity < 80) {
-      return { status: 'good', icon: CheckCircle, color: 'text-green-500', bgColor: 'bg-green-500/10' };
+      return { status: 'good', icon: CheckCircle, color: 'text-success', bgColor: 'bg-success/10' };
     } else if (temp < 10 || temp > 40) {
-      return { status: 'bad', icon: XCircle, color: 'text-red-500', bgColor: 'bg-red-500/10' };
+      return { status: 'bad', icon: XCircle, color: 'text-destructive', bgColor: 'bg-destructive/10' };
     } else {
-      return { status: 'moderate', icon: Sprout, color: 'text-yellow-500', bgColor: 'bg-yellow-500/10' };
+      return { status: 'moderate', icon: Sprout, color: 'text-warning', bgColor: 'bg-warning/10' };
     }
   };
 
@@ -120,10 +120,10 @@ export const FarmingRecommendations: React.FC<FarmingRecommendationsProps> = ({
             <Card className={cn(
               "relative overflow-hidden border h-full transition-all hover:shadow-md",
               "bg-gradient-to-br from-card to-card/80 backdrop-blur-sm",
-              rec.color === 'text-green-500' && "border-green-500/30",
-              rec.color === 'text-red-500' && "border-red-500/30",
-              rec.color === 'text-yellow-500' && "border-yellow-500/30",
-              rec.color === 'text-blue-500' && "border-blue-500/30"
+              rec.color === 'text-success' && "border-success/30",
+              rec.color === 'text-destructive' && "border-destructive/30",
+              rec.color === 'text-warning' && "border-warning/30",
+              rec.color === 'text-info' && "border-info/30"
             )}>
               <div className={cn(
                 "absolute top-0 right-0 w-20 h-20 rounded-full -translate-y-10 translate-x-10 opacity-20",

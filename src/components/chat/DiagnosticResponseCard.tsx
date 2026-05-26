@@ -128,7 +128,7 @@ function FieldContextHeader({ data, labels }: { data: DiagnosticData; labels: Re
       <div className="grid grid-cols-2 gap-2 text-xs">
         {/* Crop + Days */}
         <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5">
-          <Wheat className="h-3.5 w-3.5 text-amber-600" />
+          <Wheat className="h-3.5 w-3.5 text-warning" />
           <span className="font-medium truncate">
             {data.cropName} ({data.daysAfterSowing} {labels.days})
           </span>
@@ -137,7 +137,7 @@ function FieldContextHeader({ data, labels }: { data: DiagnosticData; labels: Re
         {/* Stage */}
         {data.growthStage && (
           <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5">
-            <Leaf className="h-3.5 w-3.5 text-green-600" />
+            <Leaf className="h-3.5 w-3.5 text-success" />
             <span className="font-medium truncate">{getStageLabel(data.growthStage)}</span>
           </div>
         )}
@@ -153,7 +153,7 @@ function FieldContextHeader({ data, labels }: { data: DiagnosticData; labels: Re
         {/* Soil Moisture */}
         {data.soilMoisture !== undefined && (
           <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5">
-            <Droplets className="h-3.5 w-3.5 text-blue-500" />
+            <Droplets className="h-3.5 w-3.5 text-info" />
             <span>{data.soilMoisture}%</span>
           </div>
         )}
@@ -161,7 +161,7 @@ function FieldContextHeader({ data, labels }: { data: DiagnosticData; labels: Re
         {/* NDVI */}
         {data.ndviValue !== undefined && (
           <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5">
-            <Gauge className="h-3.5 w-3.5 text-green-500" />
+            <Gauge className="h-3.5 w-3.5 text-success" />
             <span>{Math.round(data.ndviValue * 100)}%</span>
           </div>
         )}
@@ -169,7 +169,7 @@ function FieldContextHeader({ data, labels }: { data: DiagnosticData; labels: Re
         {/* Weather */}
         {data.temperature !== undefined && (
           <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5">
-            <Thermometer className="h-3.5 w-3.5 text-orange-500" />
+            <Thermometer className="h-3.5 w-3.5 text-warning" />
             <span>{data.temperature}°C</span>
           </div>
         )}
@@ -184,10 +184,10 @@ function SymptomBadge({ symptom, labels }: { symptom: string; labels: Record<str
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.1 }}
-      className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2"
+      className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-xl px-3 py-2"
     >
-      <AlertTriangle className="h-4 w-4 text-amber-600" />
-      <span className="text-sm font-medium text-amber-700 dark:text-amber-400">
+      <AlertTriangle className="h-4 w-4 text-warning" />
+      <span className="text-sm font-medium text-warning dark:text-warning">
         {labels.symptomDetected}: {symptom}
       </span>
     </motion.div>
@@ -209,8 +209,8 @@ function CausesList({
   };
 
   const getProbabilityColor = (prob: number) => {
-    if (prob >= 0.6) return 'bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30';
-    if (prob >= 0.3) return 'bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-500/30';
+    if (prob >= 0.6) return 'bg-destructive/20 text-destructive dark:text-destructive border-destructive/30';
+    if (prob >= 0.3) return 'bg-warning/20 text-warning dark:text-warning border-warning/30';
     return 'bg-muted text-muted-foreground border-border';
   };
 
@@ -315,7 +315,7 @@ function SequentialQuestionCard({
           variant="outline"
           size="lg"
           onClick={() => onAnswer('yes')}
-          className="h-14 text-lg font-semibold bg-green-500/10 border-green-500/40 text-green-700 dark:text-green-400 hover:bg-green-500/20 hover:border-green-500/60 rounded-xl"
+          className="h-14 text-lg font-semibold bg-success/10 border-success/40 text-success dark:text-success hover:bg-success/20 hover:border-success/60 rounded-xl"
         >
           <CheckCircle className="h-5 w-5 mr-2" />
           {labels.yes}
@@ -324,7 +324,7 @@ function SequentialQuestionCard({
           variant="outline"
           size="lg"
           onClick={() => onAnswer('no')}
-          className="h-14 text-lg font-semibold bg-red-500/10 border-red-500/40 text-red-700 dark:text-red-400 hover:bg-red-500/20 hover:border-red-500/60 rounded-xl"
+          className="h-14 text-lg font-semibold bg-destructive/10 border-destructive/40 text-destructive dark:text-destructive hover:bg-destructive/20 hover:border-destructive/60 rounded-xl"
         >
           ✕ {labels.no}
         </Button>
@@ -347,11 +347,11 @@ function PhotoRequestCard({
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ delay: 0.3 }}
-      className="bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-2 border-blue-500/30 rounded-2xl p-4"
+      className="bg-gradient-to-br from-info/10 to-info/10 border-2 border-info/30 rounded-2xl p-4"
     >
       <div className="flex items-center gap-2 mb-3">
-        <div className="p-2 rounded-full bg-blue-500/20">
-          <Camera className="h-5 w-5 text-blue-600" />
+        <div className="p-2 rounded-full bg-info/20">
+          <Camera className="h-5 w-5 text-info" />
         </div>
         <span className="font-semibold text-sm text-foreground">
           {labels.photoNeeded}
@@ -362,7 +362,7 @@ function PhotoRequestCard({
         <ul className="space-y-2 mb-4">
           {instructions.map((instruction, idx) => (
             <li key={idx} className="flex items-start gap-2 text-sm text-muted-foreground">
-              <span className="font-medium text-blue-600">{idx + 1}.</span>
+              <span className="font-medium text-info">{idx + 1}.</span>
               <span>{instruction}</span>
             </li>
           ))}
@@ -372,7 +372,7 @@ function PhotoRequestCard({
       <Button
         onClick={onTakePhoto}
         size="lg"
-        className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-xl shadow-lg"
+        className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-info to-info hover:from-info hover:to-info text-white rounded-xl shadow-lg"
       >
         <Camera className="h-5 w-5 mr-2" />
         {labels.takePhoto}
@@ -401,9 +401,9 @@ function WarningFooter({ confidence, labels }: { confidence: number; labels: Rec
               variant="outline" 
               className={cn(
                 "text-xs",
-                confidence >= 0.8 ? "bg-green-500/20 text-green-700" :
-                confidence >= 0.5 ? "bg-amber-500/20 text-amber-700" :
-                "bg-red-500/20 text-red-700"
+                confidence >= 0.8 ? "bg-success/20 text-success" :
+                confidence >= 0.5 ? "bg-warning/20 text-warning" :
+                "bg-destructive/20 text-destructive"
               )}
             >
               {Math.round(confidence * 100)}%

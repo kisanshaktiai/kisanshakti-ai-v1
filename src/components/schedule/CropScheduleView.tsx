@@ -106,12 +106,12 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   // Task type icons and colors
   const taskTypeConfig = {
-    irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-    fertilizer: { icon: Leaf, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950/30' },
-    pesticide: { icon: Bug, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-950/30' },
-    weeding: { icon: Scissors, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-950/30' },
-    harvest: { icon: Package, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-    other: { icon: AlertCircle, color: 'text-gray-500', bg: 'bg-gray-50 dark:bg-gray-950/30' }
+    irrigation: { icon: Droplets, color: 'text-info', bg: 'bg-info-soft dark:bg-info/30' },
+    fertilizer: { icon: Leaf, color: 'text-success', bg: 'bg-success-soft dark:bg-success/30' },
+    pesticide: { icon: Bug, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
+    weeding: { icon: Scissors, color: 'text-primary', bg: 'bg-primary-soft dark:bg-primary/30' },
+    harvest: { icon: Package, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
+    other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted dark:bg-foreground/80/30' }
   };
 
   // Update schedule when schedules data changes from React Query
@@ -474,9 +474,9 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 <Badge 
                   className={cn(
                     "text-xs border",
-                    schedule.farming_type === 'organic_only' && "bg-green-500/10 text-green-700 border-green-500/30",
-                    schedule.farming_type === 'organic_fertilizer' && "bg-blue-500/10 text-blue-700 border-blue-500/30",
-                    schedule.farming_type === 'fertilizer_pesticide' && "bg-orange-500/10 text-orange-700 border-orange-500/30"
+                    schedule.farming_type === 'organic_only' && "bg-success/10 text-success border-success/30",
+                    schedule.farming_type === 'organic_fertilizer' && "bg-info/10 text-info border-info/30",
+                    schedule.farming_type === 'fertilizer_pesticide' && "bg-warning/10 text-warning border-warning/30"
                   )}
                 >
                   {schedule.farming_type === 'organic_only' && (
@@ -498,33 +498,33 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       {/* Quick Stats Cards - Mobile Optimized */}
       <div className="px-4 pt-4 pb-2">
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/20 dark:to-green-900/10 border-green-200 dark:border-green-800">
+          <Card className="bg-gradient-to-br from-success to-success/50 dark:from-success/20 dark:to-success/10 border-success/30 dark:border-success">
             <div className="p-3 space-y-1">
               <div className="flex items-center justify-between">
-                <Calendar className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <span className="text-[10px] font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">{t('schedule.sowing')}</span>
+                <Calendar className="h-4 w-4 text-success dark:text-success" />
+                <span className="text-[10px] font-medium text-success dark:text-success uppercase tracking-wider">{t('schedule.sowing')}</span>
               </div>
-              <p className="text-base font-bold text-green-900 dark:text-green-100">
+              <p className="text-base font-bold text-success dark:text-success">
                 {format(new Date(schedule.sowing_date), 'dd MMM')}
               </p>
-              <p className="text-[10px] text-green-700 dark:text-green-300">
+              <p className="text-[10px] text-success dark:text-success">
                 {differenceInDays(new Date(), new Date(schedule.sowing_date))} {t('schedule.days_ago')}
               </p>
             </div>
           </Card>
           
-          <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10 border-amber-200 dark:border-amber-800">
+          <Card className="bg-gradient-to-br from-warning to-warning/50 dark:from-warning/20 dark:to-warning/10 border-warning/30 dark:border-warning">
             <div className="p-3 space-y-1">
               <div className="flex items-center justify-between">
-                <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">{t('schedule.harvest')}</span>
+                <Package className="h-4 w-4 text-warning dark:text-warning" />
+                <span className="text-[10px] font-medium text-warning dark:text-warning uppercase tracking-wider">{t('schedule.harvest')}</span>
               </div>
-              <p className="text-base font-bold text-amber-900 dark:text-amber-100">
+              <p className="text-base font-bold text-warning dark:text-warning">
                 {realHarvestDate 
                   ? format(new Date(realHarvestDate), 'dd MMM yyyy')
                   : t('schedule.schedule_card.tbd')}
               </p>
-              <p className="text-[10px] text-amber-700 dark:text-amber-300">
+              <p className="text-[10px] text-warning dark:text-warning">
                 {realHarvestDate 
                   ? `${Math.max(0, differenceInDays(new Date(realHarvestDate), new Date()))} ${t('schedule.days_remaining')}`
                   : ''}
