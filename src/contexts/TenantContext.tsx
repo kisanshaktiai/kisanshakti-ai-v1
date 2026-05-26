@@ -111,6 +111,36 @@ export interface TenantContextValue {
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 
+/**
+ * Deep-merge the two theme JSONB groups stored in white_label_configs.
+ * - `theme_colors` carries: core, navigation, charts, maps, weather, gradients, dark_mode.
+ * - `mobile_theme`  carries: core, neutral, status, support, typography, border_radius, shadows, spacing.
+ * Both share `core` — mobile_theme wins so the partner's preset is authoritative.
+ * Without this merge, picking one column drops half the namespaces from the app.
+ */
+export function mergeThemeGroups(
+  themeColors?: Record<string, any> | null,
+  mobileTheme?: Record<string, any> | null
+): ThemeConfig | undefined {
+  if (!themeColors && !mobileTheme) return undefined;
+  const out: Record<string, any> = {};
+  const keys = new Set([
+    ...Object.keys(themeColors || {}),
+    ...Object.keys(mobileTheme || {}),
+  ]);
+  for (const k of keys) {
+    const a = (themeColors as any)?.[k];
+    const b = (mobileTheme as any)?.[k];
+    if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+      out[k] = { ...a, ...b };
+    } else {
+      out[k] = b ?? a;
+    }
+  }
+  return out as ThemeConfig;
+}
+
+
 // ============= Provider =============
 
 export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
