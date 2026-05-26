@@ -684,12 +684,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // OPTION 1: Try centralized API first (cleaner)
       try {
         const headers: Record<string, string> = { Accept: 'application/json' };
-        const tenantConfigUrl = `${getSupabaseFunctionUrl('tenant-config')}?domain=${encodeURIComponent(domain)}`;
+        const tenantConfigParams = new URLSearchParams({ domain, t: Date.now().toString() });
+        const tenantConfigUrl = `${getSupabaseFunctionUrl('tenant-config')}?${tenantConfigParams.toString()}`;
 
         const response = await fetch(tenantConfigUrl, {
           method: 'GET',
           headers,
-          cache: 'no-store',
         });
 
         if (response.status === 304 && usedCache) {
@@ -770,11 +770,10 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // OPTION 1B: Public white-label endpoint fallback. This avoids direct `tenants`
       // table reads from the mobile app, which are intentionally blocked by RLS.
       try {
-        const params = new URLSearchParams({ domain });
+        const params = new URLSearchParams({ domain, t: Date.now().toString() });
         const response = await fetch(`${getSupabaseFunctionUrl('get-white-label-config')}?${params.toString()}`, {
           method: 'GET',
           headers: { Accept: 'application/json' },
-          cache: 'no-store',
         });
 
         if (response.ok) {
