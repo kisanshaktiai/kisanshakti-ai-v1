@@ -27830,6 +27830,7 @@ export type Database = {
           splash_screens: Json | null
           tenant_id: string | null
           theme_colors: Json | null
+          theme_history: Json
           updated_at: string | null
           updated_by: string | null
           validation_errors: Json | null
@@ -27859,6 +27860,7 @@ export type Database = {
           splash_screens?: Json | null
           tenant_id?: string | null
           theme_colors?: Json | null
+          theme_history?: Json
           updated_at?: string | null
           updated_by?: string | null
           validation_errors?: Json | null
@@ -27888,6 +27890,7 @@ export type Database = {
           splash_screens?: Json | null
           tenant_id?: string | null
           theme_colors?: Json | null
+          theme_history?: Json
           updated_at?: string | null
           updated_by?: string | null
           validation_errors?: Json | null
