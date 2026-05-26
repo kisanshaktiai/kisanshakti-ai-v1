@@ -25,8 +25,8 @@ interface Props {
 }
 
 const STATE_STYLES: Record<ReviewCardState, string> = {
-  ai:        'border-amber-300 dark:border-amber-700 bg-amber-50/40 dark:bg-amber-950/20',
-  confirmed: 'border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10',
+  ai:        'border-warning/50 dark:border-warning bg-warning-soft/40 dark:bg-warning/20',
+  confirmed: 'border-success/50 dark:border-success bg-success-soft/30 dark:bg-success/10',
   empty:     'border-dashed border-border bg-card',
   manual:    'border-border bg-card',
 };
@@ -64,13 +64,13 @@ export function ReviewCard({
             <h3 className="text-sm font-semibold truncate">{title}</h3>
             {required && <span className="text-destructive text-sm leading-none">*</span>}
             {state === 'confirmed' && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/40 rounded-full px-1.5 py-0.5">
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-success dark:text-success bg-success-soft dark:bg-success/40 rounded-full px-1.5 py-0.5">
                 <Check className="h-2.5 w-2.5" />
                 {t('lands.smartConfirm.confirmed', { defaultValue: 'Confirmed' })}
               </span>
             )}
             {state === 'ai' && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/40 rounded-full px-1.5 py-0.5">
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-warning dark:text-warning bg-warning-soft dark:bg-warning/40 rounded-full px-1.5 py-0.5">
                 <Sparkles className="h-2.5 w-2.5" />
                 AI
               </span>
@@ -104,7 +104,7 @@ export function ReviewCard({
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onConfirm?.(); }}
-            className="h-9 px-3 rounded-full bg-emerald-600 text-white text-xs font-semibold inline-flex items-center gap-1 active:scale-95"
+            className="h-9 px-3 rounded-full bg-success text-white text-xs font-semibold inline-flex items-center gap-1 active:scale-95"
           >
             <Check className="h-3.5 w-3.5" />
             {t('common.yes', { defaultValue: 'Yes' })}

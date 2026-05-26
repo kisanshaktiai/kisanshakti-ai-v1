@@ -30,10 +30,10 @@ const alertIcons: Record<string, any> = {
 };
 
 const priorityColors: Record<string, string> = {
-  low: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
-  medium: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
-  high: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
-  critical: 'bg-red-500/10 text-red-700 border-red-500/20',
+  low: 'bg-info/10 text-info border-info/20',
+  medium: 'bg-warning/10 text-warning border-warning/20',
+  high: 'bg-warning/10 text-warning border-warning/20',
+  critical: 'bg-destructive/10 text-destructive border-destructive/20',
 };
 
 export function AIScheduleAlerts({ farmerId, landId }: { farmerId?: string; landId?: string }) {
@@ -144,7 +144,7 @@ export function AIScheduleAlerts({ farmerId, landId }: { farmerId?: string; land
       <div className="space-y-3">
         {alerts.length === 0 ? (
           <Card className="p-6 text-center text-muted-foreground">
-            <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-green-500" />
+            <CheckCircle2 className="w-12 h-12 mx-auto mb-2 text-success" />
             <p>All clear! No active alerts.</p>
           </Card>
         ) : (
@@ -163,7 +163,7 @@ export function AIScheduleAlerts({ farmerId, landId }: { farmerId?: string; land
                     <div className="flex items-center gap-2 mb-2">
                       <Icon className={`w-5 h-5 ${
                         alert.priority === 'critical' ? 'text-destructive' : 
-                        alert.priority === 'high' ? 'text-orange-500' : 
+                        alert.priority === 'high' ? 'text-warning' : 
                         'text-primary'
                       }`} />
                       <h4 className="font-semibold">{alert.title}</h4>
@@ -171,7 +171,7 @@ export function AIScheduleAlerts({ farmerId, landId }: { farmerId?: string; land
                         {alert.priority}
                       </Badge>
                       {alert.is_actioned && (
-                        <Badge variant="outline" className="bg-green-500/10 text-green-700">
+                        <Badge variant="outline" className="bg-success/10 text-success">
                           ✓ Done
                         </Badge>
                       )}

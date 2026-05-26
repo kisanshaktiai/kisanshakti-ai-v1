@@ -2559,7 +2559,7 @@ export function EnhancedAIChatInterface() {
                 whileTap={{ scale: 0.9 }}
                 onClick={() => sendMessage()}
                 disabled={isLoading}
-                className="h-9 w-9 rounded-full flex items-center justify-center bg-violet-500 hover:bg-violet-600 text-white transition-colors"
+                className="h-9 w-9 rounded-full flex items-center justify-center bg-primary hover:bg-primary text-white transition-colors"
               >
                 {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
               </motion.button>
@@ -2572,8 +2572,8 @@ export function EnhancedAIChatInterface() {
                 className={cn(
                   "h-9 w-9 rounded-full flex items-center justify-center transition-colors",
                   isListening 
-                    ? "bg-red-500 hover:bg-red-600 text-white" 
-                    : "bg-violet-500 hover:bg-violet-600 text-white"
+                    ? "bg-destructive hover:bg-destructive text-white" 
+                    : "bg-primary hover:bg-primary text-white"
                 )}
               >
                 {isListening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}

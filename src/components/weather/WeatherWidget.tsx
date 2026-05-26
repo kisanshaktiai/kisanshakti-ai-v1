@@ -13,12 +13,12 @@ export const WeatherWidget: React.FC = () => {
 
   const getWeatherIcon = (condition: string) => {
     const iconMap: Record<string, React.ReactNode> = {
-      Clear: <Sun className="w-10 h-10 text-amber-400 drop-shadow-lg" />,
-      Clouds: <Cloud className="w-10 h-10 text-slate-400 drop-shadow-lg" />,
-      Rain: <CloudRain className="w-10 h-10 text-blue-400 drop-shadow-lg" />,
-      Snow: <CloudSnow className="w-10 h-10 text-cyan-300 drop-shadow-lg" />,
+      Clear: <Sun className="w-10 h-10 text-warning drop-shadow-lg" />,
+      Clouds: <Cloud className="w-10 h-10 text-muted-foreground drop-shadow-lg" />,
+      Rain: <CloudRain className="w-10 h-10 text-info drop-shadow-lg" />,
+      Snow: <CloudSnow className="w-10 h-10 text-info drop-shadow-lg" />,
     };
-    return iconMap[condition] || <Cloud className="w-10 h-10 text-slate-400 drop-shadow-lg" />;
+    return iconMap[condition] || <Cloud className="w-10 h-10 text-muted-foreground drop-shadow-lg" />;
   };
 
   if (loading) {
@@ -74,24 +74,24 @@ export const WeatherWidget: React.FC = () => {
             {/* Stats Row - Modern Pill Design */}
             <div className="flex gap-2">
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-background/50 backdrop-blur-sm border border-white/10">
-                <Thermometer className="w-3 h-3 text-orange-400" />
+                <Thermometer className="w-3 h-3 text-warning" />
                 <span className="text-[10px] font-medium">{currentWeather?.feels_like ? Math.round(currentWeather.feels_like) : '--'}°</span>
               </div>
               
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-background/50 backdrop-blur-sm border border-white/10">
-                <Droplets className="w-3 h-3 text-blue-400" />
+                <Droplets className="w-3 h-3 text-info" />
                 <span className="text-[10px] font-medium">{currentWeather?.humidity ?? '--'}%</span>
               </div>
               
               <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-background/50 backdrop-blur-sm border border-white/10">
-                <Wind className="w-3 h-3 text-cyan-400" />
+                <Wind className="w-3 h-3 text-info" />
                 <span className="text-[10px] font-medium">{currentWeather?.wind_speed ? `${Math.round(currentWeather.wind_speed * 3.6)} km/h` : '--'}</span>
               </div>
               
               {rainChance > 0 && (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-500/20 backdrop-blur-sm border border-blue-500/30">
-                  <CloudRain className="w-3 h-3 text-blue-400" />
-                  <span className="text-[10px] font-medium text-blue-400">{rainChance}%</span>
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-info/20 backdrop-blur-sm border border-info/30">
+                  <CloudRain className="w-3 h-3 text-info" />
+                  <span className="text-[10px] font-medium text-info">{rainChance}%</span>
                 </div>
               )}
             </div>
@@ -108,7 +108,7 @@ export const WeatherWidget: React.FC = () => {
               
               {lastUpdated && (
                 <div className="flex items-center gap-1">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
                   <p className="text-[9px] text-muted-foreground">
                     {Math.round((Date.now() - lastUpdated) / 60000)}m ago
                   </p>

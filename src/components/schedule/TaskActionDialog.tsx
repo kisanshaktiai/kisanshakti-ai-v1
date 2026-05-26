@@ -28,12 +28,12 @@ const TaskActionDialog: React.FC<TaskActionDialogProps> = ({ task, isOpen, onClo
   const [selectedAction, setSelectedAction] = useState<'completed' | 'skipped' | null>(null);
 
   const taskTypeConfig = {
-    irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-50' },
-    fertilizer: { icon: Leaf, color: 'text-green-500', bg: 'bg-green-50' },
-    pesticide: { icon: Bug, color: 'text-orange-500', bg: 'bg-orange-50' },
-    weeding: { icon: Scissors, color: 'text-purple-500', bg: 'bg-purple-50' },
-    harvest: { icon: Package, color: 'text-amber-500', bg: 'bg-amber-50' },
-    other: { icon: AlertCircle, color: 'text-gray-500', bg: 'bg-gray-50' }
+    irrigation: { icon: Droplets, color: 'text-info', bg: 'bg-info-soft' },
+    fertilizer: { icon: Leaf, color: 'text-success', bg: 'bg-success-soft' },
+    pesticide: { icon: Bug, color: 'text-warning', bg: 'bg-warning-soft' },
+    weeding: { icon: Scissors, color: 'text-primary', bg: 'bg-primary-soft' },
+    harvest: { icon: Package, color: 'text-warning', bg: 'bg-warning-soft' },
+    other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted' }
   };
 
   const config = taskTypeConfig[task?.task_type as keyof typeof taskTypeConfig] || taskTypeConfig.other;

@@ -57,7 +57,7 @@ const STEPS: Step[] = [
   {
     target: 'weather',
     Icon: CloudSun,
-    accent: 'from-sky-500 to-primary',
+    accent: 'from-info to-primary',
     titleFallback: "Today's Weather",
     narrations: {
       hi: 'यहाँ आपके खेत के लिए आज का सटीक मौसम दिखेगा।',
@@ -68,7 +68,7 @@ const STEPS: Step[] = [
   {
     target: 'schedule',
     Icon: CalendarDays,
-    accent: 'from-emerald-500 to-primary',
+    accent: 'from-success to-primary',
     titleFallback: 'Crop Schedule',
     narrations: {
       hi: 'आज क्या काम करना है — सिंचाई, खाद, छिड़काव — सब AI से तय करके मिलेगा।',
@@ -79,7 +79,7 @@ const STEPS: Step[] = [
   {
     target: 'ndvi',
     Icon: Leaf,
-    accent: 'from-green-500 to-emerald-500',
+    accent: 'from-success to-success',
     titleFallback: 'NDVI Crop Health',
     narrations: {
       hi: 'सैटेलाइट से आपकी फसल की सेहत प्रतिशत में देखें।',
@@ -90,7 +90,7 @@ const STEPS: Step[] = [
   {
     target: 'chat',
     Icon: MessageCircle,
-    accent: 'from-primary to-emerald-500',
+    accent: 'from-primary to-success',
     titleFallback: 'Ask AI',
     narrations: {
       hi: 'कोई भी खेती का सवाल यहाँ बोलकर या लिखकर पूछें।',
@@ -101,7 +101,7 @@ const STEPS: Step[] = [
   {
     target: 'scan',
     Icon: ScanLine,
-    accent: 'from-amber-500 to-orange-500',
+    accent: 'from-warning to-warning',
     titleFallback: 'Scan Crop',
     narrations: {
       hi: 'फसल की फोटो लेकर कीट और रोग तुरंत पहचानें।',
@@ -112,7 +112,7 @@ const STEPS: Step[] = [
   {
     target: 'market',
     Icon: Store,
-    accent: 'from-orange-500 to-rose-500',
+    accent: 'from-warning to-destructive',
     titleFallback: 'Market Prices',
     narrations: {
       hi: 'पास की मंडियों के आज के भाव यहाँ देखें।',
@@ -123,7 +123,7 @@ const STEPS: Step[] = [
   {
     target: 'community',
     Icon: Users,
-    accent: 'from-violet-500 to-fuchsia-500',
+    accent: 'from-primary to-primary',
     titleFallback: 'Community',
     narrations: {
       hi: 'अपने इलाके के किसानों से जुड़ें और अनुभव साझा करें।',
@@ -134,7 +134,7 @@ const STEPS: Step[] = [
   {
     target: 'mic',
     Icon: Mic,
-    accent: 'from-rose-500 to-pink-500',
+    accent: 'from-destructive to-primary',
     titleFallback: 'Voice Button',
     narrations: {
       hi: 'इस बटन को दबाकर रखें और अपनी भाषा में बोलें।',
@@ -145,7 +145,7 @@ const STEPS: Step[] = [
   {
     target: 'nav',
     Icon: LayoutGrid,
-    accent: 'from-indigo-500 to-violet-500',
+    accent: 'from-info to-primary',
     titleFallback: 'Bottom Menu',
     narrations: {
       hi: 'यहाँ से होम, मौसम, मंडी और अन्य पेज पर जाएँ।',

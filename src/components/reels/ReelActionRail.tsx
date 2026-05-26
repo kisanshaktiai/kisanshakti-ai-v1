@@ -29,7 +29,7 @@ const RailButton = ({
   count,
   ariaLabel,
   children,
-  activeClass = 'text-red-500',
+  activeClass = 'text-destructive',
 }: {
   onClick: () => void;
   active?: boolean;
@@ -80,7 +80,7 @@ export function ReelActionRail({
     <div className="absolute right-2 bottom-28 z-20 flex flex-col gap-4">
       <RailButton onClick={onLike} active={liked} count={reel.total_likes} ariaLabel="Like">
         <Heart
-          className={cn('w-7 h-7 text-white', liked && 'fill-red-500 text-red-500')}
+          className={cn('w-7 h-7 text-white', liked && 'fill-destructive text-destructive')}
         />
       </RailButton>
 
@@ -88,8 +88,8 @@ export function ReelActionRail({
         <MessageCircle className="w-7 h-7 text-white" />
       </RailButton>
 
-      <RailButton onClick={onSave} active={saved} count={reel.total_saves} activeClass="text-yellow-400" ariaLabel="Save">
-        <Bookmark className={cn('w-7 h-7 text-white', saved && 'fill-yellow-400 text-yellow-400')} />
+      <RailButton onClick={onSave} active={saved} count={reel.total_saves} activeClass="text-warning" ariaLabel="Save">
+        <Bookmark className={cn('w-7 h-7 text-white', saved && 'fill-warning text-warning')} />
       </RailButton>
 
       <RailButton onClick={onShare} count={reel.total_shares} ariaLabel="Share">

@@ -138,7 +138,7 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
     <div className="space-y-6">
       {/* Key Recommendations */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20">
+        <Card className="bg-gradient-to-br from-info to-info dark:from-info/20 dark:to-info/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
               <Droplets className="w-5 h-5" />
@@ -160,7 +160,7 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20">
+        <Card className="bg-gradient-to-br from-success to-success dark:from-success/20 dark:to-success/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
               <Bug className="w-5 h-5" />
@@ -183,7 +183,7 @@ export const AgriculturalInsights: React.FC<AgriculturalInsightsProps> = ({ weat
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20">
+        <Card className="bg-gradient-to-br from-warning to-warning dark:from-warning/20 dark:to-warning/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
               <Sprout className="w-5 h-5" />

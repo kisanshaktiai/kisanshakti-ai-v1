@@ -53,9 +53,9 @@ export const VoiceFAB: React.FC<VoiceFABProps> = ({
   };
 
   const getStatusColor = () => {
-    if (isListening) return 'from-green-500 to-emerald-600';
-    if (isSpeaking) return 'from-blue-500 to-indigo-600';
-    if (isProcessing) return 'from-yellow-500 to-amber-600';
+    if (isListening) return 'from-success to-success';
+    if (isSpeaking) return 'from-info to-info';
+    if (isProcessing) return 'from-warning to-warning';
     return 'from-primary to-primary-foreground';
   };
 
@@ -91,7 +91,7 @@ export const VoiceFAB: React.FC<VoiceFABProps> = ({
                   }}
                   className={cn(
                     'absolute inset-0 rounded-full',
-                    'bg-gradient-to-br from-green-400 to-emerald-500',
+                    'bg-gradient-to-br from-success to-success',
                   )}
                 />
               ))}
@@ -111,8 +111,8 @@ export const VoiceFAB: React.FC<VoiceFABProps> = ({
             'flex items-center justify-center',
             'focus:outline-none focus:ring-4 focus:ring-primary/30',
             'transition-all duration-300',
-            isListening && 'ring-4 ring-green-400/50 shadow-green-500/50',
-            isSpeaking && 'ring-4 ring-blue-400/50 shadow-blue-500/50'
+            isListening && 'ring-4 ring-success/50 shadow-success/30/50',
+            isSpeaking && 'ring-4 ring-info/50 shadow-info/30/50'
           )}
           aria-label={isListening ? 'Stop listening' : 'Start voice input'}
         >
@@ -204,8 +204,8 @@ export const VoiceFAB: React.FC<VoiceFABProps> = ({
           <div
             className={cn(
               'w-4 h-4 rounded-full border-2 border-background',
-              isListening && 'bg-green-500 animate-pulse',
-              isSpeaking && 'bg-blue-500 animate-pulse',
+              isListening && 'bg-success animate-pulse',
+              isSpeaking && 'bg-info animate-pulse',
               !isListening && !isSpeaking && 'bg-muted'
             )}
           />
