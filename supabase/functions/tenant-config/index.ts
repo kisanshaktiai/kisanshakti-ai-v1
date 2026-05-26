@@ -405,7 +405,7 @@ serve(async (req: Request) => {
         headers: {
           ...corsHeaders,
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=3600', // 1 hour
+          'Cache-Control': 'public, max-age=60, must-revalidate', // short TTL; correctness via ETag
           'X-Tenant-ID': tenant.id,
         },
       });
@@ -423,7 +423,7 @@ serve(async (req: Request) => {
           ...corsHeaders,
           'Content-Type': 'application/json',
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=3600, must-revalidate', // 1 hour cache
+          'Cache-Control': 'public, max-age=60, must-revalidate', // short TTL; correctness via ETag
           'X-Tenant-ID': tenant.id,
           'X-Response-Time': `${responseTime}ms`,
         },
