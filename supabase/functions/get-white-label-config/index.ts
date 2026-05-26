@@ -5,6 +5,66 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+type ThemeSource = Record<string, any>;
+
+function firstThemeValue(source: ThemeSource, keys: string[]) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+}
+
+function setThemeAlias(target: ThemeSource, group: string, key: string, source: ThemeSource, aliases: string[]) {
+  const value = firstThemeValue(source, aliases);
+  if (value === undefined) return;
+  const existing = target[group];
+  target[group] = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+  if (target[group][key] === undefined || target[group][key] === null || target[group][key] === '') {
+    target[group][key] = value;
+  }
+}
+
+function normalizeThemeConfig(theme?: ThemeSource | null) {
+  if (!theme) return {};
+  const out: ThemeSource = { ...theme };
+
+  setThemeAlias(out, 'core', 'primary', theme, ['primary', 'primary_color', 'primary_color_hex', 'brand_primary_color']);
+  setThemeAlias(out, 'core', 'primary_foreground', theme, ['primary_foreground', 'primary_foreground_color', 'on_primary', 'on_primary_color']);
+  setThemeAlias(out, 'core', 'secondary', theme, ['secondary', 'secondary_color', 'secondary_color_hex', 'brand_secondary_color']);
+  setThemeAlias(out, 'core', 'secondary_foreground', theme, ['secondary_foreground', 'secondary_foreground_color', 'on_secondary', 'on_secondary_color']);
+  setThemeAlias(out, 'core', 'accent', theme, ['accent', 'accent_color', 'accent_color_hex', 'brand_accent_color']);
+  setThemeAlias(out, 'core', 'accent_foreground', theme, ['accent_foreground', 'accent_foreground_color', 'on_accent', 'on_accent_color']);
+  setThemeAlias(out, 'core', 'ring', theme, ['ring', 'ring_color', 'focus_color']);
+
+  setThemeAlias(out, 'neutral', 'background', theme, ['background', 'background_color', 'background_color_hex', 'app_background_color']);
+  setThemeAlias(out, 'neutral', 'on_background', theme, ['on_background', 'on_background_color', 'foreground', 'foreground_color', 'text_color', 'text_color_hex']);
+  setThemeAlias(out, 'neutral', 'surface', theme, ['surface', 'surface_color', 'surface_color_hex', 'card', 'card_color', 'popover', 'panel_color']);
+  setThemeAlias(out, 'neutral', 'on_surface', theme, ['on_surface', 'on_surface_color', 'card_foreground', 'card_foreground_color', 'surface_text_color', 'text_color']);
+  setThemeAlias(out, 'neutral', 'border', theme, ['border', 'border_color', 'border_color_hex', 'input', 'input_color', 'divider_color']);
+
+  setThemeAlias(out, 'status', 'success', theme, ['success', 'success_color', 'success_color_hex']);
+  setThemeAlias(out, 'status', 'warning', theme, ['warning', 'warning_color', 'warning_color_hex']);
+  setThemeAlias(out, 'status', 'error', theme, ['error', 'error_color', 'error_color_hex', 'destructive', 'destructive_color']);
+  setThemeAlias(out, 'status', 'info', theme, ['info', 'info_color', 'info_color_hex']);
+
+  setThemeAlias(out, 'navigation', 'nav_background', theme, ['nav_background', 'nav_background_color', 'bottom_nav_background', 'bottom_nav_background_color', 'navigation_background_color']);
+  setThemeAlias(out, 'navigation', 'nav_active', theme, ['nav_active', 'nav_active_color', 'bottom_nav_active', 'bottom_nav_active_color', 'navigation_active_color']);
+  setThemeAlias(out, 'navigation', 'nav_inactive', theme, ['nav_inactive', 'nav_inactive_color', 'bottom_nav_inactive', 'bottom_nav_inactive_color', 'navigation_inactive_color']);
+  setThemeAlias(out, 'navigation', 'nav_border', theme, ['nav_border', 'nav_border_color', 'bottom_nav_border', 'bottom_nav_border_color', 'navigation_border_color']);
+
+  setThemeAlias(out, 'support', 'disabled', theme, ['disabled', 'disabled_color', 'disabled_text_color']);
+  setThemeAlias(out, 'support', 'overlay', theme, ['overlay', 'overlay_color']);
+
+  setThemeAlias(out, 'typography', 'font_family', theme, ['font_family', 'fontFamily']);
+  setThemeAlias(out, 'typography', 'font_size_base', theme, ['font_size_base', 'fontSizeBase', 'base_font_size']);
+  setThemeAlias(out, 'typography', 'font_weight_regular', theme, ['font_weight_regular', 'regular_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_medium', theme, ['font_weight_medium', 'medium_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_bold', theme, ['font_weight_bold', 'bold_font_weight']);
+
+  return out;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -214,8 +274,8 @@ Deno.serve(async (req) => {
         brand_identity: whiteLabelData.brand_identity || {},
         app_customization: whiteLabelData.app_customization || {},
         pwa_config: whiteLabelData.pwa_config || {},
-        theme_colors: whiteLabelData.theme_colors || {},
-        mobile_theme: whiteLabelData.mobile_theme || {},
+        theme_colors: normalizeThemeConfig(whiteLabelData.theme_colors),
+        mobile_theme: normalizeThemeConfig(whiteLabelData.mobile_theme),
         splash_screens: whiteLabelData.splash_screens || {},
         email_templates: whiteLabelData.email_templates || {},
         domain_config: whiteLabelData.domain_config || {},
