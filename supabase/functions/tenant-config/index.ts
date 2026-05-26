@@ -228,8 +228,8 @@ async function buildTenantConfig(
   // mobile_theme carries core/neutral/status/support/typography/border_radius/shadows/spacing.
   // Picking only one column (the prior `mobile_theme || theme_colors` logic) DROPS half
   // the namespaces — that was the root cause of preset changes "not reaching" the app.
-  const tc: any = whiteLabel?.theme_colors || {};
-  const mt: any = whiteLabel?.mobile_theme || {};
+  const tc: any = normalizeThemeConfig(whiteLabel?.theme_colors) || {};
+  const mt: any = normalizeThemeConfig(whiteLabel?.mobile_theme) || {};
   const themeKeys = new Set([...Object.keys(tc), ...Object.keys(mt)]);
   const theme: any = themeKeys.size ? {} : undefined;
   for (const k of themeKeys) {
