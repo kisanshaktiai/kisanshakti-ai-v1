@@ -125,7 +125,8 @@ function firstThemeValue(source: ThemeSource, keys: string[]) {
 function setThemeAlias(target: ThemeSource, group: string, key: string, source: ThemeSource, aliases: string[]) {
   const value = firstThemeValue(source, aliases);
   if (value === undefined) return;
-  target[group] = { ...(target[group] || {}) };
+  const existing = target[group];
+  target[group] = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
   if (target[group][key] === undefined || target[group][key] === null || target[group][key] === '') {
     target[group][key] = value;
   }
