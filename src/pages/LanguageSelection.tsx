@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { AppHeader } from '@/components/language/AppHeader';
 import { LocationDetector } from '@/components/language/LocationDetector';
 import { LanguageCard } from '@/components/language/LanguageCard';
+import { LanguageConfirmDialog } from '@/components/language/LanguageConfirmDialog';
 
 const stateLanguages: Record<string, string[]> = {
   'Andhra Pradesh': ['te', 'hi', 'en'],
