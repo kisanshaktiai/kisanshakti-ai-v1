@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { AppHeader } from '@/components/language/AppHeader';
 import { LocationDetector } from '@/components/language/LocationDetector';
 import { LanguageCard } from '@/components/language/LanguageCard';
+import { LanguageConfirmDialog } from '@/components/language/LanguageConfirmDialog';
 
 const stateLanguages: Record<string, string[]> = {
   'Andhra Pradesh': ['te', 'hi', 'en'],
@@ -54,6 +55,7 @@ export default function LanguageSelection() {
   const [userState, setUserState] = useState<string>('');
   const [sortedLanguages, setSortedLanguages] = useState(availableLanguages);
   const [hasDetectedLocation, setHasDetectedLocation] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -84,6 +86,10 @@ export default function LanguageSelection() {
 
   const { markLanguageSelected, setStep } = useAuthFlowStore();
   
+  const openConfirm = () => {
+    if (selectedLanguage) setConfirmOpen(true);
+  };
+
   const handleContinue = () => {
     if (selectedLanguage) {
       setLanguage(selectedLanguage);
@@ -91,6 +97,7 @@ export default function LanguageSelection() {
       localStorage.setItem('hasSelectedLanguage', 'true');
       markLanguageSelected();
       setStep('mobile');
+      setConfirmOpen(false);
       // First-run: send through the standard permission onboarding before auth.
       const permsDone = localStorage.getItem('ks_permissions_onboarded') === 'true';
       navigate(permsDone ? '/auth' : '/permissions');
@@ -132,7 +139,7 @@ export default function LanguageSelection() {
       <footer className="sticky bottom-0 glassmorphism-strong border-t border-border/30 shadow-float">
         <div className="max-w-md mx-auto p-4">
           <Button
-            onClick={handleContinue}
+            onClick={openConfirm}
             disabled={!selectedLanguage}
             variant="pill-gradient"
             size="lg"
@@ -153,6 +160,17 @@ export default function LanguageSelection() {
           </Button>
         </div>
       </footer>
+
+      {selectedLanguage && (
+        <LanguageConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          langCode={selectedLanguage}
+          nativeName={sortedLanguages.find(l => l.code === selectedLanguage)?.nativeName || ''}
+          englishName={sortedLanguages.find(l => l.code === selectedLanguage)?.name || ''}
+          onConfirm={handleContinue}
+        />
+      )}
     </div>
   );
 }
