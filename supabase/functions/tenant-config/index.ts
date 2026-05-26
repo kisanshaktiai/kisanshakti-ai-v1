@@ -143,6 +143,8 @@ async function buildTenantConfig(
     hasMobileTheme: !!whiteLabel?.mobile_theme,
     hasThemeColors: !!whiteLabel?.theme_colors,
     hasPWA: !!whiteLabel?.pwa_config,
+      themeColorNamespaces: Object.keys(whiteLabel?.theme_colors || {}),
+      mobileThemeNamespaces: Object.keys(whiteLabel?.mobile_theme || {}),
     lastDeployedAt: whiteLabel?.last_deployed_at,
   });
 
@@ -405,7 +407,10 @@ serve(async (req: Request) => {
         headers: {
           ...corsHeaders,
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=60, must-revalidate', // short TTL; correctness via ETag
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store',
           'X-Tenant-ID': tenant.id,
         },
       });
@@ -423,7 +428,10 @@ serve(async (req: Request) => {
           ...corsHeaders,
           'Content-Type': 'application/json',
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=60, must-revalidate', // short TTL; correctness via ETag
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store',
           'X-Tenant-ID': tenant.id,
           'X-Response-Time': `${responseTime}ms`,
         },
