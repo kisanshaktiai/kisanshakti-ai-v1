@@ -87,8 +87,10 @@ export function AppLayout() {
             >
               <AppBootGate>
                 <FeatureRouteGate>
+                  <TenantThemeRealtimeSync />
                   <Outlet />
                 </FeatureRouteGate>
+
               </AppBootGate>
             </main>
 
