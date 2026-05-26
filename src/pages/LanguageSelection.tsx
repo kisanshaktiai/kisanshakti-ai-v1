@@ -86,8 +86,12 @@ export default function LanguageSelection() {
 
   const { markLanguageSelected, setStep } = useAuthFlowStore();
   
-  const openConfirm = () => {
-    if (selectedLanguage) setConfirmOpen(true);
+  const openConfirm = (code?: string) => {
+    const target = code ?? selectedLanguage;
+    if (target) {
+      setSelectedLanguage(target);
+      setConfirmOpen(true);
+    }
   };
 
   const handleContinue = () => {
@@ -116,7 +120,7 @@ export default function LanguageSelection() {
 
           <RadioGroup 
             value={selectedLanguage} 
-            onValueChange={setSelectedLanguage}
+            onValueChange={(code) => openConfirm(code)}
             className="space-y-3"
             aria-label="Select your preferred language"
           >
@@ -129,7 +133,7 @@ export default function LanguageSelection() {
                 isSelected={selectedLanguage === lang.code}
                 isRecommended={index === 0 && hasDetectedLocation && userState && userState !== 'default'}
                 index={index}
-                onSelect={setSelectedLanguage}
+                onSelect={(code) => openConfirm(code)}
               />
             ))}
           </RadioGroup>
@@ -139,7 +143,7 @@ export default function LanguageSelection() {
       <footer className="sticky bottom-0 glassmorphism-strong border-t border-border/30 shadow-float">
         <div className="max-w-md mx-auto p-4">
           <Button
-            onClick={openConfirm}
+            onClick={() => openConfirm()}
             disabled={!selectedLanguage}
             variant="pill-gradient"
             size="lg"
