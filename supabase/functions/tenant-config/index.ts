@@ -229,11 +229,14 @@ async function buildTenantConfig(
       cached_at: new Date().toISOString(),
       etag: '', // Will be set after generating
       version: '1.0.0',
+      last_deployed_at: whiteLabel?.last_deployed_at || null,
     },
   };
 
-  // Generate ETag
-  config.metadata.etag = generateETag(config);
+  // Generate ETag — include last_deployed_at so the DB trigger bump
+  // forces a new ETag and clients with `If-None-Match` get a 200 instead of 304.
+  config.metadata.etag = generateETag({ ...config, _lda: whiteLabel?.last_deployed_at });
+
 
   return config;
 }
