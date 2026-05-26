@@ -2,7 +2,7 @@
 import { clientsClaim } from 'workbox-core';
 import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
-import { NetworkFirst, CacheFirst, StaleWhileRevalidate } from 'workbox-strategies';
+import { NetworkFirst, CacheFirst, StaleWhileRevalidate, NetworkOnly } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 
@@ -58,22 +58,11 @@ registerRoute(
   })
 );
 
-// Tenant configs - Network first with very short cache
+// Tenant configs are the source of truth for partner branding/theme.
+// Never serve them from the service worker cache; TenantContext owns offline fallback.
 registerRoute(
-  ({ url }) => url.pathname.includes('get-white-label-config'),
-  new NetworkFirst({
-    cacheName: 'tenant-config',
-    networkTimeoutSeconds: 5,
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 5,
-        maxAgeSeconds: 60, // 1 minute
-      }),
-      new CacheableResponsePlugin({
-        statuses: [0, 200],
-      }),
-    ],
-  })
+  ({ url }) => url.pathname.includes('tenant-config') || url.pathname.includes('get-white-label-config'),
+  new NetworkOnly()
 );
 
 // Edge functions - Network first
