@@ -572,6 +572,10 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           'Content-Type': 'application/json',
           'X-Client-Domain': domain,
           'Origin': `https://${domain}`,
+          // Prevent the browser/service worker from replaying the old 60-min
+          // tenant-config response after a partner saves a new mobile theme.
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
         };
         // Conditional request — server returns 304 when nothing changed, including
         // when the white_label_configs.last_deployed_at trigger has NOT fired.
@@ -580,6 +584,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const response = await fetch(getSupabaseFunctionUrl('tenant-config'), {
           method: 'GET',
           headers,
+          cache: 'no-store',
         });
 
         if (response.status === 304 && usedCache) {
@@ -982,10 +987,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     
     window.addEventListener('theme-updated', handleThemeUpdate);
+    window.addEventListener('themeUpdated', handleThemeUpdate);
     window.addEventListener('tenant-theme-update', handleSilentThemeUpdate);
     
     return () => {
       window.removeEventListener('theme-updated', handleThemeUpdate);
+      window.removeEventListener('themeUpdated', handleThemeUpdate);
       window.removeEventListener('tenant-theme-update', handleSilentThemeUpdate);
     };
   }, [clearCache]);
