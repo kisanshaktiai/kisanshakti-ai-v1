@@ -96,7 +96,9 @@ interface TenantConfigResponse {
     cached_at: string;
     etag: string;
     version: string;
+    last_deployed_at?: string | null;
   };
+
 }
 
 /**
