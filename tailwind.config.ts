@@ -105,6 +105,20 @@ export default {
           light: "hsl(var(--overlay-light))",
           dark: "hsl(var(--overlay-dark))",
         },
+        'chart': {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+        },
+        'map': {
+          marker: "hsl(var(--marker-color))",
+          'polygon-fill': "hsl(var(--polygon-fill))",
+          'polygon-stroke': "hsl(var(--polygon-stroke))",
+          'tracking-fill': "hsl(var(--tracking-fill))",
+          'tracking-stroke': "hsl(var(--tracking-stroke))",
+        },
         // Chat section colors for AI interface
         'chat-section': {
           'green-bg': "hsl(var(--chat-section-green-bg))",
