@@ -209,6 +209,7 @@ Deno.serve(async (req) => {
     // Transform white label config if exists
     let whiteLabelConfig = null
     if (whiteLabelData) {
+      const lastDeployedAt = whiteLabelData.last_deployed_at || whiteLabelData.updated_at || tenant.updated_at || ''
       whiteLabelConfig = {
         brand_identity: whiteLabelData.brand_identity || {},
         app_customization: whiteLabelData.app_customization || {},
@@ -217,7 +218,8 @@ Deno.serve(async (req) => {
         mobile_theme: whiteLabelData.mobile_theme || {},
         splash_screens: whiteLabelData.splash_screens || {},
         email_templates: whiteLabelData.email_templates || {},
-        domain_config: whiteLabelData.domain_config || {}
+        domain_config: whiteLabelData.domain_config || {},
+        last_deployed_at: lastDeployedAt
       }
       console.log('✅ Transformed white label config with theme_colors')
     } else if (tenant.tenant_branding) {
@@ -259,7 +261,11 @@ Deno.serve(async (req) => {
       whiteLabelConfig,
       features: tenant.features || [],
       languages: tenant.supported_languages || ['en', 'hi', 'mr', 'pa', 'ta'],
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      metadata: {
+        last_deployed_at: whiteLabelData?.last_deployed_at || whiteLabelData?.updated_at || tenant.updated_at || null,
+        etag: `"${tenant.id}-${whiteLabelData?.last_deployed_at || whiteLabelData?.updated_at || tenant.updated_at || ''}"`
+      }
     }
     
     console.log('Sending white-label config for tenant:', tenant.name)
@@ -271,8 +277,11 @@ Deno.serve(async (req) => {
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-          'ETag': `"${tenant.id}-${tenant.updated_at || ''}"` // For conditional requests
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store',
+          'ETag': response.metadata.etag
         }
       }
     )
