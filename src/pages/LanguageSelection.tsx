@@ -86,8 +86,12 @@ export default function LanguageSelection() {
 
   const { markLanguageSelected, setStep } = useAuthFlowStore();
   
-  const openConfirm = () => {
-    if (selectedLanguage) setConfirmOpen(true);
+  const openConfirm = (code?: string) => {
+    const target = code ?? selectedLanguage;
+    if (target) {
+      setSelectedLanguage(target);
+      setConfirmOpen(true);
+    }
   };
 
   const handleContinue = () => {
