@@ -177,6 +177,8 @@ export class WhiteLabelService {
             method: 'GET',
             headers: {
               'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
             }
           });
 
@@ -242,6 +244,7 @@ export class WhiteLabelService {
   private notifyThemeUpdate(config: WhiteLabelConfig): void {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('themeUpdated', { detail: config }));
+      window.dispatchEvent(new CustomEvent('theme-updated', { detail: config }));
     }
   }
 
