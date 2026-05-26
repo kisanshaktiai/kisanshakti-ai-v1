@@ -142,15 +142,20 @@ button, a, [role="button"], input, select, textarea, label,
     /* Status Colors */
     --success: 142 76% 45%;
     --success-foreground: 0 0% 100%;
+    --success-soft: 142 76% 92%;
     
     --warning: 38 95% 58%;
     --warning-foreground: 38 10% 15%;
+    --warning-soft: 38 95% 92%;
     
     --destructive: 0 85% 60%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 85% 94%;
     
     --info: 210 100% 56%;
     --info-foreground: 0 0% 100%;
+    --info-soft: 210 100% 94%;
+    
     
     /* Muted - Subtle Intelligence */
     --muted: 220 15% 95%;
