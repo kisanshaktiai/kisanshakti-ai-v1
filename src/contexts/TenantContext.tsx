@@ -34,12 +34,22 @@ export interface ThemeConfig {
   core?: Record<string, string>;
   neutral?: Record<string, string>;
   status?: Record<string, string>;
-  typography?: { font_family?: string };
+  support?: Record<string, string>;
+  typography?: {
+    font_family?: string;
+    font_size_base?: string | number;
+    font_weight_regular?: string | number;
+    font_weight_medium?: string | number;
+    font_weight_bold?: string | number;
+  };
   navigation?: Record<string, string>;
   charts?: Record<string, string>;
   maps?: Record<string, string>;
   weather?: Record<string, string>;
   gradients?: Record<string, string>;
+  border_radius?: Record<string, string | number>;
+  shadows?: Record<string, string>;
+  spacing?: Record<string, string | number>;
   dark_mode?: {
     enabled: boolean;
     colors?: Record<string, string>;
