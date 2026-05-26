@@ -111,6 +111,36 @@ export interface TenantContextValue {
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 
+/**
+ * Deep-merge the two theme JSONB groups stored in white_label_configs.
+ * - `theme_colors` carries: core, navigation, charts, maps, weather, gradients, dark_mode.
+ * - `mobile_theme`  carries: core, neutral, status, support, typography, border_radius, shadows, spacing.
+ * Both share `core` — mobile_theme wins so the partner's preset is authoritative.
+ * Without this merge, picking one column drops half the namespaces from the app.
+ */
+export function mergeThemeGroups(
+  themeColors?: Record<string, any> | null,
+  mobileTheme?: Record<string, any> | null
+): ThemeConfig | undefined {
+  if (!themeColors && !mobileTheme) return undefined;
+  const out: Record<string, any> = {};
+  const keys = new Set([
+    ...Object.keys(themeColors || {}),
+    ...Object.keys(mobileTheme || {}),
+  ]);
+  for (const k of keys) {
+    const a = (themeColors as any)?.[k];
+    const b = (mobileTheme as any)?.[k];
+    if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+      out[k] = { ...a, ...b };
+    } else {
+      out[k] = b ?? a;
+    }
+  }
+  return out as ThemeConfig;
+}
+
+
 // ============= Provider =============
 
 export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -153,7 +183,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (cachedConfig.white_label_config?.brand_identity as BrandingConfig) || {
               company_name: cachedConfig.tenant_data.name,
             },
-            theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(cachedConfig.white_label_config?.theme_colors as any, cachedConfig.white_label_config?.mobile_theme as any),
             pwa: cachedConfig.white_label_config?.pwa_config as PWAConfig,
             features: [],
             settings: {
@@ -505,14 +535,19 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // PERFORMANCE FIX: Check cache FIRST before any API calls - CRITICAL FOR FAST STARTUP
       const cachedTenant = localStorage.getItem('tenant_config_cache');
+      let cachedEtag: string | null = null;
+      let cachedLastDeployedAt: string | null = null;
+      let usedCache = false;
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          // PRODUCTION FIX: Accept cache up to 60 min online for fast startup (was 30 min)
-          const cacheValidity = isOnline ? 3600000 : 86400000; // 60 min online, 24h offline
-          
+          cachedEtag = parsed.etag || null;
+          cachedLastDeployedAt = parsed.last_deployed_at || null;
+          // Short TTL for fast paint; correctness comes from ETag/last_deployed_at revalidation below.
+          const cacheValidity = isOnline ? 300000 : 86400000; // 5 min online, 24h offline
+
           if (Date.now() - parsed.timestamp < cacheValidity) {
-            console.log('📦 [TenantProvider] Using cached tenant config (fast path)');
+            console.log('📦 [TenantProvider] Using cached tenant config (fast paint)');
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
@@ -520,17 +555,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             window.__TENANT_LOADED__ = true;
             window.__TENANT_BRANDING__ = parsed.data.branding;
             setIsLoading(false);
-            
-            // PRODUCTION FIX: Background refresh only after app is interactive
-            if (isOnline && Date.now() - parsed.timestamp > 300000) {
-              // If cache is older than 5 min, refresh in background (non-blocking)
-              requestIdleCallback ? requestIdleCallback(() => {
-                console.log('🔄 [TenantProvider] Background cache refresh queued');
-              }) : setTimeout(() => {
-                console.log('🔄 [TenantProvider] Background cache refresh queued');
-              }, 10000);
-            }
-            return;
+            usedCache = true;
+            // Fall through to revalidate against the edge function (won't re-paint unless ETag changed)
           } else {
             console.log('⏰ [TenantProvider] Cache expired, fetching fresh config');
           }
@@ -542,32 +568,48 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // OPTION 1: Try centralized API first (cleaner)
       try {
-        const response = await fetch(
-          getSupabaseFunctionUrl('tenant-config'),
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Client-Domain': domain, // Pass actual client domain
-              'Origin': `https://${domain}`, // Helps with CORS and domain detection
-            },
-          }
-        );
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'X-Client-Domain': domain,
+          'Origin': `https://${domain}`,
+        };
+        // Conditional request — server returns 304 when nothing changed, including
+        // when the white_label_configs.last_deployed_at trigger has NOT fired.
+        if (cachedEtag) headers['If-None-Match'] = cachedEtag;
+
+        const response = await fetch(getSupabaseFunctionUrl('tenant-config'), {
+          method: 'GET',
+          headers,
+        });
+
+        if (response.status === 304 && usedCache) {
+          console.log('⚡ [TenantProvider] 304 Not Modified — keeping cached theme');
+          return;
+        }
 
         if (response.ok) {
           const apiConfig = await response.json();
-          
-          console.log('✅ [TenantProvider] Loaded config from centralized API');
-          console.log('📦 [TenantProvider] API Response:', {
+          const newLda = apiConfig?.metadata?.last_deployed_at || null;
+          const newEtag = apiConfig?.metadata?.etag || response.headers.get('etag') || null;
+
+          // If we already painted from cache and nothing changed, skip the re-apply.
+          if (
+            usedCache &&
+            newLda &&
+            cachedLastDeployedAt &&
+            newLda === cachedLastDeployedAt &&
+            newEtag === cachedEtag
+          ) {
+            console.log('⚡ [TenantProvider] last_deployed_at unchanged — cached theme is current');
+            return;
+          }
+
+          console.log('✅ [TenantProvider] Theme refresh from edge function', {
             tenant_name: apiConfig.tenant?.name,
-            tenant_id: apiConfig.tenant?.id,
-            has_branding: !!apiConfig.branding,
-            has_theme: !!apiConfig.theme,
-            branding_company: apiConfig.branding?.company_name,
-            branding_logo: apiConfig.branding?.logo_url,
-            branding_primary_color: apiConfig.branding?.primary_color,
+            last_deployed_at: newLda,
+            replaced_cache: usedCache,
           });
-          
+
           const config: TenantConfig = {
             id: apiConfig.tenant.id,
             name: apiConfig.tenant.name,
@@ -585,39 +627,31 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           };
 
           setTenant(config);
-          console.log('✅ [TenantProvider] Tenant state updated:', config.name);
-          console.log('✅ [TenantProvider] Setting tenant context for isolation service');
           tenantIsolationService.setTenantContext(config.id, domain);
-          console.log('✅ [TenantProvider] Applying theme to DOM with branding and theme');
           applyThemeToDOM(config.branding, config.theme);
           setLastUpdated(new Date());
-          
-          // Signal to index.html loader that tenant is ready
+
           window.__TENANT_LOADED__ = true;
           window.__TENANT_BRANDING__ = config.branding;
-          console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
 
-          // Cache for offline in IndexedDB
-          await localDB.saveTenantConfig(config.id, { 
+          await localDB.saveTenantConfig(config.id, {
             brand_identity: apiConfig.branding,
             mobile_theme: apiConfig.theme,
-            pwa_config: apiConfig.pwa
-          }, {
-            id: config.id,
-            name: config.name,
-            domain
-          });
+            pwa_config: apiConfig.pwa,
+          }, { id: config.id, name: config.name, domain });
 
-          // Cache in localStorage for fast access
           localStorage.setItem('tenant_config_cache', JSON.stringify({
             data: config,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            etag: newEtag,
+            last_deployed_at: newLda,
           }));
 
           console.log('✅ [TenantProvider] Config cached for offline use');
           return;
         }
       } catch (apiError) {
+
         console.error('❌ [TenantProvider] API failed, falling back to direct DB access');
         console.error('❌ [TenantProvider] API Error details:', apiError);
         console.error('❌ [TenantProvider] API Error message:', (apiError as Error)?.message);
@@ -669,7 +703,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (whiteLabel?.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
             },
-            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(whiteLabel?.theme_colors as any, whiteLabel?.mobile_theme as any),
             pwa: whiteLabel?.pwa_config as PWAConfig,
             splashScreens: (whiteLabel as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
@@ -733,7 +767,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (matchedConfig.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
             },
-            theme: (matchedConfig.mobile_theme || matchedConfig.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(matchedConfig.theme_colors as any, matchedConfig.mobile_theme as any),
             pwa: matchedConfig.pwa_config as PWAConfig,
             splashScreens: (matchedConfig as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
@@ -822,7 +856,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               company_name: defaultTenantData.name,
               // No fallback colors - let CSS defaults handle it until theme loads
             },
-            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(whiteLabel?.theme_colors as any, whiteLabel?.mobile_theme as any),
             pwa: whiteLabel?.pwa_config as PWAConfig,
             features: (defaultTenantData.settings as any)?.features || ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
           };
@@ -910,7 +944,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               company_name: cachedConfig.tenant_data.name,
               // No fallback colors - let CSS defaults handle it
             },
-            theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(cachedConfig.white_label_config?.theme_colors as any, cachedConfig.white_label_config?.mobile_theme as any),
             features: [],
             settings: {
               languages: ['en', 'hi'],

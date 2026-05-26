@@ -96,7 +96,9 @@ interface TenantConfigResponse {
     cached_at: string;
     etag: string;
     version: string;
+    last_deployed_at?: string | null;
   };
+
 }
 
 /**
@@ -130,15 +132,18 @@ async function buildTenantConfig(
       pwa_config,
       splash_screens,
       domain_config,
-      css_injection
+      css_injection,
+      last_deployed_at
     `)
     .eq('tenant_id', tenant.id)
     .maybeSingle();
 
   console.log('📦 [TenantConfig] White label data loaded:', {
     hasBrandIdentity: !!whiteLabel?.brand_identity,
-    hasTheme: !!(whiteLabel?.mobile_theme || whiteLabel?.theme_colors),
+    hasMobileTheme: !!whiteLabel?.mobile_theme,
+    hasThemeColors: !!whiteLabel?.theme_colors,
     hasPWA: !!whiteLabel?.pwa_config,
+    lastDeployedAt: whiteLabel?.last_deployed_at,
   });
 
   // Extract branding
@@ -157,20 +162,24 @@ async function buildTenantConfig(
     description: brandIdentity.description,
   };
 
-  // Extract theme (prioritize mobile_theme)
-  const themeData = whiteLabel?.mobile_theme || whiteLabel?.theme_colors;
-  const theme = themeData ? {
-    core: themeData.core,
-    neutral: themeData.neutral,
-    status: themeData.status,
-    typography: themeData.typography,
-    navigation: themeData.navigation,
-    charts: themeData.charts,
-    maps: themeData.maps,
-    weather: themeData.weather,
-    gradients: themeData.gradients,
-    dark_mode: themeData.dark_mode,
-  } : undefined;
+  // ---- Deep-merge theme groups ----
+  // theme_colors carries navigation/charts/maps/weather/gradients/dark_mode.
+  // mobile_theme carries core/neutral/status/support/typography/border_radius/shadows/spacing.
+  // Picking only one column (the prior `mobile_theme || theme_colors` logic) DROPS half
+  // the namespaces — that was the root cause of preset changes "not reaching" the app.
+  const tc: any = whiteLabel?.theme_colors || {};
+  const mt: any = whiteLabel?.mobile_theme || {};
+  const themeKeys = new Set([...Object.keys(tc), ...Object.keys(mt)]);
+  const theme: any = themeKeys.size ? {} : undefined;
+  for (const k of themeKeys) {
+    const a = tc[k]; const b = mt[k];
+    if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+      theme[k] = { ...a, ...b };
+    } else {
+      theme[k] = b ?? a;
+    }
+  }
+
 
   // Extract PWA config
   const pwaConfig = whiteLabel?.pwa_config;
@@ -222,11 +231,14 @@ async function buildTenantConfig(
       cached_at: new Date().toISOString(),
       etag: '', // Will be set after generating
       version: '1.0.0',
+      last_deployed_at: whiteLabel?.last_deployed_at || null,
     },
   };
 
-  // Generate ETag
-  config.metadata.etag = generateETag(config);
+  // Generate ETag — include last_deployed_at so the DB trigger bump
+  // forces a new ETag and clients with `If-None-Match` get a 200 instead of 304.
+  config.metadata.etag = generateETag({ ...config, _lda: whiteLabel?.last_deployed_at });
+
 
   return config;
 }
@@ -393,7 +405,7 @@ serve(async (req: Request) => {
         headers: {
           ...corsHeaders,
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=3600', // 1 hour
+          'Cache-Control': 'public, max-age=60, must-revalidate', // short TTL; correctness via ETag
           'X-Tenant-ID': tenant.id,
         },
       });
@@ -411,7 +423,7 @@ serve(async (req: Request) => {
           ...corsHeaders,
           'Content-Type': 'application/json',
           'ETag': config.metadata.etag,
-          'Cache-Control': 'public, max-age=3600, must-revalidate', // 1 hour cache
+          'Cache-Control': 'public, max-age=60, must-revalidate', // short TTL; correctness via ETag
           'X-Tenant-ID': tenant.id,
           'X-Response-Time': `${responseTime}ms`,
         },
