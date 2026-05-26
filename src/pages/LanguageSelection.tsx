@@ -139,7 +139,7 @@ export default function LanguageSelection() {
       <footer className="sticky bottom-0 glassmorphism-strong border-t border-border/30 shadow-float">
         <div className="max-w-md mx-auto p-4">
           <Button
-            onClick={handleContinue}
+            onClick={openConfirm}
             disabled={!selectedLanguage}
             variant="pill-gradient"
             size="lg"
@@ -160,6 +160,17 @@ export default function LanguageSelection() {
           </Button>
         </div>
       </footer>
+
+      {selectedLanguage && (
+        <LanguageConfirmDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          langCode={selectedLanguage}
+          nativeName={sortedLanguages.find(l => l.code === selectedLanguage)?.nativeName || ''}
+          englishName={sortedLanguages.find(l => l.code === selectedLanguage)?.name || ''}
+          onConfirm={handleContinue}
+        />
+      )}
     </div>
   );
 }
