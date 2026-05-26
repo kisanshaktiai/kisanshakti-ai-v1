@@ -191,58 +191,58 @@ const productTypeConfig: Record<string, {
 }> = {
   organic: {
     icon: Leaf,
-    color: 'text-green-600',
-    bgColor: 'bg-green-500/10',
-    borderColor: 'border-green-500/30',
-    gradient: 'from-green-500 to-emerald-500',
+    color: 'text-success',
+    bgColor: 'bg-success/10',
+    borderColor: 'border-success/30',
+    gradient: 'from-success to-success',
     label: PRODUCT_TYPE_TRANSLATIONS.organic,
   },
   growth_promoter: {
     icon: Sparkles,
-    color: 'text-blue-600',
-    bgColor: 'bg-blue-500/10',
-    borderColor: 'border-blue-500/30',
-    gradient: 'from-blue-500 to-cyan-500',
+    color: 'text-info',
+    bgColor: 'bg-info/10',
+    borderColor: 'border-info/30',
+    gradient: 'from-info to-info',
     label: PRODUCT_TYPE_TRANSLATIONS.growth_promoter,
   },
   fertilizer: {
     icon: FlaskConical,
-    color: 'text-amber-600',
-    bgColor: 'bg-amber-500/10',
-    borderColor: 'border-amber-500/30',
-    gradient: 'from-amber-500 to-yellow-500',
+    color: 'text-warning',
+    bgColor: 'bg-warning/10',
+    borderColor: 'border-warning/30',
+    gradient: 'from-warning to-warning',
     label: PRODUCT_TYPE_TRANSLATIONS.fertilizer,
   },
   pesticide: {
     icon: Bug,
-    color: 'text-red-600',
-    bgColor: 'bg-red-500/10',
-    borderColor: 'border-red-500/30',
-    gradient: 'from-red-500 to-orange-500',
+    color: 'text-destructive',
+    bgColor: 'bg-destructive/10',
+    borderColor: 'border-destructive/30',
+    gradient: 'from-destructive to-warning',
     label: PRODUCT_TYPE_TRANSLATIONS.pesticide,
   },
   fungicide: {
     icon: Shield,
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-500/10',
-    borderColor: 'border-purple-500/30',
-    gradient: 'from-purple-500 to-violet-500',
+    color: 'text-primary',
+    bgColor: 'bg-primary/10',
+    borderColor: 'border-primary/30',
+    gradient: 'from-primary to-primary',
     label: PRODUCT_TYPE_TRANSLATIONS.fungicide,
   },
   bio_fertilizer: {
     icon: Leaf,
-    color: 'text-emerald-600',
-    bgColor: 'bg-emerald-500/10',
-    borderColor: 'border-emerald-500/30',
-    gradient: 'from-emerald-500 to-teal-500',
+    color: 'text-success',
+    bgColor: 'bg-success/10',
+    borderColor: 'border-success/30',
+    gradient: 'from-success to-success',
     label: PRODUCT_TYPE_TRANSLATIONS.bio_fertilizer,
   },
   seed_treatment: {
     icon: Sparkles,
-    color: 'text-indigo-600',
-    bgColor: 'bg-indigo-500/10',
-    borderColor: 'border-indigo-500/30',
-    gradient: 'from-indigo-500 to-blue-500',
+    color: 'text-info',
+    bgColor: 'bg-info/10',
+    borderColor: 'border-info/30',
+    gradient: 'from-info to-info',
     label: PRODUCT_TYPE_TRANSLATIONS.seed_treatment,
   },
 };
@@ -355,7 +355,7 @@ export default function ProductRecommendationCard({
                     {/* Chemical Class & Regulatory Status */}
                     <div className="flex flex-wrap gap-1.5">
                       {product.chemical_class && (
-                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-blue-400">
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 bg-info/10 border-info/30 text-info dark:text-info">
                           {product.chemical_class}
                         </Badge>
                       )}
@@ -364,10 +364,10 @@ export default function ProductRecommendationCard({
                           variant="outline" 
                           className={cn(
                             "text-[9px] px-1.5 py-0",
-                            product.regulatory_status === 'approved' && "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400",
-                            product.regulatory_status === 'restricted' && "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400",
-                            product.regulatory_status === 'banned' && "bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400",
-                            product.regulatory_status === 'organic' && "bg-green-500/10 border-green-500/30 text-green-600 dark:text-green-400"
+                            product.regulatory_status === 'approved' && "bg-success/10 border-success/30 text-success dark:text-success",
+                            product.regulatory_status === 'restricted' && "bg-warning/10 border-warning/30 text-warning dark:text-warning",
+                            product.regulatory_status === 'banned' && "bg-destructive/10 border-destructive/30 text-destructive dark:text-destructive",
+                            product.regulatory_status === 'organic' && "bg-success/10 border-success/30 text-success dark:text-success"
                           )}
                         >
                           {product.regulatory_status === 'approved' && '✅ '}
@@ -390,9 +390,9 @@ export default function ProductRecommendationCard({
 
                 {/* Organic Alternative */}
                 {product.organic_alternative && (
-                  <div className="flex items-start gap-2 p-2 rounded-lg bg-green-500/10 border border-green-500/20">
-                    <Leaf className="h-3.5 w-3.5 text-green-600 shrink-0 mt-0.5" />
-                    <span className="text-xs text-green-700 dark:text-green-400">
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-success/10 border border-success/20">
+                    <Leaf className="h-3.5 w-3.5 text-success shrink-0 mt-0.5" />
+                    <span className="text-xs text-success dark:text-success">
                       <span className="font-medium">
                         {lang === 'hi' ? 'जैविक विकल्प:' : lang === 'mr' ? 'सेंद्रिय पर्याय:' : 'Organic alternative:'}
                       </span>{' '}
@@ -404,7 +404,7 @@ export default function ProductRecommendationCard({
                 {/* Dose */}
                 {product.dose_per_acre && (
                   <div className="flex items-start gap-2 text-xs">
-                    <Droplets className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                    <Droplets className="h-3.5 w-3.5 text-info shrink-0 mt-0.5" />
                     <span className="text-muted-foreground">
                       <span className="font-medium text-foreground">
                         {lang === 'hi' ? 'मात्रा:' : lang === 'mr' ? 'डोस:' : 'Dose:'}
@@ -418,7 +418,7 @@ export default function ProductRecommendationCard({
                 {/* Application Method - TRANSLATED */}
                 {product.application_method && (
                   <div className="flex items-start gap-2 text-xs">
-                    <Sparkles className="h-3.5 w-3.5 text-purple-500 shrink-0 mt-0.5" />
+                    <Sparkles className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
                     <span className="text-muted-foreground">
                       <span className="font-medium text-foreground">
                         {lang === 'hi' ? 'तरीका:' : lang === 'mr' ? 'पद्धत:' : 'Method:'}
@@ -431,7 +431,7 @@ export default function ProductRecommendationCard({
                 {/* Timing */}
                 {product.timing && (
                   <div className="flex items-start gap-2 text-xs">
-                    <Clock className="h-3.5 w-3.5 text-amber-500 shrink-0 mt-0.5" />
+                    <Clock className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
                     <span className="text-muted-foreground">
                       <span className="font-medium text-foreground">
                         {lang === 'hi' ? 'समय:' : lang === 'mr' ? 'वेळ:' : 'Timing:'}
@@ -444,7 +444,7 @@ export default function ProductRecommendationCard({
                 {/* Weather Conditions */}
                 {product.weather_conditions && (
                   <div className="flex items-start gap-2 text-xs">
-                    <CloudRain className="h-3.5 w-3.5 text-sky-500 shrink-0 mt-0.5" />
+                    <CloudRain className="h-3.5 w-3.5 text-info shrink-0 mt-0.5" />
                     <span className="text-muted-foreground">
                       <span className="font-medium text-foreground">
                         {lang === 'hi' ? 'मौसम:' : lang === 'mr' ? 'हवामान:' : 'Weather:'}
@@ -456,9 +456,9 @@ export default function ProductRecommendationCard({
 
                 {/* Precautions */}
                 {product.precautions && (
-                  <div className="flex items-start gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-                    <Shield className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-                    <span className="text-xs text-amber-700 dark:text-amber-400">
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-warning/10 border border-warning/20">
+                    <Shield className="h-3.5 w-3.5 text-warning shrink-0 mt-0.5" />
+                    <span className="text-xs text-warning dark:text-warning">
                       {product.precautions}
                     </span>
                   </div>
@@ -466,9 +466,9 @@ export default function ProductRecommendationCard({
 
                 {/* PHI Days Warning for Pesticides */}
                 {product.product_type === 'pesticide' && product.phi_days && (
-                  <div className="flex items-start gap-2 p-2 rounded-lg bg-red-500/10 border border-red-500/20">
-                    <AlertTriangle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
-                    <span className="text-xs text-red-700 dark:text-red-400">
+                  <div className="flex items-start gap-2 p-2 rounded-lg bg-destructive/10 border border-destructive/20">
+                    <AlertTriangle className="h-3.5 w-3.5 text-destructive shrink-0 mt-0.5" />
+                    <span className="text-xs text-destructive dark:text-destructive">
                       {lang === 'hi' 
                         ? `⚠️ फसल काटने से ${product.phi_days} दिन पहले उपयोग बंद करें`
                         : lang === 'mr'
@@ -487,11 +487,11 @@ export default function ProductRecommendationCard({
 
       {/* Labor Cost Section - Enhanced with ACTUAL breakdown */}
       {laborCost > 0 && (
-        <Card className="border-2 border-purple-500/30 bg-purple-500/5">
+        <Card className="border-2 border-primary/30 bg-primary/5">
           <div className="p-3 space-y-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className="p-2 rounded-xl bg-gradient-to-br from-purple-500 to-violet-500 text-white shadow-md">
+                <div className="p-2 rounded-xl bg-gradient-to-br from-primary to-primary text-white shadow-md">
                   <Users className="h-4 w-4" />
                 </div>
                 <div>
@@ -504,7 +504,7 @@ export default function ProductRecommendationCard({
                 </div>
               </div>
               <div className="text-right">
-                <div className="flex items-center gap-1 text-purple-600 font-bold">
+                <div className="flex items-center gap-1 text-primary font-bold">
                   <IndianRupee className="h-3.5 w-3.5" />
                   <span>₹{laborCost.toLocaleString('en-IN')}</span>
                 </div>
@@ -512,10 +512,10 @@ export default function ProductRecommendationCard({
             </div>
             
             {/* FIXED: Display REALISTIC labor breakdown - Worker × Days model */}
-            <div className="text-[10px] text-muted-foreground bg-purple-500/5 p-2 rounded-lg space-y-1">
+            <div className="text-[10px] text-muted-foreground bg-primary/5 p-2 rounded-lg space-y-1">
               {laborDays > 0 && laborWorkers > 0 ? (
                 <>
-                  <div className="font-medium text-purple-700 dark:text-purple-400">
+                  <div className="font-medium text-primary dark:text-primary">
                     {lang === 'hi' 
                       ? `${laborWorkers} मजदूर × ${laborDaysPerAcre || 1} दिन = ${laborDays.toFixed(1)} मजदूर-दिवस` 
                       : lang === 'mr'

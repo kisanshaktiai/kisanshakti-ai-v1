@@ -39,18 +39,22 @@ export default {
         success: {
           DEFAULT: "hsl(var(--success))",
           foreground: "hsl(var(--success-foreground))",
+          soft: "hsl(var(--success-soft))",
         },
         warning: {
           DEFAULT: "hsl(var(--warning))",
           foreground: "hsl(var(--warning-foreground))",
+          soft: "hsl(var(--warning-soft))",
         },
         destructive: {
           DEFAULT: "hsl(var(--destructive))",
           foreground: "hsl(var(--destructive-foreground))",
+          soft: "hsl(var(--destructive-soft))",
         },
         info: {
           DEFAULT: "hsl(var(--info))",
           foreground: "hsl(var(--info-foreground))",
+          soft: "hsl(var(--info-soft))",
         },
         muted: {
           DEFAULT: "hsl(var(--muted))",
@@ -100,6 +104,20 @@ export default {
         'overlay': {
           light: "hsl(var(--overlay-light))",
           dark: "hsl(var(--overlay-dark))",
+        },
+        'chart': {
+          1: "hsl(var(--chart-1))",
+          2: "hsl(var(--chart-2))",
+          3: "hsl(var(--chart-3))",
+          4: "hsl(var(--chart-4))",
+          5: "hsl(var(--chart-5))",
+        },
+        'map': {
+          marker: "hsl(var(--marker-color))",
+          'polygon-fill': "hsl(var(--polygon-fill))",
+          'polygon-stroke': "hsl(var(--polygon-stroke))",
+          'tracking-fill': "hsl(var(--tracking-fill))",
+          'tracking-stroke': "hsl(var(--tracking-stroke))",
         },
         // Chat section colors for AI interface
         'chat-section': {

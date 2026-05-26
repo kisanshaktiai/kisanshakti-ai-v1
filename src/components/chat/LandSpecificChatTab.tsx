@@ -38,9 +38,9 @@ export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatT
   };
 
   const getNDVIStatus = (score: number) => {
-    if (score > 0.7) return { label: t('chat.healthy'), color: 'bg-emerald-500', textColor: 'text-emerald-500' };
-    if (score > 0.4) return { label: t('chat.moderate'), color: 'bg-amber-500', textColor: 'text-amber-500' };
-    return { label: t('chat.needsAttention'), color: 'bg-rose-500', textColor: 'text-rose-500' };
+    if (score > 0.7) return { label: t('chat.healthy'), color: 'bg-success', textColor: 'text-success' };
+    if (score > 0.4) return { label: t('chat.moderate'), color: 'bg-warning', textColor: 'text-warning' };
+    return { label: t('chat.needsAttention'), color: 'bg-destructive', textColor: 'text-destructive' };
   };
 
   const ndviScore = 0.72; // TODO: Fetch from NDVI API
@@ -101,38 +101,38 @@ export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatT
         <div className="grid grid-cols-4 gap-2 mb-3">
           {/* Current Crop */}
           {landData.current_crop && (
-            <div className="col-span-4 flex items-center gap-2 p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 backdrop-blur-sm">
-              <TrendingUp className="w-4 h-4 text-emerald-500" />
-              <span className="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+            <div className="col-span-4 flex items-center gap-2 p-2 rounded-xl bg-success/10 border border-success/20 backdrop-blur-sm">
+              <TrendingUp className="w-4 h-4 text-success" />
+              <span className="text-xs font-medium text-success dark:text-success">
                 Growing: {landData.current_crop}
               </span>
             </div>
           )}
           
           {/* Temperature - REAL DATA */}
-          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-orange-500/10 to-orange-500/5 border border-orange-500/20 backdrop-blur-sm">
-            <Thermometer className="w-4 h-4 text-orange-500 mb-1" />
+          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-warning/10 to-warning/5 border border-warning/20 backdrop-blur-sm">
+            <Thermometer className="w-4 h-4 text-warning mb-1" />
             <span className="text-sm font-bold text-foreground">{temperature}°</span>
             <span className="text-[9px] text-muted-foreground">Temp</span>
           </div>
           
           {/* Humidity - REAL DATA */}
-          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-blue-500/10 to-blue-500/5 border border-blue-500/20 backdrop-blur-sm">
-            <Droplets className="w-4 h-4 text-blue-500 mb-1" />
+          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-info/10 to-info/5 border border-info/20 backdrop-blur-sm">
+            <Droplets className="w-4 h-4 text-info mb-1" />
             <span className="text-sm font-bold text-foreground">{humidity}%</span>
             <span className="text-[9px] text-muted-foreground">Humidity</span>
           </div>
           
           {/* Wind - REAL DATA */}
-          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-cyan-500/10 to-cyan-500/5 border border-cyan-500/20 backdrop-blur-sm">
-            <Wind className="w-4 h-4 text-cyan-500 mb-1" />
+          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-info/10 to-info/5 border border-info/20 backdrop-blur-sm">
+            <Wind className="w-4 h-4 text-info mb-1" />
             <span className="text-sm font-bold text-foreground">{windSpeed}</span>
             <span className="text-[9px] text-muted-foreground">km/h</span>
           </div>
           
           {/* Rainfall - REAL DATA */}
-          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-indigo-500/10 to-indigo-500/5 border border-indigo-500/20 backdrop-blur-sm">
-            <Cloud className="w-4 h-4 text-indigo-500 mb-1" />
+          <div className="flex flex-col items-center p-2 rounded-xl bg-gradient-to-br from-info/10 to-info/5 border border-info/20 backdrop-blur-sm">
+            <Cloud className="w-4 h-4 text-info mb-1" />
             <span className="text-sm font-bold text-foreground">{rainfall}</span>
             <span className="text-[9px] text-muted-foreground">mm</span>
           </div>
@@ -142,28 +142,28 @@ export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatT
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide">
           <button
             onClick={() => onQuickAction('irrigation')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-blue-500/20 to-blue-400/10 text-blue-700 dark:text-blue-300 hover:from-blue-500/30 hover:to-blue-400/20 transition-all duration-200 whitespace-nowrap border border-blue-500/20 shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-info/20 to-info/10 text-info dark:text-info hover:from-info/30 hover:to-info/20 transition-all duration-200 whitespace-nowrap border border-info/20 shadow-sm"
           >
             <Droplets className="w-3 h-3" />
             {t('chat.irrigationTip')}
           </button>
           <button
             onClick={() => onQuickAction('fertilizer')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-emerald-500/20 to-emerald-400/10 text-emerald-700 dark:text-emerald-300 hover:from-emerald-500/30 hover:to-emerald-400/20 transition-all duration-200 whitespace-nowrap border border-emerald-500/20 shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-success/20 to-success/10 text-success dark:text-success hover:from-success/30 hover:to-success/20 transition-all duration-200 whitespace-nowrap border border-success/20 shadow-sm"
           >
             <CircleCheckBig className="w-3 h-3" />
             {t('chat.fertilizerAdvice')}
           </button>
           <button
             onClick={() => onQuickAction('pest')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-rose-500/20 to-rose-400/10 text-rose-700 dark:text-rose-300 hover:from-rose-500/30 hover:to-rose-400/20 transition-all duration-200 whitespace-nowrap border border-rose-500/20 shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-destructive/20 to-destructive/10 text-destructive dark:text-destructive hover:from-destructive/30 hover:to-destructive/20 transition-all duration-200 whitespace-nowrap border border-destructive/20 shadow-sm"
           >
             <Bug className="w-3 h-3" />
             {t('chat.pestRisk')}
           </button>
           <button
             onClick={() => onQuickAction('weather')}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-purple-500/20 to-purple-400/10 text-purple-700 dark:text-purple-300 hover:from-purple-500/30 hover:to-purple-400/20 transition-all duration-200 whitespace-nowrap border border-purple-500/20 shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full bg-gradient-to-r from-primary/20 to-primary/10 text-primary dark:text-primary hover:from-primary/30 hover:to-primary/20 transition-all duration-200 whitespace-nowrap border border-primary/20 shadow-sm"
           >
             <AlertCircle className="w-3 h-3" />
             {t('chat.weatherAlert')}
@@ -174,7 +174,7 @@ export function LandSpecificChatTab({ landId, onQuickAction }: LandSpecificChatT
         {lastUpdated && (
           <div className="flex items-center justify-end mt-2">
             <div className="flex items-center gap-1">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
               <span className="text-[9px] text-muted-foreground">
                 Live • {Math.round((Date.now() - lastUpdated) / 60000)}m ago
               </span>

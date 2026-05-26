@@ -82,11 +82,11 @@ const getCategoryIcon = (category: string) => {
 
 const getCategoryColor = (category: string) => {
   switch (category) {
-    case 'PEST': return 'text-orange-500 bg-orange-500/10 border-orange-500/30';
-    case 'DISEASE': return 'text-red-500 bg-red-500/10 border-red-500/30';
-    case 'NUTRIENT': return 'text-green-500 bg-green-500/10 border-green-500/30';
-    case 'WATER': return 'text-blue-500 bg-blue-500/10 border-blue-500/30';
-    case 'WEATHER': return 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30';
+    case 'PEST': return 'text-warning bg-warning/10 border-warning/30';
+    case 'DISEASE': return 'text-destructive bg-destructive/10 border-destructive/30';
+    case 'NUTRIENT': return 'text-success bg-success/10 border-success/30';
+    case 'WATER': return 'text-info bg-info/10 border-info/30';
+    case 'WEATHER': return 'text-warning bg-warning/10 border-warning/30';
     default: return 'text-muted-foreground bg-muted border-border';
   }
 };
@@ -181,7 +181,7 @@ function HypothesisCard({ hypothesis, index, labels }: HypothesisCardProps) {
             <Badge variant="outline" className={cn(
               "shrink-0 ml-2",
               confidencePercent >= 60 ? "border-primary text-primary" :
-              confidencePercent >= 40 ? "border-yellow-500 text-yellow-500" :
+              confidencePercent >= 40 ? "border-warning text-warning" :
               "border-muted-foreground text-muted-foreground"
             )}>
               {confidencePercent}%

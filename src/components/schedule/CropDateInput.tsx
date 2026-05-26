@@ -204,9 +204,9 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 </span>
               )}
               {land.water_source && (
-                <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20">
-                  <Droplets className="h-3 w-3 text-blue-500" />
-                  <span className="text-blue-700 dark:text-blue-300">Water</span>
+                <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20">
+                  <Droplets className="h-3 w-3 text-info" />
+                  <span className="text-info dark:text-info">Water</span>
                 </span>
               )}
             </div>
@@ -257,7 +257,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     {t('schedule.crop_input.intercrop_label', 'Intercrops (Optional)')}
                   </Label>
                   {intercrops.length > 0 && (
-                    <span className="text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    <span className="text-[10px] font-semibold text-success dark:text-success bg-success/10 px-2 py-0.5 rounded-full">
                       {intercrops.length}/3 • {totalIntercropArea}% area
                     </span>
                   )}
@@ -281,7 +281,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                       setIsReadyMadePlant(e.target.checked);
                       if (!e.target.checked) setNurseryDays(0);
                     }}
-                    className="mt-1 h-5 w-5 rounded border-gray-300 accent-primary"
+                    className="mt-1 h-5 w-5 rounded border-border accent-primary"
                   />
                   <div className="flex-1">
                     <Label htmlFor="ready-made-plant" className="text-sm font-medium cursor-pointer">
@@ -324,7 +324,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                     {isReadyMadePlant ? t('schedule.crop_input.planting_date') : t('schedule.crop_input.sowing_date')}
                   </span>
                   {backdatedInfo.isBackdated && (
-                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400">
+                    <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-warning/10 border border-warning/30 text-warning dark:text-warning">
                       <AlertTriangle className="h-3 w-3" />
                       {backdatedInfo.daysAgo}d ago
                     </span>
@@ -339,7 +339,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                         "w-full justify-start text-left font-normal h-11 rounded-xl",
                         "bg-white/50 dark:bg-black/20 backdrop-blur-sm",
                         "border-white/30 dark:border-white/20 hover:border-primary/50",
-                        backdatedInfo.isBackdated && "border-amber-500/50",
+                        backdatedInfo.isBackdated && "border-warning/50",
                         !sowingDate && "text-muted-foreground"
                       )}
                     >
@@ -368,7 +368,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 
                 {/* Backdated Warning Hint */}
                 {backdatedInfo.isBackdated && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                  <p className="text-xs text-warning dark:text-warning flex items-center gap-1">
                     <AlertTriangle className="h-3 w-3" />
                     {t('schedule.crop_input.backdated_warning', 'Past date selected. You\'ll need to confirm consent for backdated schedule.')}
                   </p>

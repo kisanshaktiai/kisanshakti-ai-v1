@@ -96,16 +96,16 @@ export default function BackdatedConsentDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md w-[calc(100vw-2rem)] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl">
         {/* Warning Header */}
-        <div className="bg-amber-500/10 border-b border-amber-500/20 p-5">
+        <div className="bg-warning/10 border-b border-warning/20 p-5">
           <div className="flex items-start gap-4">
-            <div className="shrink-0 w-12 h-12 rounded-full bg-amber-500/20 flex items-center justify-center">
-              <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+            <div className="shrink-0 w-12 h-12 rounded-full bg-warning/20 flex items-center justify-center">
+              <AlertTriangle className="h-6 w-6 text-warning dark:text-warning" />
             </div>
             <div>
-              <DialogTitle className="text-lg font-bold text-amber-800 dark:text-amber-200">
+              <DialogTitle className="text-lg font-bold text-warning dark:text-warning">
                 {t.title}
               </DialogTitle>
-              <DialogDescription className="text-sm text-amber-700/80 dark:text-amber-300/80 mt-1">
+              <DialogDescription className="text-sm text-warning/80 dark:text-warning/80 mt-1">
                 {t.description}
               </DialogDescription>
             </div>
@@ -119,7 +119,7 @@ export default function BackdatedConsentDialog({
             <Calendar className="h-5 w-5 text-primary" />
             <div className="flex-1">
               <span className="text-sm text-foreground">
-                {t.warning1} <strong className="text-amber-600 dark:text-amber-400">{daysAgo}</strong> {t.warning2}
+                {t.warning1} <strong className="text-warning dark:text-warning">{daysAgo}</strong> {t.warning2}
               </span>
               <p className="text-xs text-muted-foreground mt-0.5">{cropName}</p>
             </div>
@@ -135,28 +135,28 @@ export default function BackdatedConsentDialog({
                 transition={{ delay: index * 0.1 }}
                 className="flex items-start gap-2 text-sm text-muted-foreground"
               >
-                <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-amber-500 mt-2" />
+                <span className="shrink-0 w-1.5 h-1.5 rounded-full bg-warning mt-2" />
                 <span>{consequence}</span>
               </motion.div>
             ))}
           </div>
 
           {/* Important Note */}
-          <div className="flex items-start gap-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl">
-            <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-3 p-3 bg-info/10 border border-info/20 rounded-xl">
+            <Info className="h-4 w-4 text-info shrink-0 mt-0.5" />
             <div>
-              <p className="text-xs font-semibold text-blue-700 dark:text-blue-300">{t.important}</p>
-              <p className="text-xs text-blue-600/80 dark:text-blue-400/80 mt-0.5">{t.importantNote}</p>
+              <p className="text-xs font-semibold text-info dark:text-info">{t.important}</p>
+              <p className="text-xs text-info/80 dark:text-info/80 mt-0.5">{t.importantNote}</p>
             </div>
           </div>
 
           {/* Consent Checkbox */}
-          <div className="flex items-start gap-3 p-4 bg-red-500/5 border-2 border-red-500/20 rounded-xl">
+          <div className="flex items-start gap-3 p-4 bg-destructive/5 border-2 border-destructive/20 rounded-xl">
             <Checkbox
               id="consent"
               checked={consentChecked}
               onCheckedChange={(checked) => setConsentChecked(checked === true)}
-              className="mt-0.5 border-red-500/50 data-[state=checked]:bg-red-500 data-[state=checked]:border-red-500"
+              className="mt-0.5 border-destructive/50 data-[state=checked]:bg-destructive data-[state=checked]:border-destructive"
             />
             <label htmlFor="consent" className="text-sm text-foreground cursor-pointer leading-relaxed">
               {t.consent}
@@ -172,7 +172,7 @@ export default function BackdatedConsentDialog({
             className={cn(
               "w-full transition-all",
               consentChecked
-                ? "bg-amber-500 hover:bg-amber-600 text-white"
+                ? "bg-warning hover:bg-warning text-white"
                 : "bg-muted text-muted-foreground cursor-not-allowed"
             )}
           >

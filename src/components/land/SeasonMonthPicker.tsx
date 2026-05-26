@@ -73,9 +73,9 @@ export function SeasonMonthPicker({
 
   const seasonClass = (s: string, active: boolean) => {
     if (active) return 'bg-primary text-primary-foreground border-primary';
-    if (s === 'kharif') return 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-200';
-    if (s === 'rabi') return 'bg-sky-50 dark:bg-sky-950/30 border-sky-200 dark:border-sky-900 text-sky-900 dark:text-sky-200';
-    return 'bg-lime-50 dark:bg-lime-950/30 border-lime-200 dark:border-lime-900 text-lime-900 dark:text-lime-200';
+    if (s === 'kharif') return 'bg-warning-soft dark:bg-warning/30 border-warning/30 dark:border-warning text-warning dark:text-warning';
+    if (s === 'rabi') return 'bg-info-soft dark:bg-info/30 border-info/30 dark:border-info text-info dark:text-info';
+    return 'bg-success-soft dark:bg-success/30 border-success/30 dark:border-success text-success dark:text-success';
   };
 
   return (

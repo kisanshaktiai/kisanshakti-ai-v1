@@ -296,8 +296,8 @@ export function LocationPickerSection({
           <div className="px-4 pb-6">
             {/* Missing-parent banner — instead of silently doing nothing, point the farmer at the right level. */}
             {missingParent && (
-              <div className="mt-3 rounded-2xl border border-amber-300/60 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
-                <div className="flex-1 text-xs text-amber-900 dark:text-amber-100">
+              <div className="mt-3 rounded-2xl border border-warning/50/60 bg-warning-soft dark:bg-warning/20 p-3 flex items-start gap-3">
+                <div className="flex-1 text-xs text-warning dark:text-warning">
                   {missingParent === 'district' && t('lands.location.selectStateFirst', { defaultValue: 'Select State first to see districts.' })}
                   {missingParent === 'taluka'   && t('lands.location.selectDistrictFirst', { defaultValue: 'Select District first to see talukas.' })}
                   {missingParent === 'village'  && t('lands.location.selectTalukaFirst', { defaultValue: 'Select Taluka first to see villages.' })}
