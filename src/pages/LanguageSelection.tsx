@@ -165,16 +165,14 @@ export default function LanguageSelection() {
         </div>
       </footer>
 
-      {selectedLanguage && (
-        <LanguageConfirmDialog
-          open={confirmOpen}
-          onOpenChange={setConfirmOpen}
-          langCode={selectedLanguage}
-          nativeName={sortedLanguages.find(l => l.code === selectedLanguage)?.nativeName || ''}
-          englishName={sortedLanguages.find(l => l.code === selectedLanguage)?.name || ''}
-          onConfirm={handleContinue}
-        />
-      )}
+      <LanguageConfirmDialog
+        open={confirmOpen && !!selectedLanguage}
+        onOpenChange={setConfirmOpen}
+        langCode={selectedLanguage}
+        nativeName={sortedLanguages.find(l => l.code === selectedLanguage)?.nativeName || ''}
+        englishName={sortedLanguages.find(l => l.code === selectedLanguage)?.name || ''}
+        onConfirm={handleContinue}
+      />
     </div>
   );
 }
