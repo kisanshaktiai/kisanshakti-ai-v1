@@ -183,7 +183,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (cachedConfig.white_label_config?.brand_identity as BrandingConfig) || {
               company_name: cachedConfig.tenant_data.name,
             },
-            theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(cachedConfig.white_label_config?.theme_colors as any, cachedConfig.white_label_config?.mobile_theme as any),
             pwa: cachedConfig.white_label_config?.pwa_config as PWAConfig,
             features: [],
             settings: {
@@ -699,7 +699,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (whiteLabel?.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
             },
-            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(whiteLabel?.theme_colors as any, whiteLabel?.mobile_theme as any),
             pwa: whiteLabel?.pwa_config as PWAConfig,
             splashScreens: (whiteLabel as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
@@ -763,7 +763,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (matchedConfig.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
             },
-            theme: (matchedConfig.mobile_theme || matchedConfig.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(matchedConfig.theme_colors as any, matchedConfig.mobile_theme as any),
             pwa: matchedConfig.pwa_config as PWAConfig,
             splashScreens: (matchedConfig as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
@@ -852,7 +852,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               company_name: defaultTenantData.name,
               // No fallback colors - let CSS defaults handle it until theme loads
             },
-            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(whiteLabel?.theme_colors as any, whiteLabel?.mobile_theme as any),
             pwa: whiteLabel?.pwa_config as PWAConfig,
             features: (defaultTenantData.settings as any)?.features || ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
           };
@@ -940,7 +940,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               company_name: cachedConfig.tenant_data.name,
               // No fallback colors - let CSS defaults handle it
             },
-            theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(cachedConfig.white_label_config?.theme_colors as any, cachedConfig.white_label_config?.mobile_theme as any),
             features: [],
             settings: {
               languages: ['en', 'hi'],
