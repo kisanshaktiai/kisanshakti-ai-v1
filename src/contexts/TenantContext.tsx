@@ -535,14 +535,19 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // PERFORMANCE FIX: Check cache FIRST before any API calls - CRITICAL FOR FAST STARTUP
       const cachedTenant = localStorage.getItem('tenant_config_cache');
+      let cachedEtag: string | null = null;
+      let cachedLastDeployedAt: string | null = null;
+      let usedCache = false;
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          // PRODUCTION FIX: Accept cache up to 60 min online for fast startup (was 30 min)
-          const cacheValidity = isOnline ? 3600000 : 86400000; // 60 min online, 24h offline
-          
+          cachedEtag = parsed.etag || null;
+          cachedLastDeployedAt = parsed.last_deployed_at || null;
+          // Short TTL for fast paint; correctness comes from ETag/last_deployed_at revalidation below.
+          const cacheValidity = isOnline ? 300000 : 86400000; // 5 min online, 24h offline
+
           if (Date.now() - parsed.timestamp < cacheValidity) {
-            console.log('📦 [TenantProvider] Using cached tenant config (fast path)');
+            console.log('📦 [TenantProvider] Using cached tenant config (fast paint)');
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
@@ -550,17 +555,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             window.__TENANT_LOADED__ = true;
             window.__TENANT_BRANDING__ = parsed.data.branding;
             setIsLoading(false);
-            
-            // PRODUCTION FIX: Background refresh only after app is interactive
-            if (isOnline && Date.now() - parsed.timestamp > 300000) {
-              // If cache is older than 5 min, refresh in background (non-blocking)
-              requestIdleCallback ? requestIdleCallback(() => {
-                console.log('🔄 [TenantProvider] Background cache refresh queued');
-              }) : setTimeout(() => {
-                console.log('🔄 [TenantProvider] Background cache refresh queued');
-              }, 10000);
-            }
-            return;
+            usedCache = true;
+            // Fall through to revalidate against the edge function (won't re-paint unless ETag changed)
           } else {
             console.log('⏰ [TenantProvider] Cache expired, fetching fresh config');
           }
@@ -572,32 +568,48 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // OPTION 1: Try centralized API first (cleaner)
       try {
-        const response = await fetch(
-          getSupabaseFunctionUrl('tenant-config'),
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Client-Domain': domain, // Pass actual client domain
-              'Origin': `https://${domain}`, // Helps with CORS and domain detection
-            },
-          }
-        );
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'X-Client-Domain': domain,
+          'Origin': `https://${domain}`,
+        };
+        // Conditional request — server returns 304 when nothing changed, including
+        // when the white_label_configs.last_deployed_at trigger has NOT fired.
+        if (cachedEtag) headers['If-None-Match'] = cachedEtag;
+
+        const response = await fetch(getSupabaseFunctionUrl('tenant-config'), {
+          method: 'GET',
+          headers,
+        });
+
+        if (response.status === 304 && usedCache) {
+          console.log('⚡ [TenantProvider] 304 Not Modified — keeping cached theme');
+          return;
+        }
 
         if (response.ok) {
           const apiConfig = await response.json();
-          
-          console.log('✅ [TenantProvider] Loaded config from centralized API');
-          console.log('📦 [TenantProvider] API Response:', {
+          const newLda = apiConfig?.metadata?.last_deployed_at || null;
+          const newEtag = apiConfig?.metadata?.etag || response.headers.get('etag') || null;
+
+          // If we already painted from cache and nothing changed, skip the re-apply.
+          if (
+            usedCache &&
+            newLda &&
+            cachedLastDeployedAt &&
+            newLda === cachedLastDeployedAt &&
+            newEtag === cachedEtag
+          ) {
+            console.log('⚡ [TenantProvider] last_deployed_at unchanged — cached theme is current');
+            return;
+          }
+
+          console.log('✅ [TenantProvider] Theme refresh from edge function', {
             tenant_name: apiConfig.tenant?.name,
-            tenant_id: apiConfig.tenant?.id,
-            has_branding: !!apiConfig.branding,
-            has_theme: !!apiConfig.theme,
-            branding_company: apiConfig.branding?.company_name,
-            branding_logo: apiConfig.branding?.logo_url,
-            branding_primary_color: apiConfig.branding?.primary_color,
+            last_deployed_at: newLda,
+            replaced_cache: usedCache,
           });
-          
+
           const config: TenantConfig = {
             id: apiConfig.tenant.id,
             name: apiConfig.tenant.name,
@@ -615,39 +627,31 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           };
 
           setTenant(config);
-          console.log('✅ [TenantProvider] Tenant state updated:', config.name);
-          console.log('✅ [TenantProvider] Setting tenant context for isolation service');
           tenantIsolationService.setTenantContext(config.id, domain);
-          console.log('✅ [TenantProvider] Applying theme to DOM with branding and theme');
           applyThemeToDOM(config.branding, config.theme);
           setLastUpdated(new Date());
-          
-          // Signal to index.html loader that tenant is ready
+
           window.__TENANT_LOADED__ = true;
           window.__TENANT_BRANDING__ = config.branding;
-          console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
 
-          // Cache for offline in IndexedDB
-          await localDB.saveTenantConfig(config.id, { 
+          await localDB.saveTenantConfig(config.id, {
             brand_identity: apiConfig.branding,
             mobile_theme: apiConfig.theme,
-            pwa_config: apiConfig.pwa
-          }, {
-            id: config.id,
-            name: config.name,
-            domain
-          });
+            pwa_config: apiConfig.pwa,
+          }, { id: config.id, name: config.name, domain });
 
-          // Cache in localStorage for fast access
           localStorage.setItem('tenant_config_cache', JSON.stringify({
             data: config,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            etag: newEtag,
+            last_deployed_at: newLda,
           }));
 
           console.log('✅ [TenantProvider] Config cached for offline use');
           return;
         }
       } catch (apiError) {
+
         console.error('❌ [TenantProvider] API failed, falling back to direct DB access');
         console.error('❌ [TenantProvider] API Error details:', apiError);
         console.error('❌ [TenantProvider] API Error message:', (apiError as Error)?.message);
