@@ -1,4 +1,11 @@
 import { supabase } from '@/integrations/supabase/client';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+
+// Cache native check
+const IS_NATIVE = Capacitor.isNativePlatform();
+const IS_IOS = Capacitor.getPlatform() === 'ios';
+
 
 export interface LocationData {
   lat: number;
