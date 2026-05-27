@@ -64,6 +64,8 @@ export function GoogleMapBoundaryDrawer({
   const [locationSource, setLocationSource] = useState<string>('gps');
   const [locationAccuracy, setLocationAccuracy] = useState<number>(0);
   const watchIdRef = useRef<number | null>(null);
+  const nativeWatchIdRef = useRef<string | null>(null);
+
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   const initialZoomSet = useRef(false);
