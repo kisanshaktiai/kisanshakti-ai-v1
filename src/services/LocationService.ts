@@ -24,10 +24,14 @@ export interface LocationData {
 class LocationService {
   private static instance: LocationService;
   private watchId: number | null = null;
+  private nativeWatchId: string | null = null;
   private currentLocation: LocationData | null = null;
   private locationUpdateCallbacks: Set<(location: LocationData) => void> = new Set();
   private permissionStatus: PermissionState = 'prompt';
   private readonly LOCATION_CACHE_KEY = 'app_cached_location';
+  private readonly LOCATION_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+  private isRequestingPermission = false;
+
   private readonly LOCATION_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
   private isRequestingPermission = false;
 
