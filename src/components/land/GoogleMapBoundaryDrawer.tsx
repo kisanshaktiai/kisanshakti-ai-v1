@@ -127,9 +127,18 @@ export function GoogleMapBoundaryDrawer({
       zoomControlOptions: {
         position: google.maps.ControlPosition.RIGHT_CENTER,
       },
+      // 'greedy' is required so Google Maps captures every touch on iOS
+      // instead of letting WKWebView treat the second finger as page-zoom.
       gestureHandling: 'greedy',
-      tilt: 0,
+      // Allow tilt+rotation on raster (satellite/hybrid) maps. Setting tilt:0
+      // (the previous value) globally disabled the two-finger rotate gesture.
+      tilt: 45,
+      heading: 0,
       rotateControl: true,
+      rotateControlOptions: {
+        position: google.maps.ControlPosition.RIGHT_TOP,
+      },
+      isFractionalZoomEnabled: true,
       mapTypeControl: true,
       mapTypeControlOptions: {
         mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
@@ -150,6 +159,24 @@ export function GoogleMapBoundaryDrawer({
       ],
     };
   }, [isGoogleReady]);
+
+  // iOS WKWebView merges two-finger gestures into page zoom unless we
+  // temporarily disable user-scalable while the map is mounted. Restore on unmount.
+  useEffect(() => {
+    if (!IS_IOS) return;
+    const viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    const previous = viewport?.getAttribute('content') ?? null;
+    if (viewport) {
+      viewport.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+      );
+    }
+    return () => {
+      if (viewport && previous) viewport.setAttribute('content', previous);
+    };
+  }, []);
+
 
   // Get user's current location on mount
   useEffect(() => {
