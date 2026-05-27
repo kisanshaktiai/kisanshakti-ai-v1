@@ -1,4 +1,11 @@
 import { supabase } from '@/integrations/supabase/client';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
+
+// Cache native check
+const IS_NATIVE = Capacitor.isNativePlatform();
+const IS_IOS = Capacitor.getPlatform() === 'ios';
+
 
 export interface LocationData {
   lat: number;
@@ -17,12 +24,15 @@ export interface LocationData {
 class LocationService {
   private static instance: LocationService;
   private watchId: number | null = null;
+  private nativeWatchId: string | null = null;
   private currentLocation: LocationData | null = null;
   private locationUpdateCallbacks: Set<(location: LocationData) => void> = new Set();
   private permissionStatus: PermissionState = 'prompt';
   private readonly LOCATION_CACHE_KEY = 'app_cached_location';
   private readonly LOCATION_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
   private isRequestingPermission = false;
+
+
 
   private constructor() {
     this.loadCachedLocation();
@@ -75,6 +85,32 @@ class LocationService {
     this.isRequestingPermission = true;
 
     try {
+      // ─── Capacitor Native Path (iOS + Android) ──────────────────────────
+      // navigator.geolocation in iOS WKWebView is unreliable and silently
+      // fails when Info.plist usage descriptions are missing. Use the
+      // Capacitor Geolocation plugin which routes through native CoreLocation.
+      if (IS_NATIVE) {
+        try {
+          const current = await Geolocation.checkPermissions();
+          let loc = current.location;
+          if (loc === 'prompt' || loc === 'prompt-with-rationale') {
+            const requested = await Geolocation.requestPermissions({ permissions: ['location'] });
+            loc = requested.location;
+          }
+          const mapped: PermissionState =
+            loc === 'granted' ? 'granted' :
+            loc === 'denied' ? 'denied' : 'prompt';
+          this.permissionStatus = mapped;
+          console.log('📍 [LocationService] Native permission:', loc, '→', mapped);
+          return mapped;
+        } catch (err) {
+          console.error('📍 [LocationService] Native permission error:', err);
+          this.permissionStatus = 'prompt';
+          return 'prompt';
+        }
+      }
+
+      // ─── Web Path ───────────────────────────────────────────────────────
       if ('permissions' in navigator && 'query' in navigator.permissions) {
         const permission = await navigator.permissions.query({ name: 'geolocation' });
         this.permissionStatus = permission.state;
@@ -106,6 +142,7 @@ class LocationService {
           { timeout: 5000 }
         );
       });
+
     } catch (error) {
       console.error('Error requesting location permission:', error);
       return 'prompt';
@@ -136,6 +173,53 @@ class LocationService {
       console.error('Location permission denied, trying user profile');
       // Try to get location from user profile
       return await this.getLocationFromUserProfile();
+    }
+
+    // ─── Capacitor Native Path (uses CoreLocation on iOS / FusedLocation on Android) ──
+    if (IS_NATIVE) {
+      try {
+        // Ensure permission first
+        const permResult = await this.requestLocationPermission();
+        if (permResult !== 'granted') {
+          console.warn('📍 [LocationService] Native permission not granted, trying profile fallback');
+          const profileLocation = await this.getLocationFromUserProfile();
+          if (profileLocation) return profileLocation;
+        } else {
+          const position = await Geolocation.getCurrentPosition({
+            enableHighAccuracy: true,
+            timeout: IS_IOS ? 15000 : 10000, // iOS CoreLocation needs more time on cold start
+            maximumAge: 0,
+          });
+
+          const locationData: LocationData = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy ?? 50,
+            timestamp: Date.now(),
+            source: 'gps',
+          };
+
+          await this.reverseGeocode(locationData);
+          this.currentLocation = locationData;
+          this.saveLocationToCache(locationData);
+          this.notifyLocationUpdate(locationData);
+          console.log('📍 [LocationService] Native GPS location:', locationData);
+          return locationData;
+        }
+      } catch (err) {
+        console.error('📍 [LocationService] Native GPS error:', err);
+        const profileLocation = await this.getLocationFromUserProfile();
+        if (profileLocation) return profileLocation;
+      }
+
+      // Final native fallback to default
+      const defaultLocation: LocationData = {
+        lat: 18.5204, lon: 73.8567, accuracy: 100, timestamp: Date.now(),
+        city: 'Pune', state: 'Maharashtra', country: 'India', district: 'Pune', source: 'default',
+      };
+      this.currentLocation = defaultLocation;
+      this.saveLocationToCache(defaultLocation);
+      return defaultLocation;
     }
 
     return new Promise((resolve) => {
@@ -193,6 +277,7 @@ class LocationService {
       );
     });
   }
+
 
   // Geocode address to get coordinates with improved pincode and village handling
   async geocodeAddress(addressParts: {
@@ -379,8 +464,41 @@ class LocationService {
 
   // Start watching location in background
   startLocationTracking(): void {
-    if (this.watchId !== null) {
+    if (this.watchId !== null || this.nativeWatchId !== null) {
       console.log('Location tracking already active');
+      return;
+    }
+
+    // ─── Capacitor Native Path ─────────────────────────────────────────
+    if (IS_NATIVE) {
+      Geolocation.watchPosition(
+        { enableHighAccuracy: true, timeout: 30000 },
+        async (position, err) => {
+          if (err) {
+            console.error('📍 [LocationService] Native watch error:', err);
+            return;
+          }
+          if (!position) return;
+          const locationData: LocationData = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy ?? 50,
+            timestamp: Date.now(),
+            source: 'gps',
+          };
+          if (this.hasLocationChangedSignificantly(locationData)) {
+            await this.reverseGeocode(locationData);
+            this.currentLocation = locationData;
+            this.saveLocationToCache(locationData);
+            this.notifyLocationUpdate(locationData);
+          }
+        }
+      ).then((id) => {
+        this.nativeWatchId = id;
+        console.log('📍 [LocationService] Native location tracking started:', id);
+      }).catch((err) => {
+        console.error('📍 [LocationService] Failed to start native watch:', err);
+      });
       return;
     }
 
@@ -392,7 +510,7 @@ class LocationService {
     const options: PositionOptions = {
       enableHighAccuracy: true,
       timeout: 30000,
-      maximumAge: 10000 // Accept cached position up to 10 seconds old
+      maximumAge: 10000
     };
 
     this.watchId = navigator.geolocation.watchPosition(
@@ -404,7 +522,6 @@ class LocationService {
           timestamp: Date.now()
         };
 
-        // Only update if location has changed significantly (more than 100 meters)
         if (this.hasLocationChangedSignificantly(locationData)) {
           await this.reverseGeocode(locationData);
           this.currentLocation = locationData;
@@ -424,12 +541,18 @@ class LocationService {
 
   // Stop watching location
   stopLocationTracking(): void {
+    if (this.nativeWatchId !== null) {
+      Geolocation.clearWatch({ id: this.nativeWatchId }).catch(() => {});
+      this.nativeWatchId = null;
+      console.log('📍 [LocationService] Stopped native location tracking');
+    }
     if (this.watchId !== null) {
       navigator.geolocation.clearWatch(this.watchId);
       this.watchId = null;
       console.log('Stopped location tracking');
     }
   }
+
 
   // Check if location has changed significantly
   private hasLocationChangedSignificantly(newLocation: LocationData): boolean {
