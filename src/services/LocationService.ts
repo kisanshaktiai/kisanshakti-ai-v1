@@ -32,8 +32,7 @@ class LocationService {
   private readonly LOCATION_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
   private isRequestingPermission = false;
 
-  private readonly LOCATION_CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
-  private isRequestingPermission = false;
+
 
   private constructor() {
     this.loadCachedLocation();
