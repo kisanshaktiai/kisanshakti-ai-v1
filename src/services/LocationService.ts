@@ -464,8 +464,41 @@ class LocationService {
 
   // Start watching location in background
   startLocationTracking(): void {
-    if (this.watchId !== null) {
+    if (this.watchId !== null || this.nativeWatchId !== null) {
       console.log('Location tracking already active');
+      return;
+    }
+
+    // ─── Capacitor Native Path ─────────────────────────────────────────
+    if (IS_NATIVE) {
+      Geolocation.watchPosition(
+        { enableHighAccuracy: true, timeout: 30000 },
+        async (position, err) => {
+          if (err) {
+            console.error('📍 [LocationService] Native watch error:', err);
+            return;
+          }
+          if (!position) return;
+          const locationData: LocationData = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy ?? 50,
+            timestamp: Date.now(),
+            source: 'gps',
+          };
+          if (this.hasLocationChangedSignificantly(locationData)) {
+            await this.reverseGeocode(locationData);
+            this.currentLocation = locationData;
+            this.saveLocationToCache(locationData);
+            this.notifyLocationUpdate(locationData);
+          }
+        }
+      ).then((id) => {
+        this.nativeWatchId = id;
+        console.log('📍 [LocationService] Native location tracking started:', id);
+      }).catch((err) => {
+        console.error('📍 [LocationService] Failed to start native watch:', err);
+      });
       return;
     }
 
@@ -477,7 +510,7 @@ class LocationService {
     const options: PositionOptions = {
       enableHighAccuracy: true,
       timeout: 30000,
-      maximumAge: 10000 // Accept cached position up to 10 seconds old
+      maximumAge: 10000
     };
 
     this.watchId = navigator.geolocation.watchPosition(
@@ -489,7 +522,6 @@ class LocationService {
           timestamp: Date.now()
         };
 
-        // Only update if location has changed significantly (more than 100 meters)
         if (this.hasLocationChangedSignificantly(locationData)) {
           await this.reverseGeocode(locationData);
           this.currentLocation = locationData;
@@ -509,12 +541,18 @@ class LocationService {
 
   // Stop watching location
   stopLocationTracking(): void {
+    if (this.nativeWatchId !== null) {
+      Geolocation.clearWatch({ id: this.nativeWatchId }).catch(() => {});
+      this.nativeWatchId = null;
+      console.log('📍 [LocationService] Stopped native location tracking');
+    }
     if (this.watchId !== null) {
       navigator.geolocation.clearWatch(this.watchId);
       this.watchId = null;
       console.log('Stopped location tracking');
     }
   }
+
 
   // Check if location has changed significantly
   private hasLocationChangedSignificantly(newLocation: LocationData): boolean {
