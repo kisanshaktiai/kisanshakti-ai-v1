@@ -151,7 +151,7 @@ export default function SplashScreen() {
   // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
   const logoUrl = branding?.logo_url;
   const companyName = branding?.company_name || tenant?.name || 'KisanShakti';
-  const tagline = branding?.tagline || 'Empowering Farmers with Technology';
+  const tagline = (branding?.tagline && branding.tagline.trim()) || 'Empowering Farmers with Technology';
   
   // Use tenant background color if available, otherwise use CSS variable
   const backgroundColor = branding?.background_color 
