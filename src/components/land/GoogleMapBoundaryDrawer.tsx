@@ -368,48 +368,80 @@ export function GoogleMapBoundaryDrawer({
     setBoundary(next);
   }, []);
 
-  // GPS tracking
-  const startTracking = useCallback(() => {
+  // GPS tracking - uses Capacitor on native (CoreLocation on iOS / FusedLocation on Android)
+  const startTracking = useCallback(async () => {
+    setIsTracking(true);
+
+    const handlePoint = (lat: number, lng: number, accuracy: number) => {
+      const newPoint: LatLng = { lat, lng };
+      setCurrentPosition(newPoint);
+      setGpsAccuracy(accuracy);
+      setBoundary(prev => [...prev, newPoint]);
+      if (map) map.panTo(newPoint);
+    };
+
+    if (IS_NATIVE) {
+      try {
+        const perm = await Geolocation.checkPermissions();
+        if (perm.location !== 'granted') {
+          const req = await Geolocation.requestPermissions({ permissions: ['location'] });
+          if (req.location !== 'granted') {
+            toast({ title: t('lands.add_land.error.gps_not_available'), variant: 'destructive' });
+            setIsTracking(false);
+            return;
+          }
+        }
+        const id = await Geolocation.watchPosition(
+          { enableHighAccuracy: true, timeout: 10000 },
+          (position, err) => {
+            if (err || !position) {
+              console.error('Native GPS error:', err);
+              return;
+            }
+            handlePoint(
+              position.coords.latitude,
+              position.coords.longitude,
+              position.coords.accuracy ?? 50,
+            );
+          }
+        );
+        nativeWatchIdRef.current = id;
+        return;
+      } catch (err) {
+        console.error('Native watchPosition failed:', err);
+        toast({ title: t('lands.add_land.error.gps_error'), variant: 'destructive' });
+        setIsTracking(false);
+        return;
+      }
+    }
+
     if (!navigator.geolocation) {
-      toast({
-        title: t('lands.add_land.error.gps_not_available'),
-        variant: "destructive",
-      });
+      toast({ title: t('lands.add_land.error.gps_not_available'), variant: 'destructive' });
+      setIsTracking(false);
       return;
     }
 
-    setIsTracking(true);
-    
     const id = navigator.geolocation.watchPosition(
-      (position) => {
-        const newPoint: LatLng = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        
-        setCurrentPosition(newPoint);
-        setGpsAccuracy(position.coords.accuracy);
-        setBoundary(prev => [...prev, newPoint]);
-        
-        if (map) {
-          map.panTo(newPoint);
-        }
-      },
+      (position) => handlePoint(
+        position.coords.latitude,
+        position.coords.longitude,
+        position.coords.accuracy,
+      ),
       (error) => {
         console.error('GPS error:', error);
-        toast({
-          title: t('lands.add_land.error.gps_error'),
-          variant: "destructive",
-        });
+        toast({ title: t('lands.add_land.error.gps_error'), variant: 'destructive' });
         setIsTracking(false);
       },
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-    
     watchIdRef.current = id;
   }, [map, toast, t]);
 
   const stopTracking = useCallback(() => {
+    if (nativeWatchIdRef.current !== null) {
+      Geolocation.clearWatch({ id: nativeWatchIdRef.current }).catch(() => {});
+      nativeWatchIdRef.current = null;
+    }
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -419,11 +451,15 @@ export function GoogleMapBoundaryDrawer({
 
   useEffect(() => {
     return () => {
+      if (nativeWatchIdRef.current !== null) {
+        Geolocation.clearWatch({ id: nativeWatchIdRef.current }).catch(() => {});
+      }
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
   }, []);
+
 
   const handleToggleTracking = useCallback(() => {
     if (isTracking) {
