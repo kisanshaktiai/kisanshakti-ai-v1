@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { GoogleMap, Marker, Polygon, Polyline } from '@react-google-maps/api';
 import * as turf from '@turf/turf';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { MapControls } from './MapControls';
 import { AreaDisplay } from './AreaDisplay';
 import { useToast } from '@/components/ui/use-toast';
@@ -10,6 +12,9 @@ import { Loader2, AlertCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGoogleMapsScript } from '@/components/maps/GoogleMapsScriptProvider';
 import { Button } from '@/components/ui/button';
+
+const IS_NATIVE = Capacitor.isNativePlatform();
+const IS_IOS = Capacitor.getPlatform() === 'ios';
 
 interface LatLng {
   lat: number;
@@ -23,10 +28,16 @@ interface GoogleMapBoundaryDrawerProps {
   initialBoundary?: LatLng[];
 }
 
-const mapContainerStyle = {
+const mapContainerStyle: React.CSSProperties = {
   width: '100%',
   height: '100%',
+  // iOS Safari/WKWebView swallows two-finger gestures (rotate/tilt) by routing
+  // them to page-zoom. `touch-action: none` hands every gesture to Google Maps.
+  touchAction: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
 };
+
 
 export function GoogleMapBoundaryDrawer({ 
   onSave, 
