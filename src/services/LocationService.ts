@@ -172,6 +172,53 @@ class LocationService {
       return await this.getLocationFromUserProfile();
     }
 
+    // ─── Capacitor Native Path (uses CoreLocation on iOS / FusedLocation on Android) ──
+    if (IS_NATIVE) {
+      try {
+        // Ensure permission first
+        const permResult = await this.requestLocationPermission();
+        if (permResult !== 'granted') {
+          console.warn('📍 [LocationService] Native permission not granted, trying profile fallback');
+          const profileLocation = await this.getLocationFromUserProfile();
+          if (profileLocation) return profileLocation;
+        } else {
+          const position = await Geolocation.getCurrentPosition({
+            enableHighAccuracy: true,
+            timeout: IS_IOS ? 15000 : 10000, // iOS CoreLocation needs more time on cold start
+            maximumAge: 0,
+          });
+
+          const locationData: LocationData = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude,
+            accuracy: position.coords.accuracy ?? 50,
+            timestamp: Date.now(),
+            source: 'gps',
+          };
+
+          await this.reverseGeocode(locationData);
+          this.currentLocation = locationData;
+          this.saveLocationToCache(locationData);
+          this.notifyLocationUpdate(locationData);
+          console.log('📍 [LocationService] Native GPS location:', locationData);
+          return locationData;
+        }
+      } catch (err) {
+        console.error('📍 [LocationService] Native GPS error:', err);
+        const profileLocation = await this.getLocationFromUserProfile();
+        if (profileLocation) return profileLocation;
+      }
+
+      // Final native fallback to default
+      const defaultLocation: LocationData = {
+        lat: 18.5204, lon: 73.8567, accuracy: 100, timestamp: Date.now(),
+        city: 'Pune', state: 'Maharashtra', country: 'India', district: 'Pune', source: 'default',
+      };
+      this.currentLocation = defaultLocation;
+      this.saveLocationToCache(defaultLocation);
+      return defaultLocation;
+    }
+
     return new Promise((resolve) => {
       const options: PositionOptions = {
         enableHighAccuracy: true,
@@ -227,6 +274,7 @@ class LocationService {
       );
     });
   }
+
 
   // Geocode address to get coordinates with improved pincode and village handling
   async geocodeAddress(addressParts: {
