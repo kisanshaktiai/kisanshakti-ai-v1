@@ -15,7 +15,7 @@ export function BrandBlock() {
 
   const logoUrl = branding?.logo_url;
   const companyName = branding?.company_name || tenant?.name || t('app.name');
-  const tagline = branding?.tagline || t('app.tagline');
+  const tagline = (branding?.tagline && branding.tagline.trim()) || t('app.tagline');
   const firstName = user?.fullName?.split(' ')[0];
 
   return (
