@@ -198,30 +198,50 @@ async function buildTenantConfig(
     .eq('tenant_id', tenant.id)
     .maybeSingle();
 
+  // Fetch legacy/parallel `tenant_branding` row — some tenant-portal flows still
+  // write tagline/description/logo here (column `app_tagline`). Used ONLY as a
+  // fallback when the matching field in `white_label_configs.brand_identity` is
+  // missing or empty, so partner edits in either surface reach the mobile app.
+  const { data: tenantBranding } = await supabase
+    .from('tenant_branding')
+    .select('app_name, app_tagline, company_description, logo_url, favicon_url, primary_color, secondary_color, accent_color, background_color, text_color, font_family, updated_at')
+    .eq('tenant_id', tenant.id)
+    .order('updated_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
   console.log('📦 [TenantConfig] White label data loaded:', {
     hasBrandIdentity: !!whiteLabel?.brand_identity,
     hasMobileTheme: !!whiteLabel?.mobile_theme,
     hasThemeColors: !!whiteLabel?.theme_colors,
     hasPWA: !!whiteLabel?.pwa_config,
+    hasTenantBrandingFallback: !!tenantBranding,
       themeColorNamespaces: Object.keys(whiteLabel?.theme_colors || {}),
       mobileThemeNamespaces: Object.keys(whiteLabel?.mobile_theme || {}),
     lastDeployedAt: whiteLabel?.last_deployed_at,
   });
 
-  // Extract branding
-  const brandIdentity = whiteLabel?.brand_identity || {};
+  // Extract branding — coalesce non-empty values across the two branding sources.
+  const brandIdentity: any = whiteLabel?.brand_identity || {};
+  const tb: any = tenantBranding || {};
+  const pick = (...vals: any[]) => {
+    for (const v of vals) {
+      if (v !== undefined && v !== null && String(v).trim() !== '') return v;
+    }
+    return undefined;
+  };
   const branding = {
-    company_name: brandIdentity.company_name || tenant.name,
-    tagline: brandIdentity.tagline,
-    logo_url: brandIdentity.logo_url,
-    favicon_url: brandIdentity.favicon_url,
-    primary_color: brandIdentity.primary_color, // No fallback - will use CSS defaults
-    secondary_color: brandIdentity.secondary_color,
-    accent_color: brandIdentity.accent_color,
-    background_color: brandIdentity.background_color,
-    text_color: brandIdentity.text_color,
-    font_family: brandIdentity.font_family,
-    description: brandIdentity.description,
+    company_name: pick(brandIdentity.company_name, brandIdentity.app_name, tb.app_name, tenant.name),
+    tagline: pick(brandIdentity.tagline, brandIdentity.app_tagline, tb.app_tagline),
+    logo_url: pick(brandIdentity.logo_url, tb.logo_url),
+    favicon_url: pick(brandIdentity.favicon_url, tb.favicon_url),
+    primary_color: pick(brandIdentity.primary_color, tb.primary_color),
+    secondary_color: pick(brandIdentity.secondary_color, tb.secondary_color),
+    accent_color: pick(brandIdentity.accent_color, tb.accent_color),
+    background_color: pick(brandIdentity.background_color, tb.background_color),
+    text_color: pick(brandIdentity.text_color, tb.text_color),
+    font_family: pick(brandIdentity.font_family, tb.font_family),
+    description: pick(brandIdentity.description, brandIdentity.company_description, tb.company_description),
   };
 
   // ---- Deep-merge theme groups ----
