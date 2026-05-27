@@ -3,9 +3,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { I18nextProvider } from "react-i18next";
 import i18n from "@/i18n/config";
+import { lazyWithRetry as lazy } from "@/utils/lazyWithRetry";
 
 // Components - Keep critical path components eager loaded
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -25,7 +26,7 @@ declare global {
   }
 }
 
-// PERFORMANCE: Lazy load all page components
+// PERFORMANCE: Lazy load all page components (with auto-retry + stale-chunk recovery)
 const Home = lazy(() => import("./pages/Home"));
 const Weather = lazy(() => import("./pages/Weather"));
 const Market = lazy(() => import("./pages/Market"));

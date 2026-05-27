@@ -2,6 +2,55 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
+// =============================================================================
+// Global chunk-load error recovery — fixes "Importing a module script failed"
+// after a new deploy (stale index.html referencing missing hashed chunks).
+// One-shot reload guarded by sessionStorage so we never enter a loop.
+// =============================================================================
+(() => {
+  const RELOAD_KEY = '__chunk_reload_attempted__';
+  const isChunkErr = (msg: string) =>
+    /Importing a module script failed/i.test(msg) ||
+    /Failed to fetch dynamically imported module/i.test(msg) ||
+    /Loading chunk [^\s]+ failed/i.test(msg) ||
+    /Loading CSS chunk/i.test(msg) ||
+    /ChunkLoadError/i.test(msg);
+
+  const recover = async (reason: string) => {
+    console.warn('🔄 [ChunkRecovery] Triggered by:', reason);
+    if (sessionStorage.getItem(RELOAD_KEY)) return;
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    try {
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((n) => caches.delete(n)));
+      }
+      if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+      }
+    } catch {/* ignore */}
+    const url = new URL(window.location.href);
+    url.searchParams.set('_v', Date.now().toString(36));
+    window.location.replace(url.toString());
+  };
+
+  window.addEventListener('error', (event) => {
+    const msg = event?.message || (event?.error && (event.error.message || String(event.error))) || '';
+    if (isChunkErr(msg)) recover(msg);
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason: any = event?.reason;
+    const msg = (reason && (reason.message || String(reason))) || '';
+    if (isChunkErr(msg)) recover(msg);
+  });
+
+  // After a successful page-load that wasn't itself a chunk-error reload, clear guard.
+  window.addEventListener('load', () => {
+    setTimeout(() => sessionStorage.removeItem(RELOAD_KEY), 5000);
+  });
+})();
+
+
 // Import Capacitor initialization
 import { initializeCapacitor, isNativeApp, getPlatform } from "@/utils/capacitorInit";
 
