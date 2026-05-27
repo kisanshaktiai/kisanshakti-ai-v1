@@ -29,13 +29,37 @@ export function LocationDetector({ onLocationDetected }: LocationDetectorProps) 
     onLocationDetected(result.state, result.district || '');
   };
 
+  const isIosSafari = () => {
+    if (typeof navigator === 'undefined') return false;
+    const ua = navigator.userAgent || '';
+    const iOS = /iPad|iPhone|iPod/.test(ua) || (ua.includes('Mac') && 'ontouchend' in document);
+    return iOS && !Capacitor.isNativePlatform();
+  };
+
   const detectLocation = async () => {
     setStatus('detecting');
     const isNative = Capacitor.isNativePlatform();
 
+    // Hard watchdog: iOS Safari sometimes never fires success/error when
+    // the prompt is suppressed. Force a state transition after 12s so the
+    // UI never gets stuck on "Detecting location...".
+    let settled = false;
+    const watchdog = window.setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        setStatus('denied');
+      }
+    }, 12000);
+
+    const settle = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(watchdog);
+      fn();
+    };
+
     try {
       if (isNative) {
-        // iOS WKWebView: navigator.geolocation is unreliable. Use native plugin.
         const perm = await Geolocation.checkPermissions();
         let locPerm = perm.location;
         if (locPerm === 'prompt' || locPerm === 'prompt-with-rationale') {
@@ -43,7 +67,7 @@ export function LocationDetector({ onLocationDetected }: LocationDetectorProps) 
           locPerm = req.location;
         }
         if (locPerm !== 'granted') {
-          setStatus('denied');
+          settle(() => setStatus('denied'));
           return;
         }
         const pos = await Geolocation.getCurrentPosition({
@@ -51,25 +75,30 @@ export function LocationDetector({ onLocationDetected }: LocationDetectorProps) 
           timeout: 15000,
           maximumAge: 600000,
         });
+        settle(() => {});
         await handleSuccess(pos.coords.latitude, pos.coords.longitude);
         return;
       }
 
       if (!navigator.geolocation) {
-        setStatus('error');
+        settle(() => setStatus('error'));
         return;
       }
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          settle(() => {});
           handleSuccess(position.coords.latitude, position.coords.longitude);
         },
-        () => setStatus('denied'),
+        (err) => {
+          console.warn('[LocationDetector] geo error', err?.code, err?.message);
+          settle(() => setStatus('denied'));
+        },
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 600000 }
       );
     } catch (e) {
       console.warn('[LocationDetector] failed:', e);
-      setStatus('denied');
+      settle(() => setStatus('denied'));
     }
   };
 
@@ -88,10 +117,14 @@ export function LocationDetector({ onLocationDetected }: LocationDetectorProps) 
       } catch {}
     }
 
-    // iOS requires geolocation calls to originate from a user gesture in
-    // some WKWebView contexts. On native we can call directly (Capacitor
-    // plugin handles permissions). On web, auto-attempt; if it fails the
-    // user can tap the chip to retry.
+    // iOS Safari/WKWebView blocks non-gesture geolocation prompts and
+    // often never fires success/error. Skip auto-detect and let the user
+    // tap to grant. On native iOS the Capacitor plugin handles it fine.
+    if (isIosSafari()) {
+      setStatus('denied');
+      return;
+    }
+
     detectLocation();
   }, []);
 
