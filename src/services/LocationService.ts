@@ -82,6 +82,32 @@ class LocationService {
     this.isRequestingPermission = true;
 
     try {
+      // ─── Capacitor Native Path (iOS + Android) ──────────────────────────
+      // navigator.geolocation in iOS WKWebView is unreliable and silently
+      // fails when Info.plist usage descriptions are missing. Use the
+      // Capacitor Geolocation plugin which routes through native CoreLocation.
+      if (IS_NATIVE) {
+        try {
+          const current = await Geolocation.checkPermissions();
+          let loc = current.location;
+          if (loc === 'prompt' || loc === 'prompt-with-rationale') {
+            const requested = await Geolocation.requestPermissions({ permissions: ['location'] });
+            loc = requested.location;
+          }
+          const mapped: PermissionState =
+            loc === 'granted' ? 'granted' :
+            loc === 'denied' ? 'denied' : 'prompt';
+          this.permissionStatus = mapped;
+          console.log('📍 [LocationService] Native permission:', loc, '→', mapped);
+          return mapped;
+        } catch (err) {
+          console.error('📍 [LocationService] Native permission error:', err);
+          this.permissionStatus = 'prompt';
+          return 'prompt';
+        }
+      }
+
+      // ─── Web Path ───────────────────────────────────────────────────────
       if ('permissions' in navigator && 'query' in navigator.permissions) {
         const permission = await navigator.permissions.query({ name: 'geolocation' });
         this.permissionStatus = permission.state;
@@ -113,6 +139,7 @@ class LocationService {
           { timeout: 5000 }
         );
       });
+
     } catch (error) {
       console.error('Error requesting location permission:', error);
       return 'prompt';
