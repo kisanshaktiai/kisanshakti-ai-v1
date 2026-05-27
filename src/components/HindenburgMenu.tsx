@@ -292,7 +292,7 @@ export function HindenburgMenu({ isOpen, onClose }: HindenburgMenuProps) {
         {/* Footer */}
         <div className="px-4 py-3 border-t border-border/10 glassmorphism-subtle">
           <p className="text-[10px] text-center text-muted-foreground/50">
-            {tenant?.branding?.tagline || t('app.tagline')}
+            {(tenant?.branding?.tagline && tenant.branding.tagline.trim()) || t('app.tagline')}
           </p>
         </div>
       </div>
