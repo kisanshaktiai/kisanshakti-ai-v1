@@ -207,10 +207,16 @@ class SyncService {
         await this.syncLands(pendingChanges.lands, result, tenantId);
       }
 
+      if (pendingChanges.schedules.length > 0) {
+        console.log('📤 [Sync] Uploading schedules...');
+        await this.syncSchedules(pendingChanges.schedules, result);
+      }
+
       if (pendingChanges.messages.length > 0) {
         console.log('📤 [Sync] Uploading messages...');
         await this.syncChatMessages(pendingChanges.messages, result);
       }
+
 
       // Update sync metadata
       await localDB.updateSyncMetadata({
@@ -445,12 +451,65 @@ class SyncService {
   }
 
   private async syncChatMessages(messages: any[], result: SyncResult): Promise<void> {
-    // Chat messages are stored locally only for now
-    // Mark them as synced since there's no server table yet
+    // SPRINT 2 FIX: Previously this was a no-op that silently marked messages as synced
+    // without uploading, causing data loss. Now uploads to ai_chat_messages.
+    const syncedIds: string[] = [];
+
     for (const message of messages) {
-      await localDB.markAsSynced('message', message.id);
+      try {
+        // Skip messages missing required server fields
+        if (!message.session_id || !message.tenant_id || !message.farmer_id || !message.role || !message.content) {
+          console.warn(`[Sync] Skipping malformed chat message ${message.id}`);
+          // Mark as synced anyway to prevent retry loops on bad local rows
+          syncedIds.push(message.id);
+          continue;
+        }
+
+        const { data: existing } = await supabase
+          .from('ai_chat_messages')
+          .select('id')
+          .eq('id', message.id)
+          .maybeSingle();
+
+        if (existing) {
+          // Server already has it — just mark local as synced
+          syncedIds.push(message.id);
+          continue;
+        }
+
+        // Strip local-only fields before upload
+        const { lastModified, syncStatus, ...uploadData } = message;
+
+        const { error } = await supabase
+          .from('ai_chat_messages')
+          .insert({
+            ...uploadData,
+            created_at: message.created_at || new Date(message.lastModified || Date.now()).toISOString(),
+          });
+
+        if (error) {
+          // Conflict/duplicate => treat as synced
+          if ((error as any).code === '23505') {
+            syncedIds.push(message.id);
+            continue;
+          }
+          throw error;
+        }
+
+        syncedIds.push(message.id);
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        console.error(`Failed to sync chat message ${message.id}:`, error);
+        result.errors?.push(`Chat message: ${errorMsg}`);
+        result.success = false;
+      }
+    }
+
+    for (const id of syncedIds) {
+      await localDB.markAsSynced('message', id);
     }
   }
+
 
   private async downloadServerData(tenantId: string): Promise<void> {
     console.log('📥 [Sync] Starting server data download for tenant:', tenantId);
