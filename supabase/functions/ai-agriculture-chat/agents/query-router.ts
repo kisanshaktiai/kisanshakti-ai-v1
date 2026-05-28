@@ -631,6 +631,20 @@ export function getRouteRequirements(route: QueryRoute): {
         needs_llm: true,
         max_response_time_ms: 3000
       };
+
+    // FERTILIZER / NUTRITION: stage-based, uses crop_schedules + symbolic rules
+    case 'FERTILIZER_NUTRITION':
+      return {
+        needs_land_context: true,
+        needs_weather: true,
+        needs_soil_data: true,
+        needs_ndvi: false,
+        needs_market_data: false,
+        needs_decision_brain: true,
+        needs_llm: true,
+        max_response_time_ms: 6000
+      };
+
     
     case 'GENERAL_INFO':
     default:
