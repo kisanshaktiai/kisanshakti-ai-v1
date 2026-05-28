@@ -1,74 +1,72 @@
-## NDVI Map — Bugs Found (Deep Audit)
+## Root cause (confirmed by code trace)
 
-Inspected `src/pages/NDVIAnalysis.tsx`, `src/components/land/NDVIMapView.tsx`, `src/hooks/useNDVIAnalysis.ts`, the `ndvi_data` table, and the live screenshot.
+The farmer asked a pure scheduling question:
+> "सध्या कोणते खत देवू आणि फवारणी घेवू?"  
+> ("At the current stage, what fertilizer should I give and what spray should I take?")
 
-### Bug 1 — Thumbnail never changes when farmer taps a different date
-Root cause is in the data, not the code. `ndvi_data.image_url` for a single land is the **same PNG (`<land_id>.png`)** for every date row — the daily pipeline overwrites one file per land instead of producing one file per acquisition.
+The expected answer is a stage-based fertilizer + preventive spray plan derived from `crop_schedules` (days since sowing, growth stage) and the symbolic rule engine.
 
-```
-2026-05-28  ndvi 0.078  → e29658…dd9.png
-2026-05-27  ndvi 0.078  → e29658…dd9.png   ← same URL
-2026-05-26  ndvi 0.511  → 3b10c8…797.png   ← only changes when scene_id changes
-2026-05-26  ndvi 0.078  → e29658…dd9.png
-```
+Instead the system replied with a **diagnostic clarification** card ("What exactly are you observing? — रंग बदलला / गड्डे दिसत आहेत / Drying/wilting"). That UI is only meant for symptom-reporting queries.
 
-So the UI is technically correct (it re-binds the URL), but the URL string doesn't differ → image looks identical. Two related issues compound this:
-- The browser caches the PNG (no cache-buster), so even when a different land row legitimately points to a different file, repeat visits look frozen.
-- We have multiple `ndvi_data` rows per date (one per scene_id). We pick whichever comes first instead of the freshest, highest-quality scene for that day.
+### Why this happens
 
-### Bug 2 — Bottom sheet covers the value chip
-`sheetHeights = ['56px', '200px', '70vh']`. Peek (56px) only fits the drag handle; the value row (`0.46 · मध्यम आरोग्य · 10.95 ac · Sugar…`) is rendered inside that 56px region, so it gets vertically clipped at the bottom edge — visible in the screenshot.
+1. `supabase/functions/ai-agriculture-chat/agents/query-router.ts`
+   - `PEST_DISEASE_PATTERNS` (line 78–121) contains broad "treatment request" tokens:
+     - line 117 — `/फवारणी|स्प्रे|spray|छिड़काव/i`
+     - line 119 — `/काय\s*करू|क्या\s*करूं|what\s*(should|can|to)\s*do/i`
+   - In `routeQuery()` (line 219+), **Priority 4 = PEST_DISEASE_TREATMENT** runs before anything that could capture fertilizer/nutrition. The word *फवारणी* alone (no pest, no disease, no symptom) is enough to win, so `route = PEST_DISEASE_TREATMENT, requires_decision_brain = true`.
+   - There is **no FERTILIZER / NUTRITION route at all** in `query-router.ts`. `खत / खाद / उर्वरक / fertilizer / khat / khaad` are never matched here.
 
-### Bug 3 — Broken i18n placeholder on cloud badge
-`hi/ndvi.json` → `"cloud": "बादल {{value}}%"`, but the code calls `t('ndvi.map.cloud', 'Cloud') + ' ' + cloud.toFixed(0) + '%'` with no interpolation, producing `ढग {{value}}% 0%` (visible top-right of the sheet).
+2. `intent-classifier.ts` (line 472) *does* classify `खत…` as `FERTILIZER_SCHEDULE`, but the orchestrator's high-level routing relies on `routeQuery()` output for choosing the pipeline. The downstream Decision Brain receives `PEST_DISEASE_TREATMENT` with no pest/disease/symptom evidence → low confidence → the unified gate emits a generic "What exactly are you observing?" clarification with symptom options (`COLOR_CHANGE`, lumps, `WILTING`).
 
----
+3. The clarification gate has no guard that says: *"If the resolved intent is a scheduling intent (`FERTILIZER_SCHEDULE` / `IRRIGATION_QUERY` / `INPUT_RECOMMENDATION` without symptom signal), never ask diagnostic 'what are you observing' questions."*
 
-## Fixes
+Net effect: every "खत + फवारणी" scheduling question is force-converted to a diagnostic flow.
 
-### `src/components/land/NDVIMapView.tsx`
-1. **Per-date thumbnail key** — derive a stable URL with a date-based cache-buster so the `<img>` and the MapLibre raster source actually re-mount when the user scrubs dates:
-   ```ts
-   const activeThumbnailUrl = useMemo(() => {
-     const base = normalizeNdviAssetUrl(active?.raw?.image_url)
-       ?? normalizeNdviAssetUrl(processingThumbnail?.url)
-       ?? normalizeNdviAssetUrl(landThumbnailUrl);
-     if (!base) return null;
-     const v = active?.date ?? '';                      // forces re-fetch per date
-     return `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
-   }, [active, processingThumbnail, landThumbnailUrl]);
-   ```
-2. **Force MapLibre source replacement** when activeDate changes (currently we only re-add if `activeThumbnailUrl` string differs; with the cache-buster the string now differs each tap).
-3. **Bottom-sheet peek height** → `'92px'` so the value row, status label, and cloud badge are fully visible at rest. Sheet snaps become `['92px', '220px', '70vh']`.
-4. **Cloud badge i18n** — pass interpolation value and drop the manual `%`:
-   ```tsx
-   {t('ndvi.map.cloud', 'Cloud {{value}}%', { value: Math.round(current.cloud_coverage ?? 0) })}
-   ```
-5. **Map container** — switch from `h-[calc(100vh-180px)]` to `h-[calc(100dvh-200px)]` and bump peek-aware bottom padding for the date scrubber so the scrubber rides above the new 92px peek without clipping pills.
+## Fix plan (no DB schema changes; rules already exist in `decision_rules`)
 
-### `src/hooks/useNDVIAnalysis.ts`
-- **Deduplicate same-day rows** keeping the row with the highest `quality_score` (fallback to highest `coverage_percentage`, then lowest `cloud_coverage`). This ensures the date pill picks the *best* scene of that day, not a duplicate copy.
-- Apply the same dedupe before building `history` (so the trend chart is one point per day).
+### 1. `agents/query-router.ts` — add a dedicated nutrition route
 
-### `src/i18n/locales/{en,hi,mr}/ndvi.json`
-- Confirm `ndvi.map.cloud` keeps `{{value}}` placeholder — no string changes needed once interpolation is fixed.
+- Add `FERTILIZER_NUTRITION` to `QueryRoute`.
+- Add `FERTILIZER_NUTRITION_PATTERNS` covering:
+  - `खत|खाद|उर्वरक|पोषण|fertili[sz]er|nutrient|\bkhat\b|\bkhaad\b`
+  - `कोणते\s*खत|कौन\s*सा\s*खत|which\s*fertilizer`
+  - `सध्या.*खत|आता.*खत|now.*fertilizer`
+- Add `SYMPTOM_TOKENS` regex (`पिवळ|पीला|yellow|डाग|spots?|मेला|सुक|कुज|wilt|rog|kid[ia]|ali|borer|holes?|curl|blight|rust|करपा|तांबेरा`).
 
-### Out of scope (server side, do not touch in this UI fix)
-The real long-term fix for "same PNG every day" lives in the satellite ingestion edge function — it should write `<land_id>/<acquisition_date>.png` (one PNG per scene) and store that URL in `ndvi_data.image_url`. I will flag this in the report but not modify backend code in this task.
+### 2. Tighten PEST_DISEASE matching
 
----
+In `routeQuery()`, before returning `PEST_DISEASE_TREATMENT`:
+- If `pestDiseaseScore` is driven **only** by the generic spray/treatment tokens (`फवारणी / spray / काय करू / उपाय / favarni`) **and** no `SYMPTOM_TOKENS` are present, demote the score.
+- If fertilizer tokens are present and no symptom tokens are present, route to `FERTILIZER_NUTRITION` instead, even when `फवारणी` is also mentioned (interpreted as "preventive spray", not "treat my disease").
 
-## Short Report — How to Fine-Tune the Map for Farmer Accuracy
+### 3. `agents/orchestrator.ts` — handle the new route
 
-1. **One PNG per acquisition (backend).** Store `ndvi-thumbnails/<land_id>/<YYYY-MM-DD>_<scene_id>.png` so date scrubbing genuinely shows that day's satellite snapshot instead of the latest overwrite.
-2. **Clip raster to polygon, not bbox.** Today we use a CSS clip-path on the `<img>` overlay (good) but the MapLibre raster source uses the bbox. Add a `fill` layer with the polygon as a mask layer (`raster` + `fill` with `fill-opacity: 1` outside the polygon in background color) so non-field pixels never bleed in.
-3. **Same-day dedupe + best-scene selection.** Prefer rows with `quality_score ≥ 0.7`, `cloud_coverage ≤ 20%`, `coverage_percentage ≥ 80%`; collapse duplicates.
-4. **Continuous NDVI palette enforced server-side.** Lock the PNG renderer to the NASA/ESA stops we use in `ndviScience.ts` so the legend matches pixels exactly (currently the PNG uses its own palette, the legend is approximate).
-5. **Show pixel-true min/mean/max from `ndvi_std`, `min_ndvi`, `max_ndvi`** in the peek sheet — already wired, just always visible at snap 0 so farmers see the real range, not a single number.
-6. **Stage-aware reference line.** Tag each reading with the crop stage (we already compute `stageAware`) and show ⚠️ when NDVI deviates > 0.10 from the stage-expected band — gives farmers an actionable signal, not just a color.
-7. **Cloud / coverage gate.** Hide any pixel from rows where `cloud_coverage > 30%` or `coverage_percentage < 70%`; show the next clean date instead. (Today's `isObservationReliable` does this for stats but not for the raster.)
-8. **Cache-bust + ETag.** Cache-bust by acquisition date (this fix) and have the storage object respect ETag so the second visit is fast but never stale.
-9. **Tile pyramid for big fields.** For lands > 5 acres, switch from a single PNG to Sentinel-2 COGs served as `raster-dem`-style tiles → sub-meter sharpness on zoom.
-10. **Confidence badge per date pill.** Color the date pill border by quality_score so the farmer instantly knows which dates are trustworthy.
+- Add a branch for `queryRoute.route === 'FERTILIZER_NUTRITION'` that:
+  - Loads land context + active `crop_schedules` row (already fetched today for chat context).
+  - Calls the symbolic rule engine with `intent_code = FERTILIZER_SCHEDULE` and crop/stage/DAS as input, reusing the existing `layered-rule-evaluator` → `deterministic-response-builder` path.
+  - Skips the diagnostic clarification generator entirely.
+- Extend the existing vocab-route override (line 1246–1285) so `NUTRIENT_INTENTS` map to `FERTILIZER_NUTRITION` (currently they map to a string the rest of the code doesn't actually route).
 
-After approval I will implement Bugs 1–3 only; items 1, 2, 4, 9 require backend changes I will surface but not execute in this round.
+### 4. Clarification guard
+
+In `decision/decision-readiness-gate.ts` / `clarification-strategy.ts`:
+- Before emitting the "What are you observing?" symptom clarification, check the resolved intent. If it is `FERTILIZER_SCHEDULE`, `IRRIGATION_QUERY`, `HARVEST_TIMING`, `MARKET_PRICE_QUERY`, `WEATHER_QUERY`, or `INPUT_RECOMMENDATION` **with no symptom evidence**, do not generate a diagnostic clarification — fall through to the deterministic stage-based responder (or, only if rules return nothing, ask a *scoped* clarification like "Which nutrient concern — basal, top-dressing, micronutrient?", never "what are you observing").
+
+### 5. Verification
+
+- Replay the failing query with `supabase--curl_edge_functions` against `ai-agriculture-chat` for the same `land_id` and confirm:
+  - `route = FERTILIZER_NUTRITION`
+  - response section contains stage-based fertilizer dose (computed for the land's acreage) + preventive spray window, not a clarification card.
+- Re-run 3 regression queries to ensure pest/disease flow still triggers clarification correctly:
+  - "ऊसाला किडा लागला, काय फवारू?" → still `PEST_DISEASE_TREATMENT`.
+  - "पान पिवळे झाले" → still `COLOR_CHANGE` / diagnostic clarification.
+  - "पाणी कधी द्यायचे?" → still `IRRIGATION_SCHEDULING`.
+
+## Files to change
+
+- `supabase/functions/ai-agriculture-chat/agents/query-router.ts`
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
+- `supabase/functions/ai-agriculture-chat/decision/decision-readiness-gate.ts` (or `agents/clarification-strategy.ts`, whichever owns the "observation symptom" clarification emission)
+
+No DB migrations, no UI changes required.

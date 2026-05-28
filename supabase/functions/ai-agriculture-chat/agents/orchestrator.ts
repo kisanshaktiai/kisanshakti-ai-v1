@@ -2982,7 +2982,7 @@ export class AIAgentOrchestrator {
       const hasSymptoms = inductionResult.symptoms.length > 0;
       
       // Routes that can run symbolic brain WITHOUT symptoms (they use crop/stage/NDVI rules)
-      const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'GENERAL_INFO', 'GREETING'];
+      const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'WEATHER_SPRAY_TIMING', 'GENERAL_INFO', 'GREETING', 'FERTILIZER_NUTRITION'];
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
       // FIX 4: LLM failsafe NO LONGER allows symbolic brain — clarification only
