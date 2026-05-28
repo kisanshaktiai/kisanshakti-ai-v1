@@ -181,12 +181,12 @@ export default function NDVIAnalysis() {
         <ScrollBar orientation="horizontal" className="hidden" />
       </ScrollArea>
 
-      {/* Stale banner */}
+      {/* Stale banner — semantic warning tokens */}
       {hasStale && (
         <div className="px-3 pt-2">
-          <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-2.5 py-1.5">
-            <CloudOff className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <p className="text-[11px] text-amber-700 dark:text-amber-300 leading-tight">
+          <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-lg px-2.5 py-1.5">
+            <CloudOff className="h-3.5 w-3.5 text-warning shrink-0" />
+            <p className="text-[11px] text-warning-foreground leading-tight">
               {t(
                 'ndvi.reliability.stale',
                 'Latest satellite reading hidden — cloud cover or low coverage. Showing last clean observation.',
