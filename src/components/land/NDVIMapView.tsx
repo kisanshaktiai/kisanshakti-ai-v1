@@ -483,10 +483,10 @@ export function NDVIMapView({
         )}
       </AnimatePresence>
 
-      {/* ───────── Stale banner ───────── */}
+      {/* ───────── Stale banner — uses semantic warning tokens ───────── */}
       {hasStale && (
-        <div className="absolute top-14 left-3 right-3 z-10 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-fit">
-          <Badge variant="outline" className="bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 text-[11px] px-2 py-1 rounded-full flex items-center gap-1.5">
+        <div className="absolute top-12 left-2 right-28 z-10">
+          <Badge variant="outline" className="bg-warning/15 border-warning/40 text-warning-foreground text-[11px] px-2 py-1 rounded-full flex items-center gap-1.5">
             <CloudOff className="h-3 w-3" />
             {t('ndvi.map.stale_warning', 'Latest reading hidden — clouds or low coverage. Showing last clean reading.')}
           </Badge>
