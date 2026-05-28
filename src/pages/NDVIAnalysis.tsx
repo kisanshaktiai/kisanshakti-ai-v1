@@ -370,7 +370,7 @@ export default function NDVIAnalysis() {
         </TabsContent>
 
         {/* ───────── MAP ───────── */}
-        <TabsContent value="map" className="flex-1 px-3 pt-3 pb-24 mt-0">
+        <TabsContent value="map" className="flex-1 px-0 pt-1 pb-16 mt-0">
           {selectedLandId && (
             <NDVIMapView
               landId={selectedLandId}
