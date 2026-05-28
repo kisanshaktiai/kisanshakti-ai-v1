@@ -3562,8 +3562,9 @@ export class AIAgentOrchestrator {
       // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage
       // ═══════════════════════════════════════════════════════════════════════════
       const authorityBasedCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      // SPRINT 3 FIX: Adaptive denominator — see comments at lines ~2647 / 2738.
       const evidenceCoverage = authorityBasedCodes.length > 0 
-        ? Math.min(1.0, authorityBasedCodes.length / 8) 
+        ? Math.min(1.0, authorityBasedCodes.length / Math.max(4, Math.min(8, authorityBasedCodes.length))) 
         : 0;
       console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED only): ${(evidenceCoverage * 100).toFixed(0)}% (${authorityBasedCodes.length} codes)`);
       
