@@ -80,11 +80,13 @@ export function useSchedules(landId?: string) {
           // Use supabaseWithAuth to include custom headers for RLS
           const authClient = supabaseWithAuth(user.id, user.tenantId);
           
+          // SPRINT 3: bound payload — a farmer should never need more than 100 active schedules.
           let query = authClient
             .from('crop_schedules')
             .select('*')
             .eq('is_active', true)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(100);
 
           if (landId) {
             console.log('🎯 [useSchedules] Filtering by land_id:', landId);
