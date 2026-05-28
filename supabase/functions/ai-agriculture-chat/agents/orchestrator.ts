@@ -2644,7 +2644,10 @@ export class AIAgentOrchestrator {
         }
         
         // Update symbol coverage based on merged symptoms
-        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8); // 8 is approx max symptoms
+        // SPRINT 3 FIX: Adaptive coverage denominator. Real-world farmer reports rarely exceed
+        // 3–5 symptoms per case, so 8 systematically under-rated single/double-symptom diagnoses.
+        // Cap denominator at max(4, len) so any single strong symptom yields ≥25% coverage.
+        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / Math.max(4, Math.min(8, inductionResult.symptoms.length)));
         inductionResult.aggregated_confidence = Math.max(
           inductionResult.aggregated_confidence,
           safeConfidence
