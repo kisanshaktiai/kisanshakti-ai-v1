@@ -77,8 +77,13 @@
       "no_clean_for_date": "इस तारीख पर कोई स्पष्ट डेटा नहीं",
       "no_data": "अभी तक कोई सैटेलाइट डेटा नहीं",
       "provenance": "स्रोत",
-      "recenter": "केंद्रित करें",
-      "stale_warning": "नवीनतम स्पष्ट डेटा दिखा रहा है"
+      "recenter": "केंद्र",
+      "stale_warning": "नवीनतम स्पष्ट डेटा दिखा रहा है",
+      "full": "पूर्ण",
+      "exit": "बाहर",
+      "opacity": "हीटमैप अपारदर्शिता",
+      "mode_land_thumb": "सैटेलाइट NDVI",
+      "thumbnail_alt": "सैटेलाइट NDVI थंबनेल"
     },
     "historical": {
       "trend": "ऐतिहासिक प्रवृत्ति",

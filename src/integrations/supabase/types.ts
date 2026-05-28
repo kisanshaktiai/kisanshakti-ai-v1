@@ -30255,6 +30255,7 @@ export type Database = {
         Returns: Json
       }
       resolve_farmer_features: { Args: { _farmer: string }; Returns: Json }
+      resolve_tenant_by_slug: { Args: { p_slug: string }; Returns: Json }
       resolve_tenant_features: { Args: { _tenant: string }; Returns: Json }
       sanitize_white_label_config: {
         Args: { config_data: Json }

@@ -190,8 +190,8 @@ export function NDVIMapView({
 
   const thumbnailClipPath = useMemo(() => polygonCssClipPath(boundary), [boundary]);
 
-  const [overlayOpacity, setOverlayOpacity] = useState(0.7);
-  const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(1);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.75);
+  const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(0);
   const [legendOpen, setLegendOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
 
@@ -217,16 +217,16 @@ export function NDVIMapView({
           id: 'land-fill',
           type: 'fill',
           source: 'land-boundary',
-          paint: { 'fill-color': '#1B5E20', 'fill-opacity': 0.0 },
+          paint: { 'fill-color': 'hsl(140, 60%, 35%)', 'fill-opacity': 0.0 },
         });
         map.addLayer({
           id: 'land-outline',
           type: 'line',
           source: 'land-boundary',
-          paint: { 'line-color': '#ffffff', 'line-width': 2.5, 'line-opacity': 0.95 },
+          paint: { 'line-color': 'hsl(0, 0%, 100%)', 'line-width': 2.5, 'line-opacity': 0.95 },
         });
         const b = computeBounds(boundary);
-        if (b) map.fitBounds(b, { padding: 48, duration: 0, maxZoom: 17 });
+        if (b) map.fitBounds(b, { padding: 32, duration: 0, maxZoom: 17 });
       }
     });
 
@@ -254,17 +254,17 @@ export function NDVIMapView({
           id: 'land-fill',
           type: 'fill',
           source: 'land-boundary',
-          paint: { 'fill-color': '#1B5E20', 'fill-opacity': 0.0 },
+          paint: { 'fill-color': 'hsl(140, 60%, 35%)', 'fill-opacity': 0.0 },
         });
         map.addLayer({
           id: 'land-outline',
           type: 'line',
           source: 'land-boundary',
-          paint: { 'line-color': '#ffffff', 'line-width': 2.5, 'line-opacity': 0.95 },
+          paint: { 'line-color': 'hsl(0, 0%, 100%)', 'line-width': 2.5, 'line-opacity': 0.95 },
         });
       }
       const b = computeBounds(boundary);
-      if (b) map.fitBounds(b, { padding: 48, duration: 300, maxZoom: 17 });
+      if (b) map.fitBounds(b, { padding: 32, duration: 300, maxZoom: 17 });
     };
     if (map.isStyleLoaded()) sync();
     else map.once('load', sync);
@@ -333,7 +333,7 @@ export function NDVIMapView({
   }
 
   /* ────────────────── Sheet snap points ────────────────── */
-  const sheetHeights = ['96px', '232px', '70vh'];
+  const sheetHeights = ['56px', '200px', '70vh'];
 
   const currentStatus = current ? getScientificHealthStatus(current.ndvi_value) : null;
   const hasData = !!current;
@@ -344,8 +344,8 @@ export function NDVIMapView({
   return (
     <div
       className={cn(
-        'relative w-full overflow-hidden rounded-2xl border border-border/40 bg-card',
-        fullscreen ? 'fixed inset-0 z-[60] rounded-none border-0' : 'h-[calc(100vh-220px)] min-h-[420px]',
+        'relative w-full overflow-hidden border border-border/40 bg-card',
+        fullscreen ? 'fixed inset-0 z-[60] border-0 rounded-none' : 'rounded-2xl mx-2 h-[calc(100vh-180px)] min-h-[460px]',
       )}
     >
       {/* ───────── Map canvas ───────── */}
@@ -367,58 +367,65 @@ export function NDVIMapView({
         </div>
       )}
 
-      {/* ───────── Top toolbar (right) ───────── */}
-      <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
+      {/* ───────── Top toolbar (right) — compact labeled pills ───────── */}
+      <div className="absolute top-2 right-2 z-10 flex flex-col gap-1.5">
         <Button
           variant="secondary"
-          size="icon"
-          className="h-10 w-10 rounded-xl shadow-md bg-background/95"
+          size="sm"
+          className="h-8 px-2 rounded-lg shadow-md bg-background/95 text-foreground gap-1"
           onClick={() => setLegendOpen((v) => !v)}
           aria-label={t('ndvi.map.legend', 'Legend')}
         >
-          <Layers className="h-4 w-4" />
+          <Layers className="h-3.5 w-3.5" />
+          <span className="text-[10px] font-medium">{t('ndvi.map.legend', 'Legend')}</span>
         </Button>
         <Button
           variant="secondary"
-          size="icon"
-          className="h-10 w-10 rounded-xl shadow-md bg-background/95"
+          size="sm"
+          className="h-8 px-2 rounded-lg shadow-md bg-background/95 text-foreground gap-1"
           onClick={() => {
             const map = mapRef.current;
             if (map && boundary.length > 0) {
               const b = computeBounds(boundary);
-              if (b) map.fitBounds(b, { padding: 48, duration: 400, maxZoom: 17 });
+              if (b) map.fitBounds(b, { padding: 32, duration: 400, maxZoom: 17 });
             }
           }}
-          aria-label={t('ndvi.map.recenter', 'Re-center on field')}
+          aria-label={t('ndvi.map.recenter', 'Recenter')}
         >
-          <Locate className="h-4 w-4" />
+          <Locate className="h-3.5 w-3.5" />
+          <span className="text-[10px] font-medium">{t('ndvi.map.recenter', 'Center')}</span>
         </Button>
         <Button
           variant="secondary"
-          size="icon"
-          className="h-10 w-10 rounded-xl shadow-md bg-background/95"
+          size="sm"
+          className="h-8 px-2 rounded-lg shadow-md bg-background/95 text-foreground gap-1"
           onClick={() => setFullscreen((v) => !v)}
-          aria-label={t('ndvi.map.fullscreen', 'Toggle fullscreen')}
+          aria-label={t('ndvi.map.fullscreen', 'Fullscreen')}
         >
-          {fullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+          <span className="text-[10px] font-medium">
+            {fullscreen ? t('ndvi.map.exit', 'Exit') : t('ndvi.map.full', 'Full')}
+          </span>
         </Button>
       </div>
 
-      {/* ───────── Opacity slider (right, below toolbar) ───────── */}
+      {/* ───────── Opacity slider — horizontal, bottom-left ───────── */}
       {renderMode !== 'boundary' && (
-        <div className="absolute top-3 right-16 z-10 flex flex-col items-center gap-1 bg-background/95 rounded-xl shadow-md p-2">
-          <Sliders className="h-3.5 w-3.5 text-muted-foreground" />
-          <div className="h-24 w-2">
+        <div className="absolute top-2 left-2 z-10 flex items-center gap-2 bg-background/95 rounded-lg shadow-md px-2 py-1.5">
+          <Sliders className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+          <div className="w-24">
             <Slider
               value={[overlayOpacity * 100]}
               onValueChange={(v) => setOverlayOpacity(v[0] / 100)}
               min={20}
               max={100}
               step={5}
-              orientation="vertical"
-              aria-label="Heatmap opacity"
+              aria-label={t('ndvi.map.opacity', 'Heatmap opacity')}
             />
           </div>
+          <span className="text-[10px] text-muted-foreground tabular-nums w-6 text-right">
+            {Math.round(overlayOpacity * 100)}%
+          </span>
         </div>
       )}
 
@@ -442,7 +449,7 @@ export function NDVIMapView({
             initial={{ opacity: 0, x: 12 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 12 }}
-            className="absolute top-3 right-28 z-10 bg-background rounded-xl shadow-xl border border-border/40 p-3 w-56"
+            className="absolute top-12 right-2 z-20 bg-background rounded-xl shadow-xl border border-border/40 p-3 w-56"
           >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold">{t('ndvi.map.legend_title', 'NDVI Scale')}</p>
@@ -476,10 +483,10 @@ export function NDVIMapView({
         )}
       </AnimatePresence>
 
-      {/* ───────── Stale banner ───────── */}
+      {/* ───────── Stale banner — uses semantic warning tokens ───────── */}
       {hasStale && (
-        <div className="absolute top-14 left-3 right-3 z-10 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-fit">
-          <Badge variant="outline" className="bg-amber-500/15 border-amber-500/40 text-amber-700 dark:text-amber-300 text-[11px] px-2 py-1 rounded-full flex items-center gap-1.5">
+        <div className="absolute top-12 left-2 right-28 z-10">
+          <Badge variant="outline" className="bg-warning/15 border-warning/40 text-warning-foreground text-[11px] px-2 py-1 rounded-full flex items-center gap-1.5">
             <CloudOff className="h-3 w-3" />
             {t('ndvi.map.stale_warning', 'Latest reading hidden — clouds or low coverage. Showing last clean reading.')}
           </Badge>

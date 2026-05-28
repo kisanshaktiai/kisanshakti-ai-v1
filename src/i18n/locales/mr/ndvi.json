@@ -77,8 +77,13 @@
       "no_clean_for_date": "या तारखेला स्पष्ट निरीक्षण नाही",
       "no_data": "अद्याप उपग्रह डेटा नाही",
       "provenance": "स्रोत",
-      "recenter": "केंद्रित करा",
-      "stale_warning": "नवीनतम स्पष्ट निरीक्षण दर्शवित आहे"
+      "recenter": "केंद्र",
+      "stale_warning": "नवीनतम स्पष्ट निरीक्षण दर्शवित आहे",
+      "full": "पूर्ण",
+      "exit": "बाहेर",
+      "opacity": "उष्णतेची अपारदर्शकता",
+      "mode_land_thumb": "उपग्रह NDVI",
+      "thumbnail_alt": "उपग्रह NDVI थंबनेल"
     },
     "historical": {
       "trend": "ऐतिहासिक प्रवृत्ती",
