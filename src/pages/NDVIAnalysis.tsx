@@ -138,38 +138,42 @@ export default function NDVIAnalysis() {
         </div>
       </header>
 
-      {/* Horizontal LandCard rail */}
+      {/* Compact horizontal Land rail — small chips for max map area */}
       <ScrollArea className="w-full shrink-0 border-b border-border/40 bg-card/40">
-        <div className="flex gap-2 px-3 py-2">
+        <div className="flex gap-1.5 px-2 py-1.5">
           {landsLoading
-            ? [1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-[118px] rounded-xl shrink-0" />)
+            ? [1, 2, 3].map((i) => <Skeleton key={i} className="h-10 w-[100px] rounded-lg shrink-0" />)
             : lands.map((land) => {
                 const isActive = land.id === selectedLandId;
-                const dotColor = land.last_ndvi_value ? ndviToColor(land.last_ndvi_value) : 'hsl(var(--muted-foreground))';
+                const dotColor = land.last_ndvi_value
+                  ? ndviToColor(land.last_ndvi_value)
+                  : 'hsl(var(--muted-foreground))';
                 return (
                   <button
                     key={land.id}
                     onClick={() => setSelectedLandId(land.id)}
                     className={cn(
-                      'shrink-0 w-[118px] rounded-xl px-2.5 py-2 text-left transition-all',
+                      'shrink-0 flex items-center gap-1.5 h-10 px-2 rounded-lg text-left transition-all',
                       isActive
-                        ? 'bg-primary/10 ring-2 ring-primary shadow-md'
+                        ? 'bg-primary/10 ring-2 ring-primary shadow-sm'
                         : 'bg-card ring-1 ring-border/40 hover:bg-muted/40',
                     )}
                   >
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="text-base leading-none">{cropEmoji(land.current_crop)}</span>
-                      <span
-                        className="ml-auto w-2 h-2 rounded-full shrink-0"
-                        style={{ background: dotColor }}
-                        aria-hidden
-                      />
+                    <span className="text-sm leading-none">{cropEmoji(land.current_crop)}</span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-semibold truncate leading-tight max-w-[80px]">
+                        {land.name}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground truncate leading-tight">
+                        {land.area_acres?.toFixed(2)} ac
+                        {land.last_ndvi_value != null && <span> · {land.last_ndvi_value.toFixed(2)}</span>}
+                      </p>
                     </div>
-                    <p className="text-[12px] font-semibold truncate leading-tight">{land.name}</p>
-                    <p className="text-[10px] text-muted-foreground truncate">
-                      {land.area_acres?.toFixed(2)} ac
-                      {land.last_ndvi_value != null && <span> · {land.last_ndvi_value.toFixed(2)}</span>}
-                    </p>
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ background: dotColor }}
+                      aria-hidden
+                    />
                   </button>
                 );
               })}
