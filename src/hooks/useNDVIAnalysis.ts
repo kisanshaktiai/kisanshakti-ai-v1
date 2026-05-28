@@ -195,7 +195,7 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
       const { data: rows, error: qErr } = ndviResult;
       if (qErr) throw qErr;
 
-      const parsed = (rows || []).map((item: any) => {
+      const parsedAll = (rows || []).map((item: any) => {
         const metadata = item.metadata
           ? (typeof item.metadata === 'string' ? JSON.parse(item.metadata) : item.metadata)
           : null;
@@ -204,10 +204,25 @@ export function useNDVIAnalysis(landId: string | null): NDVIAnalysisResult {
         return row;
       });
 
+      // Deduplicate same-day rows: keep the best scene per date.
+      // Priority: highest quality_score → highest coverage_percentage → lowest cloud_coverage.
+      const byDate = new Map<string, NDVIDataComplete>();
+      for (const r of parsedAll) {
+        const prev = byDate.get(r.date);
+        if (!prev) { byDate.set(r.date, r); continue; }
+        const q = (x: NDVIDataComplete) => (x.quality_score ?? 0);
+        const c = (x: NDVIDataComplete) => (x.coverage_percentage ?? x.coverage ?? 0);
+        const cl = (x: NDVIDataComplete) => (x.cloud_coverage ?? x.cloud_cover ?? 100);
+        const better =
+          q(r) > q(prev) ||
+          (q(r) === q(prev) && c(r) > c(prev)) ||
+          (q(r) === q(prev) && c(r) === c(prev) && cl(r) < cl(prev));
+        if (better) byDate.set(r.date, r);
+      }
+      const parsed = Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+
       const latestRaw = parsed[0] || null;
       const reliable = parsed.filter((r) => r.is_reliable);
-      // Graceful fallback: if no reliable rows, show the most recent raw row
-      // (UI surfaces a "low confidence" banner via hasStale).
       const current = reliable[0] || latestRaw;
       const history = reliable.length > 0 ? reliable : parsed;
       const logs = ((logResult.data || []) as any[]).map((item) => ({

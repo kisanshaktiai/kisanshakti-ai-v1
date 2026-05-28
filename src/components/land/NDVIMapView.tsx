@@ -171,12 +171,18 @@ export function NDVIMapView({
   // ndvi_data row (image_url is a public ndvi-thumbnails PNG). This is the
   // single source of truth for the heatmap when no micro-tile raster exists.
   const activeThumbnailUrl: string | null = useMemo(() => {
+    let base: string | null = null;
     if (active?.source === 'ndvi_data') {
-      const r = active.raw as NDVIDataComplete;
-      const rowUrl = normalizeNdviAssetUrl(r.image_url);
-      if (rowUrl) return rowUrl;
+      base = normalizeNdviAssetUrl((active.raw as NDVIDataComplete).image_url);
     }
-    return normalizeNdviAssetUrl(processingThumbnail?.url) ?? normalizeNdviAssetUrl(landThumbnailUrl);
+    if (!base) base = normalizeNdviAssetUrl(processingThumbnail?.url) ?? normalizeNdviAssetUrl(landThumbnailUrl);
+    if (!base) return null;
+    // Cache-bust by acquisition date + scene_id so the browser and MapLibre
+    // re-fetch when the farmer scrubs to a different date even when the storage
+    // path is identical (pipeline currently overwrites one PNG per land).
+    const sceneId = (active?.raw as NDVIDataComplete | undefined)?.scene_id ?? '';
+    const v = `${active?.date ?? ''}_${sceneId}`;
+    return v.trim() === '_' ? base : `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
   }, [active, landThumbnailUrl, processingThumbnail]);
 
   // Decide render mode for the active acquisition.
@@ -333,7 +339,7 @@ export function NDVIMapView({
   }
 
   /* ────────────────── Sheet snap points ────────────────── */
-  const sheetHeights = ['56px', '200px', '70vh'];
+  const sheetHeights = ['96px', '220px', '70vh'];
 
   const currentStatus = current ? getScientificHealthStatus(current.ndvi_value) : null;
   const hasData = !!current;
@@ -569,7 +575,7 @@ export function NDVIMapView({
             </div>
             {current && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 shrink-0">
-                {t('ndvi.map.cloud', 'Cloud')} {(current.cloud_coverage ?? 0).toFixed(0)}%
+                {t('ndvi.map.cloud', 'Cloud {{value}}%', { value: Math.round(current.cloud_coverage ?? 0) })}
               </Badge>
             )}
           </div>

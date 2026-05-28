@@ -1,89 +1,74 @@
-## Audit findings
+## NDVI Map — Bugs Found (Deep Audit)
 
-DB shape (single source of truth — `white_label_configs`):
-- `mobile_theme` holds: `core`, `neutral`, `status`, `support`, `typography`, `border_radius`, `shadows`, `spacing`.
-- `theme_colors` holds: `core`, `navigation`, `charts`, `maps`, `weather`, `gradients`, `dark_mode`.
-- `brand_identity` holds the flat hex fallbacks.
-- New columns from the recent migration: `last_deployed_at` (bumped by trigger on any theme group change) and `theme_history` (snapshots).
+Inspected `src/pages/NDVIAnalysis.tsx`, `src/components/land/NDVIMapView.tsx`, `src/hooks/useNDVIAnalysis.ts`, the `ndvi_data` table, and the live screenshot.
 
-Critical bug — only half the colors ever reach the mobile app:
+### Bug 1 — Thumbnail never changes when farmer taps a different date
+Root cause is in the data, not the code. `ndvi_data.image_url` for a single land is the **same PNG (`<land_id>.png`)** for every date row — the daily pipeline overwrites one file per land instead of producing one file per acquisition.
 
-1. **Edge function `tenant-config/index.ts` line 161** picks `mobile_theme || theme_colors`. Because `mobile_theme` exists, `theme_colors` is dropped entirely → `navigation`, `charts`, `maps`, `weather`, `gradients`, `dark_mode` are never sent to the client. That is why the partner's preset save looks "stuck" on the mobile app even after the backfill aligned the DB rows.
-2. **Frontend `TenantContext.tsx` lines 156, 672, 736, 825** has the same `mobile_theme || theme_colors` pattern in every fallback path.
-3. The 60-min localStorage cache (`tenant_config_cache`) ignores `last_deployed_at`. Even after the DB trigger bumps it, the app keeps showing the stale theme until the cache TTL expires.
-4. `WhiteLabelService.ts` runs its own 2-min auto-refresh on a different cache key (`white_label_config`) that the `TenantContext` never reads — two parallel theme pipelines, neither aware of the other.
-5. ~1,400 hardcoded Tailwind palette classes already migrated by the prior codemod; remaining files flagged by `scripts/audit-hardcoded-colors.mjs` still need conversion (Weather, InstaScan, video reels, a handful of chat/schedule cards).
-
-## Plan
-
-### 1 — Merge both JSONB groups (edge function + frontend)
-
-Deep-merge with `theme_colors` as the base and `mobile_theme` overlaying it, so every namespace survives:
-
-```text
-theme = deepMerge(theme_colors ?? {}, mobile_theme ?? {})
+```
+2026-05-28  ndvi 0.078  → e29658…dd9.png
+2026-05-27  ndvi 0.078  → e29658…dd9.png   ← same URL
+2026-05-26  ndvi 0.511  → 3b10c8…797.png   ← only changes when scene_id changes
+2026-05-26  ndvi 0.078  → e29658…dd9.png
 ```
 
-Apply this in:
-- `supabase/functions/tenant-config/index.ts` `buildTenantConfig` (replace line 161 logic and expand the typed response to include `support`, `border_radius`, `shadows`, `spacing`).
-- `src/contexts/TenantContext.tsx` in the offline-cache path (line 156), the dev-mode direct DB path (line 672), the prod domain-lookup path (line 736), and the default-tenant fallback (line 825).
-- Re-export the merged shape so `applyThemeToDOM` (already handles every namespace) actually gets fed all of them.
+So the UI is technically correct (it re-binds the URL), but the URL string doesn't differ → image looks identical. Two related issues compound this:
+- The browser caches the PNG (no cache-buster), so even when a different land row legitimately points to a different file, repeat visits look frozen.
+- We have multiple `ndvi_data` rows per date (one per scene_id). We pick whichever comes first instead of the freshest, highest-quality scene for that day.
 
-### 2 — Honor `last_deployed_at` for instant cache invalidation
+### Bug 2 — Bottom sheet covers the value chip
+`sheetHeights = ['56px', '200px', '70vh']`. Peek (56px) only fits the drag handle; the value row (`0.46 · मध्यम आरोग्य · 10.95 ac · Sugar…`) is rendered inside that 56px region, so it gets vertically clipped at the bottom edge — visible in the screenshot.
 
-- Edge function: select `last_deployed_at`, include it in the returned `metadata`, and fold it into the ETag input so the ETag changes the moment the trigger fires.
-- Frontend cache: store `last_deployed_at` alongside the cached payload. On every load (and on `visibilitychange`), do a lightweight `If-None-Match` request to `tenant-config`; on 200 (new ETag) swap the theme in place, on 304 keep the cache. Shorten the in-memory TTL to 5 min for the "free" path and rely on ETag for correctness.
-- Remove the duplicate cache in `WhiteLabelService.ts` (or make it a thin wrapper around `TenantContext`) so there is one cache key only.
-- Drop the localStorage `tenant_config_cache` entry whenever the new ETag differs from the cached one.
+### Bug 3 — Broken i18n placeholder on cloud badge
+`hi/ndvi.json` → `"cloud": "बादल {{value}}%"`, but the code calls `t('ndvi.map.cloud', 'Cloud') + ' ' + cloud.toFixed(0) + '%'` with no interpolation, producing `ढग {{value}}% 0%` (visible top-right of the sheet).
 
-### 3 — Add a real-time push (optional, low cost)
+---
 
-Subscribe (via the existing Supabase Realtime singleton in `AppLayout`) to `UPDATE` events on `white_label_configs` filtered by current `tenant_id`. On event, call `refetch()` so partners see preset changes within seconds instead of waiting for the next ETag poll.
+## Fixes
 
-### 4 — Finish the hardcoded-color migration
+### `src/components/land/NDVIMapView.tsx`
+1. **Per-date thumbnail key** — derive a stable URL with a date-based cache-buster so the `<img>` and the MapLibre raster source actually re-mount when the user scrubs dates:
+   ```ts
+   const activeThumbnailUrl = useMemo(() => {
+     const base = normalizeNdviAssetUrl(active?.raw?.image_url)
+       ?? normalizeNdviAssetUrl(processingThumbnail?.url)
+       ?? normalizeNdviAssetUrl(landThumbnailUrl);
+     if (!base) return null;
+     const v = active?.date ?? '';                      // forces re-fetch per date
+     return `${base}${base.includes('?') ? '&' : '?'}v=${encodeURIComponent(v)}`;
+   }, [active, processingThumbnail, landThumbnailUrl]);
+   ```
+2. **Force MapLibre source replacement** when activeDate changes (currently we only re-add if `activeThumbnailUrl` string differs; with the cache-buster the string now differs each tap).
+3. **Bottom-sheet peek height** → `'92px'` so the value row, status label, and cloud badge are fully visible at rest. Sheet snaps become `['92px', '220px', '70vh']`.
+4. **Cloud badge i18n** — pass interpolation value and drop the manual `%`:
+   ```tsx
+   {t('ndvi.map.cloud', 'Cloud {{value}}%', { value: Math.round(current.cloud_coverage ?? 0) })}
+   ```
+5. **Map container** — switch from `h-[calc(100vh-180px)]` to `h-[calc(100dvh-200px)]` and bump peek-aware bottom padding for the date scrubber so the scrubber rides above the new 92px peek without clipping pills.
 
-Run `node scripts/audit-hardcoded-colors.mjs` and convert the remaining offenders to semantic tokens (`bg-success-soft`, `text-warning`, `bg-info`, `bg-weather-*`, `bg-chart-*`, `bg-map-*`, `bg-nav-active`, etc.). Keep NDVI / GoogleMapBoundaryDrawer / `ndviScience.ts` on their domain palettes (allow-list already in the audit script).
+### `src/hooks/useNDVIAnalysis.ts`
+- **Deduplicate same-day rows** keeping the row with the highest `quality_score` (fallback to highest `coverage_percentage`, then lowest `cloud_coverage`). This ensures the date pill picks the *best* scene of that day, not a duplicate copy.
+- Apply the same dedupe before building `history` (so the trend chart is one point per day).
 
-Specific files still flagged (from the audit script + plan.md notes):
-- `src/components/weather/WeatherCard.tsx` — replace `text-red-500`, `text-blue-500` with `text-destructive` / `text-info`.
-- `src/components/weather/SevenDayForecast.tsx`, `src/pages/Weather.tsx` — weather palette → `bg-weather-*`.
-- `src/components/InstaScan/InstaScanCamera.tsx`, `src/components/video/VideoReelsViewer.tsx`, `src/pages/ReelsPage.tsx`.
-- Any remaining schedule/chat cards surfaced by the audit script.
+### `src/i18n/locales/{en,hi,mr}/ndvi.json`
+- Confirm `ndvi.map.cloud` keeps `{{value}}` placeholder — no string changes needed once interpolation is fixed.
 
-### 5 — Guardrails
+### Out of scope (server side, do not touch in this UI fix)
+The real long-term fix for "same PNG every day" lives in the satellite ingestion edge function — it should write `<land_id>/<acquisition_date>.png` (one PNG per scene) and store that URL in `ndvi_data.image_url`. I will flag this in the report but not modify backend code in this task.
 
-- Add the ESLint `no-restricted-syntax` rule for raw `text-/bg-/border-/from-/to-/via-/ring-/fill-/stroke-/shadow-<palette>-<shade>` outside the allow-list (already planned in `.lovable/plan.md`, not yet wired).
-- Add a tiny Vitest that asserts the merged theme contains every namespace given a fixture row mirroring the current DB layout, so the `mobile_theme || theme_colors` regression cannot come back.
+---
 
-## Technical details
+## Short Report — How to Fine-Tune the Map for Farmer Accuracy
 
-```text
-Order of color resolution on first paint:
-  index.css :root defaults
-  ← brand_identity flat hex (auto-contrast foreground)
-  ← theme_colors namespaces (navigation/charts/maps/weather/gradients/dark_mode)
-  ← mobile_theme namespaces (core/neutral/status/support/typography/radius/shadows)
-  ← .dark scope from theme_colors.dark_mode.colors (injected <style>)
-```
+1. **One PNG per acquisition (backend).** Store `ndvi-thumbnails/<land_id>/<YYYY-MM-DD>_<scene_id>.png` so date scrubbing genuinely shows that day's satellite snapshot instead of the latest overwrite.
+2. **Clip raster to polygon, not bbox.** Today we use a CSS clip-path on the `<img>` overlay (good) but the MapLibre raster source uses the bbox. Add a `fill` layer with the polygon as a mask layer (`raster` + `fill` with `fill-opacity: 1` outside the polygon in background color) so non-field pixels never bleed in.
+3. **Same-day dedupe + best-scene selection.** Prefer rows with `quality_score ≥ 0.7`, `cloud_coverage ≤ 20%`, `coverage_percentage ≥ 80%`; collapse duplicates.
+4. **Continuous NDVI palette enforced server-side.** Lock the PNG renderer to the NASA/ESA stops we use in `ndviScience.ts` so the legend matches pixels exactly (currently the PNG uses its own palette, the legend is approximate).
+5. **Show pixel-true min/mean/max from `ndvi_std`, `min_ndvi`, `max_ndvi`** in the peek sheet — already wired, just always visible at snap 0 so farmers see the real range, not a single number.
+6. **Stage-aware reference line.** Tag each reading with the crop stage (we already compute `stageAware`) and show ⚠️ when NDVI deviates > 0.10 from the stage-expected band — gives farmers an actionable signal, not just a color.
+7. **Cloud / coverage gate.** Hide any pixel from rows where `cloud_coverage > 30%` or `coverage_percentage < 70%`; show the next clean date instead. (Today's `isObservationReliable` does this for stats but not for the raster.)
+8. **Cache-bust + ETag.** Cache-bust by acquisition date (this fix) and have the storage object respect ETag so the second visit is fast but never stale.
+9. **Tile pyramid for big fields.** For lands > 5 acres, switch from a single PNG to Sentinel-2 COGs served as `raster-dem`-style tiles → sub-meter sharpness on zoom.
+10. **Confidence badge per date pill.** Color the date pill border by quality_score so the farmer instantly knows which dates are trustworthy.
 
-```text
-Cache freshness:
-  page load → read cached payload
-            → fire `If-None-Match: <etag>` to tenant-config
-            → 304: keep cache;  200: replace + reapply theme + persist
-  realtime UPDATE on white_label_configs → refetch() (skips ETag, forces 200)
-```
-
-### Files touched
-- `supabase/functions/tenant-config/index.ts`
-- `src/contexts/TenantContext.tsx`
-- `src/services/WhiteLabelService.ts` (slim down or remove)
-- `src/components/AppLayout.tsx` (add realtime subscription for white_label_configs)
-- ~10-15 remaining component files for the color-token migration
-- `eslint.config.js` (palette-class restriction)
-- `tests/unit/theme-merge.test.ts` (new)
-
-### Out of scope
-- Schema changes — DB already has everything we need (`last_deployed_at`, `theme_history`).
-- Admin / tenant portals.
-- NDVI scientific palettes.
+After approval I will implement Bugs 1–3 only; items 1, 2, 4, 9 require backend changes I will surface but not execute in this round.
