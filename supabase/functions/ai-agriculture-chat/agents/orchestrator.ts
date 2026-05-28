@@ -2768,10 +2768,11 @@ export class AIAgentOrchestrator {
       // harvest) don't need symptom clarification — they go straight to the rule engine.
       // ═══════════════════════════════════════════════════════════════════════════
       let directModeBypass = false;
-      if (intentMetaFromDB?.clarification_mode === 'DIRECT' && landContext?.current_crop) {
+      const routeDirectModeBypass = queryRoute.route === 'FERTILIZER_NUTRITION';
+      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass) && landContext?.current_crop) {
         directModeBypass = true;
         bypassClarification = true;
-        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} has clarification_mode=DIRECT, skipping symptom clarification`);
+        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification`);
         console.log(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
       }
@@ -2986,7 +2987,7 @@ export class AIAgentOrchestrator {
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
       // FIX 4: LLM failsafe NO LONGER allows symbolic brain — clarification only
-      let shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute);
+      let shouldRunSymbolicBrain = isSymptomFreeRoute || ((inductionCoverageSufficient || inductionConfidenceSufficient) && hasSymptoms);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // FIX 7: HARD INVARIANT — Block rule firing when zero observations + UNKNOWN intent
