@@ -342,18 +342,52 @@ export function routeQuery(
     return result;
   }
   
+  // Priority 3.7: FERTILIZER / NUTRITION scheduling (no symptoms)
+  // Farmer asks "what fertilizer/spray to take now" → stage-based plan,
+  // NOT a diagnostic pest/disease flow.
+  const fertilizerScore = countPatternMatches(message, FERTILIZER_NUTRITION_PATTERNS);
+  const hasSymptoms = hasAnySymptomToken(message);
+  if (fertilizerScore >= 1 && !hasSymptoms) {
+    result.route = 'FERTILIZER_NUTRITION';
+    result.confidence = Math.min(0.95, 0.75 + fertilizerScore * 0.1);
+    result.requires_decision_brain = true;   // Use symbolic rule engine (FERTILIZER_SCHEDULE rules)
+    result.requires_weather_api = true;      // Preventive spray window needs weather
+    result.context_hints.push('FERTILIZER_SCHEDULE', 'STAGE_BASED', 'NO_SYMPTOMS');
+    return result;
+  }
+
   // Priority 4: Pest/Disease treatment (needs full Decision Brain)
+  // GUARD: if the only PEST_DISEASE matches are generic action tokens
+  // (spray/उपाय/treatment) and there are NO actual symptom tokens, this is
+  // a scheduling request — fall through to fertilizer/general routes.
   const pestDiseaseScore = countPatternMatches(message, PEST_DISEASE_PATTERNS);
   if (pestDiseaseScore >= 1) {
-    result.route = 'PEST_DISEASE_TREATMENT';
-    result.confidence = Math.min(0.95, 0.6 + pestDiseaseScore * 0.1);
-    result.requires_decision_brain = true;
-    result.requires_weather_api = true; // For spray timing
-    
-    // Extract entities for context
-    result.detected_entities = extractPestDiseaseEntities(message);
-    result.context_hints.push('FULL_DECISION_BRAIN_REQUIRED');
-    return result;
+    const genericActionScore = countPatternMatches(message, GENERIC_ACTION_TOKENS);
+    const symptomDrivenScore = pestDiseaseScore - genericActionScore;
+    const onlyGenericAction = symptomDrivenScore <= 0 && !hasSymptoms;
+
+    if (onlyGenericAction) {
+      // Demote: treat as scheduling, not diagnostic.
+      if (fertilizerScore >= 1) {
+        result.route = 'FERTILIZER_NUTRITION';
+        result.confidence = 0.7;
+        result.requires_decision_brain = true;
+        result.requires_weather_api = true;
+        result.context_hints.push('FERTILIZER_SCHEDULE', 'DEMOTED_FROM_PEST_DISEASE');
+        return result;
+      }
+      // No fertilizer hint either — let downstream routes (weather/general) handle it.
+    } else {
+      result.route = 'PEST_DISEASE_TREATMENT';
+      result.confidence = Math.min(0.95, 0.6 + pestDiseaseScore * 0.1);
+      result.requires_decision_brain = true;
+      result.requires_weather_api = true; // For spray timing
+
+      // Extract entities for context
+      result.detected_entities = extractPestDiseaseEntities(message);
+      result.context_hints.push('FULL_DECISION_BRAIN_REQUIRED');
+      return result;
+    }
   }
   
   // Priority 5: Weather/Spray timing
