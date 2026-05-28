@@ -333,7 +333,7 @@ export function NDVIMapView({
   }
 
   /* ────────────────── Sheet snap points ────────────────── */
-  const sheetHeights = ['96px', '232px', '70vh'];
+  const sheetHeights = ['56px', '200px', '70vh'];
 
   const currentStatus = current ? getScientificHealthStatus(current.ndvi_value) : null;
   const hasData = !!current;
@@ -344,8 +344,8 @@ export function NDVIMapView({
   return (
     <div
       className={cn(
-        'relative w-full overflow-hidden rounded-2xl border border-border/40 bg-card',
-        fullscreen ? 'fixed inset-0 z-[60] rounded-none border-0' : 'h-[calc(100vh-220px)] min-h-[420px]',
+        'relative w-full overflow-hidden border border-border/40 bg-card',
+        fullscreen ? 'fixed inset-0 z-[60] border-0 rounded-none' : 'rounded-2xl mx-2 h-[calc(100vh-180px)] min-h-[460px]',
       )}
     >
       {/* ───────── Map canvas ───────── */}
