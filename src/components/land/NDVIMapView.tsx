@@ -449,7 +449,7 @@ export function NDVIMapView({
             initial={{ opacity: 0, x: 12 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 12 }}
-            className="absolute top-3 right-28 z-10 bg-background rounded-xl shadow-xl border border-border/40 p-3 w-56"
+            className="absolute top-12 right-2 z-20 bg-background rounded-xl shadow-xl border border-border/40 p-3 w-56"
           >
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold">{t('ndvi.map.legend_title', 'NDVI Scale')}</p>
