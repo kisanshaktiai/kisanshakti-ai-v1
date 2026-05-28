@@ -1243,7 +1243,7 @@ export function checkPrescriptionGate(state: CanonicalState): PrescriptionGateRe
     const symptomCount = Math.max(directSymptomCount, inferredSymptomCount);
 
     const directCompleteness = Number((state as any).data_completeness ?? 0);
-    const inferredCompleteness = Math.min(1, symptomCount / 8);
+    const inferredCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
     const dataCompleteness = Math.max(directCompleteness, inferredCompleteness);
     const hasStrongEvidence = symptomCount >= 5 || dataCompleteness >= 0.7;
     
