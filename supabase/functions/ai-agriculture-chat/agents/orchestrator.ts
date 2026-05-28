@@ -2644,7 +2644,10 @@ export class AIAgentOrchestrator {
         }
         
         // Update symbol coverage based on merged symptoms
-        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8); // 8 is approx max symptoms
+        // SPRINT 3 FIX: Adaptive coverage denominator. Real-world farmer reports rarely exceed
+        // 3–5 symptoms per case, so 8 systematically under-rated single/double-symptom diagnoses.
+        // Cap denominator at max(4, len) so any single strong symptom yields ≥25% coverage.
+        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / Math.max(4, Math.min(8, inductionResult.symptoms.length)));
         inductionResult.aggregated_confidence = Math.max(
           inductionResult.aggregated_confidence,
           safeConfidence
@@ -2735,7 +2738,9 @@ export class AIAgentOrchestrator {
         }
         
         // Recalculate coverage
-        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8);
+        // SPRINT 3 FIX: see comment above — adaptive denominator (min 4) to avoid penalising
+        // legitimate single/double-symptom diagnoses coming from the router-entity fallback path.
+        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / Math.max(4, Math.min(8, inductionResult.symptoms.length)));
         inductionResult.aggregated_confidence = Math.max(inductionResult.aggregated_confidence, queryRoute.confidence);
         
         console.log(`   ✅ POST-ROUTER-FALLBACK: ${inductionResult.symptoms.length} symptoms, coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%`);
@@ -3557,8 +3562,9 @@ export class AIAgentOrchestrator {
       // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage
       // ═══════════════════════════════════════════════════════════════════════════
       const authorityBasedCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      // SPRINT 3 FIX: Adaptive denominator — see comments at lines ~2647 / 2738.
       const evidenceCoverage = authorityBasedCodes.length > 0 
-        ? Math.min(1.0, authorityBasedCodes.length / 8) 
+        ? Math.min(1.0, authorityBasedCodes.length / Math.max(4, Math.min(8, authorityBasedCodes.length))) 
         : 0;
       console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED only): ${(evidenceCoverage * 100).toFixed(0)}% (${authorityBasedCodes.length} codes)`);
       
