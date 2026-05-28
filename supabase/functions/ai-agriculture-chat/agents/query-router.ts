@@ -23,7 +23,8 @@ export type QueryRoute =
   | 'GENERAL_INFO'
   | 'FOLLOW_UP'
   | 'GREETING'
-  | 'CROP_HEALTH';  // P1-A: New route for "how is my crop" queries
+  | 'CROP_HEALTH'   // P1-A: "how is my crop" queries
+  | 'FERTILIZER_NUTRITION';  // Stage-based fertilizer / preventive spray scheduling (no symptoms)
 
 export interface QueryRoutingResult {
   route: QueryRoute;
