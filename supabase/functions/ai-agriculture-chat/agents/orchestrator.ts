@@ -2435,8 +2435,10 @@ export class AIAgentOrchestrator {
       ];
       const currentIntentForGate = semanticExtraction?.intent_code || 'UNKNOWN';
       const isSymptomBasedIntent = symptomBasedIntents.includes(currentIntentForGate);
+      const zeroCodeGateExemptRoutes = new Set(['FERTILIZER_NUTRITION', 'IRRIGATION_SCHEDULING', 'WEATHER_SPRAY_TIMING', 'CROP_HEALTH', 'GENERAL_INFO']);
+      const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route);
       
-      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent) {
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt) {
         console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
         console.log(`   → Forcing CLARIFICATION path, will NOT enter symbolic brain`);
         agentsUsed.push('ZERO_CODE_CLARIFICATION_GATE');
@@ -2458,6 +2460,9 @@ export class AIAgentOrchestrator {
         } else {
           clarificationMessage = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
         }
+        const clarificationMr = clarificationMessage;
+        const clarificationHi = clarificationMessage;
+        const clarificationEn = clarificationMessage;
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
@@ -5939,8 +5944,8 @@ export class AIAgentOrchestrator {
       
       let diagnosticState: any;
       
-      if (symbolicAlreadyProduced) {
-        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic brain already produced ${totalRulesMatched} matched rules`);
+      if (symbolicAlreadyProduced || isSymptomFreeRoute || bypassClarification) {
+        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic/advisory path active (rules=${totalRulesMatched}, symptom_free=${isSymptomFreeRoute}, bypass=${bypassClarification})`);
         diagnosticState = {
           mode: 'READY_FOR_DECISION',
           next_question: null,
@@ -6403,6 +6408,58 @@ export class AIAgentOrchestrator {
       const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision;
       const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
       const hasNoPhoto = !options.photoUrl && !photoAnalysisResult;
+      const shouldUseStageAdvisoryFallback = hasNoRecommendations && hasNoPhoto && (isSymptomFreeRoute || bypassClarification) && !!landContext?.current_crop;
+      
+      if (shouldUseStageAdvisoryFallback) {
+        const cropName = landContext.current_crop || 'crop';
+        const stageName = landContext.growth_stage || 'current stage';
+        const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
+        const userLanguage = options.language || 'mr';
+        const stageFallback = this.generateStageAwareFallback(
+          cropName,
+          stageName,
+          'stage_advisory',
+          landContext.days_since_sowing || 0,
+          userLanguage
+        );
+        const fallbackMessage = userLanguage === 'mr'
+          ? `तुमच्या ${cropName} पिकाची अवस्था ${stageName}${dasText} आहे. सध्या खत/फवारणीचा निर्णय पिकाची अवस्था, माती परीक्षण, NDVI आणि हवामान पाहून घ्या. स्पष्ट कीड/रोगाची लक्षणे दिसत नसतील तर अनावश्यक रासायनिक फवारणी टाळा; नियोजित पोषण, पाणी व्यवस्थापन आणि निरीक्षण चालू ठेवा.`
+          : userLanguage === 'hi'
+            ? `आपकी ${cropName} फसल अभी ${stageName}${dasText} अवस्था में है। अभी खाद/स्प्रे का निर्णय फसल अवस्था, मिट्टी परीक्षण, NDVI और मौसम देखकर लें। कीट/रोग के स्पष्ट लक्षण न हों तो अनावश्यक रासायनिक स्प्रे टालें; नियोजित पोषण, पानी प्रबंधन और निगरानी जारी रखें।`
+            : `Your ${cropName} crop is at ${stageName}${dasText}. Use crop stage, soil test, NDVI and weather before deciding fertilizer or spray. If there are no clear pest/disease symptoms, avoid unnecessary chemical spray; continue scheduled nutrition, water management and monitoring.`;
+        agentsUsed.push('STAGE_ADVISORY_FALLBACK');
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          decision_output: {
+            decision_id: `stage_advisory_${Date.now()}`,
+            session_id: sessionId,
+            status: 'STAGE_FALLBACK',
+            decision_brain_source: true,
+            stage_fallback_message: fallbackMessage,
+            action_codes: stageFallback.action_codes,
+            rules_applied: [],
+            metadata: {
+              ...stageFallback.metadata,
+              route: queryRoute.route,
+              reason: 'ZERO_RULES_FOR_SYMPTOM_FREE_ADVISORY',
+              i18n_key: stageFallback.i18n_key
+            }
+          } as any,
+          dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
+          metadata: {
+            confidence: 0.65,
+            safety_status: 'SAFE_STAGE_ADVISORY',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId,
+            response_source: 'STAGE_ADVISORY_FALLBACK',
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
+          }
+        } as any;
+      }
       
       if (hasNoRecommendations && isLowConfidence && hasNoPhoto) {
         console.log(`\n📸 [PHASE-19] Low confidence + no rules matched - requesting photo`);
