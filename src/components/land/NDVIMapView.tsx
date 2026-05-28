@@ -190,8 +190,8 @@ export function NDVIMapView({
 
   const thumbnailClipPath = useMemo(() => polygonCssClipPath(boundary), [boundary]);
 
-  const [overlayOpacity, setOverlayOpacity] = useState(0.7);
-  const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(1);
+  const [overlayOpacity, setOverlayOpacity] = useState(0.75);
+  const [expandedSheet, setExpandedSheet] = useState<0 | 1 | 2>(0);
   const [legendOpen, setLegendOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
 
