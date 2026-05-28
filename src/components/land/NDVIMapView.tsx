@@ -339,7 +339,7 @@ export function NDVIMapView({
   }
 
   /* ────────────────── Sheet snap points ────────────────── */
-  const sheetHeights = ['56px', '200px', '70vh'];
+  const sheetHeights = ['96px', '220px', '70vh'];
 
   const currentStatus = current ? getScientificHealthStatus(current.ndvi_value) : null;
   const hasData = !!current;
