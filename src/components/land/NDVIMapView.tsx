@@ -575,7 +575,7 @@ export function NDVIMapView({
             </div>
             {current && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0.5 shrink-0">
-                {t('ndvi.map.cloud', 'Cloud')} {(current.cloud_coverage ?? 0).toFixed(0)}%
+                {t('ndvi.map.cloud', 'Cloud {{value}}%', { value: Math.round(current.cloud_coverage ?? 0) })}
               </Badge>
             )}
           </div>
