@@ -214,6 +214,57 @@ const CROP_HEALTH_PATTERNS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FERTILIZER / NUTRITION SCHEDULING PATTERNS
+// Pure scheduling questions ("which fertilizer / which spray now") — NOT
+// symptom reports. Must route to FERTILIZER_NUTRITION, not PEST_DISEASE.
+// ═══════════════════════════════════════════════════════════════════════════
+const FERTILIZER_NUTRITION_PATTERNS = [
+  // Devanagari (Marathi + Hindi)
+  /खत|खाद|उर्वरक|पोषण|पोषक|fertili[sz]er|nutrient/i,
+  /कोणते?\s*खत|कौन\s*सा\s*खाद|कोणत[ेी]\s*खाद/i,
+  /सध्या.*खत|आता.*खत|अभी.*खाद|now.*fertili[sz]er/i,
+  /खत\s*(देवू|द्या|द्यायचे|दूं|डालू|डालें|कधी|कब|कोणते|कौनसा)/i,
+  /(बेसल|बेसळ|basal|टॉप\s*ड्रेस|top\s*dress|युरिया|urea|डीएपी|DAP|पोटॅश|potash|MOP|एनपीके|NPK)/i,
+  // Romanized
+  /\bkhat\b|\bkhaad\b|\bkhad\b|\burvarak\b|\bposhan\b/i,
+  /khat\s*(devu|dya|kadhi|kab|kontya|kounsa)/i
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SYMPTOM TOKENS — actual disease/pest evidence (used to differentiate
+// "spray for treatment" from "preventive spray scheduling")
+// ═══════════════════════════════════════════════════════════════════════════
+const SYMPTOM_TOKENS = [
+  // Color / damage
+  /पिवळ|पीला|yellow|पान.*रंग|\bpival[ae]?\b|\bpivla\b|\bpila\b/i,
+  /डाग|धब्बे|spots?|patches?|lesion|dag\b|dhabbe/i,
+  /छिद्र|भोक|छेद|holes?|tunnel/i,
+  // Death / wilting
+  /मेला|मेले|मरत|मरून|मर\s*गय|मर\s*रह|dead|dying|died|kill/i,
+  /सुक|सुख|वाळ|wilt|droop|dried|drying|कोमेज/i,
+  /जळ|जळून|करपा|burn|scorched/i,
+  // Pests / diseases
+  /किडा|किडे|कीट|कीड़|pest|insect|bug|borer|अळी|whitefly|aphid|thrips|mealybug|jassid/i,
+  /रोग|बीमारी|disease|fungus|बुरशी|फफूंद|infection|करपा|तांबेरा|rust|mildew|blight|wilt/i,
+  /\bkidi\b|\bkida\b|\bali\b|\bmel[ae]\b|\bsukl[ae]\b|\brog\b|\btambera\b|\bkarpa\b/i
+];
+
+// Generic "treatment-action" tokens that, on their own (without SYMPTOM_TOKENS),
+// are NOT enough to declare a pest/disease problem. They often appear in
+// scheduling questions like "now which spray should I take".
+const GENERIC_ACTION_TOKENS = [
+  /फवारणी|स्प्रे|spray|छिड़काव|favarni/i,
+  /काय\s*करू|क्या\s*करूं|what\s*(should|can|to)\s*do/i,
+  /उपाय|इलाज|treatment|remedy|solution|upay/i,
+  /औषध|दवाई|medicine|chemical|pesticide/i
+];
+
+function hasAnySymptomToken(message: string): boolean {
+  return SYMPTOM_TOKENS.some(p => p.test(message));
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN ROUTING FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
 
