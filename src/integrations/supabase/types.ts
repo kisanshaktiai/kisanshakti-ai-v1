@@ -30982,14 +30982,25 @@ export type Database = {
         Args: { _schedule_id: string; _user_id: string }
         Returns: boolean
       }
+      validate_admin_invite_token: {
+        Args: { p_token: string }
+        Returns: {
+          email: string
+          expires_at: string
+          id: string
+          is_valid: boolean
+          role: string
+          status: string
+        }[]
+      }
       validate_admin_registration_token: {
         Args: { p_token: string }
         Returns: {
           email: string
           expires_at: string
-          invite_id: string
+          id: string
+          is_valid: boolean
           role: string
-          valid: boolean
         }[]
       }
       validate_farmer_pin:
@@ -31013,11 +31024,11 @@ export type Database = {
         }[]
       }
       validate_invite_token: {
-        Args: { token: string }
+        Args: { p_token: string }
         Returns: {
           email: string
           expires_at: string
-          invite_id: string
+          id: string
           is_valid: boolean
           role: string
         }[]
@@ -31038,6 +31049,17 @@ export type Database = {
       validate_registration_token_secure: {
         Args: { p_token: string }
         Returns: Json
+      }
+      validate_team_invitation_token: {
+        Args: { p_token: string }
+        Returns: {
+          email: string
+          expires_at: string
+          id: string
+          is_valid: boolean
+          role: string
+          tenant_id: string
+        }[]
       }
       validate_tenant_ownership: {
         Args: { p_email: string }
@@ -31061,6 +31083,14 @@ export type Database = {
           email: string
           is_verified: boolean
           issues: string[]
+          user_id: string
+        }[]
+      }
+      verify_otp_session: {
+        Args: { p_otp: string; p_session_id: string }
+        Returns: {
+          id: string
+          is_valid: boolean
           user_id: string
         }[]
       }
