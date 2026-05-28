@@ -134,12 +134,14 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     queryFn: async () => {
       if (!landId) return [];
       
+      // SPRINT 3: cap unread alerts to 50.
       const { data, error } = await supabase
         .from('crop_growth_alerts')
         .select('*')
         .eq('land_id', landId)
         .eq('is_read', false)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
       return data as CropGrowthAlert[];
