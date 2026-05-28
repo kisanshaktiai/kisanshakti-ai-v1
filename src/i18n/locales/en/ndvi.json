@@ -64,6 +64,9 @@
       "aria": "NDVI satellite map",
       "cloud": "Cloud {{value}}%",
       "fullscreen": "Fullscreen",
+      "full": "Full",
+      "exit": "Exit",
+      "opacity": "Heatmap opacity",
       "legend": "Legend",
       "legend_title": "NDVI scale",
       "legend_note": "Continuous NDVI palette · NASA/ESA convention",
@@ -73,11 +76,13 @@
       "mode_raster": "Pixel raster",
       "mode_zonal": "Zonal mosaic",
       "mode_boundary": "Boundary only",
+      "mode_land_thumb": "Satellite NDVI",
       "no_clean_for_date": "No clean observation on this date",
       "no_data": "No satellite data yet",
       "provenance": "Source",
       "recenter": "Recenter",
-      "stale_warning": "Showing latest clean observation"
+      "stale_warning": "Showing latest clean observation",
+      "thumbnail_alt": "Satellite NDVI thumbnail"
     },
     "historical": {
       "trend": "Historical Trend",
