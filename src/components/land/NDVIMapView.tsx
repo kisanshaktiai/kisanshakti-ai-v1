@@ -217,16 +217,16 @@ export function NDVIMapView({
           id: 'land-fill',
           type: 'fill',
           source: 'land-boundary',
-          paint: { 'fill-color': '#1B5E20', 'fill-opacity': 0.0 },
+          paint: { 'fill-color': 'hsl(140, 60%, 35%)', 'fill-opacity': 0.0 },
         });
         map.addLayer({
           id: 'land-outline',
           type: 'line',
           source: 'land-boundary',
-          paint: { 'line-color': '#ffffff', 'line-width': 2.5, 'line-opacity': 0.95 },
+          paint: { 'line-color': 'hsl(0, 0%, 100%)', 'line-width': 2.5, 'line-opacity': 0.95 },
         });
         const b = computeBounds(boundary);
-        if (b) map.fitBounds(b, { padding: 48, duration: 0, maxZoom: 17 });
+        if (b) map.fitBounds(b, { padding: 32, duration: 0, maxZoom: 17 });
       }
     });
 
