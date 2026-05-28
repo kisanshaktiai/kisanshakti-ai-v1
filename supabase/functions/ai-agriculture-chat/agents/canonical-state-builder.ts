@@ -1035,7 +1035,8 @@ export function buildCanonicalState(input: BuildCanonicalStateInput): CanonicalS
       .filter(Boolean)
   );
   const symptomCount = normalizedObservationSet.size;
-  const symptomDataCompleteness = Math.min(1, symptomCount / 8); // 8+ symbols ≈ high completeness
+  // SPRINT 3 FIX: Adaptive denominator (min 4) — see orchestrator coverage-gate notes.
+  const symptomDataCompleteness = Math.min(1, symptomCount / Math.max(4, Math.min(8, symptomCount || 4)));
   const { primary: visualSymptom, secondary: secondarySymptoms } = mapObservationsToSymptom(allObservations);
   
   // Calculate data ages
