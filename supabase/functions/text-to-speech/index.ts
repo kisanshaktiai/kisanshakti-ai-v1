@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
+
 
 // Language to voice mapping for Google Cloud TTS
 const GOOGLE_VOICE_MAP: Record<string, { languageCode: string; name: string }> = {
