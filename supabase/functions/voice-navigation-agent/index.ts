@@ -1,5 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
+
 
 interface VoiceRequest {
   transcript: string;
