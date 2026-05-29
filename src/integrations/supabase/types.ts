@@ -29247,6 +29247,7 @@ export type Database = {
         Returns: number
       }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
+      cleanup_rate_limit_tracking: { Args: never; Returns: number }
       cluster_lands_for_ndvi: {
         Args: {
           p_max_cluster_area_km2?: number
