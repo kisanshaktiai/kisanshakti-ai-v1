@@ -36,17 +36,32 @@ import "./index.css";
 
   window.addEventListener('error', (event) => {
     const msg = event?.message || (event?.error && (event.error.message || String(event.error))) || '';
-    if (isChunkErr(msg)) recover(msg);
+    if (isChunkErr(msg)) {
+      recover(msg);
+    } else {
+      // Sprint 6: forward non-chunk runtime errors to telemetry (best-effort)
+      import('@/lib/observability')
+        .then(({ reportError }) => reportError(event?.error ?? msg, { source: 'window.onerror' }))
+        .catch(() => {});
+    }
   });
   window.addEventListener('unhandledrejection', (event) => {
     const reason: any = event?.reason;
     const msg = (reason && (reason.message || String(reason))) || '';
-    if (isChunkErr(msg)) recover(msg);
+    if (isChunkErr(msg)) {
+      recover(msg);
+    } else {
+      import('@/lib/observability')
+        .then(({ reportError }) => reportError(reason ?? msg, { source: 'unhandledrejection' }))
+        .catch(() => {});
+    }
   });
 
   // After a successful page-load that wasn't itself a chunk-error reload, clear guard.
   window.addEventListener('load', () => {
     setTimeout(() => sessionStorage.removeItem(RELOAD_KEY), 5000);
+    // Initialize telemetry batching
+    import('@/lib/observability').then(({ initObservability }) => initObservability()).catch(() => {});
   });
 })();
 
