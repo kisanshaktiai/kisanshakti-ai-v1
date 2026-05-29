@@ -80,6 +80,3 @@ verify_jwt = false
 
 [functions.community-moderate]
 verify_jwt = false
-
-[functions.health-check]
-verify_jwt = false
