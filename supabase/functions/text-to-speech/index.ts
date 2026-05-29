@@ -104,6 +104,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Sprint 5: cost-control rate limit (Google/OpenAI TTS).
+  const rl = await rateGuard(req, { endpoint: 'text-to-speech', maxRequests: 60, windowMs: 60_000 });
+  if (rl) return rl;
+
+
   try {
     const { text, language = 'en-IN' } = await req.json();
 
