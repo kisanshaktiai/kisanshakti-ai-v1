@@ -22250,6 +22250,42 @@ export type Database = {
         }
         Relationships: []
       }
+      sensitive_audit_log: {
+        Row: {
+          actor: string | null
+          created_at: string
+          id: number
+          new_data: Json | null
+          old_data: Json | null
+          operation: string
+          row_pk: string | null
+          table_name: string
+          tenant_id: string | null
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          id?: number
+          new_data?: Json | null
+          old_data?: Json | null
+          operation: string
+          row_pk?: string | null
+          table_name: string
+          tenant_id?: string | null
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          id?: number
+          new_data?: Json | null
+          old_data?: Json | null
+          operation?: string
+          row_pk?: string | null
+          table_name?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       shopping_carts: {
         Row: {
           cart_status: string
@@ -23697,6 +23733,48 @@ export type Database = {
           description?: string | null
           id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      system_health_events: {
+        Row: {
+          context: Json | null
+          created_at: string
+          event_type: string
+          farmer_id: string | null
+          id: number
+          message: string
+          severity: string
+          source: string
+          tenant_id: string | null
+          url: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string
+          event_type: string
+          farmer_id?: string | null
+          id?: number
+          message: string
+          severity?: string
+          source: string
+          tenant_id?: string | null
+          url?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string
+          event_type?: string
+          farmer_id?: string | null
+          id?: number
+          message?: string
+          severity?: string
+          source?: string
+          tenant_id?: string | null
+          url?: string | null
+          user_agent?: string | null
         }
         Relationships: []
       }
@@ -29232,6 +29310,7 @@ export type Database = {
       cleanup_expired_registrations: { Args: never; Returns: number }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
       cleanup_expired_weather_cache: { Args: never; Returns: number }
+      cleanup_observability_data: { Args: never; Returns: undefined }
       cleanup_old_dashboard_updates: { Args: never; Returns: number }
       cleanup_old_data_with_retention: {
         Args: never
@@ -30892,6 +30971,7 @@ export type Database = {
         Args: { p_reason?: string; p_tenant_id: string }
         Returns: Json
       }
+      system_health_snapshot: { Args: never; Returns: Json }
       test_lead_auto_assignment: { Args: never; Returns: Json }
       toggle_post_like: {
         Args: { p_farmer_id: string; p_post_id: string }
