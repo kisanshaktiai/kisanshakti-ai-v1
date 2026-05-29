@@ -96,6 +96,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Sprint 5: cost-control rate limit (vision-LLM scans are expensive).
+  const rl = await rateGuard(req, { endpoint: 'ai-crop-scan', maxRequests: 10, windowMs: 60_000 });
+  if (rl) return rl;
+
+
+
   const startTime = Date.now();
   
   try {
