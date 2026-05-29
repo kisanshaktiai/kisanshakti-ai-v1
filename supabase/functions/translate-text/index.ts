@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
+
 
 // Language code mapping
 const LANGUAGE_NAMES: Record<string, string> = {
@@ -31,6 +33,11 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Sprint 5: cost-control rate limit (OpenAI translations).
+  const rl = await rateGuard(req, { endpoint: 'translate-text', maxRequests: 60, windowMs: 60_000 });
+  if (rl) return rl;
+
 
   try {
     const { text, texts, sourceLanguage, targetLanguage, batch } = await req.json();

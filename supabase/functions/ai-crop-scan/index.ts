@@ -2,6 +2,8 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
+
 
 interface ScanRequest {
   images?: string[];
@@ -93,6 +95,12 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Sprint 5: cost-control rate limit (vision-LLM scans are expensive).
+  const rl = await rateGuard(req, { endpoint: 'ai-crop-scan', maxRequests: 10, windowMs: 60_000 });
+  if (rl) return rl;
+
+
 
   const startTime = Date.now();
   

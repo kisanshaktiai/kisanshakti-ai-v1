@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
+
 
 // Language to voice mapping for Google Cloud TTS
 const GOOGLE_VOICE_MAP: Record<string, { languageCode: string; name: string }> = {
@@ -101,6 +103,11 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Sprint 5: cost-control rate limit (Google/OpenAI TTS).
+  const rl = await rateGuard(req, { endpoint: 'text-to-speech', maxRequests: 60, windowMs: 60_000 });
+  if (rl) return rl;
+
 
   try {
     const { text, language = 'en-IN' } = await req.json();
