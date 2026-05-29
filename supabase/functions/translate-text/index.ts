@@ -34,6 +34,11 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Sprint 5: cost-control rate limit (OpenAI translations).
+  const rl = await rateGuard(req, { endpoint: 'translate-text', maxRequests: 60, windowMs: 60_000 });
+  if (rl) return rl;
+
+
   try {
     const { text, texts, sourceLanguage, targetLanguage, batch } = await req.json();
 
