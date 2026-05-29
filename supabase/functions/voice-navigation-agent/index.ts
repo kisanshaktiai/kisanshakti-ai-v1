@@ -28,6 +28,12 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Sprint 5: cost-control rate limit (intent classification per farmer).
+  const rl = await rateGuard(req, { endpoint: 'voice-navigation-agent', maxRequests: 60, windowMs: 60_000 });
+  if (rl) return rl;
+
+
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
