@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
+
 
 // Language code mapping
 const LANGUAGE_NAMES: Record<string, string> = {
