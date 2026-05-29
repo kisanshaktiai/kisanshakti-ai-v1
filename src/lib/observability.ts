@@ -104,3 +104,22 @@ export function shutdownObservability() {
   flushTimer = null;
   void flush();
 }
+
+/**
+ * Production health probe — calls system_health_snapshot RPC.
+ */
+export async function probeHealth(): Promise<{
+  ok: boolean;
+  latencyMs: number;
+  snapshot?: unknown;
+  error?: string;
+}> {
+  const start = Date.now();
+  try {
+    const { data, error } = await supabase.rpc('system_health_snapshot' as never);
+    if (error) throw error;
+    return { ok: true, latencyMs: Date.now() - start, snapshot: data };
+  } catch (e) {
+    return { ok: false, latencyMs: Date.now() - start, error: String((e as Error)?.message ?? e) };
+  }
+}
