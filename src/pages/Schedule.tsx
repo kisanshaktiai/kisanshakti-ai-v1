@@ -277,7 +277,7 @@ export default function Schedule() {
               handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >
-            Try Again
+            {t('common.try_again')}
           </Button>
         ),
       });
