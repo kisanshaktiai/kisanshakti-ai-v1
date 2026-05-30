@@ -15,6 +15,7 @@ import {
   recordReelView,
   Reel,
 } from '@/hooks/useReelsFeed';
+import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import { useAuthStore } from '@/stores/authStore';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
@@ -22,6 +23,12 @@ import { ReelCommentsSheet } from '@/components/reels/ReelCommentsSheet';
 import { ReelReportSheet } from '@/components/reels/ReelReportSheet';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isPersistedReelId(id: string) {
+  return UUID_RE.test(id);
+}
 
 export default function ReelsPage() {
   const navigate = useNavigate();
@@ -43,6 +50,7 @@ export default function ReelsPage() {
   const viewedRef = useRef<Set<string>>(new Set());
 
   const { data: categories = [] } = useReelCategories();
+  const { data: officialVideos = [], isLoading: isOfficialLoading, refetch: refetchOfficial } = useYouTubeChannelReels(24);
   const {
     data,
     fetchNextPage,
@@ -53,10 +61,34 @@ export default function ReelsPage() {
   } = useReelsFeed({ categoryId: activeCategoryId });
 
   const reels: Reel[] = useMemo(
-    () => (data?.pages.flatMap((p) => p.items) ?? []),
-    [data]
+    () => officialVideos.map((video) => ({
+      id: video.id,
+      tenant_id: null,
+      visibility_scope: 'global' as const,
+      title: video.title,
+      description: video.description,
+      category_id: null,
+      language_code: currentLanguage || 'mr',
+      tags: ['kisanshaktiai', 'youtube', 'shorts'],
+      source: 'youtube' as const,
+      video_url: video.video_url,
+      hls_url: null,
+      thumbnail_url: video.thumbnail_url,
+      preview_webp_url: null,
+      duration_seconds: null,
+      is_featured: false,
+      total_views: video.total_views,
+      total_likes: 0,
+      total_comments: 0,
+      total_shares: 0,
+      total_saves: 0,
+      trending_score: 0,
+      published_at: video.published_at,
+      created_at: video.published_at,
+    })),
+    [officialVideos, currentLanguage]
   );
-  const reelIds = useMemo(() => reels.map((r) => r.id), [reels]);
+  const reelIds = useMemo(() => reels.map((r) => r.id).filter(isPersistedReelId), [reels]);
   const { data: engagement } = useReelEngagementState(reelIds);
 
   const likeMut = useToggleReelLike();
@@ -86,6 +118,7 @@ export default function ReelsPage() {
   useEffect(() => {
     const r = reels[activeIndex];
     if (!r) return;
+    if (!isPersistedReelId(r.id)) return;
     if (viewedRef.current.has(r.id)) return;
     viewedRef.current.add(r.id);
     recordReelView(r.id, farmerId, 0, false);
@@ -93,9 +126,14 @@ export default function ReelsPage() {
 
   // Refetch when language changes
   useEffect(() => {
+    refetchOfficial();
     refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLanguage]);
+
+  const showOfficialOnlyNotice = () => {
+    toast({ description: t('reels.official_only', 'This video is from the official KisanShakti AI YouTube channel.') });
+  };
 
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
@@ -191,14 +229,14 @@ export default function ReelsPage() {
       </div>
 
       {/* Loading */}
-      {isLoading && (
+      {isOfficialLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="w-8 h-8 text-white animate-spin" />
         </div>
       )}
 
       {/* Empty */}
-      {!isLoading && reels.length === 0 && (
+      {!isOfficialLoading && reels.length === 0 && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
           <p className="text-white text-lg font-semibold mb-1">
             {t('reels.empty.title', 'No videos yet')}
@@ -273,14 +311,14 @@ export default function ReelsPage() {
               {isActive && (
                 <ReelActionRail
                   reel={reel}
-                  liked={liked}
-                  saved={saved}
+                  liked={isPersistedReelId(reel.id) && liked}
+                  saved={isPersistedReelId(reel.id) && saved}
                   isMuted={isMuted}
-                  onLike={() => likeMut.mutate({ reelId: reel.id, liked })}
-                  onSave={() => saveMut.mutate({ reelId: reel.id, saved })}
-                  onComment={() => setCommentsForReel(reel.id)}
+                  onLike={() => isPersistedReelId(reel.id) ? likeMut.mutate({ reelId: reel.id, liked }) : showOfficialOnlyNotice()}
+                  onSave={() => isPersistedReelId(reel.id) ? saveMut.mutate({ reelId: reel.id, saved }) : showOfficialOnlyNotice()}
+                  onComment={() => isPersistedReelId(reel.id) ? setCommentsForReel(reel.id) : showOfficialOnlyNotice()}
                   onShare={() => share(reel)}
-                  onReport={() => setReportForReel(reel.id)}
+                  onReport={() => isPersistedReelId(reel.id) ? setReportForReel(reel.id) : showOfficialOnlyNotice()}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
