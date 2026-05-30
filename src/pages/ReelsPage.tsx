@@ -9,16 +9,8 @@ import { Reel } from '@/hooks/useReelsFeed';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
-import { ReelCommentsSheet } from '@/components/reels/ReelCommentsSheet';
-import { ReelReportSheet } from '@/components/reels/ReelReportSheet';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function isPersistedReelId(id: string) {
-  return UUID_RE.test(id);
-}
 
 export default function ReelsPage() {
   const navigate = useNavigate();
@@ -29,8 +21,6 @@ export default function ReelsPage() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
-  const [commentsForReel, setCommentsForReel] = useState<string | null>(null);
-  const [reportForReel, setReportForReel] = useState<string | null>(null);
   const [doubleTapHearts, setDoubleTapHearts] = useState<{ id: number; x: number; y: number }[]>([]);
   const lastTapRef = useRef<{ t: number; reelId: string | null }>({ t: 0, reelId: null });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -246,9 +236,9 @@ export default function ReelsPage() {
                   isMuted={isMuted}
                   onLike={showOfficialOnlyNotice}
                   onSave={showOfficialOnlyNotice}
-                  onComment={() => isPersistedReelId(reel.id) ? setCommentsForReel(reel.id) : showOfficialOnlyNotice()}
+                  onComment={showOfficialOnlyNotice}
                   onShare={() => share(reel)}
-                  onReport={() => isPersistedReelId(reel.id) ? setReportForReel(reel.id) : showOfficialOnlyNotice()}
+                  onReport={showOfficialOnlyNotice}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
@@ -274,17 +264,6 @@ export default function ReelsPage() {
           </motion.div>
         ))}
       </AnimatePresence>
-
-      <ReelCommentsSheet
-        reelId={commentsForReel}
-        open={!!commentsForReel}
-        onOpenChange={(o) => !o && setCommentsForReel(null)}
-      />
-      <ReelReportSheet
-        reelId={reportForReel}
-        open={!!reportForReel}
-        onOpenChange={(o) => !o && setReportForReel(null)}
-      />
 
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
