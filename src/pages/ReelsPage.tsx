@@ -7,7 +7,6 @@ import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
 import { Reel } from '@/hooks/useReelsFeed';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
-import { useAuthStore } from '@/stores/authStore';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
 import { ReelCommentsSheet } from '@/components/reels/ReelCommentsSheet';
@@ -116,20 +115,17 @@ export default function ReelsPage() {
   };
 
   const share = async (reel: Reel) => {
-    const shareUrl = `${window.location.origin}/app/reels?reel=${reel.id}`;
+    const shareUrl = reel.video_url;
     const text = `${reel.title} — ${shareUrl}`;
-    let channel = 'copy_link';
     if (navigator.share) {
       try {
         await navigator.share({ title: reel.title, text: reel.description ?? '', url: shareUrl });
-        channel = 'native';
       } catch {
         return; // user dismissed
       }
     } else {
       // WhatsApp deep link as primary fallback for farmers
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-      channel = 'whatsapp';
     }
     toast({ description: t('reels.shared', 'Shared') });
   };
