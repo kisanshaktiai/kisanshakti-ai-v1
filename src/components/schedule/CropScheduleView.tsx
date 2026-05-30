@@ -452,13 +452,13 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 )}
               >
                 {schedule.farming_type === 'organic_only' && (
-                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'जैविक' : i18n.language === 'mr' ? 'सेंद्रिय' : 'Organic'}</>
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic')}</>
                 )}
                 {schedule.farming_type === 'organic_fertilizer' && (
-                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'जैविक+रासा.' : i18n.language === 'mr' ? 'सेंद्रिय+रासा.' : 'Org+Chem'}</>
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic_chemical')}</>
                 )}
                 {schedule.farming_type === 'fertilizer_pesticide' && (
-                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'रासायनिक' : i18n.language === 'mr' ? 'रासायनिक' : 'Chemical'}</>
+                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.chemical')}</>
                 )}
               </Badge>
             )}
@@ -470,34 +470,40 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       {/* Quick Stats Cards - Mobile Optimized */}
       <div className="px-4 pt-4 pb-2">
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <Card className="bg-gradient-to-br from-success to-success/50 dark:from-success/20 dark:to-success/10 border-success/30 dark:border-success">
-            <div className="p-3 space-y-1">
+          <Card className="relative overflow-hidden bg-success-soft border-success/30">
+            <div className="absolute inset-y-0 left-0 w-1 bg-success" aria-hidden />
+            <div className="p-3 pl-4 space-y-1">
               <div className="flex items-center justify-between">
-                <Calendar className="h-4 w-4 text-success dark:text-success" />
-                <span className="text-[10px] font-medium text-success dark:text-success uppercase tracking-wider">{t('schedule.sowing')}</span>
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-success/15">
+                  <Calendar className="h-3.5 w-3.5 text-success" />
+                </div>
+                <span className="text-[10px] font-semibold text-success uppercase tracking-wider">{t('schedule.sowing')}</span>
               </div>
-              <p className="text-base font-bold text-success dark:text-success">
+              <p className="text-base font-bold text-foreground leading-tight">
                 {format(new Date(schedule.sowing_date), 'dd MMM')}
               </p>
-              <p className="text-[10px] text-success dark:text-success">
+              <p className="text-[10px] text-muted-foreground font-medium">
                 {differenceInDays(new Date(), new Date(schedule.sowing_date))} {t('schedule.days_ago')}
               </p>
             </div>
           </Card>
-          
-          <Card className="bg-gradient-to-br from-warning to-warning/50 dark:from-warning/20 dark:to-warning/10 border-warning/30 dark:border-warning">
-            <div className="p-3 space-y-1">
+
+          <Card className="relative overflow-hidden bg-warning-soft border-warning/30">
+            <div className="absolute inset-y-0 left-0 w-1 bg-warning" aria-hidden />
+            <div className="p-3 pl-4 space-y-1">
               <div className="flex items-center justify-between">
-                <Package className="h-4 w-4 text-warning dark:text-warning" />
-                <span className="text-[10px] font-medium text-warning dark:text-warning uppercase tracking-wider">{t('schedule.harvest')}</span>
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-warning/15">
+                  <Package className="h-3.5 w-3.5 text-warning" />
+                </div>
+                <span className="text-[10px] font-semibold text-warning uppercase tracking-wider">{t('schedule.harvest')}</span>
               </div>
-              <p className="text-base font-bold text-warning dark:text-warning">
-                {realHarvestDate 
+              <p className="text-base font-bold text-foreground leading-tight">
+                {realHarvestDate
                   ? format(new Date(realHarvestDate), 'dd MMM yyyy')
                   : t('schedule.schedule_card.tbd')}
               </p>
-              <p className="text-[10px] text-warning dark:text-warning">
-                {realHarvestDate 
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {realHarvestDate
                   ? `${Math.max(0, differenceInDays(new Date(realHarvestDate), new Date()))} ${t('schedule.days_remaining')}`
                   : ''}
               </p>

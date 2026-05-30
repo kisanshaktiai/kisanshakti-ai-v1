@@ -259,6 +259,11 @@
       "loading": "शेड्यूल डेटा लोड हो रहा है...",
       "standard_variety": "मानक किस्म"
     },
+    "farming_type": {
+      "organic": "जैविक",
+      "organic_chemical": "जैविक+रासा.",
+      "chemical": "रासायनिक"
+    },
     "crop_input": {
       "variety_label": "किस्म (वैकल्पिक)",
       "variety_placeholder": "जैसे, IR-64, HD-2967, BT कपास",
