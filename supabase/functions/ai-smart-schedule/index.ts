@@ -3626,15 +3626,19 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       const tryParse = (raw: string) => {
         try {
           return JSON.parse(raw);
-        } catch {
-          // ignore
-        }
-        // Fix common Gemini issues: literal newlines/tabs inside JSON strings
+        } catch { /* ignore */ }
+        // Fix #1: literal newlines/tabs inside JSON strings
         try {
           return JSON.parse(raw.replace(/[\r\n\t]+/g, " "));
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
+        // Fix #2: strip ALL control chars (0x00-0x1F except already-handled) + trailing commas
+        try {
+          const cleaned = raw
+            .replace(/[\u0000-\u001F\u007F]/g, " ")
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*]/g, "]");
+          return JSON.parse(cleaned);
+        } catch { /* ignore */ }
         return null;
       };
 
@@ -3646,11 +3650,12 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       // First try: content is the JSON object
       scheduleData = tryParse(content);
 
-      // Second try: extract JSON object from surrounding text
+      // Second try: extract JSON object from surrounding text (greedy from first { to last })
       if (!scheduleData) {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch?.[0]) {
-          scheduleData = tryParse(jsonMatch[0]);
+        const firstBrace = content.indexOf("{");
+        const lastBrace = content.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          scheduleData = tryParse(content.substring(firstBrace, lastBrace + 1));
           if (scheduleData) console.log(`✅ [AI] Extracted JSON from text content`);
         }
       }
@@ -3664,6 +3669,7 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         }
       }
     }
+
 
     // If still no schedule data, check for truncation and handle gracefully
     if (!scheduleData) {
@@ -3727,12 +3733,29 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           console.log(`✅ [AI] Fallback schedule built with ${fallbackTasks.length} tasks`);
         }
       } else {
-        console.error("❌ [AI] No structured data found.", {
+        console.error("❌ [AI] No structured data found - using deterministic fallback.", {
           finishReason,
           snippet: JSON.stringify(aiData).substring(0, 800),
         });
-        throw new Error("AI did not return structured schedule. Please try again.");
+
+        // Do NOT throw — build deterministic fallback schedule so farmer always gets a result
+        const fallbackTasks = farmingStages.map((stage: FarmingStage) =>
+          generateFallbackTask(stage, translatedCropName, landAreaAcres, farmingType, language)
+        );
+
+        scheduleData = {
+          crop_name: translatedCropName,
+          total_duration_days: cropDurationDays,
+          expected_yield_quintals: 20,
+          yield_multiplier_target: 3,
+          stages_covered: allStageKeys,
+          tasks: fallbackTasks,
+          is_fallback_schedule: true,
+        };
+
+        console.log(`🛟 [AI] Deterministic fallback built with ${fallbackTasks.length} tasks (parse failed)`);
       }
+
     }
     
     console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);
