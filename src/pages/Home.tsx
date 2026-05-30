@@ -55,12 +55,11 @@ export default function Home() {
   const [currentMetricIndex, setCurrentMetricIndex] = useState(0);
   const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
 
-  // Home "Farming Reels": prefer the official KisanShakti AI YouTube channel
-  // (@kisanshaktiai); fall back to curated reels_videos if the channel feed is
-  // empty/unavailable so the section is never blank.
+  // Home "Farming Reels": ONLY surfaces videos from the official
+  // KisanShakti AI YouTube channel (@kisanshaktiai). If the feed is
+  // unavailable, the section hides itself — no demo/curated fallback.
   const { data: ytReels = [] } = useYouTubeChannelReels(8);
-  const { data: dbReels = [] } = useFeaturedReels(8);
-  const featuredVideos = (ytReels.length > 0 ? ytReels : dbReels) as any[];
+  const featuredVideos = ytReels as any[];
 
   // Auto-collapse weather card after 4 seconds
   useEffect(() => {
