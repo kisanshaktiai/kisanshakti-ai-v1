@@ -259,6 +259,11 @@
       "loading": "वेळापत्रक डेटा लोड होत आहे...",
       "standard_variety": "मानक वाण"
     },
+    "farming_type": {
+      "organic": "सेंद्रिय",
+      "organic_chemical": "सेंद्रिय+रासा.",
+      "chemical": "रासायनिक"
+    },
     "crop_input": {
       "variety_label": "वाण (पर्यायी)",
       "variety_placeholder": "उदा., IR-64, HD-2967, BT कापूस",
