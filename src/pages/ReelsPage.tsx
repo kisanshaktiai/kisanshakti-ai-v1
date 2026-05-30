@@ -5,16 +5,7 @@ import { ArrowLeft, Heart, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
-import {
-  useReelsFeed,
-  useReelCategories,
-  useReelEngagementState,
-  useToggleReelLike,
-  useToggleReelSave,
-  useRecordReelShare,
-  recordReelView,
-  Reel,
-} from '@/hooks/useReelsFeed';
+import { Reel } from '@/hooks/useReelsFeed';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import { useAuthStore } from '@/stores/authStore';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
@@ -35,10 +26,8 @@ export default function ReelsPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { currentLanguage } = useLanguageStore();
-  const { session } = useAuthStore();
-  const farmerId = session?.farmerId;
+  useAuthStore();
 
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
@@ -47,18 +36,8 @@ export default function ReelsPage() {
   const [doubleTapHearts, setDoubleTapHearts] = useState<{ id: number; x: number; y: number }[]>([]);
   const lastTapRef = useRef<{ t: number; reelId: string | null }>({ t: 0, reelId: null });
   const containerRef = useRef<HTMLDivElement>(null);
-  const viewedRef = useRef<Set<string>>(new Set());
 
-  const { data: categories = [] } = useReelCategories();
   const { data: officialVideos = [], isLoading: isOfficialLoading, refetch: refetchOfficial } = useYouTubeChannelReels(24);
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    refetch,
-  } = useReelsFeed({ categoryId: activeCategoryId });
 
   const reels: Reel[] = useMemo(
     () => officialVideos.map((video) => ({
@@ -88,12 +67,6 @@ export default function ReelsPage() {
     })),
     [officialVideos, currentLanguage]
   );
-  const reelIds = useMemo(() => reels.map((r) => r.id).filter(isPersistedReelId), [reels]);
-  const { data: engagement } = useReelEngagementState(reelIds);
-
-  const likeMut = useToggleReelLike();
-  const saveMut = useToggleReelSave();
-  const shareMut = useRecordReelShare();
 
   // Snap-scroll active index detection
   const onScroll = useCallback(() => {
@@ -104,30 +77,11 @@ export default function ReelsPage() {
       setActiveIndex(idx);
       setIsPaused(false);
     }
-    // Prefetch when near the end
-    if (
-      hasNextPage &&
-      !isFetchingNextPage &&
-      idx >= reels.length - 3
-    ) {
-      fetchNextPage();
-    }
-  }, [activeIndex, reels.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  // Record a view once per reel session when it becomes active
-  useEffect(() => {
-    const r = reels[activeIndex];
-    if (!r) return;
-    if (!isPersistedReelId(r.id)) return;
-    if (viewedRef.current.has(r.id)) return;
-    viewedRef.current.add(r.id);
-    recordReelView(r.id, farmerId, 0, false);
-  }, [activeIndex, reels, farmerId]);
+  }, [activeIndex, reels.length]);
 
   // Refetch when language changes
   useEffect(() => {
     refetchOfficial();
-    refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLanguage]);
 
