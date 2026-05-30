@@ -452,13 +452,13 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
                 )}
               >
                 {schedule.farming_type === 'organic_only' && (
-                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'जैविक' : i18n.language === 'mr' ? 'सेंद्रिय' : 'Organic'}</>
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic')}</>
                 )}
                 {schedule.farming_type === 'organic_fertilizer' && (
-                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'जैविक+रासा.' : i18n.language === 'mr' ? 'सेंद्रिय+रासा.' : 'Org+Chem'}</>
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic_chemical')}</>
                 )}
                 {schedule.farming_type === 'fertilizer_pesticide' && (
-                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'रासायनिक' : i18n.language === 'mr' ? 'रासायनिक' : 'Chemical'}</>
+                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.chemical')}</>
                 )}
               </Badge>
             )}
