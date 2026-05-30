@@ -500,7 +500,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                     e.preventDefault();
                                     onTakePhoto(task);
                                   }}
-                                  className="gap-2 pointer-events-auto bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/40 hover:shadow-xl hover:shadow-primary/50 hover:scale-105 transition-all duration-300 animate-pulse hover:animate-none font-semibold px-4"
+                                  className="gap-2 pointer-events-auto bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-lg shadow-primary/40 hover:shadow-xl hover:shadow-primary/50 hover:scale-105 transition-all duration-300 animate-pulse hover:animate-none font-semibold px-4"
                                 >
                                   <Camera className="h-5 w-5" />
                                   <span className="font-bold">{t('cropGrowth.takePhoto') || 'Photo'}</span>

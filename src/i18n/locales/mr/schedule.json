@@ -184,7 +184,11 @@
       "medium": "मध्यम",
       "low": "कमी",
       "hours": "तास",
-      "persons": "व्यक्ती"
+      "persons": "व्यक्ती",
+      "edit": "संपादित करा",
+      "edit_task": "काम संपादित करा",
+      "n_task": "काम",
+      "n": "n"
     },
     "land_selector": {
       "ai_schedule_ready": "AI वेळापत्रक तयार",

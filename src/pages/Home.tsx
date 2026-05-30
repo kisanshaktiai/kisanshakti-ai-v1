@@ -28,6 +28,7 @@ import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useFeaturedReels } from '@/hooks/useReelsFeed';
+import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
 import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFeaturesGrid';
@@ -54,8 +55,12 @@ export default function Home() {
   const [currentMetricIndex, setCurrentMetricIndex] = useState(0);
   const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
 
-  // Fetch featured reels for the home carousel (new reels_videos pipeline)
-  const { data: featuredVideos = [] } = useFeaturedReels(8);
+  // Home "Farming Reels": prefer the official KisanShakti AI YouTube channel
+  // (@kisanshaktiai); fall back to curated reels_videos if the channel feed is
+  // empty/unavailable so the section is never blank.
+  const { data: ytReels = [] } = useYouTubeChannelReels(8);
+  const { data: dbReels = [] } = useFeaturedReels(8);
+  const featuredVideos = (ytReels.length > 0 ? ytReels : dbReels) as any[];
 
   // Auto-collapse weather card after 4 seconds
   useEffect(() => {

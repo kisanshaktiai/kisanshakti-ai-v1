@@ -80,3 +80,6 @@ verify_jwt = false
 
 [functions.community-moderate]
 verify_jwt = false
+
+[functions.youtube-channel-feed]
+verify_jwt = false

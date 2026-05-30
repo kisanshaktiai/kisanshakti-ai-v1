@@ -184,7 +184,11 @@
       "medium": "मध्यम",
       "low": "कम",
       "hours": "घंटे",
-      "persons": "व्यक्ति"
+      "persons": "व्यक्ति",
+      "edit": "संपादित करें",
+      "edit_task": "कार्य संपादित करें",
+      "n_task": "कार्य",
+      "n": "n"
     },
     "land_selector": {
       "ai_schedule_ready": "AI अनुसूची तैयार",
