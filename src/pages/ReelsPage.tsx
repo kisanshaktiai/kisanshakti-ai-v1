@@ -5,12 +5,13 @@ import { ArrowLeft, Heart, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
-import type { Reel } from '@/hooks/useReelsFeed';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+
+type OfficialReel = React.ComponentProps<typeof ReelPlayer>['reel'];
 
 export default function ReelsPage() {
   const navigate = useNavigate();
@@ -27,7 +28,7 @@ export default function ReelsPage() {
 
   const { data: officialVideos = [], isLoading: isOfficialLoading, refetch: refetchOfficial } = useYouTubeChannelReels(24);
 
-  const reels: Reel[] = useMemo(
+  const reels: OfficialReel[] = useMemo(
     () => officialVideos.map((video) => ({
       id: video.id,
       tenant_id: null,
@@ -86,7 +87,7 @@ export default function ReelsPage() {
     setTimeout(() => setDoubleTapHearts((h) => h.filter((p) => p.id !== id)), 800);
   };
 
-  const handleTap = (reel: Reel) => (e: React.MouseEvent) => {
+  const handleTap = (reel: OfficialReel) => (e: React.MouseEvent) => {
     const now = Date.now();
     const last = lastTapRef.current;
     if (last.reelId === reel.id && now - last.t < 280) {
@@ -104,7 +105,7 @@ export default function ReelsPage() {
     }
   };
 
-  const share = async (reel: Reel) => {
+  const share = async (reel: OfficialReel) => {
     const shareUrl = reel.video_url;
     const text = `${reel.title} — ${shareUrl}`;
     if (navigator.share) {
