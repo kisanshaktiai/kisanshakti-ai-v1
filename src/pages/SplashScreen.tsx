@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { versionService } from '@/services/versionService';
+import { FarmingSplashAnimation } from '@/components/splash/FarmingSplashAnimation';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
