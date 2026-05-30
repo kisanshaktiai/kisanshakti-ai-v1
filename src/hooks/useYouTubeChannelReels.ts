@@ -1,10 +1,7 @@
 /**
- * useYouTubeChannelReels — fetches the latest videos from the official
- * KisanShakti AI YouTube channel (@kisanshaktiai) directly from the
- * public RSS feed. No API key, no edge function required.
- *
- * Resilience: tries multiple public CORS proxies in sequence so a single
- * proxy outage never blanks the Home "Farming Reels" section.
+ * useYouTubeChannelReels — official KisanShakti AI Shorts only.
+ * Source of truth: https://www.youtube.com/@kisanshaktiai/shorts
+ * No demo table fallback, no curated hardcoded videos, no API key required.
  */
 import { useQuery } from '@tanstack/react-query';
 
@@ -20,15 +17,17 @@ export interface YouTubeChannelVideo {
   is_featured: boolean;
 }
 
-// Official KisanShakti AI channel: https://www.youtube.com/@kisanshaktiai
+// Official KisanShakti AI channel: https://www.youtube.com/@kisanshaktiai/shorts
 const CHANNEL_ID = 'UCBCO3X-fNJ4g41KxeDZwG3w';
+const SHORTS_URL = 'https://www.youtube.com/@kisanshaktiai/shorts';
 const FEED_URL = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
+const JINA_SHORTS_URL = 'https://r.jina.ai/http://www.youtube.com/@kisanshaktiai/shorts';
 
 // Public CORS proxies — tried in order. All return raw upstream body.
 const PROXIES: Array<(u: string) => string> = [
   (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
   (u) => `https://corsproxy.io/?${encodeURIComponent(u)}`,
-  (u) => `https://r.jina.ai/${u}`,
+  (u) => `https://r.jina.ai/http://${u.replace(/^https?:\/\//, '')}`,
 ];
 
 function pick(re: RegExp, src: string): string {
@@ -55,7 +54,7 @@ function parseFeed(xml: string): YouTubeChannelVideo[] {
         video_id: videoId,
         title,
         description,
-        video_url: `https://www.youtube.com/watch?v=${videoId}`,
+        video_url: `https://www.youtube.com/shorts/${videoId}`,
         thumbnail_url: thumbnail,
         published_at: published,
         total_views: views,
@@ -63,6 +62,49 @@ function parseFeed(xml: string): YouTubeChannelVideo[] {
       } as YouTubeChannelVideo;
     })
     .filter((v): v is YouTubeChannelVideo => !!v);
+}
+
+function parseShortsMarkdown(markdown: string): YouTubeChannelVideo[] {
+  const seen = new Set<string>();
+  const videos: YouTubeChannelVideo[] = [];
+  const itemRe = /!\[[^\]]*\]\((https?:\/\/i\.ytimg\.com\/vi\/([A-Za-z0-9_-]{11})\/[^)\s]+)[^)]*\)\]\(https?:\/\/www\.youtube\.com\/shorts\/\2\)[\s\S]*?### \[([^\]]+)\]\(https?:\/\/www\.youtube\.com\/shorts\/\2/g;
+  let match: RegExpExecArray | null;
+  while ((match = itemRe.exec(markdown)) !== null) {
+    const [, thumbnail, videoId, rawTitle] = match;
+    if (seen.has(videoId)) continue;
+    seen.add(videoId);
+    videos.push({
+      id: videoId,
+      video_id: videoId,
+      title: rawTitle.trim(),
+      description: rawTitle.trim(),
+      video_url: `https://www.youtube.com/shorts/${videoId}`,
+      thumbnail_url: thumbnail.replace(/^http:\/\//, 'https://'),
+      published_at: new Date().toISOString(),
+      total_views: 0,
+      is_featured: false,
+    });
+  }
+
+  // Defensive fallback for minor YouTube/Jina markdown changes.
+  const idRe = /youtube\.com\/shorts\/([A-Za-z0-9_-]{11})/g;
+  while ((match = idRe.exec(markdown)) !== null) {
+    const videoId = match[1];
+    if (seen.has(videoId)) continue;
+    seen.add(videoId);
+    videos.push({
+      id: videoId,
+      video_id: videoId,
+      title: 'KisanShakti AI Shorts',
+      description: '',
+      video_url: `https://www.youtube.com/shorts/${videoId}`,
+      thumbnail_url: `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+      published_at: new Date().toISOString(),
+      total_views: 0,
+      is_featured: false,
+    });
+  }
+  return videos;
 }
 
 async function fetchViaProxies(): Promise<string> {
@@ -87,12 +129,28 @@ async function fetchViaProxies(): Promise<string> {
   throw lastErr instanceof Error ? lastErr : new Error('all proxies failed');
 }
 
+async function fetchOfficialShorts(): Promise<YouTubeChannelVideo[]> {
+  try {
+    const res = await fetch(JINA_SHORTS_URL, { method: 'GET', headers: { Accept: 'text/markdown, text/plain, */*' } });
+    if (res.ok) {
+      const text = await res.text();
+      const shorts = parseShortsMarkdown(text);
+      if (shorts.length > 0) return shorts;
+    }
+  } catch {
+    // Fall through to official RSS. Never fall back to app demo database data.
+  }
+
+  const xml = await fetchViaProxies();
+  return parseFeed(xml);
+}
+
 export function useYouTubeChannelReels(limit = 8) {
   return useQuery({
-    queryKey: ['youtube-channel-reels', CHANNEL_ID, limit],
+    queryKey: ['youtube-channel-shorts', SHORTS_URL, limit, 'official-v2'],
     queryFn: async (): Promise<YouTubeChannelVideo[]> => {
-      const xml = await fetchViaProxies();
-      return parseFeed(xml).slice(0, limit);
+      const videos = await fetchOfficialShorts();
+      return videos.slice(0, limit);
     },
     staleTime: 10 * 60 * 1000,
     gcTime: 60 * 60 * 1000,
