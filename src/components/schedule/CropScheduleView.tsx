@@ -371,30 +371,14 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   if (!schedule) {
     return (
       <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
-        {/* Header */}
-        <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-3">
-              {onBack && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onBack}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <h2 className="text-lg font-bold text-foreground">
-                  {landName}
-                </h2>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {t('schedule.schedule_view.no_active_schedule')}
-                </p>
-              </div>
-            </div>
-          </div>
+        {/* Compact inline summary (no sticky — parent provides header) */}
+        <div className="px-4 pt-3 pb-1">
+          <h2 className="text-base font-bold text-foreground leading-tight">
+            {landName}
+          </h2>
+          <p className="text-xs text-muted-foreground font-medium mt-0.5">
+            {t('schedule.schedule_view.no_active_schedule')}
+          </p>
         </div>
 
         {/* Empty State */}
@@ -409,7 +393,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               {t('schedule.schedule_view.no_schedule_description')}
             </p>
             <div className="pt-4">
-              <Button 
+              <Button
                 onClick={onBack}
                 className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/30 transition-all"
               >
@@ -422,6 +406,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       </div>
     );
   }
+
 
   const filteredTasks = getFilteredTasks();
   const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
