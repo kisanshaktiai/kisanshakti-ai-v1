@@ -78,6 +78,7 @@
       "grace_period": "Grace period · {{d}} days left",
       "expired_tap_renew": "Tap to renew"
     },
-    "undo": "Undo"
+    "undo": "Undo",
+    "try_again": "Try again"
   }
 }
