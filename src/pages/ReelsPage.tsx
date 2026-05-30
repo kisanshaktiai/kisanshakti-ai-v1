@@ -26,7 +26,6 @@ export default function ReelsPage() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { currentLanguage } = useLanguageStore();
-  useAuthStore();
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
@@ -102,9 +101,6 @@ export default function ReelsPage() {
     const now = Date.now();
     const last = lastTapRef.current;
     if (last.reelId === reel.id && now - last.t < 280) {
-      // Double tap → like (if not already liked)
-      const liked = engagement?.liked.has(reel.id) ?? false;
-      if (!liked) likeMut.mutate({ reelId: reel.id, liked: false });
       triggerDoubleTapHeart(e);
       lastTapRef.current = { t: 0, reelId: null };
     } else {
@@ -135,12 +131,8 @@ export default function ReelsPage() {
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
       channel = 'whatsapp';
     }
-    shareMut.mutate({ reelId: reel.id, channel });
     toast({ description: t('reels.shared', 'Shared') });
   };
-
-  const localizedCategoryName = (name: Record<string, string>) =>
-    name?.[currentLanguage] || name?.en || Object.values(name || {})[0] || '';
 
   return (
     <div className="fixed inset-0 z-40 bg-black overflow-hidden">
@@ -156,28 +148,18 @@ export default function ReelsPage() {
         <div className="flex-1 overflow-x-auto no-scrollbar">
           <div className="flex gap-2 pl-1">
             <CategoryPill
-              active={activeCategoryId === null}
+              active
               label={t('reels.category.all', 'All')}
               onClick={() => {
-                setActiveCategoryId(null);
                 setActiveIndex(0);
-                viewedRef.current.clear();
                 containerRef.current?.scrollTo({ top: 0 });
               }}
             />
-            {categories.map((c) => (
-              <CategoryPill
-                key={c.id}
-                active={activeCategoryId === c.id}
-                label={`${c.icon ?? ''} ${localizedCategoryName(c.name_i18n)}`.trim()}
-                onClick={() => {
-                  setActiveCategoryId(c.id);
-                  setActiveIndex(0);
-                  viewedRef.current.clear();
-                  containerRef.current?.scrollTo({ top: 0 });
-                }}
-              />
-            ))}
+            <CategoryPill
+              active={false}
+              label={t('reels.official_channel', 'KisanShakti AI')}
+              onClick={() => containerRef.current?.scrollTo({ top: 0 })}
+            />
           </div>
         </div>
       </div>
@@ -209,8 +191,6 @@ export default function ReelsPage() {
         style={{ scrollbarWidth: 'none' }}
       >
         {reels.map((reel, i) => {
-          const liked = engagement?.liked.has(reel.id) ?? false;
-          const saved = engagement?.saved.has(reel.id) ?? false;
           const isActive = i === activeIndex;
           // Only render players for active +/- 1 (perf on low-end phones)
           const shouldMount = Math.abs(i - activeIndex) <= 1;
@@ -265,11 +245,11 @@ export default function ReelsPage() {
               {isActive && (
                 <ReelActionRail
                   reel={reel}
-                  liked={isPersistedReelId(reel.id) && liked}
-                  saved={isPersistedReelId(reel.id) && saved}
+                  liked={false}
+                  saved={false}
                   isMuted={isMuted}
-                  onLike={() => isPersistedReelId(reel.id) ? likeMut.mutate({ reelId: reel.id, liked }) : showOfficialOnlyNotice()}
-                  onSave={() => isPersistedReelId(reel.id) ? saveMut.mutate({ reelId: reel.id, saved }) : showOfficialOnlyNotice()}
+                  onLike={showOfficialOnlyNotice}
+                  onSave={showOfficialOnlyNotice}
                   onComment={() => isPersistedReelId(reel.id) ? setCommentsForReel(reel.id) : showOfficialOnlyNotice()}
                   onShare={() => share(reel)}
                   onReport={() => isPersistedReelId(reel.id) ? setReportForReel(reel.id) : showOfficialOnlyNotice()}
@@ -280,11 +260,6 @@ export default function ReelsPage() {
           );
         })}
 
-        {isFetchingNextPage && (
-          <div className="h-20 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-white/70 animate-spin" />
-          </div>
-        )}
       </div>
 
       {/* Double-tap heart bursts */}
