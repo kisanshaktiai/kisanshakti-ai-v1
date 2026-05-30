@@ -489,7 +489,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                         <CollapsibleContent className="relative z-10">
                           <div className="px-4 pb-4 space-y-4" onClick={(e) => e.stopPropagation()}>
                             {/* Action Buttons */}
-                            <div className="flex justify-end gap-2 relative z-20">
+                            <div className="flex flex-wrap justify-end gap-2 relative z-20 w-full">
                               {/* Camera Button for Photo Upload - PROMINENT & BLINKING */}
                               {onTakePhoto && (
                                 <Button
