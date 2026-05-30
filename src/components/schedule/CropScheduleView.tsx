@@ -371,30 +371,14 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   if (!schedule) {
     return (
       <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
-        {/* Header */}
-        <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-3">
-              {onBack && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onBack}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <h2 className="text-lg font-bold text-foreground">
-                  {landName}
-                </h2>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {t('schedule.schedule_view.no_active_schedule')}
-                </p>
-              </div>
-            </div>
-          </div>
+        {/* Compact inline summary (no sticky — parent provides header) */}
+        <div className="px-4 pt-3 pb-1">
+          <h2 className="text-base font-bold text-foreground leading-tight">
+            {landName}
+          </h2>
+          <p className="text-xs text-muted-foreground font-medium mt-0.5">
+            {t('schedule.schedule_view.no_active_schedule')}
+          </p>
         </div>
 
         {/* Empty State */}
@@ -409,7 +393,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               {t('schedule.schedule_view.no_schedule_description')}
             </p>
             <div className="pt-4">
-              <Button 
+              <Button
                 onClick={onBack}
                 className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/30 transition-all"
               >
@@ -422,6 +406,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       </div>
     );
   }
+
 
   const filteredTasks = getFilteredTasks();
   const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
@@ -440,60 +425,47 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   return (
     <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
-      {/* Modern Mobile-First Header - 2025 Design */}
-      <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              {onBack && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onBack}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                  {(schedule as any).metadata?.translated_crop_name || schedule.crop_name}
-                </h2>
-                <p className="text-xs text-muted-foreground font-medium">
-                  <MapPin className="h-3 w-3 inline mr-1" />
-                  {landName} • {schedule.crop_variety || t('schedule.schedule_view.standard_variety')}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <Badge className="bg-primary/10 text-primary border-primary/20">
-                {t('schedule.schedule_view.ai_schedule')}
+      {/* Compact inline crop summary (non-sticky — parent header handles back/nav) */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold text-foreground flex items-center gap-1.5 leading-tight truncate">
+              <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="truncate">{(schedule as any).metadata?.translated_crop_name || schedule.crop_name}</span>
+            </h2>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1 truncate">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{landName} • {schedule.crop_variety || t('schedule.schedule_view.standard_variety')}</span>
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-2 py-0.5 h-5">
+              {t('schedule.schedule_view.ai_schedule')}
+            </Badge>
+            {schedule.farming_type && (
+              <Badge
+                className={cn(
+                  "text-[10px] border px-2 py-0.5 h-5",
+                  schedule.farming_type === 'organic_only' && "bg-success/10 text-success border-success/30",
+                  schedule.farming_type === 'organic_fertilizer' && "bg-info/10 text-info border-info/30",
+                  schedule.farming_type === 'fertilizer_pesticide' && "bg-warning/10 text-warning border-warning/30"
+                )}
+              >
+                {schedule.farming_type === 'organic_only' && (
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'जैविक' : i18n.language === 'mr' ? 'सेंद्रिय' : 'Organic'}</>
+                )}
+                {schedule.farming_type === 'organic_fertilizer' && (
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'जैविक+रासा.' : i18n.language === 'mr' ? 'सेंद्रिय+रासा.' : 'Org+Chem'}</>
+                )}
+                {schedule.farming_type === 'fertilizer_pesticide' && (
+                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{i18n.language === 'hi' ? 'रासायनिक' : i18n.language === 'mr' ? 'रासायनिक' : 'Chemical'}</>
+                )}
               </Badge>
-              {schedule.farming_type && (
-                <Badge 
-                  className={cn(
-                    "text-xs border",
-                    schedule.farming_type === 'organic_only' && "bg-success/10 text-success border-success/30",
-                    schedule.farming_type === 'organic_fertilizer' && "bg-info/10 text-info border-info/30",
-                    schedule.farming_type === 'fertilizer_pesticide' && "bg-warning/10 text-warning border-warning/30"
-                  )}
-                >
-                  {schedule.farming_type === 'organic_only' && (
-                    <><Leaf className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक' : i18n.language === 'mr' ? 'सेंद्रिय' : 'Organic'}</>
-                  )}
-                  {schedule.farming_type === 'organic_fertilizer' && (
-                    <><Leaf className="h-3 w-3 mr-1" /><FlaskConical className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक+रासा.' : i18n.language === 'mr' ? 'सेंद्रिय+रासा.' : 'Organic+Chem'}</>
-                  )}
-                  {schedule.farming_type === 'fertilizer_pesticide' && (
-                    <><FlaskConical className="h-3 w-3 mr-1" /><Bug className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'रासायनिक' : i18n.language === 'mr' ? 'रासायनिक' : 'Chemical'}</>
-                  )}
-                </Badge>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
+
 
       {/* Quick Stats Cards - Mobile Optimized */}
       <div className="px-4 pt-4 pb-2">

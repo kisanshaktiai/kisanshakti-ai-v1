@@ -277,7 +277,7 @@ export default function Schedule() {
               handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >
-            Try Again
+            {t('common.try_again')}
           </Button>
         ),
       });
@@ -351,31 +351,27 @@ export default function Schedule() {
     );
   }
 
+  const STEPS: FlowStep[] = ['land-selection', 'crop-input', 'schedule-view'];
+  const currentStepIndex = STEPS.indexOf(flowStep);
+
   const stickyHeader = (
-    <div className="px-3 py-2.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+    <div className="px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-            className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
+            className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all shrink-0"
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
-            <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
-              {t('schedule.main.ai_crop_schedule')}
-            </h1>
-            <p className="text-xs text-muted-foreground font-medium">
-              {flowStep === 'land-selection' && t('schedule.steps.land_selection')}
-              {flowStep === 'crop-input' && t('schedule.steps.crop_input')}
-              {flowStep === 'schedule-view' && t('schedule.steps.schedule_view')}
-            </p>
-          </div>
+          <h1 className="text-base font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent truncate">
+            {t('schedule.main.ai_crop_schedule')}
+          </h1>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           {flowStep === 'land-selection' && (
             <Button
               variant="ghost"
@@ -388,35 +384,32 @@ export default function Schedule() {
                   className: 'bg-accent/10 border-accent/20',
                 });
               }}
-              className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
+              className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all"
             >
               <RefreshCw className="h-4 w-4" />
             </Button>
           )}
 
-          <div className="flex flex-col items-end gap-1">
-            <div className="flex items-center gap-1.5">
-              {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
-                <div
-                  key={step}
-                  className={`h-1.5 rounded-full transition-all duration-500 ${
-                    flowStep === step
-                      ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50'
-                      : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
-                      ? 'w-6 bg-primary/60'
-                      : 'w-6 bg-primary/20'
-                  }`}
-                />
-              ))}
-            </div>
-            <span className="text-[10px] text-muted-foreground font-medium">
-              {t('schedule.steps.of_total', { current: ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1, total: 3 })}
-            </span>
+          {/* Compact step indicator dots only */}
+          <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
+            {STEPS.map((step, index) => (
+              <div
+                key={step}
+                className={`h-1.5 rounded-full transition-all duration-500 ${
+                  index === currentStepIndex
+                    ? 'w-6 bg-gradient-to-r from-primary to-accent shadow-sm shadow-primary/40'
+                    : index < currentStepIndex
+                    ? 'w-4 bg-primary/60'
+                    : 'w-4 bg-primary/20'
+                }`}
+              />
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
+
 
   return (
     <PageShell variant="gradient-primary" padding="none" spacing="none" stickyHeader={stickyHeader}>

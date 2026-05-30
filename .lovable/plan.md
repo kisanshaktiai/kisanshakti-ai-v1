@@ -1,72 +1,53 @@
-## Root cause (confirmed by code trace)
+# Schedule UI Modernization + i18n Audit Fix
 
-The farmer asked a pure scheduling question:
-> "सध्या कोणते खत देवू आणि फवारणी घेवू?"  
-> ("At the current stage, what fertilizer should I give and what spray should I take?")
+## Scope (UI + i18n only — no logic, data, or theme-color changes)
 
-The expected answer is a stage-based fertilizer + preventive spray plan derived from `crop_schedules` (days since sowing, growth stage) and the symbolic rule engine.
+The /app/schedule page currently stacks two headers (Schedule.tsx outer header with steps/progress + CropScheduleView inner header with crop/land/badge) — wasting ~25% of mobile viewport. Several i18n keys (24 in hi, 24 in mr) are missing, causing raw keys like `schedule.schedule_view.ai_schedule` to render in the UI (visible in user screenshot). `pa.json` and `ta.json` are missing the `schedule.schedule_view` and `schedule.crop_input` namespaces entirely. Two hardcoded English strings exist in `AIScheduleDashboard.tsx` and one in `Schedule.tsx` ("Try Again").
 
-Instead the system replied with a **diagnostic clarification** card ("What exactly are you observing? — रंग बदलला / गड्डे दिसत आहेत / Drying/wilting"). That UI is only meant for symptom-reporting queries.
+## 1. Unify the nested top bar (mobile-first 2030 design)
 
-### Why this happens
+**Problem:** `Schedule.tsx` renders a sticky header (lines 354–419) AND `CropScheduleView.tsx` renders its own sticky header (lines 374–398, 443–490). On the schedule-view step both appear stacked.
 
-1. `supabase/functions/ai-agriculture-chat/agents/query-router.ts`
-   - `PEST_DISEASE_PATTERNS` (line 78–121) contains broad "treatment request" tokens:
-     - line 117 — `/फवारणी|स्प्रे|spray|छिड़काव/i`
-     - line 119 — `/काय\s*करू|क्या\s*करूं|what\s*(should|can|to)\s*do/i`
-   - In `routeQuery()` (line 219+), **Priority 4 = PEST_DISEASE_TREATMENT** runs before anything that could capture fertilizer/nutrition. The word *फवारणी* alone (no pest, no disease, no symptom) is enough to win, so `route = PEST_DISEASE_TREATMENT, requires_decision_brain = true`.
-   - There is **no FERTILIZER / NUTRITION route at all** in `query-router.ts`. `खत / खाद / उर्वरक / fertilizer / khat / khaad` are never matched here.
+**Fix:** Single compact header.
+- Remove the inner sticky header from `CropScheduleView.tsx` when `onBack` is provided by parent (it always is in the schedule flow).
+- Redesign the outer `stickyHeader` in `Schedule.tsx` to become a single **context-aware compact bar** (~56px total height vs current ~80px) that on the `schedule-view` step inlines the crop chip + land subtitle + harvest countdown badge — replacing the inner header's content.
+- Layout: `[← back] [crop icon + crop name + variety] [right: progress dots OR harvest badge]`. Step subtitle text moves into a 4px-tall progress bar with current-step label only, not all three.
+- All colors via existing semantic tokens (`bg-background/80`, `text-primary`, `bg-primary-soft`, `border-border/50`) — no hex/RGB.
 
-2. `intent-classifier.ts` (line 472) *does* classify `खत…` as `FERTILIZER_SCHEDULE`, but the orchestrator's high-level routing relies on `routeQuery()` output for choosing the pipeline. The downstream Decision Brain receives `PEST_DISEASE_TREATMENT` with no pest/disease/symptom evidence → low confidence → the unified gate emits a generic "What exactly are you observing?" clarification with symptom options (`COLOR_CHANGE`, lumps, `WILTING`).
+**Files touched:**
+- `src/pages/Schedule.tsx` — rewrite `stickyHeader` JSX (lines 354–419) to be step-aware and pull crop/land context when in schedule-view.
+- `src/components/schedule/CropScheduleView.tsx` — remove the duplicate sticky header block (lines 374–398 for empty state, 443–490 for active state). Replace with lightweight inline summary chip inside the scroll area (no sticky), or remove entirely when parent header handles it.
 
-3. The clarification gate has no guard that says: *"If the resolved intent is a scheduling intent (`FERTILIZER_SCHEDULE` / `IRRIGATION_QUERY` / `INPUT_RECOMMENDATION` without symptom signal), never ask diagnostic 'what are you observing' questions."*
+## 2. Fill missing i18n keys
 
-Net effect: every "खत + फवारणी" scheduling question is force-converted to a diagnostic flow.
+Add the 24 missing keys to **every** language file. Keys live under `schedule.schedule_view.*`, `schedule.crop_input.*`, `schedule.toast.*` (full list extracted from EN).
 
-## Fix plan (no DB schema changes; rules already exist in `decision_rules`)
+**Files touched:**
+- `src/i18n/locales/hi/schedule.json` — add 24 keys (Hindi translations)
+- `src/i18n/locales/mr/schedule.json` — add 24 keys (Marathi translations)
+- `src/i18n/locales/pa.json` — add `schedule.schedule_view`, `schedule.crop_input`, `schedule.toast` blocks (Punjabi)
+- `src/i18n/locales/ta.json` — same, ensure `schedule_view` + `crop_input` blocks exist (Tamil)
+- `src/i18n/locales/en/schedule.json` — already has them; no change
 
-### 1. `agents/query-router.ts` — add a dedicated nutrition route
+The 24 missing keys (sample, full set added):
+- `schedule_view`: ai_schedule, generate_schedule, loading, no_active_schedule, no_schedule_available, no_schedule_description, standard_variety
+- `crop_input`: generate_ai_schedule, generating, pick_date, planting_date, please_select_crop, please_select_date, ready_made_description, ready_made_plant, select_crop, select_date, sowing_date, variety_label, variety_placeholder, water
+- `toast`: changes_saved, task_updated, update_failed
 
-- Add `FERTILIZER_NUTRITION` to `QueryRoute`.
-- Add `FERTILIZER_NUTRITION_PATTERNS` covering:
-  - `खत|खाद|उर्वरक|पोषण|fertili[sz]er|nutrient|\bkhat\b|\bkhaad\b`
-  - `कोणते\s*खत|कौन\s*सा\s*खत|which\s*fertilizer`
-  - `सध्या.*खत|आता.*खत|now.*fertilizer`
-- Add `SYMPTOM_TOKENS` regex (`पिवळ|पीला|yellow|डाग|spots?|मेला|सुक|कुज|wilt|rog|kid[ia]|ali|borer|holes?|curl|blight|rust|करपा|तांबेरा`).
+## 3. Remove hardcoded English strings on Schedule page
 
-### 2. Tighten PEST_DISEASE matching
+- `src/pages/Schedule.tsx` line ~280: `"Try Again"` → `t('common.try_again')` (key exists in common.json, verify; add if missing).
+- `src/pages/AIScheduleDashboard.tsx` lines 27–34 (`"AI Crop Intelligence"`, subtitle, card titles): replace with i18n keys under new `schedule.dashboard.*` namespace in all 5 languages. (Scope contained — single page.)
 
-In `routeQuery()`, before returning `PEST_DISEASE_TREATMENT`:
-- If `pestDiseaseScore` is driven **only** by the generic spray/treatment tokens (`फवारणी / spray / काय करू / उपाय / favarni`) **and** no `SYMPTOM_TOKENS` are present, demote the score.
-- If fertilizer tokens are present and no symptom tokens are present, route to `FERTILIZER_NUTRITION` instead, even when `फवारणी` is also mentioned (interpreted as "preventive spray", not "treat my disease").
+## 4. Verification
 
-### 3. `agents/orchestrator.ts` — handle the new route
+- After edits, reload `/app/schedule` in mr/hi/en/pa/ta — confirm no raw `schedule.*` keys render, single top bar visible (~56px), crop+land context shows on schedule-view step.
+- Run `rg "schedule\\." src/i18n/locales/en/schedule.json` key list against hi/mr/pa/ta to confirm parity (script-style check).
 
-- Add a branch for `queryRoute.route === 'FERTILIZER_NUTRITION'` that:
-  - Loads land context + active `crop_schedules` row (already fetched today for chat context).
-  - Calls the symbolic rule engine with `intent_code = FERTILIZER_SCHEDULE` and crop/stage/DAS as input, reusing the existing `layered-rule-evaluator` → `deterministic-response-builder` path.
-  - Skips the diagnostic clarification generator entirely.
-- Extend the existing vocab-route override (line 1246–1285) so `NUTRIENT_INTENTS` map to `FERTILIZER_NUTRITION` (currently they map to a string the rest of the code doesn't actually route).
+## Out of scope (explicitly NOT changing)
 
-### 4. Clarification guard
-
-In `decision/decision-readiness-gate.ts` / `clarification-strategy.ts`:
-- Before emitting the "What are you observing?" symptom clarification, check the resolved intent. If it is `FERTILIZER_SCHEDULE`, `IRRIGATION_QUERY`, `HARVEST_TIMING`, `MARKET_PRICE_QUERY`, `WEATHER_QUERY`, or `INPUT_RECOMMENDATION` **with no symptom evidence**, do not generate a diagnostic clarification — fall through to the deterministic stage-based responder (or, only if rules return nothing, ask a *scoped* clarification like "Which nutrient concern — basal, top-dressing, micronutrient?", never "what are you observing").
-
-### 5. Verification
-
-- Replay the failing query with `supabase--curl_edge_functions` against `ai-agriculture-chat` for the same `land_id` and confirm:
-  - `route = FERTILIZER_NUTRITION`
-  - response section contains stage-based fertilizer dose (computed for the land's acreage) + preventive spray window, not a clarification card.
-- Re-run 3 regression queries to ensure pest/disease flow still triggers clarification correctly:
-  - "ऊसाला किडा लागला, काय फवारू?" → still `PEST_DISEASE_TREATMENT`.
-  - "पान पिवळे झाले" → still `COLOR_CHANGE` / diagnostic clarification.
-  - "पाणी कधी द्यायचे?" → still `IRRIGATION_SCHEDULING`.
-
-## Files to change
-
-- `supabase/functions/ai-agriculture-chat/agents/query-router.ts`
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`
-- `supabase/functions/ai-agriculture-chat/decision/decision-readiness-gate.ts` (or `agents/clarification-strategy.ts`, whichever owns the "observation symptom" clarification emission)
-
-No DB migrations, no UI changes required.
+- Edge function logic (`ai-smart-schedule`)
+- Data fetching, React Query, Supabase calls
+- Theme tokens / `index.css` / `tailwind.config.ts`
+- Other pages' i18n (only Schedule + AIScheduleDashboard)
+- Decision brain / orchestrator / rules

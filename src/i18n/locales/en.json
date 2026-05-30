@@ -60,7 +60,8 @@
     "logout": "Logout"
   },
   "common": {
-    "notNow": "Not Now"
+    "notNow": "Not Now",
+    "try_again": "Try again"
   },
   "fab": {
     "myLands": "My Lands",
@@ -246,7 +247,48 @@
     "potato": "Potato",
     "onion": "Onion",
     "tomato": "Tomato",
-    "chilli": "Chilli"
+    "chilli": "Chilli",
+    "schedule_view": {
+      "no_active_schedule": "No Active Schedule",
+      "no_schedule_available": "No Schedule Available",
+      "no_schedule_description": "Generate an AI-powered crop schedule to get personalized farming tasks and recommendations",
+      "generate_schedule": "Generate Schedule",
+      "ai_schedule": "AI Schedule",
+      "loading": "Loading schedule data...",
+      "standard_variety": "Standard Variety"
+    },
+    "crop_input": {
+      "variety_label": "Variety (Optional)",
+      "variety_placeholder": "e.g., IR-64, HD-2967, BT Cotton",
+      "ready_made_plant": "Using ready-made nursery plants",
+      "ready_made_description": "Check if planting seedlings/transplants instead of sowing seeds",
+      "sowing_date": "Sowing Date",
+      "planting_date": "Planting Date",
+      "pick_date": "Pick a date",
+      "generate_ai_schedule": "Generate AI Schedule",
+      "generating": "Generating AI Schedule...",
+      "select_crop": "Select Crop",
+      "please_select_crop": "Please select a crop",
+      "select_date": "Select Date",
+      "please_select_date": "Please select the sowing date",
+      "water": "Water"
+    },
+    "toast": {
+      "task_completed": "Task marked as completed",
+      "task_skipped": "Task skipped",
+      "schedule_generated": "Schedule generated successfully",
+      "error": "Failed to update task",
+      "great_work": "Great work! Syncing...",
+      "sync_failed": "Failed to sync completion",
+      "rolled_back": "Rolled back. Try again.",
+      "task_unmarked": "Task unmarked",
+      "task_updated": "Task updated successfully",
+      "changes_saved": "Your changes have been saved",
+      "update_failed": "Failed to update task",
+      "reverting": "Reverting completion...",
+      "unmark_failed": "Failed to unmark",
+      "try_again": "Try again."
+    }
   },
   "instaScan": {
     "title": "InstaScan",
