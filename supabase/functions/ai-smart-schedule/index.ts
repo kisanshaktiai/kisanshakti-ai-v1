@@ -3733,12 +3733,29 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           console.log(`✅ [AI] Fallback schedule built with ${fallbackTasks.length} tasks`);
         }
       } else {
-        console.error("❌ [AI] No structured data found.", {
+        console.error("❌ [AI] No structured data found - using deterministic fallback.", {
           finishReason,
           snippet: JSON.stringify(aiData).substring(0, 800),
         });
-        throw new Error("AI did not return structured schedule. Please try again.");
+
+        // Do NOT throw — build deterministic fallback schedule so farmer always gets a result
+        const fallbackTasks = farmingStages.map((stage: FarmingStage) =>
+          generateFallbackTask(stage, translatedCropName, landAreaAcres, farmingType, language)
+        );
+
+        scheduleData = {
+          crop_name: translatedCropName,
+          total_duration_days: cropDurationDays,
+          expected_yield_quintals: 20,
+          yield_multiplier_target: 3,
+          stages_covered: allStageKeys,
+          tasks: fallbackTasks,
+          is_fallback_schedule: true,
+        };
+
+        console.log(`🛟 [AI] Deterministic fallback built with ${fallbackTasks.length} tasks (parse failed)`);
       }
+
     }
     
     console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);
