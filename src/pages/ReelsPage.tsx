@@ -5,7 +5,7 @@ import { ArrowLeft, Heart, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
-import { Reel } from '@/hooks/useReelsFeed';
+import type { Reel } from '@/hooks/useReelsFeed';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
