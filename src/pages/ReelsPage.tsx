@@ -5,63 +5,57 @@ import { ArrowLeft, Heart, Loader2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
-import {
-  useReelsFeed,
-  useReelCategories,
-  useReelEngagementState,
-  useToggleReelLike,
-  useToggleReelSave,
-  useRecordReelShare,
-  recordReelView,
-  Reel,
-} from '@/hooks/useReelsFeed';
-import { useAuthStore } from '@/stores/authStore';
+import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
-import { ReelCommentsSheet } from '@/components/reels/ReelCommentsSheet';
-import { ReelReportSheet } from '@/components/reels/ReelReportSheet';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+
+type OfficialReel = React.ComponentProps<typeof ReelPlayer>['reel'];
 
 export default function ReelsPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
   const { toast } = useToast();
   const { currentLanguage } = useLanguageStore();
-  const { session } = useAuthStore();
-  const farmerId = session?.farmerId;
 
-  const [activeCategoryId, setActiveCategoryId] = useState<string | null>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [isMuted, setIsMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
-  const [commentsForReel, setCommentsForReel] = useState<string | null>(null);
-  const [reportForReel, setReportForReel] = useState<string | null>(null);
   const [doubleTapHearts, setDoubleTapHearts] = useState<{ id: number; x: number; y: number }[]>([]);
   const lastTapRef = useRef<{ t: number; reelId: string | null }>({ t: 0, reelId: null });
   const containerRef = useRef<HTMLDivElement>(null);
-  const viewedRef = useRef<Set<string>>(new Set());
 
-  const { data: categories = [] } = useReelCategories();
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isFetchingNextPage,
-    isLoading,
-    refetch,
-  } = useReelsFeed({ categoryId: activeCategoryId });
+  const { data: officialVideos = [], isLoading: isOfficialLoading, refetch: refetchOfficial } = useYouTubeChannelReels(24);
 
-  const reels: Reel[] = useMemo(
-    () => (data?.pages.flatMap((p) => p.items) ?? []),
-    [data]
+  const reels: OfficialReel[] = useMemo(
+    () => officialVideos.map((video) => ({
+      id: video.id,
+      tenant_id: null,
+      visibility_scope: 'global' as const,
+      title: video.title,
+      description: video.description,
+      category_id: null,
+      language_code: currentLanguage || 'mr',
+      tags: ['kisanshaktiai', 'youtube', 'shorts'],
+      source: 'youtube' as const,
+      video_url: video.video_url,
+      hls_url: null,
+      thumbnail_url: video.thumbnail_url,
+      preview_webp_url: null,
+      duration_seconds: null,
+      is_featured: false,
+      total_views: video.total_views,
+      total_likes: 0,
+      total_comments: 0,
+      total_shares: 0,
+      total_saves: 0,
+      trending_score: 0,
+      published_at: video.published_at,
+      created_at: video.published_at,
+    })),
+    [officialVideos, currentLanguage]
   );
-  const reelIds = useMemo(() => reels.map((r) => r.id), [reels]);
-  const { data: engagement } = useReelEngagementState(reelIds);
-
-  const likeMut = useToggleReelLike();
-  const saveMut = useToggleReelSave();
-  const shareMut = useRecordReelShare();
 
   // Snap-scroll active index detection
   const onScroll = useCallback(() => {
@@ -72,30 +66,17 @@ export default function ReelsPage() {
       setActiveIndex(idx);
       setIsPaused(false);
     }
-    // Prefetch when near the end
-    if (
-      hasNextPage &&
-      !isFetchingNextPage &&
-      idx >= reels.length - 3
-    ) {
-      fetchNextPage();
-    }
-  }, [activeIndex, reels.length, hasNextPage, isFetchingNextPage, fetchNextPage]);
-
-  // Record a view once per reel session when it becomes active
-  useEffect(() => {
-    const r = reels[activeIndex];
-    if (!r) return;
-    if (viewedRef.current.has(r.id)) return;
-    viewedRef.current.add(r.id);
-    recordReelView(r.id, farmerId, 0, false);
-  }, [activeIndex, reels, farmerId]);
+  }, [activeIndex, reels.length]);
 
   // Refetch when language changes
   useEffect(() => {
-    refetch();
+    refetchOfficial();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLanguage]);
+
+  const showOfficialOnlyNotice = () => {
+    toast({ description: t('reels.official_only', 'This video is from the official KisanShakti AI YouTube channel.') });
+  };
 
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
@@ -106,13 +87,10 @@ export default function ReelsPage() {
     setTimeout(() => setDoubleTapHearts((h) => h.filter((p) => p.id !== id)), 800);
   };
 
-  const handleTap = (reel: Reel) => (e: React.MouseEvent) => {
+  const handleTap = (reel: OfficialReel) => (e: React.MouseEvent) => {
     const now = Date.now();
     const last = lastTapRef.current;
     if (last.reelId === reel.id && now - last.t < 280) {
-      // Double tap → like (if not already liked)
-      const liked = engagement?.liked.has(reel.id) ?? false;
-      if (!liked) likeMut.mutate({ reelId: reel.id, liked: false });
       triggerDoubleTapHeart(e);
       lastTapRef.current = { t: 0, reelId: null };
     } else {
@@ -127,28 +105,21 @@ export default function ReelsPage() {
     }
   };
 
-  const share = async (reel: Reel) => {
-    const shareUrl = `${window.location.origin}/app/reels?reel=${reel.id}`;
+  const share = async (reel: OfficialReel) => {
+    const shareUrl = reel.video_url;
     const text = `${reel.title} — ${shareUrl}`;
-    let channel = 'copy_link';
     if (navigator.share) {
       try {
         await navigator.share({ title: reel.title, text: reel.description ?? '', url: shareUrl });
-        channel = 'native';
       } catch {
         return; // user dismissed
       }
     } else {
       // WhatsApp deep link as primary fallback for farmers
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
-      channel = 'whatsapp';
     }
-    shareMut.mutate({ reelId: reel.id, channel });
     toast({ description: t('reels.shared', 'Shared') });
   };
-
-  const localizedCategoryName = (name: Record<string, string>) =>
-    name?.[currentLanguage] || name?.en || Object.values(name || {})[0] || '';
 
   return (
     <div className="fixed inset-0 z-40 bg-black overflow-hidden">
@@ -164,41 +135,31 @@ export default function ReelsPage() {
         <div className="flex-1 overflow-x-auto no-scrollbar">
           <div className="flex gap-2 pl-1">
             <CategoryPill
-              active={activeCategoryId === null}
+              active
               label={t('reels.category.all', 'All')}
               onClick={() => {
-                setActiveCategoryId(null);
                 setActiveIndex(0);
-                viewedRef.current.clear();
                 containerRef.current?.scrollTo({ top: 0 });
               }}
             />
-            {categories.map((c) => (
-              <CategoryPill
-                key={c.id}
-                active={activeCategoryId === c.id}
-                label={`${c.icon ?? ''} ${localizedCategoryName(c.name_i18n)}`.trim()}
-                onClick={() => {
-                  setActiveCategoryId(c.id);
-                  setActiveIndex(0);
-                  viewedRef.current.clear();
-                  containerRef.current?.scrollTo({ top: 0 });
-                }}
-              />
-            ))}
+            <CategoryPill
+              active={false}
+              label={t('reels.official_channel', 'KisanShakti AI')}
+              onClick={() => containerRef.current?.scrollTo({ top: 0 })}
+            />
           </div>
         </div>
       </div>
 
       {/* Loading */}
-      {isLoading && (
+      {isOfficialLoading && (
         <div className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="w-8 h-8 text-white animate-spin" />
         </div>
       )}
 
       {/* Empty */}
-      {!isLoading && reels.length === 0 && (
+      {!isOfficialLoading && reels.length === 0 && (
         <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-8">
           <p className="text-white text-lg font-semibold mb-1">
             {t('reels.empty.title', 'No videos yet')}
@@ -217,8 +178,6 @@ export default function ReelsPage() {
         style={{ scrollbarWidth: 'none' }}
       >
         {reels.map((reel, i) => {
-          const liked = engagement?.liked.has(reel.id) ?? false;
-          const saved = engagement?.saved.has(reel.id) ?? false;
           const isActive = i === activeIndex;
           // Only render players for active +/- 1 (perf on low-end phones)
           const shouldMount = Math.abs(i - activeIndex) <= 1;
@@ -273,14 +232,14 @@ export default function ReelsPage() {
               {isActive && (
                 <ReelActionRail
                   reel={reel}
-                  liked={liked}
-                  saved={saved}
+                  liked={false}
+                  saved={false}
                   isMuted={isMuted}
-                  onLike={() => likeMut.mutate({ reelId: reel.id, liked })}
-                  onSave={() => saveMut.mutate({ reelId: reel.id, saved })}
-                  onComment={() => setCommentsForReel(reel.id)}
+                  onLike={showOfficialOnlyNotice}
+                  onSave={showOfficialOnlyNotice}
+                  onComment={showOfficialOnlyNotice}
                   onShare={() => share(reel)}
-                  onReport={() => setReportForReel(reel.id)}
+                  onReport={showOfficialOnlyNotice}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
@@ -288,11 +247,6 @@ export default function ReelsPage() {
           );
         })}
 
-        {isFetchingNextPage && (
-          <div className="h-20 flex items-center justify-center">
-            <Loader2 className="w-6 h-6 text-white/70 animate-spin" />
-          </div>
-        )}
       </div>
 
       {/* Double-tap heart bursts */}
@@ -311,17 +265,6 @@ export default function ReelsPage() {
           </motion.div>
         ))}
       </AnimatePresence>
-
-      <ReelCommentsSheet
-        reelId={commentsForReel}
-        open={!!commentsForReel}
-        onOpenChange={(o) => !o && setCommentsForReel(null)}
-      />
-      <ReelReportSheet
-        reelId={reportForReel}
-        open={!!reportForReel}
-        onOpenChange={(o) => !o && setReportForReel(null)}
-      />
 
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }

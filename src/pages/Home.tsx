@@ -27,7 +27,6 @@ import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useFeaturedReels } from '@/hooks/useReelsFeed';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
