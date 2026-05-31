@@ -106,24 +106,44 @@ export default function ReelsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, reels.length]);
 
-  // Open YouTube for engagement (like/comment) — engagement is recorded on YouTube,
-  // we keep a local audit row so analytics can attribute farmer engagement.
-  const openYouTube = (videoId: string, kind: 'like' | 'comment' | 'save') => {
-    const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const intent =
-      kind === 'comment'
-        ? `${watchUrl}&lc=1` // anchors to comments section on web
-        : watchUrl;
-    track(videoId, kind, { metadata: { intent: kind } });
-    track(videoId, 'open_youtube', { metadata: { intent: kind } });
-    window.open(intent, '_blank', 'noopener,noreferrer');
-    toast({
-      description: t(
-        'reels.opening_youtube',
-        'Opening YouTube — sign in to like or comment on the channel.',
-      ),
+  // In-app like — toggle local state, persist, and audit. Double-tap also calls this.
+  const toggleLike = useCallback((reel: OfficialReel, source: 'tap' | 'double_tap' = 'tap') => {
+    setLikedSet((prev) => {
+      const next = new Set(prev);
+      const wasLiked = next.has(reel.id);
+      if (wasLiked) next.delete(reel.id); else next.add(reel.id);
+      writeSet(LIKES_KEY, next);
+      track(reel.id, wasLiked ? 'unlike' : 'like', { metadata: { source, in_app: true } });
+      if (!wasLiked && source === 'tap') {
+        toast({ description: t('reels.liked', 'Liked') });
+      }
+      return next;
     });
-  };
+  }, [track, toast, t]);
+
+  const toggleSave = useCallback((reel: OfficialReel) => {
+    setSavedSet((prev) => {
+      const next = new Set(prev);
+      const wasSaved = next.has(reel.id);
+      if (wasSaved) next.delete(reel.id); else next.add(reel.id);
+      writeSet(SAVES_KEY, next);
+      track(reel.id, wasSaved ? 'unsave' : 'save', { metadata: { in_app: true } });
+      toast({ description: wasSaved ? t('reels.unsaved', 'Removed from saved') : t('reels.saved', 'Saved') });
+      return next;
+    });
+  }, [track, toast, t]);
+
+  // Open comments sheet — never auto-redirects. User can then choose to view on YouTube.
+  const openCommentSheet = useCallback((reel: OfficialReel) => {
+    setCommentSheetReel(reel);
+    track(reel.id, 'comment', { metadata: { in_app: true, action: 'sheet_open' } });
+  }, [track]);
+
+  const viewCommentsOnYouTube = useCallback((reel: OfficialReel) => {
+    const url = `https://www.youtube.com/watch?v=${reel.id}&lc=1`;
+    track(reel.id, 'open_youtube', { metadata: { intent: 'comment', user_initiated: true } });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [track]);
 
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
