@@ -26,8 +26,8 @@ import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-respons
 
 // Legacy helpers removed - dead code cleanup
 
-// GENERAL CHAT: direct-LLM senior-agronomist short-circuit (no symbolic brain)
-import { handleGeneralChat } from './general-chat-handler.ts';
+// NOTE: General chat is handled by a separate edge function (`ai-general-chat`).
+// This function is now strictly the symbolic-decision-brain endpoint.
 
 // CRITICAL FIX: Import translation functions for farmer-friendly product names
 import { 
@@ -72,7 +72,7 @@ import {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token, x-client-domain, x-chat-mode, if-none-match, origin, cache-control, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-tenant-id, x-farmer-id, x-session-token, x-client-domain, if-none-match, origin, cache-control, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, PATCH, OPTIONS',
   'Access-Control-Max-Age': '86400',
 };
@@ -592,35 +592,10 @@ serve(async (req) => {
       );
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // GENERAL-CHAT EARLY SHORT-CIRCUIT (Senior Agronomist, direct LLM)
-    // ─────────────────────────────────────────────────────────────────────────
-    // Highest priority: if the client explicitly says `mode: 'general'`, never
-    // touch the 9-agent symbolic brain or any narration pipeline. Direct LLM.
-    // ═══════════════════════════════════════════════════════════════════════════
-    const _earlyIsGeneralMode =
-      requestBody?.mode === 'general' ||
-      requestBody?.metadata?.chatMode === 'general' ||
-      requestBody?.metadata?.orchestratorBypass === true ||
-      (!landId && requestBody?.metadata?.source === 'general_tab') ||
-      (req.headers.get('x-chat-mode') || '').toLowerCase() === 'general';
+    // NOTE: General-chat requests are routed to the separate `ai-general-chat`
+    // edge function by the client. This function is symbolic-brain only.
 
-    if (_earlyIsGeneralMode) {
-      console.log(`💬 [${traceId}] EARLY general-mode short-circuit → direct LLM (bypassing symbolic brain)`);
-      try { inFlightRequests.delete(dedupeKey); } catch { /* noop */ }
-      return await handleGeneralChat({
-        supabase,
-        traceId,
-        farmerId: finalFarmerId,
-        tenantId: finalTenantId,
-        sessionId: currentSessionId,
-        language: (language || 'en'),
-        messages,
-        landContext: requestBody?.metadata?.landContext ?? null,
-        corsHeaders,
-        conversationHistory,
-      });
-    }
+
 
     // ═══════════════════════════════════════════════════════════════════════════
     // LANGUAGE DETECTION & CONSISTENCY CHECK
@@ -851,40 +826,9 @@ serve(async (req) => {
       }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════════
-    // GENERAL-CHAT SHORT-CIRCUIT (Senior Agronomist, direct LLM)
-    // ─────────────────────────────────────────────────────────────────────────
-    // The General tab is *not* a diagnostic flow — it is open-ended advisory.
-    // Routing it through the 9-agent symbolic brain causes the orchestrator to
-    // misclassify everything as a disease report and reply with
-    // "Which part of the plant is affected?" cards. Instead, when the client
-    // explicitly says `mode: 'general'` (or sends with no landId from the
-    // general tab), we answer directly with a 25-year senior-agronomist
-    // persona and let the farmer optionally attach a land context.
-    // ═══════════════════════════════════════════════════════════════════════════
-    const isGeneralMode =
-      requestBody?.mode === 'general' ||
-      metadata?.chatMode === 'general' ||
-      (!requestedLandId && metadata?.source === 'general_tab');
+    // (General-chat path removed — handled by dedicated `ai-general-chat` function.)
 
-    if (isGeneralMode) {
-      console.log(`💬 [${traceId}] Routing to GENERAL_CHAT direct-LLM handler`);
-      try {
-        inFlightRequests.delete(dedupeKey);
-      } catch { /* noop */ }
-      return await handleGeneralChat({
-        supabase,
-        traceId,
-        farmerId: finalFarmerId,
-        tenantId: finalTenantId,
-        sessionId: currentSessionId,
-        language: detectedLanguage || language || 'en',
-        messages,
-        landContext: metadata?.landContext ?? null,
-        corsHeaders,
-        conversationHistory,
-      });
-    }
+
 
     // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
