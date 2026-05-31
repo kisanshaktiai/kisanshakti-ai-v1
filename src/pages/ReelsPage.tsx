@@ -268,11 +268,11 @@ export default function ReelsPage() {
                   liked={false}
                   saved={false}
                   isMuted={isMuted}
-                  onLike={showOfficialOnlyNotice}
-                  onSave={showOfficialOnlyNotice}
-                  onComment={showOfficialOnlyNotice}
+                  onLike={() => openYouTube(reel.id, 'like')}
+                  onSave={() => openYouTube(reel.id, 'save')}
+                  onComment={() => openYouTube(reel.id, 'comment')}
                   onShare={() => share(reel)}
-                  onReport={showOfficialOnlyNotice}
+                  onReport={() => openYouTube(reel.id, 'like')}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
