@@ -26,6 +26,9 @@ import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-respons
 
 // Legacy helpers removed - dead code cleanup
 
+// GENERAL CHAT: direct-LLM senior-agronomist short-circuit (no symbolic brain)
+import { handleGeneralChat } from './general-chat-handler.ts';
+
 // CRITICAL FIX: Import translation functions for farmer-friendly product names
 import { 
   getProductName, 
