@@ -3948,7 +3948,14 @@ export class AIAgentOrchestrator {
       // If understanding is insufficient, ask clarification BEFORE NLU
       // (SKIPPED if Diagnosis-Only Mode is active)
       // ═══════════════════════════════════════════════════════════════════════════
-      if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage) {
+      // FIX (advisory routing): advisory routes (fertilizer / irrigation / spray-timing /
+      // crop-health / general-info) never need symptom clarification. Reuse the same exempt
+      // set as the Zero-Code Gate so the Understanding gate cannot ask "what are you observing?"
+      // for a scheduling / nutrition question.
+      const isAdvisoryRouteForGate =
+        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
+        intentMetaFromDB?.clarification_mode === 'DIRECT';
+      if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage && !isAdvisoryRouteForGate) {
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
         // ═══════════════════════════════════════════════════════════════════════════
