@@ -129,14 +129,19 @@ export async function handleGeneralChat(
   // 2. Build LLM request
   const systemPrompt = buildSeniorAgronomistSystemPrompt(language, landContext);
 
-  // Use up to last 12 turns of history (DB-loaded preferred, fall back to body history)
+  // Use up to last 12 turns of history (DB-loaded preferred, fall back to body history).
+  // CRITICAL: strip symbolic-clarification turns ("Which part of the plant…",
+  // numbered option lists, observation_key markers) so the senior agronomist is
+  // not biased by past Decision-Brain output that belongs to land-specific chat.
+  const SYMBOLIC_HINTS = /(\[obs_keys?:|\[cause:|\[rule_id:|which part of the plant|एक पर्याय निवडा|एक विकल्प चुनें)/i;
   const history = (conversationHistory.length ? conversationHistory : messages.slice(0, -1))
     .slice(-12)
     .map(m => ({
       role: m.role === 'assistant' ? 'assistant' : 'user',
       content: String(m.content || ''),
     }))
-    .filter(m => m.content.trim().length > 0);
+    .filter(m => m.content.trim().length > 0)
+    .filter(m => !(m.role === 'assistant' && SYMBOLIC_HINTS.test(m.content)));
 
   const chatMessages = [
     { role: 'system', content: systemPrompt },
