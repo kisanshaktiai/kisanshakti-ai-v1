@@ -1610,9 +1610,10 @@ export function EnhancedAIChatInterface() {
       // Resolve the effective land for context (but NOT for orchestrator routing —
       // general-mode goes through the direct-LLM short-circuit on the server).
       const isGeneralTab = activeTab === 'general';
-      const effectiveLandId = isGeneralTab
-        ? (typeof generalLandId === 'string' ? generalLandId : null)
-        : activeTab;
+      const resolvedGeneralLandId = overrideGeneralLandId !== undefined
+        ? overrideGeneralLandId
+        : (typeof generalLandId === 'string' ? generalLandId : null);
+      const effectiveLandId = isGeneralTab ? resolvedGeneralLandId : activeTab;
       const landId = isGeneralTab ? undefined : effectiveLandId;
       const land = effectiveLandId ? lands.find(l => l.id === effectiveLandId) : null;
 
