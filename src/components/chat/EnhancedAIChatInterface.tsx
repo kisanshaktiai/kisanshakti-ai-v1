@@ -41,6 +41,7 @@ import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { ChatQuotaHeader } from '@/components/subscription/ChatQuotaHeader';
 import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
+import GeneralChatLandPicker from './GeneralChatLandPicker';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
@@ -182,6 +183,14 @@ export function EnhancedAIChatInterface() {
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
+
+  // GENERAL-CHAT land context picker:
+  //   undefined => not yet chosen for this session (open picker before sending)
+  //   null      => farmer explicitly chose "no specific land"
+  //   string    => land.id of the chosen land
+  const [generalLandId, setGeneralLandId] = useState<string | null | undefined>(undefined);
+  const [showGeneralLandPicker, setShowGeneralLandPicker] = useState(false);
+  const pendingGeneralSendRef = useRef<string | null>(null);
   
   const [messages, setMessages] = useState<Record<string, Message[]>>({
     general: []
@@ -454,6 +463,14 @@ export function EnhancedAIChatInterface() {
       setSessionStartTime(prev => ({ ...prev, [activeTab]: new Date() }));
     }
   }, [activeTab, messages, sessionStartTime]);
+
+  // Reset the General-tab land context whenever the general session is empty
+  // so the picker re-appears for each fresh conversation.
+  useEffect(() => {
+    if (activeTab === 'general' && (messages.general?.length || 0) === 0) {
+      setGeneralLandId(undefined);
+    }
+  }, [activeTab, messages.general]);
 
   useEffect(() => {
     const scrollContainer = scrollAreaRef.current;
@@ -1521,6 +1538,21 @@ export function EnhancedAIChatInterface() {
     
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
 
+    // ─── GENERAL-CHAT land context gate ───────────────────────────────────
+    // On the General tab, before the first send of a session, ask the farmer
+    // which land this question is about (or "no specific land"). Their pick
+    // is then attached as authoritative context for the direct-LLM answer.
+    if (
+      activeTab === 'general' &&
+      generalLandId === undefined &&
+      finalMessage &&
+      (lands?.length || 0) > 0
+    ) {
+      pendingGeneralSendRef.current = finalMessage;
+      setShowGeneralLandPicker(true);
+      return;
+    }
+
     // ─── Subscription quota gate ──────────────────────────────────────────
     // Block sends when farmer is over their daily AI-chat quota or when the
     // tenant has disabled the AI Chat feature. Server-side enforcement in
@@ -1572,12 +1604,19 @@ export function EnhancedAIChatInterface() {
     
     try {
       const sessionId = await getCurrentSessionId();
-      const landId = activeTab !== 'general' ? activeTab : undefined;
-      const land = landId ? lands.find(l => l.id === landId) : null;
-      
-      console.log('🤖 [Orchestrator] Sending message to 9-Agent Pipeline');
-      console.log('🌾 Land context:', land?.name || 'General Chat');
-      
+
+      // On the General tab the farmer may have attached a land via the picker.
+      // Resolve the effective land for context (but NOT for orchestrator routing —
+      // general-mode goes through the direct-LLM short-circuit on the server).
+      const isGeneralTab = activeTab === 'general';
+      const effectiveLandId = isGeneralTab
+        ? (typeof generalLandId === 'string' ? generalLandId : null)
+        : activeTab;
+      const landId = isGeneralTab ? undefined : effectiveLandId;
+      const land = effectiveLandId ? lands.find(l => l.id === effectiveLandId) : null;
+
+      console.log('🤖 [Chat] Sending message', { mode: isGeneralTab ? 'general' : 'land_specific', land: land?.name || 'none' });
+
       // Build land context for orchestrator - CRITICAL: Include crop_schedule data for accurate stage calculation
       // Find active crop schedule for this land
       const activeSchedule = land?.crop_schedules?.find((s: any) => s.status === 'active') || 
@@ -1608,6 +1647,7 @@ export function EnhancedAIChatInterface() {
         center_lat: land.center_lat,
         center_lon: land.center_lon
       } : null;
+
       
       // ═══════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Deduplicate conversation history to prevent repeated messages
@@ -1655,11 +1695,13 @@ export function EnhancedAIChatInterface() {
           sessionId,
           landId,
           language,
+          mode: isGeneralTab ? 'general' : 'land_specific',
           metadata: {
             tenantId: tenant?.id,
             farmerId: user?.id,
             landContext,
-            source: 'orchestrator_v2',
+            chatMode: isGeneralTab ? 'general' : 'land_specific',
+            source: isGeneralTab ? 'general_tab' : 'orchestrator_v2',
             proactiveAlert: proactiveAlertPayload || undefined,
           }
         },
@@ -2112,6 +2154,27 @@ export function EnhancedAIChatInterface() {
           onSkip={() => setShowVoiceDownload(false)}
         />
       )}
+
+      {/* General-tab Land Context Picker */}
+      <GeneralChatLandPicker
+        open={showGeneralLandPicker}
+        lands={lands as any}
+        onClose={() => {
+          setShowGeneralLandPicker(false);
+          pendingGeneralSendRef.current = null;
+        }}
+        onPick={(picked) => {
+          setGeneralLandId(picked);
+          setShowGeneralLandPicker(false);
+          const queued = pendingGeneralSendRef.current;
+          pendingGeneralSendRef.current = null;
+          if (queued) {
+            // resume the send now that context is known
+            setTimeout(() => { void sendMessage(queued); }, 0);
+          }
+        }}
+      />
+
 
       {/* ═══════════════════════════════════════════════════════════════════════════
           COMPACT HEADER - Mobile-First with Integrated Land Selector
