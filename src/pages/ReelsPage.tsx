@@ -335,6 +335,50 @@ export default function ReelsPage() {
         ))}
       </AnimatePresence>
 
+      {/* In-app comments sheet — comments live on YouTube; user explicitly chooses to view them there */}
+      <Sheet open={!!commentSheetReel} onOpenChange={(open) => !open && setCommentSheetReel(null)}>
+        <SheetContent side="bottom" className="bg-background border-t rounded-t-2xl max-h-[70vh] p-0">
+          <SheetHeader className="px-5 pt-5 pb-3 border-b">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <MessageCircle className="w-5 h-5 text-primary" />
+              {t('reels.comments.title', 'Comments')}
+            </SheetTitle>
+            <SheetDescription className="text-xs text-left">
+              {t('reels.comments.subtitle', 'Comments for official KisanShakti AI videos live on YouTube.')}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="px-5 py-6 flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <MessageCircle className="w-7 h-7 text-primary" />
+            </div>
+            <p className="text-sm text-foreground font-medium leading-snug max-w-xs">
+              {commentSheetReel?.title}
+            </p>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              {t(
+                'reels.comments.body',
+                'Join the conversation on the official KisanShakti AI YouTube channel. Your comment helps other farmers too.',
+              )}
+            </p>
+            <Button
+              className="w-full mt-2 gap-2"
+              onClick={() => commentSheetReel && viewCommentsOnYouTube(commentSheetReel)}
+            >
+              <ExternalLink className="w-4 h-4" />
+              {t('reels.comments.open_youtube', 'View comments on YouTube')}
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setCommentSheetReel(null)}
+            >
+              {t('common.close', 'Close')}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
