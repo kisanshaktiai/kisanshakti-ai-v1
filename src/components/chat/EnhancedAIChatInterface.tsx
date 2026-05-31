@@ -1704,32 +1704,34 @@ export function EnhancedAIChatInterface() {
       }
       
       // ═══════════════════════════════════════════════════════════════════════
-      // 🤖 ROUTING:
-      //   - General tab → direct-LLM senior agronomist (no symbolic brain)
-      //   - Land tab    → 9-agent symbolic orchestrator
+      // 🤖 ROUTING (by edge-function name — single source of truth):
+      //   - General tab → `ai-general-chat`     (direct LLM, senior agronomist)
+      //   - Land tab    → `ai-agriculture-chat` (9-agent symbolic brain)
       // ═══════════════════════════════════════════════════════════════════════
-      const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
-        body: {
-          messages: [...cleanHistory, { role: 'user', content: finalMessage }],
-          sessionId,
-          landId,
-          language,
-          mode: isGeneralTab ? 'general' : 'land_specific',
-          metadata: {
-            tenantId: tenant?.id,
-            farmerId: user?.id,
-            landContext,
-            chatMode: isGeneralTab ? 'general' : 'land_specific',
-            source: isGeneralTab ? 'general_tab' : 'orchestrator_v2',
-            orchestratorBypass: isGeneralTab ? true : undefined,
-            proactiveAlert: proactiveAlertPayload || undefined,
-          }
-        },
+      const fnName = isGeneralTab ? 'ai-general-chat' : 'ai-agriculture-chat';
+      const invokeBody: Record<string, any> = {
+        messages: [...cleanHistory, { role: 'user', content: finalMessage }],
+        sessionId,
+        landId,
+        language,
+      };
+      if (isGeneralTab) {
+        invokeBody.landContext = landContext ?? null;
+      } else {
+        invokeBody.metadata = {
+          tenantId: tenant?.id,
+          farmerId: user?.id,
+          landContext,
+          source: 'orchestrator_v2',
+          proactiveAlert: proactiveAlertPayload || undefined,
+        };
+      }
+      const { data, error } = await supabase.functions.invoke(fnName, {
+        body: invokeBody,
         headers: {
           'x-tenant-id': tenant?.id || '',
           'x-farmer-id': user?.id || '',
           'x-session-token': sessionToken,
-          'x-chat-mode': isGeneralTab ? 'general' : 'land_specific',
         }
       });
       
