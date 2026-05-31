@@ -1449,6 +1449,8 @@ Translate phi_days to: "Stop spraying at least X days before harvest" (in natura
 ${ruralRules}
 ${cropStageConstraints}
 
+${input.farmer_addressing?.promptDirective || ''}
+
 IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them as a village agriculture officer EXPLAINING to the farmer in natural rural ${langName}. Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
 
 ═══ FINAL REMINDER ═══
