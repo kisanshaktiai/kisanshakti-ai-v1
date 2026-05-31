@@ -207,7 +207,22 @@ serve(async (req: Request) => {
     }
 
     // ── Build LLM messages (filter symbolic-leakage from history)
-    const systemPrompt = buildSystemPrompt(language, landContext);
+    // ── Load farmer profile for respectful addressing (presentation-only)
+    let addressing: FarmerAddressing | null = null;
+    try {
+      const profile = await loadFarmerProfileLite(supabase, farmerId, language);
+      addressing = getFarmerAddressing({
+        language: profile.language || language,
+        state: profile.state,
+        gender: profile.gender,
+        farmer_name: profile.farmer_name,
+      });
+      console.log(`👤 [${traceId}] addressing: ${addressing.primary} (${addressing.gender}/${profile.state || 'no-state'})`);
+    } catch (e) {
+      console.warn(`[${traceId}] addressing build failed:`, (e as Error).message);
+    }
+
+    const systemPrompt = buildSystemPrompt(language, landContext, addressing);
     const history = (messages.slice(0, -1) as any[])
       .slice(-12)
       .map((m) => ({
