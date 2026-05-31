@@ -28,6 +28,7 @@ export default function ReelsPage() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: officialVideos = [], isLoading: isOfficialLoading, refetch: refetchOfficial } = useYouTubeChannelReels(24);
+  const { track } = useYouTubeReelEngagement();
 
   const reels: OfficialReel[] = useMemo(
     () => officialVideos.map((video) => ({
