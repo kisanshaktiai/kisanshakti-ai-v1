@@ -1669,11 +1669,26 @@ export function EnhancedAIChatInterface() {
         deduplicatedHistory.push(msg);
       }
       
-      // Take last 6 unique messages for context
-      const conversationHistory = deduplicatedHistory.slice(-6).map(m => ({ 
-        role: m.role, 
-        content: m.content 
+      // Take last 6 unique messages for context.
+      // For General tab, strip any prior symbolic-clarification/orchestrator turns
+      // so the direct-LLM senior-agronomist is not biased by past decision-brain output.
+      let conversationHistory = deduplicatedHistory.slice(-6).map(m => ({
+        role: m.role,
+        content: m.content,
+        _orch: (m as any).orchestratorType,
+        _clar: !!(m as any).clarificationOptions,
       }));
+
+      if (isGeneralTab) {
+        conversationHistory = conversationHistory.filter(m => {
+          if (m.role !== 'assistant') return true;
+          if (m._clar) return false;
+          if (m._orch && m._orch !== 'DECISION_PROVIDED') return false;
+          return true;
+        });
+      }
+
+      const cleanHistory = conversationHistory.map(m => ({ role: m.role, content: m.content }));
       
       const sessionToken = localStorage.getItem('app_session_token') || '';
       
@@ -1681,19 +1696,21 @@ export function EnhancedAIChatInterface() {
       // alert's Decision-Brain payload so the orchestrator narrates from
       // authoritative facts instead of re-diagnosing from the seeded question.
       // Consume-once: clear after attaching so subsequent turns are not biased.
-      const proactiveAlertPayload = proactiveAlertRef.current[activeTab];
+      // Skip entirely on the General tab — proactive alerts belong to land-specific chat.
+      const proactiveAlertPayload = isGeneralTab ? null : proactiveAlertRef.current[activeTab];
       if (proactiveAlertPayload) {
         delete proactiveAlertRef.current[activeTab];
         console.log('[chat] Attaching proactive alert to outgoing message:', proactiveAlertPayload.id);
       }
       
       // ═══════════════════════════════════════════════════════════════════════
-      // 🤖 ALL QUERIES → 9-AGENT ORCHESTRATOR
-      // NLU → Visual → Context → Diagnostic → Fusion → Rules → Safety → Communication
+      // 🤖 ROUTING:
+      //   - General tab → direct-LLM senior agronomist (no symbolic brain)
+      //   - Land tab    → 9-agent symbolic orchestrator
       // ═══════════════════════════════════════════════════════════════════════
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
-          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
+          messages: [...cleanHistory, { role: 'user', content: finalMessage }],
           sessionId,
           landId,
           language,
@@ -1704,13 +1721,15 @@ export function EnhancedAIChatInterface() {
             landContext,
             chatMode: isGeneralTab ? 'general' : 'land_specific',
             source: isGeneralTab ? 'general_tab' : 'orchestrator_v2',
+            orchestratorBypass: isGeneralTab ? true : undefined,
             proactiveAlert: proactiveAlertPayload || undefined,
           }
         },
         headers: {
           'x-tenant-id': tenant?.id || '',
           'x-farmer-id': user?.id || '',
-          'x-session-token': sessionToken
+          'x-session-token': sessionToken,
+          'x-chat-mode': isGeneralTab ? 'general' : 'land_specific',
         }
       });
       
