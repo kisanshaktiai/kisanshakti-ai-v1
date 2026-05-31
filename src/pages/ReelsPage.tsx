@@ -159,6 +159,7 @@ export default function ReelsPage() {
     const last = lastTapRef.current;
     if (last.reelId === reel.id && now - last.t < 280) {
       triggerDoubleTapHeart(e);
+      if (!likedSet.has(reel.id)) toggleLike(reel, 'double_tap');
       lastTapRef.current = { t: 0, reelId: null };
     } else {
       lastTapRef.current = { t: now, reelId: reel.id };
