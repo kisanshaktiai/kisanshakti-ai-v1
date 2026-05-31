@@ -2195,8 +2195,9 @@ export function EnhancedAIChatInterface() {
           const queued = pendingGeneralSendRef.current;
           pendingGeneralSendRef.current = null;
           if (queued) {
-            // resume the send now that context is known
-            setTimeout(() => { void sendMessage(queued); }, 0);
+            // Pass the picked id explicitly — do NOT rely on React state having
+            // committed yet, which previously caused the picker to re-open.
+            setTimeout(() => { void sendMessage(queued, undefined, picked); }, 0);
           }
         }}
       />
