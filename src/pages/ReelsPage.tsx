@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Loader2 } from 'lucide-react';
+import { ArrowLeft, Heart, Loader2, MessageCircle, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
@@ -10,7 +10,18 @@ import { useYouTubeReelEngagement } from '@/hooks/useYouTubeReelEngagement';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+const LIKES_KEY = 'reels.liked.v1';
+const SAVES_KEY = 'reels.saved.v1';
+const readSet = (k: string): Set<string> => {
+  try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch { return new Set(); }
+};
+const writeSet = (k: string, s: Set<string>) => {
+  try { localStorage.setItem(k, JSON.stringify([...s])); } catch {}
+};
 
 type OfficialReel = React.ComponentProps<typeof ReelPlayer>['reel'];
 
