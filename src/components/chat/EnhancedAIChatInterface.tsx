@@ -41,6 +41,7 @@ import { uploadChatImage, uploadCompressedVideo } from '@/utils/chatImageStorage
 import { useEntitlements } from '@/hooks/useEntitlements';
 import { ChatQuotaHeader } from '@/components/subscription/ChatQuotaHeader';
 import { ChatQuotaBanner } from '@/components/subscription/ChatQuotaBanner';
+import GeneralChatLandPicker from './GeneralChatLandPicker';
 
 // Message status type for optimistic updates
 export type MessageStatus = 'sending' | 'sent' | 'failed' | 'synced';
