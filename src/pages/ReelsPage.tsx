@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
+import { useYouTubeReelEngagement } from '@/hooks/useYouTubeReelEngagement';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
 import { Badge } from '@/components/ui/badge';
