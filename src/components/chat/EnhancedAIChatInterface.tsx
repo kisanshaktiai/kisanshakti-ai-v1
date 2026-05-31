@@ -1524,7 +1524,7 @@ export function EnhancedAIChatInterface() {
   // 🤖 UNIFIED SEND MESSAGE - ALL queries go to 9-Agent Orchestrator
   // ⚡ OPTIMISTIC UPDATES - Show message instantly before server confirms
   // ═══════════════════════════════════════════════════════════════════════
-  const sendMessage = async (text?: string, quickAction?: string) => {
+  const sendMessage = async (text?: string, quickAction?: string, overrideGeneralLandId?: string | null) => {
     const messageText = text || inputValue.trim();
     const finalMessage = quickAction ? `${quickAction}: ${messageText}` : messageText;
     
@@ -1539,11 +1539,12 @@ export function EnhancedAIChatInterface() {
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
 
     // ─── GENERAL-CHAT land context gate ───────────────────────────────────
-    // On the General tab, before the first send of a session, ask the farmer
-    // which land this question is about (or "no specific land"). Their pick
-    // is then attached as authoritative context for the direct-LLM answer.
+    // Only open the picker on the FIRST send of a fresh General session.
+    // When the picker resolves, it re-invokes sendMessage with an explicit
+    // `overrideGeneralLandId` so we never depend on not-yet-committed React state.
     if (
       activeTab === 'general' &&
+      overrideGeneralLandId === undefined &&
       generalLandId === undefined &&
       finalMessage &&
       (lands?.length || 0) > 0
