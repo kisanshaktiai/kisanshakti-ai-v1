@@ -2147,6 +2147,27 @@ export function EnhancedAIChatInterface() {
         />
       )}
 
+      {/* General-tab Land Context Picker */}
+      <GeneralChatLandPicker
+        open={showGeneralLandPicker}
+        lands={lands as any}
+        onClose={() => {
+          setShowGeneralLandPicker(false);
+          pendingGeneralSendRef.current = null;
+        }}
+        onPick={(picked) => {
+          setGeneralLandId(picked);
+          setShowGeneralLandPicker(false);
+          const queued = pendingGeneralSendRef.current;
+          pendingGeneralSendRef.current = null;
+          if (queued) {
+            // resume the send now that context is known
+            setTimeout(() => { void sendMessage(queued); }, 0);
+          }
+        }}
+      />
+
+
       {/* ═══════════════════════════════════════════════════════════════════════════
           COMPACT HEADER - Mobile-First with Integrated Land Selector
           ═══════════════════════════════════════════════════════════════════════════ */}
