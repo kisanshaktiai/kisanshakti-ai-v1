@@ -3955,6 +3955,9 @@ export class AIAgentOrchestrator {
       const isAdvisoryRouteForGate =
         ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
         intentMetaFromDB?.clarification_mode === 'DIRECT';
+      if (isAdvisoryRouteForGate && understandingResult.clarification_required) {
+        console.log(`   ✅ [ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE] route=${queryRoute.route} intent=${intentCode} — skipping symptom clarification (understanding=${understandingResult.understanding_confidence})`);
+      }
       if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage && !isAdvisoryRouteForGate) {
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
