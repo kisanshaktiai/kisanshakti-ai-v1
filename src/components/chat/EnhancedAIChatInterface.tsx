@@ -1687,11 +1687,13 @@ export function EnhancedAIChatInterface() {
           sessionId,
           landId,
           language,
+          mode: isGeneralTab ? 'general' : 'land_specific',
           metadata: {
             tenantId: tenant?.id,
             farmerId: user?.id,
             landContext,
-            source: 'orchestrator_v2',
+            chatMode: isGeneralTab ? 'general' : 'land_specific',
+            source: isGeneralTab ? 'general_tab' : 'orchestrator_v2',
             proactiveAlert: proactiveAlertPayload || undefined,
           }
         },
