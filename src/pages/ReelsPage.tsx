@@ -151,6 +151,7 @@ export default function ReelsPage() {
       // WhatsApp deep link as primary fallback for farmers
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
+    track(reel.id, 'share', { metadata: { channel: navigator.share ? 'native' : 'whatsapp' } });
     toast({ description: t('reels.shared', 'Shared') });
   };
 
