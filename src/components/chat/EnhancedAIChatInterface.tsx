@@ -1596,12 +1596,19 @@ export function EnhancedAIChatInterface() {
     
     try {
       const sessionId = await getCurrentSessionId();
-      const landId = activeTab !== 'general' ? activeTab : undefined;
-      const land = landId ? lands.find(l => l.id === landId) : null;
-      
-      console.log('🤖 [Orchestrator] Sending message to 9-Agent Pipeline');
-      console.log('🌾 Land context:', land?.name || 'General Chat');
-      
+
+      // On the General tab the farmer may have attached a land via the picker.
+      // Resolve the effective land for context (but NOT for orchestrator routing —
+      // general-mode goes through the direct-LLM short-circuit on the server).
+      const isGeneralTab = activeTab === 'general';
+      const effectiveLandId = isGeneralTab
+        ? (typeof generalLandId === 'string' ? generalLandId : null)
+        : activeTab;
+      const landId = isGeneralTab ? undefined : effectiveLandId;
+      const land = effectiveLandId ? lands.find(l => l.id === effectiveLandId) : null;
+
+      console.log('🤖 [Chat] Sending message', { mode: isGeneralTab ? 'general' : 'land_specific', land: land?.name || 'none' });
+
       // Build land context for orchestrator - CRITICAL: Include crop_schedule data for accurate stage calculation
       // Find active crop schedule for this land
       const activeSchedule = land?.crop_schedules?.find((s: any) => s.status === 'active') || 
@@ -1632,6 +1639,7 @@ export function EnhancedAIChatInterface() {
         center_lat: land.center_lat,
         center_lon: land.center_lon
       } : null;
+
       
       // ═══════════════════════════════════════════════════════════════════════
       // CRITICAL FIX: Deduplicate conversation history to prevent repeated messages
