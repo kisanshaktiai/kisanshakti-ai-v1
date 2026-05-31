@@ -601,7 +601,9 @@ serve(async (req) => {
     const _earlyIsGeneralMode =
       requestBody?.mode === 'general' ||
       requestBody?.metadata?.chatMode === 'general' ||
-      (!landId && requestBody?.metadata?.source === 'general_tab');
+      requestBody?.metadata?.orchestratorBypass === true ||
+      (!landId && requestBody?.metadata?.source === 'general_tab') ||
+      (req.headers.get('x-chat-mode') || '').toLowerCase() === 'general';
 
     if (_earlyIsGeneralMode) {
       console.log(`💬 [${traceId}] EARLY general-mode short-circuit → direct LLM (bypassing symbolic brain)`);

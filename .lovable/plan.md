@@ -1,155 +1,67 @@
-# Separate General Chat from Symbolic Decision Brain (No New Edge Function)
+## Audit findings
 
-## Why the previous plan does not fit
+1. **General tab request is still reaching symbolic brain in the live app**
+   - The network trace from the attached screenshot shows `mode: "general"` was sent, but the response came back as:
+     - `metadata.type: "clarification"`
+     - `orchestrator_type: "CLARIFICATION_QUESTION"`
+     - `source: "orchestrator_v1"`
+   - That proves the deployed/current runtime path did not use the direct General LLM handler for that request.
 
-The project is at the edge-function limit, so we **cannot ship a new `ai-general-chat` function**. We also already have a frontend memory rule (`farmer-interaction-engine-rules-v1`) that says: *"WITHOUT land context → Direct LLM answers, NO options, NO photo requests"* — and the orchestrator already has a `Phase 0.4B` branch meant to route `GENERAL_INFO without land` to a direct LLM path. The bug is that the **General tab** still goes through the full 9-agent pipeline, which classifies open agronomy questions as diagnostic and replies with "Which part of the plant is affected? 1) पान 2) Stem / Stalk 3) मूळ".
+2. **Root cause of repeated land selection**
+   - In `EnhancedAIChatInterface.tsx`, `setGeneralLandId(picked)` is asynchronous.
+   - Immediately after selection, code calls `sendMessage(queued)` in `setTimeout`.
+   - React may not have committed `generalLandId` yet, so `sendMessage()` still sees `generalLandId === undefined` and opens the picker again.
 
-The fix is **routing, not a new function**. We add a first-class `mode: 'general'` branch inside the existing `ai-agriculture-chat` function that bypasses the orchestrator entirely and calls the LLM directly with a **senior agronomist** system prompt. We also reclaim slots by deleting orphan edge functions if needed.
+3. **Root cause of raw i18n key in the green tab card**
+   - `t('chat.general')` conflicts with two shapes:
+     - base bundle: `chat.general` is a string
+     - lazy chat bundle: `chat.general` is an object containing picker keys
+   - After lazy loading, `t('chat.general')` returns an object, causing the visible error: `key 'chat.general (mr)' returned an object instead of string`.
 
-## Reusing existing infrastructure
+4. **General history pollution is worsening the bug**
+   - The request body includes older symbolic clarification messages in General chat history.
+   - Even after routing is fixed, those old clarification messages can bias General LLM responses unless filtered for General mode.
 
-| Need | Reuse |
-| --- | --- |
-| AI call to LLM | `supabase/functions/_shared/aiConfig.ts` (`getBestAvailableProvider`, `buildAIRequest`) — already used by `ai-agriculture-chat`, `ai-smart-schedule`, `ai-crop-scan`. |
-| Persistence of user + assistant messages | Existing `ai_chat_messages` / `ai_chat_sessions` writes inside `ai-agriculture-chat` (`session_type: 'general'` already exists). |
-| Entitlement + quota gating | Existing `subscriptionMiddleware` + `rateGuard` already wired into `ai-agriculture-chat`. |
-| Auth / JWT validation | Existing `jwtValidator` / `tenantMiddleware` in `ai-agriculture-chat`. |
-| Language detection + canonical-script enforcement | Existing helpers in `ai-agriculture-chat/utils`. |
+## Implementation plan
 
-No new function, no new schema, no new middleware.
+### Phase 1: Fix General land-picker state race
+- Add a local send helper for General tab that accepts the selected land id explicitly, instead of depending on delayed React state.
+- When the farmer selects a land:
+  - close picker
+  - store selected land id
+  - send the queued message once using that selected id
+- Add a small guard so the same queued message cannot be resumed twice.
 
-## Reclaim slots (only if quota is still blocking after the change)
+### Phase 2: Make General tab routing unambiguous
+- In the frontend request body for General mode:
+  - always send `mode: "general"`
+  - keep `landId` absent/null for routing
+  - send selected land only inside `metadata.landContext`
+  - add a stricter marker such as `metadata.orchestratorBypass: true`
+- In the Edge Function, move/keep the General short-circuit before any symbolic/session/proactive logic that can return clarification.
+- Treat any of these as General mode:
+  - `mode === "general"`
+  - `metadata.chatMode === "general"`
+  - `metadata.source === "general_tab"`
+  - `metadata.orchestratorBypass === true`
 
-Confirmed orphan functions (zero external references in the codebase):
-- `ai-query-understanding`
-- `validation-monitor`
-- `mcp-handler`
+### Phase 3: Prevent symbolic cards from rendering in General tab
+- For General responses, create the frontend AI message as normal text, not `messageType: "orchestrator"`.
+- Do not attach `clarificationOptions`, `structuredAdvisory`, or Decision Brain metadata for `GENERAL_LLM_DIRECT` responses.
+- If an old General response from history has `CLARIFICATION_QUESTION`/symbolic metadata, display it as plain historical text only, not interactive symbolic cards.
 
-These can be deleted via `supabase--delete_edge_functions` to free room. They are not used by this fix; listed only as a fallback if the limit is the blocker.
+### Phase 4: Fix General tab i18n key collision
+- Replace `t('chat.general')` in the General tab button with `t('chat.tabs.general')` or `t('chat.generalChat')`.
+- Keep picker keys under `chat.general.*` unchanged.
+- Ensure Marathi/Hindi/English labels resolve as strings.
 
-## Solution
+### Phase 5: Filter General LLM conversation history
+- Before sending General mode to the Edge Function, remove previous symbolic clarification messages from the history payload.
+- In `general-chat-handler.ts`, also ignore history entries whose content or metadata indicates symbolic clarification/options.
+- This keeps General tab as direct agronomist chat while land-specific tabs continue using the symbolic decision brain.
 
-### 1. Server: add a `mode: 'general'` short-circuit in `ai-agriculture-chat`
-
-In `supabase/functions/ai-agriculture-chat/index.ts`, immediately after request parsing + auth + entitlement checks (≈line 250–440, before the `getOrchestrator()` call at ≈line 826), insert:
-
-```ts
-const isGeneralMode =
-  body?.mode === 'general' ||
-  body?.metadata?.chatMode === 'general' ||
-  (!landId && body?.metadata?.source === 'general_tab');
-
-if (isGeneralMode) {
-  return await handleGeneralChat({
-    req, supa, traceId,
-    farmerId: user.id, tenantId: tenant.id,
-    sessionId, language, messages,
-    landContext: body?.metadata?.landContext ?? null, // optional, picked by farmer
-    corsHeaders,
-  });
-}
-```
-
-A new helper file `supabase/functions/ai-agriculture-chat/general-chat-handler.ts` exports `handleGeneralChat(...)`:
-
-- Builds a single system prompt (see §3).
-- Sends `[system, ...last 12 turns, user]` through `getBestAvailableProvider()` + `buildAIRequest()` (no tools, no JSON mode, plain markdown text).
-- Persists the user message + assistant reply to `ai_chat_messages` with `session_type: 'general'`, `metadata.chat_mode = 'general_llm_v1'`, `ai_model = <provider/model>`.
-- Returns the same response envelope the frontend already understands:
-  ```json
-  {
-    "response": "<markdown in farmer's language>",
-    "metadata": {
-      "type": "general_chat",
-      "orchestrator_type": "GENERAL_LLM_DIRECT",
-      "model": "...",
-      "trace_id": "...",
-      "land_context_used": true|false
-    }
-  }
-  ```
-  Crucially, **no `options`, no `clarificationOptions`, no `selectionType`** — the existing `isClarification` check at line 1703 of `EnhancedAIChatInterface.tsx` then correctly falls through and renders a normal markdown bubble.
-- Errors (429 / 402 / network) bubble up with the same shape `ai-agriculture-chat` already returns.
-
-### 2. Frontend: route General tab to the new mode + land-context picker
-
-`src/components/chat/EnhancedAIChatInterface.tsx`:
-
-- In the `sendMessage` invoke at line 1652, add to the body:
-  ```ts
-  mode: activeTab === 'general' ? 'general' : 'land_specific',
-  metadata: {
-    ...existingMetadata,
-    chatMode: activeTab === 'general' ? 'general' : 'land_specific',
-    landContext: activeTab === 'general' ? generalLandContext : landContext,
-  }
-  ```
-- Add state `generalLandContext: LandContext | null` keyed per session, persisted in `sessionStorage` under `chat:general-land:<sessionId>`.
-- Before the first General-tab send of a session, if the farmer has ≥1 land and `generalLandContext === undefined`, open a new bottom-sheet `GeneralChatLandPicker` (lists farmer's lands + an explicit "No specific land — general question" option). Queue the outgoing message until they pick.
-- Show a small chip under the General tab header: *"Context: {land name | General}"* with a "Change" button to re-open the picker.
-- Skip all decision-brain post-processing for General-mode responses (the `isClarification`, `decision_output`, `data_audit_cards` branches already only trigger when those fields exist, so this is automatic once the server stops sending them).
-
-Files:
-- **Edit** `src/components/chat/EnhancedAIChatInterface.tsx`
-- **New** `src/components/chat/GeneralChatLandPicker.tsx`
-- **Edit** `src/components/chat/GeneralChatWelcomeCard.tsx` — replace diagnostic-style suggestions with free-form agronomy prompts ("इस मौसम में कौन सी फसल?", "गहूसाठी कोणते खत?", etc.).
-- **Edit** `src/i18n/locales/{en,hi,mr}/chat.json` — add keys: `general.pick_land_title`, `general.pick_land_subtitle`, `general.no_specific_land`, `general.context_chip`, `general.change_land`, `general.queued_waiting_pick`.
-
-### 3. Senior Agronomist System Prompt (server-side)
-
-```
-You are a SENIOR AGRONOMIST with 25+ years of on-field, rural farming experience
-across Indian smallholder agriculture. You advise farmers in clear, practical,
-season-aware language they can act on the same day.
-
-Hard rules:
-- Answer ONLY agriculture topics (crops, soil, water, fertilizer, pest/disease,
-  weather, market, schemes, livestock, post-harvest). If the question is off-topic,
-  politely steer back to farming in one sentence.
-- Reply in the farmer's selected language ({{language}}) using its native script.
-- Use simple rural vocabulary — like an elder advisor in the village, not a textbook.
-- If LAND_CONTEXT is provided, use crop, growth stage, area, soil, district, season,
-  and recent weather. If missing, give the best general guidance and briefly note
-  one extra detail that would sharpen the answer.
-- Be specific: name inputs, dosages per acre, timings, and PHI when relevant.
-  Prefer organic / IPM first, then chemical only when justified.
-- Never invent regulatory approvals. If unsure, say so.
-- Reply as plain markdown. NEVER ask the farmer to "classify" their question,
-  pick an "intent", or upload a photo. Maximum ONE follow-up question if truly needed.
-
-LAND_CONTEXT:
-{{landContextJsonOrNone}}
-```
-
-Followed by the last 12 turns of conversation + the new user message.
-
-## Files Changed
-
-**New**
-- `supabase/functions/ai-agriculture-chat/general-chat-handler.ts`
-- `src/components/chat/GeneralChatLandPicker.tsx`
-
-**Edited**
-- `supabase/functions/ai-agriculture-chat/index.ts` — add `isGeneralMode` short-circuit before orchestrator.
-- `src/components/chat/EnhancedAIChatInterface.tsx` — send `mode`, add picker gating, store per-session land context chip.
-- `src/components/chat/GeneralChatWelcomeCard.tsx` — agronomy-style suggestions.
-- `src/i18n/locales/{en,hi,mr}/chat.json` — picker + chip keys.
-
-**Optional (only if deploy still blocks on quota)**
-- Delete orphan edge functions: `ai-query-understanding`, `validation-monitor`, `mcp-handler` (via `supabase--delete_edge_functions`).
-
-## Unchanged
-
-- Land-specific tabs continue using the full 9-agent symbolic orchestrator.
-- Photo / video crop-scan flow (`ai-crop-scan`) unchanged.
-- `ai_chat_messages`, `ai_chat_sessions`, RLS, quotas — unchanged.
-- Subscription gating (`AIChat.tsx` redirect to `/app/subscription`) unchanged.
-
-## Verification
-
-1. `/app/chat` → **General** tab → ask "हिरवी मिरची पीक घ्यायचे आहे काय करावे?" → land picker appears → pick "No specific land" → assistant returns a markdown agronomy answer in Marathi. **No** "Which part of the plant is affected?" card.
-2. Same tab, pick a real land → next answer references that land's crop/stage in the reply.
-3. Switch to a **Land tab** → ask a pest question with vague symptoms → existing decision-brain clarification card still appears (untouched).
-4. Reload → restored General messages + the same context chip.
-5. Free / expired plan → still redirected to `/app/subscription`.
-6. Edge-function count after change: unchanged (still N — we modified `ai-agriculture-chat` in-place).
+### Validation
+- Verify a General Marathi query like `हिरवी मिरची पिक घ्यायच आहे काय करावे?` returns a direct senior-agronomist answer, not plant-part options.
+- Verify selecting a land opens the picker only once and then sends immediately.
+- Verify land-specific tabs still show symbolic clarification/Decision Brain cards as before.
+- Verify the green General tab label no longer shows raw i18n-key/object errors.

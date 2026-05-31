@@ -1524,7 +1524,7 @@ export function EnhancedAIChatInterface() {
   // 🤖 UNIFIED SEND MESSAGE - ALL queries go to 9-Agent Orchestrator
   // ⚡ OPTIMISTIC UPDATES - Show message instantly before server confirms
   // ═══════════════════════════════════════════════════════════════════════
-  const sendMessage = async (text?: string, quickAction?: string) => {
+  const sendMessage = async (text?: string, quickAction?: string, overrideGeneralLandId?: string | null) => {
     const messageText = text || inputValue.trim();
     const finalMessage = quickAction ? `${quickAction}: ${messageText}` : messageText;
     
@@ -1539,11 +1539,12 @@ export function EnhancedAIChatInterface() {
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
 
     // ─── GENERAL-CHAT land context gate ───────────────────────────────────
-    // On the General tab, before the first send of a session, ask the farmer
-    // which land this question is about (or "no specific land"). Their pick
-    // is then attached as authoritative context for the direct-LLM answer.
+    // Only open the picker on the FIRST send of a fresh General session.
+    // When the picker resolves, it re-invokes sendMessage with an explicit
+    // `overrideGeneralLandId` so we never depend on not-yet-committed React state.
     if (
       activeTab === 'general' &&
+      overrideGeneralLandId === undefined &&
       generalLandId === undefined &&
       finalMessage &&
       (lands?.length || 0) > 0
@@ -1609,9 +1610,10 @@ export function EnhancedAIChatInterface() {
       // Resolve the effective land for context (but NOT for orchestrator routing —
       // general-mode goes through the direct-LLM short-circuit on the server).
       const isGeneralTab = activeTab === 'general';
-      const effectiveLandId = isGeneralTab
-        ? (typeof generalLandId === 'string' ? generalLandId : null)
-        : activeTab;
+      const resolvedGeneralLandId = overrideGeneralLandId !== undefined
+        ? overrideGeneralLandId
+        : (typeof generalLandId === 'string' ? generalLandId : null);
+      const effectiveLandId = isGeneralTab ? resolvedGeneralLandId : activeTab;
       const landId = isGeneralTab ? undefined : effectiveLandId;
       const land = effectiveLandId ? lands.find(l => l.id === effectiveLandId) : null;
 
@@ -1667,11 +1669,26 @@ export function EnhancedAIChatInterface() {
         deduplicatedHistory.push(msg);
       }
       
-      // Take last 6 unique messages for context
-      const conversationHistory = deduplicatedHistory.slice(-6).map(m => ({ 
-        role: m.role, 
-        content: m.content 
+      // Take last 6 unique messages for context.
+      // For General tab, strip any prior symbolic-clarification/orchestrator turns
+      // so the direct-LLM senior-agronomist is not biased by past decision-brain output.
+      let conversationHistory = deduplicatedHistory.slice(-6).map(m => ({
+        role: m.role,
+        content: m.content,
+        _orch: (m as any).orchestratorType,
+        _clar: !!(m as any).clarificationOptions,
       }));
+
+      if (isGeneralTab) {
+        conversationHistory = conversationHistory.filter(m => {
+          if (m.role !== 'assistant') return true;
+          if (m._clar) return false;
+          if (m._orch && m._orch !== 'DECISION_PROVIDED') return false;
+          return true;
+        });
+      }
+
+      const cleanHistory = conversationHistory.map(m => ({ role: m.role, content: m.content }));
       
       const sessionToken = localStorage.getItem('app_session_token') || '';
       
@@ -1679,19 +1696,21 @@ export function EnhancedAIChatInterface() {
       // alert's Decision-Brain payload so the orchestrator narrates from
       // authoritative facts instead of re-diagnosing from the seeded question.
       // Consume-once: clear after attaching so subsequent turns are not biased.
-      const proactiveAlertPayload = proactiveAlertRef.current[activeTab];
+      // Skip entirely on the General tab — proactive alerts belong to land-specific chat.
+      const proactiveAlertPayload = isGeneralTab ? null : proactiveAlertRef.current[activeTab];
       if (proactiveAlertPayload) {
         delete proactiveAlertRef.current[activeTab];
         console.log('[chat] Attaching proactive alert to outgoing message:', proactiveAlertPayload.id);
       }
       
       // ═══════════════════════════════════════════════════════════════════════
-      // 🤖 ALL QUERIES → 9-AGENT ORCHESTRATOR
-      // NLU → Visual → Context → Diagnostic → Fusion → Rules → Safety → Communication
+      // 🤖 ROUTING:
+      //   - General tab → direct-LLM senior agronomist (no symbolic brain)
+      //   - Land tab    → 9-agent symbolic orchestrator
       // ═══════════════════════════════════════════════════════════════════════
       const { data, error } = await supabase.functions.invoke('ai-agriculture-chat', {
         body: {
-          messages: [...conversationHistory, { role: 'user', content: finalMessage }],
+          messages: [...cleanHistory, { role: 'user', content: finalMessage }],
           sessionId,
           landId,
           language,
@@ -1702,13 +1721,15 @@ export function EnhancedAIChatInterface() {
             landContext,
             chatMode: isGeneralTab ? 'general' : 'land_specific',
             source: isGeneralTab ? 'general_tab' : 'orchestrator_v2',
+            orchestratorBypass: isGeneralTab ? true : undefined,
             proactiveAlert: proactiveAlertPayload || undefined,
           }
         },
         headers: {
           'x-tenant-id': tenant?.id || '',
           'x-farmer-id': user?.id || '',
-          'x-session-token': sessionToken
+          'x-session-token': sessionToken,
+          'x-chat-mode': isGeneralTab ? 'general' : 'land_specific',
         }
       });
       
@@ -1739,44 +1760,49 @@ export function EnhancedAIChatInterface() {
       const aiMessageId = crypto.randomUUID();
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CLARIFICATION DETECTION: Map backend 'clarification' to 'CLARIFICATION_QUESTION'
-      // Also extract options from multiple possible locations
+      // GENERAL-TAB direct-LLM responses must render as plain text — never as
+      // symbolic clarification cards or Decision-Brain UI. This is the visual
+      // guarantee that General chat is treated differently from land-specific.
       // ═══════════════════════════════════════════════════════════════════════════
-      const isClarification = data.metadata?.type === 'clarification' || 
-                              data.metadata?.orchestrator_type === 'CLARIFICATION_QUESTION';
-      
+      const isGeneralResponse =
+        isGeneralTab ||
+        data.metadata?.orchestrator_type === 'GENERAL_LLM_DIRECT' ||
+        data.metadata?.chat_mode === 'general_llm_v1' ||
+        data.metadata?.type === 'general_chat';
+
+      const isClarification = !isGeneralResponse && (
+        data.metadata?.type === 'clarification' ||
+        data.metadata?.orchestrator_type === 'CLARIFICATION_QUESTION'
+      );
+
       const clarificationOptions = isClarification && data.metadata?.options?.length ? {
         question: responseText,
         options: data.metadata.options.map((o: any) => ({
           label: typeof o === 'string' ? o : o.label,
           value: typeof o === 'string' ? o : (o.value || o.label),
           description: typeof o === 'object' ? o.description : undefined,
-          // CRITICAL: Preserve observation_key for rule engine re-evaluation
           observation_key: typeof o === 'object' ? (o.observation_key || o.value) : undefined
         })),
         selectionType: (data.metadata?.selectionType || 'SINGLE_CHOICE') as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE'
       } : undefined;
-      
+
       const aiMessage: Message = {
         id: aiMessageId,
         role: 'assistant',
         content: responseText,
         timestamp: new Date(),
-        messageType: 'orchestrator',
-        // Map 'clarification' to 'CLARIFICATION_QUESTION' for UI detection
-        orchestratorType: isClarification ? 'CLARIFICATION_QUESTION' : 
-                          (data.metadata?.orchestrator_type || 'DECISION_PROVIDED'),
-        // PHASE 5: Include trace_id for debugging
+        messageType: isGeneralResponse ? 'text' : 'orchestrator',
+        orchestratorType: isGeneralResponse
+          ? 'DECISION_PROVIDED'
+          : (isClarification ? 'CLARIFICATION_QUESTION'
+            : (data.metadata?.orchestrator_type || 'DECISION_PROVIDED')),
         traceId: data.metadata?.trace_id,
-        // Include data audit for debugging cards
-        dataAudit: data.dataAudit,
-        // Include clarification options for interactive UI
-        clarificationOptions,
-        // ✅ Canonical Advisory: structured JSON for rich card rendering
-        structuredAdvisory: data.structured_advisory || undefined,
+        dataAudit: isGeneralResponse ? undefined : data.dataAudit,
+        clarificationOptions: isGeneralResponse ? undefined : clarificationOptions,
+        structuredAdvisory: isGeneralResponse ? undefined : (data.structured_advisory || undefined),
         analytics: {
           responseTime: data.responseTime,
-          queryComplexity: 'orchestrator'
+          queryComplexity: isGeneralResponse ? 'general_llm' : 'orchestrator'
         }
       };
       
@@ -2169,8 +2195,9 @@ export function EnhancedAIChatInterface() {
           const queued = pendingGeneralSendRef.current;
           pendingGeneralSendRef.current = null;
           if (queued) {
-            // resume the send now that context is known
-            setTimeout(() => { void sendMessage(queued); }, 0);
+            // Pass the picked id explicitly — do NOT rely on React state having
+            // committed yet, which previously caused the picker to re-open.
+            setTimeout(() => { void sendMessage(queued, undefined, picked); }, 0);
           }
         }}
       />
@@ -2287,7 +2314,7 @@ export function EnhancedAIChatInterface() {
               )}
             >
               <MessageSquare className="h-4 w-4 mb-0.5" />
-              <span className="text-[9px] font-medium">{t('chat.general', 'General')}</span>
+              <span className="text-[9px] font-medium">{t('chat.tabs.general', 'General')}</span>
             </motion.button>
 
             {/* Land Cards - Show loading state or actual cards */}
