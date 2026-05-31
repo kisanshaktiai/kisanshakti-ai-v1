@@ -822,9 +822,45 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // GENERAL-CHAT SHORT-CIRCUIT (Senior Agronomist, direct LLM)
+    // ─────────────────────────────────────────────────────────────────────────
+    // The General tab is *not* a diagnostic flow — it is open-ended advisory.
+    // Routing it through the 9-agent symbolic brain causes the orchestrator to
+    // misclassify everything as a disease report and reply with
+    // "Which part of the plant is affected?" cards. Instead, when the client
+    // explicitly says `mode: 'general'` (or sends with no landId from the
+    // general tab), we answer directly with a 25-year senior-agronomist
+    // persona and let the farmer optionally attach a land context.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const isGeneralMode =
+      requestBody?.mode === 'general' ||
+      metadata?.chatMode === 'general' ||
+      (!requestedLandId && metadata?.source === 'general_tab');
+
+    if (isGeneralMode) {
+      console.log(`💬 [${traceId}] Routing to GENERAL_CHAT direct-LLM handler`);
+      try {
+        inFlightRequests.delete(dedupeKey);
+      } catch { /* noop */ }
+      return await handleGeneralChat({
+        supabase,
+        traceId,
+        farmerId: finalFarmerId,
+        tenantId: finalTenantId,
+        sessionId: currentSessionId,
+        language: detectedLanguage || language || 'en',
+        messages,
+        landContext: metadata?.landContext ?? null,
+        corsHeaders,
+        conversationHistory,
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
     // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();
+    
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
       userMessageContent,
