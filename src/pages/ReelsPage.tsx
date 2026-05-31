@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Loader2 } from 'lucide-react';
+import { ArrowLeft, Heart, Loader2, MessageCircle, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
@@ -10,7 +10,18 @@ import { useYouTubeReelEngagement } from '@/hooks/useYouTubeReelEngagement';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+const LIKES_KEY = 'reels.liked.v1';
+const SAVES_KEY = 'reels.saved.v1';
+const readSet = (k: string): Set<string> => {
+  try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch { return new Set(); }
+};
+const writeSet = (k: string, s: Set<string>) => {
+  try { localStorage.setItem(k, JSON.stringify([...s])); } catch {}
+};
 
 type OfficialReel = React.ComponentProps<typeof ReelPlayer>['reel'];
 
@@ -24,6 +35,9 @@ export default function ReelsPage() {
   const [isMuted, setIsMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [doubleTapHearts, setDoubleTapHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const [likedSet, setLikedSet] = useState<Set<string>>(() => readSet(LIKES_KEY));
+  const [savedSet, setSavedSet] = useState<Set<string>>(() => readSet(SAVES_KEY));
+  const [commentSheetReel, setCommentSheetReel] = useState<OfficialReel | null>(null);
   const lastTapRef = useRef<{ t: number; reelId: string | null }>({ t: 0, reelId: null });
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -92,24 +106,44 @@ export default function ReelsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, reels.length]);
 
-  // Open YouTube for engagement (like/comment) — engagement is recorded on YouTube,
-  // we keep a local audit row so analytics can attribute farmer engagement.
-  const openYouTube = (videoId: string, kind: 'like' | 'comment' | 'save') => {
-    const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
-    const intent =
-      kind === 'comment'
-        ? `${watchUrl}&lc=1` // anchors to comments section on web
-        : watchUrl;
-    track(videoId, kind, { metadata: { intent: kind } });
-    track(videoId, 'open_youtube', { metadata: { intent: kind } });
-    window.open(intent, '_blank', 'noopener,noreferrer');
-    toast({
-      description: t(
-        'reels.opening_youtube',
-        'Opening YouTube — sign in to like or comment on the channel.',
-      ),
+  // In-app like — toggle local state, persist, and audit. Double-tap also calls this.
+  const toggleLike = useCallback((reel: OfficialReel, source: 'tap' | 'double_tap' = 'tap') => {
+    setLikedSet((prev) => {
+      const next = new Set(prev);
+      const wasLiked = next.has(reel.id);
+      if (wasLiked) next.delete(reel.id); else next.add(reel.id);
+      writeSet(LIKES_KEY, next);
+      track(reel.id, wasLiked ? 'unlike' : 'like', { metadata: { source, in_app: true } });
+      if (!wasLiked && source === 'tap') {
+        toast({ description: t('reels.liked', 'Liked') });
+      }
+      return next;
     });
-  };
+  }, [track, toast, t]);
+
+  const toggleSave = useCallback((reel: OfficialReel) => {
+    setSavedSet((prev) => {
+      const next = new Set(prev);
+      const wasSaved = next.has(reel.id);
+      if (wasSaved) next.delete(reel.id); else next.add(reel.id);
+      writeSet(SAVES_KEY, next);
+      track(reel.id, wasSaved ? 'unsave' : 'save', { metadata: { in_app: true } });
+      toast({ description: wasSaved ? t('reels.unsaved', 'Removed from saved') : t('reels.saved', 'Saved') });
+      return next;
+    });
+  }, [track, toast, t]);
+
+  // Open comments sheet — never auto-redirects. User can then choose to view on YouTube.
+  const openCommentSheet = useCallback((reel: OfficialReel) => {
+    setCommentSheetReel(reel);
+    track(reel.id, 'comment', { metadata: { in_app: true, action: 'sheet_open' } });
+  }, [track]);
+
+  const viewCommentsOnYouTube = useCallback((reel: OfficialReel) => {
+    const url = `https://www.youtube.com/watch?v=${reel.id}&lc=1`;
+    track(reel.id, 'open_youtube', { metadata: { intent: 'comment', user_initiated: true } });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [track]);
 
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
@@ -125,6 +159,7 @@ export default function ReelsPage() {
     const last = lastTapRef.current;
     if (last.reelId === reel.id && now - last.t < 280) {
       triggerDoubleTapHeart(e);
+      if (!likedSet.has(reel.id)) toggleLike(reel, 'double_tap');
       lastTapRef.current = { t: 0, reelId: null };
     } else {
       lastTapRef.current = { t: now, reelId: reel.id };
@@ -265,15 +300,15 @@ export default function ReelsPage() {
 
               {isActive && (
                 <ReelActionRail
-                  reel={reel}
-                  liked={false}
-                  saved={false}
+                  reel={{ ...reel, total_likes: reel.total_likes + (likedSet.has(reel.id) ? 1 : 0), total_saves: reel.total_saves + (savedSet.has(reel.id) ? 1 : 0) }}
+                  liked={likedSet.has(reel.id)}
+                  saved={savedSet.has(reel.id)}
                   isMuted={isMuted}
-                  onLike={() => openYouTube(reel.id, 'like')}
-                  onSave={() => openYouTube(reel.id, 'save')}
-                  onComment={() => openYouTube(reel.id, 'comment')}
+                  onLike={() => toggleLike(reel, 'tap')}
+                  onSave={() => toggleSave(reel)}
+                  onComment={() => openCommentSheet(reel)}
                   onShare={() => share(reel)}
-                  onReport={() => openYouTube(reel.id, 'like')}
+                  onReport={() => openCommentSheet(reel)}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
@@ -299,6 +334,50 @@ export default function ReelsPage() {
           </motion.div>
         ))}
       </AnimatePresence>
+
+      {/* In-app comments sheet — comments live on YouTube; user explicitly chooses to view them there */}
+      <Sheet open={!!commentSheetReel} onOpenChange={(open) => !open && setCommentSheetReel(null)}>
+        <SheetContent side="bottom" className="bg-background border-t rounded-t-2xl max-h-[70vh] p-0">
+          <SheetHeader className="px-5 pt-5 pb-3 border-b">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <MessageCircle className="w-5 h-5 text-primary" />
+              {t('reels.comments.title', 'Comments')}
+            </SheetTitle>
+            <SheetDescription className="text-xs text-left">
+              {t('reels.comments.subtitle', 'Comments for official KisanShakti AI videos live on YouTube.')}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="px-5 py-6 flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <MessageCircle className="w-7 h-7 text-primary" />
+            </div>
+            <p className="text-sm text-foreground font-medium leading-snug max-w-xs">
+              {commentSheetReel?.title}
+            </p>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              {t(
+                'reels.comments.body',
+                'Join the conversation on the official KisanShakti AI YouTube channel. Your comment helps other farmers too.',
+              )}
+            </p>
+            <Button
+              className="w-full mt-2 gap-2"
+              onClick={() => commentSheetReel && viewCommentsOnYouTube(commentSheetReel)}
+            >
+              <ExternalLink className="w-4 h-4" />
+              {t('reels.comments.open_youtube', 'View comments on YouTube')}
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setCommentSheetReel(null)}
+            >
+              {t('common.close', 'Close')}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
