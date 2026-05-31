@@ -299,15 +299,15 @@ export default function ReelsPage() {
 
               {isActive && (
                 <ReelActionRail
-                  reel={reel}
-                  liked={false}
-                  saved={false}
+                  reel={{ ...reel, total_likes: reel.total_likes + (likedSet.has(reel.id) ? 1 : 0), total_saves: reel.total_saves + (savedSet.has(reel.id) ? 1 : 0) }}
+                  liked={likedSet.has(reel.id)}
+                  saved={savedSet.has(reel.id)}
                   isMuted={isMuted}
-                  onLike={() => openYouTube(reel.id, 'like')}
-                  onSave={() => openYouTube(reel.id, 'save')}
-                  onComment={() => openYouTube(reel.id, 'comment')}
+                  onLike={() => toggleLike(reel, 'tap')}
+                  onSave={() => toggleSave(reel)}
+                  onComment={() => openCommentSheet(reel)}
                   onShare={() => share(reel)}
-                  onReport={() => openYouTube(reel.id, 'like')}
+                  onReport={() => openCommentSheet(reel)}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
