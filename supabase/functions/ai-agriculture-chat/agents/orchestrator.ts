@@ -2855,18 +2855,21 @@ export class AIAgentOrchestrator {
         'GENERAL_INFO'
       ]);
       const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
+      // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
+      const intentAdvisoryBypass = isAdvisoryRoute(intentCode);
       const cropFromAnyLayer =
         (landContext as any)?.current_crop ||
         (canonicalContext as any)?.crop ||
         (landContext as any)?.crop_schedule?.crop_name ||
         (landContext as any)?.crop_name;
-      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass) && cropFromAnyLayer) {
+      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
         directModeBypass = true;
         bypassClarification = true;
-        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification`);
+        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass})`);
         console.log(`   Crop: ${cropFromAnyLayer}, Stage: ${(landContext as any)?.growth_stage || (canonicalContext as any)?.stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
       }
+
       
       // PATCH 2: Stage context guard - ask farmer for crop stage if required
       // v7.7 FIX: For DIAGNOSTIC intents (STEM_DAMAGE, LEAF_DAMAGE, PEST_OBSERVATION, etc.)
