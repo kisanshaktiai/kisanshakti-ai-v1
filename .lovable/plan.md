@@ -1,65 +1,77 @@
-## Goal
+# Land-Specific Symbolic Chat – Forensic Audit & Fix Plan
 
-Cleanly separate the two chat modes by giving each its own Edge Function, and remove the unused `mcp-handler`.
+## What the audit found
 
-- **Land-specific chat** → keeps using existing `ai-agriculture-chat` (symbolic decision brain only).
-- **General chat tab** → new dedicated Edge Function `ai-general-chat` (direct LLM, "Senior Agronomist", no symbolic brain).
-- **`mcp-handler`** → deleted (audit confirms zero references in `src/` and no other Edge Function imports it).
+Test query (Marathi): "सध्या कोणते खत देवू आणि फवारणी घेवू ?" (which fertilizer / spray now?)
+Live edge log shows the symbolic brain returned a disease-style clarification:
+"🔍 What exactly are you observing? (Color change / Lumps / Drying)"
 
-This also eliminates the recent CORS / routing patches (`x-chat-mode` header, `orchestratorBypass` flag, in-function short-circuit) that were the source of the `FunctionsFetchError` and the "still hits symbolic brain" symptom.
+Trace evidence (from `ai-agriculture-chat` logs):
+- Canonical context is correctly locked: `Crop=SUGARCANE, Stage=GRAND_GROWTH, DAS=154`.
+- `UnderstandingChecker` scored 53% (threshold 60%) and set `clarification_required=true`.
+- Pipeline returned `CLARIFICATION_QUESTION` via the **scope-aware clarification** path.
+- No `[DIRECT_MODE]` log line ⇒ the FERTILIZER_NUTRITION advisory bypass never fired.
 
-## Audit summary
+### Root causes (all in `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`)
 
-- `mcp-handler/index.ts` (538 lines): not invoked anywhere in `src/` (`rg "mcp-handler"` returns only the file itself). Safe to delete.
-- `ai-agriculture-chat/index.ts` currently contains two general-mode short-circuits (lines ~600 and ~866) plus the `x-chat-mode` CORS header and an import of `general-chat-handler.ts`. These were bolted on and are the root cause of the brittle routing.
-- `EnhancedAIChatInterface.tsx` sends both modes to `ai-agriculture-chat` and disambiguates with `mode`, `metadata.orchestratorBypass`, and the `x-chat-mode` header — fragile.
-- `general-chat-handler.ts` already contains a clean direct-LLM implementation (Senior Agronomist prompt, history filter, persistence). It will be lifted into the new function as-is.
+1. **Advisory routes are not exempt from the Understanding-based clarification gate** (line ~3937).
+   The earlier `ZERO_CODE_CLARIFICATION_GATE` (line 2438) correctly exempts `FERTILIZER_NUTRITION / IRRIGATION_SCHEDULING / WEATHER_SPRAY_TIMING / CROP_HEALTH / GENERAL_INFO`, but the Understanding gate has no such guard, so any advisory query with no symptom keywords (low score) falls through to "describe your symptoms".
 
-## Implementation
+2. **DIRECT-mode bypass depends only on `landContext?.current_crop`** (line ~2782).
+   When the land record stores the crop under `crop_schedules.crop_name` (the canonical contract is built from that), `landContext.current_crop` can be null while `canonicalContext.crop` is valid. Bypass silently skips and the query falls into the symptom pipeline.
 
-### 1. New Edge Function `supabase/functions/ai-general-chat/index.ts`
-- Own CORS block using `_shared/cors.ts` (no custom `x-chat-mode` header needed).
-- Validates auth headers (`x-tenant-id`, `x-farmer-id`, `x-session-token`) via existing `_shared/authMiddleware`.
-- Resolves / creates a `session_type = 'general'` row in `ai_chat_sessions`.
-- Calls a local `handleGeneralChat` (copied from current `general-chat-handler.ts`) which:
-  - Builds Senior Agronomist (25+ yrs) prompt in farmer's language.
-  - Optionally injects `landContext` when farmer attached a land.
-  - Strips any symbolic clarification turns from history.
-  - Calls Lovable AI Gateway via `_shared/aiConfig`.
-  - Persists user + assistant messages with `orchestrator_type: 'GENERAL_LLM_DIRECT'`.
-- Returns `{ response, metadata: { type: 'general_chat', ... } }` — same shape the UI already renders.
+3. **Stale session `decision_state = awaiting_clarification`** carries across topic switches.
+   Logs show `turn: 13, state: awaiting_clarification, clarification_active: true`. A fresh advisory question is still being treated as a follow-up to an earlier disease clarification, which biases NLU and forces low understanding scores.
 
-### 2. Strip general-mode logic from `ai-agriculture-chat`
-- Remove `import { handleGeneralChat } from './general-chat-handler.ts'`.
-- Remove both `isGeneralMode` short-circuits (lines ~600 and ~866).
-- Remove `x-chat-mode` from `Access-Control-Allow-Headers`.
-- Delete `supabase/functions/ai-agriculture-chat/general-chat-handler.ts`.
-- Function reverts to a pure symbolic-decision-brain endpoint.
+4. **Query router result is not used to widen `symptomBasedIntents` detection.**
+   When `queryRoute.route` is an advisory route, NLU's `intent_code` should not be treated as symptom-based even if observation-extractor produced "AFFECTED_PART_UNKNOWN" filler codes (seen in log: 7 codes, 4 unknowns).
 
-### 3. Delete `mcp-handler` Edge Function
-- Remove `supabase/functions/mcp-handler/` directory.
-- Call `supabase--delete_edge_functions(["mcp-handler"])` so it's also removed from Supabase.
+## Fixes (surgical, scoped to orchestrator + session state)
 
-### 4. Frontend routing in `EnhancedAIChatInterface.tsx`
-- In `sendMessage` (and the retry / regenerate paths), branch on `isGeneralTab`:
-  - `isGeneralTab === true` → `supabase.functions.invoke('ai-general-chat', { body: { messages, language, landContext, sessionId } })`
-  - else → existing `supabase.functions.invoke('ai-agriculture-chat', { body: { ... } })` (land-specific symbolic brain).
-- Remove `mode`, `metadata.chatMode`, `metadata.orchestratorBypass`, and the `x-chat-mode` header from outgoing requests — they're no longer needed because routing is now by function name.
-- Keep `GeneralChatLandPicker` + `generalLandId` race-condition fix (`overrideGeneralLandId` parameter) as-is — that's a UX fix, not the routing problem.
-- Keep history-filtering & forcing General responses to `messageType: 'text'` in the UI.
-- Keep the `t('chat.tabs.general')` i18n fix.
+### Fix 1 — Add advisory exemption to the Understanding clarification gate
+File: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (~line 3937)
 
-### 5. Validation
-- Land-specific tab: a Marathi diagnostic question still returns symbolic clarification / Decision Brain cards from `ai-agriculture-chat`.
-- General tab: `हिरवी मिरची पिक घ्यायच आहे काय करावे?` returns a direct senior-agronomist answer from `ai-general-chat`, no "which part of the plant" cards.
-- Selecting a land in the picker sends exactly one request (race-condition fix retained).
-- No CORS preflight failures (no custom headers on General requests).
-- `mcp-handler` no longer listed in the Supabase functions dashboard.
+Reuse the same exempt set already declared for the Zero-Code Gate. Skip the gate when:
+- `queryRoute.route ∈ {FERTILIZER_NUTRITION, IRRIGATION_SCHEDULING, WEATHER_SPRAY_TIMING, CROP_HEALTH, GENERAL_INFO}`, OR
+- `bypassClarification === true`, OR
+- intent metadata `clarification_mode === 'DIRECT'`.
 
-## Files touched
+When skipped, log `ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE` so traces are auditable.
 
-- **Create**: `supabase/functions/ai-general-chat/index.ts`
-- **Edit**: `supabase/functions/ai-agriculture-chat/index.ts` (strip general-mode branches + CORS header)
-- **Edit**: `src/components/chat/EnhancedAIChatInterface.tsx` (route by function name)
-- **Delete**: `supabase/functions/ai-agriculture-chat/general-chat-handler.ts`
-- **Delete**: `supabase/functions/mcp-handler/` (directory + dashboard)
+### Fix 2 — Strengthen `directModeBypass` crop-context check (~line 2782)
+Change condition to OR-check both sources of truth:
+`landContext?.current_crop || canonicalContext?.crop || landContext?.crop_schedule?.crop_name`.
+This restores DIRECT mode for advisory routes whenever any layer of context knows the crop.
+
+### Fix 3 — Reset stale clarification state on advisory-route turns
+In the early session block (~line 1063 where `clarificationActive` is read):
+- If `queryRoute.route` is in the advisory exempt set **and** the incoming farmerMessage does NOT match a pending clarification option, forcibly set `clarificationActive = false`, persist `decision_state = 'decision_in_progress'`, and log `STALE_CLARIFICATION_RESET`.
+- This prevents NLU from interpreting "khat devu / favarni" as an answer to a prior pest question.
+
+### Fix 4 — Treat advisory route as non-symptom intent in gates
+Wherever `symptomBasedIntents` membership decides flow (Zero-Code Gate, Understanding gate, evidence-coverage gate at line 3573, scoped clarification call), AND together with `!isZeroCodeGateExempt`. Make this a single helper: `isAdvisoryRoute(queryRoute.route)` and reuse.
+
+### Fix 5 — Verify STAGE_ADVISORY_FALLBACK still fires
+Confirm `shouldUseStageAdvisoryFallback` at line 6417 will now be reachable for advisory routes that pass the new bypasses with zero rules matched — so farmer always gets a deterministic stage-based plan from `crop_stage_advisor.ts` instead of a clarification.
+
+## DB / data validation (no schema changes)
+
+Read-only checks against the production DB to confirm the symbolic brain has data to render:
+- `crop_vocabulary` — confirm Marathi fertilizer phrases `खत`, `फवारणी`, `देवू` are present with `recommended_intent_bias ∈ {FERTILIZER_SCHEDULE, NUTRIENT_DEFICIENCY}`.
+- `intent_metadata` — confirm `FERTILIZER_NUTRITION` / `FERTILIZER_SCHEDULE` rows have `clarification_mode = 'DIRECT'` and `requires_stage_context = false` (or stage available).
+- `decision_rules` for sugarcane GRAND_GROWTH stage advisory rules (action_type IN ('fertilizer','spray','schedule')) — confirm at least one matches DAS=154.
+- `crop_schedules` for the failing land — confirm `crop_name='SUGARCANE'` and active flag.
+
+If any vocabulary or intent_metadata row is missing or wrong, the plan ends with read-only findings; we will request approval before any data write.
+
+## Production-readiness checks (post-fix)
+
+1. **Trace replay**: Re-run the failing Marathi query and verify log line `[DIRECT_MODE] route FERTILIZER_NUTRITION skips symptom clarification` and a `DECISION_PROVIDED` response with stage-based fertilizer recommendations.
+2. **Regression net**: Re-run three known-good prompts (one disease report, one irrigation question, one greeting) and confirm each still routes correctly.
+3. **Edge log audit**: Confirm new `STALE_CLARIFICATION_RESET` and `ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE` markers appear only when expected.
+4. **No code change outside `orchestrator.ts`** unless DB findings in step above prove otherwise. Symbolic brain contract, rule engine, and clarification generator stay untouched.
+
+## Out of scope
+- No changes to general-chat tab (separate edge function).
+- No changes to NLU contract, rule engine, or LLM formatter.
+- No DB migrations — only read-only audit; any data correction will be proposed back to you first.
