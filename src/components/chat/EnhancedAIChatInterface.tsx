@@ -1760,44 +1760,49 @@ export function EnhancedAIChatInterface() {
       const aiMessageId = crypto.randomUUID();
       
       // ═══════════════════════════════════════════════════════════════════════════
-      // CLARIFICATION DETECTION: Map backend 'clarification' to 'CLARIFICATION_QUESTION'
-      // Also extract options from multiple possible locations
+      // GENERAL-TAB direct-LLM responses must render as plain text — never as
+      // symbolic clarification cards or Decision-Brain UI. This is the visual
+      // guarantee that General chat is treated differently from land-specific.
       // ═══════════════════════════════════════════════════════════════════════════
-      const isClarification = data.metadata?.type === 'clarification' || 
-                              data.metadata?.orchestrator_type === 'CLARIFICATION_QUESTION';
-      
+      const isGeneralResponse =
+        isGeneralTab ||
+        data.metadata?.orchestrator_type === 'GENERAL_LLM_DIRECT' ||
+        data.metadata?.chat_mode === 'general_llm_v1' ||
+        data.metadata?.type === 'general_chat';
+
+      const isClarification = !isGeneralResponse && (
+        data.metadata?.type === 'clarification' ||
+        data.metadata?.orchestrator_type === 'CLARIFICATION_QUESTION'
+      );
+
       const clarificationOptions = isClarification && data.metadata?.options?.length ? {
         question: responseText,
         options: data.metadata.options.map((o: any) => ({
           label: typeof o === 'string' ? o : o.label,
           value: typeof o === 'string' ? o : (o.value || o.label),
           description: typeof o === 'object' ? o.description : undefined,
-          // CRITICAL: Preserve observation_key for rule engine re-evaluation
           observation_key: typeof o === 'object' ? (o.observation_key || o.value) : undefined
         })),
         selectionType: (data.metadata?.selectionType || 'SINGLE_CHOICE') as 'SINGLE_CHOICE' | 'MULTIPLE_CHOICE'
       } : undefined;
-      
+
       const aiMessage: Message = {
         id: aiMessageId,
         role: 'assistant',
         content: responseText,
         timestamp: new Date(),
-        messageType: 'orchestrator',
-        // Map 'clarification' to 'CLARIFICATION_QUESTION' for UI detection
-        orchestratorType: isClarification ? 'CLARIFICATION_QUESTION' : 
-                          (data.metadata?.orchestrator_type || 'DECISION_PROVIDED'),
-        // PHASE 5: Include trace_id for debugging
+        messageType: isGeneralResponse ? 'text' : 'orchestrator',
+        orchestratorType: isGeneralResponse
+          ? 'DECISION_PROVIDED'
+          : (isClarification ? 'CLARIFICATION_QUESTION'
+            : (data.metadata?.orchestrator_type || 'DECISION_PROVIDED')),
         traceId: data.metadata?.trace_id,
-        // Include data audit for debugging cards
-        dataAudit: data.dataAudit,
-        // Include clarification options for interactive UI
-        clarificationOptions,
-        // ✅ Canonical Advisory: structured JSON for rich card rendering
-        structuredAdvisory: data.structured_advisory || undefined,
+        dataAudit: isGeneralResponse ? undefined : data.dataAudit,
+        clarificationOptions: isGeneralResponse ? undefined : clarificationOptions,
+        structuredAdvisory: isGeneralResponse ? undefined : (data.structured_advisory || undefined),
         analytics: {
           responseTime: data.responseTime,
-          queryComplexity: 'orchestrator'
+          queryComplexity: isGeneralResponse ? 'general_llm' : 'orchestrator'
         }
       };
       
