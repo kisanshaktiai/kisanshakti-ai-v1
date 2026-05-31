@@ -565,7 +565,8 @@ export class AuditLogger {
       farmer_message: log.farmer_message,
       detected_language: log.detected_language as string,
       intent_label: log.nlu_output?.intent_label,
-      observations: log.nlu_output?.observations,
+      observations: filterCanonicalForAudit(log.nlu_output?.observations),
+
       nlu_confidence: log.nlu_output?.confidence,
       locked_intent: log.locked_intent,
       allowed_scopes: log.allowed_scopes,
