@@ -29,15 +29,17 @@ export function useYouTubeReelEngagement() {
     ) => {
       if (!farmerId || !tenantId || !videoId) return;
       try {
-        await supabase.from('youtube_reel_engagement').insert({
-          tenant_id: tenantId,
-          farmer_id: farmerId,
-          video_id: videoId,
-          action,
-          channel: 'kisanshaktiai',
-          watched_seconds: extra?.watched_seconds ?? null,
-          metadata: extra?.metadata ?? {},
-        });
+        await supabase.from('youtube_reel_engagement').insert([
+          {
+            tenant_id: tenantId,
+            farmer_id: farmerId,
+            video_id: videoId,
+            action,
+            channel: 'kisanshaktiai',
+            watched_seconds: extra?.watched_seconds ?? undefined,
+            metadata: (extra?.metadata ?? {}) as never,
+          },
+        ]);
       } catch (e) {
         // Non-blocking telemetry
         console.warn('[yt-engagement] insert failed', e);
