@@ -135,6 +135,19 @@ export interface LLMFormatterInput {
   data_audit?: DataAudit;
   trace_id?: string;
   supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
+  /**
+   * Presentation-only addressing payload (rural honorifics).
+   * MUST NOT affect symbolic decisions, products, dosages or any logic.
+   */
+  farmer_addressing?: {
+    primary: string;
+    alternatives: string[];
+    gender: string;
+    language: string;
+    state: string | null;
+    toneHint: string;
+    promptDirective: string;
+  };
 }
 
 export interface LLMFormatterOutput {
