@@ -183,6 +183,14 @@ export function EnhancedAIChatInterface() {
   
   const [activeTab, setActiveTab] = useState('general');
   const [lands, setLands] = useState<any[]>([]);
+
+  // GENERAL-CHAT land context picker:
+  //   undefined => not yet chosen for this session (open picker before sending)
+  //   null      => farmer explicitly chose "no specific land"
+  //   string    => land.id of the chosen land
+  const [generalLandId, setGeneralLandId] = useState<string | null | undefined>(undefined);
+  const [showGeneralLandPicker, setShowGeneralLandPicker] = useState(false);
+  const pendingGeneralSendRef = useRef<string | null>(null);
   
   const [messages, setMessages] = useState<Record<string, Message[]>>({
     general: []
