@@ -10,8 +10,10 @@ import { useAuthStore } from '@/stores/authStore';
 export type YTAction =
   | 'view'
   | 'like'
+  | 'unlike'
   | 'comment'
   | 'save'
+  | 'unsave'
   | 'share'
   | 'open_youtube'
   | 'watch_complete';
