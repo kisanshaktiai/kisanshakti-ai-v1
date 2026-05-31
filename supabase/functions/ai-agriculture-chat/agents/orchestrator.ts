@@ -2503,7 +2503,9 @@ export class AIAgentOrchestrator {
       const currentIntentForGate = semanticExtraction?.intent_code || 'UNKNOWN';
       const isSymptomBasedIntent = symptomBasedIntents.includes(currentIntentForGate);
       const zeroCodeGateExemptRoutes = new Set(['FERTILIZER_NUTRITION', 'IRRIGATION_SCHEDULING', 'WEATHER_SPRAY_TIMING', 'CROP_HEALTH', 'GENERAL_INFO']);
-      const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route);
+      // Fix 7: also exempt when the canonical intent code is advisory.
+      const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route) || isAdvisoryRoute(currentIntentForGate);
+
       
       if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt) {
         console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
