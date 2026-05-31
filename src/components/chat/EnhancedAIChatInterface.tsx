@@ -2314,7 +2314,7 @@ export function EnhancedAIChatInterface() {
               )}
             >
               <MessageSquare className="h-4 w-4 mb-0.5" />
-              <span className="text-[9px] font-medium">{t('chat.general', 'General')}</span>
+              <span className="text-[9px] font-medium">{t('chat.tabs.general', 'General')}</span>
             </motion.button>
 
             {/* Land Cards - Show loading state or actual cards */}
