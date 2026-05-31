@@ -264,22 +264,35 @@ class TTSFacadeService {
   ): Promise<TTSResult> {
     try {
       const { supabase } = await import('@/integrations/supabase/client');
-      
+
+      // Edge function expects BCP-47 (e.g. mr-IN), not raw "mr".
+      const langCode = this.getWebSpeechLang(language);
+
       const { data, error } = await supabase.functions.invoke('community-tts', {
-        body: { text, language }
+        body: { text, language: langCode }
       });
-      
-      if (error || !data?.audio) {
-        return { success: false, provider: 'cloud', error: error?.message || 'No audio' };
+
+      if (error) {
+        return { success: false, provider: 'cloud', error: error.message };
       }
-      
-      // Play audio
-      await this.playAudioBase64(data.audio);
+
+      // Edge function returns { audioContent }; legacy shape was { audio }.
+      const audio = data?.audioContent ?? data?.audio;
+      if (!audio) {
+        return {
+          success: false,
+          provider: 'cloud',
+          error: data?.error || 'No audio returned',
+        };
+      }
+
+      await this.playAudioBase64(audio);
       return { success: true, provider: 'cloud' };
-      
+
     } catch (error) {
       console.warn('[TTSFacade] Cloud TTS failed:', error);
-      return { success: false, provider: 'cloud', error: 'Cloud TTS unavailable' };
+      const msg = error instanceof Error ? error.message : 'Cloud TTS unavailable';
+      return { success: false, provider: 'cloud', error: msg };
     }
   }
   

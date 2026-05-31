@@ -183,7 +183,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
   if (showWarning && suitabilityWarning) {
     return (
       <Card className="bg-background/60 backdrop-blur-2xl border-destructive/50 shadow-2xl">
-        <CardHeader className="bg-gradient-to-r from-destructive/20 to-orange-500/20 border-b border-destructive/50">
+        <CardHeader className="bg-gradient-to-r from-destructive/20 to-warning/20 border-b border-destructive/50">
           <CardTitle className="flex items-center gap-2 text-destructive">
             <AlertTriangle className="h-6 w-6" />
             <span>⚠️ Crop Suitability Warning</span>
@@ -202,7 +202,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           {/* Warnings List */}
           {suitabilityWarning.warnings.length > 0 && (
             <div className="space-y-2">
-              <h4 className="font-medium flex items-center gap-2 text-orange-600">
+              <h4 className="font-medium flex items-center gap-2 text-warning">
                 <XCircle className="h-4 w-4" />
                 Why not suitable:
               </h4>
@@ -220,14 +220,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           {/* Risks */}
           {suitabilityWarning.risks.length > 0 && (
             <div className="space-y-2">
-              <h4 className="font-medium flex items-center gap-2 text-red-600">
+              <h4 className="font-medium flex items-center gap-2 text-destructive">
                 <AlertTriangle className="h-4 w-4" />
                 Risks:
               </h4>
               <ul className="space-y-1 text-sm text-muted-foreground">
                 {suitabilityWarning.risks.map((r, i) => (
                   <li key={i} className="flex items-start gap-2">
-                    <span className="text-red-500">⚡</span>
+                    <span className="text-destructive">⚡</span>
                     {r}
                   </li>
                 ))}
@@ -238,7 +238,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
           {/* Alternative Crops */}
           {suitabilityWarning.alternatives.length > 0 && (
             <div className="space-y-2">
-              <h4 className="font-medium flex items-center gap-2 text-green-600">
+              <h4 className="font-medium flex items-center gap-2 text-success">
                 <CheckCircle2 className="h-4 w-4" />
                 Better alternatives for your area:
               </h4>
@@ -247,14 +247,14 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
                   <Button
                     key={i}
                     variant="outline"
-                    className="justify-between h-auto py-3 hover:bg-green-50 hover:border-green-300"
+                    className="justify-between h-auto py-3 hover:bg-success-soft hover:border-success/50"
                     onClick={() => handleSelectAlternative(alt.crop)}
                   >
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{alt.crop}</span>
                     </div>
                     <div className="text-right text-xs">
-                      <div className="text-green-600 font-medium">{alt.successRate}% success</div>
+                      <div className="text-success font-medium">{alt.successRate}% success</div>
                       <div className="text-muted-foreground">{alt.potentialProfit}</div>
                     </div>
                   </Button>
@@ -423,24 +423,24 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
 
         {/* Weather Info */}
         {currentWeather && (
-          <div className="p-4 bg-blue-500/10 rounded-lg border border-blue-500/30">
-            <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">Current Weather</p>
-            <div className="grid grid-cols-2 gap-2 text-sm text-blue-600 dark:text-blue-400">
+          <div className="p-4 bg-info/10 rounded-lg border border-info/30">
+            <p className="text-sm font-medium text-info dark:text-info mb-2">Current Weather</p>
+            <div className="grid grid-cols-2 gap-2 text-sm text-info dark:text-info">
               <div>Temperature: {currentWeather.temp}°C</div>
               <div>Humidity: {currentWeather.humidity}%</div>
               <div>Clouds: {currentWeather.clouds}%</div>
               <div>Wind: {currentWeather.wind_speed} km/h</div>
             </div>
-            <p className="text-xs text-blue-500 dark:text-blue-400 mt-2">
+            <p className="text-xs text-info dark:text-info mt-2">
               Schedule will be optimized based on weather forecast
             </p>
           </div>
         )}
 
         {/* AI Features */}
-        <div className="p-4 bg-gradient-to-r from-purple-500/10 to-blue-500/10 rounded-lg border border-purple-500/30">
-          <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mb-2">AI-Powered Features</p>
-          <ul className="text-sm text-purple-600 dark:text-purple-400 space-y-1">
+        <div className="p-4 bg-gradient-to-r from-primary/10 to-info/10 rounded-lg border border-primary/30">
+          <p className="text-sm font-medium text-primary dark:text-primary mb-2">AI-Powered Features</p>
+          <ul className="text-sm text-primary dark:text-primary space-y-1">
             <li>✓ Crop-Climate Suitability Check</li>
             <li>✓ Weather-adaptive scheduling</li>
             <li>✓ ICAR & State University guidelines</li>
@@ -452,8 +452,8 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
 
         {/* AI Provider Selection (Dev Mode Only) */}
         {isDev && (
-          <div className="p-4 bg-gradient-to-r from-amber-500/10 to-orange-500/10 rounded-lg border border-amber-500/30">
-            <p className="text-sm font-medium text-amber-700 dark:text-amber-300 mb-2">
+          <div className="p-4 bg-gradient-to-r from-warning/10 to-warning/10 rounded-lg border border-warning/30">
+            <p className="text-sm font-medium text-warning dark:text-warning mb-2">
               🔧 Dev Mode: AI Provider Selection
             </p>
             <div className="flex gap-2">
@@ -461,7 +461,7 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
                 variant={aiProvider === 'google' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAiProvider('google')}
-                className={aiProvider === 'google' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                className={aiProvider === 'google' ? 'bg-info hover:bg-info' : ''}
               >
                 🌐 Google Gemini
               </Button>
@@ -469,12 +469,12 @@ const ScheduleGenerator: React.FC<ScheduleGeneratorProps> = ({
                 variant={aiProvider === 'openai' ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setAiProvider('openai')}
-                className={aiProvider === 'openai' ? 'bg-green-600 hover:bg-green-700' : ''}
+                className={aiProvider === 'openai' ? 'bg-success hover:bg-success' : ''}
               >
                 🤖 OpenAI GPT
               </Button>
             </div>
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+            <p className="text-xs text-warning dark:text-warning mt-2">
               Current: {aiProvider === 'google' ? 'Gemini 2.5 Flash (Lovable AI Gateway)' : 'GPT-4o-mini (OpenAI)'}
             </p>
           </div>

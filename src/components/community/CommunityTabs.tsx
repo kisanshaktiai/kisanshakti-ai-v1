@@ -20,13 +20,13 @@ const tabs: { id: CommunityTab; icon: React.ElementType; labelKey: string }[] = 
 
 export const CommunityTabs: React.FC<CommunityTabsProps> = ({
   activeTab,
-  onTabChange
+  onTabChange,
 }) => {
   const { t } = useTranslation();
 
   return (
-    <div className="sticky top-[7.5rem] z-30 px-4 py-2 bg-background/80 backdrop-blur-2xl">
-      <div className="flex items-center gap-1.5 p-1.5 bg-secondary/40 rounded-2xl backdrop-blur-sm">
+    <div className="sticky top-14 z-30 px-3 py-2 bg-background border-b border-border">
+      <div className="flex items-center gap-1 p-1 bg-muted rounded-2xl">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           const Icon = tab.icon;
@@ -34,29 +34,27 @@ export const CommunityTabs: React.FC<CommunityTabsProps> = ({
           return (
             <motion.button
               key={tab.id}
-              whileTap={{ scale: 0.95 }}
+              whileTap={{ scale: 0.96 }}
               onClick={() => onTabChange(tab.id)}
+              aria-label={t(tab.labelKey)}
               className={cn(
-                "relative flex-1 flex items-center justify-center gap-1.5 py-3 px-3 rounded-xl",
-                "text-sm font-medium transition-all duration-300",
-                isActive 
-                  ? "text-primary-foreground" 
-                  : "text-muted-foreground hover:text-foreground"
+                'relative flex items-center justify-center gap-1.5 py-2 rounded-xl',
+                'text-sm font-medium transition-all duration-200',
+                isActive
+                  ? 'flex-[2] bg-primary text-primary-foreground shadow-sm'
+                  : 'flex-1 text-muted-foreground'
               )}
             >
+              <Icon className="w-4 h-4 flex-shrink-0" />
               {isActive && (
-                <motion.div
-                  layoutId="activeTab"
-                  className="absolute inset-0 bg-primary rounded-xl shadow-lg shadow-primary/25"
-                  transition={{ type: "spring", bounce: 0.15, duration: 0.5 }}
-                />
-              )}
-              <span className="relative z-10 flex items-center gap-1.5">
-                <Icon className="w-4 h-4" />
-                <span className="hidden sm:inline text-xs">
+                <motion.span
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  className="text-xs whitespace-nowrap overflow-hidden"
+                >
                   {t(tab.labelKey)}
-                </span>
-              </span>
+                </motion.span>
+              )}
             </motion.button>
           );
         })}

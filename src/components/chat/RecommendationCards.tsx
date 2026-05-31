@@ -73,67 +73,67 @@ const categoryStyles: Record<string, {
   badgeColor: string;
 }> = {
   organic: {
-    gradient: 'from-green-500/20 to-emerald-500/10',
+    gradient: 'from-success/20 to-success/10',
     icon: <Leaf className="h-5 w-5" />,
-    bgColor: 'bg-green-50 dark:bg-green-950/30',
-    textColor: 'text-green-700 dark:text-green-300',
-    badgeColor: 'bg-green-500 text-white'
+    bgColor: 'bg-success-soft dark:bg-success/30',
+    textColor: 'text-success dark:text-success',
+    badgeColor: 'bg-success text-white'
   },
   fertilizer: {
-    gradient: 'from-amber-500/20 to-yellow-500/10',
+    gradient: 'from-warning/20 to-warning/10',
     icon: <Beaker className="h-5 w-5" />,
-    bgColor: 'bg-amber-50 dark:bg-amber-950/30',
-    textColor: 'text-amber-700 dark:text-amber-300',
-    badgeColor: 'bg-amber-500 text-white'
+    bgColor: 'bg-warning-soft dark:bg-warning/30',
+    textColor: 'text-warning dark:text-warning',
+    badgeColor: 'bg-warning text-white'
   },
   pesticide: {
-    gradient: 'from-red-500/20 to-orange-500/10',
+    gradient: 'from-destructive/20 to-warning/10',
     icon: <Bug className="h-5 w-5" />,
-    bgColor: 'bg-red-50 dark:bg-red-950/30',
-    textColor: 'text-red-700 dark:text-red-300',
-    badgeColor: 'bg-red-500 text-white'
+    bgColor: 'bg-destructive-soft dark:bg-destructive/30',
+    textColor: 'text-destructive dark:text-destructive',
+    badgeColor: 'bg-destructive text-white'
   },
   hormone: {
-    gradient: 'from-purple-500/20 to-violet-500/10',
+    gradient: 'from-primary/20 to-primary/10',
     icon: <TrendingUp className="h-5 w-5" />,
-    bgColor: 'bg-purple-50 dark:bg-purple-950/30',
-    textColor: 'text-purple-700 dark:text-purple-300',
-    badgeColor: 'bg-purple-500 text-white'
+    bgColor: 'bg-primary-soft dark:bg-primary/30',
+    textColor: 'text-primary dark:text-primary',
+    badgeColor: 'bg-primary text-white'
   },
   hybrid: {
-    gradient: 'from-indigo-500/20 to-purple-500/10',
+    gradient: 'from-info/20 to-primary/10',
     icon: <Shield className="h-5 w-5" />,
-    bgColor: 'bg-indigo-50 dark:bg-indigo-950/30',
-    textColor: 'text-indigo-700 dark:text-indigo-300',
-    badgeColor: 'bg-indigo-500 text-white'
+    bgColor: 'bg-info-soft dark:bg-info/30',
+    textColor: 'text-info dark:text-info',
+    badgeColor: 'bg-info text-white'
   },
   irrigation: {
-    gradient: 'from-blue-500/20 to-cyan-500/10',
+    gradient: 'from-info/20 to-info/10',
     icon: <Droplets className="h-5 w-5" />,
-    bgColor: 'bg-blue-50 dark:bg-blue-950/30',
-    textColor: 'text-blue-700 dark:text-blue-300',
-    badgeColor: 'bg-blue-500 text-white'
+    bgColor: 'bg-info-soft dark:bg-info/30',
+    textColor: 'text-info dark:text-info',
+    badgeColor: 'bg-info text-white'
   },
   warning: {
-    gradient: 'from-orange-500/20 to-yellow-500/10',
+    gradient: 'from-warning/20 to-warning/10',
     icon: <AlertTriangle className="h-5 w-5" />,
-    bgColor: 'bg-orange-50 dark:bg-orange-950/30',
-    textColor: 'text-orange-700 dark:text-orange-300',
-    badgeColor: 'bg-orange-500 text-white'
+    bgColor: 'bg-warning-soft dark:bg-warning/30',
+    textColor: 'text-warning dark:text-warning',
+    badgeColor: 'bg-warning text-white'
   },
   success: {
-    gradient: 'from-emerald-500/20 to-green-500/10',
+    gradient: 'from-success/20 to-success/10',
     icon: <CheckCircle className="h-5 w-5" />,
-    bgColor: 'bg-emerald-50 dark:bg-emerald-950/30',
-    textColor: 'text-emerald-700 dark:text-emerald-300',
-    badgeColor: 'bg-emerald-500 text-white'
+    bgColor: 'bg-success-soft dark:bg-success/30',
+    textColor: 'text-success dark:text-success',
+    badgeColor: 'bg-success text-white'
   },
   info: {
-    gradient: 'from-sky-500/20 to-blue-500/10',
+    gradient: 'from-info/20 to-info/10',
     icon: <Info className="h-5 w-5" />,
-    bgColor: 'bg-sky-50 dark:bg-sky-950/30',
-    textColor: 'text-sky-700 dark:text-sky-300',
-    badgeColor: 'bg-sky-500 text-white'
+    bgColor: 'bg-info-soft dark:bg-info/30',
+    textColor: 'text-info dark:text-info',
+    badgeColor: 'bg-info text-white'
   }
 };
 
@@ -237,7 +237,7 @@ function RecommendationCard({ category, language }: { category: RecommendationCa
             <div className="space-y-1">
               {category.instructions.map((instruction, idx) => (
                 <div key={idx} className="flex items-start gap-2 text-sm">
-                  <Sprout className="h-4 w-4 mt-0.5 text-green-500 shrink-0" />
+                  <Sprout className="h-4 w-4 mt-0.5 text-success shrink-0" />
                   <span>{instruction}</span>
                 </div>
               ))}
@@ -246,15 +246,15 @@ function RecommendationCard({ category, language }: { category: RecommendationCa
           
           {/* Benefits */}
           {category.benefits && category.benefits.length > 0 && (
-            <div className="p-2 bg-green-500/10 rounded-lg">
-              <div className="flex items-center gap-1 text-sm font-medium text-green-700 dark:text-green-300 mb-1">
+            <div className="p-2 bg-success/10 rounded-lg">
+              <div className="flex items-center gap-1 text-sm font-medium text-success dark:text-success mb-1">
                 <Heart className="h-4 w-4" />
                 {labels.benefits}
               </div>
               <ul className="text-sm space-y-1">
                 {category.benefits.map((benefit, idx) => (
                   <li key={idx} className="flex items-start gap-1">
-                    <CheckCircle className="h-3 w-3 mt-1 text-green-500" />
+                    <CheckCircle className="h-3 w-3 mt-1 text-success" />
                     {benefit}
                   </li>
                 ))}
@@ -264,15 +264,15 @@ function RecommendationCard({ category, language }: { category: RecommendationCa
           
           {/* Precautions */}
           {category.precautions && category.precautions.length > 0 && (
-            <div className="p-2 bg-orange-500/10 rounded-lg">
-              <div className="flex items-center gap-1 text-sm font-medium text-orange-700 dark:text-orange-300 mb-1">
+            <div className="p-2 bg-warning/10 rounded-lg">
+              <div className="flex items-center gap-1 text-sm font-medium text-warning dark:text-warning mb-1">
                 <Shield className="h-4 w-4" />
                 {labels.precautions}
               </div>
               <ul className="text-sm space-y-1">
                 {category.precautions.map((precaution, idx) => (
                   <li key={idx} className="flex items-start gap-1">
-                    <AlertTriangle className="h-3 w-3 mt-1 text-orange-500" />
+                    <AlertTriangle className="h-3 w-3 mt-1 text-warning" />
                     {precaution}
                   </li>
                 ))}
@@ -304,9 +304,9 @@ export function RecommendationCards({ analysis, language = 'en', suggestionType 
   
   // Health status colors
   const healthColors = {
-    healthy: 'bg-green-500',
-    warning: 'bg-amber-500',
-    critical: 'bg-red-500'
+    healthy: 'bg-success',
+    warning: 'bg-warning',
+    critical: 'bg-destructive'
   };
 
   // ✅ Filter recommendations based on suggestionType

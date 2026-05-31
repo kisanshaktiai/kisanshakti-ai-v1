@@ -9,11 +9,16 @@ import { VoiceIndicator } from '@/components/VoiceIndicator';
 import { NativeVoiceButton } from '@/components/voice/NativeVoiceButton';
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext';
 import { SubscriptionStatusBanner } from '@/components/subscription/SubscriptionStatusBanner';
+import { AppBootGate } from '@/components/subscription/AppBootGate';
+import { FeatureRouteGate } from '@/components/subscription/FeatureRouteGate';
+import { TenantThemeRealtimeSync } from '@/components/tenant/TenantThemeRealtimeSync';
+
 import { BrandBlock } from '@/components/header/BrandBlock';
 import { StatusPill } from '@/components/header/StatusPill';
 import { SpeakPageButton } from '@/components/header/SpeakPageButton';
 import { LanguageSelector } from '@/components/LanguageSelector';
 import { ScrollContext } from './layout/ScrollContext';
+import { FeatureWalkthrough } from '@/components/onboarding/FeatureWalkthrough';
 
 export function AppLayout() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -80,7 +85,13 @@ export function AppLayout() {
                   : { paddingTop: 'calc(3.5rem + var(--banner-h, 0px))' }
               }
             >
-              <Outlet />
+              <AppBootGate>
+                <FeatureRouteGate>
+                  <TenantThemeRealtimeSync />
+                  <Outlet />
+                </FeatureRouteGate>
+
+              </AppBootGate>
             </main>
 
             {/* Voice Assistant */}
@@ -106,6 +117,9 @@ export function AppLayout() {
 
             {/* Hindenburg Menu */}
             <HindenburgMenu isOpen={isMenuOpen} onClose={() => setIsMenuOpen(false)} />
+
+            {/* First-run voice-narrated walkthrough — shows once per install */}
+            <FeatureWalkthrough />
           </div>
         </ScrollContext.Provider>
       </SubscriptionProvider>

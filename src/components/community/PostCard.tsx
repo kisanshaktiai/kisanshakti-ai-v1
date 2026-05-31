@@ -1,25 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { motion, useMotionValue, useTransform, PanInfo } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
-import { 
-  Volume2, VolumeX, Globe, MessageCircle, Share2, Bookmark, 
-  MoreHorizontal, CheckCircle2, Award, Mic, Pause, Play,
-  ThumbsUp, Heart, Sparkles, ChevronDown, ChevronUp
+import {
+  Volume2, VolumeX, Globe, MessageCircle, Share2, Bookmark,
+  MoreHorizontal, CheckCircle2, Award, Mic, Pause,
+  Sparkles, ChevronDown, ChevronUp, Flag,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useTranslateText } from '@/hooks/useTranslateText';
 import { useCommunityTTS } from '@/hooks/useCommunityTTS';
-import { useLikePost, useSavePost } from '@/hooks/useCommunityPosts';
+import { useSavePost } from '@/hooks/useCommunityPosts';
 import { useToggleReaction, useUserReactions, ReactionType } from '@/hooks/usePostReactions';
+import { useReportPost } from '@/hooks/useCommunityComments';
 import { CommunityPost } from '@/types/community';
 import { toast } from 'sonner';
+import { CommentsSheet } from './CommentsSheet';
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { FarmerAvatar } from './FarmerAvatar';
+import { ReportReasonSheet, ReportReason } from './ReportReasonSheet';
+import { ImageLightbox } from './ImageLightbox';
 
 interface PostCardProps {
   post: CommunityPost;
   viewLanguage: string;
   isLiked?: boolean;
   isSaved?: boolean;
+  onHashtagTap?: (tag: string) => void;
 }
 
 const REACTIONS: { key: ReactionType; emoji: string; label: string }[] = [
@@ -28,114 +37,75 @@ const REACTIONS: { key: ReactionType; emoji: string; label: string }[] = [
   { key: 'thanks', emoji: '💚', label: 'Thank You' },
 ];
 
-export const PostCard: React.FC<PostCardProps> = ({ 
-  post, 
+export const PostCard: React.FC<PostCardProps> = ({
+  post,
   viewLanguage,
-  isLiked: initialIsLiked = false,
-  isSaved: initialIsSaved = false
+  isSaved: initialIsSaved = false,
+  onHashtagTap,
 }) => {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showOriginal, setShowOriginal] = useState(false);
   const [isSaved, setIsSaved] = useState(initialIsSaved);
-  const [isLiked, setIsLiked] = useState(initialIsLiked);
   const [localReactions, setLocalReactions] = useState<Record<ReactionType, number>>({
     helpful: post.reactions.helpful,
     tried: post.reactions.tried,
     thanks: post.reactions.thanks,
   });
   const [userReactionsList, setUserReactionsList] = useState<ReactionType[]>([]);
-  
-  // Mutations
-  const likePostMutation = useLikePost();
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+
   const savePostMutation = useSavePost();
   const toggleReactionMutation = useToggleReaction();
-  
-  // Fetch user's reactions
+  const reportPostMutation = useReportPost();
+
   const { data: allUserReactions } = useUserReactions();
-  
-  // Update user reactions when data loads
+
   useEffect(() => {
     if (allUserReactions && allUserReactions[post.id]) {
       setUserReactionsList(allUserReactions[post.id]);
     }
   }, [allUserReactions, post.id]);
-  
-  // Translation hook
-  const { 
-    translatedText, 
-    isTranslating, 
-    error: translationError 
-  } = useTranslateText(post.originalContent, post.originalLanguage, viewLanguage);
 
-  // TTS hook
-  const { 
-    speak, 
-    stop, 
-    isSpeaking, 
-    isLoading: ttsLoading 
-  } = useCommunityTTS();
+  const { translatedText, isTranslating } = useTranslateText(
+    post.originalContent,
+    post.originalLanguage,
+    viewLanguage
+  );
 
-  // Swipe gesture handling
-  const x = useMotionValue(0);
-  const saveOpacity = useTransform(x, [-100, -50, 0], [1, 0.5, 0]);
-  const translateOpacity = useTransform(x, [0, 50, 100], [0, 0.5, 1]);
+  const { speak, stop, isSpeaking, isLoading: ttsLoading } = useCommunityTTS();
 
   const needsTranslation = post.originalLanguage !== viewLanguage;
-  const displayContent = showOriginal ? post.originalContent : (translatedText || post.originalContent);
-
-  const handleSwipeEnd = (event: any, info: PanInfo) => {
-    if (info.offset.x < -50) {
-      handleSave();
-    } else if (info.offset.x > 50) {
-      setShowOriginal(!showOriginal);
-    }
-  };
+  const displayContent = showOriginal
+    ? post.originalContent
+    : translatedText || post.originalContent;
 
   const handleTTS = () => {
-    if (isSpeaking) {
-      stop();
-    } else {
-      speak(displayContent, viewLanguage);
-    }
+    if (isSpeaking) stop();
+    else speak(displayContent, viewLanguage);
   };
 
-  const handleReaction = (reactionKey: ReactionType) => {
-    const hasReaction = userReactionsList.includes(reactionKey);
-    
-    // Optimistic update
-    if (hasReaction) {
-      setUserReactionsList(prev => prev.filter(r => r !== reactionKey));
-      setLocalReactions(prev => ({
-        ...prev,
-        [reactionKey]: Math.max(0, prev[reactionKey] - 1),
-      }));
+  const handleReaction = (key: ReactionType) => {
+    const has = userReactionsList.includes(key);
+    if (has) {
+      setUserReactionsList((p) => p.filter((r) => r !== key));
+      setLocalReactions((p) => ({ ...p, [key]: Math.max(0, p[key] - 1) }));
     } else {
-      setUserReactionsList(prev => [...prev, reactionKey]);
-      setLocalReactions(prev => ({
-        ...prev,
-        [reactionKey]: prev[reactionKey] + 1,
-      }));
+      setUserReactionsList((p) => [...p, key]);
+      setLocalReactions((p) => ({ ...p, [key]: p[key] + 1 }));
     }
-    
-    // Persist to database
-    toggleReactionMutation.mutate({
-      postId: post.id,
-      reactionType: reactionKey,
-      hasReaction,
-    });
-  };
-
-  const handleLike = () => {
-    const newIsLiked = !isLiked;
-    setIsLiked(newIsLiked);
-    likePostMutation.mutate({ postId: post.id, isLiked });
+    toggleReactionMutation.mutate({ postId: post.id, reactionType: key, hasReaction: has });
   };
 
   const handleSave = () => {
-    const newIsSaved = !isSaved;
-    setIsSaved(newIsSaved);
-    savePostMutation.mutate({ postId: post.id, isSaved });
+    const wasSaved = isSaved;
+    setIsSaved(!wasSaved);
+    savePostMutation.mutate(
+      { postId: post.id, isSaved: wasSaved },
+      { onError: () => setIsSaved(wasSaved) }
+    );
   };
 
   const handleShare = async () => {
@@ -148,131 +118,126 @@ export const PostCard: React.FC<PostCardProps> = ({
         });
       } else {
         await navigator.clipboard.writeText(post.originalContent);
-        toast.success(t('social.post.share_copied'));
+        toast.success(t('social.post.share_copied') || 'Copied');
       }
-    } catch (error) {
-      console.log('Share cancelled or failed');
+    } catch {
+      /* cancelled */
     }
   };
 
-  return (
-    <motion.div
-      drag="x"
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.2}
-      onDragEnd={handleSwipeEnd}
-      style={{ x }}
-      className="relative"
-    >
-      {/* Swipe Indicators */}
-      <motion.div 
-        style={{ opacity: saveOpacity }}
-        className="absolute right-0 top-1/2 -translate-y-1/2 -translate-x-4 z-0"
-      >
-        <div className="flex items-center gap-2 text-primary">
-          <Bookmark className="w-6 h-6" />
-          <span className="text-sm font-medium">{t('social.post.save')}</span>
-        </div>
-      </motion.div>
-      
-      <motion.div 
-        style={{ opacity: translateOpacity }}
-        className="absolute left-0 top-1/2 -translate-y-1/2 translate-x-4 z-0"
-      >
-        <div className="flex items-center gap-2 text-primary">
-          <Globe className="w-6 h-6" />
-          <span className="text-sm font-medium">{t('social.post.original')}</span>
-        </div>
-      </motion.div>
+  const handleReportSubmit = (reason: ReportReason) => {
+    reportPostMutation.mutate(
+      { postId: post.id, reason },
+      {
+        onSuccess: () => {
+          toast.success(t('social.report.thanks') || 'Reported. Thank you.', {
+            action: { label: t('common.undo') || 'Undo', onClick: () => {} },
+            duration: 5000,
+          });
+        },
+      }
+    );
+  };
 
-      {/* Main Card */}
-      <motion.article
+  return (
+    <>
+      <article
         className={cn(
-          "relative bg-card/80 backdrop-blur-xl rounded-3xl border border-border/50",
-          "shadow-lg shadow-black/5 overflow-hidden",
-          isSaved && "ring-2 ring-primary/30"
+          'relative bg-card rounded-3xl border border-border overflow-hidden',
+          'shadow-sm',
+          isSaved && 'ring-2 ring-primary/30'
         )}
       >
-        {/* Author Header */}
+        {/* Author */}
         <div className="flex items-center justify-between p-4 pb-3">
-          <div className="flex items-center gap-3">
-            {/* Avatar */}
-            <div className="relative">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl">
-                {post.authorAvatar}
-              </div>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="relative flex-shrink-0">
+              <FarmerAvatar name={post.authorName} seed={post.authorId} size="md" />
               {post.authorBadge && (
-                <div className={cn(
-                  "absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center",
-                  post.authorBadge === 'expert' && "bg-warning",
-                  post.authorBadge === 'verified' && "bg-info"
-                )}>
-                  {post.authorBadge === 'expert' && <Award className="w-3 h-3 text-warning-foreground" />}
-                  {post.authorBadge === 'verified' && <CheckCircle2 className="w-3 h-3 text-info-foreground" />}
+                <div
+                  className={cn(
+                    'absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full flex items-center justify-center border-2 border-card',
+                    post.authorBadge === 'expert' && 'bg-warning',
+                    post.authorBadge === 'verified' && 'bg-info'
+                  )}
+                >
+                  {post.authorBadge === 'expert' && (
+                    <Award className="w-3 h-3 text-warning-foreground" />
+                  )}
+                  {post.authorBadge === 'verified' && (
+                    <CheckCircle2 className="w-3 h-3 text-info-foreground" />
+                  )}
                 </div>
               )}
             </div>
-            
-            {/* Author Info */}
-            <div>
+
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-foreground">{post.authorName}</h3>
+                <h3 className="font-semibold text-foreground truncate">{post.authorName}</h3>
                 {post.hasVoiceNote && (
                   <span className="flex items-center gap-1 px-1.5 py-0.5 bg-primary/10 rounded-full">
                     <Mic className="w-3 h-3 text-primary" />
-                    <span className="text-[10px] text-primary font-medium">{t('social.post.voice')}</span>
+                    <span className="text-[10px] text-primary font-medium">
+                      {t('social.post.voice') || 'Voice'}
+                    </span>
                   </span>
                 )}
               </div>
-              <p className="text-xs text-muted-foreground">{post.authorLocation} • {post.timestamp}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {post.authorLocation} • {post.timestamp}
+              </p>
             </div>
           </div>
 
-          <Button variant="ghost" size="icon" className="rounded-full">
-            <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full flex-shrink-0">
+                <MoreHorizontal className="w-5 h-5 text-muted-foreground" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setReportOpen(true)} className="text-destructive">
+                <Flag className="w-4 h-4 mr-2" />
+                {t('social.post.report') || 'Report post'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         {/* Content */}
         <div className="px-4 pb-3">
-          {/* Translation Badge */}
           {needsTranslation && (
-            <motion.div 
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex items-center gap-2 mb-2"
-            >
+            <div className="flex items-center gap-2 mb-2">
               {isTranslating ? (
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <motion.div
                     animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                   >
                     <Sparkles className="w-3.5 h-3.5 text-primary" />
                   </motion.div>
-                  <span>{t('social.post.translating')}</span>
+                  <span>{t('social.post.translating') || 'Translating…'}</span>
                 </div>
               ) : (
                 <button
                   onClick={() => setShowOriginal(!showOriginal)}
-                  className="flex items-center gap-1.5 text-xs text-primary hover:text-primary/80 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-primary"
                 >
                   <Globe className="w-3.5 h-3.5" />
-                  <span>{showOriginal ? t('social.post.show_translated') : t('social.post.show_original')}</span>
+                  <span>
+                    {showOriginal
+                      ? t('social.post.show_translated') || 'Show translated'
+                      : t('social.post.show_original') || 'Show original'}
+                  </span>
                 </button>
               )}
-            </motion.div>
+            </div>
           )}
 
-          {/* Post Text */}
-          <p className={cn(
-            "text-foreground leading-relaxed",
-            !isExpanded && "line-clamp-3"
-          )}>
+          <p className={cn('text-foreground leading-relaxed', !isExpanded && 'line-clamp-3')}>
             {displayContent}
           </p>
 
-          {/* Expand/Collapse */}
           {post.originalContent.length > 150 && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
@@ -280,28 +245,28 @@ export const PostCard: React.FC<PostCardProps> = ({
             >
               {isExpanded ? (
                 <>
-                  <span>{t('social.post.show_less')}</span>
+                  <span>{t('social.post.show_less') || 'Show less'}</span>
                   <ChevronUp className="w-4 h-4" />
                 </>
               ) : (
                 <>
-                  <span>{t('social.post.read_more')}</span>
+                  <span>{t('social.post.read_more') || 'Read more'}</span>
                   <ChevronDown className="w-4 h-4" />
                 </>
               )}
             </button>
           )}
 
-          {/* Tags */}
           {post.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
-              {post.tags.map((tag, index) => (
-                <span
-                  key={index}
-                  className="px-2.5 py-1 bg-secondary/50 text-secondary-foreground text-xs rounded-full"
+              {post.tags.map((tag, i) => (
+                <button
+                  key={i}
+                  onClick={() => onHashtagTap?.(tag)}
+                  className="px-2.5 py-1 bg-muted text-foreground text-xs rounded-full active:scale-95 transition-transform"
                 >
                   #{tag}
-                </span>
+                </button>
               ))}
             </div>
           )}
@@ -309,129 +274,116 @@ export const PostCard: React.FC<PostCardProps> = ({
 
         {/* Image */}
         {post.imageUrl && (
-          <div className="relative aspect-[4/3] mx-4 mb-3 rounded-2xl overflow-hidden">
-            <img
-              src={post.imageUrl}
-              alt="Post image"
-              className="w-full h-full object-cover"
-            />
-            
-            {/* TTS Button on Image */}
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={handleTTS}
-              disabled={ttsLoading}
-              className={cn(
-                "absolute bottom-3 right-3 p-3 rounded-full",
-                "bg-black/50 backdrop-blur-md border border-white/20",
-                "text-white transition-all duration-200",
-                isSpeaking && "bg-primary"
-              )}
-            >
-              {ttsLoading ? (
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                >
-                  <Sparkles className="w-5 h-5" />
-                </motion.div>
-              ) : isSpeaking ? (
-                <Pause className="w-5 h-5" />
-              ) : (
-                <Volume2 className="w-5 h-5" />
-              )}
-            </motion.button>
-          </div>
+          <button
+            onClick={() => setLightboxSrc(post.imageUrl!)}
+            className="block w-full px-4 pb-3"
+          >
+            <div className="aspect-[4/3] rounded-2xl overflow-hidden bg-muted">
+              <img
+                src={post.imageUrl}
+                alt="Post"
+                loading="lazy"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </button>
         )}
 
-        {/* Reactions Bar */}
+        {/* Action Bar */}
         <div className="px-4 pb-3">
-          <div className="flex items-center justify-between py-2 border-t border-border/50">
-            {/* Reaction Buttons */}
-            <div className="flex items-center gap-1">
-              {REACTIONS.map((reaction) => (
-                <motion.button
-                  key={reaction.key}
-                  whileTap={{ scale: 0.9 }}
-                  onClick={() => handleReaction(reaction.key)}
-                  className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full",
-                    "text-sm transition-all duration-200",
-                    userReactionsList.includes(reaction.key)
-                      ? "bg-primary/15 text-primary"
-                      : "hover:bg-secondary/50 text-muted-foreground"
-                  )}
-                >
-                  <span>{reaction.emoji}</span>
-                  <span className="font-medium">
-                    {localReactions[reaction.key]}
-                  </span>
-                </motion.button>
-              ))}
+          <div className="flex items-center justify-between py-2 border-t border-border gap-2">
+            {/* Reactions */}
+            <div className="flex items-center gap-1 flex-shrink min-w-0">
+              {REACTIONS.map((reaction) => {
+                const active = userReactionsList.includes(reaction.key);
+                return (
+                  <motion.button
+                    key={reaction.key}
+                    whileTap={{ scale: 0.92 }}
+                    onClick={() => handleReaction(reaction.key)}
+                    aria-label={reaction.label}
+                    className={cn(
+                      'flex items-center gap-1 px-2 py-1.5 rounded-full text-sm transition-colors',
+                      active ? 'bg-primary/15 text-primary' : 'text-muted-foreground'
+                    )}
+                  >
+                    <span className="text-base leading-none">{reaction.emoji}</span>
+                    <span className="font-medium text-xs">{localReactions[reaction.key]}</span>
+                  </motion.button>
+                );
+              })}
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-1">
-              <Button 
-                variant="ghost" 
+            <div className="flex items-center gap-0.5 flex-shrink-0">
+              <Button
+                variant="ghost"
                 size="sm"
-                className="rounded-full gap-1.5 text-muted-foreground"
+                onClick={() => setCommentsOpen(true)}
+                className="rounded-full gap-1 px-2 text-muted-foreground h-9"
               >
                 <MessageCircle className="w-4 h-4" />
-                <span>{post.commentCount}</span>
+                <span className="text-xs">{post.commentCount}</span>
               </Button>
-              
-              <Button 
-                variant="ghost" 
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleTTS}
+                disabled={ttsLoading}
+                className={cn(
+                  'rounded-full h-9 w-9',
+                  isSpeaking ? 'text-primary' : 'text-muted-foreground'
+                )}
+                aria-label="Listen"
+              >
+                {ttsLoading ? (
+                  <Sparkles className="w-4 h-4 animate-spin" />
+                ) : isSpeaking ? (
+                  <Pause className="w-4 h-4" />
+                ) : (
+                  <Volume2 className="w-4 h-4" />
+                )}
+              </Button>
+
+              <Button
+                variant="ghost"
                 size="icon"
                 onClick={handleShare}
-                className="rounded-full text-muted-foreground"
+                className="rounded-full h-9 w-9 text-muted-foreground"
+                aria-label="Share"
               >
                 <Share2 className="w-4 h-4" />
               </Button>
-              
-              <Button 
-                variant="ghost" 
+
+              <Button
+                variant="ghost"
                 size="icon"
                 onClick={handleSave}
                 className={cn(
-                  "rounded-full",
-                  isSaved ? "text-primary" : "text-muted-foreground"
+                  'rounded-full h-9 w-9',
+                  isSaved ? 'text-primary' : 'text-muted-foreground'
                 )}
+                aria-label="Save"
               >
-                <Bookmark className={cn("w-4 h-4", isSaved && "fill-current")} />
+                <Bookmark className={cn('w-4 h-4', isSaved && 'fill-current')} />
               </Button>
-
-              {/* TTS Button (if no image) */}
-              {!post.imageUrl && (
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={handleTTS}
-                  disabled={ttsLoading}
-                  className={cn(
-                    "rounded-full",
-                    isSpeaking ? "text-primary" : "text-muted-foreground"
-                  )}
-                >
-                  {ttsLoading ? (
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                    >
-                      <Sparkles className="w-4 h-4" />
-                    </motion.div>
-                  ) : isSpeaking ? (
-                    <VolumeX className="w-4 h-4" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
-                </Button>
-              )}
             </div>
           </div>
         </div>
-      </motion.article>
-    </motion.div>
+      </article>
+
+      <CommentsSheet
+        postId={post.id}
+        isOpen={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+      />
+      <ReportReasonSheet
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        onSubmit={handleReportSubmit}
+      />
+      <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
+    </>
   );
 };

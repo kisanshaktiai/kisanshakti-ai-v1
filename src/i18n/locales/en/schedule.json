@@ -71,6 +71,11 @@
       "loading": "Loading schedule data...",
       "standard_variety": "Standard Variety"
     },
+    "farming_type": {
+      "organic": "Organic",
+      "organic_chemical": "Org+Chem",
+      "chemical": "Chemical"
+    },
     "loading": {
       "syncing": "Syncing data from server..."
     },
@@ -239,7 +244,11 @@
       "medium": "Medium",
       "low": "Low",
       "hours": "hours",
-      "persons": "persons"
+      "persons": "persons",
+      "edit": "Edit",
+      "edit_task": "Edit Task",
+      "n_task": "Task",
+      "n": "n"
     },
     "climate": {
       "ai_active": "AI Active",

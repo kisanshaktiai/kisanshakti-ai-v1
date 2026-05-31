@@ -23,68 +23,68 @@ interface EnhancedColorCodedCardProps {
 
 const CARD_THEMES = {
   organic: {
-    gradient: 'from-emerald-500/15 via-green-500/10 to-teal-500/15',
+    gradient: 'from-success/15 via-success/10 to-success/15',
     border: 'border-l-emerald-500',
-    iconBg: 'bg-emerald-500/20',
-    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    iconBg: 'bg-success/20',
+    iconColor: 'text-success dark:text-success',
     Icon: Leaf,
-    glow: 'hover:shadow-emerald-500/10'
+    glow: 'hover:shadow-success/30/10'
   },
   fertilizer: {
-    gradient: 'from-amber-500/15 via-yellow-500/10 to-orange-500/15',
+    gradient: 'from-warning/15 via-warning/10 to-warning/15',
     border: 'border-l-amber-500',
-    iconBg: 'bg-amber-500/20',
-    iconColor: 'text-amber-600 dark:text-amber-400',
+    iconBg: 'bg-warning/20',
+    iconColor: 'text-warning dark:text-warning',
     Icon: FlaskConical,
-    glow: 'hover:shadow-amber-500/10'
+    glow: 'hover:shadow-warning/30/10'
   },
   pesticide: {
-    gradient: 'from-red-500/15 via-rose-500/10 to-pink-500/15',
+    gradient: 'from-destructive/15 via-destructive/10 to-primary/15',
     border: 'border-l-red-500',
-    iconBg: 'bg-red-500/20',
-    iconColor: 'text-red-600 dark:text-red-400',
+    iconBg: 'bg-destructive/20',
+    iconColor: 'text-destructive dark:text-destructive',
     Icon: Bug,
-    glow: 'hover:shadow-red-500/10'
+    glow: 'hover:shadow-destructive/30/10'
   },
   hormone: {
-    gradient: 'from-violet-500/15 via-purple-500/10 to-indigo-500/15',
+    gradient: 'from-primary/15 via-primary/10 to-info/15',
     border: 'border-l-violet-500',
-    iconBg: 'bg-violet-500/20',
-    iconColor: 'text-violet-600 dark:text-violet-400',
+    iconBg: 'bg-primary/20',
+    iconColor: 'text-primary dark:text-primary',
     Icon: Sparkles,
-    glow: 'hover:shadow-violet-500/10'
+    glow: 'hover:shadow-primary/30/10'
   },
   irrigation: {
-    gradient: 'from-cyan-500/15 via-blue-500/10 to-sky-500/15',
+    gradient: 'from-info/15 via-info/10 to-info/15',
     border: 'border-l-cyan-500',
-    iconBg: 'bg-cyan-500/20',
-    iconColor: 'text-cyan-600 dark:text-cyan-400',
+    iconBg: 'bg-info/20',
+    iconColor: 'text-info dark:text-info',
     Icon: Droplets,
-    glow: 'hover:shadow-cyan-500/10'
+    glow: 'hover:shadow-info/30/10'
   },
   warning: {
-    gradient: 'from-orange-500/15 via-amber-500/10 to-yellow-500/15',
+    gradient: 'from-warning/15 via-warning/10 to-warning/15',
     border: 'border-l-orange-500',
-    iconBg: 'bg-orange-500/20',
-    iconColor: 'text-orange-600 dark:text-orange-400',
+    iconBg: 'bg-warning/20',
+    iconColor: 'text-warning dark:text-warning',
     Icon: AlertTriangle,
-    glow: 'hover:shadow-orange-500/10'
+    glow: 'hover:shadow-warning/30/10'
   },
   success: {
-    gradient: 'from-green-500/15 via-emerald-500/10 to-teal-500/15',
+    gradient: 'from-success/15 via-success/10 to-success/15',
     border: 'border-l-green-500',
-    iconBg: 'bg-green-500/20',
-    iconColor: 'text-green-600 dark:text-green-400',
+    iconBg: 'bg-success/20',
+    iconColor: 'text-success dark:text-success',
     Icon: CheckCircle2,
-    glow: 'hover:shadow-green-500/10'
+    glow: 'hover:shadow-success/30/10'
   },
   info: {
-    gradient: 'from-blue-500/15 via-indigo-500/10 to-violet-500/15',
+    gradient: 'from-info/15 via-info/10 to-primary/15',
     border: 'border-l-blue-500',
-    iconBg: 'bg-blue-500/20',
-    iconColor: 'text-blue-600 dark:text-blue-400',
+    iconBg: 'bg-info/20',
+    iconColor: 'text-info dark:text-info',
     Icon: Info,
-    glow: 'hover:shadow-blue-500/10'
+    glow: 'hover:shadow-info/30/10'
   }
 };
 

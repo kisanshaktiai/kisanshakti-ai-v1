@@ -69,11 +69,16 @@
     "language": "भाषा",
     "speak_this_page": "हे पान वाचून दाखव",
     "stop_speaking": "वाचन थांबवा",
+    "no_readable_text": "वाचण्यासारखे काही नाही",
+    "no_readable_text_hint": "मजकूर असलेल्या भागावर जा आणि पुन्हा प्रयत्न करा.",
+    "tts_failed": "हे पान वाचता आले नाही",
     "subscription": {
       "tap_to_manage": "योजना व्यवस्थापित करा",
       "days_remaining": "{{d}} दिवस शिल्लक",
       "grace_period": "सूट कालावधी · {{d}} दिवस शिल्लक",
       "expired_tap_renew": "नूतनीकरण करा"
-    }
+    },
+    "undo": "पूर्ववत करा",
+    "try_again": "पुन्हा प्रयत्न करा"
   }
 }

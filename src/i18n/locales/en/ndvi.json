@@ -60,7 +60,29 @@
     "map": {
       "view_map": "View Map",
       "satellite_view": "Satellite View",
-      "health_overlay": "Health Overlay"
+      "health_overlay": "Health Overlay",
+      "aria": "NDVI satellite map",
+      "cloud": "Cloud {{value}}%",
+      "fullscreen": "Fullscreen",
+      "full": "Full",
+      "exit": "Exit",
+      "opacity": "Heatmap opacity",
+      "legend": "Legend",
+      "legend_title": "NDVI scale",
+      "legend_note": "Continuous NDVI palette · NASA/ESA convention",
+      "max": "Max",
+      "mean": "Mean",
+      "min": "Min",
+      "mode_raster": "Pixel raster",
+      "mode_zonal": "Zonal mosaic",
+      "mode_boundary": "Boundary only",
+      "mode_land_thumb": "Satellite NDVI",
+      "no_clean_for_date": "No clean observation on this date",
+      "no_data": "No satellite data yet",
+      "provenance": "Source",
+      "recenter": "Recenter",
+      "stale_warning": "Showing latest clean observation",
+      "thumbnail_alt": "Satellite NDVI thumbnail"
     },
     "historical": {
       "trend": "Historical Trend",
@@ -78,6 +100,64 @@
       "latest_data": "Latest satellite data loaded",
       "refresh_failed": "❌ Refresh Failed",
       "try_again": "Please try again"
+    },
+    "check_back": "Check back in {{days}} days",
+    "no_clean": "No clean satellite observation yet",
+    "tab": {
+      "now": "Now",
+      "trend": "Trend",
+      "map": "Map"
+    },
+    "now": {
+      "status": "Status",
+      "cloud": "Cloud",
+      "quality": "Quality",
+      "field_stats": "Field statistics",
+      "guided_actions": "Guided actions",
+      "rule_based": "Rule-based · no AI guesses"
+    },
+    "trend": {
+      "need_more": "Need at least 4 reliable observations"
+    },
+    "projection": {
+      "title": "Indicative projection",
+      "indicative": "Indicative",
+      "disclaimer": "Linear projection from recent observations · not a forecast"
+    },
+    "reliability": {
+      "stale": "Latest clean reading is {{days}} days old"
+    },
+    "risk": {
+      "low": "Low risk",
+      "medium": "Medium risk",
+      "high": "High risk",
+      "critical": "Critical risk"
+    },
+    "stage_aware": {
+      "germination": "Healthy NDVI for germination stage",
+      "tillering": "Healthy NDVI for tillering stage",
+      "vegetative": "Healthy NDVI for vegetative growth",
+      "reproductive": "Healthy NDVI for reproductive stage",
+      "maturity": "Healthy NDVI for maturity stage",
+      "unknown": "Stage-aware reference unavailable"
+    },
+    "stages": {
+      "germination": "Germination",
+      "tillering": "Tillering",
+      "vegetative": "Vegetative",
+      "reproductive": "Reproductive",
+      "maturity": "Maturity",
+      "unknown": "Unknown stage"
+    },
+    "early_warning": {
+      "title": "Early warning",
+      "active_alerts": "Active alerts",
+      "no_alerts": "No active alerts",
+      "recommended": "Recommended actions"
+    },
+    "warning": {
+      "attention": "Attention needed",
+      "no_alerts": "No alerts"
     }
   },
   "__qa": {

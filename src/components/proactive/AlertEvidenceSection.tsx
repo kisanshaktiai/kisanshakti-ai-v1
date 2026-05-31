@@ -57,9 +57,9 @@ const SECTION_HEADERS: Record<string, { mr: string; hi: string; en: string }> = 
 };
 
 const URGENCY_LABELS: Record<string, { en: string; mr: string; hi: string; color: string }> = {
-  IMMEDIATE: { en: 'Do it NOW', mr: 'आत्ताच करा', hi: 'अभी करें', color: 'bg-red-500 text-white' },
-  TODAY: { en: 'Today', mr: 'आज', hi: 'आज', color: 'bg-orange-500 text-white' },
-  TOMORROW: { en: 'Tomorrow morning', mr: 'उद्या सकाळी', hi: 'कल सुबह', color: 'bg-yellow-500 text-white' },
+  IMMEDIATE: { en: 'Do it NOW', mr: 'आत्ताच करा', hi: 'अभी करें', color: 'bg-destructive text-white' },
+  TODAY: { en: 'Today', mr: 'आज', hi: 'आज', color: 'bg-warning text-white' },
+  TOMORROW: { en: 'Tomorrow morning', mr: 'उद्या सकाळी', hi: 'कल सुबह', color: 'bg-warning text-white' },
 };
 
 function getLabel(key: string, lang: string): string {
@@ -124,18 +124,18 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
     <div ref={ref} className="mt-3 space-y-2">
       {/* === SOLUTION CARD (from neural enrichment) === */}
       {solution && (
-        <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-gradient-to-br from-emerald-50 to-green-50 dark:from-emerald-950/30 dark:to-green-950/20 p-3 space-y-3">
+        <div className="rounded-xl border border-success/30 dark:border-success bg-gradient-to-br from-success to-success dark:from-success/30 dark:to-success/20 p-3 space-y-3">
           {(problem || cause) && (
             <div className="space-y-1.5">
               {problem && (
                 <div>
-                  {sectionTitle(<AlertTriangle className="h-3 w-3 text-amber-600" />, 'problem')}
+                  {sectionTitle(<AlertTriangle className="h-3 w-3 text-warning" />, 'problem')}
                   <p className="text-xs text-foreground/80 leading-relaxed">{problem}</p>
                 </div>
               )}
               {cause && (
                 <div>
-                  {sectionTitle(<Lightbulb className="h-3 w-3 text-yellow-600" />, 'cause')}
+                  {sectionTitle(<Lightbulb className="h-3 w-3 text-warning" />, 'cause')}
                   <p className="text-xs text-foreground/70 leading-relaxed">{cause}</p>
                 </div>
               )}
@@ -159,16 +159,16 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
           )}
 
           {safety && (
-            <div className="bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded-lg p-2">
-              {sectionTitle(<Shield className="h-3 w-3 text-red-600" />, 'safety')}
-              <p className="text-[11px] text-red-700 dark:text-red-300 leading-relaxed">{safety}</p>
+            <div className="bg-destructive-soft dark:bg-destructive/20 border border-destructive/30 dark:border-destructive rounded-lg p-2">
+              {sectionTitle(<Shield className="h-3 w-3 text-destructive" />, 'safety')}
+              <p className="text-[11px] text-destructive dark:text-destructive leading-relaxed">{safety}</p>
             </div>
           )}
 
           {organicAlt && (
-            <div className="bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded-lg p-2">
-              {sectionTitle(<Leaf className="h-3 w-3 text-green-600" />, 'organic_alt')}
-              <p className="text-[11px] text-green-700 dark:text-green-300 leading-relaxed">{organicAlt}</p>
+            <div className="bg-success-soft dark:bg-success/20 border border-success/30 dark:border-success rounded-lg p-2">
+              {sectionTitle(<Leaf className="h-3 w-3 text-success" />, 'organic_alt')}
+              <p className="text-[11px] text-success dark:text-success leading-relaxed">{organicAlt}</p>
             </div>
           )}
 
@@ -176,13 +176,13 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
             <div className="flex gap-2">
               {expectedBenefit && (
                 <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
-                  {sectionTitle(<CheckCircle2 className="h-3 w-3 text-emerald-600" />, 'expected_benefit')}
+                  {sectionTitle(<CheckCircle2 className="h-3 w-3 text-success" />, 'expected_benefit')}
                   <p className="text-[10px] text-foreground/70 leading-relaxed">{expectedBenefit}</p>
                 </div>
               )}
               {followup && (
                 <div className="flex-1 bg-white/60 dark:bg-white/5 rounded-lg p-2">
-                  {sectionTitle(<Clock className="h-3 w-3 text-blue-600" />, 'followup')}
+                  {sectionTitle(<Clock className="h-3 w-3 text-info" />, 'followup')}
                   <p className="text-[10px] text-foreground/70 leading-relaxed">{followup}</p>
                 </div>
               )}
@@ -193,13 +193,13 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
 
       {/* === IRRIGATION CARD === */}
       {irrigation && (
-        <div className="rounded-lg border border-cyan-200 bg-cyan-50 dark:bg-cyan-950/30 dark:border-cyan-800 p-3 space-y-2">
+        <div className="rounded-lg border border-info/30 bg-info-soft dark:bg-info/30 dark:border-info p-3 space-y-2">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-cyan-100 dark:bg-cyan-900 flex items-center justify-center">
-              <Droplets className="h-4 w-4 text-cyan-600" />
+            <div className="w-8 h-8 rounded-full bg-info-soft dark:bg-info flex items-center justify-center">
+              <Droplets className="h-4 w-4 text-info" />
             </div>
             <div className="flex-1">
-              <p className="text-xs font-semibold text-cyan-800 dark:text-cyan-200">
+              <p className="text-xs font-semibold text-info dark:text-info">
                 💧 {getHeader('irrigation', lang)}
               </p>
               {irrigation.urgency && (
@@ -213,32 +213,32 @@ export const AlertEvidenceSection = forwardRef<HTMLDivElement, AlertEvidenceSect
           <div className="grid grid-cols-2 gap-2 text-xs">
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
               <p className="text-[10px] text-muted-foreground">{getHeader('total_water', lang)}</p>
-              <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
+              <p className="font-bold text-info dark:text-info text-sm">
                 {Number(irrigation.water_liters_total).toLocaleString()} L
               </p>
             </div>
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
               <p className="text-[10px] text-muted-foreground">{getHeader('per_acre', lang)}</p>
-              <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
+              <p className="font-bold text-info dark:text-info text-sm">
                 {Number(irrigation.water_liters_per_acre).toLocaleString()} L
               </p>
             </div>
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
               <p className="text-[10px] text-muted-foreground">{getHeader('duration', lang)}</p>
-              <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
+              <p className="font-bold text-info dark:text-info text-sm">
                 {irrigation.duration_hours} {getHeader('hours', lang)}
               </p>
             </div>
             <div className="bg-white/60 dark:bg-white/5 rounded px-2 py-1.5">
               <p className="text-[10px] text-muted-foreground">{getHeader('method', lang)}</p>
-              <p className="font-bold text-cyan-700 dark:text-cyan-300 text-sm">
+              <p className="font-bold text-info dark:text-info text-sm">
                 {irrigation.method}
               </p>
             </div>
           </div>
           
           {irrigation.timing && (
-            <p className="text-[10px] text-cyan-700/70 dark:text-cyan-400/70 italic">
+            <p className="text-[10px] text-info/70 dark:text-info/70 italic">
               ⏰ {irrigation.timing}
             </p>
           )}

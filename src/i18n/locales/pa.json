@@ -37,7 +37,8 @@
     "filter": "ਫਿਲਟਰ",
     "getStarted": "ਸ਼ੁਰੂ ਕਰੋ",
     "swipeLeft": "ਜਾਰੀ ਰੱਖਣ ਲਈ ਖੱਬੇ ਪਾਸੇ ਸਵਾਈਪ ਕਰੋ",
-    "notNow": "ਹੁਣੇ ਨਹੀਂ"
+    "notNow": "ਹੁਣੇ ਨਹੀਂ",
+    "try_again": "ਮੁੜ ਕੋਸ਼ਿਸ਼ ਕਰੋ"
   },
   "home": {
     "greeting": "ਸਤ ਸ੍ਰੀ ਅਕਾਲ, {{name}}",
@@ -91,7 +92,37 @@
     "potato": "ਆਲੂ",
     "onion": "ਪਿਆਜ਼",
     "tomato": "ਟਮਾਟਰ",
-    "chilli": "ਮਿਰਚ"
+    "chilli": "ਮਿਰਚ",
+    "schedule_view": {
+      "no_active_schedule": "ਕੋਈ ਸਰਗਰਮ ਸ਼ਡਿਊਲ ਨਹੀਂ",
+      "no_schedule_available": "ਕੋਈ ਸ਼ਡਿਊਲ ਉਪਲਬਧ ਨਹੀਂ",
+      "no_schedule_description": "ਨਿੱਜੀ ਖੇਤੀ ਕੰਮ ਅਤੇ ਸਿਫ਼ਾਰਸ਼ਾਂ ਪ੍ਰਾਪਤ ਕਰਨ ਲਈ AI ਸ਼ਡਿਊਲ ਬਣਾਓ",
+      "generate_schedule": "ਸ਼ਡਿਊਲ ਬਣਾਓ",
+      "ai_schedule": "AI ਸ਼ਡਿਊਲ",
+      "loading": "ਸ਼ਡਿਊਲ ਡਾਟਾ ਲੋਡ ਹੋ ਰਿਹਾ ਹੈ...",
+      "standard_variety": "ਮਿਆਰੀ ਕਿਸਮ"
+    },
+    "crop_input": {
+      "variety_label": "ਕਿਸਮ (ਵਿਕਲਪਿਕ)",
+      "variety_placeholder": "ਜਿਵੇਂ, IR-64, HD-2967, BT ਕਪਾਹ",
+      "ready_made_plant": "ਤਿਆਰ ਨਰਸਰੀ ਪੌਦੇ ਵਰਤ ਰਹੇ ਹਾਂ",
+      "ready_made_description": "ਜੇ ਬੀਜ ਬੀਜਣ ਦੀ ਥਾਂ ਪੌਦੇ ਲਗਾ ਰਹੇ ਹੋ ਤਾਂ ਚੁਣੋ",
+      "sowing_date": "ਬਿਜਾਈ ਦੀ ਮਿਤੀ",
+      "planting_date": "ਲਗਾਉਣ ਦੀ ਮਿਤੀ",
+      "pick_date": "ਮਿਤੀ ਚੁਣੋ",
+      "generate_ai_schedule": "AI ਸ਼ਡਿਊਲ ਬਣਾਓ",
+      "generating": "AI ਸ਼ਡਿਊਲ ਬਣ ਰਿਹਾ ਹੈ...",
+      "select_crop": "ਫ਼ਸਲ ਚੁਣੋ",
+      "please_select_crop": "ਕਿਰਪਾ ਕਰਕੇ ਫ਼ਸਲ ਚੁਣੋ",
+      "select_date": "ਮਿਤੀ ਚੁਣੋ",
+      "please_select_date": "ਕਿਰਪਾ ਕਰਕੇ ਬਿਜਾਈ ਦੀ ਮਿਤੀ ਚੁਣੋ",
+      "water": "ਪਾਣੀ"
+    },
+    "toast": {
+      "task_updated": "ਕੰਮ ਸਫਲਤਾਪੂਰਵਕ ਅੱਪਡੇਟ ਹੋਇਆ",
+      "changes_saved": "ਤੁਹਾਡੀਆਂ ਤਬਦੀਲੀਆਂ ਸੰਭਾਲ ਲਈਆਂ ਗਈਆਂ ਹਨ",
+      "update_failed": "ਕੰਮ ਅੱਪਡੇਟ ਕਰਨ ਵਿੱਚ ਅਸਫਲ"
+    }
   },
   "instaScan": {
     "title": "ਤੁਰੰਤ ਫਸਲ ਸਕੈਨ",

@@ -371,9 +371,9 @@ export function CentralizedCropSelector({
                       {(crop.is_popular || crop.season) && (
                         <div className="flex flex-wrap gap-1 justify-center">
                           {crop.is_popular && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30">
-                              <Sparkles className="h-2 w-2 text-yellow-600 dark:text-yellow-400" />
-                              <span className="text-[9px] font-medium text-yellow-700 dark:text-yellow-300">{t('schedule.crop_selector.hot')}</span>
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-warning/20 to-warning/20 border border-warning/30">
+                              <Sparkles className="h-2 w-2 text-warning dark:text-warning" />
+                              <span className="text-[9px] font-medium text-warning dark:text-warning">{t('schedule.crop_selector.hot')}</span>
                             </span>
                           )}
                           {crop.season && (

@@ -4,12 +4,19 @@
  * v7.0.1 - Romanized language detection + app language enforcement
  */
 
+// BUILD_TAG bumps force the edge runtime to pick up dependent module changes
+// (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
+const BUILD_TAG = 'ai-agri-chat::classifier-v4-canonical::2026-05-31T16:45Z';
+console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
+
+
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
+import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
@@ -25,6 +32,9 @@ import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/l
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
 
 // Legacy helpers removed - dead code cleanup
+
+// NOTE: General chat is handled by a separate edge function (`ai-general-chat`).
+// This function is now strictly the symbolic-decision-brain endpoint.
 
 // CRITICAL FIX: Import translation functions for farmer-friendly product names
 import { 
@@ -333,6 +343,42 @@ serve(async (req) => {
     // Mark this request as in-flight
     inFlightRequests.set(dedupeKey, { promise: Promise.resolve(new Response()), expiresAt: Date.now() + DEDUP_WINDOW_MS });
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUBSCRIPTION QUOTA — atomic 20-per-day check (IST-aware via DB function)
+    // Uses `check_farmer_quota('ai_chat', 1, commit:true)` which locks the
+    // usage row, validates the per-tenant plan limit, and increments. A 402
+    // response tells the client to render the upgrade banner.
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const { data: quotaResult, error: quotaErr } = await supabase.rpc('check_farmer_quota', {
+        _farmer: finalFarmerId,
+        _feature: 'ai_chat',
+        _delta: 1,
+        _tokens: 0,
+        _commit: true,
+      });
+      if (quotaErr) {
+        console.warn(`⚠️ [Quota] RPC error (allow-on-error):`, quotaErr.message);
+      } else if (quotaResult && (quotaResult as any).allowed === false) {
+        const reason = (quotaResult as any).reason || 'quota_exceeded';
+        const status = reason === 'feature_disabled' ? 403 : 402;
+        inFlightRequests.delete(dedupeKey);
+        return new Response(
+          JSON.stringify({
+            error: 'subscription_quota',
+            code: reason,
+            quota: (quotaResult as any).quota,
+            used: (quotaResult as any).used,
+            remaining: (quotaResult as any).remaining,
+            resets_at: (quotaResult as any).period,
+          }),
+          { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    } catch (e) {
+      console.warn('⚠️ [Quota] guard threw, allowing request:', (e as Error).message);
+    }
+
     //
     // CRITICAL: Enforce sessionId ↔ landId binding to prevent cross-land contamination
     // ═══════════════════════════════════════════════════════════════════════════
@@ -552,6 +598,11 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // NOTE: General-chat requests are routed to the separate `ai-general-chat`
+    // edge function by the client. This function is symbolic-brain only.
+
+
 
     // ═══════════════════════════════════════════════════════════════════════════
     // LANGUAGE DETECTION & CONSISTENCY CHECK
@@ -782,10 +833,15 @@ serve(async (req) => {
       }
     }
 
+    // (General-chat path removed — handled by dedicated `ai-general-chat` function.)
+
+
+
     // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
     // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();
+    
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
       userMessageContent,
@@ -1455,6 +1511,21 @@ serve(async (req) => {
           const decisionOutputForFormatting = orchestratorResponse.decision_output;
           hydrateDecisionOutputRichText(decisionOutputForFormatting);
 
+          // ── Load farmer profile + respectful addressing (presentation-only)
+          let farmerAddressing: FarmerAddressing | undefined;
+          try {
+            const profile = await loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+            farmerAddressing = getFarmerAddressing({
+              language: profile.language || detectedLanguage,
+              state: profile.state,
+              gender: profile.gender,
+              farmer_name: profile.farmer_name,
+            });
+            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}`);
+          } catch (e) {
+            console.warn('[Addressing] load failed:', (e as Error).message);
+          }
+
           const formatterInput: LLMFormatterInput = {
             farmer_message: userMessageContent,
             language: detectedLanguage,
@@ -1462,7 +1533,8 @@ serve(async (req) => {
             land_context: landContext,
             data_audit: orchestratorResponse.dataAudit,
             trace_id: traceId,
-            supabase_client: supabase
+            supabase_client: supabase,
+            farmer_addressing: farmerAddressing,
           };
           
           // Call LLM formatter with timeout protection

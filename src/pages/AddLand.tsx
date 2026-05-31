@@ -6,6 +6,8 @@ import { GoogleMapBoundaryDrawer } from '@/components/land/GoogleMapBoundaryDraw
 import { ModernLandWizard } from '@/components/land/ModernLandWizard';
 import { SmartLandConfirmCard } from '@/components/land/SmartLandConfirmCard';
 import { LandInstructionDialog } from '@/components/land/LandInstructionDialog';
+import { useEntitlements } from '@/hooks/useEntitlements';
+import { toast } from '@/hooks/use-toast';
 
 // Feature flag: when true, use the AI-prefilled single-screen confirm card.
 // Falls back to the legacy 4-step wizard via localStorage override
@@ -24,7 +26,27 @@ interface LatLng {
 export default function AddLand() {
   const navigate = useNavigate();
   const { t } = useTranslation();
-  
+  const { lands: landsEntitlement, isReady } = useEntitlements();
+
+  // ─── Land quota guard ────────────────────────────────────────────────
+  // Block deep-link / direct navigation when farmer is at or over their plan
+  // limit. The button-level disable happens via <LandLimitGuard>; this is the
+  // last-line client-side defense before the server trigger raises.
+  useEffect(() => {
+    if (isReady && !landsEntitlement.allowed) {
+      toast({
+        title: t('lands.quota_title', 'Land limit reached'),
+        description: t('lands.quota_body_short', {
+          defaultValue: 'You have used {{used}}/{{limit}} lands. Upgrade to add more.',
+          used: landsEntitlement.used,
+          limit: landsEntitlement.limit ?? 0,
+        }),
+        variant: 'destructive',
+      });
+      navigate('/app/lands', { replace: true });
+    }
+  }, [isReady, landsEntitlement.allowed, landsEntitlement.used, landsEntitlement.limit, navigate, t]);
+
   const [showInstructions, setShowInstructions] = useState(true);
   const [showMap, setShowMap] = useState(false);
   const [showForm, setShowForm] = useState(false);

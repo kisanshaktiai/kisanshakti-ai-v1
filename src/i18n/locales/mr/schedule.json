@@ -95,7 +95,10 @@
       "task_unmarked": "काम अचिन्हांकित",
       "reverting": "पूर्णता परत घेत आहे...",
       "unmark_failed": "अचिन्हांकित करण्यात अयशस्वी",
-      "try_again": "पुन्हा प्रयत्न करा."
+      "try_again": "पुन्हा प्रयत्न करा.",
+      "task_updated": "काम यशस्वीरित्या अपडेट केले",
+      "changes_saved": "तुमचे बदल जतन केले आहेत",
+      "update_failed": "काम अपडेट करण्यात अयशस्वी"
     },
     "main": {
       "ai_crop_schedule": "AI पीक वेळापत्रक",
@@ -181,7 +184,11 @@
       "medium": "मध्यम",
       "low": "कमी",
       "hours": "तास",
-      "persons": "व्यक्ती"
+      "persons": "व्यक्ती",
+      "edit": "संपादित करा",
+      "edit_task": "काम संपादित करा",
+      "n_task": "काम",
+      "n": "n"
     },
     "land_selector": {
       "ai_schedule_ready": "AI वेळापत्रक तयार",
@@ -246,7 +253,37 @@
     "listen": "ऐका",
     "close": "बंद करा",
     "done": "पूर्ण",
-    "skipped": "वगळले"
+    "skipped": "वगळले",
+    "schedule_view": {
+      "no_active_schedule": "सक्रिय वेळापत्रक नाही",
+      "no_schedule_available": "वेळापत्रक उपलब्ध नाही",
+      "no_schedule_description": "वैयक्तिक शेती कामे आणि शिफारसी मिळवण्यासाठी AI-आधारित पीक वेळापत्रक तयार करा",
+      "generate_schedule": "वेळापत्रक तयार करा",
+      "ai_schedule": "AI वेळापत्रक",
+      "loading": "वेळापत्रक डेटा लोड होत आहे...",
+      "standard_variety": "मानक वाण"
+    },
+    "farming_type": {
+      "organic": "सेंद्रिय",
+      "organic_chemical": "सेंद्रिय+रासा.",
+      "chemical": "रासायनिक"
+    },
+    "crop_input": {
+      "variety_label": "वाण (पर्यायी)",
+      "variety_placeholder": "उदा., IR-64, HD-2967, BT कापूस",
+      "ready_made_plant": "तयार रोपवाटिकेची रोपे वापरत आहे",
+      "ready_made_description": "बियाणे पेरण्याऐवजी रोपे लावत असल्यास निवडा",
+      "sowing_date": "पेरणीची तारीख",
+      "planting_date": "लागवडीची तारीख",
+      "pick_date": "तारीख निवडा",
+      "generate_ai_schedule": "AI वेळापत्रक तयार करा",
+      "generating": "AI वेळापत्रक तयार होत आहे...",
+      "select_crop": "पीक निवडा",
+      "please_select_crop": "कृपया पीक निवडा",
+      "select_date": "तारीख निवडा",
+      "please_select_date": "कृपया पेरणीची तारीख निवडा",
+      "water": "पाणी"
+    }
   },
   "common": {
     "cancel": "रद्द करा",

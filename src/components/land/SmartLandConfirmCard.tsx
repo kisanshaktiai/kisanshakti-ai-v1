@@ -409,7 +409,7 @@ export function SmartLandConfirmCard({
       >
         {/* Location card */}
         <ReviewCard
-          icon={<MapPin className="h-5 w-5 text-emerald-700 dark:text-emerald-400" />}
+          icon={<MapPin className="h-5 w-5 text-success dark:text-success" />}
           title={t('lands.smartConfirm.whereIsIt', { defaultValue: 'Where is it?' })}
           summary={locationSummary}
           state={locationState}
@@ -455,7 +455,7 @@ export function SmartLandConfirmCard({
 
         {/* Crop & dates card */}
         <ReviewCard
-          icon={<Wheat className="h-5 w-5 text-amber-600 dark:text-amber-400" />}
+          icon={<Wheat className="h-5 w-5 text-warning dark:text-warning" />}
           title={t('lands.smartConfirm.whatsGrowing', { defaultValue: "What's growing?" })}
           summary={cropSummary}
           state={cropState}
@@ -540,7 +540,7 @@ export function SmartLandConfirmCard({
 
         {/* Land character — collapsed by default */}
         <ReviewCard
-          icon={<Sprout className="h-5 w-5 text-lime-700 dark:text-lime-400" />}
+          icon={<Sprout className="h-5 w-5 text-success dark:text-success" />}
           title={t('lands.smartConfirm.character', { defaultValue: 'Land character' })}
           summary={characterSummary}
           state={characterState}
@@ -575,7 +575,7 @@ export function SmartLandConfirmCard({
 
         {/* Ownership + survey — collapsed by default */}
         <ReviewCard
-          icon={<FileText className="h-5 w-5 text-slate-700 dark:text-slate-300" />}
+          icon={<FileText className="h-5 w-5 text-foreground/80 dark:text-muted-foreground" />}
           title={t('lands.smartConfirm.ownershipTitle', { defaultValue: 'Ownership & survey' })}
           summary={ownershipLabel(form.ownership_type, t) + (form.survey_number ? ` · #${form.survey_number}` : '')}
           state={'manual'}
@@ -617,7 +617,7 @@ export function SmartLandConfirmCard({
 
         {/* Previous cycle — collapsed */}
         <ReviewCard
-          icon={<History className="h-5 w-5 text-purple-700 dark:text-purple-300" />}
+          icon={<History className="h-5 w-5 text-primary dark:text-primary" />}
           title={t('lands.smartConfirm.previousCycle', { defaultValue: 'Previous cycle' })}
           summary={
             form.previous_crop
@@ -650,7 +650,7 @@ export function SmartLandConfirmCard({
 
         {/* Notes + marketplace */}
         <ReviewCard
-          icon={<Store className="h-5 w-5 text-orange-600 dark:text-orange-300" />}
+          icon={<Store className="h-5 w-5 text-warning dark:text-warning" />}
           title={t('lands.smartConfirm.moreDetails', { defaultValue: 'More details' })}
           summary={form.notes ? form.notes.slice(0, 60) : t('lands.smartConfirm.optional', { defaultValue: 'Notes & marketplace (optional)' })}
           state={form.notes ? 'manual' : 'empty'}

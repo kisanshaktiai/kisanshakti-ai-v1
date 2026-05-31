@@ -4,6 +4,14 @@ import { useAuthStore } from '@/stores/authStore';
 import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { localDB } from '@/services/localDB';
+import { landsApi } from '@/services/landsApi';
+
+export interface ResolvedLand {
+  id: string;
+  name: string;
+  area_acres: number | null;
+  current_crop: string | null;
+}
 
 export interface ProactiveAlert {
   id: string;
@@ -26,6 +34,7 @@ export interface ProactiveAlert {
   trigger_data: Record<string, any>;
   decision_reasoning: string | null;
   land_name?: string | null;
+  land?: ResolvedLand | null;
 }
 
 function getAlertTitle(alert: ProactiveAlert, lang: string): string {
@@ -83,6 +92,11 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
         .order('created_at', { ascending: false })
         .limit(100);
 
+      // Defensive tenant scoping (in addition to RLS)
+      if ((user as any)?.tenantId) {
+        query = query.eq('tenant_id', (user as any).tenantId);
+      }
+
       if (!showHistory) {
         query = query.in('status', ['PENDING', 'DELIVERED', 'SEEN']);
       }
@@ -91,7 +105,6 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
 
       if (error) {
         console.error('[ProactiveAlerts] Fetch error, falling back to offline cache:', error);
-        // Fallback to IndexedDB on Supabase failure
         const cached = await localDB.getProactiveAlerts(user.id, showHistory);
         const mapped = cached.map(a => ({ ...a, land_name: a.trigger_data?.land_name || null })) as ProactiveAlert[];
         setAlerts(mapped);
@@ -100,31 +113,51 @@ export function useProactiveAlerts(options?: { skipRealtime?: boolean }) {
         return;
       }
 
-      // Fetch land names separately for reliability (avoids RLS join issues)
+      // Resolve land details through the SAME path the rest of the app uses
+      // (lands-api edge function), because direct supabase.from('lands') is
+      // blocked by RLS for our custom session-token auth.
       const landIds = [...new Set((data || []).map((a: any) => a.land_id).filter(Boolean))];
-      let landNameMap: Record<string, string> = {};
+      let landMap: Record<string, ResolvedLand> = {};
 
       if (landIds.length > 0) {
-        const { data: lands } = await supabase
-          .from('lands')
-          .select('id, name')
-          .in('id', landIds);
+        let lands: any[] = [];
+        try {
+          lands = await landsApi.fetchLands();
+        } catch (e) {
+          console.warn('[ProactiveAlerts] landsApi.fetchLands failed, falling back to localDB:', e);
+        }
+        if (!lands || lands.length === 0) {
+          try {
+            lands = await localDB.getLandsByFarmer(user.id);
+          } catch {}
+        }
 
         if (lands && lands.length > 0) {
-          landNameMap = Object.fromEntries(lands.map((l: any) => [l.id, l.name]));
+          landMap = Object.fromEntries(
+            lands
+              .filter((l: any) => landIds.includes(l.id))
+              .map((l: any) => [l.id, {
+                id: l.id,
+                name: l.name,
+                area_acres: l.area_acres ?? null,
+                current_crop: l.current_crop ?? null,
+              }])
+          );
+        }
+
+        const unresolved = landIds.filter(id => !landMap[id as string]);
+        if (unresolved.length > 0) {
+          console.info('[ProactiveAlerts] Lands not in current farmer list:', unresolved.length);
         }
       }
 
       const mapped = (data || []).map((a: any) => {
-        let landName = a.land_id ? landNameMap[a.land_id] || null : null;
+        const resolved = a.land_id ? landMap[a.land_id] : null;
+        let landName: string | null = resolved?.name ?? null;
         if (!landName && a.trigger_data?.land_name) {
           landName = a.trigger_data.land_name;
         }
-        if (!landName && a.trigger_data?.solution?.problem_en) {
-          const match = a.trigger_data.solution.problem_en.match(/on\s+(\S+)\s+\(/);
-          if (match) landName = match[1];
-        }
-        return { ...a, land_name: landName };
+        return { ...a, land: resolved ?? null, land_name: landName };
       }) as ProactiveAlert[];
 
       setAlerts(mapped);

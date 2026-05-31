@@ -135,6 +135,19 @@ export interface LLMFormatterInput {
   data_audit?: DataAudit;
   trace_id?: string;
   supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
+  /**
+   * Presentation-only addressing payload (rural honorifics).
+   * MUST NOT affect symbolic decisions, products, dosages or any logic.
+   */
+  farmer_addressing?: {
+    primary: string;
+    alternatives: string[];
+    gender: string;
+    language: string;
+    state: string | null;
+    toneHint: string;
+    promptDirective: string;
+  };
 }
 
 export interface LLMFormatterOutput {
@@ -1435,6 +1448,8 @@ Translate phi_days to: "Stop spraying at least X days before harvest" (in natura
 
 ${ruralRules}
 ${cropStageConstraints}
+
+${input.farmer_addressing?.promptDirective || ''}
 
 IMPORTANT: action_text/reason_text/knowledge_text below are English reference notes. REWRITE them as a village agriculture officer EXPLAINING to the farmer in natural rural ${langName}. Do NOT translate word-by-word. NEVER leave English phrases in the output. Every word must be in ${langName}.
 

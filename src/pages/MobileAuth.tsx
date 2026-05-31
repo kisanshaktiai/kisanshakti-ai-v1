@@ -98,14 +98,14 @@ export default function MobileAuth() {
             query = query.eq('tenant_id', tenant.id);
           }
           
-          const { data: farmerData, error: fetchError } = await query.maybeSingle();
+          const { data: farmerRows, error: fetchError } = await query.limit(2);
 
-          if (fetchError && fetchError.code !== 'PGRST116') {
+          if (fetchError) {
             console.error('Error fetching farmer:', fetchError);
             throw fetchError;
           }
           
-          farmer = farmerData;
+          farmer = farmerRows?.[0] ?? null;
           lastNetworkError = null;
           break; // Success, exit retry loop
         } catch (networkError: any) {
@@ -162,15 +162,20 @@ export default function MobileAuth() {
           farmerData.tenant_id = tenant.id;
         }
         
-        const { data: newFarmer, error: insertError } = await supabase
+        const { data: newFarmerRows, error: insertError } = await supabase
           .from('farmers')
           .insert(farmerData)
           .select()
-          .single();
+          .limit(1);
 
         if (insertError) {
           console.error('Error creating farmer:', insertError);
           throw insertError;
+        }
+
+        const newFarmer = newFarmerRows?.[0];
+        if (!newFarmer) {
+          throw new Error('Farmer account could not be created. Please try again.');
         }
 
         console.log('New farmer created:', newFarmer.id);

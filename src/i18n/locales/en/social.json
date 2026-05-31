@@ -70,6 +70,7 @@
       "show_less": "Show less",
       "read_more": "Read more",
       "share_copied": "Content copied to clipboard!",
+      "report": "Report post",
       "liked_by": "Liked by {{count}} farmers",
       "comments": "{{count}} comments",
       "success": "Posted successfully! 🎉",
@@ -77,6 +78,11 @@
       "recording_error": "Unable to access microphone",
       "transcribed": "Voice converted to text!",
       "transcription_error": "Failed to convert voice",
+      "tap_mic": "Tap mic to record voice",
+      "tap_to_stop": "Tap to stop",
+      "recording": "Recording",
+      "improve_ai": "Improve with AI",
+      "add_text_or_image": "Add text or an image first",
       "hold_mic": "Hold 🎤 button to speak in your language",
       "release_to_stop": "🎤 Recording... Release to stop",
       "converting": "✨ Converting voice to text..."
@@ -168,6 +174,19 @@
       "auto_translate": "Posts auto-translate to your language",
       "select_hint": "View posts in your language",
       "listen_hint": "Tap 🔊 on any post to hear it"
+    },
+    "comments": {
+      "title": "Comments",
+      "empty": "Be the first to comment",
+      "placeholder": "Write a comment…"
+    },
+    "report": {
+      "title": "Why are you reporting this post?",
+      "spam": "Spam or scam",
+      "misinformation": "Wrong farming advice",
+      "abuse": "Abusive or unsafe",
+      "other": "Something else",
+      "thanks": "Reported. Thank you."
     }
   }
 }

@@ -103,33 +103,13 @@ export function useCommunityPosts(options?: {
     refetchOnWindowFocus: true,
   });
 
-  // Set up realtime subscription
+  // Realtime handled by global singleton subscription in AppLayout (per project core rule).
+  // Listen for a window event the singleton broadcasts when social_posts changes.
   useEffect(() => {
     if (!tenant?.id) return;
-
-    console.log('[Community] Setting up realtime subscription');
-    
-    const channel = supabase
-      .channel(`community-posts-${tenant.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'social_posts',
-          filter: `tenant_id=eq.${tenant.id}`,
-        },
-        (payload) => {
-          console.log('[Community] Realtime event:', payload.eventType);
-          queryClient.invalidateQueries({ queryKey: ['community-posts'] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      console.log('[Community] Cleaning up realtime subscription');
-      supabase.removeChannel(channel);
-    };
+    const handler = () => queryClient.invalidateQueries({ queryKey: ['community-posts'] });
+    window.addEventListener('community-posts-changed', handler);
+    return () => window.removeEventListener('community-posts-changed', handler);
   }, [tenant?.id, queryClient]);
 
   return query;
@@ -159,6 +139,21 @@ export function useCreatePost() {
 
       // Use supabaseWithAuth to set custom headers for RLS
       const authClient = supabaseWithAuth(user.id, tenant.id);
+
+      // AI moderation pre-publish (fail-open on any error)
+      try {
+        const { data: mod } = await authClient.functions.invoke('community-moderate', {
+          body: { content: input.content },
+        });
+        if (mod && mod.allowed === false) {
+          throw new Error(mod.reason || 'Post blocked by community guidelines');
+        }
+      } catch (modErr: any) {
+        if (modErr?.message?.includes('blocked') || modErr?.message?.includes('guidelines')) {
+          throw modErr;
+        }
+        console.warn('[Community] Moderation skipped:', modErr);
+      }
 
       const { data, error } = await authClient
         .from('social_posts')
@@ -190,13 +185,45 @@ export function useCreatePost() {
       console.log('[Community] Post created:', data.id);
       return data;
     },
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: ['community-posts'] });
+      const previous = queryClient.getQueriesData({ queryKey: ['community-posts'] });
+      const optimistic: any = {
+        id: `optimistic-${Date.now()}`,
+        farmer_id: user?.id,
+        tenant_id: tenant?.id,
+        content: input.content,
+        language_code: input.language_code,
+        media_urls: input.media_urls ? { images: input.media_urls } : null,
+        hashtags: null,
+        post_type: input.post_type || 'text',
+        likes_count: 0,
+        comments_count: 0,
+        shares_count: 0,
+        saves_count: 0,
+        is_published: true,
+        status: 'sending',
+        created_at: new Date().toISOString(),
+        farmer: {
+          id: user?.id,
+          farmer_name: user?.farmerName || user?.fullName || user?.name,
+          location: user?.village || user?.district || '',
+          is_verified: false,
+        },
+      };
+      queryClient.setQueriesData({ queryKey: ['community-posts'] }, (old: any) =>
+        Array.isArray(old) ? [optimistic, ...old] : old
+      );
+      return { previous };
+    },
+    onError: (error, _v, ctx) => {
+      console.error('[Community] Create post error:', error);
+      ctx?.previous?.forEach(([key, data]) => queryClient.setQueryData(key, data));
+      toast.error('Failed to create post. Please try again.');
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
       toast.success('Post shared with the community!');
-    },
-    onError: (error) => {
-      console.error('[Community] Create post error:', error);
-      toast.error('Failed to create post. Please try again.');
     },
   });
 }
@@ -208,62 +235,14 @@ export function useLikePost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ postId, isLiked }: { postId: string; isLiked: boolean }) => {
-      if (!user?.id || !tenant?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Use supabaseWithAuth for RLS
+    mutationFn: async ({ postId }: { postId: string; isLiked: boolean }) => {
+      if (!user?.id || !tenant?.id) throw new Error('User not authenticated');
       const authClient = supabaseWithAuth(user.id, tenant.id);
-
-      if (isLiked) {
-        // Unlike - remove from post_likes
-        const { error } = await authClient
-          .from('post_likes')
-          .delete()
-          .eq('post_id', postId)
-          .eq('farmer_id', user.id);
-
-        if (error) throw error;
-
-        // Decrement likes_count manually
-        const { data: post } = await authClient
-          .from('social_posts')
-          .select('likes_count')
-          .eq('id', postId)
-          .single();
-
-        if (post) {
-          await authClient
-            .from('social_posts')
-            .update({ likes_count: Math.max(0, (post.likes_count || 1) - 1) })
-            .eq('id', postId);
-        }
-      } else {
-        // Like - add to post_likes
-        const { error } = await authClient
-          .from('post_likes')
-          .insert({
-            post_id: postId,
-            farmer_id: user.id,
-          });
-
-        if (error) throw error;
-
-        // Increment likes_count manually
-        const { data: post } = await authClient
-          .from('social_posts')
-          .select('likes_count')
-          .eq('id', postId)
-          .single();
-
-        if (post) {
-          await authClient
-            .from('social_posts')
-            .update({ likes_count: (post.likes_count || 0) + 1 })
-            .eq('id', postId);
-        }
-      }
+      const { error } = await authClient.rpc('toggle_post_like' as any, {
+        p_post_id: postId,
+        p_farmer_id: user.id,
+      });
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });
@@ -279,34 +258,14 @@ export function useSavePost() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ postId, isSaved }: { postId: string; isSaved: boolean }) => {
-      if (!user?.id || !tenant?.id) {
-        throw new Error('User not authenticated');
-      }
-
-      // Use supabaseWithAuth for RLS
+    mutationFn: async ({ postId }: { postId: string; isSaved: boolean }) => {
+      if (!user?.id || !tenant?.id) throw new Error('User not authenticated');
       const authClient = supabaseWithAuth(user.id, tenant.id);
-
-      if (isSaved) {
-        // Unsave - remove from post_saves
-        const { error } = await authClient
-          .from('post_saves')
-          .delete()
-          .eq('post_id', postId)
-          .eq('farmer_id', user.id);
-
-        if (error) throw error;
-      } else {
-        // Save - add to post_saves
-        const { error } = await authClient
-          .from('post_saves')
-          .insert({
-            post_id: postId,
-            farmer_id: user.id,
-          });
-
-        if (error) throw error;
-      }
+      const { error } = await authClient.rpc('toggle_post_save' as any, {
+        p_post_id: postId,
+        p_farmer_id: user.id,
+      });
+      if (error) throw error;
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['community-posts'] });

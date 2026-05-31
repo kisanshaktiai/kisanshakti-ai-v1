@@ -36,7 +36,7 @@ export function FieldChip({
         needsAttention
           ? 'border-destructive/60 bg-destructive/5'
           : isAi
-            ? 'border-amber-300 dark:border-amber-800'
+            ? 'border-warning/50 dark:border-warning'
             : 'border-border hover:border-primary/40',
       )}
     >
@@ -47,7 +47,7 @@ export function FieldChip({
             <span>{label}</span>
             {required && <span className="text-destructive">*</span>}
             {isAi && (
-              <span className="inline-flex items-center gap-0.5 text-[9px] text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/40 rounded-full px-1.5 py-0.5 ml-1">
+              <span className="inline-flex items-center gap-0.5 text-[9px] text-warning dark:text-warning bg-warning-soft dark:bg-warning/40 rounded-full px-1.5 py-0.5 ml-1">
                 <Sparkles className="h-2.5 w-2.5" />
                 AI
               </span>
@@ -69,7 +69,7 @@ export function FieldChip({
         className={cn(
           'shrink-0 h-11 w-11 rounded-xl inline-flex items-center justify-center',
           'text-muted-foreground hover:text-foreground hover:bg-muted active:scale-90 transition',
-          isAi && 'text-amber-700 dark:text-amber-400',
+          isAi && 'text-warning dark:text-warning',
         )}
         tabIndex={-1}
       >

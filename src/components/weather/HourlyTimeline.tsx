@@ -13,10 +13,10 @@ interface HourlyTimelineProps {
 export const HourlyTimeline: React.FC<HourlyTimelineProps> = ({ hourlyForecast }) => {
   const getWeatherIcon = (main: string) => {
     const iconMap: { [key: string]: React.ReactNode } = {
-      'Clear': <Sun className="h-6 w-6 text-yellow-500" />,
-      'Clouds': <Cloud className="h-6 w-6 text-gray-500" />,
-      'Rain': <CloudRain className="h-6 w-6 text-blue-500" />,
-      'Drizzle': <CloudRain className="h-6 w-6 text-blue-400" />
+      'Clear': <Sun className="h-6 w-6 text-warning" />,
+      'Clouds': <Cloud className="h-6 w-6 text-foreground/80" />,
+      'Rain': <CloudRain className="h-6 w-6 text-info" />,
+      'Drizzle': <CloudRain className="h-6 w-6 text-info" />
     };
     return iconMap[main] || <Cloud className="h-6 w-6" />;
   };
@@ -57,7 +57,7 @@ export const HourlyTimeline: React.FC<HourlyTimelineProps> = ({ hourlyForecast }
               </p>
               
               {hour.pop > 0.2 && (
-                <p className="text-[10px] text-blue-500 flex items-center justify-center gap-0.5">
+                <p className="text-[10px] text-info flex items-center justify-center gap-0.5">
                   <CloudRain className="h-2.5 w-2.5" />
                   {Math.round(hour.pop * 100)}%
                 </p>

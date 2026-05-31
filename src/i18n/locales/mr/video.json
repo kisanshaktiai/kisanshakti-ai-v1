@@ -1,15 +1,14 @@
 {
   "__meta": {
     "page": "video",
-    "version": "1.0",
-    "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29",
-    "translation_status": "MACHINE_ASSISTED"
+    "version": "2.0",
+    "last_updated": "2026-05-06"
   },
   "video": {
     "title": "व्हिडिओ ट्यूटोरियल",
     "subtitle": "शेती तंत्र शिका",
     "no_videos_available": "व्हिडिओ उपलब्ध नाहीत",
+    "no_videos": "व्हिडिओ उपलब्ध नाहीत",
     "check_back_later": "नवीन सामग्रीसाठी नंतर तपासा",
     "loading_videos": "व्हिडिओ लोड होत आहेत...",
     "watch_now": "आता पहा",
@@ -17,21 +16,40 @@
     "views": "दृश्ये",
     "category": "श्रेणी"
   },
-  "__qa": {
-    "voice_examples_en": [
-      "Show videos",
-      "Watch tutorials",
-      "Video reels"
-    ],
-    "voice_examples_hi": [
-      "वीडियो दिखाएं",
-      "ट्यूटोरियल देखें",
-      "वीडियो रील्स"
-    ],
-    "voice_examples_mr": [
-      "व्हिडिओ दाखवा",
-      "ट्यूटोरियल पहा",
-      "व्हिडिओ रील्स"
-    ]
+  "reels": {
+    "featured": "वैशिष्ट्यीकृत",
+    "from_org": "तुमच्या संस्थेकडून",
+    "shared": "शेअर केले",
+    "category": {
+      "all": "सर्व"
+    },
+    "empty": {
+      "title": "अद्याप व्हिडिओ नाहीत",
+      "hint": "नवीन शेती व्हिडिओसाठी नंतर तपासा"
+    },
+    "comments": {
+      "title": "टिप्पण्या",
+      "empty": "पहिली टिप्पणी करा",
+      "placeholder": "टिप्पणी लिहा…",
+      "failed": "टिप्पणी पोस्ट होऊ शकली नाही"
+    },
+    "report": {
+      "title": "तुम्ही याची तक्रार का करत आहात?",
+      "spam": "स्पॅम किंवा फसवणूक",
+      "misinformation": "चुकीचा शेती सल्ला",
+      "abuse": "अपमानास्पद किंवा असुरक्षित",
+      "unsafe": "धोकादायक सामग्री",
+      "copyright": "कॉपीराइट उल्लंघन",
+      "other": "इतर काही",
+      "thanks": "तक्रार नोंदवली. धन्यवाद.",
+      "failed": "तक्रार पाठवता आली नाही"
+    },
+    "comment": {
+      "failed": "टिप्पणी पोस्ट होऊ शकली नाही"
+    },
+    "home": {
+      "title": "शेती रील्स",
+      "subtitle": "आधुनिक शेती शिकण्यासाठी लहान व्हिडिओ"
+    }
   }
 }

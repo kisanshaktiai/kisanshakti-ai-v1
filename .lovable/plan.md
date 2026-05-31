@@ -1,104 +1,80 @@
-# Login regression — root-cause audit and fix plan
+## Root cause (confirmed from edge logs)
 
-## What I verified
+The Marathi query `उसाला कोणती फवारणी घेवू काय ?` (sugarcane DAS=154) was wrongly routed to a "What are you observing?" clarification card instead of `SPRAY_TIMING_QUERY` / `FERTILIZER_SCHEDULE`. Three independent failures stack on top of each other:
 
-### Bug 1 — `validate_farmer_pin` RPC returns 404 / SQL error
-Network log of the live login attempt shows:
+### 1. The deployed edge function is stale — still IntentClassifier v3.0.0
+
+Log line:
+
 ```
-POST /rpc/validate_farmer_pin → 404
-{"code":"42883","message":"function digest(text, unknown) does not exist"}
+🎯 [IntentClassifier v3.0.0] Classifying...
+   ✅ Intent: INPUT_RECOMMENDATION (100%) [1523ms]
 ```
-The new RPC body uses `digest(p_pin || 'kisan_shakti_2024', 'sha256')`, but `pgcrypto` is installed in the `extensions` schema, while the function's `search_path` is set to `'public'` only. Postgres can't resolve `digest`, so the RPC always errors. The client then falls into its hash-compare fallback, which works for most farmers — but on this account the stored value is wrong (Bug 2), so the user sees "Incorrect PIN".
 
-### Bug 2 — 2 farmers have plaintext (4-char) PINs in `pin_hash`
+`supabase/functions/ai-agriculture-chat/agents/intent-classifier.ts` in the repo is already `v4.0.0` with the canonical-intent whitelist (loaded from `observation_intent_master`). The expected marker `[IntentValidator] Loaded N canonical intent codes from DB` is **absent** from the logs. The v4 file was never picked up by the deployed function — only v3 is running in production. As a result the LLM is free to emit non-canonical codes (`INPUT_RECOMMENDATION`) and nothing rejects them.
+
+### 2. Non-canonical intent → fallback route → clarification gate
+
+Because `INPUT_RECOMMENDATION` is not in `observation_intent_master` (88 valid codes), the symbolic brain can find no `intent_observation_mapping` rows, falls through to `GENERAL_INFO` (50% confidence), and the clarification generator emits the generic "What exactly are you observing?" card. The orchestrator's `ADVISORY_DIRECT_INTENTS` bypass cannot fire because the intent code is not in the canonical set.
+
+### 3. Crop-code casing mismatch in `crop_vocabulary`
+
+Logs show:
+
 ```
-SELECT id, mobile_number, pin_hash, length(pin_hash) FROM farmers
- WHERE length(pin_hash) <> 64;
--- 155588c4… 9860989495  pin_hash='1234'  (the user logging in right now)
--- fca5a67d… 8485019495  pin_hash='9898'
+[CROP_VOCAB] Loaded 0 vocabulary entries for Sugarcane     ← title-case (LandContext)
+[CROP_VOCAB] Loaded 101 vocabulary entries for SUGARCANE    ← upper-case (other call site)
 ```
-These two rows were created/updated by an old code path that wrote the raw PIN into `pin_hash`. The salted-SHA256 client compare can never match, so login is permanently broken for them until the value is re-hashed.
 
-The console log confirms it for the affected user:
-```
-Farmer search result: { mobile_number: "9860989495", pin_hash: "1234" }
-Error verifying PIN: "Incorrect PIN"
-```
-(The leftover `pin_hash` selection in the log comes from `AuthScreen` — informational only, login itself reads the row again inside `offlineAuthService.performOnlineAuth`.)
+The fertilizer / spray Marathi keyword bias from `crop_vocabulary` is being silently skipped on the first call because `crop_code` lookups are case-sensitive and the rows are stored UPPER while one caller passes title-case. This is the `Fix 3` item in `.lovable/plan.md` that is still awaiting DB-side approval.
 
-### Bug 3 — `/forgot-pin` route does not exist → 404 page
-`PinAuth.tsx:309` calls `navigate('/forgot-pin')`, but `src/App.tsx` has no such route, so React Router falls through to the catch-all NotFound page (the screenshot you sent). There is also no ForgotPin component anywhere in the codebase.
+---
 
-## Fixes
+## Fix plan
 
-### A. Repair the RPC so it actually executes
-Migration — replace the 3-arg `validate_farmer_pin` so it can resolve `digest`:
+### A. Force redeploy of `ai-agriculture-chat` (code-side, no logic change)
+
+Bump the file-level version marker and re-export it through `index.ts` so the deployment system picks up the change. No behaviour change — this only forces the v4 classifier and the v3.0.0 orchestrator (with `ADVISORY_DIRECT_INTENTS`, `filterToCanonicalObservations`, advisory bypasses) to actually go live.
+
+Touch points:
+- `supabase/functions/ai-agriculture-chat/index.ts` — add a `BUILD_TAG = 'classifier-v4-canonical-2026-05-31'` log at boot so we can verify the new deploy is serving traffic.
+- `supabase/functions/ai-agriculture-chat/agents/intent-classifier.ts` — add a single `console.log(`[IntentClassifier] BUILD=v${INTENT_CLASSIFIER_VERSION}`)` at module load to make staleness instantly visible in future audits.
+
+### B. Belt-and-suspenders: case-insensitive crop_code lookups
+
+Patch the two vocabulary loaders to upper-case the `crop_code` argument before querying. This makes the system correct even before the DB normalization migration runs.
+
+Files:
+- `supabase/functions/ai-agriculture-chat/agents/agricultural-vocabulary.ts` — `.eq('crop_code', cropCode)` → `.eq('crop_code', cropCode.toUpperCase())`.
+- `supabase/functions/ai-agriculture-chat/agents/semantic-extractor.ts` — same normalization where `crop_vocabulary` is loaded for the current crop.
+
+### C. DB normalization (requires user approval) — `Fix 3` from existing plan
+
+Single migration, after the read-only verification queries already documented in `.lovable/plan.md`:
 
 ```sql
-CREATE OR REPLACE FUNCTION public.validate_farmer_pin(
-  p_farmer_id uuid, p_pin text, p_tenant_id uuid
-) RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public, extensions
-AS $$
-DECLARE v_hash text;
-BEGIN
-  SELECT pin_hash INTO v_hash
-  FROM public.farmers
-  WHERE id = p_farmer_id AND tenant_id = p_tenant_id;
-  IF NOT FOUND OR v_hash IS NULL THEN RETURN false; END IF;
-  RETURN v_hash = encode(
-    extensions.digest((p_pin || 'kisan_shakti_2024')::bytea, 'sha256'),
-    'hex'
-  );
-END $$;
+UPDATE public.decision_rules           SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);
+UPDATE public.intent_observation_mapping SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);
+UPDATE public.crop_vocabulary          SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);
 ```
-Two changes vs current: include `extensions` on `search_path`, and cast the input to `bytea` so the `digest(bytea,text)` overload matches unambiguously.
 
-### B. Re-hash the 2 plaintext PINs in place
-Same migration (one-time data fix) — only touches rows whose `pin_hash` is not 64 chars, so it's idempotent and safe:
+No schema change, no new columns, no new rules. The verification SELECTs are presented for review before any UPDATE is executed.
 
-```sql
-UPDATE public.farmers
-SET pin_hash = encode(
-  extensions.digest((pin_hash || 'kisan_shakti_2024')::bytea, 'sha256'),
-  'hex'
-),
-    pin_updated_at = now()
-WHERE pin_hash IS NOT NULL AND length(pin_hash) <> 64;
-```
-After this, farmer `9860989495` logs in with PIN `1234`, farmer `8485019495` with PIN `9898` — exactly what they originally set. No farmer is forced to reset.
+### D. No new rules, no new intents, no LLM agronomic generation
 
-### C. Build the missing `/forgot-pin` page
-1. New file `src/pages/ForgotPin.tsx` — mobile-only screen that:
-   - Pre-fills the mobile from `localStorage.authMobile`.
-   - Confirms identity by re-checking the farmer row exists for that mobile + active tenant (same query as `AuthScreen`).
-   - Sends the user to `/set-pin` with `localStorage.farmerId` and `localStorage.tenantId` set, in **reset mode** (a flag like `localStorage.setItem('pinResetMode','1')`).
-   - `SetPin.tsx` already supports updating an existing farmer (line 160 path); it just needs to read the reset flag, skip the "create new farmer" branch, and clear the flag after success.
-   - Clear cached offline auth (`offlineAuthService.clearCachedAuth()`) on success so the new PIN takes effect immediately offline too.
-2. Register the route in `src/App.tsx` next to `/pin-auth`:
-   ```tsx
-   { path: "/forgot-pin",
-     element: <Suspense fallback={<PageLoader/>}><ForgotPin/></Suspense>,
-     errorElement: <RouteErrorBoundary/> }
-   ```
-3. Use existing i18n keys (`auth.forgotPin`, `auth.contactSupport`, `auth.createPin`, etc.) — no new translations needed.
+Out of scope for this fix: adding `INPUT_RECOMMENDATION` as an alias, adding Marathi vocabulary rows, adding sugarcane intent mappings (`Fix 4` / `Fix 5` / `Fix 6` in the existing plan remain queued and unaffected by this change).
 
-## Out of scope (per your standing instructions)
-- Custom farmer auth model (mobile + PIN + `pin_hash`) — unchanged.
-- Supabase Auth for SaaS admin / tenant — untouched.
-- PIN masking, plaintext column drop, RLS — already shipped in the previous round.
+---
 
-## Files / objects touched
-1. Migration: replace `validate_farmer_pin(uuid,text,uuid)` body + one-row UPDATE for the 2 stale hashes.
-2. `src/pages/ForgotPin.tsx` — new component.
-3. `src/pages/SetPin.tsx` — honour `pinResetMode` flag (skip insert branch, clear cached offline auth on save).
-4. `src/App.tsx` — register `/forgot-pin` route + lazy import.
+## Validation after deploy
 
-## Verification after deploy
-1. Login as `9860989495` with PIN `1234` → success via RPC (no more "Incorrect PIN").
-2. Login as `8485019495` with PIN `9898` → success.
-3. All other farmers (already 64-char hashed) continue to log in normally.
-4. Wrong PIN → "Incorrect PIN" + attempt counter, no 500.
-5. Tap "Forgot PIN?" → `/forgot-pin` renders (no 404), reset flow lands on `/set-pin`, new PIN works on next login.
+Re-run the same query `उसाला कोणती फवारणी घेवू काय ?` on sugarcane DAS=154 and confirm in edge logs:
+
+- `[IntentClassifier] BUILD=v4.0.0` appears on cold start
+- `[IntentValidator] Loaded 88 canonical intent codes from DB`
+- `Intent: SPRAY_TIMING_QUERY` (or `FERTILIZER_SCHEDULE` / `GENERAL_CROP_INFO` fallback) — never `INPUT_RECOMMENDATION`
+- `[AdvisoryBypass] Skipping clarification gate for advisory intent=...`
+- `response_source = DECISION_RULES`, no `CLARIFICATION_QUESTION` for advisory queries
+- `[CROP_VOCAB] Loaded 101 vocabulary entries for SUGARCANE` on every call (no more `Loaded 0`)
+
+Regression set: disease query still clarifies; greeting returns greeting; irrigation routes to `IRRIGATION_QUERY`.

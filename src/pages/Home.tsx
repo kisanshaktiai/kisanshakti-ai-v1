@@ -27,13 +27,14 @@ import { useWeather } from '@/hooks/useWeather';
 import { useLands } from '@/hooks/useLands';
 import { HomeSkeleton } from '@/components/skeletons';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useVideoTutorials } from '@/hooks/useVideoTutorials';
+import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
 import WeatherScheduleAlerts from '@/components/schedule/WeatherScheduleAlerts';
 import { AlertsSummaryCard } from '@/components/home/AlertsSummaryCard';
 import { HomeFeaturesGrid, type HomeFeatureCard } from '@/components/home/HomeFeaturesGrid';
 import { HomeRecentActivity } from '@/components/home/HomeRecentActivity';
 import { useMinuteTick } from '@/hooks/useMinuteTick';
 import { useReducedMotion } from '@/hooks/useReducedMotion';
+import { useFeatures } from '@/hooks/useFeatures';
 
 // Lazy-load the heavy video card (carousel + lazy images) to keep initial JS small.
 const VideoHelpCard = lazy(() =>
@@ -53,8 +54,11 @@ export default function Home() {
   const [currentMetricIndex, setCurrentMetricIndex] = useState(0);
   const [currentActivityIndex, setCurrentActivityIndex] = useState(0);
 
-  // Fetch featured videos for video reels
-  const { data: featuredVideos = [] } = useVideoTutorials({ category: 'Featured' });
+  // Home "Farming Reels": ONLY surfaces videos from the official
+  // KisanShakti AI YouTube channel (@kisanshaktiai). If the feed is
+  // unavailable, the section hides itself — no demo/curated fallback.
+  const { data: ytReels = [] } = useYouTubeChannelReels(8);
+  const featuredVideos = ytReels as any[];
 
   // Auto-collapse weather card after 4 seconds
   useEffect(() => {
@@ -107,9 +111,16 @@ export default function Home() {
       : 0;
   }, [lands]);
 
+  // Plan-gated locked-paths set (SSOT: useFeatures + resolve_farmer_entitlements)
+  const { features: planFeatures } = useFeatures();
+  const lockedPaths = useMemo(
+    () => new Set(planFeatures.filter((f) => f.locked).map((f) => f.path)),
+    [planFeatures],
+  );
+
   // Memoized feature lists — prevents re-creating arrays every render and lets
   // memoized children skip work when nothing semantic changed.
-  const mainFeatures = useMemo<HomeFeatureCard[]>(
+  const mainFeaturesBase = useMemo<HomeFeatureCard[]>(
     () => [
       {
         title: t('home.myLand'),
@@ -157,7 +168,7 @@ export default function Home() {
     [t, lands.length, nextCrop],
   );
 
-  const secondaryFeatures = useMemo<HomeFeatureCard[]>(
+  const secondaryFeaturesBase = useMemo<HomeFeatureCard[]>(
     () => [
       {
         title: t('home.features.community.title'),
@@ -204,6 +215,16 @@ export default function Home() {
     [t, avgNdvi],
   );
 
+  // Apply plan-gated `locked` flag from useFeatures (SSOT) onto each card.
+  const mainFeatures = useMemo<HomeFeatureCard[]>(
+    () => mainFeaturesBase.map((f) => ({ ...f, locked: lockedPaths.has(f.path) })),
+    [mainFeaturesBase, lockedPaths],
+  );
+  const secondaryFeatures = useMemo<HomeFeatureCard[]>(
+    () => secondaryFeaturesBase.map((f) => ({ ...f, locked: lockedPaths.has(f.path) })),
+    [secondaryFeaturesBase, lockedPaths],
+  );
+
   // Auto-scroll Recent Activity every 5 seconds
   useEffect(() => {
     const len = lands.length > 0 ? Math.min(lands.length, 5) : 3;
@@ -231,36 +252,22 @@ export default function Home() {
   const formattedTime = currentTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="relative bg-gradient-subtle min-h-full pb-8">
-      {/* Note: floating weather card uses position:fixed; main scroll container is <main> in AppLayout */}
-      {/* Futuristic Floating Weather Card - 2030 UI */}
+    <div className="relative bg-gradient-subtle min-h-full pb-8 px-4 pt-3">
+      {/* Inline Weather Card - sits in normal flow so the Expired banner above it stays visible */}
       <motion.div
-        className="fixed top-16 left-4 right-4 z-30 pointer-events-auto"
-        initial={reduceMotion ? false : { opacity: 0, y: -100, scale: 0.9 }}
+        data-tour="weather"
+        className="relative z-10 mb-3"
+        initial={reduceMotion ? false : { opacity: 0, y: -20 }}
         animate={{
           opacity: 1,
           y: 0,
-          scale: 1,
           height: isWeatherExpanded ? 'auto' : '68px',
         }}
         transition={{
           type: 'spring',
           stiffness: 260,
-          damping: 20,
-          mass: 0.8,
-        }}
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={0.15}
-        onDragEnd={(_e, { offset, velocity }) => {
-          const swipe = offset.y;
-          const swipeVelocity = velocity.y;
-
-          if (swipe > 50 || swipeVelocity > 500) {
-            setIsWeatherExpanded(false);
-          } else if (swipe < -50 || swipeVelocity < -500) {
-            setIsWeatherExpanded(true);
-          }
+          damping: 22,
+          mass: 0.7,
         }}
       >
         <motion.div
@@ -575,19 +582,8 @@ export default function Home() {
         </motion.div>
       </motion.div>
 
-      {/* Dashboard Content - Smooth transition with weather card state */}
-      <motion.div
-        className="px-4"
-        initial={false}
-        animate={{
-          paddingTop: isWeatherExpanded ? '240px' : '100px',
-        }}
-        transition={{
-          type: 'spring',
-          stiffness: 200,
-          damping: 25,
-        }}
-      >
+      {/* Dashboard Content - sits directly below the inline weather card */}
+      <div className="pt-1">
         {/* Weather Schedule Alerts - Shows task adjustments due to weather */}
         <WeatherScheduleAlerts className="mb-4" maxAlerts={3} />
 
@@ -617,10 +613,10 @@ export default function Home() {
           className="mb-8"
         >
           <Suspense fallback={<div className="h-32" aria-hidden />}>
-            <VideoHelpCard videos={featuredVideos} onClick={() => navigate('/app/videos')} />
+            <VideoHelpCard videos={featuredVideos} onClick={() => navigate('/app/reels')} />
           </Suspense>
         </motion.div>
-      </motion.div>
+      </div>
     </div>
   );
 }

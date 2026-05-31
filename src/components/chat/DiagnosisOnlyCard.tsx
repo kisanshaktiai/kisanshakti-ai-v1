@@ -41,9 +41,9 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
   }
   
   const healthColors = {
-    healthy: 'bg-green-500',
-    warning: 'bg-amber-500',
-    critical: 'bg-red-500'
+    healthy: 'bg-success',
+    warning: 'bg-warning',
+    critical: 'bg-destructive'
   };
 
   // ✅ Check for crop mismatch
@@ -64,7 +64,7 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
             }}
           />
           <div className="absolute top-2 right-2">
-            <Badge className="bg-green-500 text-white shadow-lg">
+            <Badge className="bg-success text-white shadow-lg">
               <CheckCircle className="h-3 w-3 mr-1" />
               {labels.analyzed}
             </Badge>
@@ -90,7 +90,7 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
                   {labels.detected}: {analysis.cropDetected.name}
                 </Badge>
                 {analysis.cropDetected.landCrop && (
-                  <Badge variant="outline" className="border-green-500/50 text-green-700 dark:text-green-300">
+                  <Badge variant="outline" className="border-success/50 text-success dark:text-success">
                     {labels.expected}: {analysis.cropDetected.landCrop}
                   </Badge>
                 )}
@@ -174,8 +174,8 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
             
             {/* Disease/Pest Details */}
             {analysis.diagnosis.diseases && analysis.diagnosis.diseases.length > 0 && (
-              <div className="mt-3 p-2 bg-red-500/10 rounded-lg">
-                <div className="flex items-center gap-1 text-sm font-medium text-red-700 dark:text-red-300 mb-1">
+              <div className="mt-3 p-2 bg-destructive/10 rounded-lg">
+                <div className="flex items-center gap-1 text-sm font-medium text-destructive dark:text-destructive mb-1">
                   <AlertTriangle className="h-4 w-4" />
                   {t('chatCards.cards.detectedDiseases')}
                 </div>
@@ -190,8 +190,8 @@ export function DiagnosisOnlyCard({ analysis, imageUrl, language = 'en' }: Diagn
             )}
             
             {analysis.diagnosis.pests && analysis.diagnosis.pests.length > 0 && (
-              <div className="mt-3 p-2 bg-orange-500/10 rounded-lg">
-                <div className="flex items-center gap-1 text-sm font-medium text-orange-700 dark:text-orange-300 mb-1">
+              <div className="mt-3 p-2 bg-warning/10 rounded-lg">
+                <div className="flex items-center gap-1 text-sm font-medium text-warning dark:text-warning mb-1">
                   <AlertTriangle className="h-4 w-4" />
                   {t('chatCards.cards.detectedPests')}
                 </div>

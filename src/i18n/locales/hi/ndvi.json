@@ -61,7 +61,29 @@
     "map": {
       "view_map": "नक्शा देखें",
       "satellite_view": "सैटेलाइट दृश्य",
-      "health_overlay": "स्वास्थ्य ओवरले"
+      "health_overlay": "स्वास्थ्य ओवरले",
+      "aria": "NDVI सैटेलाइट नक्शा",
+      "cloud": "बादल {{value}}%",
+      "fullscreen": "पूर्ण स्क्रीन",
+      "legend": "संकेत सूची",
+      "legend_title": "NDVI स्केल",
+      "legend_note": "निरंतर NDVI रंग पैलेट · NASA/ESA मानक",
+      "max": "अधिकतम",
+      "mean": "औसत",
+      "min": "न्यूनतम",
+      "mode_raster": "पिक्सेल रास्टर",
+      "mode_zonal": "क्षेत्रीय मोज़ेक",
+      "mode_boundary": "केवल सीमा",
+      "no_clean_for_date": "इस तारीख पर कोई स्पष्ट डेटा नहीं",
+      "no_data": "अभी तक कोई सैटेलाइट डेटा नहीं",
+      "provenance": "स्रोत",
+      "recenter": "केंद्र",
+      "stale_warning": "नवीनतम स्पष्ट डेटा दिखा रहा है",
+      "full": "पूर्ण",
+      "exit": "बाहर",
+      "opacity": "हीटमैप अपारदर्शिता",
+      "mode_land_thumb": "सैटेलाइट NDVI",
+      "thumbnail_alt": "सैटेलाइट NDVI थंबनेल"
     },
     "historical": {
       "trend": "ऐतिहासिक प्रवृत्ति",
@@ -79,6 +101,64 @@
       "latest_data": "नवीनतम सैटेलाइट डेटा लोड किया गया",
       "refresh_failed": "❌ रीफ्रेश विफल",
       "try_again": "कृपया पुनः प्रयास करें"
+    },
+    "check_back": "{{days}} दिन बाद फिर देखें",
+    "no_clean": "अभी तक कोई स्पष्ट सैटेलाइट डेटा नहीं",
+    "tab": {
+      "now": "अभी",
+      "trend": "रुझान",
+      "map": "नक्शा"
+    },
+    "now": {
+      "status": "स्थिति",
+      "cloud": "बादल",
+      "quality": "गुणवत्ता",
+      "field_stats": "खेत के आंकड़े",
+      "guided_actions": "सुझाई गई क्रियाएं",
+      "rule_based": "नियम आधारित · कोई AI अनुमान नहीं"
+    },
+    "trend": {
+      "need_more": "कम से कम 4 भरोसेमंद रीडिंग चाहिए"
+    },
+    "projection": {
+      "title": "संकेतात्मक अनुमान",
+      "indicative": "संकेतात्मक",
+      "disclaimer": "हाल की रीडिंग से रैखिक अनुमान · पूर्वानुमान नहीं"
+    },
+    "reliability": {
+      "stale": "नवीनतम स्पष्ट रीडिंग {{days}} दिन पुरानी है"
+    },
+    "risk": {
+      "low": "कम जोखिम",
+      "medium": "मध्यम जोखिम",
+      "high": "उच्च जोखिम",
+      "critical": "गंभीर जोखिम"
+    },
+    "stage_aware": {
+      "germination": "अंकुरण अवस्था के लिए स्वस्थ NDVI",
+      "tillering": "कल्ले फूटने की अवस्था के लिए स्वस्थ NDVI",
+      "vegetative": "वानस्पतिक वृद्धि के लिए स्वस्थ NDVI",
+      "reproductive": "प्रजनन अवस्था के लिए स्वस्थ NDVI",
+      "maturity": "परिपक्वता अवस्था के लिए स्वस्थ NDVI",
+      "unknown": "अवस्था आधारित संदर्भ उपलब्ध नहीं"
+    },
+    "stages": {
+      "germination": "अंकुरण",
+      "tillering": "कल्ले फूटना",
+      "vegetative": "वानस्पतिक",
+      "reproductive": "प्रजनन",
+      "maturity": "परिपक्वता",
+      "unknown": "अज्ञात अवस्था"
+    },
+    "early_warning": {
+      "title": "पूर्व चेतावनी",
+      "active_alerts": "सक्रिय चेतावनियाँ",
+      "no_alerts": "कोई सक्रिय चेतावनी नहीं",
+      "recommended": "सुझाई गई क्रियाएं"
+    },
+    "warning": {
+      "attention": "ध्यान दें",
+      "no_alerts": "कोई चेतावनी नहीं"
     }
   },
   "__qa": {
