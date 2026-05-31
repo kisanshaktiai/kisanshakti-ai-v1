@@ -1,67 +1,65 @@
-## Audit findings
+## Goal
 
-1. **General tab request is still reaching symbolic brain in the live app**
-   - The network trace from the attached screenshot shows `mode: "general"` was sent, but the response came back as:
-     - `metadata.type: "clarification"`
-     - `orchestrator_type: "CLARIFICATION_QUESTION"`
-     - `source: "orchestrator_v1"`
-   - That proves the deployed/current runtime path did not use the direct General LLM handler for that request.
+Cleanly separate the two chat modes by giving each its own Edge Function, and remove the unused `mcp-handler`.
 
-2. **Root cause of repeated land selection**
-   - In `EnhancedAIChatInterface.tsx`, `setGeneralLandId(picked)` is asynchronous.
-   - Immediately after selection, code calls `sendMessage(queued)` in `setTimeout`.
-   - React may not have committed `generalLandId` yet, so `sendMessage()` still sees `generalLandId === undefined` and opens the picker again.
+- **Land-specific chat** → keeps using existing `ai-agriculture-chat` (symbolic decision brain only).
+- **General chat tab** → new dedicated Edge Function `ai-general-chat` (direct LLM, "Senior Agronomist", no symbolic brain).
+- **`mcp-handler`** → deleted (audit confirms zero references in `src/` and no other Edge Function imports it).
 
-3. **Root cause of raw i18n key in the green tab card**
-   - `t('chat.general')` conflicts with two shapes:
-     - base bundle: `chat.general` is a string
-     - lazy chat bundle: `chat.general` is an object containing picker keys
-   - After lazy loading, `t('chat.general')` returns an object, causing the visible error: `key 'chat.general (mr)' returned an object instead of string`.
+This also eliminates the recent CORS / routing patches (`x-chat-mode` header, `orchestratorBypass` flag, in-function short-circuit) that were the source of the `FunctionsFetchError` and the "still hits symbolic brain" symptom.
 
-4. **General history pollution is worsening the bug**
-   - The request body includes older symbolic clarification messages in General chat history.
-   - Even after routing is fixed, those old clarification messages can bias General LLM responses unless filtered for General mode.
+## Audit summary
 
-## Implementation plan
+- `mcp-handler/index.ts` (538 lines): not invoked anywhere in `src/` (`rg "mcp-handler"` returns only the file itself). Safe to delete.
+- `ai-agriculture-chat/index.ts` currently contains two general-mode short-circuits (lines ~600 and ~866) plus the `x-chat-mode` CORS header and an import of `general-chat-handler.ts`. These were bolted on and are the root cause of the brittle routing.
+- `EnhancedAIChatInterface.tsx` sends both modes to `ai-agriculture-chat` and disambiguates with `mode`, `metadata.orchestratorBypass`, and the `x-chat-mode` header — fragile.
+- `general-chat-handler.ts` already contains a clean direct-LLM implementation (Senior Agronomist prompt, history filter, persistence). It will be lifted into the new function as-is.
 
-### Phase 1: Fix General land-picker state race
-- Add a local send helper for General tab that accepts the selected land id explicitly, instead of depending on delayed React state.
-- When the farmer selects a land:
-  - close picker
-  - store selected land id
-  - send the queued message once using that selected id
-- Add a small guard so the same queued message cannot be resumed twice.
+## Implementation
 
-### Phase 2: Make General tab routing unambiguous
-- In the frontend request body for General mode:
-  - always send `mode: "general"`
-  - keep `landId` absent/null for routing
-  - send selected land only inside `metadata.landContext`
-  - add a stricter marker such as `metadata.orchestratorBypass: true`
-- In the Edge Function, move/keep the General short-circuit before any symbolic/session/proactive logic that can return clarification.
-- Treat any of these as General mode:
-  - `mode === "general"`
-  - `metadata.chatMode === "general"`
-  - `metadata.source === "general_tab"`
-  - `metadata.orchestratorBypass === true`
+### 1. New Edge Function `supabase/functions/ai-general-chat/index.ts`
+- Own CORS block using `_shared/cors.ts` (no custom `x-chat-mode` header needed).
+- Validates auth headers (`x-tenant-id`, `x-farmer-id`, `x-session-token`) via existing `_shared/authMiddleware`.
+- Resolves / creates a `session_type = 'general'` row in `ai_chat_sessions`.
+- Calls a local `handleGeneralChat` (copied from current `general-chat-handler.ts`) which:
+  - Builds Senior Agronomist (25+ yrs) prompt in farmer's language.
+  - Optionally injects `landContext` when farmer attached a land.
+  - Strips any symbolic clarification turns from history.
+  - Calls Lovable AI Gateway via `_shared/aiConfig`.
+  - Persists user + assistant messages with `orchestrator_type: 'GENERAL_LLM_DIRECT'`.
+- Returns `{ response, metadata: { type: 'general_chat', ... } }` — same shape the UI already renders.
 
-### Phase 3: Prevent symbolic cards from rendering in General tab
-- For General responses, create the frontend AI message as normal text, not `messageType: "orchestrator"`.
-- Do not attach `clarificationOptions`, `structuredAdvisory`, or Decision Brain metadata for `GENERAL_LLM_DIRECT` responses.
-- If an old General response from history has `CLARIFICATION_QUESTION`/symbolic metadata, display it as plain historical text only, not interactive symbolic cards.
+### 2. Strip general-mode logic from `ai-agriculture-chat`
+- Remove `import { handleGeneralChat } from './general-chat-handler.ts'`.
+- Remove both `isGeneralMode` short-circuits (lines ~600 and ~866).
+- Remove `x-chat-mode` from `Access-Control-Allow-Headers`.
+- Delete `supabase/functions/ai-agriculture-chat/general-chat-handler.ts`.
+- Function reverts to a pure symbolic-decision-brain endpoint.
 
-### Phase 4: Fix General tab i18n key collision
-- Replace `t('chat.general')` in the General tab button with `t('chat.tabs.general')` or `t('chat.generalChat')`.
-- Keep picker keys under `chat.general.*` unchanged.
-- Ensure Marathi/Hindi/English labels resolve as strings.
+### 3. Delete `mcp-handler` Edge Function
+- Remove `supabase/functions/mcp-handler/` directory.
+- Call `supabase--delete_edge_functions(["mcp-handler"])` so it's also removed from Supabase.
 
-### Phase 5: Filter General LLM conversation history
-- Before sending General mode to the Edge Function, remove previous symbolic clarification messages from the history payload.
-- In `general-chat-handler.ts`, also ignore history entries whose content or metadata indicates symbolic clarification/options.
-- This keeps General tab as direct agronomist chat while land-specific tabs continue using the symbolic decision brain.
+### 4. Frontend routing in `EnhancedAIChatInterface.tsx`
+- In `sendMessage` (and the retry / regenerate paths), branch on `isGeneralTab`:
+  - `isGeneralTab === true` → `supabase.functions.invoke('ai-general-chat', { body: { messages, language, landContext, sessionId } })`
+  - else → existing `supabase.functions.invoke('ai-agriculture-chat', { body: { ... } })` (land-specific symbolic brain).
+- Remove `mode`, `metadata.chatMode`, `metadata.orchestratorBypass`, and the `x-chat-mode` header from outgoing requests — they're no longer needed because routing is now by function name.
+- Keep `GeneralChatLandPicker` + `generalLandId` race-condition fix (`overrideGeneralLandId` parameter) as-is — that's a UX fix, not the routing problem.
+- Keep history-filtering & forcing General responses to `messageType: 'text'` in the UI.
+- Keep the `t('chat.tabs.general')` i18n fix.
 
-### Validation
-- Verify a General Marathi query like `हिरवी मिरची पिक घ्यायच आहे काय करावे?` returns a direct senior-agronomist answer, not plant-part options.
-- Verify selecting a land opens the picker only once and then sends immediately.
-- Verify land-specific tabs still show symbolic clarification/Decision Brain cards as before.
-- Verify the green General tab label no longer shows raw i18n-key/object errors.
+### 5. Validation
+- Land-specific tab: a Marathi diagnostic question still returns symbolic clarification / Decision Brain cards from `ai-agriculture-chat`.
+- General tab: `हिरवी मिरची पिक घ्यायच आहे काय करावे?` returns a direct senior-agronomist answer from `ai-general-chat`, no "which part of the plant" cards.
+- Selecting a land in the picker sends exactly one request (race-condition fix retained).
+- No CORS preflight failures (no custom headers on General requests).
+- `mcp-handler` no longer listed in the Supabase functions dashboard.
+
+## Files touched
+
+- **Create**: `supabase/functions/ai-general-chat/index.ts`
+- **Edit**: `supabase/functions/ai-agriculture-chat/index.ts` (strip general-mode branches + CORS header)
+- **Edit**: `src/components/chat/EnhancedAIChatInterface.tsx` (route by function name)
+- **Delete**: `supabase/functions/ai-agriculture-chat/general-chat-handler.ts`
+- **Delete**: `supabase/functions/mcp-handler/` (directory + dashboard)
