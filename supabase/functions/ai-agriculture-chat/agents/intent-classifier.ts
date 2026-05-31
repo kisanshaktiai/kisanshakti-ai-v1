@@ -19,6 +19,10 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 
 export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 
+// Module-load boot marker — if logs still show "v3.0.0" after a deploy, the
+// edge runtime is serving a stale bundle and needs a forced redeploy.
+console.log(`[IntentClassifier] MODULE_LOAD version=${INTENT_CLASSIFIER_VERSION}`);
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL INTENT REGISTRY (Fix 1) — loaded once per cold start from DB
 // ═══════════════════════════════════════════════════════════════════════════
