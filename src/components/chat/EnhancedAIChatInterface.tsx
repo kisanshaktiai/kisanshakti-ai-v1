@@ -464,6 +464,14 @@ export function EnhancedAIChatInterface() {
     }
   }, [activeTab, messages, sessionStartTime]);
 
+  // Reset the General-tab land context whenever the general session is empty
+  // so the picker re-appears for each fresh conversation.
+  useEffect(() => {
+    if (activeTab === 'general' && (messages.general?.length || 0) === 0) {
+      setGeneralLandId(undefined);
+    }
+  }, [activeTab, messages.general]);
+
   useEffect(() => {
     const scrollContainer = scrollAreaRef.current;
     if (!scrollContainer) return;
