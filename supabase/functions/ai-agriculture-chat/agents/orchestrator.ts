@@ -2778,12 +2778,26 @@ export class AIAgentOrchestrator {
       // harvest) don't need symptom clarification — they go straight to the rule engine.
       // ═══════════════════════════════════════════════════════════════════════════
       let directModeBypass = false;
-      const routeDirectModeBypass = queryRoute.route === 'FERTILIZER_NUTRITION';
-      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass) && landContext?.current_crop) {
+      // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
+      // fires whenever any layer of context (canonical, land record, or crop schedule) knows the crop.
+      const ADVISORY_DIRECT_ROUTES = new Set([
+        'FERTILIZER_NUTRITION',
+        'IRRIGATION_SCHEDULING',
+        'WEATHER_SPRAY_TIMING',
+        'CROP_HEALTH',
+        'GENERAL_INFO'
+      ]);
+      const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
+      const cropFromAnyLayer =
+        (landContext as any)?.current_crop ||
+        (canonicalContext as any)?.crop ||
+        (landContext as any)?.crop_schedule?.crop_name ||
+        (landContext as any)?.crop_name;
+      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass) && cropFromAnyLayer) {
         directModeBypass = true;
         bypassClarification = true;
         console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification`);
-        console.log(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage || 'UNKNOWN'}`);
+        console.log(`   Crop: ${cropFromAnyLayer}, Stage: ${(landContext as any)?.growth_stage || (canonicalContext as any)?.stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
       }
       
