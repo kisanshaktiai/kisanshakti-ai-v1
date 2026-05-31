@@ -1,77 +1,88 @@
-# Land-Specific Symbolic Chat – Forensic Audit & Fix Plan
+## Scope
 
-## What the audit found
+Neuro-symbolic brain routing fix. Strict role separation: LLM = language only; symbolic brain = decisions. No new agronomic rules. No changes to RLS-disabled advisory tables.
 
-Test query (Marathi): "सध्या कोणते खत देवू आणि फवारणी घेवू ?" (which fertilizer / spray now?)
-Live edge log shows the symbolic brain returned a disease-style clarification:
-"🔍 What exactly are you observing? (Color change / Lumps / Drying)"
+## Verified problems (from live audit)
 
-Trace evidence (from `ai-agriculture-chat` logs):
-- Canonical context is correctly locked: `Crop=SUGARCANE, Stage=GRAND_GROWTH, DAS=154`.
-- `UnderstandingChecker` scored 53% (threshold 60%) and set `clarification_required=true`.
-- Pipeline returned `CLARIFICATION_QUESTION` via the **scope-aware clarification** path.
-- No `[DIRECT_MODE]` log line ⇒ the FERTILIZER_NUTRITION advisory bypass never fired.
+1. LLM emits non-canonical intents (e.g. `INPUT_RECOMMENDATION`) absent from `observation_intent_master` (88 rows).
+2. Raw Marathi text leaks into `observations` array.
+3. `crop_code` case mismatch: `decision_rules` has `RICE`/`WHEAT` upper, `intent_observation_mapping` has them lower → silent JOIN miss.
+4. Sugarcane missing ~47 intents in `intent_observation_mapping` (notably `SPRAY_TIMING_QUERY`, full `FERTILIZER_SCHEDULE` stages).
+5. `crop_vocabulary` has almost no Marathi/Hindi fertilizer/spray patterns; existing ones biased to phantom codes (`NUTRITION`, `EDUCATION`).
+6. Many `crop_vocabulary.recommended_intent_bias` values do not exist in `observation_intent_master`.
+7. Clarification gates still fire on advisory turns; stale `awaiting_clarification` state repeats wrong question.
+8. DAS bounds (`crop_age_days_min/max`) not verified in rule loader.
 
-### Root causes (all in `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`)
+## Code changes (build phase)
 
-1. **Advisory routes are not exempt from the Understanding-based clarification gate** (line ~3937).
-   The earlier `ZERO_CODE_CLARIFICATION_GATE` (line 2438) correctly exempts `FERTILIZER_NUTRITION / IRRIGATION_SCHEDULING / WEATHER_SPRAY_TIMING / CROP_HEALTH / GENERAL_INFO`, but the Understanding gate has no such guard, so any advisory query with no symptom keywords (low score) falls through to "describe your symptoms".
+### A. `agents/semantic-extractor.ts`
+- Add cached `getValidIntentCodes(supabase)` from `observation_intent_master` where `is_active=true`.
+- Inject the full code list into LLM classification prompt as hard constraint.
+- Validate output → 1 retry with stricter prompt → fallback `GENERAL_CROP_INFO` @ confidence 0.3.
+- Log `[IntentValidator] Loaded N canonical intent codes from DB`.
 
-2. **DIRECT-mode bypass depends only on `landContext?.current_crop`** (line ~2782).
-   When the land record stores the crop under `crop_schedules.crop_name` (the canonical contract is built from that), `landContext.current_crop` can be null while `canonicalContext.crop` is valid. Bypass silently skips and the query falls into the symptom pipeline.
+### B. `agents/orchestrator.ts`
+1. Add module-level helpers:
+   - `isCanonicalObservationCode(s)` → `/^[A-Z][A-Z0-9_]+$/` and length ≤ 80.
+   - `filterToCanonicalObservations(arr)` with `[ObservationContract] BLOCKED ...` logging.
+   - Apply at 3 boundaries: after NLU assembly, after clarification answer mapping, at audit-log payload assembly.
+2. Add `ADVISORY_DIRECT_INTENTS` module-level Set (the 30 verified codes from report) + `isAdvisoryRoute()`.
+3. Strengthen DIRECT-mode crop source check (multi-source: landContext, canonicalContext, crop_schedule, cropContextAuthority).
+4. At each clarification gate (Zero-Code, Understanding-Completeness, Evidence-Coverage): early-return bypass when `isAdvisoryRoute()` and crop present. Log `[AdvisoryBypass]`.
+5. Stale clarification reset: if `clarification_active && isAdvisoryRoute(currentIntent)` and message doesn't match pending options → clear state, set `decision_state='decision_in_progress'`, log `[StaleClarificationReset]`.
 
-3. **Stale session `decision_state = awaiting_clarification`** carries across topic switches.
-   Logs show `turn: 13, state: awaiting_clarification, clarification_active: true`. A fresh advisory question is still being treated as a follow-up to an earlier disease clarification, which biases NLU and forces low understanding scores.
+### C. `agents/layered-rule-evaluator.ts` (and any other rule loaders)
+- Ensure DB query filters by DAS:
+  `.or('crop_age_days_min.is.null,crop_age_days_min.lte.<DAS>')`
+  `.or('crop_age_days_max.is.null,crop_age_days_max.gte.<DAS>')`
+- Use case-insensitive crop match (`.ilike`) until Fix D applied.
 
-4. **Query router result is not used to widen `symptomBasedIntents` detection.**
-   When `queryRoute.route` is an advisory route, NLU's `intent_code` should not be treated as symptom-based even if observation-extractor produced "AFFECTED_PART_UNKNOWN" filler codes (seen in log: 7 codes, 4 unknowns).
+### D. Crop code casing
+- Pick Option A (data normalize). Migration after read-only verification + user approval:
+  ```
+  UPDATE decision_rules / intent_observation_mapping / crop_vocabulary
+  SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);
+  ```
+- Keep code-side `.ilike` as belt-and-suspenders.
 
-## Fixes (surgical, scoped to orchestrator + session state)
+## DB migrations (require explicit user approval per fix)
 
-### Fix 1 — Add advisory exemption to the Understanding clarification gate
-File: `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (~line 3937)
+All preceded by the report's read-only verification queries; results shown to user before any UPDATE/INSERT.
 
-Reuse the same exempt set already declared for the Zero-Code Gate. Skip the gate when:
-- `queryRoute.route ∈ {FERTILIZER_NUTRITION, IRRIGATION_SCHEDULING, WEATHER_SPRAY_TIMING, CROP_HEALTH, GENERAL_INFO}`, OR
-- `bypassClarification === true`, OR
-- intent metadata `clarification_mode === 'DIRECT'`.
-
-When skipped, log `ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE` so traces are auditable.
-
-### Fix 2 — Strengthen `directModeBypass` crop-context check (~line 2782)
-Change condition to OR-check both sources of truth:
-`landContext?.current_crop || canonicalContext?.crop || landContext?.crop_schedule?.crop_name`.
-This restores DIRECT mode for advisory routes whenever any layer of context knows the crop.
-
-### Fix 3 — Reset stale clarification state on advisory-route turns
-In the early session block (~line 1063 where `clarificationActive` is read):
-- If `queryRoute.route` is in the advisory exempt set **and** the incoming farmerMessage does NOT match a pending clarification option, forcibly set `clarificationActive = false`, persist `decision_state = 'decision_in_progress'`, and log `STALE_CLARIFICATION_RESET`.
-- This prevents NLU from interpreting "khat devu / favarni" as an answer to a prior pest question.
-
-### Fix 4 — Treat advisory route as non-symptom intent in gates
-Wherever `symptomBasedIntents` membership decides flow (Zero-Code Gate, Understanding gate, evidence-coverage gate at line 3573, scoped clarification call), AND together with `!isZeroCodeGateExempt`. Make this a single helper: `isAdvisoryRoute(queryRoute.route)` and reuse.
-
-### Fix 5 — Verify STAGE_ADVISORY_FALLBACK still fires
-Confirm `shouldUseStageAdvisoryFallback` at line 6417 will now be reachable for advisory routes that pass the new bypasses with zero rules matched — so farmer always gets a deterministic stage-based plan from `crop_stage_advisor.ts` instead of a clarification.
-
-## DB / data validation (no schema changes)
-
-Read-only checks against the production DB to confirm the symbolic brain has data to render:
-- `crop_vocabulary` — confirm Marathi fertilizer phrases `खत`, `फवारणी`, `देवू` are present with `recommended_intent_bias ∈ {FERTILIZER_SCHEDULE, NUTRIENT_DEFICIENCY}`.
-- `intent_metadata` — confirm `FERTILIZER_NUTRITION` / `FERTILIZER_SCHEDULE` rows have `clarification_mode = 'DIRECT'` and `requires_stage_context = false` (or stage available).
-- `decision_rules` for sugarcane GRAND_GROWTH stage advisory rules (action_type IN ('fertilizer','spray','schedule')) — confirm at least one matches DAS=154.
-- `crop_schedules` for the failing land — confirm `crop_name='SUGARCANE'` and active flag.
-
-If any vocabulary or intent_metadata row is missing or wrong, the plan ends with read-only findings; we will request approval before any data write.
-
-## Production-readiness checks (post-fix)
-
-1. **Trace replay**: Re-run the failing Marathi query and verify log line `[DIRECT_MODE] route FERTILIZER_NUTRITION skips symptom clarification` and a `DECISION_PROVIDED` response with stage-based fertilizer recommendations.
-2. **Regression net**: Re-run three known-good prompts (one disease report, one irrigation question, one greeting) and confirm each still routes correctly.
-3. **Edge log audit**: Confirm new `STALE_CLARIFICATION_RESET` and `ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE` markers appear only when expected.
-4. **No code change outside `orchestrator.ts`** unless DB findings in step above prove otherwise. Symbolic brain contract, rule engine, and clarification generator stay untouched.
+- **Fix 3** — `normalize_crop_code_case` (UPPER across 3 tables).
+- **Fix 5** — `seed_advisory_vocabulary_mr_hi` (Marathi/Hindi fertilizer, spray, irrigation patterns; fix existing wrong biases).
+- **Fix 6** — Orphan `recommended_intent_bias` remap (user provides mapping table; no auto-remap).
+- **Fix 4** — Sugarcane intent-observation mapping additions: per-intent agronomist approval; no bulk insert.
 
 ## Out of scope
-- No changes to general-chat tab (separate edge function).
-- No changes to NLU contract, rule engine, or LLM formatter.
-- No DB migrations — only read-only audit; any data correction will be proposed back to you first.
+
+- No new `decision_rules` content.
+- No multilingual columns on rules.
+- No hardcoded vernacular strings in `.ts`.
+- General-chat path untouched.
+- 21 RLS-disabled advisory tables untouched.
+
+## Validation after deploy
+
+Run test query "सध्या कोणते खत देवू आणि फवारणी घेवू ?" on sugarcane DAS=154.
+
+Audit-log expectations:
+- `intent_label` ∈ {`FERTILIZER_SCHEDULE`, `SPRAY_TIMING_QUERY`, `NUTRIENT_STRESS_SIGNAL`}
+- `observations` = canonical codes or `[]`
+- `rules_fired` non-empty
+- `response_source = DECISION_RULES`
+- `validation_passed = true`
+
+Required log markers:
+- `[IntentValidator] Loaded 88 canonical intent codes from DB`
+- `[ObservationContract] BLOCKED 0 non-canonical entries`
+- `[AdvisoryBypass] Skipping clarification gate for advisory intent=FERTILIZER_SCHEDULE`
+
+Regression checks: disease query still clarifies; greeting returns greeting; irrigation routes to `IRRIGATION_QUERY`; cotton "कोणते खत द्यावे?" routes to `FERTILIZER_SCHEDULE` with `crop_code=COTTON`.
+
+## Execution order
+
+1. Code fixes A, B, C (single deploy of `ai-agriculture-chat`).
+2. Run read-only verification queries for Fix 3, 5, 6, 4; present results.
+3. Apply approved migrations one-by-one.
+4. Re-run validation test + regression set.
