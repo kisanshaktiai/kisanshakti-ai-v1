@@ -4,6 +4,12 @@
  * v7.0.1 - Romanized language detection + app language enforcement
  */
 
+// BUILD_TAG bumps force the edge runtime to pick up dependent module changes
+// (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
+const BUILD_TAG = 'ai-agri-chat::classifier-v4-canonical::2026-05-31T16:45Z';
+console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
+
+
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
