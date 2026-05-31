@@ -1511,6 +1511,21 @@ serve(async (req) => {
           const decisionOutputForFormatting = orchestratorResponse.decision_output;
           hydrateDecisionOutputRichText(decisionOutputForFormatting);
 
+          // ── Load farmer profile + respectful addressing (presentation-only)
+          let farmerAddressing: FarmerAddressing | undefined;
+          try {
+            const profile = await loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+            farmerAddressing = getFarmerAddressing({
+              language: profile.language || detectedLanguage,
+              state: profile.state,
+              gender: profile.gender,
+              farmer_name: profile.farmer_name,
+            });
+            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}`);
+          } catch (e) {
+            console.warn('[Addressing] load failed:', (e as Error).message);
+          }
+
           const formatterInput: LLMFormatterInput = {
             farmer_message: userMessageContent,
             language: detectedLanguage,
@@ -1518,7 +1533,8 @@ serve(async (req) => {
             land_context: landContext,
             data_audit: orchestratorResponse.dataAudit,
             trace_id: traceId,
-            supabase_client: supabase
+            supabase_client: supabase,
+            farmer_addressing: farmerAddressing,
           };
           
           // Call LLM formatter with timeout protection
