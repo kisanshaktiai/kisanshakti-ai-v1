@@ -58,6 +58,73 @@ import {
   type LLMResponseInput 
 } from './llm-response-generator.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SYMBOLIC ROUTING CONTRACT (Fix 2 + Fix 7 + Fix 8)
+// Canonical DIRECT-mode intents verified against observation_intent_master
+// where clarification_mode='DIRECT'. These intents MUST bypass symptom
+// clarification gates and go straight to the symbolic rule engine.
+// ═══════════════════════════════════════════════════════════════════════════
+export const ADVISORY_DIRECT_INTENTS = new Set<string>([
+  'FERTILIZER_SCHEDULE',
+  'IRRIGATION_QUERY',
+  'IRRIGATION_METHOD_SELECTION',
+  'IRRIGATION_SCHEDULING_QUERY',
+  'SPRAY_TIMING_QUERY',
+  'CROP_HEALTH_DASHBOARD',
+  'GENERAL_CROP_INFO',
+  'HARVEST_TIMING',
+  'BEST_PRACTICE_GENERAL',
+  'ORGANIC_FARMING_QUERY',
+  'INTERCROPPING_QUERY',
+  'IPM_STRATEGY_QUERY',
+  'PHI_SAFETY_QUERY',
+  'DOSAGE_CALCULATION_QUERY',
+  'RESISTANCE_MANAGEMENT_QUERY',
+  'SOIL_HEALTH_RESTORATION',
+  'SOIL_TESTING_QUERY',
+  'SOIL_TYPE_MANAGEMENT',
+  'PROACTIVE_SCHEDULE_QUERY',
+  'COST_ESTIMATION_QUERY',
+  'YIELD_FORECAST_QUERY',
+  'TREATMENT_ROI_QUERY',
+  'LABOR_PLANNING_QUERY',
+  'POST_HARVEST_HANDLING',
+  'CROP_ROTATION_QUERY',
+  'PLANTING_METHOD_QUERY',
+  'SEED_SELECTION',
+  'VARIETY_SELECTION_QUERY',
+  'SEASONAL_TRANSITION_ALERT',
+  'WEATHER_ADVISORY',
+]);
+
+export function isAdvisoryRoute(intentCode: string | null | undefined): boolean {
+  return !!intentCode && ADVISORY_DIRECT_INTENTS.has(intentCode);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION CONTRACT GUARD (Fix 2)
+// Observations entering the symbolic engine MUST be canonical English codes
+// matching /^[A-Z][A-Z0-9_]+$/. Raw farmer text in any language is BLOCKED.
+// ═══════════════════════════════════════════════════════════════════════════
+export function isCanonicalObservationCode(s: any): boolean {
+  return typeof s === 'string' && /^[A-Z][A-Z0-9_]+$/.test(s) && s.length <= 80;
+}
+
+export function filterToCanonicalObservations(obs: any): string[] {
+  if (!Array.isArray(obs)) return [];
+  const filtered: string[] = [];
+  const rejected: string[] = [];
+  for (const o of obs) {
+    if (isCanonicalObservationCode(o)) filtered.push(o);
+    else if (o != null) rejected.push(String(o).substring(0, 60));
+  }
+  if (rejected.length > 0) {
+    console.error(`[ObservationContract] BLOCKED ${rejected.length} non-canonical entries: ${rejected.join(' | ')}`);
+  }
+  return filtered;
+}
+
+
 // Import question classifier for adaptive templates
 import { classifyQuestion, type QuestionClassification } from './question-classifier.ts';
 
