@@ -593,6 +593,34 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // GENERAL-CHAT EARLY SHORT-CIRCUIT (Senior Agronomist, direct LLM)
+    // ─────────────────────────────────────────────────────────────────────────
+    // Highest priority: if the client explicitly says `mode: 'general'`, never
+    // touch the 9-agent symbolic brain or any narration pipeline. Direct LLM.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const _earlyIsGeneralMode =
+      requestBody?.mode === 'general' ||
+      requestBody?.metadata?.chatMode === 'general' ||
+      (!landId && requestBody?.metadata?.source === 'general_tab');
+
+    if (_earlyIsGeneralMode) {
+      console.log(`💬 [${traceId}] EARLY general-mode short-circuit → direct LLM (bypassing symbolic brain)`);
+      try { inFlightRequests.delete(dedupeKey); } catch { /* noop */ }
+      return await handleGeneralChat({
+        supabase,
+        traceId,
+        farmerId: finalFarmerId,
+        tenantId: finalTenantId,
+        sessionId: currentSessionId,
+        language: (language || 'en'),
+        messages,
+        landContext: requestBody?.metadata?.landContext ?? null,
+        corsHeaders,
+        conversationHistory,
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // LANGUAGE DETECTION & CONSISTENCY CHECK
     // Detect user's language and prepare for translation pipeline
     // ═══════════════════════════════════════════════════════════════════════════
