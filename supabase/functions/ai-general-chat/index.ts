@@ -16,6 +16,11 @@ import {
   getAPIEndpoint,
   AI_CONFIG,
 } from '../_shared/aiConfig.ts';
+import {
+  loadFarmerProfileLite,
+  getFarmerAddressing,
+  type FarmerAddressing,
+} from '../_shared/farmerAddressing.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
