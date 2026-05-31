@@ -35,6 +35,9 @@ export default function ReelsPage() {
   const [isMuted, setIsMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [doubleTapHearts, setDoubleTapHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const [likedSet, setLikedSet] = useState<Set<string>>(() => readSet(LIKES_KEY));
+  const [savedSet, setSavedSet] = useState<Set<string>>(() => readSet(SAVES_KEY));
+  const [commentSheetReel, setCommentSheetReel] = useState<OfficialReel | null>(null);
   const lastTapRef = useRef<{ t: number; reelId: string | null }>({ t: 0, reelId: null });
   const containerRef = useRef<HTMLDivElement>(null);
 
