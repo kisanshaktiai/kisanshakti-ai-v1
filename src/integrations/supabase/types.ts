@@ -28077,6 +28077,42 @@ export type Database = {
           },
         ]
       }
+      youtube_reel_engagement: {
+        Row: {
+          action: string
+          channel: string | null
+          created_at: string
+          farmer_id: string
+          id: string
+          metadata: Json
+          tenant_id: string
+          video_id: string
+          watched_seconds: number | null
+        }
+        Insert: {
+          action: string
+          channel?: string | null
+          created_at?: string
+          farmer_id: string
+          id?: string
+          metadata?: Json
+          tenant_id: string
+          video_id: string
+          watched_seconds?: number | null
+        }
+        Update: {
+          action?: string
+          channel?: string | null
+          created_at?: string
+          farmer_id?: string
+          id?: string
+          metadata?: Json
+          tenant_id?: string
+          video_id?: string
+          watched_seconds?: number | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       active_subscriptions: {

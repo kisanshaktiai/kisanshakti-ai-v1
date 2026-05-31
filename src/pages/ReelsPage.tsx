@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
+import { useYouTubeReelEngagement } from '@/hooks/useYouTubeReelEngagement';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ export default function ReelsPage() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: officialVideos = [], isLoading: isOfficialLoading, refetch: refetchOfficial } = useYouTubeChannelReels(24);
+  const { track } = useYouTubeReelEngagement();
 
   const reels: OfficialReel[] = useMemo(
     () => officialVideos.map((video) => ({
@@ -74,8 +76,39 @@ export default function ReelsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLanguage]);
 
-  const showOfficialOnlyNotice = () => {
-    toast({ description: t('reels.official_only', 'This video is from the official KisanShakti AI YouTube channel.') });
+  // Lock body scroll for full-screen immersive view
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // Record a 'view' each time a new reel becomes active
+  useEffect(() => {
+    const reel = reels[activeIndex];
+    if (reel?.id) track(reel.id, 'view');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, reels.length]);
+
+  // Open YouTube for engagement (like/comment) — engagement is recorded on YouTube,
+  // we keep a local audit row so analytics can attribute farmer engagement.
+  const openYouTube = (videoId: string, kind: 'like' | 'comment' | 'save') => {
+    const watchUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    const intent =
+      kind === 'comment'
+        ? `${watchUrl}&lc=1` // anchors to comments section on web
+        : watchUrl;
+    track(videoId, kind, { metadata: { intent: kind } });
+    track(videoId, 'open_youtube', { metadata: { intent: kind } });
+    window.open(intent, '_blank', 'noopener,noreferrer');
+    toast({
+      description: t(
+        'reels.opening_youtube',
+        'Opening YouTube — sign in to like or comment on the channel.',
+      ),
+    });
   };
 
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
@@ -118,6 +151,7 @@ export default function ReelsPage() {
       // WhatsApp deep link as primary fallback for farmers
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
+    track(reel.id, 'share', { metadata: { channel: navigator.share ? 'native' : 'whatsapp' } });
     toast({ description: t('reels.shared', 'Shared') });
   };
 
@@ -235,11 +269,11 @@ export default function ReelsPage() {
                   liked={false}
                   saved={false}
                   isMuted={isMuted}
-                  onLike={showOfficialOnlyNotice}
-                  onSave={showOfficialOnlyNotice}
-                  onComment={showOfficialOnlyNotice}
+                  onLike={() => openYouTube(reel.id, 'like')}
+                  onSave={() => openYouTube(reel.id, 'save')}
+                  onComment={() => openYouTube(reel.id, 'comment')}
                   onShare={() => share(reel)}
-                  onReport={showOfficialOnlyNotice}
+                  onReport={() => openYouTube(reel.id, 'like')}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
