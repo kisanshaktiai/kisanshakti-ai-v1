@@ -1530,6 +1530,21 @@ export function EnhancedAIChatInterface() {
     
     if (!finalMessage && !quickAction && attachedFiles.length === 0) return;
 
+    // ─── GENERAL-CHAT land context gate ───────────────────────────────────
+    // On the General tab, before the first send of a session, ask the farmer
+    // which land this question is about (or "no specific land"). Their pick
+    // is then attached as authoritative context for the direct-LLM answer.
+    if (
+      activeTab === 'general' &&
+      generalLandId === undefined &&
+      finalMessage &&
+      (lands?.length || 0) > 0
+    ) {
+      pendingGeneralSendRef.current = finalMessage;
+      setShowGeneralLandPicker(true);
+      return;
+    }
+
     // ─── Subscription quota gate ──────────────────────────────────────────
     // Block sends when farmer is over their daily AI-chat quota or when the
     // tenant has disabled the AI Chat feature. Server-side enforcement in
