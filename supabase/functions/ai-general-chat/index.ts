@@ -16,6 +16,11 @@ import {
   getAPIEndpoint,
   AI_CONFIG,
 } from '../_shared/aiConfig.ts';
+import {
+  loadFarmerProfileLite,
+  getFarmerAddressing,
+  type FarmerAddressing,
+} from '../_shared/farmerAddressing.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -45,11 +50,17 @@ const LANG_NAMES: Record<string, string> = {
 const SYMBOLIC_HINTS =
   /(\[obs_keys?:|\[cause:|\[rule_id:|which part of the plant|एक पर्याय निवडा|एक विकल्प चुनें)/i;
 
-function buildSystemPrompt(language: string, landContext: any | null): string {
+function buildSystemPrompt(
+  language: string,
+  landContext: any | null,
+  addressing: FarmerAddressing | null,
+): string {
   const langName = LANG_NAMES[language] || 'English';
   const landBlock = landContext
     ? `LAND_CONTEXT (authoritative — use these facts):\n${JSON.stringify(landContext, null, 2)}`
     : 'LAND_CONTEXT: none (farmer asked a general question without a specific land)';
+
+  const addressingBlock = addressing ? `\n\n${addressing.promptDirective}\n` : '';
 
   return `You are a SENIOR AGRONOMIST with 25+ years of on-field, rural farming
 experience across Indian smallholder agriculture. You advise farmers in clear,
@@ -76,7 +87,7 @@ HARD RULES:
   follow-up question if it is truly required to answer well.
 - Keep the reply under ~250 words. Use short bullets or numbered steps
   where they help readability.
-
+${addressingBlock}
 ${landBlock}`;
 }
 
@@ -196,7 +207,22 @@ serve(async (req: Request) => {
     }
 
     // ── Build LLM messages (filter symbolic-leakage from history)
-    const systemPrompt = buildSystemPrompt(language, landContext);
+    // ── Load farmer profile for respectful addressing (presentation-only)
+    let addressing: FarmerAddressing | null = null;
+    try {
+      const profile = await loadFarmerProfileLite(supabase, farmerId, language);
+      addressing = getFarmerAddressing({
+        language: profile.language || language,
+        state: profile.state,
+        gender: profile.gender,
+        farmer_name: profile.farmer_name,
+      });
+      console.log(`👤 [${traceId}] addressing: ${addressing.primary} (${addressing.gender}/${profile.state || 'no-state'})`);
+    } catch (e) {
+      console.warn(`[${traceId}] addressing build failed:`, (e as Error).message);
+    }
+
+    const systemPrompt = buildSystemPrompt(language, landContext, addressing);
     const history = (messages.slice(0, -1) as any[])
       .slice(-12)
       .map((m) => ({

@@ -16,6 +16,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
+import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
@@ -1510,6 +1511,21 @@ serve(async (req) => {
           const decisionOutputForFormatting = orchestratorResponse.decision_output;
           hydrateDecisionOutputRichText(decisionOutputForFormatting);
 
+          // ── Load farmer profile + respectful addressing (presentation-only)
+          let farmerAddressing: FarmerAddressing | undefined;
+          try {
+            const profile = await loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+            farmerAddressing = getFarmerAddressing({
+              language: profile.language || detectedLanguage,
+              state: profile.state,
+              gender: profile.gender,
+              farmer_name: profile.farmer_name,
+            });
+            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}`);
+          } catch (e) {
+            console.warn('[Addressing] load failed:', (e as Error).message);
+          }
+
           const formatterInput: LLMFormatterInput = {
             farmer_message: userMessageContent,
             language: detectedLanguage,
@@ -1517,7 +1533,8 @@ serve(async (req) => {
             land_context: landContext,
             data_audit: orchestratorResponse.dataAudit,
             trace_id: traceId,
-            supabase_client: supabase
+            supabase_client: supabase,
+            farmer_addressing: farmerAddressing,
           };
           
           // Call LLM formatter with timeout protection
