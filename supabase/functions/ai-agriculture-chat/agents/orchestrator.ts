@@ -4024,10 +4024,12 @@ export class AIAgentOrchestrator {
       // for a scheduling / nutrition question.
       const isAdvisoryRouteForGate =
         ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
-        intentMetaFromDB?.clarification_mode === 'DIRECT';
+        intentMetaFromDB?.clarification_mode === 'DIRECT' ||
+        isAdvisoryRoute(intentCode); // Fix 7: canonical-intent bypass
       if (isAdvisoryRouteForGate && understandingResult.clarification_required) {
         console.log(`   ✅ [ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE] route=${queryRoute.route} intent=${intentCode} — skipping symptom clarification (understanding=${understandingResult.understanding_confidence})`);
       }
+
       if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage && !isAdvisoryRouteForGate) {
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
