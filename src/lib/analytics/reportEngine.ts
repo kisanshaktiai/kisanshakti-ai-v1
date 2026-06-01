@@ -206,15 +206,15 @@ export function computeLandAnalytics(
   const baseYieldPerAcre = EXPECTED_YIELD_Q_PER_ACRE[ck] ?? EXPECTED_YIELD_Q_PER_ACRE.default;
   const ndviFactor =
     latestNdvi != null ? Math.max(0.5, Math.min(1.25, 0.7 + latestNdvi * 0.5)) : 1;
-  const expectedYieldQuintals = area * baseYieldPerAcre * ndviFactor;
+  const expectedYieldQuintals = Math.max(0, area * baseYieldPerAcre * ndviFactor);
 
-  const projectedRevenue = marketPrice ? expectedYieldQuintals * marketPrice : 0;
+  const projectedRevenue = Math.max(0, marketPrice ? expectedYieldQuintals * marketPrice : 0);
 
   // Projected expense — derived from crop CoC baseline (₹/acre × area).
   // We use it when actual expense logged < 60% of baseline (sparse data).
-  const baselineCost = (EXPECTED_COST_PER_ACRE[ck] ?? EXPECTED_COST_PER_ACRE.default) * area;
+  const baselineCost = Math.max(0, (EXPECTED_COST_PER_ACRE[ck] ?? EXPECTED_COST_PER_ACRE.default) * area);
   const useProjected = totalExpense < baselineCost * 0.6;
-  const projectedExpense = useProjected ? baselineCost : totalExpense;
+  const projectedExpense = Math.max(0, useProjected ? baselineCost : totalExpense);
   const projectedExpenseBreakdown = useProjected
     ? projectedCostBreakdown(land.current_crop, area)
     : byCategory;

@@ -84,6 +84,16 @@
       "title": "Projection notice",
       "body": "These numbers are forecasts based on your land data, NDVI, weather and mandi prices. Actual results may vary with soil condition, water stress, pest or disease attacks, rainfall and labour rates. Use this as guidance — not a guarantee."
     },
+    "forecast": {
+      "title": "6-Month Forecast",
+      "subtitle": "AI-powered income vs expense projection — refreshed monthly",
+      "income": "Income",
+      "expense": "Expense",
+      "profit": "Profit",
+      "generate": "Generate",
+      "generating": "Generating…",
+      "empty": "No AI forecast yet. Tap Generate to create one."
+    },
     "loading": { "message": "Loading analytics..." }
   }
 }
