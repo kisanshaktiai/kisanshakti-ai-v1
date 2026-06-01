@@ -439,6 +439,8 @@ function defaultRec(key: string): string {
       return 'You have delayed tasks. Catch up to avoid yield loss.';
     case 'recommendations.ph_out_of_range':
       return 'Soil pH is out of crop’s ideal range. Consider lime or gypsum.';
+    case 'recommendations.no_market_price':
+      return 'No recent mandi price for this crop — revenue projection unavailable.';
     default:
       return key;
   }

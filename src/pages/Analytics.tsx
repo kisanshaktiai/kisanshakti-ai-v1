@@ -23,6 +23,7 @@ import {
   FinancialCard,
   MarketPulseCard,
   RecommendationsCard,
+  DisclaimerCard,
 } from '@/components/analytics/AnalyticsSections';
 import { aggregateFarm } from '@/lib/analytics/reportEngine';
 import { formatINR, formatNumber } from '@/lib/analytics/formulas';
