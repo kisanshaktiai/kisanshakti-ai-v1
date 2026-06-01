@@ -141,11 +141,28 @@ export default function ReelsPage() {
     track(reel.id, 'comment', { metadata: { in_app: true, action: 'sheet_open' } });
   }, [track]);
 
+  // Open URL at top-level so it escapes any embedding iframe (Lovable preview, PWA, in-app webview).
+  // Falls back to assigning window.top.location if popups are blocked.
+  const openExternal = useCallback((url: string) => {
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (win) return;
+    } catch {/* popup blocked */}
+    try {
+      if (window.top && window.top !== window.self) {
+        (window.top as Window).location.href = url;
+        return;
+      }
+    } catch {/* cross-origin top */}
+    window.location.href = url;
+  }, []);
+
   const viewCommentsOnYouTube = useCallback((reel: OfficialReel) => {
-    const url = `https://www.youtube.com/watch?v=${reel.id}&lc=1`;
+    // Shorts canonical URL — deep-links into the YouTube app on mobile and renders correctly on web.
+    const url = `https://www.youtube.com/shorts/${reel.id}`;
     track(reel.id, 'open_youtube', { metadata: { intent: 'comment', user_initiated: true } });
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, [track]);
+    openExternal(url);
+  }, [track, openExternal]);
 
   // Safe back: handles deep-link / PWA cold starts where history is empty.
   const handleBack = useCallback(() => {
@@ -162,13 +179,15 @@ export default function ReelsPage() {
   const openCurrentOnYouTube = useCallback(() => {
     const reel = reels[activeIndex];
     if (!reel?.id) {
-      window.open(YT_CHANNEL_URL, '_blank', 'noopener,noreferrer');
+      openExternal(YT_CHANNEL_URL);
       return;
     }
-    const url = `https://www.youtube.com/watch?v=${reel.id}`;
+    // Use /shorts/ path — this is the actual reel URL on YouTube and avoids the
+    // watch?v= page which can be blocked when opened from an embedded iframe.
+    const url = `https://www.youtube.com/shorts/${reel.id}`;
     track(reel.id, 'open_youtube', { metadata: { source: 'header_cta', user_initiated: true } });
-    window.open(url, '_blank', 'noopener,noreferrer');
-  }, [reels, activeIndex, track]);
+    openExternal(url);
+  }, [reels, activeIndex, track, openExternal]);
 
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
