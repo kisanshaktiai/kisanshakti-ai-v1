@@ -1,80 +1,98 @@
-## Root cause (confirmed from edge logs)
 
-The Marathi query `उसाला कोणती फवारणी घेवू काय ?` (sugarcane DAS=154) was wrongly routed to a "What are you observing?" clarification card instead of `SPRAY_TIMING_QUERY` / `FERTILIZER_SCHEDULE`. Three independent failures stack on top of each other:
+## Phase 1 — Reels page fixes
 
-### 1. The deployed edge function is stale — still IntentClassifier v3.0.0
+**File:** `src/pages/ReelsPage.tsx`
 
-Log line:
+1. **Back button reliability**
+   - `navigate(-1)` fails when Reels is the first history entry (deep link / PWA cold start / external open). Replace with a safe fallback:
+     - If `window.history.length > 1` → `navigate(-1)`
+     - Else → `navigate('/app/home', { replace: true })`
+   - Increase touch target & z-index, ensure `type="button"` and `onTouchEnd` stopPropagation so the snap-scroll container doesn't swallow the tap (current issue on iOS — the absolute top bar sits above the scroller but the button is inside a `pointer-events`-clear gradient).
+   - Restore body scroll explicitly inside the back handler before navigating, to prevent the next page from inheriting `overflow: hidden`.
 
-```
-🎯 [IntentClassifier v3.0.0] Classifying...
-   ✅ Intent: INPUT_RECOMMENDATION (100%) [1523ms]
-```
+2. **"Open on YouTube" CTA per current video**
+   - Add a new pill button next to the back button in the top bar: red YouTube icon + label "YouTube" (i18n key `reels.open_on_youtube`).
+   - Tapping opens the **currently active** reel on the official channel:
+     - `https://www.youtube.com/watch?v=<reelId>` (mobile deep-links into the YouTube app automatically; falls back to web)
+   - Log the action via `track(reel.id, 'open_youtube', { metadata: { source: 'header_cta', user_initiated: true } })`.
+   - Also add the same CTA to the bottom info block ("Watch on YouTube channel") with `ExternalLink` icon so it's discoverable while watching.
+   - Add i18n entries (`en`, `hi`, `mr`, `pa`, `ta`) for `reels.open_on_youtube` and `reels.watch_on_channel`.
 
-`supabase/functions/ai-agriculture-chat/agents/intent-classifier.ts` in the repo is already `v4.0.0` with the canonical-intent whitelist (loaded from `observation_intent_master`). The expected marker `[IntentValidator] Loaded N canonical intent codes from DB` is **absent** from the logs. The v4 file was never picked up by the deployed function — only v3 is running in production. As a result the LLM is free to emit non-canonical codes (`INPUT_RECOMMENDATION`) and nothing rejects them.
-
-### 2. Non-canonical intent → fallback route → clarification gate
-
-Because `INPUT_RECOMMENDATION` is not in `observation_intent_master` (88 valid codes), the symbolic brain can find no `intent_observation_mapping` rows, falls through to `GENERAL_INFO` (50% confidence), and the clarification generator emits the generic "What exactly are you observing?" card. The orchestrator's `ADVISORY_DIRECT_INTENTS` bypass cannot fire because the intent code is not in the canonical set.
-
-### 3. Crop-code casing mismatch in `crop_vocabulary`
-
-Logs show:
-
-```
-[CROP_VOCAB] Loaded 0 vocabulary entries for Sugarcane     ← title-case (LandContext)
-[CROP_VOCAB] Loaded 101 vocabulary entries for SUGARCANE    ← upper-case (other call site)
-```
-
-The fertilizer / spray Marathi keyword bias from `crop_vocabulary` is being silently skipped on the first call because `crop_code` lookups are case-sensitive and the rows are stored UPPER while one caller passes title-case. This is the `Fix 3` item in `.lovable/plan.md` that is still awaiting DB-side approval.
+No business-logic changes to engagement tracking (Option A in-app behaviour preserved).
 
 ---
 
-## Fix plan
+## Phase 2 — Analytics: per-land, real-data, mobile-first redesign
 
-### A. Force redeploy of `ai-agriculture-chat` (code-side, no logic change)
+### Problems found in `src/pages/Analytics.tsx`
 
-Bump the file-level version marker and re-export it through `index.ts` so the deployment system picks up the change. No behaviour change — this only forces the v4 classifier and the v3.0.0 orchestrator (with `ADVISORY_DIRECT_INTENTS`, `filterToCanonicalObservations`, advisory bypasses) to actually go live.
+- Shows a single aggregated farm report only — no per-land breakdown.
+- Hardcoded magic numbers: `₹25,000/acre income`, `₹10,000/acre expenses`, `125L/acre water`, weather `{ temp: 28, humidity: 65, rainChance: 40 }`, market price seed arrays `[2200, 2250, 2180, 2300, ...]`, soil health string `'Good'`.
+- Crop chart uses raw hex/HSL colours, not theme tokens.
+- No use of real data already in DB: `schedules`, `weather_current`, `weather_forecast`, `soil_health`, `ndvi_data`, `expense_records`, `market_prices`, `farmer_transactions`.
 
-Touch points:
-- `supabase/functions/ai-agriculture-chat/index.ts` — add a `BUILD_TAG = 'classifier-v4-canonical-2026-05-31'` log at boot so we can verify the new deploy is serving traffic.
-- `supabase/functions/ai-agriculture-chat/agents/intent-classifier.ts` — add a single `console.log(`[IntentClassifier] BUILD=v${INTENT_CLASSIFIER_VERSION}`)` at module load to make staleness instantly visible in future audits.
+### New architecture
 
-### B. Belt-and-suspenders: case-insensitive crop_code lookups
+1. **New data hook** `src/hooks/useAnalyticsData.ts`
+   - Inputs: `farmerId`, `tenantId`, `selectedLandId | 'all'`, `dateRange`.
+   - Pulls in parallel from real tables (no hardcoded constants):
+     - `lands` (area, crop, sowing date, irrigation type) — from `useLands`
+     - `schedules` — completion rate, on-time vs delayed, by stage
+     - `expense_records` (or `farmer_transactions`) — actual expenses by category
+     - `crop_health_assessments` + latest `ndvi_data` — vegetation index trend per land
+     - `weather_current` + `weather_forecast` (already cached per land/area) — rainfall & temp trend
+     - `soil_health` — pH, N/P/K, organic carbon (per land)
+     - `market_prices` — last 30 days for the crops the farmer actually grows
+     - `crop_yields` (where present) for revenue estimation; fall back to `market_prices.modal_price × expected_yield_per_acre` from `crops_master` agronomic data, never a flat ₹25k.
+   - Returns a typed `LandAnalytics[]` plus a derived `FarmAggregate`. All numbers are computed, never hardcoded.
 
-Patch the two vocabulary loaders to upper-case the `crop_code` argument before querying. This makes the system correct even before the DB normalization migration runs.
+2. **New report engine** `src/lib/analytics/reportEngine.ts`
+   - Pure functions: `computeYieldEstimate(land, ndvi, weather, soil)`, `computeWaterRequirement(crop, stage, area, recentRainfall)`, `computeProfitProjection(expenses, marketPrice, yieldEstimate)`, `computeRiskScore(weather, soil, ndvi)`.
+   - Formulas based on real agronomic constants stored in `crops_master` (water requirement L/ha/day, expected yield q/acre, growth duration). No literals in components.
 
-Files:
-- `supabase/functions/ai-agriculture-chat/agents/agricultural-vocabulary.ts` — `.eq('crop_code', cropCode)` → `.eq('crop_code', cropCode.toUpperCase())`.
-- `supabase/functions/ai-agriculture-chat/agents/semantic-extractor.ts` — same normalization where `crop_vocabulary` is loaded for the current crop.
+3. **Redesigned page** `src/pages/Analytics.tsx`
+   - **Top bar (sticky, compact):** title + date-range chip (7d / 30d / season / year) + export.
+   - **Land selector (new):** horizontal scroll of land chips with thumbnail (from `ndvi_data.thumbnail_url` if available) + name + crop + area. First chip = "All Farm". Selecting a land filters every section below. Persisted in URL (`?land=<id>`).
+   - **Hero KPI strip:** 4 swipeable cards — Total Area, Active Crops, Projected Revenue, Net Profit (with real ↑/↓ vs previous period).
+   - **Sections (collapsible bento cards, theme tokens only):**
+     1. *Crop & Stage* — current stage, days-to-harvest, NDVI gauge.
+     2. *Water & Weather* — 7-day rainfall bar + irrigation requirement vs actual.
+     3. *Soil Health* — N/P/K radar from `soil_health`, last test date.
+     4. *Task Performance* — completion %, delayed tasks list with deep links.
+     5. *Financial* — expense pie by category (real), revenue projection band, break-even chart.
+     6. *Market Pulse* — actual `market_prices` line for the land's crop in the farmer's mandi.
+     7. *Recommendations* — derived from `reportEngine` risk score (e.g. "irrigate within 2 days", "spray window closing").
+   - **Mobile-first (390px baseline):** single column, snap-scroll horizontal carousels for KPIs, native pull-to-refresh, skeleton states per card (not whole page), reduced-motion respected, all colours via `bg-primary`, `text-foreground`, `bg-card`, `border-border`, `bg-muted` — zero hex/HSL literals.
+   - **i18n:** extend existing `analytics.json` (en/hi/mr) with new keys: `analytics.land_selector.*`, `analytics.kpi.*`, `analytics.recommendations.*`, `analytics.empty_land`, units (`unit.acre`, `unit.litre`, `unit.quintal`).
 
-### C. DB normalization (requires user approval) — `Fix 3` from existing plan
+4. **Empty / partial states** — per land, if a data source is missing (e.g. no NDVI yet), the card shows a meaningful empty state with the next action ("Run NDVI scan") instead of fake numbers.
 
-Single migration, after the read-only verification queries already documented in `.lovable/plan.md`:
+5. **Caching & performance**
+   - Use `@tanstack/react-query` keyed by `(farmerId, landId, dateRange)`, `staleTime: 5 min`.
+   - Parallel queries via `Promise.all`; lazy-load heavy charts with `lazyWithRetry`.
 
-```sql
-UPDATE public.decision_rules           SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);
-UPDATE public.intent_observation_mapping SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);
-UPDATE public.crop_vocabulary          SET crop_code = UPPER(crop_code) WHERE crop_code <> UPPER(crop_code);
-```
+### Technical details
 
-No schema change, no new columns, no new rules. The verification SELECTs are presented for review before any UPDATE is executed.
+**New files**
+- `src/hooks/useAnalyticsData.ts`
+- `src/lib/analytics/reportEngine.ts`
+- `src/lib/analytics/formulas.ts` (agronomic formulas, unit conversions)
+- `src/components/analytics/LandSelectorRail.tsx`
+- `src/components/analytics/KpiStrip.tsx`
+- `src/components/analytics/sections/{CropStageCard,WaterWeatherCard,SoilHealthCard,TaskPerfCard,FinancialCard,MarketPulseCard,RecommendationsCard}.tsx`
 
-### D. No new rules, no new intents, no LLM agronomic generation
+**Modified**
+- `src/pages/Analytics.tsx` — thin composition, no business logic.
+- `src/components/skeletons/AnalyticsSkeleton.tsx` — per-card skeletons.
+- `src/pages/ReelsPage.tsx` — back button + YouTube CTA.
+- `src/i18n/locales/{en,hi,mr,pa,ta}/analytics.json` — new keys.
+- `src/i18n/locales/{en,hi,mr,pa,ta}/reels.json` (or merge into existing file) — `reels.open_on_youtube`, `reels.watch_on_channel`.
 
-Out of scope for this fix: adding `INPUT_RECOMMENDATION` as an alias, adding Marathi vocabulary rows, adding sugarcane intent mappings (`Fix 4` / `Fix 5` / `Fix 6` in the existing plan remain queued and unaffected by this change).
+**Out of scope (will NOT touch)**
+- DB schema, RLS, edge functions, theme tokens themselves, subscription gating, AI chat.
+- Reels engagement model (still Option A).
+- Any analytics calculation will read existing tables only — no migrations.
 
----
-
-## Validation after deploy
-
-Re-run the same query `उसाला कोणती फवारणी घेवू काय ?` on sugarcane DAS=154 and confirm in edge logs:
-
-- `[IntentClassifier] BUILD=v4.0.0` appears on cold start
-- `[IntentValidator] Loaded 88 canonical intent codes from DB`
-- `Intent: SPRAY_TIMING_QUERY` (or `FERTILIZER_SCHEDULE` / `GENERAL_CROP_INFO` fallback) — never `INPUT_RECOMMENDATION`
-- `[AdvisoryBypass] Skipping clarification gate for advisory intent=...`
-- `response_source = DECISION_RULES`, no `CLARIFICATION_QUESTION` for advisory queries
-- `[CROP_VOCAB] Loaded 101 vocabulary entries for SUGARCANE` on every call (no more `Loaded 0`)
-
-Regression set: disease query still clarifies; greeting returns greeting; irrigation routes to `IRRIGATION_QUERY`.
+**Verification**
+- Manual: switch lands, switch date range, verify numbers match raw DB rows; confirm back button works on deep-link cold start; YouTube CTA opens the correct video id.
+- Type-check + existing tests must pass.

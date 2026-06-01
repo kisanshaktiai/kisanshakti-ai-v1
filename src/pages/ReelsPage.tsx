@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Loader2, MessageCircle, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Heart, Loader2, MessageCircle, ExternalLink, Youtube } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+const YT_CHANNEL_URL = 'https://www.youtube.com/@kisanshaktiai';
 
 const LIKES_KEY = 'reels.liked.v1';
 const SAVES_KEY = 'reels.saved.v1';
@@ -145,6 +147,29 @@ export default function ReelsPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }, [track]);
 
+  // Safe back: handles deep-link / PWA cold starts where history is empty.
+  const handleBack = useCallback(() => {
+    // Restore body scroll before leaving
+    document.body.style.overflow = '';
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/app/home', { replace: true });
+    }
+  }, [navigate]);
+
+  // Open the *currently active* reel on the KisanShakti AI YouTube channel.
+  const openCurrentOnYouTube = useCallback(() => {
+    const reel = reels[activeIndex];
+    if (!reel?.id) {
+      window.open(YT_CHANNEL_URL, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const url = `https://www.youtube.com/watch?v=${reel.id}`;
+    track(reel.id, 'open_youtube', { metadata: { source: 'header_cta', user_initiated: true } });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [reels, activeIndex, track]);
+
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
     const id = Date.now();
@@ -195,9 +220,11 @@ export default function ReelsPage() {
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 z-30 flex items-center gap-2 px-3 pt-[env(safe-area-inset-top,12px)] pb-2 bg-gradient-to-b from-black/70 to-transparent">
         <button
-          onClick={() => navigate(-1)}
+          type="button"
+          onClick={handleBack}
+          onTouchEnd={(e) => { e.stopPropagation(); }}
           aria-label={t('common.back', 'Back')}
-          className="w-10 h-10 rounded-full bg-black/55 flex items-center justify-center text-white"
+          className="w-11 h-11 rounded-full bg-black/60 active:bg-black/80 flex items-center justify-center text-white shadow-lg shrink-0"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -218,6 +245,16 @@ export default function ReelsPage() {
             />
           </div>
         </div>
+        <button
+          type="button"
+          onClick={openCurrentOnYouTube}
+          onTouchEnd={(e) => { e.stopPropagation(); }}
+          aria-label={t('reels.open_on_youtube', 'Open on YouTube')}
+          className="h-11 px-3 rounded-full bg-[#FF0000] active:bg-[#cc0000] flex items-center gap-1.5 text-white text-sm font-semibold shadow-lg shrink-0"
+        >
+          <Youtube className="w-5 h-5" />
+          <span className="hidden xs:inline sm:inline">YouTube</span>
+        </button>
       </div>
 
       {/* Loading */}
@@ -280,6 +317,16 @@ export default function ReelsPage() {
                       {reel.description}
                     </p>
                   )}
+                  <div className="pt-2 pointer-events-auto">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openCurrentOnYouTube(); }}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[#FF0000]/95 active:bg-[#cc0000] text-white text-xs font-semibold shadow-md"
+                    >
+                      <Youtube className="w-4 h-4" />
+                      {t('reels.watch_on_channel', 'Watch on YouTube')}
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2 pt-1 flex-wrap">
                     {reel.is_featured && (
                       <Badge className="bg-yellow-500/90 text-black border-0 text-[10px] h-5">
