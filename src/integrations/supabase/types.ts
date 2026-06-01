@@ -2038,6 +2038,75 @@ export type Database = {
           },
         ]
       }
+      analytics_forecasts: {
+        Row: {
+          ai_reasoning: string | null
+          area_acres: number | null
+          breakdown: Json
+          confidence: number | null
+          created_at: string
+          crop: string | null
+          expected_yield_quintals: number | null
+          farmer_id: string
+          forecast_month: string
+          generated_for_month: string
+          id: string
+          land_id: string | null
+          market_price_used: number | null
+          model_version: string | null
+          projected_expense: number
+          projected_profit: number
+          projected_revenue: number
+          scope: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_reasoning?: string | null
+          area_acres?: number | null
+          breakdown?: Json
+          confidence?: number | null
+          created_at?: string
+          crop?: string | null
+          expected_yield_quintals?: number | null
+          farmer_id: string
+          forecast_month: string
+          generated_for_month: string
+          id?: string
+          land_id?: string | null
+          market_price_used?: number | null
+          model_version?: string | null
+          projected_expense?: number
+          projected_profit?: number
+          projected_revenue?: number
+          scope?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_reasoning?: string | null
+          area_acres?: number | null
+          breakdown?: Json
+          confidence?: number | null
+          created_at?: string
+          crop?: string | null
+          expected_yield_quintals?: number | null
+          farmer_id?: string
+          forecast_month?: string
+          generated_for_month?: string
+          id?: string
+          land_id?: string | null
+          market_price_used?: number | null
+          model_version?: string | null
+          projected_expense?: number
+          projected_profit?: number
+          projected_revenue?: number
+          scope?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       analytics_reports: {
         Row: {
           end_date: string
