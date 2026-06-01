@@ -147,6 +147,29 @@ export default function ReelsPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }, [track]);
 
+  // Safe back: handles deep-link / PWA cold starts where history is empty.
+  const handleBack = useCallback(() => {
+    // Restore body scroll before leaving
+    document.body.style.overflow = '';
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/app/home', { replace: true });
+    }
+  }, [navigate]);
+
+  // Open the *currently active* reel on the KisanShakti AI YouTube channel.
+  const openCurrentOnYouTube = useCallback(() => {
+    const reel = reels[activeIndex];
+    if (!reel?.id) {
+      window.open(YT_CHANNEL_URL, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    const url = `https://www.youtube.com/watch?v=${reel.id}`;
+    track(reel.id, 'open_youtube', { metadata: { source: 'header_cta', user_initiated: true } });
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }, [reels, activeIndex, track]);
+
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
     const id = Date.now();
