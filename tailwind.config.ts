@@ -185,6 +185,7 @@ export default {
         sm: "var(--shadow-sm)",
         md: "var(--shadow-md)",
         lg: "var(--shadow-lg)",
+        soft: "var(--shadow-soft)",
         glow: "var(--shadow-glow)",
         neural: "var(--shadow-neural)",
         ai: "var(--shadow-ai)",
