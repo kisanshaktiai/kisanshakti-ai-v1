@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Loader2, MessageCircle, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Heart, Loader2, MessageCircle, ExternalLink, Youtube } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
@@ -13,6 +13,8 @@ import { Badge } from '@/components/ui/badge';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+const YT_CHANNEL_URL = 'https://www.youtube.com/@kisanshaktiai';
 
 const LIKES_KEY = 'reels.liked.v1';
 const SAVES_KEY = 'reels.saved.v1';
