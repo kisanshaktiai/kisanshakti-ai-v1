@@ -176,6 +176,7 @@ export default function Analytics() {
             <TaskPerfCard a={scope} />
             <FinancialCard a={scope} />
             <MarketPulseCard a={scope} />
+            <DisclaimerCard />
           </div>
         ) : (
           <div className="space-y-3">
@@ -219,6 +220,7 @@ export default function Analytics() {
                 </div>
               </Card>
             ))}
+            <DisclaimerCard />
           </div>
         )}
       </main>
