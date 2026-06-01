@@ -170,6 +170,9 @@ export default {
       },
       backgroundImage: {
         "gradient-primary": "var(--gradient-primary)",
+        "gradient-secondary": "var(--gradient-secondary)",
+        "gradient-accent": "var(--gradient-accent)",
+        "gradient-subtle": "var(--gradient-subtle)",
         "gradient-neural": "var(--gradient-neural)",
         "gradient-earth": "var(--gradient-earth)",
         "gradient-sunrise": "var(--gradient-sunrise)",
@@ -182,6 +185,7 @@ export default {
         sm: "var(--shadow-sm)",
         md: "var(--shadow-md)",
         lg: "var(--shadow-lg)",
+        soft: "var(--shadow-soft)",
         glow: "var(--shadow-glow)",
         neural: "var(--shadow-neural)",
         ai: "var(--shadow-ai)",

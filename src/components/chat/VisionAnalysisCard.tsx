@@ -224,7 +224,7 @@ export function VisionAnalysisCard({
               
               {/* Success Overlay */}
               <div className="absolute top-2 right-2">
-                <Badge className="bg-green-500 text-white">
+                <Badge className="bg-success text-success-foreground">
                   <CheckCircle className="h-3 w-3 mr-1" />
                   {language === 'hi' ? 'विश्लेषित' : language === 'mr' ? 'विश्लेषित' : 'Analyzed'}
                 </Badge>

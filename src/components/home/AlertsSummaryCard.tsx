@@ -23,9 +23,9 @@ interface AlertSummary {
 
 const priorityConfig: Record<string, { color: string; label: string }> = {
   CRITICAL: { color: 'bg-destructive text-destructive-foreground', label: '🔴' },
-  HIGH: { color: 'bg-orange-500 text-white', label: '🟠' },
-  MEDIUM: { color: 'bg-yellow-500 text-white', label: '🟡' },
-  LOW: { color: 'bg-green-500 text-white', label: '🟢' },
+  HIGH: { color: 'bg-warning text-warning-foreground', label: '🟠' },
+  MEDIUM: { color: 'bg-warning-soft text-warning', label: '🟡' },
+  LOW: { color: 'bg-success text-success-foreground', label: '🟢' },
 };
 
 export function AlertsSummaryCard() {

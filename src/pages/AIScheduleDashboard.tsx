@@ -159,7 +159,7 @@ export default function AIScheduleDashboard() {
                   </ul>
                 </div>
 
-                <div className="mt-4 p-4 bg-green-500/5 rounded-lg border border-green-500/10">
+                <div className="mt-4 p-4 bg-success/5 rounded-lg border border-success/10">
                   <h4 className="font-semibold mb-2">2030-Ready Features:</h4>
                   <ul className="list-disc list-inside space-y-1">
                     <li>Climate-adaptive recommendations</li>
