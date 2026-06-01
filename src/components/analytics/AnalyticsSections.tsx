@@ -283,18 +283,30 @@ export function TaskPerfCard({ a }: { a: LandAnalytics }) {
 
 export function FinancialCard({ a }: { a: LandAnalytics }) {
   const { t } = useTranslation();
-  const cats = a.finance.byCategory.slice(0, 6);
-  const hasFinance = cats.length > 0 || a.finance.income > 0 || a.projectedRevenue > 0;
+  const cats = a.finance.projectedExpenseBreakdown.slice(0, 6);
+  const hasAny = cats.length > 0 || a.projectedRevenue > 0 || a.finance.totalExpense > 0;
+  const sourceBadge =
+    a.finance.expenseSource === 'actual'
+      ? t('analytics.expense_source_actual', 'Actuals')
+      : a.finance.expenseSource === 'mixed'
+        ? t('analytics.expense_source_mixed', 'Actuals + CoC baseline')
+        : t('analytics.expense_source_projected', 'Crop CoC baseline');
   return (
     <SectionCard
       icon={<Wallet className="w-4 h-4" />}
       title={t('analytics.sections.financial', 'Financial')}
-      empty={!hasFinance}
+      subtitle={t('analytics.financial_subtitle', 'Per-crop projection · {{src}}', { src: sourceBadge })}
+      empty={!hasAny}
     >
       <div className="grid grid-cols-2 gap-2 mb-3">
         <div className="bg-muted/40 rounded-lg p-2">
-          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.expenses', 'Expenses')}</p>
-          <p className="text-sm font-bold text-foreground">{formatINR(a.finance.totalExpense)}</p>
+          <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.expenses_projected', 'Expenses (proj.)')}</p>
+          <p className="text-sm font-bold text-foreground">{formatINR(a.finance.projectedExpense)}</p>
+          {a.finance.totalExpense > 0 && (
+            <p className="text-[10px] text-muted-foreground mt-0.5">
+              {t('analytics.actuals', 'Actual')}: {formatINR(a.finance.totalExpense)}
+            </p>
+          )}
         </div>
         <div className="bg-muted/40 rounded-lg p-2">
           <p className="text-[10px] text-muted-foreground uppercase">{t('analytics.projected_revenue', 'Projected revenue')}</p>
@@ -311,7 +323,7 @@ export function FinancialCard({ a }: { a: LandAnalytics }) {
         <div className="h-32">
           <Doughnut
             data={{
-              labels: cats.map((c) => c.category),
+              labels: cats.map((c) => t(`analytics.financial.${c.category}`, c.category)),
               datasets: [
                 {
                   data: cats.map((c) => c.amount),
@@ -348,10 +360,17 @@ export function MarketPulseCard({ a }: { a: LandAnalytics }) {
       empty={!a.marketPrice}
     >
       {a.marketPrice ? (
-        <div className="flex items-baseline gap-2">
-          <p className="text-2xl font-bold text-foreground">{formatINR(a.marketPrice)}</p>
-          <span className="text-xs text-muted-foreground">/ {t('analytics.per_quintal', 'quintal')}</span>
-        </div>
+        <>
+          <div className="flex items-baseline gap-2">
+            <p className="text-2xl font-bold text-foreground">{formatINR(a.marketPrice)}</p>
+            <span className="text-xs text-muted-foreground">/ {t('analytics.per_quintal', 'quintal')}</span>
+          </div>
+          {a.marketSource && (
+            <p className="text-[11px] text-muted-foreground mt-1">
+              {t('analytics.market_source', 'Source')}: {a.marketSource}
+            </p>
+          )}
+        </>
       ) : (
         <EmptyHint label={t('analytics.market_empty', 'No recent market price available for this crop.')} />
       )}
@@ -359,6 +378,28 @@ export function MarketPulseCard({ a }: { a: LandAnalytics }) {
         {t('analytics.expected_yield', 'Expected yield')}: <span className="text-foreground font-semibold">{formatNumber(a.expectedYieldQuintals, 1)} q</span>
       </div>
     </SectionCard>
+  );
+}
+
+export function DisclaimerCard() {
+  const { t } = useTranslation();
+  return (
+    <Card className="bg-muted/40 border-dashed border-border/60 p-3">
+      <div className="flex gap-2">
+        <AlertTriangle className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+        <div className="flex-1">
+          <p className="text-[11px] font-bold text-foreground mb-1">
+            {t('analytics.disclaimer.title', 'Projection notice')}
+          </p>
+          <p className="text-[11px] text-muted-foreground leading-snug">
+            {t(
+              'analytics.disclaimer.body',
+              'These numbers are forecasts based on your land data, NDVI, weather and mandi prices. Actual results may vary with soil condition, water stress, pest or disease attacks, rainfall and labour rates. Use this as guidance — not a guarantee.',
+            )}
+          </p>
+        </div>
+      </div>
+    </Card>
   );
 }
 
@@ -398,6 +439,8 @@ function defaultRec(key: string): string {
       return 'You have delayed tasks. Catch up to avoid yield loss.';
     case 'recommendations.ph_out_of_range':
       return 'Soil pH is out of crop’s ideal range. Consider lime or gypsum.';
+    case 'recommendations.no_market_price':
+      return 'No recent mandi price for this crop — revenue projection unavailable.';
     default:
       return key;
   }
