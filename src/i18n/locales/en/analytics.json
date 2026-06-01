@@ -1,118 +1,99 @@
 {
   "__meta": {
     "page": "analytics",
-    "version": "1.0",
-    "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
+    "version": "2.0",
+    "last_updated": "2026-06-01"
   },
   "analytics": {
     "title": "Farm Analytics",
     "subtitle": "Track your farming performance",
-    "tabs": {
-      "overview": "Overview",
-      "crops": "Crops",
-      "weather": "Weather",
-      "tasks": "Tasks",
-      "financial": "Financial"
+    "all_farm": "All Farm",
+    "no_crop": "No active crop",
+    "no_crop_short": "fallow",
+    "no_weather": "No live weather",
+    "completion": "Tasks",
+    "on_time": "On time",
+    "delayed": "Delayed",
+    "pending": "Pending",
+    "tested_on": "Tested {{date}}",
+    "tasks_total": "{{n}} tasks",
+    "tasks_empty": "No scheduled tasks yet.",
+    "soil_empty": "No soil test data. Run a soil test for accurate insights.",
+    "finance_empty": "No expense records logged for this period.",
+    "market_empty": "No recent market price available for this crop.",
+    "market_source": "Source",
+    "per_quintal": "quintal",
+    "expected_yield": "Expected yield",
+    "crop_stage_label": "Stage",
+    "harvest_in": "Harvest in",
+    "water_need": "Water need / wk",
+    "rain_24h": "Rain (24h)",
+    "temp": "Temperature",
+    "humidity": "Humidity",
+    "expenses": "Expenses",
+    "expenses_projected": "Expenses (proj.)",
+    "actuals": "Actual",
+    "projected_revenue": "Projected revenue",
+    "projected_profit": "Projected profit",
+    "expense_source_actual": "Actuals",
+    "expense_source_mixed": "Actuals + CoC baseline",
+    "expense_source_projected": "Crop CoC baseline",
+    "financial_subtitle": "Per-crop projection · {{src}}",
+    "all_good": "No urgent actions. Keep monitoring.",
+    "range": { "7d": "7D", "30d": "30D", "season": "Season", "year": "1Y" },
+    "kpi": {
+      "area": "Total area",
+      "crops": "Active crops",
+      "revenue": "Projected revenue",
+      "profit": "Projected profit",
+      "ndvi": "NDVI",
+      "yield": "Yield"
     },
-    "overview": {
-      "title": "Performance Overview",
-      "total_land": "Total Land",
-      "active_crops": "Active Crops",
-      "completed_tasks": "Completed Tasks",
-      "pending_tasks": "Pending Tasks",
-      "this_month": "This Month",
-      "vs_last_month": "vs last month"
-    },
-    "crops": {
-      "title": "Crop Analytics",
-      "by_type": "Crops by Type",
-      "by_season": "Crops by Season",
-      "yield_comparison": "Yield Comparison",
-      "expected_yield": "Expected Yield",
-      "actual_yield": "Actual Yield",
-      "area_hectares": "Area (Hectares)",
-      "avg_yield": "Avg Yield (Quintal/Hectare)"
-    },
-    "weather": {
-      "title": "Weather Patterns",
-      "rainfall_trend": "Rainfall Trend",
-      "temperature_trend": "Temperature Trend",
-      "humidity_avg": "Avg Humidity",
-      "rainfall_total": "Total Rainfall",
-      "rainfall_unit": "mm",
-      "temp_unit": "°C",
-      "month": "Month"
-    },
-    "tasks": {
-      "title": "Task Performance",
-      "completion_rate": "Completion Rate",
-      "on_time": "On Time",
-      "delayed": "Delayed",
-      "pending": "Pending",
-      "by_stage": "Tasks by Stage",
-      "stage": "Stage",
-      "count": "Count"
+    "sections": {
+      "crop_stage": "Crop & Stage",
+      "water_weather": "Water & Weather",
+      "soil": "Soil Health",
+      "tasks": "Task Performance",
+      "financial": "Financial",
+      "market": "Market Pulse",
+      "recommendations": "Smart Recommendations"
     },
     "financial": {
-      "title": "Financial Summary",
-      "total_revenue": "Total Revenue",
-      "total_expenses": "Total Expenses",
-      "net_profit": "Net Profit",
-      "profit_margin": "Profit Margin",
-      "by_category": "Expenses by Category",
       "seeds": "Seeds",
       "fertilizers": "Fertilizers",
       "pesticides": "Pesticides",
-      "labor": "Labor",
-      "equipment": "Equipment",
+      "labor": "Labour",
+      "irrigation": "Irrigation",
+      "machinery": "Machinery",
       "other": "Other"
     },
-    "filters": {
-      "date_range": "Date Range",
-      "last_7_days": "Last 7 Days",
-      "last_30_days": "Last 30 Days",
-      "last_3_months": "Last 3 Months",
-      "last_6_months": "Last 6 Months",
-      "last_year": "Last Year",
-      "custom": "Custom Range",
-      "apply": "Apply",
-      "reset": "Reset"
-    },
-    "export": {
-      "button": "Export",
-      "pdf": "Export as PDF",
-      "csv": "Export as CSV",
-      "success": "Analytics exported successfully",
-      "error": "Failed to export analytics"
+    "recommendations": {
+      "low_ndvi": "Vegetation index is low — inspect for nutrient or pest stress.",
+      "irrigate_soon": "Soil likely dry — plan irrigation within 1–2 days.",
+      "low_nitrogen": "Nitrogen is low — schedule a top-dressing of urea.",
+      "tasks_delayed": "You have delayed tasks. Catch up to avoid yield loss.",
+      "ph_out_of_range": "Soil pH is out of crop's ideal range. Consider lime or gypsum.",
+      "no_market_price": "No recent mandi price for this crop — revenue projection unavailable."
     },
     "empty": {
       "title": "No Data Available",
-      "message": "Start tracking your farm activities to see analytics",
+      "message": "Add land and start tracking activities to see analytics.",
       "cta": "Add Land"
     },
-    "loading": {
-      "message": "Loading analytics..."
-    }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show farm analytics",
-      "View crop performance",
-      "Check task completion rate",
-      "Show financial summary"
-    ],
-    "voice_examples_hi": [
-      "खेत विश्लेषण दिखाओ",
-      "फसल प्रदर्शन देखें",
-      "कार्य पूर्णता दर जांचें",
-      "वित्तीय सारांश दिखाओ"
-    ],
-    "voice_examples_mr": [
-      "शेत विश्लेषण दाखवा",
-      "पीक कामगिरी पहा",
-      "कार्य पूर्णता दर तपासा",
-      "आर्थिक सारांश दाखवा"
-    ]
+    "disclaimer": {
+      "title": "Projection notice",
+      "body": "These numbers are forecasts based on your land data, NDVI, weather and mandi prices. Actual results may vary with soil condition, water stress, pest or disease attacks, rainfall and labour rates. Use this as guidance — not a guarantee."
+    },
+    "forecast": {
+      "title": "6-Month Forecast",
+      "subtitle": "AI-powered income vs expense projection — refreshed monthly",
+      "income": "Income",
+      "expense": "Expense",
+      "profit": "Profit",
+      "generate": "Generate",
+      "generating": "Generating…",
+      "empty": "No AI forecast yet. Tap Generate to create one."
+    },
+    "loading": { "message": "Loading analytics..." }
   }
 }

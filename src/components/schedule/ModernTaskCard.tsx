@@ -61,7 +61,7 @@ const taskTypeConfig = {
   harvesting: { icon: Package, color: 'text-warning', bg: 'from-warning/20 to-warning/5', borderColor: 'border-warning/30', gradient: 'from-warning to-warning', emoji: '🌾' },
   soil_preparation: { icon: Sprout, color: 'text-warning', bg: 'from-warning/20 to-warning/5', borderColor: 'border-warning/30', gradient: 'from-warning to-warning', emoji: '🚜' },
   sowing: { icon: Sprout, color: 'text-success', bg: 'from-success/20 to-success/5', borderColor: 'border-success/30', gradient: 'from-success to-success', emoji: '🌱' },
-  other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'from-slate-500/20 to-gray-600/5', borderColor: 'border-border/30', gradient: 'from-slate-500 to-gray-500', emoji: '📋' }
+  other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'from-muted to-muted/20', borderColor: 'border-border/30', gradient: 'from-muted-foreground to-muted-foreground/60', emoji: '📋' }
 };
 
 // Check if a value is valid

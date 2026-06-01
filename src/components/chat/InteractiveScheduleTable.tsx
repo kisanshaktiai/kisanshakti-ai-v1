@@ -165,7 +165,7 @@ export function InteractiveScheduleTable({
                           className="h-7 w-7"
                           onClick={() => handleSaveEdit(row.id)}
                         >
-                          <CheckCircle2 className="w-3 h-3 text-green-600" />
+                          <CheckCircle2 className="w-3 h-3 text-success" />
                         </Button>
                         <Button
                           size="icon"
@@ -173,7 +173,7 @@ export function InteractiveScheduleTable({
                           className="h-7 w-7"
                           onClick={handleCancelEdit}
                         >
-                          <XCircle className="w-3 h-3 text-red-600" />
+                          <XCircle className="w-3 h-3 text-destructive" />
                         </Button>
                       </div>
                     ) : (

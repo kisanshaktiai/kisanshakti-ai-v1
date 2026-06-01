@@ -1,15 +1,29 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, Heart, Loader2 } from 'lucide-react';
+import { ArrowLeft, Heart, Loader2, MessageCircle, ExternalLink, Youtube } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguageStore } from '@/stores/languageStore';
 import { useYouTubeChannelReels } from '@/hooks/useYouTubeChannelReels';
+import { useYouTubeReelEngagement } from '@/hooks/useYouTubeReelEngagement';
 import { ReelPlayer } from '@/components/reels/ReelPlayer';
 import { ReelActionRail } from '@/components/reels/ReelActionRail';
 import { Badge } from '@/components/ui/badge';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+const YT_CHANNEL_URL = 'https://www.youtube.com/@kisanshaktiai';
+
+const LIKES_KEY = 'reels.liked.v1';
+const SAVES_KEY = 'reels.saved.v1';
+const readSet = (k: string): Set<string> => {
+  try { return new Set(JSON.parse(localStorage.getItem(k) || '[]')); } catch { return new Set(); }
+};
+const writeSet = (k: string, s: Set<string>) => {
+  try { localStorage.setItem(k, JSON.stringify([...s])); } catch {}
+};
 
 type OfficialReel = React.ComponentProps<typeof ReelPlayer>['reel'];
 
@@ -23,10 +37,14 @@ export default function ReelsPage() {
   const [isMuted, setIsMuted] = useState(true);
   const [isPaused, setIsPaused] = useState(false);
   const [doubleTapHearts, setDoubleTapHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const [likedSet, setLikedSet] = useState<Set<string>>(() => readSet(LIKES_KEY));
+  const [savedSet, setSavedSet] = useState<Set<string>>(() => readSet(SAVES_KEY));
+  const [commentSheetReel, setCommentSheetReel] = useState<OfficialReel | null>(null);
   const lastTapRef = useRef<{ t: number; reelId: string | null }>({ t: 0, reelId: null });
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: officialVideos = [], isLoading: isOfficialLoading, refetch: refetchOfficial } = useYouTubeChannelReels(24);
+  const { track } = useYouTubeReelEngagement();
 
   const reels: OfficialReel[] = useMemo(
     () => officialVideos.map((video) => ({
@@ -74,9 +92,102 @@ export default function ReelsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentLanguage]);
 
-  const showOfficialOnlyNotice = () => {
-    toast({ description: t('reels.official_only', 'This video is from the official KisanShakti AI YouTube channel.') });
-  };
+  // Lock body scroll for full-screen immersive view
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // Record a 'view' each time a new reel becomes active
+  useEffect(() => {
+    const reel = reels[activeIndex];
+    if (reel?.id) track(reel.id, 'view');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, reels.length]);
+
+  // In-app like — toggle local state, persist, and audit. Double-tap also calls this.
+  const toggleLike = useCallback((reel: OfficialReel, source: 'tap' | 'double_tap' = 'tap') => {
+    setLikedSet((prev) => {
+      const next = new Set(prev);
+      const wasLiked = next.has(reel.id);
+      if (wasLiked) next.delete(reel.id); else next.add(reel.id);
+      writeSet(LIKES_KEY, next);
+      track(reel.id, wasLiked ? 'unlike' : 'like', { metadata: { source, in_app: true } });
+      if (!wasLiked && source === 'tap') {
+        toast({ description: t('reels.liked', 'Liked') });
+      }
+      return next;
+    });
+  }, [track, toast, t]);
+
+  const toggleSave = useCallback((reel: OfficialReel) => {
+    setSavedSet((prev) => {
+      const next = new Set(prev);
+      const wasSaved = next.has(reel.id);
+      if (wasSaved) next.delete(reel.id); else next.add(reel.id);
+      writeSet(SAVES_KEY, next);
+      track(reel.id, wasSaved ? 'unsave' : 'save', { metadata: { in_app: true } });
+      toast({ description: wasSaved ? t('reels.unsaved', 'Removed from saved') : t('reels.saved', 'Saved') });
+      return next;
+    });
+  }, [track, toast, t]);
+
+  // Open comments sheet — never auto-redirects. User can then choose to view on YouTube.
+  const openCommentSheet = useCallback((reel: OfficialReel) => {
+    setCommentSheetReel(reel);
+    track(reel.id, 'comment', { metadata: { in_app: true, action: 'sheet_open' } });
+  }, [track]);
+
+  // Open URL at top-level so it escapes any embedding iframe (Lovable preview, PWA, in-app webview).
+  // Falls back to assigning window.top.location if popups are blocked.
+  const openExternal = useCallback((url: string) => {
+    try {
+      const win = window.open(url, '_blank', 'noopener,noreferrer');
+      if (win) return;
+    } catch {/* popup blocked */}
+    try {
+      if (window.top && window.top !== window.self) {
+        (window.top as Window).location.href = url;
+        return;
+      }
+    } catch {/* cross-origin top */}
+    window.location.href = url;
+  }, []);
+
+  const viewCommentsOnYouTube = useCallback((reel: OfficialReel) => {
+    // Shorts canonical URL — deep-links into the YouTube app on mobile and renders correctly on web.
+    const url = `https://www.youtube.com/shorts/${reel.id}`;
+    track(reel.id, 'open_youtube', { metadata: { intent: 'comment', user_initiated: true } });
+    openExternal(url);
+  }, [track, openExternal]);
+
+  // Safe back: handles deep-link / PWA cold starts where history is empty.
+  const handleBack = useCallback(() => {
+    // Restore body scroll before leaving
+    document.body.style.overflow = '';
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate('/app/home', { replace: true });
+    }
+  }, [navigate]);
+
+  // Open the *currently active* reel on the KisanShakti AI YouTube channel.
+  const openCurrentOnYouTube = useCallback(() => {
+    const reel = reels[activeIndex];
+    if (!reel?.id) {
+      openExternal(YT_CHANNEL_URL);
+      return;
+    }
+    // Use /shorts/ path — this is the actual reel URL on YouTube and avoids the
+    // watch?v= page which can be blocked when opened from an embedded iframe.
+    const url = `https://www.youtube.com/shorts/${reel.id}`;
+    track(reel.id, 'open_youtube', { metadata: { source: 'header_cta', user_initiated: true } });
+    openExternal(url);
+  }, [reels, activeIndex, track, openExternal]);
 
   const triggerDoubleTapHeart = (e: React.MouseEvent | React.TouchEvent) => {
     const point = 'touches' in e ? e.changedTouches[0] : e;
@@ -92,6 +203,7 @@ export default function ReelsPage() {
     const last = lastTapRef.current;
     if (last.reelId === reel.id && now - last.t < 280) {
       triggerDoubleTapHeart(e);
+      if (!likedSet.has(reel.id)) toggleLike(reel, 'double_tap');
       lastTapRef.current = { t: 0, reelId: null };
     } else {
       lastTapRef.current = { t: now, reelId: reel.id };
@@ -118,6 +230,7 @@ export default function ReelsPage() {
       // WhatsApp deep link as primary fallback for farmers
       window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
     }
+    track(reel.id, 'share', { metadata: { channel: navigator.share ? 'native' : 'whatsapp' } });
     toast({ description: t('reels.shared', 'Shared') });
   };
 
@@ -126,9 +239,11 @@ export default function ReelsPage() {
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 z-30 flex items-center gap-2 px-3 pt-[env(safe-area-inset-top,12px)] pb-2 bg-gradient-to-b from-black/70 to-transparent">
         <button
-          onClick={() => navigate(-1)}
+          type="button"
+          onClick={handleBack}
+          onTouchEnd={(e) => { e.stopPropagation(); }}
           aria-label={t('common.back', 'Back')}
-          className="w-10 h-10 rounded-full bg-black/55 flex items-center justify-center text-white"
+          className="w-11 h-11 rounded-full bg-black/60 active:bg-black/80 flex items-center justify-center text-white shadow-lg shrink-0"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -149,6 +264,16 @@ export default function ReelsPage() {
             />
           </div>
         </div>
+        <button
+          type="button"
+          onClick={openCurrentOnYouTube}
+          onTouchEnd={(e) => { e.stopPropagation(); }}
+          aria-label={t('reels.open_on_youtube', 'Open on YouTube')}
+          className="h-11 px-3 rounded-full bg-[#FF0000] active:bg-[#cc0000] flex items-center gap-1.5 text-white text-sm font-semibold shadow-lg shrink-0"
+        >
+          <Youtube className="w-5 h-5" />
+          <span className="hidden xs:inline sm:inline">YouTube</span>
+        </button>
       </div>
 
       {/* Loading */}
@@ -211,6 +336,16 @@ export default function ReelsPage() {
                       {reel.description}
                     </p>
                   )}
+                  <div className="pt-2 pointer-events-auto">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openCurrentOnYouTube(); }}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[#FF0000]/95 active:bg-[#cc0000] text-white text-xs font-semibold shadow-md"
+                    >
+                      <Youtube className="w-4 h-4" />
+                      {t('reels.watch_on_channel', 'Watch on YouTube')}
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2 pt-1 flex-wrap">
                     {reel.is_featured && (
                       <Badge className="bg-yellow-500/90 text-black border-0 text-[10px] h-5">
@@ -231,15 +366,15 @@ export default function ReelsPage() {
 
               {isActive && (
                 <ReelActionRail
-                  reel={reel}
-                  liked={false}
-                  saved={false}
+                  reel={{ ...reel, total_likes: reel.total_likes + (likedSet.has(reel.id) ? 1 : 0), total_saves: reel.total_saves + (savedSet.has(reel.id) ? 1 : 0) }}
+                  liked={likedSet.has(reel.id)}
+                  saved={savedSet.has(reel.id)}
                   isMuted={isMuted}
-                  onLike={showOfficialOnlyNotice}
-                  onSave={showOfficialOnlyNotice}
-                  onComment={showOfficialOnlyNotice}
+                  onLike={() => toggleLike(reel, 'tap')}
+                  onSave={() => toggleSave(reel)}
+                  onComment={() => openCommentSheet(reel)}
                   onShare={() => share(reel)}
-                  onReport={showOfficialOnlyNotice}
+                  onReport={() => openCommentSheet(reel)}
                   onToggleMute={() => setIsMuted((m) => !m)}
                 />
               )}
@@ -265,6 +400,50 @@ export default function ReelsPage() {
           </motion.div>
         ))}
       </AnimatePresence>
+
+      {/* In-app comments sheet — comments live on YouTube; user explicitly chooses to view them there */}
+      <Sheet open={!!commentSheetReel} onOpenChange={(open) => !open && setCommentSheetReel(null)}>
+        <SheetContent side="bottom" className="bg-background border-t rounded-t-2xl max-h-[70vh] p-0">
+          <SheetHeader className="px-5 pt-5 pb-3 border-b">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <MessageCircle className="w-5 h-5 text-primary" />
+              {t('reels.comments.title', 'Comments')}
+            </SheetTitle>
+            <SheetDescription className="text-xs text-left">
+              {t('reels.comments.subtitle', 'Comments for official KisanShakti AI videos live on YouTube.')}
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="px-5 py-6 flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+              <MessageCircle className="w-7 h-7 text-primary" />
+            </div>
+            <p className="text-sm text-foreground font-medium leading-snug max-w-xs">
+              {commentSheetReel?.title}
+            </p>
+            <p className="text-xs text-muted-foreground max-w-xs">
+              {t(
+                'reels.comments.body',
+                'Join the conversation on the official KisanShakti AI YouTube channel. Your comment helps other farmers too.',
+              )}
+            </p>
+            <Button
+              className="w-full mt-2 gap-2"
+              onClick={() => commentSheetReel && viewCommentsOnYouTube(commentSheetReel)}
+            >
+              <ExternalLink className="w-4 h-4" />
+              {t('reels.comments.open_youtube', 'View comments on YouTube')}
+            </Button>
+            <Button
+              variant="ghost"
+              className="w-full"
+              onClick={() => setCommentSheetReel(null)}
+            >
+              {t('common.close', 'Close')}
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <style>{`
         .no-scrollbar::-webkit-scrollbar { display: none; }
