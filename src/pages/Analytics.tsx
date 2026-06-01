@@ -25,6 +25,7 @@ import {
   RecommendationsCard,
   DisclaimerCard,
 } from '@/components/analytics/AnalyticsSections';
+import { ForecastChart } from '@/components/analytics/ForecastChart';
 import { aggregateFarm } from '@/lib/analytics/reportEngine';
 import { formatINR, formatNumber } from '@/lib/analytics/formulas';
 
@@ -169,6 +170,7 @@ export default function Analytics() {
           </Card>
         ) : scope ? (
           <div className="space-y-3">
+            <ForecastChart landId={scope.land.id} />
             <RecommendationsCard a={scope} />
             <CropStageCard a={scope} />
             <WaterWeatherCard a={scope} />
@@ -180,6 +182,7 @@ export default function Analytics() {
           </div>
         ) : (
           <div className="space-y-3">
+            <ForecastChart landId={null} />
             {perLand.map((a) => (
               <Card
                 key={a.land.id}
