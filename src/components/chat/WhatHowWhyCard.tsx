@@ -142,7 +142,7 @@ const getCauseColor = (canonicalGroup?: string): string => {
 const getConfidenceColor = (confidence: number): string => {
   if (confidence >= 80) return 'text-success';
   if (confidence >= 60) return 'text-warning';
-  if (confidence >= 40) return 'text-orange-500';
+  if (confidence >= 40) return 'text-warning';
   return 'text-destructive';
 };
 
