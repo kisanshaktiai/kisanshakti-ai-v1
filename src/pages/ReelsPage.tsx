@@ -220,9 +220,11 @@ export default function ReelsPage() {
       {/* Top bar */}
       <div className="absolute top-0 inset-x-0 z-30 flex items-center gap-2 px-3 pt-[env(safe-area-inset-top,12px)] pb-2 bg-gradient-to-b from-black/70 to-transparent">
         <button
-          onClick={() => navigate(-1)}
+          type="button"
+          onClick={handleBack}
+          onTouchEnd={(e) => { e.stopPropagation(); }}
           aria-label={t('common.back', 'Back')}
-          className="w-10 h-10 rounded-full bg-black/55 flex items-center justify-center text-white"
+          className="w-11 h-11 rounded-full bg-black/60 active:bg-black/80 flex items-center justify-center text-white shadow-lg shrink-0"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -243,6 +245,16 @@ export default function ReelsPage() {
             />
           </div>
         </div>
+        <button
+          type="button"
+          onClick={openCurrentOnYouTube}
+          onTouchEnd={(e) => { e.stopPropagation(); }}
+          aria-label={t('reels.open_on_youtube', 'Open on YouTube')}
+          className="h-11 px-3 rounded-full bg-[#FF0000] active:bg-[#cc0000] flex items-center gap-1.5 text-white text-sm font-semibold shadow-lg shrink-0"
+        >
+          <Youtube className="w-5 h-5" />
+          <span className="hidden xs:inline sm:inline">YouTube</span>
+        </button>
       </div>
 
       {/* Loading */}
