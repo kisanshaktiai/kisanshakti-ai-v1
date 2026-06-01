@@ -260,8 +260,8 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
     },
     other: { 
       icon: AlertCircle, 
-      color: 'from-gray-500 to-slate-500',
-      lightBg: 'bg-muted dark:bg-foreground/80/20',
+      color: 'from-muted-foreground to-muted-foreground/60',
+      lightBg: 'bg-muted dark:bg-muted/40',
       border: 'border-border dark:border-border'
     }
   };
