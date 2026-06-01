@@ -217,6 +217,14 @@ button, a, [role="button"], input, select, textarea, label,
     --gradient-soil: linear-gradient(180deg, hsl(30 45% 45%), hsl(25 50% 40%));
     --gradient-crop: linear-gradient(135deg, hsl(100 70% 50%), hsl(142 76% 45%));
     --gradient-sky: linear-gradient(180deg, hsl(210 100% 56%), hsl(200 85% 65%));
+
+    /* Theme-token gradients (resolve via semantic tokens, white-label safe) */
+    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary) / 0.7));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent) / 0.7));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.5));
+
+    /* Soft shadow (referenced by Home feature cards) */
+    --shadow-soft: 0 2px 8px 0 hsl(220 15% 12% / 0.06), 0 1px 3px 0 hsl(220 15% 12% / 0.04);
     
     /* Advanced Shadows - Multi-layer Depth */
     --shadow-sm: 0 1px 3px 0 hsl(220 15% 12% / 0.08), 0 1px 2px 0 hsl(220 15% 12% / 0.06);
