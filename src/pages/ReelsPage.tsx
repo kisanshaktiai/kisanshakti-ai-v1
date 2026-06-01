@@ -317,6 +317,16 @@ export default function ReelsPage() {
                       {reel.description}
                     </p>
                   )}
+                  <div className="pt-2 pointer-events-auto">
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); openCurrentOnYouTube(); }}
+                      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-[#FF0000]/95 active:bg-[#cc0000] text-white text-xs font-semibold shadow-md"
+                    >
+                      <Youtube className="w-4 h-4" />
+                      {t('reels.watch_on_channel', 'Watch on YouTube')}
+                    </button>
+                  </div>
                   <div className="flex items-center gap-2 pt-1 flex-wrap">
                     {reel.is_featured && (
                       <Badge className="bg-yellow-500/90 text-black border-0 text-[10px] h-5">
