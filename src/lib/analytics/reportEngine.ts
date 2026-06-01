@@ -10,6 +10,8 @@ import {
   cropKey,
   DAILY_WATER_L_PER_ACRE,
   EXPECTED_YIELD_Q_PER_ACRE,
+  EXPECTED_COST_PER_ACRE,
+  projectedCostBreakdown,
   nutrientLevel,
 } from './formulas';
 
@@ -104,8 +106,12 @@ export interface LandAnalytics {
     totalExpense: number;
     byCategory: { category: string; amount: number }[];
     income: number;
+    projectedExpense: number;
+    projectedExpenseBreakdown: { category: string; amount: number }[];
+    expenseSource: 'actual' | 'projected' | 'mixed';
   };
   marketPrice: number | null;
+  marketSource: string | null;
   expectedYieldQuintals: number;
   projectedRevenue: number;
   projectedProfit: number;
