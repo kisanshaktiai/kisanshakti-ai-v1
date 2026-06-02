@@ -1,98 +1,144 @@
 
-## Phase 1 — Reels page fixes
+# Crop Variety Integration Plan — master_companies × master_products × crops
 
-**File:** `src/pages/ReelsPage.tsx`
+## 1. Goal
 
-1. **Back button reliability**
-   - `navigate(-1)` fails when Reels is the first history entry (deep link / PWA cold start / external open). Replace with a safe fallback:
-     - If `window.history.length > 1` → `navigate(-1)`
-     - Else → `navigate('/app/home', { replace: true })`
-   - Increase touch target & z-index, ensure `type="button"` and `onTouchEnd` stopPropagation so the snap-scroll container doesn't swallow the tap (current issue on iOS — the absolute top bar sits above the scroller but the button is inside a `pointer-events`-clear gradient).
-   - Restore body scroll explicitly inside the back handler before navigating, to prevent the next page from inheriting `overflow: hidden`.
+Treat seed varieties as first-class **products** belonging to a **company** in the existing `master_*` catalog, link each variety to one or more crops, and make the whole catalog manageable from both the **admin portal** (global) and the **tenant portal** (curated subset / private varieties). All farmer-facing tables (`land_crops`, `crop_history`, baselines, schedules, market prices) gain a clean FK to the chosen variety — replacing today's free-text `crop_variety` strings.
 
-2. **"Open on YouTube" CTA per current video**
-   - Add a new pill button next to the back button in the top bar: red YouTube icon + label "YouTube" (i18n key `reels.open_on_youtube`).
-   - Tapping opens the **currently active** reel on the official channel:
-     - `https://www.youtube.com/watch?v=<reelId>` (mobile deep-links into the YouTube app automatically; falls back to web)
-   - Log the action via `track(reel.id, 'open_youtube', { metadata: { source: 'header_cta', user_initiated: true } })`.
-   - Also add the same CTA to the bottom info block ("Watch on YouTube channel") with `ExternalLink` icon so it's discoverable while watching.
-   - Add i18n entries (`en`, `hi`, `mr`, `pa`, `ta`) for `reels.open_on_youtube` and `reels.watch_on_channel`.
+## 2. Current State (audit summary)
 
-No business-logic changes to engagement tracking (Option A in-app behaviour preserved).
+- `master_companies` (24 rows) — already supports seed companies (`company_type`, `sector`, `product_categories[]`, `industry_category`).
+- `master_products` (83 rows, 0 of type `seed`) — already has every field needed for a seed variety: `product_type`, `seed_variety_details jsonb`, `germination_rate`, `purity_percentage`, `suitable_crops jsonb`, `suitable_soil_types`, `recommended_season`, `crop_stages`, `translations jsonb`, `images`, `documents`, `status`, `approved_by`, `is_featured`, `popularity_score`, `company_id`, `category_id`.
+- `master_product_categories` (65 rows, self-referencing tree) — can host a "Seeds → Cereals → Paddy" hierarchy.
+- `crops` (112 rows) — **no variety column**, no FK from anywhere.
+- `crop_baseline_guidelines.crop_variety` — CSV text string (not queryable).
+- `land_crops.crop_variety`, `crop_history.variety` — free text, no FK.
+- `crop_templates` — region+variety schedule table, empty.
+- No frontend variety picker exists.
 
----
+The data model is **already 90% there** — varieties just haven't been seeded as `master_products` of type `seed`, and the downstream tables don't yet reference them.
 
-## Phase 2 — Analytics: per-land, real-data, mobile-first redesign
+## 3. Architecture
 
-### Problems found in `src/pages/Analytics.tsx`
+```text
+master_companies (seed co.)
+        │ 1
+        ▼ N
+master_products  ──────────►  master_product_variety_crops  ◄──── crops
+ (product_type='seed')         (N:M: one variety can suit         (master)
+                                multiple crops; one crop has
+                                many varieties)
+        ▲
+        │ FK variety_id (nullable)
+        │
+   land_crops, crop_history, crop_baseline_guidelines_v2,
+   crop_schedules, market_prices, decision rules
+```
 
-- Shows a single aggregated farm report only — no per-land breakdown.
-- Hardcoded magic numbers: `₹25,000/acre income`, `₹10,000/acre expenses`, `125L/acre water`, weather `{ temp: 28, humidity: 65, rainChance: 40 }`, market price seed arrays `[2200, 2250, 2180, 2300, ...]`, soil health string `'Good'`.
-- Crop chart uses raw hex/HSL colours, not theme tokens.
-- No use of real data already in DB: `schedules`, `weather_current`, `weather_forecast`, `soil_health`, `ndvi_data`, `expense_records`, `market_prices`, `farmer_transactions`.
+- A **variety = master_product where `product_type='seed'`**. No new product table.
+- Crop ↔ variety mapping is normalized in a new join table (replaces the `suitable_crops jsonb` for seeds, which stays as a cache).
+- `tenant_products` (existing tenant catalog layer) controls which varieties a tenant exposes and lets them add **private** varieties (`company_id = tenant's master_company`, `visibility='tenant'`).
 
-### New architecture
+## 4. Database changes
 
-1. **New data hook** `src/hooks/useAnalyticsData.ts`
-   - Inputs: `farmerId`, `tenantId`, `selectedLandId | 'all'`, `dateRange`.
-   - Pulls in parallel from real tables (no hardcoded constants):
-     - `lands` (area, crop, sowing date, irrigation type) — from `useLands`
-     - `schedules` — completion rate, on-time vs delayed, by stage
-     - `expense_records` (or `farmer_transactions`) — actual expenses by category
-     - `crop_health_assessments` + latest `ndvi_data` — vegetation index trend per land
-     - `weather_current` + `weather_forecast` (already cached per land/area) — rainfall & temp trend
-     - `soil_health` — pH, N/P/K, organic carbon (per land)
-     - `market_prices` — last 30 days for the crops the farmer actually grows
-     - `crop_yields` (where present) for revenue estimation; fall back to `market_prices.modal_price × expected_yield_per_acre` from `crops_master` agronomic data, never a flat ₹25k.
-   - Returns a typed `LandAnalytics[]` plus a derived `FarmAggregate`. All numbers are computed, never hardcoded.
+### 4.1 Extend `master_products`
+- Add `'seed'` to the allowed `product_type` values (drop/recreate CHECK if present).
+- Add columns specific to varieties (nullable, only used when `product_type='seed'`):
+  - `crop_id uuid` — primary crop (fast lookups, FK → `crops.id`).
+  - `variety_code text` — short code (e.g. `MTU-1010`), UNIQUE per `company_id`.
+  - `maturity_days_min int`, `maturity_days_max int`.
+  - `yield_potential_qtl_per_acre numeric`.
+  - `disease_resistance jsonb` (array of disease codes).
+  - `pest_tolerance jsonb`.
+  - `recommended_regions jsonb` (states/agro-climatic zones).
+  - `season text` (kharif/rabi/zaid/perennial).
+  - `seed_rate_kg_per_acre numeric`.
+  - `spacing jsonb` (`{row_cm, plant_cm}`).
+  - `parentage text`, `release_year int`, `released_by text` (ICAR / SAU / private).
+  - `label_hi text`, `label_mr text` (variety name in vernacular; existing `translations jsonb` is the catch-all for other languages).
 
-2. **New report engine** `src/lib/analytics/reportEngine.ts`
-   - Pure functions: `computeYieldEstimate(land, ndvi, weather, soil)`, `computeWaterRequirement(crop, stage, area, recentRainfall)`, `computeProfitProjection(expenses, marketPrice, yieldEstimate)`, `computeRiskScore(weather, soil, ndvi)`.
-   - Formulas based on real agronomic constants stored in `crops_master` (water requirement L/ha/day, expected yield q/acre, growth duration). No literals in components.
+Index: `(product_type, crop_id, status)` and GIN on `recommended_regions`.
 
-3. **Redesigned page** `src/pages/Analytics.tsx`
-   - **Top bar (sticky, compact):** title + date-range chip (7d / 30d / season / year) + export.
-   - **Land selector (new):** horizontal scroll of land chips with thumbnail (from `ndvi_data.thumbnail_url` if available) + name + crop + area. First chip = "All Farm". Selecting a land filters every section below. Persisted in URL (`?land=<id>`).
-   - **Hero KPI strip:** 4 swipeable cards — Total Area, Active Crops, Projected Revenue, Net Profit (with real ↑/↓ vs previous period).
-   - **Sections (collapsible bento cards, theme tokens only):**
-     1. *Crop & Stage* — current stage, days-to-harvest, NDVI gauge.
-     2. *Water & Weather* — 7-day rainfall bar + irrigation requirement vs actual.
-     3. *Soil Health* — N/P/K radar from `soil_health`, last test date.
-     4. *Task Performance* — completion %, delayed tasks list with deep links.
-     5. *Financial* — expense pie by category (real), revenue projection band, break-even chart.
-     6. *Market Pulse* — actual `market_prices` line for the land's crop in the farmer's mandi.
-     7. *Recommendations* — derived from `reportEngine` risk score (e.g. "irrigate within 2 days", "spray window closing").
-   - **Mobile-first (390px baseline):** single column, snap-scroll horizontal carousels for KPIs, native pull-to-refresh, skeleton states per card (not whole page), reduced-motion respected, all colours via `bg-primary`, `text-foreground`, `bg-card`, `border-border`, `bg-muted` — zero hex/HSL literals.
-   - **i18n:** extend existing `analytics.json` (en/hi/mr) with new keys: `analytics.land_selector.*`, `analytics.kpi.*`, `analytics.recommendations.*`, `analytics.empty_land`, units (`unit.acre`, `unit.litre`, `unit.quintal`).
+### 4.2 New join table `master_product_variety_crops`
+```text
+id uuid PK
+product_id uuid FK master_products(id) ON DELETE CASCADE
+crop_id    uuid FK crops(id)            ON DELETE CASCADE
+is_primary boolean default false
+notes      text
+UNIQUE (product_id, crop_id)
+```
+GRANT select to anon+authenticated, all to service_role. RLS: public read, admin write.
 
-4. **Empty / partial states** — per land, if a data source is missing (e.g. no NDVI yet), the card shows a meaningful empty state with the next action ("Run NDVI scan") instead of fake numbers.
+### 4.3 Seed-category bootstrap
+- Insert into `master_product_categories`: top-level `Seeds`, with children `Cereals, Pulses, Oilseeds, Vegetables, Fruits, Cash Crops, Fodder`, each with `slug` aligned to `crop_groups`.
 
-5. **Caching & performance**
-   - Use `@tanstack/react-query` keyed by `(farmerId, landId, dateRange)`, `staleTime: 5 min`.
-   - Parallel queries via `Promise.all`; lazy-load heavy charts with `lazyWithRetry`.
+### 4.4 Downstream FKs (all nullable to keep backfill safe)
+- `land_crops.variety_id uuid → master_products(id)` (keep `crop_variety text` as legacy until migrated).
+- `crop_history.variety_id uuid → master_products(id)`.
+- `crop_baseline_guidelines_v2.variety_id uuid → master_products(id)` (per-variety NPK overrides).
+- `crop_schedules.variety_id uuid → master_products(id)` (optional schedule overlay).
+- `market_prices.variety_id uuid → master_products(id)` (price quality grades).
 
-### Technical details
+### 4.5 Tenant exposure
+- Reuse existing `tenant_products` table:
+  - `is_featured`, `is_visible`, `tenant_price_override`, `tenant_recommendation_priority`.
+  - Tenants can `INSERT` a `master_products` row scoped to their own `master_companies.tenant_id`, status `pending_review` until admin approves (or auto-approve if tenant has the `seed_catalog_admin` role).
+- RLS: tenant users see global `status='approved'` rows + their own pending rows; admin sees all.
 
-**New files**
-- `src/hooks/useAnalyticsData.ts`
-- `src/lib/analytics/reportEngine.ts`
-- `src/lib/analytics/formulas.ts` (agronomic formulas, unit conversions)
-- `src/components/analytics/LandSelectorRail.tsx`
-- `src/components/analytics/KpiStrip.tsx`
-- `src/components/analytics/sections/{CropStageCard,WaterWeatherCard,SoilHealthCard,TaskPerfCard,FinancialCard,MarketPulseCard,RecommendationsCard}.tsx`
+### 4.6 Helper view `v_crop_varieties`
+```sql
+SELECT mp.id AS variety_id, mp.name, mp.label_hi, mp.label_mr,
+       mp.variety_code, mp.maturity_days_min, mp.maturity_days_max,
+       mp.yield_potential_qtl_per_acre, mp.season,
+       c.id AS crop_id, c.value AS crop_code, c.label AS crop_label,
+       mc.id AS company_id, mc.name AS company_name, mc.logo_url,
+       mp.status, mp.is_featured, mp.popularity_score
+FROM master_products mp
+JOIN master_product_variety_crops mpvc ON mpvc.product_id = mp.id
+JOIN crops c ON c.id = mpvc.crop_id
+LEFT JOIN master_companies mc ON mc.id = mp.company_id
+WHERE mp.product_type = 'seed' AND mp.status = 'approved';
+```
+This single view powers every variety dropdown.
 
-**Modified**
-- `src/pages/Analytics.tsx` — thin composition, no business logic.
-- `src/components/skeletons/AnalyticsSkeleton.tsx` — per-card skeletons.
-- `src/pages/ReelsPage.tsx` — back button + YouTube CTA.
-- `src/i18n/locales/{en,hi,mr,pa,ta}/analytics.json` — new keys.
-- `src/i18n/locales/{en,hi,mr,pa,ta}/reels.json` (or merge into existing file) — `reels.open_on_youtube`, `reels.watch_on_channel`.
+## 5. Backfill / data migration
 
-**Out of scope (will NOT touch)**
-- DB schema, RLS, edge functions, theme tokens themselves, subscription gating, AI chat.
-- Reels engagement model (still Option A).
-- Any analytics calculation will read existing tables only — no migrations.
+1. **Seed initial varieties** (separate insert migration after schema lands) — load a curated list (~300 popular Indian varieties from ICAR/SAU) into `master_products` + the join table. Companies for public-domain varieties → ICAR / state SAU rows in `master_companies` (already partly there).
+2. **Parse legacy CSVs** in `crop_baseline_guidelines.crop_variety` → for each token, insert a variety if missing, then write `crop_baseline_guidelines_v2.variety_id`.
+3. **Backfill `land_crops.variety_id`** by fuzzy-matching existing `crop_variety` text against `master_products.name`/`variety_code` (logged report; unresolved rows stay text).
 
-**Verification**
-- Manual: switch lands, switch date range, verify numbers match raw DB rows; confirm back button works on deep-link cold start; YouTube CTA opens the correct video id.
-- Type-check + existing tests must pass.
+## 6. Application / portal changes
+
+### Farmer app (`src/`)
+- New hook `useCropVarieties(cropId)` → `v_crop_varieties` filtered by crop, ordered by `is_featured DESC, popularity_score DESC`.
+- New component `<VarietySelector cropId value onChange>` — searchable, shows company logo, maturity, season; "Other / write-in" fallback for unknown varieties (saves text + leaves `variety_id` null).
+- Wire into `EnhancedCropSelector`, `EditLandWizard`, `AddLand`, `CropGrowthTracking`, schedule generation context.
+- Display variety badge on land cards, advisory header, market price rows.
+
+### Admin portal
+- New page **"Seed Varieties"** under existing master catalog: list / filter by company, crop, status; bulk import CSV; approve/reject pending tenant submissions; merge duplicates.
+- Reuse existing `master_products` admin CRUD with a dedicated `product_type='seed'` form variant.
+
+### Tenant portal
+- New tab **"My Seed Catalog"**: pick from global varieties (toggle visibility, set local price), or "Add private variety" form (creates `master_products` row tied to tenant's company, status `pending_review`).
+- Tenants can also mark recommended varieties per region they operate in.
+
+### Backend / AI
+- Advisory + schedule generators read variety attributes (maturity, season, resistance) to tune recommendations (e.g. shorter schedules for early-maturity varieties).
+- Decision rules can target by `variety_id` in addition to `crop_code`.
+
+## 7. Rollout phases
+
+1. **Phase 1 — Schema**: 4.1–4.4 migrations + view + RLS + GRANTs. No UI change yet.
+2. **Phase 2 — Admin CRUD + seed data**: load curated 300 varieties, admin UI to manage.
+3. **Phase 3 — Farmer variety picker**: integrate `<VarietySelector>` into land creation/edit; backfill `land_crops.variety_id`.
+4. **Phase 4 — Tenant catalog**: tenant portal pages + approval workflow.
+5. **Phase 5 — Downstream consumers**: per-variety baselines, schedules, market prices, advisory targeting; deprecate free-text `crop_variety` columns.
+
+## 8. Open questions (please confirm before Phase 1)
+
+- Should **tenant-private varieties** be visible to that tenant's farmers only, or shared globally after admin approval? (Affects RLS.)
+- Do we want a **separate `seed_variety` product_type** or keep using `'seed'` (recommended, simpler)?
+- For Phase 2 seed list: do you have an internal CSV/sheet, or should we curate from public ICAR/SAU sources?
+- Should farmers be allowed to type a free variety name (stored as text only) when their variety isn't catalogued, with a background job suggesting it for admin review?
