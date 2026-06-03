@@ -12769,6 +12769,7 @@ export type Database = {
           cultivation_date: string | null
           current_crop: string | null
           current_crop_id: string | null
+          current_crop_variety_id: string | null
           current_moisture_status: string | null
           deleted_at: string | null
           district: string | null
@@ -12848,6 +12849,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          current_crop_variety_id?: string | null
           current_moisture_status?: string | null
           deleted_at?: string | null
           district?: string | null
@@ -12927,6 +12929,7 @@ export type Database = {
           cultivation_date?: string | null
           current_crop?: string | null
           current_crop_id?: string | null
+          current_crop_variety_id?: string | null
           current_moisture_status?: string | null
           deleted_at?: string | null
           district?: string | null
@@ -13030,6 +13033,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crop_varieties"
             referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_id_fkey"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_id_fkey"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
           },
           {
             foreignKeyName: "lands_farmer_id_fkey"
