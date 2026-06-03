@@ -397,6 +397,39 @@ export function CropManagementDialog({
                           <span className="font-medium">Selected: {currentCropSelection.name}</span>
                         </div>
 
+                        {/* Seed variety (optional) */}
+                        <FormField
+                          control={form.control}
+                          name="current_crop_variety_id"
+                          render={({ field }) => (
+                            <FormItem>
+                              <VarietySelector
+                                cropId={currentCropSelection.id}
+                                value={field.value ?? null}
+                                onChange={(v: VarietyOption | null) => {
+                                  field.onChange(v?.id ?? null);
+                                  // Auto-tighten harvest date estimate with the variety's
+                                  // maturity range when available — DB is the source of truth.
+                                  if (v?.maturity_days_max) {
+                                    setCurrentCropSelection((prev) =>
+                                      prev ? { ...prev, duration: v.maturity_days_max! } : prev,
+                                    );
+                                    const plantingDate = form.getValues('planting_date');
+                                    if (plantingDate) {
+                                      form.setValue(
+                                        'expected_harvest_date',
+                                        addDays(plantingDate, v.maturity_days_max!),
+                                      );
+                                    }
+                                  }
+                                }}
+                              />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+
                         {/* Planting Date */}
                         <FormField
                           control={form.control}
