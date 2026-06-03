@@ -78,6 +78,7 @@ const groupIcons: Record<string, React.ReactNode> = {
 const formSchema = z.object({
   current_crop_id: z.string().optional(),
   current_crop_name: z.string().optional(),
+  current_crop_variety_id: z.string().nullable().optional(),
   planting_date: z.date().optional(),
   expected_harvest_date: z.date().optional(),
   previous_crop_id: z.string().optional(),
