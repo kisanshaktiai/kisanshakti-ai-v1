@@ -212,6 +212,10 @@ export function CropManagementDialog({
     const crop = crops.find(c => c.id === cropId);
     
     if (isCurrentCrop) {
+      // Reset variety when crop changes
+      if (currentCropSelection?.id !== cropId) {
+        form.setValue('current_crop_variety_id', null);
+      }
       setCurrentCropSelection({ 
         id: cropId, 
         name: cropName, 
@@ -242,11 +246,12 @@ export function CropManagementDialog({
         .from('lands')
         .update({
           current_crop: data.current_crop_name || null,
+          current_crop_variety_id: data.current_crop_variety_id ?? null,
           planting_date: data.planting_date?.toISOString() || null,
           expected_harvest_date: data.expected_harvest_date?.toISOString() || null,
           previous_crop: data.previous_crop_name || null,
           harvest_date: data.harvest_date?.toISOString() || null,
-        })
+        } as any)
         .eq('id', landId);
 
       if (error) throw error;
