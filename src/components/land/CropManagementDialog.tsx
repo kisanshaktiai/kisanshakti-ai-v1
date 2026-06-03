@@ -43,6 +43,7 @@ import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
+import { VarietySelector, type VarietyOption } from '@/components/crops/VarietySelector';
 
 interface CropGroup {
   id: string;
@@ -77,6 +78,7 @@ const groupIcons: Record<string, React.ReactNode> = {
 const formSchema = z.object({
   current_crop_id: z.string().optional(),
   current_crop_name: z.string().optional(),
+  current_crop_variety_id: z.string().nullable().optional(),
   planting_date: z.date().optional(),
   expected_harvest_date: z.date().optional(),
   previous_crop_id: z.string().optional(),
@@ -116,6 +118,7 @@ export function CropManagementDialog({
     defaultValues: {
       current_crop_id: '',
       current_crop_name: '',
+      current_crop_variety_id: null,
       planting_date: undefined,
       expected_harvest_date: undefined,
       previous_crop_id: '',
@@ -152,18 +155,34 @@ export function CropManagementDialog({
         // Load existing crop data for the land
         const { data: landData, error: landError } = await supabase
           .from('lands')
-          .select('current_crop, planting_date, expected_harvest_date, previous_crop, harvest_date')
+          .select('current_crop, current_crop_variety_id, planting_date, expected_harvest_date, previous_crop, harvest_date')
           .eq('id', landId)
           .single();
 
         if (landData && !landError) {
           form.reset({
             current_crop_name: landData.current_crop || '',
+            current_crop_variety_id: (landData as any).current_crop_variety_id || null,
             planting_date: landData.planting_date ? new Date(landData.planting_date) : undefined,
             expected_harvest_date: landData.expected_harvest_date ? new Date(landData.expected_harvest_date) : undefined,
             previous_crop_name: landData.previous_crop || '',
             harvest_date: landData.harvest_date ? new Date(landData.harvest_date) : undefined,
           });
+
+          // If we have a current crop saved as text, try to resolve it back to a crop id
+          // so the VarietySelector can scope its list correctly.
+          if (landData.current_crop && (cropsData?.length ?? 0) > 0) {
+            const match = (cropsData ?? []).find(
+              (c: Crop) => c.label === landData.current_crop || c.value === landData.current_crop,
+            );
+            if (match) {
+              setCurrentCropSelection({
+                id: match.id,
+                name: match.label,
+                duration: match.duration_days || 90,
+              });
+            }
+          }
         }
       } catch (err) {
         console.error('Error loading data:', err);
@@ -193,6 +212,10 @@ export function CropManagementDialog({
     const crop = crops.find(c => c.id === cropId);
     
     if (isCurrentCrop) {
+      // Reset variety when crop changes
+      if (currentCropSelection?.id !== cropId) {
+        form.setValue('current_crop_variety_id', null);
+      }
       setCurrentCropSelection({ 
         id: cropId, 
         name: cropName, 
@@ -223,11 +246,12 @@ export function CropManagementDialog({
         .from('lands')
         .update({
           current_crop: data.current_crop_name || null,
+          current_crop_variety_id: data.current_crop_variety_id ?? null,
           planting_date: data.planting_date?.toISOString() || null,
           expected_harvest_date: data.expected_harvest_date?.toISOString() || null,
           previous_crop: data.previous_crop_name || null,
           harvest_date: data.harvest_date?.toISOString() || null,
-        })
+        } as any)
         .eq('id', landId);
 
       if (error) throw error;
@@ -372,6 +396,39 @@ export function CropManagementDialog({
                           <CalendarCheck className="h-4 w-4 text-primary" />
                           <span className="font-medium">Selected: {currentCropSelection.name}</span>
                         </div>
+
+                        {/* Seed variety (optional) */}
+                        <FormField
+                          control={form.control}
+                          name="current_crop_variety_id"
+                          render={({ field }) => (
+                            <FormItem>
+                              <VarietySelector
+                                cropId={currentCropSelection.id}
+                                value={field.value ?? null}
+                                onChange={(v: VarietyOption | null) => {
+                                  field.onChange(v?.id ?? null);
+                                  // Auto-tighten harvest date estimate with the variety's
+                                  // maturity range when available — DB is the source of truth.
+                                  if (v?.maturity_days_max) {
+                                    setCurrentCropSelection((prev) =>
+                                      prev ? { ...prev, duration: v.maturity_days_max! } : prev,
+                                    );
+                                    const plantingDate = form.getValues('planting_date');
+                                    if (plantingDate) {
+                                      form.setValue(
+                                        'expected_harvest_date',
+                                        addDays(plantingDate, v.maturity_days_max!),
+                                      );
+                                    }
+                                  }
+                                }}
+                              />
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
 
                         {/* Planting Date */}
                         <FormField
