@@ -155,18 +155,34 @@ export function CropManagementDialog({
         // Load existing crop data for the land
         const { data: landData, error: landError } = await supabase
           .from('lands')
-          .select('current_crop, planting_date, expected_harvest_date, previous_crop, harvest_date')
+          .select('current_crop, current_crop_variety_id, planting_date, expected_harvest_date, previous_crop, harvest_date')
           .eq('id', landId)
           .single();
 
         if (landData && !landError) {
           form.reset({
             current_crop_name: landData.current_crop || '',
+            current_crop_variety_id: (landData as any).current_crop_variety_id || null,
             planting_date: landData.planting_date ? new Date(landData.planting_date) : undefined,
             expected_harvest_date: landData.expected_harvest_date ? new Date(landData.expected_harvest_date) : undefined,
             previous_crop_name: landData.previous_crop || '',
             harvest_date: landData.harvest_date ? new Date(landData.harvest_date) : undefined,
           });
+
+          // If we have a current crop saved as text, try to resolve it back to a crop id
+          // so the VarietySelector can scope its list correctly.
+          if (landData.current_crop && (cropsData?.length ?? 0) > 0) {
+            const match = (cropsData ?? []).find(
+              (c: Crop) => c.label === landData.current_crop || c.value === landData.current_crop,
+            );
+            if (match) {
+              setCurrentCropSelection({
+                id: match.id,
+                name: match.label,
+                duration: match.duration_days || 90,
+              });
+            }
+          }
         }
       } catch (err) {
         console.error('Error loading data:', err);
