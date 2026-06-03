@@ -118,6 +118,7 @@ export function CropManagementDialog({
     defaultValues: {
       current_crop_id: '',
       current_crop_name: '',
+      current_crop_variety_id: null,
       planting_date: undefined,
       expected_harvest_date: undefined,
       previous_crop_id: '',
