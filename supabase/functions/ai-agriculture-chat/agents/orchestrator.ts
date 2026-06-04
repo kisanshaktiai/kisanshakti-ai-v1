@@ -2635,7 +2635,10 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
-      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage);
+      // FORENSIC AUDIT v9.0: pass the upstream canonical language so the
+      // induction layer's lightweight detector does not flip mr → hi when
+      // the input lacks the small set of Marathi common words it checks for.
+      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage, normalizedInput.detected_language);
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
       
       console.log(`      ${getInductionSummary(inductionResult)}`);
