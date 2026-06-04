@@ -3178,61 +3178,72 @@ function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): str
 }
 
 /**
- * Fallback: Build natural language response directly from DecisionOutput
- * Used when CommunicationGenerator fails or returns incomplete data
+ * SSOT-COMPLIANT FALLBACK BUILDER (used when CommunicationGenerator returns
+ * incomplete data). Renders ONLY DB-sourced fields.
+ *
+ * Removed (was hardcoded English / fabricated agronomic claims):
+ *   - "Hello farmer friend! 🌾"
+ *   - "⚠️ Stop: Safety check required" default
+ *   - "⏱️ Postpone spray - Spray when weather clears. Continue crop monitoring for now."
+ *   - "👀 No action required at this time. Continue monitoring."
+ *   - "📌 What to do now:" header label
+ *   - "Recommended treatment" placeholder product name
+ *   - timingLabels map ("Spray in the morning 6-10 AM" / "Evening 4-6 PM" / "Any time of day")
+ *   - English labels "Action:" / "Reason:" / "Knowledge:" / "Alternative measures:" / "Expected efficacy:"
+ *   - "✅ Best wishes! 🙏" closing
  */
 async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
   }
-  
+
   const parts: string[] = [];
-  
-  // English-only — forceTranslateResponse() handles localization at runtime
-  parts.push('Hello farmer friend! 🌾');
-  
   const primary = decision.primary_decision;
-  
-  // Status handling
+
   if (decision.status === 'BLOCKED') {
-    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    parts.push(`⚠️ **Stop:** ${blockedReason}`);
-    return parts.join('\n\n');
+    const blockedReason = (decision.blocked_actions?.[0]?.reason || '').toString().trim();
+    if (blockedReason) return blockedReason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: BLOCKED with no blocked_actions[0].reason');
+    return '';
   }
-  
+
   if (decision.status === 'WEATHER_DELAYED') {
-    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
-    return parts.join('\n\n');
+    const reason = (decision.weather_delay_reason || decision.primary_decision?.application_details?.reason_text || '').toString().trim();
+    if (reason) return reason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: WEATHER_DELAYED with no DB-sourced reason');
+    return '';
   }
-  
-  // Action type
+
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    parts.push('👀 **No action required at this time.** Continue monitoring.');
-
     const app = primary?.application_details || {};
-    if (app.action_text) parts.push(`\n🧾 **Action:** ${app.action_text}`);
-    if (app.reason_text) parts.push(`\n🔍 **Reason:** ${app.reason_text}`);
-    if (app.knowledge_text) parts.push(`\n📚 **Knowledge:** ${app.knowledge_text}`);
-
+    if (app.action_text) parts.push(String(app.action_text).trim());
+    if (app.reason_text) parts.push(String(app.reason_text).trim());
+    if (app.knowledge_text) parts.push(String(app.knowledge_text).trim());
+    if (parts.length === 0) {
+      console.error(`[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: ${primary.action_type} with no rich texts`);
+      return '';
+    }
     return parts.join('\n\n');
   }
-  
-  // Primary recommendation
+
   if (primary) {
     const appDetails = primary.application_details || {};
     const richData = extractRichRuleData(primary, appDetails);
     const rawProductName = richData.active_ingredient || appDetails.product_name || '';
-    const productName = rawProductName ? getProductName(rawProductName, language) : 'Recommended treatment';
-    const dosage = richData.dosage_per_acre || appDetails.concentration || '';
-    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const productName = rawProductName ? getProductName(rawProductName, language) : '';
+    const dosage = (richData.dosage_per_acre || appDetails.concentration || '').toString().trim();
+    const timing = primary.timing?.best_time_of_day || '';
     const method = richData.application_method || appDetails.method || '';
-    
-    parts.push('📌 **What to do now:**');
-    
-    const productLine = dosage ? `${productName} @ ${dosage}` : productName;
-    parts.push(productLine);
 
-    // PRODUCT MAPPING: Append market brand names
+    if (!productName) {
+      console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: primary decision missing active_ingredient/product_name');
+    }
+
+    const productLine = productName
+      ? (dosage ? `${productName} @ ${dosage}` : productName)
+      : (dosage ? `@ ${dosage}` : '');
+    if (productLine) parts.push(productLine);
+
     if (richData.active_ingredient && supabaseClient) {
       try {
         const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
@@ -3243,53 +3254,46 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
         console.warn(`[ProductMapping] Lookup failed in fallback builder:`, err);
       }
     }
-    
+
     if (method) {
       const methodText = getMethodTranslation(method, language);
-      parts.push(`📍 ${methodText}`);
+      if (methodText) parts.push(methodText);
     }
-    
-    const timingLabels: Record<string, string> = {
-      MORNING: 'Spray in the morning 6-10 AM',
-      EVENING: 'Spray in the evening 4-6 PM',
-      ANY: 'Any time of day'
-    };
-    parts.push(`⏰ ${timingLabels[timing] || timingLabels.MORNING}`);
-    
-    // Rich SSOT texts
-    const actionText = appDetails.action_text as string | undefined;
-    const reasonText = appDetails.reason_text as string | undefined;
-    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
-    
+
+    // Timing: emit raw enum code only — narration/i18n layer localizes.
+    if (timing) parts.push(`[${timing}]`);
+
+    const actionText = (appDetails.action_text as string | undefined)?.trim();
+    const reasonText = (appDetails.reason_text as string | undefined)?.trim();
+    if (actionText) parts.push(actionText);
+    if (reasonText) parts.push(reasonText);
+
     const efficacy = primary.expected_outcomes?.efficacy_percent;
-    if (efficacy) {
-      parts.push(`📊 Expected efficacy: ${efficacy}%`);
-    }
+    if (efficacy) parts.push(`${efficacy}%`);
   }
-  
-  // Secondary actions
+
   if (decision.secondary_actions && decision.secondary_actions.length > 0) {
-    parts.push('\n🔄 **Alternative measures:**');
     decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
       if (alt.action) {
         const translatedAction = getActionTranslation(alt.action, language);
-        parts.push(`• ${translatedAction}`);
+        if (translatedAction) parts.push(`• ${translatedAction}`);
       }
     });
   }
-  
-  parts.push('\n✅ Best wishes! 🙏');
-  
+
   return parts.join('\n');
 }
 
 /**
- * Get generic monitoring message when no decision output is available
+ * SSOT-COMPLIANT: when no decision output is available we have nothing to
+ * say. Returning a hardcoded "continue monitoring" sentence violates
+ * Agronomic-Safety-Negligence (e.g., it would suppress urgent-pest treatment).
+ *
+ * Removed: "Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues."
  */
 function getGenericMonitoringMessage(_language: string): string {
-  // English-only — forceTranslateResponse() handles localization at runtime
-  return 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.';
+  console.error('[SYMBOLIC_CONTRACT_VIOLATION] getGenericMonitoringMessage called — no DB-sourced text available');
+  return '';
 }
 
 /**
