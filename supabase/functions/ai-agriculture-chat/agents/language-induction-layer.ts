@@ -402,10 +402,10 @@ function detectLanguage(text: string, canonicalLang?: string): string {
 // CORE INDUCTION FUNCTION
 // ============================================================================
 
-export function induceCanonicalSymbols(farmerInput: string): LanguageInductionResult {
+export function induceCanonicalSymbols(farmerInput: string, canonicalLang?: string): LanguageInductionResult {
   const startTime = Date.now();
   const normalizedText = farmerInput.toLowerCase().trim();
-  const detectedLanguage = detectLanguage(normalizedText);
+  const detectedLanguage = detectLanguage(normalizedText, canonicalLang);
   
   const symptoms: InducedSymbol[] = [];
   const affectedParts: InducedSymbol[] = [];
