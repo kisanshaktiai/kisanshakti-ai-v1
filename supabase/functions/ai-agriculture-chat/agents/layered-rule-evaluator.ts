@@ -1646,23 +1646,50 @@ function mapBundledCategory(category: string): RuleCategory {
     
     // ═══════════════════════════════════════════════════════════════════════
     // FORENSIC AUDIT FIX v8.0: 4 previously unmapped categories
-    // These were defaulting to DIAGNOSIS via the fallback, causing 7 warnings/request
     // ═══════════════════════════════════════════════════════════════════════
-    'governance': RuleCategory.SAFETY,              // Policy/regulatory rules
-    'resistance_mgmt': RuleCategory.PRESCRIPTION,   // Resistance management protocols
-    'weed_management': RuleCategory.PRESCRIPTION,   // Weed treatment rules
-    'physiology': RuleCategory.DIAGNOSIS,            // Physiological disorder identification
+    'governance': RuleCategory.SAFETY,
+    'resistance_mgmt': RuleCategory.PRESCRIPTION,
+    'weed_management': RuleCategory.PRESCRIPTION,
+    'physiology': RuleCategory.DIAGNOSIS,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC AUDIT FIX v9.0 (2026-06-04): categories actively present in
+    // decision_rules that were silently coerced to DIAGNOSIS — the single
+    // biggest reason FERTILIZER_SCHEDULE @ GRAND_GROWTH returned no_action_needed.
+    //   PRESCRIPTION → actionable advice, ranked + returned
+    //   WARNING      → informational / early-warning, surfaces but doesn't act
+    //   SAFETY       → gates / vetoes other rules
+    // ═══════════════════════════════════════════════════════════════════════
+    'nutrient_management':      RuleCategory.PRESCRIPTION,
+    'application_timing':       RuleCategory.PRESCRIPTION,
+    'best_practice':            RuleCategory.PRESCRIPTION,
+    'crop_management':          RuleCategory.PRESCRIPTION,
+    'planting_practice':        RuleCategory.PRESCRIPTION,
+    'planting_material':        RuleCategory.PRESCRIPTION,
+    'proactive_irrigation':     RuleCategory.PRESCRIPTION,
+    'proactive_nutrition':      RuleCategory.PRESCRIPTION,
+    'proactive_monitoring':     RuleCategory.WARNING,
+    'proactive_pest':           RuleCategory.WARNING,
+    'proactive_yield':          RuleCategory.WARNING,
+    'yield_risk_early_warning': RuleCategory.WARNING,
+    'data_quality':             RuleCategory.WARNING,
+    'ndvi_authority_gate':      RuleCategory.SAFETY,
+    'diagnostic_discipline':    RuleCategory.SAFETY,
+    'stress_guard':             RuleCategory.SAFETY,
+    'probable_diagnosis':       RuleCategory.DIAGNOSIS,
+    'system':                   RuleCategory.OBSERVATION,
+    'status':                   RuleCategory.OBSERVATION,
+    'system_calibration':       RuleCategory.OBSERVATION,
   };
-  
+
   const mapped = map[category?.toLowerCase()];
   if (!mapped) {
     // ═══════════════════════════════════════════════════════════════════════
-    // PRODUCTION FIX v7.5: Unknown categories default to DIAGNOSIS (not OBSERVATION)
-    // OBSERVATION phase does NOT collect matched_responses, causing rules to
-    // silently disappear from the decision pipeline. DIAGNOSIS phase collects
-    // responses and allows rules to compete for primary decision selection.
+    // FAIL-LOUD: Unknown categories now log SYMBOLIC_CONTRACT_VIOLATION so
+    // future category drift is triaged. We still return DIAGNOSIS so the
+    // pipeline does not crash, but the loud log requires action.
     // ═══════════════════════════════════════════════════════════════════════
-    console.warn(`⚠️ [mapBundledCategory] Unknown category '${category}' → defaulting to DIAGNOSIS (was OBSERVATION)`);
+    console.error(`🚨 [SYMBOLIC_CONTRACT_VIOLATION] mapBundledCategory: unknown category '${category}' — register it in layered-rule-evaluator.ts. Coercing to DIAGNOSIS as last resort.`);
     return RuleCategory.DIAGNOSIS;
   }
   return mapped;

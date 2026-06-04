@@ -1209,16 +1209,44 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
         // ═══════════════════════════════════════════════════════════════════
         // PHASE 7: Load observation_master codes for validation
         // ═══════════════════════════════════════════════════════════════════
+        // FORENSIC AUDIT FIX v9.0 (2026-06-04):
+        // PostgREST default cap is 1000 rows. observation_master has ~1982
+        // active rows, so the previous unpaginated read silently truncated
+        // ~982 valid codes, producing a flood of false "unknown observation"
+        // warnings. Paginate explicitly and log a smell if we hit exactly 1000.
+        // ═══════════════════════════════════════════════════════════════════
         if (!cachedObservationCodes || now >= obsCacheExpiry) {
-          const { data: obsCodes } = await supabase
-            .from('observation_master')
-            .select('observation_code')
-            .eq('is_active', true);
-          
-          if (obsCodes && obsCodes.length > 0) {
-            cachedObservationCodes = new Set(obsCodes.map(r => r.observation_code.toUpperCase()));
+          const allCodes: string[] = [];
+          const PAGE = 1000;
+          let fromIdx = 0;
+          while (true) {
+            const { data: page, error: pageErr } = await supabase
+              .from('observation_master')
+              .select('observation_code')
+              .eq('is_active', true)
+              .range(fromIdx, fromIdx + PAGE - 1);
+            if (pageErr) {
+              console.warn(`⚠️ [RuleLoader] observation_master page ${fromIdx} failed: ${pageErr.message}`);
+              break;
+            }
+            const rows = page || [];
+            for (const r of rows) {
+              if (r?.observation_code) allCodes.push(String(r.observation_code).toUpperCase());
+            }
+            if (rows.length < PAGE) break;
+            fromIdx += PAGE;
+            if (fromIdx > 50_000) {
+              console.warn(`⚠️ [RuleLoader] observation_master pagination guard tripped at ${fromIdx}`);
+              break;
+            }
+          }
+          if (allCodes.length > 0) {
+            cachedObservationCodes = new Set(allCodes);
             obsCacheExpiry = now + CACHE_TTL;
-            console.log(`✅ [RuleLoader] Cached ${obsCodes.length} observation_master codes for validation`);
+            console.log(`✅ [RuleLoader] Cached ${allCodes.length} observation_master codes for validation (paginated)`);
+            if (allCodes.length === 1000) {
+              console.warn(`⚠️ [RuleLoader] observation_master count==1000 exactly — possible pagination smell`);
+            }
           }
         }
       }

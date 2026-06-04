@@ -1,102 +1,165 @@
-# Deep Audit: Hardcoded Text in `ai-agriculture-chat/index.ts`
 
-## TL;DR
-You are correct. Despite the architecture mandate ("100% of agronomic + farmer-facing text originates from the symbolic decision brain / DB; LLM is pure narrator"), `index.ts` still contains **at least 12 hardcoded English template functions** that bypass the symbolic brain and are wired directly into the primary response pipeline. They violate the **Symbolic Engine Strict Invariants**, **Layer Responsibility Model**, and **LLM Response Generator Narration-Only v2** contracts.
+# Forensic Audit — Verifying the Pipeline Report
 
----
+I traced every claim in the report against the actual code and the live database. Verdict per finding below — most are correct, two are partially wrong (root cause is different), and one is a much bigger silent bug than the report realized.
 
-## Evidence — Hardcoded strings still in `index.ts`
+## Findings — verified vs. corrected
 
-| Line | Hardcoded text | Function |
+### 1. Wrong outcome (`no_action_needed` for fertilizer query at GRAND_GROWTH)
+**CONFIRMED.** DB has plenty of matching rules — e.g. `SC_NUTRITION_NITROGEN_022`, `SC_NUTRITION_NITROGEN_006`, `SC_NUTRITION_K_DEFICIENCY_001`, `SC_BP_NITROGEN_EFFICIENCY_001` — all `category in ('nutrition','best_practice')`, `stage_applicable @> {GRAND_GROWTH}`, `is_active=true`. They are loaded into the 268-rule cache but never selected. Root cause is the chain of (2) + (3) + (4) below, not a content gap.
+
+### 2. Semantic extractor coverage = 0% / language tagged `hi`
+**PARTIALLY CONFIRMED.** Marathi vocab in `crop_vocabulary` already contains `खत`, `खते`, `कोणते खत`, `खत कधी द्यावे`, `खत किती द्यावे`, `पाणी द्यावे`, etc.
+What is actually missing for this exact query:
+- `द्यावीत` (feminine-plural imperative — only `द्यावे` is seeded)
+- `सध्या` (temporal "now")
+- `कोणती` (feminine "which" — only `कोणते` masculine is seeded)
+- No `SUGARCANE` row for `खते` (only `ALL`); the cache loader uppercases crop_code (`SUGARCANE`) so the `ALL` entries must be queried separately. **Need to confirm the induction layer queries both `crop_code=SUGARCANE` and `crop_code=ALL`** — if it only queries the specific crop, every `ALL` entry is invisible.
+The `lang=hi` tag in induction logs while the rest of the pipeline says `mr` is a real inconsistency in `language-induction-layer.ts`.
+
+### 3. `mapBundledCategory` unmapped buckets — **the worst silent failure in the pipeline**
+**CONFIRMED.** `agents/layered-rule-evaluator.ts:1581` defines the map. The following categories used by live DB rules are **NOT** in the map and fall through to the `DIAGNOSIS` default with a warning:
+
+| Category | rules in DB | DB count |
 |---|---|---|
-| 2519 | `'🌾 Hello farmer friend!'` | `generateValidationFailureFallback` |
-| 2522 | `'📌 **What to do now:**'` | `generateValidationFailureFallback` |
-| 2575 | `'🌾 Hello Farmer Friend!\nI encountered a technical issue...📞 For urgent help: Contact your nearest KVK.'` | `generateValidationFailureFallback` |
-| 2600 | `'\n✅ Best wishes! 🙏'` | `generateValidationFailureFallback` |
-| 2607–2617 | Multi-line "Hello Farmer Friend / technical issue / KVK" template | `generateValidationFailureFallback` |
-| 2630 | `'Hello farmer friend! 🌾'` + `'⚠️ Unable to provide recommendations...'` | `generateAllActionsFilteredResponse` |
-| 2644–2651 | `categoryLabels` map (Regulatory / Safety / Seasonal / Weather / Economic / Compatibility / Other Reasons) | `generateAllActionsFilteredResponse` |
-| 3059, 3070, 3072, 3076, 3079 | "Hello farmer friend / I understand you're dealing with X / What is the crop name / growth stage / symptoms / send a photo" | `generateNoRecommendationsFallback` |
-| 3091, 3098, 3103, 3109 | "Hello farmer friend / Stop / Postpone spray / No action required / Continue monitoring" | `buildFormattedRecommendationsList` |
-| 3224 | `'Please provide more details about your question. Tell us the crop name, problem, and symptoms.'` | `generateClarificationPrompt` |
-| 3241–3255 | Multi-line "🙏 Hello Farmer Friend / Quick tips / Monitor your crop / water management" template | `generateHelpfulErrorResponse` |
-| 3270, 3282, 3288, 3303, 3331–3335, 3351, 3360 | "Hello farmer / Postpone spray / No action / Recommended treatment / Spray in the morning 6-10 AM / Spray in the evening 4-6 PM / Any time of day / Alternative measures / Best wishes" | `buildResponseFromDecisionOutput` |
-| 3370 | `'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.'` | `getGenericMonitoringMessage` |
+| `nutrient_management` | yes | 2 |
+| `application_timing` | yes | 2 |
+| `best_practice` | yes | 5 (incl. `SC_BP_NITROGEN_EFFICIENCY_001`) |
+| `proactive_monitoring` | yes | 6 |
+| `proactive_irrigation` | yes | 7 |
+| `crop_management` | yes | 1 |
+| `planting_practice` | yes | 1 |
+| `yield_risk_early_warning` | yes | 1 |
+| `data_quality` | yes | 2 |
+| `proactive_pest` / `proactive_yield` / `proactive_nutrition` / `ndvi_authority_gate` / `diagnostic_discipline` / `stress_guard` / `system_calibration` / `system` / `status` / `planting_material` | yes | also unmapped |
 
-These functions are invoked from the **main response pipeline** at lines **1235, 1565, 1585, 1687, 2997, 3002, 3024, 3042, 3047** — i.e., they are not dead code; they fire on common branches (NO_RECS, BLOCKED, WEATHER_DELAYED, NEEDS_CLARIFICATION, SYSTEM_ERROR, VALIDATION_FAIL, ALL_FILTERED).
+Every one of these rules is being shoved into the DIAGNOSIS phase, where it is scored against symptom evidence (zero for a fertilizer query), then loses ranking to (non-existent) pest rules, and never fires. This is the single biggest reason 268 → 0.
 
----
-
-## Why this code is here (root cause)
-
-Each hardcoded block is preceded by a comment like `CRITICAL FIX`, `PRODUCTION FIX`, or `English-only — forceTranslateResponse() handles localization at runtime`. The history is:
-
-1. Symbolic brain originally returned only structured payloads. When it returned `NO_RECS` / `BLOCKED` / errors, the narrator had nothing to say.
-2. Instead of fixing the symbolic brain to always emit `fallback_text` (the v2 contract), engineers patched **defensive English templates** directly into `index.ts`.
-3. To "fix" the language problem, they added `forceTranslateResponse()` (line 1606, 2148) — an **LLM round-trip** that re-translates the hardcoded English at runtime. This is exactly the "parallel authority" anti-pattern the v2 narration contract forbids: the LLM is now both generating *and* rewriting agronomic-adjacent text, with no DB anchor.
-4. The comments openly admit the design: *"English-only fallback — forceTranslateResponse() handles localization at runtime"*. That sentence is the smoking gun — it normalizes hardcoded English as a "feature".
-
-So the loophole is **two layered violations**:
-- Hardcoded English templates in the orchestrator (violates Symbolic Engine Strict Invariants).
-- A second LLM translation pass that masks them at runtime (violates Layer Responsibility Model + Narration-Only v2 + Canonical Language Governance).
-
----
-
-## Why it matters (data-accuracy impact)
-
-- **Greetings, tips, monitoring advice** ("Monitor your crop regularly", "Maintain proper water management") are *agronomic* statements not sourced from `decision_rules` — they are fabricated.
-- **Timing labels** ("Spray in the morning 6–10 AM", "Spray in the evening 4–6 PM") override DB `timing.best_time_of_day` with hardcoded windows.
-- **Category labels** (Regulatory / Safety / Seasonal) are not the canonical labels stored in DB filter metadata.
-- `forceTranslateResponse` then sends this English to GPT-4o-mini, which can **rephrase, drop emojis, or inject local idioms** — the user sees text that no rule ever produced.
-- Violates the Core memory rule: *"100% of agronomic advice MUST originate from database; LLM is restricted exclusively to translation/narration."*
-
----
-
-## Remediation plan (Phase by phase)
-
-### Phase A — Surface the violation in the symbolic brain contract
-1. Make `fallback_text` truly **required** on every `OrchestratorResponse` branch (`READY`, `NEEDS_CLARIFICATION`, `NO_MATCH`, `BLOCKED`, `ESCALATE`, `WEATHER_DELAYED`, `SYSTEM_ERROR`, `VALIDATION_FAIL`, `ALL_FILTERED`). The symbolic brain — not `index.ts` — owns this text, sourced from a new `decision_fallback_texts` DB table keyed by `(status, intent, language)`.
-2. Add a runtime invariant in `index.ts`: if `fallback_text` is missing, log `SYMBOLIC_CONTRACT_VIOLATION` and short-circuit to a **single** neutral DB-sourced string — never build prose in TS.
-
-### Phase B — Delete the hardcoded template functions
-Remove (after Phase A lands):
-- `generateValidationFailureFallback`
-- `generateAllActionsFilteredResponse`
-- `generateNoRecommendationsFallback`
-- `buildFormattedRecommendationsList` (English template parts only — keep DB field reads)
-- `generateClarificationPrompt`
-- `generateHelpfulErrorResponse`
-- `generateGenericAcknowledgment`
-- `buildResponseFromDecisionOutput` (English template parts only)
-- `getGenericMonitoringMessage`
-- The English `timingLabels`, `categoryLabels`, and "Best wishes" / "Hello farmer friend" string literals.
-
-Replace each call site (1235, 1565, 1585, 1687, 2997, 3002, 3024, 3042, 3047) with a single call:
+### 4. ObsValidation warnings for `BORE_HOLES`, `FRASS_EXTRUSION`, `WEATHER_ALERT`, `HONEYDEW`, `BORED_INTERNODES`
+**REPORT'S DIAGNOSIS IS WRONG. Real bug is worse.**
+Querying the DB: **all five codes exist in `observation_master` with `is_active=true`.** `observation_master` has **1,982 active rows** total.
+`bundled-rules/loader.ts:1213` loads them with:
 ```
-responseContent = symbolicResponse.fallback_text ?? await narrator.narrate(symbolicResponse, lang);
+supabase.from('observation_master').select('observation_code').eq('is_active', true)
 ```
+No `.range()`, no pagination. PostgREST default limit is **1000 rows**, which matches the "1000 codes loaded" line in the logs exactly. **~982 valid observation codes are silently missing from the cache**, so every rule that references them logs a false `unknown observation` warning and (since the validator doesn't drop rules, only warns) clutters logs while masking real authoring errors.
 
-### Phase C — Retire `forceTranslateResponse` as a band-aid
-- Keep it only as a **language-validation gate** (reject + log if narrator output isn't in target script). Stop using it to translate hardcoded English at runtime — once Phase B is done there is no English to translate.
-- Update `verifyLanguageConsistency` to call `SYMBOLIC_CONTRACT_VIOLATION` on failure instead of re-prompting an LLM.
+### 5. GDD `FALLBACK_DAS`
+**CONFIRMED.** `agents/gdd-phenology-engine.ts:575` initializes `gddSource='FALLBACK_DAS'` and only switches to `CALCULATED`/`ESTIMATED_FROM_AVG` when temperature data is present. No weather source is wired in for this farmer's land. Any rule conditioning on `gdd_min/gdd_max` (DB columns confirmed) silently fails to match.
 
-### Phase D — Migration + tests
-1. Migration: create `public.decision_fallback_texts (status, intent, lang, text, updated_at)` with GRANTs + RLS; seed canonical mr / hi / en / ta / te / kn / bn / gu / pa rows for every status.
-2. Add a Deno test asserting no string literal in `index.ts` matches `/(Hello farmer|farmer friend|Best wishes|Continue monitoring|technical issue|KVK|Spray in the morning)/i`.
-3. Add a contract test that mocks each `status` branch and asserts the response is byte-identical to the DB `fallback_text` (no LLM call).
+### 6. Clarification contradiction
+**CONFIRMED.** Three independent bypass paths (`clarification-strategy.ts`, `clarification-gate.ts`, `ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE` in `orchestrator.ts`) all fire on the same turn. The "farmer already selected option" message prints unconditionally inside one path while `option_selected=NO`.
+
+### 7. NDVI=0.068 ignored
+**CONFIRMED.** `canonical-state-builder.ts:390 mapNDVIToLevel` does bucket 0.068 → `VERY_LOW`, but DB rules use raw `ndvi_min/ndvi_max` columns. Need to verify those are wired into the rule input. Also no DB rule covers the `NDVI < 0.15 at GRAND_GROWTH` case; one should be added as a data-quality warning.
+
+### 8. Duplicate `LAND_FETCH` / `STAGE_LOCK` logs
+**CONFIRMED.** ContextTracer is invoked twice per Layer-1 pass in `orchestrator.ts`. Doubles DB reads for land + soil + NDVI + crop schedule on every turn.
+
+---
+
+# Fix Plan
+
+Six PRs, ordered by impact / risk. Each is independently shippable. No frontend changes.
+
+## P0 — Restore rule firing (root cause of `no_action_needed`)
+
+**File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` (`mapBundledCategory`, ~line 1581)
+
+1. Add explicit mappings for every category present in `decision_rules`:
+   ```
+   nutrient_management         → PRESCRIPTION
+   application_timing          → PRESCRIPTION
+   best_practice               → PRESCRIPTION
+   proactive_monitoring        → WARNING
+   proactive_irrigation        → PRESCRIPTION
+   proactive_nutrition         → PRESCRIPTION
+   proactive_pest              → WARNING
+   proactive_yield             → WARNING
+   crop_management             → PRESCRIPTION
+   planting_practice           → PRESCRIPTION
+   planting_material           → PRESCRIPTION
+   yield_risk_early_warning    → WARNING
+   data_quality                → WARNING
+   ndvi_authority_gate         → SAFETY
+   diagnostic_discipline       → SAFETY
+   stress_guard                → SAFETY
+   system / status / system_calibration → OBSERVATION
+   ```
+2. Change the unknown-category fallback to **fail loud** instead of silently coercing to DIAGNOSIS — log `SYMBOLIC_CONTRACT_VIOLATION` with the unmapped category and the rule_id so future drift is caught immediately.
+3. Add a Deno unit test that asserts every distinct `category` value present in seeded rules maps to a non-default bucket.
+
+## P0 — Fix `observation_master` cache truncation (1000-row PostgREST cap)
+
+**File:** `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` (~line 1213)
+
+Replace the single `.select().eq()` with a paginated read using `.range(0, 9999)` (or a `while (more)` loop). Same fix needed in `utils/llm-output-validator.ts` and `decision/symbolic-reasoner.ts` if they read the same table. Add a startup log line that prints the row count and warns if the count equals 1000 (pagination smell).
+
+## P1 — FERTILIZER_SCHEDULE deterministic firing guarantee
+
+**File:** `agents/layered-rule-evaluator.ts` + `agents/rule-engine-executor.ts`
+
+When `intent_lock = FERTILIZER_SCHEDULE` (or sibling fertilize/soil-test intents) and stage flag `critical_nutrition = true`, require that the PRESCRIPTION phase return at least one rule. If zero rules fire, do **not** fall through to `no_action_needed` — emit `NEEDS_RULE_SEEDING` diagnostic and surface the highest-scoring stage-applicable PRESCRIPTION rule even if symptom evidence is empty. Symbolic-only output goes through the existing DB-sourced `fallback_text` path (no hardcoded English — see prior refactor).
+
+## P1 — Marathi vocabulary completeness
+
+**Table:** `public.crop_vocabulary` (INSERT-only migration)
+
+Add the missing rows used by this exact farmer turn and structurally similar ones:
+- `सध्या` → temporal "now"
+- `कोणती` / `कोणत्या` → feminine "which"
+- `द्यावीत` / `द्याव्यात` → feminine-plural imperative "should be given"
+- `सध्या कोणती खते द्यावीत` → fertilizer schedule query
+- mirrored masculine/neuter/plural variants for `पाणी`, `औषध`, `फवारणी`
+
+**File:** verify `agents/language-induction-layer.ts` queries vocab with `.in('crop_code', [cropCode, 'ALL'])`, not only the specific crop, and that script normalization is case-/whitespace-tolerant for Devanagari.
+
+## P1 — Language tag consistency
+
+**File:** `agents/language-induction-layer.ts`
+
+The `lang` field in the LI log line is sourced from a separate detection call instead of the canonical language already locked upstream. Inject the canonical `detected_language` from the orchestrator's Stage-1 normalization and stop re-detecting inside induction.
+
+## P2 — GDD wiring + degraded-mode label
+
+**File:** `agents/gdd-phenology-engine.ts`
+
+1. Pull daily Tmin/Tmax from the existing weather telemetry feed (the project already has live weather context — see `mem://weather/live-weather-context-resolution`). When proximity lookup returns a station, use those daily temps.
+2. When neither station nor regional average is available, set `gdd_source='FALLBACK_DAS'` **and** emit a `DATA_QUALITY: gdd_unwired` warning so the response gate can mark the recommendation as degraded.
+3. Rule conditions on `gdd_min/gdd_max` should be marked `required: false` (soft) when `gdd_source === 'FALLBACK_DAS'`, matching the existing soft-condition pattern in `loader.ts`.
+
+## P2 — NDVI gate + data-quality rule
+
+**File:** `agents/canonical-state-builder.ts` + new seed rule
+
+1. Add explicit `ndvi_value` and `ndvi_level` (already exists) to the rule-engine input payload so DB columns `ndvi_min/ndvi_max` evaluate correctly.
+2. Seed one new DB rule: `SC_DATA_QUALITY_NDVI_001` — category `data_quality`, `ndvi_max = 0.15`, stage_applicable = `{TILLERING, GRAND_GROWTH, MATURITY}`, surfaces a "satellite data unreliable / field may be bare — please confirm" warning sourced from DB text.
+
+## P3 — Cleanup (low-risk hygiene)
+
+- **`orchestrator.ts` Layer 1:** find the duplicate ContextTracer invocation and remove the second call (cuts DB reads in half).
+- **Clarification logs:** in the bypass branch that prints "farmer already selected option", gate the message on `option_selected === 'YES'`.
+- **Obs validator dedup:** the duplicated warnings come from validating both `observations` and `required_symptoms` arrays in `loader.ts:842`. Move validation above the soft/hard branch so each `(rule_id, obs_code)` is validated once.
 
 ---
 
 ## Technical notes
-- Files touched (after approval): `supabase/functions/ai-agriculture-chat/index.ts`, the symbolic brain orchestrator under `decision/`, new migration under `supabase/migrations/`, new test under `supabase/functions/ai-agriculture-chat/__tests__/`.
-- No frontend changes required.
-- This is purely backend / SSOT enforcement work — no UI impact beyond removing fabricated greetings.
 
----
+- All DB writes are **migrations** for the new seed rule + a SQL `INSERT` migration for the vocabulary rows. No schema changes.
+- The pagination fix in `loader.ts` does not need a migration — it's a Deno code change deployed with the edge function.
+- The `mapBundledCategory` change is the highest-leverage fix: it alone will cause the existing `SC_NUTRITION_NITROGEN_022`, `SC_NUTRITION_NITROGEN_006`, `SC_BP_NITROGEN_EFFICIENCY_001` rules to fire for the audited turn.
+- Verification after each PR: re-run the exact farmer turn (`सध्या कोणती खते द्यावीत?`, sugarcane, DAS=158) against the edge function and assert: (a) `mapBundledCategory` warning count = 0, (b) `ObsValidation` warnings dropped to ~0, (c) at least one PRESCRIPTION rule fires, (d) final response references a DB-sourced N/K split, not `no_action_needed`.
+- Honors the existing SSOT contract: **no hardcoded agronomic text added**. All new user-visible strings ship as DB rows.
 
-## Open question before I implement
-Do you want me to:
-**(1)** Execute the full A→D refactor (new DB table + delete ~250 lines of hardcoded templates + tests), or
-**(2)** Do a smaller surgical pass that just deletes the hardcoded English and forces every branch to read `symbolic_decision.fallback_text` (failing loudly if missing), leaving the DB-seed work for a follow-up?
-
-Option 1 is the correct architectural fix. Option 2 exposes every missing `fallback_text` in the symbolic brain so we can find and seed them quickly.
+```text
+report claim                      verdict       real root cause
+─────────────────────────────────────────────────────────────────
+1 wrong outcome                   confirmed     #3 + #4 + #5 chain
+2 coverage 0%, lang=hi            partial       missing fem-plural Marathi + LI re-detects lang
+3 unmapped categories             confirmed     mapBundledCategory has 10+ holes
+4 obs codes "missing from DB"     INCORRECT     codes exist; cache truncated at 1000/1982
+5 GDD FALLBACK_DAS                confirmed     weather feed not wired into engine
+6 contradictory clarification     confirmed     3 bypass paths, one logs unconditionally
+7 NDVI 0.068 unused               confirmed     no rule covers <0.15; needs seed + wiring
+8 duplicate LAND_FETCH logs       confirmed     Layer-1 tracer invoked twice
+```

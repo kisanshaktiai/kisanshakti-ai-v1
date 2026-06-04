@@ -102,19 +102,32 @@ async function loadValidObservationCodes(supabase: any): Promise<Set<string>> {
 
   const loadPromise = (async () => {
     try {
-      const { data, error } = await supabase
-        .from('observation_master')
-        .select('observation_code')
-        .eq('is_active', true)
-        .limit(2000);
-      
-      if (error) {
-        console.error(`[LLM_VALIDATOR] Failed to load observation codes: ${error.message}`);
-        return observationCache.entry?.data || new Set<string>();
+      // FORENSIC FIX v9.0: PostgREST caps responses at the server max-rows
+      // setting (often 1000). observation_master has ~1982 active rows, so
+      // a single .limit(2000) call still got truncated. Paginate explicitly.
+      const allCodes: string[] = [];
+      const PAGE = 1000;
+      let fromIdx = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from('observation_master')
+          .select('observation_code')
+          .eq('is_active', true)
+          .range(fromIdx, fromIdx + PAGE - 1);
+        if (error) {
+          console.error(`[LLM_VALIDATOR] Page ${fromIdx} failed: ${error.message}`);
+          break;
+        }
+        const rows = data || [];
+        for (const r of rows) {
+          if (r?.observation_code) allCodes.push(String(r.observation_code));
+        }
+        if (rows.length < PAGE) break;
+        fromIdx += PAGE;
+        if (fromIdx > 50_000) break;
       }
-      
-      const codes = new Set<string>((data || []).map((r: any) => r.observation_code));
-      console.log(`[LLM_VALIDATOR] Loaded ${codes.size} valid observation codes`);
+      const codes = new Set<string>(allCodes);
+      console.log(`[LLM_VALIDATOR] Loaded ${codes.size} valid observation codes (paginated)`);
       observationCache.entry = { data: codes, loadedAt: Date.now() };
       return codes;
     } catch (e) {
