@@ -3334,7 +3334,8 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
     const urgency = getText(immediate.urgency_indicator?.text);
     
     if (heading || summary) {
-      parts.push(`\n${emoji} ${heading || 'What to do now:'}`);
+      // SSOT: only emit the DB-sourced heading. Do not invent "What to do now:" when missing.
+      if (heading) parts.push(`\n${emoji} ${heading}`);
       if (summary) parts.push(summary);
       if (urgency) parts.push(`⏰ ${urgency}`);
     }
@@ -3346,9 +3347,10 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
     const heading = getText(howTo.heading);
     if (heading) parts.push(`\n🔧 ${heading}`);
     
-    // Materials
+    // Materials — DB-sourced items only; no hardcoded "Materials:" English label.
     if (howTo.materials_needed?.items?.length > 0) {
-      parts.push('🛒 Materials:');
+      const materialsHeading = getText(howTo.materials_needed?.heading);
+      if (materialsHeading) parts.push(`🛒 ${materialsHeading}`);
       howTo.materials_needed.items.forEach((item: any) => {
         const name = getText(item.name);
         if (name && name !== 'Unknown product') parts.push(`• ${name} - ${item.quantity || ''}`);
