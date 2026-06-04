@@ -848,10 +848,19 @@ export function evaluateConditionsJson(
         // Log warnings for invalid codes that may indicate stale rule data
         // ═══════════════════════════════════════════════════════════════════
         if (cachedObservationCodes && ruleId) {
+          // FORENSIC AUDIT v9.0: dedup per-(rule, obs) so each unknown code
+          // logs at most once per process. The loader previously warned twice
+          // per rule (once for `observations` and once for `required_symptoms`).
           for (const obs of obsList) {
             const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
             if (!cachedObservationCodes.has(obsUpper)) {
-              console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsUpper}`);
+              const dedupKey = `${ruleId}|${obsUpper}`;
+              if (!(globalThis as any).__obsValidationLogged) (globalThis as any).__obsValidationLogged = new Set<string>();
+              const seen = (globalThis as any).__obsValidationLogged as Set<string>;
+              if (!seen.has(dedupKey)) {
+                seen.add(dedupKey);
+                console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsUpper}`);
+              }
             }
           }
         }
