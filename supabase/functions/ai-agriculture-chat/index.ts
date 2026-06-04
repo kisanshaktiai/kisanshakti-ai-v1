@@ -1091,38 +1091,31 @@ serve(async (req) => {
                   console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
                   console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
                 }
-                console.error(`   generating SYSTEM_FALLBACK`);
-                
-                rawDecisionOutput.status = 'SYSTEM_FALLBACK';
-                rawDecisionOutput.primary_decision = {
-                  action_type: 'MONITOR_ONLY',
-                  rule_id: 'INVARIANT_FALLBACK',
-                  specific_action: 'CONTINUE_MONITORING',
-                  target: {},
-                  urgency: 'NON_URGENT',
-                  timing: {
-                    recommended_start: new Date().toISOString(),
-                    recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    weather_dependency: false,
-                    reason: 'System fallback - primary decision invariant violated'
-                  },
-                  application_details: {
-                    product_name: 'Continue monitoring',
-                    product_type: 'CULTURAL',
-                    concentration: 'Daily observation',
-                    coverage_instructions: 'Monitor crop health and look for symptoms',
-                    action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
-                    reason_text: 'Insufficient information to provide specific recommendation.',
-                    rule_id: 'INVARIANT_FALLBACK'
-                  },
-                  expected_outcomes: {
-                    efficacy_percent: 100,
-                    time_to_visible_effect_days: 'Ongoing',
-                    success_indicators: ['Early detection of issues']
-                  }
+                console.error(`   marking status=SYSTEM_ERROR (no fabricated MONITOR_ONLY)`);
+
+                // ─────────────────────────────────────────────────────────────
+                // SSOT FIX: Do NOT fabricate a MONITOR_ONLY decision with
+                // hardcoded English action_text / reason_text. Per core
+                // architecture invariant, 100% of agronomic advice must
+                // originate from the database. A fake "Continue monitoring"
+                // recommendation here is an Agronomic-Safety-Negligence risk
+                // (it could mask a high-urgency pest emergency).
+                //
+                // Instead: surface SYSTEM_ERROR so the response pipeline
+                // emits the orchestrator's own (DB-sourced) fallback_advice,
+                // or logs SYMBOLIC_CONTRACT_VIOLATION when that is also
+                // missing.
+                // ─────────────────────────────────────────────────────────────
+                rawDecisionOutput.status = 'SYSTEM_ERROR';
+                rawDecisionOutput.primary_decision = null;
+                rawDecisionOutput.invariant_violation = {
+                  reason: 'NO_ELIGIBLE_MATCHED_RESPONSES',
+                  raw_matched_count: rawMatchedCount,
+                  layered_matched_count: layeredMatchedCount,
+                  trace_id: traceId,
                 };
-                
-                console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+
+                console.log(`   📋 SYSTEM_ERROR surfaced (no fabricated decision)`);
               }
             }
           }
@@ -2498,9 +2491,17 @@ function validateResponseBeforeSave(params: {
 }
 
 /**
- * Generate fallback response when validation fails
- * CRITICAL FIX: Use available actions if present instead of generic "technical issue"
- * Ensures user always gets helpful feedback even on failures
+ * SSOT-COMPLIANT FALLBACK: renders ONLY DB-sourced product/dosage data.
+ * NO hardcoded greetings, prose, or agronomic claims. If the symbolic brain
+ * provided no usable actions, returns the orchestrator's own `fallback_advice`
+ * (DB-sourced) or empty string after logging SYMBOLIC_CONTRACT_VIOLATION.
+ *
+ * Removed (was hardcoded English):
+ *   - "🌾 Hello farmer friend!" greeting
+ *   - "📌 **What to do now:**" header (UI label, not DB)
+ *   - "I encountered a technical issue..." prose
+ *   - "📞 For urgent help: Contact your nearest KVK" prose
+ *   - "✅ Best wishes! 🙏" closing
  */
 function generateValidationFailureFallback(
   lang: string,
@@ -2508,160 +2509,87 @@ function generateValidationFailureFallback(
   orchestratorResponse: OrchestratorResponse,
   actionsReturned?: any[] | null
 ): string {
-  // CRITICAL FIX: If we have actions, build a minimal response from them
-  // This prevents "technical issue" messages when we actually have recommendations
+  const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
+  const isValidProductName = (name: string | null | undefined): boolean => {
+    if (!name) return false;
+    const cleanName = name.toLowerCase().trim();
+    return cleanName.length > 2 && !invalidNames.includes(cleanName);
+  };
+
   if (actionsReturned && actionsReturned.length > 0) {
-    console.log(`   🔄 Validation fallback: Building response from ${actionsReturned.length} available actions`);
-    
     const parts: string[] = [];
-    
-    // Greeting
-    parts.push('🌾 Hello farmer friend!');
-    
-    // Header
-    parts.push('📌 **What to do now:**');
-    
-    // Extract actions - with STRICT validation to prevent placeholder content
-    const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
-    
-    const isValidProductName = (name: string | null | undefined): boolean => {
-      if (!name) return false;
-      const cleanName = name.toLowerCase().trim();
-      return cleanName.length > 2 && !invalidNames.includes(cleanName);
-    };
-    
+    let recNumber = 1;
+
     const primaryAction = actionsReturned.find(a => a.type === 'primary');
-    let hasValidPrimaryAction = false;
-    
     if (primaryAction) {
-      const rawProductName = primaryAction.product_name || 
-                             primaryAction.application_details?.product_name || 
+      const rawProductName = primaryAction.product_name ||
+                             primaryAction.application_details?.product_name ||
                              primaryAction.title;
-      
-      // CRITICAL: Validate product name is meaningful
       if (isValidProductName(rawProductName)) {
-        hasValidPrimaryAction = true;
-        
-        // CRITICAL FIX: Translate chemical name to farmer-friendly language
         const translatedProductName = getProductName(rawProductName, lang);
-        
         const rawDosage = primaryAction.dosage || primaryAction.application_details?.dosage;
-        const isValidDosage = rawDosage && 
-                              rawDosage !== 'N/A' && 
-                              rawDosage !== 'See product label' &&
-                              rawDosage.length > 0;
-        
-        let actionText = `1. **${translatedProductName}**`;
-        // Only add dosage if not already included in translation
-        if (isValidDosage && !translatedProductName.includes('/')) actionText += ` - ${rawDosage}`;
-        parts.push(actionText);
+        const isValidDosage = rawDosage && rawDosage !== 'N/A' && rawDosage !== 'See product label' && rawDosage.length > 0;
+        let line = `${recNumber}. **${translatedProductName}**`;
+        if (isValidDosage && !translatedProductName.includes('/')) line += ` — ${rawDosage}`;
+        parts.push(line);
+        recNumber++;
       }
     }
-    
-    // If no valid primary action, check secondary actions
-    if (!hasValidPrimaryAction) {
-      console.log(`   ⚠️ Primary action invalid, checking secondary actions...`);
-      
-      // Check if any secondary action has valid data
-      const validSecondaryActions = actionsReturned.filter(a => {
-        if (a.type === 'primary') return false;
-        const name = a.action || a.title || a.product_name;
-        return isValidProductName(name);
-      });
-      
-      if (validSecondaryActions.length === 0) {
-        // NO valid actions at all - use technical issue fallback
-        console.log(`   ⚠️ No valid actions found in actionsReturned, using technical fallback`);
-        const fallbackText = `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`;
-        return fallbackText;
-      }
-      
-      // Use valid secondary actions - TRANSLATE to farmer-friendly language
-      validSecondaryActions.slice(0, 3).forEach((action, idx) => {
-        const rawActionName = action.action || action.title || action.product_name;
+
+    const secondaryActions = actionsReturned.filter(a => a.type !== 'primary');
+    for (const action of secondaryActions.slice(0, 3)) {
+      const rawActionName = action.action || action.title || action.product_name;
+      if (isValidProductName(rawActionName)) {
         const translatedName = getProductName(rawActionName, lang);
-        parts.push(`${idx + 1}. **${translatedName}**`);
-      });
-    } else {
-      // Add secondary actions (only if primary was valid) - TRANSLATE names
-      const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
-      let actionIdx = 2;
-      for (const action of secondaryActions.slice(0, 2)) {
-        const rawActionName = action.action || action.title;
-        if (isValidProductName(rawActionName)) {
-          const translatedName = getProductName(rawActionName, lang);
-          parts.push(`${actionIdx}. **${translatedName}**`);
-          actionIdx++;
-        }
+        parts.push(`${recNumber}. **${translatedName}**`);
+        recNumber++;
       }
     }
-    
-    // Closing
-    parts.push('\n✅ Best wishes! 🙏');
-    
-    return parts.join('\n\n');
+
+    if (parts.length > 0) return parts.join('\n');
   }
-  
-  // Original fallback when no actions available
-  // English-only fallback — forceTranslateResponse() handles localization at runtime
-  return `🌾 **Hello Farmer Friend!**
 
-I encountered a technical issue while preparing recommendations. Please provide the following information:
+  // No DB-sourced actions available — surface the orchestrator's own fallback_advice (also DB-sourced)
+  // or log a contract violation and return empty so upstream can decide what to do.
+  const advice = orchestratorResponse?.error?.fallback_advice?.trim() || '';
+  if (advice) return advice;
 
-1. What is your crop?
-2. What is the current problem?
-3. What is the crop stage?
-
-With this information, I can provide you proper guidance.
-
-📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`;
+  console.error(`[SYMBOLIC_CONTRACT_VIOLATION] generateValidationFailureFallback called with no DB-sourced actions and no fallback_advice. validationErrors=${JSON.stringify(validationErrors)}`);
+  return '';
 }
 
 /**
  * Generate response when ALL actions were filtered
  */
 function generateAllActionsFilteredResponse(
-  filteredActions: any[], 
+  filteredActions: any[],
   lang: string
 ): string {
+  // SSOT-COMPLIANT: render ONLY DB-sourced reasons grouped by their canonical
+  // category code. NO hardcoded greetings, NO English category labels, NO
+  // "what to do next" prose. The category code is a stable enum value the
+  // narration layer can localize via i18n; here we only emit the raw code so
+  // it never masks a missing DB string.
   const parts: string[] = [];
-  
-  // Greeting
-  parts.push('Hello farmer friend! 🌾');
-  
-  // Explanation
-  parts.push('⚠️ Unable to provide recommendations at this time. Here\'s why:');
-  
-  // List filtered reasons by category
+
   const categoryReasons: Record<string, string[]> = {};
   filteredActions.forEach(action => {
     const category = action.filter_category || 'UNKNOWN';
     if (!categoryReasons[category]) categoryReasons[category] = [];
-    categoryReasons[category].push(action.reason || action.action);
+    const reason = (action.reason || action.action || '').toString().trim();
+    if (reason) categoryReasons[category].push(reason);
   });
-  
-  // English-only category labels — forceTranslateResponse() handles localization
-  const categoryLabels: Record<string, string> = {
-    REGULATORY: '📋 Regulatory Restrictions',
-    SAFETY: '🛡️ Safety Reasons',
-    SEASONAL: '📅 Seasonal Restrictions',
-    WEATHER: '🌧️ Weather Conditions',
-    ECONOMIC: '💰 Economic Factors',
-    COMPATIBILITY: '⚗️ Compatibility Issues',
-    UNKNOWN: 'ℹ️ Other Reasons'
-  };
-  
-  Object.entries(categoryReasons).forEach(([category, reasons]) => {
-    const label = categoryLabels[category] || category;
-    parts.push(`\n${label}:`);
-    reasons.slice(0, 2).forEach(reason => {
-      parts.push(`  • ${reason}`);
-    });
-  });
-  
-  // Suggestion
-  parts.push('\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer');
-  
+
+  for (const [category, reasons] of Object.entries(categoryReasons)) {
+    if (reasons.length === 0) continue;
+    parts.push(`[${category}]`);
+    for (const reason of reasons.slice(0, 2)) parts.push(`• ${reason}`);
+  }
+
+  if (parts.length === 0) {
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] generateAllActionsFilteredResponse called with no DB-sourced reasons');
+    return '';
+  }
   return parts.join('\n');
 }
 
@@ -3049,94 +2977,97 @@ async function getResponseContent(response: OrchestratorResponse, language: stri
 }
 
 /**
- * FALLBACK: When decision brain runs but produces no recommendations
- * Generates explanatory message asking for more information
+ * SSOT-COMPLIANT NO-RECOMMENDATIONS FALLBACK
+ *
+ * The symbolic brain is contractually required to attach `error.fallback_advice`
+ * (DB-sourced) whenever it produces no recommendations. This function emits
+ * that text verbatim. If it is missing we log SYMBOLIC_CONTRACT_VIOLATION and
+ * return empty — we DO NOT invent greetings, clarification questions, or
+ * encouragement prose here.
+ *
+ * Removed (was hardcoded English):
+ *   - "Hello farmer friend! 🌾" greeting
+ *   - "I understand you're dealing with X..." prose
+ *   - "What is the crop name? / growth stage? / symptoms? / send a photo" template
+ *   - "Once I have this information..." closing
  */
 function generateNoRecommendationsFallback(response: OrchestratorResponse, lang: string): string {
-  const parts: string[] = [];
-  
-  // Greeting
-  parts.push('Hello farmer friend! 🌾');
-  
-  // Extract context clues from response
-  const nluIntent = response.metadata?.nlu_output?.primary_intent;
-  const detectedPest = response.metadata?.nlu_output?.pest_mentions?.[0];
-  const detectedDisease = response.metadata?.nlu_output?.disease_mentions?.[0];
-  const detectedCrop = response.metadata?.nlu_output?.crop_mentions?.[0];
-  
-  // Build context-aware message — English-only, forceTranslateResponse() handles localization
-  if (detectedPest || detectedDisease) {
-    const target = detectedPest || detectedDisease;
-    parts.push(`I understand you're dealing with ${target}. To give accurate recommendations, I need more information:`);
-  } else {
-    parts.push('To properly answer your question, I need some more information:');
-  }
-  
-  // Numbered list of required information — English-only
-  parts.push('\n1. What is the crop name?\n2. What is the current growth stage?\n3. What symptoms are you seeing?\n4. If possible, send a photo of the affected leaves/plants');
-  
-  // Encouragement
-  parts.push('\nOnce I have this information, I can give you the right recommendation! 🙏');
-  
-  return parts.join('\n\n');
+  const advice = response?.error?.fallback_advice?.trim() || '';
+  if (advice) return advice;
+  console.error(`[SYMBOLIC_CONTRACT_VIOLATION] generateNoRecommendationsFallback: response.error.fallback_advice missing for type=${response?.type}`);
+  return '';
 }
 
 /**
- * Build formatted numbered list from decision output
+ * SSOT-COMPLIANT RECOMMENDATIONS RENDERER
+ *
+ * Renders ONLY DB-sourced fields from the DecisionOutput:
+ *   - active_ingredient + dosage_per_acre (from rule rich data)
+ *   - application_details.method
+ *   - timing.best_time_of_day (raw code only — no hardcoded English window)
+ *   - application_details.action_text / reason_text / knowledge_text
+ *   - secondary_actions[].action + .reason
+ *   - blocked_actions[].reason (BLOCKED status)
+ *
+ * Removed (was hardcoded English / fabricated agronomic content):
+ *   - "Hello farmer friend! 🌾" greeting
+ *   - "⚠️ Stop: Safety check required" default
+ *   - "⏱️ Postpone spray — Spray when weather clears. Continue crop monitoring for now."
+ *   - "👀 No action required at this time. Continue monitoring."
+ *   - "📌 Recommendations:" header label
+ *   - timingLabels map (Morning 6-10 AM / Evening 4-6 PM / Any time)
+ *   - richLabels map (Action / Reason / Knowledge English labels)
+ *   - "✅ Best wishes! 🙏" closing
  */
 async function buildFormattedRecommendationsList(decision: any, lang: string, supabaseClient?: any): Promise<string> {
   const parts: string[] = [];
-  
-  // Greeting
-  parts.push('Hello farmer friend! 🌾');
-  
   const primary = decision.primary_decision;
-  
-  // Status handling
+
+  // BLOCKED — emit DB-sourced reason verbatim or log violation
   if (decision.status === 'BLOCKED') {
-    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    parts.push(`⚠️ **Stop:** ${blockedReason}`);
-    return parts.join('\n\n');
+    const blockedReason = decision.blocked_actions?.[0]?.reason?.trim() || '';
+    if (blockedReason) return blockedReason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: BLOCKED status with no blocked_actions[0].reason');
+    return '';
   }
-  
+
+  // WEATHER_DELAYED — must come from DB (decision.weather_delay_reason or rule text). No hardcoded prose.
   if (decision.status === 'WEATHER_DELAYED') {
-    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
-    return parts.join('\n\n');
+    const weatherReason = (decision.weather_delay_reason || decision.primary_decision?.application_details?.reason_text || '').toString().trim();
+    if (weatherReason) return weatherReason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: WEATHER_DELAYED status with no DB-sourced reason text');
+    return '';
   }
-  
-  // Action type - NO ACTION / MONITOR
+
+  // NO_ACTION / MONITOR_ONLY — render rich texts only (no fabricated "No action required" prose)
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    parts.push('👀 **No action required at this time.** Continue monitoring.');
-
-    // If decision_rules provided rich text, include it so response stays SSOT-based
     const app = primary?.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
-
-    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
-    if (knowledgeText) parts.push(`\n📚 **Knowledge:** ${knowledgeText}`);
-
+    const actionText = (app.action_text as string | undefined)?.trim();
+    const reasonText = (app.reason_text as string | undefined)?.trim();
+    const knowledgeText = (app.knowledge_text as string | undefined)?.trim();
+    if (actionText) parts.push(actionText);
+    if (reasonText) parts.push(reasonText);
+    if (knowledgeText) parts.push(knowledgeText);
+    if (parts.length === 0) {
+      console.error(`[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: ${primary.action_type} with no action_text/reason_text/knowledge_text`);
+      return '';
+    }
     return parts.join('\n\n');
   }
-  
-  // Primary recommendation as numbered list
+
+  // Primary recommendation
   if (primary) {
-    parts.push('📌 **Recommendations:**');
-    
     let recNumber = 1;
     const recParts: string[] = [];
-    
-    // Primary action - CRITICAL FIX: Validate through extractRichRuleData to prevent contaminated data
+
     const appDetails = primary.application_details || {};
     const richData = extractRichRuleData(primary, appDetails);
-    const productName = richData.active_ingredient ? getProductName(richData.active_ingredient, lang) : 'Recommended product';
-    const dosage = richData.dosage_per_acre || '';
-    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const rawIngredient = richData.active_ingredient || '';
+    const productName = rawIngredient ? getProductName(rawIngredient, lang) : '';
+    const dosage = (richData.dosage_per_acre || '').toString().trim();
+    const timing = primary.timing?.best_time_of_day || '';
     const method = appDetails.method || appDetails.application_method || '';
 
-    // PRODUCT MAPPING: Look up market brand names for the active ingredient
     let marketProductLine = '';
     if (richData.active_ingredient && supabaseClient) {
       try {
@@ -3148,84 +3079,73 @@ async function buildFormattedRecommendationsList(decision: any, lang: string, su
       }
     }
 
-    // NEW: Also include SSOT rich texts from decision_rules (action_text/reason_text/knowledge_text)
-    const app = primary.application_details || {};
-    const actionText = app.action_text as string | undefined;
-    const reasonText = app.reason_text as string | undefined;
-    const knowledgeText = app.knowledge_text as string | undefined;
+    const actionText = (appDetails.action_text as string | undefined)?.trim();
+    const reasonText = (appDetails.reason_text as string | undefined)?.trim();
+    const knowledgeText = (appDetails.knowledge_text as string | undefined)?.trim();
 
-    // English-only labels — forceTranslateResponse() handles localization
-    const richLabels = { action: 'Action', reason: 'Reason', knowledge: 'Knowledge' };
+    if (!productName && !actionText && !reasonText) {
+      console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildFormattedRecommendationsList: primary decision has no active_ingredient and no action_text/reason_text');
+    }
 
-    let primaryText = `**${recNumber}. ${productName}**`;
+    let primaryText = productName ? `${recNumber}. ${productName}` : `${recNumber}.`;
     if (dosage) primaryText += ` @ ${dosage}`;
 
-    // Add method - translated
     if (method) {
       const methodText = getMethodTranslation(method, lang);
-      primaryText += `\n   📍 ${methodText}`;
+      if (methodText) primaryText += `\n   ${methodText}`;
     }
 
-    // Add timing
-    const timingLabels: Record<string, string> = {
-      MORNING: 'Morning 6-10 AM',
-      EVENING: 'Evening 4-6 PM',
-      ANY: 'Any time'
-    };
-    const timingText = timingLabels[timing] || timingLabels.MORNING;
-    primaryText += `\n   ⏰ ${timingText}`;
+    // Timing: emit raw DB enum code only; narration/i18n layer must localize it.
+    if (timing) primaryText += `\n   [${timing}]`;
 
-    // PRODUCT MAPPING: Append market product brand names
-    if (marketProductLine) {
-      primaryText += `\n   ${marketProductLine}`;
-    }
+    if (marketProductLine) primaryText += `\n   ${marketProductLine}`;
 
-    if (actionText) primaryText += `\n   🧾 **${richLabels.action}:** ${actionText}`;
-    if (reasonText) primaryText += `\n   🔍 **${richLabels.reason}:** ${reasonText}`;
-    if (knowledgeText) primaryText += `\n   📚 **${richLabels.knowledge}:** ${knowledgeText}`;
+    if (actionText) primaryText += `\n   ${actionText}`;
+    if (reasonText) primaryText += `\n   ${reasonText}`;
+    if (knowledgeText) primaryText += `\n   ${knowledgeText}`;
 
-    // Add efficacy
     const efficacy = primary.expected_outcomes?.efficacy_percent;
-    if (efficacy) {
-      primaryText += ` | 📊 ${efficacy}% effective`;
-    }
+    if (efficacy) primaryText += `\n   ${efficacy}%`;
 
     recParts.push(primaryText);
     recNumber++;
-    
-    // Secondary actions - CRITICAL FIX: Translate action names
+
     if (decision.secondary_actions && decision.secondary_actions.length > 0) {
       decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
         if (alt.action && alt.action !== 'N/A' && alt.action !== 'None') {
-          // Translate action type to farmer language
           const translatedAction = getActionTranslation(alt.action, lang);
-          // Also translate reason if it contains technical terms
-          const reason = alt.reason || '';
-          recParts.push(`**${recNumber}. ${translatedAction}** ${reason ? `- ${reason}` : ''}`);
+          const reason = (alt.reason || '').toString().trim();
+          recParts.push(`${recNumber}. ${translatedAction}${reason ? ` — ${reason}` : ''}`);
           recNumber++;
         }
       });
     }
-    
+
     parts.push(recParts.join('\n'));
   }
-  
-  // Closing
-  parts.push('\n✅ Best wishes! 🙏');
-  
+
   return parts.join('\n\n');
 }
 
 /**
- * Generate clarification prompt when question text is missing
+ * SSOT-COMPLIANT CLARIFICATION PROMPT
+ *
+ * The orchestrator must supply `response.question.text_*` for every
+ * CLARIFICATION_QUESTION branch. If absent we log a contract violation and
+ * return empty — never invent a generic English clarification.
+ *
+ * Removed (was hardcoded English):
+ *   - "Please provide more details about your question..." template
  */
 function generateClarificationPrompt(response: OrchestratorResponse, lang: string): string {
-  // English-only — forceTranslateResponse() handles localization at runtime
-  return 'Please provide more details about your question. Tell us the crop name, problem, and symptoms.';
+  const q = response.question as any;
+  const text = (q?.[`text_${lang}`] || q?.text_en || '').toString().trim();
+  if (text) return text;
+  console.error(`[SYMBOLIC_CONTRACT_VIOLATION] generateClarificationPrompt: response.question.text_* missing for session=${response?.session_id}`);
+  return '';
 }
 
 /**
- * Generic acknowledgment for unknown response types
  * @deprecated Use generateHelpfulErrorResponse instead
  */
 function generateGenericAcknowledgment(lang: string): string {
@@ -3233,84 +3153,90 @@ function generateGenericAcknowledgment(lang: string): string {
 }
 
 /**
- * PRODUCTION FIX: Generate helpful error response with actionable guidance
- * Instead of "we will respond shortly", provide immediate value
+ * SSOT-COMPLIANT ERROR RESPONSE
+ *
+ * Emits the orchestrator-supplied `fallback_advice` verbatim. No hardcoded
+ * greetings, quick tips, or fabricated agronomic guidance.
+ *
+ * Removed (was hardcoded English / fabricated agronomic claims):
+ *   - "🙏 Hello Farmer Friend!" greeting
+ *   - "📋 Tell me: crop / age / problem" template
+ *   - "💡 Quick tips: Monitor your crop regularly / water management / Report new pest signs"
  */
 function generateHelpfulErrorResponse(lang: string, fallbackAdvice: string): string {
-  // English-only — forceTranslateResponse() handles localization at runtime
-  return `🙏 Hello Farmer Friend!
-
-${fallbackAdvice ? fallbackAdvice + '\n\n' : ''}To answer your question, please provide:
-
-📋 **Tell me:**
-• What is your crop?
-• How old is the crop (days)?
-• What problem are you seeing?
-
-📸 If possible, send a photo of the affected area - I can give more accurate advice!
-
-💡 **Quick tips:**
-• Monitor your crop regularly
-• Maintain proper water management
-• Report any new pest/disease signs`;
+  const advice = (fallbackAdvice || '').trim();
+  if (advice) return advice;
+  console.error('[SYMBOLIC_CONTRACT_VIOLATION] generateHelpfulErrorResponse called with empty fallbackAdvice');
+  return '';
 }
 
 /**
- * Fallback: Build natural language response directly from DecisionOutput
- * Used when CommunicationGenerator fails or returns incomplete data
+ * SSOT-COMPLIANT FALLBACK BUILDER (used when CommunicationGenerator returns
+ * incomplete data). Renders ONLY DB-sourced fields.
+ *
+ * Removed (was hardcoded English / fabricated agronomic claims):
+ *   - "Hello farmer friend! 🌾"
+ *   - "⚠️ Stop: Safety check required" default
+ *   - "⏱️ Postpone spray - Spray when weather clears. Continue crop monitoring for now."
+ *   - "👀 No action required at this time. Continue monitoring."
+ *   - "📌 What to do now:" header label
+ *   - "Recommended treatment" placeholder product name
+ *   - timingLabels map ("Spray in the morning 6-10 AM" / "Evening 4-6 PM" / "Any time of day")
+ *   - English labels "Action:" / "Reason:" / "Knowledge:" / "Alternative measures:" / "Expected efficacy:"
+ *   - "✅ Best wishes! 🙏" closing
  */
 async function buildResponseFromDecisionOutput(decision: any, language: string, supabaseClient?: any): Promise<string> {
   if (!decision) {
     return getGenericMonitoringMessage(language);
   }
-  
+
   const parts: string[] = [];
-  
-  // English-only — forceTranslateResponse() handles localization at runtime
-  parts.push('Hello farmer friend! 🌾');
-  
   const primary = decision.primary_decision;
-  
-  // Status handling
+
   if (decision.status === 'BLOCKED') {
-    const blockedReason = decision.blocked_actions?.[0]?.reason || 'Safety check required';
-    parts.push(`⚠️ **Stop:** ${blockedReason}`);
-    return parts.join('\n\n');
+    const blockedReason = (decision.blocked_actions?.[0]?.reason || '').toString().trim();
+    if (blockedReason) return blockedReason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: BLOCKED with no blocked_actions[0].reason');
+    return '';
   }
-  
+
   if (decision.status === 'WEATHER_DELAYED') {
-    parts.push('⏱️ **Postpone spray** - Spray when weather clears. Continue crop monitoring for now.');
-    return parts.join('\n\n');
+    const reason = (decision.weather_delay_reason || decision.primary_decision?.application_details?.reason_text || '').toString().trim();
+    if (reason) return reason;
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: WEATHER_DELAYED with no DB-sourced reason');
+    return '';
   }
-  
-  // Action type
+
   if (primary?.action_type === 'NO_ACTION' || primary?.action_type === 'MONITOR_ONLY') {
-    parts.push('👀 **No action required at this time.** Continue monitoring.');
-
     const app = primary?.application_details || {};
-    if (app.action_text) parts.push(`\n🧾 **Action:** ${app.action_text}`);
-    if (app.reason_text) parts.push(`\n🔍 **Reason:** ${app.reason_text}`);
-    if (app.knowledge_text) parts.push(`\n📚 **Knowledge:** ${app.knowledge_text}`);
-
+    if (app.action_text) parts.push(String(app.action_text).trim());
+    if (app.reason_text) parts.push(String(app.reason_text).trim());
+    if (app.knowledge_text) parts.push(String(app.knowledge_text).trim());
+    if (parts.length === 0) {
+      console.error(`[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: ${primary.action_type} with no rich texts`);
+      return '';
+    }
     return parts.join('\n\n');
   }
-  
-  // Primary recommendation
+
   if (primary) {
     const appDetails = primary.application_details || {};
     const richData = extractRichRuleData(primary, appDetails);
     const rawProductName = richData.active_ingredient || appDetails.product_name || '';
-    const productName = rawProductName ? getProductName(rawProductName, language) : 'Recommended treatment';
-    const dosage = richData.dosage_per_acre || appDetails.concentration || '';
-    const timing = primary.timing?.best_time_of_day || 'MORNING';
+    const productName = rawProductName ? getProductName(rawProductName, language) : '';
+    const dosage = (richData.dosage_per_acre || appDetails.concentration || '').toString().trim();
+    const timing = primary.timing?.best_time_of_day || '';
     const method = richData.application_method || appDetails.method || '';
-    
-    parts.push('📌 **What to do now:**');
-    
-    const productLine = dosage ? `${productName} @ ${dosage}` : productName;
-    parts.push(productLine);
 
-    // PRODUCT MAPPING: Append market brand names
+    if (!productName) {
+      console.error('[SYMBOLIC_CONTRACT_VIOLATION] buildResponseFromDecisionOutput: primary decision missing active_ingredient/product_name');
+    }
+
+    const productLine = productName
+      ? (dosage ? `${productName} @ ${dosage}` : productName)
+      : (dosage ? `@ ${dosage}` : '');
+    if (productLine) parts.push(productLine);
+
     if (richData.active_ingredient && supabaseClient) {
       try {
         const cropCode = decision.metadata?.crop_code || primary?.target?.crop || '';
@@ -3321,53 +3247,46 @@ async function buildResponseFromDecisionOutput(decision: any, language: string, 
         console.warn(`[ProductMapping] Lookup failed in fallback builder:`, err);
       }
     }
-    
+
     if (method) {
       const methodText = getMethodTranslation(method, language);
-      parts.push(`📍 ${methodText}`);
+      if (methodText) parts.push(methodText);
     }
-    
-    const timingLabels: Record<string, string> = {
-      MORNING: 'Spray in the morning 6-10 AM',
-      EVENING: 'Spray in the evening 4-6 PM',
-      ANY: 'Any time of day'
-    };
-    parts.push(`⏰ ${timingLabels[timing] || timingLabels.MORNING}`);
-    
-    // Rich SSOT texts
-    const actionText = appDetails.action_text as string | undefined;
-    const reasonText = appDetails.reason_text as string | undefined;
-    if (actionText) parts.push(`\n🧾 **Action:** ${actionText}`);
-    if (reasonText) parts.push(`\n🔍 **Reason:** ${reasonText}`);
-    
+
+    // Timing: emit raw enum code only — narration/i18n layer localizes.
+    if (timing) parts.push(`[${timing}]`);
+
+    const actionText = (appDetails.action_text as string | undefined)?.trim();
+    const reasonText = (appDetails.reason_text as string | undefined)?.trim();
+    if (actionText) parts.push(actionText);
+    if (reasonText) parts.push(reasonText);
+
     const efficacy = primary.expected_outcomes?.efficacy_percent;
-    if (efficacy) {
-      parts.push(`📊 Expected efficacy: ${efficacy}%`);
-    }
+    if (efficacy) parts.push(`${efficacy}%`);
   }
-  
-  // Secondary actions
+
   if (decision.secondary_actions && decision.secondary_actions.length > 0) {
-    parts.push('\n🔄 **Alternative measures:**');
     decision.secondary_actions.slice(0, 2).forEach((alt: any) => {
       if (alt.action) {
         const translatedAction = getActionTranslation(alt.action, language);
-        parts.push(`• ${translatedAction}`);
+        if (translatedAction) parts.push(`• ${translatedAction}`);
       }
     });
   }
-  
-  parts.push('\n✅ Best wishes! 🙏');
-  
+
   return parts.join('\n');
 }
 
 /**
- * Get generic monitoring message when no decision output is available
+ * SSOT-COMPLIANT: when no decision output is available we have nothing to
+ * say. Returning a hardcoded "continue monitoring" sentence violates
+ * Agronomic-Safety-Negligence (e.g., it would suppress urgent-pest treatment).
+ *
+ * Removed: "Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues."
  */
 function getGenericMonitoringMessage(_language: string): string {
-  // English-only — forceTranslateResponse() handles localization at runtime
-  return 'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.';
+  console.error('[SYMBOLIC_CONTRACT_VIOLATION] getGenericMonitoringMessage called — no DB-sourced text available');
+  return '';
 }
 
 /**
@@ -3415,7 +3334,8 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
     const urgency = getText(immediate.urgency_indicator?.text);
     
     if (heading || summary) {
-      parts.push(`\n${emoji} ${heading || 'What to do now:'}`);
+      // SSOT: only emit the DB-sourced heading. Do not invent "What to do now:" when missing.
+      if (heading) parts.push(`\n${emoji} ${heading}`);
       if (summary) parts.push(summary);
       if (urgency) parts.push(`⏰ ${urgency}`);
     }
@@ -3427,9 +3347,10 @@ function flattenCommunicationToText(comm: any, language: string, requires?: any)
     const heading = getText(howTo.heading);
     if (heading) parts.push(`\n🔧 ${heading}`);
     
-    // Materials
+    // Materials — DB-sourced items only; no hardcoded "Materials:" English label.
     if (howTo.materials_needed?.items?.length > 0) {
-      parts.push('🛒 Materials:');
+      const materialsHeading = getText(howTo.materials_needed?.heading);
+      if (materialsHeading) parts.push(`🛒 ${materialsHeading}`);
       howTo.materials_needed.items.forEach((item: any) => {
         const name = getText(item.name);
         if (name && name !== 'Unknown product') parts.push(`• ${name} - ${item.quantity || ''}`);

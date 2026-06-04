@@ -1,144 +1,102 @@
+# Deep Audit: Hardcoded Text in `ai-agriculture-chat/index.ts`
 
-# Crop Variety Integration Plan — master_companies × master_products × crops
+## TL;DR
+You are correct. Despite the architecture mandate ("100% of agronomic + farmer-facing text originates from the symbolic decision brain / DB; LLM is pure narrator"), `index.ts` still contains **at least 12 hardcoded English template functions** that bypass the symbolic brain and are wired directly into the primary response pipeline. They violate the **Symbolic Engine Strict Invariants**, **Layer Responsibility Model**, and **LLM Response Generator Narration-Only v2** contracts.
 
-## 1. Goal
+---
 
-Treat seed varieties as first-class **products** belonging to a **company** in the existing `master_*` catalog, link each variety to one or more crops, and make the whole catalog manageable from both the **admin portal** (global) and the **tenant portal** (curated subset / private varieties). All farmer-facing tables (`land_crops`, `crop_history`, baselines, schedules, market prices) gain a clean FK to the chosen variety — replacing today's free-text `crop_variety` strings.
+## Evidence — Hardcoded strings still in `index.ts`
 
-## 2. Current State (audit summary)
+| Line | Hardcoded text | Function |
+|---|---|---|
+| 2519 | `'🌾 Hello farmer friend!'` | `generateValidationFailureFallback` |
+| 2522 | `'📌 **What to do now:**'` | `generateValidationFailureFallback` |
+| 2575 | `'🌾 Hello Farmer Friend!\nI encountered a technical issue...📞 For urgent help: Contact your nearest KVK.'` | `generateValidationFailureFallback` |
+| 2600 | `'\n✅ Best wishes! 🙏'` | `generateValidationFailureFallback` |
+| 2607–2617 | Multi-line "Hello Farmer Friend / technical issue / KVK" template | `generateValidationFailureFallback` |
+| 2630 | `'Hello farmer friend! 🌾'` + `'⚠️ Unable to provide recommendations...'` | `generateAllActionsFilteredResponse` |
+| 2644–2651 | `categoryLabels` map (Regulatory / Safety / Seasonal / Weather / Economic / Compatibility / Other Reasons) | `generateAllActionsFilteredResponse` |
+| 3059, 3070, 3072, 3076, 3079 | "Hello farmer friend / I understand you're dealing with X / What is the crop name / growth stage / symptoms / send a photo" | `generateNoRecommendationsFallback` |
+| 3091, 3098, 3103, 3109 | "Hello farmer friend / Stop / Postpone spray / No action required / Continue monitoring" | `buildFormattedRecommendationsList` |
+| 3224 | `'Please provide more details about your question. Tell us the crop name, problem, and symptoms.'` | `generateClarificationPrompt` |
+| 3241–3255 | Multi-line "🙏 Hello Farmer Friend / Quick tips / Monitor your crop / water management" template | `generateHelpfulErrorResponse` |
+| 3270, 3282, 3288, 3303, 3331–3335, 3351, 3360 | "Hello farmer / Postpone spray / No action / Recommended treatment / Spray in the morning 6-10 AM / Spray in the evening 4-6 PM / Any time of day / Alternative measures / Best wishes" | `buildResponseFromDecisionOutput` |
+| 3370 | `'Hello! 🌾 Continue monitoring your crop. Let us know if you notice any issues.'` | `getGenericMonitoringMessage` |
 
-- `master_companies` (24 rows) — already supports seed companies (`company_type`, `sector`, `product_categories[]`, `industry_category`).
-- `master_products` (83 rows, 0 of type `seed`) — already has every field needed for a seed variety: `product_type`, `seed_variety_details jsonb`, `germination_rate`, `purity_percentage`, `suitable_crops jsonb`, `suitable_soil_types`, `recommended_season`, `crop_stages`, `translations jsonb`, `images`, `documents`, `status`, `approved_by`, `is_featured`, `popularity_score`, `company_id`, `category_id`.
-- `master_product_categories` (65 rows, self-referencing tree) — can host a "Seeds → Cereals → Paddy" hierarchy.
-- `crops` (112 rows) — **no variety column**, no FK from anywhere.
-- `crop_baseline_guidelines.crop_variety` — CSV text string (not queryable).
-- `land_crops.crop_variety`, `crop_history.variety` — free text, no FK.
-- `crop_templates` — region+variety schedule table, empty.
-- No frontend variety picker exists.
+These functions are invoked from the **main response pipeline** at lines **1235, 1565, 1585, 1687, 2997, 3002, 3024, 3042, 3047** — i.e., they are not dead code; they fire on common branches (NO_RECS, BLOCKED, WEATHER_DELAYED, NEEDS_CLARIFICATION, SYSTEM_ERROR, VALIDATION_FAIL, ALL_FILTERED).
 
-The data model is **already 90% there** — varieties just haven't been seeded as `master_products` of type `seed`, and the downstream tables don't yet reference them.
+---
 
-## 3. Architecture
+## Why this code is here (root cause)
 
-```text
-master_companies (seed co.)
-        │ 1
-        ▼ N
-master_products  ──────────►  master_product_variety_crops  ◄──── crops
- (product_type='seed')         (N:M: one variety can suit         (master)
-                                multiple crops; one crop has
-                                many varieties)
-        ▲
-        │ FK variety_id (nullable)
-        │
-   land_crops, crop_history, crop_baseline_guidelines_v2,
-   crop_schedules, market_prices, decision rules
+Each hardcoded block is preceded by a comment like `CRITICAL FIX`, `PRODUCTION FIX`, or `English-only — forceTranslateResponse() handles localization at runtime`. The history is:
+
+1. Symbolic brain originally returned only structured payloads. When it returned `NO_RECS` / `BLOCKED` / errors, the narrator had nothing to say.
+2. Instead of fixing the symbolic brain to always emit `fallback_text` (the v2 contract), engineers patched **defensive English templates** directly into `index.ts`.
+3. To "fix" the language problem, they added `forceTranslateResponse()` (line 1606, 2148) — an **LLM round-trip** that re-translates the hardcoded English at runtime. This is exactly the "parallel authority" anti-pattern the v2 narration contract forbids: the LLM is now both generating *and* rewriting agronomic-adjacent text, with no DB anchor.
+4. The comments openly admit the design: *"English-only fallback — forceTranslateResponse() handles localization at runtime"*. That sentence is the smoking gun — it normalizes hardcoded English as a "feature".
+
+So the loophole is **two layered violations**:
+- Hardcoded English templates in the orchestrator (violates Symbolic Engine Strict Invariants).
+- A second LLM translation pass that masks them at runtime (violates Layer Responsibility Model + Narration-Only v2 + Canonical Language Governance).
+
+---
+
+## Why it matters (data-accuracy impact)
+
+- **Greetings, tips, monitoring advice** ("Monitor your crop regularly", "Maintain proper water management") are *agronomic* statements not sourced from `decision_rules` — they are fabricated.
+- **Timing labels** ("Spray in the morning 6–10 AM", "Spray in the evening 4–6 PM") override DB `timing.best_time_of_day` with hardcoded windows.
+- **Category labels** (Regulatory / Safety / Seasonal) are not the canonical labels stored in DB filter metadata.
+- `forceTranslateResponse` then sends this English to GPT-4o-mini, which can **rephrase, drop emojis, or inject local idioms** — the user sees text that no rule ever produced.
+- Violates the Core memory rule: *"100% of agronomic advice MUST originate from database; LLM is restricted exclusively to translation/narration."*
+
+---
+
+## Remediation plan (Phase by phase)
+
+### Phase A — Surface the violation in the symbolic brain contract
+1. Make `fallback_text` truly **required** on every `OrchestratorResponse` branch (`READY`, `NEEDS_CLARIFICATION`, `NO_MATCH`, `BLOCKED`, `ESCALATE`, `WEATHER_DELAYED`, `SYSTEM_ERROR`, `VALIDATION_FAIL`, `ALL_FILTERED`). The symbolic brain — not `index.ts` — owns this text, sourced from a new `decision_fallback_texts` DB table keyed by `(status, intent, language)`.
+2. Add a runtime invariant in `index.ts`: if `fallback_text` is missing, log `SYMBOLIC_CONTRACT_VIOLATION` and short-circuit to a **single** neutral DB-sourced string — never build prose in TS.
+
+### Phase B — Delete the hardcoded template functions
+Remove (after Phase A lands):
+- `generateValidationFailureFallback`
+- `generateAllActionsFilteredResponse`
+- `generateNoRecommendationsFallback`
+- `buildFormattedRecommendationsList` (English template parts only — keep DB field reads)
+- `generateClarificationPrompt`
+- `generateHelpfulErrorResponse`
+- `generateGenericAcknowledgment`
+- `buildResponseFromDecisionOutput` (English template parts only)
+- `getGenericMonitoringMessage`
+- The English `timingLabels`, `categoryLabels`, and "Best wishes" / "Hello farmer friend" string literals.
+
+Replace each call site (1235, 1565, 1585, 1687, 2997, 3002, 3024, 3042, 3047) with a single call:
+```
+responseContent = symbolicResponse.fallback_text ?? await narrator.narrate(symbolicResponse, lang);
 ```
 
-- A **variety = master_product where `product_type='seed'`**. No new product table.
-- Crop ↔ variety mapping is normalized in a new join table (replaces the `suitable_crops jsonb` for seeds, which stays as a cache).
-- `tenant_products` (existing tenant catalog layer) controls which varieties a tenant exposes and lets them add **private** varieties (`company_id = tenant's master_company`, `visibility='tenant'`).
+### Phase C — Retire `forceTranslateResponse` as a band-aid
+- Keep it only as a **language-validation gate** (reject + log if narrator output isn't in target script). Stop using it to translate hardcoded English at runtime — once Phase B is done there is no English to translate.
+- Update `verifyLanguageConsistency` to call `SYMBOLIC_CONTRACT_VIOLATION` on failure instead of re-prompting an LLM.
 
-## 4. Database changes
+### Phase D — Migration + tests
+1. Migration: create `public.decision_fallback_texts (status, intent, lang, text, updated_at)` with GRANTs + RLS; seed canonical mr / hi / en / ta / te / kn / bn / gu / pa rows for every status.
+2. Add a Deno test asserting no string literal in `index.ts` matches `/(Hello farmer|farmer friend|Best wishes|Continue monitoring|technical issue|KVK|Spray in the morning)/i`.
+3. Add a contract test that mocks each `status` branch and asserts the response is byte-identical to the DB `fallback_text` (no LLM call).
 
-### 4.1 Extend `master_products`
-- Add `'seed'` to the allowed `product_type` values (drop/recreate CHECK if present).
-- Add columns specific to varieties (nullable, only used when `product_type='seed'`):
-  - `crop_id uuid` — primary crop (fast lookups, FK → `crops.id`).
-  - `variety_code text` — short code (e.g. `MTU-1010`), UNIQUE per `company_id`.
-  - `maturity_days_min int`, `maturity_days_max int`.
-  - `yield_potential_qtl_per_acre numeric`.
-  - `disease_resistance jsonb` (array of disease codes).
-  - `pest_tolerance jsonb`.
-  - `recommended_regions jsonb` (states/agro-climatic zones).
-  - `season text` (kharif/rabi/zaid/perennial).
-  - `seed_rate_kg_per_acre numeric`.
-  - `spacing jsonb` (`{row_cm, plant_cm}`).
-  - `parentage text`, `release_year int`, `released_by text` (ICAR / SAU / private).
-  - `label_hi text`, `label_mr text` (variety name in vernacular; existing `translations jsonb` is the catch-all for other languages).
+---
 
-Index: `(product_type, crop_id, status)` and GIN on `recommended_regions`.
+## Technical notes
+- Files touched (after approval): `supabase/functions/ai-agriculture-chat/index.ts`, the symbolic brain orchestrator under `decision/`, new migration under `supabase/migrations/`, new test under `supabase/functions/ai-agriculture-chat/__tests__/`.
+- No frontend changes required.
+- This is purely backend / SSOT enforcement work — no UI impact beyond removing fabricated greetings.
 
-### 4.2 New join table `master_product_variety_crops`
-```text
-id uuid PK
-product_id uuid FK master_products(id) ON DELETE CASCADE
-crop_id    uuid FK crops(id)            ON DELETE CASCADE
-is_primary boolean default false
-notes      text
-UNIQUE (product_id, crop_id)
-```
-GRANT select to anon+authenticated, all to service_role. RLS: public read, admin write.
+---
 
-### 4.3 Seed-category bootstrap
-- Insert into `master_product_categories`: top-level `Seeds`, with children `Cereals, Pulses, Oilseeds, Vegetables, Fruits, Cash Crops, Fodder`, each with `slug` aligned to `crop_groups`.
+## Open question before I implement
+Do you want me to:
+**(1)** Execute the full A→D refactor (new DB table + delete ~250 lines of hardcoded templates + tests), or
+**(2)** Do a smaller surgical pass that just deletes the hardcoded English and forces every branch to read `symbolic_decision.fallback_text` (failing loudly if missing), leaving the DB-seed work for a follow-up?
 
-### 4.4 Downstream FKs (all nullable to keep backfill safe)
-- `land_crops.variety_id uuid → master_products(id)` (keep `crop_variety text` as legacy until migrated).
-- `crop_history.variety_id uuid → master_products(id)`.
-- `crop_baseline_guidelines_v2.variety_id uuid → master_products(id)` (per-variety NPK overrides).
-- `crop_schedules.variety_id uuid → master_products(id)` (optional schedule overlay).
-- `market_prices.variety_id uuid → master_products(id)` (price quality grades).
-
-### 4.5 Tenant exposure
-- Reuse existing `tenant_products` table:
-  - `is_featured`, `is_visible`, `tenant_price_override`, `tenant_recommendation_priority`.
-  - Tenants can `INSERT` a `master_products` row scoped to their own `master_companies.tenant_id`, status `pending_review` until admin approves (or auto-approve if tenant has the `seed_catalog_admin` role).
-- RLS: tenant users see global `status='approved'` rows + their own pending rows; admin sees all.
-
-### 4.6 Helper view `v_crop_varieties`
-```sql
-SELECT mp.id AS variety_id, mp.name, mp.label_hi, mp.label_mr,
-       mp.variety_code, mp.maturity_days_min, mp.maturity_days_max,
-       mp.yield_potential_qtl_per_acre, mp.season,
-       c.id AS crop_id, c.value AS crop_code, c.label AS crop_label,
-       mc.id AS company_id, mc.name AS company_name, mc.logo_url,
-       mp.status, mp.is_featured, mp.popularity_score
-FROM master_products mp
-JOIN master_product_variety_crops mpvc ON mpvc.product_id = mp.id
-JOIN crops c ON c.id = mpvc.crop_id
-LEFT JOIN master_companies mc ON mc.id = mp.company_id
-WHERE mp.product_type = 'seed' AND mp.status = 'approved';
-```
-This single view powers every variety dropdown.
-
-## 5. Backfill / data migration
-
-1. **Seed initial varieties** (separate insert migration after schema lands) — load a curated list (~300 popular Indian varieties from ICAR/SAU) into `master_products` + the join table. Companies for public-domain varieties → ICAR / state SAU rows in `master_companies` (already partly there).
-2. **Parse legacy CSVs** in `crop_baseline_guidelines.crop_variety` → for each token, insert a variety if missing, then write `crop_baseline_guidelines_v2.variety_id`.
-3. **Backfill `land_crops.variety_id`** by fuzzy-matching existing `crop_variety` text against `master_products.name`/`variety_code` (logged report; unresolved rows stay text).
-
-## 6. Application / portal changes
-
-### Farmer app (`src/`)
-- New hook `useCropVarieties(cropId)` → `v_crop_varieties` filtered by crop, ordered by `is_featured DESC, popularity_score DESC`.
-- New component `<VarietySelector cropId value onChange>` — searchable, shows company logo, maturity, season; "Other / write-in" fallback for unknown varieties (saves text + leaves `variety_id` null).
-- Wire into `EnhancedCropSelector`, `EditLandWizard`, `AddLand`, `CropGrowthTracking`, schedule generation context.
-- Display variety badge on land cards, advisory header, market price rows.
-
-### Admin portal
-- New page **"Seed Varieties"** under existing master catalog: list / filter by company, crop, status; bulk import CSV; approve/reject pending tenant submissions; merge duplicates.
-- Reuse existing `master_products` admin CRUD with a dedicated `product_type='seed'` form variant.
-
-### Tenant portal
-- New tab **"My Seed Catalog"**: pick from global varieties (toggle visibility, set local price), or "Add private variety" form (creates `master_products` row tied to tenant's company, status `pending_review`).
-- Tenants can also mark recommended varieties per region they operate in.
-
-### Backend / AI
-- Advisory + schedule generators read variety attributes (maturity, season, resistance) to tune recommendations (e.g. shorter schedules for early-maturity varieties).
-- Decision rules can target by `variety_id` in addition to `crop_code`.
-
-## 7. Rollout phases
-
-1. **Phase 1 — Schema**: 4.1–4.4 migrations + view + RLS + GRANTs. No UI change yet.
-2. **Phase 2 — Admin CRUD + seed data**: load curated 300 varieties, admin UI to manage.
-3. **Phase 3 — Farmer variety picker**: integrate `<VarietySelector>` into land creation/edit; backfill `land_crops.variety_id`.
-4. **Phase 4 — Tenant catalog**: tenant portal pages + approval workflow.
-5. **Phase 5 — Downstream consumers**: per-variety baselines, schedules, market prices, advisory targeting; deprecate free-text `crop_variety` columns.
-
-## 8. Open questions (please confirm before Phase 1)
-
-- Should **tenant-private varieties** be visible to that tenant's farmers only, or shared globally after admin approval? (Affects RLS.)
-- Do we want a **separate `seed_variety` product_type** or keep using `'seed'` (recommended, simpler)?
-- For Phase 2 seed list: do you have an internal CSV/sheet, or should we curate from public ICAR/SAU sources?
-- Should farmers be allowed to type a free variety name (stored as text only) when their variety isn't catalogued, with a background job suggesting it for admin review?
+Option 1 is the correct architectural fix. Option 2 exposes every missing `fallback_text` in the symbolic brain so we can find and seed them quickly.
