@@ -1091,38 +1091,31 @@ serve(async (req) => {
                   console.error(`   First 5 rule_ids: [${matchedResponses.slice(0, 5).map((r: any) => r.rule_id).join(', ')}]`);
                   console.error(`   First rule content: action_text=${!!matchedResponses[0]?.action_text}, i18n_key=${!!matchedResponses[0]?.i18n_key}, reason_text=${!!matchedResponses[0]?.reason_text}, knowledge_text=${!!matchedResponses[0]?.knowledge_text}`);
                 }
-                console.error(`   generating SYSTEM_FALLBACK`);
-                
-                rawDecisionOutput.status = 'SYSTEM_FALLBACK';
-                rawDecisionOutput.primary_decision = {
-                  action_type: 'MONITOR_ONLY',
-                  rule_id: 'INVARIANT_FALLBACK',
-                  specific_action: 'CONTINUE_MONITORING',
-                  target: {},
-                  urgency: 'NON_URGENT',
-                  timing: {
-                    recommended_start: new Date().toISOString(),
-                    recommended_end: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    weather_dependency: false,
-                    reason: 'System fallback - primary decision invariant violated'
-                  },
-                  application_details: {
-                    product_name: 'Continue monitoring',
-                    product_type: 'CULTURAL',
-                    concentration: 'Daily observation',
-                    coverage_instructions: 'Monitor crop health and look for symptoms',
-                    action_text: 'Continue monitoring your crop. If symptoms persist, upload a photo for diagnosis.',
-                    reason_text: 'Insufficient information to provide specific recommendation.',
-                    rule_id: 'INVARIANT_FALLBACK'
-                  },
-                  expected_outcomes: {
-                    efficacy_percent: 100,
-                    time_to_visible_effect_days: 'Ongoing',
-                    success_indicators: ['Early detection of issues']
-                  }
+                console.error(`   marking status=SYSTEM_ERROR (no fabricated MONITOR_ONLY)`);
+
+                // ─────────────────────────────────────────────────────────────
+                // SSOT FIX: Do NOT fabricate a MONITOR_ONLY decision with
+                // hardcoded English action_text / reason_text. Per core
+                // architecture invariant, 100% of agronomic advice must
+                // originate from the database. A fake "Continue monitoring"
+                // recommendation here is an Agronomic-Safety-Negligence risk
+                // (it could mask a high-urgency pest emergency).
+                //
+                // Instead: surface SYSTEM_ERROR so the response pipeline
+                // emits the orchestrator's own (DB-sourced) fallback_advice,
+                // or logs SYMBOLIC_CONTRACT_VIOLATION when that is also
+                // missing.
+                // ─────────────────────────────────────────────────────────────
+                rawDecisionOutput.status = 'SYSTEM_ERROR';
+                rawDecisionOutput.primary_decision = null;
+                rawDecisionOutput.invariant_violation = {
+                  reason: 'NO_ELIGIBLE_MATCHED_RESPONSES',
+                  raw_matched_count: rawMatchedCount,
+                  layered_matched_count: layeredMatchedCount,
+                  trace_id: traceId,
                 };
-                
-                console.log(`   📋 INVARIANT_FALLBACK decision generated`);
+
+                console.log(`   📋 SYSTEM_ERROR surfaced (no fabricated decision)`);
               }
             }
           }
