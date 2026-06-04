@@ -4532,9 +4532,11 @@ export class AIAgentOrchestrator {
       }
       
       // CRITICAL FIX 4: Check if clarification should be BYPASSED
-      // Skip clarification when farmer already selected an option
+      // FORENSIC AUDIT v9.0: the previous log message hard-coded "farmer already
+      // selected option" even when the bypass cause was DIRECT_MODE / advisory
+      // intent. Use a neutral message that accurately describes the bypass.
       if (bypassClarification) {
-        console.log(`   🚫 BYPASSING clarification - farmer already selected option, proceeding to Decision Brain`);
+        console.log(`   🚫 BYPASSING clarification (cause: ${directModeBypass ? 'DIRECT_MODE/advisory intent' : 'option-selected or symbol-induction'}) - proceeding to Decision Brain`);
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
