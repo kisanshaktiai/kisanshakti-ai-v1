@@ -62,6 +62,9 @@ No `.range()`, no pagination. PostgREST default limit is **1000 rows**, which ma
 
 Six PRs, ordered by impact / risk. Each is independently shippable. No frontend changes.
 
+**Status (2026-06-04):** P0 mapBundledCategory ✅ shipped · P0 pagination ✅ shipped · P1 Marathi vocab ✅ shipped (migration) · P1 language tag ✅ shipped · P1 fertilizer firing — contract-violation log ✅ shipped (active rescue path deferred — needs DB rule rendering design) · P2 GDD `DATA_QUALITY:gdd_unwired` warning ✅ shipped (weather wiring deferred) · P2 NDVI seed rule ✅ shipped (migration); `ndvi_value` already in rule input · P3 obs validator dedup ✅ shipped · P3 clarification bypass log gating ✅ shipped · P3 duplicate ContextTracer call — not reproduced (single call site in orchestrator).
+
+
 ## P0 — Restore rule firing (root cause of `no_action_needed`)
 
 **File:** `supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts` (`mapBundledCategory`, ~line 1581)
