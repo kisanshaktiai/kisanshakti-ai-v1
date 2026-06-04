@@ -370,18 +370,31 @@ const DISTRIBUTION_MAP: Record<string, CanonicalDistributionSymbol> = {
 // LANGUAGE DETECTION
 // ============================================================================
 
-function detectLanguage(text: string): string {
+function detectLanguage(text: string, canonicalLang?: string): string {
+  // FORENSIC AUDIT v9.0: if the orchestrator already locked a canonical
+  // Devanagari language upstream, trust that — re-detecting here was
+  // producing 'hi' for Marathi queries like "सध्या कोणती खते द्यावीत?"
+  // that lack the small common-word vocabulary used below.
+  if (canonicalLang && (canonicalLang === 'mr' || canonicalLang === 'hi' || canonicalLang === 'en')) {
+    return canonicalLang;
+  }
+
   const marathiPattern = /[\u0900-\u097F]/; // Devanagari
-  const hindiCommonWords = ['है', 'हैं', 'और', 'का', 'की', 'को', 'में', 'से', 'पर'];
-  const marathiCommonWords = ['आहे', 'आहेत', 'आणि', 'चे', 'ची', 'ला', 'मध्ये', 'वर'];
-  
+  // Hindi-only function words
+  const hindiCommonWords = ['है', 'हैं', 'और', 'का', 'की', 'को', 'में', 'से', 'पर', 'कौन', 'कौनसा', 'क्या', 'कितना', 'कैसे', 'दीजिए', 'दीजिये', 'चाहिए'];
+  // Marathi-only function words (incl. fem-pl/imperative verbs that show up in fertilizer/irrigation queries)
+  const marathiCommonWords = ['आहे', 'आहेत', 'आणि', 'चे', 'ची', 'ला', 'मध्ये', 'वर', 'कोणती', 'कोणत्या', 'कोणते', 'कोणता', 'द्यावे', 'द्यावी', 'द्यावीत', 'द्याव्यात', 'सध्या', 'आता', 'कधी', 'किती'];
+
   if (!marathiPattern.test(text)) {
     return 'en';
   }
-  
+
   const marathiScore = marathiCommonWords.filter(w => text.includes(w)).length;
   const hindiScore = hindiCommonWords.filter(w => text.includes(w)).length;
-  
+
+  // Tie → Marathi (priority language for this app); ambiguous Devanagari w/ no
+  // function-word hits also defaults to Marathi rather than Hindi.
+  if (marathiScore === 0 && hindiScore === 0) return 'mr';
   return marathiScore >= hindiScore ? 'mr' : 'hi';
 }
 
@@ -389,10 +402,10 @@ function detectLanguage(text: string): string {
 // CORE INDUCTION FUNCTION
 // ============================================================================
 
-export function induceCanonicalSymbols(farmerInput: string): LanguageInductionResult {
+export function induceCanonicalSymbols(farmerInput: string, canonicalLang?: string): LanguageInductionResult {
   const startTime = Date.now();
   const normalizedText = farmerInput.toLowerCase().trim();
-  const detectedLanguage = detectLanguage(normalizedText);
+  const detectedLanguage = detectLanguage(normalizedText, canonicalLang);
   
   const symptoms: InducedSymbol[] = [];
   const affectedParts: InducedSymbol[] = [];

@@ -2635,7 +2635,10 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       console.log(`\n   🔤 Stage 1.5b: Legacy Induction (v${LANGUAGE_INDUCTION_VERSION}) [FALLBACK]...`);
       
-      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage);
+      // FORENSIC AUDIT v9.0: pass the upstream canonical language so the
+      // induction layer's lightweight detector does not flip mr → hi when
+      // the input lacks the small set of Marathi common words it checks for.
+      const inductionResult: LanguageInductionResult = induceCanonicalSymbols(processedFarmerMessage, normalizedInput.detected_language);
       agentsUsed.push('LANGUAGE_INDUCTION_LAYER');
       
       console.log(`      ${getInductionSummary(inductionResult)}`);
@@ -4529,9 +4532,11 @@ export class AIAgentOrchestrator {
       }
       
       // CRITICAL FIX 4: Check if clarification should be BYPASSED
-      // Skip clarification when farmer already selected an option
+      // FORENSIC AUDIT v9.0: the previous log message hard-coded "farmer already
+      // selected option" even when the bypass cause was DIRECT_MODE / advisory
+      // intent. Use a neutral message that accurately describes the bypass.
       if (bypassClarification) {
-        console.log(`   🚫 BYPASSING clarification - farmer already selected option, proceeding to Decision Brain`);
+        console.log(`   🚫 BYPASSING clarification (cause: ${directModeBypass ? 'DIRECT_MODE/advisory intent' : 'option-selected or symbol-induction'}) - proceeding to Decision Brain`);
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -5460,6 +5465,28 @@ export class AIAgentOrchestrator {
           console.error(`   Matched Responses: ${layeredRuleResult.matched_responses?.length || 0}`);
           console.error(`   ACTION: Check condition_code and observable_characteristics in decision_rules table`);
         }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // FORENSIC AUDIT v9.0: NUTRITION/IRRIGATION INTENT FIRING GUARANTEE
+        // When farmer asks "which fertilizer to apply now?" at a stage flagged
+        // critical_nutrition/critical_irrigation, returning zero rules is a
+        // correctness bug. Surface a SYMBOLIC_CONTRACT_VIOLATION so it's caught
+        // in logs and add a deterministic fallback hint pointing to the gap.
+        // ═══════════════════════════════════════════════════════════════════════════
+        try {
+          const _nutrientIntents = new Set(['FERTILIZER_SCHEDULE','NUTRIENT_DEFICIENCY','APPLY_FERTILIZER','FERTILIZE']);
+          const _irrigationIntents = new Set(['IRRIGATION_SCHEDULE','IRRIGATE','WATER_NEED']);
+          const _intent = String(intentCode || '').toUpperCase();
+          const _criticalNutrition = !!(phenologyResult as any)?.critical_nutrition_needed;
+          const _criticalIrrigation = !!(phenologyResult as any)?.critical_irrigation_needed;
+          if (layeredRuleResult.rules_matched === 0 && (
+              (_nutrientIntents.has(_intent) && _criticalNutrition) ||
+              (_irrigationIntents.has(_intent) && _criticalIrrigation)
+          )) {
+            console.error(`🚨 [SYMBOLIC_CONTRACT_VIOLATION] intent=${_intent} at critical_nutrition=${_criticalNutrition}/critical_irrigation=${_criticalIrrigation} but ZERO rules fired. Crop=${canonicalState.crop_type} Stage=${canonicalState.crop_stage}. ACTION: seed a stage-applicable PRESCRIPTION rule or relax condition_code on existing nutrition rules; do NOT let this fall through to no_action_needed.`);
+          }
+        } catch (_e) { /* non-fatal logging guard */ }
+
         
         if (safeSafetyBlocks.length > 0) {
           console.warn(`   ⚠️ Safety Blocks: ${safeSafetyBlocks.map(b => b?.message || 'unknown').join(', ')}`);
