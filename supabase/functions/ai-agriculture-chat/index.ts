@@ -2498,9 +2498,17 @@ function validateResponseBeforeSave(params: {
 }
 
 /**
- * Generate fallback response when validation fails
- * CRITICAL FIX: Use available actions if present instead of generic "technical issue"
- * Ensures user always gets helpful feedback even on failures
+ * SSOT-COMPLIANT FALLBACK: renders ONLY DB-sourced product/dosage data.
+ * NO hardcoded greetings, prose, or agronomic claims. If the symbolic brain
+ * provided no usable actions, returns the orchestrator's own `fallback_advice`
+ * (DB-sourced) or empty string after logging SYMBOLIC_CONTRACT_VIOLATION.
+ *
+ * Removed (was hardcoded English):
+ *   - "🌾 Hello farmer friend!" greeting
+ *   - "📌 **What to do now:**" header (UI label, not DB)
+ *   - "I encountered a technical issue..." prose
+ *   - "📞 For urgent help: Contact your nearest KVK" prose
+ *   - "✅ Best wishes! 🙏" closing
  */
 function generateValidationFailureFallback(
   lang: string,
@@ -2508,113 +2516,53 @@ function generateValidationFailureFallback(
   orchestratorResponse: OrchestratorResponse,
   actionsReturned?: any[] | null
 ): string {
-  // CRITICAL FIX: If we have actions, build a minimal response from them
-  // This prevents "technical issue" messages when we actually have recommendations
+  const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
+  const isValidProductName = (name: string | null | undefined): boolean => {
+    if (!name) return false;
+    const cleanName = name.toLowerCase().trim();
+    return cleanName.length > 2 && !invalidNames.includes(cleanName);
+  };
+
   if (actionsReturned && actionsReturned.length > 0) {
-    console.log(`   🔄 Validation fallback: Building response from ${actionsReturned.length} available actions`);
-    
     const parts: string[] = [];
-    
-    // Greeting
-    parts.push('🌾 Hello farmer friend!');
-    
-    // Header
-    parts.push('📌 **What to do now:**');
-    
-    // Extract actions - with STRICT validation to prevent placeholder content
-    const invalidNames = ['none', 'n/a', 'null', 'undefined', 'unknown', '', 'recommended treatment', 'additional measure'];
-    
-    const isValidProductName = (name: string | null | undefined): boolean => {
-      if (!name) return false;
-      const cleanName = name.toLowerCase().trim();
-      return cleanName.length > 2 && !invalidNames.includes(cleanName);
-    };
-    
+    let recNumber = 1;
+
     const primaryAction = actionsReturned.find(a => a.type === 'primary');
-    let hasValidPrimaryAction = false;
-    
     if (primaryAction) {
-      const rawProductName = primaryAction.product_name || 
-                             primaryAction.application_details?.product_name || 
+      const rawProductName = primaryAction.product_name ||
+                             primaryAction.application_details?.product_name ||
                              primaryAction.title;
-      
-      // CRITICAL: Validate product name is meaningful
       if (isValidProductName(rawProductName)) {
-        hasValidPrimaryAction = true;
-        
-        // CRITICAL FIX: Translate chemical name to farmer-friendly language
         const translatedProductName = getProductName(rawProductName, lang);
-        
         const rawDosage = primaryAction.dosage || primaryAction.application_details?.dosage;
-        const isValidDosage = rawDosage && 
-                              rawDosage !== 'N/A' && 
-                              rawDosage !== 'See product label' &&
-                              rawDosage.length > 0;
-        
-        let actionText = `1. **${translatedProductName}**`;
-        // Only add dosage if not already included in translation
-        if (isValidDosage && !translatedProductName.includes('/')) actionText += ` - ${rawDosage}`;
-        parts.push(actionText);
+        const isValidDosage = rawDosage && rawDosage !== 'N/A' && rawDosage !== 'See product label' && rawDosage.length > 0;
+        let line = `${recNumber}. **${translatedProductName}**`;
+        if (isValidDosage && !translatedProductName.includes('/')) line += ` — ${rawDosage}`;
+        parts.push(line);
+        recNumber++;
       }
     }
-    
-    // If no valid primary action, check secondary actions
-    if (!hasValidPrimaryAction) {
-      console.log(`   ⚠️ Primary action invalid, checking secondary actions...`);
-      
-      // Check if any secondary action has valid data
-      const validSecondaryActions = actionsReturned.filter(a => {
-        if (a.type === 'primary') return false;
-        const name = a.action || a.title || a.product_name;
-        return isValidProductName(name);
-      });
-      
-      if (validSecondaryActions.length === 0) {
-        // NO valid actions at all - use technical issue fallback
-        console.log(`   ⚠️ No valid actions found in actionsReturned, using technical fallback`);
-        const fallbackText = `🌾 Hello Farmer Friend!\n\nI encountered a technical issue. Please try again or describe your problem in more detail.\n\n📞 For urgent help: Contact your nearest KVK.`;
-        return fallbackText;
-      }
-      
-      // Use valid secondary actions - TRANSLATE to farmer-friendly language
-      validSecondaryActions.slice(0, 3).forEach((action, idx) => {
-        const rawActionName = action.action || action.title || action.product_name;
+
+    const secondaryActions = actionsReturned.filter(a => a.type !== 'primary');
+    for (const action of secondaryActions.slice(0, 3)) {
+      const rawActionName = action.action || action.title || action.product_name;
+      if (isValidProductName(rawActionName)) {
         const translatedName = getProductName(rawActionName, lang);
-        parts.push(`${idx + 1}. **${translatedName}**`);
-      });
-    } else {
-      // Add secondary actions (only if primary was valid) - TRANSLATE names
-      const secondaryActions = actionsReturned.filter(a => a.type === 'secondary');
-      let actionIdx = 2;
-      for (const action of secondaryActions.slice(0, 2)) {
-        const rawActionName = action.action || action.title;
-        if (isValidProductName(rawActionName)) {
-          const translatedName = getProductName(rawActionName, lang);
-          parts.push(`${actionIdx}. **${translatedName}**`);
-          actionIdx++;
-        }
+        parts.push(`${recNumber}. **${translatedName}**`);
+        recNumber++;
       }
     }
-    
-    // Closing
-    parts.push('\n✅ Best wishes! 🙏');
-    
-    return parts.join('\n\n');
+
+    if (parts.length > 0) return parts.join('\n');
   }
-  
-  // Original fallback when no actions available
-  // English-only fallback — forceTranslateResponse() handles localization at runtime
-  return `🌾 **Hello Farmer Friend!**
 
-I encountered a technical issue while preparing recommendations. Please provide the following information:
+  // No DB-sourced actions available — surface the orchestrator's own fallback_advice (also DB-sourced)
+  // or log a contract violation and return empty so upstream can decide what to do.
+  const advice = orchestratorResponse?.error?.fallback_advice?.trim() || '';
+  if (advice) return advice;
 
-1. What is your crop?
-2. What is the current problem?
-3. What is the crop stage?
-
-With this information, I can provide you proper guidance.
-
-📞 For urgent help: Contact your nearest Krishi Vigyan Kendra (KVK).`;
+  console.error(`[SYMBOLIC_CONTRACT_VIOLATION] generateValidationFailureFallback called with no DB-sourced actions and no fallback_advice. validationErrors=${JSON.stringify(validationErrors)}`);
+  return '';
 }
 
 /**
