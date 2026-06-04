@@ -2569,47 +2569,34 @@ function generateValidationFailureFallback(
  * Generate response when ALL actions were filtered
  */
 function generateAllActionsFilteredResponse(
-  filteredActions: any[], 
+  filteredActions: any[],
   lang: string
 ): string {
+  // SSOT-COMPLIANT: render ONLY DB-sourced reasons grouped by their canonical
+  // category code. NO hardcoded greetings, NO English category labels, NO
+  // "what to do next" prose. The category code is a stable enum value the
+  // narration layer can localize via i18n; here we only emit the raw code so
+  // it never masks a missing DB string.
   const parts: string[] = [];
-  
-  // Greeting
-  parts.push('Hello farmer friend! 🌾');
-  
-  // Explanation
-  parts.push('⚠️ Unable to provide recommendations at this time. Here\'s why:');
-  
-  // List filtered reasons by category
+
   const categoryReasons: Record<string, string[]> = {};
   filteredActions.forEach(action => {
     const category = action.filter_category || 'UNKNOWN';
     if (!categoryReasons[category]) categoryReasons[category] = [];
-    categoryReasons[category].push(action.reason || action.action);
+    const reason = (action.reason || action.action || '').toString().trim();
+    if (reason) categoryReasons[category].push(reason);
   });
-  
-  // English-only category labels — forceTranslateResponse() handles localization
-  const categoryLabels: Record<string, string> = {
-    REGULATORY: '📋 Regulatory Restrictions',
-    SAFETY: '🛡️ Safety Reasons',
-    SEASONAL: '📅 Seasonal Restrictions',
-    WEATHER: '🌧️ Weather Conditions',
-    ECONOMIC: '💰 Economic Factors',
-    COMPATIBILITY: '⚗️ Compatibility Issues',
-    UNKNOWN: 'ℹ️ Other Reasons'
-  };
-  
-  Object.entries(categoryReasons).forEach(([category, reasons]) => {
-    const label = categoryLabels[category] || category;
-    parts.push(`\n${label}:`);
-    reasons.slice(0, 2).forEach(reason => {
-      parts.push(`  • ${reason}`);
-    });
-  });
-  
-  // Suggestion
-  parts.push('\n💡 **What to do next:**\n1. Wait for weather conditions to improve\n2. Ask again when crop stage changes\n3. Contact your local agricultural officer');
-  
+
+  for (const [category, reasons] of Object.entries(categoryReasons)) {
+    if (reasons.length === 0) continue;
+    parts.push(`[${category}]`);
+    for (const reason of reasons.slice(0, 2)) parts.push(`• ${reason}`);
+  }
+
+  if (parts.length === 0) {
+    console.error('[SYMBOLIC_CONTRACT_VIOLATION] generateAllActionsFilteredResponse called with no DB-sourced reasons');
+    return '';
+  }
   return parts.join('\n');
 }
 
