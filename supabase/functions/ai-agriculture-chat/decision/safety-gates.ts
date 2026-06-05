@@ -19,7 +19,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const SAFETY_GATES_VERSION = '1.0.0';
+export const SAFETY_GATES_VERSION = '1.1.0';
 
 // Symptoms specific enough to NOT require clarification.
 // LEAF_TIP_BURN_YOUNG, WILTING, LEAF_YELLOWING are deliberately low-specificity.
@@ -30,6 +30,17 @@ const UNSAFE_FOLIAR_INGREDIENTS = [
 ];
 
 const DEFICIENCY_CATEGORIES = new Set(['nutrition', 'deficiency', '05_soil', '05_nutrition']);
+
+// WAVE 2 FIX (P0/P1-5): Only treatment-class actions are subject to the
+// foliar safety gate. Monitor / advisory / block rules are not prescriptions
+// and must not be silently rejected for missing product metadata.
+const FOLIAR_GATE_ACTION_TYPES = new Set([
+  'RECOMMEND',
+  'APPLY_TREATMENT',
+  'URGENT_ACTION',
+  'IMMEDIATE_ACTION',
+  'RELEASE_BIOCONTROL',
+]);
 
 export interface SafetyGateInput {
   trace_id?: string;
@@ -59,9 +70,16 @@ export interface SafetyGateInput {
     application_method?: string | null;
     active_ingredient?: string | null;
     water_volume_per_acre?: string | null;
+    dosage_per_acre?: string | number | null;
     action_type?: string | null;
   }>;
   current_confidence: number; // 0..1
+
+  // WAVE 2 FIX (P1-5): DB-driven differential questions, keyed by
+  // observation_code. Caller loads this once per request from
+  // public.observation_differential_questions for (language, crop_code) and
+  // hands it to the gate.
+  differential_questions?: Record<string, string>;
 }
 
 export interface GateDecisionEntry {
@@ -85,19 +103,18 @@ export interface SafetyGateResult {
   };
 }
 
-function diffQuestionForSymptom(symptom: string, crop: string, language: string): string {
-  // English first (LLM narrator translates); native fallback for hi/mr.
-  const en = (s: string) => s;
-  if (symptom === 'LEAF_TIP_BURN_YOUNG') {
-    if (language === 'hi') {
-      return 'युवा ऊपरी पत्तियों के सिरों का जलना कई कारणों से हो सकता है — कैल्शियम/बोरॉन की कमी, खारापन, या उर्वरक की चोट। पोटाश की कमी आमतौर पर पुरानी निचली पत्तियों पर पहले दिखती है। कृपया बताएं: (1) क्या निचली पुरानी पत्तियाँ भी प्रभावित हैं? (2) मिट्टी पर सफेद नमक की परत है? (3) पिछले 15 दिनों में कोई उर्वरक डाला? और प्रभावित पत्तियों की एक फोटो भेजें।';
-    }
-    if (language === 'mr') {
-      return 'तरुण वरच्या पानांच्या टोकाचे जळणे अनेक कारणांमुळे होऊ शकते — कॅल्शियम/बोरॉनची कमतरता, क्षारता किंवा खताची इजा. पोटॅशियमची कमतरता सहसा जुन्या खालच्या पानांवर प्रथम दिसते. कृपया सांगा: (1) खालची जुनी पाने पण प्रभावित आहेत का? (2) मातीवर पांढरा क्षाराचा थर आहे का? (3) मागील 15 दिवसांत कोणते खत दिले? आणि प्रभावित पानांचा फोटो पाठवा.';
-    }
-    return en(`Tip burn on young upper leaves can have several causes: calcium deficiency, boron deficiency, salinity, or salt injury. Potassium deficiency usually shows on older lower leaves first, so we need to rule it out. Please send a photo of the affected leaves and tell me: (1) are the lower older leaves also affected? (2) is there any white salt deposit on the soil? (3) was any fertilizer applied in the last 15 days?`);
-  }
-  // generic differential
+function diffQuestionForSymptom(
+  symptom: string,
+  crop: string,
+  language: string,
+  lookup?: Record<string, string>
+): string {
+  // 1. DB-driven lookup wins (caller pre-loaded for this language/crop).
+  if (lookup && lookup[symptom]) return lookup[symptom];
+
+  // 2. Final generic fallback — kept intentionally minimal; populate
+  // observation_differential_questions to remove the English fallback for
+  // any (symptom, language) pair across any crop.
   return `The symptom "${symptom}" you reported on ${crop || 'the crop'} can have several causes. Please share a clear photo and tell me which leaves are affected (young upper, or older lower) so I can give a safe, targeted recommendation.`;
 }
 
