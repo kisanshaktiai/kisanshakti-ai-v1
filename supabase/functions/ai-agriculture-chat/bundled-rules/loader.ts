@@ -1200,8 +1200,18 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           .select('alias_code, canonical_code');
         
         if (aliases && aliases.length > 0) {
+          // P0 HOTFIX (Layer 2): reject cause-named aliases at runtime.
+          // Aliases are for SYNONYMS of observable signs only — never for
+          // hard-coding a CAUSE (e.g. *_DEFICIENCY_*, *_TOXICITY_*).
+          const CAUSE_ENCODED = /(_DEFICIENCY_|_TOXICITY_|_POISONING_|^K_DEFICIENCY|^POTASH_DEFICIENCY|^N_DEFICIENCY|^P_DEFICIENCY)/i;
           const aliasMap: Record<string, string[]> = {};
+          let skipped = 0;
           for (const row of aliases) {
+            if (CAUSE_ENCODED.test(row.alias_code)) {
+              skipped++;
+              console.warn(`🚫 [RuleLoader] Rejecting cause-named alias '${row.alias_code}' → '${row.canonical_code}' (use observable-sign aliases only)`);
+              continue;
+            }
             if (!aliasMap[row.alias_code]) aliasMap[row.alias_code] = [];
             aliasMap[row.alias_code].push(row.canonical_code);
             // Also add reverse mapping
@@ -1212,7 +1222,7 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           }
           cachedObservationAliases = aliasMap;
           aliasesCacheExpiry = now + CACHE_TTL;
-          console.log(`✅ [RuleLoader] Cached ${aliases.length} observation aliases from DB`);
+          console.log(`✅ [RuleLoader] Cached ${aliases.length - skipped} observation aliases from DB (${skipped} cause-named aliases rejected)`);
         }
         
         // ═══════════════════════════════════════════════════════════════════
