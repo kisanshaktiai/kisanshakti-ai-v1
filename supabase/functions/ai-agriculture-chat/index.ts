@@ -16,6 +16,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
 import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
+import { getMaxDASForCrop } from './utils/baseline-guidelines-cache.ts';
 import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 
 // Import orchestrator
@@ -2529,12 +2530,13 @@ function validateResponseBeforeSave(params: {
     // ═══════════════════════════════════════════════════════════════════════════
     const trulyYoungStages = ['GERMINATION', 'SEEDLING', 'EMERGENCE'];
     
-    // Use crop-specific minimum harvest age instead of blanket 120 days
-    const MIN_HARVEST_AGE: Record<string, number> = {
-      'SUGARCANE': 270, 'COTTON': 150, 'RICE': 120, 'WHEAT': 120,
-      'MAIZE': 90, 'SOYBEAN': 95, 'GROUNDNUT': 110, 'ONION': 120
-    };
-    const cropMinAge = MIN_HARVEST_AGE[crop] || 120;
+    // Use crop-specific minimum harvest age sourced from crop_baseline_guidelines_v2
+    // (max das_end across stages). Falls back to 120 only when baseline cache misses.
+    const baselineMaxDas = crop ? getMaxDASForCrop(crop) : null;
+    const cropMinAge = baselineMaxDas ?? 120;
+    if (crop && baselineMaxDas === null) {
+      console.log(`   ℹ️ Check 5: No baseline DAS found for crop "${crop}" — defaulting cropMinAge=120`);
+    }
     
     const hasValidCropData = (effectiveDays !== null && effectiveDays > 0) || effectiveStage;
     const isYoungCrop = hasValidCropData && (
