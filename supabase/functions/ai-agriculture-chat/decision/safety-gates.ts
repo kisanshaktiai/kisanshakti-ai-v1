@@ -161,14 +161,34 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
   }
 
   // ── FOLIAR_SAFETY_GATE ────────────────────────────────────────────────────
+  // WAVE 2 FIX (P1-4): Only run for treatment-class action types AND only
+  // when the candidate has dosage_per_acre. Otherwise the gate spuriously
+  // rejects monitor/advisory/clarification rules across non-sugarcane crops
+  // (which today lack product metadata) and degrades them to clarifications.
   const foliarRejects: string[] = [];
+  const foliarSkippedAdvisory: string[] = [];
   for (const r of input.candidate_rules) {
+    const actionUpper = (r.action_type || '').toUpperCase();
+    const isTreatment = FOLIAR_GATE_ACTION_TYPES.has(actionUpper);
+    if (!isTreatment) {
+      foliarSkippedAdvisory.push(r.rule_id);
+      continue;
+    }
+    const hasDosage = r.dosage_per_acre !== null
+      && r.dosage_per_acre !== undefined
+      && String(r.dosage_per_acre).trim() !== '';
+    if (!hasDosage) {
+      // No prescription payload → not a foliar prescription; skip safely.
+      foliarSkippedAdvisory.push(r.rule_id);
+      continue;
+    }
     const method = (r.application_method || '').toUpperCase();
     const ingredient = (r.active_ingredient || '').toLowerCase();
     const isFoliar = method.includes('FOLIAR') || method.includes('SPRAY');
+    if (!isFoliar) continue;
     const missingWater = !r.water_volume_per_acre;
     const isUnsafeMop = UNSAFE_FOLIAR_INGREDIENTS.some(s => ingredient.includes(s));
-    if ((isFoliar && missingWater) || (isFoliar && isUnsafeMop)) {
+    if (missingWater || isUnsafeMop) {
       foliarRejects.push(r.rule_id);
     }
   }
@@ -176,13 +196,13 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
     result.rejected_rule_ids.push(...foliarRejects);
     result.gate_decisions.FOLIAR_SAFETY_GATE = {
       passed: false,
-      reason: `FOLIAR_UNSAFE: ${foliarRejects.length} rule(s) rejected (missing water volume or unsafe MOP/KCl foliar)`,
-      data: { rejected: foliarRejects }
+      reason: `FOLIAR_UNSAFE: ${foliarRejects.length} treatment rule(s) rejected (missing water volume or unsafe MOP/KCl foliar)`,
+      data: { rejected: foliarRejects, skipped_advisory: foliarSkippedAdvisory.length }
     };
   } else {
     result.gate_decisions.FOLIAR_SAFETY_GATE = {
       passed: true,
-      reason: 'All foliar rules have safe ingredient + water volume'
+      reason: `All eligible foliar treatments safe (advisory/monitor skipped: ${foliarSkippedAdvisory.length})`
     };
   }
 
