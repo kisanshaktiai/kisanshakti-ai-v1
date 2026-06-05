@@ -12,6 +12,7 @@ import {
   getProviderFromModel 
 } from "../_shared/aiConfig.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from "./variety-context-loader.ts";
 
 // ═══════════════════════════════════════════════════════════════════════
 // FARMING STAGES - 9 Sequential Stages (fetched from DB at runtime)
@@ -2530,6 +2531,31 @@ serve(async (req) => {
     const ruralTerms = RURAL_TERMS[language] || RURAL_TERMS["hi"];
     const state = land.state || land.district?.split(",").pop()?.trim() || "Maharashtra";
     const laborRate = STATE_LABOR_RATES[state] || STATE_LABOR_RATES["default"];
+
+    // ═══════════════════════════════════════════════════════════════════
+    // VARIETY CONTEXT (DB-authoritative — Phase 3 variety-aware scheduling)
+    // ═══════════════════════════════════════════════════════════════════
+    let varietyProfile: VarietyProfile | null = null;
+    try {
+      varietyProfile = await loadVarietyProfile(supabase, {
+        cropName,
+        cropVariety,
+        stateName: state,
+        landVarietyId: (land as any).variety_id || null,
+      });
+      if (varietyProfile) {
+        console.log(
+          `🌾 [Variety] Resolved "${cropVariety}" → ${varietyProfile.name} ` +
+          `[${varietyProfile.source}] state_match=${varietyProfile.state_match} ` +
+          `conf=${varietyProfile.data_confidence_score}`
+        );
+      } else if (cropVariety) {
+        console.log(`🌾 [Variety] No registry match for "${cropVariety}" — falling back to generic crop defaults`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Variety] loader failed: ${(e as Error).message}`);
+    }
+    const varietyPromptBlock = formatVarietyProfileForPrompt(varietyProfile, language);
     
     // ═══════════════════════════════════════════════════════════════════
     // CRITICAL: ACCURATE LAND AREA CALCULATION
@@ -3255,6 +3281,7 @@ Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landA
 
 CROP: ${translatedCropName} ${cropVariety ? `(${cropVariety})` : ""}
 Sowing: ${sowingDate} | Location: ${district}, ${state}
+${varietyPromptBlock ? "\n" + varietyPromptBlock + "\n" : ""}
 Soil: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"} | Irrigation: ${land.irrigation_type || "manual"}
 ${intercropSection}
 ${soilReportLabel}:
@@ -4213,6 +4240,7 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         tenant_id: tenantId,
         crop_name: cropName,
         crop_variety: cropVariety || cropName,
+        variety_id: varietyProfile?.variety_id || null,
         sowing_date: sowingDate,
         expected_harvest_date: harvestDateStr, // CRITICAL: Set actual harvest date
         regional_dialect_zone: region,
