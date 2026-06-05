@@ -1434,6 +1434,8 @@ serve(async (req) => {
             application_method: c.application_method ?? c.rule?.application_method ?? null,
             active_ingredient: c.active_ingredient ?? c.rule?.active_ingredient ?? null,
             water_volume_per_acre: c.water_volume_per_acre ?? c.rule?.water_volume_per_acre ?? null,
+            // WAVE 2 FIX (P1-4): dosage_per_acre gates the foliar safety check
+            dosage_per_acre: c.dosage_per_acre ?? c.rule?.dosage_per_acre ?? null,
             action_type: c.action_type ?? c.rule?.action_type ?? null,
           })).filter((c: any) => !!c.rule_id);
 
@@ -1448,6 +1450,7 @@ serve(async (req) => {
               application_method: pd.application_method ?? pd.application_details?.application_method ?? null,
               active_ingredient: pd.active_ingredient ?? pd.application_details?.active_ingredient ?? null,
               water_volume_per_acre: pd.water_volume_per_acre ?? pd.application_details?.water_volume_per_acre ?? null,
+              dosage_per_acre: pd.dosage_per_acre ?? pd.application_details?.dosage_per_acre ?? null,
               action_type: pd.action_type ?? null,
             });
           }
@@ -1462,6 +1465,34 @@ serve(async (req) => {
             ? null
             : (soilK >= 200 ? 'HIGH' : soilK >= 120 ? 'MEDIUM' : 'LOW');
           const ndviVal: number | null = (landContext as any)?.ndvi?.value ?? null;
+
+          // WAVE 2 FIX (P1-5): Load DB-driven differential questions for the
+          // detected language and crop. Prefer crop-specific rows; fall back
+          // to crop-agnostic (crop_code IS NULL) for the same language.
+          // Final fallback inside safety-gates uses the generic English line.
+          const diffLookup: Record<string, string> = {};
+          if (mergedSymptomKeys.length > 0) {
+            try {
+              const { data: diffRows } = await supabase
+                .from('observation_differential_questions')
+                .select('observation_code, crop_code, question_text')
+                .in('observation_code', mergedSymptomKeys)
+                .eq('language', detectedLanguage);
+              const cropUp = (finalCropName || '').toUpperCase();
+              // Sort so crop-specific rows win over crop-agnostic rows.
+              (diffRows || [])
+                .sort((a: any, b: any) =>
+                  (a.crop_code === cropUp ? 0 : 1) - (b.crop_code === cropUp ? 0 : 1)
+                )
+                .forEach((row: any) => {
+                  if (diffLookup[row.observation_code]) return;
+                  if (row.crop_code && row.crop_code !== cropUp) return;
+                  diffLookup[row.observation_code] = row.question_text;
+                });
+            } catch (e) {
+              console.warn(`[SafetyGates] differential question lookup failed: ${(e as Error).message}`);
+            }
+          }
 
           const safetyInput: SafetyGateInput = {
             trace_id: traceId,
@@ -1482,6 +1513,7 @@ serve(async (req) => {
             primary_decision_rule_id: pd?.rule_id ?? null,
             candidate_rules: candidateRulesForGate,
             current_confidence: symbolicConfidence,
+            differential_questions: diffLookup,
           };
 
           safetyGateResult = runSafetyGates(safetyInput, detectedLanguage);
