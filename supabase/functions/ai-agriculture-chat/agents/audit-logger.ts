@@ -624,6 +624,7 @@ export class AuditLogger {
       land_id: log.land_id,
       crop_code: log.crop_code,
       growth_stage: log.growth_stage,
+      gate_decisions: log.gate_decisions || {},
       created_at: log.timestamp
     };
     
