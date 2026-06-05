@@ -156,19 +156,28 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       };
       
       // Normalize canonical_group to 13-group system
+      // WAVE 3 FIX (P3): Extend per-crop prefix coverage beyond sc_/ct_ so RICE,
+      // WHEAT, TOMATO, MAIZE, ONION, POTATO, SOYBEAN, BRINJAL, CHILI rules
+      // surface their real category in analytics instead of collapsing to
+      // '12_monitoring'.
       const normalizeCanonicalGroup = (group: string | null): string => {
         if (!group) return '12_monitoring';
         const g = group.toLowerCase();
-        
-        // Handle SC_PEST_*, CT_PEST_* patterns
-        if (g.startsWith('sc_pest_') || g.startsWith('ct_pest_')) return '03_pest';
-        if (g.startsWith('sc_disease_') || g.startsWith('ct_disease_')) return '04_disease';
-        if (g.startsWith('sc_nutrient_') || g.startsWith('ct_nutrient_')) return '05_nutrition';
-        if (g.startsWith('sc_stress_') || g.startsWith('ct_stress_')) return '08_stress';
-        if (g.startsWith('sc_irrigation_') || g.startsWith('ct_irrigation_')) return '10_irrigation';
-        if (g.startsWith('sc_safety_') || g.startsWith('ct_safety_')) return '11_safety';
-        if (g.startsWith('sc_weather_') || g.startsWith('ct_weather_')) return '09_weather';
-        
+
+        // Per-crop prefixes seen in DB rule_ids / canonical_group strings.
+        // SC=sugarcane CT=cotton RC/RICE WH/WHEAT TM/TOMATO MZ/MAIZE
+        // ON/ONION PT/POTATO SY/SOY/SOYBEAN BR/BRINJAL CH/CHILI/CHILLI
+        const CROP_PREFIX = '(?:sc|ct|rc|rice|wh|wheat|tm|tomato|mz|maize|on|onion|pt|potato|sy|soy|soybean|br|brinjal|ch|chili|chilli)';
+        const cropTopic = (topic: string) => new RegExp(`^${CROP_PREFIX}_${topic}_`);
+        if (cropTopic('pest').test(g)) return '03_pest';
+        if (cropTopic('disease').test(g)) return '04_disease';
+        if (cropTopic('nutrient').test(g) || cropTopic('nutrition').test(g)) return '05_nutrition';
+        if (cropTopic('stress').test(g)) return '08_stress';
+        if (cropTopic('irrigation').test(g)) return '10_irrigation';
+        if (cropTopic('safety').test(g)) return '11_safety';
+        if (cropTopic('weather').test(g)) return '09_weather';
+        if (cropTopic('weed').test(g)) return '06_weed';
+
         // Direct mapping for short names
         const mapping: Record<string, string> = {
           'pest': '03_pest',
@@ -188,9 +197,10 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
           'crop_identity': '01_crop_identity',
           'growth_stage': '02_growth_stage',
         };
-        
+
         return mapping[g] || (g.match(/^\d{2}_/) ? g : '12_monitoring');
       };
+
       
       // WAVE 1 FIX (P0-4): Sugarcane-specific stage synonyms must NOT be
       // applied to transplanted crops (RICE, TOMATO, BRINJAL, CHILI, ONION)
