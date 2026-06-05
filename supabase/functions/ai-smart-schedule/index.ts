@@ -2531,6 +2531,31 @@ serve(async (req) => {
     const ruralTerms = RURAL_TERMS[language] || RURAL_TERMS["hi"];
     const state = land.state || land.district?.split(",").pop()?.trim() || "Maharashtra";
     const laborRate = STATE_LABOR_RATES[state] || STATE_LABOR_RATES["default"];
+
+    // ═══════════════════════════════════════════════════════════════════
+    // VARIETY CONTEXT (DB-authoritative — Phase 3 variety-aware scheduling)
+    // ═══════════════════════════════════════════════════════════════════
+    let varietyProfile: VarietyProfile | null = null;
+    try {
+      varietyProfile = await loadVarietyProfile(supabase, {
+        cropName,
+        cropVariety,
+        stateName: state,
+        landVarietyId: (land as any).variety_id || null,
+      });
+      if (varietyProfile) {
+        console.log(
+          `🌾 [Variety] Resolved "${cropVariety}" → ${varietyProfile.name} ` +
+          `[${varietyProfile.source}] state_match=${varietyProfile.state_match} ` +
+          `conf=${varietyProfile.data_confidence_score}`
+        );
+      } else if (cropVariety) {
+        console.log(`🌾 [Variety] No registry match for "${cropVariety}" — falling back to generic crop defaults`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Variety] loader failed: ${(e as Error).message}`);
+    }
+    const varietyPromptBlock = formatVarietyProfileForPrompt(varietyProfile, language);
     
     // ═══════════════════════════════════════════════════════════════════
     // CRITICAL: ACCURATE LAND AREA CALCULATION
