@@ -14240,6 +14240,7 @@ export type Database = {
         Row: {
           active_ingredients: Json | null
           agro_climatic_zones: string[] | null
+          agro_ecological_suitability: Json | null
           ai_metadata: Json | null
           ai_recommendable: boolean | null
           application_method: string | null
@@ -14248,6 +14249,7 @@ export type Database = {
           approval_date: string | null
           approved_at: string | null
           approved_by: string | null
+          availability_status: string | null
           available_pack_sizes: Json | null
           barcode: string | null
           batch_number: string | null
@@ -14267,6 +14269,7 @@ export type Database = {
           crop_stages: Json | null
           currency: string | null
           data_completeness_score: number | null
+          data_confidence_score: number | null
           description: string | null
           discount_applicable: boolean | null
           discount_details: Json | null
@@ -14320,6 +14323,7 @@ export type Database = {
           purity_percentage: number | null
           quality_certifications: Json | null
           re_entry_interval_hours: number | null
+          recommendation_priority: number | null
           recommended_regions: Json | null
           recommended_season: Json | null
           registration_number: string | null
@@ -14337,11 +14341,14 @@ export type Database = {
           spacing: Json | null
           spray_volume_per_acre: Json | null
           state_suitability: string[] | null
+          state_suitability_ids: string[] | null
           status: string | null
           storage_instructions: string | null
           storage_temperature_range: Json | null
           suitable_crops: Json | null
+          suitable_district_ids: string[] | null
           suitable_soil_types: Json | null
+          suitable_zone_ids: string[] | null
           tax_rate: number | null
           technical_data_sheet_url: string | null
           tenant_scope_id: string | null
@@ -14368,6 +14375,7 @@ export type Database = {
         Insert: {
           active_ingredients?: Json | null
           agro_climatic_zones?: string[] | null
+          agro_ecological_suitability?: Json | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
           application_method?: string | null
@@ -14376,6 +14384,7 @@ export type Database = {
           approval_date?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          availability_status?: string | null
           available_pack_sizes?: Json | null
           barcode?: string | null
           batch_number?: string | null
@@ -14395,6 +14404,7 @@ export type Database = {
           crop_stages?: Json | null
           currency?: string | null
           data_completeness_score?: number | null
+          data_confidence_score?: number | null
           description?: string | null
           discount_applicable?: boolean | null
           discount_details?: Json | null
@@ -14448,6 +14458,7 @@ export type Database = {
           purity_percentage?: number | null
           quality_certifications?: Json | null
           re_entry_interval_hours?: number | null
+          recommendation_priority?: number | null
           recommended_regions?: Json | null
           recommended_season?: Json | null
           registration_number?: string | null
@@ -14465,11 +14476,14 @@ export type Database = {
           spacing?: Json | null
           spray_volume_per_acre?: Json | null
           state_suitability?: string[] | null
+          state_suitability_ids?: string[] | null
           status?: string | null
           storage_instructions?: string | null
           storage_temperature_range?: Json | null
           suitable_crops?: Json | null
+          suitable_district_ids?: string[] | null
           suitable_soil_types?: Json | null
+          suitable_zone_ids?: string[] | null
           tax_rate?: number | null
           technical_data_sheet_url?: string | null
           tenant_scope_id?: string | null
@@ -14496,6 +14510,7 @@ export type Database = {
         Update: {
           active_ingredients?: Json | null
           agro_climatic_zones?: string[] | null
+          agro_ecological_suitability?: Json | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
           application_method?: string | null
@@ -14504,6 +14519,7 @@ export type Database = {
           approval_date?: string | null
           approved_at?: string | null
           approved_by?: string | null
+          availability_status?: string | null
           available_pack_sizes?: Json | null
           barcode?: string | null
           batch_number?: string | null
@@ -14523,6 +14539,7 @@ export type Database = {
           crop_stages?: Json | null
           currency?: string | null
           data_completeness_score?: number | null
+          data_confidence_score?: number | null
           description?: string | null
           discount_applicable?: boolean | null
           discount_details?: Json | null
@@ -14576,6 +14593,7 @@ export type Database = {
           purity_percentage?: number | null
           quality_certifications?: Json | null
           re_entry_interval_hours?: number | null
+          recommendation_priority?: number | null
           recommended_regions?: Json | null
           recommended_season?: Json | null
           registration_number?: string | null
@@ -14593,11 +14611,14 @@ export type Database = {
           spacing?: Json | null
           spray_volume_per_acre?: Json | null
           state_suitability?: string[] | null
+          state_suitability_ids?: string[] | null
           status?: string | null
           storage_instructions?: string | null
           storage_temperature_range?: Json | null
           suitable_crops?: Json | null
+          suitable_district_ids?: string[] | null
           suitable_soil_types?: Json | null
+          suitable_zone_ids?: string[] | null
           tax_rate?: number | null
           technical_data_sheet_url?: string | null
           tenant_scope_id?: string | null
