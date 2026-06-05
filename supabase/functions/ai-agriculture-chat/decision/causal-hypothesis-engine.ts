@@ -129,29 +129,80 @@ interface HypothesisRuleMappingRow {
 const MIN_HYPOTHESIS_CONFIDENCE = 0.55;
 const DISCRIMINATOR_DELTA = 0.10;
 const HYPOTHESIS_CACHE_TTL = 300_000; // 5 minutes
-const ENGINE_VERSION = '1.1.0'; // v1.1.0: Fixed subquery bug + crop_group normalization
+const ENGINE_VERSION = '1.2.0'; // v1.2.0: DB-driven crop_group resolution (Wave 3 #7)
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CROP GROUP NORMALIZER
-// Maps short crop codes to canonical crop_group values used in hypothesis_master
-// DB crop_groups: SUGARCANE, COTTON, RICE, WHEAT
+// CROP GROUP NORMALIZER — DB-driven (Wave 3 P1-1)
+// Source of truth: public.crop_synonyms (canonical_crop ↔ variant_name).
+// Fallback static map retained ONLY for cold-start before hydration completes;
+// if a code resolves via fallback, a SYMBOLIC_CONTRACT_VIOLATION is logged so
+// the gap is detected and patched in the synonyms table — never silently.
 // ═══════════════════════════════════════════════════════════════════════════
 
-const CROP_CODE_TO_GROUP: Record<string, string> = {
-  'SC': 'SUGARCANE', 'SUGARCANE': 'SUGARCANE', 'sugarcane': 'SUGARCANE',
-  'CTN': 'COTTON', 'COTTON': 'COTTON', 'cotton': 'COTTON',
-  'RICE': 'RICE', 'rice': 'RICE', 'PADDY': 'RICE', 'paddy': 'RICE',
-  'WHEAT': 'WHEAT', 'wheat': 'WHEAT', 'WHT': 'WHEAT',
-  'SOYBEAN': 'SOYBEAN', 'soybean': 'SOYBEAN', 'SOY': 'SOYBEAN',
-  'MAIZE': 'MAIZE', 'maize': 'MAIZE', 'MZ': 'MAIZE',
-  'ONION': 'ONION', 'onion': 'ONION', 'ON': 'ONION',
-  'TOMATO': 'TOMATO', 'tomato': 'TOMATO', 'TM': 'TOMATO',
-  'TUR': 'TUR', 'tur': 'TUR', 'PIGEON_PEA': 'TUR',
+const FALLBACK_CROP_CODE_TO_GROUP: Record<string, string> = {
+  'SC': 'SUGARCANE', 'SUGARCANE': 'SUGARCANE',
+  'CTN': 'COTTON', 'COTTON': 'COTTON',
+  'RICE': 'RICE', 'PADDY': 'RICE',
+  'WHEAT': 'WHEAT', 'WHT': 'WHEAT',
+  'SOYBEAN': 'SOYBEAN', 'SOY': 'SOYBEAN',
+  'MAIZE': 'MAIZE', 'MZ': 'MAIZE',
+  'ONION': 'ONION', 'ON': 'ONION',
+  'TOMATO': 'TOMATO', 'TM': 'TOMATO',
+  'BRINJAL': 'BRINJAL', 'BR': 'BRINJAL', 'EGGPLANT': 'BRINJAL',
+  'CHILI': 'CHILI', 'CHILLI': 'CHILI', 'CH': 'CHILI',
+  'POTATO': 'POTATO', 'PT': 'POTATO',
 };
 
-function normalizeCropGroup(input: string): string {
-  return CROP_CODE_TO_GROUP[input] || CROP_CODE_TO_GROUP[input.toUpperCase()] || input.toUpperCase();
+// Module-scoped synonym cache (process lifetime, 1h TTL).
+let cropSynonymMap: Map<string, string> | null = null;
+let cropSynonymLoadedAt = 0;
+let cropSynonymLoading: Promise<void> | null = null;
+const SYNONYM_TTL_MS = 60 * 60 * 1000;
+
+async function hydrateCropSynonyms(supabase: any): Promise<void> {
+  if (cropSynonymMap && (Date.now() - cropSynonymLoadedAt) < SYNONYM_TTL_MS) return;
+  if (cropSynonymLoading) return cropSynonymLoading;
+  cropSynonymLoading = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('crop_synonyms')
+        .select('canonical_crop, variant_name')
+        .eq('is_active', true);
+      if (error) {
+        console.warn(`⚠️ [CausalHypothesis] crop_synonyms load failed: ${error.message}`);
+        return;
+      }
+      const map = new Map<string, string>();
+      // Seed with canonical→canonical identity for every crop_group in use.
+      for (const c of ['SUGARCANE','COTTON','RICE','WHEAT','SOYBEAN','MAIZE','ONION','TOMATO','BRINJAL','CHILI','POTATO']) {
+        map.set(c, c);
+      }
+      for (const row of (data || []) as Array<{canonical_crop: string; variant_name: string}>) {
+        if (!row?.variant_name || !row?.canonical_crop) continue;
+        map.set(row.variant_name.toUpperCase().trim(), row.canonical_crop.toUpperCase().trim());
+      }
+      cropSynonymMap = map;
+      cropSynonymLoadedAt = Date.now();
+      console.log(`✅ [CausalHypothesis] crop_synonyms hydrated: ${map.size} entries`);
+    } finally {
+      cropSynonymLoading = null;
+    }
+  })();
+  return cropSynonymLoading;
 }
+
+function normalizeCropGroup(input: string): string {
+  const key = (input || '').toUpperCase().trim();
+  if (cropSynonymMap && cropSynonymMap.has(key)) return cropSynonymMap.get(key)!;
+  const fallback = FALLBACK_CROP_CODE_TO_GROUP[input] || FALLBACK_CROP_CODE_TO_GROUP[key];
+  if (fallback) {
+    console.warn(`⚠️ SYMBOLIC_CONTRACT_VIOLATION [CausalHypothesis] crop_group="${input}" resolved via static fallback to "${fallback}" — add to crop_synonyms table`);
+    return fallback;
+  }
+  console.warn(`⚠️ SYMBOLIC_CONTRACT_VIOLATION [CausalHypothesis] crop_group="${input}" unknown — using uppercase passthrough`);
+  return key;
+}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CACHE
