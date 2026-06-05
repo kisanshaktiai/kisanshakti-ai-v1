@@ -12,6 +12,7 @@ import {
   getProviderFromModel 
 } from "../_shared/aiConfig.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from "./variety-context-loader.ts";
 
 // ═══════════════════════════════════════════════════════════════════════
 // FARMING STAGES - 9 Sequential Stages (fetched from DB at runtime)
