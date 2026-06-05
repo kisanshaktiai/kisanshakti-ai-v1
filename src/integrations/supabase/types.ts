@@ -14239,6 +14239,7 @@ export type Database = {
       master_products: {
         Row: {
           active_ingredients: Json | null
+          agro_climatic_zones: string[] | null
           ai_metadata: Json | null
           ai_recommendable: boolean | null
           application_method: string | null
@@ -14251,8 +14252,11 @@ export type Database = {
           barcode: string | null
           batch_number: string | null
           brand: string | null
+          breeder_institute_id: string | null
           cas_number: string | null
+          catalog_url: string | null
           category_id: string
+          climate_suitability: Json | null
           company_id: string
           compatibility_info: Json | null
           composition: string | null
@@ -14262,6 +14266,7 @@ export type Database = {
           crop_id: string | null
           crop_stages: Json | null
           currency: string | null
+          data_completeness_score: number | null
           description: string | null
           discount_applicable: boolean | null
           discount_details: Json | null
@@ -14281,6 +14286,7 @@ export type Database = {
           id: string
           images: Json | null
           import_license_required: boolean | null
+          irrigation_sensitivity: Json | null
           is_bestseller: boolean | null
           is_featured: boolean | null
           lab_test_reports: Json | null
@@ -14296,6 +14302,8 @@ export type Database = {
           minimum_order_quantity: number | null
           mixing_instructions: string | null
           name: string
+          notification_date: string | null
+          notification_number: string | null
           nutrient_analysis: Json | null
           organic_certified: boolean | null
           origin_country: string | null
@@ -14325,8 +14333,10 @@ export type Database = {
           seed_variety_details: Json | null
           shelf_life_months: number | null
           sku: string
+          soil_suitability: Json | null
           spacing: Json | null
           spray_volume_per_acre: Json | null
+          state_suitability: string[] | null
           status: string | null
           storage_instructions: string | null
           storage_temperature_range: Json | null
@@ -14340,18 +14350,24 @@ export type Database = {
           updated_at: string | null
           usage_restrictions: string | null
           user_reviews_summary: Json | null
+          variety_class: string | null
           variety_code: string | null
           video_urls: Json | null
           view_count: number | null
           visibility: string | null
           warnings: string | null
+          water_demand_category: string | null
+          water_demand_mm_per_season: number | null
           water_solubility: string | null
           weather_conditions: Json | null
           weed_targets: Json | null
+          yield_irrigated_qtl_per_acre: number | null
           yield_potential_qtl_per_acre: number | null
+          yield_rainfed_qtl_per_acre: number | null
         }
         Insert: {
           active_ingredients?: Json | null
+          agro_climatic_zones?: string[] | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
           application_method?: string | null
@@ -14364,8 +14380,11 @@ export type Database = {
           barcode?: string | null
           batch_number?: string | null
           brand?: string | null
+          breeder_institute_id?: string | null
           cas_number?: string | null
+          catalog_url?: string | null
           category_id: string
+          climate_suitability?: Json | null
           company_id: string
           compatibility_info?: Json | null
           composition?: string | null
@@ -14375,6 +14394,7 @@ export type Database = {
           crop_id?: string | null
           crop_stages?: Json | null
           currency?: string | null
+          data_completeness_score?: number | null
           description?: string | null
           discount_applicable?: boolean | null
           discount_details?: Json | null
@@ -14394,6 +14414,7 @@ export type Database = {
           id?: string
           images?: Json | null
           import_license_required?: boolean | null
+          irrigation_sensitivity?: Json | null
           is_bestseller?: boolean | null
           is_featured?: boolean | null
           lab_test_reports?: Json | null
@@ -14409,6 +14430,8 @@ export type Database = {
           minimum_order_quantity?: number | null
           mixing_instructions?: string | null
           name: string
+          notification_date?: string | null
+          notification_number?: string | null
           nutrient_analysis?: Json | null
           organic_certified?: boolean | null
           origin_country?: string | null
@@ -14438,8 +14461,10 @@ export type Database = {
           seed_variety_details?: Json | null
           shelf_life_months?: number | null
           sku: string
+          soil_suitability?: Json | null
           spacing?: Json | null
           spray_volume_per_acre?: Json | null
+          state_suitability?: string[] | null
           status?: string | null
           storage_instructions?: string | null
           storage_temperature_range?: Json | null
@@ -14453,18 +14478,24 @@ export type Database = {
           updated_at?: string | null
           usage_restrictions?: string | null
           user_reviews_summary?: Json | null
+          variety_class?: string | null
           variety_code?: string | null
           video_urls?: Json | null
           view_count?: number | null
           visibility?: string | null
           warnings?: string | null
+          water_demand_category?: string | null
+          water_demand_mm_per_season?: number | null
           water_solubility?: string | null
           weather_conditions?: Json | null
           weed_targets?: Json | null
+          yield_irrigated_qtl_per_acre?: number | null
           yield_potential_qtl_per_acre?: number | null
+          yield_rainfed_qtl_per_acre?: number | null
         }
         Update: {
           active_ingredients?: Json | null
+          agro_climatic_zones?: string[] | null
           ai_metadata?: Json | null
           ai_recommendable?: boolean | null
           application_method?: string | null
@@ -14477,8 +14508,11 @@ export type Database = {
           barcode?: string | null
           batch_number?: string | null
           brand?: string | null
+          breeder_institute_id?: string | null
           cas_number?: string | null
+          catalog_url?: string | null
           category_id?: string
+          climate_suitability?: Json | null
           company_id?: string
           compatibility_info?: Json | null
           composition?: string | null
@@ -14488,6 +14522,7 @@ export type Database = {
           crop_id?: string | null
           crop_stages?: Json | null
           currency?: string | null
+          data_completeness_score?: number | null
           description?: string | null
           discount_applicable?: boolean | null
           discount_details?: Json | null
@@ -14507,6 +14542,7 @@ export type Database = {
           id?: string
           images?: Json | null
           import_license_required?: boolean | null
+          irrigation_sensitivity?: Json | null
           is_bestseller?: boolean | null
           is_featured?: boolean | null
           lab_test_reports?: Json | null
@@ -14522,6 +14558,8 @@ export type Database = {
           minimum_order_quantity?: number | null
           mixing_instructions?: string | null
           name?: string
+          notification_date?: string | null
+          notification_number?: string | null
           nutrient_analysis?: Json | null
           organic_certified?: boolean | null
           origin_country?: string | null
@@ -14551,8 +14589,10 @@ export type Database = {
           seed_variety_details?: Json | null
           shelf_life_months?: number | null
           sku?: string
+          soil_suitability?: Json | null
           spacing?: Json | null
           spray_volume_per_acre?: Json | null
+          state_suitability?: string[] | null
           status?: string | null
           storage_instructions?: string | null
           storage_temperature_range?: Json | null
@@ -14566,17 +14606,36 @@ export type Database = {
           updated_at?: string | null
           usage_restrictions?: string | null
           user_reviews_summary?: Json | null
+          variety_class?: string | null
           variety_code?: string | null
           video_urls?: Json | null
           view_count?: number | null
           visibility?: string | null
           warnings?: string | null
+          water_demand_category?: string | null
+          water_demand_mm_per_season?: number | null
           water_solubility?: string | null
           weather_conditions?: Json | null
           weed_targets?: Json | null
+          yield_irrigated_qtl_per_acre?: number | null
           yield_potential_qtl_per_acre?: number | null
+          yield_rainfed_qtl_per_acre?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "master_products_breeder_institute_id_fkey"
+            columns: ["breeder_institute_id"]
+            isOneToOne: false
+            referencedRelation: "master_companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "master_products_breeder_institute_id_fkey"
+            columns: ["breeder_institute_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["company_id"]
+          },
           {
             foreignKeyName: "master_products_category_id_fkey"
             columns: ["category_id"]
@@ -26098,6 +26157,162 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      variety_resistance: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string | null
+          observation_code: string | null
+          resistance_level: string
+          source: string | null
+          threat_name: string
+          threat_type: string
+          trial_score: number | null
+          updated_at: string
+          variety_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          observation_code?: string | null
+          resistance_level: string
+          source?: string | null
+          threat_name: string
+          threat_type: string
+          trial_score?: number | null
+          updated_at?: string
+          variety_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string | null
+          observation_code?: string | null
+          resistance_level?: string
+          source?: string | null
+          threat_name?: string
+          threat_type?: string
+          trial_score?: number | null
+          updated_at?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_resistance_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_resistance_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
+      variety_source_references: {
+        Row: {
+          authority: string | null
+          created_at: string
+          id: string
+          publication_year: number | null
+          ref_type: string
+          title: string
+          updated_at: string
+          url: string | null
+          variety_id: string
+        }
+        Insert: {
+          authority?: string | null
+          created_at?: string
+          id?: string
+          publication_year?: number | null
+          ref_type: string
+          title: string
+          updated_at?: string
+          url?: string | null
+          variety_id: string
+        }
+        Update: {
+          authority?: string | null
+          created_at?: string
+          id?: string
+          publication_year?: number | null
+          ref_type?: string
+          title?: string
+          updated_at?: string
+          url?: string | null
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_source_references_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_source_references_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
+      variety_translations: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          language_code: string
+          local_synonyms: string[] | null
+          short_description: string | null
+          updated_at: string
+          variety_id: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          language_code: string
+          local_synonyms?: string[] | null
+          short_description?: string | null
+          updated_at?: string
+          variety_id: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          language_code?: string
+          local_synonyms?: string[] | null
+          short_description?: string | null
+          updated_at?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_translations_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_translations_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
           },
         ]
       }
