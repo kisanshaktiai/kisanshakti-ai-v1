@@ -1415,7 +1415,92 @@ serve(async (req) => {
         if (unifiedGateResult.reason?.includes('Suppression guard')) {
           console.log(`      ✅ SUPPRESSION GUARD ACTIVATED - recommendations preserved`);
         }
-        
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // P0 HOTFIX: SAFETY GATES (Confidence/Clarification/NDVI/Stage/Foliar)
+        // Runs AFTER unified gate; can downgrade to CLARIFY or BLOCK and override
+        // unified gate's treatments_allowed. Result is persisted into the audit log.
+        // ═══════════════════════════════════════════════════════════════════════════
+        let safetyGateResult: SafetyGateResult | null = null;
+        try {
+          const candidateRulesForGate = (
+            (orchestratorResponse.decision_output as any)?.layered_rule_result?.candidates ||
+            (orchestratorResponse.decision_output as any)?.candidates ||
+            []
+          ).map((c: any) => ({
+            rule_id: c.rule_id || c.rule?.rule_id,
+            crop_age_days_max: c.crop_age_days_max ?? c.rule?.crop_age_days_max ?? null,
+            crop_age_days_min: c.crop_age_days_min ?? c.rule?.crop_age_days_min ?? null,
+            application_method: c.application_method ?? c.rule?.application_method ?? null,
+            active_ingredient: c.active_ingredient ?? c.rule?.active_ingredient ?? null,
+            water_volume_per_acre: c.water_volume_per_acre ?? c.rule?.water_volume_per_acre ?? null,
+            action_type: c.action_type ?? c.rule?.action_type ?? null,
+          })).filter((c: any) => !!c.rule_id);
+
+          // Add the primary decision as a candidate too
+          const pd: any = (orchestratorResponse.decision_output as any)?.primary_decision
+            || (orchestratorResponse.decision_output as any)?.layered_rule_result?.primary_decision;
+          if (pd?.rule_id && !candidateRulesForGate.some((c: any) => c.rule_id === pd.rule_id)) {
+            candidateRulesForGate.unshift({
+              rule_id: pd.rule_id,
+              crop_age_days_max: pd.crop_age_days_max ?? null,
+              crop_age_days_min: pd.crop_age_days_min ?? null,
+              application_method: pd.application_method ?? pd.application_details?.application_method ?? null,
+              active_ingredient: pd.active_ingredient ?? pd.application_details?.active_ingredient ?? null,
+              water_volume_per_acre: pd.water_volume_per_acre ?? pd.application_details?.water_volume_per_acre ?? null,
+              action_type: pd.action_type ?? null,
+            });
+          }
+
+          // Pull discriminator scores from observation_master snapshot if present
+          const obsScores: Record<string, number> = (orchestratorResponse.metadata?.observationDiscriminatorScores
+            || (orchestratorResponse.decision_output as any)?.observation_discriminator_scores
+            || {}) as Record<string, number>;
+
+          const soilK = (landContext as any)?.soil_health?.potassium_kg_per_ha ?? null;
+          const soilKBand: 'LOW' | 'MEDIUM' | 'HIGH' | null = soilK === null || soilK === undefined
+            ? null
+            : (soilK >= 200 ? 'HIGH' : soilK >= 120 ? 'MEDIUM' : 'LOW');
+          const ndviVal: number | null = (landContext as any)?.ndvi?.value ?? null;
+
+          const safetyInput: SafetyGateInput = {
+            trace_id: traceId,
+            crop_name: finalCropName,
+            growth_stage: finalGrowthStage,
+            days_since_sowing: finalDaysSinceSowing ?? null,
+            symptom_keys: mergedSymptomKeys,
+            symptom_discriminator_scores: obsScores,
+            number_of_distinct_observations: mergedSymptomKeys.length,
+            photo_present: !!imageUrl,
+            soil_potassium_kg_ha: soilK,
+            soil_potassium_band: soilKBand,
+            soil_nitrogen_band: null,
+            ndvi: ndviVal,
+            primary_hypothesis_id: (orchestratorResponse.decision_output as any)?.hypothesis_result?.primary_hypothesis_id
+              ?? (orchestratorResponse.decision_output as any)?.primary_hypothesis_id
+              ?? null,
+            primary_decision_rule_id: pd?.rule_id ?? null,
+            candidate_rules: candidateRulesForGate,
+            current_confidence: symbolicConfidence,
+          };
+
+          safetyGateResult = runSafetyGates(safetyInput, detectedLanguage);
+
+          if (safetyGateResult.override_mode !== 'NONE') {
+            console.warn(`🛡️ [SafetyGates] OVERRIDE=${safetyGateResult.override_mode} - downgrading unified gate to CLARIFY`);
+            unifiedGateResult.treatments_allowed = false;
+            unifiedGateResult.response_mode = ResponseMode.CLARIFICATION;
+            (unifiedGateResult as any).reason =
+              `Safety-gate override (${safetyGateResult.override_mode}): ` +
+              Object.entries(safetyGateResult.gate_decisions)
+                .filter(([, v]) => !v.passed)
+                .map(([k, v]) => `${k}: ${v.reason}`)
+                .join(' | ');
+          }
+        } catch (e) {
+          console.error(`🛡️ [SafetyGates] runtime error:`, (e as Error).message);
+        }
+
         // If unified gate blocks treatments, use appropriate fallback response
         if (!unifiedGateResult.treatments_allowed) {
           console.log(`   ⚠️ Unified gate blocked treatments - using ${unifiedGateResult.response_mode} response`);
