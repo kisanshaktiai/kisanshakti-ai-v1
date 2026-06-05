@@ -3281,6 +3281,7 @@ Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landA
 
 CROP: ${translatedCropName} ${cropVariety ? `(${cropVariety})` : ""}
 Sowing: ${sowingDate} | Location: ${district}, ${state}
+${varietyPromptBlock ? "\n" + varietyPromptBlock + "\n" : ""}
 Soil: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"} | Irrigation: ${land.irrigation_type || "manual"}
 ${intercropSection}
 ${soilReportLabel}:
