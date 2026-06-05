@@ -1159,6 +1159,7 @@ export type Database = {
           farmer_id: string
           farmer_message: string | null
           forbidden_actions: string[] | null
+          gate_decisions: Json
           growth_stage: string | null
           id: string
           intent_label: string | null
@@ -1191,6 +1192,7 @@ export type Database = {
           farmer_id: string
           farmer_message?: string | null
           forbidden_actions?: string[] | null
+          gate_decisions?: Json
           growth_stage?: string | null
           id?: string
           intent_label?: string | null
@@ -1223,6 +1225,7 @@ export type Database = {
           farmer_id?: string
           farmer_message?: string | null
           forbidden_actions?: string[] | null
+          gate_decisions?: Json
           growth_stage?: string | null
           id?: string
           intent_label?: string | null
