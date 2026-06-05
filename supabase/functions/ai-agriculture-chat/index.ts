@@ -1497,6 +1497,26 @@ serve(async (req) => {
                 .map(([k, v]) => `${k}: ${v.reason}`)
                 .join(' | ');
           }
+
+          // Persist gate_decisions into the audit row (best-effort, by trace_id)
+          try {
+            const payload = {
+              version: safetyGateResult.version,
+              override_mode: safetyGateResult.override_mode,
+              effective_confidence: safetyGateResult.effective_confidence,
+              rejected_rule_ids: safetyGateResult.rejected_rule_ids,
+              decisions: safetyGateResult.gate_decisions,
+              evaluated_at: new Date().toISOString(),
+            };
+            // Fire-and-forget update keyed by trace_id; column exists per migration.
+            // @ts-ignore - generated types may not yet include gate_decisions
+            await supabase
+              .from('ai_chat_audit_logs')
+              .update({ gate_decisions: payload, actions_filtered_out: { rejected_by_safety_gates: safetyGateResult.rejected_rule_ids } })
+              .eq('trace_id', traceId);
+          } catch (e) {
+            console.warn(`🛡️ [SafetyGates] audit persist failed:`, (e as Error).message);
+          }
         } catch (e) {
           console.error(`🛡️ [SafetyGates] runtime error:`, (e as Error).message);
         }
