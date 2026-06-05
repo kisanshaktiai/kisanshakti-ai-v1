@@ -540,6 +540,18 @@ export async function evaluateCandidateHypotheses(
     // 184 rules (37.7%) were being excluded including nutrition, irrigation, pest rules
     // These rules have matching data in conditions_json instead
     // ═══════════════════════════════════════════════════════════════════════
+    // WAVE 3 FIX (P1-2): Compute dynamic limit from actual matching-rule count
+    // instead of the hardcoded 800 ceiling, which would silently truncate any
+    // crop that later crosses that threshold.
+    const { count: matchingCount, error: countErr } = await supabaseClient
+      .from('decision_rules')
+      .select('rule_id', { count: 'exact', head: true })
+      .eq('is_active', true)
+      .or(cropFilter);
+    if (countErr) {
+      console.warn(`   ⚠️ [HypothesisEval] Count query failed, using safety ceiling: ${countErr.message}`);
+    }
+    const dynamicLimit = Math.max(800, (matchingCount ?? 0) + 50);
     const { data: rulesRaw, error } = await supabaseClient
       .from('decision_rules')
       .select(`
@@ -561,7 +573,8 @@ export async function evaluateCandidateHypotheses(
       `)
       .eq('is_active', true)
       .or(cropFilter)
-      .limit(800); // Safety headroom: 514+ SUGARCANE rules + multi-crop variants
+      .limit(dynamicLimit);
+
     
     if (error) {
       console.error(`   ❌ [HypothesisEval] Database error:`, error);
