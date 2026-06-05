@@ -16054,6 +16054,36 @@ export type Database = {
           },
         ]
       }
+      observation_differential_questions: {
+        Row: {
+          created_at: string
+          crop_code: string | null
+          id: string
+          language: string
+          observation_code: string
+          question_text: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          crop_code?: string | null
+          id?: string
+          language: string
+          observation_code: string
+          question_text: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string | null
+          id?: string
+          language?: string
+          observation_code?: string
+          question_text?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       observation_intent_master: {
         Row: {
           allowed_observation_groups: string[] | null
