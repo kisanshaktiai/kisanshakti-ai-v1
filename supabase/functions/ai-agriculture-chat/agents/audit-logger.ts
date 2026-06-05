@@ -212,6 +212,9 @@ export interface TurnAuditLog {
   land_id?: string;
   crop_code?: string;
   growth_stage?: string;
+
+  // P0 HOTFIX: safety-gate decisions (CONFIDENCE/CLARIFICATION/NDVI/STAGE/FOLIAR)
+  gate_decisions?: Record<string, any>;
 }
 
 export interface AuditValidation {
