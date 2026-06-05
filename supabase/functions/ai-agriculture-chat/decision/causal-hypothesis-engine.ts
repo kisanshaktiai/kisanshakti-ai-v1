@@ -847,9 +847,10 @@ export async function runCausalHypothesisArbitration(
   const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
   const startTime = Date.now();
 
-  // CRITICAL FIX: Normalize crop code to crop_group used in hypothesis_master
-  // DB stores: SUGARCANE, COTTON, RICE, WHEAT. Orchestrator may pass: SC, CTN, etc.
+  // Normalize crop code to crop_group used in hypothesis_master (DB-driven via crop_synonyms).
+  await hydrateCropSynonyms(supabase_client);
   const normalizedCropGroup = normalizeCropGroup(crop_group);
+
 
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
   console.log(`   crop_group=${normalizedCropGroup} (raw=${crop_group}), observations=${observations.length}, trace=${trace_id || 'none'}`);
