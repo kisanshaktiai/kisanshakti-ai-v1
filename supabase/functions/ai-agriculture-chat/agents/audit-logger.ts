@@ -533,7 +533,20 @@ export class AuditLogger {
     this.currentTurn.crop_code = context.crop_code;
     this.currentTurn.growth_stage = context.growth_stage;
   }
-  
+
+  /**
+   * P0 HOTFIX: persist safety-gate decisions for forensic audit
+   */
+  logSafetyGates(gateDecisions: Record<string, any> | null | undefined): void {
+    if (!gateDecisions) return;
+    this.currentTurn.gate_decisions = gateDecisions;
+    this.addAgent('SAFETY_GATES');
+    const failed = Object.entries(gateDecisions)
+      .filter(([, v]: any) => v && v.passed === false)
+      .map(([k]) => k);
+    console.log(`📋 [Audit] SafetyGates: ${failed.length ? 'FAILED=[' + failed.join(',') + ']' : 'all passed'}`);
+  }
+
   /**
    * Add agent to used list
    */
