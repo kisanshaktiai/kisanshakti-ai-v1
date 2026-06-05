@@ -227,7 +227,9 @@ async function loadHypothesesForCrop(
   cropGroup: string,
   supabase: any
 ): Promise<CachedHypothesisData> {
+  await hydrateCropSynonyms(supabase);
   const cacheKey = normalizeCropGroup(cropGroup);
+
   const cached = hypothesisCache.get(cacheKey);
   if (cached && (Date.now() - cached.loadedAt) < HYPOTHESIS_CACHE_TTL) {
     return cached;
