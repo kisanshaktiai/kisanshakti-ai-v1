@@ -4240,6 +4240,7 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         tenant_id: tenantId,
         crop_name: cropName,
         crop_variety: cropVariety || cropName,
+        variety_id: varietyProfile?.variety_id || null,
         sowing_date: sowingDate,
         expected_harvest_date: harvestDateStr, // CRITICAL: Set actual harvest date
         regional_dialect_zone: region,
