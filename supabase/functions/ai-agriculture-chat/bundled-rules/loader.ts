@@ -123,22 +123,36 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       
       // Normalize action_type to standard enums
       // ═══════════════════════════════════════════════════════════════════════
-      // PHASE 3: Strict action_type alignment - preserve DB canonical values
-      // Database uses 5 canonical types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
+      // WAVE 1 FIX (P0-2): Preserve all 8 canonical DB action_type values as
+      // first-class. Prior implementation silently collapsed APPLY_TREATMENT,
+      // IMMEDIATE_ACTION and RELEASE_BIOCONTROL into 'RECOMMEND', erasing
+      // urgency and biocontrol routing for every non-sugarcane crop.
+      // DB enum (decision_rules.action_type):
+      //   RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION,
+      //   APPLY_TREATMENT, IMMEDIATE_ACTION, RELEASE_BIOCONTROL
       // ═══════════════════════════════════════════════════════════════════════
       const normalizeActionType = (action: string | null): string => {
         if (!action) return 'RECOMMEND';
         const upper = action.toUpperCase().trim();
-        const VALID_DB_TYPES = ['RECOMMEND', 'MONITOR', 'BLOCK', 'NO_ACTION_REQUIRED', 'URGENT_ACTION'];
+        const VALID_DB_TYPES = [
+          'RECOMMEND', 'MONITOR', 'BLOCK', 'NO_ACTION_REQUIRED',
+          'URGENT_ACTION', 'APPLY_TREATMENT', 'IMMEDIATE_ACTION', 'RELEASE_BIOCONTROL',
+        ];
         if (VALID_DB_TYPES.includes(upper)) return upper;
-        // Legacy reverse mapping for any old data still using lowercase types
+        // Legacy reverse mapping for any old data still using lowercase / non-canonical types.
+        // NOTE: APPLY_TREATMENT / IMMEDIATE_ACTION / RELEASE_BIOCONTROL are intentionally
+        // NOT collapsed here — they pass through above as first-class enums.
         const legacyMapping: Record<string, string> = {
-          'treatment': 'RECOMMEND', 'monitoring': 'MONITOR', 'safety_gate': 'BLOCK',
-          'advisory': 'NO_ACTION_REQUIRED', 'urgent_treatment': 'URGENT_ACTION',
-          'APPLY_TREATMENT': 'RECOMMEND', 'prevention': 'RECOMMEND',
-          'diagnosis': 'MONITOR', 'clarification': 'MONITOR',
+          'treatment': 'APPLY_TREATMENT',
+          'monitoring': 'MONITOR',
+          'safety_gate': 'BLOCK',
+          'advisory': 'NO_ACTION_REQUIRED',
+          'urgent_treatment': 'URGENT_ACTION',
+          'prevention': 'RECOMMEND',
+          'diagnosis': 'MONITOR',
+          'clarification': 'MONITOR',
         };
-        return legacyMapping[action] || legacyMapping[upper] || 'RECOMMEND';
+        return legacyMapping[action] || legacyMapping[upper.toLowerCase()] || 'RECOMMEND';
       };
       
       // Normalize canonical_group to 13-group system
@@ -178,20 +192,26 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         return mapping[g] || (g.match(/^\d{2}_/) ? g : '12_monitoring');
       };
       
-      // AUDIT FIX: Preserve UPPERCASE stages from DB, normalize synonyms only
-      // DB stores UPPERCASE (TILLERING, GRAND_GROWTH) - comparisons must be case-insensitive at match time
+      // WAVE 1 FIX (P0-4): Sugarcane-specific stage synonyms must NOT be
+      // applied to transplanted crops (RICE, TOMATO, BRINJAL, CHILI, ONION)
+      // where PLANTING != GERMINATION. Scope remap to SUGARCANE only.
+      const cropCodeUpper = (row.crop_code || '').toUpperCase();
+      const SUGARCANE_STAGE_SYNONYMS: Record<string, string> = {
+        'PLANTING': 'GERMINATION',
+        'RATOON': 'POST_HARVEST',
+        'CANE_FORMATION': 'GRAND_GROWTH',
+        'EARLY_GROWTH': 'SEEDLING',
+        'RATOON_INIT': 'POST_HARVEST',
+      };
       const normalizeStages = (stages: string[] | null): string[] => {
         if (!stages || !Array.isArray(stages)) return ['ALL'];
-        const stageMapping: Record<string, string> = {
-          'PLANTING': 'GERMINATION',
-          'RATOON': 'POST_HARVEST',
-          'CANE_FORMATION': 'GRAND_GROWTH',
-          'EARLY_GROWTH': 'SEEDLING',
-          'RATOON_INIT': 'POST_HARVEST',
-        };
+        const isSugarcane = cropCodeUpper === 'SUGARCANE' || cropCodeUpper === 'SC';
         return stages.map(s => {
           const upper = s.toUpperCase();
-          return stageMapping[upper] || upper;
+          if (isSugarcane && SUGARCANE_STAGE_SYNONYMS[upper]) {
+            return SUGARCANE_STAGE_SYNONYMS[upper];
+          }
+          return upper;
         });
       };
       

@@ -258,13 +258,19 @@ export interface UnifiedGateInput {
 // These come from the decision_rules table action_type column
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE 3: Strict action_type classification using DB canonical types
-// Database uses 5 types: RECOMMEND, MONITOR, BLOCK, NO_ACTION_REQUIRED, URGENT_ACTION
-// Legacy types kept for backward compatibility during transition
+// WAVE 1 FIX (P0-2): DB uses 8 canonical types — RECOMMEND, MONITOR, BLOCK,
+// NO_ACTION_REQUIRED, URGENT_ACTION, APPLY_TREATMENT, IMMEDIATE_ACTION,
+// RELEASE_BIOCONTROL. All treatment-class actions are first-class here so
+// loader pass-through (see loader.ts normalizeActionType) is honored.
+// Legacy types kept for backward compatibility during transition.
 // ═══════════════════════════════════════════════════════════════════════════
 const TREATMENT_ACTIONS = new Set([
   // DB canonical types that indicate treatment/prescription
   'RECOMMEND',
+  'APPLY_TREATMENT',
   'URGENT_ACTION',
+  'IMMEDIATE_ACTION',
+  'RELEASE_BIOCONTROL',
   'BLOCK',
   // Legacy lowercase variants (backward compatibility)
   'treatment', 'urgent_treatment', 'safety_gate', 'prevention',
@@ -273,7 +279,7 @@ const TREATMENT_ACTIONS = new Set([
   'APPLY_PESTICIDE', 'APPLY_FUNGICIDE', 'APPLY_INSECTICIDE',
   'APPLY_HERBICIDE', 'APPLY_BIOLOGICAL', 'APPLY_SPRAY',
   'APPLY_FERTILIZER', 'FOLIAR_SPRAY', 'SOIL_APPLICATION',
-  'SEED_TREATMENT', 'IMMEDIATE_ACTION',
+  'SEED_TREATMENT',
 ]);
 
 // Actions that are observation/monitoring only (NOT treatment)
