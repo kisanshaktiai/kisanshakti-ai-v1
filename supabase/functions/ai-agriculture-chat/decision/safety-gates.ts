@@ -279,7 +279,7 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
 
   if (mustClarify) {
     const sym = lowSpecSymptom || input.symptom_keys[0] || 'symptom';
-    result.clarification_text = diffQuestionForSymptom(sym, input.crop_name || '', language);
+    result.clarification_text = diffQuestionForSymptom(sym, input.crop_name || '', language, input.differential_questions);
     result.override_mode = 'CLARIFY';
     result.gate_decisions.CLARIFICATION_GATE = {
       passed: false,
