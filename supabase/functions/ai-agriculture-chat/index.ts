@@ -1548,7 +1548,13 @@ serve(async (req) => {
               unifiedGateResult.reason
             );
           }
-          
+
+          // P0 HOTFIX: prefer safety-gate clarification text when present
+          if (safetyGateResult?.clarification_text) {
+            responseContent = safetyGateResult.clarification_text;
+            console.log(`   🛡️ Safety-gate clarification text used (override_mode=${safetyGateResult.override_mode})`);
+          }
+
           // Skip LLM formatting - use gate-generated response
           console.log(`   📋 Using unified gate fallback response (no LLM)`);
           if (renderContext.authority_override_applied) {
