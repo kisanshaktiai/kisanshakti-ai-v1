@@ -64,3 +64,14 @@ Single prioritized backlog the next plan will execute. Each item carries: title,
 ## Acceptance
 
 Five markdown reports under `docs/variety-audit/` totalling the audit. You review, mark accepted/rejected items in `05-backlog-…md`, and I return with a focused implementation plan starting with the P0 AI Crop Schedule wiring.
+
+## Round 2 — Items 6–11 (shipped)
+- 6. Shared resistance helpers: `supabase/functions/_shared/variety-resistance.ts` exposes `loadResistanceMap`, `computeResistanceMultiplier`, `shouldSuppressChemical`, `resolveLandVarietyId`. `ai_decision_log.variety_resistance_applied jsonb` column added for downstream logging. Orchestrator integration is opt-in (the 9k-line file untouched to avoid regression risk).
+- 7. Proactive evaluator now selects `current_crop_variety_id`, stamps `variety_id` on every inserted alert, and the schema gained `proactive_alerts.variety_id` / `proactive_evaluation_log.variety_id` with FKs to `master_products`.
+- 8. `schedules-api` joins `master_products` on single-schedule GET (adds `variety` summary + `variety_id`) and exposes a new `GET ?action=variety-context&land_id=…` endpoint returning `{variety, resistance, profile}`.
+- 9. `ModernLandCard` renders a variety chip via the new `useVarietyLabel` hook (module-scoped cache).
+- 10. New partial indexes on `proactive_alerts.variety_id`, `schedule_tasks.variety_id` (rest were shipped in round 1).
+- 11. `master_products.variety_completeness_score` (0–100) with `calc_variety_completeness()` + BEFORE INSERT/UPDATE trigger; backfilled. New `v_variety_data_quality` view exposes per-seed quality flags (missing maturity, inverted bounds, unmapped resistance rows).
+
+## Deferred
+- 12. Intercrop text→uuid migration (dual-write window) — low adoption, schedule separately.
