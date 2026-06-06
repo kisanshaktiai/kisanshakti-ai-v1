@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { useMemo, useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Loader2, Search, Sparkles, X, Sprout } from 'lucide-react';
+import { Loader2, Search, Sparkles, X, Sprout, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useCropVarieties, type CropVariety } from '@/hooks/useCropVarieties';
+import VarietyDetailCard from '@/components/crops/VarietyDetailCard';
+import VarietySubmitDialog from '@/components/crops/VarietySubmitDialog';
+import { useTranslation } from 'react-i18next';
 
 export interface VarietyOption {
   id: string;
