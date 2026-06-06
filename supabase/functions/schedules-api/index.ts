@@ -1,6 +1,27 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { loadVarietyProfile } from '../_shared/variety-context.ts';
+import { loadResistanceMap, resolveLandVarietyId } from '../_shared/variety-resistance.ts';
+
+// Minimal projection of variety fields for client consumption.
+const VARIETY_SELECT =
+  'id, name, name_local, variety_code, maturity_days_min, maturity_days_max, ' +
+  'yield_potential_qtl_per_acre, water_demand_mm_per_season, irrigation_sensitivity, ' +
+  'climate_suitability, soil_suitability, agro_ecological_suitability, ' +
+  'variety_completeness_score';
+
+async function fetchVarietySummary(supabase: any, varietyId: string | null | undefined) {
+  if (!varietyId) return null;
+  const { data, error } = await supabase
+    .from('master_products')
+    .select(VARIETY_SELECT)
+    .eq('id', varietyId)
+    .eq('product_type', 'seed')
+    .maybeSingle();
+  if (error) return null;
+  return data || null;
+}
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -70,6 +91,7 @@ serve(async (req) => {
     const scheduleId = (lastPart && lastPart !== 'schedules-api' && !isTasksRoute) ? lastPart : null;
     const landIdParam = url.searchParams.get('land_id');
     const scheduleIdParam = url.searchParams.get('schedule_id');
+    const actionParam = url.searchParams.get('action');
 
     // PHASE 3A: Optional incremental + pagination params (backward-compatible)
     const sinceParam = url.searchParams.get('since'); // ISO8601 timestamp
@@ -101,6 +123,58 @@ serve(async (req) => {
 
     switch (req.method) {
       case 'GET': {
+        // ─── action=variety-context&land_id=… ──────────────────────────
+        // Resolves the planted variety for a land (lands → active schedule
+        // fallback), returns the full master_products variety summary and
+        // a resistance list. Used by the chat orchestrator + frontend.
+        if (actionParam === 'variety-context') {
+          const landId = landIdParam || url.searchParams.get('landId');
+          if (!landId) {
+            return new Response(
+              JSON.stringify({ error: 'land_id is required' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          const { data: landRow } = await supabase
+            .from('lands')
+            .select('id, current_crop, current_crop_variety_id, state, soil_type')
+            .eq('id', landId)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .maybeSingle();
+          if (!landRow) {
+            return new Response(
+              JSON.stringify({ error: 'Land not found' }),
+              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          const varietyId = landRow.current_crop_variety_id
+            || await resolveLandVarietyId(supabase, landId);
+          const [variety, resistance, profile] = await Promise.all([
+            fetchVarietySummary(supabase, varietyId),
+            loadResistanceMap(supabase, varietyId).then(m => Array.from(m.values())),
+            varietyId
+              ? loadVarietyProfile(supabase, {
+                  cropName: landRow.current_crop || '',
+                  stateName: landRow.state || null,
+                  landVarietyId: varietyId,
+                }).catch(() => null)
+              : Promise.resolve(null),
+          ]);
+          return new Response(
+            JSON.stringify({
+              data: {
+                land_id: landId,
+                variety_id: varietyId,
+                variety,
+                resistance,
+                profile,
+              },
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Handle /tasks route
         if (isTasksRoute) {
           console.log('📋 [SchedulesAPI] Fetching tasks:', { scheduleIdParam, sinceParam, parsedLimit, cursorParam });
@@ -167,8 +241,14 @@ serve(async (req) => {
             );
           }
 
+          // Attach variety summary so the client can render variety-aware UI
+          // without a second round-trip. variety_id may live on the schedule
+          // row or be inherited from the land.
+          const varietyId = (data as any)?.variety_id
+            ?? await resolveLandVarietyId(supabase, (data as any)?.land_id).catch(() => null);
+          const variety = await fetchVarietySummary(supabase, varietyId);
           return new Response(
-            JSON.stringify({ data }),
+            JSON.stringify({ data: { ...data, variety_id: varietyId, variety } }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         } else {

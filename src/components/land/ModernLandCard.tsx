@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useVarietyLabel } from '@/hooks/useVarietyLabel';
 import { LandThumbnail } from './LandThumbnail';
 
 interface ModernLandCardProps {
@@ -50,6 +51,7 @@ interface ModernLandCardProps {
     water_source?: string;
     irrigation_type?: string;
     current_crop?: string;
+    current_crop_variety_id?: string | null;
     previous_crop?: string;
     planting_date?: string;
     expected_harvest_date?: string;
@@ -68,6 +70,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   const { t } = useTranslation();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const { label: varietyLabel } = useVarietyLabel(land.current_crop_variety_id);
   
   // Removed inline map URL generation - now using LandThumbnail component
   
@@ -233,9 +236,14 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                 {land.current_crop && (
                   <div className="space-y-0.5">
                     <p className="text-xs text-muted-foreground">{t('lands.card.current')}</p>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap">
                       <Wheat className="h-3 w-3 sm:h-4 sm:w-4 text-primary flex-shrink-0" />
                       <span className="text-xs sm:text-sm font-medium truncate">{land.current_crop}</span>
+                      {varietyLabel && (
+                        <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 h-4 sm:h-5">
+                          {varietyLabel}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 )}
