@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next';
 import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
 import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
+import { VarietySelector } from '@/components/crops/VarietySelector';
 
 interface CropDateInputProps {
   land: {
@@ -35,7 +36,8 @@ interface CropDateInputProps {
     nurseryDays: number, 
     localizedCropName: string,
     intercrops?: IntercropData[],
-    backdatedConsent?: boolean
+    backdatedConsent?: boolean,
+    varietyId?: string | null,
   ) => void;
   onBack: () => void;
   loading?: boolean;
@@ -53,6 +55,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
   const [cropVariety, setCropVariety] = useState('');
+  const [varietyId, setVarietyId] = useState<string | null>(null);
   const [sowingDate, setSowingDate] = useState<Date | undefined>(new Date());
   const [isReadyMadePlant, setIsReadyMadePlant] = useState(false);
   const [nurseryDays, setNurseryDays] = useState<number>(0);
