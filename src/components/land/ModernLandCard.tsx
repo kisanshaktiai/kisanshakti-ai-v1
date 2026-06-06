@@ -50,6 +50,7 @@ interface ModernLandCardProps {
     water_source?: string;
     irrigation_type?: string;
     current_crop?: string;
+    current_crop_variety_id?: string | null;
     previous_crop?: string;
     planting_date?: string;
     expected_harvest_date?: string;
