@@ -172,7 +172,10 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5 pt-14 pb-16 overflow-hidden">
+    <div
+      className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5 pt-14 overflow-hidden"
+      style={{ paddingBottom: 'calc(5rem + env(safe-area-inset-bottom))' }}
+    >
       {/* Full Screen Container with Modern Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -379,22 +382,25 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               </div>
             </div>
 
-            {/* Fixed Submit Button at Bottom */}
-            <div className="p-4 pt-2 border-t border-border/30 bg-background/90 backdrop-blur-sm shrink-0">
+            {/* Fixed Submit Button at Bottom — sits above the global bottom nav */}
+            <div
+              className="px-4 pt-2 border-t border-border/30 bg-background shrink-0"
+              style={{ paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+            >
               <Button
                 onClick={handleSubmit}
                 disabled={!cropName || !sowingDate || loading}
-                className="w-full h-14 rounded-xl text-base font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
+                className="w-full h-12 rounded-xl text-sm font-semibold bg-gradient-to-r from-primary to-accent hover:from-primary/90 hover:to-accent/90 shadow-lg shadow-primary/25 transition-all active:scale-[0.98]"
               >
                 {loading ? (
                   <>
-                    <Sparkles className="mr-2 h-5 w-5 animate-spin" />
+                    <Sparkles className="mr-2 h-4 w-4 animate-spin" />
                     {t('schedule.crop_input.generating')}
                   </>
                 ) : (
                   <>
                     {t('schedule.crop_input.generate_ai_schedule')}
-                    <Sparkles className="ml-2 h-5 w-5" />
+                    <Sparkles className="ml-2 h-4 w-4" />
                   </>
                 )}
               </Button>
