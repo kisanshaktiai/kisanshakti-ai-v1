@@ -217,25 +217,59 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
           </div>
         </div>
 
-        {/* Full Height Crop Selection */}
-        <div className="flex-1 overflow-hidden bg-background/40 backdrop-blur-sm">
-          <CentralizedCropSelector
-            selectedCropId={cropId}
-            onSelect={handleCropSelect}
-            className="h-full"
-            showHeader={false}
-            variant="compact"
-            showSearch={true}
-          />
-        </div>
-        
-        {/* Bottom Fixed Panel for Variety & Date (Shows when crop selected) */}
+        {/* Crop Selection – full screen when no crop chosen, collapsed chip after */}
+        {!cropName ? (
+          <div className="flex-1 overflow-hidden bg-background/40 backdrop-blur-sm">
+            <CentralizedCropSelector
+              selectedCropId={cropId}
+              onSelect={handleCropSelect}
+              className="h-full"
+              showHeader={false}
+              variant="compact"
+              showSearch={true}
+            />
+          </div>
+        ) : (
+          <div className="px-3 py-2 bg-background/80 border-b border-border/40 flex items-center justify-between gap-2 shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                <Wheat className="h-4 w-4 text-primary" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">
+                  {t('schedule.crop_input.selected_crop', 'Selected crop')}
+                </p>
+                <p className="text-sm font-semibold truncate leading-tight">
+                  {localizedCropName || cropName}
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 text-xs shrink-0"
+              onClick={() => {
+                setCropId('');
+                setCropName('');
+                setLocalizedCropName('');
+                setVarietyId(null);
+                setCropVariety('');
+                setIntercrops([]);
+              }}
+            >
+              <ChevronLeft className="h-3.5 w-3.5 mr-1" />
+              {t('schedule.crop_input.change_crop', 'Change crop')}
+            </Button>
+          </div>
+        )}
+
+        {/* Variety + date + submit panel — takes all remaining height when crop selected */}
         {cropName && (
           <motion.div
-            initial={{ y: 100, opacity: 0 }}
+            initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="bg-background/95 backdrop-blur-2xl border-t border-border/50 space-y-0 max-h-[55vh] flex flex-col shrink-0"
+            exit={{ y: 40, opacity: 0 }}
+            className="bg-background flex-1 min-h-0 flex flex-col shrink-0"
           >
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
