@@ -23,6 +23,7 @@ export interface CropVariety {
   variety_completeness_score: number | null;
   disease_resistance: any;
   pest_tolerance: any;
+  description: string | null;
 }
 
 export interface VarietyResistanceRow {
@@ -31,10 +32,20 @@ export interface VarietyResistanceRow {
   notes: string | null;
 }
 
+export interface VarietyTranslation {
+  language_code: string;
+  display_name: string | null;
+  short_description: string | null;
+  detailed_description: string | null;
+  local_synonyms: string[] | null;
+}
+
 const varietyCache = new Map<string, CropVariety[]>();
 const inflightVarieties = new Map<string, Promise<CropVariety[]>>();
 const resistanceCache = new Map<string, VarietyResistanceRow[]>();
 const inflightResistance = new Map<string, Promise<VarietyResistanceRow[]>>();
+const translationCache = new Map<string, VarietyTranslation | null>(); // key: varietyId|lang
+const inflightTranslation = new Map<string, Promise<VarietyTranslation | null>>();
 
 async function fetchVarieties(cropId: string): Promise<CropVariety[]> {
   if (varietyCache.has(cropId)) return varietyCache.get(cropId)!;
@@ -43,7 +54,7 @@ async function fetchVarieties(cropId: string): Promise<CropVariety[]> {
     const { data, error } = await supabase
       .from('master_products')
       .select(
-        'id,name,variety_code,brand,season,maturity_days_min,maturity_days_max,yield_potential_qtl_per_acre,released_by,is_featured,label_hi,label_mr,parentage,seed_rate_kg_per_acre,spacing,state_suitability,agro_ecological_suitability,data_confidence_score,variety_completeness_score,disease_resistance,pest_tolerance'
+        'id,name,variety_code,brand,season,maturity_days_min,maturity_days_max,yield_potential_qtl_per_acre,released_by,is_featured,label_hi,label_mr,parentage,seed_rate_kg_per_acre,spacing,state_suitability,agro_ecological_suitability,data_confidence_score,variety_completeness_score,disease_resistance,pest_tolerance,description'
       )
       .eq('product_type', 'seed')
       .eq('status', 'active')
@@ -91,6 +102,36 @@ async function fetchResistance(varietyId: string): Promise<VarietyResistanceRow[
   return p;
 }
 
+async function fetchTranslation(varietyId: string, lang: string): Promise<VarietyTranslation | null> {
+  const key = `${varietyId}|${lang}`;
+  if (translationCache.has(key)) return translationCache.get(key)!;
+  if (inflightTranslation.has(key)) return inflightTranslation.get(key)!;
+  const p = (async () => {
+    // Try requested lang; if empty, fall back to 'en'.
+    const langs = lang === 'en' ? ['en'] : [lang, 'en'];
+    const { data, error } = await supabase
+      .from('variety_translations')
+      .select('language_code, display_name, short_description, detailed_description, local_synonyms')
+      .eq('variety_id', varietyId)
+      .in('language_code', langs);
+    if (error) {
+      console.error('[useCropVarieties] translation error', error);
+      inflightTranslation.delete(key);
+      return null;
+    }
+    const rows = (data ?? []) as VarietyTranslation[];
+    const picked =
+      rows.find((r) => r.language_code === lang) ||
+      rows.find((r) => r.language_code === 'en') ||
+      null;
+    translationCache.set(key, picked);
+    inflightTranslation.delete(key);
+    return picked;
+  })();
+  inflightTranslation.set(key, p);
+  return p;
+}
+
 export function useCropVarieties(cropId?: string | null) {
   const [varieties, setVarieties] = useState<CropVariety[]>([]);
   const [loading, setLoading] = useState(false);
@@ -126,4 +167,21 @@ export function useVarietyResistance(varietyId?: string | null) {
     return () => { alive = false; };
   }, [varietyId]);
   return { rows, loading };
+}
+
+export function useVarietyTranslation(varietyId?: string | null, lang: string = 'en') {
+  const [translation, setTranslation] = useState<VarietyTranslation | null>(null);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    if (!varietyId) { setTranslation(null); return; }
+    setLoading(true);
+    fetchTranslation(varietyId, lang).then((r) => {
+      if (!alive) return;
+      setTranslation(r);
+      setLoading(false);
+    });
+    return () => { alive = false; };
+  }, [varietyId, lang]);
+  return { translation, loading };
 }
