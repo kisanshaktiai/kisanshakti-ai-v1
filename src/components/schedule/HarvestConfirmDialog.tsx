@@ -120,6 +120,7 @@ export function HarvestConfirmDialog({ open, onOpenChange, request }: Props) {
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md bg-background">
         <DialogHeader>
