@@ -6,6 +6,17 @@
     "last_updated": "2025-11-29"
   },
   "schedule": {
+    "variety": {
+      "label": "Seed variety",
+      "loading": "Loading varieties…",
+      "none_for_crop": "No varieties catalogued yet — add yours",
+      "choose_from": "Choose from {{count}} varieties",
+      "change": "Change variety",
+      "choose_crop_first": "Select a crop first to see its varieties.",
+      "search_placeholder": "Search by name, code or brand…",
+      "no_match": "No varieties match your search.",
+      "add_missing": "My variety isn't listed — add it"
+    },
     "title": "Crop Schedule",
     "generate": "Generate Schedule",
     "ai_schedule": "AI Smart Schedule",
