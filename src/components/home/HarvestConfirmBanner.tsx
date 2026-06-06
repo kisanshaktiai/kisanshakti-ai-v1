@@ -5,6 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { usePendingHarvests, type PendingHarvest } from '@/hooks/usePendingHarvests';
 import { HarvestConfirmDialog } from '@/components/schedule/HarvestConfirmDialog';
+import { useHarvestNotificationDelivery } from '@/hooks/useHarvestNotificationDelivery';
 import { cn } from '@/lib/utils';
 
 /**
@@ -17,6 +18,9 @@ export function HarvestConfirmBanner() {
   const { data: pending } = usePendingHarvests();
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<PendingHarvest | null>(null);
+
+  // Step 5 — fire a local browser notification once per matured schedule
+  useHarvestNotificationDelivery();
 
   if (!pending || pending.length === 0) return null;
   const primary = pending[0];
