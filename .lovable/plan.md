@@ -119,3 +119,40 @@ No new edge function, no provider secrets. Two complementary delivery channels:
 - edited `src/i18n/locales/en/analytics.json` (harvest_history block)
 
 No DB migration, no new edge function, no new secret.
+
+---
+
+# Step 7 — Post-harvest Residue & Rotation Suggestions
+
+After the farmer confirms a real harvest (`FULLY_HARVESTED` or `PARTIALLY_HARVESTED`), surface a follow-up dialog with:
+- **Residue tip** — family-specific (sugarcane → mulch trash, rice → decomposer, cotton → shred + remove root stubble, etc.). Never recommends burning.
+- **2-3 next-crop suggestions** — driven by a static rotation matrix in `src/lib/harvest/postHarvestSuggestions.ts` keyed by detected `CropFamily`. Each suggestion carries a `reason_key` chip (`fixes_nitrogen`, `breaks_pest_cycle`, `different_family`, `classic_pair`, etc.).
+
+## Why static & not DB-driven
+These are operational rotation hints (not pest/nutrition prescriptions), so per the agronomic-safety memory they may live in code. No chemical advice, no dosages.
+
+## Family detection
+`detectCropFamily(crop)` does a substring/regex match against English + Devanagari/regional tokens for 12 families. Defaults to `unknown` (still returns safe legume/cereal suggestions).
+
+## Trigger point
+`HarvestConfirmDialog` now sets `showNext=true` after a successful submit (not for `ABANDONED`) and renders `PostHarvestSuggestionDialog` as a sibling.
+
+---
+
+# Step 8 — One-tap "Plan Next Crop"
+
+Each suggestion row in `PostHarvestSuggestionDialog` has a **Plan** button that:
+1. Closes the suggestion dialog.
+2. `navigate('/app/schedule', { state: { preselectedLandId, suggestedCrop, source: 'post-harvest' } })`.
+
+`Schedule.tsx` reads `useLocation().state` once lands are loaded, auto-selects the land, jumps `flowStep='crop-input'`, fires a toast with the suggested crop name, then clears history state (so a refresh doesn't re-trigger).
+
+The existing `CropDateInput` → `ai-smart-schedule` flow handles the actual schedule creation — no edge function changes.
+
+## Files touched (Steps 7 + 8)
+- created `src/lib/harvest/postHarvestSuggestions.ts` — rotation matrix + family detector
+- created `src/components/schedule/PostHarvestSuggestionDialog.tsx`
+- edited `src/components/schedule/HarvestConfirmDialog.tsx` — open suggestion dialog after success
+- edited `src/pages/Schedule.tsx` — read `location.state.preselectedLandId / suggestedCrop`
+
+No DB migration, no new edge function, no new secret. Pure frontend close-the-loop.
