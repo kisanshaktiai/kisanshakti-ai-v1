@@ -120,6 +120,13 @@ export function VarietySelector({
         </div>
       )}
 
+      {/* Helper hint */}
+      {!loading && filtered.length > 0 && (
+        <p className="text-[10px] text-muted-foreground/80 italic">
+          {t('schedule.variety.tap_to_view', 'Tap any variety to see full details')}
+        </p>
+      )}
+
       {/* Grid of compact name chips */}
       {loading ? (
         <div className="flex items-center justify-center py-6 text-muted-foreground">
@@ -132,7 +139,7 @@ export function VarietySelector({
             : t('schedule.variety.no_match', 'No varieties match your search.')}
         </p>
       ) : (
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="grid grid-cols-2 gap-2">
           {filtered.map((v) => {
             const isSelected = v.id === value;
             return (
@@ -141,31 +148,45 @@ export function VarietySelector({
                 type="button"
                 onClick={() => setPreviewId(v.id)}
                 className={cn(
-                  'group relative text-left rounded-xl border bg-card px-2.5 py-2 transition-all active:scale-[0.98]',
-                  'hover:border-primary/60 hover:bg-primary/5',
+                  'group relative text-left rounded-2xl border bg-card px-3 py-2.5 transition-all active:scale-[0.98] min-h-[68px]',
+                  'hover:border-primary/60 hover:shadow-sm hover:bg-primary/5',
                   isSelected
-                    ? 'border-primary bg-primary/10 ring-1 ring-primary/40'
+                    ? 'border-primary bg-primary/10 ring-1 ring-primary/40 shadow-sm'
                     : 'border-border/60'
                 )}
               >
+                {v.is_featured && !isSelected && (
+                  <span className="absolute -top-1.5 -right-1 flex items-center gap-0.5 rounded-full bg-primary text-primary-foreground text-[8px] font-bold px-1.5 py-0.5 shadow">
+                    <Sparkles className="h-2 w-2" />
+                    {t('schedule.variety.featured', 'Recommended')}
+                  </span>
+                )}
                 <div className="flex items-start justify-between gap-1">
-                  <span className="text-[13px] font-medium leading-tight line-clamp-2 break-words">
+                  <span className="text-[13px] font-semibold leading-tight line-clamp-2 break-words text-foreground">
                     {chipName(v)}
                   </span>
-                  {isSelected ? (
-                    <Check className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
-                  ) : v.is_featured ? (
-                    <Sparkles className="h-3 w-3 text-primary shrink-0 mt-0.5" />
-                  ) : null}
+                  {isSelected && (
+                    <Check className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  )}
                 </div>
-                {(v.maturity_days_min || v.maturity_days_max) && (
-                  <Badge
-                    variant="outline"
-                    className="mt-1 h-4 text-[9px] px-1 border-border/50 text-muted-foreground"
-                  >
-                    {v.maturity_days_min ?? '?'}–{v.maturity_days_max ?? '?'}d
-                  </Badge>
-                )}
+                <div className="flex flex-wrap items-center gap-1 mt-1.5">
+                  {(v.maturity_days_min || v.maturity_days_max) && (
+                    <Badge
+                      variant="outline"
+                      className="h-4 text-[9px] px-1 border-border/50 text-muted-foreground"
+                    >
+                      {v.maturity_days_min ?? '?'}–{v.maturity_days_max ?? '?'}{t('schedule.variety.days', 'days').charAt(0)}
+                    </Badge>
+                  )}
+                  {v.yield_potential_qtl_per_acre != null && (
+                    <Badge
+                      variant="outline"
+                      className="h-4 text-[9px] px-1 border-border/50 text-muted-foreground"
+                    >
+                      ~{v.yield_potential_qtl_per_acre}q
+                    </Badge>
+                  )}
+                </div>
               </button>
             );
           })}
