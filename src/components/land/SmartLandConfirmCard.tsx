@@ -491,6 +491,26 @@ export function SmartLandConfirmCard({
             onClick={() => setPicker('crop')}
             required
           />
+
+          {/* Seed-variety picker — unlocks variety-aware schedule + chat advice.
+              Optional: schedule still works without it but falls back to generic crop defaults. */}
+          {form.current_crop_id && (
+            <div className="rounded-2xl border border-border bg-card p-3">
+              <VarietySelector
+                cropId={form.current_crop_id}
+                value={form.current_crop_variety_id || undefined}
+                onChange={(v: VarietyOption | null) =>
+                  setForm((f) => ({
+                    ...f,
+                    current_crop_variety_id: v?.id ?? null,
+                    current_crop_variety_label: v?.name ?? null,
+                  }))
+                }
+                label={t('lands.smartConfirm.seedVariety', { defaultValue: 'Seed variety (optional)' })}
+                compact
+              />
+            </div>
+          )}
           <div className="rounded-2xl border border-border bg-card p-3 space-y-3">
             <div>
               <Label className="text-xs">
