@@ -12,7 +12,8 @@ import {
   getProviderFromModel 
 } from "../_shared/aiConfig.ts";
 import { corsHeaders } from '../_shared/cors.ts';
-import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from "./variety-context-loader.ts";
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from "../_shared/variety-context.ts";
+import { applyVarietyOverrides } from "./variety-aware-planner.ts";
 
 // ═══════════════════════════════════════════════════════════════════════
 // FARMING STAGES - 9 Sequential Stages (fetched from DB at runtime)
@@ -2541,7 +2542,8 @@ serve(async (req) => {
         cropName,
         cropVariety,
         stateName: state,
-        landVarietyId: (land as any).variety_id || null,
+        // Land's canonical variety column is `current_crop_variety_id` (UUID → master_products.id, seed only).
+        landVarietyId: (land as any).current_crop_variety_id || (land as any).variety_id || null,
       });
       if (varietyProfile) {
         console.log(
