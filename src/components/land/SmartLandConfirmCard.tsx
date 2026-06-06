@@ -299,6 +299,12 @@ export function SmartLandConfirmCard({
         case 'water': next.water_source = item.value; break;
         case 'irrigation': next.irrigation_type = item.value; break;
         case 'crop':
+          // If farmer picks a different crop, the previously-selected variety
+          // (which is crop-scoped) is no longer valid → clear it.
+          if (next.current_crop_id !== item.id) {
+            next.current_crop_variety_id = null;
+            next.current_crop_variety_label = null;
+          }
           next.current_crop = item.value;
           next.current_crop_id = item.id;
           next.current_crop_duration = item.duration_days ?? null;
