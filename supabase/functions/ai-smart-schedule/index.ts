@@ -4336,6 +4336,18 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           harvest_date: harvestDateStr,
           intercrops: intercropArray,
           backdated_consent: backdatedConsent || false,
+          variety: varietyProfile ? {
+            id: varietyProfile.variety_id,
+            name: varietyProfile.name,
+            code: varietyProfile.variety_code,
+            source: varietyProfile.source,
+            state_match: varietyProfile.state_match,
+            data_confidence_score: varietyProfile.data_confidence_score,
+            maturity_window: varietyProfile.maturity_days_min && varietyProfile.maturity_days_max
+              ? `${varietyProfile.maturity_days_min}-${varietyProfile.maturity_days_max}d` : null,
+            yield_potential_qtl_per_acre: varietyProfile.yield_potential_qtl_per_acre,
+          } : null,
+          variety_overrides: plannerOut.applied_overrides,
         },
       })
       .select()
