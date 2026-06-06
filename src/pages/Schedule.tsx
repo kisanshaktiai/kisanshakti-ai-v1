@@ -196,6 +196,7 @@ export default function Schedule() {
           landId: selectedLand.id,
           cropName,
           cropVariety,
+          varietyId: varietyId ?? null,
           sowingDate: format(sowingDate, 'yyyy-MM-dd'),
           isReadyMadePlant: isReadyMadePlant || false,
           nurseryDays: nurseryDays || 0,
