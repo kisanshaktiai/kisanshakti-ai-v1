@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CalendarIcon, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2, Share2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import {
@@ -220,6 +220,25 @@ export function HarvestConfirmDialog({ open, onOpenChange, request }: Props) {
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            asChild
+            aria-label={t('schedule.harvest.dialog.share', 'Share on WhatsApp')}
+            title={t('schedule.harvest.dialog.share', 'Share on WhatsApp')}
+          >
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(
+                `🌾 ${cropName}${landName ? ` • ${landName}` : ''}${
+                  yieldQtl ? `\n${yieldQtl} q` : ''
+                }${date ? `\n${format(date, 'yyyy-MM-dd')}` : ''}`,
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Share2 className="h-4 w-4" />
+            </a>
+          </Button>
           <Button variant="ghost" onClick={snooze} disabled={!!busy}>
             {busy === 'snooze' ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             {t('schedule.harvest.dialog.snooze', 'Snooze 7 days')}

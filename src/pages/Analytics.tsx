@@ -26,6 +26,7 @@ import {
   DisclaimerCard,
 } from '@/components/analytics/AnalyticsSections';
 import { ForecastChart } from '@/components/analytics/ForecastChart';
+import { HarvestHistoryCard } from '@/components/analytics/HarvestHistoryCard';
 import { aggregateFarm } from '@/lib/analytics/reportEngine';
 import { formatINR, formatNumber } from '@/lib/analytics/formulas';
 
@@ -178,11 +179,13 @@ export default function Analytics() {
             <TaskPerfCard a={scope} />
             <FinancialCard a={scope} />
             <MarketPulseCard a={scope} />
+            <HarvestHistoryCard landId={scope.land.id} />
             <DisclaimerCard />
           </div>
         ) : (
           <div className="space-y-3">
             <ForecastChart landId={null} />
+            <HarvestHistoryCard landId={null} />
             {perLand.map((a) => (
               <Card
                 key={a.land.id}
