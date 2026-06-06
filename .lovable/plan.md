@@ -1,66 +1,104 @@
+# Step 2 — Harvest Engine without burning an edge-function slot
 
-# Forensic Edge Function Audit — what is truly safe to delete
+We will NOT create a new `harvest-engine` edge function. Instead we mount the engine as a new action inside the existing **`schedules-api`** edge function (the natural owner of `crop_schedules` / `lands` / `harvest_confirmation_requests`), and drive it via `pg_cron` → `pg_net`. Zero new deploy slots used.
 
-## Method (this round was stricter than the last)
+## Why schedules-api (not ai-smart-schedule)
 
-1. Listed all 31 function folders under `supabase/functions/`.
-2. For each candidate, grepped **every** reference across `src/**`, `supabase/**`, `*.sql`, `*.toml`, `*.json`, `*.md` — and explicitly excluded the function's own folder so self-references don't create false positives.
-3. **Live-DB cron audit** via `cron.job` — caught references that live only in `pg_cron` and never appear in source. This is what changed the verdict on `proactive-evaluator` vs. the previous pass.
-4. Cross-checked candidate-orphans against frontend hooks that *might* implement the same feature client-side (e.g. `useYouTubeChannelReels` → it fetches YouTube RSS directly, does **not** call the edge function).
-
-## Live cron jobs (ground truth from DB)
-
-| Cron job | Function it calls | Verdict |
+| Candidate | Fit | Verdict |
 |---|---|---|
-| `analytics-forecast-monthly` | `analytics-forecast` | KEEP |
-| `proactive-evaluator-cron` (every 15 min, 5–21h) | **`proactive-evaluator`** | **KEEP — was almost wrongly flagged last round** |
-| `governance-nightly-audit` | `governance-audit` (no local source) | unrelated |
-| `mark-agricultural-tiles-every-5min` | `mark-agricultural-tiles` (no local source) | unrelated |
-| `weekly-ndvi-auto-sync` | `weekly-ndvi-sync` (no local source) | unrelated |
-| 6× internal `cleanup_*` jobs | pure SQL functions | unrelated |
+| `schedules-api` | Already uses service-role, already routes by `?action=`, already reads/writes `crop_schedules` + `lands`, already imports variety helpers. | ✅ Host here |
+| `ai-smart-schedule` | LLM-heavy, per-request farmer-scoped, 4623 LOC, expensive cold start — wrong tool for a background sweep. | ❌ |
+| `proactive-evaluator` | Already busy every 15 min on a different domain (alerts), tenant-loop pattern differs. | ❌ Keep isolated |
 
-No cron references `validation-monitor`, `ai-query-understanding`, `community-translate`, `generate-manifest`, `youtube-channel-feed`, or `seed-decision-rules`.
+## Engine responsibilities (matches the Step-1 schema)
 
-## Reference scan results for candidate orphans
+The Step-1 migration (`20260606150014_*.sql`) already installed:
+- enums + lifecycle columns on `lands` / `crop_schedules`
+- `harvest_confirmation_requests` table with unique partial index `uniq_hcr_open_per_schedule`
+- triggers `fn_cascade_harvest_completion` + `fn_block_double_active_schedule`
+- audit table `crop_lifecycle_events`
 
-For each function below, the **only** match anywhere in the repo was its own `[functions.<name>]` block in `supabase/config.toml` (a `verify_jwt` flag, not a usage):
+So the cron engine only needs to do the **time-based transitions and notifications** the DB cannot do on its own:
 
-| Function | Refs outside its folder | Where | Safe to delete? |
-|---|---|---|---|
-| `ai-query-understanding` | 1 | `config.toml` only | ✅ YES |
-| `community-translate` | 1 | `config.toml` only | ✅ YES |
-| `generate-manifest` | 1 | `config.toml` only | ✅ YES |
-| `youtube-channel-feed` | 1 | `config.toml` only — RSS fetched client-side in `useYouTubeChannelReels.ts` | ✅ YES |
-| `validation-monitor` | 1 | `config.toml` only — no cron | ✅ YES |
-| `seed-decision-rules` | 1 | `config.toml` only — dev/admin seeder | ⚠️ Optional (keep cheap to retain) |
-| `proactive-evaluator` | 0 in code — **but live cron every 15 min** | `cron.job` | 🔴 **DO NOT DELETE** |
+1. **MATURITY DETECTION** — for each active schedule where `expected_harvest_date <= today` AND `harvest_status='NOT_STARTED'` AND `lifecycle_status IN ('GROWING','SOWN','PLANNED')`:
+   - update `crop_schedules.lifecycle_status='MATURITY_REACHED'`
+   - update `lands.lifecycle_status='WAITING_HARVEST_CONFIRMATION'`
+   - INSERT into `harvest_confirmation_requests` (the partial unique index dedupes)
+   - INSERT `crop_lifecycle_events` row (`MATURITY_REACHED`)
+   - emit a row in existing `notifications` table (farmer push/inbox)
 
-## What changed vs. last audit
+2. **REMINDERS** — for `harvest_confirmation_requests` rows where `status='PENDING'` AND `last_reminded_at < now() - interval '2 days'` AND `reminder_count < 5`:
+   - `reminder_count += 1`, `last_reminded_at=now()`
+   - emit notification
 
-- Previous pass missed the **`cron.job` table** entirely, so `proactive-evaluator` looked like an orphan. It isn't — it powers the proactive intelligence loop (see `mem://logic/proactive-intelligence-reasoning-core`) and runs every 15 minutes during daytime. Deleting it would silently break tenant-wide proactive alerts.
-- Multi-tenant impact assessed: all 7 candidates above are stateless utility/orphan functions and have no per-tenant routing, no RLS dependency, no shared cache, no other function importing them. Removing them affects zero tenants.
+3. **EXPIRY** — `status='PENDING'` AND (`due_at < now()` OR `reminder_count >= 5`):
+   - `status='EXPIRED'`
+   - audit event `HARVEST_REQUEST_EXPIRED` (land stays in `WAITING_HARVEST_CONFIRMATION` so farmer can still confirm manually; we do NOT auto-release)
 
-## Recommended deletions (forensic-clean, 5 functions)
+Every step is wrapped in tenant-scoped service-role queries, batched in pages of 200 schedules per tick to keep CPU bounded.
 
-1. `ai-query-understanding`
-2. `community-translate`
-3. `generate-manifest`
-4. `youtube-channel-feed`
-5. `validation-monitor`
+## Multi-tenant safety
 
-Frees **5 deployment slots** — enough for `harvest-engine` plus headroom.
+- Engine queries are scoped per `tenant_id` (loop over distinct tenants found in the candidate set) — same pattern as `proactive-evaluator`.
+- Service-role only; never trusts client headers in this code path.
+- The unique partial index `uniq_hcr_open_per_schedule` makes the INSERT idempotent across cron ticks and concurrent invocations.
+- All writes go through the existing triggers, so `fn_block_double_active_schedule` and `fn_cascade_harvest_completion` continue to be the single source of truth for state transitions.
 
-## Optional 6th
+## Auth model for the cron call
 
-6. `seed-decision-rules` — dev-only seeder, zero runtime traffic. Delete only if you need one more slot; otherwise keep it so re-seeding agronomic rules doesn't require a redeploy.
+`schedules-api` today requires `x-tenant-id`/`x-farmer-id` headers and would reject a cron call. We add an early branch:
 
-## Execution (after approval, in build mode)
+```
+if request.url has ?action=harvest-engine AND req.header['x-service-token'] === Deno.env.HARVEST_ENGINE_TOKEN:
+    run engine (service role), return summary
+```
 
-For each function in the list above:
-- `supabase--delete_edge_functions` (removes the deployed function)
-- `rm -rf supabase/functions/<name>` (removes source)
-- Remove its `[functions.<name>]` block from `supabase/config.toml`
+The token is stored as a Supabase secret and embedded in the pg_cron call.
 
-Then verify with `ls supabase/functions/` and a fresh `cron.job` snapshot to confirm nothing references the deleted names.
+## Cron wiring
 
-Approve to switch to build mode and execute the 5 deletions (and tell me whether to also drop `seed-decision-rules`).
+Inserted via the Supabase insert tool (not a migration — contains project URL + secret), every 30 minutes:
+
+```sql
+select cron.schedule(
+  'harvest-engine-every-30min',
+  '*/30 * * * *',
+  $$ select net.http_post(
+       url := 'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/schedules-api?action=harvest-engine',
+       headers := jsonb_build_object(
+         'Content-Type','application/json',
+         'x-service-token', current_setting('app.harvest_engine_token', true)
+       ),
+       body := '{}'::jsonb
+     ); $$
+);
+```
+
+The token is also exported to Postgres via `ALTER DATABASE … SET app.harvest_engine_token = '…'` so the cron SQL can read it without inlining the secret.
+
+## File changes
+
+1. **`supabase/functions/schedules-api/harvest-engine.ts`** (new, ~250 LOC) — pure module exporting `runHarvestEngine(supabase): Promise<EngineSummary>` with the three steps above. Co-located inside the same function folder so it ships with `schedules-api` (no separate deploy).
+2. **`supabase/functions/schedules-api/index.ts`** — small additions:
+   - import `runHarvestEngine`
+   - early-return branch for `action=harvest-engine` + `x-service-token` check
+   - returns `{ ok, matured, reminders_sent, expired, duration_ms }`
+3. **Secret** `HARVEST_ENGINE_TOKEN` — added via secrets tool.
+4. **Cron + GUC** — inserted via `supabase--insert` tool (not a migration, per instructions for user-specific URLs/keys).
+
+No changes to `ai-smart-schedule`, `proactive-evaluator`, RLS, or any client code.
+
+## Verification after build
+
+- `supabase--curl_edge_functions` POST to `schedules-api?action=harvest-engine` with the token → expect JSON summary.
+- `select * from cron.job where jobname='harvest-engine-every-30min'` → confirm row.
+- `supabase--read_query` on `harvest_confirmation_requests` to confirm PENDING rows appear for matured schedules in test data.
+- Re-run the engine; same set yields `matured=0` (idempotency proof).
+
+## Rollback
+
+- `select cron.unschedule('harvest-engine-every-30min')`
+- Revert the two `schedules-api` files (action branch + new module).
+- Step-1 schema stays — it's harmless without the engine.
+
+Approve to switch to build mode and execute.
