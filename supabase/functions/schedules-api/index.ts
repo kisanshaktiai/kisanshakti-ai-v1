@@ -241,8 +241,14 @@ serve(async (req) => {
             );
           }
 
+          // Attach variety summary so the client can render variety-aware UI
+          // without a second round-trip. variety_id may live on the schedule
+          // row or be inherited from the land.
+          const varietyId = (data as any)?.variety_id
+            ?? await resolveLandVarietyId(supabase, (data as any)?.land_id).catch(() => null);
+          const variety = await fetchVarietySummary(supabase, varietyId);
           return new Response(
-            JSON.stringify({ data }),
+            JSON.stringify({ data: { ...data, variety_id: varietyId, variety } }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         } else {
