@@ -91,6 +91,7 @@ serve(async (req) => {
     const scheduleId = (lastPart && lastPart !== 'schedules-api' && !isTasksRoute) ? lastPart : null;
     const landIdParam = url.searchParams.get('land_id');
     const scheduleIdParam = url.searchParams.get('schedule_id');
+    const actionParam = url.searchParams.get('action');
 
     // PHASE 3A: Optional incremental + pagination params (backward-compatible)
     const sinceParam = url.searchParams.get('since'); // ISO8601 timestamp
