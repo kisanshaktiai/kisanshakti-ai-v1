@@ -26730,6 +26730,7 @@ export type Database = {
       variety_translations: {
         Row: {
           created_at: string
+          detailed_description: string | null
           display_name: string
           id: string
           language_code: string
@@ -26740,6 +26741,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          detailed_description?: string | null
           display_name: string
           id?: string
           language_code: string
@@ -26750,6 +26752,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          detailed_description?: string | null
           display_name?: string
           id?: string
           language_code?: string
