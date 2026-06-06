@@ -70,6 +70,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   const { t } = useTranslation();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const { label: varietyLabel } = useVarietyLabel(land.current_crop_variety_id);
   
   // Removed inline map URL generation - now using LandThumbnail component
   
