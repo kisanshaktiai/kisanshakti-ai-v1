@@ -12,7 +12,7 @@ export interface EngineSummary {
   ok: boolean;
   matured: number;
   reminders_sent: number;
-  expired: number;
+  auto_confirmed: number;
   errors: string[];
   duration_ms: number;
 }
@@ -20,10 +20,45 @@ export interface EngineSummary {
 // Tunables
 const MATURITY_BATCH = 200;
 const REMINDER_BATCH = 500;
-const EXPIRY_BATCH = 500;
+const AUTO_CONFIRM_BATCH = 500;
 const REMINDER_INTERVAL_HOURS = 48; // 2 days
 const MAX_REMINDERS = 5;
-const DEFAULT_DUE_AFTER_DAYS = 14; // PENDING auto-expires after 14d
+const DEFAULT_DUE_AFTER_DAYS = 30; // request expires after 30d; auto-confirm fires earlier
+
+// ──────────────────────────────────────────────────────────────
+// Crop-aware auto-confirmation grace (days after expected_harvest_date)
+// If the farmer never confirms manually, the engine auto-closes the
+// season after this many days. Sugarcane gets a longer window because
+// the actual cut date often drifts 2–4 weeks past the planned date.
+// ──────────────────────────────────────────────────────────────
+const DEFAULT_AUTO_CONFIRM_GRACE_DAYS = 15;
+const AUTO_CONFIRM_GRACE_DAYS_BY_CROP: Record<string, number> = {
+  sugarcane: 30,
+};
+
+// Normalize free-text crop_name to a lookup key for the grace map.
+// Covers English + common Hindi/Marathi spellings of sugarcane.
+function normalizeCropForGrace(cropName: string | null | undefined): string {
+  if (!cropName) return 'default';
+  const s = String(cropName).trim().toLowerCase();
+  if (!s) return 'default';
+  if (
+    s.includes('sugarcane') ||
+    s.includes('sugar cane') ||
+    s.includes('ऊस') ||      // Marathi
+    s.includes('गन्ना') ||    // Hindi
+    s.includes('ईख') ||       // Hindi alt
+    s.includes('கரும்பு')      // Tamil
+  ) {
+    return 'sugarcane';
+  }
+  return s;
+}
+
+function graceDaysFor(cropName: string | null | undefined): number {
+  const key = normalizeCropForGrace(cropName);
+  return AUTO_CONFIRM_GRACE_DAYS_BY_CROP[key] ?? DEFAULT_AUTO_CONFIRM_GRACE_DAYS;
+}
 
 export async function runHarvestEngine(supabase: any): Promise<EngineSummary> {
   const t0 = Date.now();
@@ -31,7 +66,7 @@ export async function runHarvestEngine(supabase: any): Promise<EngineSummary> {
     ok: true,
     matured: 0,
     reminders_sent: 0,
-    expired: 0,
+    auto_confirmed: 0,
     errors: [],
     duration_ms: 0,
   };
@@ -49,9 +84,9 @@ export async function runHarvestEngine(supabase: any): Promise<EngineSummary> {
   }
 
   try {
-    summary.expired = await expirePending(supabase, summary.errors);
+    summary.auto_confirmed = await autoConfirmPending(supabase, summary.errors);
   } catch (e: any) {
-    summary.errors.push(`expiry:${e?.message || e}`);
+    summary.errors.push(`auto_confirm:${e?.message || e}`);
   }
 
   summary.ok = summary.errors.length === 0;
@@ -212,46 +247,101 @@ async function sendReminders(supabase: any, errors: string[]): Promise<number> {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Step 3 — Expiry
+// Step 3 — Auto-confirmation (crop-aware grace window)
+// If a farmer never manually confirms harvest, treat silence as
+// implicit confirmation after `graceDaysFor(crop)` days past
+// expected_harvest_date. Default 15 days; sugarcane 30 days.
+//
+// Setting crop_schedules.harvest_status='FULLY_HARVESTED' fires
+// fn_cascade_harvest_completion, which:
+//   • marks schedule HARVESTED + is_active=false
+//   • releases the land (lifecycle_status='AVAILABLE')
+//   • closes the open harvest_confirmation_requests row
+//   • writes a HARVEST_COMPLETED audit event
+// So we only need to write the schedule row + a farmer alert.
 // ─────────────────────────────────────────────────────────────
-async function expirePending(supabase: any, errors: string[]): Promise<number> {
-  const nowIso = new Date().toISOString();
+async function autoConfirmPending(supabase: any, errors: string[]): Promise<number> {
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+
+  // Pull open requests with the schedule fields we need.
   const { data: rows, error } = await supabase
     .from('harvest_confirmation_requests')
-    .select('id, tenant_id, farmer_id, land_id, schedule_id, reminder_count, due_at')
+    .select(`
+      id, tenant_id, farmer_id, land_id, schedule_id,
+      crop_schedules:schedule_id (
+        id, crop_name, expected_harvest_date, harvest_status, is_active
+      )
+    `)
     .eq('status', 'PENDING')
-    .or(`due_at.lt.${nowIso},reminder_count.gte.${MAX_REMINDERS}`)
-    .limit(EXPIRY_BATCH);
+    .limit(AUTO_CONFIRM_BATCH);
 
   if (error) {
-    errors.push(`expiry_select:${error.message}`);
+    errors.push(`auto_confirm_select:${error.message}`);
     return 0;
   }
   if (!rows?.length) return 0;
 
   let count = 0;
   for (const r of rows) {
-    const { error: updErr } = await supabase
-      .from('harvest_confirmation_requests')
-      .update({ status: 'EXPIRED', responded_at: nowIso })
-      .eq('id', r.id)
-      .eq('status', 'PENDING');
-    if (updErr) {
-      errors.push(`expire_upd:${r.id}:${updErr.message}`);
-      continue;
-    }
+    const sched = (r as any).crop_schedules;
+    if (!sched || !sched.expected_harvest_date) continue;
+    if (sched.harvest_status !== 'NOT_STARTED') continue;
 
-    await supabase.from('crop_lifecycle_events').insert({
-      tenant_id: r.tenant_id,
-      farmer_id: r.farmer_id,
-      land_id: r.land_id,
-      schedule_id: r.schedule_id,
-      event_type: 'HARVEST_REQUEST_EXPIRED',
-      from_status: 'PENDING',
-      to_status: 'EXPIRED',
-      payload: { reminder_count: r.reminder_count, due_at: r.due_at },
-    });
-    count++;
+    const grace = graceDaysFor(sched.crop_name);
+    const ehd = new Date(`${sched.expected_harvest_date}T00:00:00Z`);
+    const cutoff = new Date(ehd.getTime() + grace * 86400_000);
+    if (cutoff > today) continue; // not yet eligible
+
+    // actual_harvest_date = min(today, expected + grace)
+    const auto = cutoff <= today ? cutoff : today;
+    const autoStr = auto.toISOString().slice(0, 10);
+    const clampedStr = autoStr > todayStr ? todayStr : autoStr;
+
+    try {
+      // Optimistic guard: only flip if still NOT_STARTED.
+      const { error: updErr } = await supabase
+        .from('crop_schedules')
+        .update({
+          harvest_status: 'FULLY_HARVESTED',
+          actual_harvest_date: clampedStr,
+          harvest_response: {
+            source: 'auto-confirm',
+            reason: 'no_farmer_response',
+            grace_days: grace,
+            crop: normalizeCropForGrace(sched.crop_name),
+            confirmed_at: new Date().toISOString(),
+          },
+        })
+        .eq('id', sched.id)
+        .eq('harvest_status', 'NOT_STARTED');
+
+      if (updErr) {
+        errors.push(`auto_confirm_upd:${sched.id}:${updErr.message}`);
+        continue;
+      }
+
+      // Trigger fn_cascade_harvest_completion has already:
+      //   - cascaded land lifecycle to AVAILABLE
+      //   - closed the harvest_confirmation_requests row
+      //   - written a HARVEST_COMPLETED audit event
+
+      await emitAlert(supabase, {
+        tenant_id: r.tenant_id,
+        farmer_id: r.farmer_id,
+        land_id: r.land_id,
+        schedule_id: sched.id,
+        alert_type: 'HARVEST_AUTO_CONFIRMED',
+        priority: 'low',
+        title: 'Harvest auto-confirmed',
+        message: `We auto-closed the season for ${sched.crop_name || 'your crop'} after ${grace} days past the expected harvest date. You can still update yield or notes from the schedule screen.`,
+        action_required: null,
+      });
+
+      count++;
+    } catch (e: any) {
+      errors.push(`auto_confirm_row:${r.id}:${e?.message || e}`);
+    }
   }
   return count;
 }

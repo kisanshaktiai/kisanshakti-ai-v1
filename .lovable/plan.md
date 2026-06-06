@@ -1,104 +1,68 @@
-# Step 2 — Harvest Engine without burning an edge-function slot
+# Step 2 — Harvest Engine (with crop-aware auto-confirmation)
 
-We will NOT create a new `harvest-engine` edge function. Instead we mount the engine as a new action inside the existing **`schedules-api`** edge function (the natural owner of `crop_schedules` / `lands` / `harvest_confirmation_requests`), and drive it via `pg_cron` → `pg_net`. Zero new deploy slots used.
+We do NOT create a new edge function. The engine lives as an `?action=harvest-engine` branch inside the existing **`schedules-api`** function and is driven by `pg_cron` → `pg_net`. Zero new deploy slots.
 
-## Why schedules-api (not ai-smart-schedule)
+## Engine responsibilities
 
-| Candidate | Fit | Verdict |
-|---|---|---|
-| `schedules-api` | Already uses service-role, already routes by `?action=`, already reads/writes `crop_schedules` + `lands`, already imports variety helpers. | ✅ Host here |
-| `ai-smart-schedule` | LLM-heavy, per-request farmer-scoped, 4623 LOC, expensive cold start — wrong tool for a background sweep. | ❌ |
-| `proactive-evaluator` | Already busy every 15 min on a different domain (alerts), tenant-loop pattern differs. | ❌ Keep isolated |
+The Step-1 migration (`20260606150014_*.sql`) already installed enums, lifecycle columns on `lands`/`crop_schedules`, the `harvest_confirmation_requests` table with `uniq_hcr_open_per_schedule`, the cascade trigger `fn_cascade_harvest_completion`, the guard `fn_block_double_active_schedule`, and the audit table `crop_lifecycle_events`.
 
-## Engine responsibilities (matches the Step-1 schema)
+The cron engine only does the time-based transitions Postgres cannot do on its own. There are now **three** steps:
 
-The Step-1 migration (`20260606150014_*.sql`) already installed:
-- enums + lifecycle columns on `lands` / `crop_schedules`
-- `harvest_confirmation_requests` table with unique partial index `uniq_hcr_open_per_schedule`
-- triggers `fn_cascade_harvest_completion` + `fn_block_double_active_schedule`
-- audit table `crop_lifecycle_events`
+### 1. MATURITY DETECTION
+For each active schedule where `expected_harvest_date <= today` AND `harvest_status='NOT_STARTED'` AND `lifecycle_status IN ('PLANNED','SOWN','GROWING')`:
+- `crop_schedules.lifecycle_status='MATURITY_REACHED'`
+- `lands.lifecycle_status='WAITING_HARVEST_CONFIRMATION'`
+- INSERT into `harvest_confirmation_requests` (the unique partial index dedupes)
+- audit row in `crop_lifecycle_events` (`MATURITY_REACHED`)
+- `farmer_alerts` row (`HARVEST_READY`, priority `high`)
 
-So the cron engine only needs to do the **time-based transitions and notifications** the DB cannot do on its own:
+### 2. REMINDERS
+For `harvest_confirmation_requests.status='PENDING'` AND `last_reminded_at < now() − 48h` AND `reminder_count < 5`:
+- bump `reminder_count`, set `last_reminded_at=now()`
+- `farmer_alerts` row (`HARVEST_REMINDER`, priority `medium`)
 
-1. **MATURITY DETECTION** — for each active schedule where `expected_harvest_date <= today` AND `harvest_status='NOT_STARTED'` AND `lifecycle_status IN ('GROWING','SOWN','PLANNED')`:
-   - update `crop_schedules.lifecycle_status='MATURITY_REACHED'`
-   - update `lands.lifecycle_status='WAITING_HARVEST_CONFIRMATION'`
-   - INSERT into `harvest_confirmation_requests` (the partial unique index dedupes)
-   - INSERT `crop_lifecycle_events` row (`MATURITY_REACHED`)
-   - emit a row in existing `notifications` table (farmer push/inbox)
+### 3. AUTO-CONFIRMATION (crop-aware) — **new**
+If the farmer never manually confirms, the engine auto-closes the loop after a crop-specific grace window measured from `expected_harvest_date`:
 
-2. **REMINDERS** — for `harvest_confirmation_requests` rows where `status='PENDING'` AND `last_reminded_at < now() - interval '2 days'` AND `reminder_count < 5`:
-   - `reminder_count += 1`, `last_reminded_at=now()`
-   - emit notification
+| Crop | Grace days after `expected_harvest_date` |
+|---|---|
+| **sugarcane** (ऊस / गन्ना / `sugarcane`) | **30** |
+| every other crop (default) | **15** |
 
-3. **EXPIRY** — `status='PENDING'` AND (`due_at < now()` OR `reminder_count >= 5`):
-   - `status='EXPIRED'`
-   - audit event `HARVEST_REQUEST_EXPIRED` (land stays in `WAITING_HARVEST_CONFIRMATION` so farmer can still confirm manually; we do NOT auto-release)
+The grace map lives in `harvest-engine.ts` (`AUTO_CONFIRM_GRACE_DAYS_BY_CROP`) and is keyed by normalized crop code, so adding overrides for `cotton`, `banana`, etc. is one-line.
 
-Every step is wrapped in tenant-scoped service-role queries, batched in pages of 200 schedules per tick to keep CPU bounded.
+Selection: open `harvest_confirmation_requests` where `status='PENDING'` joined to its `crop_schedules` row where `expected_harvest_date + grace_days(crop) <= today` (the grace lookup is computed in code, not SQL, to keep the join simple — we filter PENDING requests by their schedule's expected date in a single follow-up batch).
+
+Action per row:
+1. `UPDATE crop_schedules SET harvest_status='FULLY_HARVESTED', actual_harvest_date = LEAST(today, expected_harvest_date + grace_days), harvest_response = jsonb_build_object('source','auto-confirm','reason','no_farmer_response','grace_days',N,'crop',crop)`.
+   - The existing trigger `fn_cascade_harvest_completion` then automatically: marks schedule `HARVESTED` + `is_active=false`, releases the land (`lifecycle_status='AVAILABLE'`, clears `current_crop_*`), writes a `HARVEST_COMPLETED` audit row, and closes the open request (`status='RESPONDED', response='FULLY_HARVESTED'`).
+2. Emit a `farmer_alerts` row (`HARVEST_AUTO_CONFIRMED`, priority `low`) telling the farmer the system auto-closed the season and they can edit yield/notes from the schedule screen if needed.
+
+Reminder step #2 stops naturally because the request is no longer PENDING. The previous "expire after 5 reminders / 14d" branch is **removed** — auto-confirm supersedes it (the farmer's silence is treated as implicit confirmation, not a failure).
 
 ## Multi-tenant safety
-
-- Engine queries are scoped per `tenant_id` (loop over distinct tenants found in the candidate set) — same pattern as `proactive-evaluator`.
-- Service-role only; never trusts client headers in this code path.
-- The unique partial index `uniq_hcr_open_per_schedule` makes the INSERT idempotent across cron ticks and concurrent invocations.
-- All writes go through the existing triggers, so `fn_block_double_active_schedule` and `fn_cascade_harvest_completion` continue to be the single source of truth for state transitions.
+- Service-role only; engine never trusts client headers.
+- All writes idempotent: `uniq_hcr_open_per_schedule` dedupes INSERTs; auto-confirm uses optimistic `eq('harvest_status','NOT_STARTED')` guard so re-runs are no-ops.
+- Triggers remain the single source of truth for state transitions.
 
 ## Auth model for the cron call
-
-`schedules-api` today requires `x-tenant-id`/`x-farmer-id` headers and would reject a cron call. We add an early branch:
-
-```
-if request.url has ?action=harvest-engine AND req.header['x-service-token'] === Deno.env.HARVEST_ENGINE_TOKEN:
-    run engine (service role), return summary
-```
-
-The token is stored as a Supabase secret and embedded in the pg_cron call.
+Anon Bearer (same pattern as `proactive-evaluator`). No secret needed. Token is **not** required.
 
 ## Cron wiring
-
-Inserted via the Supabase insert tool (not a migration — contains project URL + secret), every 30 minutes:
-
-```sql
-select cron.schedule(
-  'harvest-engine-every-30min',
-  '*/30 * * * *',
-  $$ select net.http_post(
-       url := 'https://qfklkkzxemsbeniyugiz.supabase.co/functions/v1/schedules-api?action=harvest-engine',
-       headers := jsonb_build_object(
-         'Content-Type','application/json',
-         'x-service-token', current_setting('app.harvest_engine_token', true)
-       ),
-       body := '{}'::jsonb
-     ); $$
-);
-```
-
-The token is also exported to Postgres via `ALTER DATABASE … SET app.harvest_engine_token = '…'` so the cron SQL can read it without inlining the secret.
+Already scheduled via `supabase--insert`: `harvest-engine-daily`, jobid 18, `30 4 * * *` (04:30 UTC / 10:00 IST).
 
 ## File changes
-
-1. **`supabase/functions/schedules-api/harvest-engine.ts`** (new, ~250 LOC) — pure module exporting `runHarvestEngine(supabase): Promise<EngineSummary>` with the three steps above. Co-located inside the same function folder so it ships with `schedules-api` (no separate deploy).
-2. **`supabase/functions/schedules-api/index.ts`** — small additions:
-   - import `runHarvestEngine`
-   - early-return branch for `action=harvest-engine` + `x-service-token` check
-   - returns `{ ok, matured, reminders_sent, expired, duration_ms }`
-3. **Secret** `HARVEST_ENGINE_TOKEN` — added via secrets tool.
-4. **Cron + GUC** — inserted via `supabase--insert` tool (not a migration, per instructions for user-specific URLs/keys).
-
-No changes to `ai-smart-schedule`, `proactive-evaluator`, RLS, or any client code.
+1. **`supabase/functions/schedules-api/harvest-engine.ts`** — replace `expirePending(...)` with `autoConfirm(...)`; add `AUTO_CONFIRM_GRACE_DAYS_BY_CROP` map + `normalizeCropForGrace()` helper.
+2. **`supabase/functions/schedules-api/index.ts`** — unchanged (action branch already there).
+3. No DB migration, no new secret.
 
 ## Verification after build
-
-- `supabase--curl_edge_functions` POST to `schedules-api?action=harvest-engine` with the token → expect JSON summary.
-- `select * from cron.job where jobname='harvest-engine-every-30min'` → confirm row.
-- `supabase--read_query` on `harvest_confirmation_requests` to confirm PENDING rows appear for matured schedules in test data.
-- Re-run the engine; same set yields `matured=0` (idempotency proof).
+- `curl_edge_functions` POST `schedules-api?action=harvest-engine` → returns `{ ok, matured, reminders_sent, auto_confirmed, duration_ms }`.
+- Seed a sugarcane schedule with `expected_harvest_date = today − 31d` → next run auto-confirms it; land returns to `AVAILABLE`; `crop_lifecycle_events` has both `MATURITY_REACHED` and `HARVEST_COMPLETED` rows.
+- Same row, run engine again → `auto_confirmed=0` (idempotent).
+- Non-sugarcane schedule at `today − 14d` → not yet auto-confirmed; at `today − 16d` → auto-confirmed on next run.
 
 ## Rollback
-
-- `select cron.unschedule('harvest-engine-every-30min')`
-- Revert the two `schedules-api` files (action branch + new module).
-- Step-1 schema stays — it's harmless without the engine.
-
-Approve to switch to build mode and execute.
+- `select cron.unschedule('harvest-engine-daily');`
+- Revert `harvest-engine.ts` to the previous version (expiry behaviour).
+- Step-1 schema stays — harmless without the engine.
