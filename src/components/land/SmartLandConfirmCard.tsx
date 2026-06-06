@@ -507,7 +507,6 @@ export function SmartLandConfirmCard({
                   }))
                 }
                 label={t('lands.smartConfirm.seedVariety', { defaultValue: 'Seed variety (optional)' })}
-                compact
               />
             </div>
           )}
