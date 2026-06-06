@@ -99,8 +99,220 @@ serve(async (req) => {
       );
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Farmer-facing harvest confirmation endpoints (Step 3)
+    //   POST ?action=harvest-pending  → list open requests
+    //   POST ?action=harvest-confirm  → confirm (full/partial/abandoned)
+    //   POST ?action=harvest-snooze   → push due_at out by N days
+    // Tenant/farmer scoping is inherited from the headers already
+    // validated above (farmer→tenant association guard).
+    // ─────────────────────────────────────────────────────────────────
+    {
+      const harvestUrl = new URL(req.url);
+      const harvestAction = harvestUrl.searchParams.get('action');
+      const harvestActions = new Set(['harvest-pending', 'harvest-confirm', 'harvest-snooze']);
+
+      if (harvestAction && harvestActions.has(harvestAction)) {
+        if (req.method !== 'POST' && harvestAction !== 'harvest-pending') {
+          return new Response(
+            JSON.stringify({ error: 'Method not allowed for this action' }),
+            { status: 405, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // ── LIST PENDING ──────────────────────────────────────────────
+        if (harvestAction === 'harvest-pending') {
+          const { data, error } = await supabase
+            .from('harvest_confirmation_requests')
+            .select(`
+              id, schedule_id, land_id, due_at, reminder_count, last_reminded_at, triggered_at, status,
+              crop_schedules:schedule_id ( id, crop_name, crop_variety, sowing_date, expected_harvest_date, harvest_status ),
+              lands:land_id ( id, name, area_acres )
+            `)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('status', 'PENDING')
+            .order('due_at', { ascending: true })
+            .limit(50);
+
+          if (error) {
+            return new Response(
+              JSON.stringify({ error: 'Failed to load pending harvests', details: error.message }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          return new Response(
+            JSON.stringify({ data: data || [] }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Parse JSON body for the two write actions
+        let body: any = {};
+        try { body = await req.json(); } catch (_) { /* empty body */ }
+
+        // ── CONFIRM ───────────────────────────────────────────────────
+        if (harvestAction === 'harvest-confirm') {
+          const VALID_OUTCOMES = new Set(['FULLY_HARVESTED', 'PARTIALLY_HARVESTED', 'ABANDONED']);
+          const scheduleIdIn = String(body?.schedule_id || '').trim();
+          const outcome = String(body?.outcome || '').trim();
+          const actualDateRaw = body?.actual_harvest_date ? String(body.actual_harvest_date) : null;
+          const yieldQtl = body?.yield_qtl != null ? Number(body.yield_qtl) : null;
+          const notes = body?.notes ? String(body.notes).slice(0, 2000) : null;
+
+          if (!scheduleIdIn || !VALID_OUTCOMES.has(outcome)) {
+            return new Response(
+              JSON.stringify({ error: 'Invalid payload', details: 'schedule_id and a valid outcome are required' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          if (outcome !== 'ABANDONED' && !actualDateRaw) {
+            return new Response(
+              JSON.stringify({ error: 'actual_harvest_date is required for harvest outcomes' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          // Ownership + bounds check
+          const { data: sched, error: schedErr } = await supabase
+            .from('crop_schedules')
+            .select('id, tenant_id, farmer_id, sowing_date, expected_harvest_date, harvest_status, is_active')
+            .eq('id', scheduleIdIn)
+            .maybeSingle();
+          if (schedErr || !sched) {
+            return new Response(
+              JSON.stringify({ error: 'Schedule not found' }),
+              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          if (sched.tenant_id !== tenantId || sched.farmer_id !== farmerId) {
+            return new Response(
+              JSON.stringify({ error: 'Forbidden' }),
+              { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          const todayStr = new Date().toISOString().slice(0, 10);
+          let actualDate = actualDateRaw;
+          if (actualDate) {
+            if (actualDate > todayStr) {
+              return new Response(
+                JSON.stringify({ error: 'actual_harvest_date cannot be in the future' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+            if (sched.sowing_date && actualDate < sched.sowing_date) {
+              return new Response(
+                JSON.stringify({ error: 'actual_harvest_date cannot be before sowing date' }),
+                { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+              );
+            }
+          }
+
+          const harvestResponse = {
+            source: 'manual',
+            outcome,
+            yield_qtl: yieldQtl,
+            notes,
+            confirmed_at: new Date().toISOString(),
+          };
+
+          // Trigger fn_cascade_harvest_completion runs for FULLY_HARVESTED + ABANDONED
+          // (releases land, closes request, writes audit). PARTIALLY_HARVESTED keeps
+          // the schedule active so the farmer can confirm subsequent passes.
+          const update: any = {
+            harvest_status: outcome,
+            harvest_confirmed_by: farmerId,
+            harvest_response: harvestResponse,
+          };
+          if (outcome !== 'ABANDONED' && actualDate) update.actual_harvest_date = actualDate;
+
+          const { error: updErr } = await supabase
+            .from('crop_schedules')
+            .update(update)
+            .eq('id', sched.id)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId);
+          if (updErr) {
+            return new Response(
+              JSON.stringify({ error: 'Failed to confirm harvest', details: updErr.message }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+
+          // For PARTIAL the trigger does not close the request — do it here.
+          if (outcome === 'PARTIALLY_HARVESTED') {
+            await supabase
+              .from('harvest_confirmation_requests')
+              .update({
+                status: 'RESPONDED',
+                response: 'PARTIALLY_HARVESTED',
+                responded_at: new Date().toISOString(),
+                response_payload: harvestResponse,
+              })
+              .eq('schedule_id', sched.id)
+              .eq('status', 'PENDING');
+
+            await supabase.from('crop_lifecycle_events').insert({
+              tenant_id: tenantId, farmer_id: farmerId, schedule_id: sched.id,
+              event_type: 'HARVEST_PARTIAL_CONFIRMED',
+              from_status: String(sched.harvest_status || 'NOT_STARTED'),
+              to_status: 'PARTIALLY_HARVESTED',
+              payload: harvestResponse,
+              actor: farmerId,
+            });
+          }
+
+          // Mark related farmer_alerts as actioned (best effort)
+          await supabase
+            .from('farmer_alerts')
+            .update({ is_actioned: true, actioned_at: new Date().toISOString() })
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('schedule_id', sched.id)
+            .in('alert_type', ['HARVEST_READY', 'HARVEST_REMINDER']);
+
+          return new Response(
+            JSON.stringify({ ok: true, schedule_id: sched.id, outcome }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // ── SNOOZE ────────────────────────────────────────────────────
+        if (harvestAction === 'harvest-snooze') {
+          const requestIdIn = String(body?.request_id || '').trim();
+          const days = Math.min(Math.max(parseInt(String(body?.days ?? 7), 10) || 7, 1), 30);
+          if (!requestIdIn) {
+            return new Response(
+              JSON.stringify({ error: 'request_id is required' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          const newDue = new Date(Date.now() + days * 86400_000).toISOString();
+          const { error: snoozeErr } = await supabase
+            .from('harvest_confirmation_requests')
+            .update({ due_at: newDue })
+            .eq('id', requestIdIn)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .eq('status', 'PENDING');
+          if (snoozeErr) {
+            return new Response(
+              JSON.stringify({ error: 'Failed to snooze', details: snoozeErr.message }),
+              { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          return new Response(
+            JSON.stringify({ ok: true, request_id: requestIdIn, due_at: newDue }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      }
+    }
+
     // Parse URL to get path segments
     const url = new URL(req.url);
+
     const pathParts = url.pathname.split('/').filter(Boolean);
     const lastPart = pathParts.length > 1 ? pathParts[pathParts.length - 1] : null;
     

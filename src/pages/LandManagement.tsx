@@ -35,6 +35,7 @@ interface Land {
   current_crop?: string;
   previous_crop?: string;
   crop_stage?: string;
+  lifecycle_status?: string;
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
@@ -172,11 +173,19 @@ export default function LandManagement() {
               {land.current_crop && (
                 <div className="text-right">
                   <p className="text-sm font-medium truncate max-w-[100px]">{land.current_crop}</p>
-                  {land.crop_stage && (
+                  {land.lifecycle_status === 'WAITING_HARVEST_CONFIRMATION' ? (
+                    <Badge className="bg-warning text-warning-foreground text-xs">
+                      {t('schedule.harvest.land_badge.confirm', 'Confirm harvest')}
+                    </Badge>
+                  ) : land.lifecycle_status === 'READY_FOR_HARVEST' ? (
+                    <Badge className="bg-success text-success-foreground text-xs">
+                      {t('schedule.harvest.land_badge.ready', 'Ready')}
+                    </Badge>
+                  ) : land.crop_stage ? (
                     <Badge className={`${getCropStageColor(land.crop_stage)} text-primary-foreground text-xs`}>
                       {land.crop_stage}
                     </Badge>
-                  )}
+                  ) : null}
                 </div>
               )}
               

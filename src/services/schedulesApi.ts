@@ -182,6 +182,61 @@ class SchedulesApiService {
       throw error;
     }
   }
+  // ──────────────────────────────────────────────────────────────
+  // Harvest confirmation (Step 3)
+  // ──────────────────────────────────────────────────────────────
+  async fetchPendingHarvests(): Promise<any[]> {
+    try {
+      const headers = await this.getHeaders();
+      const url = `${SCHEDULES_API_URL}?action=harvest-pending`;
+      const res = await this.fetchWithRetry(url, { method: 'POST', headers, body: '{}' });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to fetch pending harvests');
+      }
+      const json = await res.json();
+      return json.data || [];
+    } catch (e) {
+      console.error('❌ [SchedulesAPI] fetchPendingHarvests:', e);
+      return [];
+    }
+  }
+
+  async confirmHarvest(payload: {
+    schedule_id: string;
+    outcome: 'FULLY_HARVESTED' | 'PARTIALLY_HARVESTED' | 'ABANDONED';
+    actual_harvest_date?: string;
+    yield_qtl?: number | null;
+    notes?: string | null;
+  }): Promise<{ ok: boolean; schedule_id: string; outcome: string }> {
+    const headers = await this.getHeaders();
+    const url = `${SCHEDULES_API_URL}?action=harvest-confirm`;
+    const res = await this.fetchWithRetry(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to confirm harvest');
+    }
+    return res.json();
+  }
+
+  async snoozeHarvest(requestId: string, days = 7): Promise<{ ok: boolean; due_at: string }> {
+    const headers = await this.getHeaders();
+    const url = `${SCHEDULES_API_URL}?action=harvest-snooze`;
+    const res = await this.fetchWithRetry(url, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ request_id: requestId, days }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to snooze harvest');
+    }
+    return res.json();
+  }
 }
 
 export const schedulesApi = new SchedulesApiService();
