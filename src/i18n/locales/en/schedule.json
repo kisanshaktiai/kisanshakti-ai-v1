@@ -380,7 +380,8 @@
         "notes_label": "Notes (optional)",
         "notes_placeholder": "Anything you want to remember about this harvest",
         "snooze": "Snooze 7 days",
-        "confirm": "Confirm"
+        "confirm": "Confirm",
+        "share": "Share on WhatsApp"
       },
       "outcomes": {
         "full": "Fully harvested",
