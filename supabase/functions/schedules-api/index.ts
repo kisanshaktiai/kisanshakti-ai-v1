@@ -37,20 +37,13 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // ─────────────────────────────────────────────────────────────────
-    // Service-role cron action: harvest-engine (no tenant/farmer headers)
-    // Guarded by HARVEST_ENGINE_TOKEN shared secret.
+    // Cron action: harvest-engine
+    // Same auth pattern as proactive-evaluator (anon Bearer from pg_cron).
+    // Idempotent service-role sweep; returns only aggregate counts.
     // ─────────────────────────────────────────────────────────────────
     {
       const earlyUrl = new URL(req.url);
       if (earlyUrl.searchParams.get('action') === 'harvest-engine') {
-        const provided = req.headers.get('x-service-token') || '';
-        const expected = Deno.env.get('HARVEST_ENGINE_TOKEN') || '';
-        if (!expected || provided !== expected) {
-          return new Response(
-            JSON.stringify({ error: 'Unauthorized', details: 'invalid service token' }),
-            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
         const summary = await runHarvestEngine(supabase);
         return new Response(JSON.stringify(summary), {
           status: 200,
@@ -58,6 +51,7 @@ serve(async (req) => {
         });
       }
     }
+
 
     // Extract tenant and farmer IDs from headers
     const tenantId = req.headers.get('x-tenant-id');
