@@ -25,6 +25,7 @@ import { SeasonMonthPicker } from './SeasonMonthPicker';
 import { LandMapThumb } from './LandMapThumb';
 import { ReviewCard, type ReviewCardState } from './ReviewCard';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
+import { VarietySelector, type VarietyOption } from '@/components/crops/VarietySelector';
 
 interface LatLng { lat: number; lng: number; }
 interface Area { sqft: number; guntha: number; acres: number; }
@@ -55,6 +56,10 @@ interface FormState {
   current_crop?: string;
   current_crop_id?: string;
   current_crop_duration?: number | null;
+  // Seed-variety reference → master_products(id) where product_type='seed'.
+  // Enables variety-aware schedule / chat / proactive logic downstream.
+  current_crop_variety_id?: string | null;
+  current_crop_variety_label?: string | null;
   sowing_date?: string;
   land_prep_offset_days: number;
   previous_crop?: string;
