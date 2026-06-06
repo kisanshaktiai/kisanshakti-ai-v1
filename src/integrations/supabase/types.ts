@@ -5662,6 +5662,98 @@ export type Database = {
           },
         ]
       }
+      crop_lifecycle_events: {
+        Row: {
+          actor: string | null
+          created_at: string
+          event_type: string
+          farmer_id: string
+          from_status: string | null
+          id: string
+          land_id: string
+          payload: Json
+          schedule_id: string | null
+          tenant_id: string
+          to_status: string | null
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          event_type: string
+          farmer_id: string
+          from_status?: string | null
+          id?: string
+          land_id: string
+          payload?: Json
+          schedule_id?: string | null
+          tenant_id: string
+          to_status?: string | null
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          event_type?: string
+          farmer_id?: string
+          from_status?: string | null
+          id?: string
+          land_id?: string
+          payload?: Json
+          schedule_id?: string | null
+          tenant_id?: string
+          to_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_lifecycle_events_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crop_schedules: {
         Row: {
           actual_harvest_date: string | null
@@ -5703,6 +5795,10 @@ export type Database = {
           generation_language: string | null
           generation_params: Json | null
           growth_regulators: Json | null
+          harvest_confirmed_at: string | null
+          harvest_confirmed_by: string | null
+          harvest_response: Json
+          harvest_status: Database["public"]["Enums"]["harvest_status"]
           herbicide_ml: number | null
           id: string
           input_land_coordinates: Json | null
@@ -5728,6 +5824,7 @@ export type Database = {
           land_id: string
           last_weather_check: string | null
           last_weather_update: string | null
+          lifecycle_status: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata: Json | null
           organic_fertilizer_kg: number | null
           organic_input_details: Json | null
@@ -5811,6 +5908,10 @@ export type Database = {
           generation_language?: string | null
           generation_params?: Json | null
           growth_regulators?: Json | null
+          harvest_confirmed_at?: string | null
+          harvest_confirmed_by?: string | null
+          harvest_response?: Json
+          harvest_status?: Database["public"]["Enums"]["harvest_status"]
           herbicide_ml?: number | null
           id?: string
           input_land_coordinates?: Json | null
@@ -5836,6 +5937,7 @@ export type Database = {
           land_id: string
           last_weather_check?: string | null
           last_weather_update?: string | null
+          lifecycle_status?: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
@@ -5919,6 +6021,10 @@ export type Database = {
           generation_language?: string | null
           generation_params?: Json | null
           growth_regulators?: Json | null
+          harvest_confirmed_at?: string | null
+          harvest_confirmed_by?: string | null
+          harvest_response?: Json
+          harvest_status?: Database["public"]["Enums"]["harvest_status"]
           herbicide_ml?: number | null
           id?: string
           input_land_coordinates?: Json | null
@@ -5944,6 +6050,7 @@ export type Database = {
           land_id?: string
           last_weather_check?: string | null
           last_weather_update?: string | null
+          lifecycle_status?: Database["public"]["Enums"]["crop_schedule_lifecycle_status"]
           metadata?: Json | null
           organic_fertilizer_kg?: number | null
           organic_input_details?: Json | null
@@ -10762,6 +10869,113 @@ export type Database = {
         }
         Relationships: []
       }
+      harvest_confirmation_requests: {
+        Row: {
+          channel: Json
+          created_at: string
+          due_at: string | null
+          farmer_id: string
+          id: string
+          land_id: string
+          last_reminded_at: string | null
+          reminder_count: number
+          responded_at: string | null
+          response: Database["public"]["Enums"]["harvest_status"] | null
+          response_payload: Json
+          schedule_id: string
+          status: Database["public"]["Enums"]["harvest_confirmation_request_status"]
+          tenant_id: string
+          triggered_at: string
+          updated_at: string
+        }
+        Insert: {
+          channel?: Json
+          created_at?: string
+          due_at?: string | null
+          farmer_id: string
+          id?: string
+          land_id: string
+          last_reminded_at?: string | null
+          reminder_count?: number
+          responded_at?: string | null
+          response?: Database["public"]["Enums"]["harvest_status"] | null
+          response_payload?: Json
+          schedule_id: string
+          status?: Database["public"]["Enums"]["harvest_confirmation_request_status"]
+          tenant_id: string
+          triggered_at?: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: Json
+          created_at?: string
+          due_at?: string | null
+          farmer_id?: string
+          id?: string
+          land_id?: string
+          last_reminded_at?: string | null
+          reminder_count?: number
+          responded_at?: string | null
+          response?: Database["public"]["Enums"]["harvest_status"] | null
+          response_payload?: Json
+          schedule_id?: string
+          status?: Database["public"]["Enums"]["harvest_confirmation_request_status"]
+          tenant_id?: string
+          triggered_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_agent_context"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_a_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_boundary_overlaps"
+            referencedColumns: ["land_b_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "land_tile_coverage"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "lands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_land_id_fkey"
+            columns: ["land_id"]
+            isOneToOne: false
+            referencedRelation: "vw_soil_summary"
+            referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "harvest_confirmation_requests_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       hypothesis_conditions: {
         Row: {
           condition_key: string
@@ -12304,6 +12518,7 @@ export type Database = {
       }
       lands: {
         Row: {
+          active_schedule_id: string | null
           area_acres: number
           area_guntas: number | null
           area_sqft: number | null
@@ -12346,6 +12561,8 @@ export type Database = {
           last_processed_at: string | null
           last_soil_test_date: string | null
           last_sowing_date: string | null
+          lifecycle_changed_at: string
+          lifecycle_status: Database["public"]["Enums"]["land_lifecycle_status"]
           location_context: Json | null
           location_coords: Json | null
           marketplace_enabled: boolean | null
@@ -12384,6 +12601,7 @@ export type Database = {
           water_source: string | null
         }
         Insert: {
+          active_schedule_id?: string | null
           area_acres: number
           area_guntas?: number | null
           area_sqft?: number | null
@@ -12426,6 +12644,8 @@ export type Database = {
           last_processed_at?: string | null
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
+          lifecycle_changed_at?: string
+          lifecycle_status?: Database["public"]["Enums"]["land_lifecycle_status"]
           location_context?: Json | null
           location_coords?: Json | null
           marketplace_enabled?: boolean | null
@@ -12464,6 +12684,7 @@ export type Database = {
           water_source?: string | null
         }
         Update: {
+          active_schedule_id?: string | null
           area_acres?: number
           area_guntas?: number | null
           area_sqft?: number | null
@@ -12506,6 +12727,8 @@ export type Database = {
           last_processed_at?: string | null
           last_soil_test_date?: string | null
           last_sowing_date?: string | null
+          lifecycle_changed_at?: string
+          lifecycle_status?: Database["public"]["Enums"]["land_lifecycle_status"]
           location_context?: Json | null
           location_coords?: Json | null
           marketplace_enabled?: boolean | null
@@ -12570,6 +12793,13 @@ export type Database = {
             columns: ["village_id"]
             isOneToOne: false
             referencedRelation: "villages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_active_schedule_fk"
+            columns: ["active_schedule_id"]
+            isOneToOne: false
+            referencedRelation: "crop_schedules"
             referencedColumns: ["id"]
           },
           {
@@ -31633,6 +31863,31 @@ export type Database = {
         | "practice"
         | "market"
         | "problem_solving"
+      crop_schedule_lifecycle_status:
+        | "PLANNED"
+        | "SOWN"
+        | "GROWING"
+        | "MATURITY_REACHED"
+        | "WAITING_HARVEST_CONFIRMATION"
+        | "HARVESTED"
+        | "ABANDONED"
+      harvest_confirmation_request_status:
+        | "PENDING"
+        | "RESPONDED"
+        | "EXPIRED"
+        | "CANCELLED"
+      harvest_status:
+        | "NOT_STARTED"
+        | "PARTIALLY_HARVESTED"
+        | "FULLY_HARVESTED"
+        | "ABANDONED"
+      land_lifecycle_status:
+        | "AVAILABLE"
+        | "PREPARING"
+        | "CROP_ACTIVE"
+        | "READY_FOR_HARVEST"
+        | "WAITING_HARVEST_CONFIRMATION"
+        | "HARVEST_COMPLETED"
       language_code:
         | "en"
         | "hi"
@@ -31892,6 +32147,35 @@ export const Constants = {
         "practice",
         "market",
         "problem_solving",
+      ],
+      crop_schedule_lifecycle_status: [
+        "PLANNED",
+        "SOWN",
+        "GROWING",
+        "MATURITY_REACHED",
+        "WAITING_HARVEST_CONFIRMATION",
+        "HARVESTED",
+        "ABANDONED",
+      ],
+      harvest_confirmation_request_status: [
+        "PENDING",
+        "RESPONDED",
+        "EXPIRED",
+        "CANCELLED",
+      ],
+      harvest_status: [
+        "NOT_STARTED",
+        "PARTIALLY_HARVESTED",
+        "FULLY_HARVESTED",
+        "ABANDONED",
+      ],
+      land_lifecycle_status: [
+        "AVAILABLE",
+        "PREPARING",
+        "CROP_ACTIVE",
+        "READY_FOR_HARVEST",
+        "WAITING_HARVEST_CONFIRMATION",
+        "HARVEST_COMPLETED",
       ],
       language_code: [
         "en",
