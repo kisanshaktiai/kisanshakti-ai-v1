@@ -123,6 +123,58 @@ serve(async (req) => {
 
     switch (req.method) {
       case 'GET': {
+        // ─── action=variety-context&land_id=… ──────────────────────────
+        // Resolves the planted variety for a land (lands → active schedule
+        // fallback), returns the full master_products variety summary and
+        // a resistance list. Used by the chat orchestrator + frontend.
+        if (actionParam === 'variety-context') {
+          const landId = landIdParam || url.searchParams.get('landId');
+          if (!landId) {
+            return new Response(
+              JSON.stringify({ error: 'land_id is required' }),
+              { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          const { data: landRow } = await supabase
+            .from('lands')
+            .select('id, current_crop, current_crop_variety_id, state, soil_type')
+            .eq('id', landId)
+            .eq('tenant_id', tenantId)
+            .eq('farmer_id', farmerId)
+            .maybeSingle();
+          if (!landRow) {
+            return new Response(
+              JSON.stringify({ error: 'Land not found' }),
+              { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          const varietyId = landRow.current_crop_variety_id
+            || await resolveLandVarietyId(supabase, landId);
+          const [variety, resistance, profile] = await Promise.all([
+            fetchVarietySummary(supabase, varietyId),
+            loadResistanceMap(supabase, varietyId).then(m => Array.from(m.values())),
+            varietyId
+              ? loadVarietyProfile(supabase, {
+                  cropName: landRow.current_crop || '',
+                  stateName: landRow.state || null,
+                  landVarietyId: varietyId,
+                }).catch(() => null)
+              : Promise.resolve(null),
+          ]);
+          return new Response(
+            JSON.stringify({
+              data: {
+                land_id: landId,
+                variety_id: varietyId,
+                variety,
+                resistance,
+                profile,
+              },
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
         // Handle /tasks route
         if (isTasksRoute) {
           console.log('📋 [SchedulesAPI] Fetching tasks:', { scheduleIdParam, sinceParam, parsedLimit, cursorParam });
