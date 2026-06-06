@@ -1,103 +1,193 @@
-# AI Crop-Schedule — Variety Intelligence Wiring
 
-## Problem
+# Harvest Confirmation & Land Release Engine
 
-The "वाण (पर्यायी)" field on `/app/schedule` (mobile flow in `CropDateInput.tsx` and desktop flow in `ScheduleGenerator.tsx`) is a **plain text input** with a hard-coded default ("IR-64", "HD-2967", "BT Cotton"). It does **not**:
+## 1. Current System Audit (findings)
 
-- Load the varieties registered for the selected crop from `master_products` (`product_type='seed'`).
-- Show maturity days, suitable regions, water/irrigation regime, or pest/disease resistance from `variety_resistance`.
-- Let the farmer flag a missing variety so the tenant can curate it.
+**Database (already exists):**
+- `crop_schedules`: has `sowing_date`, `expected_harvest_date`, `actual_harvest_date` (nullable), `status`, `is_active`. No `harvest_status`, no `harvest_confirmed_at`, no `harvest_confirmed_by`.
+- `lands`: has `current_crop_id`, `current_crop_variety_id`, `crop_stage`, `planting_date`, `expected_harvest_date`, `harvest_date`, `last_crop`, `last_harvest_date`. No `land_status` enum, no `active_schedule_id`.
+- `schedule_tasks`: has `status`, `stage_key` — harvest is just another task.
+- No `crop_lifecycle_events` audit table.
 
-A correct `VarietySelector` component already exists (`src/components/crops/VarietySelector.tsx`) and the canonical loader lives at `supabase/functions/_shared/variety-context.ts`. They're just not used in the schedule entry screen.
+**Root cause:** Land "occupancy" is inferred from `lands.current_crop_id` being non-null + `crop_schedules.is_active=true`. Nothing flips these off — `expected_harvest_date` is treated as truth. AI Chat (`ai-agriculture-chat`) and Symbolic Brain load land context that keeps the crop "active" indefinitely past maturity.
 
-## Goals
+**Failure scenarios confirmed:**
+- After `expected_harvest_date`, crop stays `is_active=true` → stale fertilizer/pest advice.
+- New schedule creation isn't blocked → duplicate active crops possible.
+- AI Chat has no signal to switch to post-harvest mode.
+- Symbolic Brain canonical state derives stage from `sowing_date + days` — runs past maturity into negative territory.
 
-1. Auto-load varieties for the chosen crop and let the farmer pick one.
-2. On selection, render a rich detail panel: maturity (min–max days), recommended states/agro-ecology, irrigation regime, seed rate, spacing, **disease + pest resistance** rows.
-3. If the variety isn't in the DB → "Add my variety" inline form → write to a new `variety_submissions` table for tenant review (the existing `variety_review_queue` requires an existing `variety_id`, so it's not the right home for brand-new varieties).
-4. Persist the selected `variety_id` end-to-end so downstream `ai-smart-schedule` planning uses the variety profile we already built (Phase 1–5 work).
+---
 
-## Scope of changes
+## 2. Lifecycle Contract (Single Source of Truth)
 
-### Database (1 migration)
+**Land status enum** (`land_lifecycle_status`):
+`AVAILABLE → PREPARING → CROP_ACTIVE → READY_FOR_HARVEST → WAITING_HARVEST_CONFIRMATION → HARVEST_COMPLETED → AVAILABLE`
 
-Create `public.variety_submissions`:
+**Crop schedule status enum** (`crop_schedule_status`):
+`PLANNED → SOWN → GROWING → MATURITY_REACHED → WAITING_HARVEST_CONFIRMATION → HARVESTED | ABANDONED`
 
-| column | purpose |
-| --- | --- |
-| `tenant_id` (uuid, FK tenants) | multi-tenant isolation |
-| `submitted_by` (uuid → auth.users) | farmer who proposed it |
-| `crop_id` (uuid, FK crops) | which crop family |
-| `proposed_name` (text, NOT NULL) | e.g. "Co-99004" |
-| `local_name` (text) | farmer's vernacular name |
-| `maturity_days_min` / `maturity_days_max` (int) | farmer's stated window |
-| `season` (text) | kharif / rabi / summer |
-| `notes` (text) | farmer free-text |
-| `status` (text, default `pending`) | pending / approved / rejected / merged |
-| `approved_variety_id` (uuid → master_products, nullable) | filled when curator merges |
-| `reviewed_by` / `reviewed_at` | curator audit |
-| `created_at` / `updated_at` | standard |
+**Harvest status enum** (`harvest_status`):
+`NOT_STARTED | PARTIALLY_HARVESTED | FULLY_HARVESTED | ABANDONED`
 
-- GRANTs: `SELECT, INSERT` to `authenticated`; `ALL` to `service_role`.
-- RLS: farmer can `INSERT` rows for their own `tenant_id` + `submitted_by = auth.uid()`; farmer can `SELECT` only their own submissions; tenant admins (`has_role(auth.uid(),'admin')`) can `SELECT`/`UPDATE` all rows in their tenant.
-- Index: `(tenant_id, status)` partial on `status='pending'` for the review queue.
+Authoritative truth = `crop_schedules.harvest_status` + `crop_schedules.actual_harvest_date` + `lands.lifecycle_status`. Everything else is derived.
 
-### Shared helper (new)
+---
 
-`src/hooks/useCropVarieties.ts` — single fetch + module cache for `master_products` rows of a crop, plus resistance rows from `variety_resistance` keyed by variety_id. Used by `VarietySelector` and the new detail card to avoid duplicate roundtrips.
+## 3. Database Migration Plan
 
-### `VarietySelector.tsx` (enhance — visual-only additions)
+```text
+ENUMS
+ ├── land_lifecycle_status
+ ├── crop_schedule_status (extend / new)
+ └── harvest_status
 
-- Replace the slim "selected card" footer with a **VarietyDetailCard** (new sub-component in the same file or `VarietyDetailCard.tsx`):
-  - Maturity window (badge)
-  - Yield potential
-  - Irrigation regime + seed rate + spacing (from `agro_ecological_suitability` / direct columns)
-  - Suitable states (chips, truncated to 6 with "+N more")
-  - **Resistance** rows from `variety_resistance` grouped by R/HR (green), MR (amber), S/MS (red) with pathogen name
-  - Data confidence score badge
-- Add **"My variety isn't listed"** secondary button at the bottom of the picker that opens a compact inline dialog (`VarietySubmitDialog.tsx` new) with: name, local name, season, min/max days, notes → inserts into `variety_submissions`, toasts confirmation, and uses the submitted name as `cropVariety` text for this session (no `variety_id` until tenant approves).
+ALTER lands ADD
+ ├── lifecycle_status land_lifecycle_status DEFAULT 'AVAILABLE'
+ ├── active_schedule_id uuid NULL REFERENCES crop_schedules(id)
+ └── lifecycle_changed_at timestamptz
 
-### `CropDateInput.tsx` (wire selector in)
+ALTER crop_schedules ADD
+ ├── harvest_status harvest_status DEFAULT 'NOT_STARTED'
+ ├── harvest_confirmed_at timestamptz
+ ├── harvest_confirmed_by uuid
+ ├── harvest_response jsonb     -- yield, partial %, notes
+ └── lifecycle_status crop_schedule_status DEFAULT 'PLANNED'
 
-- Replace lines 238–250 (text Input) with `<VarietySelector cropId={cropId} value={varietyId} onChange={...} compact />`.
-- Add local state `varietyId` and update `handleCropSelect` to clear it whenever the crop changes (drop the hardcoded "IR-64/HD-2967/BT Cotton" defaults).
-- Extend `onSubmit` signature with an optional `varietyId?: string | null` so the parent (`Schedule.tsx`) can pass it to `landsApi.updateLand({ current_crop_variety_id })` and to `ai-smart-schedule` (which already reads `current_crop_variety_id`, Phase 5).
-- Keep the text fallback for the manual-submission case (selector returns `null` but `cropVariety` string holds the typed name).
+NEW TABLE crop_lifecycle_events  (audit log)
+ ├── id, tenant_id, farmer_id, land_id, schedule_id
+ ├── from_status, to_status, event_type, payload jsonb
+ └── created_at
 
-### `ScheduleGenerator.tsx` (desktop parity)
+NEW TABLE harvest_confirmation_requests
+ ├── id, tenant_id, farmer_id, land_id, schedule_id
+ ├── triggered_at, due_at, channel
+ ├── response harvest_status NULL, responded_at
+ └── status: PENDING | RESPONDED | EXPIRED
+```
 
-- Same swap at lines 359–368: replace text input with `VarietySelector` once `cropName` resolves to a `cropId` (lookup via existing crops list in the component).
+Triggers:
+- `trg_schedule_harvest_confirmed`: when `harvest_status='FULLY_HARVESTED'` AND `actual_harvest_date IS NOT NULL` → set schedule `lifecycle_status='HARVESTED'`, `is_active=false`; flip `lands.lifecycle_status='AVAILABLE'`, clear `current_crop_id`, `current_crop_variety_id`, `active_schedule_id`; copy to `last_crop`, `last_harvest_date`; insert lifecycle event.
+- `trg_block_double_active`: prevent inserting a new `crop_schedules` row with `is_active=true` when `lands.lifecycle_status NOT IN ('AVAILABLE','HARVEST_COMPLETED')`.
+- `trg_validate_lifecycle_transition`: enforce legal status transitions.
 
-### `Schedule.tsx` parent flow
+RLS: tenant_id scoped on every new table; reuse `has_role`/tenant helpers. GRANTs to `authenticated` + `service_role`.
 
-- Accept `varietyId` from `CropDateInput.onSubmit`, persist via `landsApi.setCurrentCrop(landId, { ..., current_crop_variety_id: varietyId })` so the existing variety-aware planner picks it up. No edge-function changes needed — Phase 5 already consumes `current_crop_variety_id`.
+Backfill:
+- Existing `is_active=true` schedules → `lifecycle_status='GROWING'` (or `MATURITY_REACHED` if past `expected_harvest_date`), `harvest_status='NOT_STARTED'`.
+- Existing `is_active=false` schedules with `actual_harvest_date` → `HARVESTED` + `FULLY_HARVESTED`.
+- `lands.lifecycle_status` derived: `CROP_ACTIVE` if any active schedule, else `AVAILABLE`.
 
-### i18n keys
+---
 
-Add to `en`, `hi`, `mr` schedule namespaces:
-- `variety.detail_title`, `variety.maturity`, `variety.yield`, `variety.irrigation`, `variety.suitable_states`, `variety.resistance`, `variety.add_missing`, `variety.submit_form.*` (name / local / season / min_days / max_days / notes / submit / submitted_toast).
+## 4. Backend Engine
 
-## Out of scope (kept for follow-ups)
+**New edge function `harvest-engine`** (cron + on-demand):
+- Daily scan: for each active schedule where `today >= expected_harvest_date - 3d` → flip `lifecycle_status` to `MATURITY_REACHED` / `WAITING_HARVEST_CONFIRMATION`; create `harvest_confirmation_requests` row; emit push/in-app notification; insert AI chat reminder card.
+- Re-prompt cadence: day 0, +3, +7, +14, then weekly until response or 60d → `ABANDONED`.
+- Endpoint `POST /confirm`: body `{schedule_id, response: FULLY|PARTIAL|NOT_YET|ABANDONED, actual_harvest_date, yield?, notes?}` → writes `harvest_status`, `actual_harvest_date`, `harvest_confirmed_at`, lets triggers cascade.
 
-- Tenant-side review UI for `variety_submissions` — backlog item; can reuse the existing admin tools pattern.
-- Auto-promoting an approved submission into `master_products` — manual curator action; not built in this pass.
-- Item 12 intercrop text→uuid migration — still deferred per existing `.lovable/plan.md`.
+**Existing `schedules-api`**: add `POST /:id/harvest-confirm` proxy → `harvest-engine`. Block new schedule creation when land not `AVAILABLE`.
 
-## Files touched
+---
 
-- **new** `supabase/migrations/<ts>_variety_submissions.sql`
-- **new** `src/hooks/useCropVarieties.ts`
-- **new** `src/components/crops/VarietyDetailCard.tsx`
-- **new** `src/components/crops/VarietySubmitDialog.tsx`
-- **edit** `src/components/crops/VarietySelector.tsx` (slot in detail card + "add missing" CTA)
-- **edit** `src/components/schedule/CropDateInput.tsx`
-- **edit** `src/components/schedule/ScheduleGenerator.tsx`
-- **edit** `src/pages/Schedule.tsx` (pass `varietyId` through to lands API)
-- **edit** `src/i18n/locales/{en,hi,mr}/schedule.json`
+## 5. AI Chat Integration (`ai-agriculture-chat`)
 
-## Verification
+Land context loader changes:
+- Read `lands.lifecycle_status` + active schedule's `lifecycle_status` + `harvest_status`.
+- Inject canonical block:
+  ```
+  CROP_LIFECYCLE_STATE: HARVESTED | WAITING_HARVEST_CONFIRMATION | ACTIVE
+  ACTUAL_HARVEST_DATE: <date|null>
+  ```
+- Hard gate in orchestrator:
+  - `HARVESTED` → route to post-harvest agent (residue / soil prep / next-crop planning). Block active-crop pest/fertilizer rules.
+  - `WAITING_HARVEST_CONFIRMATION` → first message asks farmer to confirm; surface confirmation CTA.
+  - `ACTIVE` → current behavior.
 
-1. Pick a crop with seeded varieties (e.g. Sugarcane) → varieties list loads from `master_products`.
-2. Select Co-86032 → detail card shows maturity 11–12 mo, irrigation regime, red-rot resistance row.
-3. Submit a fake "Co-XYZ" via "My variety isn't listed" → row appears in `variety_submissions` with `status='pending'`.
-4. Generate schedule → `ai_schedule_refinements.variety_id` is stamped (already covered by Phase 5 wiring).
+Symbolic guard: any rule with `category IN (pest, fertilizer, irrigation_active)` is filtered out when state ≠ `ACTIVE`. Logged as `LIFECYCLE_GATE_BLOCKED`.
+
+---
+
+## 6. Symbolic Decision Brain
+
+Canonical State Builder:
+- Stop deriving "active crop" from `sowing_date + duration`. Replace with `deriveCropStage(schedule)`:
+  ```
+  if harvest_status='FULLY_HARVESTED' → POST_HARVEST
+  elif lifecycle_status='WAITING_HARVEST_CONFIRMATION' → AWAITING_CONFIRMATION
+  elif today > expected_harvest_date → MATURITY_REACHED
+  else → stage-from-days
+  ```
+- Rule engine: register lifecycle category gate (mapBundledCategory). Unknown post-harvest categories → `SYMBOLIC_CONTRACT_VIOLATION` (per existing core rule).
+- Proactive evaluator: skip active-crop rules for non-ACTIVE lands; enable `post_harvest_*` rule pack.
+
+---
+
+## 7. Notification Workflow
+
+Channels (all tenant-scoped via existing `notificationService`):
+1. Push (capacitor) — i18n title/body.
+2. In-app inbox alert (`proactive_alerts` row, type=`HARVEST_CONFIRMATION_REQUEST`).
+3. Dashboard banner on Land detail + Schedule screen.
+4. AI Chat system message inserted on next session open.
+
+Each notification carries `schedule_id` deep link → opens Harvest Confirmation sheet.
+
+---
+
+## 8. Frontend UX
+
+New components:
+- `HarvestConfirmationSheet` (bottom sheet): three big buttons — "Harvest Completed ✅", "Partial Harvest 🟡", "Not Yet Done ⏳"; date picker (default today); optional yield/notes; i18n en/hi/mr.
+- `LandLifecycleBadge`: chip on Land card showing `AVAILABLE / CROP_ACTIVE / WAITING_HARVEST / …`.
+- `HarvestAlertBanner` on Schedule + Home.
+- Schedule generation flow: if land not `AVAILABLE` → show explanation + CTA to confirm pending harvest.
+
+Wire-ups:
+- `useSchedules` exposes `confirmHarvest(scheduleId, payload)`.
+- `useLands` returns `lifecycle_status` and blocks "New Schedule" CTA when not free.
+
+---
+
+## 9. Multi-Tenant Safety
+- All new tables: RLS `tenant_id = current_tenant()` + farmer scoping via `has_role`/existing helpers.
+- `harvest-engine` validates `x-tenant-id` + `x-farmer-id` (existing `tenantAccessGuard`).
+- Notifications scoped by `tenant_id`.
+- Backfill runs per-tenant in a single transaction.
+
+---
+
+## 10. Testing & Production Validation
+- Unit: lifecycle transition matrix; trigger blocks double-active; harvest engine cron idempotency.
+- Integration: confirm-harvest end-to-end (DB → triggers → land released → AI Chat post-harvest mode).
+- E2E: Generate schedule → fast-forward maturity → receive notification → confirm → verify land available → new schedule allowed.
+- Validation jobs (nightly):
+  - lands with `current_crop_id` IS NOT NULL but no active schedule.
+  - active schedules with `actual_harvest_date` set.
+  - duplicate active schedules per land.
+  - AI Chat sessions that emitted active-crop advice after `HARVESTED`.
+
+---
+
+## 11. Rollback
+- Migration is additive (new columns/tables/enums). Rollback drops triggers + new columns. Existing reads keep working.
+- Feature-flag `HARVEST_CONFIRMATION_ENABLED` per tenant; engine no-ops when off.
+
+---
+
+## 12. Step-by-Step Implementation Order
+
+1. **Migration**: enums, columns, tables, triggers, RLS, GRANTs, backfill. *(supabase--migration)*
+2. **Edge function `harvest-engine`** + cron schedule.
+3. **`schedules-api`** patch: confirm-harvest route + block-creation guard.
+4. **AI Chat**: land context loader + orchestrator gate + post-harvest agent stub.
+5. **Symbolic Brain**: canonical state + rule gate + proactive filter.
+6. **Frontend**: `HarvestConfirmationSheet`, `LandLifecycleBadge`, banner, i18n (en/hi/mr), schedule-generation guard.
+7. **Notifications**: push + in-app + chat reminder.
+8. **Validation jobs** + dashboards.
+9. **QA** with feature flag rolled out tenant-by-tenant.
+
+---
+
+This is a large multi-phase change. Approve to proceed; I will start with **Step 1 (migration)** which requires your explicit approval before running.
