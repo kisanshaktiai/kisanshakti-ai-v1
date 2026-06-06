@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation as useRouterLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -97,6 +97,35 @@ export default function Schedule() {
       setLands(mappedLands);
     }
   }, [fetchedLands]);
+
+  // Step 8 — post-harvest "Plan next crop" handoff.
+  // PostHarvestSuggestionDialog navigates here with router state. We auto-select
+  // the previously-harvested land, jump to crop-input, and show a hint toast.
+  const routerLocation = useRouterLocation();
+  useEffect(() => {
+    const st = (routerLocation.state || {}) as {
+      preselectedLandId?: string;
+      suggestedCrop?: string;
+      source?: string;
+    };
+    if (st.source !== 'post-harvest' || !st.preselectedLandId || lands.length === 0) return;
+    const land = lands.find((l) => l.id === st.preselectedLandId);
+    if (!land) return;
+    setSelectedLand(land);
+    setFlowStep('crop-input');
+    if (st.suggestedCrop) {
+      toast({
+        title: t('schedule.harvest.next.toast_title', 'Planning {{crop}}', { crop: st.suggestedCrop }),
+        description: t(
+          'schedule.harvest.next.toast_desc',
+          'Pre-selected from your last harvest. Adjust as needed.',
+        ),
+      });
+    }
+    // Clear navigation state so a refresh doesn't re-trigger.
+    window.history.replaceState({}, '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lands.length, routerLocation.state]);
 
   const handleLandSelect = (land: Land) => {
     setSelectedLand(land);
