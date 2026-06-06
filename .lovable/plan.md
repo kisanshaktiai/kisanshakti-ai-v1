@@ -66,3 +66,56 @@ Already scheduled via `supabase--insert`: `harvest-engine-daily`, jobid 18, `30 
 - `select cron.unschedule('harvest-engine-daily');`
 - Revert `harvest-engine.ts` to the previous version (expiry behaviour).
 - Step-1 schema stays — harmless without the engine.
+
+---
+
+# Step 5 — Harvest Notification Delivery (local push + WhatsApp share)
+
+No new edge function, no provider secrets. Two complementary delivery channels:
+
+## 5a. Local browser notification (PWA)
+- `src/hooks/useHarvestNotificationDelivery.ts` reads `usePendingHarvests()` and, when permission is already `'granted'`, fires one `new Notification('🌾 Ready for harvest', ...)` per matured schedule.
+- Dedupe by `schedule_id` in `localStorage` (`harvest:notified_schedule_ids`, capped to 200) so reloads never re-notify.
+- Mounted inside `HarvestConfirmBanner` so it activates exactly where pending harvests are already fetched — no extra subscriptions.
+- No permission auto-prompt; that stays with the unified Permission Hub.
+
+## 5b. WhatsApp share intent
+- `HarvestConfirmDialog` gains a `Share2` icon button in the footer that opens `https://wa.me/?text=<crop • land\nyield q\ndate>` in a new tab. Pre-fills from current dialog state so the farmer can send the confirmation to an agronomist / family member.
+- Recent rows in `HarvestHistoryCard` also each expose a per-row WhatsApp share for past harvests.
+- `wa.me` is a public URL scheme — no API key, no backend.
+
+## i18n
+- New keys `schedule.harvest.dialog.share` in en/hi/mr.
+
+---
+
+# Step 6 — Post-harvest Analytics
+
+## Data layer
+- `src/hooks/useHarvestHistory.ts` queries `crop_schedules` for `farmer_id = current user` where `harvest_status IN ('FULLY_HARVESTED','PARTIALLY_HARVESTED')`, joined to `lands(name, area_acres)`, ordered by `actual_harvest_date desc`, limit 200.
+- Derived per row: `days_to_harvest = actual − sowing`, `yield_per_acre_qtl = actual_yield_quintals / area_acres`, `season_key = YYYY-H1|H2`.
+- `aggregate(rows)` exports totals, avg yield/acre, avg days, best row, and arrays grouped by season & crop.
+
+## UI
+- `src/components/analytics/HarvestHistoryCard.tsx`:
+  - Header with badge count.
+  - 3-stat strip: total yield (q), avg q/ac, avg days.
+  - Season-over-season delta % (latest two seasons present in data).
+  - Top performer card (highest q/ac) with trophy.
+  - Recent 5 rows, each with a WhatsApp share button and an `auto` tag if `harvest_response.source = 'auto-confirm'`.
+- Mounted in `Analytics.tsx` in both single-land scope (after `MarketPulseCard`) and all-farm aggregate view (after `ForecastChart`). Empty-state copy when farmer has no completed harvests yet.
+
+## i18n
+- New `analytics.harvest_history.*` keys in `en/analytics.json`. Other languages fall back via existing i18n fallback chain.
+
+## Files touched (Steps 5 + 6)
+- created `src/hooks/useHarvestNotificationDelivery.ts`
+- created `src/hooks/useHarvestHistory.ts`
+- created `src/components/analytics/HarvestHistoryCard.tsx`
+- edited `src/components/home/HarvestConfirmBanner.tsx` (mount notification hook)
+- edited `src/components/schedule/HarvestConfirmDialog.tsx` (WhatsApp share button)
+- edited `src/pages/Analytics.tsx` (mount HarvestHistoryCard)
+- edited `src/i18n/locales/{en,hi,mr}/schedule.json` (share key)
+- edited `src/i18n/locales/en/analytics.json` (harvest_history block)
+
+No DB migration, no new edge function, no new secret.
