@@ -139,7 +139,8 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
         nurseryDays, 
         localizedCropName,
         intercrops,
-        backdatedConsent
+        backdatedConsent,
+        varietyId,
       );
     }
   };
@@ -159,18 +160,15 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
     setSowingDate(new Date());
   };
 
-  const handleCropSelect = (id: string, name: string, localized: string, english: string) => {
+  const handleCropSelect = (id: string, name: string, localized: string, _english: string) => {
     setCropId(id);
     setCropName(name);
     setLocalizedCropName(localized || name);
-    
-    // Reset intercrops when major crop changes
+
+    // Reset crop-scoped state when the crop changes
     setIntercrops([]);
-    
-    // Auto-suggest variety based on crop
-    if (english.toLowerCase().includes('rice')) setCropVariety('IR-64');
-    if (english.toLowerCase().includes('wheat')) setCropVariety('HD-2967');
-    if (english.toLowerCase().includes('cotton')) setCropVariety('BT Cotton');
+    setCropVariety('');
+    setVarietyId(null);
   };
 
   return (
@@ -238,19 +236,21 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
           >
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
-              {/* Variety Input */}
-              <div className="space-y-2">
-                <Label htmlFor="variety" className="text-xs font-medium text-muted-foreground">
-                  {t('schedule.crop_input.variety_label')}
-                </Label>
-                <Input
-                  id="variety"
-                  placeholder={t('schedule.crop_input.variety_placeholder')}
-                  value={cropVariety}
-                  onChange={(e) => setCropVariety(e.target.value)}
-                  className="h-11 bg-white/50 dark:bg-black/20 backdrop-blur-sm border-white/30 dark:border-white/20 focus:border-primary/50 transition-all rounded-xl"
-                />
-              </div>
+              {/* Variety Selector — DB-driven, with rich details + "add missing" CTA */}
+              <VarietySelector
+                cropId={cropId}
+                value={varietyId}
+                cropName={localizedCropName || cropName}
+                onChange={(v) => {
+                  setVarietyId(v?.id ?? null);
+                  setCropVariety(v?.name ?? '');
+                }}
+                onManualSubmit={(proposedName) => {
+                  setVarietyId(null);
+                  setCropVariety(proposedName);
+                }}
+              />
+
 
               {/* Multi-Intercrop Selector - 2030 Ready UI */}
               <div className="space-y-2">
