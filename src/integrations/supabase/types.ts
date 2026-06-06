@@ -5577,6 +5577,20 @@ export type Database = {
             referencedColumns: ["land_id"]
           },
           {
+            foreignKeyName: "crop_history_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_history_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
             foreignKeyName: "crop_history_variety_id_fkey"
             columns: ["variety_id"]
             isOneToOne: false
@@ -5966,6 +5980,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "vw_soil_summary"
             referencedColumns: ["land_id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crop_schedules_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
           },
           {
             foreignKeyName: "crop_schedules_variety_id_fkey"
@@ -11895,6 +11923,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "land_crops_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "land_crops_variety_fk"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
             foreignKeyName: "land_crops_variety_id_fkey"
             columns: ["variety_id"]
             isOneToOne: false
@@ -12466,6 +12508,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "v_crop_varieties"
             referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_fk"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lands_current_crop_variety_fk"
+            columns: ["current_crop_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
           },
           {
             foreignKeyName: "lands_current_crop_variety_id_fkey"
@@ -26183,6 +26239,7 @@ export type Database = {
       }
       variety_resistance: {
         Row: {
+          canonical_observation_code: string | null
           created_at: string
           id: string
           notes: string | null
@@ -26196,6 +26253,7 @@ export type Database = {
           variety_id: string
         }
         Insert: {
+          canonical_observation_code?: string | null
           created_at?: string
           id?: string
           notes?: string | null
@@ -26209,6 +26267,7 @@ export type Database = {
           variety_id: string
         }
         Update: {
+          canonical_observation_code?: string | null
           created_at?: string
           id?: string
           notes?: string | null

@@ -29,6 +29,12 @@ interface LandData {
   // Crop cycle (current + previous) — REQUIRED for downstream pipelines
   current_crop?: string;
   current_crop_id?: string;
+  /**
+   * Seed-variety reference → master_products(id) where product_type='seed'.
+   * Enforced server-side by lands_current_crop_variety_fk + enforce_variety_is_seed trigger.
+   * Surfaces variety-aware logic in ai-smart-schedule / ai-agriculture-chat / proactive.
+   */
+  current_crop_variety_id?: string | null;
   crop_stage?: string;
   planting_date?: string;
   cultivation_date?: string;

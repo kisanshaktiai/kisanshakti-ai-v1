@@ -12,7 +12,8 @@ import {
   getProviderFromModel 
 } from "../_shared/aiConfig.ts";
 import { corsHeaders } from '../_shared/cors.ts';
-import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from "./variety-context-loader.ts";
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from "../_shared/variety-context.ts";
+import { applyVarietyOverrides } from "./variety-aware-planner.ts";
 
 // ═══════════════════════════════════════════════════════════════════════
 // FARMING STAGES - 9 Sequential Stages (fetched from DB at runtime)
@@ -2541,7 +2542,8 @@ serve(async (req) => {
         cropName,
         cropVariety,
         stateName: state,
-        landVarietyId: (land as any).variety_id || null,
+        // Land's canonical variety column is `current_crop_variety_id` (UUID → master_products.id, seed only).
+        landVarietyId: (land as any).current_crop_variety_id || (land as any).variety_id || null,
       });
       if (varietyProfile) {
         console.log(
@@ -4225,11 +4227,34 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
     const correctedTotalCost = totalLaborCost + totalMaterialCost;
 
     // ═══════════════════════════════════════════════════════════════════
+    // VARIETY-AWARE OVERRIDES (deterministic, DB-driven)
+    // Clamps LLM-drafted maturity / yield / irrigation to variety facts and
+    // surfaces climate/soil/regional fit warnings. No-op when no variety.
+    // ═══════════════════════════════════════════════════════════════════
+    const plannerOut = applyVarietyOverrides({
+      varietyProfile,
+      scheduleData,
+      landAreaAcres,
+      irrigationType: (land as any).irrigation_type || null,
+      soilType: (land as any).soil_type || soilData?.soil_type || null,
+      soilPh: soilPh,
+      state,
+      language,
+    });
+    if (Object.keys(plannerOut.applied_overrides).length) {
+      console.log(`🌱 [Variety-Planner] Applied overrides:`, plannerOut.applied_overrides);
+    }
+    // Merge variety warnings into the suitability warnings surface.
+    suitabilityCheck.warnings = [
+      ...(suitabilityCheck.warnings || []),
+      ...plannerOut.warnings,
+    ];
+
     // SAVE TO DATABASE
     // ═══════════════════════════════════════════════════════════════════
-    // Calculate actual harvest date from sowing + total_duration_days
+    // Calculate actual harvest date from variety-clamped duration
     const sowingDateObj = new Date(sowingDate);
-    const harvestDate = new Date(sowingDateObj.getTime() + (scheduleData.total_duration_days || 120) * 24 * 60 * 60 * 1000);
+    const harvestDate = new Date(sowingDateObj.getTime() + plannerOut.total_duration_days * 24 * 60 * 60 * 1000);
     const harvestDateStr = harvestDate.toISOString().split("T")[0];
     
     const { data: savedSchedule, error: scheduleError } = await supabase
@@ -4249,15 +4274,15 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         total_estimated_cost: correctedTotalCost,
         total_labor_cost: totalLaborCost,
         total_material_cost: totalMaterialCost,
-        expected_yield_quintals: scheduleData.expected_yield_quintals,
+        expected_yield_quintals: plannerOut.expected_yield_quintals,
         expected_profit:
-          scheduleData.expected_profit || scheduleData.expected_yield_quintals * 2500 - correctedTotalCost,
+          scheduleData.expected_profit || plannerOut.expected_yield_quintals * 2500 - correctedTotalCost,
         ai_model: currentModel,
         is_active: true,
         status: "active",
         generation_language: language,
         calculated_for_area_acres: landAreaAcres,
-        total_duration_days: scheduleData.total_duration_days,
+        total_duration_days: plannerOut.total_duration_days,
         seed_quantity_kg: exactSeedQty,
         fertilizer_n_kg: ureaKg * 0.46,
         fertilizer_p_kg: dapKg * 0.46,
@@ -4278,9 +4303,10 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           0,
         ),
         farming_type: farmingType,
-        water_requirement_liters_total: landAreaAcres * 50000 * (land.irrigation_type === "drip" ? 0.6 : 1),
-        water_per_irrigation_liters: landAreaAcres * 5000 * (land.irrigation_type === "drip" ? 0.6 : 1),
-        irrigation_count_total: Math.round(scheduleData.total_duration_days / 7),
+        // Variety-aware irrigation plan
+        water_requirement_liters_total: plannerOut.water_requirement_liters_total,
+        water_per_irrigation_liters: plannerOut.water_per_irrigation_liters,
+        irrigation_count_total: plannerOut.irrigation_count_total,
         tasks_total_count: processedTasks.length,
         tasks_completed_count: 0,
         // NEW: Multi-intercrop support (up to 3 intercrops)
@@ -4310,6 +4336,18 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           harvest_date: harvestDateStr,
           intercrops: intercropArray,
           backdated_consent: backdatedConsent || false,
+          variety: varietyProfile ? {
+            id: varietyProfile.variety_id,
+            name: varietyProfile.name,
+            code: varietyProfile.variety_code,
+            source: varietyProfile.source,
+            state_match: varietyProfile.state_match,
+            data_confidence_score: varietyProfile.data_confidence_score,
+            maturity_window: varietyProfile.maturity_days_min && varietyProfile.maturity_days_max
+              ? `${varietyProfile.maturity_days_min}-${varietyProfile.maturity_days_max}d` : null,
+            yield_potential_qtl_per_acre: varietyProfile.yield_potential_qtl_per_acre,
+          } : null,
+          variety_overrides: plannerOut.applied_overrides,
         },
       })
       .select()
