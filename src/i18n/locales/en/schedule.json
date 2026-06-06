@@ -360,6 +360,43 @@
       "काम पूर्ण म्हणून चिन्हांकित करा",
       "पीक वेळापत्रक तयार करा",
       "प्रलंबित कामे दाखवा"
-    ]
+    ],
+    "harvest": {
+      "crop_fallback": "your crop",
+      "banner": {
+        "title": "Ready for harvest — please confirm"
+      },
+      "land_badge": {
+        "ready": "Ready",
+        "confirm": "Confirm harvest"
+      },
+      "dialog": {
+        "title": "Confirm harvest",
+        "expected": "Expected",
+        "outcome_label": "Outcome",
+        "date_label": "Actual harvest date",
+        "pick_date": "Pick a date",
+        "yield_label": "Yield (quintals, optional)",
+        "notes_label": "Notes (optional)",
+        "notes_placeholder": "Anything you want to remember about this harvest",
+        "snooze": "Snooze 7 days",
+        "confirm": "Confirm"
+      },
+      "outcomes": {
+        "full": "Fully harvested",
+        "partial": "Partially harvested",
+        "abandoned": "Abandoned / failed"
+      },
+      "toast": {
+        "confirmed": "Harvest confirmed",
+        "abandoned": "Season closed",
+        "snoozed": "Reminder snoozed for 7 days"
+      },
+      "errors": {
+        "date_required": "Please pick the harvest date",
+        "submit": "Could not save harvest",
+        "snooze": "Could not snooze"
+      }
+    }
   }
 }
