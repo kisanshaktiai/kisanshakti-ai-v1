@@ -1,6 +1,27 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { loadVarietyProfile } from '../_shared/variety-context.ts';
+import { loadResistanceMap, resolveLandVarietyId } from '../_shared/variety-resistance.ts';
+
+// Minimal projection of variety fields for client consumption.
+const VARIETY_SELECT =
+  'id, name, name_local, variety_code, maturity_days_min, maturity_days_max, ' +
+  'yield_potential_qtl_per_acre, water_demand_mm_per_season, irrigation_sensitivity, ' +
+  'climate_suitability, soil_suitability, agro_ecological_suitability, ' +
+  'variety_completeness_score';
+
+async function fetchVarietySummary(supabase: any, varietyId: string | null | undefined) {
+  if (!varietyId) return null;
+  const { data, error } = await supabase
+    .from('master_products')
+    .select(VARIETY_SELECT)
+    .eq('id', varietyId)
+    .eq('product_type', 'seed')
+    .maybeSingle();
+  if (error) return null;
+  return data || null;
+}
 
 serve(async (req) => {
   // Handle CORS preflight
