@@ -30,7 +30,27 @@
       "no_resistance": "No catalogued resistance data.",
       "no_details": "Currently information not available. We'll update soon.",
       "use_this": "Use this variety",
-      "selected": "Selected"
+      "selected": "Selected",
+      "selected_chip": "Selected variety",
+      "tap_to_view": "Tap any variety to see full details",
+      "featured": "Recommended",
+      "submit": {
+        "title": "Add your variety",
+        "desc": "Tell us about the variety you sowed. Our team will verify and add it to the catalogue.",
+        "desc_with_crop": "Tell us about the {{crop}} variety you sowed. Our team will verify and add it.",
+        "name": "Variety name",
+        "name_required": "Please enter the variety name",
+        "local_name": "Local / vernacular name",
+        "season": "Season",
+        "min_days": "Min days",
+        "max_days": "Max days",
+        "notes": "Notes (source, brand, seed origin…)",
+        "submit": "Submit for review",
+        "submitted_title": "Variety submitted",
+        "submitted_desc": "Your team will review and add it to the catalogue. We'll use this name for your schedule.",
+        "invalid_range": "Minimum days cannot exceed maximum days",
+        "auth_required": "Please sign in to submit a variety"
+      }
     },
     "title": "Crop Schedule",
     "generate": "Generate Schedule",
@@ -86,7 +106,14 @@
       "please_select_crop": "Please select a crop",
       "select_date": "Select Date",
       "please_select_date": "Please select the sowing date",
-      "water": "Water"
+      "water": "Water",
+      "intercrop_label": "Intercrops (Optional)",
+      "nursery_days_label": "Plant age (days from seed sowing)",
+      "nursery_days_placeholder": "e.g., 25, 30, 45 days",
+      "nursery_days_help": "Enter how many days old the nursery plant is. Schedule will start from transplanting.",
+      "backdated_warning": "Past date selected. You'll need to confirm consent for a backdated schedule.",
+      "change_crop": "Change crop",
+      "selected_crop": "Selected crop"
     },
     "schedule_view": {
       "no_active_schedule": "No Active Schedule",
