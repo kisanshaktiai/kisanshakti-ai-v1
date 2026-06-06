@@ -21,6 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { useToast } from '@/hooks/use-toast';
 import { schedulesApi } from '@/services/schedulesApi';
 import { useInvalidatePendingHarvests, type PendingHarvest } from '@/hooks/usePendingHarvests';
+import { PostHarvestSuggestionDialog } from '@/components/schedule/PostHarvestSuggestionDialog';
 
 type Outcome = 'FULLY_HARVESTED' | 'PARTIALLY_HARVESTED' | 'ABANDONED';
 
@@ -40,6 +41,7 @@ export function HarvestConfirmDialog({ open, onOpenChange, request }: Props) {
   const [yieldQtl, setYieldQtl] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [busy, setBusy] = useState<'confirm' | 'snooze' | null>(null);
+  const [showNext, setShowNext] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -84,6 +86,9 @@ export function HarvestConfirmDialog({ open, onOpenChange, request }: Props) {
       });
       invalidate();
       onOpenChange(false);
+      // Step 7: surface residue + rotation suggestions after a real harvest.
+      // Skip the dialog for ABANDONED — nothing to harvest, nothing to rotate from.
+      if (outcome !== 'ABANDONED') setShowNext(true);
     } catch (e: any) {
       toast({
         title: t('schedule.harvest.errors.submit', 'Could not save harvest'),
