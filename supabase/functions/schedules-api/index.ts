@@ -3,6 +3,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
 import { loadVarietyProfile } from '../_shared/variety-context.ts';
 import { loadResistanceMap, resolveLandVarietyId } from '../_shared/variety-resistance.ts';
+import { runHarvestEngine } from './harvest-engine.ts';
 
 // Minimal projection of variety fields for client consumption.
 const VARIETY_SELECT =
@@ -34,7 +35,30 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
+
+    // ─────────────────────────────────────────────────────────────────
+    // Service-role cron action: harvest-engine (no tenant/farmer headers)
+    // Guarded by HARVEST_ENGINE_TOKEN shared secret.
+    // ─────────────────────────────────────────────────────────────────
+    {
+      const earlyUrl = new URL(req.url);
+      if (earlyUrl.searchParams.get('action') === 'harvest-engine') {
+        const provided = req.headers.get('x-service-token') || '';
+        const expected = Deno.env.get('HARVEST_ENGINE_TOKEN') || '';
+        if (!expected || provided !== expected) {
+          return new Response(
+            JSON.stringify({ error: 'Unauthorized', details: 'invalid service token' }),
+            { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        const summary = await runHarvestEngine(supabase);
+        return new Response(JSON.stringify(summary), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+
     // Extract tenant and farmer IDs from headers
     const tenantId = req.headers.get('x-tenant-id');
     const farmerId = req.headers.get('x-farmer-id');
