@@ -26238,6 +26238,69 @@ export type Database = {
           },
         ]
       }
+      variety_review_queue: {
+        Row: {
+          created_at: string
+          current_value: string | null
+          field_name: string
+          id: string
+          notes: string | null
+          priority: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          suggested_sources: string[] | null
+          updated_at: string
+          variety_id: string
+        }
+        Insert: {
+          created_at?: string
+          current_value?: string | null
+          field_name: string
+          id?: string
+          notes?: string | null
+          priority?: string
+          reason: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_sources?: string[] | null
+          updated_at?: string
+          variety_id: string
+        }
+        Update: {
+          created_at?: string
+          current_value?: string | null
+          field_name?: string
+          id?: string
+          notes?: string | null
+          priority?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_sources?: string[] | null
+          updated_at?: string
+          variety_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_review_queue_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_review_queue_variety_id_fkey"
+            columns: ["variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+        ]
+      }
       variety_source_references: {
         Row: {
           authority: string | null
