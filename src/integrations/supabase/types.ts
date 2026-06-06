@@ -26627,6 +26627,106 @@ export type Database = {
           },
         ]
       }
+      variety_submissions: {
+        Row: {
+          approved_variety_id: string | null
+          created_at: string
+          crop_id: string | null
+          id: string
+          local_name: string | null
+          maturity_days_max: number | null
+          maturity_days_min: number | null
+          notes: string | null
+          proposed_name: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          season: string | null
+          status: string
+          submitted_by: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_variety_id?: string | null
+          created_at?: string
+          crop_id?: string | null
+          id?: string
+          local_name?: string | null
+          maturity_days_max?: number | null
+          maturity_days_min?: number | null
+          notes?: string | null
+          proposed_name: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          season?: string | null
+          status?: string
+          submitted_by: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_variety_id?: string | null
+          created_at?: string
+          crop_id?: string | null
+          id?: string
+          local_name?: string | null
+          maturity_days_max?: number | null
+          maturity_days_min?: number | null
+          notes?: string | null
+          proposed_name?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          season?: string | null
+          status?: string
+          submitted_by?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "variety_submissions_approved_variety_id_fkey"
+            columns: ["approved_variety_id"]
+            isOneToOne: false
+            referencedRelation: "master_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_approved_variety_id_fkey"
+            columns: ["approved_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_approved_variety_id_fkey"
+            columns: ["approved_variety_id"]
+            isOneToOne: false
+            referencedRelation: "v_variety_data_quality"
+            referencedColumns: ["variety_id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "crops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_crop_id_fkey"
+            columns: ["crop_id"]
+            isOneToOne: false
+            referencedRelation: "v_crop_varieties"
+            referencedColumns: ["crop_id"]
+          },
+          {
+            foreignKeyName: "variety_submissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       variety_translations: {
         Row: {
           created_at: string
