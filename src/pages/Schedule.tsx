@@ -119,7 +119,7 @@ export default function Schedule() {
     }
   };
 
-  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean) => {
+  const handleCropDateSubmit = async (cropName: string, cropVariety: string, sowingDate: Date, isReadyMadePlant: boolean, farmingType: string, nurseryDays: number = 0, localizedCropName: string = '', intercrops?: any[], backdatedConsent?: boolean, varietyId?: string | null) => {
     if (!selectedLand) return;
 
     console.log('🚀 [Schedule] Starting schedule generation:', { cropName, localizedCropName, farmingType, isReadyMadePlant, nurseryDays, intercrops, backdatedConsent });
@@ -131,6 +131,18 @@ export default function Schedule() {
     setScheduleData({ cropName, cropVariety, sowingDate, isReadyMadePlant, farmingType });
     
     try {
+
+      // Persist the selected variety on the land so the variety-aware planner
+      // (ai-smart-schedule) and proactive evaluator pick it up.
+      if (varietyId !== undefined) {
+        try {
+          await landsApi.updateLand(selectedLand.id, {
+            current_crop_variety_id: varietyId,
+          } as any);
+        } catch (e) {
+          console.warn('[Schedule] could not persist variety_id on land', e);
+        }
+      }
 
       // First, deactivate any existing active schedules for this land
       const { error: deactivateError } = await supabase
