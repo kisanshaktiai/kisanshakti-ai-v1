@@ -256,5 +256,14 @@ export function HarvestConfirmDialog({ open, onOpenChange, request }: Props) {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <PostHarvestSuggestionDialog
+      open={showNext}
+      onOpenChange={setShowNext}
+      prevCrop={request?.crop_schedules?.crop_name || null}
+      landId={request?.land_id || null}
+      landName={request?.lands?.name || null}
+    />
+    </>
   );
 }
