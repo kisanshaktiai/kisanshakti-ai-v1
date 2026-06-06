@@ -71,14 +71,18 @@ async function fetchResistance(varietyId: string): Promise<VarietyResistanceRow[
   const p = (async () => {
     const { data, error } = await supabase
       .from('variety_resistance')
-      .select('pathogen, level, notes')
+      .select('threat_name, threat_type, resistance_level, notes')
       .eq('variety_id', varietyId);
     if (error) {
       console.error('[useCropVarieties] resistance error', error);
       inflightResistance.delete(varietyId);
       return [];
     }
-    const rows = (data ?? []) as VarietyResistanceRow[];
+    const rows: VarietyResistanceRow[] = (data ?? []).map((r: any) => ({
+      pathogen: r.threat_name || r.threat_type || 'unknown',
+      level: r.resistance_level || 'unknown',
+      notes: r.notes ?? null,
+    }));
     resistanceCache.set(varietyId, rows);
     inflightResistance.delete(varietyId);
     return rows;
