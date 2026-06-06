@@ -564,9 +564,16 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
 
     // Insert alerts FIRST (non-blocking enrichment — P0-3 fix)
     if (alertsToInsert.length > 0) {
+      // Variety stamping (item 7): map each alert's land_id → variety_id.
+      const landVarietyMap = new Map<string, string | null>();
+      for (const l of lands) landVarietyMap.set(l.id, (l as any).current_crop_variety_id ?? null);
+      const stampedAlerts = alertsToInsert.map((a: any) => ({
+        ...a,
+        variety_id: a.variety_id ?? landVarietyMap.get(a.land_id) ?? null,
+      }));
       const { data: insertedAlerts, error: alErr } = await supabase
         .from('proactive_alerts')
-        .upsert(alertsToInsert, { onConflict: 'dedup_key', ignoreDuplicates: true })
+        .upsert(stampedAlerts, { onConflict: 'dedup_key', ignoreDuplicates: true })
         .select('id, risk_score, priority, alert_category, trigger_data, message_en, action_text_en, title_mr, message_mr');
       if (alErr) console.error('[ProactiveEvaluator] Alerts upsert error:', alErr.message);
       
