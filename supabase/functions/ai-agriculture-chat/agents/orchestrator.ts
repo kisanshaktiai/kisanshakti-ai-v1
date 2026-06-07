@@ -1670,7 +1670,7 @@ export class AIAgentOrchestrator {
       // Return a friendly localized message instead of throwing or producing a
       // generic clarification with literal {symptom} placeholders.
       // ═══════════════════════════════════════════════════════════════════════
-      if (canonicalContext && canonicalContext.status === 'NO_ACTIVE_CROP') {
+      if (canonicalContext && canonicalContext.status === 'NO_ACTIVE_CROP' && !isRecommendationQuery) {
         const lang = (options.language || 'mr').toLowerCase();
         const lastCrop = canonicalContext.last_harvest?.crop_name || null;
         const noCropMsg = {
