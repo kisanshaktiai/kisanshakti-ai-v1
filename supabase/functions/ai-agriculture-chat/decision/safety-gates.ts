@@ -271,14 +271,25 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
     (input.symptom_discriminator_scores?.[k] ?? 100) < LOW_SPECIFICITY_THRESHOLD
   );
 
+  // CRITICAL FIX (2026-06-07 RCA #17): never invent a fake "symptom" clarification.
+  // If the farmer reported ZERO symptoms (e.g. status/health-check questions like
+  // "what is my crop's current condition?"), do NOT emit a clarification built
+  // from the literal string 'symptom' — that template gets force-translated and
+  // surfaces as the nonsensical quoted token `"symptom"` / `"लक्षण"` to farmers.
+  // In that case leave override_mode = NONE so the upstream orchestrator's
+  // STAGE_ADVISORY_FALLBACK lane handles the response with crop + stage + DAS.
+  const hasAnyReportedSymptom = (input.symptom_keys?.length ?? 0) > 0;
+
   const mustClarify =
-    contradicted ||
-    ndviAnomalous ||
-    !!lowSpecSymptom ||
-    cappedConf < 0.45;
+    hasAnyReportedSymptom && (
+      contradicted ||
+      ndviAnomalous ||
+      !!lowSpecSymptom ||
+      cappedConf < 0.45
+    );
 
   if (mustClarify) {
-    const sym = lowSpecSymptom || input.symptom_keys[0] || 'symptom';
+    const sym = lowSpecSymptom || input.symptom_keys[0]; // guaranteed non-empty by hasAnyReportedSymptom
     result.clarification_text = diffQuestionForSymptom(sym, input.crop_name || '', language, input.differential_questions);
     result.override_mode = 'CLARIFY';
     result.gate_decisions.CLARIFICATION_GATE = {
