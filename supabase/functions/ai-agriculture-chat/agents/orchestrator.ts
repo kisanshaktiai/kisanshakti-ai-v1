@@ -9,6 +9,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from '../../_shared/variety-context.ts';
+
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
