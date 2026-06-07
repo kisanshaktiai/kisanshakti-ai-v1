@@ -19,7 +19,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const SAFETY_GATES_VERSION = '1.1.0';
+export const SAFETY_GATES_VERSION = '1.2.0'; // DB-strict diff questions; no English template leak
 
 // Symptoms specific enough to NOT require clarification.
 // LEAF_TIP_BURN_YOUNG, WILTING, LEAF_YELLOWING are deliberately low-specificity.
@@ -103,19 +103,31 @@ export interface SafetyGateResult {
   };
 }
 
+/**
+ * Returns the localized differential question for a symptom from the DB.
+ *
+ * CRITICAL (v1.2.0, 2026-06-07 RCA #18): returns `null` when the DB has no
+ * row for (symptom × language × crop). The caller MUST treat null as
+ * "do NOT force CLARIFY" and let the orchestrator fall through to the
+ * stage-aware deterministic advisory. The previous English fallback
+ *   `The symptom "${symptom}" you reported on …`
+ * leaked the literal variable name `symptom` (translated by the LLM as
+ * the Marathi word `लक्षण`) into farmer-facing replies whenever an
+ * observation was not yet seeded in observation_differential_questions.
+ *
+ * SSOT: public.observation_differential_questions
+ *   (observation_code, language, crop_code, question_text)
+ */
 function diffQuestionForSymptom(
   symptom: string,
-  crop: string,
-  language: string,
+  _crop: string,
+  _language: string,
   lookup?: Record<string, string>
-): string {
-  // 1. DB-driven lookup wins (caller pre-loaded for this language/crop).
-  if (lookup && lookup[symptom]) return lookup[symptom];
-
-  // 2. Final generic fallback — kept intentionally minimal; populate
-  // observation_differential_questions to remove the English fallback for
-  // any (symptom, language) pair across any crop.
-  return `The symptom "${symptom}" you reported on ${crop || 'the crop'} can have several causes. Please share a clear photo and tell me which leaves are affected (young upper, or older lower) so I can give a safe, targeted recommendation.`;
+): string | null {
+  if (lookup && lookup[symptom] && lookup[symptom].trim().length > 0) {
+    return lookup[symptom];
+  }
+  return null;
 }
 
 /**
@@ -290,19 +302,34 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
 
   if (mustClarify) {
     const sym = lowSpecSymptom || input.symptom_keys[0]; // guaranteed non-empty by hasAnyReportedSymptom
-    result.clarification_text = diffQuestionForSymptom(sym, input.crop_name || '', language, input.differential_questions);
-    result.override_mode = 'CLARIFY';
-    result.gate_decisions.CLARIFICATION_GATE = {
-      passed: false,
-      reason: contradicted
-        ? 'Forcing CLARIFY: primary hypothesis contradicted by soil-K'
-        : ndviAnomalous
-          ? 'Forcing CLARIFY: NDVI anomaly blocks nutrient diagnosis'
-          : lowSpecSymptom
-            ? `Forcing CLARIFY: low-specificity symptom ${lowSpecSymptom} (score=${input.symptom_discriminator_scores?.[lowSpecSymptom]})`
-            : `Forcing CLARIFY: effective confidence ${cappedConf.toFixed(2)} below 0.45`,
-      data: { trigger_symptom: lowSpecSymptom, contradicted, ndvi_anomalous: ndviAnomalous }
-    };
+    const diffText = diffQuestionForSymptom(sym, input.crop_name || '', language, input.differential_questions);
+
+    // RCA #18: if the DB has no localized differential question for this
+    // (symptom, language), DO NOT emit the English `"symptom"` template —
+    // it surfaces as the literal Devanagari token `लक्षण` after LLM
+    // narration. Skip CLARIFY entirely and let the orchestrator's
+    // STAGE_ADVISORY_FALLBACK produce a clean stage-aware reply.
+    if (!diffText) {
+      result.gate_decisions.CLARIFICATION_GATE = {
+        passed: true,
+        reason: `Would have clarified on '${sym}' but observation_differential_questions has no DB row for language='${language}'. Falling through to stage advisory.`,
+        data: { skipped_clarify: true, symptom: sym, language }
+      };
+    } else {
+      result.clarification_text = diffText;
+      result.override_mode = 'CLARIFY';
+      result.gate_decisions.CLARIFICATION_GATE = {
+        passed: false,
+        reason: contradicted
+          ? 'Forcing CLARIFY: primary hypothesis contradicted by soil-K'
+          : ndviAnomalous
+            ? 'Forcing CLARIFY: NDVI anomaly blocks nutrient diagnosis'
+            : lowSpecSymptom
+              ? `Forcing CLARIFY: low-specificity symptom ${lowSpecSymptom} (score=${input.symptom_discriminator_scores?.[lowSpecSymptom]})`
+              : `Forcing CLARIFY: effective confidence ${cappedConf.toFixed(2)} below 0.45`,
+        data: { trigger_symptom: lowSpecSymptom, contradicted, ndvi_anomalous: ndviAnomalous }
+      };
+    }
   } else {
     result.gate_decisions.CLARIFICATION_GATE = {
       passed: true,
