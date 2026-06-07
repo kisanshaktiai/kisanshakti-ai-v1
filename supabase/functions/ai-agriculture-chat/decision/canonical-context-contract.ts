@@ -70,12 +70,19 @@ export function assertCanonicalContextLocked(
  * All other context types (landContext, cropContext, preservedContext) are DEPRECATED.
  */
 export interface CanonicalContext {
+  /**
+   * ACTIVE      → land has a live crop schedule (crop_code/growth_stage set).
+   * NO_ACTIVE_CROP → land exists but currently has no active crop (e.g. just
+   *                 harvested). Diagnostic pipeline MUST short-circuit.
+   */
+  readonly status: 'ACTIVE' | 'NO_ACTIVE_CROP';
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // HARD INVARIANTS: These CANNOT be UNKNOWN once set
+  // HARD INVARIANTS for status=ACTIVE; null when status=NO_ACTIVE_CROP
   // ═══════════════════════════════════════════════════════════════════════════
-  readonly crop_code: string;
-  readonly crop_name: string;
-  readonly growth_stage: string;
+  readonly crop_code: string | null;
+  readonly crop_name: string | null;
+  readonly growth_stage: string | null;
   readonly days_since_sowing: number | null;
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -99,6 +106,14 @@ export interface CanonicalContext {
     readonly humidity: number | null;
     readonly rainfall_mm: number | null;
   };
+
+  /** Populated when status=NO_ACTIVE_CROP and a prior schedule exists. */
+  readonly last_harvest: {
+    readonly crop_name: string;
+    readonly crop_variety: string | null;
+    readonly sowing_date: string | null;
+    readonly actual_harvest_date: string | null;
+  } | null;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // METADATA
