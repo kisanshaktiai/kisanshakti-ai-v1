@@ -255,9 +255,6 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: CROP NAME QUERY
-  // ═══════════════════════════════════════════════════════════════════════════
-  // ═══════════════════════════════════════════════════════════════════════════
-  // CHECK 1: CROP NAME QUERY
   // Phase 2 (P0): skip the CROP_NAME branch entirely when the orchestrator
   // has pre-classified this message as a next-crop recommendation request.
   // Without this guard, patterns like /या\s*शेतात.*पीक/i match advisory
