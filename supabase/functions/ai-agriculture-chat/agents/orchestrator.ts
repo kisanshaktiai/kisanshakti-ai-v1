@@ -5980,76 +5980,81 @@ export class AIAgentOrchestrator {
             const factExtractor = new FactExtractor();
             
             // ═══════════════════════════════════════════════════════════════════════════
-            // BUG FIX #2: Build NESTED AuthoritativeLandState matching interface
-            // The interface expects nested crop/soil/ndvi/weather objects, not flat fields
+            // [SSOT] AUTHORITATIVE LAND STATE - load from DB via the canonical loader
+            // The orchestrator previously hand-built a fake AuthoritativeLandState here
+            // with null timestamps and a hardcoded completeness_score=50, which made
+            // every rule that references soil/ndvi/weather/derived freshness silently
+            // fail to fire. We now call the SSOT loader once per turn and use its
+            // result everywhere. Variety profile (master_products + variety_resistance
+            // + variety_translations) is already resolved on landContext.variety_profile
+            // by fetchComprehensiveLandContext — attach it onto the SSOT snapshot.
+            // No defaults, no climatology, no fabrication for missing weather/NDVI.
             // ═══════════════════════════════════════════════════════════════════════════
-            const authoritativeLandState = landContext ? {
-              land_id: landContext.land_id,
-              tenant_id: tenantId,
-              farmer_id: farmerId,
-              land_name: landContext.land_name || '',
-              area_hectares: (landContext.area_acres || 0) * 0.404686,
-              area_acres: landContext.area_acres || 0,
-              latitude: landContext.center_lat || null,
-              longitude: landContext.center_lon || null,
-              district: landContext.district || null,
-              state: landContext.state || null,
-              // CRITICAL: Nested crop object matching AuthoritativeLandState interface
-              crop: {
-                current_crop: landContext.current_crop || null,
-                crop_code: landContext.current_crop?.toUpperCase() || null,
-                growth_stage: landContext.growth_stage || null,
-                days_since_sowing: landContext.days_since_sowing || null,
-                sowing_date: landContext.sowing_date || null,
-                expected_harvest_date: null,
-                schedule_status: 'active'
-              },
-              // CRITICAL: Nested soil object
-              soil: {
-                ph: landContext.soil_health?.ph_level || null,
-                organic_carbon: landContext.soil_health?.organic_carbon || null,
-                nitrogen_kg_per_ha: landContext.soil_health?.nitrogen_kg_per_ha || null,
-                phosphorus_kg_per_ha: landContext.soil_health?.phosphorus_kg_per_ha || null,
-                potassium_kg_per_ha: landContext.soil_health?.potassium_kg_per_ha || null,
-                texture: landContext.soil_health?.texture || null,
-                test_date: null,
-                test_age_days: null,
-                data_fresh: !!landContext.soil_health
-              },
-              // CRITICAL: Nested ndvi object
-              ndvi: {
-                latest_value: landContext.ndvi?.value || null,
-                latest_date: landContext.ndvi?.measurement_date || null,
-                trend: landContext.ndvi?.ndvi_trend || 'unknown',
-                age_days: null,
-                history: landContext.ndvi_history || [],
-                data_fresh: !!landContext.ndvi
-              },
-              // CRITICAL: Nested weather object
-              weather: {
-                temperature: fusedIntelligence.weather_data?.temperature || null,
-                humidity: fusedIntelligence.weather_data?.humidity || null,
-                rainfall_last_24h: fusedIntelligence.weather_data?.rainfall_mm || null,
-                rain_probability: null,
-                wind_speed: fusedIntelligence.weather_data?.wind_speed || null,
-                data_timestamp: null,
-                data_age_hours: null,
-                data_fresh: !!fusedIntelligence.weather_data
-              },
-              // Optional GDD phenology
-              gdd_phenology: phenologyResult || null,
-              // Derived metrics (placeholder)
-              derived: {
-                water_stress_level: 'unknown' as const,
-                crop_health_status: 'unknown' as const,
-                data_completeness_score: 50,
-                data_freshness_score: 50,
-                critical_missing: []
-              },
-              loaded_at: new Date().toISOString(),
-              sources_available: ['land_context'],
-              sources_missing: []
-            } : null;
+            let authoritativeLandState: any = null;
+            if (options.landId) {
+              try {
+                const ssotResult = await loadAuthoritativeLandState(options.landId, farmerId, tenantId);
+                if (ssotResult?.success && ssotResult.state) {
+                  authoritativeLandState = ssotResult.state as any;
+                  // Attach optional GDD phenology (computed earlier this turn)
+                  if (phenologyResult) {
+                    authoritativeLandState.gdd_phenology = phenologyResult;
+                  }
+                  // Attach variety SSOT (master_products / variety_resistance / variety_translations)
+                  // already loaded onto landContext by fetchComprehensiveLandContext.
+                  const varietyProfile = (landContext as any)?.variety_profile || null;
+                  if (varietyProfile) {
+                    (authoritativeLandState as any).variety = varietyProfile;
+                    if (!authoritativeLandState.sources_available?.includes('master_products')) {
+                      authoritativeLandState.sources_available = [
+                        ...(authoritativeLandState.sources_available || []),
+                        'master_products',
+                        ...(Array.isArray(varietyProfile.resistance) && varietyProfile.resistance.length ? ['variety_resistance'] : []),
+                        ...((varietyProfile.label_hi || varietyProfile.label_mr) ? ['variety_translations'] : []),
+                      ];
+                    }
+                  } else {
+                    authoritativeLandState.sources_missing = [
+                      ...(authoritativeLandState.sources_missing || []),
+                      'master_products'
+                    ];
+                  }
+                  console.log(
+                    `[SSOT] AuthoritativeLandState loaded: ` +
+                    `sources=[${(authoritativeLandState.sources_available || []).join(',')}] ` +
+                    `missing=[${(authoritativeLandState.sources_missing || []).join(',')}] ` +
+                    `completeness=${authoritativeLandState.derived?.data_completeness_score} ` +
+                    `weather_age_h=${authoritativeLandState.weather?.data_age_hours ?? 'null'} ` +
+                    `ndvi_age_d=${authoritativeLandState.ndvi?.age_days ?? 'null'} ` +
+                    `soil_age_d=${authoritativeLandState.soil?.test_age_days ?? 'null'} ` +
+                    `variety=${varietyProfile?.name ?? 'none'}`
+                  );
+                  // Weather honesty: if loader returned no observation_date and no temperature,
+                  // null the weather block so the predicate evaluator treats weather as missing
+                  // (rather than substituting zeros / "no rain" defaults).
+                  if (
+                    authoritativeLandState.weather &&
+                    authoritativeLandState.weather.data_timestamp == null &&
+                    authoritativeLandState.weather.temperature == null &&
+                    authoritativeLandState.weather.humidity == null &&
+                    authoritativeLandState.weather.rainfall_last_24h == null
+                  ) {
+                    authoritativeLandState.weather = null;
+                    if (!authoritativeLandState.sources_missing?.includes('weather')) {
+                      authoritativeLandState.sources_missing = [
+                        ...(authoritativeLandState.sources_missing || []),
+                        'weather'
+                      ];
+                    }
+                    console.log('[SSOT] weather=null (no live observation) → predicates referencing weather will be skipped');
+                  }
+                } else {
+                  console.warn(`[SSOT] AuthoritativeLandState load failed: ${ssotResult?.error || 'unknown'} — symbolic brain will run with land_state=null`);
+                }
+              } catch (ssotErr) {
+                console.error('[SSOT] AuthoritativeLandState loader threw:', (ssotErr as Error).message);
+              }
+            }
             
             // Extract symbolic facts from observations
             const observations = {
