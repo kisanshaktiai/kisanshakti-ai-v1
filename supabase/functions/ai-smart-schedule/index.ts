@@ -4251,9 +4251,15 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       soilPh: soilPh,
       state,
       language,
+      cropName,
+      isReadyMadePlant,
+      nurseryDays,
     });
     if (Object.keys(plannerOut.applied_overrides).length) {
       console.log(`🌱 [Variety-Planner] Applied overrides:`, plannerOut.applied_overrides);
+    }
+    if (plannerOut.sowing_method) {
+      console.log(`🌾 [Rice-Method] ${plannerOut.sowing_method}: ${plannerOut.sowing_method_note}`);
     }
     // Merge variety warnings into the suitability warnings surface.
     suitabilityCheck.warnings = [
@@ -4263,10 +4269,21 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
 
     // SAVE TO DATABASE
     // ═══════════════════════════════════════════════════════════════════
-    // Calculate actual harvest date from variety-clamped duration
+    // HARVEST DATE — farmer-selected `sowingDate` IS the real anchor day.
+    //   • Regular sowing : harvest = sowingDate + variety.maturity_days
+    //   • Nursery mode   : sowingDate = transplanting day; the seed was
+    //                      sown nurseryDays ago, so the remaining field
+    //                      horizon is (maturity - nurseryDays).
+    // No more silent crop-default override — duration comes from variety.
     const sowingDateObj = new Date(sowingDate);
-    const harvestDate = new Date(sowingDateObj.getTime() + plannerOut.total_duration_days * 24 * 60 * 60 * 1000);
+    const fieldDays = plannerOut.effective_field_days || plannerOut.total_duration_days;
+    const harvestDate = new Date(sowingDateObj.getTime() + fieldDays * 24 * 60 * 60 * 1000);
     const harvestDateStr = harvestDate.toISOString().split("T")[0];
+    console.log(
+      `📅 [Harvest] sowingDate=${sowingDate} + ${fieldDays}d field horizon ` +
+      `(seed-to-harvest=${plannerOut.total_duration_days}d, nurseryDays=${nurseryDays}, ` +
+      `isReadyMadePlant=${isReadyMadePlant}) → harvest=${harvestDateStr}`
+    );
     
     const { data: savedSchedule, error: scheduleError } = await supabase
       .from("crop_schedules")
