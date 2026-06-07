@@ -1587,6 +1587,73 @@ export class AIAgentOrchestrator {
       }
       
       console.log(`⏭️ [${traceId}] Static gate passed - continuing to AI pipeline`);
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // NO_ACTIVE_CROP SHORT-CIRCUIT
+      // If the canonical context flagged this land as having no active crop
+      // (e.g. just harvested), the diagnostic pipeline has nothing to work on.
+      // Return a friendly localized message instead of throwing or producing a
+      // generic clarification with literal {symptom} placeholders.
+      // ═══════════════════════════════════════════════════════════════════════
+      if (canonicalContext && canonicalContext.status === 'NO_ACTIVE_CROP') {
+        const lang = (options.language || 'mr').toLowerCase();
+        const lastCrop = canonicalContext.last_harvest?.crop_name || null;
+        const noCropMsg = {
+          mr: lastCrop
+            ? `🌱 या शेतात सध्या कोणतेही सक्रिय पीक नाही. मागील हंगामात **${lastCrop}** हे पीक होते. नवीन पीक नोंदवण्यासाठी "पीक नोंदणी" वापरा.`
+            : `🌱 या शेतात सध्या कोणतेही सक्रिय पीक नाही. नवीन पीक नोंदवण्यासाठी "पीक नोंदणी" वापरा.`,
+          hi: lastCrop
+            ? `🌱 इस खेत में अभी कोई सक्रिय फसल नहीं है। पिछले मौसम में **${lastCrop}** फसल थी। नई फसल जोड़ने के लिए "फसल पंजीकरण" का उपयोग करें।`
+            : `🌱 इस खेत में अभी कोई सक्रिय फसल नहीं है। नई फसल जोड़ने के लिए "फसल पंजीकरण" का उपयोग करें।`,
+          en: lastCrop
+            ? `🌱 This field currently has no active crop. The previous crop was **${lastCrop}**. Use "Crop Registration" to add a new one.`
+            : `🌱 This field currently has no active crop. Use "Crop Registration" to add a new one.`
+        }[lang] || `🌱 This field currently has no active crop.`;
+
+        console.log(`🛑 [${traceId}] NO_ACTIVE_CROP short-circuit fired (lastCrop=${lastCrop || 'none'})`);
+        agentsUsed.push('NO_ACTIVE_CROP_GUARD');
+
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `no_crop_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: options.language || 'mr',
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: { mr: noCropMsg, hi: noCropMsg, en: noCropMsg }
+            },
+            quick_actions: [],
+            metadata: {
+              word_count: noCropMsg.split(/\s+/).length,
+              reading_time_seconds: 5,
+              confidence_score: 1.0,
+              source: 'NO_ACTIVE_CROP_GUARD',
+              response_type: 'NO_ACTIVE_CROP'
+            }
+          } as any,
+          decision_output: {
+            decision_id: `no_crop_${Date.now()}`,
+            session_id: sessionId,
+            status: 'INFORMATION_PROVIDED',
+            decision_brain_source: false,
+            actions_returned: [],
+            metadata: {
+              confidence: 1.0,
+              trace_id: traceId,
+              agents_used: agentsUsed,
+              template_type: 'NO_ACTIVE_CROP',
+              last_harvest: canonicalContext.last_harvest || null
+            }
+          } as any
+        };
+      }
+
       
       // ========================================
       // PHASE 9.1-FIX PATCH 1+2: CLARIFICATION RESPONSE HARD GATE
