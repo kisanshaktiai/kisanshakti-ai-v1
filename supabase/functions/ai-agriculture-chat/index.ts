@@ -64,6 +64,7 @@ import {
   type UnifiedGateInput
 } from './decision/unified-decision-gate.ts';
 import { runSafetyGates, type SafetyGateInput, type SafetyGateResult } from './decision/safety-gates.ts';
+import { buildDifferentialQuestionLookup } from './services/observation-question-resolver.ts';
 import {
   ResponseMode,
   GateStatus,
