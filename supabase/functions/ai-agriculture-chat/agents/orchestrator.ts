@@ -5403,7 +5403,18 @@ export class AIAgentOrchestrator {
             : undefined  // Don't pass { crop_name: 'UNKNOWN' } - let farmer_mentioned_crop be used
         });
         
-        if (contextValidation.status === 'NEEDS_CLARIFICATION') {
+        // Defense-in-depth: NEXT_CROP_RECOMMENDATION queries have no current crop
+        // by design and must never trip G2's "Which crop are you asking about?"
+        // clarification. The dedicated lane upstream (~line 1743) should already
+        // have returned; this guard catches any path that escapes pre-classification.
+        const isNextCropIntent =
+          (lockedIntent === 'NEXT_CROP_RECOMMENDATION') ||
+          (nluOutput?.primary_intent === 'NEXT_CROP_RECOMMENDATION') ||
+          isNextCropRecommendationQuery(safeFarmerMessage);
+        if (isNextCropIntent) {
+          console.log('   ⏭️ G2 CONTEXT_COMPLETENESS skipped — NEXT_CROP_RECOMMENDATION intent has no current crop by design');
+          agentsUsed.push('G2_BYPASS_NEXT_CROP');
+        } else if (contextValidation.status === 'NEEDS_CLARIFICATION') {
           console.log(`   ⚠️ G2 CONTEXT_COMPLETENESS: NEEDS_CLARIFICATION`);
           console.log(`      Reason: ${contextValidation.clarification_prompt || 'Missing critical context'}`);
           agentsUsed.push('G2_CONTEXT_VALIDATION_FAILED');
