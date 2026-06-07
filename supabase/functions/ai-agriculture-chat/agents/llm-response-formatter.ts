@@ -105,6 +105,8 @@ import {
   assertResponseModeInvariant,
 } from '../utils/response-mode-renderer.ts';
 import type { ModeRenderedOutput } from '../utils/response-mode-renderer.ts';
+import { formatVarietyProfileForPrompt } from '../../_shared/variety-context.ts';
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
