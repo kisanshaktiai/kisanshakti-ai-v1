@@ -1,143 +1,99 @@
-## Root cause confirmed
+# Root cause: the SSOT land-state loader is imported but never called
 
-The repeated Marathi answers are not caused by the new observation translation resolver. The failure is earlier in the decision-brain workflow:
+The symbolic brain expects a single authoritative snapshot of land + soil + NDVI + weather + crop + variety from `decision/authoritative-state-loader.ts → loadAuthoritativeLandState()`. That loader reads `lands`, `crop_history`, `soil_health`, `ndvi_data`, `weather_observations` (with `weather_current` fallback) and computes freshness + derived metrics (water stress, crop health, completeness score, `sources_available` / `sources_missing`).
 
+But in `agents/orchestrator.ts`:
+- `loadAuthoritativeLandState` is imported (line 340) and **never invoked** anywhere (`rg` returns zero call sites).
+- Instead, at line ~5986 the orchestrator hand-builds an `authoritativeLandState` from the lightweight `landContext` plus `fusedIntelligence.weather_data`, and hardcodes:
+  - `soil.test_date: null`, `test_age_days: null`, `data_fresh: !!landContext.soil_health`
+  - `ndvi.age_days: null`
+  - `weather.data_timestamp: null`, `data_age_hours: null`, `rain_probability: null`
+  - `derived.water_stress_level: 'unknown'`, `crop_health_status: 'unknown'`, `data_completeness_score: 50`
+  - `sources_available: ['land_context']`, `sources_missing: []`
+
+This fake state is what feeds `FactExtractor.extractFacts(...)` and `SymbolicReasoner.executeRules(...)`. Consequences:
+1. Rules conditioned on `soil.*`, `ndvi.*`, `weather.*`, `derived.*` cannot evaluate truthfully → `Rules Fired: 0` and a generic proactive/stage rule (`PROACTIVE_FLOOD_PREPAREDNESS_001`, `ACTIVE_TILLERING` template) wins every turn regardless of intent.
+2. Variety details are passed only as a free-text `crop_variety` string — the existing variety SSOT (`master_products WHERE product_type='seed'` + `variety_resistance` + `variety_translations`) is never joined, so variety-aware rules (resistance downweighting, maturity, irrigation sensitivity) cannot match.
+3. `sources_missing` is always `[]`, so the data-audit footer cannot honestly tell the farmer what's missing.
+
+This explains the reported symptom: every Marathi turn collapses to the same answer because the SSOT context the brain depends on is effectively empty.
+
+## Fix plan
+
+### 1. Call the SSOT loader exactly once per turn
+
+In `agents/orchestrator.ts`:
+- After `landContext = await this.fetchComprehensiveLandContext(...)` and before the symbolic-reasoner block, call:
+  ```text
+  authoritativeLandState = await loadAuthoritativeLandState(supabase, landId, { now })
+  ```
+- Cache it on the turn and reuse from symbolic reasoner, weather-safety-gate, fact-extractor, response-generator, dynamic-clarification-generator.
+- **Delete** the hand-built `authoritativeLandState = { ... }` literal at lines ~5986-6052. Pass the loader result directly. If the loader returns `null` (no land), keep the existing `null` path — no fabrication.
+- Add one structured log per turn:
+  ```text
+  [SSOT] AuthoritativeLandState loaded: sources=[...], missing=[...], completeness=NN, weather_age_h=NN, ndvi_age_d=NN, soil_age_d=NN
+  ```
+
+### 2. Wire variety SSOT (already exists, do not rebuild)
+
+The variety catalog is already canonical at `master_products WHERE product_type='seed'` with child tables `variety_resistance`, `variety_translations`, `variety_source_references` (see `mem://database/variety-master-schema-v1`). The shared loader `_shared/variety-context.ts → loadVarietyProfile()` returns the full `VarietyProfile` (resistance, climate suitability, water demand, critical stages, translations).
+
+In `decision/authoritative-state-loader.ts`:
+- After resolving the active crop row, resolve the variety id using `lands.variety_id` (authoritative) → `crop_history.crop_variety` fallback (free-text matched against `master_products.name`).
+- Call `loadVarietyProfile(supabase, varietyId, languageCode)` from `_shared/variety-context.ts`.
+- Attach the returned profile to the snapshot at `crop.variety` (do not flatten, do not duplicate fields).
+- Add `'master_products'` / `'variety_resistance'` / `'variety_translations'` to `sources_available` based on what the profile loader actually returned; add to `sources_missing` when null. No placeholder objects.
+
+In `decision/fact-extractor.ts`:
+- Expose variety facts to the rule engine from the SSOT profile only:
+  `variety_code`, `variety_class`, `maturity_days`, `water_demand_category`, `critical_stages[]`, `resistance_map { observation_code → level }`.
+- Downweight pest/disease hypotheses when `resistance_map[obs] ∈ {R, HR}` per the documented contract.
+
+### 3. Weather: live data only, no defaults, no hallucination
+
+- `loadAuthoritativeLandState` already attempts `weather_observations` (by `land_id`) and falls back to `weather_current` (by rounded lat/lon `location_key`). Keep that chain.
+- If both queries return nothing OR the freshest record is older than `WEATHER_FRESHNESS_HOURS`, set `weather: null` and push `'weather'` into `sources_missing`. Do NOT substitute defaults, climatology, monthly averages, or zeros.
+- `FactExtractor.extractEnvironmentalFacts` must emit `temperature/humidity/recent_rain/soil_moisture_estimated = null/UNKNOWN` when `weather === null`. Today it returns `recent_rain: false` and `soil_moisture_estimated: 'UNKNOWN'` only when `landState?.weather` is missing — verify the new `null` path keeps that behavior and never invents `rainfall_last_24h: 0` from a missing record.
+- The rule engine must treat `weather === null` as "weather predicate cannot be evaluated" → the rule is skipped, not fired. Add an explicit guard in the predicate evaluator: if a rule references `weather.*` and `land_state.weather === null`, mark `evaluation_skipped: 'weather_missing'` and surface it in the audit footer.
+- The data-audit footer for the farmer should list `Missing: Weather` when this happens, instead of silently using stale or zero values.
+
+### 4. Fold SSOT data into the rule-engine input
+
+In `layers/rule-evaluation-layer.ts` and `agents/layered-rule-evaluator.ts`:
+- Confirm `land_state` is passed (it already accepts `AuthoritativeLandState | null`).
+- In the predicate evaluator, prefer `land_state.*` over `landContext.*`; remove any silent fallback that substitutes constants for missing weather/NDVI/soil.
+
+### 5. Reconcile `fetchComprehensiveLandContext` with the SSOT
+
+- Keep `fetchComprehensiveLandContext` only for legacy display fields (names, labels) used by clarification/UX.
+- Stop using its soil/NDVI/weather/variety subfields for rule evaluation — the loader is now the only source.
+
+### 6. Make the completeness gate honest
+
+- Replace the hardcoded `data_completeness_score: 50` with the loader's real score.
+- Feed `sources_missing` into the audit footer text (e.g. `Missing: Weather, Soil Test`) so the farmer sees the real gaps that prevented full rule evaluation.
+
+### 7. Database touch-ups (only if a column drift is found)
+
+Read-only verification only — no new tables:
+- Confirm columns referenced by the loader exist: `ndvi_data.date`, `soil_health.test_date`, `weather_observations.observed_at` (or `observation_time`), `lands.variety_id`, `crop_history.crop_variety`.
+- If any name has drifted, add a view or a small column-rename migration. Do not invent defaults or seed weather rows.
+
+### 8. Verification
+
+Re-run the three Marathi turns from the prior regression on Land=Khori (Rice, DAS=1). Expect in logs:
 ```text
-farmer query
-  → queryRoute often falls to GENERAL_INFO
-  → IntentClassifier may classify incorrectly or correctly
-  → resolveIntentToObservations() is NOT called
-  → intent_observation_mapping is bypassed
-  → hardcoded/fallback observation injection is used instead
-  → rules are evaluated too broadly or with no meaningful observations
-  → proactive/stage rules or STAGE_ADVISORY_FALLBACK win
-  → same crop-stage answer appears for different questions
+[SSOT] AuthoritativeLandState loaded: sources=[lands, crop_history, soil_health, ndvi_data, weather_observations, master_products, variety_resistance], missing=[...], completeness=NN
+[FactExtractor] facts include soil.*, ndvi.*, weather.*, derived.*, variety.{code,resistance_map,critical_stages}
+[LayeredRuleEvaluator] rules_matched > 0 for intent-specific predicates (FERTILIZER_SCHEDULE → nutrition rules; WEED_PROBLEM → weed rules)
 ```
-
-Evidence from the uploaded recent log:
-
-- Weed query: `या शेतात तन येवू नये म्हणून काय मारावे ?`
-- Router: `GENERAL_INFO (50%)`
-- LLM intent: `COTTON_SUCKING_PEST (90%)` even though crop is Rice and query is weed prevention
-- Clarification was bypassed: `DIRECT_MODE/advisory intent`
-- Rule path became broad: `Symbolic Bridge: 60 rules matched for all`
-- Wrong primary surfaced: `PROACTIVE_FLOOD_PREPAREDNESS_001`
-- `resolveIntentToObservations()` exists, but current orchestrator only calls `mapToObservationCodes()`, a small local mapper, so the large DB SSOT `intent_observation_mapping` table is not actually feeding the rule engine.
-
-## What I will change
-
-### 1. Make canonical intent resolution DB-first
-
-In `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts`:
-
-- After `extractSemanticMeaning()`, call the existing DB resolver:
-
-```text
-resolveIntentToObservations(intent_code, crop_code, DAS, growth_stage)
-```
-
-- Inject returned `observation_codes` into:
-  - `expandedObservationCodes`
-  - `allObservationsForPreAuth`
-  - `authoredObservations`
-- Mark these as `EXTRACTED`/DB-derived, not synthetic.
-- Keep `mapToObservationCodes()` only as a fallback when DB resolution fails or returns zero rows.
-
-This restores the intended SSOT flow:
-
-```text
-observation_intent_master
-  → intent_observation_mapping
-  → observation_master
-  → decision_rules
-  → observation_translations / intent_translations for narration
-```
-
-### 2. Stop `GENERAL_INFO` from becoming a dangerous direct-mode bypass
-
-In `orchestrator.ts`:
-
-- Remove `GENERAL_INFO` from broad advisory direct-mode / symptom-free rule execution when the classifier intent is not truly general.
-- If route is `GENERAL_INFO` but DB intent is `FERTILIZER_SCHEDULE`, `WEED_PROBLEM`, `IRRIGATION_QUERY`, etc., trust the DB intent and route to the symbolic brain with that intent’s observation mappings.
-- Only allow stage-only fallback for true status/general questions, not fertilizer/weed/input recommendation queries.
-
-### 3. Fix DB vocabulary override matching for Devanagari
-
-Current override uses word-boundary regex:
-
-```text
-\b<phrase_pattern>\b
-```
-
-This does not reliably match Devanagari terms like `खत`, `तण`, `तन`, so rows already in `crop_vocabulary` do not override `GENERAL_INFO`.
-
-I will replace it with safe Unicode substring/escaped-regex matching:
-
-```text
-message.includes(phrase_pattern)
-```
-
-with regex escaping only where needed.
-
-### 4. Add missing weed vocabulary rows only if absent
-
-Use the existing `crop_vocabulary` table, not a new table.
-
-Add only missing Marathi/Hindi weed terms such as:
-
-```text
-तण → WEED_PROBLEM
-तन → WEED_PROBLEM  (Marathi typo/dialect seen in the failing query)
-खरपतवार → WEED_PROBLEM
-निंदणी / निंदण → WEED_PROBLEM
-```
-
-This follows the user’s rule: if SSOT data is missing, add it to the existing table, not seed a parallel table.
-
-### 5. Add intent/category rule scoping before selecting a primary decision
-
-In the rule evaluation path before `evaluateRulesLayered()`:
-
-- For `FERTILIZER_SCHEDULE`, prefer nutrition/fertilizer rules.
-- For `WEED_PROBLEM`, prefer weed-management rules.
-- For crop health/status queries, allow crop-stage/health/NDVI rules.
-- Prevent unrelated proactive weather/flood rules from becoming primary unless the intent or weather context explicitly warrants them.
-
-This prevents `PROACTIVE_FLOOD_PREPAREDNESS_001` from winning a weed/fertilizer query just because crop/stage context exists.
-
-### 6. Make fallback intent-aware, not stage-only
-
-If no rule can be selected:
-
-- Fertilizer query: return a DB-grounded “soil test / stage-specific fertilizer data missing” clarification/advisory, not generic monitoring.
-- Weed query: return a weed-specific clarification/advisory, not generic monitoring.
-- Crop status query: keep the stage/health response.
-
-No LLM agronomic invention; fallback text must use `intent_translations` / existing deterministic response text where possible.
-
-### 7. Verification
-
-I will verify with the three reported Marathi turns:
-
-1. `सध्या पिकाची काय स्थिति आहे.`
-   - Expected: crop status / stage health response.
-2. `चांगली उगवण होणे साठी काय खत द्यावे?`
-   - Expected: fertilizer/nutrition path, not same stage-monitoring answer.
-3. `या शेतात तन येवू नये म्हणून काय मारावे ?`
-   - Expected: weed-management path, not crop health/flood/stage generic answer.
-
-And check logs for:
-
-```text
-[IntentResolver] Found ... observation codes
-[DB_INTENT_OBSERVATIONS] injected ...
-[IntentScope] intent=WEED_PROBLEM/FERTILIZER_SCHEDULE
-```
+And:
+- Three turns produce three different primary decisions.
+- When live weather is missing, the response shows `Missing: Weather` and no rule that depends on weather fires.
 
 ## Out of scope
 
-- No new SSOT tables.
-- No seeding `observation_differential_questions`.
-- No LLM-generated agronomic recommendations.
-- No changes to frontend chat UI.
-- No rewriting the whole decision brain; this is a wiring and scoping fix.
+- No LLM authority changes (LLM stays render-only).
+- No new SSOT tables — variety SSOT already exists at `master_products` + variety_* children.
+- No weather defaults, climatology fallbacks, or hardcoded values anywhere.
+- No UI changes beyond surfacing real `sources_missing` in the existing audit footer.
