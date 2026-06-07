@@ -3286,6 +3286,40 @@ ${intercropListStr}
       console.log(`🌱 [AI-Schedule] Intercrop context added: ${intercropDetails.map(ic => `${ic.name} (${ic.areaPercent}%)`).join(', ')}`);
     }
 
+    // ── Pre-compute rice sowing method for prompt injection (deterministic).
+    // The same logic runs again in applyVarietyOverrides() for persistence.
+    let ricePromptBlock = "";
+    const _cl = (cropName || "").toLowerCase();
+    if (_cl.includes("rice") || _cl.includes("paddy") || _cl.includes("भात") || _cl.includes("धान") || _cl.includes("चावल")) {
+      const _irr = (land.irrigation_type || "").toLowerCase();
+      const _rainfed = _irr.includes("rainfed") || _irr === "" || _irr === "manual";
+      const _micro = _irr.includes("drip") || _irr.includes("sprinkler");
+      let _method = "TRANSPLANT", _note = "";
+      if (_micro) { _method = "AEROBIC_DSR"; _note = "Aerobic DSR (drip/sprinkler). No nursery, no puddling. 8-10 kg seed/acre, line-sown 20cm."; }
+      else if (_rainfed) { _method = "DSR"; _note = "Direct-Seeded Rice (DSR) — rainfed. Dry seeding 10-12 kg/acre with pre-emergent herbicide."; }
+      else if (landAreaAcres < 1.0) { _method = "SRI"; _note = "System of Rice Intensification — small plot, assured water. Single 8-12 day seedlings, 25×25 cm, 2 kg seed/acre."; }
+      else if (landAreaAcres <= 5.0) { _method = "TRANSPLANT"; _note = "Puddled Transplanting — assured water. Nursery 21-25 days, 2-3 seedlings/hill 20×15 cm, 6-8 kg seed/acre."; }
+      else { _method = "MECH_DSR"; _note = "Mechanised DSR — large plot. Drum seeder / seed drill, 10-12 kg/acre."; }
+      ricePromptBlock = `
+🌾 RICE SOWING METHOD (AREA-WISE, MANDATORY): ${_method}
+${_note}
+Generate sowing/land-preparation tasks for "${_method}" — do NOT default to puddled transplanting unless method == TRANSPLANT.`;
+    }
+
+    // ── Sowing-date semantics block — eliminates the date-interpretation bug.
+    const sowingSemantics = isReadyMadePlant && nurseryDays > 0
+      ? `📅 SOWING DATE SEMANTICS (NURSERY MODE):
+- Farmer-selected date ${sowingDate} = TRANSPLANTING day (day 0).
+- Seed sowing happened ${nurseryDays} days earlier in the nursery.
+- All days_from_sowing are counted from the TRANSPLANTING day.
+- Total seed-to-harvest = ${cropDurationDays} days → field horizon = ${Math.max(15, cropDurationDays - nurseryDays)} days from transplanting.
+- Harvest expected ~${Math.max(15, cropDurationDays - nurseryDays)} days after ${sowingDate}.`
+      : `📅 SOWING DATE SEMANTICS:
+- Farmer-selected date ${sowingDate} IS the REAL SOWING DATE (day 0). Do NOT shift it.
+- Variety ${varietyProfile?.name || cropVariety || cropName} maturity = ${cropDurationDays} days.
+- Harvest must be scheduled exactly ${cropDurationDays} days after ${sowingDate}.
+- All task days_from_sowing are counted from ${sowingDate}.`;
+
     const taskSection = `
 ${taskSectionHeader}
 Generate crop schedule for ${translatedCropName} (${cropName}) cultivation.
@@ -3294,6 +3328,8 @@ Land Area: ${landAreaAcres.toFixed(2)} acres (${landAreaGuntha} guntha / ${landA
 
 CROP: ${translatedCropName} ${cropVariety ? `(${cropVariety})` : ""}
 Sowing: ${sowingDate} | Location: ${district}, ${state}
+${sowingSemantics}
+${ricePromptBlock}
 ${varietyPromptBlock ? "\n" + varietyPromptBlock + "\n" : ""}
 Soil: ${soilData?.soil_type || land.soil_type || "Black/Alluvial"} | Irrigation: ${land.irrigation_type || "manual"}
 ${intercropSection}
