@@ -283,9 +283,12 @@ export function buildCanonicalContext(
  */
 export function hasDiagnosticContext(context: CanonicalContext | null): boolean {
   if (!context) return false;
+  if (context.status !== 'ACTIVE') return false;
   return (
-    context.crop_code !== 'UNKNOWN' && 
-    context.growth_stage !== 'UNKNOWN' && 
+    !!context.crop_code &&
+    context.crop_code !== 'UNKNOWN' &&
+    !!context.growth_stage &&
+    context.growth_stage !== 'UNKNOWN' &&
     context.is_locked === true
   );
 }
@@ -306,8 +309,8 @@ export function getContextPresenceFlags(context: CanonicalContext | null): Conte
   }
   
   return {
-    has_crop: context.crop_code !== 'UNKNOWN',
-    has_stage: context.growth_stage !== 'UNKNOWN',
+    has_crop: !!context.crop_code && context.crop_code !== 'UNKNOWN',
+    has_stage: !!context.growth_stage && context.growth_stage !== 'UNKNOWN',
     has_land: context.land_id !== null,
     has_ndvi: context.ndvi.value !== null,
     has_soil: context.soil.nitrogen !== null || context.soil.phosphorus !== null || context.soil.potassium !== null,
@@ -328,11 +331,15 @@ export function validateContextIntegrity(
     console.error(`🚨 [FAIL-FAST @ ${location}] hasContext=true but context is null!`);
     throw new Error(`INVARIANT VIOLATION @ ${location}: hasContext=true but context is missing.`);
   }
-  
-  if (hasContextFlag && context && (context.crop_code === 'UNKNOWN' || context.growth_stage === 'UNKNOWN')) {
-    console.error(`🚨 [FAIL-FAST @ ${location}] hasContext=true but crop/stage is UNKNOWN!`);
-    console.error(`   Crop: ${context.crop_code}, Stage: ${context.growth_stage}`);
-    throw new Error(`INVARIANT VIOLATION @ ${location}: hasContext=true but crop/stage is UNKNOWN.`);
+
+  // NO_ACTIVE_CROP is a legitimate state — skip crop/stage invariant.
+  if (context && context.status === 'ACTIVE') {
+    if (!context.crop_code || context.crop_code === 'UNKNOWN' ||
+        !context.growth_stage || context.growth_stage === 'UNKNOWN') {
+      console.error(`🚨 [FAIL-FAST @ ${location}] status=ACTIVE but crop/stage is UNKNOWN!`);
+      console.error(`   Crop: ${context.crop_code}, Stage: ${context.growth_stage}`);
+      throw new Error(`INVARIANT VIOLATION @ ${location}: status=ACTIVE but crop/stage is UNKNOWN.`);
+    }
   }
   
   if (context && !context.is_locked) {
