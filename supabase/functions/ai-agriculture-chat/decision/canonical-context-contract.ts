@@ -181,15 +181,13 @@ export function buildCanonicalContext(
   const daysSinceSowing = landContext.days_since_sowing ?? null;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAIL-FAST: If we have landContext but missing critical fields
+  // NO_ACTIVE_CROP: landContext exists but no active crop (e.g. harvested).
+  // This is NOT an invariant violation — it's a legitimate state. Build a
+  // status='NO_ACTIVE_CROP' context so downstream code can branch on it
+  // instead of attempting diagnosis on an empty field.
   // ═══════════════════════════════════════════════════════════════════════════
-  if (hasLandContext && (!cropCode || cropCode === 'UNKNOWN' || !growthStage || growthStage === 'UNKNOWN')) {
-    console.error(`🚨 [FAIL-FAST] hasLandContext=true but context is incomplete:`);
-    console.error(`   Crop: ${cropCode || 'MISSING'}`);
-    console.error(`   Stage: ${growthStage || 'MISSING'}`);
-    throw new Error(`INVARIANT VIOLATION: hasLandContext=true but crop/stage is incomplete. Cannot proceed with partial context.`);
-  }
-  
+  const isActive = !!cropCode && cropCode !== 'UNKNOWN' && !!growthStage && growthStage !== 'UNKNOWN';
+
   // Extract NDVI with fallback chain
   const ndviValue = 
     landContext.ndvi?.latest_value ?? 
@@ -217,13 +215,24 @@ export function buildCanonicalContext(
   const temp = landContext.weather?.temperature ?? landContext.weather?.temp ?? null;
   const humidity = landContext.weather?.humidity ?? null;
   const rainfall = landContext.weather?.rainfall_mm ?? landContext.weather?.rain_mm ?? null;
+
+  const lastHarvestSrc = landContext.last_harvested_schedule || null;
+  const lastHarvest = lastHarvestSrc
+    ? Object.freeze({
+        crop_name: lastHarvestSrc.crop_name,
+        crop_variety: lastHarvestSrc.crop_variety ?? null,
+        sowing_date: lastHarvestSrc.sowing_date ?? null,
+        actual_harvest_date: lastHarvestSrc.actual_harvest_date ?? lastHarvestSrc.expected_harvest_date ?? null
+      })
+    : null;
   
   // Build the immutable canonical context
   const canonicalContext: CanonicalContext = Object.freeze({
-    crop_code: cropCode || 'UNKNOWN',
-    crop_name: cropName || 'Unknown',
-    growth_stage: growthStage || 'UNKNOWN',
-    days_since_sowing: daysSinceSowing,
+    status: isActive ? 'ACTIVE' : 'NO_ACTIVE_CROP',
+    crop_code: isActive ? cropCode : null,
+    crop_name: isActive ? (cropName || 'Unknown') : null,
+    growth_stage: isActive ? growthStage : null,
+    days_since_sowing: isActive ? daysSinceSowing : null,
     
     ndvi: Object.freeze({
       value: ndviValue,
@@ -243,6 +252,8 @@ export function buildCanonicalContext(
       humidity: humidity,
       rainfall_mm: rainfall
     }),
+
+    last_harvest: lastHarvest,
     
     land_id: landContext.land_id || null,
     farmer_id: landContext.farmer_id || null,
@@ -252,9 +263,12 @@ export function buildCanonicalContext(
     phase1_locked: true
   });
   
-  console.log(`✅ [CanonicalContext] Built and LOCKED:`);
+  console.log(`✅ [CanonicalContext] Built and LOCKED (status=${canonicalContext.status}):`);
   console.log(`   Crop=${canonicalContext.crop_code}, Stage=${canonicalContext.growth_stage}`);
   console.log(`   DAS=${canonicalContext.days_since_sowing}, NDVI=${canonicalContext.ndvi.value}`);
+  if (canonicalContext.status === 'NO_ACTIVE_CROP') {
+    console.log(`   ℹ️ Land has no active crop. last_harvest=${lastHarvest?.crop_name || 'none'}`);
+  }
   console.log(`   Source=${canonicalContext.source}, is_locked=true`);
   
   return canonicalContext;
