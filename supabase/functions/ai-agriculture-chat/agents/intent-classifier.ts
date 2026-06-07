@@ -284,6 +284,17 @@ function emergencyFallback(message: string, validCodes: Set<string>): IntentClas
   const original = message || '';
   if (!original.trim()) return emit('UNKNOWN_OBSERVATION', 0.0, validCodes);
 
+  // Next-crop recommendation (Phase 1 — P0). Must run BEFORE generic crop/fasal
+  // matchers so "नवीन पीक घेवू" / "अगली फसल" don't fall to GENERAL_CROP_INFO.
+  if (
+    /नवीन\s*(पीक|पिक)|(पीक|पिक)\s*(घ्यावे|घेवू|घेऊ|लावावे|पेरू|पेरावे|सुचवा)/i.test(original) ||
+    /पुढील\s*(पीक|पिक)|आता\s*(काय|कोणते)\s*(पेरू|पेरावे|लावावे|घेवू)/i.test(original) ||
+    /अगली\s*फसल|नई\s*फसल|क्या\s*(बोऊं|बोएं|लगाऊं|उगाऊं)|कौन\s*सी?\s*(नई\s*)?फसल\s*(लगाऊं|बोऊं|उगाऊं|सुझाव|बताओ)/i.test(original) ||
+    /\bnext\s+crop\b|\bwhat\s+(should\s+i|to)\s+(plant|sow|grow)\b|\brecommend\s+(a\s+)?crop\b/i.test(original)
+  ) {
+    return emit('NEXT_CROP_RECOMMENDATION', 0.7, validCodes);
+  }
+
   // Fertilizer
   if (/खत|खते|खाद|उर्वरक|fertiliz|\bkhat\b|\bkhaad\b/i.test(original)) return emit('FERTILIZER_SCHEDULE', 0.6, validCodes);
   // Spray
