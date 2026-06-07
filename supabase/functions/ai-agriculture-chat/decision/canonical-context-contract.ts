@@ -325,7 +325,11 @@ export function buildCanonicalContext(
       nitrogen: soilN,
       phosphorus: soilP,
       potassium: soilK,
-      ph: soilPH
+      ph: soilPH,
+      organic_carbon: soilOC,
+      texture: soilTexture,
+      agro_zone: agroZone,
+      irrigation_type: irrigationType,
     }),
     
     weather: Object.freeze({
@@ -335,6 +339,7 @@ export function buildCanonicalContext(
     }),
 
     last_harvest: lastHarvest,
+    rotation_history: rotationHistory,
 
     // Variety profile — frozen snapshot of master_products row (if available)
     variety: landContext.variety_profile ? Object.freeze({
