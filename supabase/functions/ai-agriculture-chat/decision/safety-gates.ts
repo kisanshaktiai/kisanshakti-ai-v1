@@ -302,19 +302,34 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
 
   if (mustClarify) {
     const sym = lowSpecSymptom || input.symptom_keys[0]; // guaranteed non-empty by hasAnyReportedSymptom
-    result.clarification_text = diffQuestionForSymptom(sym, input.crop_name || '', language, input.differential_questions);
-    result.override_mode = 'CLARIFY';
-    result.gate_decisions.CLARIFICATION_GATE = {
-      passed: false,
-      reason: contradicted
-        ? 'Forcing CLARIFY: primary hypothesis contradicted by soil-K'
-        : ndviAnomalous
-          ? 'Forcing CLARIFY: NDVI anomaly blocks nutrient diagnosis'
-          : lowSpecSymptom
-            ? `Forcing CLARIFY: low-specificity symptom ${lowSpecSymptom} (score=${input.symptom_discriminator_scores?.[lowSpecSymptom]})`
-            : `Forcing CLARIFY: effective confidence ${cappedConf.toFixed(2)} below 0.45`,
-      data: { trigger_symptom: lowSpecSymptom, contradicted, ndvi_anomalous: ndviAnomalous }
-    };
+    const diffText = diffQuestionForSymptom(sym, input.crop_name || '', language, input.differential_questions);
+
+    // RCA #18: if the DB has no localized differential question for this
+    // (symptom, language), DO NOT emit the English `"symptom"` template —
+    // it surfaces as the literal Devanagari token `लक्षण` after LLM
+    // narration. Skip CLARIFY entirely and let the orchestrator's
+    // STAGE_ADVISORY_FALLBACK produce a clean stage-aware reply.
+    if (!diffText) {
+      result.gate_decisions.CLARIFICATION_GATE = {
+        passed: true,
+        reason: `Would have clarified on '${sym}' but observation_differential_questions has no DB row for language='${language}'. Falling through to stage advisory.`,
+        data: { skipped_clarify: true, symptom: sym, language }
+      };
+    } else {
+      result.clarification_text = diffText;
+      result.override_mode = 'CLARIFY';
+      result.gate_decisions.CLARIFICATION_GATE = {
+        passed: false,
+        reason: contradicted
+          ? 'Forcing CLARIFY: primary hypothesis contradicted by soil-K'
+          : ndviAnomalous
+            ? 'Forcing CLARIFY: NDVI anomaly blocks nutrient diagnosis'
+            : lowSpecSymptom
+              ? `Forcing CLARIFY: low-specificity symptom ${lowSpecSymptom} (score=${input.symptom_discriminator_scores?.[lowSpecSymptom]})`
+              : `Forcing CLARIFY: effective confidence ${cappedConf.toFixed(2)} below 0.45`,
+        data: { trigger_symptom: lowSpecSymptom, contradicted, ndvi_anomalous: ndviAnomalous }
+      };
+    }
   } else {
     result.gate_decisions.CLARIFICATION_GATE = {
       passed: true,
