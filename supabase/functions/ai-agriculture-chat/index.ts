@@ -32,6 +32,12 @@ import type { WeatherContext, CropContext } from './agents/deterministic-respons
 import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
 
+// Deterministic variety SSOT assertion (pre + post LLM gate)
+import {
+  assertVarietyInjected,
+  assertResponseHonorsVariety,
+} from '../_shared/variety-assertion.ts';
+
 // Legacy helpers removed - dead code cleanup
 
 // NOTE: General chat is handled by a separate edge function (`ai-general-chat`).
@@ -1698,7 +1704,27 @@ serve(async (req) => {
             supabase_client: supabase,
             farmer_addressing: farmerAddressing,
           };
-          
+
+          // ═══════════════════════════════════════════════════════════════════
+          // VARIETY INJECTION GATE (pre-LLM, deterministic)
+          // Hard-asserts the resolved variety_profile on the land context
+          // actually reaches the symbolic brain / LLM input. If it silently
+          // dropped, we log a SYMBOLIC_CONTRACT_VIOLATION but do NOT block —
+          // narration still proceeds; the post-LLM gate catches omission.
+          // ═══════════════════════════════════════════════════════════════════
+          const landVarietyProfile = (landContext as any)?.variety_profile || null;
+          const preGate = assertVarietyInjected({
+            land_context_variety_profile: landVarietyProfile,
+            formatter_variety_profile: (formatterInput.land_context as any)?.variety_profile || null,
+            decision_context_variety: (decisionOutputForFormatting as any)?.canonical_context?.variety || null,
+          });
+          if (!preGate.passed) {
+            console.error(`🚫 [VARIETY-ASSERT/pre] SYMBOLIC_CONTRACT_VIOLATION trace=${traceId}`);
+            for (const v of preGate.violations) console.error(`   - ${v}`);
+          } else if (landVarietyProfile) {
+            console.log(`🌱 [VARIETY-ASSERT/pre] variety SSOT injected: ${landVarietyProfile.name}`);
+          }
+
           // Call LLM formatter with timeout protection
           const formatterPromise = formatRecommendationsWithLLM(formatterInput);
           const timeoutPromise = new Promise<LLMFormatterOutput>((_, reject) => {
@@ -1731,6 +1757,54 @@ serve(async (req) => {
               ));
             } else {
               responseContent = await getResponseContent(orchestratorResponse, detectedLanguage);
+            }
+          }
+
+          // ═══════════════════════════════════════════════════════════════════════════
+          // VARIETY HONOUR GATE (post-LLM, deterministic)
+          // Blocks any response that omits the variety name when a variety
+          // SSOT is attached, or that contradicts maturity windows /
+          // resistance flags from variety_resistance. Falls back to the
+          // template renderer (which the LLM-prompt build always seeds with
+          // the variety block) so the farmer still gets the SSOT.
+          // ═══════════════════════════════════════════════════════════════════════════
+          if (landVarietyProfile) {
+            const postGate = assertResponseHonorsVariety(responseContent, landVarietyProfile);
+            if (!postGate.passed) {
+              console.error(`🚫 [VARIETY-ASSERT/post] BLOCKED trace=${traceId} ` +
+                `name_mentioned=${postGate.checked.name_mentioned} ` +
+                `maturity=${postGate.checked.maturity_consistent} ` +
+                `resistance=${postGate.checked.resistance_consistent}`);
+              for (const v of postGate.violations) console.error(`   - ${v}`);
+
+              // Deterministic remediation: render from symbolic SSOT directly.
+              // buildFormattedRecommendationsList consumes decision_output and
+              // (via the formatter contract) preserves variety facts verbatim.
+              try {
+                if (orchestratorResponse.decision_output?.primary_decision) {
+                  const fallbackText = sanitizeFarmerResponse(await buildFormattedRecommendationsList(
+                    orchestratorResponse.decision_output,
+                    detectedLanguage,
+                    supabase,
+                  ));
+                  const revalidate = assertResponseHonorsVariety(fallbackText, landVarietyProfile);
+                  if (revalidate.passed) {
+                    responseContent = fallbackText;
+                    console.log(`   ✅ [VARIETY-ASSERT/post] template fallback honours variety SSOT`);
+                  } else {
+                    // Last-resort: append a deterministic variety footer so the
+                    // SSOT is never silently dropped to the farmer.
+                    const lbl = landVarietyProfile.label_mr || landVarietyProfile.label_hi || landVarietyProfile.name;
+                    const code = landVarietyProfile.variety_code ? ` [${landVarietyProfile.variety_code}]` : '';
+                    responseContent = `${fallbackText}\n\n— ${lbl}${code}`;
+                    console.warn(`   ⚠️ [VARIETY-ASSERT/post] template still violated; appended variety footer`);
+                  }
+                }
+              } catch (fallbackErr) {
+                console.error(`   ❌ [VARIETY-ASSERT/post] fallback failed:`, (fallbackErr as Error).message);
+              }
+            } else {
+              console.log(`   ✅ [VARIETY-ASSERT/post] response honours variety SSOT`);
             }
           }
         } // End of prescription gate allowed block
