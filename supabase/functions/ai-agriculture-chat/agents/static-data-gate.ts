@@ -35,6 +35,18 @@ export interface LandContext {
     status?: string;
     is_active?: boolean;
   };
+  /**
+   * Set when there is NO active crop on the land but a prior crop_schedule
+   * exists. Used by CROP_NAME / past-tense crop-lookup responses so the
+   * farmer hears "this field had X" instead of a generic "not recorded".
+   */
+  last_harvested_schedule?: {
+    crop_name: string;
+    crop_variety?: string | null;
+    sowing_date?: string | null;
+    actual_harvest_date?: string | null;
+    expected_harvest_date?: string | null;
+  } | null;
   growth_stage?: string;
   days_since_sowing?: number;
   irrigation_type?: string;
