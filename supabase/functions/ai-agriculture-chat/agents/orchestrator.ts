@@ -7304,7 +7304,7 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       
       // PARALLEL FETCHING: Fetch all data simultaneously for speed
-      const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult] = await Promise.all([
+      const [landResult, soilResult, ndviLatestResult, ndviHistoryResult, cropScheduleResult, latestScheduleResult] = await Promise.all([
         // Fetch land details - CRITICAL: Must validate farmer_id ownership
         this.supabase
           .from('lands')
