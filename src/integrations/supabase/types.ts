@@ -31708,21 +31708,38 @@ export type Database = {
         Returns: Json
       }
       system_health_snapshot: { Args: never; Returns: Json }
-      tenant_assign_farmer_subscription: {
-        Args: {
-          p_billing_interval: string
-          p_collection_method: string
-          p_farmer_id: string
-          p_idempotency_key?: string
-          p_notes?: string
-          p_plan_id: string
-          p_promo_code?: string
-          p_proof_url?: string
-          p_reference_number?: string
-          p_tenant_id: string
-        }
-        Returns: Json
-      }
+      tenant_assign_farmer_subscription:
+        | {
+            Args: {
+              p_billing_interval: string
+              p_collection_method: string
+              p_farmer_id: string
+              p_idempotency_key?: string
+              p_notes?: string
+              p_plan_id: string
+              p_promo_code?: string
+              p_proof_url?: string
+              p_reference_number?: string
+              p_tenant_id: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_billing_interval: string
+              p_collection_method: string
+              p_farmer_id: string
+              p_idempotency_key?: string
+              p_notes?: string
+              p_paid_by_tenant?: boolean
+              p_plan_id: string
+              p_promo_code?: string
+              p_proof_url?: string
+              p_reference_number?: string
+              p_tenant_id: string
+            }
+            Returns: Json
+          }
       test_lead_auto_assignment: { Args: never; Returns: Json }
       toggle_post_like: {
         Args: { p_farmer_id: string; p_post_id: string }
