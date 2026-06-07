@@ -97,7 +97,69 @@ export const ADVISORY_DIRECT_INTENTS = new Set<string>([
   'VARIETY_SELECTION_QUERY',
   'SEASONAL_TRANSITION_ALERT',
   'WEATHER_ADVISORY',
+  // Phase 1 (P0): next-crop recommendation for post-harvest / fallow fields
+  'NEXT_CROP_RECOMMENDATION',
 ]);
+
+/**
+ * ADVISORY_ON_EMPTY_FIELD_INTENTS — intents that MUST be answered even when
+ * canonical context has status='NO_ACTIVE_CROP'. Asking "which crop next?"
+ * on an empty field is meaningful; the NO_ACTIVE_CROP short-circuit must
+ * NOT intercept these. The symbolic brain handles them with last-harvest +
+ * soil + weather + season as inputs.
+ */
+export const ADVISORY_ON_EMPTY_FIELD_INTENTS = new Set<string>([
+  'NEXT_CROP_RECOMMENDATION',
+  'CROP_ROTATION_QUERY',
+  'SEED_SELECTION',
+  'VARIETY_SELECTION_QUERY',
+  'SEASONAL_TRANSITION_ALERT',
+  'SOIL_TESTING_QUERY',
+  'SOIL_HEALTH_RESTORATION',
+]);
+
+/**
+ * Language-agnostic pre-classifier regex for "should I grow X next?" style
+ * queries. Used BEFORE LLM intent classification by:
+ *   (a) static-data-gate.ts — to refuse intercepting these as CROP_NAME lookups
+ *   (b) the NO_ACTIVE_CROP short-circuit — to fall through to the symbolic brain
+ *
+ * Covers Marathi, Hindi, English (Devanagari + romanized). Conservative —
+ * only matches when an explicit recommendation/future-tense marker is present.
+ */
+export const NEXT_CROP_RECOMMENDATION_PATTERNS: RegExp[] = [
+  // Marathi
+  /नवीन\s*(पीक|पिक)/i,                                   // "नवीन पीक"
+  /(पीक|पिक)\s*(घ्यावे|घेवू|घेऊ|लावावे|लावू|पेरू|पेरावे|सुचवा|सुचव)/i,
+  /(कोणते|कोणतं|कोणती)\s*(नवीन\s*)?(पीक|पिक).*(घेवू|घ्यावे|लावावे|पेरू|पेरावे|योग्य|फायदेशीर|सुचव)/i,
+  /पुढील\s*(पीक|पिक)/i,                                  // "next crop"
+  /आता\s*(काय|कोणते)\s*(पेरू|पेरावे|लावावे|घेवू)/i,
+  /फायदेशीर\s*(पीक|पिक)/i,
+  // Hindi
+  /(कौन\s*सी?|क्या)\s*(नई\s*)?फसल\s*(लगाऊं|बोऊं|उगाऊं|लगाएं|बोएं|सुझाव|सुझाओ|बताओ)/i,
+  /अगली\s*फसल/i,
+  /नई\s*फसल/i,
+  /क्या\s*(बोऊं|बोएं|लगाऊं|उगाऊं)/i,
+  // English
+  /\b(what|which|recommend(ed)?|suggest|best)\b[^?.!\n]{0,40}\b(crop|plant)\b[^?.!\n]{0,40}\b(grow|plant|sow|next|after|recommend|suggest|best)\b/i,
+  /\bnext\s+crop\b/i,
+  /\bwhat\s+(should\s+i|to)\s+(plant|sow|grow)\b/i,
+  /\brecommend\s+(a\s+)?crop\b/i,
+  // Romanized Marathi/Hindi
+  /\b(navin|nava|nayi)\s+(pik|pīk|fasal|fasl)\b/i,
+  /\b(kon|kaun)\s*(sa|si|te|ta|t[ií])\s+(pik|fasal)\b[^?.!\n]{0,30}\b(ghyave|ghevu|lavave|peru|lagau|boyu|bou)/i,
+];
+
+/**
+ * Returns true if the farmer message asks for a next-crop / crop-selection
+ * recommendation. Pure regex — no LLM call. Safe to call in hot paths.
+ */
+export function isNextCropRecommendationQuery(message: string | null | undefined): boolean {
+  if (!message || typeof message !== 'string') return false;
+  const m = message.trim();
+  if (!m) return false;
+  return NEXT_CROP_RECOMMENDATION_PATTERNS.some((re) => re.test(m));
+}
 
 export function isAdvisoryRoute(intentCode: string | null | undefined): boolean {
   return !!intentCode && ADVISORY_DIRECT_INTENTS.has(intentCode);
