@@ -1767,52 +1767,82 @@ export class AIAgentOrchestrator {
           ? (lastVariety ? `${lastCrop} (${lastVariety})` : lastCrop)
           : null;
 
-        const soilLine = (soilN != null || soilP != null || soilK != null)
-          ? ` N:${soilN ?? '—'} P:${soilP ?? '—'} K:${soilK ?? '—'}`
-          : '';
+        // ───────────────────────────────────────────────────────────────
+        // SYMBOLIC NEXT-CROP ENGINE: load `crop_rotation` rules from DB,
+        // score against canonicalContext, return top candidates each with
+        // DB-sourced scientific_basis. The LLM only narrates — it never
+        // invents a crop or a reason.
+        // ───────────────────────────────────────────────────────────────
+        let engineResult: any = null;
+        try {
+          engineResult = await recommendNextCrop({
+            canonicalContext,
+            language: lang,
+            traceId,
+          });
+        } catch (err) {
+          console.error(`[${traceId}] NEXT_CROP engine failed:`, (err as Error)?.message);
+          engineResult = { candidates: [], matched_rule_count: 0, fallback_used: true };
+        }
 
-        const messages = {
-          mr: [
-            `🌱 **पुढील पीक सुचवण्यासाठी मदत**`,
-            lastCropLabel
-              ? `📜 मागील हंगाम: **${lastCropLabel}**${harvestDate ? ` (कापणी: ${harvestDate})` : ''}`
-              : `📜 या शेताचा मागील पीक रेकॉर्ड उपलब्ध नाही.`,
-            soilLine ? `🧪 मातीची स्थिती:${soilLine}` : '',
-            rotationDepth > 1 ? `🔁 मागील ${rotationDepth} हंगामांची नोंद उपलब्ध आहे.` : '',
-            `\nयोग्य पीक फेरबदल सुचवण्यासाठी कृषी सल्लागार तज्ज्ञ नियम जोडत आहेत. कृपया तुमचा हंगाम, सिंचनाची सोय आणि लागवडीची तारीख कळवा — म्हणजे अचूक सल्ला देता येईल.`
-          ].filter(Boolean).join('\n'),
-          hi: [
-            `🌱 **अगली फसल का सुझाव**`,
-            lastCropLabel
-              ? `📜 पिछला मौसम: **${lastCropLabel}**${harvestDate ? ` (कटाई: ${harvestDate})` : ''}`
-              : `📜 इस खेत का पिछला फसल रिकॉर्ड उपलब्ध नहीं है।`,
-            soilLine ? `🧪 मिट्टी की स्थिति:${soilLine}` : '',
-            rotationDepth > 1 ? `🔁 पिछले ${rotationDepth} मौसमों का रिकॉर्ड उपलब्ध है।` : '',
-            `\nउपयुक्त फसल चक्र सुझाने के लिए कृषि नियम तैयार किए जा रहे हैं। कृपया अपना मौसम, सिंचाई व्यवस्था और बुवाई की तारीख बताएं — ताकि सटीक सलाह दी जा सके।`
-          ].filter(Boolean).join('\n'),
-          en: [
-            `🌱 **Next crop recommendation**`,
-            lastCropLabel
-              ? `📜 Last season: **${lastCropLabel}**${harvestDate ? ` (harvested ${harvestDate})` : ''}`
-              : `📜 No prior crop record is available for this field.`,
-            soilLine ? `🧪 Soil snapshot:${soilLine}` : '',
-            rotationDepth > 1 ? `🔁 ${rotationDepth} prior seasons on record.` : '',
-            `\nRotation rules for this agro-zone are being seeded by the agronomy team. Please share your target season, irrigation type, and planned sowing date so a precise recommendation can be generated.`
-          ].filter(Boolean).join('\n')
-        };
+        const hasCandidates = engineResult && engineResult.candidates && engineResult.candidates.length > 0;
+        const topConfidence = hasCandidates
+          ? Math.min(1, engineResult.candidates[0].score)
+          : 1.0;
+
+        let messages: { mr: string; hi: string; en: string };
+        if (hasCandidates) {
+          messages = renderRecommendationMessage(engineResult, lang, lastCropLabel);
+        } else {
+          // Deterministic stub — same as before — when no rule matched
+          const soilLine = (soilN != null || soilP != null || soilK != null)
+            ? ` N:${soilN ?? '—'} P:${soilP ?? '—'} K:${soilK ?? '—'}`
+            : '';
+          messages = {
+            mr: [
+              `🌱 **पुढील पीक सुचवण्यासाठी मदत**`,
+              lastCropLabel
+                ? `📜 मागील हंगाम: **${lastCropLabel}**${harvestDate ? ` (कापणी: ${harvestDate})` : ''}`
+                : `📜 या शेताचा मागील पीक रेकॉर्ड उपलब्ध नाही.`,
+              soilLine ? `🧪 मातीची स्थिती:${soilLine}` : '',
+              rotationDepth > 1 ? `🔁 मागील ${rotationDepth} हंगामांची नोंद उपलब्ध आहे.` : '',
+              `\nयोग्य पीक फेरबदल सुचवण्यासाठी कृपया तुमचा हंगाम, सिंचनाची सोय आणि लागवडीची तारीख कळवा.`
+            ].filter(Boolean).join('\n'),
+            hi: [
+              `🌱 **अगली फसल का सुझाव**`,
+              lastCropLabel
+                ? `📜 पिछला मौसम: **${lastCropLabel}**${harvestDate ? ` (कटाई: ${harvestDate})` : ''}`
+                : `📜 इस खेत का पिछला फसल रिकॉर्ड उपलब्ध नहीं है।`,
+              soilLine ? `🧪 मिट्टी की स्थिति:${soilLine}` : '',
+              rotationDepth > 1 ? `🔁 पिछले ${rotationDepth} मौसमों का रिकॉर्ड उपलब्ध है।` : '',
+              `\nउपयुक्त फसल चक्र के लिए कृपया अपना मौसम, सिंचाई और बुवाई तारीख बताएं।`
+            ].filter(Boolean).join('\n'),
+            en: [
+              `🌱 **Next crop recommendation**`,
+              lastCropLabel
+                ? `📜 Last season: **${lastCropLabel}**${harvestDate ? ` (harvested ${harvestDate})` : ''}`
+                : `📜 No prior crop record is available for this field.`,
+              soilLine ? `🧪 Soil snapshot:${soilLine}` : '',
+              rotationDepth > 1 ? `🔁 ${rotationDepth} prior seasons on record.` : '',
+              `\nPlease share your target season, irrigation type, and planned sowing date so a precise recommendation can be generated.`
+            ].filter(Boolean).join('\n')
+          };
+        }
         const msg = (messages as any)[lang] || messages.en;
 
-        console.log(`🌱 [${traceId}] NEXT_CROP_RECOMMENDATION lane fired (lastCrop=${lastCrop || 'none'}, rotationDepth=${rotationDepth})`);
-        agentsUsed.push('NEXT_CROP_RECOMMENDATION_LANE');
+        console.log(`🌱 [${traceId}] NEXT_CROP_RECOMMENDATION lane fired (lastCrop=${lastCrop || 'none'}, rotationDepth=${rotationDepth}, candidates=${engineResult?.candidates?.length || 0})`);
+        agentsUsed.push(hasCandidates ? 'NEXT_CROP_ENGINE_HIT' : 'NEXT_CROP_FALLBACK_STUB');
         console.log(JSON.stringify({
-          audit_tag: 'NEXT_CROP_ROUTING',
+          audit_tag: hasCandidates ? 'NEXT_CROP_ENGINE_HIT' : 'NEXT_CROP_NO_RULE_MATCH',
           trace_id: traceId,
-          stage: 'DETERMINISTIC_LANE_FIRED',
+          stage: 'LANE_RETURN',
           intent: 'NEXT_CROP_RECOMMENDATION',
           last_harvest: lastCrop,
           rotation_depth: rotationDepth,
-          has_soil_oc: (canonicalContext as any)?.soil?.organic_carbon != null,
-          has_agro_zone: (canonicalContext as any)?.soil?.agro_zone != null,
+          matched_rule_count: engineResult?.matched_rule_count || 0,
+          top_candidates: (engineResult?.candidates || []).map((c: any) => ({
+            crop: c.crop_code, rule: c.rule_id, score: +c.score.toFixed(3)
+          })),
         }));
 
         return {
@@ -1833,25 +1863,40 @@ export class AIAgentOrchestrator {
             quick_actions: [],
             metadata: {
               word_count: msg.split(/\s+/).length,
-              reading_time_seconds: 6,
-              confidence_score: 1.0,
-              source: 'NEXT_CROP_RECOMMENDATION_LANE',
+              reading_time_seconds: 8,
+              confidence_score: topConfidence,
+              source: hasCandidates ? 'NEXT_CROP_RECOMMENDATION_ENGINE' : 'NEXT_CROP_RECOMMENDATION_FALLBACK',
               response_type: 'NEXT_CROP_RECOMMENDATION'
             }
           } as any,
           decision_output: {
             decision_id: `next_crop_${Date.now()}`,
             session_id: sessionId,
-            status: 'INFORMATION_PROVIDED',
-            decision_brain_source: false,
-            actions_returned: [],
+            status: hasCandidates ? 'DECISION_PROVIDED' : 'INFORMATION_PROVIDED',
+            decision_brain_source: hasCandidates,
+            actions_returned: hasCandidates
+              ? engineResult.candidates.map((c: any, idx: number) => ({
+                  action_id: `next_crop_action_${idx + 1}`,
+                  action_type: 'RECOMMEND_CROP',
+                  crop_code: c.crop_code,
+                  crop_label: cropLabel(c.crop_code, lang),
+                  rule_id: c.rule_id,
+                  scientific_basis: c.scientific_basis,
+                  farmer_reason: c.farmer_reason,
+                  scientific_source: c.scientific_source,
+                  confidence: c.score,
+                  priority: idx === 0 ? 'PRIMARY' : 'ALTERNATIVE',
+                }))
+              : [],
             metadata: {
-              confidence: 1.0,
+              confidence: topConfidence,
               trace_id: traceId,
               agents_used: agentsUsed,
               template_type: 'NEXT_CROP_RECOMMENDATION',
               last_harvest: lastCrop,
-              rotation_depth: rotationDepth
+              rotation_depth: rotationDepth,
+              matched_rule_count: engineResult?.matched_rule_count || 0,
+              fallback_used: !hasCandidates,
             }
           } as any
         };
