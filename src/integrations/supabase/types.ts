@@ -16955,6 +16955,7 @@ export type Database = {
       payment_intents: {
         Row: {
           amount: number
+          billing_interval: string
           created_at: string | null
           currency: string | null
           dummy_payment_data: Json | null
@@ -16973,6 +16974,7 @@ export type Database = {
         }
         Insert: {
           amount: number
+          billing_interval?: string
           created_at?: string | null
           currency?: string | null
           dummy_payment_data?: Json | null
@@ -16991,6 +16993,7 @@ export type Database = {
         }
         Update: {
           amount?: number
+          billing_interval?: string
           created_at?: string | null
           currency?: string | null
           dummy_payment_data?: Json | null
