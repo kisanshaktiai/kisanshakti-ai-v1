@@ -1,60 +1,112 @@
-## Bug
+## Problem
 
-User (mr): "या शेतात कोणते नवीन पिक घेवू?" → assistant replies **"Which crop are you asking about?"** (English clarification card).
+For Marathi "या शेतात कोणते नवीन पिक घेवू?" the system now reaches the `NEXT_CROP_RECOMMENDATION_LANE` (the earlier G2 regression is fixed), but the lane returns a **placeholder stub** — "rotation rules are being seeded, please share season/irrigation/sowing date." There is no actual next-crop name and no scientific reason. Root cause: zero rows exist in `decision_rules` for categories `crop_rotation | crop_selection | next_crop | rotation_advisory`, and the lane has no rule-evaluation step — it only narrates `landContext`.
 
-Edge log + DB evidence (trace `trace_mq3ivhr8_pr830u`, land Khari, farmer Amarsinh):
+The user wants the Symbolic Decision Brain to (a) name the recommended next crop(s) and (b) explain the scientific reason — for every recommendation response — without altering the regular diagnostic (pest/disease/nutrition) brain.
 
-- Intent classified correctly: `NEXT_CROP_RECOMMENDATION` (100%).
-- Phase-3 fix worked: `NO_ACTIVE_CROP guard BYPASSED` ✅.
-- Pipeline continued into the diagnostic gates and tripped **G2 CONTEXT_COMPLETENESS** at `orchestrator.ts:5306`, which short-circuits with `CLARIFICATION_QUESTION` whose default prompt is the literal English string `'Which crop are you asking about?'` (`orchestrator.ts:5314`, also `clarification-renderer.ts:121`).
-- Earlier identical query at 07:41 returned the correct Marathi "last crop = Wheat, field is fallow" message — that was the old `NO_ACTIVE_CROP_GUARD` path, which we now bypass. So bypassing NO_ACTIVE_CROP exposed a regression: the recommendation lane has no dedicated terminus and falls through the disease/pest diagnostic gates that require a known crop.
+## Goal
 
-Root cause: `NEXT_CROP_RECOMMENDATION` queries by definition have **no current crop** (field is fallow). All downstream gates (G2, hypothesis arbitration's `FATAL_CANONICAL_CONTEXT_CORRUPTION` at 5457, etc.) assume a current crop must exist and emit clarifications/throws when it does not.
+Extend the existing `NEXT_CROP_RECOMMENDATION_LANE` into a real rotation engine that:
 
-## Fix (production-safe, additive)
+1. Loads seeded `crop_rotation` decision_rules from DB.
+2. Scores candidates against the authoritative `canonicalContext` (last crop + family, soil NPK + OC + texture, agro_zone, irrigation_type, season, district, rotation_history).
+3. Returns top 3 candidates each carrying `scientific_basis` (nitrogen fixation, pest-cycle break, soil-restoration, water-fit, market-fit, etc.) from the rule row.
+4. Hands the structured candidates to the existing `llm-response-formatter` (already in NEXT-CROP RECOMMENDATION MODE) for vernacular narration that always includes the "why".
+5. Falls back to the current deterministic stub **only** when zero rules match — never silently.
 
-### 1. Dedicated NEXT_CROP_RECOMMENDATION lane (orchestrator.ts)
-After the NO_ACTIVE_CROP bypass (~line 1744) and **before** any symptom/G2/hypothesis gating, detect `lockedIntent === 'NEXT_CROP_RECOMMENDATION'` (or `isNextCropRecommendationQuery(farmerMessage)`) and short-circuit to a deterministic recommendation builder. This keeps the entire diagnostic stack untouched for pest/disease flows.
+No change to: pest/disease/nutrition rule paths, Canonical Context Builder, Unified Decision Gate, Authority Hierarchy, Crop Schedule SSOT, tenant/farmer isolation, intent classifier, NO_ACTIVE_CROP bypass, G2 bypass.
 
-Lane behavior:
-- Load `decision_rules` where `category IN ('crop_rotation','crop_selection','next_crop','rotation_advisory')` already mapped to `PRESCRIPTION` (Phase 4 — done).
-- Build symbolic context from already-resolved `landContext`: `rotation_history` (last 5 crops, available via canonical-context extension from Phase 5), `soil_npk`, `agro_zone`, `irrigation_type`, `season`, district/lat-lon.
-- Evaluate rules → top N candidate crops with rationale.
-- If zero rules match, fall back to deterministic narration block (last crop + soil snapshot + "rotation suggestions pending rule seeding") — never an English clarification, never `{symptom}` template.
-- Pass through `llm-response-formatter` which is already in **NEXT-CROP RECOMMENDATION MODE** (Phase 6) for vernacular narration.
-- Return `decision_output` with `template_type: 'NEXT_CROP_RECOMMENDATION'`, `confidence: 1.0`, `orchestrator_type: 'NEXT_CROP_RECOMMENDED'`.
+## Changes
 
-### 2. Defensive guard on G2 (orchestrator.ts ~5306)
-Even with the lane in place, add an explicit early-return at the top of the G2 block:
-```ts
-if (lockedIntent === 'NEXT_CROP_RECOMMENDATION') {
-  console.log('   ⏭️ G2 CONTEXT_COMPLETENESS skipped — NEXT_CROP_RECOMMENDATION intent has no current crop by design');
-} else if (contextValidation.status === 'NEEDS_CLARIFICATION') { … existing … }
+### 1. DB seed migration — `crop_rotation` rules
+New migration `supabase/migrations/<ts>_seed_crop_rotation_rules.sql` inserts ~20 production-safe rules into `decision_rules` (category = `crop_rotation`). Each rule uses existing columns only — no schema change. Conditions live in `conditions_json`:
+
+```jsonc
+{
+  "previous_crop_family": ["poaceae"],         // e.g. after sugarcane/wheat
+  "previous_crop": ["sugarcane","wheat","rice"], // optional narrower match
+  "season": ["rabi","kharif","summer"],
+  "irrigation_type": ["irrigated","rainfed"],
+  "soil_texture": ["black","loamy","sandy"],   // optional
+  "soil_n_max": 280, "soil_n_min": null,       // ppm/kg-ha thresholds, all optional
+  "soil_p_max": null, "soil_p_min": null,
+  "soil_k_max": null, "soil_k_min": null,
+  "agro_zone": ["western-maharashtra","marathwada","vidarbha","konkan"], // optional
+  "min_rotation_gap_seasons": 1                 // do not repeat same family within N
+}
 ```
-Same guard added before the hypothesis-arbitration FATAL throw at line 5457 — for the recommendation intent, return a deterministic empty-hypothesis result rather than throwing.
 
-### 3. Pipeline bypass in index.ts
-Mirror the existing NO_ACTIVE_CROP bypass: if `decision_output.metadata.template_type === 'NEXT_CROP_RECOMMENDATION'`, skip the symbolic filtering / unified-gate / safety-gate that assume a diagnosed condition, and pass straight to the LLM formatter (which already has the RECOMMEND-mode prompt) and `ui-response-builder`.
+Output columns used per rule:
+- `cause` → recommended crop code (e.g. `chickpea`, `soybean`, `green_gram`, `maize`, `mustard`, `groundnut`, `sunflower`, `cotton`, `pigeonpea`, `wheat`, `sorghum`).
+- `scientific_basis` → 1–3 sentence scientific reason (N-fixation kg/ha, pest cycle break, allelopathy, soil-OC build, water requirement fit, market window).
+- `reason_text` / `knowledge_text` → farmer-facing one-liner the LLM will narrate.
+- `confidence_score`, `priority`, `scientific_source` (ICAR / state agri-university ref), `is_active = true`, `applicability_scope = 'multi_crop'`.
 
-### 4. Tests (tests/chat/next-crop-recommendation-routing.test.ts)
-Extend the existing suite (33/33 currently passing):
-- Marathi "या शेतात कोणते नवीन पिक घेवू?" → response is Marathi (Devanagari), contains last-crop reference, never matches `/Which crop are you asking about/`, never contains an unfilled `{…}` placeholder.
-- Hindi + English equivalents produce localized responses.
-- Pest query on the same fallow land still produces a clarification (i.e., we did not over-bypass).
-- G2 still fires for non-recommendation intents with missing crop.
+Initial seed coverage (Maharashtra-first; safe defaults):
+- after sugarcane → chickpea / green-gram / sunhemp (green-manure) / soybean
+- after wheat → green-gram / soybean / cotton (kharif) / pigeonpea
+- after rice → chickpea / mustard / lentil
+- after cotton → wheat / chickpea / sorghum
+- after soybean → wheat / chickpea / safflower
+- after groundnut → wheat / sorghum
+- after maize → chickpea / mustard
+- "no prior record" generic season-based defaults per agro_zone
 
-### 5. Audit doc
-`docs/audit-2026-06-07/21-next-crop-clarification-regression-fix.md` — root-cause trace, lane diagram, gate-bypass matrix.
+All rows include real ICAR/MPKV/PDKV references in `scientific_source`.
+
+### 2. New engine module — `agents/next-crop-recommender.ts`
+Pure function, no side effects, no LLM calls:
+
+```ts
+recommendNextCrop({ canonicalContext, language, traceId }) →
+  { candidates: Array<{ crop_code, crop_label_i18n, score, rule_id,
+                        scientific_basis, farmer_reason, rotation_gap_ok,
+                        soil_fit, season_fit, water_fit }>,
+    matched_rule_count, fallback_used }
+```
+
+Steps:
+1. Query `decision_rules` where `category='crop_rotation' AND is_active=true` (cached per-edge-invocation).
+2. Filter on hard predicates from `conditions_json` against context: season, irrigation, previous-crop-family rotation gap.
+3. Score on soft predicates: soil N/P/K window fit (0–1), agro-zone match (+0.2), soil_texture match (+0.1), priority (rule weight).
+4. Deduplicate by `crop_code`, keep highest-scoring rule per crop.
+5. Return top 3 sorted by score desc.
+
+### 3. Wire into existing lane — `agents/orchestrator.ts` (~line 1755)
+Inside the existing `if (isRecommendationQuery)` block:
+- Call `recommendNextCrop(...)`.
+- If `candidates.length > 0`: build a structured `decision_output.actions_returned` array — one action per candidate carrying `crop_code`, `scientific_basis`, `farmer_reason`, `rule_id`, `confidence`. Set `template_type: 'NEXT_CROP_RECOMMENDATION'`, `decision_brain_source: true`, `confidence = top.score`.
+- If `candidates.length === 0`: keep current deterministic stub (unchanged) but log `audit_tag: 'NEXT_CROP_NO_RULE_MATCH'`.
+- Send through the existing return shape so `index.ts` pipeline bypass (already in place) still applies.
+
+### 4. LLM formatter — `agents/llm-response-formatter.ts`
+Already runs in NEXT-CROP RECOMMENDATION MODE (Phase 6). Extend the prompt builder so when `template_type === 'NEXT_CROP_RECOMMENDATION'` and `actions_returned[*].crop_code` is present, it MUST:
+- Name each recommended crop in the farmer's language (use existing i18n crop-name map).
+- For each crop, render `scientific_basis` as the "का?" / "क्यों?" / "Why?" line.
+- Forbid inventing crops or reasons not present in `actions_returned` (existing output-validation gate already enforces this — extend its allow-list to include the candidate crop_codes).
+
+No new LLM tools, no new prompts beyond this constraint block.
+
+### 5. Tests — `tests/chat/next-crop-recommendation-routing.test.ts`
+Add a new `describe('engine')` block:
+- Given context `{ last_crop: 'sugarcane', soil: { n: 200, p: 25, k: 180 }, season: 'rabi', irrigation: 'irrigated', agro_zone: 'western-maharashtra' }` → top candidate is `chickpea`, candidate carries non-empty `scientific_basis` referencing N-fixation, response contains the Marathi word for chickpea ("हरभरा").
+- Given no rule match → response falls back to current stub, never throws.
+- Diagnostic flow unchanged: existing 33/33 routing tests still pass.
+
+### 6. Audit doc
+`docs/audit-2026-06-07/22-next-crop-recommender-engine.md` — root cause (no seeded rules), engine design, scoring formula, seed coverage matrix, gate-bypass invariants preserved.
 
 ## Files touched
 
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` — add NEXT_CROP lane + G2/hypothesis guards.
-- `supabase/functions/ai-agriculture-chat/index.ts` — pipeline bypass for `template_type: 'NEXT_CROP_RECOMMENDATION'`.
-- `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` — already in RECOMMEND mode; verify it accepts the new payload shape.
-- `tests/chat/next-crop-recommendation-routing.test.ts` — new regression cases.
-- `docs/audit-2026-06-07/21-next-crop-clarification-regression-fix.md` — new audit doc.
+- `supabase/migrations/<ts>_seed_crop_rotation_rules.sql` (new)
+- `supabase/functions/ai-agriculture-chat/agents/next-crop-recommender.ts` (new)
+- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (extend existing lane only — lines 1755–1857)
+- `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` (RECOMMEND-mode prompt + allow-list extension)
+- `tests/chat/next-crop-recommendation-routing.test.ts` (extend)
+- `docs/audit-2026-06-07/22-next-crop-recommender-engine.md` (new)
 
 ## Non-goals / preserved invariants
 
-- No change to pest/disease diagnostic flow, Canonical Context Builder, Unified Decision Gate, Authority Hierarchy, Crop Schedule SSOT, tenant/farmer isolation.
-- No new DB migrations; rule seeding for actual rotation logic is left to agronomy team (infrastructure from Phase 4–7 already supports it).
+- No change to diagnostic intent paths, Canonical Context Builder, Unified Decision Gate, Authority Hierarchy, Crop Schedule SSOT, tenant/farmer isolation, NLU contract, NO_ACTIVE_CROP / G2 bypasses.
+- No new DB columns; uses existing `decision_rules` schema only.
+- No LLM-originated agronomic content — `scientific_basis` always comes from the matched DB row (existing "Rules are Supreme, AI Only Explains" invariant honored).
