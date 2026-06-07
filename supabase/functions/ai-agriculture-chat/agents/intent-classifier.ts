@@ -126,6 +126,9 @@ ROUTING HINTS:
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
   (COLOR_CHANGE, LEAF_MARKS_OR_SPOTS, WILTING_OR_DROOPING, STEM_DAMAGE, PEST_PRESENCE_VISIBLE, ...)
 - "when to harvest" → HARVEST_TIMING
+- "which new crop should I grow", "next crop", "what to plant next", "recommend a crop",
+  Marathi "कोणते नवीन पीक घेवू / पीक घ्यावे / पुढील पीक / आता काय पेरू / नवीन पीक सुचवा / फायदेशीर पीक",
+  Hindi "कौन सी फसल लगाऊं / अगली फसल / नई फसल बताओ / क्या बोऊं" → NEXT_CROP_RECOMMENDATION
 - Pure greeting / unclear → GENERAL_CROP_INFO
 
 If genuinely unsure → GENERAL_CROP_INFO. Never UNKNOWN_OBSERVATION unless the message is empty
@@ -280,6 +283,17 @@ function emit(code: string, conf: number, validCodes: Set<string>): IntentClassi
 function emergencyFallback(message: string, validCodes: Set<string>): IntentClassification {
   const original = message || '';
   if (!original.trim()) return emit('UNKNOWN_OBSERVATION', 0.0, validCodes);
+
+  // Next-crop recommendation (Phase 1 — P0). Must run BEFORE generic crop/fasal
+  // matchers so "नवीन पीक घेवू" / "अगली फसल" don't fall to GENERAL_CROP_INFO.
+  if (
+    /नवीन\s*(पीक|पिक)|(पीक|पिक)\s*(घ्यावे|घेवू|घेऊ|लावावे|पेरू|पेरावे|सुचवा)/i.test(original) ||
+    /पुढील\s*(पीक|पिक)|आता\s*(काय|कोणते)\s*(पेरू|पेरावे|लावावे|घेवू)/i.test(original) ||
+    /अगली\s*फसल|नई\s*फसल|क्या\s*(बोऊं|बोएं|लगाऊं|उगाऊं)|कौन\s*सी?\s*(नई\s*)?फसल\s*(लगाऊं|बोऊं|उगाऊं|सुझाव|बताओ)/i.test(original) ||
+    /\bnext\s+crop\b|\bwhat\s+(should\s+i|to)\s+(plant|sow|grow)\b|\brecommend\s+(a\s+)?crop\b/i.test(original)
+  ) {
+    return emit('NEXT_CROP_RECOMMENDATION', 0.7, validCodes);
+  }
 
   // Fertilizer
   if (/खत|खते|खाद|उर्वरक|fertiliz|\bkhat\b|\bkhaad\b/i.test(original)) return emit('FERTILIZER_SCHEDULE', 0.6, validCodes);

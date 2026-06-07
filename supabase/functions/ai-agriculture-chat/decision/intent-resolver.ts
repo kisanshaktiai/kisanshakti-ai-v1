@@ -329,6 +329,13 @@ export const VALID_INTENT_CODES = [
   'FLOOD_DROUGHT_DAMAGE',
   'ANIMAL_DAMAGE',
   'RATOON_MANAGEMENT_QUERY',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEXT-CROP RECOMMENDATION (Phase 1 — P0 fix)
+  // Farmer asks "which new crop should I grow?" on a fallow/post-harvest field.
+  // Routes to symbolic decision brain for rotation-aware crop selection.
+  // Registered in observation_intent_master with requires_crop_context=false.
+  // ═══════════════════════════════════════════════════════════════════════════
+  'NEXT_CROP_RECOMMENDATION',
   'UNKNOWN_OBSERVATION'
 ] as const;
 
