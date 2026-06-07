@@ -1565,18 +1565,28 @@ function buildFormattingUserPrompt(input: LLMFormatterInput, recData: string): s
        landContextParts.push(`- Location: ${input.land_context.village || ''}, ${input.land_context.district || ''}`);
      }
    }
-   const landInfo = landContextParts.length > 0 ? `\nLAND CONTEXT:\n${landContextParts.join('\n')}` : '';
+    const landInfo = landContextParts.length > 0 ? `\nLAND CONTEXT:\n${landContextParts.join('\n')}` : '';
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // VARIETY PROFILE BLOCK — authoritative, DB-sourced, narration-only.
+    // Empty string when no variety profile is attached (89 crops have no
+    // varieties seeded yet — silent no-op preserves backward compatibility).
+    // ═══════════════════════════════════════════════════════════════════════════
+    const varietyBlock = input.land_context?.variety_profile
+      ? `\n${formatVarietyProfileForPrompt(input.land_context.variety_profile as any, input.language)}\n`
+      : '';
 
   return `FARMER'S QUESTION (in their language):
 "${input.farmer_message}"
 
 ${landInfo}
-
+${varietyBlock}
 RULE ENGINE RECOMMENDATIONS (PRESERVE ALL DOSAGES EXACTLY):
 ${recData}
 
 FORMAT this into natural, empathetic farmer advice in ${getLanguageName(input.language)}.`;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TOKEN OPTIMIZATION: Filter matched responses to max N relevant ones
