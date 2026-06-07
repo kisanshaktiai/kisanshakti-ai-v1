@@ -32,6 +32,12 @@ import type { WeatherContext, CropContext } from './agents/deterministic-respons
 import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/llm-response-formatter.ts';
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
 
+// Deterministic variety SSOT assertion (pre + post LLM gate)
+import {
+  assertVarietyInjected,
+  assertResponseHonorsVariety,
+} from '../_shared/variety-assertion.ts';
+
 // Legacy helpers removed - dead code cleanup
 
 // NOTE: General chat is handled by a separate edge function (`ai-general-chat`).
