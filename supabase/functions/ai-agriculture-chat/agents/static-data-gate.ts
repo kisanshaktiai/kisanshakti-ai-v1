@@ -92,27 +92,27 @@ const STATIC_QUERY_PATTERNS = {
       /which\s*crop/i,
       /current\s*crop/i,
       /या\s*शेतात.*पीक/i,       // "in this land...crop"
+      /या\s*शेतात.*पिक/i,       // script variant (ि vs ी)
       /इस\s*खेत.*फसल/i,
       /कोणतं\s*पीक/i,
+      /कोणतं\s*पिक/i,
       /पिक\s*कोणतं/i,
-      /फसल\s*कौन\s*सी/i
-    ],
-    data_source: 'crop_schedules.crop_name',
-    requires_crop_schedule: true
-  },
-  
-  LAND_AREA: {
-    patterns: [
-      /किती\s*(एकर|क्षेत्र|जमीन)/i,     // Marathi
-      /क्षेत्रफळ/i,
-      /शेत\s*किती/i,
-      /जमीन\s*किती/i,
-      /कितना\s*(एकड़|क्षेत्र)/i,        // Hindi
-      /कितनी\s*जमीन/i,
-      /खेत\s*कितना/i,
-      /how\s*much.*area/i,              // English
-      /land\s*size/i,
-      /area.*acres/i,
+      /पीक\s*कोणतं/i,
+      /फसल\s*कौन\s*सी/i,
+      // ── Past-tense / harvested-land lookups ─────────────────────────────
+      /कोणतं?\s*(पीक|पिक).*होतं?/i,      // Marathi: "which crop was (here)"
+      /कोणते?\s*(पीक|पिक).*होते?/i,
+      /(पीक|पिक).*होतं?\s*\??/i,
+      /(पीक|पिक).*लावले/i,                // "what crop was planted"
+      /(पीक|पिक).*पेरले/i,                // "what crop was sown"
+      /कौन\s*सी?\s*फसल\s*थी/i,           // Hindi past
+      /क्या\s*उगाया/i,                    // Hindi: "what was grown"
+      /क्या\s*बोया/i,
+      /पिछ(ली|ले)\s*फसल/i,               // "previous crop"
+      /मागील\s*(पीक|पिक)/i,              // Marathi: "previous crop"
+      /(last|previous)\s*crop/i,
+      /tell\s*me\s*(the\s*)?crop/i,
+      /this\s*field.*crop/i
       /how\s*many\s*acres/i,
       /size\s*of\s*(land|field)/i
     ],
