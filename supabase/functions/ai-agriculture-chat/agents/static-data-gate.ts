@@ -113,6 +113,23 @@ const STATIC_QUERY_PATTERNS = {
       /(last|previous)\s*crop/i,
       /tell\s*me\s*(the\s*)?crop/i,
       /this\s*field.*crop/i
+    ],
+    data_source: 'crop_schedules.crop_name',
+    requires_crop_schedule: true
+  },
+
+  LAND_AREA: {
+    patterns: [
+      /किती\s*(एकर|क्षेत्र|जमीन)/i,     // Marathi
+      /क्षेत्रफळ/i,
+      /शेत\s*किती/i,
+      /जमीन\s*किती/i,
+      /कितना\s*(एकड़|क्षेत्र)/i,        // Hindi
+      /कितनी\s*जमीन/i,
+      /खेत\s*कितना/i,
+      /how\s*much.*area/i,              // English
+      /land\s*size/i,
+      /area.*acres/i,
       /how\s*many\s*acres/i,
       /size\s*of\s*(land|field)/i
     ],
