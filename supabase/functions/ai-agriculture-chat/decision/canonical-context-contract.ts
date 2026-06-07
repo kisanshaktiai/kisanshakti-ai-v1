@@ -48,7 +48,12 @@ export function assertCanonicalContextLocked(
     throw new Error(`FATAL @ ${location}: CanonicalContext is not locked. This violates Phase-1 immutability.`);
   }
   
-  if (context.crop_code === 'UNKNOWN' || context.growth_stage === 'UNKNOWN') {
+  // NO_ACTIVE_CROP is a legitimate state (e.g. harvested land). It must not
+  // trip diagnostic invariant checks; downstream callers gate on `status`.
+  if (context.status === 'NO_ACTIVE_CROP') return;
+
+  if (context.crop_code === 'UNKNOWN' || context.growth_stage === 'UNKNOWN' ||
+      !context.crop_code || !context.growth_stage) {
     console.error(`🚨 [FATAL @ ${location}] CanonicalContext has UNKNOWN crop/stage!`);
     console.error(`   Crop: ${context.crop_code}, Stage: ${context.growth_stage}`);
     throw new Error(`FATAL @ ${location}: CanonicalContext has UNKNOWN values. Context was not properly built.`);
