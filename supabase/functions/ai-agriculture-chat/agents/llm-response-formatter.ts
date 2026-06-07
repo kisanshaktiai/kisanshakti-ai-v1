@@ -131,7 +131,14 @@ export interface LLMFormatterInput {
     };
     village?: string;
     district?: string;
+    /**
+     * Variety profile — DB-sourced from master_products.
+     * When present, narration MUST honor variety-specific maturity windows,
+     * resistance gating, and yield expectations. NEVER invent variety facts.
+     */
+    variety_profile?: any;
   };
+
   data_audit?: DataAudit;
   trace_id?: string;
   supabase_client?: any;  // v2.1: For DB-driven translation of technical terms
