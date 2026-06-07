@@ -114,6 +114,30 @@ export interface CanonicalContext {
     readonly sowing_date: string | null;
     readonly actual_harvest_date: string | null;
   } | null;
+
+  /**
+   * Variety profile — DB-sourced from master_products (product_type='seed').
+   * Optional: null when the land's variety pointer is unset OR the crop has
+   * no varieties seeded in master_products. When present, downstream layers
+   * (LLM formatter prompt, symbolic rule evaluator, schedule planner) MUST
+   * treat it as authoritative for maturity windows, resistance gating, and
+   * yield expectations.
+   */
+  readonly variety: {
+    readonly id: string;
+    readonly name: string;
+    readonly code: string | null;
+    readonly maturity_days_min: number | null;
+    readonly maturity_days_max: number | null;
+    readonly state_match: boolean;
+    readonly source: string;
+    readonly resistance: ReadonlyArray<{
+      readonly pathogen: string;
+      readonly level: string;
+      readonly observation_code: string | null;
+    }>;
+  } | null;
+
   
   // ═══════════════════════════════════════════════════════════════════════════
   // METADATA
