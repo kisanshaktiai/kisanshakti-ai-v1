@@ -2794,7 +2794,7 @@ export class AIAgentOrchestrator {
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
 
-      // STEP 2b: Vocabulary bridge expansion (generic ↔ specific)
+      // STEP 2a: Vocabulary bridge expansion (generic ↔ specific)
       // Adds canonical codes for any aliases and also adds aliases for any canonical codes.
       let expandedObservationCodes: string[] = (mappedCodes?.observation_codes || []) as unknown as string[];
       try {
@@ -2808,6 +2808,69 @@ export class AIAgentOrchestrator {
         }
       } catch (e) {
         console.warn(`      ⚠️ Alias expansion failed, continuing without it: ${(e as Error)?.message || String(e)}`);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STEP 2b (SSOT, 2026-06-07): DB-DRIVEN INTENT → OBSERVATION RESOLUTION
+      // Calls intent_observation_mapping for the (intent_code, crop, DAS) tuple
+      // so advisory intents like FERTILIZER_SCHEDULE / WEED_PROBLEM /
+      // IRRIGATION_QUERY get their real observation_codes from the DB
+      // instead of falling back to the local intentToSymptom dict.
+      // Previously this resolver existed but was never called, so the rule
+      // engine matched only on crop+stage and produced the same generic
+      // stage-monitoring answer for very different farmer questions.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const _intentForDb = (semanticExtraction?.intent_code || '').trim();
+        const _cropForDb =
+          (landContext as any)?.current_crop ||
+          (canonicalContext as any)?.crop_code ||
+          (canonicalContext as any)?.crop ||
+          '';
+        const _dasForDb = Number(
+          (landContext as any)?.days_since_sowing ??
+          (canonicalContext as any)?.days_since_sowing ??
+          0
+        ) || 0;
+        const _stageForDb =
+          (landContext as any)?.growth_stage ||
+          (canonicalContext as any)?.growth_stage ||
+          undefined;
+
+        if (_intentForDb && _intentForDb !== 'UNKNOWN_OBSERVATION' && _cropForDb) {
+          const dbIntentResolution = await resolveIntentToObservations({
+            intent_code: _intentForDb,
+            crop_code: String(_cropForDb).toUpperCase(),
+            days_since_sowing: _dasForDb,
+            growth_stage: _stageForDb,
+          });
+
+          if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
+            const before = expandedObservationCodes.length;
+            const merged = new Set<string>(expandedObservationCodes);
+            // Cap injection to top-ranked codes to keep rule scoring useful;
+            // intent_observation_mapping is already ordered by confidence_rank ASC.
+            for (const c of dbIntentResolution.observation_codes.slice(0, 25)) {
+              if (c) merged.add(c);
+            }
+            expandedObservationCodes = Array.from(merged);
+            console.log(
+              `      🔗 [DB_INTENT_OBSERVATIONS] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
+              `→ +${expandedObservationCodes.length - before} codes (total ${expandedObservationCodes.length})`
+            );
+            agentsUsed.push('INTENT_OBSERVATION_RESOLVER_DB');
+          } else {
+            console.log(
+              `      ℹ️ [DB_INTENT_OBSERVATIONS] no mappings for intent=${_intentForDb} crop=${_cropForDb} ` +
+              `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
+            );
+          }
+        }
+      } catch (intentResolverErr) {
+        console.warn(
+          `      ⚠️ [DB_INTENT_OBSERVATIONS] resolution failed (non-blocking): ` +
+          `${(intentResolverErr as Error)?.message || String(intentResolverErr)}`
+        );
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
