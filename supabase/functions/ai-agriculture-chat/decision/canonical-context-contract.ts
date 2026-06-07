@@ -99,8 +99,13 @@ export interface CanonicalContext {
     readonly phosphorus: number | null;
     readonly potassium: number | null;
     readonly ph: number | null;
+    // v3.0 EXTENSIONS for NEXT_CROP_RECOMMENDATION symbolic brain
+    readonly organic_carbon: number | null;
+    readonly texture: string | null;     // e.g. 'CLAY', 'SANDY_LOAM'
+    readonly agro_zone: string | null;   // ICAR/state agro-ecological zone code
+    readonly irrigation_type: string | null; // 'DRIP'|'FLOOD'|'RAINFED'|...
   };
-  
+
   readonly weather: {
     readonly temperature: number | null;
     readonly humidity: number | null;
@@ -114,6 +119,21 @@ export interface CanonicalContext {
     readonly sowing_date: string | null;
     readonly actual_harvest_date: string | null;
   } | null;
+
+  /**
+   * Multi-season rotation history (most recent first) — sourced from
+   * authoritative-state-loader's harvested crop_schedules. Used by the
+   * NEXT_CROP_RECOMMENDATION lane to compute legume/cereal balance,
+   * pest carryover, and rotation breaks.
+   */
+  readonly rotation_history: ReadonlyArray<{
+    readonly crop_code: string;
+    readonly crop_name: string;
+    readonly crop_variety: string | null;
+    readonly sowing_date: string | null;
+    readonly harvest_date: string | null;
+    readonly season: string | null;
+  }>;
 
   /**
    * Variety profile — DB-sourced from master_products (product_type='seed').
@@ -234,7 +254,26 @@ export function buildCanonicalContext(
   const soilP = landContext.soil?.phosphorus ?? landContext.soil_p ?? null;
   const soilK = landContext.soil?.potassium ?? landContext.soil_k ?? null;
   const soilPH = landContext.soil?.ph ?? landContext.soil_ph ?? null;
-  
+  const soilOC =
+    landContext.soil?.organic_carbon ??
+    landContext.soil?.oc ??
+    landContext.soil_oc ??
+    null;
+  const soilTexture =
+    landContext.soil?.texture ??
+    landContext.soil_texture ??
+    null;
+  const agroZone =
+    landContext.agro_zone ??
+    landContext.agro_ecological_zone ??
+    landContext.zone_code ??
+    null;
+  const irrigationType =
+    landContext.irrigation_type ??
+    landContext.irrigation?.type ??
+    landContext.irrigation_method ??
+    null;
+
   // Extract weather data
   const temp = landContext.weather?.temperature ?? landContext.weather?.temp ?? null;
   const humidity = landContext.weather?.humidity ?? null;
@@ -249,6 +288,24 @@ export function buildCanonicalContext(
         actual_harvest_date: lastHarvestSrc.actual_harvest_date ?? lastHarvestSrc.expected_harvest_date ?? null
       })
     : null;
+
+  // Rotation history (most recent first). Loader populates either
+  // `rotation_history` or `harvested_schedules`. Limit to last 5.
+  const rotationSrc: any[] = Array.isArray(landContext.rotation_history)
+    ? landContext.rotation_history
+    : Array.isArray(landContext.harvested_schedules)
+      ? landContext.harvested_schedules
+      : [];
+  const rotationHistory = Object.freeze(
+    rotationSrc.slice(0, 5).map((r: any) => Object.freeze({
+      crop_code: r.crop_code || r.crop?.toUpperCase?.() || 'UNKNOWN',
+      crop_name: r.crop_name || r.crop || 'Unknown',
+      crop_variety: r.crop_variety ?? r.variety ?? null,
+      sowing_date: r.sowing_date ?? null,
+      harvest_date: r.actual_harvest_date ?? r.expected_harvest_date ?? r.harvest_date ?? null,
+      season: r.season ?? null,
+    }))
+  );
   
   // Build the immutable canonical context
   const canonicalContext: CanonicalContext = Object.freeze({
@@ -268,7 +325,11 @@ export function buildCanonicalContext(
       nitrogen: soilN,
       phosphorus: soilP,
       potassium: soilK,
-      ph: soilPH
+      ph: soilPH,
+      organic_carbon: soilOC,
+      texture: soilTexture,
+      agro_zone: agroZone,
+      irrigation_type: irrigationType,
     }),
     
     weather: Object.freeze({
@@ -278,6 +339,7 @@ export function buildCanonicalContext(
     }),
 
     last_harvest: lastHarvest,
+    rotation_history: rotationHistory,
 
     // Variety profile — frozen snapshot of master_products row (if available)
     variety: landContext.variety_profile ? Object.freeze({

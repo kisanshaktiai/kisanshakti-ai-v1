@@ -1572,6 +1572,17 @@ export class AIAgentOrchestrator {
       const isRecommendationQuery = isNextCropRecommendationQuery(farmerMessage);
       if (isRecommendationQuery) {
         console.log(`🌱 [${traceId}] NEXT_CROP_RECOMMENDATION pre-classified — static gate + NO_ACTIVE_CROP guard will be bypassed`);
+        // PHASE 7 — structured audit tag (machine-parsable)
+        console.log(JSON.stringify({
+          audit_tag: 'NEXT_CROP_ROUTING',
+          trace_id: traceId,
+          stage: 'PRE_CLASSIFY',
+          intent: 'NEXT_CROP_RECOMMENDATION',
+          static_gate_bypass: true,
+          no_active_crop_bypass: true,
+          message_preview: (farmerMessage || '').slice(0, 120),
+        }));
+        agentsUsed.push('NEXT_CROP_RECOMMENDATION_PRECLASSIFIED');
       }
 
       const staticGateResult = checkStaticDataGate({
@@ -1732,6 +1743,17 @@ export class AIAgentOrchestrator {
       if (canonicalContext?.status === 'NO_ACTIVE_CROP' && isRecommendationQuery) {
         console.log(`🌱 [${traceId}] NO_ACTIVE_CROP guard BYPASSED (intent=NEXT_CROP_RECOMMENDATION) — continuing to NLU + symbolic brain`);
         agentsUsed.push('NEXT_CROP_RECOMMENDATION_BYPASS');
+        // PHASE 7 — structured audit tag for downstream log ingestion
+        console.log(JSON.stringify({
+          audit_tag: 'NEXT_CROP_ROUTING',
+          trace_id: traceId,
+          stage: 'NO_ACTIVE_CROP_BYPASS',
+          intent: 'NEXT_CROP_RECOMMENDATION',
+          last_harvest: canonicalContext?.last_harvest?.crop_name || null,
+          rotation_depth: (canonicalContext as any)?.rotation_history?.length || 0,
+          has_soil_oc: (canonicalContext as any)?.soil?.organic_carbon != null,
+          has_agro_zone: (canonicalContext as any)?.soil?.agro_zone != null,
+        }));
       }
 
 

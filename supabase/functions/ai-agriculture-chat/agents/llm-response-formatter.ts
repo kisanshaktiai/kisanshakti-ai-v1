@@ -30,6 +30,7 @@
 
 import type { DecisionOutput, FarmerCommunication } from './rule-engine-types.ts';
 import type { DataAudit } from './orchestrator.ts';
+import { isNextCropRecommendationQuery } from './orchestrator.ts';
 import { getRuralLanguageRules, replaceFormalsWithRural, getVillageOfficerPersona } from '../rural-language-dictionary.ts';
 import { getLanguageName, getCropNameKey } from '../utils/language-utils.ts';
 import { ICAR_CALENDARS } from '../decision/crop-calendar-lookup.ts';
@@ -1402,10 +1403,43 @@ CRITICAL RULES:
 `;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // PHASE 6 — NEXT_CROP_RECOMMENDATION FRAMING (RECOMMEND MODE)
+  // When the farmer asks "which crop should I plant next?", the symbolic
+  // brain has produced rotation/selection rules. The LLM MUST narrate them
+  // as a forward-looking recommendation, NOT a diagnosis. The recommended
+  // crops, rationale, and rotation context come ONLY from the data below.
+  // ═══════════════════════════════════════════════════════════════════════
+  let recommendBlock = '';
+  if (isNextCropRecommendationQuery(input.farmer_message)) {
+    const lastCrop = (input as any).land_context?.last_harvest?.crop_name
+      || (input as any).land_context?.last_harvested_schedule?.crop_name
+      || '';
+    const rotationHist = ((input as any).land_context?.rotation_history || [])
+      .map((r: any) => r.crop_name).filter(Boolean).join(' → ') || '(none recorded)';
+    recommendBlock = `
+═══ 🌱 NEXT-CROP RECOMMENDATION MODE (FORWARD-LOOKING) ═══
+The farmer is asking which crop to grow NEXT on this land. This is NOT a diagnosis.
+Frame the response as a forward-looking recommendation:
+  1. Acknowledge last harvest: ${lastCrop || '(unknown)'}
+  2. Rotation history (recent → old): ${rotationHist}
+  3. Present the recommended crop(s) from the symbolic data below
+  4. Explain WHY (soil suitability, rotation break, season, market) using rule reason_text
+  5. Mention variety options ONLY if listed in the symbolic data
+  6. Close with one concrete next step (e.g. "get a soil test", "prepare field by …")
+HARD RULES:
+  - Do NOT recommend a crop that is NOT in the symbolic actions/rules below
+  - Do NOT invent yields, prices, or varieties
+  - If the symbolic data is empty for this intent, say plainly that more information
+    (recent soil test / season / irrigation) is needed — do NOT guess a crop
+═══════════════════════════════════════════════════════════════════════════
+`;
+  }
+
   return `${villageOfficerPersona}
 
 You are explaining a decision ALREADY MADE by the Symbolic Decision Brain. You do NOT make decisions.
-${cropLockBlock}
+${cropLockBlock}${recommendBlock}
 ═══ THE SUPREME LAW ═══
 Every product name, dosage, timing, and treatment in your response MUST come from the data below.
 You CANNOT add, remove, or modify product names, dosages, timing, actions, priorities, or safety instructions.
