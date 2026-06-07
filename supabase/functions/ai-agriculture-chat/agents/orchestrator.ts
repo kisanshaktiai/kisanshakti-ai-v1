@@ -1564,9 +1564,20 @@ export class AIAgentOrchestrator {
       // ========================================
       // Check if query is about static land attributes - answer WITHOUT AI (static import at top)
       
+      // Phase 2/3 (P0): pre-classify next-crop recommendation intent via
+      // language-agnostic regex BEFORE the static gate fires. The flag is
+      // used both to (a) prevent the gate's CROP_NAME branch from
+      // intercepting advisory queries, and (b) bypass the NO_ACTIVE_CROP
+      // short-circuit so the symbolic brain can produce a recommendation.
+      const isRecommendationQuery = isNextCropRecommendationQuery(farmerMessage);
+      if (isRecommendationQuery) {
+        console.log(`🌱 [${traceId}] NEXT_CROP_RECOMMENDATION pre-classified — static gate + NO_ACTIVE_CROP guard will be bypassed`);
+      }
+
       const staticGateResult = checkStaticDataGate({
         farmer_message: farmerMessage,
         language: options.language || 'mr',
+        is_recommendation_query: isRecommendationQuery,
         land_context: landContext ? {
           land_id: landContext.land_id,
           land_name: landContext.land_name,
