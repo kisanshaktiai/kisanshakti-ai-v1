@@ -65,6 +65,15 @@ export interface StaticDataGateInput {
   farmer_message: string;
   language: string;
   land_context: LandContext | null;
+  /**
+   * Phase 2 (P0): when true, the gate will REFUSE to handle CROP_NAME-style
+   * lookups. Used by the orchestrator when the message looks like a next-crop
+   * recommendation request (Marathi "नवीन पीक घेवू", Hindi "अगली फसल",
+   * English "what should I plant next"). Without this, the gate's CROP_NAME
+   * regex (e.g. /या\s*शेतात.*पीक/i) intercepts advisory queries and answers
+   * with last-harvest info, blocking the symbolic decision brain.
+   */
+  is_recommendation_query?: boolean;
 }
 
 export interface StaticDataGateOutput {
