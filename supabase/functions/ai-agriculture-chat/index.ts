@@ -1926,6 +1926,52 @@ serve(async (req) => {
         responseContent = responseContent.replace(dosagePattern, '[dosage removed]');
       }
     }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // RCA #17 DEFENSIVE GUARD (2026-06-07): Universal "fake symptom" leak guard.
+    // No farmer should ever see the literal token `{symptom}`, the literal word
+    // `"symptom"`, or its force-translated quoted variants (e.g. `"लक्षण"`,
+    // `"लक्षणा"`, `"लक्षण"`) when there were NO actual reported symptoms.
+    // If any of these leak through (any code path: LLM template, safety-gate
+    // clarification, fallback), replace with a stage-aware safe message built
+    // from the canonical context we already have.
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (responseContent) {
+      const PLACEHOLDER_RE = /\{[a-zA-Z_]+\}|"\s*(symptom|लक्षण|लक्षणा|लक्षणे|लक्षण्|लक्षणं|लक्षणा)\s*"|'\s*symptom\s*'/i;
+      if (PLACEHOLDER_RE.test(responseContent)) {
+        console.error(`🚨 [LeakGuard] Fake-symptom / unfilled-placeholder leak detected — substituting safe stage-aware fallback`);
+        console.error(`   Original (truncated): ${responseContent.slice(0, 160)}`);
+        const ctxCrop =
+          (orchestratorResponse as any)?.dataAudit?.land?.current_crop ||
+          (orchestratorResponse as any)?.decision_output?.metadata?.lockedCropContext?.current_crop ||
+          '';
+        const ctxStage =
+          (orchestratorResponse as any)?.dataAudit?.land?.growth_stage ||
+          (orchestratorResponse as any)?.decision_output?.metadata?.lockedCropContext?.growth_stage ||
+          '';
+        const ctxDas =
+          (orchestratorResponse as any)?.dataAudit?.land?.days_since_sowing ??
+          (orchestratorResponse as any)?.decision_output?.metadata?.lockedCropContext?.days_since_sowing ??
+          null;
+        const dasText = ctxDas !== null ? ` (${ctxDas} DAS)` : '';
+        if (detectedLanguage === 'mr') {
+          responseContent = ctxCrop
+            ? `तुमचे ${ctxCrop} पीक सध्या ${ctxStage || 'सध्याच्या'} अवस्थेत${dasText} आहे. सध्या स्पष्ट कीड/रोगाची लक्षणे नोंदवलेली नाहीत. कृपया कोणत्या भागावर (पाने/खोड/मूळ) काही दिसत असेल तर सांगा, किंवा फोटो पाठवा — म्हणजे योग्य सल्ला देता येईल.`
+            : `कृपया तुम्हाला पिकात नक्की काय दिसत आहे ते सांगा (पाने, खोड, मूळ) किंवा एक स्पष्ट फोटो पाठवा.`;
+        } else if (detectedLanguage === 'hi') {
+          responseContent = ctxCrop
+            ? `आपकी ${ctxCrop} फसल अभी ${ctxStage || 'मौजूदा'} अवस्था${dasText} में है। अभी कोई स्पष्ट कीट/रोग लक्षण दर्ज नहीं हैं। कृपया बताएं कि पौधे के किस भाग (पत्ते/तना/जड़) पर कुछ दिख रहा है, या एक साफ फोटो भेजें।`
+            : `कृपया बताएं कि फसल में आपको क्या दिख रहा है (पत्ते/तना/जड़) या एक साफ फोटो भेजें।`;
+        } else {
+          responseContent = ctxCrop
+            ? `Your ${ctxCrop} crop is currently at ${ctxStage || 'its current'} stage${dasText}. No clear pest/disease symptoms have been reported yet. Please tell me which part (leaves/stem/root) shows something, or share a clear photo for an accurate recommendation.`
+            : `Please tell me what exactly you are seeing on the crop (leaves/stem/root) or share a clear photo.`;
+        }
+        aiModelUsed = aiModelUsed || 'leak-guard-stage-aware';
+      }
+    }
+
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // VALIDATION GATE: Prevent silent failures before saving response
