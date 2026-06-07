@@ -126,6 +126,9 @@ ROUTING HINTS:
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
   (COLOR_CHANGE, LEAF_MARKS_OR_SPOTS, WILTING_OR_DROOPING, STEM_DAMAGE, PEST_PRESENCE_VISIBLE, ...)
 - "when to harvest" → HARVEST_TIMING
+- "which new crop should I grow", "next crop", "what to plant next", "recommend a crop",
+  Marathi "कोणते नवीन पीक घेवू / पीक घ्यावे / पुढील पीक / आता काय पेरू / नवीन पीक सुचवा / फायदेशीर पीक",
+  Hindi "कौन सी फसल लगाऊं / अगली फसल / नई फसल बताओ / क्या बोऊं" → NEXT_CROP_RECOMMENDATION
 - Pure greeting / unclear → GENERAL_CROP_INFO
 
 If genuinely unsure → GENERAL_CROP_INFO. Never UNKNOWN_OBSERVATION unless the message is empty
