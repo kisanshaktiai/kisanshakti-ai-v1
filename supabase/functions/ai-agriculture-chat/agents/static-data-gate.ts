@@ -372,6 +372,8 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       };
     }
   }
+  } // end of `else { ... }` for is_recommendation_query guard
+  
   
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 2: LAND AREA QUERY
