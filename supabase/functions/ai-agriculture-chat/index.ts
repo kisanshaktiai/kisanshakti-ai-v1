@@ -1331,14 +1331,30 @@ serve(async (req) => {
         // ═══════════════════════════════════════════════════════════════════════════
         // CONFIDENCE BRIDGE: Extract symbolic confidence as SSOT for decision_confidence
         // ═══════════════════════════════════════════════════════════════════════════
-        const rawSymbolicConfidence = orchestratorResponse.decision_output?.layered_rule_result
-          ?.primary_decision?.weighted_confidence
-          ?? orchestratorResponse.decision_output?.layered_rule_result
-            ?.primary_decision?.confidence_score
-          ?? 0;
-        // BUG FIX: Guard against NaN from division-by-zero in rule evaluator
-        const symbolicConfidence = isNaN(rawSymbolicConfidence) ? 0.5 : rawSymbolicConfidence;
-        
+        // CONFIDENCE BRIDGE v2 (RCA audit 2026-06-07): widened fallback chain
+        // so missing `weighted_confidence` / `confidence_score` no longer collapses
+        // the entire pipeline to 0. Order: layered → primary → hypothesis → 0.
+        const decisionOutputForConf: any = orchestratorResponse.decision_output || {};
+        const layered: any = decisionOutputForConf.layered_rule_result || {};
+        const primary: any = decisionOutputForConf.primary_decision || {};
+        const hypothesis: any = decisionOutputForConf.hypothesis_result || {};
+        const rawSymbolicConfidence: number =
+          layered?.primary_decision?.weighted_confidence ??
+          layered?.primary_decision?.confidence_score ??
+          layered?.primary_decision?.rule_confidence ??
+          primary?.weighted_confidence ??
+          primary?.confidence_score ??
+          primary?.rule_confidence ??
+          primary?.score ??
+          hypothesis?.hypothesis_score ??
+          orchestratorResponse.metadata?.confidence ??
+          0;
+        // Guard NaN / out-of-range; normalize 0-100 inputs to 0-1.
+        let symbolicConfidence = isNaN(rawSymbolicConfidence) ? 0.5 : rawSymbolicConfidence;
+        if (symbolicConfidence > 1) symbolicConfidence = symbolicConfidence / 100;
+        if (symbolicConfidence < 0) symbolicConfidence = 0;
+        if (symbolicConfidence > 1) symbolicConfidence = 1;
+
         const unifiedGateInput: UnifiedGateInput = {
           authority_decision: orchestratorResponse.decision_output?.authority_decision || {
             authority: 'NONE',
@@ -1360,19 +1376,27 @@ serve(async (req) => {
           decision_confidence: Math.round(symbolicConfidence * 100),  // Convert 0-1 to 0-100
           hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined
         } as any;
-        
+
         // INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
         const primaryDecisionExists = !!(orchestratorResponse.decision_output?.primary_decision?.rule_id ||
           orchestratorResponse.decision_output?.layered_rule_result?.primary_decision?.rule_id);
-        
+
         if (primaryDecisionExists && symbolicConfidence === 0) {
           console.error(`🚨 [INVARIANT] Confidence pipeline inconsistency: primary_decision exists but symbolic_confidence=0`);
           console.error(`   Forcing minimum confidence of 0.5 to prevent decision suppression`);
-          unifiedGateInput.decision_confidence = 50;  // Safe floor
+          symbolicConfidence = 0.5;                          // mutate SSOT, not just gate input
+          unifiedGateInput.decision_confidence = 50;
         }
-        
+
+        // Propagate the resolved confidence back into metadata so every downstream
+        // surface (UI builder, persistence, audit log) reads the same value.
+        orchestratorResponse.metadata = orchestratorResponse.metadata || {};
+        orchestratorResponse.metadata.confidence = symbolicConfidence;
+        orchestratorResponse.metadata.confidence_score = symbolicConfidence;
+
         console.log(`   📊 [ConfidenceBridge] symbolic_confidence=${symbolicConfidence.toFixed(3)} -> decision_confidence=${unifiedGateInput.decision_confidence}`);
         console.log(`   🔍 [UnifiedGate] Input: crop=${finalCropName}, stage=${finalGrowthStage}, DAS=${finalDaysSinceSowing}, symptoms=${mergedSymptomKeys.length}`);
+
         
         // FIX 1: Read gate result from orchestrator if already evaluated there (avoid duplicate gate)
         const orchestratorGateResult = orchestratorResponse.metadata?.gate_result;
