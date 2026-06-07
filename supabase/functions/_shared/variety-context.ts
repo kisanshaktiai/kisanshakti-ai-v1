@@ -115,10 +115,18 @@ export async function loadVarietyProfile(
   if (!row) return null;
 
   // ── Load resistance child table
-  const { data: res } = await supabase
+  // Schema columns: threat_name, threat_type, resistance_level, notes
+  const { data: resRaw } = await supabase
     .from("variety_resistance")
-    .select("pathogen, level, notes")
+    .select("threat_name, threat_type, resistance_level, notes, observation_code")
     .eq("variety_id", row.id);
+  const res = (resRaw || []).map((r: any) => ({
+    pathogen: r.threat_name || r.threat_type || "unknown",
+    level: r.resistance_level || "unknown",
+    notes: r.notes ?? null,
+    observation_code: r.observation_code ?? null,
+  }));
+
 
   const state_match = !!(stateId && Array.isArray(row.state_suitability_ids)
     && row.state_suitability_ids.includes(stateId));

@@ -9,6 +9,8 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
+import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from '../../_shared/variety-context.ts';
+
 
 // Import all agents
 import { processNLUAgent } from './nlu-agent.ts';
@@ -7585,7 +7587,52 @@ export class AIAgentOrchestrator {
           expected_harvest_date: latestSchedule.expected_harvest_date ?? null
         } : null
       };
-      
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // VARIETY PROFILE INJECTION
+      // ───────────────────────────────────────────────────────────────────────
+      // Resolves master_products variety row from the land's authoritative
+      // variety pointer (current_crop_variety_id / variety_id) OR free-text
+      // variety name from the schedule. Attaches `variety_profile` to land
+      // context so it flows into the canonical context, the LLM prompt, and
+      // the symbolic decision brain (resistance-aware reasoning).
+      //
+      // SAFE: silent null on failure — preserves backward compatibility with
+      // the 89 crops that have no varieties seeded yet.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const landVarietyId =
+          (land as any).current_crop_variety_id ||
+          (land as any).variety_id ||
+          null;
+        if (effectiveCropName && (landVarietyId || effectiveCropVariety)) {
+          const varietyProfile: VarietyProfile | null = await loadVarietyProfile(
+            this.supabase,
+            {
+              cropName: effectiveCropName,
+              cropVariety: effectiveCropVariety,
+              stateName: land.state,
+              landVarietyId,
+            }
+          );
+          if (varietyProfile) {
+            (context as any).variety_profile = varietyProfile;
+            console.log(
+              `🌱 [Variety] Attached profile: ${varietyProfile.name} ` +
+              `(source=${varietyProfile.source}, state_match=${varietyProfile.state_match}, ` +
+              `resistance_rows=${varietyProfile.resistance?.length || 0})`
+            );
+          } else {
+            console.log(
+              `🌱 [Variety] No profile found for crop=${effectiveCropName} ` +
+              `variety=${effectiveCropVariety || landVarietyId || 'none'}`
+            );
+          }
+        }
+      } catch (vErr) {
+        console.warn('🌱 [Variety] Profile load failed (non-fatal):', (vErr as Error).message);
+      }
+
       console.log('📊 [Orchestrator] COMPREHENSIVE Land context built:', {
         land_name: context.land_name,
         current_crop: context.current_crop,
@@ -7597,15 +7644,18 @@ export class AIAgentOrchestrator {
         has_ndvi: !!context.ndvi,
         ndvi_value: context.ndvi?.value,
         ndvi_trend: context.ndvi?.ndvi_trend,
-        ndvi_history_count: context.ndvi_history?.length || 0
+        ndvi_history_count: context.ndvi_history?.length || 0,
+        has_variety_profile: !!(context as any).variety_profile,
+        variety_name: (context as any).variety_profile?.name || null,
       });
-      
+
       return context;
     } catch (error) {
       console.error('⚠️ [Orchestrator] Failed to fetch comprehensive land context:', error);
       return null;
     }
   }
+
   
   /**
    * Calculate NDVI trend from historical data
