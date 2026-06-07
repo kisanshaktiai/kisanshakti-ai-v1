@@ -19,7 +19,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const SAFETY_GATES_VERSION = '1.1.0';
+export const SAFETY_GATES_VERSION = '1.2.0'; // DB-strict diff questions; no English template leak
 
 // Symptoms specific enough to NOT require clarification.
 // LEAF_TIP_BURN_YOUNG, WILTING, LEAF_YELLOWING are deliberately low-specificity.
@@ -103,19 +103,31 @@ export interface SafetyGateResult {
   };
 }
 
+/**
+ * Returns the localized differential question for a symptom from the DB.
+ *
+ * CRITICAL (v1.2.0, 2026-06-07 RCA #18): returns `null` when the DB has no
+ * row for (symptom × language × crop). The caller MUST treat null as
+ * "do NOT force CLARIFY" and let the orchestrator fall through to the
+ * stage-aware deterministic advisory. The previous English fallback
+ *   `The symptom "${symptom}" you reported on …`
+ * leaked the literal variable name `symptom` (translated by the LLM as
+ * the Marathi word `लक्षण`) into farmer-facing replies whenever an
+ * observation was not yet seeded in observation_differential_questions.
+ *
+ * SSOT: public.observation_differential_questions
+ *   (observation_code, language, crop_code, question_text)
+ */
 function diffQuestionForSymptom(
   symptom: string,
-  crop: string,
-  language: string,
+  _crop: string,
+  _language: string,
   lookup?: Record<string, string>
-): string {
-  // 1. DB-driven lookup wins (caller pre-loaded for this language/crop).
-  if (lookup && lookup[symptom]) return lookup[symptom];
-
-  // 2. Final generic fallback — kept intentionally minimal; populate
-  // observation_differential_questions to remove the English fallback for
-  // any (symptom, language) pair across any crop.
-  return `The symptom "${symptom}" you reported on ${crop || 'the crop'} can have several causes. Please share a clear photo and tell me which leaves are affected (young upper, or older lower) so I can give a safe, targeted recommendation.`;
+): string | null {
+  if (lookup && lookup[symptom] && lookup[symptom].trim().length > 0) {
+    return lookup[symptom];
+  }
+  return null;
 }
 
 /**
