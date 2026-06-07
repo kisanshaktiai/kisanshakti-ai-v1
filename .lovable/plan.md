@@ -1,100 +1,65 @@
-## Root cause (evidence-backed)
+## Goal
+Eliminate hardcoded keyword/template fragments that confuse the symbolic decision brain, route every lookup through the existing master tables, and fill the genuine data gaps as an agronomist so the brain reaches a confident DB-only answer.
 
-The orchestrator's short-circuit lanes build a complete, localized, confidence=1.0 payload and return it to `index.ts`. But the post-orchestrator pipeline in `supabase/functions/ai-agriculture-chat/index.ts` only recognizes ONE short-circuit sentinel (`template_type === 'STATIC_DIRECT'`). Every other short-circuit — `NO_ACTIVE_CROP`, `NEXT_CROP_RECOMMENDATION`, `STAGE_FALLBACK` (partial), greeting, etc. — falls through into:
+## Root-cause findings (from code + DB + chat audit)
 
-1. Filtering audit → wipes `actions_returned` to 0 (no matching filters but no pass-through for these payload shapes either).
-2. Confidence bridge → recomputes `symbolic_confidence = 0` (overwrites the orchestrator's `1.0`).
-3. Unified gate → fails (confidence 0).
-4. Safety gate → CLARIFY downgrade.
-5. LLM formatter → emits the generic clarification template with the literal placeholder `{symptom}` because no symptoms exist.
+The last 6 user turns kept returning the literal token `"लक्षण"`/`"symptom"` even though the previous fix to `safety-gates.ts` is in place. The audit shows three real causes, not one:
 
-### Evidence
+1. **`observation_differential_questions` is empty (3 rows total, 1 observation).**
+   `safety-gates.diffQuestionForSymptom()` therefore always falls through to the English template
+   `The symptom "${symptom}" you reported on ...` (line 118). When the LLM narration layer translates that
+   verbatim into Marathi, the unquoted variable name `symptom` becomes the literal word `"लक्षण"`. The table is the
+   designed SSOT — it just has no data.
 
-- **`docs/audit-2026-06-07/15-live-trace-evidence.md`** documents the Marathi "खारी / गहू" trace returning `"...\"symptom\" च्या लक्षणांमागे..."` with `metadata.confidence = 0`, while the orchestrator log shows the NO_ACTIVE_CROP guard fired with `confidence_score: 1.0`.
-- **Latest edge-function logs (trace `trace_mq3tmjhq_7f5ht2`)** show the new NEXT_CROP engine working correctly — `NEXT_CROP_ENGINE_HIT, matched_rule_count: 2, top_candidates: [cotton, soybean]` — but the next log lines are `AFTER FILTERING: 0 actions`, `ConfidenceBridge: symbolic=0`, `Using LLM formatter`, `ai_model: template`, response length 224 chars. The 2 engine candidates and the pre-rendered Marathi narration are silently discarded.
-- **`index.ts:1223-1225`** is the only short-circuit check: `template_type === 'STATIC_DIRECT' || source === 'STATIC_DATA_GATE'`. Neither `NO_ACTIVE_CROP` (orchestrator.ts:1737) nor `NEXT_CROP_RECOMMENDATION` (orchestrator.ts:1895) are matched.
+2. **Hardcoded Marathi/Hindi keyword lists for parts, crops, diagnoses and clarifications still exist** in:
+   - `agents/observation-extractor.ts` (पाने/पान → leaf map, ~25 entries)
+   - `agents/language-induction-layer.ts` (affected-part symbol map, ~30 entries)
+   - `agents/raw-observation-contract.ts` (part keyword array)
+   - `agents/language-normalizer.ts` (crop/part token list)
+   - `decision/clarification-validator.ts` (`DIAGNOSIS_KEYWORDS_MR/HI`)
+   - `agents/clarification-strategy.ts` (lines 718-719 hardcoded clarification templates)
+   - `agents/communication-generator.ts` (lines 484-485 hardcoded monitoring bullets)
+   - `decision/diagnostic-signal-detector.ts`, `decision/diagnostic-escalation-generator.ts`, `decision/explanation-chain-builder.ts` (mr/hi template strings)
+   These short-circuit DB lookups against `observation_aliases` (431), `observation_translations` (5 130),
+   `crop_vocabulary` (1 480), `intent_translations` (249) and cause status questions to be misclassified as diagnostic.
 
-This is a single defect with two visible symptoms: (a) generic "{symptom}" template instead of the localized no-active-crop message, and (b) the new crop-rotation engine's correct DB-sourced recommendation never reaches the user.
+3. **`observation_intent_master` covers only 89 of 2 532 observations.**
+   The router cannot map most observations to an intent, so the orchestrator falls into a generic CLARIFY lane that re-enters the broken template path in #1.
 
-## Fix
+## Scope (this plan)
 
-### 1. `supabase/functions/ai-agriculture-chat/index.ts`
+A. **Code – remove hardcoded shortcuts, route through DB tables**
+   1. `agents/observation-extractor.ts` – replace the inline part dictionary with a lookup on `observation_aliases` + `observation_translations` (cached per-language at module load, same pattern as `crop-synonyms-cache.ts`).
+   2. `agents/language-induction-layer.ts` – delete the `'पान': CanonicalAffectedPartSymbol.LEAF` map; resolve via the same alias cache plus `observation_master.affected_part`.
+   3. `agents/raw-observation-contract.ts` – drop the keyword array; read parts from `observation_master`.
+   4. `agents/language-normalizer.ts` – drop the crop/part token list; reuse `crop-synonyms-cache` + alias cache.
+   5. `decision/clarification-validator.ts` – replace `DIAGNOSIS_KEYWORDS_MR/HI` with a lookup on `intent_translations` for the `DIAGNOSIS`/`PEST_DISEASE` intent codes.
+   6. `agents/clarification-strategy.ts` – delete the inline mr/hi templates; require the caller to provide a row from `observation_differential_questions` (no fallback prose).
+   7. `agents/communication-generator.ts`, `decision/diagnostic-signal-detector.ts`, `decision/diagnostic-escalation-generator.ts`, `decision/explanation-chain-builder.ts` – swap the embedded mr/hi/en strings for translations sourced from `intent_translations` / `observation_translations`. Keep punctuation only.
+   8. `decision/safety-gates.ts` – make `diffQuestionForSymptom` strict: if no DB row exists, return `null` and let the orchestrator emit a deterministic stage-aware safe message instead of the English `"symptom"` template (kill the leak at the source). Also add a guard: skip CLARIFY entirely if the resolved symptom code is not present in `observation_master` (prevents a junk token from a status query from triggering the gate).
+   9. Add a `services/observation-alias-cache.ts` helper (single SSOT) used by all of the above; mirrors the existing `crop-synonyms-cache.ts` design (5-minute TTL, lazy load, no per-request DB hits).
 
-Generalize the short-circuit detector at line ~1223 from a single sentinel to a set:
+B. **Database – fill the genuine data gaps**
+   1. **Seed `observation_differential_questions`** with `{observation_code, crop_code, language, question_text}` rows for the top symptoms the brain actually fires. Cover {en, mr, hi} × the symptom codes that appear in `decision_rules.observation_codes` (≈ 1 800 rules) for the live crops (sugarcane, wheat, cotton, rice, soybean, tur, maize). I will hand-author each Marathi/Hindi question as the senior agronomist — no machine translation — so every entry is field-accurate and farmer-friendly.
+   2. **Seed `observation_intent_master`** with the missing observation→intent links. Today 89 / 2 532 observations are mapped; the rest fall through. I will map every observation code referenced by an active `decision_rules` row to the correct intent (`DIAGNOSIS`, `MONITORING`, `NUTRITION`, `IRRIGATION`, `STAGE_INFO`, etc.) and confidence_rank.
+   3. **Seed `observation_aliases`** for the Marathi/Hindi/Romanized words currently hardcoded in code (पान/पाने/पानावर, खोड, मूळ, फूल, फळ, कणीस, बोंड etc.) so the new alias-cache path resolves them without code changes.
+   4. **Seed `intent_translations`** for the diagnosis/monitoring/status intents in mr + hi (used by step A.5).
+   All seed inserts go through the data-insert tool (not migrations) since these are data rows, and each will use `ON CONFLICT (...) DO UPDATE` so the run is idempotent.
 
-```ts
-const SHORT_CIRCUIT_TEMPLATE_TYPES = new Set([
-  'STATIC_DIRECT',
-  'NO_ACTIVE_CROP',
-  'NEXT_CROP_RECOMMENDATION',
-  'GREETING',
-  'STAGE_FALLBACK',
-]);
-const SHORT_CIRCUIT_SOURCES = new Set([
-  'STATIC_DATA_GATE',
-  'NO_ACTIVE_CROP_GUARD',
-  'NEXT_CROP_RECOMMENDATION_ENGINE',
-  'NEXT_CROP_RECOMMENDATION_FALLBACK',
-]);
-const isShortCircuitResponse =
-  SHORT_CIRCUIT_TEMPLATE_TYPES.has(
-    orchestratorResponse.decision_output?.metadata?.template_type as string
-  ) ||
-  SHORT_CIRCUIT_SOURCES.has(
-    orchestratorResponse.communication?.metadata?.source as string
-  );
-```
+C. **Verification**
+   1. Add `tests/chat/hardcoded-leak-guard.test.ts`: replay the four failing turns from `ai_chat_messages` (status query in Marathi, "what new crop?" in Marathi, etc.) against the orchestrator with a stubbed Supabase that mirrors the real tables; assert that no `{symptom}` / `"लक्षण"` token survives and that `confidence ≥ 0.6`.
+   2. Re-run the audit query on `ai_chat_messages` after deploy and confirm zero rows in the last hour contain the placeholder regex.
 
-When `isShortCircuitResponse` is true:
-- Use the orchestrator's pre-built `communication.main_message.full_text[detectedLanguage]` verbatim — no LLM, no template formatter.
-- Skip filtering, confidence bridge, unified gate, safety gate, and Phase 5 LLM formatting entirely.
-- Preserve the orchestrator's `metadata.confidence` (1.0 for the guard, engine score for next-crop) end-to-end into the response payload.
-- Set `metadata.ai_model` to a clear sentinel (`'template-no-active-crop'`, `'next-crop-engine'`, etc.) so traces are unambiguous.
-- Still persist the assistant message and run the standard `ui-response-builder` pass — only the LLM/template formatting branch is bypassed.
+## Out of scope
+- Orchestrator routing logic, confidence model, LLM gateway, UI, NDVI/soil pipelines, proactive engine. They are working correctly once the hardcoded shortcuts and missing rows are fixed.
 
-### 2. `supabase/functions/ai-agriculture-chat/decision/response-generator.ts`
+## Technical notes
+- The new alias cache uses `select observation_code, language, alias, affected_part from observation_aliases` joined with `observation_translations` and is keyed by `${language}:${normalised_token}`. Same TTL (5 min) and same `Map<string, …>` shape as `crop-synonyms-cache.ts` so memory + cold-start behave identically.
+- `safety-gates.runSafetyGates` becomes `async` only for the `diffQuestionForSymptom` lookup; all callers already `await` it.
+- Seed counts (estimate): ≈ 1 200 rows in `observation_differential_questions`, ≈ 2 400 rows in `observation_intent_master`, ≈ 350 rows in `observation_aliases`, ≈ 60 rows in `intent_translations`. All idempotent.
 
-Add a defensive placeholder guard: if the rendered template still contains a `{…}` token after substitution, refuse to emit it and fall back to a minimal localized "need more details" string. This prevents future similar regressions from leaking raw template tokens to farmers.
-
-### 3. Confidence preservation
-
-When `isShortCircuitResponse`, the confidence-bridge MUST NOT overwrite the orchestrator's confidence with 0. The simplest implementation is to skip the bridge entirely on this branch (it has no rule outputs to bridge anyway).
-
-### 4. Regression tests
-
-Add `tests/chat/short-circuit-bypass.test.ts` with two cases:
-
-- **NO_ACTIVE_CROP**: Marathi input "माझ्या खारी जमिनीत आता काय करू? मागच्या वेळी गहू होते" on a land with no active crop must return:
-  - `response` starts with `🌱`, contains `गहू` and `पीक नोंदणी`.
-  - `metadata.confidence === 1.0`.
-  - `metadata.ai_model === 'template-no-active-crop'`.
-  - No `"{"` or `"symptom"` substring in `response`.
-- **NEXT_CROP_RECOMMENDATION**: Hindi/Marathi rotation query after a Wheat harvest must:
-  - Include the top candidate crop name from the engine (e.g. cotton/soybean per the live log).
-  - Carry `actions_returned.length >= 1` with `action_type === 'RECOMMEND_CROP'` and a non-empty `scientific_basis`.
-  - `metadata.ai_model === 'next-crop-engine'`.
-
-### 5. Memory update
-
-Add a core rule to `mem://index.md`:
-
-> Any orchestrator short-circuit payload (template_type ∈ {STATIC_DIRECT, NO_ACTIVE_CROP, NEXT_CROP_RECOMMENDATION, GREETING, STAGE_FALLBACK} OR source matches a registered short-circuit source) MUST bypass filtering, confidence-bridge, unified-gate, safety-gate, and LLM/template formatting. Confidence from the orchestrator metadata is authoritative on these branches.
-
-## Files to change
-
-```text
-supabase/functions/ai-agriculture-chat/index.ts                    (broaden short-circuit detection + bypass)
-supabase/functions/ai-agriculture-chat/decision/response-generator.ts  (placeholder guard)
-tests/chat/short-circuit-bypass.test.ts                            (NEW — regression cases)
-mem://index.md                                                     (core rule)
-mem://architecture/orchestrator-short-circuit-bypass-contract.md   (NEW — detailed contract)
-```
-
-No DB migration, no orchestrator changes, no engine changes — the engine output and short-circuit payloads are already correct; the wrapper just has to honor them.
-
-## Validation
-
-1. Replay the Marathi NO_ACTIVE_CROP trace — assert response starts with `🌱`, mentions `गहू`, confidence = 1.0, no `{symptom}` leak.
-2. Replay a Hindi "अगली फसल क्या लगाऊं?" trace after wheat harvest — assert response names cotton or soybean and `actions_returned[0].rule_id` matches `CROT_AFTER_WHEAT_*`.
-3. Re-run `tests/chat/next-crop-recommendation-routing.test.ts` (33 cases) — must still pass.
-4. Verify edge logs no longer show `"AFTER FILTERING: 0 actions"` followed by `"Using LLM formatter"` for short-circuit traces.
+## Deliverables
+- 9 edited TS files + 1 new cache module under `supabase/functions/ai-agriculture-chat/`.
+- 4 data-insert migrations (one per table) authored as the agronomist SSOT.
+- 1 regression test file.
+- A short memory note under `mem://architecture/` recording the "no hardcoded language tokens — DB tables are SSOT" contract so future edits cannot reintroduce them.
