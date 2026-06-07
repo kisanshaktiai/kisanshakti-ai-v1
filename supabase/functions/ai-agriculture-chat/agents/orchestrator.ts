@@ -282,6 +282,9 @@ import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstan
 import { getAuditLogger } from './audit-logger.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
+// SSOT WIRING (2026-06-07): pull observation codes from intent_observation_mapping
+// table instead of relying solely on the local intent→observation dict.
+import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
 
 // STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
 import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
