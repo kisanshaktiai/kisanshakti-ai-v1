@@ -63,6 +63,9 @@ export function applyVarietyOverrides(input: PlannerInputs): PlannerOutput {
     soilType,
     soilPh,
     state,
+    cropName,
+    isReadyMadePlant = false,
+    nurseryDays = 0,
   } = input;
 
   const llmDuration = Number(scheduleData?.total_duration_days) || 120;
@@ -80,21 +83,39 @@ export function applyVarietyOverrides(input: PlannerInputs): PlannerOutput {
   const applied: Record<string, any> = {};
 
   // ─────────────────────────────────────────────────────────────
-  // 1) MATURITY — clamp duration into variety window
+  // 1) MATURITY — variety is AUTHORITATIVE. The LLM has no say.
+  //    Rule (per user spec): "Rice Ambemohar = 130d → harvest at
+  //    sowingDate + 130d". We pick max of the published window as
+  //    the canonical seed-to-harvest duration; min/max give a band
+  //    but the schedule horizon must reach full maturity.
   // ─────────────────────────────────────────────────────────────
   let durationDays = llmDuration;
-  if (v?.maturity_days_min && v?.maturity_days_max) {
-    const target = clamp(llmDuration, v.maturity_days_min, v.maturity_days_max);
-    if (target !== llmDuration) {
-      applied.duration_clamped = { from: llmDuration, to: target,
-        variety_window: `${v.maturity_days_min}-${v.maturity_days_max}d` };
-      durationDays = target;
+  const varietyMaturity = v?.maturity_days_max || v?.maturity_days_min || null;
+  if (varietyMaturity && varietyMaturity > 0) {
+    if (varietyMaturity !== llmDuration) {
+      applied.duration_from_variety = {
+        from_llm: llmDuration,
+        to_variety: varietyMaturity,
+        source: v?.maturity_days_max ? "maturity_days_max" : "maturity_days_min",
+        variety_window: v?.maturity_days_min && v?.maturity_days_max
+          ? `${v.maturity_days_min}-${v.maturity_days_max}d` : null,
+      };
     }
-  } else if (v?.maturity_days_max) {
-    if (llmDuration > v.maturity_days_max * 1.15) {
-      applied.duration_capped = { from: llmDuration, to: v.maturity_days_max };
-      durationDays = v.maturity_days_max;
-    }
+    durationDays = varietyMaturity;
+  }
+
+  // Effective field horizon (used for harvest-date math by caller).
+  // Nursery mode: farmer's selected date = transplant day. Seed sowing
+  // happened `nurseryDays` ago in the nursery, so field horizon shrinks.
+  const effectiveFieldDays = isReadyMadePlant && nurseryDays > 0
+    ? Math.max(15, durationDays - nurseryDays)
+    : durationDays;
+  if (isReadyMadePlant && nurseryDays > 0) {
+    applied.nursery_adjustment = {
+      seed_to_harvest_days: durationDays,
+      nursery_days: nurseryDays,
+      field_days: effectiveFieldDays,
+    };
   }
 
   // ─────────────────────────────────────────────────────────────
