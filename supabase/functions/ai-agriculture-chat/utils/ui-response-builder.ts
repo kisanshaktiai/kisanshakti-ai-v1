@@ -192,8 +192,32 @@ export function buildUIResponseFromDecision(input: DecisionToUIInput): UIRespons
   // STEP 4: BUILD CONTEXT
   // ═══════════════════════════════════════════════════════════════════════════
   
-  const confidence = safeMeta.confidence ?? safeGate.confidence_level ? 
-    parseConfidenceLevel(safeGate.confidence_level) : 0.5;
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONFIDENCE RESOLUTION (RCA fix — operator precedence bug, audit 2026-06-07)
+  // Prior code: `safeMeta.confidence ?? safeGate.confidence_level ? parse(...) : 0.5`
+  // parsed as `(safeMeta.confidence ?? safeGate.confidence_level) ? parse(gate) : 0.5`
+  // which ignored the numeric `safeMeta.confidence` entirely. We now explicitly
+  // resolve numeric → gate-text → decision.confidence_score → 0.5 floor.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const numericMeta = typeof safeMeta.confidence === 'number' && !isNaN(safeMeta.confidence)
+    ? safeMeta.confidence
+    : null;
+  const numericDecision = typeof (safeDecision as any)?.confidence_score === 'number'
+    && !isNaN((safeDecision as any).confidence_score)
+    ? (safeDecision as any).confidence_score
+    : null;
+  const numericGate = typeof (safeGate as any)?.decision_confidence === 'number'
+    && !isNaN((safeGate as any).decision_confidence)
+    ? ((safeGate as any).decision_confidence > 1
+        ? (safeGate as any).decision_confidence / 100
+        : (safeGate as any).decision_confidence)
+    : null;
+  const confidence =
+    numericMeta !== null ? numericMeta :
+    numericDecision !== null ? numericDecision :
+    numericGate !== null ? numericGate :
+    safeGate.confidence_level ? parseConfidenceLevel(safeGate.confidence_level) :
+    0.5;
   
   const context: UIResponseContext = {
     crop: safeLand.current_crop,
