@@ -1510,6 +1510,7 @@ export class AIAgentOrchestrator {
           soil_type: landContext.soil_type,
           current_crop: landContext.current_crop,
           crop_schedule: landContext.crop_schedule,
+          last_harvested_schedule: landContext.last_harvested_schedule || null,
           growth_stage: landContext.growth_stage,
           days_since_sowing: landContext.days_since_sowing,
           irrigation_type: landContext.irrigation_type,
