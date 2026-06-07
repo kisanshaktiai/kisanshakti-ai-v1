@@ -1740,20 +1740,120 @@ export class AIAgentOrchestrator {
         };
       }
 
-      if (canonicalContext?.status === 'NO_ACTIVE_CROP' && isRecommendationQuery) {
-        console.log(`🌱 [${traceId}] NO_ACTIVE_CROP guard BYPASSED (intent=NEXT_CROP_RECOMMENDATION) — continuing to NLU + symbolic brain`);
-        agentsUsed.push('NEXT_CROP_RECOMMENDATION_BYPASS');
-        // PHASE 7 — structured audit tag for downstream log ingestion
+      // ═══════════════════════════════════════════════════════════════════════
+      // NEXT_CROP_RECOMMENDATION DEDICATED LANE
+      // The diagnostic stack downstream (G2 CONTEXT_COMPLETENESS @ ~5306,
+      // hypothesis arbitration FATAL @ ~5457, etc.) all assume a CURRENT crop
+      // exists, and crash/clarify with "Which crop are you asking about?" when
+      // it does not. For NEXT_CROP_RECOMMENDATION, the *absence* of a current
+      // crop is the entire premise — so we short-circuit here with a
+      // deterministic, localized response built from authoritative landContext
+      // (last harvest + soil snapshot + rotation history). Rule-engine seeded
+      // rotation rules can be layered in by the agronomy team later without
+      // touching this lane.
+      // ═══════════════════════════════════════════════════════════════════════
+      if (isRecommendationQuery) {
+        const lang = (options.language || 'mr').toLowerCase();
+        const lastCrop = canonicalContext?.last_harvest?.crop_name || null;
+        const lastVariety = canonicalContext?.last_harvest?.crop_variety || null;
+        const harvestDate = canonicalContext?.last_harvest?.actual_harvest_date || null;
+        const soilN = canonicalContext?.soil?.nitrogen ?? null;
+        const soilP = canonicalContext?.soil?.phosphorus ?? null;
+        const soilK = canonicalContext?.soil?.potassium ?? null;
+        const rotationDepth = (canonicalContext as any)?.rotation_history?.length || 0;
+
+        const lastCropLabel = lastCrop
+          ? (lastVariety ? `${lastCrop} (${lastVariety})` : lastCrop)
+          : null;
+
+        const soilLine = (soilN != null || soilP != null || soilK != null)
+          ? ` N:${soilN ?? '—'} P:${soilP ?? '—'} K:${soilK ?? '—'}`
+          : '';
+
+        const messages = {
+          mr: [
+            `🌱 **पुढील पीक सुचवण्यासाठी मदत**`,
+            lastCropLabel
+              ? `📜 मागील हंगाम: **${lastCropLabel}**${harvestDate ? ` (कापणी: ${harvestDate})` : ''}`
+              : `📜 या शेताचा मागील पीक रेकॉर्ड उपलब्ध नाही.`,
+            soilLine ? `🧪 मातीची स्थिती:${soilLine}` : '',
+            rotationDepth > 1 ? `🔁 मागील ${rotationDepth} हंगामांची नोंद उपलब्ध आहे.` : '',
+            `\nयोग्य पीक फेरबदल सुचवण्यासाठी कृषी सल्लागार तज्ज्ञ नियम जोडत आहेत. कृपया तुमचा हंगाम, सिंचनाची सोय आणि लागवडीची तारीख कळवा — म्हणजे अचूक सल्ला देता येईल.`
+          ].filter(Boolean).join('\n'),
+          hi: [
+            `🌱 **अगली फसल का सुझाव**`,
+            lastCropLabel
+              ? `📜 पिछला मौसम: **${lastCropLabel}**${harvestDate ? ` (कटाई: ${harvestDate})` : ''}`
+              : `📜 इस खेत का पिछला फसल रिकॉर्ड उपलब्ध नहीं है।`,
+            soilLine ? `🧪 मिट्टी की स्थिति:${soilLine}` : '',
+            rotationDepth > 1 ? `🔁 पिछले ${rotationDepth} मौसमों का रिकॉर्ड उपलब्ध है।` : '',
+            `\nउपयुक्त फसल चक्र सुझाने के लिए कृषि नियम तैयार किए जा रहे हैं। कृपया अपना मौसम, सिंचाई व्यवस्था और बुवाई की तारीख बताएं — ताकि सटीक सलाह दी जा सके।`
+          ].filter(Boolean).join('\n'),
+          en: [
+            `🌱 **Next crop recommendation**`,
+            lastCropLabel
+              ? `📜 Last season: **${lastCropLabel}**${harvestDate ? ` (harvested ${harvestDate})` : ''}`
+              : `📜 No prior crop record is available for this field.`,
+            soilLine ? `🧪 Soil snapshot:${soilLine}` : '',
+            rotationDepth > 1 ? `🔁 ${rotationDepth} prior seasons on record.` : '',
+            `\nRotation rules for this agro-zone are being seeded by the agronomy team. Please share your target season, irrigation type, and planned sowing date so a precise recommendation can be generated.`
+          ].filter(Boolean).join('\n')
+        };
+        const msg = (messages as any)[lang] || messages.en;
+
+        console.log(`🌱 [${traceId}] NEXT_CROP_RECOMMENDATION lane fired (lastCrop=${lastCrop || 'none'}, rotationDepth=${rotationDepth})`);
+        agentsUsed.push('NEXT_CROP_RECOMMENDATION_LANE');
         console.log(JSON.stringify({
           audit_tag: 'NEXT_CROP_ROUTING',
           trace_id: traceId,
-          stage: 'NO_ACTIVE_CROP_BYPASS',
+          stage: 'DETERMINISTIC_LANE_FIRED',
           intent: 'NEXT_CROP_RECOMMENDATION',
-          last_harvest: canonicalContext?.last_harvest?.crop_name || null,
-          rotation_depth: (canonicalContext as any)?.rotation_history?.length || 0,
+          last_harvest: lastCrop,
+          rotation_depth: rotationDepth,
           has_soil_oc: (canonicalContext as any)?.soil?.organic_carbon != null,
           has_agro_zone: (canonicalContext as any)?.soil?.agro_zone != null,
         }));
+
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          communication: {
+            message_id: crypto.randomUUID(),
+            decision_id: `next_crop_${Date.now()}`,
+            session_id: sessionId,
+            farmer_id: farmerId,
+            language: lang,
+            format: 'RICH_TEXT',
+            tone: 'FRIENDLY',
+            created_at: new Date().toISOString(),
+            main_message: {
+              full_text: { mr: messages.mr, hi: messages.hi, en: messages.en }
+            },
+            quick_actions: [],
+            metadata: {
+              word_count: msg.split(/\s+/).length,
+              reading_time_seconds: 6,
+              confidence_score: 1.0,
+              source: 'NEXT_CROP_RECOMMENDATION_LANE',
+              response_type: 'NEXT_CROP_RECOMMENDATION'
+            }
+          } as any,
+          decision_output: {
+            decision_id: `next_crop_${Date.now()}`,
+            session_id: sessionId,
+            status: 'INFORMATION_PROVIDED',
+            decision_brain_source: false,
+            actions_returned: [],
+            metadata: {
+              confidence: 1.0,
+              trace_id: traceId,
+              agents_used: agentsUsed,
+              template_type: 'NEXT_CROP_RECOMMENDATION',
+              last_harvest: lastCrop,
+              rotation_depth: rotationDepth
+            }
+          } as any
+        };
       }
 
 
@@ -5303,7 +5403,18 @@ export class AIAgentOrchestrator {
             : undefined  // Don't pass { crop_name: 'UNKNOWN' } - let farmer_mentioned_crop be used
         });
         
-        if (contextValidation.status === 'NEEDS_CLARIFICATION') {
+        // Defense-in-depth: NEXT_CROP_RECOMMENDATION queries have no current crop
+        // by design and must never trip G2's "Which crop are you asking about?"
+        // clarification. The dedicated lane upstream (~line 1743) should already
+        // have returned; this guard catches any path that escapes pre-classification.
+        const isNextCropIntent =
+          (nluOutput?.primary_intent === 'NEXT_CROP_RECOMMENDATION') ||
+          (nluOutput?.intent === 'NEXT_CROP_RECOMMENDATION') ||
+          isNextCropRecommendationQuery(safeFarmerMessage);
+        if (isNextCropIntent) {
+          console.log('   ⏭️ G2 CONTEXT_COMPLETENESS skipped — NEXT_CROP_RECOMMENDATION intent has no current crop by design');
+          agentsUsed.push('G2_BYPASS_NEXT_CROP');
+        } else if (contextValidation.status === 'NEEDS_CLARIFICATION') {
           console.log(`   ⚠️ G2 CONTEXT_COMPLETENESS: NEEDS_CLARIFICATION`);
           console.log(`      Reason: ${contextValidation.clarification_prompt || 'Missing critical context'}`);
           agentsUsed.push('G2_CONTEXT_VALIDATION_FAILED');
