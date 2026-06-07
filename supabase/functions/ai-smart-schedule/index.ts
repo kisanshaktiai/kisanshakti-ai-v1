@@ -2706,8 +2706,19 @@ serve(async (req) => {
     // Long duration crops like Sugarcane still get good coverage with fewer, more comprehensive tasks
     const rawMinTasks = Math.max(totalStages * 2, Math.min(cropTaskConfig.minTasks, 20));
     const minTaskCount = Math.min(rawMinTasks, 20);
-    const cropDurationDays = cropTaskConfig.durationDays;
-    console.log(`📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop`);
+    // VARIETY-FIRST DURATION: variety.maturity_days_max wins over crop default.
+    // Per consumer contract (mem://database/variety-master-schema-v1 §2) and the
+    // user-spec ("Rice Ambemohar 130d → sowing+130d"), the variety profile is
+    // the authoritative source for total crop duration. The hard-coded
+    // CROP_TASK_MULTIPLIERS value is only used when no variety is resolved.
+    const cropDurationDays =
+      varietyProfile?.maturity_days_max ||
+      varietyProfile?.maturity_days_min ||
+      cropTaskConfig.durationDays;
+    console.log(
+      `📋 [AI] Building prompt for ${totalStages} stages, min ${minTaskCount} tasks for ${cropDurationDays}-day crop ` +
+      `(source: ${varietyProfile?.maturity_days_max ? 'variety.maturity_days_max' : varietyProfile?.maturity_days_min ? 'variety.maturity_days_min' : 'crop_default'})`
+    );
 
     // OPTIMIZED: Force a compact output size (prevents JSON truncation)
     const tasksPerStage = Math.ceil(minTaskCount / totalStages);
