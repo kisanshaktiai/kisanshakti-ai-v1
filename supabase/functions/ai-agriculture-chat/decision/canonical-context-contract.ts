@@ -278,7 +278,25 @@ export function buildCanonicalContext(
     }),
 
     last_harvest: lastHarvest,
-    
+
+    // Variety profile — frozen snapshot of master_products row (if available)
+    variety: landContext.variety_profile ? Object.freeze({
+      id: landContext.variety_profile.variety_id,
+      name: landContext.variety_profile.name,
+      code: landContext.variety_profile.variety_code ?? null,
+      maturity_days_min: landContext.variety_profile.maturity_days_min ?? null,
+      maturity_days_max: landContext.variety_profile.maturity_days_max ?? null,
+      state_match: !!landContext.variety_profile.state_match,
+      source: landContext.variety_profile.source || 'none',
+      resistance: Object.freeze(
+        (landContext.variety_profile.resistance || []).map((r: any) => Object.freeze({
+          pathogen: r.pathogen,
+          level: r.level,
+          observation_code: r.observation_code ?? null,
+        }))
+      ),
+    }) : null,
+
     land_id: landContext.land_id || null,
     farmer_id: landContext.farmer_id || null,
     source: landContext.source || 'LAND_DATA',
@@ -290,6 +308,11 @@ export function buildCanonicalContext(
   console.log(`✅ [CanonicalContext] Built and LOCKED (status=${canonicalContext.status}):`);
   console.log(`   Crop=${canonicalContext.crop_code}, Stage=${canonicalContext.growth_stage}`);
   console.log(`   DAS=${canonicalContext.days_since_sowing}, NDVI=${canonicalContext.ndvi.value}`);
+  if (canonicalContext.variety) {
+    console.log(`   Variety=${canonicalContext.variety.name} [${canonicalContext.variety.code || '-'}] ` +
+      `maturity=${canonicalContext.variety.maturity_days_min || '?'}-${canonicalContext.variety.maturity_days_max || '?'}d ` +
+      `resistance=${canonicalContext.variety.resistance.length} state_match=${canonicalContext.variety.state_match}`);
+  }
   if (canonicalContext.status === 'NO_ACTIVE_CROP') {
     console.log(`   ℹ️ Land has no active crop. last_harvest=${lastHarvest?.crop_name || 'none'}`);
   }
@@ -297,6 +320,7 @@ export function buildCanonicalContext(
   
   return canonicalContext;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION FUNCTIONS
