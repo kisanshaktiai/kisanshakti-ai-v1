@@ -1217,19 +1217,85 @@ serve(async (req) => {
     console.log(`   Time budget: ${remainingTime}ms remaining for response formatting`);
     
     // ═══════════════════════════════════════════════════════════════════════════
-    // CRITICAL FIX: Check if Static Data Gate already handled this query
-    // Static Gate responses should NOT go through LLM formatting
+    // CRITICAL FIX (2026-06-07 RCA #16): Generalised short-circuit bypass.
+    //
+    // The orchestrator has multiple short-circuit lanes — Static Gate,
+    // NO_ACTIVE_CROP guard, NEXT_CROP_RECOMMENDATION engine, Greeting, Stage
+    // Fallback — that each build a complete, localized, deterministic payload
+    // (full_text in mr/hi/en, confidence_score, source). Previously ONLY
+    // STATIC_DIRECT was honored; every other short-circuit fell through into
+    // filtering → confidence-bridge → unified-gate → safety-gate → LLM template
+    // formatter, which (a) wiped actions_returned, (b) overwrote the 1.0
+    // confidence with 0, and (c) emitted a generic clarification template
+    // with literal `{symptom}` placeholders.
+    //
+    // We now recognise the full set and route them straight to delivery.
     // ═══════════════════════════════════════════════════════════════════════════
-    const isStaticGateResponse = 
-      orchestratorResponse.decision_output?.metadata?.template_type === 'STATIC_DIRECT' ||
-      orchestratorResponse.communication?.metadata?.source === 'STATIC_DATA_GATE';
-    
-    if (isStaticGateResponse) {
-      // Static Gate already generated the response - use it directly
-      console.log(`   📊 [StaticGate] Using pre-generated response (NO LLM needed)`);
-      responseContent = orchestratorResponse.communication?.main_message?.full_text?.[detectedLanguage] ||
-                        orchestratorResponse.communication?.main_message?.full_text?.en ||
-                        'Information not available';
+    const SHORT_CIRCUIT_TEMPLATE_TYPES = new Set([
+      'STATIC_DIRECT',
+      'NO_ACTIVE_CROP',
+      'NEXT_CROP_RECOMMENDATION',
+      'GREETING',
+      'STAGE_FALLBACK',
+    ]);
+    const SHORT_CIRCUIT_SOURCES = new Set([
+      'STATIC_DATA_GATE',
+      'NO_ACTIVE_CROP_GUARD',
+      'NEXT_CROP_RECOMMENDATION_ENGINE',
+      'NEXT_CROP_RECOMMENDATION_FALLBACK',
+    ]);
+    const shortCircuitTemplateType = (orchestratorResponse.decision_output as any)?.metadata?.template_type as string | undefined;
+    const shortCircuitSource = (orchestratorResponse.communication as any)?.metadata?.source as string | undefined;
+    const isShortCircuitResponse =
+      (shortCircuitTemplateType && SHORT_CIRCUIT_TEMPLATE_TYPES.has(shortCircuitTemplateType)) ||
+      (shortCircuitSource && SHORT_CIRCUIT_SOURCES.has(shortCircuitSource));
+    // Backwards-compat alias retained for any reader of this name downstream.
+    const isStaticGateResponse = isShortCircuitResponse;
+
+    if (isShortCircuitResponse) {
+      // Orchestrator already produced the localized, deterministic response.
+      // Use it verbatim; do NOT run filtering, confidence-bridge, unified-gate,
+      // safety-gate, or LLM/template formatting.
+      const fullText = (orchestratorResponse.communication as any)?.main_message?.full_text || {};
+      responseContent =
+        fullText[detectedLanguage] ||
+        fullText.en ||
+        fullText.mr ||
+        fullText.hi ||
+        'Information not available';
+
+      // Choose a clear sentinel for traces / persistence.
+      const aiModelByTemplate: Record<string, string> = {
+        STATIC_DIRECT: 'template-static-gate',
+        NO_ACTIVE_CROP: 'template-no-active-crop',
+        NEXT_CROP_RECOMMENDATION: 'next-crop-engine',
+        GREETING: 'template-greeting',
+        STAGE_FALLBACK: 'template-stage-fallback',
+      };
+      aiModelUsed = aiModelByTemplate[shortCircuitTemplateType || ''] ||
+        (shortCircuitSource === 'STATIC_DATA_GATE' ? 'template-static-gate' : 'template-short-circuit');
+
+      // Defensive placeholder guard — never leak unfilled `{token}` to farmers.
+      if (responseContent && /\{[a-zA-Z_]+\}/.test(responseContent)) {
+        console.error(`🚨 [ShortCircuit] Unfilled placeholder detected in response — falling back to safe text`);
+        responseContent = detectedLanguage === 'mr'
+          ? 'कृपया अधिक माहिती द्या जेणेकरून योग्य सल्ला देता येईल.'
+          : detectedLanguage === 'hi'
+            ? 'कृपया अधिक जानकारी दें ताकि सही सलाह दी जा सके।'
+            : 'Please share a bit more detail so we can give precise advice.';
+      }
+
+      // Preserve orchestrator-supplied confidence so persistence + UI builder
+      // read the authoritative value (not the confidence-bridge's 0).
+      const scConfidence =
+        (orchestratorResponse.decision_output as any)?.metadata?.confidence ??
+        (orchestratorResponse.communication as any)?.metadata?.confidence_score ??
+        1.0;
+      orchestratorResponse.metadata = orchestratorResponse.metadata || {};
+      (orchestratorResponse.metadata as any).confidence = scConfidence;
+      (orchestratorResponse.metadata as any).confidence_score = scConfidence;
+
+      console.log(`   ⚡ [ShortCircuit] template=${shortCircuitTemplateType} source=${shortCircuitSource} model=${aiModelUsed} confidence=${scConfidence} length=${responseContent.length}`);
     } else if (allActionsFiltered) {
       // Special response when all actions were filtered
       console.log(`   ⚠️ ALL actions filtered - generating explanation response`);
