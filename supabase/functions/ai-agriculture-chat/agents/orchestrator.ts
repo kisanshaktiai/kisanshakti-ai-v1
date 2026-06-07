@@ -5408,8 +5408,8 @@ export class AIAgentOrchestrator {
         // clarification. The dedicated lane upstream (~line 1743) should already
         // have returned; this guard catches any path that escapes pre-classification.
         const isNextCropIntent =
-          (lockedIntent === 'NEXT_CROP_RECOMMENDATION') ||
           (nluOutput?.primary_intent === 'NEXT_CROP_RECOMMENDATION') ||
+          (nluOutput?.intent === 'NEXT_CROP_RECOMMENDATION') ||
           isNextCropRecommendationQuery(safeFarmerMessage);
         if (isNextCropIntent) {
           console.log('   ⏭️ G2 CONTEXT_COMPLETENESS skipped — NEXT_CROP_RECOMMENDATION intent has no current crop by design');
