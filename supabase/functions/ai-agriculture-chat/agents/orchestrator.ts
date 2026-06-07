@@ -282,6 +282,9 @@ import { checkUnderstandingCompleteness, checkPrescriptionGate as checkUnderstan
 import { getAuditLogger } from './audit-logger.ts';
 import { lockIntent, filterActionsByIntentLock, requiresClarification, shouldBypassClarificationForAgriSymptom } from './intent-lock.ts';
 import { mapObservationsToCauses } from './observation-cause-mapper.ts';
+// SSOT WIRING (2026-06-07): pull observation codes from intent_observation_mapping
+// table instead of relying solely on the local intent→observation dict.
+import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
 
 // STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
 import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
@@ -1386,10 +1389,21 @@ export class AIAgentOrchestrator {
           const combinedVocab = [...allVocab, ...cropVocab];
           
           for (const entry of combinedVocab) {
-            if (!entry.recommended_intent_bias) continue;
-            // Word boundary match for phrase_pattern in farmer message
-            const pattern = new RegExp(`\\b${entry.phrase_pattern}\\b`, 'i');
-            if (pattern.test(msgLower)) {
+            if (!entry.recommended_intent_bias || !entry.phrase_pattern) continue;
+            // SSOT FIX (2026-06-07): \b word-boundary regex does NOT match
+            // Devanagari script, so DB rows for खत/तण/तन/खरपतवार never fired.
+            // Use Unicode-safe substring matching with a regex-escaped pattern
+            // so the override works for Marathi, Hindi and English alike.
+            const phraseLower = String(entry.phrase_pattern).toLowerCase();
+            const matchesDevanagari = /[\u0900-\u097F]/.test(phraseLower);
+            let isMatch = false;
+            if (matchesDevanagari) {
+              isMatch = msgLower.includes(phraseLower);
+            } else {
+              const escaped = phraseLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              isMatch = new RegExp(`(^|\\W)${escaped}(\\W|$)`, 'i').test(msgLower);
+            }
+            if (isMatch) {
               const bias = entry.recommended_intent_bias;
               // Map intent bias to appropriate route
               const SYMPTOM_INTENTS = ['WEED_PROBLEM', 'REPORT_SYMPTOM', 'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN'];
@@ -2791,7 +2805,7 @@ export class AIAgentOrchestrator {
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
 
-      // STEP 2b: Vocabulary bridge expansion (generic ↔ specific)
+      // STEP 2a: Vocabulary bridge expansion (generic ↔ specific)
       // Adds canonical codes for any aliases and also adds aliases for any canonical codes.
       let expandedObservationCodes: string[] = (mappedCodes?.observation_codes || []) as unknown as string[];
       try {
@@ -2805,6 +2819,69 @@ export class AIAgentOrchestrator {
         }
       } catch (e) {
         console.warn(`      ⚠️ Alias expansion failed, continuing without it: ${(e as Error)?.message || String(e)}`);
+      }
+
+      // ═══════════════════════════════════════════════════════════════════════════
+      // STEP 2b (SSOT, 2026-06-07): DB-DRIVEN INTENT → OBSERVATION RESOLUTION
+      // Calls intent_observation_mapping for the (intent_code, crop, DAS) tuple
+      // so advisory intents like FERTILIZER_SCHEDULE / WEED_PROBLEM /
+      // IRRIGATION_QUERY get their real observation_codes from the DB
+      // instead of falling back to the local intentToSymptom dict.
+      // Previously this resolver existed but was never called, so the rule
+      // engine matched only on crop+stage and produced the same generic
+      // stage-monitoring answer for very different farmer questions.
+      // ═══════════════════════════════════════════════════════════════════════════
+      try {
+        const _intentForDb = (semanticExtraction?.intent_code || '').trim();
+        const _cropForDb =
+          (landContext as any)?.current_crop ||
+          (canonicalContext as any)?.crop_code ||
+          (canonicalContext as any)?.crop ||
+          '';
+        const _dasForDb = Number(
+          (landContext as any)?.days_since_sowing ??
+          (canonicalContext as any)?.days_since_sowing ??
+          0
+        ) || 0;
+        const _stageForDb =
+          (landContext as any)?.growth_stage ||
+          (canonicalContext as any)?.growth_stage ||
+          undefined;
+
+        if (_intentForDb && _intentForDb !== 'UNKNOWN_OBSERVATION' && _cropForDb) {
+          const dbIntentResolution = await resolveIntentToObservations({
+            intent_code: _intentForDb,
+            crop_code: String(_cropForDb).toUpperCase(),
+            days_since_sowing: _dasForDb,
+            growth_stage: _stageForDb,
+          });
+
+          if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
+            const before = expandedObservationCodes.length;
+            const merged = new Set<string>(expandedObservationCodes);
+            // Cap injection to top-ranked codes to keep rule scoring useful;
+            // intent_observation_mapping is already ordered by confidence_rank ASC.
+            for (const c of dbIntentResolution.observation_codes.slice(0, 25)) {
+              if (c) merged.add(c);
+            }
+            expandedObservationCodes = Array.from(merged);
+            console.log(
+              `      🔗 [DB_INTENT_OBSERVATIONS] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
+              `→ +${expandedObservationCodes.length - before} codes (total ${expandedObservationCodes.length})`
+            );
+            agentsUsed.push('INTENT_OBSERVATION_RESOLVER_DB');
+          } else {
+            console.log(
+              `      ℹ️ [DB_INTENT_OBSERVATIONS] no mappings for intent=${_intentForDb} crop=${_cropForDb} ` +
+              `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
+            );
+          }
+        }
+      } catch (intentResolverErr) {
+        console.warn(
+          `      ⚠️ [DB_INTENT_OBSERVATIONS] resolution failed (non-blocking): ` +
+          `${(intentResolverErr as Error)?.message || String(intentResolverErr)}`
+        );
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -3174,7 +3251,12 @@ export class AIAgentOrchestrator {
         'IRRIGATION_SCHEDULING',
         'WEATHER_SPRAY_TIMING',
         'CROP_HEALTH',
-        'GENERAL_INFO'
+        // NOTE (2026-06-07): 'GENERAL_INFO' intentionally removed from the
+        // direct-mode bypass set. A GENERAL_INFO route paired with a *specific*
+        // DB intent (e.g. WEED_PROBLEM, FERTILIZER_SCHEDULE) must go through
+        // the symbolic brain with that intent's mapped observations, not skip
+        // clarification and fall to crop+stage rules only — that was producing
+        // the same ACTIVE_TILLERING-style answer for unrelated questions.
       ]);
       const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
       // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
