@@ -1389,10 +1389,21 @@ export class AIAgentOrchestrator {
           const combinedVocab = [...allVocab, ...cropVocab];
           
           for (const entry of combinedVocab) {
-            if (!entry.recommended_intent_bias) continue;
-            // Word boundary match for phrase_pattern in farmer message
-            const pattern = new RegExp(`\\b${entry.phrase_pattern}\\b`, 'i');
-            if (pattern.test(msgLower)) {
+            if (!entry.recommended_intent_bias || !entry.phrase_pattern) continue;
+            // SSOT FIX (2026-06-07): \b word-boundary regex does NOT match
+            // Devanagari script, so DB rows for खत/तण/तन/खरपतवार never fired.
+            // Use Unicode-safe substring matching with a regex-escaped pattern
+            // so the override works for Marathi, Hindi and English alike.
+            const phraseLower = String(entry.phrase_pattern).toLowerCase();
+            const matchesDevanagari = /[\u0900-\u097F]/.test(phraseLower);
+            let isMatch = false;
+            if (matchesDevanagari) {
+              isMatch = msgLower.includes(phraseLower);
+            } else {
+              const escaped = phraseLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              isMatch = new RegExp(`(^|\\W)${escaped}(\\W|$)`, 'i').test(msgLower);
+            }
+            if (isMatch) {
               const bias = entry.recommended_intent_bias;
               // Map intent bias to appropriate route
               const SYMPTOM_INTENTS = ['WEED_PROBLEM', 'REPORT_SYMPTOM', 'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN'];
