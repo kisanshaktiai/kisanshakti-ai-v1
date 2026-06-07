@@ -1680,6 +1680,25 @@ function mapBundledCategory(category: string): RuleCategory {
     'system':                   RuleCategory.OBSERVATION,
     'status':                   RuleCategory.OBSERVATION,
     'system_calibration':       RuleCategory.OBSERVATION,
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // FORENSIC AUDIT FIX v10.0 (2026-06-07): categories present in
+    // decision_rules but previously unmapped, plus new NEXT_CROP_RECOMMENDATION
+    // lane for the symbolic crop-selection brain.
+    //   PRESCRIPTION → actionable advice (rotation, mgmt, organic packages)
+    //   WARNING      → climate/stress contextual flags
+    //   SAFETY       → hard gates
+    // ═══════════════════════════════════════════════════════════════════════
+    'management':         RuleCategory.PRESCRIPTION,
+    'organic':            RuleCategory.PRESCRIPTION,
+    'stress_tolerance':   RuleCategory.PRESCRIPTION,
+    'gate':               RuleCategory.SAFETY,
+    'stress_weather':     RuleCategory.WARNING,
+    // NEXT-CROP RECOMMENDATION LANE
+    'crop_rotation':      RuleCategory.PRESCRIPTION,
+    'crop_selection':     RuleCategory.PRESCRIPTION,
+    'next_crop':          RuleCategory.PRESCRIPTION,
+    'rotation_advisory':  RuleCategory.PRESCRIPTION,
   };
 
   const mapped = map[category?.toLowerCase()];
