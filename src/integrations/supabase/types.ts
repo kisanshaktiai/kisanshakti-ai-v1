@@ -11907,13 +11907,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "invoices_subscription_id_fkey"
-            columns: ["subscription_id"]
-            isOneToOne: false
-            referencedRelation: "tenant_subscriptions"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "invoices_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
