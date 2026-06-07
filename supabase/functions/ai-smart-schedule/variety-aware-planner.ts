@@ -27,14 +27,20 @@ export interface PlannerInputs {
   soilPh?: number | null;
   state?: string | null;
   language?: string;
+  cropName?: string | null;
+  isReadyMadePlant?: boolean;
+  nurseryDays?: number;
 }
 
 export interface PlannerOutput {
-  total_duration_days: number;
+  total_duration_days: number;          // variety maturity from SEED-SOWING (authoritative)
+  effective_field_days: number;         // days actually in farmer's field (duration - nurseryDays)
   expected_yield_quintals: number;
   water_requirement_liters_total: number;
   water_per_irrigation_liters: number;
   irrigation_count_total: number;
+  sowing_method?: string | null;        // rice-specific: SRI | TRANSPLANT | DSR | BROADCAST
+  sowing_method_note?: string | null;
   warnings: string[];               // appended to suitability_warnings
   applied_overrides: Record<string, any>; // metadata, persisted on schedule
 }
