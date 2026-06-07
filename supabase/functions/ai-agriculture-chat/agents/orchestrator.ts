@@ -1729,6 +1729,12 @@ export class AIAgentOrchestrator {
         };
       }
 
+      if (canonicalContext?.status === 'NO_ACTIVE_CROP' && isRecommendationQuery) {
+        console.log(`🌱 [${traceId}] NO_ACTIVE_CROP guard BYPASSED (intent=NEXT_CROP_RECOMMENDATION) — continuing to NLU + symbolic brain`);
+        agentsUsed.push('NEXT_CROP_RECOMMENDATION_BYPASS');
+      }
+
+
       
       // ========================================
       // PHASE 9.1-FIX PATCH 1+2: CLARIFICATION RESPONSE HARD GATE
