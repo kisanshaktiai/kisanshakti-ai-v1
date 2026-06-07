@@ -11841,52 +11841,67 @@ export type Database = {
       invoices: {
         Row: {
           amount: number
+          billing_period_end: string | null
+          billing_period_start: string | null
           created_at: string
           currency: string
           due_date: string
+          farmer_id: string | null
           id: string
           invoice_number: string
           line_items: Json
           metadata: Json | null
           paid_date: string | null
+          payment_intent_id: string | null
           paypal_invoice_id: string | null
           status: string
           stripe_invoice_id: string | null
           subscription_id: string | null
+          subscription_type: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
           amount: number
+          billing_period_end?: string | null
+          billing_period_start?: string | null
           created_at?: string
           currency?: string
           due_date: string
+          farmer_id?: string | null
           id?: string
           invoice_number: string
           line_items?: Json
           metadata?: Json | null
           paid_date?: string | null
+          payment_intent_id?: string | null
           paypal_invoice_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
           subscription_id?: string | null
+          subscription_type?: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
           amount?: number
+          billing_period_end?: string | null
+          billing_period_start?: string | null
           created_at?: string
           currency?: string
           due_date?: string
+          farmer_id?: string | null
           id?: string
           invoice_number?: string
           line_items?: Json
           metadata?: Json | null
           paid_date?: string | null
+          payment_intent_id?: string | null
           paypal_invoice_id?: string | null
           status?: string
           stripe_invoice_id?: string | null
           subscription_id?: string | null
+          subscription_type?: string
           tenant_id?: string
           updated_at?: string
         }
@@ -30187,6 +30202,7 @@ export type Database = {
         Args: { resources: Json; task_type: string }
         Returns: number
       }
+      finalize_payment: { Args: { p_intent_id: string }; Returns: Json }
       find_intersecting_districts: {
         Args: { tile_geom: unknown }
         Returns: {
