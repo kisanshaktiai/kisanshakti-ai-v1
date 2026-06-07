@@ -7349,6 +7349,16 @@ export class AIAgentOrchestrator {
           .eq('is_active', true)
           .order('sowing_date', { ascending: false })
           .limit(1)
+          .maybeSingle(),
+        // Fetch MOST RECENT crop schedule (any status) for harvested-land
+        // fallback when there is no active schedule.
+        this.supabase
+          .from('crop_schedules')
+          .select('crop_name, crop_variety, sowing_date, expected_harvest_date, actual_harvest_date, status, is_active')
+          .eq('land_id', landId)
+          .order('actual_harvest_date', { ascending: false, nullsFirst: false })
+          .order('sowing_date', { ascending: false })
+          .limit(1)
           .maybeSingle()
       ]);
       
@@ -7357,6 +7367,7 @@ export class AIAgentOrchestrator {
       const { data: ndviData } = ndviLatestResult;
       const { data: ndviHistory } = ndviHistoryResult;
       const { data: cropSchedule } = cropScheduleResult;
+      const { data: latestSchedule } = (latestScheduleResult as any) || { data: null };
       
       if (landError || !land) {
         // SECURITY: If land not found OR farmer doesn't own this land, return null
