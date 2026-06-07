@@ -99,8 +99,13 @@ export interface CanonicalContext {
     readonly phosphorus: number | null;
     readonly potassium: number | null;
     readonly ph: number | null;
+    // v3.0 EXTENSIONS for NEXT_CROP_RECOMMENDATION symbolic brain
+    readonly organic_carbon: number | null;
+    readonly texture: string | null;     // e.g. 'CLAY', 'SANDY_LOAM'
+    readonly agro_zone: string | null;   // ICAR/state agro-ecological zone code
+    readonly irrigation_type: string | null; // 'DRIP'|'FLOOD'|'RAINFED'|...
   };
-  
+
   readonly weather: {
     readonly temperature: number | null;
     readonly humidity: number | null;
@@ -114,6 +119,21 @@ export interface CanonicalContext {
     readonly sowing_date: string | null;
     readonly actual_harvest_date: string | null;
   } | null;
+
+  /**
+   * Multi-season rotation history (most recent first) — sourced from
+   * authoritative-state-loader's harvested crop_schedules. Used by the
+   * NEXT_CROP_RECOMMENDATION lane to compute legume/cereal balance,
+   * pest carryover, and rotation breaks.
+   */
+  readonly rotation_history: ReadonlyArray<{
+    readonly crop_code: string;
+    readonly crop_name: string;
+    readonly crop_variety: string | null;
+    readonly sowing_date: string | null;
+    readonly harvest_date: string | null;
+    readonly season: string | null;
+  }>;
 
   /**
    * Variety profile — DB-sourced from master_products (product_type='seed').
