@@ -4514,6 +4514,7 @@ export type Database = {
           id: string
           invoice_id: string | null
           metadata: Json | null
+          payment_intent_id: string | null
           redeemed_at: string
           subscription_id: string | null
           tenant_id: string | null
@@ -4525,6 +4526,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           redeemed_at?: string
           subscription_id?: string | null
           tenant_id?: string | null
@@ -4536,6 +4538,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           redeemed_at?: string
           subscription_id?: string | null
           tenant_id?: string | null
@@ -16948,59 +16951,95 @@ export type Database = {
       payment_intents: {
         Row: {
           amount: number
+          applied_coupon_id: string | null
           billing_interval: string
+          client_ip: unknown
+          collected_by: string | null
+          collection_method: string | null
           created_at: string | null
           currency: string | null
+          discount_amount: number
           dummy_payment_data: Json | null
           error_message: string | null
           expires_at: string | null
           farmer_id: string | null
           id: string
+          idempotency_key: string | null
+          notes: string | null
+          original_amount: number | null
           payment_method: string | null
           plan_id: string
+          proof_url: string | null
+          reference_number: string | null
+          source: string
           status: string | null
           subscription_type: string
           tenant_id: string | null
           transaction_id: string | null
           updated_at: string | null
+          user_agent: string | null
           user_id: string | null
         }
         Insert: {
           amount: number
+          applied_coupon_id?: string | null
           billing_interval?: string
+          client_ip?: unknown
+          collected_by?: string | null
+          collection_method?: string | null
           created_at?: string | null
           currency?: string | null
+          discount_amount?: number
           dummy_payment_data?: Json | null
           error_message?: string | null
           expires_at?: string | null
           farmer_id?: string | null
           id?: string
+          idempotency_key?: string | null
+          notes?: string | null
+          original_amount?: number | null
           payment_method?: string | null
           plan_id: string
+          proof_url?: string | null
+          reference_number?: string | null
+          source?: string
           status?: string | null
           subscription_type: string
           tenant_id?: string | null
           transaction_id?: string | null
           updated_at?: string | null
+          user_agent?: string | null
           user_id?: string | null
         }
         Update: {
           amount?: number
+          applied_coupon_id?: string | null
           billing_interval?: string
+          client_ip?: unknown
+          collected_by?: string | null
+          collection_method?: string | null
           created_at?: string | null
           currency?: string | null
+          discount_amount?: number
           dummy_payment_data?: Json | null
           error_message?: string | null
           expires_at?: string | null
           farmer_id?: string | null
           id?: string
+          idempotency_key?: string | null
+          notes?: string | null
+          original_amount?: number | null
           payment_method?: string | null
           plan_id?: string
+          proof_url?: string | null
+          reference_number?: string | null
+          source?: string
           status?: string | null
           subscription_type?: string
           tenant_id?: string | null
           transaction_id?: string | null
           updated_at?: string | null
+          user_agent?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -17220,6 +17259,7 @@ export type Database = {
           id: string
           invoice_id: string | null
           metadata: Json | null
+          payment_intent_id: string | null
           payment_method_id: string | null
           processed_at: string | null
           status: string
@@ -17240,6 +17280,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           payment_method_id?: string | null
           processed_at?: string | null
           status: string
@@ -17260,6 +17301,7 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           metadata?: Json | null
+          payment_intent_id?: string | null
           payment_method_id?: string | null
           processed_at?: string | null
           status?: string
@@ -23326,10 +23368,12 @@ export type Database = {
       }
       subscription_coupons: {
         Row: {
+          applicable_billing_intervals: string[] | null
           applicable_plan_ids: string[] | null
           code: string
           coupon_type: string
           created_at: string
+          created_by: string | null
           currency: string | null
           description: string | null
           discount_amount: number | null
@@ -23339,11 +23383,13 @@ export type Database = {
           id: string
           is_active: boolean | null
           max_redemptions: number | null
+          max_redemptions_per_farmer: number | null
           metadata: Json | null
           minimum_amount: number | null
           name: string
           plan_category: string | null
           stripe_coupon_id: string | null
+          tenant_id: string | null
           times_redeemed: number | null
           trial_days_extension: number | null
           updated_at: string
@@ -23351,10 +23397,12 @@ export type Database = {
           valid_until: string | null
         }
         Insert: {
+          applicable_billing_intervals?: string[] | null
           applicable_plan_ids?: string[] | null
           code: string
           coupon_type: string
           created_at?: string
+          created_by?: string | null
           currency?: string | null
           description?: string | null
           discount_amount?: number | null
@@ -23364,11 +23412,13 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           max_redemptions?: number | null
+          max_redemptions_per_farmer?: number | null
           metadata?: Json | null
           minimum_amount?: number | null
           name: string
           plan_category?: string | null
           stripe_coupon_id?: string | null
+          tenant_id?: string | null
           times_redeemed?: number | null
           trial_days_extension?: number | null
           updated_at?: string
@@ -23376,10 +23426,12 @@ export type Database = {
           valid_until?: string | null
         }
         Update: {
+          applicable_billing_intervals?: string[] | null
           applicable_plan_ids?: string[] | null
           code?: string
           coupon_type?: string
           created_at?: string
+          created_by?: string | null
           currency?: string | null
           description?: string | null
           discount_amount?: number | null
@@ -23389,11 +23441,13 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           max_redemptions?: number | null
+          max_redemptions_per_farmer?: number | null
           metadata?: Json | null
           minimum_amount?: number | null
           name?: string
           plan_category?: string | null
           stripe_coupon_id?: string | null
+          tenant_id?: string | null
           times_redeemed?: number | null
           trial_days_extension?: number | null
           updated_at?: string
@@ -30982,6 +31036,10 @@ export type Database = {
         Args: { p_email: string; p_ip_address?: unknown }
         Returns: Json
       }
+      redeem_promo_code: {
+        Args: { p_code: string; p_intent_id: string }
+        Returns: Json
+      }
       reels_bump_counter: {
         Args: { _col: string; _delta: number; _reel_id: string }
         Returns: undefined
@@ -31650,6 +31708,21 @@ export type Database = {
         Returns: Json
       }
       system_health_snapshot: { Args: never; Returns: Json }
+      tenant_assign_farmer_subscription: {
+        Args: {
+          p_billing_interval: string
+          p_collection_method: string
+          p_farmer_id: string
+          p_idempotency_key?: string
+          p_notes?: string
+          p_plan_id: string
+          p_promo_code?: string
+          p_proof_url?: string
+          p_reference_number?: string
+          p_tenant_id: string
+        }
+        Returns: Json
+      }
       test_lead_auto_assignment: { Args: never; Returns: Json }
       toggle_post_like: {
         Args: { p_farmer_id: string; p_post_id: string }
@@ -31804,6 +31877,17 @@ export type Database = {
           is_valid: boolean
           validation_level: string
         }[]
+      }
+      validate_promo_code: {
+        Args: {
+          p_base_amount?: number
+          p_billing_interval: string
+          p_code: string
+          p_farmer_id: string
+          p_plan_id: string
+          p_tenant_id: string
+        }
+        Returns: Json
       }
       validate_registration_token_secure: {
         Args: { p_token: string }
