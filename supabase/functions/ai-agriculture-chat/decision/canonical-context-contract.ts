@@ -48,7 +48,12 @@ export function assertCanonicalContextLocked(
     throw new Error(`FATAL @ ${location}: CanonicalContext is not locked. This violates Phase-1 immutability.`);
   }
   
-  if (context.crop_code === 'UNKNOWN' || context.growth_stage === 'UNKNOWN') {
+  // NO_ACTIVE_CROP is a legitimate state (e.g. harvested land). It must not
+  // trip diagnostic invariant checks; downstream callers gate on `status`.
+  if (context.status === 'NO_ACTIVE_CROP') return;
+
+  if (context.crop_code === 'UNKNOWN' || context.growth_stage === 'UNKNOWN' ||
+      !context.crop_code || !context.growth_stage) {
     console.error(`🚨 [FATAL @ ${location}] CanonicalContext has UNKNOWN crop/stage!`);
     console.error(`   Crop: ${context.crop_code}, Stage: ${context.growth_stage}`);
     throw new Error(`FATAL @ ${location}: CanonicalContext has UNKNOWN values. Context was not properly built.`);
@@ -65,12 +70,19 @@ export function assertCanonicalContextLocked(
  * All other context types (landContext, cropContext, preservedContext) are DEPRECATED.
  */
 export interface CanonicalContext {
+  /**
+   * ACTIVE      → land has a live crop schedule (crop_code/growth_stage set).
+   * NO_ACTIVE_CROP → land exists but currently has no active crop (e.g. just
+   *                 harvested). Diagnostic pipeline MUST short-circuit.
+   */
+  readonly status: 'ACTIVE' | 'NO_ACTIVE_CROP';
+
   // ═══════════════════════════════════════════════════════════════════════════
-  // HARD INVARIANTS: These CANNOT be UNKNOWN once set
+  // HARD INVARIANTS for status=ACTIVE; null when status=NO_ACTIVE_CROP
   // ═══════════════════════════════════════════════════════════════════════════
-  readonly crop_code: string;
-  readonly crop_name: string;
-  readonly growth_stage: string;
+  readonly crop_code: string | null;
+  readonly crop_name: string | null;
+  readonly growth_stage: string | null;
   readonly days_since_sowing: number | null;
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -94,6 +106,14 @@ export interface CanonicalContext {
     readonly humidity: number | null;
     readonly rainfall_mm: number | null;
   };
+
+  /** Populated when status=NO_ACTIVE_CROP and a prior schedule exists. */
+  readonly last_harvest: {
+    readonly crop_name: string;
+    readonly crop_variety: string | null;
+    readonly sowing_date: string | null;
+    readonly actual_harvest_date: string | null;
+  } | null;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // METADATA
@@ -161,15 +181,13 @@ export function buildCanonicalContext(
   const daysSinceSowing = landContext.days_since_sowing ?? null;
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // FAIL-FAST: If we have landContext but missing critical fields
+  // NO_ACTIVE_CROP: landContext exists but no active crop (e.g. harvested).
+  // This is NOT an invariant violation — it's a legitimate state. Build a
+  // status='NO_ACTIVE_CROP' context so downstream code can branch on it
+  // instead of attempting diagnosis on an empty field.
   // ═══════════════════════════════════════════════════════════════════════════
-  if (hasLandContext && (!cropCode || cropCode === 'UNKNOWN' || !growthStage || growthStage === 'UNKNOWN')) {
-    console.error(`🚨 [FAIL-FAST] hasLandContext=true but context is incomplete:`);
-    console.error(`   Crop: ${cropCode || 'MISSING'}`);
-    console.error(`   Stage: ${growthStage || 'MISSING'}`);
-    throw new Error(`INVARIANT VIOLATION: hasLandContext=true but crop/stage is incomplete. Cannot proceed with partial context.`);
-  }
-  
+  const isActive = !!cropCode && cropCode !== 'UNKNOWN' && !!growthStage && growthStage !== 'UNKNOWN';
+
   // Extract NDVI with fallback chain
   const ndviValue = 
     landContext.ndvi?.latest_value ?? 
@@ -197,13 +215,24 @@ export function buildCanonicalContext(
   const temp = landContext.weather?.temperature ?? landContext.weather?.temp ?? null;
   const humidity = landContext.weather?.humidity ?? null;
   const rainfall = landContext.weather?.rainfall_mm ?? landContext.weather?.rain_mm ?? null;
+
+  const lastHarvestSrc = landContext.last_harvested_schedule || null;
+  const lastHarvest = lastHarvestSrc
+    ? Object.freeze({
+        crop_name: lastHarvestSrc.crop_name,
+        crop_variety: lastHarvestSrc.crop_variety ?? null,
+        sowing_date: lastHarvestSrc.sowing_date ?? null,
+        actual_harvest_date: lastHarvestSrc.actual_harvest_date ?? lastHarvestSrc.expected_harvest_date ?? null
+      })
+    : null;
   
   // Build the immutable canonical context
   const canonicalContext: CanonicalContext = Object.freeze({
-    crop_code: cropCode || 'UNKNOWN',
-    crop_name: cropName || 'Unknown',
-    growth_stage: growthStage || 'UNKNOWN',
-    days_since_sowing: daysSinceSowing,
+    status: isActive ? 'ACTIVE' : 'NO_ACTIVE_CROP',
+    crop_code: isActive ? cropCode : null,
+    crop_name: isActive ? (cropName || 'Unknown') : null,
+    growth_stage: isActive ? growthStage : null,
+    days_since_sowing: isActive ? daysSinceSowing : null,
     
     ndvi: Object.freeze({
       value: ndviValue,
@@ -223,6 +252,8 @@ export function buildCanonicalContext(
       humidity: humidity,
       rainfall_mm: rainfall
     }),
+
+    last_harvest: lastHarvest,
     
     land_id: landContext.land_id || null,
     farmer_id: landContext.farmer_id || null,
@@ -232,9 +263,12 @@ export function buildCanonicalContext(
     phase1_locked: true
   });
   
-  console.log(`✅ [CanonicalContext] Built and LOCKED:`);
+  console.log(`✅ [CanonicalContext] Built and LOCKED (status=${canonicalContext.status}):`);
   console.log(`   Crop=${canonicalContext.crop_code}, Stage=${canonicalContext.growth_stage}`);
   console.log(`   DAS=${canonicalContext.days_since_sowing}, NDVI=${canonicalContext.ndvi.value}`);
+  if (canonicalContext.status === 'NO_ACTIVE_CROP') {
+    console.log(`   ℹ️ Land has no active crop. last_harvest=${lastHarvest?.crop_name || 'none'}`);
+  }
   console.log(`   Source=${canonicalContext.source}, is_locked=true`);
   
   return canonicalContext;
@@ -249,9 +283,12 @@ export function buildCanonicalContext(
  */
 export function hasDiagnosticContext(context: CanonicalContext | null): boolean {
   if (!context) return false;
+  if (context.status !== 'ACTIVE') return false;
   return (
-    context.crop_code !== 'UNKNOWN' && 
-    context.growth_stage !== 'UNKNOWN' && 
+    !!context.crop_code &&
+    context.crop_code !== 'UNKNOWN' &&
+    !!context.growth_stage &&
+    context.growth_stage !== 'UNKNOWN' &&
     context.is_locked === true
   );
 }
@@ -272,8 +309,8 @@ export function getContextPresenceFlags(context: CanonicalContext | null): Conte
   }
   
   return {
-    has_crop: context.crop_code !== 'UNKNOWN',
-    has_stage: context.growth_stage !== 'UNKNOWN',
+    has_crop: !!context.crop_code && context.crop_code !== 'UNKNOWN',
+    has_stage: !!context.growth_stage && context.growth_stage !== 'UNKNOWN',
     has_land: context.land_id !== null,
     has_ndvi: context.ndvi.value !== null,
     has_soil: context.soil.nitrogen !== null || context.soil.phosphorus !== null || context.soil.potassium !== null,
@@ -294,11 +331,15 @@ export function validateContextIntegrity(
     console.error(`🚨 [FAIL-FAST @ ${location}] hasContext=true but context is null!`);
     throw new Error(`INVARIANT VIOLATION @ ${location}: hasContext=true but context is missing.`);
   }
-  
-  if (hasContextFlag && context && (context.crop_code === 'UNKNOWN' || context.growth_stage === 'UNKNOWN')) {
-    console.error(`🚨 [FAIL-FAST @ ${location}] hasContext=true but crop/stage is UNKNOWN!`);
-    console.error(`   Crop: ${context.crop_code}, Stage: ${context.growth_stage}`);
-    throw new Error(`INVARIANT VIOLATION @ ${location}: hasContext=true but crop/stage is UNKNOWN.`);
+
+  // NO_ACTIVE_CROP is a legitimate state — skip crop/stage invariant.
+  if (context && context.status === 'ACTIVE') {
+    if (!context.crop_code || context.crop_code === 'UNKNOWN' ||
+        !context.growth_stage || context.growth_stage === 'UNKNOWN') {
+      console.error(`🚨 [FAIL-FAST @ ${location}] status=ACTIVE but crop/stage is UNKNOWN!`);
+      console.error(`   Crop: ${context.crop_code}, Stage: ${context.growth_stage}`);
+      throw new Error(`INVARIANT VIOLATION @ ${location}: status=ACTIVE but crop/stage is UNKNOWN.`);
+    }
   }
   
   if (context && !context.is_locked) {

@@ -35,6 +35,18 @@ export interface LandContext {
     status?: string;
     is_active?: boolean;
   };
+  /**
+   * Set when there is NO active crop on the land but a prior crop_schedule
+   * exists. Used by CROP_NAME / past-tense crop-lookup responses so the
+   * farmer hears "this field had X" instead of a generic "not recorded".
+   */
+  last_harvested_schedule?: {
+    crop_name: string;
+    crop_variety?: string | null;
+    sowing_date?: string | null;
+    actual_harvest_date?: string | null;
+    expected_harvest_date?: string | null;
+  } | null;
   growth_stage?: string;
   days_since_sowing?: number;
   irrigation_type?: string;
@@ -80,15 +92,32 @@ const STATIC_QUERY_PATTERNS = {
       /which\s*crop/i,
       /current\s*crop/i,
       /या\s*शेतात.*पीक/i,       // "in this land...crop"
+      /या\s*शेतात.*पिक/i,       // script variant (ि vs ी)
       /इस\s*खेत.*फसल/i,
       /कोणतं\s*पीक/i,
+      /कोणतं\s*पिक/i,
       /पिक\s*कोणतं/i,
-      /फसल\s*कौन\s*सी/i
+      /पीक\s*कोणतं/i,
+      /फसल\s*कौन\s*सी/i,
+      // ── Past-tense / harvested-land lookups ─────────────────────────────
+      /कोणतं?\s*(पीक|पिक).*होतं?/i,      // Marathi: "which crop was (here)"
+      /कोणते?\s*(पीक|पिक).*होते?/i,
+      /(पीक|पिक).*होतं?\s*\??/i,
+      /(पीक|पिक).*लावले/i,                // "what crop was planted"
+      /(पीक|पिक).*पेरले/i,                // "what crop was sown"
+      /कौन\s*सी?\s*फसल\s*थी/i,           // Hindi past
+      /क्या\s*उगाया/i,                    // Hindi: "what was grown"
+      /क्या\s*बोया/i,
+      /पिछ(ली|ले)\s*फसल/i,               // "previous crop"
+      /मागील\s*(पीक|पिक)/i,              // Marathi: "previous crop"
+      /(last|previous)\s*crop/i,
+      /tell\s*me\s*(the\s*)?crop/i,
+      /this\s*field.*crop/i
     ],
     data_source: 'crop_schedules.crop_name',
     requires_crop_schedule: true
   },
-  
+
   LAND_AREA: {
     patterns: [
       /किती\s*(एकर|क्षेत्र|जमीन)/i,     // Marathi
@@ -229,6 +258,35 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
       const daysSinceSowing = input.land_context.days_since_sowing;
       
       if (!cropName) {
+        // ─── HARVESTED-LAND FALLBACK ────────────────────────────────────────
+        // If there is no active crop but a prior crop_schedule exists, tell
+        // the farmer what *was* grown rather than the generic "not recorded".
+        const last = input.land_context.last_harvested_schedule;
+        if (last?.crop_name) {
+          const lastVariety = last.crop_variety ? ` (${last.crop_variety})` : '';
+          const harvestDate = last.actual_harvest_date || last.expected_harvest_date || null;
+          let dateStrMr = '', dateStrHi = '', dateStrEn = '';
+          if (harvestDate) {
+            const d = new Date(harvestDate);
+            const opts: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+            try { dateStrMr = d.toLocaleDateString('mr-IN', opts); } catch { dateStrMr = harvestDate; }
+            try { dateStrHi = d.toLocaleDateString('hi-IN', opts); } catch { dateStrHi = harvestDate; }
+            try { dateStrEn = d.toLocaleDateString('en-IN', opts); } catch { dateStrEn = harvestDate; }
+          }
+          const harvestedResponses = {
+            mr: `🌾 या शेतात मागील हंगामात **${last.crop_name}${lastVariety}** हे पीक होते.${harvestDate ? `\n📅 कापणी: ${dateStrMr}` : ''}\n🌱 सध्या हे शेत रिकामे आहे — नवीन पेरणीसाठी उपलब्ध आहे.`,
+            hi: `🌾 इस खेत में पिछले मौसम में **${last.crop_name}${lastVariety}** फसल थी।${harvestDate ? `\n📅 कटाई: ${dateStrHi}` : ''}\n🌱 अभी यह खेत खाली है — नई बुवाई के लिए उपलब्ध है।`,
+            en: `🌾 This field previously had **${last.crop_name}${lastVariety}**.${harvestDate ? `\n📅 Harvested: ${dateStrEn}` : ''}\n🌱 The field is currently empty and available for sowing.`
+          };
+          return {
+            handled: true,
+            response: harvestedResponses[lang] || harvestedResponses.en,
+            response_type: 'CROP_NAME',
+            confidence: 0.98,
+            processing_time_ms: performance.now() - startTime
+          };
+        }
+
         const responses = {
           mr: '🌱 या शेताची पीक माहिती अद्याप नोंदवलेली नाही. कृपया "पीक नोंदणी" मध्ये पीक जोडा.',
           hi: '🌱 इस खेत की फसल जानकारी अभी दर्ज नहीं है। कृपया "फसल पंजीकरण" में फसल जोड़ें।',
