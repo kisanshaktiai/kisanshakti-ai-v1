@@ -64,6 +64,7 @@ import {
   type UnifiedGateInput
 } from './decision/unified-decision-gate.ts';
 import { runSafetyGates, type SafetyGateInput, type SafetyGateResult } from './decision/safety-gates.ts';
+import { buildDifferentialQuestionLookup } from './services/observation-question-resolver.ts';
 import {
   ResponseMode,
   GateStatus,
@@ -1563,31 +1564,25 @@ serve(async (req) => {
             : (soilK >= 200 ? 'HIGH' : soilK >= 120 ? 'MEDIUM' : 'LOW');
           const ndviVal: number | null = (landContext as any)?.ndvi?.value ?? null;
 
-          // WAVE 2 FIX (P1-5): Load DB-driven differential questions for the
-          // detected language and crop. Prefer crop-specific rows; fall back
-          // to crop-agnostic (crop_code IS NULL) for the same language.
-          // Final fallback inside safety-gates uses the generic English line.
-          const diffLookup: Record<string, string> = {};
+          // SSOT FIX (2026-06-07): Differential clarification questions are
+          // derived from the rich, already-populated SSOT tables
+          // (observation_translations + intent_translations via
+          // intent_observation_mapping). The previously-queried
+          // `observation_differential_questions` table is effectively empty
+          // and is now deprecated. See
+          // services/observation-question-resolver.ts for the fallback chain.
+          let diffLookup: Record<string, string> = {};
           if (mergedSymptomKeys.length > 0) {
             try {
-              const { data: diffRows } = await supabase
-                .from('observation_differential_questions')
-                .select('observation_code, crop_code, question_text')
-                .in('observation_code', mergedSymptomKeys)
-                .eq('language', detectedLanguage);
-              const cropUp = (finalCropName || '').toUpperCase();
-              // Sort so crop-specific rows win over crop-agnostic rows.
-              (diffRows || [])
-                .sort((a: any, b: any) =>
-                  (a.crop_code === cropUp ? 0 : 1) - (b.crop_code === cropUp ? 0 : 1)
-                )
-                .forEach((row: any) => {
-                  if (diffLookup[row.observation_code]) return;
-                  if (row.crop_code && row.crop_code !== cropUp) return;
-                  diffLookup[row.observation_code] = row.question_text;
-                });
+              diffLookup = await buildDifferentialQuestionLookup(
+                supabase,
+                mergedSymptomKeys,
+                detectedLanguage,
+                finalCropName
+              );
             } catch (e) {
-              console.warn(`[SafetyGates] differential question lookup failed: ${(e as Error).message}`);
+              console.warn(`[SafetyGates] differential question resolver failed: ${(e as Error).message}`);
+              diffLookup = {};
             }
           }
 
