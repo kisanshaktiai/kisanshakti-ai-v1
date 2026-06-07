@@ -256,6 +256,17 @@ export function checkStaticDataGate(input: StaticDataGateInput): StaticDataGateO
   // ═══════════════════════════════════════════════════════════════════════════
   // CHECK 1: CROP NAME QUERY
   // ═══════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CHECK 1: CROP NAME QUERY
+  // Phase 2 (P0): skip the CROP_NAME branch entirely when the orchestrator
+  // has pre-classified this message as a next-crop recommendation request.
+  // Without this guard, patterns like /या\s*शेतात.*पीक/i match advisory
+  // queries ("which new crop should I grow in this field?") and the gate
+  // returns last-harvest info instead of routing to the symbolic brain.
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (input.is_recommendation_query) {
+    console.log('⏭️ [StaticGate] CROP_NAME branch SKIPPED — message classified as NEXT_CROP_RECOMMENDATION; routing to symbolic brain');
+  } else {
   for (const pattern of STATIC_QUERY_PATTERNS.CROP_NAME.patterns) {
     if (pattern.test(message)) {
       console.log('✅ [StaticGate] CROP_NAME query detected');
