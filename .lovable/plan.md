@@ -1,112 +1,100 @@
-## Problem
+## Root cause (evidence-backed)
 
-For Marathi "या शेतात कोणते नवीन पिक घेवू?" the system now reaches the `NEXT_CROP_RECOMMENDATION_LANE` (the earlier G2 regression is fixed), but the lane returns a **placeholder stub** — "rotation rules are being seeded, please share season/irrigation/sowing date." There is no actual next-crop name and no scientific reason. Root cause: zero rows exist in `decision_rules` for categories `crop_rotation | crop_selection | next_crop | rotation_advisory`, and the lane has no rule-evaluation step — it only narrates `landContext`.
+The orchestrator's short-circuit lanes build a complete, localized, confidence=1.0 payload and return it to `index.ts`. But the post-orchestrator pipeline in `supabase/functions/ai-agriculture-chat/index.ts` only recognizes ONE short-circuit sentinel (`template_type === 'STATIC_DIRECT'`). Every other short-circuit — `NO_ACTIVE_CROP`, `NEXT_CROP_RECOMMENDATION`, `STAGE_FALLBACK` (partial), greeting, etc. — falls through into:
 
-The user wants the Symbolic Decision Brain to (a) name the recommended next crop(s) and (b) explain the scientific reason — for every recommendation response — without altering the regular diagnostic (pest/disease/nutrition) brain.
+1. Filtering audit → wipes `actions_returned` to 0 (no matching filters but no pass-through for these payload shapes either).
+2. Confidence bridge → recomputes `symbolic_confidence = 0` (overwrites the orchestrator's `1.0`).
+3. Unified gate → fails (confidence 0).
+4. Safety gate → CLARIFY downgrade.
+5. LLM formatter → emits the generic clarification template with the literal placeholder `{symptom}` because no symptoms exist.
 
-## Goal
+### Evidence
 
-Extend the existing `NEXT_CROP_RECOMMENDATION_LANE` into a real rotation engine that:
+- **`docs/audit-2026-06-07/15-live-trace-evidence.md`** documents the Marathi "खारी / गहू" trace returning `"...\"symptom\" च्या लक्षणांमागे..."` with `metadata.confidence = 0`, while the orchestrator log shows the NO_ACTIVE_CROP guard fired with `confidence_score: 1.0`.
+- **Latest edge-function logs (trace `trace_mq3tmjhq_7f5ht2`)** show the new NEXT_CROP engine working correctly — `NEXT_CROP_ENGINE_HIT, matched_rule_count: 2, top_candidates: [cotton, soybean]` — but the next log lines are `AFTER FILTERING: 0 actions`, `ConfidenceBridge: symbolic=0`, `Using LLM formatter`, `ai_model: template`, response length 224 chars. The 2 engine candidates and the pre-rendered Marathi narration are silently discarded.
+- **`index.ts:1223-1225`** is the only short-circuit check: `template_type === 'STATIC_DIRECT' || source === 'STATIC_DATA_GATE'`. Neither `NO_ACTIVE_CROP` (orchestrator.ts:1737) nor `NEXT_CROP_RECOMMENDATION` (orchestrator.ts:1895) are matched.
 
-1. Loads seeded `crop_rotation` decision_rules from DB.
-2. Scores candidates against the authoritative `canonicalContext` (last crop + family, soil NPK + OC + texture, agro_zone, irrigation_type, season, district, rotation_history).
-3. Returns top 3 candidates each carrying `scientific_basis` (nitrogen fixation, pest-cycle break, soil-restoration, water-fit, market-fit, etc.) from the rule row.
-4. Hands the structured candidates to the existing `llm-response-formatter` (already in NEXT-CROP RECOMMENDATION MODE) for vernacular narration that always includes the "why".
-5. Falls back to the current deterministic stub **only** when zero rules match — never silently.
+This is a single defect with two visible symptoms: (a) generic "{symptom}" template instead of the localized no-active-crop message, and (b) the new crop-rotation engine's correct DB-sourced recommendation never reaches the user.
 
-No change to: pest/disease/nutrition rule paths, Canonical Context Builder, Unified Decision Gate, Authority Hierarchy, Crop Schedule SSOT, tenant/farmer isolation, intent classifier, NO_ACTIVE_CROP bypass, G2 bypass.
+## Fix
 
-## Changes
+### 1. `supabase/functions/ai-agriculture-chat/index.ts`
 
-### 1. DB seed migration — `crop_rotation` rules
-New migration `supabase/migrations/<ts>_seed_crop_rotation_rules.sql` inserts ~20 production-safe rules into `decision_rules` (category = `crop_rotation`). Each rule uses existing columns only — no schema change. Conditions live in `conditions_json`:
-
-```jsonc
-{
-  "previous_crop_family": ["poaceae"],         // e.g. after sugarcane/wheat
-  "previous_crop": ["sugarcane","wheat","rice"], // optional narrower match
-  "season": ["rabi","kharif","summer"],
-  "irrigation_type": ["irrigated","rainfed"],
-  "soil_texture": ["black","loamy","sandy"],   // optional
-  "soil_n_max": 280, "soil_n_min": null,       // ppm/kg-ha thresholds, all optional
-  "soil_p_max": null, "soil_p_min": null,
-  "soil_k_max": null, "soil_k_min": null,
-  "agro_zone": ["western-maharashtra","marathwada","vidarbha","konkan"], // optional
-  "min_rotation_gap_seasons": 1                 // do not repeat same family within N
-}
-```
-
-Output columns used per rule:
-- `cause` → recommended crop code (e.g. `chickpea`, `soybean`, `green_gram`, `maize`, `mustard`, `groundnut`, `sunflower`, `cotton`, `pigeonpea`, `wheat`, `sorghum`).
-- `scientific_basis` → 1–3 sentence scientific reason (N-fixation kg/ha, pest cycle break, allelopathy, soil-OC build, water requirement fit, market window).
-- `reason_text` / `knowledge_text` → farmer-facing one-liner the LLM will narrate.
-- `confidence_score`, `priority`, `scientific_source` (ICAR / state agri-university ref), `is_active = true`, `applicability_scope = 'multi_crop'`.
-
-Initial seed coverage (Maharashtra-first; safe defaults):
-- after sugarcane → chickpea / green-gram / sunhemp (green-manure) / soybean
-- after wheat → green-gram / soybean / cotton (kharif) / pigeonpea
-- after rice → chickpea / mustard / lentil
-- after cotton → wheat / chickpea / sorghum
-- after soybean → wheat / chickpea / safflower
-- after groundnut → wheat / sorghum
-- after maize → chickpea / mustard
-- "no prior record" generic season-based defaults per agro_zone
-
-All rows include real ICAR/MPKV/PDKV references in `scientific_source`.
-
-### 2. New engine module — `agents/next-crop-recommender.ts`
-Pure function, no side effects, no LLM calls:
+Generalize the short-circuit detector at line ~1223 from a single sentinel to a set:
 
 ```ts
-recommendNextCrop({ canonicalContext, language, traceId }) →
-  { candidates: Array<{ crop_code, crop_label_i18n, score, rule_id,
-                        scientific_basis, farmer_reason, rotation_gap_ok,
-                        soil_fit, season_fit, water_fit }>,
-    matched_rule_count, fallback_used }
+const SHORT_CIRCUIT_TEMPLATE_TYPES = new Set([
+  'STATIC_DIRECT',
+  'NO_ACTIVE_CROP',
+  'NEXT_CROP_RECOMMENDATION',
+  'GREETING',
+  'STAGE_FALLBACK',
+]);
+const SHORT_CIRCUIT_SOURCES = new Set([
+  'STATIC_DATA_GATE',
+  'NO_ACTIVE_CROP_GUARD',
+  'NEXT_CROP_RECOMMENDATION_ENGINE',
+  'NEXT_CROP_RECOMMENDATION_FALLBACK',
+]);
+const isShortCircuitResponse =
+  SHORT_CIRCUIT_TEMPLATE_TYPES.has(
+    orchestratorResponse.decision_output?.metadata?.template_type as string
+  ) ||
+  SHORT_CIRCUIT_SOURCES.has(
+    orchestratorResponse.communication?.metadata?.source as string
+  );
 ```
 
-Steps:
-1. Query `decision_rules` where `category='crop_rotation' AND is_active=true` (cached per-edge-invocation).
-2. Filter on hard predicates from `conditions_json` against context: season, irrigation, previous-crop-family rotation gap.
-3. Score on soft predicates: soil N/P/K window fit (0–1), agro-zone match (+0.2), soil_texture match (+0.1), priority (rule weight).
-4. Deduplicate by `crop_code`, keep highest-scoring rule per crop.
-5. Return top 3 sorted by score desc.
+When `isShortCircuitResponse` is true:
+- Use the orchestrator's pre-built `communication.main_message.full_text[detectedLanguage]` verbatim — no LLM, no template formatter.
+- Skip filtering, confidence bridge, unified gate, safety gate, and Phase 5 LLM formatting entirely.
+- Preserve the orchestrator's `metadata.confidence` (1.0 for the guard, engine score for next-crop) end-to-end into the response payload.
+- Set `metadata.ai_model` to a clear sentinel (`'template-no-active-crop'`, `'next-crop-engine'`, etc.) so traces are unambiguous.
+- Still persist the assistant message and run the standard `ui-response-builder` pass — only the LLM/template formatting branch is bypassed.
 
-### 3. Wire into existing lane — `agents/orchestrator.ts` (~line 1755)
-Inside the existing `if (isRecommendationQuery)` block:
-- Call `recommendNextCrop(...)`.
-- If `candidates.length > 0`: build a structured `decision_output.actions_returned` array — one action per candidate carrying `crop_code`, `scientific_basis`, `farmer_reason`, `rule_id`, `confidence`. Set `template_type: 'NEXT_CROP_RECOMMENDATION'`, `decision_brain_source: true`, `confidence = top.score`.
-- If `candidates.length === 0`: keep current deterministic stub (unchanged) but log `audit_tag: 'NEXT_CROP_NO_RULE_MATCH'`.
-- Send through the existing return shape so `index.ts` pipeline bypass (already in place) still applies.
+### 2. `supabase/functions/ai-agriculture-chat/decision/response-generator.ts`
 
-### 4. LLM formatter — `agents/llm-response-formatter.ts`
-Already runs in NEXT-CROP RECOMMENDATION MODE (Phase 6). Extend the prompt builder so when `template_type === 'NEXT_CROP_RECOMMENDATION'` and `actions_returned[*].crop_code` is present, it MUST:
-- Name each recommended crop in the farmer's language (use existing i18n crop-name map).
-- For each crop, render `scientific_basis` as the "का?" / "क्यों?" / "Why?" line.
-- Forbid inventing crops or reasons not present in `actions_returned` (existing output-validation gate already enforces this — extend its allow-list to include the candidate crop_codes).
+Add a defensive placeholder guard: if the rendered template still contains a `{…}` token after substitution, refuse to emit it and fall back to a minimal localized "need more details" string. This prevents future similar regressions from leaking raw template tokens to farmers.
 
-No new LLM tools, no new prompts beyond this constraint block.
+### 3. Confidence preservation
 
-### 5. Tests — `tests/chat/next-crop-recommendation-routing.test.ts`
-Add a new `describe('engine')` block:
-- Given context `{ last_crop: 'sugarcane', soil: { n: 200, p: 25, k: 180 }, season: 'rabi', irrigation: 'irrigated', agro_zone: 'western-maharashtra' }` → top candidate is `chickpea`, candidate carries non-empty `scientific_basis` referencing N-fixation, response contains the Marathi word for chickpea ("हरभरा").
-- Given no rule match → response falls back to current stub, never throws.
-- Diagnostic flow unchanged: existing 33/33 routing tests still pass.
+When `isShortCircuitResponse`, the confidence-bridge MUST NOT overwrite the orchestrator's confidence with 0. The simplest implementation is to skip the bridge entirely on this branch (it has no rule outputs to bridge anyway).
 
-### 6. Audit doc
-`docs/audit-2026-06-07/22-next-crop-recommender-engine.md` — root cause (no seeded rules), engine design, scoring formula, seed coverage matrix, gate-bypass invariants preserved.
+### 4. Regression tests
 
-## Files touched
+Add `tests/chat/short-circuit-bypass.test.ts` with two cases:
 
-- `supabase/migrations/<ts>_seed_crop_rotation_rules.sql` (new)
-- `supabase/functions/ai-agriculture-chat/agents/next-crop-recommender.ts` (new)
-- `supabase/functions/ai-agriculture-chat/agents/orchestrator.ts` (extend existing lane only — lines 1755–1857)
-- `supabase/functions/ai-agriculture-chat/agents/llm-response-formatter.ts` (RECOMMEND-mode prompt + allow-list extension)
-- `tests/chat/next-crop-recommendation-routing.test.ts` (extend)
-- `docs/audit-2026-06-07/22-next-crop-recommender-engine.md` (new)
+- **NO_ACTIVE_CROP**: Marathi input "माझ्या खारी जमिनीत आता काय करू? मागच्या वेळी गहू होते" on a land with no active crop must return:
+  - `response` starts with `🌱`, contains `गहू` and `पीक नोंदणी`.
+  - `metadata.confidence === 1.0`.
+  - `metadata.ai_model === 'template-no-active-crop'`.
+  - No `"{"` or `"symptom"` substring in `response`.
+- **NEXT_CROP_RECOMMENDATION**: Hindi/Marathi rotation query after a Wheat harvest must:
+  - Include the top candidate crop name from the engine (e.g. cotton/soybean per the live log).
+  - Carry `actions_returned.length >= 1` with `action_type === 'RECOMMEND_CROP'` and a non-empty `scientific_basis`.
+  - `metadata.ai_model === 'next-crop-engine'`.
 
-## Non-goals / preserved invariants
+### 5. Memory update
 
-- No change to diagnostic intent paths, Canonical Context Builder, Unified Decision Gate, Authority Hierarchy, Crop Schedule SSOT, tenant/farmer isolation, NLU contract, NO_ACTIVE_CROP / G2 bypasses.
-- No new DB columns; uses existing `decision_rules` schema only.
-- No LLM-originated agronomic content — `scientific_basis` always comes from the matched DB row (existing "Rules are Supreme, AI Only Explains" invariant honored).
+Add a core rule to `mem://index.md`:
+
+> Any orchestrator short-circuit payload (template_type ∈ {STATIC_DIRECT, NO_ACTIVE_CROP, NEXT_CROP_RECOMMENDATION, GREETING, STAGE_FALLBACK} OR source matches a registered short-circuit source) MUST bypass filtering, confidence-bridge, unified-gate, safety-gate, and LLM/template formatting. Confidence from the orchestrator metadata is authoritative on these branches.
+
+## Files to change
+
+```text
+supabase/functions/ai-agriculture-chat/index.ts                    (broaden short-circuit detection + bypass)
+supabase/functions/ai-agriculture-chat/decision/response-generator.ts  (placeholder guard)
+tests/chat/short-circuit-bypass.test.ts                            (NEW — regression cases)
+mem://index.md                                                     (core rule)
+mem://architecture/orchestrator-short-circuit-bypass-contract.md   (NEW — detailed contract)
+```
+
+No DB migration, no orchestrator changes, no engine changes — the engine output and short-circuit payloads are already correct; the wrapper just has to honor them.
+
+## Validation
+
+1. Replay the Marathi NO_ACTIVE_CROP trace — assert response starts with `🌱`, mentions `गहू`, confidence = 1.0, no `{symptom}` leak.
+2. Replay a Hindi "अगली फसल क्या लगाऊं?" trace after wheat harvest — assert response names cotton or soybean and `actions_returned[0].rule_id` matches `CROT_AFTER_WHEAT_*`.
+3. Re-run `tests/chat/next-crop-recommendation-routing.test.ts` (33 cases) — must still pass.
+4. Verify edge logs no longer show `"AFTER FILTERING: 0 actions"` followed by `"Using LLM formatter"` for short-circuit traces.
