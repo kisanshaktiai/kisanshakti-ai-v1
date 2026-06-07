@@ -212,12 +212,59 @@ export function applyVarietyOverrides(input: PlannerInputs): PlannerOutput {
     applied.climate_optimum_c = climate.temperature_optimum_c;
   }
 
+  // ─────────────────────────────────────────────────────────────
+  // 7) RICE — AREA-WISE SOWING METHOD (deterministic, agronomic)
+  //    Method selection drives the prompt: SRI, transplanting,
+  //    direct-seeded (DSR), broadcast. Logic:
+  //      • Rainfed irrigation         → DSR (direct seeded rice)
+  //      • Assured water + area<1 ac  → SRI (System of Rice Intensification)
+  //      • Assured water + 1-5 ac     → TRANSPLANT (puddled, from nursery)
+  //      • Assured water + >5 ac      → DSR (mechanised line sowing)
+  //      • Drip/sprinkler             → AEROBIC DSR
+  // ─────────────────────────────────────────────────────────────
+  const cropLower = (cropName || "").toLowerCase();
+  let sowingMethod: string | null = null;
+  let sowingMethodNote: string | null = null;
+  if (cropLower.includes("rice") || cropLower.includes("paddy") || cropLower.includes("भात") || cropLower.includes("धान") || cropLower.includes("चावल")) {
+    const irr = (irrigationType || "").toLowerCase();
+    const rainfed = irr.includes("rainfed") || irr === "" || irr === "manual";
+    const microIrr = irr.includes("drip") || irr.includes("sprinkler");
+    if (microIrr) {
+      sowingMethod = "AEROBIC_DSR";
+      sowingMethodNote = `Aerobic Direct-Seeded Rice (DSR) — drip/sprinkler irrigation, ${landAreaAcres.toFixed(2)} ac. No nursery, no puddling. 8-10 kg seed/acre, line-sown at 20cm.`;
+    } else if (rainfed) {
+      sowingMethod = "DSR";
+      sowingMethodNote = `Direct-Seeded Rice (DSR) — rainfed/limited water, ${landAreaAcres.toFixed(2)} ac. Dry seeding 10-12 kg/acre with pre-emergent herbicide.`;
+    } else if (landAreaAcres < 1.0) {
+      sowingMethod = "SRI";
+      sowingMethodNote = `System of Rice Intensification (SRI) — small plot ${landAreaAcres.toFixed(2)} ac, assured water. Single 8-12 day seedlings, 25×25 cm spacing, 2 kg seed/acre.`;
+    } else if (landAreaAcres <= 5.0) {
+      sowingMethod = "TRANSPLANT";
+      sowingMethodNote = `Puddled Transplanting — ${landAreaAcres.toFixed(2)} ac, assured water. Raise nursery 21-25 days, transplant 2-3 seedlings/hill at 20×15 cm, 6-8 kg seed/acre.`;
+    } else {
+      sowingMethod = "MECH_DSR";
+      sowingMethodNote = `Mechanised Direct-Seeded Rice (DSR) — large plot ${landAreaAcres.toFixed(2)} ac. Drum seeder / seed drill, 10-12 kg/acre. Saves 30% water vs transplant.`;
+    }
+    applied.rice_sowing_method = sowingMethod;
+
+    // If farmer ticked "ready-made nursery plants" but method computed = DSR/SRI/MECH_DSR,
+    // surface a soft warning — those methods do NOT use a nursery.
+    if (isReadyMadePlant && nurseryDays > 0 && sowingMethod !== "TRANSPLANT") {
+      warnings.push(
+        `Selected nursery-plant mode (${nurseryDays}d) does not match recommended method "${sowingMethod}" for ${landAreaAcres.toFixed(2)} ac. Confirm sowing date is the actual transplanting date.`
+      );
+    }
+  }
+
   return {
     total_duration_days: durationDays,
+    effective_field_days: effectiveFieldDays,
     expected_yield_quintals: yieldQuintals,
     water_requirement_liters_total: waterTotal,
     water_per_irrigation_liters: waterPerEvent,
     irrigation_count_total: irrigationCount,
+    sowing_method: sowingMethod,
+    sowing_method_note: sowingMethodNote,
     warnings,
     applied_overrides: applied,
   };
