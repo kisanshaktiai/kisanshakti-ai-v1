@@ -7505,6 +7505,16 @@ export class AIAgentOrchestrator {
           expected_harvest_date: cropSchedule.expected_harvest_date,
           status: cropSchedule.status,
           is_active: cropSchedule.is_active
+        } : null,
+        // Harvested-land fallback: most recent crop_schedule (any status).
+        // Used by static-data-gate when current_crop is null so we can tell
+        // the farmer what was previously grown. Never mutates current_crop.
+        last_harvested_schedule: (!cropSchedule && latestSchedule) ? {
+          crop_name: latestSchedule.crop_name,
+          crop_variety: latestSchedule.crop_variety ?? null,
+          sowing_date: latestSchedule.sowing_date ?? null,
+          actual_harvest_date: latestSchedule.actual_harvest_date ?? null,
+          expected_harvest_date: latestSchedule.expected_harvest_date ?? null
         } : null
       };
       
