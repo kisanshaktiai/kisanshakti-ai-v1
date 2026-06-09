@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
@@ -49,6 +50,7 @@ export function CentralizedCropSelector({
   variant = 'default'
 }: CentralizedCropSelectorProps) {
   const { t, i18n } = useTranslation();
+  const tRef = useLocalizedRef();
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
   const [groups, setGroups] = useState<CropGroup[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
@@ -57,20 +59,10 @@ export function CentralizedCropSelector({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  
-  // Helper to display localized crop name
-  const displayCropName = (crop: Crop) => {
-    if (i18n.language === 'hi' && crop.label_hi) return crop.label_hi;
-    if (i18n.language === 'mr' && crop.label_mr) return crop.label_mr;
-    return crop.label;
-  };
 
-  // Helper to display localized group name
-  const displayGroupName = (group: CropGroup) => {
-    if (i18n.language === 'hi' && group.group_name_hi) return group.group_name_hi;
-    if (i18n.language === 'mr' && group.group_name_mr) return group.group_name_mr;
-    return group.group_name;
-  };
+  // Helpers — delegate to canonical resolver so every supported language works.
+  const displayCropName = (crop: Crop) => tRef(crop as any, 'label') || crop.label;
+  const displayGroupName = (group: CropGroup) => tRef(group as any, 'group_name') || group.group_name;
 
   // Load crop groups on mount
   useEffect(() => {
@@ -91,7 +83,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crop_groups')
-        .select('id, group_name, group_name_hi, group_name_mr, group_icon, display_order, is_active')
+        .select('*')
         .eq('is_active', true)
         .order('display_order');
 
@@ -110,7 +102,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active')
+        .select('*')
         .eq('id', cropId)
         .single();
 
@@ -130,7 +122,7 @@ export function CentralizedCropSelector({
     try {
       const { data, error: fetchError } = await supabase
         .from('crops')
-        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, is_active, display_order')
+        .select('*')
         .eq('crop_group_id', group.id)
         .eq('is_active', true)
         .order('display_order');
@@ -172,10 +164,15 @@ export function CentralizedCropSelector({
     setSearchQuery('');
   };
 
-  const filteredCrops = crops.filter(crop => 
-    crop.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (crop.label_local && crop.label_local.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredCrops = crops.filter((crop) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    return (
+      crop.label.toLowerCase().includes(q) ||
+      (displayCropName(crop) || '').toLowerCase().includes(q) ||
+      (crop.label_local && crop.label_local.toLowerCase().includes(q))
+    );
+  });
 
   const renderGroups = () => (
     <AnimatePresence mode="wait">
