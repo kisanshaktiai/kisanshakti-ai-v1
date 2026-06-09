@@ -102,7 +102,8 @@ export default function MultiIntercropSelector({
   const [selectedCropId, setSelectedCropId] = useState('');
   const [selectedCropName, setSelectedCropName] = useState('');
   const [selectedLocalizedName, setSelectedLocalizedName] = useState('');
-  const [variety, setVariety] = useState('');
+  const [varietyId, setVarietyIdState] = useState<string | null>(null);
+  const [varietyName, setVarietyName] = useState('');
   const [areaPercent, setAreaPercent] = useState(15);
 
   // Calculate total area used
@@ -117,15 +118,20 @@ export default function MultiIntercropSelector({
     setSelectedCropId(id);
     setSelectedCropName(name);
     setSelectedLocalizedName(localized || name);
+    // Reset variety when crop changes
+    setVarietyIdState(null);
+    setVarietyName('');
   };
 
   const handleConfirm = () => {
     if (selectedCropName && areaPercent > 0) {
       const clampedArea = Math.min(remainingArea, Math.max(5, areaPercent));
       const newIntercrop: IntercropData = {
+        cropId: selectedCropId || undefined,
         cropName: selectedCropName,
         localizedCropName: selectedLocalizedName,
-        cropVariety: variety,
+        cropVariety: varietyName,
+        varietyId: varietyId,
         areaPercent: clampedArea,
       };
       onIntercropsChange([...intercrops, newIntercrop]);
@@ -143,7 +149,8 @@ export default function MultiIntercropSelector({
     setSelectedCropId('');
     setSelectedCropName('');
     setSelectedLocalizedName('');
-    setVariety('');
+    setVarietyIdState(null);
+    setVarietyName('');
     setAreaPercent(15);
   };
 
