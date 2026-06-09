@@ -4858,8 +4858,19 @@ export type Database = {
           group_icon: string
           group_key: string
           group_name: string
+          group_name_as: string | null
+          group_name_bn: string | null
+          group_name_gu: string | null
           group_name_hi: string | null
+          group_name_kn: string | null
+          group_name_ml: string | null
           group_name_mr: string | null
+          group_name_or: string | null
+          group_name_pa: string | null
+          group_name_sa: string | null
+          group_name_ta: string | null
+          group_name_te: string | null
+          group_name_ur: string | null
           id: string
           is_active: boolean
           updated_at: string
@@ -4871,8 +4882,19 @@ export type Database = {
           group_icon?: string
           group_key: string
           group_name: string
+          group_name_as?: string | null
+          group_name_bn?: string | null
+          group_name_gu?: string | null
           group_name_hi?: string | null
+          group_name_kn?: string | null
+          group_name_ml?: string | null
           group_name_mr?: string | null
+          group_name_or?: string | null
+          group_name_pa?: string | null
+          group_name_sa?: string | null
+          group_name_ta?: string | null
+          group_name_te?: string | null
+          group_name_ur?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -4884,8 +4906,19 @@ export type Database = {
           group_icon?: string
           group_key?: string
           group_name?: string
+          group_name_as?: string | null
+          group_name_bn?: string | null
+          group_name_gu?: string | null
           group_name_hi?: string | null
+          group_name_kn?: string | null
+          group_name_ml?: string | null
           group_name_mr?: string | null
+          group_name_or?: string | null
+          group_name_pa?: string | null
+          group_name_sa?: string | null
+          group_name_ta?: string | null
+          group_name_te?: string | null
+          group_name_ur?: string | null
           id?: string
           is_active?: boolean
           updated_at?: string
@@ -6346,9 +6379,20 @@ export type Database = {
           is_active: boolean | null
           is_popular: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
           label_hi: string | null
+          label_kn: string | null
           label_local: string | null
+          label_ml: string | null
           label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           local_name: string | null
           metadata: Json | null
           season: string | null
@@ -6366,9 +6410,20 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
           label_hi?: string | null
+          label_kn?: string | null
           label_local?: string | null
+          label_ml?: string | null
           label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null
@@ -6386,9 +6441,20 @@ export type Database = {
           is_active?: boolean | null
           is_popular?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
           label_hi?: string | null
+          label_kn?: string | null
           label_local?: string | null
+          label_ml?: string | null
           label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           local_name?: string | null
           metadata?: Json | null
           season?: string | null
@@ -8091,6 +8157,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           name: string
+          name_as: string | null
+          name_bn: string | null
+          name_gu: string | null
+          name_hi: string | null
+          name_kn: string | null
+          name_ml: string | null
+          name_mr: string | null
+          name_or: string | null
+          name_pa: string | null
+          name_sa: string | null
+          name_ta: string | null
+          name_te: string | null
+          name_ur: string | null
           state_id: string
           updated_at: string | null
         }
@@ -8099,6 +8178,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name: string
+          name_as?: string | null
+          name_bn?: string | null
+          name_gu?: string | null
+          name_hi?: string | null
+          name_kn?: string | null
+          name_ml?: string | null
+          name_mr?: string | null
+          name_or?: string | null
+          name_pa?: string | null
+          name_sa?: string | null
+          name_ta?: string | null
+          name_te?: string | null
+          name_ur?: string | null
           state_id: string
           updated_at?: string | null
         }
@@ -8107,6 +8199,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           name?: string
+          name_as?: string | null
+          name_bn?: string | null
+          name_gu?: string | null
+          name_hi?: string | null
+          name_kn?: string | null
+          name_ml?: string | null
+          name_mr?: string | null
+          name_or?: string | null
+          name_pa?: string | null
+          name_sa?: string | null
+          name_ta?: string | null
+          name_te?: string | null
+          name_ur?: string | null
           state_id?: string
           updated_at?: string | null
         }
@@ -23005,6 +23110,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
+          label_hi: string | null
+          label_kn: string | null
+          label_ml: string | null
+          label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           value: string
         }
         Insert: {
@@ -23013,6 +23131,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value: string
         }
         Update: {
@@ -23021,6 +23152,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value?: string
         }
         Relationships: []
@@ -27540,6 +27684,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
+          label_hi: string | null
+          label_kn: string | null
+          label_ml: string | null
+          label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           value: string
         }
         Insert: {
@@ -27548,6 +27705,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value: string
         }
         Update: {
@@ -27556,6 +27726,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value?: string
         }
         Relationships: []
