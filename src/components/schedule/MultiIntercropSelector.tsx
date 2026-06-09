@@ -308,28 +308,32 @@ export default function MultiIntercropSelector({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground font-medium">{t.variety}</Label>
-                      <Input
-                        placeholder={t.varietyPlaceholder}
-                        value={variety}
-                        onChange={(e) => setVariety(e.target.value)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground font-medium">{t.areaPercent}</Label>
-                      <Input
-                        type="number"
-                        min={5}
-                        max={remainingArea}
-                        placeholder={t.areaPlaceholder}
-                        value={areaPercent}
-                        onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
-                      />
-                    </div>
+                  {/* Variety Selector — same UI as main crop, DB-driven */}
+                  <VarietySelector
+                    cropId={selectedCropId}
+                    value={varietyId}
+                    cropName={selectedLocalizedName || selectedCropName}
+                    onChange={(v) => {
+                      setVarietyIdState(v?.id ?? null);
+                      setVarietyName(v?.name ?? '');
+                    }}
+                    onManualSubmit={(proposedName) => {
+                      setVarietyIdState(null);
+                      setVarietyName(proposedName);
+                    }}
+                  />
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground font-medium">{t.areaPercent}</Label>
+                    <Input
+                      type="number"
+                      min={5}
+                      max={remainingArea}
+                      placeholder={t.areaPlaceholder}
+                      value={areaPercent}
+                      onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
+                      className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
+                    />
                   </div>
 
                   {/* Area hint */}
