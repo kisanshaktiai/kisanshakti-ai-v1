@@ -9,11 +9,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { CentralizedCropSelector } from '@/components/crops/CentralizedCropSelector';
 import { Progress } from '@/components/ui/progress';
+import { VarietySelector } from '@/components/crops/VarietySelector';
 
 export interface IntercropData {
+  cropId?: string;
   cropName: string;
   localizedCropName: string;
   cropVariety: string;
+  varietyId?: string | null;
   areaPercent: number;
 }
 
