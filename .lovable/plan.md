@@ -1,99 +1,105 @@
-# Root cause: the SSOT land-state loader is imported but never called
 
-The symbolic brain expects a single authoritative snapshot of land + soil + NDVI + weather + crop + variety from `decision/authoritative-state-loader.ts → loadAuthoritativeLandState()`. That loader reads `lands`, `crop_history`, `soil_health`, `ndvi_data`, `weather_observations` (with `weather_current` fallback) and computes freshness + derived metrics (water stress, crop health, completeness score, `sources_available` / `sources_missing`).
+## Goal
+Make every screen that reads `soil_types`, `water_sources`, `irrigation_types`, `crop_groups`, `crops`, `districts` (and `states/talukas/villages` once they get translation columns) render labels in the farmer's currently selected language, with a clean English fallback. Today most components only read `label` / `name` and ignore the new `label_hi`, `label_mr`, `label_pa`, `label_ta`, `label_te`, `label_bn`, `label_gu`, `label_kn`, `label_ml`, `label_or`, `label_as`, `label_ur`, `label_sa` / `group_name_*` / `name_*` columns.
 
-But in `agents/orchestrator.ts`:
-- `loadAuthoritativeLandState` is imported (line 340) and **never invoked** anywhere (`rg` returns zero call sites).
-- Instead, at line ~5986 the orchestrator hand-builds an `authoritativeLandState` from the lightweight `landContext` plus `fusedIntelligence.weather_data`, and hardcodes:
-  - `soil.test_date: null`, `test_age_days: null`, `data_fresh: !!landContext.soil_health`
-  - `ndvi.age_days: null`
-  - `weather.data_timestamp: null`, `data_age_hours: null`, `rain_probability: null`
-  - `derived.water_stress_level: 'unknown'`, `crop_health_status: 'unknown'`, `data_completeness_score: 50`
-  - `sources_available: ['land_context']`, `sources_missing: []`
+## Audit findings (DB)
+Localized columns present today:
+- `soil_types.label_*` — 12 languages ✅
+- `water_sources.label_*` — 12 languages ✅
+- `crop_groups.group_name_*` — 12 languages ✅
+- `crops.label_*` — 12 languages ✅
+- `districts.name_*` — 12 languages ✅
+- `irrigation_types` — only `label`, `description` (no `label_*` yet) ⚠️
+- `states`, `talukas`, `villages` — only `name` (no `name_*` yet) ⚠️
 
-This fake state is what feeds `FactExtractor.extractFacts(...)` and `SymbolicReasoner.executeRules(...)`. Consequences:
-1. Rules conditioned on `soil.*`, `ndvi.*`, `weather.*`, `derived.*` cannot evaluate truthfully → `Rules Fired: 0` and a generic proactive/stage rule (`PROACTIVE_FLOOD_PREPAREDNESS_001`, `ACTIVE_TILLERING` template) wins every turn regardless of intent.
-2. Variety details are passed only as a free-text `crop_variety` string — the existing variety SSOT (`master_products WHERE product_type='seed'` + `variety_resistance` + `variety_translations`) is never joined, so variety-aware rules (resistance downweighting, maturity, irrigation sensitivity) cannot match.
-3. `sources_missing` is always `[]`, so the data-audit footer cannot honestly tell the farmer what's missing.
+I will treat the four ⚠️ tables as "fallback to English `label`/`name` until translation columns exist" — code will be written to pick up `*_<lang>` columns automatically the moment they're added, with no further app change needed.
 
-This explains the reported symptom: every Marathi turn collapses to the same answer because the SSOT context the brain depends on is effectively empty.
+## Audit findings (code call sites)
+Reference-table reads that currently ignore localized columns:
 
-## Fix plan
+Reference forms (soil/water/irrigation):
+- `src/hooks/useLandFormData.ts` — selects `*`, returns raw `label`. Consumed by AddLand / EditLand / ModernLandWizard / SmartLandConfirmCard.
 
-### 1. Call the SSOT loader exactly once per turn
+Crops & crop groups:
+- `src/components/crops/SimpleCropSelector.tsx`
+- `src/components/crops/CropSelector.tsx`
+- `src/components/crops/EnhancedCropSelector.tsx`
+- `src/components/crops/CentralizedCropSelector.tsx`
+- `src/components/crops/CropSelectionDialog.tsx`
+- `src/components/crops/CropSelectionButton.tsx`
+- `src/components/crops/CropInput.tsx`
+- `src/components/crops/SmartCropInput.tsx`
+- `src/components/land/CropSelectionCard.tsx`
+- `src/components/land/CropManagementDialog.tsx`
+- `src/hooks/useCommunityGroups.ts`
+- `src/services/syncService.ts` (offline cache — must store all `label_*` so offline UI is also localized)
 
-In `agents/orchestrator.ts`:
-- After `landContext = await this.fetchComprehensiveLandContext(...)` and before the symbolic-reasoner block, call:
-  ```text
-  authoritativeLandState = await loadAuthoritativeLandState(supabase, landId, { now })
-  ```
-- Cache it on the turn and reuse from symbolic reasoner, weather-safety-gate, fact-extractor, response-generator, dynamic-clarification-generator.
-- **Delete** the hand-built `authoritativeLandState = { ... }` literal at lines ~5986-6052. Pass the loader result directly. If the loader returns `null` (no land), keep the existing `null` path — no fabrication.
-- Add one structured log per turn:
-  ```text
-  [SSOT] AuthoritativeLandState loaded: sources=[...], missing=[...], completeness=NN, weather_age_h=NN, ndvi_age_d=NN, soil_age_d=NN
-  ```
+Districts / states (locations):
+- `src/hooks/useUnifiedLocation.ts`
+- `src/hooks/useLocationPreloader.ts`
+- `src/components/land/ModernLandWizard.tsx`
+- `src/components/land/EditLandWizard.tsx`
 
-### 2. Wire variety SSOT (already exists, do not rebuild)
+Edge functions (so AI-generated content also speaks the farmer's language):
+- `supabase/functions/ai-smart-schedule/index.ts` (only reads `label, label_hi, label_mr`)
+- `supabase/functions/ai-smart-schedule/variety-aware-planner.ts`
+- `supabase/functions/lands-api/index.ts`
 
-The variety catalog is already canonical at `master_products WHERE product_type='seed'` with child tables `variety_resistance`, `variety_translations`, `variety_source_references` (see `mem://database/variety-master-schema-v1`). The shared loader `_shared/variety-context.ts → loadVarietyProfile()` returns the full `VarietyProfile` (resistance, climate suitability, water demand, critical stages, translations).
+## Implementation plan
 
-In `decision/authoritative-state-loader.ts`:
-- After resolving the active crop row, resolve the variety id using `lands.variety_id` (authoritative) → `crop_history.crop_variety` fallback (free-text matched against `master_products.name`).
-- Call `loadVarietyProfile(supabase, varietyId, languageCode)` from `_shared/variety-context.ts`.
-- Attach the returned profile to the snapshot at `crop.variety` (do not flatten, do not duplicate fields).
-- Add `'master_products'` / `'variety_resistance'` / `'variety_translations'` to `sources_available` based on what the profile loader actually returned; add to `sources_missing` when null. No placeholder objects.
-
-In `decision/fact-extractor.ts`:
-- Expose variety facts to the rule engine from the SSOT profile only:
-  `variety_code`, `variety_class`, `maturity_days`, `water_demand_category`, `critical_stages[]`, `resistance_map { observation_code → level }`.
-- Downweight pest/disease hypotheses when `resistance_map[obs] ∈ {R, HR}` per the documented contract.
-
-### 3. Weather: live data only, no defaults, no hallucination
-
-- `loadAuthoritativeLandState` already attempts `weather_observations` (by `land_id`) and falls back to `weather_current` (by rounded lat/lon `location_key`). Keep that chain.
-- If both queries return nothing OR the freshest record is older than `WEATHER_FRESHNESS_HOURS`, set `weather: null` and push `'weather'` into `sources_missing`. Do NOT substitute defaults, climatology, monthly averages, or zeros.
-- `FactExtractor.extractEnvironmentalFacts` must emit `temperature/humidity/recent_rain/soil_moisture_estimated = null/UNKNOWN` when `weather === null`. Today it returns `recent_rain: false` and `soil_moisture_estimated: 'UNKNOWN'` only when `landState?.weather` is missing — verify the new `null` path keeps that behavior and never invents `rainfall_last_24h: 0` from a missing record.
-- The rule engine must treat `weather === null` as "weather predicate cannot be evaluated" → the rule is skipped, not fired. Add an explicit guard in the predicate evaluator: if a rule references `weather.*` and `land_state.weather === null`, mark `evaluation_skipped: 'weather_missing'` and surface it in the audit footer.
-- The data-audit footer for the farmer should list `Missing: Weather` when this happens, instead of silently using stale or zero values.
-
-### 4. Fold SSOT data into the rule-engine input
-
-In `layers/rule-evaluation-layer.ts` and `agents/layered-rule-evaluator.ts`:
-- Confirm `land_state` is passed (it already accepts `AuthoritativeLandState | null`).
-- In the predicate evaluator, prefer `land_state.*` over `landContext.*`; remove any silent fallback that substitutes constants for missing weather/NDVI/soil.
-
-### 5. Reconcile `fetchComprehensiveLandContext` with the SSOT
-
-- Keep `fetchComprehensiveLandContext` only for legacy display fields (names, labels) used by clarification/UX.
-- Stop using its soil/NDVI/weather/variety subfields for rule evaluation — the loader is now the only source.
-
-### 6. Make the completeness gate honest
-
-- Replace the hardcoded `data_completeness_score: 50` with the loader's real score.
-- Feed `sources_missing` into the audit footer text (e.g. `Missing: Weather, Soil Test`) so the farmer sees the real gaps that prevented full rule evaluation.
-
-### 7. Database touch-ups (only if a column drift is found)
-
-Read-only verification only — no new tables:
-- Confirm columns referenced by the loader exist: `ndvi_data.date`, `soil_health.test_date`, `weather_observations.observed_at` (or `observation_time`), `lands.variety_id`, `crop_history.crop_variety`.
-- If any name has drifted, add a view or a small column-rename migration. Do not invent defaults or seed weather rows.
-
-### 8. Verification
-
-Re-run the three Marathi turns from the prior regression on Land=Khori (Rice, DAS=1). Expect in logs:
-```text
-[SSOT] AuthoritativeLandState loaded: sources=[lands, crop_history, soil_health, ndvi_data, weather_observations, master_products, variety_resistance], missing=[...], completeness=NN
-[FactExtractor] facts include soil.*, ndvi.*, weather.*, derived.*, variety.{code,resistance_map,critical_stages}
-[LayeredRuleEvaluator] rules_matched > 0 for intent-specific predicates (FERTILIZER_SCHEDULE → nutrition rules; WEED_PROBLEM → weed rules)
+### 1. New shared helper — `src/lib/i18nRef.ts`
+A tiny, framework-agnostic resolver:
+```ts
+export const SUPPORTED_REF_LANGS = ['hi','mr','pa','ta','te','bn','gu','kn','ml','or','as','ur','sa'] as const;
+export function pickLocalized<T extends Record<string, any>>(
+  row: T, baseField: 'label'|'name'|'group_name'|'description', lang: string
+): string {
+  const code = (lang || 'en').split('-')[0];
+  return row?.[`${baseField}_${code}`] || row?.[baseField] || '';
+}
 ```
-And:
-- Three turns produce three different primary decisions.
-- When live weather is missing, the response shows `Missing: Weather` and no rule that depends on weather fires.
+Plus a small hook `useLocalizedRef()` that reads `i18n.language` and returns a memoized `(row, base) => string`.
 
-## Out of scope
+### 2. New shared hook — `src/hooks/useReferenceData.ts`
+One React-Query hook per table (`useSoilTypes`, `useWaterSources`, `useIrrigationTypes`, `useCropGroups`, `useCrops`, `useDistricts(stateId)`). Each:
+- Selects every column including all `*_<lang>` siblings.
+- Re-keys the query by language so labels react instantly to language switches without a refetch (using `select` to map).
+- Returns rows already augmented with a resolved `displayLabel`.
 
-- No LLM authority changes (LLM stays render-only).
-- No new SSOT tables — variety SSOT already exists at `master_products` + variety_* children.
-- No weather defaults, climatology fallbacks, or hardcoded values anywhere.
-- No UI changes beyond surfacing real `sources_missing` in the existing audit footer.
+This replaces the per-component ad-hoc selects.
+
+### 3. Refactor `useLandFormData.ts`
+Switch to the new hook stack, return `{ soilTypes, waterSources, irrigationTypes }` where each item has `displayLabel` (localized) and `displayDescription` (when present). All AddLand / EditLand / wizard screens automatically pick up the localized text.
+
+### 4. Refactor crop selectors
+Replace inline selects in all 12 crop selector files to use `useCropGroups()` + `useCrops()` from the new hook. Render `displayLabel` everywhere a hardcoded `crop.label` / `group.group_name` is shown today. Search/filter logic updated to match against all language variants so a farmer typing "गेहूं" or "wheat" both work.
+
+### 5. Refactor location reads
+`useUnifiedLocation`, `useLocationPreloader`, `ModernLandWizard`, `EditLandWizard`: select `name, name_hi, name_mr, …, name_sa` from `districts`; resolve via `pickLocalized`. For `states/talukas/villages` we keep `name` (DB has no translations yet) — but the helper is already there for the day those columns land.
+
+### 6. Sync / offline cache
+`src/services/syncService.ts` extended to cache all `label_*` columns for crops so the offline UI is also localized.
+
+### 7. Edge functions
+- `ai-smart-schedule/index.ts`: replace the two-language `label, label_hi, label_mr` select with the full set and resolve via a small shared helper at the top of the file (mirrors the existing `getLanguageName` util).
+- `ai-smart-schedule/variety-aware-planner.ts` and `lands-api/index.ts`: same select-and-resolve treatment so prompts and stored land snapshots carry the farmer-language crop / district name.
+
+### 8. Defensive fallbacks
+Every resolver falls back: `row[base_<lang>]` → `row[base]` → `''`. No screen will ever go blank if a translation row is missing.
+
+### 9. Verification
+- AddLand, EditLand, Profile, AI Crop Schedule, Community group picker, Crop selection dialogs — toggle language between en / hi / mr / pa / ta and confirm labels switch instantly.
+- React-Query devtools: no duplicate fetches per language switch (cached + remapped).
+- Build passes; no TS errors against regenerated `types.ts`.
+
+## Out of scope (flagged for follow-up migration)
+- Adding `label_*` columns to `irrigation_types`.
+- Adding `name_*` columns to `states`, `talukas`, `villages`.
+Tell me to include these as a migration and I'll add them in the same pass.
+
+## Files touched (summary)
+- new: `src/lib/i18nRef.ts`, `src/hooks/useReferenceData.ts`
+- edit: `src/hooks/useLandFormData.ts`, `src/hooks/useUnifiedLocation.ts`, `src/hooks/useLocationPreloader.ts`, `src/hooks/useCommunityGroups.ts`, `src/services/syncService.ts`
+- edit: 8 files under `src/components/crops/*`
+- edit: `src/components/land/{ModernLandWizard,EditLandWizard,CropSelectionCard,CropManagementDialog,SmartLandConfirmCard}.tsx`
+- edit: `supabase/functions/ai-smart-schedule/index.ts`, `supabase/functions/ai-smart-schedule/variety-aware-planner.ts`, `supabase/functions/lands-api/index.ts`
