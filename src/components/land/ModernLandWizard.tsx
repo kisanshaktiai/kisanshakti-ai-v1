@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { cn } from '@/lib/utils';
 import { CropSelectionCard } from '@/components/land/CropSelectionCard';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface LandFormData {
   // Basic Info
@@ -99,6 +100,7 @@ const initialFormData: LandFormData = {
 
 export function ModernLandWizard({ boundary, area, onComplete, onCancel }: ModernLandWizardProps) {
   const { t } = useTranslation();
+  const tRef = useLocalizedRef();
   const { toast } = useToast();
   const { user } = useAuthStore();
   const { speak } = useTextToSpeech();
@@ -553,7 +555,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {states.map((state) => (
                             <SelectItem key={state.id} value={state.id}>
-                              {state.name}
+                              {tRef(state, 'name') || state.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -582,7 +584,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {districts.map((district) => (
                             <SelectItem key={district.id} value={district.id}>
-                              {district.name}
+                              {tRef(district, 'name') || district.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -609,7 +611,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {talukas.map((taluka) => (
                             <SelectItem key={taluka.id} value={taluka.id}>
-                              {taluka.name}
+                              {tRef(taluka, 'name') || taluka.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -633,7 +635,7 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                         <SelectContent>
                           {villages.map((village) => (
                             <SelectItem key={village.id} value={village.id}>
-                              {village.name}
+                              {tRef(village, 'name') || village.name}
                             </SelectItem>
                           ))}
                         </SelectContent>

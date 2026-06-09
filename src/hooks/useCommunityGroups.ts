@@ -36,7 +36,7 @@ export const useCommunityGroups = () => {
   return useQuery({
     queryKey: ['community-groups', user?.id],
     queryFn: async () => {
-      // Fetch crop groups (predefined)
+      // Fetch crop groups (predefined) — select * to include all group_name_<lang> columns
       const { data: cropGroups, error: cropError } = await supabase
         .from('crop_groups')
         .select('*')

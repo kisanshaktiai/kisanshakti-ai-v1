@@ -5,6 +5,7 @@ import { Sprout, X } from 'lucide-react';
 import { CropSelectorModal } from './CropSelectorModal';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropInputProps {
   value?: string; // Crop ID
@@ -25,6 +26,7 @@ export function CropInput({
   className,
   error
 }: CropInputProps) {
+  const tRef = useLocalizedRef();
   const [isOpen, setIsOpen] = useState(false);
   const [cropName, setCropName] = useState<string>("");
   const [cropIcon, setCropIcon] = useState<string>("");
@@ -43,12 +45,12 @@ export function CropInput({
     try {
       const { data, error } = await supabase
         .from('crops')
-        .select('label, icon')
+        .select('*')
         .eq('id', cropId)
         .single();
 
       if (!error && data) {
-        setCropName(data.label);
+        setCropName(tRef(data as any, 'label') || data.label);
         setCropIcon(data.icon || "🌱");
       }
     } catch (err) {

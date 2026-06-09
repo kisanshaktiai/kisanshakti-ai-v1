@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { EnhancedCropSelector } from './EnhancedCropSelector';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface SmartCropInputProps {
   value?: string;
@@ -32,6 +33,7 @@ export function SmartCropInput({
   className,
   error
 }: SmartCropInputProps) {
+  const tRef = useLocalizedRef();
   const [isOpen, setIsOpen] = useState(false);
   const [cropName, setCropName] = useState<string>('');
   const [localName, setLocalName] = useState<string>('');
@@ -52,15 +54,15 @@ export function SmartCropInput({
       try {
         const { data, error } = await supabase
           .from('crops')
-          .select('label, icon')
+          .select('*')
           .eq('id', cropId)
           .single();
 
         if (error) throw error;
 
         if (data) {
-          setCropName(data.label);
-          setLocalName(''); // local_name will be handled separately
+          setCropName(tRef(data as any, 'label') || data.label);
+          setLocalName('');
           setCropIcon(data.icon);
         }
       } catch (err) {

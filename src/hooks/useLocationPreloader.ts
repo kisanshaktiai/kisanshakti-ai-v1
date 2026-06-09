@@ -44,9 +44,10 @@ export function useLocationPreloader() {
             setTimeout(async () => {
               for (const stateId of COMMON_STATES) {
                 if (!cache.isCacheValid('districts', stateId)) {
+                  // Select * so future name_<lang> columns are cached too.
                   const { data: districtsData } = await supabase
                     .from('districts')
-                    .select('id, name, state_id')
+                    .select('*')
                     .eq('state_id', stateId)
                     .eq('is_active', true)
                     .order('name');
@@ -92,7 +93,7 @@ export async function preloadAllLocationData() {
       const districtPromises = statesData.map(state => 
         supabase
           .from('districts')
-          .select('id, name, state_id')
+          .select('*')
           .eq('state_id', state.id)
           .eq('is_active', true)
           .order('name')

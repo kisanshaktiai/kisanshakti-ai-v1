@@ -2463,19 +2463,21 @@ serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════
     let translatedCropName = localizedCropName || "";
     
-    // Try to fetch from crops table for accurate translation
+    // Try to fetch from crops table for accurate translation — supports every
+    // language for which the DB has a label_<lang> column (hi, mr, pa, ta, te,
+    // bn, gu, kn, ml, or, as, ur, sa). Falls back to English `label`.
     const { data: cropData, error: cropError } = await supabase
       .from('crops')
-      .select('label, label_hi, label_mr')
-      .or(`label.ilike.%${cropName}%,label_hi.ilike.%${cropName}%,label_mr.ilike.%${cropName}%`)
+      .select('label, label_hi, label_mr, label_pa, label_ta, label_te, label_bn, label_gu, label_kn, label_ml, label_or, label_as, label_ur, label_sa')
+      .or(`label.ilike.%${cropName}%,label_hi.ilike.%${cropName}%,label_mr.ilike.%${cropName}%,label_pa.ilike.%${cropName}%,label_ta.ilike.%${cropName}%,label_te.ilike.%${cropName}%,label_bn.ilike.%${cropName}%,label_gu.ilike.%${cropName}%,label_kn.ilike.%${cropName}%,label_ml.ilike.%${cropName}%,label_or.ilike.%${cropName}%,label_as.ilike.%${cropName}%,label_ur.ilike.%${cropName}%,label_sa.ilike.%${cropName}%`)
       .limit(1)
       .single();
-    
+
     if (cropData && !cropError) {
-      if (language === 'mr' && cropData.label_mr) {
-        translatedCropName = cropData.label_mr;
-      } else if (language === 'hi' && cropData.label_hi) {
-        translatedCropName = cropData.label_hi;
+      const langKey = `label_${(language || 'en').toLowerCase().split('-')[0]}` as keyof typeof cropData;
+      const localized = (cropData as any)[langKey];
+      if (localized) {
+        translatedCropName = localized;
       } else if (cropData.label) {
         translatedCropName = cropData.label;
       }

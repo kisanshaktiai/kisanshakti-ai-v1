@@ -14,6 +14,7 @@ import { useTextToSpeech } from '@/hooks/useTextToSpeech';
 import { supabase } from '@/integrations/supabase/client';
 import { landsApi } from '@/services/landsApi';
 import { useTranslation } from 'react-i18next';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface LatLng {
   lat: number;
@@ -46,6 +47,7 @@ export function EditLandWizard({
   const { user } = useAuthStore();
   const { speak } = useTextToSpeech();
   const { t } = useTranslation();
+  const tRef = useLocalizedRef();
   const [currentStep, setCurrentStep] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -388,7 +390,7 @@ export function EditLandWizard({
                           <SelectContent>
                             {states.map((state) => (
                               <SelectItem key={state.id} value={state.id}>
-                                {state.name}
+                                {tRef(state, 'name') || state.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -408,7 +410,7 @@ export function EditLandWizard({
                           <SelectContent>
                             {districts.map((district) => (
                               <SelectItem key={district.id} value={district.id}>
-                                {district.name}
+                                {tRef(district, 'name') || district.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -428,7 +430,7 @@ export function EditLandWizard({
                           <SelectContent>
                             {talukas.map((taluka) => (
                               <SelectItem key={taluka.id} value={taluka.id}>
-                                {taluka.name}
+                                {tRef(taluka, 'name') || taluka.name}
                               </SelectItem>
                             ))}
                           </SelectContent>
@@ -448,7 +450,7 @@ export function EditLandWizard({
                           <SelectContent>
                             {villages.map((village) => (
                               <SelectItem key={village.id} value={village.id}>
-                                {village.name}
+                                {tRef(village, 'name') || village.name}
                               </SelectItem>
                             ))}
                           </SelectContent>

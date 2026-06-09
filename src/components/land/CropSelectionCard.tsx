@@ -19,6 +19,7 @@ import {
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
@@ -61,6 +62,7 @@ export function CropSelectionCard({
   className 
 }: CropSelectionCardProps) {
   const { t, i18n } = useTranslation();
+  const tRef = useLocalizedRef();
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<'groups' | 'crops'>('groups');
   const [groups, setGroups] = useState<CropGroup[]>([]);
@@ -69,19 +71,9 @@ export function CropSelectionCard({
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Helper to display localized crop name
-  const displayCropName = (crop: Crop) => {
-    if (i18n.language === 'hi' && crop.label_hi) return crop.label_hi;
-    if (i18n.language === 'mr' && crop.label_mr) return crop.label_mr;
-    return crop.label;
-  };
-
-  // Helper to display localized group name
-  const displayGroupName = (group: CropGroup) => {
-    if (i18n.language === 'hi' && group.group_name_hi) return group.group_name_hi;
-    if (i18n.language === 'mr' && group.group_name_mr) return group.group_name_mr;
-    return group.group_name;
-  };
+  // All-language resolver — see src/lib/i18nRef.ts
+  const displayCropName = (crop: Crop) => tRef(crop as any, 'label') || crop.label;
+  const displayGroupName = (group: CropGroup) => tRef(group as any, 'group_name') || group.group_name;
 
   useEffect(() => {
     if (isOpen && groups.length === 0) {
@@ -94,7 +86,7 @@ export function CropSelectionCard({
     try {
       const { data } = await supabase
         .from('crop_groups')
-        .select('id, group_name, group_name_hi, group_name_mr, group_icon, display_order')
+        .select('*')
         .eq('is_active', true)
         .order('display_order');
       
@@ -113,7 +105,7 @@ export function CropSelectionCard({
     try {
       const { data } = await supabase
         .from('crops')
-        .select('id, label, label_hi, label_mr, icon, season, crop_group_id, display_order')
+        .select('*')
         .eq('crop_group_id', group.id)
         .eq('is_active', true)
         .order('display_order');
@@ -158,11 +150,14 @@ export function CropSelectionCard({
     setSearchQuery('');
   };
 
-  const filteredCrops = crops.filter(crop => 
-    crop.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (crop.label_hi && crop.label_hi.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (crop.label_mr && crop.label_mr.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const filteredCrops = crops.filter((crop) => {
+    const q = searchQuery.toLowerCase();
+    if (!q) return true;
+    return (
+      crop.label.toLowerCase().includes(q) ||
+      (displayCropName(crop) || '').toLowerCase().includes(q)
+    );
+  });
 
   const gradientColors = variant === 'current' 
     ? 'from-primary/20 via-primary/10 to-accent/10' 

@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { Sprout, X } from 'lucide-react';
 import { CropSelectionDialog } from './CropSelectionDialog';
 import { supabase } from '@/integrations/supabase/client';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropSelectionButtonProps {
   value?: string; // Crop ID
@@ -26,6 +27,7 @@ export function CropSelectionButton({
   className,
   required = false
 }: CropSelectionButtonProps) {
+  const tRef = useLocalizedRef();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [displayName, setDisplayName] = useState<string>("");
   const [cropIcon, setCropIcon] = useState<string>("");
@@ -49,7 +51,7 @@ export function CropSelectionButton({
         if (value) {
           const result = await supabase
             .from('crops')
-            .select('label, icon')
+            .select('*')
             .eq('id', value)
             .maybeSingle();
           
@@ -61,7 +63,7 @@ export function CropSelectionButton({
         if (!data && cropName) {
           const result = await supabase
             .from('crops')
-            .select('label, icon')
+            .select('*')
             .eq('label', cropName)
             .maybeSingle();
 
@@ -72,7 +74,7 @@ export function CropSelectionButton({
           if (!data) {
             const valueResult = await supabase
               .from('crops')
-              .select('label, icon')
+              .select('*')
               .eq('value', cropName)
               .maybeSingle();
             
@@ -81,7 +83,7 @@ export function CropSelectionButton({
         }
 
         if (data) {
-          setDisplayName(data.label);
+          setDisplayName(tRef(data as any, 'label') || data.label);
           setCropIcon(data.icon || "");
         } else {
           // Fallback to displaying the raw cropName
