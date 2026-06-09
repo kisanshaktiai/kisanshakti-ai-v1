@@ -261,9 +261,10 @@ export function useUnifiedLocation(options: UseUnifiedLocationOptions = {}): Use
     setLoading(prev => ({ ...prev, districts: true }));
     
     try {
+      // Select * so we pick up future district name_<lang> columns automatically.
       const { data, error: fetchError } = await supabase
         .from('districts')
-        .select('id, name, state_id')
+        .select('*')
         .eq('state_id', stateId)
         .eq('is_active', true)
         .order('name');
