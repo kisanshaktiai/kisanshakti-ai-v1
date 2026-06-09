@@ -44,6 +44,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { VarietySelector, type VarietyOption } from '@/components/crops/VarietySelector';
+import { useLocalizedRef } from '@/lib/i18nRef';
 
 interface CropGroup {
   id: string;
@@ -104,6 +105,7 @@ export function CropManagementDialog({
   onSuccess 
 }: CropManagementDialogProps) {
   const { t } = useTranslation();
+  const tRef = useLocalizedRef();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'current' | 'previous'>('current');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
@@ -208,8 +210,9 @@ export function CropManagementDialog({
     }
   }, [form.watch('planting_date'), currentCropSelection]);
 
-  const handleCropSelect = (cropId: string, cropName: string, isCurrentCrop: boolean) => {
+  const handleCropSelect = (cropId: string, _cropName: string, isCurrentCrop: boolean) => {
     const crop = crops.find(c => c.id === cropId);
+    const cropName = crop ? (tRef(crop as any, 'label') || crop.label) : _cropName;
     
     if (isCurrentCrop) {
       // Reset variety when crop changes
@@ -336,7 +339,7 @@ export function CropManagementDialog({
                                   ) : (
                                     groupIcons[group.group_key] || <Leaf className="h-6 w-6" />
                                   )}
-                                  <span className="text-sm font-medium">{group.group_name}</span>
+                                  <span className="text-sm font-medium">{tRef(group as any, 'group_name') || group.group_name}</span>
                                 </div>
                               </CardContent>
                             </Card>
@@ -356,7 +359,7 @@ export function CropManagementDialog({
                             Back
                           </Button>
                           <h3 className="text-sm font-medium">
-                            Select Crop from {cropGroups.find(g => g.id === selectedGroup)?.group_name}
+                            Select Crop from {(() => { const g = cropGroups.find(g => g.id === selectedGroup); return g ? (tRef(g as any, 'group_name') || g.group_name) : ''; })()}
                           </h3>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
