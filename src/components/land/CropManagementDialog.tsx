@@ -363,7 +363,9 @@ export function CropManagementDialog({
                           </h3>
                         </div>
                         <div className="grid grid-cols-2 gap-2">
-                          {filteredCrops.map((crop) => (
+                          {filteredCrops.map((crop) => {
+                            const localized = tRef(crop as any, 'label') || crop.label;
+                            return (
                             <Card
                               key={crop.id}
                               className={cn(
@@ -372,13 +374,13 @@ export function CropManagementDialog({
                                   ? "ring-2 ring-primary bg-primary/5" 
                                   : "hover:border-primary"
                               )}
-                              onClick={() => handleCropSelect(crop.id, crop.label, true)}
+                              onClick={() => handleCropSelect(crop.id, localized, true)}
                             >
                               <CardContent className="p-3">
                                 <div className="space-y-1">
-                                  <p className="font-medium text-sm">{crop.label}</p>
-                                  {crop.local_name && (
-                                    <p className="text-xs text-muted-foreground">{crop.local_name}</p>
+                                  <p className="font-medium text-sm">{localized}</p>
+                                  {localized !== crop.label && (
+                                    <p className="text-xs text-muted-foreground">{crop.label}</p>
                                   )}
                                   {crop.duration_days && (
                                     <Badge variant="secondary" className="text-xs">
@@ -388,7 +390,8 @@ export function CropManagementDialog({
                                 </div>
                               </CardContent>
                             </Card>
-                          ))}
+                            );
+                          })}
                         </div>
                       </div>
                     )}
