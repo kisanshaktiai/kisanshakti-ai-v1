@@ -403,15 +403,13 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                     <div className="flex items-start gap-2">
                       <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
                       <div className="text-sm text-muted-foreground">
-                        {land.village && <span>{land.village}</span>}
-                        {land.village && land.district && ', '}
-                        {land.district && <span>{land.district}</span>}
-                        {land.state && (
-                          <>
-                            {(land.village || land.district) && ', '}
-                            <span>{land.state}</span>
-                          </>
-                        )}
+                        {(() => {
+                          const districtLabel = refLabels.district(land.district);
+                          const parts = [land.village, districtLabel, land.state].filter(
+                            (v) => v && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v)),
+                          );
+                          return parts.join(', ');
+                        })()}
                       </div>
                     </div>
                   )}
@@ -422,7 +420,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
                         <SoilIcon className="h-3.5 w-3.5 text-secondary" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.soil_type}
+                          {refLabels.soil(land.soil_type) || land.soil_type}
                         </span>
                       </div>
                     )}
@@ -431,7 +429,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20">
                         <WaterIcon className="h-3.5 w-3.5 text-info" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.water_source}
+                          {refLabels.water(land.water_source) || land.water_source}
                         </span>
                       </div>
                     )}
@@ -440,7 +438,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
                         <Droplets className="h-3.5 w-3.5 text-accent" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.irrigation_type}
+                          {refLabels.irrigation(land.irrigation_type) || land.irrigation_type}
                         </span>
                       </div>
                     )}
@@ -449,7 +447,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20">
                         <CropIcon className="h-3.5 w-3.5 text-success" />
                         <span className="text-xs font-medium text-foreground">
-                          {land.current_crop}
+                          {refLabels.crop(land.current_crop) || land.current_crop}
                         </span>
                       </div>
                     )}
