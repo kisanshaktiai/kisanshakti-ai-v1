@@ -15,6 +15,7 @@ import FarmingTypeDialog, { FarmingMode } from './FarmingTypeDialog';
 import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
 import { VarietySelector } from '@/components/crops/VarietySelector';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
 
 interface CropDateInputProps {
   land: {
