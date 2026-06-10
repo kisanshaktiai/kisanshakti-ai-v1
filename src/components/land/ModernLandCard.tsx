@@ -302,14 +302,14 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
               {land.irrigation_type && (
                 <Badge variant="secondary" className="text-xs px-2 py-0.5">
                   <Droplets className="h-2.5 w-2.5 mr-1" />
-                  {land.irrigation_type.replace('_', ' ')}
+                  {irrigationLabel || land.irrigation_type.replace('_', ' ')}
                 </Badge>
               )}
               
               {land.soil_type && (
                 <Badge variant="outline" className="text-xs px-2 py-0.5">
                   <Globe className="h-2.5 w-2.5 mr-1" />
-                  {land.soil_type.replace('_', ' ')}
+                  {soilLabel || land.soil_type.replace('_', ' ')}
                 </Badge>
               )}
               
@@ -324,8 +324,8 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
             {(land.village || land.district) && (
               <div className="pt-2 border-t border-border/50">
                 <p className="text-xs text-muted-foreground truncate">
-                  {[land.village, land.district, land.state]
-                    .filter(val => val && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
+                  {[land.village, districtLabel, land.state]
+                    .filter((val) => val && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val)))
                     .join(', ') || 'Location not set'}
                 </p>
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
