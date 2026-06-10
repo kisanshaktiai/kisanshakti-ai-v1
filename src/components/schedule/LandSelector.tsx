@@ -100,6 +100,7 @@ const getCropIcon = (crop?: string) => {
 export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEditSchedule }: LandSelectorProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const refLabels = useLandRefLabels();
   const { user } = useAuthStore();
   const { t } = useTranslation();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
