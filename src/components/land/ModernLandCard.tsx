@@ -35,6 +35,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useVarietyLabel } from '@/hooks/useVarietyLabel';
 import { LandThumbnail } from './LandThumbnail';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
 
 interface ModernLandCardProps {
   land: {
@@ -71,6 +72,13 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const { label: varietyLabel } = useVarietyLabel(land.current_crop_variety_id);
+  const refLabels = useLandRefLabels();
+  const soilLabel = refLabels.soil(land.soil_type);
+  const waterLabel = refLabels.water(land.water_source);
+  const irrigationLabel = refLabels.irrigation(land.irrigation_type);
+  const cropLabel = refLabels.crop(land.current_crop);
+  const previousCropLabel = refLabels.crop(land.previous_crop);
+  const districtLabel = refLabels.district(land.district);
   
   // Removed inline map URL generation - now using LandThumbnail component
   
@@ -238,7 +246,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.current')}</p>
                     <div className="flex items-center gap-1 flex-wrap">
                       <Wheat className="h-3 w-3 sm:h-4 sm:w-4 text-primary flex-shrink-0" />
-                      <span className="text-xs sm:text-sm font-medium truncate">{land.current_crop}</span>
+                      <span className="text-xs sm:text-sm font-medium truncate">{cropLabel || land.current_crop}</span>
                       {varietyLabel && (
                         <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 h-4 sm:h-5">
                           {varietyLabel}
@@ -253,7 +261,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.previous')}</p>
                     <div className="flex items-center gap-1">
                       <TreePine className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-xs sm:text-sm truncate">{land.previous_crop}</span>
+                      <span className="text-xs sm:text-sm truncate">{previousCropLabel || land.previous_crop}</span>
                     </div>
                   </div>
                 )}
@@ -294,14 +302,14 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
               {land.irrigation_type && (
                 <Badge variant="secondary" className="text-xs px-2 py-0.5">
                   <Droplets className="h-2.5 w-2.5 mr-1" />
-                  {land.irrigation_type.replace('_', ' ')}
+                  {irrigationLabel || land.irrigation_type.replace('_', ' ')}
                 </Badge>
               )}
               
               {land.soil_type && (
                 <Badge variant="outline" className="text-xs px-2 py-0.5">
                   <Globe className="h-2.5 w-2.5 mr-1" />
-                  {land.soil_type.replace('_', ' ')}
+                  {soilLabel || land.soil_type.replace('_', ' ')}
                 </Badge>
               )}
               
@@ -316,8 +324,8 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
             {(land.village || land.district) && (
               <div className="pt-2 border-t border-border/50">
                 <p className="text-xs text-muted-foreground truncate">
-                  {[land.village, land.district, land.state]
-                    .filter(val => val && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val))
+                  {[land.village, districtLabel, land.state]
+                    .filter((val) => val && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val)))
                     .join(', ') || 'Location not set'}
                 </p>
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">

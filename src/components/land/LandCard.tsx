@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { CropManagementDialog } from './CropManagementDialog';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
 import { format } from 'date-fns';
 
 interface LandCardProps {
@@ -57,6 +58,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const { apiKey, isLoaded } = useGoogleMapsApi();
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
@@ -161,7 +163,9 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               <p className="font-medium">{land.village || t('lands.wizard.form.location_details')}</p>
               {(land.district || land.state) && (
                 <p className="text-muted-foreground">
-                  {[land.district, land.state].filter(Boolean).join(', ')}
+                  {[refLabels.district(land.district) || land.district, land.state]
+                    .filter((v) => v && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v)))
+                    .join(', ')}
                 </p>
               )}
             </div>
@@ -173,14 +177,14 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               <div className="flex items-center gap-1.5">
                 <div className="h-2 w-2 bg-warning rounded-full" />
                 <span className="text-muted-foreground">Soil:</span>
-                <span className="font-medium capitalize">{land.soil_type.replace('_', ' ')}</span>
+                <span className="font-medium capitalize">{refLabels.soil(land.soil_type) || land.soil_type.replace('_', ' ')}</span>
               </div>
             )}
             {land.water_source && (
               <div className="flex items-center gap-1.5">
                 <Droplets className="h-3 w-3 text-info" />
                 <span className="text-muted-foreground">Water:</span>
-                <span className="font-medium capitalize">{land.water_source.replace('_', ' ')}</span>
+                <span className="font-medium capitalize">{refLabels.water(land.water_source) || land.water_source.replace('_', ' ')}</span>
               </div>
             )}
           </div>
@@ -195,7 +199,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                     <span className="text-sm font-medium">{t('lands.wizard.form.current_crop')}</span>
                   </div>
                   <Badge variant="default" className="text-xs">
-                    {land.current_crop}
+                    {refLabels.crop(land.current_crop) || land.current_crop}
                   </Badge>
                 </div>
                 {land.planting_date && (
