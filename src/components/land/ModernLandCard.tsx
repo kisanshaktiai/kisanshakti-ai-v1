@@ -72,6 +72,13 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const { label: varietyLabel } = useVarietyLabel(land.current_crop_variety_id);
+  const refLabels = useLandRefLabels();
+  const soilLabel = refLabels.soil(land.soil_type);
+  const waterLabel = refLabels.water(land.water_source);
+  const irrigationLabel = refLabels.irrigation(land.irrigation_type);
+  const cropLabel = refLabels.crop(land.current_crop);
+  const previousCropLabel = refLabels.crop(land.previous_crop);
+  const districtLabel = refLabels.district(land.district);
   
   // Removed inline map URL generation - now using LandThumbnail component
   
