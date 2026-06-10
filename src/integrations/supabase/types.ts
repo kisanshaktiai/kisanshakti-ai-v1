@@ -12030,6 +12030,19 @@ export type Database = {
           id: string
           is_active: boolean | null
           label: string
+          label_as: string | null
+          label_bn: string | null
+          label_gu: string | null
+          label_hi: string | null
+          label_kn: string | null
+          label_ml: string | null
+          label_mr: string | null
+          label_or: string | null
+          label_pa: string | null
+          label_sa: string | null
+          label_ta: string | null
+          label_te: string | null
+          label_ur: string | null
           value: string
         }
         Insert: {
@@ -12038,6 +12051,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value: string
         }
         Update: {
@@ -12046,6 +12072,19 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           label?: string
+          label_as?: string | null
+          label_bn?: string | null
+          label_gu?: string | null
+          label_hi?: string | null
+          label_kn?: string | null
+          label_ml?: string | null
+          label_mr?: string | null
+          label_or?: string | null
+          label_pa?: string | null
+          label_sa?: string | null
+          label_ta?: string | null
+          label_te?: string | null
+          label_ur?: string | null
           value?: string
         }
         Relationships: []
