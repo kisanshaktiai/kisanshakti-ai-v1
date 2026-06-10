@@ -58,6 +58,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const [cropDialogOpen, setCropDialogOpen] = useState(false);
   const { apiKey, isLoaded } = useGoogleMapsApi();
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
