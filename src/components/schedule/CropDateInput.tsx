@@ -52,6 +52,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
 }) => {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
