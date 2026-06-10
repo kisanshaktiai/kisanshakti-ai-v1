@@ -206,13 +206,13 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
             <div className="flex items-center gap-2">
               {land.soil_type && (
                 <span className="text-xs px-2 py-1 rounded-full bg-white/50 dark:bg-black/30 backdrop-blur-sm">
-                  {land.soil_type}
+                  {refLabels.soil(land.soil_type) || land.soil_type}
                 </span>
               )}
               {land.water_source && (
                 <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20">
                   <Droplets className="h-3 w-3 text-info" />
-                  <span className="text-info dark:text-info">Water</span>
+                  <span className="text-info dark:text-info">{refLabels.water(land.water_source) || land.water_source}</span>
                 </span>
               )}
             </div>
