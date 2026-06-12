@@ -203,9 +203,15 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
                     <Wheat className="h-4 w-4 text-primary" />
                     <span className="text-sm font-medium">{t('lands.wizard.form.current_crop')}</span>
                   </div>
-                  <Badge variant="default" className="text-xs">
-                    {refLabels.crop(land.current_crop) || land.current_crop}
-                  </Badge>
+                  {(() => {
+                    const d = refLabels.display(land.current_crop, 'crop');
+                    return (
+                      <Badge variant={d.isFallback ? 'outline' : 'default'} className={`text-xs ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>
+                        {d.text}
+                      </Badge>
+                    );
+                  })()}
+
                 </div>
                 {land.planting_date && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
