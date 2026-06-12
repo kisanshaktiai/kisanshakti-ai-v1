@@ -24,6 +24,8 @@ import { TaskStatisticsWidget } from './TaskStatisticsWidget';
 import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface CropSchedule {
   id: string;
@@ -103,6 +105,23 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [photoUploadTask, setPhotoUploadTask] = useState<ScheduleTask | null>(null);
   const [showLandPhotoUpload, setShowLandPhotoUpload] = useState(false);
+  const [landContext, setLandContext] = useState<{ soil_type?: string; water_source?: string; irrigation_type?: string; ownership_type?: string } | null>(null);
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!landId) return;
+      const { data } = await supabase
+        .from('lands')
+        .select('soil_type, water_source, irrigation_type, ownership_type')
+        .eq('id', landId)
+        .maybeSingle();
+      if (!cancelled && data) setLandContext(data as any);
+    })();
+    return () => { cancelled = true; };
+  }, [landId]);
 
   // Task type icons and colors
   const taskTypeConfig = {
