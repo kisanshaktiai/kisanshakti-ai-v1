@@ -261,7 +261,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.previous')}</p>
                     <div className="flex items-center gap-1">
                       <TreePine className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-xs sm:text-sm truncate">{previousCropLabel || land.previous_crop}</span>
+                      <span className={`text-xs sm:text-sm truncate ${previousCrop.isFallback ? 'italic text-muted-foreground' : ''}`}>{previousCrop.text}</span>
                     </div>
                   </div>
                 )}
