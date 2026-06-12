@@ -25,7 +25,7 @@ import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
-import { useOwnershipLabel } from '@/lib/ownershipLabel';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface CropSchedule {
   id: string;
@@ -512,7 +512,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               );
             })()}
             {landContext.ownership_type && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 border border-border/40">
+              <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${ownershipChipClasses(landContext.ownership_type)}`}>
                 {ownershipLabel(landContext.ownership_type)}
               </span>
             )}

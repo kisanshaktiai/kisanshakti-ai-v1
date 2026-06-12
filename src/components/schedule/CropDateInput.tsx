@@ -16,7 +16,7 @@ import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
 import { VarietySelector } from '@/components/crops/VarietySelector';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
-import { useOwnershipLabel } from '@/lib/ownershipLabel';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface CropDateInputProps {
   land: {
@@ -234,7 +234,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 );
               })()}
               {land.ownership_type && (
-                <span className="text-xs px-2 py-1 rounded-full bg-muted/50 border border-border/40">
+                <span className={`text-xs px-2 py-1 rounded-full border font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
                   {ownershipLabel(land.ownership_type)}
                 </span>
               )}

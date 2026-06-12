@@ -36,7 +36,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useVarietyLabel } from '@/hooks/useVarietyLabel';
 import { LandThumbnail } from './LandThumbnail';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
-import { useOwnershipLabel } from '@/lib/ownershipLabel';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface ModernLandCardProps {
   land: {
@@ -317,7 +317,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
 
               
               {land.ownership_type && (
-                <Badge variant="outline" className="text-xs px-2 py-0.5">
+                <Badge variant="outline" className={`text-xs px-2 py-0.5 font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
                   {ownershipLabel(land.ownership_type)}
                 </Badge>
               )}

@@ -35,3 +35,19 @@ export function useOwnershipLabel() {
     [t],
   );
 }
+
+/**
+ * Semantic background/border/text classes per ownership type. Keeps the
+ * tiny ownership chip visually distinct across all land cards.
+ */
+const OWNERSHIP_STYLES: Record<string, string> = {
+  owned: 'bg-success/15 border-success/30 text-success',
+  leased: 'bg-info/15 border-info/30 text-info',
+  shared: 'bg-warning/15 border-warning/30 text-warning',
+  contract: 'bg-accent/20 border-accent/40 text-accent-foreground',
+};
+
+export function ownershipChipClasses(raw?: string | null): string {
+  const key = String(raw || '').toLowerCase().trim();
+  return OWNERSHIP_STYLES[key] || 'bg-muted/40 border-border/40 text-foreground';
+}
