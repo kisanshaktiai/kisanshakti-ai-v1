@@ -415,42 +415,47 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
 
                   {/* Pills for attributes */}
                   <div className="flex flex-wrap gap-2">
-                    {land.soil_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20">
-                        <SoilIcon className="h-3.5 w-3.5 text-secondary" />
-                        <span className="text-xs font-medium text-foreground">
-                          {refLabels.soil(land.soil_type) || land.soil_type}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.water_source && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20">
-                        <WaterIcon className="h-3.5 w-3.5 text-info" />
-                        <span className="text-xs font-medium text-foreground">
-                          {refLabels.water(land.water_source) || land.water_source}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.irrigation_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20">
-                        <Droplets className="h-3.5 w-3.5 text-accent" />
-                        <span className="text-xs font-medium text-foreground">
-                          {refLabels.irrigation(land.irrigation_type) || land.irrigation_type}
-                        </span>
-                      </div>
-                    )}
-                    
-                    {land.current_crop && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20">
-                        <CropIcon className="h-3.5 w-3.5 text-success" />
-                        <span className="text-xs font-medium text-foreground">
-                          {refLabels.crop(land.current_crop) || land.current_crop}
-                        </span>
-                      </div>
-                    )}
+                    {land.soil_type && (() => {
+                      const d = refLabels.display(land.soil_type, 'soil');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-secondary/10 border border-secondary/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <SoilIcon className="h-3.5 w-3.5 text-secondary" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.water_source && (() => {
+                      const d = refLabels.display(land.water_source, 'water');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <WaterIcon className="h-3.5 w-3.5 text-info" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.irrigation_type && (() => {
+                      const d = refLabels.display(land.irrigation_type, 'irrigation');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <Droplets className="h-3.5 w-3.5 text-accent" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
+
+                    {land.current_crop && (() => {
+                      const d = refLabels.display(land.current_crop, 'crop');
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-success/10 border border-success/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                          <CropIcon className="h-3.5 w-3.5 text-success" />
+                          <span className={`text-xs font-medium text-foreground ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                        </div>
+                      );
+                    })()}
                    </div>
+
 
                    {/* Schedule Actions */}
                    {hasSchedule && (
