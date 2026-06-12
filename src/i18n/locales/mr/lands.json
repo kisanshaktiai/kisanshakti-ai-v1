@@ -51,7 +51,8 @@
     "ownership": {
       "owned": "मालकीचे",
       "leased": "भाडेतत्त्वावर",
-      "shared": "सामायिक"
+      "shared": "सामायिक",
+      "contract": "करार"
     },
     "add_land": {
       "title": "नवीन जमीन जोडा",
@@ -239,7 +240,9 @@
         "label": "मालकीचा प्रकार",
         "owned": "स्वतःचे",
         "leased": "भाडेपट्टीवर",
-        "shared": "भागीदारी"
+        "shared": "भागीदारी",
+        "contract": "करार",
+        "unspecified": "निर्दिष्ट नाही"
       },
       "placeholders": {
         "select_state": "राज्य निवडा",

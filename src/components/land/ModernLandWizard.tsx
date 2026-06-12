@@ -34,7 +34,7 @@ interface LandFormData {
   // Basic Info
   name: string;
   survey_number: string;
-  ownership_type: 'owned' | 'leased' | 'shared';
+  ownership_type: 'owned' | 'leased' | 'shared' | 'contract';
   
   // Location
   state_id: string;
@@ -484,11 +484,12 @@ export function ModernLandWizard({ boundary, area, onComplete, onCancel }: Moder
                       <Label className="text-base mb-3 block">
                         {t('lands.wizard.ownership.label')} <span className="text-destructive">*</span>
                       </Label>
-                      <div className="grid grid-cols-3 gap-3">
+                      <div className="grid grid-cols-2 gap-3">
                         {[
                           { value: 'owned', label: t('lands.wizard.ownership.owned'), icon: '🏡' },
                           { value: 'leased', label: t('lands.wizard.ownership.leased'), icon: '📝' },
                           { value: 'shared', label: t('lands.wizard.ownership.shared'), icon: '🤝' },
+                          { value: 'contract', label: t('lands.wizard.ownership.contract'), icon: '📑' },
                         ].map((type) => (
                           <Card
                             key={type.value}

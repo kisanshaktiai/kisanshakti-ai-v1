@@ -36,6 +36,7 @@ interface Land {
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  ownership_type?: string;
   current_crop?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
@@ -90,6 +91,7 @@ export default function Schedule() {
         soil_type: land.soil_type || undefined,
         water_source: land.water_source || undefined,
         irrigation_type: land.irrigation_type || undefined,
+        ownership_type: (land as any).ownership_type || undefined,
         current_crop: land.current_crop || undefined,
         soil_ph: (land as any).soil_ph || undefined,
         organic_carbon_percent: (land as any).organic_carbon_percent || undefined,

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -45,18 +46,19 @@ import { cn } from '@/lib/utils';
 import { useLandFormData } from '@/hooks/useLandFormData';
 import { supabase } from '@/integrations/supabase/client';
 
-// Modern ownership type options
+// Modern ownership type options — labels resolved via i18n at render time.
 const ownershipTypes = [
-  { value: 'owned', label: 'Owned', icon: Home, color: 'text-success' },
-  { value: 'leased', label: 'Leased', icon: Trees, color: 'text-info' },
-  { value: 'shared', label: 'Shared', icon: Leaf, color: 'text-accent' },
+  { value: 'owned', labelKey: 'lands.wizard.ownership.owned', icon: Home, color: 'text-success' },
+  { value: 'leased', labelKey: 'lands.wizard.ownership.leased', icon: Trees, color: 'text-info' },
+  { value: 'shared', labelKey: 'lands.wizard.ownership.shared', icon: Leaf, color: 'text-accent' },
+  { value: 'contract', labelKey: 'lands.wizard.ownership.contract', icon: Home, color: 'text-warning' },
 ];
 
 // Simplified form schema - only essential fields
 const formSchema = z.object({
   name: z.string().min(2, 'Land name must be at least 2 characters'),
   survey_no: z.string().optional(),
-  ownership_type: z.enum(['owned', 'leased', 'shared']),
+  ownership_type: z.enum(['owned', 'leased', 'shared', 'contract']),
   soil_type: z.string().optional(),
   water_source: z.string().optional(),
   irrigation_type: z.string().optional(),
@@ -92,6 +94,7 @@ export function LandFormDialog({
   existingLandId
 }: LandFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { t } = useTranslation();
   const { soilTypes, waterSources, irrigationTypes, loading: dataLoading } = useLandFormData();
   
   const form = useForm<FormData>({
@@ -121,7 +124,7 @@ export function LandFormDialog({
           form.reset({
             name: data.name || '',
             survey_no: data.survey_number || '',
-            ownership_type: (data.ownership_type as 'owned' | 'leased' | 'shared') || 'owned',
+            ownership_type: (data.ownership_type as 'owned' | 'leased' | 'shared' | 'contract') || 'owned',
             soil_type: data.soil_type || '',
             water_source: data.water_source || '',
             irrigation_type: data.irrigation_type || '',
@@ -294,7 +297,7 @@ export function LandFormDialog({
                                     "text-xs font-medium",
                                     isSelected ? "text-primary" : "text-muted-foreground"
                                   )}>
-                                    {type.label}
+                                    {t(type.labelKey)}
                                   </span>
                                 </div>
                               </Card>

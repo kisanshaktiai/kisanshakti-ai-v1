@@ -16,6 +16,7 @@ import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
 import { VarietySelector } from '@/components/crops/VarietySelector';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface CropDateInputProps {
   land: {
@@ -27,6 +28,8 @@ interface CropDateInputProps {
     district?: string;
     soil_type?: string;
     water_source?: string;
+    irrigation_type?: string;
+    ownership_type?: string;
   };
   onSubmit: (
     cropName: string, 
@@ -53,6 +56,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
   const { toast } = useToast();
   const { t } = useTranslation();
   const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const [cropId, setCropId] = useState('');
   const [cropName, setCropName] = useState('');
   const [localizedCropName, setLocalizedCropName] = useState('');
@@ -203,7 +207,7 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap justify-end">
               {land.soil_type && (() => {
                 const d = refLabels.display(land.soil_type, 'soil');
                 return (
@@ -221,7 +225,19 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
                   </span>
                 );
               })()}
-
+              {land.irrigation_type && (() => {
+                const d = refLabels.display(land.irrigation_type, 'irrigation');
+                return (
+                  <span className={`text-xs px-2 py-1 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </span>
+                );
+              })()}
+              {land.ownership_type && (
+                <span className="text-xs px-2 py-1 rounded-full bg-muted/50 border border-border/40">
+                  {ownershipLabel(land.ownership_type)}
+                </span>
+              )}
             </div>
           </div>
         </div>

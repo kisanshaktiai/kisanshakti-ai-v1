@@ -22,6 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Skeleton } from '@/components/ui/skeleton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LandsSkeleton } from '@/components/skeletons';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface Land {
   id: string;
@@ -55,6 +56,7 @@ interface Land {
 
 export default function LandManagement() {
   const { t } = useTranslation();
+  const ownershipLabel = useOwnershipLabel();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
@@ -167,7 +169,7 @@ export default function LandManagement() {
             <div className="flex items-center gap-3 flex-shrink-0">
               <div className="text-right">
                 <p className="font-semibold text-sm">{land.area_acres} acres</p>
-                <p className="text-xs text-muted-foreground">{land.ownership_type || 'Owned'}</p>
+                <p className="text-xs text-muted-foreground">{ownershipLabel(land.ownership_type)}</p>
               </div>
               
               {land.current_crop && (

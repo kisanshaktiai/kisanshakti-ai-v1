@@ -421,5 +421,23 @@
       "medium": "சாதாரணம்",
       "low": "தகவல்"
     }
+  },
+  "lands": {
+    "wizard": {
+      "ownership": {
+        "label": "உரிமை வகை",
+        "owned": "சொந்தம்",
+        "leased": "குத்தகை",
+        "shared": "பகிர்ந்த",
+        "contract": "ஒப்பந்தம்",
+        "unspecified": "குறிப்பிடப்படவில்லை"
+      }
+    },
+    "ownership": {
+      "owned": "சொந்தம்",
+      "leased": "குத்தகை",
+      "shared": "பகிர்ந்த",
+      "contract": "ஒப்பந்தம்"
+    }
   }
 }
