@@ -3,9 +3,11 @@ import { motion } from 'framer-motion';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Sparkles, Calendar, TrendingUp, Volume2, IndianRupee } from 'lucide-react';
+import { Sparkles, Calendar, TrendingUp, Volume2, IndianRupee, Droplets } from 'lucide-react';
 import { format, differenceInDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface ModernScheduleCardProps {
   schedule: {
@@ -24,6 +26,12 @@ interface ModernScheduleCardProps {
   completedTasks: number;
   onViewSchedule: () => void;
   onSpeak?: () => void;
+  land?: {
+    soil_type?: string;
+    water_source?: string;
+    irrigation_type?: string;
+    ownership_type?: string;
+  };
 }
 
 const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
@@ -32,8 +40,11 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
   completedTasks,
   onViewSchedule,
   onSpeak,
+  land,
 }) => {
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
   const daysToHarvest = schedule.expected_harvest_date 
     ? differenceInDays(new Date(schedule.expected_harvest_date), new Date())
