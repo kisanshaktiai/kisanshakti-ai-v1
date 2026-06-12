@@ -48,7 +48,6 @@ interface Land {
   soil_type?: string;
   irrigation_source?: string;
   irrigation_type?: string;
-  taluka?: string;
   water_source?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
