@@ -483,7 +483,43 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
             )}
           </div>
         </div>
+
+        {/* Localized land-attribute chip strip */}
+        {landContext && (landContext.soil_type || landContext.water_source || landContext.irrigation_type || landContext.ownership_type) && (
+          <div className="flex items-center gap-1.5 flex-wrap mt-2">
+            {landContext.soil_type && (() => {
+              const d = refLabels.display(landContext.soil_type, 'soil');
+              return (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full bg-secondary/10 border border-secondary/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                  {d.text}
+                </span>
+              );
+            })()}
+            {landContext.water_source && (() => {
+              const d = refLabels.display(landContext.water_source, 'water');
+              return (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                  {d.text}
+                </span>
+              );
+            })()}
+            {landContext.irrigation_type && (() => {
+              const d = refLabels.display(landContext.irrigation_type, 'irrigation');
+              return (
+                <span className={`text-[10px] px-2 py-0.5 rounded-full bg-accent/10 border border-accent/20 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                  {d.text}
+                </span>
+              );
+            })()}
+            {landContext.ownership_type && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-muted/40 border border-border/40">
+                {ownershipLabel(landContext.ownership_type)}
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
 
 
       {/* Quick Stats Cards - Mobile Optimized */}
