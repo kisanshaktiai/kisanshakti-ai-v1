@@ -163,9 +163,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
               <p className="font-medium">{land.village || t('lands.wizard.form.location_details')}</p>
               {(land.district || land.state) && (
                 <p className="text-muted-foreground">
-                  {[refLabels.district(land.district) || land.district, land.state]
-                    .filter((v) => v && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v)))
-                    .join(', ')}
+                  {refLabels.location({ district: land.district, state: land.state })}
                 </p>
               )}
             </div>

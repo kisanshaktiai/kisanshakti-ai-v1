@@ -403,13 +403,12 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                     <div className="flex items-start gap-2">
                       <MapPin className="h-4 w-4 text-muted-foreground mt-0.5" />
                       <div className="text-sm text-muted-foreground">
-                        {(() => {
-                          const districtLabel = refLabels.district(land.district);
-                          const parts = [land.village, districtLabel, land.state].filter(
-                            (v) => v && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v)),
-                          );
-                          return parts.join(', ');
-                        })()}
+                        {refLabels.location({
+                          village: land.village,
+                          taluka: land.taluka,
+                          district: land.district,
+                          state: land.state,
+                        })}
                       </div>
                     </div>
                   )}
