@@ -458,11 +458,21 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                       );
                     })()}
 
-                    {land.ownership_type && (
-                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 border border-border/40">
-                        <span className="text-xs font-medium text-foreground">{ownershipLabel(land.ownership_type)}</span>
-                      </div>
-                    )}
+                    {land.ownership_type && (() => {
+                      const key = String(land.ownership_type).toLowerCase().trim();
+                      const styles: Record<string, string> = {
+                        owned: 'bg-success/15 border-success/30 text-success',
+                        leased: 'bg-info/15 border-info/30 text-info',
+                        shared: 'bg-warning/15 border-warning/30 text-warning',
+                        contract: 'bg-accent/20 border-accent/40 text-accent-foreground',
+                      };
+                      const cls = styles[key] || 'bg-muted/40 border-border/40 text-foreground';
+                      return (
+                        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border ${cls}`}>
+                          <span className="text-xs font-semibold">{ownershipLabel(land.ownership_type)}</span>
+                        </div>
+                      );
+                    })()}
                    </div>
 
 
