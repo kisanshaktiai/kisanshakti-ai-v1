@@ -60,6 +60,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
   const { apiKey, isLoaded } = useGoogleMapsApi();
   const { t } = useTranslation();
   const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   
   // Generate static map URL with boundary polygon
   const getStaticMapUrl = () => {
@@ -124,7 +125,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
             <div className="flex items-center gap-1">
               {land.ownership_type && (
                 <Badge variant="secondary" className="text-xs">
-                  {land.ownership_type}
+                  {ownershipLabel(land.ownership_type)}
                 </Badge>
               )}
               <DropdownMenu>
