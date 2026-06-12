@@ -317,7 +317,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
 
               
               {land.ownership_type && (
-                <Badge variant="outline" className="text-xs px-2 py-0.5">
+                <Badge variant="outline" className={`text-xs px-2 py-0.5 font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
                   {ownershipLabel(land.ownership_type)}
                 </Badge>
               )}

@@ -124,7 +124,7 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
             </div>
             <div className="flex items-center gap-1">
               {land.ownership_type && (
-                <Badge variant="secondary" className="text-xs">
+                <Badge variant="outline" className={`text-xs font-semibold ${ownershipChipClasses(land.ownership_type)}`}>
                   {ownershipLabel(land.ownership_type)}
                 </Badge>
               )}
