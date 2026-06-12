@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { CropManagementDialog } from './CropManagementDialog';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 import { format } from 'date-fns';
 
 interface LandCardProps {

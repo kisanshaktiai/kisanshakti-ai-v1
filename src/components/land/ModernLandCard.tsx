@@ -36,6 +36,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useVarietyLabel } from '@/hooks/useVarietyLabel';
 import { LandThumbnail } from './LandThumbnail';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface ModernLandCardProps {
   land: {
@@ -73,6 +74,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   const [isDeleting, setIsDeleting] = useState(false);
   const { label: varietyLabel } = useVarietyLabel(land.current_crop_variety_id);
   const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const soil = refLabels.display(land.soil_type, 'soil');
   const water = refLabels.display(land.water_source, 'water');
   const irrigation = refLabels.display(land.irrigation_type, 'irrigation');
@@ -316,7 +318,15 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
               
               {land.ownership_type && (
                 <Badge variant="outline" className="text-xs px-2 py-0.5">
-                  {land.ownership_type}
+                  {ownershipLabel(land.ownership_type)}
+                </Badge>
+              )}
+
+              {/* Water source chip (was previously rendered only as plain text in footer) */}
+              {land.water_source && (
+                <Badge variant="outline" className={`text-xs px-2 py-0.5 ${water.isFallback ? 'italic opacity-70' : ''}`}>
+                  <Droplets className="h-2.5 w-2.5 mr-1" />
+                  {water.text}
                 </Badge>
               )}
             </div>
