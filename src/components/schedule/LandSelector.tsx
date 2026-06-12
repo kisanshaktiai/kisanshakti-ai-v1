@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 
 interface Land {
   id: string;
@@ -54,6 +55,7 @@ interface Land {
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  ownership_type?: string;
   current_crop?: string;
   soil_ph?: number;
   organic_carbon_percent?: number;
@@ -101,6 +103,7 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
   const navigate = useNavigate();
   const { toast } = useToast();
   const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const { user } = useAuthStore();
   const { t } = useTranslation();
   const [scheduleStatuses, setScheduleStatuses] = useState<LandScheduleStatus[]>([]);
@@ -454,6 +457,12 @@ export default function LandSelector({ lands, onSelectLand, onViewSchedule, onEd
                         </div>
                       );
                     })()}
+
+                    {land.ownership_type && (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-muted/40 border border-border/40">
+                        <span className="text-xs font-medium text-foreground">{ownershipLabel(land.ownership_type)}</span>
+                      </div>
+                    )}
                    </div>
 
 
