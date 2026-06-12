@@ -246,7 +246,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.current')}</p>
                     <div className="flex items-center gap-1 flex-wrap">
                       <Wheat className="h-3 w-3 sm:h-4 sm:w-4 text-primary flex-shrink-0" />
-                      <span className="text-xs sm:text-sm font-medium truncate">{cropLabel || land.current_crop}</span>
+                      <span className={`text-xs sm:text-sm font-medium truncate ${crop.isFallback ? 'italic text-muted-foreground' : ''}`}>{crop.text}</span>
                       {varietyLabel && (
                         <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 h-4 sm:h-5">
                           {varietyLabel}
