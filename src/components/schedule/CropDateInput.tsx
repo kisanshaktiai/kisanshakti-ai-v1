@@ -16,7 +16,7 @@ import BackdatedConsentDialog from './BackdatedConsentDialog';
 import MultiIntercropSelector, { IntercropData } from './MultiIntercropSelector';
 import { VarietySelector } from '@/components/crops/VarietySelector';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
-import { useOwnershipLabel } from '@/lib/ownershipLabel';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface CropDateInputProps {
   land: {

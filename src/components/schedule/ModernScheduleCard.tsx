@@ -7,7 +7,7 @@ import { Sparkles, Calendar, TrendingUp, Volume2, IndianRupee, Droplets } from '
 import { format, differenceInDays } from 'date-fns';
 import { useTranslation } from 'react-i18next';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
-import { useOwnershipLabel } from '@/lib/ownershipLabel';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface ModernScheduleCardProps {
   schedule: {

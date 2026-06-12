@@ -36,7 +36,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { useVarietyLabel } from '@/hooks/useVarietyLabel';
 import { LandThumbnail } from './LandThumbnail';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
-import { useOwnershipLabel } from '@/lib/ownershipLabel';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface ModernLandCardProps {
   land: {

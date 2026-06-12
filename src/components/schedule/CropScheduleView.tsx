@@ -25,7 +25,7 @@ import { TaskPhotoUploadDialog } from './TaskPhotoUploadDialog';
 import { useSchedules } from '@/hooks/useSchedules';
 import { localDB } from '@/services/localDB';
 import { useLandRefLabels } from '@/hooks/useLandRefLabels';
-import { useOwnershipLabel } from '@/lib/ownershipLabel';
+import { useOwnershipLabel, ownershipChipClasses } from '@/lib/ownershipLabel';
 
 interface CropSchedule {
   id: string;
