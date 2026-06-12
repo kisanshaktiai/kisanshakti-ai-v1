@@ -51,7 +51,8 @@
     "ownership": {
       "owned": "स्वामित्व",
       "leased": "पट्टे पर",
-      "shared": "साझा"
+      "shared": "साझा",
+      "contract": "अनुबंध"
     },
     "list_item": {
       "acres": "एकड़",
@@ -235,7 +236,9 @@
         "label": "मालिकाना प्रकार",
         "owned": "स्वामित्व",
         "leased": "पट्टे पर",
-        "shared": "साझा"
+        "shared": "साझा",
+        "contract": "अनुबंध",
+        "unspecified": "निर्दिष्ट नहीं"
       },
       "placeholders": {
         "select_state": "राज्य चुनें",
