@@ -97,6 +97,44 @@ const ModernScheduleCard: React.FC<ModernScheduleCardProps> = ({
             )}
           </div>
 
+          {/* Localized land-attribute chips */}
+          {land && (land.soil_type || land.water_source || land.irrigation_type || land.ownership_type) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {land.soil_type && (() => {
+                const d = refLabels.display(land.soil_type, 'soil');
+                return (
+                  <Badge variant="outline" className={`text-[10px] px-2 py-0.5 bg-card/60 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </Badge>
+                );
+              })()}
+              {land.water_source && (() => {
+                const d = refLabels.display(land.water_source, 'water');
+                return (
+                  <Badge variant="outline" className={`text-[10px] px-2 py-0.5 bg-info/10 border-info/30 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    <Droplets className="h-2.5 w-2.5 mr-1" />
+                    {d.text}
+                  </Badge>
+                );
+              })()}
+              {land.irrigation_type && (() => {
+                const d = refLabels.display(land.irrigation_type, 'irrigation');
+                return (
+                  <Badge variant="outline" className={`text-[10px] px-2 py-0.5 bg-accent/10 border-accent/30 ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </Badge>
+                );
+              })()}
+              {land.ownership_type && (
+                <Badge variant="outline" className="text-[10px] px-2 py-0.5 bg-muted/40">
+                  {ownershipLabel(land.ownership_type)}
+                </Badge>
+              )}
+            </div>
+          )}
+
+
+
           {/* Stats Grid - 2030 Ready */}
           <div className="grid grid-cols-2 gap-3">
             {/* Sowing Date */}
