@@ -171,20 +171,27 @@ export function LandCard({ land, onEdit, onDelete }: LandCardProps) {
           
           {/* Land Details */}
           <div className="grid grid-cols-2 gap-3 text-sm">
-            {land.soil_type && (
-              <div className="flex items-center gap-1.5">
-                <div className="h-2 w-2 bg-warning rounded-full" />
-                <span className="text-muted-foreground">Soil:</span>
-                <span className="font-medium capitalize">{refLabels.soil(land.soil_type) || land.soil_type.replace('_', ' ')}</span>
-              </div>
-            )}
-            {land.water_source && (
-              <div className="flex items-center gap-1.5">
-                <Droplets className="h-3 w-3 text-info" />
-                <span className="text-muted-foreground">Water:</span>
-                <span className="font-medium capitalize">{refLabels.water(land.water_source) || land.water_source.replace('_', ' ')}</span>
-              </div>
-            )}
+            {land.soil_type && (() => {
+              const d = refLabels.display(land.soil_type, 'soil');
+              return (
+                <div className="flex items-center gap-1.5">
+                  <div className="h-2 w-2 bg-warning rounded-full" />
+                  <span className="text-muted-foreground">Soil:</span>
+                  <span className={`font-medium capitalize ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>{d.text}</span>
+                </div>
+              );
+            })()}
+            {land.water_source && (() => {
+              const d = refLabels.display(land.water_source, 'water');
+              return (
+                <div className="flex items-center gap-1.5">
+                  <Droplets className="h-3 w-3 text-info" />
+                  <span className="text-muted-foreground">Water:</span>
+                  <span className={`font-medium capitalize ${d.isFallback ? 'italic text-muted-foreground' : ''}`}>{d.text}</span>
+                </div>
+              );
+            })()}
+
           </div>
           
           {/* Crop Information Section */}
