@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -295,7 +296,7 @@ export function LandFormDialog({
                                     "text-xs font-medium",
                                     isSelected ? "text-primary" : "text-muted-foreground"
                                   )}>
-                                    {type.label}
+                                    {t(type.labelKey)}
                                   </span>
                                 </div>
                               </Card>
