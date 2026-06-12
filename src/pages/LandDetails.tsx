@@ -17,6 +17,8 @@ import { isolatedSupabase } from '@/services/dataIsolationService';
 import { supabase } from '@/integrations/supabase/client';
 import { Progress } from '@/components/ui/progress';
 import { LandDetailsSkeleton } from '@/components/skeletons';
+import { useLandRefLabels } from '@/hooks/useLandRefLabels';
+import { useOwnershipLabel } from '@/lib/ownershipLabel';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -87,6 +89,8 @@ interface CropHistory {
 export default function LandDetails() {
   const { id } = useParams<{ id: string }>();
   const { t } = useTranslation();
+  const refLabels = useLandRefLabels();
+  const ownershipLabel = useOwnershipLabel();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user } = useAuthStore();
@@ -457,11 +461,13 @@ export default function LandDetails() {
                 </div>
                 <div>
                   <p className="text-lg md:text-xl font-bold text-foreground line-clamp-1">
-                    {land.irrigation_source || t('lands.details.not_set')}
+                    {land.irrigation_type || land.irrigation_source
+                      ? refLabels.irrigation(land.irrigation_type || land.irrigation_source)
+                      : t('lands.details.not_set')}
                   </p>
                   {land.water_source && (
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-1">
-                      {land.water_source}
+                      {refLabels.water(land.water_source)}
                     </p>
                   )}
                 </div>
@@ -543,20 +549,23 @@ export default function LandDetails() {
                   
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.ownership_type_label')}</p>
-                    <p className="text-base font-semibold text-foreground">{land.ownership_type || t('lands.details.not_specified')}</p>
+                    <p className="text-base font-semibold text-foreground">{land.ownership_type ? ownershipLabel(land.ownership_type) : t('lands.details.not_specified')}</p>
                   </div>
                   
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.soil_type_label')}</p>
-                    <p className="text-base font-semibold text-foreground">{land.soil_type || t('lands.details.not_specified')}</p>
+                    <p className="text-base font-semibold text-foreground">{land.soil_type ? refLabels.soil(land.soil_type) : t('lands.details.not_specified')}</p>
                   </div>
                   
                   <div className="p-4 rounded-xl bg-muted/30 border border-border/30">
                     <p className="text-xs font-medium text-muted-foreground mb-1.5">{t('lands.details.location_label')}</p>
                     <p className="text-base font-semibold text-foreground">
-                      {[land.village, land.taluka, land.district, land.state]
-                        .filter(Boolean)
-                        .join(', ') || t('lands.details.not_specified')}
+                      {refLabels.location({
+                        village: land.village,
+                        taluka: (land as any).taluka,
+                        district: land.district,
+                        state: land.state,
+                      })}
                     </p>
                   </div>
                   
