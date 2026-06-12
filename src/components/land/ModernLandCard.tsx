@@ -73,12 +73,12 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
   const [isDeleting, setIsDeleting] = useState(false);
   const { label: varietyLabel } = useVarietyLabel(land.current_crop_variety_id);
   const refLabels = useLandRefLabels();
-  const soilLabel = refLabels.soil(land.soil_type);
-  const waterLabel = refLabels.water(land.water_source);
-  const irrigationLabel = refLabels.irrigation(land.irrigation_type);
-  const cropLabel = refLabels.crop(land.current_crop);
-  const previousCropLabel = refLabels.crop(land.previous_crop);
-  const districtLabel = refLabels.district(land.district);
+  const soil = refLabels.display(land.soil_type, 'soil');
+  const water = refLabels.display(land.water_source, 'water');
+  const irrigation = refLabels.display(land.irrigation_type, 'irrigation');
+  const crop = refLabels.display(land.current_crop, 'crop');
+  const previousCrop = refLabels.display(land.previous_crop, 'crop');
+
   
   // Removed inline map URL generation - now using LandThumbnail component
   
@@ -246,7 +246,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.current')}</p>
                     <div className="flex items-center gap-1 flex-wrap">
                       <Wheat className="h-3 w-3 sm:h-4 sm:w-4 text-primary flex-shrink-0" />
-                      <span className="text-xs sm:text-sm font-medium truncate">{cropLabel || land.current_crop}</span>
+                      <span className={`text-xs sm:text-sm font-medium truncate ${crop.isFallback ? 'italic text-muted-foreground' : ''}`}>{crop.text}</span>
                       {varietyLabel && (
                         <Badge variant="secondary" className="text-[10px] sm:text-xs px-1.5 py-0 h-4 sm:h-5">
                           {varietyLabel}
@@ -261,7 +261,7 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     <p className="text-xs text-muted-foreground">{t('lands.card.previous')}</p>
                     <div className="flex items-center gap-1">
                       <TreePine className="h-3 w-3 sm:h-4 sm:w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-xs sm:text-sm truncate">{previousCropLabel || land.previous_crop}</span>
+                      <span className={`text-xs sm:text-sm truncate ${previousCrop.isFallback ? 'italic text-muted-foreground' : ''}`}>{previousCrop.text}</span>
                     </div>
                   </div>
                 )}
@@ -300,18 +300,19 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
             {/* Land Details Tags */}
             <div className="flex flex-wrap gap-1.5">
               {land.irrigation_type && (
-                <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                <Badge variant="secondary" className={`text-xs px-2 py-0.5 ${irrigation.isFallback ? 'italic opacity-70' : ''}`}>
                   <Droplets className="h-2.5 w-2.5 mr-1" />
-                  {irrigationLabel || land.irrigation_type.replace('_', ' ')}
+                  {irrigation.text}
                 </Badge>
               )}
               
               {land.soil_type && (
-                <Badge variant="outline" className="text-xs px-2 py-0.5">
+                <Badge variant="outline" className={`text-xs px-2 py-0.5 ${soil.isFallback ? 'italic opacity-70' : ''}`}>
                   <Globe className="h-2.5 w-2.5 mr-1" />
-                  {soilLabel || land.soil_type.replace('_', ' ')}
+                  {soil.text}
                 </Badge>
               )}
+
               
               {land.ownership_type && (
                 <Badge variant="outline" className="text-xs px-2 py-0.5">
@@ -328,7 +329,8 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     village: land.village,
                     district: land.district,
                     state: land.state,
-                  }) || 'Location not set'}
+                  })}
+
                 </p>
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                   <Clock className="h-2.5 w-2.5" />

@@ -4,12 +4,22 @@
  * reference tables (soil_types, water_sources, irrigation_types, crops,
  * districts, talukas, states).
  *
- * Land rows store mixed payloads (e.g. soil_type='red_soil' OR 'Red Soil'
- * OR even a legacy label like 'Rainwater' when the DB has 'Rainwater
- * Harvesting'). This resolver normalizes via a multi-key lookup map
- * (id, value, slug, lowercased label) PLUS a substring/contains fallback.
+ * Resolution chain per value:
+ *   1. Multi-key lookup (id / value / slug / lowercased base label)
+ *   2. Contains-fallback (substring match against any row's base label)
+ *   3. UUID → treated as unresolved (never leaked to UI)
+ *   4. Free-text slug → humanized title-case
+ *   5. Empty/null/loading → localized friendly fallback via i18n
  *
- * Output language is the farmer-selected i18n language (`hi`, `mr`, ...).
+ * Public API:
+ *   - .soil(v) / .water(v) / .irrigation(v) / .crop(v)
+ *     / .district(v) / .taluka(v) / .state(v) → user-friendly string
+ *     (NEVER blank, NEVER a UUID — always safe to render)
+ *   - .status(v, kind) → 'ok' | 'humanized' | 'fallback' | 'loading'
+ *   - .display(v, kind) → { text, status, isFallback, loading }
+ *   - .location({village, taluka, district, state}) → joined string with
+ *     friendly fallback when nothing resolves.
+ *   - .loading → boolean (initial fetch in flight)
  */
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -18,6 +28,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { pickLocalized, normalizeLang, cols } from '@/lib/i18nRef';
 
 type Kind = 'soil' | 'water' | 'irrigation' | 'crop' | 'district' | 'taluka' | 'state';
+type Status = 'ok' | 'humanized' | 'fallback' | 'loading';
 
 const REF_KEY = ['ref', 'land-labels-all', 'v2'] as const;
 
@@ -39,10 +50,6 @@ async function fetchAll() {
   if (anyErr) {
     console.warn('[useLandRefLabels] fetch errors:', errors);
   }
-  console.log('[useLandRefLabels] loaded rows:', {
-    soil: soil.data?.length, water: water.data?.length, irrigation: irr.data?.length,
-    crops: crops.data?.length, district: dist.data?.length, taluka: tal.data?.length, state: st.data?.length,
-  });
 
   return {
     soil: soil.data || [],
@@ -60,14 +67,22 @@ const slugify = (s: string) => norm(s).replace(/[\s/]+/g, '_').replace(/[^a-z0-9
 const isUuid = (s: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
 
+export interface RefDisplay {
+  text: string;
+  status: Status;
+  /** True when label could NOT be resolved (placeholder / loading / humanized slug). */
+  isFallback: boolean;
+  loading: boolean;
+}
+
 export function useLandRefLabels() {
-  const { i18n } = useTranslation();
+  const { i18n, t } = useTranslation();
   const lang = normalizeLang(i18n.language);
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: REF_KEY,
     queryFn: fetchAll,
-    staleTime: 1000 * 60 * 60, // 1h
+    staleTime: 1000 * 60 * 60,
     gcTime: 1000 * 60 * 60 * 24,
     refetchOnWindowFocus: false,
     retry: 2,
@@ -109,19 +124,44 @@ export function useLandRefLabels() {
     const titleCase = (s: string) =>
       s.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase());
 
-    const resolve = (raw: string | null | undefined, kind: Kind): string => {
-      if (raw === null || raw === undefined) return '';
-      const original = String(raw);
-      if (!original.trim()) return '';
+    const fallbackKeyFor = (k: Kind): string => {
+      switch (k) {
+        case 'soil': return 'common.ref_fallback.soil_not_set';
+        case 'water': return 'common.ref_fallback.water_not_set';
+        case 'irrigation': return 'common.ref_fallback.irrigation_not_set';
+        case 'crop': return 'common.ref_fallback.crop_not_set';
+        case 'district': return 'common.ref_fallback.district_not_set';
+        case 'taluka': return 'common.ref_fallback.taluka_not_set';
+        case 'state': return 'common.ref_fallback.state_not_set';
+        default: return 'common.ref_fallback.not_specified';
+      }
+    };
 
-      const key = norm(original);
+    const friendlyFallback = (k: Kind) =>
+      t(fallbackKeyFor(k), { defaultValue: t('common.ref_fallback.not_specified', { defaultValue: 'Not specified' }) });
+
+    const loadingLabel = t('common.ref_fallback.loading', { defaultValue: 'Loading…' });
+
+    const display = (raw: string | null | undefined, kind: Kind): RefDisplay => {
+      const original = raw == null ? '' : String(raw);
+      const trimmed = original.trim();
+
+
+      if (!trimmed) {
+        return { text: friendlyFallback(kind), status: 'fallback', isFallback: true, loading: false };
+      }
+
+      // Loading + unresolved-looking raw → show loading rather than mis-humanize a UUID
+      if (isLoading && isUuid(trimmed)) {
+        return { text: loadingLabel, status: 'loading', isFallback: true, loading: true };
+      }
+
+      const key = norm(trimmed);
       const baseField = baseFieldFor(kind);
       const { map, rows } = maps[kind];
 
-      // 1. exact (id / value / slug / label)
-      let row = map.get(key) || map.get(slugify(original));
+      let row = map.get(key) || map.get(slugify(trimmed));
 
-      // 2. contains fallback — raw inside any row label, or row label inside raw
       if (!row && rows.length) {
         row = rows.find((r) => {
           const lab = norm(r[baseField] || '');
@@ -132,25 +172,36 @@ export function useLandRefLabels() {
 
       if (row) {
         const localized = pickLocalized(row, baseField, lang);
-        if (localized) return localized;
+        if (localized) return { text: localized, status: 'ok', isFallback: false, loading: false };
       }
 
-      // Unresolved UUID → blank (never leak IDs in UI)
-      if (isUuid(original)) return '';
-      // Legacy free-text fallback — humanize the slug
-      return titleCase(original);
+      // Unresolved UUID → never leak; show friendly placeholder
+      if (isUuid(trimmed)) {
+        return { text: friendlyFallback(kind), status: 'fallback', isFallback: true, loading: false };
+      }
+
+      // Legacy free-text → humanize, but mark as fallback so UI can de-emphasize
+      return { text: titleCase(trimmed), status: 'humanized', isFallback: true, loading: false };
     };
 
+    const text = (raw: string | null | undefined, kind: Kind) => display(raw, kind).text;
+
     return {
-      resolve,
-      soil: (v?: string | null) => resolve(v, 'soil'),
-      water: (v?: string | null) => resolve(v, 'water'),
-      irrigation: (v?: string | null) => resolve(v, 'irrigation'),
-      crop: (v?: string | null) => resolve(v, 'crop'),
-      district: (v?: string | null) => resolve(v, 'district'),
-      taluka: (v?: string | null) => resolve(v, 'taluka'),
-      state: (v?: string | null) => resolve(v, 'state'),
-      /** Format a location chain (village, taluka, district, state) — UUID-safe. */
+      loading: isLoading,
+      display,
+      status: (raw: string | null | undefined, kind: Kind): Status => display(raw, kind).status,
+      // Back-compat string helpers — always safe to render (never empty, never UUID).
+      soil: (v?: string | null) => text(v, 'soil'),
+      water: (v?: string | null) => text(v, 'water'),
+      irrigation: (v?: string | null) => text(v, 'irrigation'),
+      crop: (v?: string | null) => text(v, 'crop'),
+      district: (v?: string | null) => text(v, 'district'),
+      taluka: (v?: string | null) => text(v, 'taluka'),
+      state: (v?: string | null) => text(v, 'state'),
+      /**
+       * Format a location chain (village, taluka, district, state) — UUID-safe.
+       * Returns a localized "Location not set" placeholder when nothing resolves.
+       */
       location: (parts: {
         village?: string | null;
         taluka?: string | null;
@@ -158,15 +209,20 @@ export function useLandRefLabels() {
         state?: string | null;
       }) => {
         const out: string[] = [];
-        if (parts.village && !isUuid(parts.village)) out.push(parts.village);
-        const tal = resolve(parts.taluka, 'taluka');
-        if (tal) out.push(tal);
-        const dist = resolve(parts.district, 'district');
-        if (dist) out.push(dist);
-        const st = resolve(parts.state, 'state');
-        if (st) out.push(st);
-        return out.join(', ');
+        if (parts.village && !isUuid(parts.village) && parts.village.trim()) {
+          out.push(parts.village.trim());
+        }
+        const tal = display(parts.taluka, 'taluka');
+        if (tal.status === 'ok') out.push(tal.text);
+        const dist = display(parts.district, 'district');
+        if (dist.status === 'ok') out.push(dist.text);
+        const st = display(parts.state, 'state');
+        if (st.status === 'ok') out.push(st.text);
+
+        if (out.length) return out.join(', ');
+        if (isLoading) return loadingLabel;
+        return t('common.ref_fallback.location_not_set', { defaultValue: 'Location not set' });
       },
     };
-  }, [data, lang]);
+  }, [data, isLoading, lang, t]);
 }

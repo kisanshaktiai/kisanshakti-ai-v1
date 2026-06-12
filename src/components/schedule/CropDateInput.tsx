@@ -204,17 +204,24 @@ const CropDateInput: React.FC<CropDateInputProps> = ({
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {land.soil_type && (
-                <span className="text-xs px-2 py-1 rounded-full bg-white/50 dark:bg-black/30 backdrop-blur-sm">
-                  {refLabels.soil(land.soil_type) || land.soil_type}
-                </span>
-              )}
-              {land.water_source && (
-                <span className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20">
-                  <Droplets className="h-3 w-3 text-info" />
-                  <span className="text-info dark:text-info">{refLabels.water(land.water_source) || land.water_source}</span>
-                </span>
-              )}
+              {land.soil_type && (() => {
+                const d = refLabels.display(land.soil_type, 'soil');
+                return (
+                  <span className={`text-xs px-2 py-1 rounded-full bg-white/50 dark:bg-black/30 backdrop-blur-sm ${d.isFallback ? 'italic opacity-70' : ''}`}>
+                    {d.text}
+                  </span>
+                );
+              })()}
+              {land.water_source && (() => {
+                const d = refLabels.display(land.water_source, 'water');
+                return (
+                  <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-info/10 border border-info/20 ${d.isFallback ? 'opacity-70' : ''}`}>
+                    <Droplets className="h-3 w-3 text-info" />
+                    <span className={`text-info dark:text-info ${d.isFallback ? 'italic' : ''}`}>{d.text}</span>
+                  </span>
+                );
+              })()}
+
             </div>
           </div>
         </div>
