@@ -142,7 +142,7 @@ export function EditLandWizard({
     if (!formData.state_id) return;
     (async () => {
       const { data } = await supabase
-        .from('districts').select(cols('name', 'id'))
+        .from('districts').select('id,name')
         .eq('state_id', formData.state_id).order('name');
       const list = data || [];
       setDistricts(list);
