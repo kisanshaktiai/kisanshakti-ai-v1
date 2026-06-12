@@ -300,18 +300,19 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
             {/* Land Details Tags */}
             <div className="flex flex-wrap gap-1.5">
               {land.irrigation_type && (
-                <Badge variant="secondary" className="text-xs px-2 py-0.5">
+                <Badge variant="secondary" className={`text-xs px-2 py-0.5 ${irrigation.isFallback ? 'italic opacity-70' : ''}`}>
                   <Droplets className="h-2.5 w-2.5 mr-1" />
-                  {irrigationLabel || land.irrigation_type.replace('_', ' ')}
+                  {irrigation.text}
                 </Badge>
               )}
               
               {land.soil_type && (
-                <Badge variant="outline" className="text-xs px-2 py-0.5">
+                <Badge variant="outline" className={`text-xs px-2 py-0.5 ${soil.isFallback ? 'italic opacity-70' : ''}`}>
                   <Globe className="h-2.5 w-2.5 mr-1" />
-                  {soilLabel || land.soil_type.replace('_', ' ')}
+                  {soil.text}
                 </Badge>
               )}
+
               
               {land.ownership_type && (
                 <Badge variant="outline" className="text-xs px-2 py-0.5">
