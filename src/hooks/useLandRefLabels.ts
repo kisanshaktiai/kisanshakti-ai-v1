@@ -143,13 +143,9 @@ export function useLandRefLabels() {
     const loadingLabel = t('common.ref_fallback.loading', { defaultValue: 'Loading…' });
 
     const display = (raw: string | null | undefined, kind: Kind): RefDisplay => {
-      // Loading state — only when truly empty cache and an empty input would be ambiguous
-      if (isLoading && raw && !isUuid(String(raw)) === false) {
-        return { text: loadingLabel, status: 'loading', isFallback: true, loading: true };
-      }
-
       const original = raw == null ? '' : String(raw);
       const trimmed = original.trim();
+
 
       if (!trimmed) {
         return { text: friendlyFallback(kind), status: 'fallback', isFallback: true, loading: false };
