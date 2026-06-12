@@ -94,6 +94,7 @@ export function LandFormDialog({
   existingLandId
 }: LandFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { t } = useTranslation();
   const { soilTypes, waterSources, irrigationTypes, loading: dataLoading } = useLandFormData();
   
   const form = useForm<FormData>({
