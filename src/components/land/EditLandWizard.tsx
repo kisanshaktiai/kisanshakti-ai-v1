@@ -124,7 +124,7 @@ export function EditLandWizard({
   // Load states + resolve existing name → id chain
   useEffect(() => {
     (async () => {
-      const { data } = await supabase.from('states').select(cols('name', 'id')).order('name');
+      const { data } = await supabase.from('states').select('id,name').order('name');
       const list = data || [];
       setStates(list);
       if (existingData?.state) {
