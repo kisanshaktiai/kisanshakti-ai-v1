@@ -329,7 +329,8 @@ export const ModernLandCard = memo(function ModernLandCard({ land, onRefresh }: 
                     village: land.village,
                     district: land.district,
                     state: land.state,
-                  }) || 'Location not set'}
+                  })}
+
                 </p>
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                   <Clock className="h-2.5 w-2.5" />
