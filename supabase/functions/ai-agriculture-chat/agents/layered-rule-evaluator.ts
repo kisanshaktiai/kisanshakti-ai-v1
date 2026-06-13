@@ -81,14 +81,12 @@ import {
   checkMacronutrientDominance
 } from '../decision/nutrition-conflict-arbitrator.ts';
 
-// PHASE-16: Singleton instance for rule evaluation
-let symbolicReasonerInstance: SymbolicReasoner | null = null;
-
+// PHASE-16 / Task 3: no module-level singleton — returns a fresh reasoner
+// per call to prevent cross-tenant client/cache sharing in warm isolates.
+// Future Task 7 will thread `scope` through and switch this to
+// `buildSymbolicReasoner(scope)`.
 function getSymbolicReasoner(): SymbolicReasoner {
-  if (!symbolicReasonerInstance) {
-    symbolicReasonerInstance = new SymbolicReasoner();
-  }
-  return symbolicReasonerInstance;
+  return new SymbolicReasoner();
 }
 
 // ==================== TYPE DEFINITIONS ====================
