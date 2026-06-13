@@ -6011,9 +6011,23 @@ export class AIAgentOrchestrator {
         if (shouldRunSymbolicReasoner) {
           console.log('\n🧠 PHASE 2.7: Running Symbolic Reasoner (PRIMARY PATH)...');
           console.log(`   📊 Current rules_matched: ${layeredRuleResult?.rules_matched || 0}`);
+          const symbolicStart = Date.now();
+          scope?.emit({
+            stage: 'symbolic-reasoner',
+            kind: 'derive',
+            payload: {
+              event: 'reasoner_start',
+              prior_rules_matched: layeredRuleResult?.rules_matched || 0,
+              observation_count: allObservationsForPreAuth?.size ?? 0,
+            },
+          });
           try {
-            const symbolicReasoner = new SymbolicReasoner();
+            // Task 7d: when scope is present, use the scope-aware factory so
+            // the reasoner instance is cached on scope.turnCache.engineState
+            // and reuses scope.db instead of constructing its own client.
+            const symbolicReasoner = scope ? buildSymbolicReasoner(scope) : new SymbolicReasoner();
             const factExtractor = new FactExtractor();
+
             
             // ═══════════════════════════════════════════════════════════════════════════
             // [SSOT] AUTHORITATIVE LAND STATE - load from DB via the canonical loader
