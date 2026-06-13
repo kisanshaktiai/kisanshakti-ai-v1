@@ -30,9 +30,11 @@ import { recommendNextCrop, renderRecommendationMessage, cropLabel } from './nex
 // ═══════════════════════════════════════════════════════════════════════════
 import { 
   SymbolicReasoner,
+  buildSymbolicReasoner,
   type SymbolicFact,
   type InferenceResult 
 } from '../decision/symbolic-reasoner.ts';
+
 
 import { 
   FactExtractor,
@@ -2254,7 +2256,7 @@ export class AIAgentOrchestrator {
             visual_symptoms: allObservations,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
-          const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);
+          const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any, { scope });
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
           console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}, Responses: ${ruleResult.matched_responses?.length || 0}`);
@@ -5873,9 +5875,12 @@ export class AIAgentOrchestrator {
         
         layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
           prescriptionGateOverride: isPrescriptionGateOverride,
-          traceId: traceId
+          traceId: traceId,
+          // Task 7d: scope-aware Phase 3 trace events.
+          scope,
         });
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
+
         
         // PHASE-16: Safe array access with null checks
         const safeRulesApplied = Array.isArray(layeredRuleResult.rules_applied) ? layeredRuleResult.rules_applied : [];
@@ -6006,9 +6011,23 @@ export class AIAgentOrchestrator {
         if (shouldRunSymbolicReasoner) {
           console.log('\n🧠 PHASE 2.7: Running Symbolic Reasoner (PRIMARY PATH)...');
           console.log(`   📊 Current rules_matched: ${layeredRuleResult?.rules_matched || 0}`);
+          const symbolicStart = Date.now();
+          scope?.emit({
+            stage: 'symbolic-reasoner',
+            kind: 'derive',
+            payload: {
+              event: 'reasoner_start',
+              prior_rules_matched: layeredRuleResult?.rules_matched || 0,
+              observation_count: allObservationsForPreAuth?.size ?? 0,
+            },
+          });
           try {
-            const symbolicReasoner = new SymbolicReasoner();
+            // Task 7d: when scope is present, use the scope-aware factory so
+            // the reasoner instance is cached on scope.turnCache.engineState
+            // and reuses scope.db instead of constructing its own client.
+            const symbolicReasoner = scope ? buildSymbolicReasoner(scope) : new SymbolicReasoner();
             const factExtractor = new FactExtractor();
+
             
             // ═══════════════════════════════════════════════════════════════════════════
             // [SSOT] AUTHORITATIVE LAND STATE - load from DB via the canonical loader
@@ -6404,10 +6423,30 @@ export class AIAgentOrchestrator {
                 }
               }
             }
+            scope?.emit({
+              stage: 'symbolic-reasoner',
+              kind: 'decide',
+              payload: {
+                event: 'reasoner_complete',
+                duration_ms: Date.now() - symbolicStart,
+                rules_matched: layeredRuleResult?.rules_matched || 0,
+                primary_decision: layeredRuleResult?.primary_decision?.rule_id ?? null,
+              },
+            });
           } catch (symbolicError) {
             console.warn('   ⚠️ Symbolic Reasoner failed (non-blocking):', symbolicError);
+            scope?.emit({
+              stage: 'symbolic-reasoner',
+              kind: 'error',
+              payload: {
+                event: 'reasoner_failed',
+                duration_ms: Date.now() - symbolicStart,
+                message: symbolicError instanceof Error ? symbolicError.message : String(symbolicError),
+              },
+            });
           }
         }
+
         
       } catch (canonicalError) {
         console.error('   ❌ Canonical State Builder failed (non-blocking):', canonicalError);

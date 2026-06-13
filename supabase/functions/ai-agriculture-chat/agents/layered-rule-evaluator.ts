@@ -2,6 +2,10 @@
 // PHASE-17: Enhanced with graph control, temporal constraints, and ETL validation
 // Rules loaded from database at runtime to prevent bundle timeout
 
+// Task 7d (2026-06-13): per-request scope (type-only import, zero runtime cost).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 import { 
   CanonicalState, 
   DataConfidence,
@@ -415,11 +419,28 @@ export function evaluateRulesLayered(
     /** When PrescriptionGate overrides LOW confidence due to strong symptom evidence,
      *  this flag relaxes the pre-selection confidence gate from 0.60 → 0.40 */
     prescriptionGateOverride?: boolean;
+    /**
+     * Task 7d: per-request scope. Used purely for structured Phase 3 trace
+     * events — the evaluator itself is a pure function and does not touch DB.
+     */
+    scope?: RequestScope;
   }
 ): LayeredRuleResult {
   // PHASE-16: Safe initialization - prevent undefined errors
   const safeRules = Array.isArray(rules) ? rules : [];
   const traceId = options?.traceId || `eval_${Date.now()}`;
+  const scope = options?.scope;
+  const phase3Start = Date.now();
+  scope?.emit({
+    stage: 'rule-evaluator',
+    kind: 'derive',
+    payload: {
+      event: 'layered_eval_start',
+      rule_count: safeRules.length,
+      prescription_gate_override: !!options?.prescriptionGateOverride,
+    },
+  });
+
   
   const result: LayeredRuleResult = {
     rules_evaluated: 0,
@@ -448,8 +469,20 @@ export function evaluateRulesLayered(
   // PHASE-16: Early return if no rules to evaluate
   if (safeRules.length === 0) {
     console.warn('⚠️ [LayeredRuleEvaluator] No rules to evaluate - returning empty result');
+    scope?.emit({
+      stage: 'rule-evaluator',
+      kind: 'derive',
+      payload: {
+        event: 'layered_eval_complete',
+        rules_evaluated: 0,
+        rules_matched: 0,
+        reason: 'no_rules_to_evaluate',
+        duration_ms: Date.now() - phase3Start,
+      },
+    });
     return result;
   }
+
   
   // PHASE-17: Graph control context - track fired rules and their blocking relationships
   const firedRules = new Map<string, string[]>(); // rule_id -> blocks_rule_ids
@@ -1180,8 +1213,26 @@ export function evaluateRulesLayered(
   console.log(`   Blocked by ETL: ${result.rules_blocked_by_etl.length}`);
   console.log(`   Safety warnings: ${result.safety_warnings.length}`);
   
+  scope?.emit({
+    stage: 'rule-evaluator',
+    kind: 'decide',
+    payload: {
+      event: 'layered_eval_complete',
+      rules_evaluated: result.rules_evaluated,
+      rules_matched: result.rules_matched,
+      matched_responses: result.matched_responses.length,
+      eligible_for_primary: eligibleResponses.length,
+      primary_decision: result.primary_decision?.rule_id ?? null,
+      safety_warnings: result.safety_warnings.length,
+      blocked_by_graph: result.rules_blocked_by_graph.length,
+      blocked_by_etl: result.rules_blocked_by_etl.length,
+      duration_ms: Date.now() - phase3Start,
+    },
+  });
+
   return result;
 }
+
 
 function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
   const grouped = new Map<RuleCategory, Rule[]>();
