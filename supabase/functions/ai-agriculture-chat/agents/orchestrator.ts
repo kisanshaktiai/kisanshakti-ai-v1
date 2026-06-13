@@ -7619,29 +7619,68 @@ export class AIAgentOrchestrator {
     message: string,
     sessionId: string,
     language?: string,
-    landContext?: any
+    landContext?: any,
+    scope?: RequestScope,
   ): Promise<NLUOutput> {
-    return await processNLUAgent({
-      raw_input: message,
-      conversation_context: {
-        previous_turns: [],
-        session_state: 'NEW'
+    // Task 7b (2026-06-13): emit Phase 1 NLU trace boundaries so the per-turn
+    // causal trace surfaces NLU latency without us having to refactor the
+    // entire nlu-agent.ts (deferred to a later sub-stage).
+    scope?.emit({
+      stage: 'nlu',
+      kind: 'derive',
+      payload: {
+        event: 'nlu_start',
+        language: language || 'en',
+        has_land_context: !!landContext,
+        message_chars: message?.length ?? 0,
       },
-      input_metadata: {
-        language_detected: language || 'en',
-        input_method: 'TEXT',
-        timestamp: new Date().toISOString(),
-        session_id: sessionId
-      },
-      // CRITICAL FIX: Pass land context to NLU for crop/stage inference
-      land_context: landContext ? {
-        crop_code: this.normalizeCropCode(landContext.current_crop),
-        crop_stage: landContext.growth_stage,
-        land_id: landContext.land_id,
-        days_after_sowing: landContext.days_since_sowing
-      } : undefined
     });
+    const nluStart = performance.now();
+    try {
+      const out = await processNLUAgent({
+        raw_input: message,
+        conversation_context: {
+          previous_turns: [],
+          session_state: 'NEW'
+        },
+        input_metadata: {
+          language_detected: language || 'en',
+          input_method: 'TEXT',
+          timestamp: new Date().toISOString(),
+          session_id: sessionId
+        },
+        // CRITICAL FIX: Pass land context to NLU for crop/stage inference
+        land_context: landContext ? {
+          crop_code: this.normalizeCropCode(landContext.current_crop),
+          crop_stage: landContext.growth_stage,
+          land_id: landContext.land_id,
+          days_after_sowing: landContext.days_since_sowing
+        } : undefined
+      });
+      scope?.emit({
+        stage: 'nlu',
+        kind: 'derive',
+        payload: {
+          event: 'nlu_complete',
+          duration_ms: Math.round(performance.now() - nluStart),
+          intent: (out as any)?.detected_intent || (out as any)?.intent || null,
+        },
+      });
+      return out;
+    } catch (err) {
+      scope?.emit({
+        stage: 'nlu',
+        kind: 'error',
+        payload: {
+          event: 'nlu_failed',
+          duration_ms: Math.round(performance.now() - nluStart),
+          message: err instanceof Error ? err.message : String(err),
+        },
+      });
+      throw err;
+    }
   }
+
   
   /**
    * Normalize crop name to crop code
