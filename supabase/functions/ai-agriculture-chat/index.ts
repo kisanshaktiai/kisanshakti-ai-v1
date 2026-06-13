@@ -23,6 +23,16 @@ import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } fro
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 
+// Task 7a: per-request scope + typed engine errors
+import {
+  createRequestScope,
+  EngineDataError,
+  IntentResolutionError,
+  InvariantViolation,
+  type RequestScope,
+} from './runtime/request-scope.ts';
+
+
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
 import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent } from './agents/deterministic-response-builder.ts';
