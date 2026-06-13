@@ -15,6 +15,11 @@
  * All biological logic comes from database tables. Zero hardcoded rules.
  */
 
+// Task 7c (2026-06-13): per-request scope threading. Type-only import keeps
+// runtime cost zero for non-scope callers (e.g. proactive batch jobs).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
