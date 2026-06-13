@@ -660,8 +660,18 @@ export class SymbolicReasoner {
       .limit(500);
     
     if (error) {
+      // Task 6: fail-closed. A DB fault while loading rules MUST NOT silently
+      // produce a zero-rule decision (that previously surfaced as "no advice
+      // available" or, worse, an LLM-narrated fallback that violated the
+      // database-only invariant). The orchestrator boundary in index.ts
+      // converts this to a 500 with the causal trace.
       console.error('❌ Failed to load rules:', error);
-      return [];
+      const { EngineDataError } = await import('../runtime/request-scope.ts');
+      throw new EngineDataError('RULE_LOAD_DB_ERROR', {
+        cropCode: dbCode,
+        variants: [...variants],
+        dbError: error.message,
+      });
     }
     
     const allRules = data || [];
