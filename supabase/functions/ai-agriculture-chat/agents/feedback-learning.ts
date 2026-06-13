@@ -127,6 +127,9 @@ export class FeedbackLearningEngine {
       .not('follow_up_data->day_14_check', 'is', null);
     
     if (error) {
+      // FAIL-OPEN BY DESIGN (Task 6): treatment outcomes power offline
+      // confidence-score tuning, not request-time decisions. A DB fault here
+      // must degrade silently so the live advisory pipeline keeps running.
       console.error('Failed to get outcomes:', error);
       return [];
     }
