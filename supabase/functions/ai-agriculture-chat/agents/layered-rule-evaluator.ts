@@ -1213,8 +1213,26 @@ export function evaluateRulesLayered(
   console.log(`   Blocked by ETL: ${result.rules_blocked_by_etl.length}`);
   console.log(`   Safety warnings: ${result.safety_warnings.length}`);
   
+  scope?.emit({
+    stage: 'rule-evaluator',
+    kind: 'decide',
+    payload: {
+      event: 'layered_eval_complete',
+      rules_evaluated: result.rules_evaluated,
+      rules_matched: result.rules_matched,
+      matched_responses: result.matched_responses.length,
+      eligible_for_primary: eligibleResponses.length,
+      primary_decision: result.primary_decision?.rule_id ?? null,
+      safety_warnings: result.safety_warnings.length,
+      blocked_by_graph: result.rules_blocked_by_graph.length,
+      blocked_by_etl: result.rules_blocked_by_etl.length,
+      duration_ms: Date.now() - phase3Start,
+    },
+  });
+
   return result;
 }
+
 
 function groupRulesByCategory(rules: Rule[]): Map<RuleCategory, Rule[]> {
   const grouped = new Map<RuleCategory, Rule[]>();
