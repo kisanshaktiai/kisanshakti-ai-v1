@@ -238,35 +238,43 @@ export async function getValidObservationCodes(
 export async function resolveIntentToObservations(
   input: IntentResolverInput
 ): Promise<IntentResolverOutput> {
-  const { intent_code, crop_code, days_since_sowing } = input;
-  
+  const { intent_code, crop_code, days_since_sowing, scope } = input;
+
   console.log(`\n🔍 [IntentResolver v${INTENT_RESOLVER_VERSION}] Resolving intent...`);
   console.log(`   Intent: ${intent_code}`);
   console.log(`   Crop: ${crop_code}, DAS: ${days_since_sowing}`);
-  
+
   try {
     // 1. Get growth stage from database
-    const growthStage = input.growth_stage || await getStageFromDASDatabase(crop_code, days_since_sowing);
-    
+    const growthStage =
+      input.growth_stage ||
+      (await getStageFromDASDatabase(crop_code, days_since_sowing, scope));
+
     console.log(`   Stage: ${growthStage}`);
-    
-    // 2. Get valid observation codes for this intent + crop + DAS
+
+    // 2. Get valid observation codes for this intent + crop + DAS + stage
     const mappings = await getValidObservationCodes(
       intent_code,
       crop_code,
-      days_since_sowing
+      days_since_sowing,
+      growthStage,
+      scope
     );
-    
-    // ═══════════════════════════════════════════════════════════════════════════
-    // MANDATORY MAPPING GATE: If no mapping found, HALT pipeline
-    // Do NOT proceed with empty mapping — log explicit error
-    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ═════════════════════════════════════════════════════════════════════
+    // MANDATORY MAPPING GATE: empty result is a legitimate "no mapping"
+    // outcome (not a fault). Return success:false with a structured error
+    // so the caller can degrade gracefully.
+    // ═════════════════════════════════════════════════════════════════════
     if (!mappings || mappings.length === 0) {
-      const errorMsg = `MANDATORY_MAPPING_FAILED: No observation mappings found for intent=${intent_code}, crop=${crop_code}, DAS=${days_since_sowing}`;
+      const errorMsg = `MANDATORY_MAPPING_FAILED: No observation mappings found for intent=${intent_code}, crop=${crop_code}, DAS=${days_since_sowing}, stage=${growthStage}`;
       console.error(`🚨 [IntentResolver] ${errorMsg}`);
-      console.error(`   Pipeline HALTED — cannot proceed without observation mappings`);
-      console.error(`   Check intent_observation_mapping table for intent_code=${intent_code}`);
-      
+      scope?.emit({
+        stage: 'intent-resolver',
+        kind: 'block',
+        payload: { intent_code, crop_code, das: days_since_sowing, growthStage },
+      });
+
       return {
         success: false,
         intent_code,
@@ -274,39 +282,38 @@ export async function resolveIntentToObservations(
         growth_stage: growthStage,
         observation_codes: [],
         confidence_ranks: [],
-        error: errorMsg
+        error: errorMsg,
       };
     }
-    
-    // 3. Extract codes and ranks into parallel arrays
-    const observation_codes = mappings.map(m => m.observation_code);
-    const confidence_ranks = mappings.map(m => m.confidence_rank);
-    
+
+    const observation_codes = mappings.map((m) => m.observation_code);
+    const confidence_ranks = mappings.map((m) => m.confidence_rank);
+
     console.log(`   Found: ${observation_codes.length} observation codes`);
-    
+
     return {
       success: true,
       intent_code,
       crop_code: crop_code.toUpperCase(),
       growth_stage: growthStage,
       observation_codes,
-      confidence_ranks
+      confidence_ranks,
     };
-    
   } catch (error) {
-    console.error(`❌ [IntentResolver] Error: ${error}`);
-    
-    return {
-      success: false,
+    // DB-fault path: re-throw typed errors so the orchestrator boundary
+    // can convert them to `{ error, trace_id }` 500 (fail-closed). Unknown
+    // errors are wrapped in IntentResolutionError to preserve the contract.
+    if (error instanceof IntentResolutionError) throw error;
+    console.error(`❌ [IntentResolver] Unexpected error: ${error}`);
+    throw new IntentResolutionError('UNEXPECTED_RESOLVER_ERROR', {
       intent_code,
-      crop_code: crop_code.toUpperCase(),
-      growth_stage: 'UNKNOWN',
-      observation_codes: [],
-      confidence_ranks: [],
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
+      crop_code,
+      das: days_since_sowing,
+      cause: error instanceof Error ? error.message : String(error),
+    });
   }
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VALIDATION HELPER - PURE SYMBOLIC
