@@ -2256,7 +2256,7 @@ export class AIAgentOrchestrator {
             visual_symptoms: allObservations,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
-          const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any);
+          const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any, { scope });
           
           console.log(`   ✅ Rules matched: ${ruleResult.rules_matched}, Applied: ${ruleResult.rules_applied.length}`);
           console.log(`   📋 Diagnoses: ${ruleResult.diagnoses.length}, Prescriptions: ${ruleResult.prescriptions.length}, Responses: ${ruleResult.matched_responses?.length || 0}`);
