@@ -318,17 +318,13 @@ export class ClarificationValidator {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// FACTORY (Type B — stateless class, see context-validator.ts for rationale)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let validatorInstance: ClarificationValidator | null = null;
-
 export function getClarificationValidator(): ClarificationValidator {
-  if (!validatorInstance) {
-    validatorInstance = new ClarificationValidator();
-  }
-  return validatorInstance;
+  return new ClarificationValidator();
 }
+
 
 // Export convenience functions
 export function validateClarificationOptions(options: string[] | DynamicOption[]): ClarificationValidationResult {
