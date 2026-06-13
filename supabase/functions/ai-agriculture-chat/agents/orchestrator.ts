@@ -3353,6 +3353,8 @@ export class AIAgentOrchestrator {
         agentsUsed.push('INFO_MODULE_ROUTE');
         
         // Generate direct LLM response for info-only queries
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'INFO_MODULE', intent: intentCode } });
+        const _infoStart = Date.now();
         const infoResponse = await generateLLMResponse({
           farmer_message: safeFarmerMessage,
            language: options.language || 'mr',
@@ -3362,6 +3364,7 @@ export class AIAgentOrchestrator {
             days_since_sowing: landContext.days_since_sowing
           } : undefined
         });
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_complete', path: 'INFO_MODULE', duration_ms: Date.now() - _infoStart } });
         
         return {
           type: 'DECISION_PROVIDED',
@@ -3419,10 +3422,13 @@ export class AIAgentOrchestrator {
           console.log(`   🔀 [PATCH 6] HYBRID route without crop → routing to LLM info response`);
           agentsUsed.push('HYBRID_ROUTE_INFO');
           
+          scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'HYBRID_INFO', intent: intentCode } });
+          const _hybridStart = Date.now();
           const hybridResponse = await generateLLMResponse({
             farmer_message: safeFarmerMessage,
             language: options.language || 'mr'
           });
+          scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_complete', path: 'HYBRID_INFO', duration_ms: Date.now() - _hybridStart } });
           
           return {
             type: 'DECISION_PROVIDED',
@@ -5186,7 +5192,10 @@ export class AIAgentOrchestrator {
           } : undefined
         };
         
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'LLM_DIRECT' } });
+        const _llmStart = Date.now();
         const llmResponse = await generateLLMResponse(llmInput);
+        scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_complete', path: 'LLM_DIRECT', duration_ms: Date.now() - _llmStart } });
         
         // Build data audit for LLM-direct path too
         const weatherData = await this.fetchWeatherData(sessionId, options.landId);
@@ -6915,6 +6924,8 @@ export class AIAgentOrchestrator {
         
         // SafetyGuardian verification
         try {
+          scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_start', path: 'IMMEDIATE' } });
+          const _safetyStart = Date.now();
           const immediateSafetyVerification = await this.safetyGuardian.verifySafety(
             decisionOutput,
             {
@@ -6929,6 +6940,7 @@ export class AIAgentOrchestrator {
             layeredRuleResult?.primary_decision?.weighted_confidence || 0.7
           );
           agentsUsed.push('Safety');
+          scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_complete', path: 'IMMEDIATE', approved: immediateSafetyVerification.approved, status: immediateSafetyVerification.safety_check?.overall_safety_status, emergency: !!immediateSafetyVerification.emergency_protocol?.emergency_detected, duration_ms: Date.now() - _safetyStart } });
           
           if (immediateSafetyVerification.emergency_protocol?.emergency_detected) {
             return {
@@ -7381,6 +7393,8 @@ export class AIAgentOrchestrator {
       }
       
       // Continue with standard Safety Guardian verification
+      scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_start', path: 'STANDARD' } });
+      const _stdSafetyStart = Date.now();
       const safetyVerification = await this.safetyGuardian.verifySafety(
         decisionOutput,
         {
@@ -7397,6 +7411,7 @@ export class AIAgentOrchestrator {
       
       agentsUsed.push('Safety');
       console.log('   ✅ Safety status:', safetyVerification.safety_check.overall_safety_status);
+      scope?.emit({ stage: 'safety', kind: 'derive', payload: { event: 'safety_verify_complete', path: 'STANDARD', approved: safetyVerification.approved, status: safetyVerification.safety_check?.overall_safety_status, emergency: !!safetyVerification.emergency_protocol?.emergency_detected, duration_ms: Date.now() - _stdSafetyStart } });
       
       // Handle emergency
       if (safetyVerification.emergency_protocol?.emergency_detected) {
