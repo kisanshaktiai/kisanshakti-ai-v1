@@ -886,6 +886,16 @@ export async function runCausalHypothesisArbitration(
 
   if (!cropHasHypotheses) {
     console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
+    scope?.emit({
+      stage: 'hypothesis',
+      kind: 'derive',
+      payload: {
+        event: 'arbitration_complete',
+        decision_path: 'FULL_RULE_SCOPE',
+        hypotheses_evaluated: 0,
+        duration_ms: Date.now() - startTime,
+      },
+    });
     return {
       best_hypothesis: null,
       competing: [],
@@ -896,6 +906,7 @@ export async function runCausalHypothesisArbitration(
       hypotheses_evaluated: 0
     };
   }
+
 
   // Score all hypotheses
   const scores: HypothesisScore[] = data.hypotheses.map(h => 
