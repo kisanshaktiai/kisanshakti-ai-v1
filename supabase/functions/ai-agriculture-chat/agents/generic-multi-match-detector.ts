@@ -174,6 +174,10 @@ export async function detectCompetingMatches(
     .in('rule_id', ruleIds);
 
   if (error) {
+    // FAIL-OPEN BY DESIGN (Task 6): clarification differentiation is a UX
+    // enhancement, not a decision gate. A DB fault here suppresses the
+    // clarification prompt and the engine returns the primary diagnosis
+    // unchanged — preferable to throwing on every turn during a brownout.
     console.error('   ❌ [MultiMatch] Database fetch error:', error);
     return [];
   }

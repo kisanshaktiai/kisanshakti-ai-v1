@@ -124,6 +124,10 @@ async function loadRotationRules(supabase: any): Promise<any[]> {
     .eq('category', 'crop_rotation')
     .eq('is_active', true);
   if (error) {
+    // FAIL-OPEN BY DESIGN (Task 6): next-crop is an advisory feature; when
+    // the rotation-rules table is unreachable the recommender returns no
+    // suggestions rather than crashing the chat turn. The empty array is
+    // distinguishable from "no rules matched" via the caller's empty check.
     console.error('[next-crop-recommender] load rules failed:', error.message);
     return [];
   }
