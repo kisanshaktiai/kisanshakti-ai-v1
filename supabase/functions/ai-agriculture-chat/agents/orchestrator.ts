@@ -4694,7 +4694,7 @@ export class AIAgentOrchestrator {
       let nluOutput: NLUOutput | null = null;
       try {
         // Use processed message (could be matched option text) for NLU
-        nluOutput = await this.processNLU(processedFarmerMessage, sessionId, options.language, landContext);
+        nluOutput = await this.processNLU(processedFarmerMessage, sessionId, options.language, landContext, scope);
         agentsUsed.push('NLU');
         console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
       } catch (nluError) {
