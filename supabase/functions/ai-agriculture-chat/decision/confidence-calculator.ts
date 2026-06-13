@@ -426,17 +426,13 @@ export class ConfidenceCalculator {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// FACTORY (Type B — stateless class, see context-validator.ts for rationale)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let calculatorInstance: ConfidenceCalculator | null = null;
-
 export function getConfidenceCalculator(): ConfidenceCalculator {
-  if (!calculatorInstance) {
-    calculatorInstance = new ConfidenceCalculator();
-  }
-  return calculatorInstance;
+  return new ConfidenceCalculator();
 }
+
 
 // Export convenience function
 export function calculateDecisionConfidenceV2(input: ConfidenceInput): ConfidenceScore {

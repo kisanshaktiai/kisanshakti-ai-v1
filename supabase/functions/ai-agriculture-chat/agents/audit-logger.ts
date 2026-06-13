@@ -230,9 +230,17 @@ export interface AuditValidation {
 export class AuditLogger {
   private supabase: ReturnType<typeof createClient>;
   private currentTurn: Partial<TurnAuditLog> = {};
-  
-  constructor() {
-    this.supabase = createClient(
+
+  /**
+   * Preferred: pass the per-request Supabase client from `RequestScope.db`
+   * so the logger never holds a process-global connection or per-tenant
+   * `currentTurn` state across requests.
+   *
+   * Back-compat: when no client is provided we still construct one with the
+   * service-role key (legacy callers in orchestrator.ts pre-Task-7).
+   */
+  constructor(supabaseClient?: ReturnType<typeof createClient>) {
+    this.supabase = supabaseClient ?? createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
@@ -705,16 +713,42 @@ export class AuditLogger {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// SCOPE-AWARE FACTORY  +  LEGACY SHIM
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// `AuditLogger` is a **Type A** singleton: it holds a Supabase client AND
+// per-turn mutable state (`currentTurn`). Sharing it across requests in a
+// warm isolate caused cross-tenant audit-row contamination.
+//
+// Canonical API: `buildAuditLogger(scope)` — returns a per-request instance
+// cached on `scope.turnCache.engineState['audit:logger']`. Use this in all
+// new code, and migrate existing callers as part of Task 7.
+//
+// The legacy `getAuditLogger()` shim remains ONLY for orchestrator.ts call
+// sites that have not yet been threaded with `scope`. It must be deleted
+// once Task 7 completes.
 
-let auditLoggerInstance: AuditLogger | null = null;
+import type { RequestScope } from '../runtime/request-scope.ts';
 
+const AUDIT_LOGGER_SLOT = 'audit:logger';
+
+export function buildAuditLogger(scope: RequestScope): AuditLogger {
+  const cached = scope.turnCache.engineState.get(AUDIT_LOGGER_SLOT) as
+    | AuditLogger
+    | undefined;
+  if (cached) return cached;
+  const instance = new AuditLogger(scope.db as unknown as ReturnType<typeof createClient>);
+  scope.turnCache.engineState.set(AUDIT_LOGGER_SLOT, instance);
+  return instance;
+}
+
+/**
+ * @deprecated Use `buildAuditLogger(scope)`. This legacy shim returns a
+ * **fresh** logger on every call (no module-level singleton) to eliminate
+ * cross-tenant `currentTurn` leakage while Task 7 migrates orchestrator.ts.
+ */
 export function getAuditLogger(): AuditLogger {
-  if (!auditLoggerInstance) {
-    auditLoggerInstance = new AuditLogger();
-  }
-  return auditLoggerInstance;
+  return new AuditLogger();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

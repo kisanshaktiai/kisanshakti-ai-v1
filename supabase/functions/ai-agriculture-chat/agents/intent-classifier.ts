@@ -26,7 +26,12 @@ console.log(`[IntentClassifier] MODULE_LOAD version=${INTENT_CLASSIFIER_VERSION}
 // ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL INTENT REGISTRY (Fix 1) — loaded once per cold start from DB
 // ═══════════════════════════════════════════════════════════════════════════
-
+// LEAKAGE-SAFETY (Task 3, Q3 — leave-with-comment):
+// These two module-level variables hold a read-mostly GLOBAL lookup of
+// canonical intent codes. Intent codes are tenant-agnostic and immutable for
+// the lifetime of an isolate, so sharing across warm requests is safe AND
+// avoids a DB round-trip on every request (p95 latency win). The forbidden-
+// pattern guardrail explicitly allow-lists these names.
 let _validIntentCodes: Set<string> | null = null;
 let _validIntentCodesPromise: Promise<Set<string>> | null = null;
 

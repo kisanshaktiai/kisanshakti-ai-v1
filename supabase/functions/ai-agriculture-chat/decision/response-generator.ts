@@ -297,17 +297,13 @@ export class ResponseGenerator {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// FACTORY (Type B — stateless class, see context-validator.ts for rationale)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let generatorInstance: ResponseGenerator | null = null;
-
 export function getResponseGenerator(): ResponseGenerator {
-  if (!generatorInstance) {
-    generatorInstance = new ResponseGenerator();
-  }
-  return generatorInstance;
+  return new ResponseGenerator();
 }
+
 
 export function generateFarmerResponse(input: ResponseInput): GeneratedResponse {
   const generator = getResponseGenerator();

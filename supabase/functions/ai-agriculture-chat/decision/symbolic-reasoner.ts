@@ -1613,24 +1613,40 @@ export class SymbolicReasoner {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// SCOPE-AWARE FACTORY  +  LEGACY SHIM
 // ═══════════════════════════════════════════════════════════════════════════
+//
+// `SymbolicReasoner` is a **Type A** singleton: it holds a Supabase client.
+// A warm isolate previously reused the same client across tenants which
+// risked stale connections and cross-tenant rule-cache contamination.
+//
+// Canonical API: `buildSymbolicReasoner(scope)` — per-request instance cached
+// on `scope.turnCache.engineState['reasoner:instance']`. Use this in new code.
+//
+// The legacy `getSymbolicReasoner(client?)` shim now ALWAYS returns a fresh
+// instance (no module-level singleton) and survives only for orchestrator.ts
+// call sites pending Task 7.
 
-let reasonerInstance: SymbolicReasoner | null = null;
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+const REASONER_SLOT = 'reasoner:instance';
+
+export function buildSymbolicReasoner(scope: RequestScope): SymbolicReasoner {
+  const cached = scope.turnCache.engineState.get(REASONER_SLOT) as
+    | SymbolicReasoner
+    | undefined;
+  if (cached) return cached;
+  const instance = new SymbolicReasoner(scope.db);
+  scope.turnCache.engineState.set(REASONER_SLOT, instance);
+  return instance;
+}
 
 /**
- * GAP #1 FIX: Accept optional Supabase client for connection reuse.
+ * @deprecated Use `buildSymbolicReasoner(scope)`. Legacy shim returns a fresh
+ * instance per call to eliminate cross-tenant leakage during Task 7 migration.
  */
 export function getSymbolicReasoner(supabaseClient?: any): SymbolicReasoner {
-  // P3 Fix: Always pass fresh client per request to prevent stale connections
-  // in edge functions where the Supabase client changes per request
-  if (!reasonerInstance) {
-    reasonerInstance = new SymbolicReasoner(supabaseClient);
-  } else if (supabaseClient) {
-    // Update the client on existing instance to prevent stale connections
-    (reasonerInstance as any).supabase = supabaseClient;
-  }
-  return reasonerInstance;
+  return new SymbolicReasoner(supabaseClient);
 }
 
 // Export convenience function with urgency support
@@ -1648,3 +1664,4 @@ export async function executeSymbolicReasoning(
   const reasoner = getSymbolicReasoner();
   return reasoner.executeRules(facts, landState, options);
 }
+

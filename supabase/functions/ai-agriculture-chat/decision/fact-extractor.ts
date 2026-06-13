@@ -269,17 +269,13 @@ export class FactExtractor {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SINGLETON INSTANCE
+// FACTORY (Type B — stateless class, see context-validator.ts for rationale)
 // ═══════════════════════════════════════════════════════════════════════════
 
-let extractorInstance: FactExtractor | null = null;
-
 export function getFactExtractor(): FactExtractor {
-  if (!extractorInstance) {
-    extractorInstance = new FactExtractor();
-  }
-  return extractorInstance;
+  return new FactExtractor();
 }
+
 
 // Export convenience function
 export function extractSymbolicFacts(
