@@ -6423,10 +6423,30 @@ export class AIAgentOrchestrator {
                 }
               }
             }
+            scope?.emit({
+              stage: 'symbolic-reasoner',
+              kind: 'decide',
+              payload: {
+                event: 'reasoner_complete',
+                duration_ms: Date.now() - symbolicStart,
+                rules_matched: layeredRuleResult?.rules_matched || 0,
+                primary_decision: layeredRuleResult?.primary_decision?.rule_id ?? null,
+              },
+            });
           } catch (symbolicError) {
             console.warn('   ⚠️ Symbolic Reasoner failed (non-blocking):', symbolicError);
+            scope?.emit({
+              stage: 'symbolic-reasoner',
+              kind: 'error',
+              payload: {
+                event: 'reasoner_failed',
+                duration_ms: Date.now() - symbolicStart,
+                message: symbolicError instanceof Error ? symbolicError.message : String(symbolicError),
+              },
+            });
           }
         }
+
         
       } catch (canonicalError) {
         console.error('   ❌ Canonical State Builder failed (non-blocking):', canonicalError);
