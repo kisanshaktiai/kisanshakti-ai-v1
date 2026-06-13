@@ -1141,6 +1141,14 @@ export class AIAgentOrchestrator {
       language?: string;
       landId?: string;
       traceId?: string;  // PHASE A: Accept trace_id for observability
+      /**
+       * Task 7b (2026-06-13): per-request RequestScope. Optional during the
+       * staged rollout so cron/legacy callers keep working, but the index.ts
+       * entry-point always supplies one. When present, it overrides traceId
+       * (via scope.traceId) and is forwarded to scope-aware DB loaders so
+       * they can reuse the JWT-validated client and emit causal trace events.
+       */
+      scope?: RequestScope;
       // PHASE 8: Session context for follow-up awareness
       conversationHistory?: Array<{ role: string; content: string }>;
       sessionState?: {
@@ -1163,7 +1171,10 @@ export class AIAgentOrchestrator {
     
     const startTime = Date.now();
     const agentsUsed: string[] = [];
-    const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    const scope = options.scope;
+    const traceId = scope?.traceId || options.traceId || `trace_${Date.now().toString(36)}`;
+    scope?.emit({ stage: 'orchestrator', kind: 'derive', payload: { event: 'orchestrate_start', traceId } });
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
