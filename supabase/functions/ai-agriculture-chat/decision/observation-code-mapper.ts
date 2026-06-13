@@ -510,6 +510,10 @@ async function loadObservationAliases(supabaseClient?: any): Promise<Observation
     .select('alias_code, canonical_code');
 
   if (error) {
+    // FAIL-OPEN BY DESIGN (Task 6): observation_aliases is an additive
+    // normalization table — missing alias rows degrade to "no alias rewrite",
+    // never to "wrong observation". Throwing here would gratuitously crash
+    // turns whose primary canonical codes are already correct.
     console.warn(`[ObservationCodeMapper] Failed to load observation_aliases: ${error.message}`);
     return [];
   }
