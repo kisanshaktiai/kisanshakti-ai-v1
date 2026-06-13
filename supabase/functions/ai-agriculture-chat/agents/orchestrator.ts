@@ -286,6 +286,11 @@ import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 // table instead of relying solely on the local intent→observation dict.
 import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
 
+// Task 7b (2026-06-13): per-request scope threading begins here. Imported
+// type-only to avoid touching runtime cost when scope is absent (legacy paths).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 // STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
 import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
 
@@ -1136,6 +1141,14 @@ export class AIAgentOrchestrator {
       language?: string;
       landId?: string;
       traceId?: string;  // PHASE A: Accept trace_id for observability
+      /**
+       * Task 7b (2026-06-13): per-request RequestScope. Optional during the
+       * staged rollout so cron/legacy callers keep working, but the index.ts
+       * entry-point always supplies one. When present, it overrides traceId
+       * (via scope.traceId) and is forwarded to scope-aware DB loaders so
+       * they can reuse the JWT-validated client and emit causal trace events.
+       */
+      scope?: RequestScope;
       // PHASE 8: Session context for follow-up awareness
       conversationHistory?: Array<{ role: string; content: string }>;
       sessionState?: {
@@ -1158,7 +1171,10 @@ export class AIAgentOrchestrator {
     
     const startTime = Date.now();
     const agentsUsed: string[] = [];
-    const traceId = options.traceId || `trace_${Date.now().toString(36)}`;
+    const scope = options.scope;
+    const traceId = scope?.traceId || options.traceId || `trace_${Date.now().toString(36)}`;
+    scope?.emit({ stage: 'orchestrator', kind: 'derive', payload: { event: 'orchestrate_start', traceId } });
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
@@ -2854,7 +2870,11 @@ export class AIAgentOrchestrator {
             crop_code: String(_cropForDb).toUpperCase(),
             days_since_sowing: _dasForDb,
             growth_stage: _stageForDb,
+            // Task 7b: thread scope so the resolver reuses scope.db and emits
+            // structured trace events instead of spinning up its own client.
+            scope,
           });
+
 
           if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
             const before = expandedObservationCodes.length;
@@ -4674,7 +4694,7 @@ export class AIAgentOrchestrator {
       let nluOutput: NLUOutput | null = null;
       try {
         // Use processed message (could be matched option text) for NLU
-        nluOutput = await this.processNLU(processedFarmerMessage, sessionId, options.language, landContext);
+        nluOutput = await this.processNLU(processedFarmerMessage, sessionId, options.language, landContext, scope);
         agentsUsed.push('NLU');
         console.log('   ✅ NLU processed:', nluOutput?.intent_classification?.primary_intent || 'GENERAL_QUERY');
       } catch (nluError) {
@@ -7599,29 +7619,68 @@ export class AIAgentOrchestrator {
     message: string,
     sessionId: string,
     language?: string,
-    landContext?: any
+    landContext?: any,
+    scope?: RequestScope,
   ): Promise<NLUOutput> {
-    return await processNLUAgent({
-      raw_input: message,
-      conversation_context: {
-        previous_turns: [],
-        session_state: 'NEW'
+    // Task 7b (2026-06-13): emit Phase 1 NLU trace boundaries so the per-turn
+    // causal trace surfaces NLU latency without us having to refactor the
+    // entire nlu-agent.ts (deferred to a later sub-stage).
+    scope?.emit({
+      stage: 'nlu',
+      kind: 'derive',
+      payload: {
+        event: 'nlu_start',
+        language: language || 'en',
+        has_land_context: !!landContext,
+        message_chars: message?.length ?? 0,
       },
-      input_metadata: {
-        language_detected: language || 'en',
-        input_method: 'TEXT',
-        timestamp: new Date().toISOString(),
-        session_id: sessionId
-      },
-      // CRITICAL FIX: Pass land context to NLU for crop/stage inference
-      land_context: landContext ? {
-        crop_code: this.normalizeCropCode(landContext.current_crop),
-        crop_stage: landContext.growth_stage,
-        land_id: landContext.land_id,
-        days_after_sowing: landContext.days_since_sowing
-      } : undefined
     });
+    const nluStart = performance.now();
+    try {
+      const out = await processNLUAgent({
+        raw_input: message,
+        conversation_context: {
+          previous_turns: [],
+          session_state: 'NEW'
+        },
+        input_metadata: {
+          language_detected: language || 'en',
+          input_method: 'TEXT',
+          timestamp: new Date().toISOString(),
+          session_id: sessionId
+        },
+        // CRITICAL FIX: Pass land context to NLU for crop/stage inference
+        land_context: landContext ? {
+          crop_code: this.normalizeCropCode(landContext.current_crop),
+          crop_stage: landContext.growth_stage,
+          land_id: landContext.land_id,
+          days_after_sowing: landContext.days_since_sowing
+        } : undefined
+      });
+      scope?.emit({
+        stage: 'nlu',
+        kind: 'derive',
+        payload: {
+          event: 'nlu_complete',
+          duration_ms: Math.round(performance.now() - nluStart),
+          intent: (out as any)?.detected_intent || (out as any)?.intent || null,
+        },
+      });
+      return out;
+    } catch (err) {
+      scope?.emit({
+        stage: 'nlu',
+        kind: 'error',
+        payload: {
+          event: 'nlu_failed',
+          duration_ms: Math.round(performance.now() - nluStart),
+          message: err instanceof Error ? err.message : String(err),
+        },
+      });
+      throw err;
+    }
   }
+
   
   /**
    * Normalize crop name to crop code
