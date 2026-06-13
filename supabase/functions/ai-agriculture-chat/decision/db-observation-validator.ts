@@ -18,8 +18,9 @@
  */
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
+import { EngineDataError } from '../runtime/request-scope.ts';
 
-export const DB_VALIDATOR_VERSION = '1.0.0';
+export const DB_VALIDATOR_VERSION = '1.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
