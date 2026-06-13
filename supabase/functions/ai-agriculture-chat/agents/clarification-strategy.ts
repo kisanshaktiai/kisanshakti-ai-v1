@@ -180,53 +180,66 @@ function isVisuallyObservable(optionId: string, label: string): boolean {
 // ═══════════════════════════════════════════════════════════════════════════
 // 1. STAGE-LOCKED CLARIFICATION
 // Once crop stage is derived from crop_schedules (DOS), lock it for entire turn
+//
+// W1 HARDENING (2026-06-13): module-level `let _lockedStageContext` deleted.
+// Per-turn lock now lives on RequestScope.turnCache.engineState under
+// key 'clarification:stage_lock'. See runtime/request-scope.ts.
 // ═══════════════════════════════════════════════════════════════════════════
 
-let _lockedStageContext: LockedStageContext | null = null;
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+const STAGE_LOCK_KEY = 'clarification:stage_lock';
 
 /**
  * Lock the growth stage for the current turn based on crop_schedules data.
  * This prevents downstream overrides and ensures consistent clarification.
  */
 export function lockStageForTurn(
+  scope: RequestScope,
   cropCode: string,
   growthStage: string,
   daysSinceSowing: number,
   source: LockedStageContext['source']
 ): LockedStageContext {
-  _lockedStageContext = {
+  const ctx: LockedStageContext = {
     crop_code: cropCode.toUpperCase(),
     growth_stage: growthStage.toUpperCase(),
     days_since_sowing: daysSinceSowing,
     locked_at: Date.now(),
-    source
+    source,
   };
-  
-  console.log(`🔒 [ClarificationStrategy] Stage LOCKED: ${_lockedStageContext.growth_stage} for ${_lockedStageContext.crop_code} (DAS: ${daysSinceSowing}, source: ${source})`);
-  
-  return _lockedStageContext;
+  scope.turnCache.engineState.set(STAGE_LOCK_KEY, ctx);
+
+  console.log(`🔒 [ClarificationStrategy] Stage LOCKED: ${ctx.growth_stage} for ${ctx.crop_code} (DAS: ${daysSinceSowing}, source: ${source})`);
+  scope.emit({
+    stage: 'clarification',
+    kind: 'decide',
+    payload: { event: 'stage_locked', crop: ctx.crop_code, stage: ctx.growth_stage, das: daysSinceSowing, source },
+  });
+
+  return ctx;
 }
 
 /**
  * Get the currently locked stage context.
  * Returns null if no stage has been locked for this turn.
  */
-export function getLockedStage(): LockedStageContext | null {
-  return _lockedStageContext;
+export function getLockedStage(scope: RequestScope): LockedStageContext | null {
+  return (scope.turnCache.engineState.get(STAGE_LOCK_KEY) as LockedStageContext | undefined) ?? null;
 }
 
 /**
- * Clear the locked stage (call at end of turn).
+ * Clear the locked stage (rarely needed — scope itself dies at request end).
  */
-export function clearLockedStage(): void {
-  _lockedStageContext = null;
+export function clearLockedStage(scope: RequestScope): void {
+  scope.turnCache.engineState.delete(STAGE_LOCK_KEY);
 }
 
 /**
- * Check if a stage is currently locked.
+ * Check if a stage is currently locked for this turn.
  */
-export function isStageLockedForTurn(): boolean {
-  return _lockedStageContext !== null;
+export function isStageLockedForTurn(scope: RequestScope): boolean {
+  return scope.turnCache.engineState.has(STAGE_LOCK_KEY);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
