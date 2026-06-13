@@ -98,12 +98,19 @@ export interface CreateScopeInput {
   sessionId: string;
   turnId: string;
   /**
+   * Optional caller-supplied traceId. When provided, the scope adopts it so
+   * structured trace events line up with the entry-point log prefix. When
+   * absent, a fresh UUID is generated.
+   */
+  traceId?: string;
+  /**
    * Optional pre-built client. When provided, the scope reuses it instead of
    * constructing a new one (useful for tests and for the entry-point path
    * that already validated the JWT against the service-role client).
    */
   db?: SupabaseClient;
 }
+
 
 export function createRequestScope(input: CreateScopeInput): RequestScope {
   let db = input.db;
