@@ -286,6 +286,11 @@ import { mapObservationsToCauses } from './observation-cause-mapper.ts';
 // table instead of relying solely on the local intent→observation dict.
 import { resolveIntentToObservations } from '../decision/intent-resolver.ts';
 
+// Task 7b (2026-06-13): per-request scope threading begins here. Imported
+// type-only to avoid touching runtime cost when scope is absent (legacy paths).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 // STATIC IMPORT: Causal hypothesis engine (no dynamic imports in edge functions)
 import { runCausalHypothesisArbitration } from '../decision/causal-hypothesis-engine.ts';
 
