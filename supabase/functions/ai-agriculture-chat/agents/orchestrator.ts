@@ -5875,9 +5875,12 @@ export class AIAgentOrchestrator {
         
         layeredRuleResult = evaluateRulesLayered(rulesToEvaluate, canonicalStateWithQuery as any, {
           prescriptionGateOverride: isPrescriptionGateOverride,
-          traceId: traceId
+          traceId: traceId,
+          // Task 7d: scope-aware Phase 3 trace events.
+          scope,
         });
         agentsUsed.push('LAYERED_RULE_EVALUATOR');
+
         
         // PHASE-16: Safe array access with null checks
         const safeRulesApplied = Array.isArray(layeredRuleResult.rules_applied) ? layeredRuleResult.rules_applied : [];
