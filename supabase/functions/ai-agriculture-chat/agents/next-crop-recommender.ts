@@ -106,6 +106,11 @@ function arrEq(arr: any, target: string | null): boolean {
   return arr.map((x) => String(x).toLowerCase()).includes(target.toLowerCase());
 }
 
+// LEAKAGE-SAFETY (Task 3, Q3 — leave-with-comment):
+// Tenant-agnostic 60s TTL cache of crop-rotation rules. The rules table is
+// global reference data (no tenant_id filter), so sharing across requests is
+// safe and saves a DB round-trip. The forbidden-pattern guardrail explicitly
+// allow-lists these names.
 let _cachedRules: any[] | null = null;
 let _cachedAt = 0;
 const CACHE_TTL_MS = 60_000;
