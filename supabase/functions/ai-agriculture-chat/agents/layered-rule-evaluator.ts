@@ -2,6 +2,10 @@
 // PHASE-17: Enhanced with graph control, temporal constraints, and ETL validation
 // Rules loaded from database at runtime to prevent bundle timeout
 
+// Task 7d (2026-06-13): per-request scope (type-only import, zero runtime cost).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 import { 
   CanonicalState, 
   DataConfidence,
