@@ -206,14 +206,16 @@ function buildRichApplicationDetails(source: any, productName: string | null, pr
   };
 }
 
-let orchestrator: AIAgentOrchestrator | null = null;
-
-function getOrchestrator(): AIAgentOrchestrator {
-  if (!orchestrator) {
-    orchestrator = new AIAgentOrchestrator();
-  }
-  return orchestrator;
+// Per-request orchestrator construction (Task 7a, 2026-06-13).
+// The previous module-level `let orchestrator` was a warm-isolate
+// cross-tenant leakage vector — any per-turn state captured by the
+// orchestrator survived between requests in the same Deno isolate.
+// Construction is cheap; the orchestrator's own dependencies are now
+// expected to receive `scope` and stop caching per-tenant state internally.
+function buildOrchestrator(): AIAgentOrchestrator {
+  return new AIAgentOrchestrator();
 }
+
 
 // Generate unique trace_id for request tracing
 function generateTraceId(): string {
