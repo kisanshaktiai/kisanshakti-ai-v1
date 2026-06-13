@@ -30,9 +30,11 @@ import { recommendNextCrop, renderRecommendationMessage, cropLabel } from './nex
 // ═══════════════════════════════════════════════════════════════════════════
 import { 
   SymbolicReasoner,
+  buildSymbolicReasoner,
   type SymbolicFact,
   type InferenceResult 
 } from '../decision/symbolic-reasoner.ts';
+
 
 import { 
   FactExtractor,
