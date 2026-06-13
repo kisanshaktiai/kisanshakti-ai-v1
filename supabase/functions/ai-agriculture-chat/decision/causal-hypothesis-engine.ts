@@ -15,6 +15,11 @@
  * All biological logic comes from database tables. Zero hardcoded rules.
  */
 
+// Task 7c (2026-06-13): per-request scope threading. Type-only import keeps
+// runtime cost zero for non-scope callers (e.g. proactive batch jobs).
+import type { RequestScope } from '../runtime/request-scope.ts';
+
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -839,21 +844,41 @@ export interface CausalHypothesisInput {
   observations: string[];
   supabase_client: any;
   trace_id?: string;
+  /**
+   * Task 7c: per-request scope. When provided, the arbiter emits structured
+   * trace events (`hypothesis:start`, `hypothesis:complete`, `hypothesis:failed`)
+   * onto the scope's causal trace. The supabase_client is still honored as
+   * SSOT for the DB connection since hypothesis-master loaders are not yet
+   * scope-aware; threading them is deferred to a focused later pass.
+   */
+  scope?: RequestScope;
 }
 
 export async function runCausalHypothesisArbitration(
   input: CausalHypothesisInput
 ): Promise<ArbitrationResult> {
-  const { crop_group, canonical_state, observations, supabase_client, trace_id } = input;
+  const { crop_group, canonical_state, observations, supabase_client, trace_id, scope } = input;
   const startTime = Date.now();
 
   // Normalize crop code to crop_group used in hypothesis_master (DB-driven via crop_synonyms).
   await hydrateCropSynonyms(supabase_client);
   const normalizedCropGroup = normalizeCropGroup(crop_group);
 
+  scope?.emit({
+    stage: 'hypothesis',
+    kind: 'derive',
+    payload: {
+      event: 'arbitration_start',
+      crop_group: normalizedCropGroup,
+      raw_crop: crop_group,
+      observation_count: observations.length,
+      trace_id: trace_id ?? null,
+    },
+  });
 
   console.log(`\n🧠 [CausalHypothesis] ═══ ENGINE v${ENGINE_VERSION} ═══`);
   console.log(`   crop_group=${normalizedCropGroup} (raw=${crop_group}), observations=${observations.length}, trace=${trace_id || 'none'}`);
+
 
   // Load hypothesis data
   const data = await loadHypothesesForCrop(normalizedCropGroup, supabase_client);
@@ -861,6 +886,16 @@ export async function runCausalHypothesisArbitration(
 
   if (!cropHasHypotheses) {
     console.log(`   📭 No hypothesis model for crop_group=${normalizedCropGroup}, falling back to full rule scope`);
+    scope?.emit({
+      stage: 'hypothesis',
+      kind: 'derive',
+      payload: {
+        event: 'arbitration_complete',
+        decision_path: 'FULL_RULE_SCOPE',
+        hypotheses_evaluated: 0,
+        duration_ms: Date.now() - startTime,
+      },
+    });
     return {
       best_hypothesis: null,
       competing: [],
@@ -871,6 +906,7 @@ export async function runCausalHypothesisArbitration(
       hypotheses_evaluated: 0
     };
   }
+
 
   // Score all hypotheses
   const scores: HypothesisScore[] = data.hypotheses.map(h => 
@@ -922,5 +958,22 @@ export async function runCausalHypothesisArbitration(
   // Fire-and-forget metrics
   updateMetrics(result, supabase_client);
 
+  scope?.emit({
+    stage: 'hypothesis',
+    kind: 'decide',
+    payload: {
+      event: 'arbitration_complete',
+      decision_path: result.decision_path,
+      hypotheses_evaluated: scores.length,
+      hypotheses_eliminated: eliminated.length,
+      hypotheses_survived: survived.length,
+      best_hypothesis: result.best_hypothesis?.hypothesis_id ?? null,
+      best_score: result.best_hypothesis?.weighted_score ?? 0,
+      needs_clarification: !!result.needs_clarification,
+      duration_ms: elapsed,
+    },
+  });
+
   return result;
 }
+

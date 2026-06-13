@@ -5722,7 +5722,9 @@ export class AIAgentOrchestrator {
             canonical_state: canonicalState,
             observations: [...(allObservationsForPreAuth || [])],
             supabase_client: this.supabase,
-            trace_id: traceId
+            trace_id: traceId,
+            // Task 7c: scope-aware causal trace for Phase 2 arbitration.
+            scope,
           });
 
           if (hypothesisResult.needs_clarification && hypothesisResult.decision_path === 'CLARIFICATION_REQUIRED') {
@@ -5742,7 +5744,16 @@ export class AIAgentOrchestrator {
           }
         } catch (hypothesisError) {
           console.error(`   ⚠️ Hypothesis arbitration failed, falling back to full scope:`, hypothesisError);
+          scope?.emit({
+            stage: 'hypothesis',
+            kind: 'error',
+            payload: {
+              event: 'arbitration_failed',
+              message: hypothesisError instanceof Error ? hypothesisError.message : String(hypothesisError),
+            },
+          });
         }
+
         } // end of coverage gate else block
 
         // PHASE 2.6: LAYERED RULE EVALUATION (Symbolic Decision Brain)
