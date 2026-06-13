@@ -36,9 +36,11 @@
  * @version 2.0.0
  */
 
-import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
+import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.57.2';
+import type { RequestScope } from '../runtime/request-scope.ts';
+import { IntentResolutionError } from '../runtime/request-scope.ts';
 
-export const INTENT_RESOLVER_VERSION = '2.0.0';
+export const INTENT_RESOLVER_VERSION = '2.1.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - PURE SYMBOLIC (NO LANGUAGE, NO UI TEXT)
@@ -52,6 +54,12 @@ export interface IntentResolverInput {
   crop_code: string;
   days_since_sowing: number;
   growth_stage?: string;
+  /**
+   * Optional per-request scope. When provided, the resolver uses
+   * `scope.db` and emits trace events instead of constructing its own
+   * Supabase client. Required for new code paths (Task 7 migration).
+   */
+  scope?: RequestScope;
 }
 
 /**
@@ -71,16 +79,16 @@ export interface IntentResolverOutput {
 // DATABASE CLIENT
 // ═══════════════════════════════════════════════════════════════════════════
 
-function getSupabaseClient() {
+function resolveClient(scope?: RequestScope): SupabaseClient {
+  if (scope) return scope.db;
   const url = Deno.env.get('SUPABASE_URL');
   const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  
   if (!url || !key) {
-    throw new Error('Missing Supabase credentials');
+    throw new IntentResolutionError('MISSING_DB_CREDENTIALS');
   }
-  
   return createClient(url, key);
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STAGE LOOKUP FROM DATABASE
