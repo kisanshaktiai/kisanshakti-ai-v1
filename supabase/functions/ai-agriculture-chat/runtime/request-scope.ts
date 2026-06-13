@@ -78,6 +78,13 @@ export interface RequestScope {
     rules: Map<string, unknown>;
     observations: Map<string, unknown>;
     hypotheses: Map<string, unknown>;
+    /**
+     * Free-form per-turn state keyed by module namespace.
+     * Modules that previously held module-level `let _state` variables
+     * MUST stash their per-turn state here instead.
+     * Convention: keys are `<module-name>:<field>` (e.g. `invariants:state`).
+     */
+    engineState: Map<string, unknown>;
   };
 
   // Causal trace
@@ -130,6 +137,7 @@ export function createRequestScope(input: CreateScopeInput): RequestScope {
       rules: new Map(),
       observations: new Map(),
       hypotheses: new Map(),
+      engineState: new Map(),
     },
     events,
     emit(e) {
