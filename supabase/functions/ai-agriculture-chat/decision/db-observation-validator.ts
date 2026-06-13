@@ -255,7 +255,18 @@ export async function getValidObservationsForStage(
     .gte('das_max', das)
     .eq('is_active', true);
   
-  if (error || !data) {
+  if (error) {
+    // Task 6: fail-closed on real DB error so callers don't silently get an
+    // empty observation set (which would let invalid observations through
+    // the downstream `validateMultipleObservations` partition).
+    throw new EngineDataError('OBSERVATIONS_LOAD_DB_ERROR', {
+      cropCode: cropCode.toUpperCase(),
+      das,
+      dbError: error.message,
+    });
+  }
+  if (!data || data.length === 0) {
+    // Legitimately empty: no observations are valid for this crop/DAS.
     return [];
   }
   
