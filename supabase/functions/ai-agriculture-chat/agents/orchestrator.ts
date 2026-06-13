@@ -2870,7 +2870,11 @@ export class AIAgentOrchestrator {
             crop_code: String(_cropForDb).toUpperCase(),
             days_since_sowing: _dasForDb,
             growth_stage: _stageForDb,
+            // Task 7b: thread scope so the resolver reuses scope.db and emits
+            // structured trace events instead of spinning up its own client.
+            scope,
           });
+
 
           if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
             const before = expandedObservationCodes.length;
