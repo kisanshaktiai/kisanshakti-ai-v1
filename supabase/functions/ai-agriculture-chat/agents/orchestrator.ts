@@ -2900,10 +2900,22 @@ export class AIAgentOrchestrator {
           }
         }
       } catch (intentResolverErr) {
-        console.warn(
-          `      ⚠️ [DB_INTENT_OBSERVATIONS] resolution failed (non-blocking): ` +
-          `${(intentResolverErr as Error)?.message || String(intentResolverErr)}`
-        );
+        // Fail-soft: advisory observation-code enrichment must never block the
+        // main symbolic path. DB faults are surfaced via scope.emit so they
+        // remain observable in traces even though the request continues.
+        const msg = (intentResolverErr as Error)?.message || String(intentResolverErr);
+        scope?.emit({
+          stage: 'intent-resolver',
+          kind: 'error',
+          payload: {
+            event: 'enrichment_failed_non_blocking',
+            intent: _intentForDb,
+            crop: _cropForDb,
+            das: _dasForDb,
+            error: msg,
+          },
+        });
+        console.warn(`      ⚠️ [DB_INTENT_OBSERVATIONS] resolution failed (non-blocking): ${msg}`);
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
