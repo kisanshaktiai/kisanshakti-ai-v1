@@ -419,11 +419,28 @@ export function evaluateRulesLayered(
     /** When PrescriptionGate overrides LOW confidence due to strong symptom evidence,
      *  this flag relaxes the pre-selection confidence gate from 0.60 → 0.40 */
     prescriptionGateOverride?: boolean;
+    /**
+     * Task 7d: per-request scope. Used purely for structured Phase 3 trace
+     * events — the evaluator itself is a pure function and does not touch DB.
+     */
+    scope?: RequestScope;
   }
 ): LayeredRuleResult {
   // PHASE-16: Safe initialization - prevent undefined errors
   const safeRules = Array.isArray(rules) ? rules : [];
   const traceId = options?.traceId || `eval_${Date.now()}`;
+  const scope = options?.scope;
+  const phase3Start = Date.now();
+  scope?.emit({
+    stage: 'rule-evaluator',
+    kind: 'derive',
+    payload: {
+      event: 'layered_eval_start',
+      rule_count: safeRules.length,
+      prescription_gate_override: !!options?.prescriptionGateOverride,
+    },
+  });
+
   
   const result: LayeredRuleResult = {
     rules_evaluated: 0,
