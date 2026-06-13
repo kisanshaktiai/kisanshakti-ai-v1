@@ -469,8 +469,20 @@ export function evaluateRulesLayered(
   // PHASE-16: Early return if no rules to evaluate
   if (safeRules.length === 0) {
     console.warn('⚠️ [LayeredRuleEvaluator] No rules to evaluate - returning empty result');
+    scope?.emit({
+      stage: 'rule-evaluator',
+      kind: 'derive',
+      payload: {
+        event: 'layered_eval_complete',
+        rules_evaluated: 0,
+        rules_matched: 0,
+        reason: 'no_rules_to_evaluate',
+        duration_ms: Date.now() - phase3Start,
+      },
+    });
     return result;
   }
+
   
   // PHASE-17: Graph control context - track fired rules and their blocking relationships
   const firedRules = new Map<string, string[]>(); // rule_id -> blocks_rule_ids
