@@ -4720,6 +4720,7 @@ export type Database = {
           iron_optimal: number | null
           irrigation_interval_days: number | null
           is_active: boolean | null
+          ndvi_thresholds: Json | null
           nitrogen_max: number | null
           nitrogen_min: number | null
           nitrogen_optimal: number | null
@@ -4751,6 +4752,7 @@ export type Database = {
           iron_optimal?: number | null
           irrigation_interval_days?: number | null
           is_active?: boolean | null
+          ndvi_thresholds?: Json | null
           nitrogen_max?: number | null
           nitrogen_min?: number | null
           nitrogen_optimal?: number | null
@@ -4782,6 +4784,7 @@ export type Database = {
           iron_optimal?: number | null
           irrigation_interval_days?: number | null
           is_active?: boolean | null
+          ndvi_thresholds?: Json | null
           nitrogen_max?: number | null
           nitrogen_min?: number | null
           nitrogen_optimal?: number | null
@@ -6226,6 +6229,7 @@ export type Database = {
           growth_stage: string
           id: string
           stage_description: string | null
+          updated_at: string
         }
         Insert: {
           created_at?: string | null
@@ -6235,6 +6239,7 @@ export type Database = {
           growth_stage: string
           id?: string
           stage_description?: string | null
+          updated_at?: string
         }
         Update: {
           created_at?: string | null
@@ -6244,6 +6249,7 @@ export type Database = {
           growth_stage?: string
           id?: string
           stage_description?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
@@ -6255,6 +6261,7 @@ export type Database = {
           is_active: boolean | null
           language_code: string
           region: string | null
+          updated_at: string
           variant_name: string
           variant_type: string
         }
@@ -6265,6 +6272,7 @@ export type Database = {
           is_active?: boolean | null
           language_code?: string
           region?: string | null
+          updated_at?: string
           variant_name: string
           variant_type?: string
         }
@@ -6275,6 +6283,7 @@ export type Database = {
           is_active?: boolean | null
           language_code?: string
           region?: string | null
+          updated_at?: string
           variant_name?: string
           variant_type?: string
         }
@@ -6342,6 +6351,7 @@ export type Database = {
           recommended_intent_bias: string | null
           recommended_observation_bias: string | null
           semantic_hint: string
+          updated_at: string
         }
         Insert: {
           created_at?: string | null
@@ -6353,6 +6363,7 @@ export type Database = {
           recommended_intent_bias?: string | null
           recommended_observation_bias?: string | null
           semantic_hint: string
+          updated_at?: string
         }
         Update: {
           created_at?: string | null
@@ -6364,6 +6375,7 @@ export type Database = {
           recommended_intent_bias?: string | null
           recommended_observation_bias?: string | null
           semantic_hint?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -11626,6 +11638,7 @@ export type Database = {
           intent_code: string
           is_active: boolean | null
           observation_code: string
+          updated_at: string
         }
         Insert: {
           confidence_rank?: number | null
@@ -11638,6 +11651,7 @@ export type Database = {
           intent_code: string
           is_active?: boolean | null
           observation_code: string
+          updated_at?: string
         }
         Update: {
           confidence_rank?: number | null
@@ -11650,6 +11664,7 @@ export type Database = {
           intent_code?: string
           is_active?: boolean | null
           observation_code?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -16092,16 +16107,19 @@ export type Database = {
           alias_code: string
           canonical_code: string
           created_at: string | null
+          updated_at: string
         }
         Insert: {
           alias_code: string
           canonical_code: string
           created_at?: string | null
+          updated_at?: string
         }
         Update: {
           alias_code?: string
           canonical_code?: string
           created_at?: string | null
+          updated_at?: string
         }
         Relationships: [
           {
