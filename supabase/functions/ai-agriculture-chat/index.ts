@@ -23,6 +23,16 @@ import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } fro
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
 import type { OrchestratorResponse } from './agents/orchestrator.ts';
 
+// Task 7a: per-request scope + typed engine errors
+import {
+  createRequestScope,
+  EngineDataError,
+  IntentResolutionError,
+  InvariantViolation,
+  type RequestScope,
+} from './runtime/request-scope.ts';
+
+
 // CANONICAL ADVISORY: Build structured advisory JSON for frontend rendering
 import { buildCanonicalAdvisory, buildMultiRuleAdvisory } from './agents/canonical-advisory-schema.ts';
 import { extractRichRuleData, buildDeterministicResponse, hasAdequateRuleContent } from './agents/deterministic-response-builder.ts';
@@ -206,14 +216,16 @@ function buildRichApplicationDetails(source: any, productName: string | null, pr
   };
 }
 
-let orchestrator: AIAgentOrchestrator | null = null;
-
-function getOrchestrator(): AIAgentOrchestrator {
-  if (!orchestrator) {
-    orchestrator = new AIAgentOrchestrator();
-  }
-  return orchestrator;
+// Per-request orchestrator construction (Task 7a, 2026-06-13).
+// The previous module-level `let orchestrator` was a warm-isolate
+// cross-tenant leakage vector — any per-turn state captured by the
+// orchestrator survived between requests in the same Deno isolate.
+// Construction is cheap; the orchestrator's own dependencies are now
+// expected to receive `scope` and stop caching per-tenant state internally.
+function buildOrchestrator(): AIAgentOrchestrator {
+  return new AIAgentOrchestrator();
 }
+
 
 // Generate unique trace_id for request tracing
 function generateTraceId(): string {
@@ -848,41 +860,93 @@ serve(async (req) => {
 
     // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
+    //
+    // Task 7a (2026-06-13): per-request scope + focused engine try/catch.
+    // The scope reuses the JWT-validated `supabase` client so privileges and
+    // headers stay consistent. Typed engine errors (EngineDataError,
+    // IntentResolutionError, InvariantViolation) are converted to a
+    // structured 500 with { error, code, trace_id } — never silently
+    // swallowed. Sub-stages 7b–7e will thread `scope` deeper into the
+    // orchestrator's phases.
     // ═══════════════════════════════════════════════════════════════════════════
-    const orch = getOrchestrator();
-    
-    
-    const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
-      userMessageContent,
-      currentSessionId,
-      finalFarmerId,
-      finalTenantId,
-      {
-        photoUrl: imageUrl,
-        language: detectedLanguage,
-        landId: landId,
-        traceId: traceId,
-        // CRITICAL FIX: Pass conversation history for context continuity
-        conversationHistory: conversationHistory,
-        // Pass session state for follow-up awareness
-        sessionState: sessionState ? {
-          hasPreviousRecommendations: sessionState.pending_user_action || false,
-          previousPest: sessionState.last_pest,
-          previousDisease: sessionState.last_disease,
-          previousCrop: sessionState.last_crop,
-          turnCount: sessionState.turn_count || 0,
-          decisionState: sessionState.decision_state,
-          // CRITICAL FIX 2: Pass pending clarification options for option matching
-          pendingClarificationOptions: sessionState.pending_clarification_options || [],
-          // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
-          lockedCropContext: sessionState.lockedCropContext,
-          // PART 10: Pass problems_discussed for session continuity
-          problems_discussed: sessionState.problems_discussed || [],
-          last_query_hash: sessionState.last_query_hash,
-          last_query_timestamp: sessionState.last_query_timestamp
-        } : undefined
+    const scope: RequestScope = createRequestScope({
+      tenantId: finalTenantId,
+      farmerId: finalFarmerId,
+      sessionId: currentSessionId ?? 'pre-session',
+      turnId: traceId,
+      traceId,
+      db: supabase,
+    });
+
+    const orch = buildOrchestrator();
+
+    let orchestratorResponse: OrchestratorResponse;
+    try {
+      orchestratorResponse = await orch.orchestrate(
+        userMessageContent,
+        currentSessionId,
+        finalFarmerId,
+        finalTenantId,
+        {
+          photoUrl: imageUrl,
+          language: detectedLanguage,
+          landId: landId,
+          traceId: traceId,
+          // Task 7a: scope is passed through options so downstream sub-stages
+          // can pick it up without coordinated breaking changes to the
+          // orchestrator's positional signature.
+          scope,
+          // CRITICAL FIX: Pass conversation history for context continuity
+          conversationHistory: conversationHistory,
+          // Pass session state for follow-up awareness
+          sessionState: sessionState ? {
+            hasPreviousRecommendations: sessionState.pending_user_action || false,
+            previousPest: sessionState.last_pest,
+            previousDisease: sessionState.last_disease,
+            previousCrop: sessionState.last_crop,
+            turnCount: sessionState.turn_count || 0,
+            decisionState: sessionState.decision_state,
+            // CRITICAL FIX 2: Pass pending clarification options for option matching
+            pendingClarificationOptions: sessionState.pending_clarification_options || [],
+            // P1-BUG FIX: Pass lockedCropContext for OPTION_SELECTED context preservation
+            lockedCropContext: sessionState.lockedCropContext,
+            // PART 10: Pass problems_discussed for session continuity
+            problems_discussed: sessionState.problems_discussed || [],
+            last_query_hash: sessionState.last_query_hash,
+            last_query_timestamp: sessionState.last_query_timestamp
+          } : undefined
+        } as any
+      );
+    } catch (engineErr) {
+      const isTyped =
+        engineErr instanceof EngineDataError ||
+        engineErr instanceof IntentResolutionError ||
+        engineErr instanceof InvariantViolation;
+
+      if (isTyped) {
+        const typed = engineErr as EngineDataError | IntentResolutionError | InvariantViolation;
+        console.error(`🚨 [${traceId}] ENGINE_FAULT ${typed.name}/${typed.code}`, {
+          details: typed.details,
+          events: scope.events.slice(-20),
+        });
+        if (dedupeKey) inFlightRequests.delete(dedupeKey);
+        return new Response(
+          JSON.stringify({
+            error: 'engine_fault',
+            code: typed.code,
+            kind: typed.name,
+            trace_id: traceId,
+            details: typed.details ?? null,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
       }
-    );
+
+      // Unknown error — re-throw so the existing outer catch logs and responds.
+      console.error(`🚨 [${traceId}] ORCHESTRATOR_UNHANDLED`, engineErr);
+      throw engineErr;
+    }
+
 
     console.log('✅ [Orchestrator] Response type:', orchestratorResponse.type);
 
