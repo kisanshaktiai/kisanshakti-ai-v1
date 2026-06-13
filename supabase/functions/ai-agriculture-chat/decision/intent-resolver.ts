@@ -320,41 +320,58 @@ export async function resolveIntentToObservations(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
- * Validate if an observation is biologically valid for crop/stage/DAS
- * Used by agronomic-observation-validator.ts
+ * Validate if an observation is biologically valid for crop/stage/DAS.
+ * Used by agronomic-observation-validator.ts.
+ *
+ * v2.1 (Task 5): Restored the crop_code + das_min/das_max filters; DB-fault
+ * now throws `IntentResolutionError` instead of fail-open `valid:false`.
  */
 export async function isObservationValidForCropStage(
   observationCode: string,
   cropCode: string,
-  das: number
+  das: number,
+  scope?: RequestScope
 ): Promise<{ valid: boolean; reason_code: string }> {
-  const supabase = getSupabaseClient();
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HOTFIX: Query by observation_code + is_active ONLY
-  // crop_code/das_min/das_max columns don't exist yet. Re-enable after migration.
-  // ═══════════════════════════════════════════════════════════════════════════
+  const supabase = resolveClient(scope);
+  const cropUpper = cropCode.toUpperCase();
+
   const { data, error } = await supabase
     .from('intent_observation_mapping')
     .select('id')
     .eq('observation_code', observationCode)
     .eq('is_active', true)
+    .in('crop_code', [cropUpper, 'ALL'])
+    .lte('das_min', das)
+    .gte('das_max', das)
     .limit(1);
-  
+
   if (error) {
-    console.error(`[IntentResolver] Validation DB error: ${error.message}`);
-    return { valid: false, reason_code: 'VALIDATION_UNAVAILABLE' };
+    scope?.emit({
+      stage: 'intent-resolver',
+      kind: 'error',
+      payload: {
+        fn: 'isObservationValidForCropStage',
+        observationCode,
+        cropCode: cropUpper,
+        das,
+        message: error.message,
+      },
+    });
+    throw new IntentResolutionError('VALIDATION_DB_ERROR', {
+      observationCode,
+      cropCode: cropUpper,
+      das,
+      dbError: error.message,
+    });
   }
-  
+
   if (data && data.length > 0) {
     return { valid: true, reason_code: 'VALID_FOR_OBSERVATION' };
   }
-  
-  return {
-    valid: false,
-    reason_code: 'OBSERVATION_NOT_MAPPED'
-  };
+
+  return { valid: false, reason_code: 'OBSERVATION_NOT_MAPPED' };
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ALL VALID INTENTS
