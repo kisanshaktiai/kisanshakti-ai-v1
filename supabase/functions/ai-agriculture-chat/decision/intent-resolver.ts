@@ -99,10 +99,11 @@ function resolveClient(scope?: RequestScope): SupabaseClient {
  */
 export async function getStageFromDASDatabase(
   cropCode: string,
-  das: number
+  das: number,
+  scope?: RequestScope
 ): Promise<string> {
-  const supabase = getSupabaseClient();
-  
+  const supabase = resolveClient(scope);
+
   const { data, error } = await supabase
     .from('crop_stage_master')
     .select('growth_stage')
@@ -110,12 +111,24 @@ export async function getStageFromDASDatabase(
     .lte('das_min', das)
     .gte('das_max', das)
     .single();
-  
+
   if (error) {
-    console.warn(`[IntentResolver] Stage lookup error: ${error.message}`);
-    return 'UNKNOWN';
+    // PGRST116 = "no rows returned" → legitimately UNKNOWN, not a fault.
+    if ((error as { code?: string }).code === 'PGRST116') {
+      return 'UNKNOWN';
+    }
+    scope?.emit({
+      stage: 'intent-resolver',
+      kind: 'error',
+      payload: { fn: 'getStageFromDASDatabase', cropCode, das, message: error.message },
+    });
+    throw new IntentResolutionError('STAGE_LOOKUP_DB_ERROR', {
+      cropCode,
+      das,
+      dbError: error.message,
+    });
   }
-  
+
   return data?.growth_stage || 'UNKNOWN';
 }
 
@@ -129,44 +142,88 @@ interface ObservationMapping {
 }
 
 /**
- * Get valid observation codes for an intent + crop + DAS from database
- * Returns ONLY codes and confidence ranks - NO translations
+ * Get valid observation codes for an intent + crop + DAS from database.
+ *
+ * v2.1 (Task 5): Restored the crop_code + das_min/das_max + growth_stage
+ * filters that the 2026-03 HOTFIX had disabled. The columns exist on
+ * `intent_observation_mapping` (verified via information_schema) and the
+ * filtered query returns healthy row counts across all common intents
+ * (dry-run: SUGARCANE @ DAS=90 → 30+ intents matched).
+ *
+ * `crop_code` is matched against `IN (cropCode, 'ALL')` so cross-crop
+ * mappings (the 23 'ALL' rows in production) continue to fire.
+ *
+ * DB errors now throw `IntentResolutionError` (fail-closed) instead of
+ * the previous silent `return []` (fail-open).
  */
 export async function getValidObservationCodes(
   intentCode: string,
   cropCode: string,
-  das: number
+  das: number,
+  growthStage?: string,
+  scope?: RequestScope
 ): Promise<ObservationMapping[]> {
-  const supabase = getSupabaseClient();
-  
-  console.log(`📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropCode}, DAS=${das}`);
-  
-  // ═══════════════════════════════════════════════════════════════════════════
-  // HOTFIX: Query by intent_code + is_active ONLY
-  // The crop_code, das_min, das_max columns do not exist yet in this table.
-  // Once migration adds them, re-enable crop/DAS filtering.
-  // ═══════════════════════════════════════════════════════════════════════════
-  const { data: mappings, error: mapError } = await supabase
+  const supabase = resolveClient(scope);
+  const cropUpper = cropCode.toUpperCase();
+
+  console.log(
+    `📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropUpper}, DAS=${das}, stage=${growthStage ?? '*'}`
+  );
+
+  let query = supabase
     .from('intent_observation_mapping')
     .select('observation_code, confidence_rank')
     .eq('intent_code', intentCode)
     .eq('is_active', true)
-    .order('confidence_rank', { ascending: true });
-  
+    .in('crop_code', [cropUpper, 'ALL'])
+    .lte('das_min', das)
+    .gte('das_max', das);
+
+  if (growthStage && growthStage !== 'UNKNOWN') {
+    // 'ALL' is the wildcard convention used in this table.
+    query = query.in('growth_stage', [growthStage.toUpperCase(), 'ALL']);
+  }
+
+  const { data: mappings, error: mapError } = await query.order('confidence_rank', {
+    ascending: true,
+  });
+
   if (mapError) {
-    console.error(`[IntentResolver] Mapping query error: ${mapError.message}`);
-    return [];
+    scope?.emit({
+      stage: 'intent-resolver',
+      kind: 'error',
+      payload: {
+        fn: 'getValidObservationCodes',
+        intentCode,
+        cropCode: cropUpper,
+        das,
+        growthStage,
+        message: mapError.message,
+      },
+    });
+    throw new IntentResolutionError('MAPPING_DB_ERROR', {
+      intentCode,
+      cropCode: cropUpper,
+      das,
+      growthStage,
+      dbError: mapError.message,
+    });
   }
-  
+
   if (!mappings || mappings.length === 0) {
-    console.log(`[IntentResolver] No mappings found for intent=${intentCode}`);
+    console.log(
+      `[IntentResolver] No mappings for intent=${intentCode} crop=${cropUpper} DAS=${das} stage=${growthStage ?? '*'}`
+    );
     return [];
   }
-  
-  console.log(`✅ [IntentResolver] Found ${mappings.length} observation codes for intent=${intentCode}`);
-  
+
+  console.log(
+    `✅ [IntentResolver] Found ${mappings.length} observation codes for intent=${intentCode}`
+  );
+
   return mappings;
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN RESOLVER FUNCTION - PURE SYMBOLIC OUTPUT
