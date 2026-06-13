@@ -958,5 +958,22 @@ export async function runCausalHypothesisArbitration(
   // Fire-and-forget metrics
   updateMetrics(result, supabase_client);
 
+  scope?.emit({
+    stage: 'hypothesis',
+    kind: 'decide',
+    payload: {
+      event: 'arbitration_complete',
+      decision_path: result.decision_path,
+      hypotheses_evaluated: scores.length,
+      hypotheses_eliminated: eliminated.length,
+      hypotheses_survived: survived.length,
+      best_hypothesis: result.best_hypothesis?.hypothesis_id ?? null,
+      best_score: result.best_hypothesis?.weighted_score ?? 0,
+      needs_clarification: !!result.needs_clarification,
+      duration_ms: elapsed,
+    },
+  });
+
   return result;
 }
+
