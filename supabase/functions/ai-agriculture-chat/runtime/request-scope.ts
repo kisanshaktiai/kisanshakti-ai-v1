@@ -125,7 +125,7 @@ export function createRequestScope(input: CreateScopeInput): RequestScope {
     });
   }
 
-  const traceId = crypto.randomUUID();
+  const traceId = input.traceId ?? crypto.randomUUID();
   const startedAt = performance.now();
   const events: TraceEvent[] = [];
 
