@@ -230,9 +230,17 @@ export interface AuditValidation {
 export class AuditLogger {
   private supabase: ReturnType<typeof createClient>;
   private currentTurn: Partial<TurnAuditLog> = {};
-  
-  constructor() {
-    this.supabase = createClient(
+
+  /**
+   * Preferred: pass the per-request Supabase client from `RequestScope.db`
+   * so the logger never holds a process-global connection or per-tenant
+   * `currentTurn` state across requests.
+   *
+   * Back-compat: when no client is provided we still construct one with the
+   * service-role key (legacy callers in orchestrator.ts pre-Task-7).
+   */
+  constructor(supabaseClient?: ReturnType<typeof createClient>) {
+    this.supabase = supabaseClient ?? createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
