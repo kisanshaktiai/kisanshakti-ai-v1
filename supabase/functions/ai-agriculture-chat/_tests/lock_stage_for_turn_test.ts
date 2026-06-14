@@ -9,7 +9,7 @@
 
 import { assertEquals, assertThrows } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import { createRequestScope, InvariantViolation } from '../runtime/request-scope.ts';
-import { lockStageForTurn } from '../agents/clarification-strategy.ts';
+import { lockStageForTurn, getLockedStage, clearLockedStage, isStageLockedForTurn } from '../agents/clarification-strategy.ts';
 
 function makeScope() {
   return createRequestScope({
