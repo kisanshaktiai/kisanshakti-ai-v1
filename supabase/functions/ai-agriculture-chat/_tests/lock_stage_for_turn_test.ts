@@ -57,3 +57,20 @@ Deno.test('lockStageForTurn throws InvariantViolation when cropCode is not a str
     'lockStageForTurn_invalid_args',
   );
 });
+
+Deno.test('getLockedStage returns null when no lock set', () => {
+  const scope = makeScope();
+  assertEquals(getLockedStage(scope), null);
+  assertEquals(isStageLockedForTurn(scope), false);
+});
+
+Deno.test('getLockedStage returns the locked stage after lockStageForTurn (regression: orchestrator.ts:2069/5026)', () => {
+  const scope = makeScope();
+  lockStageForTurn(scope, 'rice', 'germination', 3, 'CROP_SCHEDULE');
+  const lock = getLockedStage(scope);
+  assertEquals(lock?.growth_stage, 'GERMINATION');
+  assertEquals(lock?.crop_code, 'RICE');
+  assertEquals(isStageLockedForTurn(scope), true);
+  clearLockedStage(scope);
+  assertEquals(getLockedStage(scope), null);
+});
