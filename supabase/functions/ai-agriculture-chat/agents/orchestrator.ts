@@ -2066,7 +2066,7 @@ export class AIAgentOrchestrator {
           
           // P0-2 FIX: Determine crop and stage with source tracking
           // CLARIFICATION-FIRST: Use locked stage from clarification-strategy if available
-          const lockedStageFromStrategy = getLockedStage();
+          const lockedStageFromStrategy = scope ? getLockedStage(scope) : null;
           const cropName = lockedStageFromStrategy?.crop_code || 
                           lockedCropContext?.crop_name || 
                           landContextForOptionSelection?.current_crop || 'UNKNOWN';
