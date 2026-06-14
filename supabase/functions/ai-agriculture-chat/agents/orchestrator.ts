@@ -1262,13 +1262,18 @@ export class AIAgentOrchestrator {
           // ═══════════════════════════════════════════════════════════════════════════
           if (landContext.growth_stage && landContext.current_crop) {
             const stageSource = landContext.sowing_date ? 'CROP_SCHEDULE' : 'LAND_CONTEXT';
-            lockStageForTurn(
-              landContext.current_crop,
-              landContext.growth_stage,
-              landContext.days_since_sowing || 0,
-              stageSource
-            );
-            
+            if (scope) {
+              lockStageForTurn(
+                scope,
+                landContext.current_crop,
+                landContext.growth_stage,
+                landContext.days_since_sowing || 0,
+                stageSource
+              );
+            } else {
+              console.warn('⚠️ [Orchestrator] Skipping stage lock — no RequestScope on this call path');
+            }
+
             logClarificationEvent(
               traceId,
               'STAGE_LOCK',
