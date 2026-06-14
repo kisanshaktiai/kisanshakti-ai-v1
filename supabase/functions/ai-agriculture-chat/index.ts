@@ -1497,6 +1497,25 @@ serve(async (req) => {
         if (symbolicConfidence < 0) symbolicConfidence = 0;
         if (symbolicConfidence > 1) symbolicConfidence = 1;
 
+        // ── Observation → SAFE-rule precheck (drives young-crop bypass + OBSERVATION text)
+        const observationCodesForBypass = extractObservationCodes(mergedSymptomKeys);
+        let observationRuleHit: ObservationRuleHit | null = null;
+        if (observationCodesForBypass.length > 0 && finalCropName && finalGrowthStage) {
+          try {
+            observationRuleHit = await lookupSafeRuleForObservations(supabase, {
+              confirmedObservations: observationCodesForBypass,
+              cropCode: String(finalCropName).toUpperCase(),
+              growthStage: String(finalGrowthStage).toUpperCase(),
+              language: detectedLanguage,
+            });
+            if (observationRuleHit) {
+              console.log(`   🎯 [ObservationRuleLookup] hit rule=${observationRuleHit.rule_id} safety=${observationRuleHit.farmer_safety_level} lang_localized=${!!observationRuleHit.localized_text}`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [ObservationRuleLookup] failed: ${(e as Error).message}`);
+          }
+        }
+
         const unifiedGateInput: UnifiedGateInput = {
           authority_decision: orchestratorResponse.decision_output?.authority_decision || {
             authority: 'NONE',
@@ -1516,7 +1535,10 @@ serve(async (req) => {
           has_emergency_indicators: orchestratorResponse.metadata?.isEmergency || false,
           land_id: landId,
           decision_confidence: Math.round(symbolicConfidence * 100),  // Convert 0-1 to 0-100
-          hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined
+          hypothesis_confidence: orchestratorResponse.decision_output?.hypothesis_result?.hypothesis_score ?? undefined,
+          confirmed_observation_has_safe_rule: !!observationRuleHit,
+          confirmed_observation_rule_id: observationRuleHit?.rule_id,
+          confirmed_observation_codes: observationCodesForBypass,
         } as any;
 
         // INVARIANT: If symbolic layer selected a primary decision, confidence must not be zero
