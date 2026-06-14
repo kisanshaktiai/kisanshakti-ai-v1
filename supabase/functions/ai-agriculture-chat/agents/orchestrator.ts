@@ -2066,7 +2066,7 @@ export class AIAgentOrchestrator {
           
           // P0-2 FIX: Determine crop and stage with source tracking
           // CLARIFICATION-FIRST: Use locked stage from clarification-strategy if available
-          const lockedStageFromStrategy = getLockedStage();
+          const lockedStageFromStrategy = scope ? getLockedStage(scope) : null;
           const cropName = lockedStageFromStrategy?.crop_code || 
                           lockedCropContext?.crop_name || 
                           landContextForOptionSelection?.current_crop || 'UNKNOWN';
@@ -5023,7 +5023,7 @@ export class AIAgentOrchestrator {
       // If crop+stage known but symptoms partial → clarify BEFORE rules
       // ═══════════════════════════════════════════════════════════════════════════
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
-      const lockedStage = getLockedStage();
+      const lockedStage = scope ? getLockedStage(scope) : null;
       
       const clarificationTriggerInput: ClarificationTriggerInput = {
         crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
