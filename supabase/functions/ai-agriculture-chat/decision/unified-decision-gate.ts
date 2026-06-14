@@ -248,6 +248,17 @@ export interface UnifiedGateInput {
     wind_speed_kmph?: number;
     temperature_celsius?: number;
   } | null;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONFIRMED-OBSERVATION SAFE-RULE BYPASS
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Set to true when a confirmed observation (e.g. OBS_RICE_NO_EMERGENCE) has
+  // a matching SAFE/CAUTION rule in decision_rules for this crop+stage.
+  // The presence of such a rule is a stronger safety signal than the gate's
+  // young-crop heuristic, so the young-crop block is bypassed.
+  confirmed_observation_has_safe_rule?: boolean;
+  confirmed_observation_rule_id?: string;
+  confirmed_observation_codes?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -599,6 +610,42 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   
   // If young crop without confirmed diagnosis → check for DIAGNOSTIC_ESCALATION
   if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators) {
+    // ── BYPASS: confirmed observation has a SAFE/CAUTION rule for this stage.
+    // The caller (index.ts) precomputes this via lookupSafeRuleForObservations.
+    // The rule's farmer_safety_level + growth_stage match is a stronger signal
+    // than the gate's heuristic, so we let the OBSERVATION-mode response
+    // generator surface the rule's action_text directly.
+    if (input.confirmed_observation_has_safe_rule) {
+      console.log(`   ✅ YOUNG CROP BYPASS — confirmed observation has SAFE rule (${input.confirmed_observation_rule_id || '?'})`);
+      return {
+        gate_status: GateStatus.PASS,
+        gate_action: GateAction.PROVIDE_OBSERVATION_ONLY,
+        treatments_allowed: false,
+        allowed_actions: [...OBSERVATION_ACTIONS, 'PROVIDE_INFO', 'RECOMMEND'],
+        blocked_actions: [],
+        allowed_products: [],
+        allowed_dosages: [],
+        response_mode: ResponseMode.OBSERVATION,
+        authority_decision,
+        criteria_results: {
+          authority_resolved: { passed: authorityResolved, reason: authority_decision.reason },
+          crop_identified: { passed: !!input.crop_name, reason: input.crop_name ? `Crop: ${input.crop_name}` : 'Unknown' },
+          stage_determined: { passed: !!input.growth_stage, reason: `Stage: ${input.growth_stage || 'unknown'}` },
+          symptom_specific: { passed: true, reason: `Confirmed observation: ${(input.confirmed_observation_codes || []).join(', ')}` },
+          symbolic_decision_valid: { passed: true, reason: `Safe rule ${input.confirmed_observation_rule_id} matched` },
+        },
+        missing_criteria: [],
+        reason: `bypass:confirmed_safe_rule_exists rule=${input.confirmed_observation_rule_id || '?'}`,
+        confidence_level: 'HIGH',
+        decision_confidence: 75,
+        has_symptoms: true,
+        has_visual_ambiguity: false,
+        clarification_options: [],
+        gate_version: UNIFIED_GATE_VERSION,
+        checked_at: checkedAt,
+      };
+    }
+
     // Check if we have symptoms that warrant diagnostic escalation (not just observation)
     const hasSpecificSymptoms = input.symptom_keys && input.symptom_keys.length > 0 && 
       !input.symptom_keys.every(s => VAGUE_SYMPTOM_PATTERNS.has(s.toUpperCase()));
