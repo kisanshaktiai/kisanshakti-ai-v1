@@ -248,6 +248,17 @@ export interface UnifiedGateInput {
     wind_speed_kmph?: number;
     temperature_celsius?: number;
   } | null;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CONFIRMED-OBSERVATION SAFE-RULE BYPASS
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Set to true when a confirmed observation (e.g. OBS_RICE_NO_EMERGENCE) has
+  // a matching SAFE/CAUTION rule in decision_rules for this crop+stage.
+  // The presence of such a rule is a stronger safety signal than the gate's
+  // young-crop heuristic, so the young-crop block is bypassed.
+  confirmed_observation_has_safe_rule?: boolean;
+  confirmed_observation_rule_id?: string;
+  confirmed_observation_codes?: string[];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
