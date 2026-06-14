@@ -5023,7 +5023,7 @@ export class AIAgentOrchestrator {
       // If crop+stage known but symptoms partial → clarify BEFORE rules
       // ═══════════════════════════════════════════════════════════════════════════
       const clarificationCompleted = options.sessionState?.clarificationCompleted || false;
-      const lockedStage = getLockedStage();
+      const lockedStage = scope ? getLockedStage(scope) : null;
       
       const clarificationTriggerInput: ClarificationTriggerInput = {
         crop_known: !!(landContext?.current_crop || inductionResult.crop?.symbol),
