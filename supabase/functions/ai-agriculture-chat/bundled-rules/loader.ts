@@ -101,18 +101,34 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
     
     const supabase = createClient(supabaseUrl, serviceRoleKey);
     
-    const { data, error } = await supabase
-      .from('decision_rules')
-      .select('*')
-      .eq('is_active', true)
-      .limit(3000);
-    
-    if (error) {
-      console.error('❌ [RuleLoader] Database error:', error.message);
-      return [];
+    // PostgREST caps a single response at ~1000 rows regardless of `.limit()`.
+    // decision_rules has >1800 active rows — a non-paginated read silently
+    // dropped rules like RICE_GERMINATION_DIAGNOSTIC_001, causing
+    // RULE_DATA_INTEGRITY_ERROR (matched_responses=0) for valid observations.
+    // Paginate explicitly and stop only when a page returns < PAGE rows.
+    const PAGE = 1000;
+    const MAX_PAGES = 20; // hard ceiling = 20k rules
+    let allRows: any[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const from = page * PAGE;
+      const to = from + PAGE - 1;
+      const { data: pageData, error } = await supabase
+        .from('decision_rules')
+        .select('*')
+        .eq('is_active', true)
+        .order('rule_id', { ascending: true })
+        .range(from, to);
+      if (error) {
+        console.error('❌ [RuleLoader] Database error:', error.message);
+        return [];
+      }
+      const rows = pageData || [];
+      allRows = allRows.concat(rows);
+      if (rows.length < PAGE) break;
     }
-    
-    console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database`);
+    const data = allRows;
+
+    console.log(`✅ [RuleLoader] Loaded ${data?.length || 0} rules from database (paginated)`);
     return (data || []).map(row => {
       // SSOT: trigger_keywords column was DROPPED - conditions_json is sole source
       const conditionsJson = row.conditions_json || {};
