@@ -186,7 +186,7 @@ function isVisuallyObservable(optionId: string, label: string): boolean {
 // key 'clarification:stage_lock'. See runtime/request-scope.ts.
 // ═══════════════════════════════════════════════════════════════════════════
 
-import type { RequestScope } from '../runtime/request-scope.ts';
+import { type RequestScope, InvariantViolation } from '../runtime/request-scope.ts';
 
 const STAGE_LOCK_KEY = 'clarification:stage_lock';
 
@@ -201,6 +201,19 @@ export function lockStageForTurn(
   daysSinceSowing: number,
   source: LockedStageContext['source']
 ): LockedStageContext {
+  // Fail loudly on signature drift instead of silently in .toUpperCase().
+  // Prior to this guard, a mis-ordered caller passed a number into
+  // `growthStage` and the resulting TypeError was swallowed by the
+  // orchestrator's try/catch, falling back to a generic template response.
+  if (typeof cropCode !== 'string' || typeof growthStage !== 'string') {
+    throw new InvariantViolation('lockStageForTurn_invalid_args', {
+      cropCode_type: typeof cropCode,
+      growthStage_type: typeof growthStage,
+      cropCode_value: cropCode,
+      growthStage_value: growthStage,
+    });
+  }
+
   const ctx: LockedStageContext = {
     crop_code: cropCode.toUpperCase(),
     growth_stage: growthStage.toUpperCase(),
