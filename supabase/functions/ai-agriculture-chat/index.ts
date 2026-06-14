@@ -1768,13 +1768,22 @@ serve(async (req) => {
               orchestrator_type: 'DIAGNOSTIC_ESCALATION'
             };
           } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
-            // Young crop - use monitoring response with authority-reconciled values
-            responseContent = generateYoungCropMonitoringResponse(
-              detectedLanguage,
-              finalCropName,
-              finalGrowthStage,
-              finalDaysSinceSowing
-            );
+            // OBSERVATION mode: prefer the action_text of a SAFE rule keyed on
+            // a confirmed observation. Only fall back to the generic monitoring
+            // template when no such rule exists.
+            if (observationRuleHit) {
+              responseContent = observationRuleHit.text;
+              aiModelUsed = `rule:${observationRuleHit.rule_id}`;
+              console.log(`   📜 [ObservationResponse] using rule=${observationRuleHit.rule_id} source=${observationRuleHit.source} lang=${detectedLanguage}`);
+            } else {
+              // Young crop - use monitoring response with authority-reconciled values
+              responseContent = generateYoungCropMonitoringResponse(
+                detectedLanguage,
+                finalCropName,
+                finalGrowthStage,
+                finalDaysSinceSowing
+              );
+            }
           } else {
             // No confirmed diagnosis or authority block - use observation response
             responseContent = generateObservationOnlyResponse(
@@ -1783,6 +1792,7 @@ serve(async (req) => {
               unifiedGateResult.reason
             );
           }
+
 
           // P0 HOTFIX: prefer safety-gate clarification text when present
           if (safetyGateResult?.clarification_text) {
