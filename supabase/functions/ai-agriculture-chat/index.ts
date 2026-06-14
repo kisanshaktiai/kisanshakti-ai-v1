@@ -85,6 +85,11 @@ import {
   generateYoungCropMonitoringResponse
 } from './decision/prescription-gate-enforcer.ts';
 import {
+  lookupSafeRuleForObservations,
+  extractObservationCodes,
+  type ObservationRuleHit
+} from './decision/observation-rule-lookup.ts';
+import {
   generateDiagnosticEscalationResponse,
   type DiagnosticEscalationInput
 } from './decision/diagnostic-escalation-generator.ts';
