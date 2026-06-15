@@ -43,18 +43,31 @@ class ChatSyncService {
     try {
       // CRITICAL FIX: Pass tenantId for proper multi-tenant isolation
       const messages = await localDB.getChatMessages(landId, farmerId, tenantId);
-      
+
       if (!messages || messages.length === 0) {
         return '1970-01-01T00:00:00.000Z';
       }
-      
-      // Find the most recent message timestamp
-      const latest = messages.reduce((max, msg) => {
+
+      // Bug 2 fix: ignore optimistic (not-yet-server-confirmed) rows when
+      // computing the delta-sync cursor. Otherwise a client-generated
+      // `created_at` newer than any server row would skip real messages on
+      // reopen, corrupting the user/assistant ordering.
+      const syncedMessages = messages.filter((m) => {
+        const status = (m as any).syncStatus;
+        // Treat unknown/legacy rows as synced so we don't regress old data,
+        // but explicitly drop rows we know are still pending or in conflict.
+        return status !== 'pending' && status !== 'conflict';
+      });
+
+      const candidatePool = syncedMessages.length > 0 ? syncedMessages : messages;
+
+      // Find the most recent message timestamp among server-confirmed rows.
+      const latest = candidatePool.reduce((max, msg) => {
         const msgTime = msg.created_at || msg.updated_at;
         if (!msgTime) return max;
         return msgTime > max ? msgTime : max;
-      }, messages[0]?.created_at || '1970-01-01T00:00:00.000Z');
-      
+      }, candidatePool[0]?.created_at || '1970-01-01T00:00:00.000Z');
+
       return latest;
     } catch (error) {
       console.warn('[ChatSync] Failed to get last message time:', error);

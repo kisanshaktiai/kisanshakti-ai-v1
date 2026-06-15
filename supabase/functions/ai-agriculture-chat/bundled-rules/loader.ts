@@ -852,6 +852,24 @@ export function evaluateConditionsJson(
 
     const condValue = conditions[key];
 
+    // ─── DAS range gate (SSOT: input.days_since_sowing) ───
+    if (key === 'das_range') {
+      const das = Number(input.days_since_sowing ?? (input as any).days_after_sowing_exact);
+      if (!Number.isFinite(das)) {
+        ledger.push({ key, status: ConditionStatus.SKIPPED_NO_DATA, required: true, ruleValue: condValue });
+        continue;
+      }
+      const cv: any = condValue || {};
+      const min = Number(cv.min ?? cv.from ?? Number.NEGATIVE_INFINITY);
+      const max = Number(cv.max ?? cv.to ?? Number.POSITIVE_INFINITY);
+      const passes = das >= min && das <= max;
+      ledger.push({
+        key, status: passes ? ConditionStatus.PASSED : ConditionStatus.FAILED,
+        required: true, inputValue: das, ruleValue: condValue,
+      });
+      continue;
+    }
+
     // ─── Category H: Deprecated/Ignored ───
     if (key === 'trigger_keywords') continue;
     if (key === 'always_applicable') {

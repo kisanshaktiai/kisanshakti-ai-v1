@@ -1,38 +1,31 @@
 /**
- * Pure helpers for deriving crop stage and expected harvest date from a
- * sowing date + crop duration. Used by SmartLandConfirmCard so that we
- * always store crop_stage, planting_date, last_sowing_date, cultivation_date
- * and expected_harvest_date together — a hard requirement called out by the
- * user ("the last cultivation date and the current new crop addition with
- * date is also most important").
+ * Pure helpers for deriving DAS + expected harvest from a sowing date.
+ *
+ * IMPORTANT — agronomic source of truth:
+ *   • Sowing date  ← crop_schedules.sowing_date (DB)
+ *   • Stage windows ← crop_stage_master (DB, resolved on the backend by
+ *     resolveCropTimeline). We DO NOT invent a stage from frontend code.
+ *
+ * deriveCropCycle therefore returns the raw timeline (DAS, expected harvest,
+ * progress) and exposes an optional `stageOverride` callers should pass when
+ * they already have the server-resolved growth stage (e.g. from landContext
+ * or a `crop_stage_master` lookup). When no override is given, the stage
+ * label is returned as 'Unknown' — never guessed.
  */
 
 export interface CropStageResult {
-  stage: string;             // canonical stage label
+  stage: string;             // canonical stage label, or 'Unknown'
   stageKey: string;          // i18n key suffix
   expectedHarvestDate: string | null; // ISO yyyy-mm-dd
   daysSinceSowing: number;
   progressPercent: number;   // 0..100
 }
 
-/**
- * Map normalised progress (0..1) to a coarse generic stage. Crop-specific
- * tuning happens server-side; this is only a UX hint for the confirm card.
- */
-function stageFromProgress(progress: number): { stage: string; stageKey: string } {
-  if (progress < 0) return { stage: 'Pre-sowing', stageKey: 'pre_sowing' };
-  if (progress < 0.1) return { stage: 'Germination', stageKey: 'germination' };
-  if (progress < 0.3) return { stage: 'Vegetative', stageKey: 'vegetative' };
-  if (progress < 0.55) return { stage: 'Tillering / Branching', stageKey: 'tillering' };
-  if (progress < 0.75) return { stage: 'Flowering', stageKey: 'flowering' };
-  if (progress < 0.95) return { stage: 'Grand growth', stageKey: 'grand_growth' };
-  return { stage: 'Maturity', stageKey: 'maturity' };
-}
-
 export function deriveCropCycle(
   sowingDateIso: string | null | undefined,
   durationDays: number | null | undefined,
   landPrepDaysEarlier: number = 0,
+  stageOverride?: { stage: string; stageKey: string } | null,
 ): CropStageResult & {
   plantingDate: string | null;
   cultivationDate: string | null;
@@ -40,8 +33,8 @@ export function deriveCropCycle(
 } {
   if (!sowingDateIso) {
     return {
-      stage: '—',
-      stageKey: 'unknown',
+      stage: stageOverride?.stage ?? '—',
+      stageKey: stageOverride?.stageKey ?? 'unknown',
       expectedHarvestDate: null,
       daysSinceSowing: 0,
       progressPercent: 0,
@@ -63,11 +56,12 @@ export function deriveCropCycle(
     progress = Math.min(1.2, daysSinceSowing / durationDays);
   }
 
-  const { stage, stageKey } = stageFromProgress(progress);
+  // No code-side stage guess. If the caller hasn't supplied a server-resolved
+  // stage we surface 'Unknown' explicitly so missing data is visible.
+  const stage = stageOverride?.stage ?? 'Unknown';
+  const stageKey = stageOverride?.stageKey ?? 'unknown';
 
-  // cultivation = land preparation date (sowing − N days). If no offset
-  // provided, cultivation_date == planting_date so all three columns stay
-  // consistent and downstream pipelines never see NULL.
+  // cultivation = land preparation date (sowing − N days).
   const cultivation = new Date(sowing.getTime() - Math.max(0, landPrepDaysEarlier) * dayMs);
 
   return {
@@ -88,11 +82,10 @@ export function deriveCropCycle(
  */
 export function seasonToSowingDate(season: 'kharif' | 'rabi' | 'summer'): string {
   const y = new Date().getFullYear();
-  // Conservative defaults — farmer can pick exact date if they want.
   const m =
-    season === 'kharif' ? 6 :   // June
-    season === 'rabi'   ? 10 :  // October
-                          2;    // March (summer)
-  const d = season === 'kharif' ? 15 : 15;
+    season === 'kharif' ? 6 :
+    season === 'rabi'   ? 10 :
+                          2;
+  const d = 15;
   return new Date(Date.UTC(y, m, d)).toISOString().slice(0, 10);
 }

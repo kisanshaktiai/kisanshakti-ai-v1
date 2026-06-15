@@ -2204,22 +2204,10 @@ export class AIAgentOrchestrator {
               }
             }
           } catch (e) {
-            console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed, using static fallback: ${e}`);
-            // Minimal static fallback for critical paths only
-            const criticalFallback: Record<string, string[]> = {
-              'DEAD_HEART': ['DEAD_HEART_PRESENT', 'BORER_DAMAGE', 'SHOOT_BORER_DAMAGE'],
-              'DEAD_HEART_PRESENT': ['DEAD_HEART', 'BORER_DAMAGE'],
-              'BORER_DAMAGE': ['DEAD_HEART', 'TUNNELS_IN_STEM', 'BORER_HOLES'],
-              'INSECTS_VISIBLE': ['PEST_DAMAGE', 'INSECT_PRESENCE_CONFIRMED'],
-              'PEST_CHECK': ['PEST_DAMAGE', 'INSECT_PRESENT', 'BORER_DAMAGE'],
-              'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'CHLOROSIS'],
-              'WATER_STRESS_CHECK': ['WATER_STRESS', 'WILTING', 'LEAF_CURLING'],
-            };
-            if (mappedObservationKey && criticalFallback[mappedObservationKey]) {
-              const fallbackCodes = criticalFallback[mappedObservationKey].filter(c => !allObservations.includes(c));
-              allObservations.push(...fallbackCodes);
-              console.log(`   🔍 [ObservationExpansion] Static fallback: +${fallbackCodes.length} codes`);
-            }
+            // SSOT: alias expansion MUST come from observation_aliases (DB).
+            // No hardcoded fallback — failing safe means the rule matcher
+            // only sees the confirmed observations the farmer actually gave us.
+            console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed (no static fallback): ${e}`);
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
           
@@ -2259,6 +2247,10 @@ export class AIAgentOrchestrator {
             ...canonicalState, 
             user_query: farmerMessage,
             visual_symptoms: allObservations,
+            // SSOT DAS so rules with conditions_json.das_range can evaluate
+            // correctly (e.g. RICE_GERMINATION_DIAGNOSTIC_001 at DAS 0–7).
+            days_since_sowing: landContextForOptionSelection?.days_since_sowing ?? null,
+            confirmed_observations: allObservations,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
           const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any, { scope });
@@ -2532,6 +2524,10 @@ export class AIAgentOrchestrator {
                 session_id: sessionId,
                 status: statusToUse,
                 decision_brain_source: true,
+                // SSOT: surface selected observations so index.ts's
+                // observation-rule-lookup bypass + UnifiedGate symptom checks
+                // can find the DB rule for the farmer's clarification choice.
+                symptom_keys: Array.from(allObservations || []),
                 // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
                 authority_decision: authorityDecision,
                 // ═══════════════════════════════════════════════════════════════════════════
@@ -2573,6 +2569,8 @@ export class AIAgentOrchestrator {
                 processing_time_ms: Date.now() - startTime,
                 agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'LAYERED_RULE_EVALUATOR'],
                 trace_id: traceId,
+                // SSOT: mirror selected observations onto top-level metadata
+                symptomKeys: Array.from(allObservations || []),
                 // CRITICAL: Clear pending options after successful selection
                 pendingClarificationOptions: undefined,
                 pendingClarificationScope: undefined,
@@ -2634,6 +2632,9 @@ export class AIAgentOrchestrator {
               session_id: sessionId,
               status: 'STAGE_FALLBACK',
               decision_brain_source: true,
+              // SSOT symptom propagation so index.ts can still invoke the
+              // observation→safe-rule lookup even on the no-rules-matched path.
+              symptom_keys: Array.from(allObservations || []),
               // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
               authority_decision: authorityDecision,
               // PHASE-14: Include stage-aware fallback message
@@ -2666,6 +2667,7 @@ export class AIAgentOrchestrator {
               processing_time_ms: Date.now() - startTime,
               agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
               trace_id: traceId,
+              symptomKeys: Array.from(allObservations || []),
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
               lockedCropContext: finalLockedCropContextNoRules,

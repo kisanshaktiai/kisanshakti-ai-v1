@@ -52,6 +52,8 @@ export async function lookupSafeRuleForObservations(
     cropCode: string;
     growthStage: string;
     language?: string;
+    /** SSOT days-since-sowing — used to filter by conditions_json.das_range. */
+    daysSinceSowing?: number | null;
   },
 ): Promise<ObservationRuleHit | null> {
   const obsList = (args.confirmedObservations || []).filter((s) => typeof s === 'string' && s.length > 0);
@@ -59,7 +61,7 @@ export async function lookupSafeRuleForObservations(
 
   const { data, error } = await supabase
     .from('decision_rules')
-    .select('rule_id, condition_code, crop_code, growth_stage, action_text, action_type, farmer_safety_level, priority, is_active')
+    .select('rule_id, condition_code, crop_code, growth_stage, action_text, action_type, farmer_safety_level, priority, is_active, conditions_json')
     .in('condition_code', obsList)
     .eq('crop_code', args.cropCode)
     .eq('is_active', true)
@@ -79,6 +81,7 @@ export async function lookupSafeRuleForObservations(
     action_type: string | null;
     farmer_safety_level: string | null;
     priority: number | null;
+    conditions_json: Record<string, unknown> | null;
   }>;
 
   const stageMatch = rows.filter(
@@ -87,16 +90,33 @@ export async function lookupSafeRuleForObservations(
 
   if (stageMatch.length === 0) return null;
 
+  // DAS gate: when the caller supplies SSOT DAS, drop any rule whose
+  // conditions_json.das_range excludes it. Rules without a das_range are
+  // treated as DAS-agnostic.
+  const das = typeof args.daysSinceSowing === 'number' && Number.isFinite(args.daysSinceSowing)
+    ? args.daysSinceSowing
+    : null;
+  const dasFiltered = das === null ? stageMatch : stageMatch.filter((r) => {
+    const cj = r.conditions_json as any;
+    const dr = cj?.das_range;
+    if (!dr || typeof dr !== 'object') return true;
+    const min = Number(dr.min ?? dr.from ?? Number.NEGATIVE_INFINITY);
+    const max = Number(dr.max ?? dr.to ?? Number.POSITIVE_INFINITY);
+    return das >= min && das <= max;
+  });
+
+  if (dasFiltered.length === 0) return null;
+
   // Lowest priority value first (1 = highest urgency); fall back to rule_id
   // for deterministic ordering when priorities tie or are null.
-  stageMatch.sort((a, b) => {
+  dasFiltered.sort((a, b) => {
     const pa = a.priority ?? 9999;
     const pb = b.priority ?? 9999;
     if (pa !== pb) return pa - pb;
     return a.rule_id.localeCompare(b.rule_id);
   });
 
-  const top = stageMatch[0];
+  const top = dasFiltered[0];
   if (!top.action_text) return null;
 
   let localized: string | null = null;
