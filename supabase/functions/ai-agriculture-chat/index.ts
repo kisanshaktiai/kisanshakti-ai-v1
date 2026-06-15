@@ -2307,6 +2307,17 @@ serve(async (req) => {
       aiModelUsed
     );
 
+    // Bug 2 fix: surface persisted-row identifiers so the client can replace
+    // its optimistic LocalDB records (and avoid clock-skew sequence drift on
+    // chat reopen). storage_status is explicit so the UI can mark the turn
+    // as 'failed' when the DB write didn't actually land.
+    (responsePayload as any).persisted_messages = {
+      user: persistedUserMessage,
+      assistant: persistedAssistantMessage,
+      session_id: currentSessionId,
+      storage_status: messageStorageStatus,
+    };
+
     // ═══════════════════════════════════════════════════════════════════════════
     // SESSION-LEVEL DECISION TRACKING
     // Updates session metadata after every decision brain execution
