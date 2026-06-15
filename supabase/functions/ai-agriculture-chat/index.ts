@@ -89,6 +89,7 @@ import {
   extractObservationCodes,
   type ObservationRuleHit
 } from './decision/observation-rule-lookup.ts';
+import { resolveCropTimeline } from './utils/resolveCropTimeline.ts';
 import {
   generateDiagnosticEscalationResponse,
   type DiagnosticEscalationInput
@@ -1428,6 +1429,39 @@ serve(async (req) => {
         console.log(`   📊 [LandContext] Built from ${landContextSource}`);
         if (landContext) {
           console.log(`      Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage}, Days: ${landContext.days_since_sowing}`);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // SSOT OVERLAY: derive DAS + growth_stage from crop_schedules.sowing_date
+        // (date of sowing) and crop_stage_master (DB stage windows). This is the
+        // single authoritative source — overrides any earlier heuristic value.
+        // Never invents a stage from code; missing rows surface as 'UNKNOWN'.
+        // ═══════════════════════════════════════════════════════════════════════════
+        try {
+          const timeline = await resolveCropTimeline({
+            landId: landId || null,
+            supabase,
+            scope: (orchestratorResponse.metadata?.scope as any) || undefined,
+          });
+          if (timeline.schedule_source === 'crop_schedules') {
+            if (landContext) {
+              if (typeof timeline.days_since_sowing === 'number') {
+                landContext.days_since_sowing = timeline.days_since_sowing;
+              }
+              if (timeline.growth_stage && timeline.growth_stage !== 'UNKNOWN') {
+                landContext.growth_stage = timeline.growth_stage;
+              }
+              (landContext as any).sowing_date = timeline.sowing_date;
+              (landContext as any).expected_harvest_date = timeline.expected_harvest_date;
+              (landContext as any).maturity_days = timeline.maturity_days;
+              (landContext as any).crop_code = timeline.crop_code;
+            }
+            console.log(`   📅 [CropTimeline SSOT] sow=${timeline.sowing_date} DAS=${timeline.days_since_sowing} stage=${timeline.growth_stage} (stage_src=${timeline.stage_source}, maturity_src=${timeline.maturity_source})`);
+          } else {
+            console.log(`   📅 [CropTimeline SSOT] no active crop_schedule for land — keeping prior landContext values`);
+          }
+        } catch (e) {
+          console.warn(`   ⚠️ [CropTimeline SSOT] resolveCropTimeline failed: ${(e as Error).message}`);
         }
         
         // ═══════════════════════════════════════════════════════════════════════════
