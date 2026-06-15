@@ -2520,6 +2520,10 @@ export class AIAgentOrchestrator {
                 session_id: sessionId,
                 status: statusToUse,
                 decision_brain_source: true,
+                // SSOT: surface selected observations so index.ts's
+                // observation-rule-lookup bypass + UnifiedGate symptom checks
+                // can find the DB rule for the farmer's clarification choice.
+                symptom_keys: Array.from(allObservations || []),
                 // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
                 authority_decision: authorityDecision,
                 // ═══════════════════════════════════════════════════════════════════════════
@@ -2561,6 +2565,8 @@ export class AIAgentOrchestrator {
                 processing_time_ms: Date.now() - startTime,
                 agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'LAYERED_RULE_EVALUATOR'],
                 trace_id: traceId,
+                // SSOT: mirror selected observations onto top-level metadata
+                symptomKeys: Array.from(allObservations || []),
                 // CRITICAL: Clear pending options after successful selection
                 pendingClarificationOptions: undefined,
                 pendingClarificationScope: undefined,
@@ -2622,6 +2628,9 @@ export class AIAgentOrchestrator {
               session_id: sessionId,
               status: 'STAGE_FALLBACK',
               decision_brain_source: true,
+              // SSOT symptom propagation so index.ts can still invoke the
+              // observation→safe-rule lookup even on the no-rules-matched path.
+              symptom_keys: Array.from(allObservations || []),
               // FIX A (CRITICAL): Include authority_decision to prevent default to NONE
               authority_decision: authorityDecision,
               // PHASE-14: Include stage-aware fallback message
@@ -2654,6 +2663,7 @@ export class AIAgentOrchestrator {
               processing_time_ms: Date.now() - startTime,
               agents_used: [...agentsUsed, 'OPTION_SELECTION_HANDLER', 'STAGE_FALLBACK'],
               trace_id: traceId,
+              symptomKeys: Array.from(allObservations || []),
               pendingClarificationOptions: undefined,
               pendingClarificationScope: undefined,
               lockedCropContext: finalLockedCropContextNoRules,
