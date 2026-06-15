@@ -2247,6 +2247,10 @@ export class AIAgentOrchestrator {
             ...canonicalState, 
             user_query: farmerMessage,
             visual_symptoms: allObservations,
+            // SSOT DAS so rules with conditions_json.das_range can evaluate
+            // correctly (e.g. RICE_GERMINATION_DIAGNOSTIC_001 at DAS 0–7).
+            days_since_sowing: landContextForOptionSelection?.days_since_sowing ?? null,
+            confirmed_observations: allObservations,
             primary_symptom: visualSymptom !== 'UNKNOWN' ? visualSymptom : mappedObservationKey
           };
           const ruleResult = evaluateRulesLayered(allRulesForOption, stateWithQuery as any, { scope });
