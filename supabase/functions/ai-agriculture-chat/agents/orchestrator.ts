@@ -2204,22 +2204,10 @@ export class AIAgentOrchestrator {
               }
             }
           } catch (e) {
-            console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed, using static fallback: ${e}`);
-            // Minimal static fallback for critical paths only
-            const criticalFallback: Record<string, string[]> = {
-              'DEAD_HEART': ['DEAD_HEART_PRESENT', 'BORER_DAMAGE', 'SHOOT_BORER_DAMAGE'],
-              'DEAD_HEART_PRESENT': ['DEAD_HEART', 'BORER_DAMAGE'],
-              'BORER_DAMAGE': ['DEAD_HEART', 'TUNNELS_IN_STEM', 'BORER_HOLES'],
-              'INSECTS_VISIBLE': ['PEST_DAMAGE', 'INSECT_PRESENCE_CONFIRMED'],
-              'PEST_CHECK': ['PEST_DAMAGE', 'INSECT_PRESENT', 'BORER_DAMAGE'],
-              'NUTRIENT_CHECK': ['NUTRIENT_DEFICIENCY', 'LEAF_YELLOWING', 'CHLOROSIS'],
-              'WATER_STRESS_CHECK': ['WATER_STRESS', 'WILTING', 'LEAF_CURLING'],
-            };
-            if (mappedObservationKey && criticalFallback[mappedObservationKey]) {
-              const fallbackCodes = criticalFallback[mappedObservationKey].filter(c => !allObservations.includes(c));
-              allObservations.push(...fallbackCodes);
-              console.log(`   🔍 [ObservationExpansion] Static fallback: +${fallbackCodes.length} codes`);
-            }
+            // SSOT: alias expansion MUST come from observation_aliases (DB).
+            // No hardcoded fallback — failing safe means the rule matcher
+            // only sees the confirmed observations the farmer actually gave us.
+            console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed (no static fallback): ${e}`);
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
           
