@@ -246,7 +246,7 @@ export function SmartLandConfirmCard({
         current_crop_id: form.current_crop_id,
         // Seed-variety persistence — gated by the seed-only FK + trigger on lands.
         current_crop_variety_id: form.current_crop_variety_id || null,
-        crop_stage: cycle.stage !== '—' ? cycle.stage : undefined,
+        crop_stage: (cycle.stage && cycle.stage !== '—' && cycle.stage !== 'Unknown') ? cycle.stage : undefined,
         planting_date: cycle.plantingDate || undefined,
         last_sowing_date: cycle.lastSowingDate || undefined,
         cultivation_date: cycle.cultivationDate || undefined,
