@@ -2173,101 +2173,120 @@ serve(async (req) => {
     }
     
     // Store user message with preprocessed_content (English normalized)
+    // Persist + capture {id, created_at} so the client can replace its
+    // optimistic LocalDB rows with server-authoritative ones (fixes
+    // chat-reopen sequence drift caused by client-side timestamps).
+    let persistedUserMessage: { id: string; created_at: string; role: 'user' } | null = null;
+    let persistedAssistantMessage: { id: string; created_at: string; role: 'assistant' } | null = null;
+    let messageStorageStatus: 'ok' | 'partial' | 'failed' = 'ok';
     try {
-      await supabase.from('ai_chat_messages').insert({
-        session_id: currentSessionId,
-        tenant_id: finalTenantId,
-        farmer_id: finalFarmerId,
-        role: 'user',
-        content: userMessageContent, // Original in user's language
-        preprocessed_content: preprocessedContent, // Normalized to English for NLU
-        language: detectedLanguage,
-        message_type: imageUrl ? 'image_analysis' : 'text',
-        image_urls: imageUrl ? [imageUrl] : null,
-        is_training_candidate: true,
-        inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
-        conversation_turn_number: messages.length,
-        metadata: {
-          source: 'orchestrator_v1',
-          has_image: !!imageUrl,
-          land_id: landId,
-          language_detected: detectedLanguage,
-          preprocessed: true
-        }
-      });
-      
+      const { data: userRow, error: userErr } = await supabase
+        .from('ai_chat_messages')
+        .insert({
+          session_id: currentSessionId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
+          role: 'user',
+          content: userMessageContent,
+          preprocessed_content: preprocessedContent,
+          language: detectedLanguage,
+          message_type: imageUrl ? 'image_analysis' : 'text',
+          image_urls: imageUrl ? [imageUrl] : null,
+          is_training_candidate: true,
+          inferred_intent: orchestratorResponse.metadata?.agents_used?.includes('NLU') ? 'PROCESSED' : null,
+          conversation_turn_number: messages.length,
+          metadata: {
+            source: 'orchestrator_v1',
+            has_image: !!imageUrl,
+            land_id: landId,
+            language_detected: detectedLanguage,
+            preprocessed: true
+          }
+        })
+        .select('id, created_at')
+        .single();
+      if (userErr) {
+        messageStorageStatus = 'failed';
+        console.warn(`⚠️ [Storage] user-row insert failed: ${userErr.message}`);
+      } else if (userRow) {
+        persistedUserMessage = { id: userRow.id, created_at: userRow.created_at, role: 'user' };
+      }
+
       // Store assistant response with language-appropriate content
-      // FIXED: Now includes tokens_used tracking for cost monitoring
       const tokensUsed = llmFormatterOutput?.tokens_used || null;
-      
-      await supabase.from('ai_chat_messages').insert({
-        session_id: currentSessionId,
-        tenant_id: finalTenantId,
-        farmer_id: finalFarmerId,
-        role: 'assistant',
-        content: responseContent, // In user's language (translated if needed)
-        language: detectedLanguage,
-        message_type: 'orchestrator',
-        response_time_ms: responseTime,
-        decision_brain_source: true,
-        ai_model: aiModelUsed || 'template', // PHASE 5: Track LLM model used
-        tokens_used: tokensUsed,  // NEW: Track token usage for cost monitoring
-        is_training_candidate: true,
-        conversation_turn_number: messages.length + 1,
-        // Store actions with explicit filter reasons
-        actions_returned: actions_returned,
-        actions_filtered_out: actions_filtered_out,
-        metadata: {
-          orchestrator_type: orchestratorResponse.type,
-          confidence: orchestratorResponse.metadata?.confidence,
-          safety_status: orchestratorResponse.metadata?.safety_status,
-          rules_applied: orchestratorResponse.metadata?.rules_applied,
-          agents_used: orchestratorResponse.metadata?.agents_used,
-          decision_id: orchestratorResponse.decision_id,
-          trace_id: traceId,
-          actions_returned_count: actions_returned?.length || 0,
-          actions_filtered_count: actions_filtered_out?.length || 0,
-          all_actions_filtered: allActionsFiltered,
-          filter_categories: audit_log.filter_categories,
-          // PHASE 5: LLM formatter tracking
-          llm_formatter_used: !!llmFormatterOutput,
-          llm_formatter_source: llmFormatterOutput?.source,
-          llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
+      const { data: assistantRow, error: assistantErr } = await supabase
+        .from('ai_chat_messages')
+        .insert({
+          session_id: currentSessionId,
+          tenant_id: finalTenantId,
+          farmer_id: finalFarmerId,
+          role: 'assistant',
+          content: responseContent,
+          language: detectedLanguage,
+          message_type: 'orchestrator',
+          response_time_ms: responseTime,
+          decision_brain_source: true,
+          ai_model: aiModelUsed || 'template',
           tokens_used: tokensUsed,
-          // VALIDATION GATE
-          response_validation_passed: validationResult.passed,
-          validation_errors: validationResult.passed ? undefined : validationResult.errors,
-          language_pipeline: {
-            input_language: detectedLanguage,
-            output_language: detectedLanguage,
-            translation_applied: !responseHasTargetLanguage
-          },
-          // P0 FIX: Persist clarification options for reload after app restart
-          clarification_options: (orchestratorResponse.type === 'CLARIFICATION_QUESTION' || orchestratorResponse.type === 'CLARIFICATION_NEEDED')
-            ? {
-                question: responseContent,
-                options: orchestratorResponse.question?.options || [],
-                selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
-              }
-            : undefined,
-          // P0 FIX: Persist structured decision data for rich card reload
-          decision_brain_data: orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output
-            ? {
-                primary_decision: orchestratorResponse.decision_output.primary_decision,
-                secondary_decisions: orchestratorResponse.decision_output.secondary_decisions,
-                blocked_actions: orchestratorResponse.decision_output.blocked_actions,
-                land_context: orchestratorResponse.dataAudit?.land,
-                confidence: orchestratorResponse.metadata?.confidence,
-                risk_level: orchestratorResponse.decision_output.risk_level
-              }
-            : undefined,
-          // P0 FIX: Persist diagnostic escalation data
-          diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
-        }
-      });
-      
-      console.log('💾 [Storage] Messages saved with language consistency');
+          is_training_candidate: true,
+          conversation_turn_number: messages.length + 1,
+          actions_returned: actions_returned,
+          actions_filtered_out: actions_filtered_out,
+          metadata: {
+            orchestrator_type: orchestratorResponse.type,
+            confidence: orchestratorResponse.metadata?.confidence,
+            safety_status: orchestratorResponse.metadata?.safety_status,
+            rules_applied: orchestratorResponse.metadata?.rules_applied,
+            agents_used: orchestratorResponse.metadata?.agents_used,
+            decision_id: orchestratorResponse.decision_id,
+            trace_id: traceId,
+            actions_returned_count: actions_returned?.length || 0,
+            actions_filtered_count: actions_filtered_out?.length || 0,
+            all_actions_filtered: allActionsFiltered,
+            filter_categories: audit_log.filter_categories,
+            llm_formatter_used: !!llmFormatterOutput,
+            llm_formatter_source: llmFormatterOutput?.source,
+            llm_formatter_time_ms: llmFormatterOutput?.processing_time_ms,
+            tokens_used: tokensUsed,
+            response_validation_passed: validationResult.passed,
+            validation_errors: validationResult.passed ? undefined : validationResult.errors,
+            language_pipeline: {
+              input_language: detectedLanguage,
+              output_language: detectedLanguage,
+              translation_applied: !responseHasTargetLanguage
+            },
+            clarification_options: (orchestratorResponse.type === 'CLARIFICATION_QUESTION' || orchestratorResponse.type === 'CLARIFICATION_NEEDED')
+              ? {
+                  question: responseContent,
+                  options: orchestratorResponse.question?.options || [],
+                  selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
+                }
+              : undefined,
+            decision_brain_data: orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output
+              ? {
+                  primary_decision: orchestratorResponse.decision_output.primary_decision,
+                  secondary_decisions: orchestratorResponse.decision_output.secondary_decisions,
+                  blocked_actions: orchestratorResponse.decision_output.blocked_actions,
+                  land_context: orchestratorResponse.dataAudit?.land,
+                  confidence: orchestratorResponse.metadata?.confidence,
+                  risk_level: orchestratorResponse.decision_output.risk_level
+                }
+              : undefined,
+            diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
+          }
+        })
+        .select('id, created_at')
+        .single();
+      if (assistantErr) {
+        messageStorageStatus = messageStorageStatus === 'failed' ? 'failed' : 'partial';
+        console.warn(`⚠️ [Storage] assistant-row insert failed: ${assistantErr.message}`);
+      } else if (assistantRow) {
+        persistedAssistantMessage = { id: assistantRow.id, created_at: assistantRow.created_at, role: 'assistant' };
+      }
+
+      console.log(`💾 [Storage] Messages saved status=${messageStorageStatus} user=${!!persistedUserMessage} assistant=${!!persistedAssistantMessage}`);
     } catch (storageError) {
+      messageStorageStatus = 'failed';
       console.warn('⚠️ [Storage] Failed to save messages:', storageError);
       // Continue - don't fail the request for storage issues
     }
