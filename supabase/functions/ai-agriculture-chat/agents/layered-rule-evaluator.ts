@@ -1454,10 +1454,17 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           const syntheticObs: string[] = (state as any).synthetic_observations || [];
           const secondarySyms: string[] = Array.isArray(state.secondary_symptoms) 
             ? state.secondary_symptoms.map((s: any) => String(s)) : [];
+          // P0 BRIDGE: option-selected clarifications inject visual_symptoms onto
+          // state; without this they never reach evaluateConditionsJson and the
+          // diagnostic rule (e.g. RICE_GERMINATION_DIAGNOSTIC_001) is skipped.
+          const explicitVisualSymptoms: string[] = Array.isArray((state as any).visual_symptoms)
+            ? ((state as any).visual_symptoms as any[]).map((s) => String(s))
+            : [];
           const allVisualSymptoms = [
             ...confirmedObs,
             ...syntheticObs,
             ...secondarySyms,
+            ...explicitVisualSymptoms,
             // Also include the primary visual_symptom if it's a real value
             ...(state.visual_symptom && state.visual_symptom !== 'NONE' && state.visual_symptom !== 'UNKNOWN' 
               ? [String(state.visual_symptom)] : [])
