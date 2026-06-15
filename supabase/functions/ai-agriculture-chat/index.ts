@@ -1507,6 +1507,8 @@ serve(async (req) => {
               cropCode: String(finalCropName).toUpperCase(),
               growthStage: String(finalGrowthStage).toUpperCase(),
               language: detectedLanguage,
+              // SSOT DAS from resolveCropTimeline → renderContext
+              daysSinceSowing: typeof finalDaysSinceSowing === 'number' ? finalDaysSinceSowing : null,
             });
             if (observationRuleHit) {
               console.log(`   🎯 [ObservationRuleLookup] hit rule=${observationRuleHit.rule_id} safety=${observationRuleHit.farmer_safety_level} lang_localized=${!!observationRuleHit.localized_text}`);
