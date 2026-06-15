@@ -1,101 +1,159 @@
-## Re-audit summary (corrected)
 
-`public.crop_stage_master` already exists and is the DB SSOT for crop → growth_stage windows:
+# AI Chat + Symbolic Decision Brain — Forensic Audit Plan
 
+**Mode:** Read-only audit. No schema changes, no code edits, no data writes during this engagement. All deliverables are reports + design docs under `docs/audit-2026-06-15/`. Migration SQL is *drafted* only — never executed.
+
+**Confirmed baseline (live DB, just queried):**
+- 1,852 decision_rules (1,846 active) — **0** match lowercase pattern
+- 346 hypothesis_master — **0** lowercase
+- 2,537 observation_master — **0** lowercase
+- 13,446 intent_observation_mapping rows
+- Canonical convention in production = `UPPER_SNAKE_CASE` (e.g. `OBS_RICE_NO_EMERGENCE`, `RICE_GERMINATION_DIAGNOSTIC_001`)
+
+A rename to lowercase touches 100% of rule/observation/hypothesis IDs plus every edge-function code path, every memory rule, every bundled JSON, every test fixture. Treated as a multi-week phased migration — designed here, not executed.
+
+---
+
+## Phase 1 — Discovery & Inventory (read-only)
+
+For each table group below: row counts, null distribution on key cols, FK integrity, RLS state, presence of audit cols (`created_at`/`updated_at`/`deleted_at`/`version_hash`), indexes vs. actual query patterns from `pg_stat_statements`.
+
+Tables in scope:
+- Chat: `ai_chat_sessions`, `ai_chat_messages`, `ai_chat_audit_logs`, `ai_chat_analytics`
+- Rules: `decision_rules`, `rule_versions`, `rule_quality_metrics`, `rule_approval_workflow`, `rule_lineage`, `rule_conflict_matrix`, `rule_explainability`, `rule_performance`
+- Hypotheses: `hypothesis_master`, `hypothesis_conditions`, `hypothesis_rule_mapping`, `hypothesis_metrics`, `hypothesis_contradictions`, `hypothesis_integrity_alerts`, `hypothesis_versions`
+- Ontology: `observation_master`, `observation_aliases`, `observation_translations`, `observation_intent_master`, `observation_differential_questions`, `observation_versions`
+- Intent: `intent_observation_mapping`, `intent_translations`, `canonical_hint_mapping`
+- Crop: `crop_vocabulary`, `crop_synonyms`, `crop_stage_master`, `crop_baseline_guidelines_v2`, `crop_groups`, `crops`
+- Safety: `etl_standards`, `chemical_regulatory_status`
+- Audit: `ai_decision_log`, `advisory_audit_log`, `hallucination_detection_logs`, `semantic_bridge_metrics`, `orchestrator_metrics`
+
+**Deliverable:** `docs/audit-2026-06-15/01-inventory.md`
+
+## Phase 2 — Naming Standards Audit
+
+Classify every identifier (table, column, enum value, JSON key, rule_id, hypothesis_id, observation_code, intent_code, crop_code) against the target standard:
+- Tables/columns/enums → `lowercase_snake_case`
+- Ontology/rule/intent/hypothesis IDs → `lowercase_snake_case` with prefix (`obs_`, `rule_`, `hyp_`, `intent_`)
+
+Output: violation table with current value, proposed value, blast radius (row count + code references).
+
+**Deliverable:** `docs/audit-2026-06-15/02-naming-violations.csv` + `.md` summary.
+
+## Phase 3 — Schema Validation
+
+For every table in scope:
+- Nullability / default sanity
+- FK presence (especially `decision_rules.rule_id` ↔ `hypothesis_rule_mapping`, `observation_master.observation_code` ↔ `intent_observation_mapping`, `decision_rules.condition_code` ↔ `observation_master`)
+- Index coverage vs. hot queries (rule lookup by crop_code+condition_code+is_active, observation lookup by code, intent mapping by intent_code)
+- RLS on multi-tenant tables; flag any tenant-scoped table missing tenant_id or with RLS off
+- Missing audit columns
+
+**Deliverable:** `docs/audit-2026-06-15/03-schema-gaps.md` + draft additive migration SQL (indexes, missing FKs, audit cols, version_hash trigger) — **drafted only**.
+
+## Phase 4 — AI Data Standardization
+
+Cross-table referential audit:
+- Orphan `condition_code` in `decision_rules` not in `observation_master`
+- Orphan `observation_code` in `intent_observation_mapping`
+- Orphan `rule_id` in `hypothesis_rule_mapping`
+- Duplicate rules (same crop_code + condition_code + growth_stage + is_active)
+- `decision_rules.category` values not registered in `mapBundledCategory` (cross-checks code memory)
+- Observation aliases violating "no cause encoding" rule (`*_DEFICIENCY_*`, `*_TOXICITY_*`)
+- `decision_rules.conditions_json.das_range` vs. `crop_stage_master` window consistency
+
+**Deliverable:** `docs/audit-2026-06-15/04-data-integrity.md` with row-level evidence.
+
+## Phase 5 — Rule + Hypothesis Engine Validation
+
+- Contradiction matrix: rules with same trigger but conflicting `action_type`/`farmer_safety_level`
+- Priority collisions inside the same crop_code+condition_code+growth_stage cohort
+- Hypotheses with no conditions or no rule mapping
+- Rules with no translation row in `decision_rules_translations_archive` for `mr`/`hi`
+- `farmer_safety_level` distribution and any UNSAFE rule reachable through observation bypass
+
+**Deliverable:** `docs/audit-2026-06-15/05-rule-hypothesis-health.md`.
+
+## Phase 6 — Codebase ↔ Schema Drift
+
+Static scan of `supabase/functions/ai-agriculture-chat/**` + `src/**` to confirm:
+- Every `.from('<table>').select('<col>')` references an existing column
+- camelCase ↔ snake_case bridge points (e.g. `cropCode` vs `crop_code`) — list each translation site
+- Loaders that risk PostgREST 1000-row truncation without `.range()` pagination (per existing memory)
+- Hardcoded agronomic vocabulary still present after recent fixes (rice/sugarcane/etc.)
+- Module-level `let`/singleton DB clients (cross-tenant leakage risk) — extends existing `_audit/2026-06-13-leakage-inventory.md`
+
+**Deliverable:** `docs/audit-2026-06-15/06-code-schema-drift.md` with file:line evidence. No edits.
+
+## Phase 7 — AI Runtime Audit
+
+Walk the request path: `index.ts` → `RequestScope` → orchestrator → intent-classifier → layered-rule-evaluator → symbolic-reasoner → unified-decision-gate → response-generator → audit-logger.
+
+Check:
+- All mutable state lives on `RequestScope` (no module-level `let _state`)
+- All `createClient(` sites consolidated on `scope.db` (baseline = 16 sites per existing audit)
+- Per-tenant cache keys; unbounded `Map` flagged
+- Fail-closed boundaries (typed errors, not silent `return []`)
+- Determinism: same input → same output (no `Date.now()`/`Math.random()` in decision path)
+
+**Deliverable:** `docs/audit-2026-06-15/07-runtime-audit.md` extending the existing W1 inventory.
+
+## Phase 8 — Vectors
+
+**N/A** — no pgvector table exists. Section will note "deferred; add when RAG is introduced" with a one-page recommended schema for future use.
+
+## Phase 9 — Phased Lowercase ID Migration Design (DESIGN ONLY)
+
+Designed but not run. Five stages, each independently revertible:
+
+```text
+Stage 0  Freeze: lock authoring of new UPPER_SNAKE IDs in code review
+Stage 1  Add lowercase alias columns (rule_id_lc, observation_code_lc, hypothesis_id_lc)
+         + computed lowercase value + unique index. Zero behavior change.
+Stage 2  Dual-read in loaders: accept either case, normalize to UPPER on input,
+         emit both in logs. Bundled JSON + memory rules updated to lowercase
+         where they reference IDs in narration, never in lookup.
+Stage 3  Dual-write: new rules authored lowercase; old rows backfilled into
+         lowercase PK shadow tables. Translations + mappings dual-keyed.
+Stage 4  Flip canonical: PKs become lowercase via RENAME + FK cascade in a
+         single transactional migration. UPPER columns retained as aliases
+         for one release.
+Stage 5  Drop UPPER aliases.
 ```
-crop_code | growth_stage | das_min | das_max
-RICE      | GERMINATION  | 0       | 10        ← covers DAS 6
-RICE      | SEEDLING     | 10      | 25
-RICE      | TRANSPLANTING| 25      | 35
-... (RICE, COTTON, MAIZE, SOYBEAN, ONION, POTATO, CHILI, BRINJAL, SUGARCANE all populated)
+
+Rollback SQL drafted for each stage. All migrations idempotent (`IF EXISTS`/`IF NOT EXISTS`). Blast-radius table per stage: rows touched, code paths touched, expected downtime (target: zero).
+
+**Deliverable:** `docs/audit-2026-06-15/09-lowercase-migration-design.md` + `migrations-draft/*.sql` (not applied).
+
+## Phase 10 — Production Readiness Scorecard
+
+Score 0–100 across: Architecture, Multi-tenancy, AI Safety, Determinism, Scalability, Data Quality, Auditability. Each dimension cites evidence from phases 1–7.
+
+**Deliverable:** `docs/audit-2026-06-15/10-readiness-score.md`.
+
+---
+
+## Index of deliverables
+
+```text
+docs/audit-2026-06-15/
+  00-executive-summary.md
+  01-inventory.md
+  02-naming-violations.{csv,md}
+  03-schema-gaps.md
+  04-data-integrity.md
+  05-rule-hypothesis-health.md
+  06-code-schema-drift.md
+  07-runtime-audit.md
+  08-vectors-deferred.md
+  09-lowercase-migration-design.md
+  10-readiness-score.md
+  migrations-draft/   (SQL drafts, not applied)
 ```
 
-So the previous plan was wrong to point stage resolution at `crop_baseline_guidelines_v2` (that table is for nutrient / irrigation windows per stage, keyed off the stage label — not for deriving the stage from DAS).
+## Hard guarantees
 
-Other confirmed DB facts:
-- `crop_schedules.sowing_date` (date) + `farmer_id` + `land_id` + `is_active` — SSOT for "real date of sowing".
-- `master_products` (variety, `product_type='seed'`) carries `maturity_days_max` — SSOT for variety maturity. `lands.variety_id` / `farmer_plans.current_crop_variety_id` are the join keys (per `mem://database/variety-master-schema-v1`).
-- `crop_baseline_guidelines_v2.das_end` is the crop-level fallback for variety maturity (already the documented fallback chain).
-- `decision_rules` carries `conditions_json` and supports rule selection by `crop_code` + `growth_stage`; for `RICE`+`GERMINATION` (DAS 0–10) the rice-germination-diagnostic rule must win for DAS 6.
-
-## Implementation plan (revised)
-
-All previous Bug 2 / Bug 3 / data-pipeline points are preserved verbatim. Only the DAS + crop-stage source is corrected to use `crop_stage_master` as SSOT instead of `crop_baseline_guidelines_v2`, and the hardcoded `CROP_STAGE_DURATIONS` is removed accordingly.
-
-### 1. DAS + growth-stage become DB-driven SSOT (no hardcoded agronomy)
-
-**SSOT contract**
-- `days_since_sowing = today − crop_schedules.sowing_date` for the active schedule on the land (`is_active=true`, latest `sowing_date`).
-- Variety maturity (for stage % and expected harvest): `master_products.maturity_days_max` (variety) → `crop_baseline_guidelines_v2.das_end` (crop) → `120`. Already documented; no change.
-- Growth stage: resolved from `crop_stage_master` where `crop_code = X AND das_min <= DAS <= das_max`. If no row matches (DAS past last window) → pick the row with the largest `das_max` for that crop (`POST_HARVEST`/`HARVEST`). If `crop_stage_master` has no rows for the crop → return `UNKNOWN` and log a one-time warning (never invent a stage from code).
-
-**Backend — new helper `supabase/functions/ai-agriculture-chat/utils/resolveCropTimeline.ts`**
-- Input: `{ landId, supabase, scope }`.
-- Loads active `crop_schedules` row → `sowing_date`, `crop_name`, `variety_id`.
-- Normalises crop name → `crop_code` (via existing `crop_synonyms` / `CROP_NAME_TO_CODE` vocabulary — vocabulary only, not agronomy).
-- Resolves variety maturity: `master_products.maturity_days_max` → `crop_baseline_guidelines_v2.das_end` → 120.
-- Computes `days_since_sowing` from `sowing_date` (UTC date-only, today − sowing_date, clamped ≥ 0).
-- Resolves `growth_stage` from `crop_stage_master` via DAS range.
-- Returns `{ crop_code, sowing_date, days_since_sowing, growth_stage, maturity_days, expected_harvest_date, source: 'crop_schedule|baseline|fallback', stage_source: 'crop_stage_master|fallback' }`.
-- Per-request memoization on `scope.turnCache`.
-
-**Backend wiring**
-- `ai-agriculture-chat/index.ts` calls `resolveCropTimeline` once per turn and uses its result as the only source for `landContext.days_since_sowing` and `landContext.growth_stage`.
-- Same values are passed into rule evaluator state, unified gate input, and observation-rule lookup (see steps 3–4).
-
-**Frontend**
-- Delete `CROP_STAGE_DURATIONS` and `getCropStageFromDAS()` from `src/constants/crops.ts`. Keep `CROP_NAME_TO_CODE` (vocabulary, not agronomy).
-- Replace `deriveCropCycle()` in `src/lib/cropStage.ts` with a thin wrapper that:
-  - Computes `daysSinceSowing` from the real `sowing_date` only.
-  - Reads `stage`/`stageKey`/`expectedHarvestDate` from backend-provided fields (`landContext.growth_stage`, `landContext.expected_harvest_date`).
-  - Removes the local `stageFromProgress()` heuristic.
-- All UI surfaces (`SmartLandConfirmCard`, `useCropGrowthTracking`, `CropGrowthTracking` page) read stage/DAS from the land/landContext object, never from a client-side table.
-- For surfaces that load without backend data (offline confirm card), expose a small client RPC `getCropStageFromMaster(crop_code, das)` that queries `crop_stage_master` (cached in `useOfflineData`) instead of using the hardcoded table.
-
-**Caching**
-- Add `crop_stage_master` to the existing `baseline-guidelines-cache.ts` pattern (or new sibling cache); cache key `crop_code`, value `Array<{growth_stage, das_min, das_max}>`. Refreshed on edge cold start.
-
-### 2. Fix observation propagation for clarification selections
-- In `layered-rule-evaluator.ts → convertBundledToRule`, include `(state as any).visual_symptoms` in `uniqueVisualSymptoms` so option-selected observations reach `evaluateConditionsJson`.
-- In `orchestrator.ts` option-selected path, set `confirmed_observations: allObservations` AND inject `days_since_sowing` + `growth_stage` from `resolveCropTimeline` onto the rule-evaluation state.
-- In both option-selected success and no-rules fallback return paths, expose the selected observation on `decision_output.symptom_keys` and top-level `metadata.symptomKeys` so `index.ts`'s observation-rule bypass (`lookupSafeRuleForObservations`) is reachable.
-
-### 3. Make observation-rule lookup DAS-aware
-- Extend `lookupSafeRuleForObservations()` (`decision/observation-rule-lookup.ts`) to accept `daysSinceSowing`.
-- Filter candidate rules by `conditions_json.das_range.min/max` when DAS is known; ties broken by `priority` then `rule_id` (existing logic).
-- `index.ts` passes the SSOT `days_since_sowing` from step 1 into the lookup.
-- Result: DAS 6 + `OBS_RICE_NO_EMERGENCE` deterministically picks `RICE_GERMINATION_DIAGNOSTIC_001`, not the DAS 8–14 resow rule.
-
-### 4. Add `das_range` support to the rule evaluator
-- Teach `evaluateConditionsJson()` to evaluate `conditions_json.das_range` (`min <= input.days_since_sowing <= max`).
-- Source DAS from `state.days_since_sowing ?? state.days_after_sowing_exact` (already populated by step 1).
-- Regression tests cover DAS 6 → diagnostic, DAS 10 → resow.
-
-### 5. Remove targeted hardcoded agricultural fallback
-- Remove the static `criticalFallback` observation-expansion dictionary in `orchestrator.ts`.
-- On DB alias expansion failure, fail safely with only the confirmed observation; never invent codes in code.
-
-### 6. Fix chat persistence and reopen ordering (Bug 2)
-- `ai-agriculture-chat` returns persisted `{ id, role, created_at, session_id }` for both user and assistant rows in the response payload.
-- If `ai_chat_messages` insert fails, return an explicit `storage_status: 'failed'` so the UI marks the turn `failed` instead of silently optimistic. Replace today's `console.warn`-only swallow.
-- `EnhancedAIChatInterface.tsx` replaces the optimistic LocalDB record with the server-confirmed id/`created_at` from the response, instead of writing parallel client rows.
-- `chatSyncService.getLastMessageTime()` ignores rows whose `syncStatus !== 'synced'` (i.e. client-temp / pending) when computing the delta cursor — fixes the "real row is skipped because optimistic timestamp is newer" bug.
-- Chat list rendering sorts by server `created_at`; client `timestamp` is used only while a row is in the `sending` state.
-
-### 7. Regression tests + smoke validation
-- Deno tests:
-  - `resolveCropTimeline` returns DB-derived DAS + stage from `crop_schedules.sowing_date` and `crop_stage_master` (RICE DAS 6 → `GERMINATION`).
-  - Variety maturity fallback chain (variety → baseline → 120).
-  - `visual_symptoms` bridge in `layered-rule-evaluator`.
-  - `das_range` condition evaluation.
-  - `lookupSafeRuleForObservations` picks `RICE_GERMINATION_DIAGNOSTIC_001` at DAS 6 and the resow rule at DAS 10.
-- Frontend test: optimistic→server replacement + delta cursor ignores pending rows.
-- Smoke: send "भात अजून उगवले नाही", select `OBS_RICE_NO_EMERGENCE`; verify Marathi 5-point field-inspection text, not the generic monitoring template.
-
-## What this plan does NOT do
-- Does not create new agronomy tables. Uses existing `crop_schedules`, `crop_stage_master`, `master_products`, `crop_baseline_guidelines_v2`, `decision_rules`, `decision_rules_translations_archive`.
-- Does not change `CROP_NAME_TO_CODE` (vocabulary normalization, not agronomy).
-- Does not redesign the optimistic-UI architecture beyond replacing client rows with server-confirmed rows.
-
-## Data gaps to flag (no code action in this plan, will surface as warnings)
-- `crop_stage_master` lacks rows for `WHEAT`, `GRAM`, `GROUNDNUT`, `TOMATO`, `SUGARCANE` post-grand-growth, etc. When a crop is missing, `resolveCropTimeline` returns `growth_stage='UNKNOWN'` and logs once per cold start so we can seed the missing rows in a follow-up data migration — not in this code change.
+- No `supabase--migration`, no `supabase--insert`, no edge-function deploys, no file edits to `src/**` or `supabase/functions/**` during this audit.
+- Every claim in every report cites either a live SQL query (with the exact query embedded) or a `file:line` reference.
+- Production data and business logic preserved 1:1.
+- Lowercase migration design is reviewed and approved by you before any Stage 1 execution is proposed in a separate build-mode plan.
