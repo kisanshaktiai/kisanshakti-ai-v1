@@ -162,11 +162,17 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
 
   const loadPromise = (async () => {
     try {
+      // Phase 5 fix: DB stores crop_code lowercase canonical; callers may pass UPPER.
+      // Normalize at the DB boundary on every query against {decision_rules,
+      // intent_observation_mapping}.crop_code, and emit UPPER snake_case codes
+      // to match the in-memory symbolic contract.
+      const cropLc = String(cropCode || '').toLowerCase();
+
       // Get observations that have rules for this crop
       const { data, error } = await supabase
         .from('decision_rules')
         .select('observable_characteristics')
-        .eq('crop_code', cropCode)
+        .eq('crop_code', cropLc)
         .eq('is_active', true)
         .limit(2000);
       
@@ -176,17 +182,20 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       }
       
       const applicableCodes = new Set<string>();
+      const addCode = (v: unknown) => {
+        if (typeof v === 'string' && v.length > 0) {
+          applicableCodes.add(v.toUpperCase());
+        }
+      };
       for (const rule of (data || [])) {
         const obs = rule.observable_characteristics;
         if (obs && typeof obs === 'object') {
           // Extract observation codes from rule conditions
-          for (const [key, value] of Object.entries(obs)) {
+          for (const [, value] of Object.entries(obs)) {
             if (Array.isArray(value)) {
-              for (const v of value) {
-                if (typeof v === 'string') applicableCodes.add(v);
-              }
-            } else if (typeof value === 'string') {
-              applicableCodes.add(value);
+              for (const v of value) addCode(v);
+            } else {
+              addCode(value);
             }
           }
         }
@@ -196,12 +205,13 @@ async function loadCropApplicableObservations(supabase: any, cropCode: string): 
       const { data: mappingData } = await supabase
         .from('intent_observation_mapping')
         .select('observation_code')
-        .eq('crop_code', cropCode)
+        .eq('crop_code', cropLc)
         .eq('is_active', true);
       
       for (const row of (mappingData || [])) {
-        if (row.observation_code) applicableCodes.add(row.observation_code);
+        addCode(row.observation_code);
       }
+
       
       console.log(`[LLM_VALIDATOR] Loaded ${applicableCodes.size} crop-applicable observations for ${cropCode}`);
       cropApplicabilityCache.set(cropCode, { data: applicableCodes, loadedAt: Date.now() });
