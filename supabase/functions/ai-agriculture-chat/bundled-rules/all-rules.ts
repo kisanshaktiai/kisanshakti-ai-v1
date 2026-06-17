@@ -15,6 +15,11 @@
 
 export interface BundledRule {
   rule_id: string;
+  // Stage-1 migration sidecars (additive; populated by loader from generated
+  // columns + version_hash trigger). Optional so legacy fixtures still type-check.
+  rule_id_lc?: string;
+  version_hash?: string;
+  updated_at?: string;
   category: string;
   crop_code: string;
   crop_group?: string;
