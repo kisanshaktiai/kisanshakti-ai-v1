@@ -4065,8 +4065,30 @@ function transformOrchestratorResponseWithContent(
     };
   }
 
-  // For other types, delegate to the original function
-  return transformOrchestratorResponse(response, language, sessionId, startTime);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LANGUAGE INTEGRITY FIX (2026-06-17): For non-DECISION types (clarification,
+  // photo_request, safety_blocked, escalation, llm_response, system_error) the
+  // legacy transform re-reads `question.text_<lang>` / `blocked_reason.reason_<lang>`
+  // etc. and silently falls back to `text_en` when the lang-specific field is
+  // missing. That bypasses the force-translate pass we ran on `responseContent`
+  // upstream — the DB row is saved in Marathi but the API returns English.
+  //
+  // Authoritative rule: `preGeneratedContent` is the SSOT for what the farmer
+  // sees. The legacy transform still builds the metadata/quickReplies/options
+  // envelope, but we ALWAYS overwrite `response` with the localized content
+  // we already produced and saved to DB.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const legacyPayload = transformOrchestratorResponse(response, language, sessionId, startTime);
+  if (preGeneratedContent && typeof preGeneratedContent === 'string' && preGeneratedContent.trim().length > 0) {
+    if (legacyPayload.response !== preGeneratedContent) {
+      console.log(`🌐 [LangIntegrity] Overriding ${response.type} response with force-translated content (was ${legacyPayload.response?.length || 0} chars, now ${preGeneratedContent.length} chars, lang=${language})`);
+    }
+    legacyPayload.response = preGeneratedContent;
+    if (legacyPayload.metadata) {
+      legacyPayload.metadata.language_pipeline_override = true;
+    }
+  }
+  return legacyPayload;
 }
 
 function transformOrchestratorResponse(
@@ -4130,14 +4152,19 @@ function transformOrchestratorResponse(
           ? response.communication.options
           : [];
       
-      // ✅ CRITICAL FIX: Safe array mapping with null checks
+      // ✅ CRITICAL FIX: Safe array mapping with null checks +
+      // LANGUAGE INTEGRITY (2026-06-17): prefer `label_<lang>` / `text_<lang>`
+      // when the rule provides translated options, fall back to `label`.
+      const pickOptionLabel = (o: any): string => {
+        if (typeof o === 'string') return o;
+        if (o && typeof o === 'object') {
+          return o[`label_${language}`] || o[`text_${language}`] || o.label || o.text || String(o);
+        }
+        return String(o);
+      };
       const safeQuickReplies = rawOptions
         .filter((o: any) => o != null)
-        .map((o: any) => {
-          if (typeof o === 'string') return o;
-          if (typeof o === 'object' && o.label) return o.label;
-          return String(o);
-        });
+        .map(pickOptionLabel);
       
       return {
         response: questionText,
@@ -4154,10 +4181,10 @@ function transformOrchestratorResponse(
           // Now: Include observation_key, description, diagnostic_power for proper UI mapping
           // ═══════════════════════════════════════════════════════════════════════════
           options: rawOptions.map((o: any) => ({
-            label: typeof o === 'string' ? o : (o?.label || String(o)),
+            label: pickOptionLabel(o),
             value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
             observation_key: typeof o === 'object' ? (o?.observation_key || o?.value) : undefined,
-            description: typeof o === 'object' ? o?.description : undefined,
+            description: typeof o === 'object' ? (o?.[`description_${language}`] || o?.description) : undefined,
             diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
           })),
           selectionType: response.metadata?.selectionType || 'SINGLE_CHOICE',
