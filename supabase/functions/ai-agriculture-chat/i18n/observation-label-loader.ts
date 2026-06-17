@@ -88,10 +88,20 @@ export async function loadObservationLabels(
     const upperCodes = observationCodes.map(c => c.toUpperCase());
     const normalizedLanguage = (language || 'en').toLowerCase();
 
+    // CASE-INSENSITIVE LOOKUP (2026-06-17 bug fix):
+    // observation_translations.observation_code is stored lowercase canonical;
+    // upstream pipelines emit UPPERCASE. Query both casings so the loader
+    // actually returns farmer-friendly text instead of falling back to the
+    // raw code label.
+    const dualCaseCodes = Array.from(new Set([
+      ...upperCodes,
+      ...upperCodes.map(c => c.toLowerCase()),
+    ]));
+
     const { data: translations, error } = await supabaseClient
       .from('observation_translations')
       .select('observation_code, display_text, description_text')
-      .in('observation_code', upperCodes)
+      .in('observation_code', dualCaseCodes)
       .eq('language_code', normalizedLanguage);
 
     if (error) {
@@ -104,7 +114,7 @@ export async function loadObservationLabels(
     for (const code of observationCodes) {
       const upperCode = code.toUpperCase();
       const translation = translations?.find(
-        (t: any) => t.observation_code?.toUpperCase() === upperCode
+        (t: any) => (t.observation_code || '').toUpperCase() === upperCode
       );
       const icon = OBSERVATION_ICONS[upperCode] || '❓';
 

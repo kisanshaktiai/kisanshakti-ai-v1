@@ -739,10 +739,24 @@ async function translateClarificationOptions(
 
   try {
     if (codesToLookup.length > 0) {
+      // ═══════════════════════════════════════════════════════════════════════
+      // CASE-INSENSITIVE LOOKUP (2026-06-17 bug fix):
+      // observation_master / observation_translations store observation_code
+      // in LOWERCASE (e.g. `germination_failure`). The clarification pipeline
+      // emits UPPERCASE codes (`GERMINATION_FAILURE`). The previous strict
+      // `.in('observation_code', UPPER_CODES)` query returned zero rows so the
+      // farmer saw the raw symbolic code instead of the Marathi description.
+      // We now query both casings and key the returned map by UPPERCASE so the
+      // downstream rewrite (which normalizes to UPPERCASE) still matches.
+      // ═══════════════════════════════════════════════════════════════════════
+      const dualCaseCodes = Array.from(new Set([
+        ...codesToLookup,
+        ...codesToLookup.map(c => c.toLowerCase()),
+      ]));
       const { data, error } = await supabaseClient
         .from('observation_translations')
         .select('observation_code, display_text, description_text')
-        .in('observation_code', codesToLookup)
+        .in('observation_code', dualCaseCodes)
         .eq('language_code', lang);
 
       if (!error && data) {
@@ -754,6 +768,9 @@ async function translateClarificationOptions(
             row.description_text.length > (row.display_text?.length || 0);
           labelMap.set(code, hasGoodDesc ? row.description_text : row.display_text);
         }
+        console.log(`🌐 [ClarificationTranslation] DB lookup matched ${labelMap.size}/${codesToLookup.length} codes (lang=${lang})`);
+      } else if (error) {
+        console.warn(`⚠️ [ClarificationTranslation] DB lookup error: ${error.message}`);
       }
     }
   } catch (err) {

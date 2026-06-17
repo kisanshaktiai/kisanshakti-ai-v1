@@ -129,33 +129,43 @@ export async function getDiagnosticOptionsForCropStage(
   
   // Collect all observation_keys to fetch labels from DB
   const observationKeys = optionSet.map(opt => opt.observation_key);
-  
+
+  // CASE-INSENSITIVE LOOKUP (2026-06-17 bug fix):
+  // observation_translations stores observation_code in lowercase canonical
+  // form. The bundled option sets use UPPERCASE keys. Query both casings.
+  const dualCaseKeys = Array.from(new Set([
+    ...observationKeys,
+    ...observationKeys.map(k => k.toLowerCase()),
+    ...observationKeys.map(k => k.toUpperCase()),
+  ]));
+
   // Load labels from observation_translations (SSOT)
   const labelMap = new Map<string, string>();
   try {
     const { data, error } = await supabaseClient
       .from('observation_translations')
       .select('observation_code, display_text, description_text')
-      .in('observation_code', observationKeys)
+      .in('observation_code', dualCaseKeys)
       .eq('language_code', normalizedLang);
-    
+
     if (!error && data) {
       for (const row of data) {
-        const code = row.observation_code?.toUpperCase();
+        const code = (row.observation_code || '').toUpperCase();
         // Prefer description_text (farmer-friendly) when it's substantive
         const hasGoodDescription = row.description_text && 
           row.description_text.length > 10 &&
           row.description_text.length > (row.display_text?.length || 0);
         labelMap.set(code, hasGoodDescription ? row.description_text : row.display_text);
       }
+      console.log(`📖 [DiagnosticOptions] matched ${labelMap.size}/${observationKeys.length} labels (lang=${normalizedLang})`);
     }
   } catch (err) {
     console.warn(`⚠️ [DiagnosticOptions] Failed to load labels from DB: ${err}`);
   }
-  
+
   // Build final options with DB-resolved labels
   return optionSet.map(opt => {
-    const dbLabel = labelMap.get(opt.observation_key);
+    const dbLabel = labelMap.get(opt.observation_key.toUpperCase());
     // Fallback: use formatted code if DB label missing
     const fallbackLabel = normalizedLang === 'en'
       ? opt.observation_key.replace(/_/g, ' ').split(' ')
