@@ -636,6 +636,7 @@ export type Database = {
           ai_adjustments: Json | null
           causes: string[]
           confidence: number
+          created_at: string
           engine_version: string
           execution_time_ms: number | null
           farmer_id: string | null
@@ -659,6 +660,7 @@ export type Database = {
           ai_adjustments?: Json | null
           causes: string[]
           confidence: number
+          created_at?: string
           engine_version: string
           execution_time_ms?: number | null
           farmer_id?: string | null
@@ -682,6 +684,7 @@ export type Database = {
           ai_adjustments?: Json | null
           causes?: string[]
           confidence?: number
+          created_at?: string
           engine_version?: string
           execution_time_ms?: number | null
           farmer_id?: string | null
@@ -7421,6 +7424,7 @@ export type Database = {
           roi_yield_gain_pct: number | null
           roi_yield_risk_pct: number | null
           rule_id: string
+          rule_id_lc: string | null
           rule_intent: string | null
           rule_version: string | null
           scientific_basis: string | null
@@ -7454,6 +7458,7 @@ export type Database = {
           variety_applicable: string[] | null
           verification_status: string | null
           version: string | null
+          version_hash: string | null
           visual_markers: Json | null
           water_volume_per_acre: string | null
           weather_dependency: Json | null
@@ -7583,6 +7588,7 @@ export type Database = {
           roi_yield_gain_pct?: number | null
           roi_yield_risk_pct?: number | null
           rule_id: string
+          rule_id_lc?: string | null
           rule_intent?: string | null
           rule_version?: string | null
           scientific_basis?: string | null
@@ -7616,6 +7622,7 @@ export type Database = {
           variety_applicable?: string[] | null
           verification_status?: string | null
           version?: string | null
+          version_hash?: string | null
           visual_markers?: Json | null
           water_volume_per_acre?: string | null
           weather_dependency?: Json | null
@@ -7745,6 +7752,7 @@ export type Database = {
           roi_yield_gain_pct?: number | null
           roi_yield_risk_pct?: number | null
           rule_id?: string
+          rule_id_lc?: string | null
           rule_intent?: string | null
           rule_version?: string | null
           scientific_basis?: string | null
@@ -7778,6 +7786,7 @@ export type Database = {
           variety_applicable?: string[] | null
           verification_status?: string | null
           version?: string | null
+          version_hash?: string | null
           visual_markers?: Json | null
           water_volume_per_acre?: string | null
           weather_dependency?: Json | null
@@ -11256,11 +11265,13 @@ export type Database = {
           crop_group: string
           engine_min_version: string | null
           hypothesis_id: string
+          hypothesis_id_lc: string | null
           hypothesis_type: string
           is_active: boolean | null
           severity_model: string | null
           updated_at: string | null
           version: string | null
+          version_hash: string | null
         }
         Insert: {
           biological_basis?: string | null
@@ -11272,11 +11283,13 @@ export type Database = {
           crop_group: string
           engine_min_version?: string | null
           hypothesis_id: string
+          hypothesis_id_lc?: string | null
           hypothesis_type: string
           is_active?: boolean | null
           severity_model?: string | null
           updated_at?: string | null
           version?: string | null
+          version_hash?: string | null
         }
         Update: {
           biological_basis?: string | null
@@ -11288,41 +11301,49 @@ export type Database = {
           crop_group?: string
           engine_min_version?: string | null
           hypothesis_id?: string
+          hypothesis_id_lc?: string | null
           hypothesis_type?: string
           is_active?: boolean | null
           severity_model?: string | null
           updated_at?: string | null
           version?: string | null
+          version_hash?: string | null
         }
         Relationships: []
       }
       hypothesis_metrics: {
         Row: {
           avg_confidence: number | null
+          created_at: string
           hypothesis_id: string
           last_triggered: string | null
           times_confirmed: number | null
           times_contradicted: number | null
           times_eliminated_missing_data: number | null
           times_triggered: number | null
+          updated_at: string
         }
         Insert: {
           avg_confidence?: number | null
+          created_at?: string
           hypothesis_id: string
           last_triggered?: string | null
           times_confirmed?: number | null
           times_contradicted?: number | null
           times_eliminated_missing_data?: number | null
           times_triggered?: number | null
+          updated_at?: string
         }
         Update: {
           avg_confidence?: number | null
+          created_at?: string
           hypothesis_id?: string
           last_triggered?: string | null
           times_confirmed?: number | null
           times_contradicted?: number | null
           times_eliminated_missing_data?: number | null
           times_triggered?: number | null
+          updated_at?: string
         }
         Relationships: [
           {
@@ -11351,21 +11372,27 @@ export type Database = {
       hypothesis_rule_mapping: {
         Row: {
           context_notes: string | null
+          created_at: string
           hypothesis_id: string
           priority: number | null
           rule_id: string
+          updated_at: string
         }
         Insert: {
           context_notes?: string | null
+          created_at?: string
           hypothesis_id: string
           priority?: number | null
           rule_id: string
+          updated_at?: string
         }
         Update: {
           context_notes?: string | null
+          created_at?: string
           hypothesis_id?: string
           priority?: number | null
           rule_id?: string
+          updated_at?: string
         }
         Relationships: [
           {
@@ -16231,6 +16258,7 @@ export type Database = {
           symptom_pattern: string | null
           symptom_type: string | null
           updated_at: string | null
+          version_hash: string | null
         }
         Insert: {
           affected_plant_part?: string | null
@@ -16253,6 +16281,7 @@ export type Database = {
           symptom_pattern?: string | null
           symptom_type?: string | null
           updated_at?: string | null
+          version_hash?: string | null
         }
         Update: {
           affected_plant_part?: string | null
@@ -16275,6 +16304,7 @@ export type Database = {
           symptom_pattern?: string | null
           symptom_type?: string | null
           updated_at?: string | null
+          version_hash?: string | null
         }
         Relationships: []
       }
@@ -20578,6 +20608,7 @@ export type Database = {
         Row: {
           conflict_details: Json
           conflict_type: string
+          created_at: string
           detected_at: string
           id: string
           resolution_notes: string | null
@@ -20587,10 +20618,12 @@ export type Database = {
           rule_a_id: string
           rule_b_id: string
           severity: string
+          updated_at: string
         }
         Insert: {
           conflict_details?: Json
           conflict_type: string
+          created_at?: string
           detected_at?: string
           id?: string
           resolution_notes?: string | null
@@ -20600,10 +20633,12 @@ export type Database = {
           rule_a_id: string
           rule_b_id: string
           severity?: string
+          updated_at?: string
         }
         Update: {
           conflict_details?: Json
           conflict_type?: string
+          created_at?: string
           detected_at?: string
           id?: string
           resolution_notes?: string | null
@@ -20613,6 +20648,7 @@ export type Database = {
           rule_a_id?: string
           rule_b_id?: string
           severity?: string
+          updated_at?: string
         }
         Relationships: []
       }
