@@ -64,7 +64,12 @@ async function loadValidIntentCodes(supabase: any): Promise<Set<string>> {
         return intentCache.entry?.data || new Set<string>();
       }
       
-      const codes = new Set<string>((data || []).map((r: any) => r.intent_code));
+      // observation_intent_master.intent_code is UPPER snake_case in DB; normalize defensively.
+      const codes = new Set<string>(
+        (data || [])
+          .map((r: any) => (r?.intent_code ? String(r.intent_code).toUpperCase() : ''))
+          .filter((s: string) => s.length > 0)
+      );
       // Always allow fallback intents
       codes.add('UNKNOWN');
       codes.add('UNKNOWN_OBSERVATION');
