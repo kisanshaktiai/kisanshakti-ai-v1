@@ -262,6 +262,12 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
       
       return {
         rule_id: row.rule_id,
+        // Stage-1 migration sidecars — surface so callers / cache layers can
+        // key on the canonical lowercase form and on version_hash for drift
+        // detection without re-querying the DB.
+        rule_id_lc: row.rule_id_lc,
+        version_hash: row.version_hash,
+        updated_at: row.updated_at,
         category: row.category?.toLowerCase() || 'advisory',
         crop_code: row.crop_code?.toLowerCase() || 'universal',
         crop_group: row.crop_group?.toLowerCase() || 'universal',
