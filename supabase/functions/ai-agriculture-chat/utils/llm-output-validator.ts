@@ -120,7 +120,9 @@ async function loadValidObservationCodes(supabase: any): Promise<Set<string>> {
         }
         const rows = data || [];
         for (const r of rows) {
-          if (r?.observation_code) allCodes.push(String(r.observation_code));
+          // Egress normalize to UPPER snake_case to match the in-memory symbolic contract
+          // (DB stores lowercase post-migration; callers compare against UPPER codes).
+          if (r?.observation_code) allCodes.push(String(r.observation_code).toUpperCase());
         }
         if (rows.length < PAGE) break;
         fromIdx += PAGE;
