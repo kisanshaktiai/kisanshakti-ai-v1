@@ -393,42 +393,40 @@ function determineAuthorityConfirmation(decision: SymbolicDecision): AuthorityCo
 }
 
 function checkIfYoungCrop(
-  cropStage?: string, 
-  daysSinceSowing?: number, 
+  cropStage?: string,
+  daysSinceSowing?: number,
   cropName?: string
 ): boolean {
-  // Check by stage name
+  // DAS-first (parity with unified-decision-gate.checkIfYoungCrop). The
+  // stage label can be stale or ambiguous when crop_stage_master rows
+  // overlap (e.g. rice DAS=9 matches BOTH "germination" 0-10 AND
+  // "nursery" 0-25). DAS from crop_schedules is the SSOT.
+  if (daysSinceSowing !== undefined && daysSinceSowing !== null && Number.isFinite(daysSinceSowing)) {
+    const maxYoungDays = cropName
+      ? (YOUNG_CROP_MAX_DAYS[cropName.toUpperCase()] || 30)
+      : 30;
+    if (daysSinceSowing > maxYoungDays) {
+      return false; // DAS overrides stage label
+    }
+    return true;
+  }
+  // Fallback: only when DAS unknown.
   if (cropStage) {
     const normalizedStage = cropStage.toUpperCase().replace(/[_\s-]+/g, '_');
     if (YOUNG_CROP_STAGES.has(normalizedStage)) {
       return true;
     }
   }
-  
-  // Check by days since sowing
-  if (daysSinceSowing !== undefined && cropName) {
-    const maxYoungDays = YOUNG_CROP_MAX_DAYS[cropName.toUpperCase()] || 30;
-    if (daysSinceSowing <= maxYoungDays) {
-      return true;
-    }
-  }
-  
-  // Default: if days < 30, consider young
-  if (daysSinceSowing !== undefined && daysSinceSowing <= 30) {
-    return true;
-  }
-  
   return false;
 }
 
 function checkHasTreatmentActions(decision: SymbolicDecision): boolean {
   const primary = decision.primary_decision;
-  if (primary?.action_type && TREATMENT_ACTIONS.has(primary.action_type)) {
-    return true;
-  }
-  
+  const matches = (a?: string | null) =>
+    !!a && (TREATMENT_ACTIONS.has(a) || TREATMENT_ACTIONS.has(a.toUpperCase()));
+  if (matches(primary?.action_type)) return true;
   const actions = decision.actions_returned || [];
-  return actions.some(a => a.action_type && TREATMENT_ACTIONS.has(a.action_type));
+  return actions.some(a => matches(a.action_type));
 }
 
 function extractAllowedFromSymbolic(decision: SymbolicDecision): {
