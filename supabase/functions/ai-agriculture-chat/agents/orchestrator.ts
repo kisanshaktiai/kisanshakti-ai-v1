@@ -2160,12 +2160,16 @@ export class AIAgentOrchestrator {
           // FIX #1: If cause was confirmed, add cause-specific observations from the confirmed rule
           if (confirmedRuleId && confirmedRuleId !== 'UNKNOWN_FALLBACK' && confirmedRuleId !== 'PHOTO_FALLBACK') {
             try {
-              const { data: confirmedRule } = await this.supabase
-                .from('decision_rules')
-                .select('observable_characteristics, conditions_json')
-                .eq('rule_id', confirmedRuleId)
-                .eq('is_active', true)
-                .single();
+              // Dual-read by canonical rule_id OR generated rule_id_lc so this
+              // lookup is forward-compatible with the Stage-4 lowercase flip.
+              // See supabase/functions/ai-agriculture-chat/utils/id-normalizer.ts.
+              const { selectRuleByAnyId } = await import('../utils/id-normalizer.ts');
+              const confirmedRule = await selectRuleByAnyId(
+                this.supabase,
+                confirmedRuleId,
+                'observable_characteristics, conditions_json',
+                (q: any) => q.eq('is_active', true),
+              );
               
               if (confirmedRule) {
                 // Add ALL observable characteristics from the confirmed rule
