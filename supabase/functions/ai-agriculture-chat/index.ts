@@ -4152,14 +4152,19 @@ function transformOrchestratorResponse(
           ? response.communication.options
           : [];
       
-      // ✅ CRITICAL FIX: Safe array mapping with null checks
+      // ✅ CRITICAL FIX: Safe array mapping with null checks +
+      // LANGUAGE INTEGRITY (2026-06-17): prefer `label_<lang>` / `text_<lang>`
+      // when the rule provides translated options, fall back to `label`.
+      const pickOptionLabel = (o: any): string => {
+        if (typeof o === 'string') return o;
+        if (o && typeof o === 'object') {
+          return o[`label_${language}`] || o[`text_${language}`] || o.label || o.text || String(o);
+        }
+        return String(o);
+      };
       const safeQuickReplies = rawOptions
         .filter((o: any) => o != null)
-        .map((o: any) => {
-          if (typeof o === 'string') return o;
-          if (typeof o === 'object' && o.label) return o.label;
-          return String(o);
-        });
+        .map(pickOptionLabel);
       
       return {
         response: questionText,
