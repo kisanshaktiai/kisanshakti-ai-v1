@@ -263,6 +263,16 @@ export async function validateLLMOutputAgainstDB(params: {
   const crop_applicable_rejections: string[] = [];
   const reasons: string[] = [];
 
+  // Phase 5 fix: caches are keyed by UPPER snake_case (in-memory contract);
+  // normalize every comparand at the boundary so casing drift can't silently
+  // reject valid codes.
+  const intentUpper = String(intent_code || '').toUpperCase();
+  const observationsUpper = observation_codes.map((c) => String(c || '').toUpperCase());
+  const cropUpper =
+    canonical_crop && canonical_crop !== 'UNKNOWN'
+      ? String(canonical_crop).toUpperCase()
+      : canonical_crop;
+
   // Load caches in parallel
   const [validIntents, validObservations] = await Promise.all([
     loadValidIntentCodes(supabase),
@@ -270,32 +280,35 @@ export async function validateLLMOutputAgainstDB(params: {
   ]);
   
   // 1. Validate intent code
-  if (intent_code && !validIntents.has(intent_code)) {
+  if (intentUpper && !validIntents.has(intentUpper)) {
     rejected_intents.push(intent_code);
     reasons.push(`Intent '${intent_code}' not found in observation_intent_master`);
   }
   
   // 2. Validate observation codes exist
-  for (const code of observation_codes) {
-    if (!validObservations.has(code)) {
-      rejected_observations.push(code);
-      reasons.push(`Observation '${code}' not found in observation_master`);
+  for (let i = 0; i < observationsUpper.length; i++) {
+    const upper = observationsUpper[i];
+    if (!validObservations.has(upper)) {
+      rejected_observations.push(observation_codes[i]);
+      reasons.push(`Observation '${observation_codes[i]}' not found in observation_master`);
     }
   }
   
   // 3. Crop-applicability check (only if we have a canonical crop)
-  if (canonical_crop && canonical_crop !== 'UNKNOWN') {
-    const applicableObs = await loadCropApplicableObservations(supabase, canonical_crop);
+  if (cropUpper && cropUpper !== 'UNKNOWN') {
+    const applicableObs = await loadCropApplicableObservations(supabase, cropUpper);
     
     // Only reject if we have a populated applicability set (otherwise skip check gracefully)
     if (applicableObs.size > 0) {
-      for (const code of observation_codes) {
+      for (let i = 0; i < observationsUpper.length; i++) {
+        const upper = observationsUpper[i];
+        const orig = observation_codes[i];
         // Skip codes already rejected as non-existent
-        if (rejected_observations.includes(code)) continue;
+        if (rejected_observations.includes(orig)) continue;
         
-        if (!applicableObs.has(code)) {
-          crop_applicable_rejections.push(code);
-          reasons.push(`'${code}' not applicable to crop ${canonical_crop}`);
+        if (!applicableObs.has(upper)) {
+          crop_applicable_rejections.push(orig);
+          reasons.push(`'${orig}' not applicable to crop ${canonical_crop}`);
         }
       }
     }
