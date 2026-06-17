@@ -156,6 +156,16 @@ const YOUNG_CROP_MAX_DAYS: Record<string, number> = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const TREATMENT_ACTIONS = new Set([
+  // DB canonical types (post lower_snake_case migration). The unified-decision-gate
+  // already classifies these as treatment-class; the prescription gate MUST agree
+  // or it will fail-open by classifying RECOMMEND rules as non-treatment.
+  'RECOMMEND',
+  'APPLY_TREATMENT',
+  'URGENT_ACTION',
+  'IMMEDIATE_ACTION',
+  'RELEASE_BIOCONTROL',
+  'BLOCK',
+  // Legacy application-method types (kept for backward compatibility)
   'APPLY_PESTICIDE',
   'APPLY_FUNGICIDE',
   'APPLY_INSECTICIDE',
@@ -166,16 +176,22 @@ const TREATMENT_ACTIONS = new Set([
   'SOIL_APPLICATION',
   'DRENCH_APPLICATION',
   'SEED_TREATMENT',
-  'GRANULAR_APPLICATION'
+  'GRANULAR_APPLICATION',
+  // Lowercase variants emitted by some bundled rules
+  'treatment', 'urgent_treatment', 'prevention',
 ]);
 
 const OBSERVATION_ACTIONS = new Set([
+  // DB canonical types
   'MONITOR',
+  'NO_ACTION_REQUIRED',
+  // Legacy
   'OBSERVE',
   'SCOUT',
   'INSPECT',
   'CHECK',
-  'WATCH'
+  'WATCH',
+  'monitoring', 'advisory', 'diagnosis',
 ]);
 
 const INFORMATION_ACTIONS = new Set([
