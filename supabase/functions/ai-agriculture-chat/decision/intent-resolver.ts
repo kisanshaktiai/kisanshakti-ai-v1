@@ -104,10 +104,11 @@ export async function getStageFromDASDatabase(
 ): Promise<string> {
   const supabase = resolveClient(scope);
 
+  // Post-migration: crop_stage_master.crop_code is lowercase canonical.
   const { data, error } = await supabase
     .from('crop_stage_master')
     .select('growth_stage')
-    .eq('crop_code', cropCode.toUpperCase())
+    .eq('crop_code', (cropCode || '').toLowerCase())
     .lte('das_min', das)
     .gte('das_max', das)
     .single();
@@ -129,7 +130,8 @@ export async function getStageFromDASDatabase(
     });
   }
 
-  return data?.growth_stage || 'UNKNOWN';
+  // Egress translation: DB rows are lowercase post-migration; callers compare to UPPER.
+  return String(data?.growth_stage || 'UNKNOWN').toUpperCase();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -164,10 +166,16 @@ export async function getValidObservationCodes(
   scope?: RequestScope
 ): Promise<ObservationMapping[]> {
   const supabase = resolveClient(scope);
-  const cropUpper = cropCode.toUpperCase();
+  // Post-migration canonical casing on intent_observation_mapping:
+  //   intent_code  → UPPER   (legacy, unchanged)
+  //   crop_code    → lower
+  //   growth_stage → lower
+  //   observation_code → lower
+  const cropLc = (cropCode || '').toLowerCase();
+  const stageLc = growthStage ? growthStage.toLowerCase() : undefined;
 
   console.log(
-    `📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropUpper}, DAS=${das}, stage=${growthStage ?? '*'}`
+    `📊 [IntentResolver] Querying: intent=${intentCode}, crop=${cropLc}, DAS=${das}, stage=${stageLc ?? '*'}`
   );
 
   let query = supabase
@@ -175,13 +183,13 @@ export async function getValidObservationCodes(
     .select('observation_code, confidence_rank')
     .eq('intent_code', intentCode)
     .eq('is_active', true)
-    .in('crop_code', [cropUpper, 'ALL'])
+    .in('crop_code', [cropLc, 'all'])
     .lte('das_min', das)
     .gte('das_max', das);
 
-  if (growthStage && growthStage !== 'UNKNOWN') {
-    // 'ALL' is the wildcard convention used in this table.
-    query = query.in('growth_stage', [growthStage.toUpperCase(), 'ALL']);
+  if (stageLc && stageLc !== 'unknown') {
+    // 'all' is the wildcard convention used in this table (post lower-case migration).
+    query = query.in('growth_stage', [stageLc, 'all']);
   }
 
   const { data: mappings, error: mapError } = await query.order('confidence_rank', {
@@ -195,7 +203,7 @@ export async function getValidObservationCodes(
       payload: {
         fn: 'getValidObservationCodes',
         intentCode,
-        cropCode: cropUpper,
+        cropCode: cropLc,
         das,
         growthStage,
         message: mapError.message,
@@ -203,7 +211,7 @@ export async function getValidObservationCodes(
     });
     throw new IntentResolutionError('MAPPING_DB_ERROR', {
       intentCode,
-      cropCode: cropUpper,
+      cropCode: cropLc,
       das,
       growthStage,
       dbError: mapError.message,
@@ -212,7 +220,7 @@ export async function getValidObservationCodes(
 
   if (!mappings || mappings.length === 0) {
     console.log(
-      `[IntentResolver] No mappings for intent=${intentCode} crop=${cropUpper} DAS=${das} stage=${growthStage ?? '*'}`
+      `[IntentResolver] No mappings for intent=${intentCode} crop=${cropLc} DAS=${das} stage=${growthStage ?? '*'}`
     );
     return [];
   }
@@ -286,7 +294,10 @@ export async function resolveIntentToObservations(
       };
     }
 
-    const observation_codes = mappings.map((m) => m.observation_code);
+    // Re-uppercase outputs to preserve the in-memory symbolic contract
+    // (downstream comparators use UPPER snake_case). DB stores lowercase
+    // canonical post-migration; this is the case-translation egress boundary.
+    const observation_codes = mappings.map((m) => String(m.observation_code).toUpperCase());
     const confidence_ranks = mappings.map((m) => m.confidence_rank);
 
     console.log(`   Found: ${observation_codes.length} observation codes`);
@@ -295,7 +306,7 @@ export async function resolveIntentToObservations(
       success: true,
       intent_code,
       crop_code: crop_code.toUpperCase(),
-      growth_stage: growthStage,
+      growth_stage: String(growthStage || '').toUpperCase() || 'UNKNOWN',
       observation_codes,
       confidence_ranks,
     };
@@ -333,14 +344,15 @@ export async function isObservationValidForCropStage(
   scope?: RequestScope
 ): Promise<{ valid: boolean; reason_code: string }> {
   const supabase = resolveClient(scope);
-  const cropUpper = cropCode.toUpperCase();
+  const cropLc = (cropCode || '').toLowerCase();
+  const obsLc = (observationCode || '').toLowerCase();
 
   const { data, error } = await supabase
     .from('intent_observation_mapping')
     .select('id')
-    .eq('observation_code', observationCode)
+    .eq('observation_code', obsLc)
     .eq('is_active', true)
-    .in('crop_code', [cropUpper, 'ALL'])
+    .in('crop_code', [cropLc, 'all'])
     .lte('das_min', das)
     .gte('das_max', das)
     .limit(1);
@@ -352,14 +364,14 @@ export async function isObservationValidForCropStage(
       payload: {
         fn: 'isObservationValidForCropStage',
         observationCode,
-        cropCode: cropUpper,
+        cropCode: cropLc,
         das,
         message: error.message,
       },
     });
     throw new IntentResolutionError('VALIDATION_DB_ERROR', {
       observationCode,
-      cropCode: cropUpper,
+      cropCode: cropLc,
       das,
       dbError: error.message,
     });
