@@ -89,28 +89,47 @@ export async function lookupSafeRuleForObservations(
     conditions_json: Record<string, unknown> | null;
   }>;
 
-  const stageMatch = rows.filter(
-    (r) => !r.growth_stage || r.growth_stage.toUpperCase() === args.growthStage.toUpperCase(),
-  );
-
-  if (stageMatch.length === 0) return null;
-
-  // DAS gate: when the caller supplies SSOT DAS, drop any rule whose
-  // conditions_json.das_range excludes it. Rules without a das_range are
-  // treated as DAS-agnostic.
+  // ───────────────────────────────────────────────────────────────────────
+  // DAS-first filter (SSOT). Per crop-timeline-ssot: DAS from crop_schedules
+  // is authoritative; growth_stage labels in `crop_stage_master` can OVERLAP
+  // (e.g. rice DAS=9 falls in both "germination" 0–10 AND "nursery" 0–25),
+  // so the orchestrator may legitimately pass either label to this function.
+  // A rule's `conditions_json.das_range` is the canonical scope window; the
+  // `growth_stage` column is a secondary label. We therefore:
+  //   1. Accept a rule if its DAS range covers current DAS, OR
+  //   2. Accept it if the stage labels match (legacy path for rules with no
+  //      das_range).
+  // Rules failing BOTH are rejected.
+  // ───────────────────────────────────────────────────────────────────────
   const das = typeof args.daysSinceSowing === 'number' && Number.isFinite(args.daysSinceSowing)
     ? args.daysSinceSowing
     : null;
-  const dasFiltered = das === null ? stageMatch : stageMatch.filter((r) => {
+  const stageU = (args.growthStage || '').toUpperCase();
+
+  const dasFiltered = rows.filter((r) => {
     const cj = r.conditions_json as any;
     const dr = cj?.das_range;
-    if (!dr || typeof dr !== 'object') return true;
-    const min = Number(dr.min ?? dr.from ?? Number.NEGATIVE_INFINITY);
-    const max = Number(dr.max ?? dr.to ?? Number.POSITIVE_INFINITY);
-    return das >= min && das <= max;
+    const hasDasRange = dr && typeof dr === 'object';
+    const stageLabelMatches = !r.growth_stage || r.growth_stage.toUpperCase() === stageU;
+
+    if (hasDasRange && das !== null) {
+      const min = Number(dr.min ?? dr.from ?? Number.NEGATIVE_INFINITY);
+      const max = Number(dr.max ?? dr.to ?? Number.POSITIVE_INFINITY);
+      const inDasWindow = das >= min && das <= max;
+      // DAS-range is SSOT: if it matches, accept regardless of stage label.
+      if (inDasWindow) return true;
+      // If DAS-range exists but excludes current DAS, the rule does not apply
+      // even when the stage label coincidentally matches.
+      return false;
+    }
+    // No das_range on the rule → fall back to stage label match.
+    return stageLabelMatches;
   });
 
-  if (dasFiltered.length === 0) return null;
+  if (dasFiltered.length === 0) {
+    console.log(`[ObservationRuleLookup] No rules matched after DAS/stage filter (das=${das}, stage=${stageU}, candidates=${rows.length})`);
+    return null;
+  }
 
   // Lowest priority value first (1 = highest urgency); fall back to rule_id
   // for deterministic ordering when priorities tie or are null.
