@@ -741,8 +741,10 @@ export class SymbolicReasoner {
           .filter((m: any) => m.biological_group === obs.canonical_group)
           .map((m: any) => ({ engine_group: m.engine_group, confidence: m.confidence }));
         
-        result.set(obs.observation_code, {
-          observation_code: obs.observation_code,
+        // Egress to UPPER snake_case to match in-memory symbolic contract.
+        const upperCode = String(obs.observation_code || '').toUpperCase();
+        result.set(upperCode, {
+          observation_code: upperCode,
           observation_category: obs.observation_category,
           affected_plant_part: obs.affected_plant_part,
           canonical_group: obs.canonical_group,
