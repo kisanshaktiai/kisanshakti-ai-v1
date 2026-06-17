@@ -4181,10 +4181,10 @@ function transformOrchestratorResponse(
           // Now: Include observation_key, description, diagnostic_power for proper UI mapping
           // ═══════════════════════════════════════════════════════════════════════════
           options: rawOptions.map((o: any) => ({
-            label: typeof o === 'string' ? o : (o?.label || String(o)),
+            label: pickOptionLabel(o),
             value: typeof o === 'string' ? o : (o?.value || o?.label || String(o)),
             observation_key: typeof o === 'object' ? (o?.observation_key || o?.value) : undefined,
-            description: typeof o === 'object' ? o?.description : undefined,
+            description: typeof o === 'object' ? (o?.[`description_${language}`] || o?.description) : undefined,
             diagnostic_power: typeof o === 'object' ? o?.diagnostic_power : undefined
           })),
           selectionType: response.metadata?.selectionType || 'SINGLE_CHOICE',
