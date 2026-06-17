@@ -76,18 +76,29 @@ export function lookupETLFromStandards(
   pestCode: string | undefined,
   cropCode: string | undefined,
   growthStage: string | undefined
-): { etl_value_min?: number; etl_value_max?: number; sampling_method?: string } | null {
+): { etl_value_min?: number; etl_value_max?: number; sampling_method?: string; sampling_unit?: string } | null {
   if (!etlStandardsCache || !pestCode) return null;
-  
+
+  // Post lower_snake_case migration: etl_standards.crop_code and growth_stage[]
+  // are stored lowercase, pest_code is UPPER. Callers may pass either case
+  // (orchestrator uses canonical UPPER, layered evaluator passes through).
+  // Normalize at the boundary so a mismatch never silently hides ETL bounds.
+  const pestU = pestCode.toUpperCase();
+  const cropLc = cropCode ? cropCode.toLowerCase() : undefined;
+  const stageLc = growthStage ? growthStage.toLowerCase() : undefined;
+
   const matches = etlStandardsCache.filter(s => {
-    if (s.pest_code !== pestCode) return false;
-    if (cropCode && s.crop_code !== cropCode) return false;
-    if (growthStage && s.growth_stage?.length > 0 && !s.growth_stage.includes(growthStage)) return false;
+    if (s.pest_code?.toUpperCase() !== pestU) return false;
+    if (cropLc && s.crop_code?.toLowerCase() !== cropLc) return false;
+    if (stageLc && s.growth_stage?.length > 0) {
+      const stagesLc = s.growth_stage.map(g => String(g).toLowerCase());
+      if (!stagesLc.includes(stageLc)) return false;
+    }
     return true;
   });
-  
+
   if (matches.length === 0) return null;
-  
+
   const best = matches[0];
   return {
     etl_value_min: best.etl_value,
