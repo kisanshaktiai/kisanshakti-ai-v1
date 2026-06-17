@@ -109,10 +109,13 @@ export async function resolveObservationQuestion(
 
   // SOURCE 4: intent_translations via intent_observation_mapping
   try {
+    // Post-migration: intent_observation_mapping.observation_code is lowercase canonical.
+    // Callers may pass UPPER snake_case (in-memory contract). Normalize at the DB boundary.
+    const obsLc = String(observation_code || '').toLowerCase();
     const { data: mapRows } = await supabase
       .from('intent_observation_mapping')
       .select('intent_code, confidence_rank, is_active')
-      .eq('observation_code', observation_code)
+      .eq('observation_code', obsLc)
       .eq('is_active', true)
       .order('confidence_rank', { ascending: true })
       .limit(1);

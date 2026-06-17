@@ -677,15 +677,27 @@ export async function evaluateCandidateHypotheses(
     
     if (input.known_observations.length > 0) {
       try {
+        // Phase 5 fix: observation_master.observation_code is lowercase canonical
+        // post-migration; in-memory contract is UPPER snake_case. Normalize at the
+        // DB ingress (.in() filter) and egress (map key) boundaries so that the
+        // diagnostic-power lookup in extractObservableCharacteristics() actually
+        // matches observation_master metadata.
+        const obsLcArray = Array.from(
+          new Set(
+            input.known_observations.map((c: string) => String(c || '').toLowerCase()).filter(Boolean)
+          )
+        );
+
         // Load observation metadata
         const { data: obsMetaData } = await supabaseClient
           .from('observation_master')
           .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
-          .in('observation_code', input.known_observations);
+          .in('observation_code', obsLcArray);
         
         if (obsMetaData && obsMetaData.length > 0) {
           for (const obs of obsMetaData) {
-            obsMetadataMap.set(obs.observation_code, obs);
+            const upperCode = String(obs.observation_code || '').toUpperCase();
+            obsMetadataMap.set(upperCode, obs);
           }
           
           const obsCategories = new Set(obsMetaData.map((o: any) => o.observation_category).filter(Boolean));
