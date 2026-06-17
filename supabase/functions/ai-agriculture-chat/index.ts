@@ -4065,8 +4065,30 @@ function transformOrchestratorResponseWithContent(
     };
   }
 
-  // For other types, delegate to the original function
-  return transformOrchestratorResponse(response, language, sessionId, startTime);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // LANGUAGE INTEGRITY FIX (2026-06-17): For non-DECISION types (clarification,
+  // photo_request, safety_blocked, escalation, llm_response, system_error) the
+  // legacy transform re-reads `question.text_<lang>` / `blocked_reason.reason_<lang>`
+  // etc. and silently falls back to `text_en` when the lang-specific field is
+  // missing. That bypasses the force-translate pass we ran on `responseContent`
+  // upstream — the DB row is saved in Marathi but the API returns English.
+  //
+  // Authoritative rule: `preGeneratedContent` is the SSOT for what the farmer
+  // sees. The legacy transform still builds the metadata/quickReplies/options
+  // envelope, but we ALWAYS overwrite `response` with the localized content
+  // we already produced and saved to DB.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const legacyPayload = transformOrchestratorResponse(response, language, sessionId, startTime);
+  if (preGeneratedContent && typeof preGeneratedContent === 'string' && preGeneratedContent.trim().length > 0) {
+    if (legacyPayload.response !== preGeneratedContent) {
+      console.log(`🌐 [LangIntegrity] Overriding ${response.type} response with force-translated content (was ${legacyPayload.response?.length || 0} chars, now ${preGeneratedContent.length} chars, lang=${language})`);
+    }
+    legacyPayload.response = preGeneratedContent;
+    if (legacyPayload.metadata) {
+      legacyPayload.metadata.language_pipeline_override = true;
+    }
+  }
+  return legacyPayload;
 }
 
 function transformOrchestratorResponse(
