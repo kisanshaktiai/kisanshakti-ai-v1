@@ -59,11 +59,19 @@ export async function resolveObservationQuestion(
   if (cached) return cached;
 
   // SOURCE 1+2+3: observation_translations
+  // CASE-INSENSITIVE LOOKUP (2026-06-17): observation_translations stores
+  // observation_code in lowercase canonical form; callers may pass either
+  // casing. Query both variants and let the caller key results case-agnostic.
   try {
+    const codeVariants = Array.from(new Set([
+      observation_code,
+      observation_code.toLowerCase(),
+      observation_code.toUpperCase(),
+    ]));
     const { data: rows } = await supabase
       .from('observation_translations')
       .select('crop_code, description_text, display_text')
-      .eq('observation_code', observation_code)
+      .in('observation_code', codeVariants)
       .eq('language_code', language);
 
     if (rows && rows.length > 0) {
