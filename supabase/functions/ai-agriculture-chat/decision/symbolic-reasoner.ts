@@ -701,11 +701,18 @@ export class SymbolicReasoner {
     }
     
     try {
+      // Phase 5 fix: observation_master.observation_code is lowercase canonical
+      // post-migration. The in-memory contract is UPPER snake_case, so normalize
+      // at the DB ingress (query) and egress (map key) boundaries.
+      const obsLcArray = Array.from(
+        new Set(observationCodes.map((c) => String(c || '').toLowerCase()).filter(Boolean))
+      );
+
       // Query observation_master for metadata
       const { data: obsData, error: obsError } = await this.supabase
         .from('observation_master')
         .select('observation_code, observation_category, affected_plant_part, canonical_group, is_diagnostic, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score')
-        .in('observation_code', observationCodes);
+        .in('observation_code', obsLcArray);
       
       if (obsError) {
         console.error('❌ [ObsMeta] Failed to load observation metadata:', obsError.message);
