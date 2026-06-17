@@ -3287,7 +3287,7 @@ export class AIAgentOrchestrator {
         const { data: intentRow } = await supabaseClient
           .from('observation_intent_master')
           .select('requires_stage_context, routing_target, requires_crop_context, clarification_mode')
-          .eq('intent_code', intentCode)
+          .eq('intent_code', String(intentCode || '').toUpperCase())
           .eq('is_active', true)
           .maybeSingle();
         
