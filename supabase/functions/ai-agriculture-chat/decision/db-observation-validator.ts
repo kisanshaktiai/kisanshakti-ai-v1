@@ -73,7 +73,7 @@ export async function getGrowthStageFromDB(
   const { data, error } = await supabase
     .from('crop_stage_master')
     .select('growth_stage')
-    .eq('crop_code', cropCode.toUpperCase())
+    .eq('crop_code', (cropCode || '').toLowerCase())
     .lte('das_min', das)
     .gte('das_max', das)
     .single();
@@ -84,24 +84,25 @@ export async function getGrowthStageFromDB(
     const { data: closest } = await supabase
       .from('crop_stage_master')
       .select('growth_stage, das_min, das_max')
-      .eq('crop_code', cropCode.toUpperCase())
+      .eq('crop_code', (cropCode || '').toLowerCase())
       .order('das_min', { ascending: true });
     
     if (closest && closest.length > 0) {
       // Find the stage where DAS falls
       for (const stage of closest) {
         if (das >= stage.das_min && das <= stage.das_max) {
-          return stage.growth_stage;
+          return String(stage.growth_stage || 'UNKNOWN').toUpperCase();
         }
       }
       // If past all stages, return last
-      return closest[closest.length - 1]?.growth_stage || 'UNKNOWN';
+      return String(closest[closest.length - 1]?.growth_stage || 'UNKNOWN').toUpperCase();
     }
-    
+
     return 'UNKNOWN';
   }
-  
-  return data?.growth_stage || 'UNKNOWN';
+
+  // Egress translation: DB rows are lowercase post-migration; callers compare to UPPER.
+  return String(data?.growth_stage || 'UNKNOWN').toUpperCase();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -116,22 +117,23 @@ export async function validateObservationFromDB(
 ): Promise<ValidationOutput> {
   const supabase = getSupabaseClient();
   const { crop_code, days_since_sowing, observation_code } = input;
-  const cropUpper = crop_code.toUpperCase();
-  const obsUpper = observation_code.toUpperCase();
-  
-  console.log(`🔬 [DBValidator] Validating: ${obsUpper} for ${cropUpper} @ DAS ${days_since_sowing}`);
+  // Post-migration canonical casing: crop_code, observation_code, growth_stage are all lowercase in DB.
+  const cropLc = (crop_code || '').toLowerCase();
+  const obsLc = (observation_code || '').toLowerCase();
+
+  console.log(`🔬 [DBValidator] Validating: ${obsLc} for ${cropLc} @ DAS ${days_since_sowing}`);
   
   // 1. Get growth stage
-  const growthStage = await getGrowthStageFromDB(cropUpper, days_since_sowing);
+  const growthStage = await getGrowthStageFromDB(cropLc, days_since_sowing);
   console.log(`   Stage: ${growthStage}`);
   
   if (growthStage === 'UNKNOWN') {
     return {
       valid: true, // Allow if we can't determine stage
-      observation_code: obsUpper,
-      crop_code: cropUpper,
+      observation_code: obsLc,
+      crop_code: cropLc,
       growth_stage: 'UNKNOWN',
-      reason: `Crop ${cropUpper} not found in database - allowing observation`
+      reason: `Crop ${cropLc} not found in database - allowing observation`
     };
   }
   
@@ -139,8 +141,8 @@ export async function validateObservationFromDB(
   const { data: mapping, error } = await supabase
     .from('intent_observation_mapping')
     .select('observation_code, intent_code')
-    .eq('observation_code', obsUpper)
-    .eq('crop_code', cropUpper)
+    .eq('observation_code', obsLc)
+    .eq('crop_code', cropLc)
     .lte('das_min', days_since_sowing)
     .gte('das_max', days_since_sowing)
     .eq('is_active', true)
@@ -150,8 +152,8 @@ export async function validateObservationFromDB(
     console.warn(`[DBValidator] Query error: ${error.message}`);
     return {
       valid: true, // Allow on error
-      observation_code: obsUpper,
-      crop_code: cropUpper,
+      observation_code: obsLc,
+      crop_code: cropLc,
       growth_stage: growthStage,
       reason: 'Database error - allowing observation'
     };
@@ -159,24 +161,24 @@ export async function validateObservationFromDB(
   
   // 3. Check result
   if (mapping && mapping.length > 0) {
-    console.log(`   ✅ VALID: ${obsUpper} found in mapping`);
+    console.log(`   ✅ VALID: ${obsLc} found in mapping`);
     return {
       valid: true,
-      observation_code: obsUpper,
-      crop_code: cropUpper,
+      observation_code: obsLc,
+      crop_code: cropLc,
       growth_stage: growthStage,
-      reason: `${obsUpper} is biologically valid for ${cropUpper}/${growthStage}`
+      reason: `${obsLc} is biologically valid for ${cropLc}/${growthStage}`
     };
   }
   
   // 4. NOT FOUND - Check if there are any similar valid observations
-  console.log(`   ⚠️ INVALID: ${obsUpper} not found for ${cropUpper}/${growthStage}`);
+  console.log(`   ⚠️ INVALID: ${obsLc} not found for ${cropLc}/${growthStage}`);
   
   // Get valid observations for this stage to suggest corrections
   const { data: validObs } = await supabase
     .from('intent_observation_mapping')
     .select('observation_code')
-    .eq('crop_code', cropUpper)
+    .eq('crop_code', cropLc)
     .lte('das_min', days_since_sowing)
     .gte('das_max', days_since_sowing)
     .eq('is_active', true)
@@ -187,10 +189,10 @@ export async function validateObservationFromDB(
   
   return {
     valid: false,
-    observation_code: obsUpper,
-    crop_code: cropUpper,
+    observation_code: obsLc,
+    crop_code: cropLc,
     growth_stage: growthStage,
-    reason: `${obsUpper} is not biologically valid for ${cropUpper} at ${growthStage} stage (DAS ${days_since_sowing})`,
+    reason: `${obsLc} is not biologically valid for ${cropLc} at ${growthStage} stage (DAS ${days_since_sowing})`,
     correction_suggestion: suggestions.length > 0 ? suggestions[0] : undefined,
     clarification_question: `This observation is unusual at ${growthStage} stage. Did you mean one of: ${suggestions.join(', ')}?`
   };
@@ -250,7 +252,7 @@ export async function getValidObservationsForStage(
   const { data, error } = await supabase
     .from('intent_observation_mapping')
     .select('observation_code')
-    .eq('crop_code', cropCode.toUpperCase())
+    .eq('crop_code', (cropCode || '').toLowerCase())
     .lte('das_min', das)
     .gte('das_max', das)
     .eq('is_active', true);

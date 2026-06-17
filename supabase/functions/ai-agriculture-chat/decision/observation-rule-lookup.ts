@@ -37,7 +37,8 @@ export interface ObservationRuleHit {
   source: 'rule_action_text';
 }
 
-const SAFE_LEVELS = ['SAFE', 'CAUTION'] as const;
+// Post-migration: decision_rules.farmer_safety_level is stored lowercase.
+const SAFE_LEVELS = ['safe', 'caution'] as const;
 
 /**
  * Look up the highest-priority SAFE/CAUTION rule whose `condition_code`
@@ -56,14 +57,18 @@ export async function lookupSafeRuleForObservations(
     daysSinceSowing?: number | null;
   },
 ): Promise<ObservationRuleHit | null> {
-  const obsList = (args.confirmedObservations || []).filter((s) => typeof s === 'string' && s.length > 0);
+  const obsList = (args.confirmedObservations || [])
+    .filter((s) => typeof s === 'string' && s.length > 0)
+    .map((s) => s.toLowerCase()); // condition_code stored lowercase post-migration
   if (obsList.length === 0 || !args.cropCode) return null;
+
+  const cropLc = args.cropCode.toLowerCase();
 
   const { data, error } = await supabase
     .from('decision_rules')
     .select('rule_id, condition_code, crop_code, growth_stage, action_text, action_type, farmer_safety_level, priority, is_active, conditions_json')
     .in('condition_code', obsList)
-    .eq('crop_code', args.cropCode)
+    .eq('crop_code', cropLc)
     .eq('is_active', true)
     .in('farmer_safety_level', SAFE_LEVELS as unknown as string[]);
 
@@ -135,12 +140,15 @@ export async function lookupSafeRuleForObservations(
     }
   }
 
+  // Preserve legacy in-memory contract: action_type / farmer_safety_level / growth_stage
+  // are consumed elsewhere via UPPER comparisons (e.g. 'BLOCK', 'SAFE'). The DB
+  // post-migration stores them lowercase, so normalise back to UPPER on egress.
   return {
     rule_id: top.rule_id,
     action_text: top.action_text,
-    action_type: top.action_type,
-    farmer_safety_level: top.farmer_safety_level,
-    growth_stage: top.growth_stage,
+    action_type: top.action_type ? String(top.action_type).toUpperCase() : null,
+    farmer_safety_level: top.farmer_safety_level ? String(top.farmer_safety_level).toUpperCase() : null,
+    growth_stage: top.growth_stage ? String(top.growth_stage).toUpperCase() : null,
     priority: top.priority,
     localized_text: localized,
     text: localized ?? top.action_text,

@@ -260,9 +260,11 @@ async function _loadHypothesesImpl(
   // ═══════════════════════════════════════════════════════════════════════
   // PHASE 1: Load master hypotheses to extract IDs
   // ═══════════════════════════════════════════════════════════════════════
+  // Post-migration: hypothesis_master.crop_group is stored lowercase canonical.
+  const cropGroupLc = (cropGroup || '').toLowerCase();
   const masterRes = await supabase.from('hypothesis_master')
     .select('*')
-    .eq('crop_group', cropGroup)
+    .eq('crop_group', cropGroupLc)
     .eq('is_active', true);
 
   const hypotheses: HypothesisMasterRow[] = masterRes.data || [];
