@@ -139,6 +139,11 @@ export interface ClarificationOutput {
    */
   options: Array<string | ClarificationOption>;
   photo_requested: boolean;
+  clarification_prompt: string;
+  scope?: ClarificationScope;
+  validation_passed?: boolean;
+}
+
 
 
 // ═══════════════════════════════════════════════════════════════════════════
