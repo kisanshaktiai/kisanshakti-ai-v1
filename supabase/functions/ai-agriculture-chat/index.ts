@@ -2218,15 +2218,43 @@ serve(async (req) => {
 
       // Task 7: classify response_source for symbolic-vs-LLM dashboards.
       const _oType = String(orchestratorResponse.type || '').toUpperCase();
-      const _rulesFired = Array.isArray(orchestratorResponse.metadata?.rules_applied)
-        ? orchestratorResponse.metadata!.rules_applied!.length
-        : 0;
-      const _sourceTag = String(orchestratorResponse.metadata?.source || '').toLowerCase();
+      const _meta: any = orchestratorResponse.metadata || {};
+      const _rulesFired = Array.isArray(_meta.rules_applied) ? _meta.rules_applied.length : 0;
+      const _sourceTag = String(_meta.source || '').toLowerCase();
+      const _confirmedObs: string[] = Array.isArray(_meta.confirmed_observation_codes)
+        ? _meta.confirmed_observation_codes
+        : Array.isArray(_meta.observations)
+          ? _meta.observations
+          : [];
       const responseSource: string = (() => {
         if (_sourceTag === 'symbolic_empty_fallback') return 'symbolic_empty_fallback';
         if (_oType.includes('CLARIFICATION')) return 'symbolic_clarification';
-        if (_rulesFired > 0) return 'symbolic_rule_fired';
-        if (llmFormatterOutput && _rulesFired > 0) return 'llm_translation_only';
+        if (_rulesFired > 0) return llmFormatterOutput ? 'llm_translation_only' : 'symbolic_rule_fired';
+        // Task 3: symbolic produced ZERO rules even though the farmer confirmed
+        // observations → reclassify as symbolic_empty_fallback and audit-log.
+        if (_confirmedObs.length > 0) {
+          (async () => {
+            try {
+              await supabase.from('ai_chat_audit_logs').insert({
+                tenant_id: finalTenantId,
+                farmer_id: finalFarmerId,
+                session_id: currentSessionId,
+                event_type: 'symbolic_empty_after_confirmed_observations',
+                event_data: {
+                  trace_id: traceId,
+                  intent_code: _meta.intent_code ?? null,
+                  crop_code: _meta.crop_code ?? null,
+                  growth_stage: _meta.growth_stage ?? null,
+                  das: _meta.das ?? null,
+                  confirmed_observation_codes: _confirmedObs,
+                  candidate_rule_ids: _meta.candidate_rule_ids ?? null,
+                  orchestrator_type: orchestratorResponse.type,
+                },
+              });
+            } catch (_e) { /* non-fatal */ }
+          })();
+          return 'symbolic_empty_fallback';
+        }
         return 'llm_general_knowledge';
       })();
 
