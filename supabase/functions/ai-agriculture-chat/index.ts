@@ -530,14 +530,64 @@ serve(async (req) => {
     
     // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
     let conversationHistory: Array<{ role: string; content: string }> = [];
-    
+
+    // Task 6: ConversationContext lives on ai_chat_sessions.conversation_state (top-level jsonb).
+    // Reloaded at turn start, mutated request-scope, written back at turn end.
+    type ConversationContext = {
+      intent_code: string | null;
+      confirmed_observations: string[];
+      ruled_out_observations: string[];
+      active_rule_candidates: string[];
+      round_counter: number;
+      max_rounds: number;
+      last_updated: string | null;
+    };
+    let conversationContext: ConversationContext = {
+      intent_code: null,
+      confirmed_observations: [],
+      ruled_out_observations: [],
+      active_rule_candidates: [],
+      round_counter: 0,
+      max_rounds: 2,
+      last_updated: null,
+    };
+
     if (currentSessionId) {
-      // Fetch session metadata - land_id already validated in P0-A above
+      // Fetch session metadata + conversation_state - land_id already validated in P0-A above
       const { data: existingSession } = await supabase
         .from('ai_chat_sessions')
-        .select('metadata, land_id')
+        .select('metadata, land_id, conversation_state')
         .eq('id', currentSessionId)
         .single();
+
+      // Load top-level ConversationContext (Task 6)
+      const cs = (existingSession as any)?.conversation_state;
+      if (cs && typeof cs === 'object') {
+        conversationContext = {
+          intent_code: cs.intent_code ?? null,
+          confirmed_observations: Array.isArray(cs.confirmed_observations) ? cs.confirmed_observations : [],
+          ruled_out_observations: Array.isArray(cs.ruled_out_observations) ? cs.ruled_out_observations : [],
+          active_rule_candidates: Array.isArray(cs.active_rule_candidates) ? cs.active_rule_candidates : [],
+          round_counter: Number.isFinite(cs.round_counter) ? Number(cs.round_counter) : 0,
+          max_rounds: Number.isFinite(cs.max_rounds) ? Number(cs.max_rounds) : 2,
+          last_updated: cs.last_updated ?? null,
+        };
+        // Max-rounds reset: clarification flow gives up after N rounds.
+        if (conversationContext.round_counter >= conversationContext.max_rounds) {
+          console.log(`🧹 [ConversationContext] max_rounds=${conversationContext.max_rounds} reached, clearing context`);
+          conversationContext = {
+            intent_code: null,
+            confirmed_observations: [],
+            ruled_out_observations: [],
+            active_rule_candidates: [],
+            round_counter: 0,
+            max_rounds: conversationContext.max_rounds,
+            last_updated: null,
+          };
+        }
+        console.log(`📥 [ConversationContext] Loaded: intent=${conversationContext.intent_code} confirmed=${conversationContext.confirmed_observations.length} round=${conversationContext.round_counter}/${conversationContext.max_rounds}`);
+      }
+
       
       // ═══════════════════════════════════════════════════════════════════════════
       // P0-A ENFORCEMENT: Session is ALREADY validated to match this land
@@ -2569,11 +2619,51 @@ serve(async (req) => {
     };
     
     try {
+      // Task 6: derive next ConversationContext from this turn's outcome.
+      const _meta2: any = orchestratorResponse.metadata || {};
+      const _isClarification = String(orchestratorResponse.type || '').toUpperCase().includes('CLARIFICATION');
+      const _rulesFiredNow = Array.isArray(_meta2.rules_applied) ? _meta2.rules_applied.length : 0;
+      const _newConfirmed: string[] = Array.isArray(_meta2.confirmed_observation_codes)
+        ? _meta2.confirmed_observation_codes
+        : Array.isArray(_meta2.observations) ? _meta2.observations : [];
+      const _newRuledOut: string[] = Array.isArray(_meta2.ruled_out_observation_codes)
+        ? _meta2.ruled_out_observation_codes : [];
+      const _candidates: string[] = Array.isArray(_meta2.candidate_rule_ids) ? _meta2.candidate_rule_ids : [];
+
+      const mergedConfirmed = Array.from(new Set([...conversationContext.confirmed_observations, ..._newConfirmed]));
+      const mergedRuledOut  = Array.from(new Set([...conversationContext.ruled_out_observations,  ..._newRuledOut]));
+
+      const nextConversationContext: ConversationContext = (() => {
+        // Terminal outcomes clear the context.
+        if (_rulesFiredNow > 0 || (!_isClarification && conversationContext.intent_code === null && _newConfirmed.length === 0)) {
+          return {
+            intent_code: null,
+            confirmed_observations: [],
+            ruled_out_observations: [],
+            active_rule_candidates: [],
+            round_counter: 0,
+            max_rounds: conversationContext.max_rounds,
+            last_updated: new Date().toISOString(),
+          };
+        }
+        // Clarification turn → advance round counter & merge observations.
+        return {
+          intent_code: _meta2.intent_code ?? conversationContext.intent_code ?? null,
+          confirmed_observations: mergedConfirmed,
+          ruled_out_observations: mergedRuledOut,
+          active_rule_candidates: _candidates.length > 0 ? _candidates : conversationContext.active_rule_candidates,
+          round_counter: _isClarification ? conversationContext.round_counter + 1 : conversationContext.round_counter,
+          max_rounds: conversationContext.max_rounds,
+          last_updated: new Date().toISOString(),
+        };
+      })();
+
       // CRITICAL: Include tenant_id and farmer_id in update filter for security isolation
       await supabase
         .from('ai_chat_sessions')
         .update({ 
           updated_at: new Date().toISOString(),
+          conversation_state: nextConversationContext as unknown as Record<string, unknown>,
           metadata: {
             language,
             source: 'orchestrator_v1',
@@ -2586,7 +2676,7 @@ serve(async (req) => {
             recommendations_count: actions_returned?.length || 0,
             // CRITICAL: Decision tracking for session memory
             decision_tracking: decisionTracking,
-            // Persist conversation state for continuity
+            // Legacy nested conversation_state (kept for back-compat with dashboards)
             conversation_state: {
               turn_count: decisionTracking.turn_count,
               has_photo: !!imageUrl,
@@ -2599,6 +2689,8 @@ serve(async (req) => {
         .eq('id', currentSessionId)
         .eq('tenant_id', finalTenantId)  // CRITICAL: Tenant isolation
         .eq('farmer_id', finalFarmerId); // CRITICAL: Farmer isolation
+
+      console.log(`📤 [ConversationContext] Persisted: intent=${nextConversationContext.intent_code} confirmed=${nextConversationContext.confirmed_observations.length} round=${nextConversationContext.round_counter}/${nextConversationContext.max_rounds}`);
       
       console.log(`💾 [Session] Decision tracking persisted:`, {
         state: decisionTracking.decision_state,
