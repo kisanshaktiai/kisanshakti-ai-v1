@@ -4531,6 +4531,7 @@ export class AIAgentOrchestrator {
           console.error(`   ❌ Diagnosis-first generation failed:`, diagnosisFirstError);
           // Fall through to standard clarification flow
         }
+        } // end else (evidence sufficient → DIAGNOSIS_FIRST executed)
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
