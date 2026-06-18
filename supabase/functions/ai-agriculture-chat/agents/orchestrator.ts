@@ -9,6 +9,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
+import { resolveCropTimeline } from '../utils/resolveCropTimeline.ts';
 import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from '../../_shared/variety-context.ts';
 
 
