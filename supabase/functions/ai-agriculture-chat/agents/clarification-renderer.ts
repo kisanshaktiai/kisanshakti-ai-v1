@@ -79,9 +79,25 @@ export interface ClarificationRenderInput {
   cropContext?: CropContextAuthority | null;
 }
 
+/**
+ * Single clarification option carrying the canonical `observation_code` whenever the
+ * DB resolver knows one. Without this, the orchestrator's chip-value builder falls back
+ * to the label (e.g. "Drying/wilting") which is NOT a valid observation_code — the rule
+ * engine then matches zero rules and the response collapses to DIAGNOSTIC_ESCALATION /
+ * monitoring fallback (see edge log RULE_DATA_INTEGRITY_ERROR matched_responses=0).
+ */
+export interface RenderedClarificationOption {
+  label: string;
+  observation_code?: string;
+}
+
 export interface ClarificationRenderOutput {
   question: string;
-  options: string[];
+  /**
+   * Options are now ALWAYS objects so canonical `observation_code` (when known) survives
+   * the round trip to the frontend chip → echoed back as `[obs_keys:<code>]`.
+   */
+  options: RenderedClarificationOption[];
   photo_request: boolean;
   validation_passed: boolean;
   violations: string[];
@@ -503,11 +519,12 @@ export function validateClarificationSafety(
     }
   }
   
-  // Check each option
+  // Check each option (object shape: {label, observation_code?})
   for (const option of output.options) {
+    const optionText = typeof option === 'string' ? option : (option?.label ?? '');
     for (const pattern of FORBIDDEN_PATTERNS) {
-      if (pattern.test(option)) {
-        violations.push(`Forbidden pattern in option "${option.substring(0, 20)}...": ${pattern.source}`);
+      if (pattern.test(optionText)) {
+        violations.push(`Forbidden pattern in option "${optionText.substring(0, 20)}...": ${pattern.source}`);
       }
     }
   }
@@ -538,8 +555,12 @@ export function renderClarification(
   
   console.log(`   🎯 [Renderer] Scope: ${scope}, Crop: ${cropContext?.crop_name || 'none'}, Options: ${template.options.length}`);
   
-  // Limit options to max_options
-  const limitedOptions = template.options.slice(0, max_options);
+  // Limit options to max_options. Template options are plain strings (no canonical
+  // observation_code attached) — wrap as {label} only. Codes flow in only via the
+  // DB-driven path (renderClarificationAsync → getContextAwareTemplateFromDB).
+  const limitedOptions: RenderedClarificationOption[] = template.options
+    .slice(0, max_options)
+    .map((lbl) => ({ label: String(lbl) }));
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-8.1: Stage-Aware Framing (NO DIAGNOSIS)
@@ -599,7 +620,7 @@ export async function getContextAwareTemplateFromDB(
   scope: ClarificationScope,
   language: string,
   cropContext?: CropContextAuthority | null
-): Promise<{ question: string; options: string[] }> {
+): Promise<{ question: string; options: RenderedClarificationOption[] }> {
   const cropCode = cropContext?.crop_name?.toUpperCase() || '';
   const stage = cropContext?.growth_stage?.toUpperCase() || '';
 
@@ -610,22 +631,23 @@ export async function getContextAwareTemplateFromDB(
     try {
       // Pass language to get DB-resolved labels in the correct language
       const loaded = await loadObservationKeysFromDB(cropCode, stage, language);
-      const top = (loaded.keys || []).slice(0, 3).map((k) => {
-        // Use the language-resolved 'label' field (set by DB query)
-        return { key: k.key, label: k.label || k.key.replace(/_/g, ' ') };
-      });
+      const top = (loaded.keys || []).slice(0, 3).map((k) => ({
+        // `k.key` is the canonical observation_code (e.g. `leaf_wilting`) — preserve it
+        // so the orchestrator can attach it as the chip `value` and the rule engine
+        // receives a real observation_code instead of a UI label.
+        observation_code: k.key,
+        label: k.label || k.key.replace(/_/g, ' ')
+      }));
 
       if (top.length > 0) {
         console.log(
-          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage}/${language} (source=${loaded.loaded_from})`
+          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage}/${language} (source=${loaded.loaded_from}); first code=${top[0].observation_code}`
         );
 
         const templateQuestion = getTemplateQuestion(scope, language, cropContext);
-        const optionLabels = top.map((opt) => opt.label);
-
         return {
           question: templateQuestion,
-          options: optionLabels.slice(0, 3)
+          options: top
         };
       } else {
         console.log(
@@ -637,8 +659,12 @@ export async function getContextAwareTemplateFromDB(
     }
   }
 
-  // Fallback to hardcoded templates
-  return getContextAwareTemplate(scope, language, cropContext);
+  // Fallback to hardcoded templates → wrap as objects with no observation_code
+  const tmpl = getContextAwareTemplate(scope, language, cropContext);
+  return {
+    question: tmpl.question,
+    options: tmpl.options.map((lbl) => ({ label: String(lbl) }))
+  };
 }
 
 /**
