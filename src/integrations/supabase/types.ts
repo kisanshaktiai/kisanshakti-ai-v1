@@ -11950,6 +11950,42 @@ export type Database = {
           },
         ]
       }
+      intent_observation_mapping_audit: {
+        Row: {
+          action: string
+          after_payload: Json | null
+          before_payload: Json | null
+          created_at: string
+          id: string
+          iom_id: string | null
+          performed_by: string | null
+          reason: string
+          sql_batch_id: string | null
+        }
+        Insert: {
+          action: string
+          after_payload?: Json | null
+          before_payload?: Json | null
+          created_at?: string
+          id?: string
+          iom_id?: string | null
+          performed_by?: string | null
+          reason: string
+          sql_batch_id?: string | null
+        }
+        Update: {
+          action?: string
+          after_payload?: Json | null
+          before_payload?: Json | null
+          created_at?: string
+          id?: string
+          iom_id?: string | null
+          performed_by?: string | null
+          reason?: string
+          sql_batch_id?: string | null
+        }
+        Relationships: []
+      }
       intent_translations: {
         Row: {
           created_at: string | null
@@ -32408,6 +32444,10 @@ export type Database = {
           is_valid: boolean
           role: string
         }[]
+      }
+      validate_iom_semantic_class: {
+        Args: { p_intent_code: string; p_observation_code: string }
+        Returns: boolean
       }
       validate_photo_location: {
         Args: {
