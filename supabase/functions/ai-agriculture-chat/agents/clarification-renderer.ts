@@ -620,7 +620,7 @@ export async function getContextAwareTemplateFromDB(
   scope: ClarificationScope,
   language: string,
   cropContext?: CropContextAuthority | null
-): Promise<{ question: string; options: string[] }> {
+): Promise<{ question: string; options: RenderedClarificationOption[] }> {
   const cropCode = cropContext?.crop_name?.toUpperCase() || '';
   const stage = cropContext?.growth_stage?.toUpperCase() || '';
 
@@ -631,22 +631,23 @@ export async function getContextAwareTemplateFromDB(
     try {
       // Pass language to get DB-resolved labels in the correct language
       const loaded = await loadObservationKeysFromDB(cropCode, stage, language);
-      const top = (loaded.keys || []).slice(0, 3).map((k) => {
-        // Use the language-resolved 'label' field (set by DB query)
-        return { key: k.key, label: k.label || k.key.replace(/_/g, ' ') };
-      });
+      const top = (loaded.keys || []).slice(0, 3).map((k) => ({
+        // `k.key` is the canonical observation_code (e.g. `leaf_wilting`) — preserve it
+        // so the orchestrator can attach it as the chip `value` and the rule engine
+        // receives a real observation_code instead of a UI label.
+        observation_code: k.key,
+        label: k.label || k.key.replace(/_/g, ' ')
+      }));
 
       if (top.length > 0) {
         console.log(
-          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage}/${language} (source=${loaded.loaded_from})`
+          `   ✅ Found ${top.length} options from DB for ${cropCode}/${stage}/${language} (source=${loaded.loaded_from}); first code=${top[0].observation_code}`
         );
 
         const templateQuestion = getTemplateQuestion(scope, language, cropContext);
-        const optionLabels = top.map((opt) => opt.label);
-
         return {
           question: templateQuestion,
-          options: optionLabels.slice(0, 3)
+          options: top
         };
       } else {
         console.log(
@@ -658,8 +659,12 @@ export async function getContextAwareTemplateFromDB(
     }
   }
 
-  // Fallback to hardcoded templates
-  return getContextAwareTemplate(scope, language, cropContext);
+  // Fallback to hardcoded templates → wrap as objects with no observation_code
+  const tmpl = getContextAwareTemplate(scope, language, cropContext);
+  return {
+    question: tmpl.question,
+    options: tmpl.options.map((lbl) => ({ label: String(lbl) }))
+  };
 }
 
 /**
