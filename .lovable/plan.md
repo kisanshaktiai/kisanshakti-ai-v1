@@ -1,500 +1,64 @@
 
-# Migration Plan v3 — Ready-to-paste SQL (verified against live schema)
-
-**Status:** still draft / DO NOT APPLY. Every file below is complete, transactional, and pastable as-is. Live-schema check completed:
-
-```text
-advisory_audit_log    rows = 0        (empty — two-step still used as discipline, but no lock risk)
-hypothesis_metrics    rows = 67
-hypothesis_rule_mapping rows = 1,810
-rule_conflict_matrix  rows = 0
-decision_rules        rows = 1,852
-hypothesis_master     rows = 346
-observation_master    rows = 2,537
-pg_proc.set_updated_at exists = false   (no name collision; rename to audit_set_updated_at still adopted for clarity)
-```
-
-**Verified column lists (no hallucinated columns):**
-
-- `hypothesis_master`: `hypothesis_id, crop_group, hypothesis_type, canonical_group, cause_name_en, cause_name_mr, cause_name_hi, biological_basis, severity_model, version, engine_min_version, is_active, created_at, updated_at`. **No** `confidence_threshold`, **no** `description`, **no** `crop_code`.
-- `observation_master`: `observation_code, description, is_diagnostic, symptom_category, canonical_group, observation_category, affected_plant_part, is_active, is_farmer_observable, crop_group, applicable_crop_groups, observation_type, symptom_type, symptom_pattern, severity_level, discriminator_score, frequency_score, clarity_score, created_at, updated_at`. **No** `canonical_label`, **no** `clinical_signs`.
-- `decision_rules` (hash inputs): `condition_code, action_text, action_type, farmer_safety_level, response_severity, rule_intent, conditions_json, crop_code, growth_stage` — all exist.
-
-**All six sharpenings from the v2 review are applied:**
-
-1. Hash formulas use only verified columns. `description` excluded from hypothesis hash (curator narrative, not engine input). `cause_name_*` excluded (display-only, not decision-driving). Same logic for observation.
-2. All three triggers are `BEFORE INSERT OR UPDATE`.
-3. Identity columns (`rule_id`, `hypothesis_id`, `observation_code`) explicitly excluded from their own hash, with a comment stating the policy.
-4. `\i` includes dropped. Pre-flight is copy-pasted into each file.
-5. CI-gate DB CHECK rewritten as `NOT VALID` (catches future writes, never validates legacy rows — VALIDATE deferred to Stage 5).
-6. Option **(a)** adopted: row-columns-only hash. Full audit trail relies on `ai_decision_log` snapshots.
-
-Plus the v2 review's "missing item": each file ships with a sibling `*-post-apply-check.sql` for the first-24h monitoring queries.
-
-**Codebase impact: zero.** No `.from()` calls or column references change. New columns are populated by triggers; existing reads ignore them. `rule_id_lc` / `hypothesis_id_lc` are read by nothing in Stage 1.
-
----
-
-## Deliverables
-
-```text
-docs/audit-2026-06-15/migrations-draft/
-  APPLY-ORDER.md
-  CI-gate.md
-  01-add-audit-cols.sql
-  01-add-audit-cols-rollback.sql
-  01-add-audit-cols-post-apply-check.sql
-  02-stage-1-shadow-columns.sql
-  02-stage-1-shadow-columns-rollback.sql
-  02-stage-1-shadow-columns-post-apply-check.sql
-  03-add-version-hash.sql
-  03-add-version-hash-rollback.sql
-  03-add-version-hash-post-apply-check.sql
-```
-
-(Files renumbered to match the reviewer's apply order: audit cols → CI gate → shadow cols → version hash. The v1 `03-*` files will be deleted in build mode.)
-
----
-
-## File 1 — `01-add-audit-cols.sql`
-
-```sql
--- ORDER: 1 of 4. Apply first.
--- DEPENDS ON: nothing.
--- BLOCKED BY: nothing.
--- ROLLBACK: 01-add-audit-cols-rollback.sql
--- POST-APPLY: 01-add-audit-cols-post-apply-check.sql
--- DO NOT APPLY without product approval.
-
--- ===== PRE-FLIGHT (copy-paste; verify before BEGIN) =====
--- SELECT count(*) FROM public.hypothesis_metrics;       -- expect ~67
--- SELECT count(*) FROM public.hypothesis_rule_mapping;  -- expect ~1810
--- SELECT count(*) FROM public.rule_conflict_matrix;     -- expect 0
--- SELECT count(*) FROM public.advisory_audit_log;       -- expect 0
--- SELECT proname FROM pg_proc WHERE proname='audit_set_updated_at' AND pronamespace='public'::regnamespace;
---   -- expect 0 rows
--- SELECT relation::regclass, mode FROM pg_locks WHERE relation IN (
---   'public.hypothesis_metrics'::regclass,
---   'public.hypothesis_rule_mapping'::regclass,
---   'public.rule_conflict_matrix'::regclass,
---   'public.advisory_audit_log'::regclass
--- ) AND mode LIKE '%Exclusive%';  -- expect 0 rows
-
-BEGIN;
-
--- Specifically named function — avoids collision with any future generic set_updated_at()
-CREATE OR REPLACE FUNCTION public.audit_set_updated_at()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  NEW.updated_at = now();
-  RETURN NEW;
-END $$;
-
--- ---- Small tables: one-liner is safe ----
-ALTER TABLE public.hypothesis_metrics
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
-
-ALTER TABLE public.hypothesis_rule_mapping
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
-
-ALTER TABLE public.rule_conflict_matrix
-  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
-  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
-
--- ---- advisory_audit_log: two-step pattern (even though empty today — discipline) ----
-ALTER TABLE public.advisory_audit_log
-  ADD COLUMN IF NOT EXISTS created_at timestamptz;
-
-UPDATE public.advisory_audit_log
-   SET created_at = COALESCE(generated_at, now())
- WHERE created_at IS NULL;
-
-ALTER TABLE public.advisory_audit_log
-  ALTER COLUMN created_at SET DEFAULT now(),
-  ALTER COLUMN created_at SET NOT NULL;
-
--- ---- updated_at >= created_at safety net ----
-ALTER TABLE public.hypothesis_metrics
-  ADD CONSTRAINT hypothesis_metrics_audit_ordering_chk
-  CHECK (updated_at >= created_at);
-
-ALTER TABLE public.hypothesis_rule_mapping
-  ADD CONSTRAINT hypothesis_rule_mapping_audit_ordering_chk
-  CHECK (updated_at >= created_at);
-
-ALTER TABLE public.rule_conflict_matrix
-  ADD CONSTRAINT rule_conflict_matrix_audit_ordering_chk
-  CHECK (updated_at >= created_at);
-
--- ---- updated_at triggers ----
-DROP TRIGGER IF EXISTS trg_hyp_metrics_updated_at ON public.hypothesis_metrics;
-CREATE TRIGGER trg_hyp_metrics_updated_at
-  BEFORE UPDATE ON public.hypothesis_metrics
-  FOR EACH ROW EXECUTE FUNCTION public.audit_set_updated_at();
-
-DROP TRIGGER IF EXISTS trg_hrm_updated_at ON public.hypothesis_rule_mapping;
-CREATE TRIGGER trg_hrm_updated_at
-  BEFORE UPDATE ON public.hypothesis_rule_mapping
-  FOR EACH ROW EXECUTE FUNCTION public.audit_set_updated_at();
-
-DROP TRIGGER IF EXISTS trg_rcm_updated_at ON public.rule_conflict_matrix;
-CREATE TRIGGER trg_rcm_updated_at
-  BEFORE UPDATE ON public.rule_conflict_matrix
-  FOR EACH ROW EXECUTE FUNCTION public.audit_set_updated_at();
-
--- ---- advisory_audit_log: append-only enforcement ----
-CREATE OR REPLACE FUNCTION public.advisory_audit_log_no_update()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  RAISE EXCEPTION 'advisory_audit_log is append-only; UPDATE not permitted (id=%)', OLD.id;
-END $$;
-
-DROP TRIGGER IF EXISTS trg_advisory_audit_log_no_update ON public.advisory_audit_log;
-CREATE TRIGGER trg_advisory_audit_log_no_update
-  BEFORE UPDATE ON public.advisory_audit_log
-  FOR EACH ROW EXECUTE FUNCTION public.advisory_audit_log_no_update();
-
-COMMIT;
-```
-
-`01-add-audit-cols-rollback.sql` (complete, pasteable):
-
-```sql
-BEGIN;
-DROP TRIGGER IF EXISTS trg_advisory_audit_log_no_update ON public.advisory_audit_log;
-DROP TRIGGER IF EXISTS trg_rcm_updated_at ON public.rule_conflict_matrix;
-DROP TRIGGER IF EXISTS trg_hrm_updated_at ON public.hypothesis_rule_mapping;
-DROP TRIGGER IF EXISTS trg_hyp_metrics_updated_at ON public.hypothesis_metrics;
-DROP FUNCTION IF EXISTS public.advisory_audit_log_no_update();
-DROP FUNCTION IF EXISTS public.audit_set_updated_at();
-ALTER TABLE public.rule_conflict_matrix    DROP CONSTRAINT IF EXISTS rule_conflict_matrix_audit_ordering_chk;
-ALTER TABLE public.hypothesis_rule_mapping DROP CONSTRAINT IF EXISTS hypothesis_rule_mapping_audit_ordering_chk;
-ALTER TABLE public.hypothesis_metrics      DROP CONSTRAINT IF EXISTS hypothesis_metrics_audit_ordering_chk;
-ALTER TABLE public.advisory_audit_log      DROP COLUMN IF EXISTS created_at;
-ALTER TABLE public.rule_conflict_matrix    DROP COLUMN IF EXISTS created_at, DROP COLUMN IF EXISTS updated_at;
-ALTER TABLE public.hypothesis_rule_mapping DROP COLUMN IF EXISTS created_at, DROP COLUMN IF EXISTS updated_at;
-ALTER TABLE public.hypothesis_metrics      DROP COLUMN IF EXISTS created_at, DROP COLUMN IF EXISTS updated_at;
-COMMIT;
-```
-
-`01-add-audit-cols-post-apply-check.sql` (run daily for 24h):
-
-```sql
--- Expect: invocation counts > 0 once writes occur; 0 update-failures on advisory_audit_log.
-SELECT funcname, calls FROM pg_stat_user_functions
- WHERE funcname IN ('audit_set_updated_at','advisory_audit_log_no_update');
--- Expect: 0 rows. Any hit means code is trying to UPDATE an audit log row.
-SELECT * FROM pg_stat_database WHERE datname = current_database();
--- Sample audit columns are populated:
-SELECT created_at, updated_at FROM public.hypothesis_metrics ORDER BY updated_at DESC LIMIT 5;
-```
-
----
-
-## File 2 — `02-stage-1-shadow-columns.sql`
-
-```sql
--- ORDER: 2 of 4. Apply after CI lint (CI-gate.md) is live.
--- DEPENDS ON: 01-add-audit-cols.sql (not strictly, but keep ordering).
--- BLOCKED BY: CI lint not yet enforcing UPPER-rule_id rejection.
--- ROLLBACK: 02-stage-1-shadow-columns-rollback.sql
--- POST-APPLY: 02-stage-1-shadow-columns-post-apply-check.sql
--- DO NOT APPLY without product approval.
-
--- ===== PRE-FLIGHT: collision check MUST return 0 rows =====
--- WITH proposed AS (
---   SELECT rule_id,
---     'rule_' || lower(regexp_replace(rule_id, '^(rule_|RULE_)', '', 'i')) AS lc
---   FROM public.decision_rules
--- )
--- SELECT lc, count(*), array_agg(rule_id) FROM proposed GROUP BY lc HAVING count(*) > 1;
---
--- WITH proposed AS (
---   SELECT hypothesis_id,
---     'hyp_' || lower(regexp_replace(hypothesis_id, '^(hyp_|HYP_)', '', 'i')) AS lc
---   FROM public.hypothesis_master
--- )
--- SELECT lc, count(*), array_agg(hypothesis_id) FROM proposed GROUP BY lc HAVING count(*) > 1;
-
-BEGIN;
-
--- Case-insensitive prefix strip prevents double-prefix on already-lowercase outliers.
--- STORED is required because we index the column for uniqueness.
--- Authoring contract: NEW rule_id values MUST be inserted WITHOUT a 'rule_' prefix;
--- this shadow column adds it. (Enforced by CI lint per CI-gate.md.)
-ALTER TABLE public.decision_rules
-  ADD COLUMN IF NOT EXISTS rule_id_lc text
-    GENERATED ALWAYS AS (
-      'rule_' || lower(regexp_replace(rule_id, '^(rule_|RULE_)', '', 'i'))
-    ) STORED;
-
-CREATE UNIQUE INDEX IF NOT EXISTS decision_rules_rule_id_lc_key
-  ON public.decision_rules(rule_id_lc);
-
-ALTER TABLE public.hypothesis_master
-  ADD COLUMN IF NOT EXISTS hypothesis_id_lc text
-    GENERATED ALWAYS AS (
-      'hyp_' || lower(regexp_replace(hypothesis_id, '^(hyp_|HYP_)', '', 'i'))
-    ) STORED;
-
-CREATE UNIQUE INDEX IF NOT EXISTS hypothesis_master_hypothesis_id_lc_key
-  ON public.hypothesis_master(hypothesis_id_lc);
-
--- In-transaction sanity assert: if any collision somehow slipped past pre-flight,
--- this raises and aborts the transaction.
-DO $$
-DECLARE
-  dup_rules int;
-  dup_hyp   int;
-BEGIN
-  SELECT count(*) INTO dup_rules FROM (
-    SELECT rule_id_lc FROM public.decision_rules GROUP BY rule_id_lc HAVING count(*)>1
-  ) s;
-  SELECT count(*) INTO dup_hyp FROM (
-    SELECT hypothesis_id_lc FROM public.hypothesis_master GROUP BY hypothesis_id_lc HAVING count(*)>1
-  ) s;
-  IF dup_rules > 0 OR dup_hyp > 0 THEN
-    RAISE EXCEPTION 'Lowercase ID collisions detected (rules=%, hypotheses=%) — abort.', dup_rules, dup_hyp;
-  END IF;
-END $$;
-
-COMMIT;
-
--- ===== VERIFICATION (run after COMMIT) =====
--- SELECT count(*) FROM public.decision_rules    WHERE rule_id_lc IS NULL;          -- expect 0
--- SELECT count(*) FROM public.hypothesis_master WHERE hypothesis_id_lc IS NULL;    -- expect 0
--- SELECT rule_id, rule_id_lc FROM public.decision_rules LIMIT 20;
--- SELECT hypothesis_id, hypothesis_id_lc FROM public.hypothesis_master LIMIT 20;
--- SELECT count(*) FILTER (WHERE rule_id_lc LIKE 'rule_%') AS prefixed,
---        count(*) FILTER (WHERE rule_id_lc NOT LIKE 'rule_%') AS unprefixed
---   FROM public.decision_rules;   -- expect prefixed=1852, unprefixed=0
-```
-
-Rollback and post-apply files mirror v2 — index drop → column drop, plus daily uniqueness/null check.
-
----
-
-## File 3 — `03-add-version-hash.sql`
-
-**Hash policy header (copied into the file):**
-
-```text
-POLICY: identity columns (rule_id, hypothesis_id, observation_code) MUST NOT
-appear in their own version_hash formula. Identity is the row key, not its
-content. Including identity (a) breaks "same content ⇒ same hash" equality
-and (b) causes every hash to churn when the Phase 9 lowercase flip rewrites
-identities. The full audit trail (child rows, snapshot at decision time)
-lives in ai_decision_log, not in version_hash. version_hash is a fingerprint,
-not a snapshot.
-```
-
-```sql
--- ORDER: 4 of 4. Apply after 01 + CI-gate + 02.
--- DEPENDS ON: 01-add-audit-cols.sql
--- ROLLBACK: 03-add-version-hash-rollback.sql
--- POST-APPLY: 03-add-version-hash-post-apply-check.sql
--- DO NOT APPLY without product approval.
-
--- ===== PRE-FLIGHT =====
--- SELECT count(*) FROM public.decision_rules;        -- expect ~1852
--- SELECT count(*) FROM public.hypothesis_master;     -- expect ~346
--- SELECT count(*) FROM public.observation_master;    -- expect ~2537
--- All three under 100k → single-statement backfill is safe.
-
-BEGIN;
-
--- =========================================================
--- decision_rules
--- =========================================================
-ALTER TABLE public.decision_rules
-  ADD COLUMN IF NOT EXISTS version_hash text;
-
-CREATE OR REPLACE FUNCTION public.refresh_decision_rule_version_hash()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  NEW.version_hash := md5(
-    coalesce(NEW.condition_code,'')        || '|' ||
-    coalesce(NEW.action_text,'')           || '|' ||
-    coalesce(NEW.action_type,'')           || '|' ||
-    coalesce(NEW.farmer_safety_level,'')   || '|' ||
-    coalesce(NEW.response_severity,'')     || '|' ||
-    coalesce(NEW.rule_intent,'')           || '|' ||
-    coalesce(NEW.conditions_json::text,'') || '|' ||
-    coalesce(NEW.crop_code,'')             || '|' ||
-    coalesce(NEW.growth_stage,'')
-  );
-  RETURN NEW;
-END $$;
-
-UPDATE public.decision_rules
-   SET version_hash = md5(
-     coalesce(condition_code,'')        || '|' ||
-     coalesce(action_text,'')           || '|' ||
-     coalesce(action_type,'')           || '|' ||
-     coalesce(farmer_safety_level,'')   || '|' ||
-     coalesce(response_severity,'')     || '|' ||
-     coalesce(rule_intent,'')           || '|' ||
-     coalesce(conditions_json::text,'') || '|' ||
-     coalesce(crop_code,'')             || '|' ||
-     coalesce(growth_stage,'')
-   )
- WHERE version_hash IS NULL;
-
-DROP TRIGGER IF EXISTS trg_decision_rules_version_hash ON public.decision_rules;
-CREATE TRIGGER trg_decision_rules_version_hash
-  BEFORE INSERT OR UPDATE ON public.decision_rules
-  FOR EACH ROW EXECUTE FUNCTION public.refresh_decision_rule_version_hash();
-
-CREATE INDEX IF NOT EXISTS idx_decision_rules_version_hash
-  ON public.decision_rules(version_hash);
-
--- =========================================================
--- hypothesis_master
--- Verified columns; identity (hypothesis_id) and curator-narrative
--- columns (cause_name_*, biological_basis) excluded.
--- biological_basis IS included: it describes the diagnostic mechanism
--- the engine references for explanation; treated as decision-relevant.
--- cause_name_* is display-only translation, not engine input → excluded.
--- =========================================================
-ALTER TABLE public.hypothesis_master
-  ADD COLUMN IF NOT EXISTS version_hash text;
-
-CREATE OR REPLACE FUNCTION public.refresh_hypothesis_version_hash()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  NEW.version_hash := md5(
-    coalesce(NEW.crop_group,'')           || '|' ||
-    coalesce(NEW.hypothesis_type,'')      || '|' ||
-    coalesce(NEW.canonical_group,'')      || '|' ||
-    coalesce(NEW.biological_basis,'')     || '|' ||
-    coalesce(NEW.severity_model,'')       || '|' ||
-    coalesce(NEW.version,'')              || '|' ||
-    coalesce(NEW.engine_min_version,'')   || '|' ||
-    coalesce(NEW.is_active::text,'')
-  );
-  RETURN NEW;
-END $$;
-
-UPDATE public.hypothesis_master
-   SET version_hash = md5(
-     coalesce(crop_group,'')           || '|' ||
-     coalesce(hypothesis_type,'')      || '|' ||
-     coalesce(canonical_group,'')      || '|' ||
-     coalesce(biological_basis,'')     || '|' ||
-     coalesce(severity_model,'')       || '|' ||
-     coalesce(version,'')              || '|' ||
-     coalesce(engine_min_version,'')   || '|' ||
-     coalesce(is_active::text,'')
-   )
- WHERE version_hash IS NULL;
-
-DROP TRIGGER IF EXISTS trg_hypothesis_master_version_hash ON public.hypothesis_master;
-CREATE TRIGGER trg_hypothesis_master_version_hash
-  BEFORE INSERT OR UPDATE ON public.hypothesis_master
-  FOR EACH ROW EXECUTE FUNCTION public.refresh_hypothesis_version_hash();
-
-CREATE INDEX IF NOT EXISTS idx_hypothesis_master_version_hash
-  ON public.hypothesis_master(version_hash);
-
--- =========================================================
--- observation_master
--- Identity (observation_code) excluded. description IS included because
--- it IS the canonical semantic payload the symbolic reasoner matches on
--- (no separate canonical_label column exists in this schema).
--- =========================================================
-ALTER TABLE public.observation_master
-  ADD COLUMN IF NOT EXISTS version_hash text;
-
-CREATE OR REPLACE FUNCTION public.refresh_observation_version_hash()
-RETURNS trigger LANGUAGE plpgsql AS $$
-BEGIN
-  NEW.version_hash := md5(
-    coalesce(NEW.description,'')                 || '|' ||
-    coalesce(NEW.symptom_category,'')            || '|' ||
-    coalesce(NEW.canonical_group,'')             || '|' ||
-    coalesce(NEW.observation_category,'')        || '|' ||
-    coalesce(NEW.affected_plant_part,'')         || '|' ||
-    coalesce(NEW.observation_type::text,'')      || '|' ||
-    coalesce(NEW.symptom_type::text,'')          || '|' ||
-    coalesce(NEW.symptom_pattern::text,'')       || '|' ||
-    coalesce(NEW.severity_level::text,'')        || '|' ||
-    coalesce(NEW.is_diagnostic::text,'')         || '|' ||
-    coalesce(NEW.is_farmer_observable::text,'')  || '|' ||
-    coalesce(NEW.is_active::text,'')             || '|' ||
-    coalesce(NEW.crop_group,'')                  || '|' ||
-    coalesce(array_to_string(NEW.applicable_crop_groups, ','), '')
-  );
-  RETURN NEW;
-END $$;
-
-UPDATE public.observation_master
-   SET version_hash = md5(
-     coalesce(description,'')                 || '|' ||
-     coalesce(symptom_category,'')            || '|' ||
-     coalesce(canonical_group,'')             || '|' ||
-     coalesce(observation_category,'')        || '|' ||
-     coalesce(affected_plant_part,'')         || '|' ||
-     coalesce(observation_type::text,'')      || '|' ||
-     coalesce(symptom_type::text,'')          || '|' ||
-     coalesce(symptom_pattern::text,'')       || '|' ||
-     coalesce(severity_level::text,'')        || '|' ||
-     coalesce(is_diagnostic::text,'')         || '|' ||
-     coalesce(is_farmer_observable::text,'')  || '|' ||
-     coalesce(is_active::text,'')             || '|' ||
-     coalesce(crop_group,'')                  || '|' ||
-     coalesce(array_to_string(applicable_crop_groups, ','), '')
-   )
- WHERE version_hash IS NULL;
-
-DROP TRIGGER IF EXISTS trg_observation_master_version_hash ON public.observation_master;
-CREATE TRIGGER trg_observation_master_version_hash
-  BEFORE INSERT OR UPDATE ON public.observation_master
-  FOR EACH ROW EXECUTE FUNCTION public.refresh_observation_version_hash();
-
-CREATE INDEX IF NOT EXISTS idx_observation_master_version_hash
-  ON public.observation_master(version_hash);
-
-COMMIT;
-```
-
-`03-add-version-hash-rollback.sql`: drop triggers → drop functions → drop indexes → drop columns, in reverse order, all in one transaction.
-
-`03-add-version-hash-post-apply-check.sql`: nullness check, distribution of distinct hashes, spot-check that an UPDATE to a hash-input column changes the hash and an UPDATE to a non-input column (e.g. `display_order`-style admin field) does NOT.
-
----
-
-## `CI-gate.md` (no SQL — code-layer gate)
-
-- ESLint / repo lint rule: reject literals matching `^(RULE|HYP)_[A-Z0-9_]+$` introduced into `supabase/**`, `src/**`, `.lovable/memories/**`, bundled JSON.
-- No inline opt-out. No `// skip-lint`. Escalation = architect only.
-- Optional DB-side `NOT VALID` guard (only after CI lint enforces; VALIDATE deferred to Stage 5):
-
-```sql
-ALTER TABLE public.decision_rules
-  ADD CONSTRAINT decision_rules_rule_id_lowercase_chk
-  CHECK (rule_id ~ '^rule_[a-z0-9_]+$') NOT VALID;
-
-ALTER TABLE public.hypothesis_master
-  ADD CONSTRAINT hypothesis_master_hypothesis_id_lowercase_chk
-  CHECK (hypothesis_id ~ '^hyp_[a-z0-9_]+$') NOT VALID;
-```
-
-These constraints catch any new write that violates the pattern without touching the 2,198 legacy rows. `VALIDATE CONSTRAINT` is scheduled for Stage 5 of the Phase 9 plan.
-
----
-
-## What does NOT change in code
-
-- Zero `.from(...)` selects modified.
-- No new columns are read by application code in this migration set. `rule_id_lc` / `hypothesis_id_lc` / `version_hash` are populated server-side and ignored by every existing reader.
-- The Stage-2 dual-read shim (which will start consuming `rule_id_lc`) is a **separate** plan, not part of this one.
-
-## Open items deferred (not in v3 scope)
-
-- Option (b) hash-with-child-rows: explicitly rejected per reviewer; reconsidered only if `ai_decision_log` snapshot proves insufficient.
-- pgcrypto/SHA-256: not adopted; `md5` is sufficient for change-detection. Documented in each trigger function header.
-- Phase 9 Stages 2–5: separate plan once File 2 ships and CI lint has been live ≥ 1 sprint.
-
-Ready for line-by-line SQL review.
+# Symbolic Decision Brain — Deep Audit & SSOT Hardening
+
+## What I actually verified against the live DB
+
+I ran agronomy-grade cross-checks against `intent_observation_mapping` (IOM), `observation_master` (OM), and the brain's runtime code. The user-reported symptom ("intent→observation mapping not correct, observation not accurate") is real, reproducible, and rooted in **bad ontology rows + residual hardcoded vocabularies in code**, not in the routing logic.
+
+### Hard evidence
+
+| # | Finding | Evidence |
+|---|---|---|
+| F1 | **Semantic-class violations in IOM**: 95 rows where the intent's domain disagrees with the observation's domain. | `WEED_PROBLEM`/`brinjal` → 11 rows that are not weeds (e.g. `bt_cotton_variety`, `cci_procurement`, `picking_quality`, `els_variety_query`, `continuous_cotton`). `IRRIGATION_QUERY` → `broken_stems` (wind/hail damage), `sticky_leaves_honeydew_*` (pest). Spans 11 crops, 2 intent families. |
+| F2 | **Cross-crop contamination**: 54 IOM rows where `crop_code='rice'` is mapped to wheat-named observations (`lower_leaf_yellowing_wheat`, `upper_leaf_yellowing_wheat`, `sticky_leaves_honeydew_wheat`, `termite_mud_tubes_wheat`). Wheat observations should not appear under rice for ~20 different intents. |
+| F3 | **Hardcoded agronomy in the brain** (SSOT violation): `decision-graph-bridge-data.ts` ships `IPM_DATABASE`, `DISEASE_DATABASE`, `CULTURAL_STRATEGIES` with crop-specific advice in code. `symbolic-reasoner.ts:327` keeps an UPPERCASE `BIOTIC_OBS_KEYS` list (will never match lowercase DB codes — biotic branch dead). `orchestrator.ts` hardcodes `EMERGENCY_OBS_CODES` and `ADVISORY_DIRECT_ROUTES`. `src/constants/crops.ts` hardcodes `CROP_NAME_TO_CODE`. |
+| F4 | **Casing audit (clean)**: OM is 100% lowercase (2,537/2,537). IOM `observation_code` lowercase (13,854/13,854), `intent_code` uppercase (canonical). FK joins clean (0 orphans). The case-mismatch hazard is now isolated to F3's `BIOTIC_OBS_KEYS`. |
+| F5 | **Alias hygiene**: 431 alias rows; need a sweep against the "no cause-encoded aliases" rule already in core memory. |
+
+The user is right: the brain is being asked to reason on top of polluted ontology rows, and certain code paths bypass the ontology entirely.
+
+## Goal
+
+Make the **database the only source of agronomic truth**. Keep all routing/reasoning logic exactly as it is. Eliminate every hardcoded crop/observation/IPM list in the brain. Clean the IOM rows so an intent never points at an observation outside its semantic class or outside its crop.
+
+## Plan — 4 phases, table-data first, code second
+
+### Phase 1 — IOM data cleanup (SQL migration, reviewable)
+1. **Quarantine, don't delete**, all 95 semantic-class violations from F1 and 54 cross-crop rows from F2: set `is_active = false`, stamp `updated_at`, and write a one-row audit per change into a new `intent_observation_mapping_audit` table (action, before/after, reason, sql_batch_id).
+2. Add a constraint-style **validator function** `validate_iom_semantic_class(intent_code, observation_code)` that re-runs the same regex domain check and is invoked by a `BEFORE INSERT/UPDATE` trigger — future bad rows are rejected at write time, not at read time.
+3. Add a **scheduled integrity probe** (`pg_cron`) that re-asserts F1+F2 nightly and writes counters into `governance_audit_reports`; alerts when > 0.
+
+### Phase 2 — Observation_master canonicalisation
+1. Rename `*_wheat`-suffixed observations that are actually crop-agnostic (`lower_leaf_yellowing_wheat` → `lower_leaf_yellowing`) via `observation_aliases` (no destructive rename — old code remains a redirect). Re-point IOM rows.
+2. Sweep `observation_aliases` for cause-encoded entries (per `mem://safety/sugarcane-k-deficiency-hotfix-and-safety-gates`) and quarantine.
+3. Add `observation_master.semantic_class` enum column (`NUTRIENT_DEFICIENCY|WATER_STRESS|WEED|PEST|DISEASE|MECHANICAL|MARKET|VARIETY|...`) so the Phase-1 trigger compares enums instead of regex.
+
+### Phase 3 — De-hardcode the decision brain (code, no logic change)
+All edits are vocabulary-replacement, **routing logic untouched**:
+1. `decision/symbolic-reasoner.ts:327` — replace `BIOTIC_OBS_KEYS` with `await loadObservationsBySemanticClass('PEST')` cached at scope.
+2. `agents/orchestrator.ts:421` `EMERGENCY_OBS_CODES` — load from `observation_master` where `urgency_level = 'EMERGENCY'` (column already exists in OM per schema audit).
+3. `agents/orchestrator.ts:3394,4612` `ADVISORY_DIRECT_ROUTES` — promote to `intent_master.is_direct_route` flag.
+4. `agents/decision-graph-bridge-data.ts` (`IPM_DATABASE`, `DISEASE_DATABASE`, `CULTURAL_STRATEGIES`) — delete file; deterministic builder already reads `decision_rules`. The fallback was only used when DB load failed; replace with a hard error + structured log so future failures are visible.
+5. `src/constants/crops.ts` `CROP_NAME_TO_CODE` — replace with one cached read of `crop_synonyms` + `crops.code` at app start. (Frontend-only change, no business logic.)
+
+### Phase 4 — Verification gates
+1. Re-run F1/F2 queries — must return 0 rows.
+2. Replay the last failing chats from `ai_chat_messages` against the cleaned ontology (read-only dry-run) and diff `ai_decision_log` before/after.
+3. Add `tests/chat/iom-semantic-class.test.ts` that asserts the validator function rejects a synthetic bad pair.
+4. Update memory: add `mem://architecture/decision-brain-ssot-no-hardcoded-vocab` Core rule.
+
+## Technical details (for review)
+
+- Phase 1 is **non-destructive** (`is_active=false` + audit row), so we can roll back instantly by flipping the flag.
+- Phase 2's `semantic_class` column will be backfilled by mapping current `observation_type` + code-prefix heuristics, then manually corrected during review.
+- Phase 3 cache strategy: module-level `Map` keyed by `tenant_id || 'global'` — these are global ontology reads, matches the contract in `docs/audit-2026-06-15/06-code-schema-drift.md §D6`.
+- No changes to `orchestrator` routing, `unified-decision-gate`, `hypothesis-evaluator`, `prescription-gate-enforcer`, or `response-generator`. Memory rules around safety gates, K-deficiency hotfix, monitoring substitution remain authoritative.
+- Migration order is enforced: Phase 1 → Phase 2 → Phase 3. Each phase has an explicit rollback SQL.
+
+## What I need from you before I start editing
+
+1. **Approve the quarantine strategy** (`is_active=false` + audit row) vs hard DELETE. I recommend quarantine.
+2. **Confirm scope**: should Phase 3 also remove the smaller hardcoded lists in `src/services/voice/intents/` and `_shared/ruralLanguageGuide.ts`, or keep those (they affect voice routing, not the brain)?
+3. **Confirm the 11 crops** in scope (rice, sugarcane, cotton, wheat, maize, soybean, tomato, chilli, potato, brinjal, onion) — the only `crop_code`s currently present in IOM.
+
+Once approved I will produce Phase 1 as a single reviewable migration, then proceed through Phase 2–4 in order.
