@@ -289,16 +289,22 @@ export async function generateScopedClarification(
         ndvi_level: agronomicContext.ndvi_trend || 'unknown'
       });
       
-      // Return dynamic result
+      // Return dynamic result — PRESERVE per-option observation_code so the orchestrator
+      // can populate the chip `value` with the canonical code (not a position index).
       const acknowledgment = '🌾 Understood.';
+      const optionsWithCodes: ClarificationOption[] = dynamicResult.options.map(o => ({
+        label: o.label,
+        observation_code: o.observation_key || undefined,
+      }));
       return {
         response_text: `${acknowledgment}\n\n${dynamicResult.question}`,
-        options: optionLabels,
+        options: optionsWithCodes,
         photo_requested: false,
         clarification_prompt: dynamicResult.question,
         scope: clarificationPlan.scope,
         validation_passed: true
       };
+
     } catch (dynamicError) {
       console.error(`   ⚠️ Dynamic clarification failed, falling back to templates:`, dynamicError);
       // Fall through to template-based rendering
