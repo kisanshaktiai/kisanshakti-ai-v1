@@ -119,14 +119,27 @@ export interface ScopedClarificationInput {
   farmerMessage?: string;
 }
 
+/**
+ * ClarificationOption — option payload that ALWAYS carries the canonical observation_code
+ * when one exists. Frontend renders `label`; orchestrator's option-selection handler reads
+ * `observation_code` (set as the chip `value`) so the rule engine receives a real canonical
+ * code (e.g. `obs_rice_no_emergence`), not a stale option index.
+ */
+export interface ClarificationOption {
+  label: string;
+  observation_code?: string;
+}
+
 export interface ClarificationOutput {
   response_text: string;
-  options: string[];
+  /**
+   * Options may be plain strings (legacy template path with no DB-resolved code) OR objects
+   * carrying `{label, observation_code}`. Downstream consumers (orchestrator question builder)
+   * MUST handle both shapes and prefer `observation_code` when present.
+   */
+  options: Array<string | ClarificationOption>;
   photo_requested: boolean;
-  clarification_prompt: string;
-  scope?: ClarificationScope;
-  validation_passed?: boolean;
-}
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ACKNOWLEDGMENT TEMPLATES (Simple, No Diagnosis)
