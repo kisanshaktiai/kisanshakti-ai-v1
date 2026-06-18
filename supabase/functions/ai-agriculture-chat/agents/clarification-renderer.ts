@@ -555,8 +555,12 @@ export function renderClarification(
   
   console.log(`   🎯 [Renderer] Scope: ${scope}, Crop: ${cropContext?.crop_name || 'none'}, Options: ${template.options.length}`);
   
-  // Limit options to max_options
-  const limitedOptions = template.options.slice(0, max_options);
+  // Limit options to max_options. Template options are plain strings (no canonical
+  // observation_code attached) — wrap as {label} only. Codes flow in only via the
+  // DB-driven path (renderClarificationAsync → getContextAwareTemplateFromDB).
+  const limitedOptions: RenderedClarificationOption[] = template.options
+    .slice(0, max_options)
+    .map((lbl) => ({ label: String(lbl) }));
   
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-8.1: Stage-Aware Framing (NO DIAGNOSIS)
