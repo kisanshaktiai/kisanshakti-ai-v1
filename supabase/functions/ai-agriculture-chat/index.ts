@@ -528,9 +528,10 @@ serve(async (req) => {
       last_query_timestamp?: string;
     } | null = null;
     
+    // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
+    let conversationHistory: Array<{ role: string; content: string }> = [];
+
     // Task 6: ConversationContext lives on ai_chat_sessions.conversation_state (top-level jsonb).
-    // Reloaded at turn start, mutated request-scope, written back at turn end.
-    type ConversationContext = {
       intent_code: string | null;
       confirmed_observations: string[];
       ruled_out_observations: string[];
