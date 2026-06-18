@@ -4463,7 +4463,7 @@ export class AIAgentOrchestrator {
               diagnosisOptions = await translateClarificationOptions(
                 diagnosisOptions, 
                 options.language || 'mr', 
-                supabase
+                this.supabase
               );
             } catch (transErr) {
               console.warn(`⚠️ [DIAG_FIRST] Translation failed, using raw labels: ${transErr}`);
