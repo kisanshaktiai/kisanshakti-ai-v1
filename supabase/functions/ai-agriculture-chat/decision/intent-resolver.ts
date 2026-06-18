@@ -219,6 +219,29 @@ export async function getValidObservationCodes(
   }
 
   if (!mappings || mappings.length === 0) {
+    // Defensive fallback (Task 2): retry via case-insensitive RPC. Protects
+    // against any future casing drift on intent_observation_mapping that
+    // would silently kill the symbolic brain.
+    try {
+      const { data: rpcRows, error: rpcErr } = await supabase.rpc(
+        'fn_observations_for_intent_ci',
+        { p_intent_code: intentCode, p_crop_code: cropLc, p_growth_stage: stageLc ?? null }
+      );
+      if (!rpcErr && Array.isArray(rpcRows) && rpcRows.length > 0) {
+        console.log(
+          `[IntentResolver] RPC fallback recovered ${rpcRows.length} mappings for intent=${intentCode} crop=${cropLc}`
+        );
+        scope?.emit({
+          stage: 'intent-resolver',
+          kind: 'derive',
+          payload: { fn: 'rpc_ci_fallback_hit', intentCode, cropCode: cropLc, count: rpcRows.length },
+        });
+        return rpcRows as ObservationMapping[];
+      }
+    } catch (e) {
+      console.warn(`[IntentResolver] RPC fallback failed: ${(e as Error).message}`);
+    }
+
     console.log(
       `[IntentResolver] No mappings for intent=${intentCode} crop=${cropLc} DAS=${das} stage=${growthStage ?? '*'}`
     );
