@@ -1295,6 +1295,7 @@ export type Database = {
           partition_key: number | null
           preprocessed_content: string | null
           rainfall_zone: string | null
+          response_source: string | null
           response_time_ms: number | null
           role: string
           session_id: string
@@ -1350,6 +1351,7 @@ export type Database = {
           partition_key?: number | null
           preprocessed_content?: string | null
           rainfall_zone?: string | null
+          response_source?: string | null
           response_time_ms?: number | null
           role: string
           session_id: string
@@ -1405,6 +1407,7 @@ export type Database = {
           partition_key?: number | null
           preprocessed_content?: string | null
           rainfall_zone?: string | null
+          response_source?: string | null
           response_time_ms?: number | null
           role?: string
           session_id?: string
@@ -1437,6 +1440,7 @@ export type Database = {
       }
       ai_chat_sessions: {
         Row: {
+          conversation_state: Json
           created_at: string
           farmer_id: string
           id: string
@@ -1449,6 +1453,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          conversation_state?: Json
           created_at?: string
           farmer_id: string
           id?: string
@@ -1461,6 +1466,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          conversation_state?: Json
           created_at?: string
           farmer_id?: string
           id?: string
@@ -30562,6 +30568,17 @@ export type Database = {
           overlap_percent: number
           tile_area_sqm: number
           tile_id: string
+        }[]
+      }
+      fn_observations_for_intent_ci: {
+        Args: {
+          p_crop_code: string
+          p_growth_stage?: string
+          p_intent_code: string
+        }
+        Returns: {
+          confidence_rank: number
+          observation_code: string
         }[]
       }
       generate_credit_note_number: { Args: never; Returns: string }
