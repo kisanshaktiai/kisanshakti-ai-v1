@@ -119,14 +119,32 @@ export interface ScopedClarificationInput {
   farmerMessage?: string;
 }
 
+/**
+ * ClarificationOption — option payload that ALWAYS carries the canonical observation_code
+ * when one exists. Frontend renders `label`; orchestrator's option-selection handler reads
+ * `observation_code` (set as the chip `value`) so the rule engine receives a real canonical
+ * code (e.g. `obs_rice_no_emergence`), not a stale option index.
+ */
+export interface ClarificationOption {
+  label: string;
+  observation_code?: string;
+}
+
 export interface ClarificationOutput {
   response_text: string;
-  options: string[];
+  /**
+   * Options may be plain strings (legacy template path with no DB-resolved code) OR objects
+   * carrying `{label, observation_code}`. Downstream consumers (orchestrator question builder)
+   * MUST handle both shapes and prefer `observation_code` when present.
+   */
+  options: Array<string | ClarificationOption>;
   photo_requested: boolean;
   clarification_prompt: string;
   scope?: ClarificationScope;
   validation_passed?: boolean;
 }
+
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ACKNOWLEDGMENT TEMPLATES (Simple, No Diagnosis)
@@ -271,16 +289,22 @@ export async function generateScopedClarification(
         ndvi_level: agronomicContext.ndvi_trend || 'unknown'
       });
       
-      // Return dynamic result
+      // Return dynamic result — PRESERVE per-option observation_code so the orchestrator
+      // can populate the chip `value` with the canonical code (not a position index).
       const acknowledgment = '🌾 Understood.';
+      const optionsWithCodes: ClarificationOption[] = dynamicResult.options.map(o => ({
+        label: o.label,
+        observation_code: o.observation_key || undefined,
+      }));
       return {
         response_text: `${acknowledgment}\n\n${dynamicResult.question}`,
-        options: optionLabels,
+        options: optionsWithCodes,
         photo_requested: false,
         clarification_prompt: dynamicResult.question,
         scope: clarificationPlan.scope,
         validation_passed: true
       };
+
     } catch (dynamicError) {
       console.error(`   ⚠️ Dynamic clarification failed, falling back to templates:`, dynamicError);
       // Fall through to template-based rendering

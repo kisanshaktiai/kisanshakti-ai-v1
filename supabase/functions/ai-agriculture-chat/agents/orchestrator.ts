@@ -2056,15 +2056,41 @@ export class AIAgentOrchestrator {
           // CRITICAL: Clear pending options and continue with ONLY the selected option
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
-          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping
+          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping.
+          // ARCHITECTURAL HARDENING (post lower_snake_case migration):
+          // Legacy clarification-option emitter assigned `value: String(idx + 1)` (a position index)
+          // when no observation_code was attached to the option. The frontend then echoes that
+          // numeric value back as `[obs_keys:3]`, which the rule engine cannot match against any
+          // canonical observation_code → STAGE_FALLBACK → "monitoring" canned response.
+          // Treat purely-numeric embedded keys as stale indices and resolve via label mapping
+          // or via the pending options array (which may carry true codes).
           let mappedObservationKey: string | null = null;
-          if (embeddedObservationKeys.length > 0) {
-            mappedObservationKey = embeddedObservationKeys[0];
+          const firstEmbedded = embeddedObservationKeys[0]?.trim();
+          const embeddedIsStaleIndex = !!firstEmbedded && /^\d+$/.test(firstEmbedded);
+          if (firstEmbedded && !embeddedIsStaleIndex) {
+            mappedObservationKey = firstEmbedded;
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
           } else {
-            // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
-            mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-            console.log(`   📋 Mapped to ObservationKey (fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            if (embeddedIsStaleIndex) {
+              // Try to recover the real code from sessionState.pendingClarificationOptions
+              // if it was persisted as an object array carrying `observation_code`/`observation_key`.
+              const idxNum = parseInt(firstEmbedded!, 10) - 1;
+              const pendingOpt = Array.isArray(pendingOptions) ? (pendingOptions as any[])[idxNum] : null;
+              const recovered = (pendingOpt && typeof pendingOpt === 'object')
+                ? (pendingOpt.observation_code || pendingOpt.observation_key || null)
+                : null;
+              if (recovered && typeof recovered === 'string' && !/^\d+$/.test(recovered)) {
+                mappedObservationKey = recovered;
+                console.log(`   📋 Recovered ObservationKey from pending[${idxNum}]: "${mappedObservationKey}"`);
+              } else {
+                console.warn(`   ⚠️ Embedded obs_keys="${firstEmbedded}" looks like a stale option index; falling back to label-based mapping`);
+              }
+            }
+            if (!mappedObservationKey) {
+              // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+              mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
+              console.log(`   📋 Mapped to ObservationKey (label-fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            }
           }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
@@ -4734,11 +4760,17 @@ export class AIAgentOrchestrator {
             text_hi: responseText,
             text_en: responseText,
             options: await Promise.all(safeOptions.map(async (opt, idx) => {
-              const rawLabel = typeof opt === 'string' ? opt : (opt.label || String(opt));
-              return {
-                value: String(idx + 1),
-                label: rawLabel
-              };
+              const isObj = opt && typeof opt === 'object';
+              const rawLabel = isObj ? ((opt as any).label || String(opt)) : String(opt);
+              // ARCHITECTURAL CONTRACT: chip `value` MUST be the canonical observation_code
+              // when one is known. Frontend echoes the value back as `[obs_keys:<value>]`, and
+              // the orchestrator's option-selection handler hands it straight to the rule engine.
+              // A position-index `value` (legacy bug) leaks back as `[obs_keys:3]` and breaks
+              // ALL clarification flows post lower_snake_case migration. Fall back to the LABEL
+              // (not an integer index) so the orchestrator's label→observation mapper can recover.
+              const code = isObj ? ((opt as any).observation_code || (opt as any).observation_key) : undefined;
+              const chipValue = (typeof code === 'string' && code.trim().length > 0) ? code : rawLabel;
+              return { value: chipValue, label: rawLabel };
             })).then(async (opts) => {
               // Translate raw observation codes to farmer language
               const translated = await translateClarificationOptions(
@@ -4748,6 +4780,7 @@ export class AIAgentOrchestrator {
               );
               return opts.map((o, i) => ({ ...o, label: typeof translated[i] === 'string' ? translated[i] as string : (translated[i] as any).label || o.label }));
             })
+
           },
           // ✅ CRITICAL FIX: Always include communication object with safe options
           communication: {
