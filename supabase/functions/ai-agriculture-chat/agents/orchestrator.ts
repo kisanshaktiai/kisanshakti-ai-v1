@@ -3294,6 +3294,24 @@ export class AIAgentOrchestrator {
         if (intentRow) {
           intentMetaFromDB = intentRow;
           console.log(`   📋 [PATCH 2] Intent metadata loaded: stage_required=${intentRow.requires_stage_context}, routing=${intentRow.routing_target}`);
+        } else if (intentCode) {
+          // Task 4: NLU emitted an intent_code that is NOT in observation_intent_master.
+          // Log it and force a generic re-prompt path rather than feeding an
+          // unknown intent into the rule engine (which would return 0 rows silently).
+          console.warn(`   🚨 [INTENT_ALLOWLIST] unknown_intent_emitted: '${intentCode}' not found in observation_intent_master (is_active=true). Falling through to generic clarification.`);
+          try {
+            await supabaseClient.from('ai_chat_audit_logs').insert({
+              tenant_id: (this as any).tenantId ?? null,
+              farmer_id: (this as any).farmerId ?? null,
+              session_id: (this as any).sessionId ?? null,
+              event_type: 'unknown_intent_emitted',
+              event_data: {
+                emitted_intent: intentCode,
+                source: 'NLU',
+                stage: 'orchestrator.intent_metadata_lookup',
+              },
+            });
+          } catch (_logErr) { /* non-fatal */ }
         }
       } catch (metaErr) {
         console.warn(`   ⚠️ [PATCH 2] Failed to load intent metadata: ${metaErr}`);
