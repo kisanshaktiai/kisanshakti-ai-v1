@@ -2214,6 +2214,21 @@ serve(async (req) => {
 
       // Store assistant response with language-appropriate content
       const tokensUsed = llmFormatterOutput?.tokens_used || null;
+
+      // Task 7: classify response_source for symbolic-vs-LLM dashboards.
+      const _oType = String(orchestratorResponse.type || '').toUpperCase();
+      const _rulesFired = Array.isArray(orchestratorResponse.metadata?.rules_applied)
+        ? orchestratorResponse.metadata!.rules_applied!.length
+        : 0;
+      const _sourceTag = String(orchestratorResponse.metadata?.source || '').toLowerCase();
+      const responseSource: string = (() => {
+        if (_sourceTag === 'symbolic_empty_fallback') return 'symbolic_empty_fallback';
+        if (_oType.includes('CLARIFICATION')) return 'symbolic_clarification';
+        if (_rulesFired > 0) return 'symbolic_rule_fired';
+        if (llmFormatterOutput && _rulesFired > 0) return 'llm_translation_only';
+        return 'llm_general_knowledge';
+      })();
+
       const { data: assistantRow, error: assistantErr } = await supabase
         .from('ai_chat_messages')
         .insert({
@@ -2232,6 +2247,7 @@ serve(async (req) => {
           conversation_turn_number: messages.length + 1,
           actions_returned: actions_returned,
           actions_filtered_out: actions_filtered_out,
+          response_source: responseSource,
           metadata: {
             orchestrator_type: orchestratorResponse.type,
             confidence: orchestratorResponse.metadata?.confidence,
