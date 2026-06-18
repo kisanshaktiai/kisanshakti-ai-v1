@@ -528,16 +528,63 @@ serve(async (req) => {
       last_query_timestamp?: string;
     } | null = null;
     
-    // CRITICAL FIX: Fetch previous messages from DB for conversation continuity
-    let conversationHistory: Array<{ role: string; content: string }> = [];
-    
+    // Task 6: ConversationContext lives on ai_chat_sessions.conversation_state (top-level jsonb).
+    // Reloaded at turn start, mutated request-scope, written back at turn end.
+    type ConversationContext = {
+      intent_code: string | null;
+      confirmed_observations: string[];
+      ruled_out_observations: string[];
+      active_rule_candidates: string[];
+      round_counter: number;
+      max_rounds: number;
+      last_updated: string | null;
+    };
+    let conversationContext: ConversationContext = {
+      intent_code: null,
+      confirmed_observations: [],
+      ruled_out_observations: [],
+      active_rule_candidates: [],
+      round_counter: 0,
+      max_rounds: 2,
+      last_updated: null,
+    };
+
     if (currentSessionId) {
-      // Fetch session metadata - land_id already validated in P0-A above
+      // Fetch session metadata + conversation_state - land_id already validated in P0-A above
       const { data: existingSession } = await supabase
         .from('ai_chat_sessions')
-        .select('metadata, land_id')
+        .select('metadata, land_id, conversation_state')
         .eq('id', currentSessionId)
         .single();
+
+      // Load top-level ConversationContext (Task 6)
+      const cs = (existingSession as any)?.conversation_state;
+      if (cs && typeof cs === 'object') {
+        conversationContext = {
+          intent_code: cs.intent_code ?? null,
+          confirmed_observations: Array.isArray(cs.confirmed_observations) ? cs.confirmed_observations : [],
+          ruled_out_observations: Array.isArray(cs.ruled_out_observations) ? cs.ruled_out_observations : [],
+          active_rule_candidates: Array.isArray(cs.active_rule_candidates) ? cs.active_rule_candidates : [],
+          round_counter: Number.isFinite(cs.round_counter) ? Number(cs.round_counter) : 0,
+          max_rounds: Number.isFinite(cs.max_rounds) ? Number(cs.max_rounds) : 2,
+          last_updated: cs.last_updated ?? null,
+        };
+        // Max-rounds reset: clarification flow gives up after N rounds.
+        if (conversationContext.round_counter >= conversationContext.max_rounds) {
+          console.log(`🧹 [ConversationContext] max_rounds=${conversationContext.max_rounds} reached, clearing context`);
+          conversationContext = {
+            intent_code: null,
+            confirmed_observations: [],
+            ruled_out_observations: [],
+            active_rule_candidates: [],
+            round_counter: 0,
+            max_rounds: conversationContext.max_rounds,
+            last_updated: null,
+          };
+        }
+        console.log(`📥 [ConversationContext] Loaded: intent=${conversationContext.intent_code} confirmed=${conversationContext.confirmed_observations.length} round=${conversationContext.round_counter}/${conversationContext.max_rounds}`);
+      }
+
       
       // ═══════════════════════════════════════════════════════════════════════════
       // P0-A ENFORCEMENT: Session is ALREADY validated to match this land
