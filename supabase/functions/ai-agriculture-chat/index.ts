@@ -821,6 +821,7 @@ serve(async (req) => {
               decision_brain_source: true,
               ai_model: 'proactive-narration',
               actions_returned: 1,
+              response_source: 'symbolic_rule_fired',
               metadata: {
                 proactive_alert_id: proactiveAlert.id,
                 alert_category: proactiveAlert.alert_category,
