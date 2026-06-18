@@ -4312,6 +4312,36 @@ export class AIAgentOrchestrator {
         understandingResult.clarification_required = false;
         bypassClarification = true;
       } else if (diagnosisWithOptionalClarification) {
+        // ═══════════════════════════════════════════════════════════════════════════
+        // EVIDENCE SUFFICIENCY GUARD (v4.1.1 hotfix)
+        // Do NOT jump to DIAGNOSIS_FIRST (showing diagnoses as clarification options)
+        // when the Understanding Checker says clarification is required AND we have
+        // only a single real symptom. In that case, gather OBSERVATION clarifications
+        // first via the scope-aware clarification path below.
+        // ═══════════════════════════════════════════════════════════════════════════
+        const SENTINEL_RE = /_(UNKNOWN|NONE|NOT_PROVIDED|IDENTIFIED)$/;
+        const realConfirmedSymptoms = confirmedObsCodes.filter(
+          (c: string) => !SENTINEL_RE.test(c)
+        );
+        const realDamageObs = (cropDamageResult.damage_observations || []).filter(
+          (c: string) => !SENTINEL_RE.test(c)
+        );
+        const evidenceInsufficient =
+          understandingResult.clarification_required === true &&
+          realConfirmedSymptoms.length < 2 &&
+          realDamageObs.length < 2 &&
+          !photoForcedDiagnosis;
+
+        if (evidenceInsufficient) {
+          console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence for hypothesis-driven options`);
+          console.log(`   realConfirmedSymptoms=${realConfirmedSymptoms.length} (${realConfirmedSymptoms.join(',') || 'none'})`);
+          console.log(`   realDamageObs=${realDamageObs.length} (${realDamageObs.join(',') || 'none'})`);
+          console.log(`   clarification_required=${understandingResult.clarification_required}, score=${understandingResult.understanding_confidence}`);
+          console.log(`   → Falling through to scope-aware OBSERVATION clarification (not diagnoses)`);
+          agentsUsed.push('DIAGNOSIS_FIRST_SKIPPED_LOW_EVIDENCE');
+          // Do not set bypass flags; fall through to the understanding-based
+          // clarification gate below so we collect observations first.
+        } else {
         console.log(`\n🌾 [DIAGNOSIS-FIRST MODE v${DIAGNOSIS_FIRST_VERSION}] Hypothesis-driven options`);
         console.log(`   DiagnosticTrigger=CROP_DAMAGE`);
         console.log(`   Authority=CROP`);
@@ -4433,7 +4463,7 @@ export class AIAgentOrchestrator {
               diagnosisOptions = await translateClarificationOptions(
                 diagnosisOptions, 
                 options.language || 'mr', 
-                supabase
+                this.supabase
               );
             } catch (transErr) {
               console.warn(`⚠️ [DIAG_FIRST] Translation failed, using raw labels: ${transErr}`);
@@ -4501,6 +4531,7 @@ export class AIAgentOrchestrator {
           console.error(`   ❌ Diagnosis-first generation failed:`, diagnosisFirstError);
           // Fall through to standard clarification flow
         }
+        } // end else (evidence sufficient → DIAGNOSIS_FIRST executed)
       }
       
       // ═══════════════════════════════════════════════════════════════════════════
