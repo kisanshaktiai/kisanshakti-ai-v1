@@ -4760,11 +4760,17 @@ export class AIAgentOrchestrator {
             text_hi: responseText,
             text_en: responseText,
             options: await Promise.all(safeOptions.map(async (opt, idx) => {
-              const rawLabel = typeof opt === 'string' ? opt : (opt.label || String(opt));
-              return {
-                value: String(idx + 1),
-                label: rawLabel
-              };
+              const isObj = opt && typeof opt === 'object';
+              const rawLabel = isObj ? ((opt as any).label || String(opt)) : String(opt);
+              // ARCHITECTURAL CONTRACT: chip `value` MUST be the canonical observation_code
+              // when one is known. Frontend echoes the value back as `[obs_keys:<value>]`, and
+              // the orchestrator's option-selection handler hands it straight to the rule engine.
+              // A position-index `value` (legacy bug) leaks back as `[obs_keys:3]` and breaks
+              // ALL clarification flows post lower_snake_case migration. Fall back to the LABEL
+              // (not an integer index) so the orchestrator's label→observation mapper can recover.
+              const code = isObj ? ((opt as any).observation_code || (opt as any).observation_key) : undefined;
+              const chipValue = (typeof code === 'string' && code.trim().length > 0) ? code : rawLabel;
+              return { value: chipValue, label: rawLabel };
             })).then(async (opts) => {
               // Translate raw observation codes to farmer language
               const translated = await translateClarificationOptions(
@@ -4774,6 +4780,7 @@ export class AIAgentOrchestrator {
               );
               return opts.map((o, i) => ({ ...o, label: typeof translated[i] === 'string' ? translated[i] as string : (translated[i] as any).label || o.label }));
             })
+
           },
           // ✅ CRITICAL FIX: Always include communication object with safe options
           communication: {
