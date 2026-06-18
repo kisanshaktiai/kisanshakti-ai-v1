@@ -14,6 +14,234 @@ export type Database = {
   }
   public: {
     Tables: {
+      _fa_content_gaps: {
+        Row: {
+          crop_code: string
+          detected_at: string
+          gap_type: string
+          id: number
+          intent_code: string
+          notes: string | null
+        }
+        Insert: {
+          crop_code: string
+          detected_at?: string
+          gap_type: string
+          id?: number
+          intent_code: string
+          notes?: string | null
+        }
+        Update: {
+          crop_code?: string
+          detected_at?: string
+          gap_type?: string
+          id?: number
+          intent_code?: string
+          notes?: string | null
+        }
+        Relationships: []
+      }
+      _fa_cross_crop_corruption: {
+        Row: {
+          crop_code: string
+          detected_at: string
+          id: number
+          intent_code: string
+          iom_id: string
+          observation_code: string
+          suspected_correct_crop: string | null
+        }
+        Insert: {
+          crop_code: string
+          detected_at?: string
+          id?: number
+          intent_code: string
+          iom_id: string
+          observation_code: string
+          suspected_correct_crop?: string | null
+        }
+        Update: {
+          crop_code?: string
+          detected_at?: string
+          id?: number
+          intent_code?: string
+          iom_id?: string
+          observation_code?: string
+          suspected_correct_crop?: string | null
+        }
+        Relationships: []
+      }
+      _fa_findings: {
+        Row: {
+          confidence: number
+          detected_at: string
+          evidence: string | null
+          finding_id: number
+          log_source: string | null
+          object: string
+          problem: string
+          severity: string
+        }
+        Insert: {
+          confidence: number
+          detected_at?: string
+          evidence?: string | null
+          finding_id?: number
+          log_source?: string | null
+          object: string
+          problem: string
+          severity: string
+        }
+        Update: {
+          confidence?: number
+          detected_at?: string
+          evidence?: string | null
+          finding_id?: number
+          log_source?: string | null
+          object?: string
+          problem?: string
+          severity?: string
+        }
+        Relationships: []
+      }
+      _fa_hypothesis_condition_repair: {
+        Row: {
+          condition_type: string
+          detected_at: string
+          hc_id: string
+          hypothesis_id: string
+          id: number
+          new_condition_key: string | null
+          old_condition_key: string
+          resolution_path: string
+        }
+        Insert: {
+          condition_type: string
+          detected_at?: string
+          hc_id: string
+          hypothesis_id: string
+          id?: number
+          new_condition_key?: string | null
+          old_condition_key: string
+          resolution_path: string
+        }
+        Update: {
+          condition_type?: string
+          detected_at?: string
+          hc_id?: string
+          hypothesis_id?: string
+          id?: number
+          new_condition_key?: string | null
+          old_condition_key?: string
+          resolution_path?: string
+        }
+        Relationships: []
+      }
+      _fa_json_key_repair: {
+        Row: {
+          detected_at: string
+          id: number
+          json_path: string
+          new_key: string | null
+          old_key: string
+          rule_id: string
+        }
+        Insert: {
+          detected_at?: string
+          id?: number
+          json_path: string
+          new_key?: string | null
+          old_key: string
+          rule_id: string
+        }
+        Update: {
+          detected_at?: string
+          id?: number
+          json_path?: string
+          new_key?: string | null
+          old_key?: string
+          rule_id?: string
+        }
+        Relationships: []
+      }
+      _fa_orphan_observations: {
+        Row: {
+          detected_at: string
+          obs_code: string
+          occurrences: number
+          source_tbl: string
+        }
+        Insert: {
+          detected_at?: string
+          obs_code: string
+          occurrences: number
+          source_tbl: string
+        }
+        Update: {
+          detected_at?: string
+          obs_code?: string
+          occurrences?: number
+          source_tbl?: string
+        }
+        Relationships: []
+      }
+      _fa_spelling_repair: {
+        Row: {
+          detected_at: string
+          exists_in_master: boolean
+          id: number
+          new_obs_code: string
+          old_obs_code: string
+          rule_id: string
+        }
+        Insert: {
+          detected_at?: string
+          exists_in_master: boolean
+          id?: number
+          new_obs_code: string
+          old_obs_code: string
+          rule_id: string
+        }
+        Update: {
+          detected_at?: string
+          exists_in_master?: boolean
+          id?: number
+          new_obs_code?: string
+          old_obs_code?: string
+          rule_id?: string
+        }
+        Relationships: []
+      }
+      _fa_wildcard_repair: {
+        Row: {
+          affected: number
+          col: string
+          detected_at: string
+          id: number
+          new_value: string
+          old_value: string
+          tbl: string
+        }
+        Insert: {
+          affected: number
+          col: string
+          detected_at?: string
+          id?: number
+          new_value: string
+          old_value: string
+          tbl: string
+        }
+        Update: {
+          affected?: number
+          col?: string
+          detected_at?: string
+          id?: number
+          new_value?: string
+          old_value?: string
+          tbl?: string
+        }
+        Relationships: []
+      }
       account_lockouts: {
         Row: {
           created_at: string | null
@@ -11119,8 +11347,10 @@ export type Database = {
           hypothesis_id: string
           id: string
           is_discriminator: boolean | null
+          is_quarantined: boolean
           is_required: boolean | null
           operator: string
+          quarantine_reason: string | null
           value_json: Json
           weight: number | null
         }
@@ -11131,8 +11361,10 @@ export type Database = {
           hypothesis_id: string
           id?: string
           is_discriminator?: boolean | null
+          is_quarantined?: boolean
           is_required?: boolean | null
           operator: string
+          quarantine_reason?: string | null
           value_json: Json
           weight?: number | null
         }
@@ -11143,8 +11375,10 @@ export type Database = {
           hypothesis_id?: string
           id?: string
           is_discriminator?: boolean | null
+          is_quarantined?: boolean
           is_required?: boolean | null
           operator?: string
+          quarantine_reason?: string | null
           value_json?: Json
           weight?: number | null
         }
