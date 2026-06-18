@@ -2056,15 +2056,41 @@ export class AIAgentOrchestrator {
           // CRITICAL: Clear pending options and continue with ONLY the selected option
           console.log('   🔓 Clearing clarification lock, processing selected option only');
           
-          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping
+          // CRITICAL FIX: Use embedded observation key if available, else fall back to mapping.
+          // ARCHITECTURAL HARDENING (post lower_snake_case migration):
+          // Legacy clarification-option emitter assigned `value: String(idx + 1)` (a position index)
+          // when no observation_code was attached to the option. The frontend then echoes that
+          // numeric value back as `[obs_keys:3]`, which the rule engine cannot match against any
+          // canonical observation_code → STAGE_FALLBACK → "monitoring" canned response.
+          // Treat purely-numeric embedded keys as stale indices and resolve via label mapping
+          // or via the pending options array (which may carry true codes).
           let mappedObservationKey: string | null = null;
-          if (embeddedObservationKeys.length > 0) {
-            mappedObservationKey = embeddedObservationKeys[0];
+          const firstEmbedded = embeddedObservationKeys[0]?.trim();
+          const embeddedIsStaleIndex = !!firstEmbedded && /^\d+$/.test(firstEmbedded);
+          if (firstEmbedded && !embeddedIsStaleIndex) {
+            mappedObservationKey = firstEmbedded;
             console.log(`   📋 Using EMBEDDED ObservationKey: "${mappedObservationKey}"`);
           } else {
-            // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
-            mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-            console.log(`   📋 Mapped to ObservationKey (fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            if (embeddedIsStaleIndex) {
+              // Try to recover the real code from sessionState.pendingClarificationOptions
+              // if it was persisted as an object array carrying `observation_code`/`observation_key`.
+              const idxNum = parseInt(firstEmbedded!, 10) - 1;
+              const pendingOpt = Array.isArray(pendingOptions) ? (pendingOptions as any[])[idxNum] : null;
+              const recovered = (pendingOpt && typeof pendingOpt === 'object')
+                ? (pendingOpt.observation_code || pendingOpt.observation_key || null)
+                : null;
+              if (recovered && typeof recovered === 'string' && !/^\d+$/.test(recovered)) {
+                mappedObservationKey = recovered;
+                console.log(`   📋 Recovered ObservationKey from pending[${idxNum}]: "${mappedObservationKey}"`);
+              } else {
+                console.warn(`   ⚠️ Embedded obs_keys="${firstEmbedded}" looks like a stale option index; falling back to label-based mapping`);
+              }
+            }
+            if (!mappedObservationKey) {
+              // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+              mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
+              console.log(`   📋 Mapped to ObservationKey (label-fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+            }
           }
           // ═══════════════════════════════════════════════════════════════════
           // CLARIFICATION-FIRST: CANONICAL STATE REBUILD AFTER CLARIFICATION
