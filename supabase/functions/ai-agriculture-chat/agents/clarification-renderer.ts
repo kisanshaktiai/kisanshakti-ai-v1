@@ -519,11 +519,12 @@ export function validateClarificationSafety(
     }
   }
   
-  // Check each option
+  // Check each option (object shape: {label, observation_code?})
   for (const option of output.options) {
+    const optionText = typeof option === 'string' ? option : (option?.label ?? '');
     for (const pattern of FORBIDDEN_PATTERNS) {
-      if (pattern.test(option)) {
-        violations.push(`Forbidden pattern in option "${option.substring(0, 20)}...": ${pattern.source}`);
+      if (pattern.test(optionText)) {
+        violations.push(`Forbidden pattern in option "${optionText.substring(0, 20)}...": ${pattern.source}`);
       }
     }
   }
