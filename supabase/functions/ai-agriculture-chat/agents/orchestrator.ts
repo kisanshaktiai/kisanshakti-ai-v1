@@ -9,6 +9,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
+import { resolveCropTimeline } from '../utils/resolveCropTimeline.ts';
 import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from '../../_shared/variety-context.ts';
 
 
@@ -1272,6 +1273,44 @@ export class AIAgentOrchestrator {
         console.log('📍 [Orchestrator] Pre-fetched land context:', landContext ? 'SUCCESS' : 'EMPTY');
         if (landContext) {
           console.log(`   📊 crop_schedules data: crop=${landContext.current_crop}, sowing=${landContext.sowing_date}, stage=${landContext.growth_stage}`);
+
+          // ═══════════════════════════════════════════════════════════════════════════
+          // SSOT OVERLAY (pre-UnifiedGate): derive DAS + growth_stage from
+          // crop_schedules.sowing_date → crop_stage_master so every downstream
+          // gate (UnifiedGate, clarification, rule lookup) reads the canonical
+          // stage. Without this, fetchComprehensiveLandContext may surface a
+          // stale/cached stage label (e.g. NURSERY) that the farmer never
+          // confirmed, polluting the entire turn.
+          // ═══════════════════════════════════════════════════════════════════════════
+          try {
+            const timeline = await resolveCropTimeline({
+              landId: options.landId,
+              supabase: this.supabase,
+              scope: scope as any,
+            });
+            if (timeline.schedule_source === 'crop_schedules') {
+              const prevStage = landContext.growth_stage;
+              const prevDas = landContext.days_since_sowing;
+              if (timeline.days_since_sowing !== null) {
+                landContext.days_since_sowing = timeline.days_since_sowing;
+              }
+              if (timeline.growth_stage && timeline.growth_stage !== 'UNKNOWN') {
+                landContext.growth_stage = timeline.growth_stage;
+              }
+              (landContext as any).sowing_date = timeline.sowing_date;
+              (landContext as any).expected_harvest_date = timeline.expected_harvest_date;
+              (landContext as any).maturity_days = timeline.maturity_days;
+              if (timeline.crop_code) (landContext as any).crop_code = timeline.crop_code;
+              console.log(
+                `   📅 [CropTimeline SSOT pre-orchestrator] stage ${prevStage} → ${landContext.growth_stage} ` +
+                `(src=${timeline.stage_source}), DAS ${prevDas} → ${landContext.days_since_sowing}`,
+              );
+            } else {
+              console.log(`   📅 [CropTimeline SSOT pre-orchestrator] no active crop_schedule — keeping landContext values`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [CropTimeline SSOT pre-orchestrator] failed: ${(e as Error).message}`);
+          }
           
           // ═══════════════════════════════════════════════════════════════════════════
           // PHASE-20: STAGE-LOCKED CLARIFICATION
