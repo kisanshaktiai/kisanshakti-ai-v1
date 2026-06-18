@@ -79,9 +79,25 @@ export interface ClarificationRenderInput {
   cropContext?: CropContextAuthority | null;
 }
 
+/**
+ * Single clarification option carrying the canonical `observation_code` whenever the
+ * DB resolver knows one. Without this, the orchestrator's chip-value builder falls back
+ * to the label (e.g. "Drying/wilting") which is NOT a valid observation_code — the rule
+ * engine then matches zero rules and the response collapses to DIAGNOSTIC_ESCALATION /
+ * monitoring fallback (see edge log RULE_DATA_INTEGRITY_ERROR matched_responses=0).
+ */
+export interface RenderedClarificationOption {
+  label: string;
+  observation_code?: string;
+}
+
 export interface ClarificationRenderOutput {
   question: string;
-  options: string[];
+  /**
+   * Options are now ALWAYS objects so canonical `observation_code` (when known) survives
+   * the round trip to the frontend chip → echoed back as `[obs_keys:<code>]`.
+   */
+  options: RenderedClarificationOption[];
   photo_request: boolean;
   validation_passed: boolean;
   violations: string[];
