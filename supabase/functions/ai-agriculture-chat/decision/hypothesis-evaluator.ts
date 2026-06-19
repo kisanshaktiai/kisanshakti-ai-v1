@@ -223,6 +223,106 @@ function normalizeCauseForDedup(cause: string): string {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// PHASE-4: VARIETY-RESISTANCE CONFIDENCE MODIFIER
+// Adjusts a candidate hypothesis score using the planted variety's catalogued
+// resistance/susceptibility profile (from variety_resistance table).
+//
+//   HR / R   → cause is unlikely → lower score (variety is resistant)
+//   MR       → mild down-weight
+//   MS / S   → variety is susceptible → boost score
+//
+// SAFETY: This NEVER hard-filters a candidate. Treatment safety gates and
+// downstream prescription rules remain authoritative. The modifier only
+// re-ranks hypotheses so the most plausible biology surfaces first.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VARIETY_RESISTANCE_MULTIPLIER: Record<string, number> = {
+  HR: 0.55,    // highly resistant — strong down-weight
+  R: 0.70,     // resistant
+  MR: 0.88,    // moderately resistant — mild down-weight
+  MS: 1.10,    // moderately susceptible — mild boost
+  S: 1.25,     // susceptible — boost
+};
+
+function normalizeForVarietyMatch(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+interface VarietyMatchResult {
+  multiplier: number;
+  level: string;
+  matchedOn: string;
+}
+
+function computeVarietyResistanceMatch(
+  candidate: { cause: string; canonical_group: string; observable_characteristics: ObservableCharacteristic[]; matched_conditions: string[] },
+  resistance: VarietyResistanceEntry[] | undefined,
+): VarietyMatchResult | null {
+  if (!resistance || resistance.length === 0) return null;
+
+  // Build candidate fingerprint
+  const upperCodes = new Set<string>();
+  const normalizedTokens = new Set<string>();
+
+  upperCodes.add(String(candidate.cause || '').toUpperCase());
+  upperCodes.add(String(candidate.canonical_group || '').toUpperCase());
+  for (const oc of candidate.observable_characteristics || []) {
+    if (oc?.observation_key) upperCodes.add(String(oc.observation_key).toUpperCase());
+  }
+  for (const mc of candidate.matched_conditions || []) {
+    upperCodes.add(String(mc).toUpperCase());
+  }
+  normalizedTokens.add(normalizeForVarietyMatch(candidate.cause));
+  normalizedTokens.add(normalizeForVarietyMatch(candidate.canonical_group));
+  for (const oc of candidate.observable_characteristics || []) {
+    if (oc?.label_en) normalizedTokens.add(normalizeForVarietyMatch(oc.label_en));
+  }
+  const causeNorm = normalizeForVarietyMatch(candidate.cause);
+
+  let best: VarietyMatchResult | null = null;
+  for (const entry of resistance) {
+    const level = String(entry.level || '').toUpperCase();
+    const mult = VARIETY_RESISTANCE_MULTIPLIER[level];
+    if (!mult || mult === 1) continue;
+
+    const codeKeys = [entry.observation_code, entry.canonical_observation_code]
+      .filter(Boolean)
+      .map((c) => String(c).toUpperCase());
+
+    let matchedOn: string | null = null;
+
+    for (const ck of codeKeys) {
+      if (upperCodes.has(ck)) { matchedOn = ck; break; }
+    }
+
+    if (!matchedOn) {
+      const pathNorm = normalizeForVarietyMatch(entry.pathogen);
+      if (pathNorm && pathNorm.length >= 4) {
+        if (causeNorm.includes(pathNorm) || pathNorm.includes(causeNorm)) {
+          matchedOn = entry.pathogen;
+        } else {
+          for (const tok of normalizedTokens) {
+            if (tok && (tok.includes(pathNorm) || pathNorm.includes(tok)) && tok.length >= 4) {
+              matchedOn = entry.pathogen;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (matchedOn) {
+      // Keep the entry with the strongest effect (max distance from 1.0)
+      if (!best || Math.abs(mult - 1) > Math.abs(best.multiplier - 1)) {
+        best = { multiplier: mult, level, matchedOn };
+      }
+    }
+  }
+
+  return best;
+
+// ═══════════════════════════════════════════════════════════════════════════
 // PARTIAL CONDITION MATCHING
 // Evaluate how well a rule's conditions match available facts
 // ═══════════════════════════════════════════════════════════════════════════
