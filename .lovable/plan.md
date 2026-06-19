@@ -1,69 +1,77 @@
-# Rice-Crop End-to-End Audit & Fix Plan
+## Verified root cause (NOT a single bug — 4 compounding suppressors)
 
-## Why the AI chat skips observation/clarification
+Live trace `trace_mqkt905p` for `"भात अजून उगवले नाही"` ("rice hasn't germinated") on Rice DAS=11:
 
-Audit of the live DB for `rice` (1846 active rules, 28 hypotheses, 1166 intent→observation mappings) surfaced **four root-cause defects** that prevent the symbolic brain from ever offering a clarification card for rice queries — the orchestrator silently scores every hypothesis at ~0 and the response collapses into the generic "OBSERVATION/monitor" fallback.
+```
+User symptom query
+   │
+   ▼  IntentClassifier v4.0 → GENERAL_CROP_INFO @ 90%   ← MISCLASSIFICATION (should be CROP_PROBLEM_REPORT)
+   ▼  DIRECT_MODE gate: advisoryIntent=true             ← SUPPRESSOR 1 (skips clarification)
+   ▼  UnderstandingChecker: score=53% → REQUIRED=true   ← flag raised but never honored
+   ▼  CropDamageDetector v4 → MINOR → DiagnosisOnlyMode ← SUPPRESSOR 2 (PERMANENTLY skips clarification, even at 53% confidence)
+   ▼  EnforcedAuthority(CROP) → NLU gating DISABLED     ← SUPPRESSOR 3
+   ▼  PrescriptionGate: LOW conf OVERRIDDEN             ← SUPPRESSOR 4
+   ▼  Rule engine: 5 weak Rice matches, none for germination → ConflictResolver picks irrelevant rule
+   ▼  index.ts catch-all → state = "no_action_needed"   → template fallback, 276 chars, 0 actions
+```
 
-### Root causes (rice)
+Plus a silent crash: `CropTimeline SSOT: cache.has is not a function` (plain `{}` used as `Map`) — masks every stale-cache read.
 
-1. **Case mismatch — hypothesis ↔ observation_master.**
-   `hypothesis_conditions.condition_key` for rice is stored UPPERCASE (`YSB_DEAD_HEART`, `BLAST_LEAF_LESIONS`, `BPH_HOPPER_BURN`, …). `observation_master.observation_code` is stored lowercase (`ysb_dead_heart`, …).
-   - 27 distinct OBSERVATION condition_keys exist for rice; **27 of 27 fail exact-match against observation_master** (26 match if compared case-insensitively, 1 is the wildcard `reported_codes`).
-   - The hypothesis evaluator's pre-filter and `matched_conditions` join therefore returns 0 candidates → confidence < gate → no clarification surfaced.
+## Verified DB case audit (vs. earlier proposed Scope A)
 
-2. **observation_master not tagged for rice.**
-   Only **5 rows** in `observation_master` carry `crop_group='rice'` and **0 rows** list `'rice'` in `applicable_crop_groups`. But 70 distinct observation codes are actually used by the rice intent_observation_mapping. The brain's crop-scope pre-filter therefore drops most rice symptoms.
+| Table.column                                            | UPPER / total | Action |
+|---------------------------------------------------------|--------------:|--------|
+| `cultural_strategies.crop_code`                         | **20 / 20**   | lowercase |
+| `emergency_observation_codes.observation_code`          | **12 / 38**   | lowercase |
+| `observation_differential_questions.observation_code`   | **3 / 3**     | lowercase |
+| `direct_advisory_routes.route_code`                     | 4 / 4         | leave (no consumer mismatch found) |
+| `observation_master.observation_code`                   | 0 / 2540      | clean |
+| `decision_rules.rule_id`                                | 1852 / 1852 UPPER | **DO NOT TOUCH** (shadow `rule_id_lc` + dual-read shim already in place; flipping canonical is Phase 9 / Stage 4 — needs coordinated freeze) |
+| `hypothesis_master.hypothesis_id`                       | 345 / 346 UPPER | same — leave to Phase 9 |
 
-3. **No stage discrimination for rice mappings.**
-   All 1228 `intent_observation_mapping` rows for rice use `growth_stage='all'`. Stage-aware narrowing (NURSERY / TILLERING / PI / FLOWERING / GRAIN_FILLING) never fires for rice; sugarcane uses proper stages.
-
-4. **Communication-generator null-crash side-effect (already patched last turn).**
-   `extractRepeatApplicationInfo()` returning `null` on non-treatment paths crashed the pipeline and forced the fallback "OBSERVATION" reply, masking root causes (1)–(3). Patch is in place; need regression tests so it cannot recur.
-
-### What is healthy (verified)
-
-- `decision_rules` rice coverage is broad (138 rows across 17 categories, all with `canonical_group` + `conditions_json` populated).
-- `hypothesis_rule_mapping` for rice has **0 orphan rule_ids**.
-- `intent_observation_mapping.observation_code` for rice matches `observation_master` (0 missing).
-- `crops` / `crop_synonyms` / `crop_stage_master` / `cultural_strategies` / `disease_risk_model` / `crop_baseline_guidelines_v2` all have rice rows.
+The CROT_* "missing action_type" claim from one subagent is **wrong** — DB shows 24/24 populated. Removed from fix list.
 
 ---
 
-## Fix plan
+## Fix set (one migration + 6 targeted code edits)
 
-### Phase A — Data integrity migrations (rice + global)
+### 1. DB migration — Scope A lowercase (39 rows, zero FK risk)
+Single migration:
+- `UPDATE public.cultural_strategies SET crop_code = lower(crop_code)`
+- `UPDATE public.emergency_observation_codes SET observation_code = lower(observation_code)`
+- `UPDATE public.observation_differential_questions SET observation_code = lower(observation_code)`
+- Add CHECK constraints so future inserts cannot regress to UPPER on these 3 columns.
 
-A1. **Normalize `hypothesis_conditions.condition_key` to lowercase** for `condition_type='OBSERVATION'` across all crops (sugarcane condition_keys already lowercase — verify and only touch rice + any other crop showing the mismatch). Add a `CHECK (condition_key = lower(condition_key))` invariant for OBSERVATION rows. Bump `hypothesis_master.version_hash` for affected hypotheses so the snapshot trigger fires (per Core rule on text-PK snapshot triggers).
+### 2. `decision/diagnosis-only-mode.ts` — confidence-gate the permanent lock
+Only activate `DiagnosisOnlyMode` when damage confidence ≥ `HIGH` (≥ 0.70). At `VERY_LOW`/`LOW`, allow exactly one clarification round (governed by `UnderstandingChecker` output). This is Suppressor 2 — the single biggest cause of generic responses on ambiguous queries.
 
-A2. **Tag observation_master for rice.** For every observation_code that appears in `intent_observation_mapping WHERE crop_code='rice'` OR in rice hypothesis `condition_key` (post-A1 normalization), set `crop_group='rice'` if currently NULL/empty, else append `'rice'` to `applicable_crop_groups`. Expected: ~70 rows updated.
+### 3. `agents/orchestrator.ts` — DIRECT_MODE must not bypass when symptoms present
+In the `advisoryIntent` short-circuit (~L3030 area), add: `if (inductionResult.symptoms.length > 0 || hasMeaningfulCodes(mappedCodes)) → do NOT take DIRECT_MODE`. Symptom-bearing intent always wins over generic advisory route. Also add `'EMERGENCE_FAILURE'` to `DIAGNOSTIC_INTENTS` (~L3419).
 
-A3. **Stage-segment rice intent→observation mappings.** Replace the blanket `growth_stage='all'` rows for biotic and nutrition intents with stage-scoped rows (`nursery`, `tillering`, `panicle_initiation`, `flowering`, `grain_filling`, `maturity`) using `crop_stage_master.crop_code='rice'` as the SSOT. Keep `'all'` only for weather/irrigation/weed intents that are genuinely stage-agnostic. Expected: ~1000 rows re-fanned out from 1 stage to ~5 stages.
+### 4. `agents/orchestrator.ts` — pendingClarification escape hatch
+When `shouldRunSymbolicBrain=true` AND zero rules fire AND understanding completeness < 60%, fall back to a clarification question instead of `DECISION_PROVIDED` with empty actions. Fixes the "fires a wrong proactive rule because nothing else matched" path.
 
-A4. **Backfill `observation_aliases`** for the 5–10 historic UPPERCASE keys we want to keep accepting from older clients (alias → canonical lowercase).
+### 5. `index.ts` catch-all guard (~L2507)
+Replace the bare `else { computedDecisionState = 'no_action_needed' }` with: if `type === 'DECISION_PROVIDED'` AND `actions_returned.length === 0` AND intent is symptom-based → emit `clarification_needed`, not `no_action_needed`.
 
-### Phase B — Symbolic brain hardening (code)
+### 6. `agents/intent-classifier.ts` — germination vocabulary
+Add explicit pre-routing rule: messages containing `उगवले नाही`, `उगवण होत नाही`, `germination failure`, `not germinated`, `अंकुर नाही`, `अंकुरण` → force intent `CROP_PROBLEM_REPORT` (or `EMERGENCE_FAILURE`) with high confidence, bypassing the LLM's tendency to return `GENERAL_CROP_INFO`.
 
-B1. **Case-insensitive condition matching guard** in `hypothesis-evaluator.ts` — normalize both sides (`condition_key.toLowerCase()` and `observation_code.toLowerCase()`) before set-membership / matched_conditions joins, so future drift cannot silently zero out scores again. Emit `SYMBOLIC_CONTRACT_VIOLATION` log when an UPPERCASE OBSERVATION condition_key is encountered (catches data regressions).
+### 7. CropTimeline SSOT — `cache.has` crash
+Fix the cache holder: change the plain object literal to `new Map<string, …>()` (or use `Object.prototype.hasOwnProperty.call`). Currently silently swallowed → falls back to direct DB query every turn (perf + correctness risk).
 
-B2. **Crop-scope filter fallback.** When `observation_master.crop_group` is empty for an observation_code that the intent map already attached to a rice intent, treat the observation as in-scope rather than dropping it (defensive — backs up A2).
+### 8. `agents/response-validation-gate.ts` — Check 5 stage drift
+Read `growth_stage` from the same locked canonical context the rest of the turn used, not an independent copy. Trace showed pipeline locked `SEEDLING` but validator read `ACTIVE_TILLERING`.
 
-B3. **Strict invariant test fixture** (`tests/chat/rice-clarification-pipeline.test.ts`) that simulates 6 representative rice queries (BPH hopper burn, YSB dead heart, blast lesion, khaira zinc deficiency, sheath blight, drought rolling) and asserts the orchestrator returns a `clarification` mode with ≥2 candidate hypotheses each. Add the existing `extractRepeatApplicationInfo(null)` case to the regression suite.
+---
 
-### Phase C — Verification
+## Verification after apply
+- New Deno test `_tests/generic_response_regression_test.ts`: run the exact reproducer payload (`भात अजून उगवले नाही`, Rice DAS=11) and assert the response is **either** a clarification **or** carries ≥1 rule-backed action — never `no_action_needed` with 0 actions.
+- Re-run existing `rule_id_lc_contract_test.ts` to confirm no regression in dual-read.
+- DB-side smoke: `SELECT count(*) FILTER (WHERE crop_code ~ '[A-Z]') FROM cultural_strategies` etc. must all be 0.
 
-C1. Re-run the SQL audit suite and confirm: `rice_hyp_obs_keys_missing_in_master = 0`, `obs_master_rice ≥ 70`, distinct rice stages ≥ 5.
-C2. Run the new vitest fixture (`bunx vitest run tests/chat/rice-clarification-pipeline.test.ts`) — must be green.
-C3. Live trace: send "मेरे चावल में हॉपर बर्न दिख रहा है" via the `/app/chat` preview; capture edge-function logs and verify `[orchestrator] mode=clarification, candidates>=2` and a clarification card renders before any final advisory.
+## Explicitly out of scope (and why)
+- Mass-lowercase `decision_rules.rule_id` / `hypothesis_master.hypothesis_id` — requires Phase-9 shadow-column flip in a single transaction with code dual-read freeze. Doing it ad-hoc breaks 1852 + 346 lookups. Tests already in place to enforce the contract until then.
+- `intent_observation_mapping` / `observation_intent_master` mass renames — internally consistent; renaming requires coordinated code change across 14k rows.
 
-### Out of scope (will report, not fix in this pass)
-
-- Other crops' case/stage health (will surface in C1's broader query but only rice gets fixed unless the user asks).
-- Re-seeding `decision_rules` content — current rules are rich enough; we are only fixing the linkage.
-
-## Technical details
-
-- Migration SQL will be authored in three numbered files (A1, A2, A3) so each can be reviewed individually; A1 must run first because A2's join depends on lowercase keys.
-- All `CREATE/ALTER` statements respect the Core rule: snapshot triggers reference `NEW.hypothesis_id` / `NEW.observation_code`, never `NEW.id`.
-- No new tables → no new GRANTs required; A2/A3 are pure data UPDATEs/INSERTs that go through the `supabase--insert` tool, not migrations.
-- Edge function changes are limited to `hypothesis-evaluator.ts` (B1/B2) plus a new test file; no orchestrator surgery, no LLM-prompt edits, no UI changes.
-- After Phase A I will update `mem://intelligence/rice-clarification-pipeline-invariants` with the new rules so future agents cannot reintroduce the case drift.
+Approve and I'll execute the migration + 7 code edits + regression test in one pass.
