@@ -43,6 +43,14 @@ import {
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+export interface VarietyResistanceEntry {
+  pathogen: string;
+  threat_type?: string | null;
+  level: string;            // HR | R | MR | MS | S | unknown
+  observation_code?: string | null;
+  canonical_observation_code?: string | null;
+}
+
 export interface HypothesisEvaluationInput {
   crop_code: string;
   growth_stage: string;
@@ -58,6 +66,10 @@ export interface HypothesisEvaluationInput {
   user_query: string;
   supabaseClient: any;
   trace_id?: string;
+  // PHASE-4: Variety-aware reasoning — adjusts candidate confidence based on
+  // the planted variety's catalogued resistance/susceptibility profile.
+  variety_id?: string | null;
+  variety_resistance?: VarietyResistanceEntry[];
 }
 
 export interface CandidateHypothesis {
@@ -72,6 +84,10 @@ export interface CandidateHypothesis {
   differentiating_questions: any[];
   matched_conditions: string[];
   conditions_json: any;
+  // PHASE-4: Variety resistance influence on score
+  variety_modifier?: number;            // multiplicative factor actually applied
+  variety_resistance_level?: string;    // matched level (HR/R/MR/MS/S)
+  variety_resistance_match?: string;    // pathogen / observation that matched
 }
 
 export interface ObservableCharacteristic {
