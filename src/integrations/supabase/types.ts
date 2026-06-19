@@ -11986,6 +11986,30 @@ export type Database = {
         }
         Relationships: []
       }
+      intent_semantic_class_allowlist: {
+        Row: {
+          allowed_classes: string[]
+          created_at: string
+          intent_code: string
+          notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          allowed_classes: string[]
+          created_at?: string
+          intent_code: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          allowed_classes?: string[]
+          created_at?: string
+          intent_code?: string
+          notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       intent_translations: {
         Row: {
           created_at: string | null
@@ -16529,6 +16553,7 @@ export type Database = {
           observation_category: string | null
           observation_code: string
           observation_type: string | null
+          semantic_class: string | null
           severity_level: string | null
           symptom_category: string | null
           symptom_pattern: string | null
@@ -16552,6 +16577,7 @@ export type Database = {
           observation_category?: string | null
           observation_code: string
           observation_type?: string | null
+          semantic_class?: string | null
           severity_level?: string | null
           symptom_category?: string | null
           symptom_pattern?: string | null
@@ -16575,6 +16601,7 @@ export type Database = {
           observation_category?: string | null
           observation_code?: string
           observation_type?: string | null
+          semantic_class?: string | null
           severity_level?: string | null
           symptom_category?: string | null
           symptom_pattern?: string | null
@@ -32447,7 +32474,12 @@ export type Database = {
       }
       validate_iom_semantic_class: {
         Args: { p_intent_code: string; p_observation_code: string }
-        Returns: boolean
+        Returns: {
+          allowed: string[]
+          is_valid: boolean
+          obs_class: string
+          reason: string
+        }[]
       }
       validate_photo_location: {
         Args: {
