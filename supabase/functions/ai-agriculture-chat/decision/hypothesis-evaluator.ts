@@ -26,7 +26,7 @@
 
 // Supabase client is passed via input, no import needed
 
-export const HYPOTHESIS_EVALUATOR_VERSION = '1.2.0'; // Added temporal constraint filtering
+export const HYPOTHESIS_EVALUATOR_VERSION = '1.3.0'; // PHASE-4: variety-resistance confidence modifier
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: TEMPORAL CONSTRAINT VALIDATOR IMPORT
