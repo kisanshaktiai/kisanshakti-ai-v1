@@ -4430,6 +4430,7 @@ export class AIAgentOrchestrator {
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
           console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
           
+          const varietyProfileForHypo = (landContext as any)?.variety_profile || null;
           const hypothesisResult = await evaluateCandidateHypotheses({
             crop_code: cropCode,
             growth_stage: growthStage,
@@ -4439,7 +4440,10 @@ export class AIAgentOrchestrator {
             known_observations: currentObservations,
             user_query: farmerMessage,
             supabaseClient: this.supabase,
-            trace_id: traceId
+            trace_id: traceId,
+            // PHASE-4: variety-aware confidence modifier
+            variety_id: varietyProfileForHypo?.variety_id ?? null,
+            variety_resistance: varietyProfileForHypo?.resistance ?? undefined,
           });
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
