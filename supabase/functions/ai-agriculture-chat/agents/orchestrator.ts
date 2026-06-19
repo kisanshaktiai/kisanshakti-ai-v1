@@ -416,13 +416,14 @@ import {
 } from './photoperiod-calculator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SHARED CONSTANT: Emergency observation codes (used in both return paths)
+// Phase 3 SSOT: emergency observation codes + direct advisory routes now
+// live in the DB (`emergency_observation_codes` / `direct_advisory_routes`).
+// Loaders are imported from decision/db-lookups.ts and called per turn.
 // ═══════════════════════════════════════════════════════════════════════════
-const EMERGENCY_OBS_CODES = new Set([
-  'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
-  'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-]);
+import {
+  loadEmergencyObservationCodes,
+  loadDirectAdvisoryRoutes,
+} from '../decision/db-lookups.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
