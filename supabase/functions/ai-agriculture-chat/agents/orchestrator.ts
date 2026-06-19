@@ -3390,20 +3390,10 @@ export class AIAgentOrchestrator {
       // harvest) don't need symptom clarification — they go straight to the rule engine.
       // ═══════════════════════════════════════════════════════════════════════════
       let directModeBypass = false;
-      // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
-      // fires whenever any layer of context (canonical, land record, or crop schedule) knows the crop.
-      const ADVISORY_DIRECT_ROUTES = new Set([
-        'FERTILIZER_NUTRITION',
-        'IRRIGATION_SCHEDULING',
-        'WEATHER_SPRAY_TIMING',
-        'CROP_HEALTH',
-        // NOTE (2026-06-07): 'GENERAL_INFO' intentionally removed from the
-        // direct-mode bypass set. A GENERAL_INFO route paired with a *specific*
-        // DB intent (e.g. WEED_PROBLEM, FERTILIZER_SCHEDULE) must go through
-        // the symbolic brain with that intent's mapped observations, not skip
-        // clarification and fall to crop+stage rules only — that was producing
-        // the same ACTIVE_TILLERING-style answer for unrelated questions.
-      ]);
+      // Phase 3 SSOT: advisory routes that skip clarification are loaded from
+      // public.direct_advisory_routes (was hardcoded ADVISORY_DIRECT_ROUTES set).
+      // NOTE: 'GENERAL_INFO' is intentionally NOT seeded — see git history.
+      const ADVISORY_DIRECT_ROUTES = await loadDirectAdvisoryRoutes(this.supabase);
       const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
       // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
       const intentAdvisoryBypass = isAdvisoryRoute(intentCode);
