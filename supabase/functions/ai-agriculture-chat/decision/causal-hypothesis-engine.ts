@@ -350,23 +350,67 @@ function evaluateCondition(
 
   switch (condition_type) {
     case 'OBSERVATION': {
-      const code = (value_json as any)?.code;
-      if (!code) return HypothesisConditionStatus.FAILED;
-      
-      if (operator === 'CONTAINS') {
-        const obsLower = observations.map(o => o.toLowerCase());
-        const codeLower = code.toLowerCase();
-        return obsLower.includes(codeLower) 
-          ? HypothesisConditionStatus.PASSED 
-          : HypothesisConditionStatus.FAILED;
+      // ─── Multi-format OBSERVATION resolver ────────────────────────────
+      // Hypothesis authors across crops use four different schemas:
+      //   1. sugarcane:    operator=CONTAINS, value_json={code:'…'}
+      //   2. brinjal/tom:  operator=EQUALS,   value_json={code:'…'}
+      //   3. rice/chilli/cotton/maize/soybean/wheat:
+      //                    operator=EQUALS,   value_json=true|false  (key = condition_key)
+      //   4. onion/potato: operator=EXISTS,   value_json=true|false  (key = condition_key)
+      //   5. rice (1 row): operator=CONTAINS, value_json=[code, code, …]
+      // Older code only handled (1)/CONTAINS+NOT_EXISTS, which silently
+      // FAILED every condition for 8 of 11 crops and zeroed out scores
+      // → no clarification card was ever surfaced. Resolve all five.
+      const obsLower = observations.map(o => String(o || '').toLowerCase());
+
+      // Resolve the code(s) this condition expects to find / forbid.
+      const vj: any = value_json;
+      let expectedCodes: string[] = [];
+      let expectedPresent = true; // false ⇒ condition asserts absence
+
+      if (Array.isArray(vj)) {
+        expectedCodes = vj.map((c: any) => String(c || '').toLowerCase()).filter(Boolean);
+      } else if (vj && typeof vj === 'object') {
+        if (vj.code) expectedCodes = [String(vj.code).toLowerCase()];
+        else if (Array.isArray(vj.codes)) {
+          expectedCodes = vj.codes.map((c: any) => String(c || '').toLowerCase()).filter(Boolean);
+        }
+        if (typeof vj.present === 'boolean') expectedPresent = vj.present;
+      } else if (typeof vj === 'boolean') {
+        // boolean schema: condition_key itself IS the observation code.
+        expectedCodes = [String(condition_key || '').toLowerCase()];
+        expectedPresent = vj;
       }
-      if (operator === 'NOT_EXISTS') {
-        const obsLower = observations.map(o => o.toLowerCase());
-        return !obsLower.includes(code.toLowerCase())
-          ? HypothesisConditionStatus.PASSED
-          : HypothesisConditionStatus.FAILED;
+
+      // condition_key=reported_codes is a wildcard that just enumerates
+      // candidate codes via value_json (array form above).
+      if (expectedCodes.length === 0) return HypothesisConditionStatus.FAILED;
+
+      const anyPresent = expectedCodes.some(c => obsLower.includes(c));
+
+      // Map operator → polarity (presence vs absence).
+      const op = String(operator || '').toUpperCase();
+      let wantPresent: boolean;
+      switch (op) {
+        case 'CONTAINS':
+        case 'EXISTS':
+        case 'EQUALS':
+        case 'IN':
+          wantPresent = expectedPresent;
+          break;
+        case 'NOT_EXISTS':
+        case 'NOT_CONTAINS':
+        case 'NOT_IN':
+        case 'NOT_EQUALS':
+          wantPresent = !expectedPresent;
+          break;
+        default:
+          return HypothesisConditionStatus.FAILED;
       }
-      return HypothesisConditionStatus.FAILED;
+
+      return (anyPresent === wantPresent)
+        ? HypothesisConditionStatus.PASSED
+        : HypothesisConditionStatus.FAILED;
     }
 
     case 'DAS_RANGE': {
