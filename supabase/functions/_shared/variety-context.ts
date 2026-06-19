@@ -30,7 +30,14 @@ export interface VarietyProfile {
   availability_status?: string | null;
   state_suitability?: string[] | null;
   state_suitability_ids?: string[] | null;
-  resistance?: Array<{ pathogen: string; level: string; notes?: string | null }>;
+  resistance?: Array<{
+    pathogen: string;
+    threat_type?: string | null;
+    level: string;
+    notes?: string | null;
+    observation_code?: string | null;
+    canonical_observation_code?: string | null;
+  }>;
   state_match: boolean;
   source: "exact" | "fuzzy" | "code" | "fallback_crop_default" | "none";
 }
