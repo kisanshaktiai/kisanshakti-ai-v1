@@ -6720,6 +6720,30 @@ export type Database = {
           },
         ]
       }
+      cultural_strategies: {
+        Row: {
+          created_at: string
+          crop_code: string
+          id: string
+          priority: number
+          strategy: string
+        }
+        Insert: {
+          created_at?: string
+          crop_code: string
+          id?: string
+          priority?: number
+          strategy: string
+        }
+        Update: {
+          created_at?: string
+          crop_code?: string
+          id?: string
+          priority?: number
+          strategy?: string
+        }
+        Relationships: []
+      }
       currency_rates: {
         Row: {
           base_currency: string
@@ -8207,6 +8231,24 @@ export type Database = {
         }
         Relationships: []
       }
+      direct_advisory_routes: {
+        Row: {
+          created_at: string
+          notes: string | null
+          route_code: string
+        }
+        Insert: {
+          created_at?: string
+          notes?: string | null
+          route_code: string
+        }
+        Update: {
+          created_at?: string
+          notes?: string | null
+          route_code?: string
+        }
+        Relationships: []
+      }
       direct_messages: {
         Row: {
           content: string
@@ -8843,6 +8885,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      emergency_observation_codes: {
+        Row: {
+          created_at: string
+          notes: string | null
+          observation_code: string
+          source: string
+        }
+        Insert: {
+          created_at?: string
+          notes?: string | null
+          observation_code: string
+          source?: string
+        }
+        Update: {
+          created_at?: string
+          notes?: string | null
+          observation_code?: string
+          source?: string
+        }
+        Relationships: []
       }
       etl_standards: {
         Row: {

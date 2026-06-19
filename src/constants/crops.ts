@@ -1,132 +1,58 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
- * CROP CONSTANTS - Centralized Crop Mappings
+ * CROP CONSTANTS — Phase 3 SSOT shim
  * ═══════════════════════════════════════════════════════════════════════════
- * 
- * Single source of truth for crop name to code mappings.
- * Supports English, Hindi, and Marathi.
+ *
+ * The legacy `CROP_NAME_TO_CODE` lookup table was removed in Phase 3.
+ * Crop name → canonical code mapping is now sourced from the database
+ * (`public.crop_synonyms`) and resolved server-side by the AI brain.
+ *
+ * Any frontend code that genuinely needs to normalize a free-text crop name
+ * should call the schedules-api / lands-api which hit the DB. The async
+ * helper below is retained as a stub so legacy imports keep type-checking.
+ * ═══════════════════════════════════════════════════════════════════════════
  */
 
-/**
- * Crop name to normalized code mapping (multi-language)
- */
-export const CROP_NAME_TO_CODE: Record<string, string> = {
-  // English
-  'wheat': 'wheat',
-  'rice': 'rice',
-  'paddy': 'rice',
-  'cotton': 'cotton',
-  'sugarcane': 'sugarcane',
-  'soybean': 'soybean',
-  'maize': 'maize',
-  'corn': 'maize',
-  'groundnut': 'groundnut',
-  'peanut': 'groundnut',
-  'tomato': 'tomato',
-  'onion': 'onion',
-  'potato': 'potato',
-  'gram': 'gram',
-  'chickpea': 'gram',
-  'mustard': 'mustard',
-  'sunflower': 'sunflower',
-  'turmeric': 'turmeric',
-  'ginger': 'ginger',
-  'banana': 'banana',
-  'mango': 'mango',
-  'grapes': 'grapes',
-  'pomegranate': 'pomegranate',
-  'chilli': 'chilli',
-  'brinjal': 'brinjal',
-  'okra': 'okra',
-  'cabbage': 'cabbage',
-  'cauliflower': 'cauliflower',
-  
-  // Hindi (हिंदी)
-  'गेहूं': 'wheat',
-  'गेहूँ': 'wheat',
-  'चावल': 'rice',
-  'धान': 'rice',
-  'कपास': 'cotton',
-  'रुई': 'cotton',
-  'गन्ना': 'sugarcane',
-  'ईख': 'sugarcane',
-  'सोयाबीन': 'soybean',
-  'मक्का': 'maize',
-  'मूंगफली': 'groundnut',
-  'टमाटर': 'tomato',
-  'प्याज': 'onion',
-  'आलू': 'potato',
-  'चना': 'gram',
-  'सरसों': 'mustard',
-  'सूरजमुखी': 'sunflower',
-  'हल्दी': 'turmeric',
-  'अदरक': 'ginger',
-  'केला': 'banana',
-  'आम': 'mango',
-  'अंगूर': 'grapes',
-  'अनार': 'pomegranate',
-  'मिर्च': 'chilli',
-  'बैंगन': 'brinjal',
-  'भिंडी': 'okra',
-  'बंदगोभी': 'cabbage',
-  'फूलगोभी': 'cauliflower',
-  
-  // Marathi (मराठी)
-  'गहू': 'wheat',
-  'तांदूळ': 'rice',
-  'भात': 'rice',
-  'कापूस': 'cotton',
-  'ऊस': 'sugarcane',
-  'सोयाबिन': 'soybean',
-  'मका': 'maize',
-  'भुईमूग': 'groundnut',
-  'शेंगदाणा': 'groundnut',
-  'टोमॅटो': 'tomato',
-  'कांदा': 'onion',
-  'बटाटा': 'potato',
-  'हरभरा': 'gram',
-  'मोहरी': 'mustard',
-  'सूर्यफूल': 'sunflower',
-  'हळद': 'turmeric',
-  'आले': 'ginger',
-  'केळी': 'banana',
-  'आंबा': 'mango',
-  'द्राक्षे': 'grapes',
-  'डाळिंब': 'pomegranate',
-  'मिरची': 'chilli',
-  'वांगी': 'brinjal',
-  'भेंडी': 'okra',
-  'कोबी': 'cabbage',
-  'फ्लॉवर': 'cauliflower'
-};
+import { supabase } from '@/integrations/supabase/client';
+
+const inMemoryCache = new Map<string, string>();
 
 /**
- * Normalize crop name to crop code
+ * Resolve a crop name (English / Hindi / Marathi / regional) to its
+ * canonical UPPERCASE crop code via `public.crop_synonyms`.
+ *
+ * Returns `null` if the input is empty, the lowercased input as-is when
+ * the DB lookup fails so callers degrade gracefully.
  */
-export function normalizeCropName(cropName: string | undefined | null): string | null {
+export async function normalizeCropName(
+  cropName: string | undefined | null,
+): Promise<string | null> {
   if (!cropName) return null;
-  
-  const normalized = cropName.toLowerCase().trim();
-  
-  // Direct match
-  if (CROP_NAME_TO_CODE[normalized]) {
-    return CROP_NAME_TO_CODE[normalized];
-  }
-  
-  // Case-insensitive match for Hindi/Marathi
-  if (CROP_NAME_TO_CODE[cropName]) {
-    return CROP_NAME_TO_CODE[cropName];
-  }
-  
-  // Partial match
-  for (const [name, code] of Object.entries(CROP_NAME_TO_CODE)) {
-    if (normalized.includes(name.toLowerCase()) || name.toLowerCase().includes(normalized)) {
+  const key = cropName.trim().toLowerCase();
+  if (!key) return null;
+
+  if (inMemoryCache.has(key)) return inMemoryCache.get(key)!;
+
+  try {
+    const { data, error } = await supabase
+      .from('crop_synonyms')
+      .select('canonical_crop')
+      .eq('is_active', true)
+      .ilike('variant_name', key)
+      .limit(1);
+
+    if (!error && data && data.length > 0) {
+      const code = data[0].canonical_crop as string;
+      inMemoryCache.set(key, code);
       return code;
     }
+  } catch (err) {
+    console.warn('[crops] normalizeCropName DB lookup failed:', err);
   }
-  
-  // Return as-is if no match (might be valid crop code)
-  return normalized;
+
+  // Degrade gracefully — return the lowercased input so callers can still
+  // pattern-match. The server-side brain has the authoritative resolver.
+  return key;
 }
 
 /**
@@ -135,9 +61,6 @@ export function normalizeCropName(cropName: string | undefined | null): string |
  * `resolveCropTimeline` helper derives the growth stage from
  * `crop_schedules.sowing_date` + `crop_stage_master` + variety
  * `maturity_days_max` and returns it on `landContext.growth_stage`.
- *
- * Frontend surfaces should read stage/DAS from backend-provided fields
- * (e.g. landContext.growth_stage / landContext.days_since_sowing).
  */
 export type CropStage =
   | 'PLANNING'

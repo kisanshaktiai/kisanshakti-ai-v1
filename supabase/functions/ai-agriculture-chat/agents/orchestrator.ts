@@ -416,13 +416,14 @@ import {
 } from './photoperiod-calculator.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SHARED CONSTANT: Emergency observation codes (used in both return paths)
+// Phase 3 SSOT: emergency observation codes + direct advisory routes now
+// live in the DB (`emergency_observation_codes` / `direct_advisory_routes`).
+// Loaders are imported from decision/db-lookups.ts and called per turn.
 // ═══════════════════════════════════════════════════════════════════════════
-const EMERGENCY_OBS_CODES = new Set([
-  'DEAD_HEART_PRESENT', 'STEM_BORING_MARKS', 'BORER_DAMAGE', 'BORE_HOLES_AT_BASE',
-  'FRASS_VISIBLE', 'MUD_TUBES', 'LARVAE_PRESENT', 'PLANT_DEATH_PATCHES',
-  'STEM_ROT_PRESENT', 'CROWN_ROT', 'WILTING_SEVERE', 'SEVERITY_HIGH'
-]);
+import {
+  loadEmergencyObservationCodes,
+  loadDirectAdvisoryRoutes,
+} from '../decision/db-lookups.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: 8 MANDATORY GATES - NEURO-SYMBOLIC VALIDATION MODULES
@@ -3389,20 +3390,10 @@ export class AIAgentOrchestrator {
       // harvest) don't need symptom clarification — they go straight to the rule engine.
       // ═══════════════════════════════════════════════════════════════════════════
       let directModeBypass = false;
-      // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
-      // fires whenever any layer of context (canonical, land record, or crop schedule) knows the crop.
-      const ADVISORY_DIRECT_ROUTES = new Set([
-        'FERTILIZER_NUTRITION',
-        'IRRIGATION_SCHEDULING',
-        'WEATHER_SPRAY_TIMING',
-        'CROP_HEALTH',
-        // NOTE (2026-06-07): 'GENERAL_INFO' intentionally removed from the
-        // direct-mode bypass set. A GENERAL_INFO route paired with a *specific*
-        // DB intent (e.g. WEED_PROBLEM, FERTILIZER_SCHEDULE) must go through
-        // the symbolic brain with that intent's mapped observations, not skip
-        // clarification and fall to crop+stage rules only — that was producing
-        // the same ACTIVE_TILLERING-style answer for unrelated questions.
-      ]);
+      // Phase 3 SSOT: advisory routes that skip clarification are loaded from
+      // public.direct_advisory_routes (was hardcoded ADVISORY_DIRECT_ROUTES set).
+      // NOTE: 'GENERAL_INFO' is intentionally NOT seeded — see git history.
+      const ADVISORY_DIRECT_ROUTES = await loadDirectAdvisoryRoutes(this.supabase);
       const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
       // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
       const intentAdvisoryBypass = isAdvisoryRoute(intentCode);
@@ -7013,9 +7004,11 @@ export class AIAgentOrchestrator {
         // Complete audit trail
         await auditLogger.completeTurn(Date.now() - startTime);
         
-        // Wire symptomKeys + isEmergency into IMMEDIATE return path
+        // Wire symptomKeys + isEmergency into IMMEDIATE return path.
+        // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
         const obsArray = Array.from(allObservationsForPreAuth || []);
-        const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
+        const emergencyCodesImmediate = await loadEmergencyObservationCodes(this.supabase);
+        const isEmergencyImmediate = obsArray.some(code => emergencyCodesImmediate.has(code));
         
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         decisionOutput.symptom_keys = obsArray;
@@ -7786,10 +7779,11 @@ export class AIAgentOrchestrator {
         // Don't fail the request for audit issues
       }
       
-      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
+      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path.
+      // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
-      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
+      const emergencyCodesMain = await loadEmergencyObservationCodes(this.supabase);
+      const isEmergencyMain = obsArrayMain.some(code => emergencyCodesMain.has(code));
       
       return {
         type: 'DECISION_PROVIDED',
