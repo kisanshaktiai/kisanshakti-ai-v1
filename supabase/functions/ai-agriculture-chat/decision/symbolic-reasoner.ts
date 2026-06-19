@@ -323,14 +323,12 @@ export class SymbolicReasoner {
           continue;
         }
         
-        // Check if biotic observations exist in all_observations
-        const BIOTIC_OBS_KEYS = ['BORE_HOLES', 'DEAD_HEART', 'INSECT_PRESENCE', 'FRASS', 'WEBBING', 
-          'STEM_BORING_MARKS', 'LEAF_CHEWING', 'DEAD_HEART_PRESENT', 'INSECT_PRESENCE_CONFIRMED',
-          'FRASS_VISIBLE', 'WEBBING_PRESENT', 'BORER_SUSPECTED'];
-        const hasBioticObs = (facts.all_observations || []).some(obs => 
-          BIOTIC_OBS_KEYS.some(key => obs.includes(key))
-        );
-        
+        // Check if biotic observations exist in all_observations.
+        // SSOT: observation_master.semantic_class IN ('pest','disease') via DB lookup.
+        // Loaded once per turn / warm isolate and cached in db-lookups.ts.
+        const bioticCodes = await this.getBioticObservationCodes();
+        const hasBioticObs = (facts.all_observations || []).some((obs) => bioticCodes.has(obs));
+
         if (isAbioticRule && hasBioticObs) {
           console.log(`   🚫 [BioticGuard] Skipping abiotic rule ${rule.rule_id} - biotic observations detected in all_observations`);
           continue;
