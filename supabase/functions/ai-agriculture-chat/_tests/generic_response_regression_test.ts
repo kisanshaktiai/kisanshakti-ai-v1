@@ -14,15 +14,18 @@
  *      a future refactor can't silently regress the suppressor fix.
  */
 
-import "https://deno.land/std@0.224.0/dotenv/load.ts";
+// NB: do NOT use std/dotenv/load — root .env.example references variables
+// (e.g. VITE_DEFAULT_TENANT_ID) that are not in the sandbox .env, which makes
+// the loader throw. Read env directly; values are injected by the Supabase
+// test runner / local shell.
 import {
   assert,
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const SUPABASE_URL = Deno.env.get("VITE_SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("VITE_SUPABASE_PUBLISHABLE_KEY")!;
+const SUPABASE_URL = Deno.env.get("VITE_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("VITE_SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 Deno.test("DB invariant: cultural_strategies.crop_code is fully lowercase", async () => {
