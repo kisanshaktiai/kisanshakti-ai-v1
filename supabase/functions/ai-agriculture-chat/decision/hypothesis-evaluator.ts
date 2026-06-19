@@ -321,6 +321,7 @@ function computeVarietyResistanceMatch(
   }
 
   return best;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PARTIAL CONDITION MATCHING
