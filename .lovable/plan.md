@@ -1,85 +1,49 @@
-## Phase 2 — Observation Master Canonicalisation + Validator Trigger
+## Phase 3 — De-Hardcode the Brain (semantic_class SSOT)
 
-**Goal:** Promote `observation_master` to a self-describing ontology so the IOM validator can enforce semantic-class integrity in real time, and clean up known anti-patterns (cause-encoded aliases, crop-suffixed observations).
+Replace 7 hardcoded lookups with DB reads. Phase 2 made `observation_master.semantic_class` and `intent_semantic_class_allowlist` authoritative; Phase 3 wires the runtime through them.
 
-### What I verified in the live DB before planning
+### Targets and replacement strategy
 
-| Check | Result |
-|---|---|
-| `observation_master` rows | 2,537 — 100% have `observation_category` populated |
-| `observation_category` distribution | 30+ categories, top 8 cover 84% (PHYSIOLOGY 575, PEST 330, DISEASE 287, LEAF_SYMPTOM 260, MANAGEMENT 244, ABIOTIC 164, NUTRIENT 135, WHOLE_PLANT 80) |
-| `observation_type` | Only GENERIC/PRIMARY/SECONDARY — not useful for semantic class |
-| Wheat-suffixed obs | 4 active rows (`sticky_leaves_honeydew_wheat`, `termite_mud_tubes_wheat`, `lower_leaf_yellowing_wheat`, `upper_leaf_yellowing_wheat`) — agronomically crop-agnostic |
-| Cause-encoded aliases | **1 row** found: `MG_DEFICIENCY_VEINS_GREEN → interveinal_chlorosis_old` (violates `mem://safety/sugarcane-k-deficiency-hotfix-and-safety-gates`) |
-| `observation_aliases` schema | `(alias_code, canonical_code, created_at, updated_at)` — no `is_active` |
+| Hardcoded constant | Location | DB SSOT replacement |
+|---|---|---|
+| `BIOTIC_OBS_KEYS` | `decision/symbolic-reasoner.ts:327` | `observation_master.semantic_class IN ('pest','disease')` |
+| `EMERGENCY_OBS_CODES` | `agents/orchestrator.ts:421` | new column `observation_master.is_emergency boolean` (backfilled from current 12 codes + severity rules) |
+| `ADVISORY_DIRECT_ROUTES` | `agents/orchestrator.ts:3394` | new column `observation_intent_master.clarification_mode='DIRECT'` flag (already partly used via `intentMetaFromDB?.clarification_mode`); seed the 4 routes |
+| `IPM_DATABASE` + `DISEASE_DATABASE` | `agents/decision-graph-bridge-data.ts:38,115` | already superseded by `decision_rules` + `master_products`; remove fallback path, fail-closed |
+| `CULTURAL_STRATEGIES` / `getCulturalAdvice()` | `agents/decision-graph-bridge-data.ts:143` | `decision_rules` with `category='cultural'` filtered by crop + semantic_class |
+| `CROP_NAME_TO_CODE` + `normalizeCropName()` | `src/constants/crops.ts:13` | `crop_synonyms` table (DB) via existing `landsApi` / new `cropResolver` service |
 
-### Changes
+### Migration (single SQL)
 
-**1. Add `semantic_class` to `observation_master`** — single canonical taxonomy for the validator.
+1. `ALTER TABLE observation_master ADD COLUMN is_emergency boolean NOT NULL DEFAULT false;`
+   Backfill `true` for the 12 codes in `EMERGENCY_OBS_CODES` plus any obs where `severity_level='HIGH'` AND `semantic_class IN ('pest','disease')`.
+   Index `WHERE is_emergency`.
+2. Seed `observation_intent_master.clarification_mode='DIRECT'` for intents matching `FERTILIZER_NUTRITION`, `IRRIGATION_SCHEDULING`, `WEATHER_SPRAY_TIMING`, `CROP_HEALTH` (if not already).
+3. Ensure `crop_synonyms` has rows for all 80+ entries in `CROP_NAME_TO_CODE` (English/Hindi/Marathi). Audit + insert any missing.
 
-Enum values: `pest`, `disease`, `weed`, `nutrient`, `water_stress`, `weather_damage`, `phenology`, `physiology`, `mechanical`, `market`, `variety`, `management`, `ndvi`, `general`.
+### Code changes
 
-Backfill from `observation_category` via this mapping:
+**A. `decision/symbolic-reasoner.ts`** — replace `BIOTIC_OBS_KEYS.some(...)` with a per-turn cached `loadBioticObservationCodes(scope)` that selects `observation_code` from `observation_master` where `semantic_class IN ('pest','disease')`, cached in `scope.turnCache.observations`.
 
-```text
-PEST, INSECT_SIGNAL, PEST_VISIBLE, PEST_STAGE   → pest
-DISEASE, DISEASE_VISIBLE, FUNGAL, BACTERIAL     → disease
-WEED                                            → weed
-NUTRIENT, NUTRIENT_DEFICIENCY, DEFICIENCY       → nutrient
-ABIOTIC                                         → weather_damage   (frost/hail/heat/wind)
-STAGE, STAGE_INFO, establishment                → phenology
-PHYSIOLOGY, LEAF_SYMPTOM, STEM_SYMPTOM,
-ROOT_SYMPTOM, WHOLE_PLANT, FIELD_SYMPTOM,
-SYMPTOM, STRESS_VISIBLE                         → physiology
-MANAGEMENT, MONITORING, IPM, ACTION_TYPE        → management
-NDVI                                            → ndvi
-GENERAL, everything else                        → general
-```
+**B. `agents/orchestrator.ts`**
+- Remove `EMERGENCY_OBS_CODES` constant. Add `loadEmergencyObservationCodes(scope)` reading `observation_master.is_emergency=true`. Both call sites (`L7018`, `L7792`) use the cached Set.
+- Remove `ADVISORY_DIRECT_ROUTES` constant. Both call sites (`L3406`, `L4612`) consult `intentMetaFromDB?.clarification_mode === 'DIRECT'` (already the canonical signal); seed the 4 missing rows so behavior is preserved.
 
-**2. Quarantine the 1 cause-encoded alias** — `DELETE` the row, write audit entry into `intent_observation_mapping_audit` with `action='ALIAS_QUARANTINE'`.
+**C. `agents/decision-graph-bridge-data.ts`** — delete the file (or shrink to types-only). `decision-graph-bridge.ts:254` switches to a new `loadCulturalAdviceFromRules(scope, crop_code)` that selects from `decision_rules` where `category='cultural'` and `crop_code = ?`, falling back to a single DB-driven `'general'` crop bucket.
 
-**3. Promote 4 wheat-suffixed observations to crop-agnostic canonicals** (non-destructive):
-- Insert 4 new canonical rows (`sticky_leaves_honeydew`, `termite_mud_tubes`, `lower_leaf_yellowing`, `upper_leaf_yellowing`) with copied metadata + correct `semantic_class`.
-- Add `observation_aliases` rows mapping the wheat-suffixed codes → new canonicals (so loaders that resolve aliases route correctly).
-- **Do not** touch existing IOM rows that reference the wheat codes — the loader's alias resolver handles redirection; Phase 1's quarantine already removed the 54 cross-crop bad rows.
+**D. `src/constants/crops.ts`** — delete `CROP_NAME_TO_CODE` map. Keep the `normalizeCropName()` signature but convert to a thin sync wrapper that delegates to a new `src/services/cropResolver.ts` (async, queries `crop_synonyms`, in-memory LRU cached). Any sync callers get refactored to await. Inventory call sites first; if more than ~5 sync callers, keep a tiny English-only fallback map for the sync path and emit a console warning.
 
-**4. Upgrade `validate_iom_semantic_class(intent_code, observation_code)`** to read the new `semantic_class` column (replaces the regex-based heuristic from Phase 1).
+### Test plan
 
-**5. Install `BEFORE INSERT OR UPDATE` trigger** on `intent_observation_mapping` calling `validate_iom_semantic_class`. New bad rows are rejected at write time. Trigger sets `is_active=false` and logs a `BLOCKED_BY_TRIGGER` audit row instead of raising — non-disruptive, observable.
+- Migration verifier: count rows by `is_emergency`, by `semantic_class`, count cultural rules per crop.
+- Edge-fn smoke: run a sugarcane DEAD_HEART query → emergency path still fires; run a wheat fertilizer query → DIRECT bypass still fires.
+- Rule engine: confirm abiotic rules still skipped when pest observations present (BIOTIC_OBS_KEYS replacement).
+- Frontend: load `AddLand` page, switch language, confirm crop name dropdown still resolves.
 
-**6. Add intent → allowed semantic-classes table** `intent_semantic_class_allowlist` (intent_code, allowed_class[]) for the validator to consult. Seeded from the agronomic remap matrix used in Phase 1.5:
+### Risks / rollback
 
-```text
-IRRIGATION_QUERY            → water_stress, physiology, nutrient
-WEED_PROBLEM                → weed
-PEST_DAMAGE / *PEST*        → pest
-DISEASE_*                   → disease
-FERTILIZER_SCHEDULE         → nutrient, physiology
-NDVI_ALERT_QUERY            → ndvi
-FROST_OR_COLD_DAMAGE        → weather_damage
-WIND_STORM_DAMAGE           → weather_damage, mechanical
-HEATWAVE_STRESS             → weather_damage, physiology
-LODGING_OR_FALLING          → mechanical, weather_damage
-STEM_DAMAGE                 → mechanical, pest, disease
-LEAF_DAMAGE_VISIBLE         → physiology, pest, disease, mechanical
-CROP_STAGE_IDENTIFICATION   → phenology
-WEATHER_ADVISORY            → weather_damage, disease, physiology
-RESISTANCE_MANAGEMENT_QUERY → weed, pest, disease, management
-GENERAL_INFO                → * (all allowed)
-```
+- The `is_emergency` column and `clarification_mode='DIRECT'` seed are additive — rollback is `UPDATE observation_master SET is_emergency=false` and removing the seeded rows.
+- `CROP_NAME_TO_CODE` deletion can break sync callers in React components; addressed by keeping the function name + warning fallback.
+- `IPM_DATABASE`/`DISEASE_DATABASE` are already marked deprecated/fallback-only; deletion only matters if `decision_rules` coverage gaps exist — verified during Phase 2 (2,537 obs, 309 disease, 427 pest already classified).
 
-### Reversibility
-
-- `DROP COLUMN semantic_class` reverts (1).
-- Single `INSERT` restores the deleted alias (2).
-- `DELETE` the 4 new canonical rows + their aliases reverts (3).
-- `DROP TRIGGER` reverts (5).
-- `DROP TABLE intent_semantic_class_allowlist` reverts (6).
-
-Full rollback SQL included in the migration description.
-
-### Out of scope (deferred to Phase 3)
-
-- De-hardcoding `BIOTIC_OBS_KEYS`, `EMERGENCY_OBS_CODES`, `ADVISORY_DIRECT_ROUTES`, `IPM_DATABASE`, `DISEASE_DATABASE`, `CULTURAL_STRATEGIES` in the brain — these are code-only edits and depend on `semantic_class` being live.
-
-Approve to proceed and I'll emit the migration.
+Ready to execute on approval. Will run the migration first, verify, then ship the code changes in one pass.
