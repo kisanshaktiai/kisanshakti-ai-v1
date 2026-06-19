@@ -1056,9 +1056,16 @@ export async function evaluateCandidateHypotheses(
     
     const topCandidates = deduplicatedCandidates.slice(0, 4);
     
+    const varietyAdjustedCount = scoredCandidates.filter((c) => c.variety_modifier !== undefined).length;
+    if (input.variety_resistance && input.variety_resistance.length > 0) {
+      console.log(`   🧬 [HypothesisEval] Variety profile applied: ${input.variety_resistance.length} resistance entries, ${varietyAdjustedCount}/${scoredCandidates.length} candidates re-weighted`);
+    }
     console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} unique candidates (from ${scoredCandidates.length} scored, ${rulesRaw.length} loaded):`);
     topCandidates.forEach((c, i) => {
-      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%`);
+      const varietyTag = c.variety_modifier
+        ? ` [variety ${c.variety_resistance_level}×${c.variety_modifier.toFixed(2)} via ${c.variety_resistance_match}]`
+        : '';
+      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%${varietyTag}`);
     });
     
     return {
