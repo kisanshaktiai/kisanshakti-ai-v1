@@ -7004,9 +7004,11 @@ export class AIAgentOrchestrator {
         // Complete audit trail
         await auditLogger.completeTurn(Date.now() - startTime);
         
-        // Wire symptomKeys + isEmergency into IMMEDIATE return path
+        // Wire symptomKeys + isEmergency into IMMEDIATE return path.
+        // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
         const obsArray = Array.from(allObservationsForPreAuth || []);
-        const isEmergencyImmediate = obsArray.some(code => EMERGENCY_OBS_CODES.has(code));
+        const emergencyCodesImmediate = await loadEmergencyObservationCodes(this.supabase);
+        const isEmergencyImmediate = obsArray.some(code => emergencyCodesImmediate.has(code));
         
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         decisionOutput.symptom_keys = obsArray;
