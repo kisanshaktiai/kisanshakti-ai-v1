@@ -38,7 +38,7 @@ import {
   type ProductRecommendation as RepoProduct 
 } from './product-repository.ts';
 
-import { getCulturalAdvice } from './decision-graph-bridge-data.ts';
+import { getCulturalAdviceFromDB } from '../decision/db-lookups.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // RULE EVALUATION INTERFACE
