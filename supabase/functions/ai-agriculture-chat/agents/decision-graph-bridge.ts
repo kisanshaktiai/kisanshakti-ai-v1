@@ -237,21 +237,22 @@ async function evaluatePestIPM(supabase: any, context: RuleEvaluationContext): P
   // High severity: Bio + Chem
   if (severity === 'HIGH' || severity === 'CRITICAL') {
     const bio = await getProductsByIPMLevel(supabase, cropNorm, 'pest', pestNorm, 4);
-    if (bio.length > 0) rules.push(buildIPMRecommendation(bio[0], context, severity, false, true));
+    if (bio.length > 0) rules.push(await buildIPMRecommendation(supabase, bio[0], context, severity, false, true));
     
     const chem = await getProductsByIPMLevel(supabase, cropNorm, 'pest', pestNorm, 5);
-    if (chem.length > 0) rules.push(buildIPMRecommendation(chem[0], context, severity, false, false));
+    if (chem.length > 0) rules.push(await buildIPMRecommendation(supabase, chem[0], context, severity, false, false));
   } else {
     // Single appropriate level
     const products = await getProductsByIPMLevel(supabase, cropNorm, 'pest', pestNorm, severity === 'LOW' ? 3 : 4);
-    if (products.length > 0) rules.push(buildIPMRecommendation(products[0], context, severity, false, false));
+    if (products.length > 0) rules.push(await buildIPMRecommendation(supabase, products[0], context, severity, false, false));
   }
   
   return rules;
 }
 
-function buildIPMRecommendation(product: RepoProduct, context: any, severity: string, organic: boolean, isBio: boolean): EvaluatedRule {
-  const cultural = getCulturalAdvice(context.crop_code || 'GENERAL');
+async function buildIPMRecommendation(supabase: any, product: RepoProduct, context: any, severity: string, organic: boolean, isBio: boolean): Promise<EvaluatedRule> {
+  // Phase 3 SSOT: cultural advice from public.cultural_strategies.
+  const cultural = await getCulturalAdviceFromDB(supabase, context.crop_code || 'GENERAL');
   return {
     rule_id: `IPM_${product.sku}`,
     category: 'ipm',
