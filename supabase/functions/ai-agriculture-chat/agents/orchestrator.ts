@@ -7779,10 +7779,11 @@ export class AIAgentOrchestrator {
         // Don't fail the request for audit issues
       }
       
-      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path
-      // Uses module-level EMERGENCY_OBS_CODES constant (deduplicated)
+      // Wire symptomKeys + isEmergency into main DECISION_PROVIDED return path.
+      // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
-      const isEmergencyMain = obsArrayMain.some(code => EMERGENCY_OBS_CODES.has(code));
+      const emergencyCodesMain = await loadEmergencyObservationCodes(this.supabase);
+      const isEmergencyMain = obsArrayMain.some(code => emergencyCodesMain.has(code));
       
       return {
         type: 'DECISION_PROVIDED',
