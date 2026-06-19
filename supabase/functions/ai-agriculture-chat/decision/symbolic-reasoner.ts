@@ -260,6 +260,7 @@ function setCachedObsMetadata(cacheKey: string, data: Map<string, ObservationMet
 
 export class SymbolicReasoner {
   private supabase: any;
+  private bioticCodesPromise: Promise<Set<string>> | null = null;
   
   /**
    * GAP #1 FIX: Accept external Supabase client to prevent connection exhaustion.
@@ -270,6 +271,18 @@ export class SymbolicReasoner {
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
+  }
+
+  /**
+   * Phase 3 SSOT: pest/disease observation codes come from
+   * observation_master.semantic_class via db-lookups.ts (cached per instance).
+   */
+  private async getBioticObservationCodes(): Promise<Set<string>> {
+    if (!this.bioticCodesPromise) {
+      const { loadBioticObservationCodes } = await import('./db-lookups.ts');
+      this.bioticCodesPromise = loadBioticObservationCodes(this.supabase);
+    }
+    return this.bioticCodesPromise;
   }
   
   /**
