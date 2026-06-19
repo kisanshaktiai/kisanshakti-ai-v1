@@ -118,13 +118,15 @@ export async function loadVarietyProfile(
   // Schema columns: threat_name, threat_type, resistance_level, notes
   const { data: resRaw } = await supabase
     .from("variety_resistance")
-    .select("threat_name, threat_type, resistance_level, notes, observation_code")
+    .select("threat_name, threat_type, resistance_level, notes, observation_code, canonical_observation_code")
     .eq("variety_id", row.id);
   const res = (resRaw || []).map((r: any) => ({
     pathogen: r.threat_name || r.threat_type || "unknown",
+    threat_type: r.threat_type ?? null,
     level: r.resistance_level || "unknown",
     notes: r.notes ?? null,
     observation_code: r.observation_code ?? null,
+    canonical_observation_code: r.canonical_observation_code ?? null,
   }));
 
 
