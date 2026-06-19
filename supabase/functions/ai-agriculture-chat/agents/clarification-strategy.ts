@@ -111,6 +111,9 @@ export interface RuleDrivenClarificationInput {
   // New: NDVI context for intelligent option ranking
   ndvi_level?: string;
   ndvi_trend?: string;
+  // PHASE-4: planted-variety resistance profile for variety-aware hypothesis ranking
+  variety_id?: string | null;
+  variety_resistance?: any[];
   weather?: {
     temp?: number;
     humidity?: number;
