@@ -5207,12 +5207,16 @@ export class AIAgentOrchestrator {
         // ═══════════════════════════════════════════════════════════════════════════
         let ruleDrivenClarification = null;
         if (lockedStage && this.supabase) {
+          const varietyProfileForClarif = (landContext as any)?.variety_profile || null;
           const ruleDrivenInput: RuleDrivenClarificationInput = {
             crop_code: lockedStage.crop_code,
             stage: lockedStage.growth_stage,
             current_symptoms: inductionResult.symptoms.map(s => s.symbol),
             language: options.language || 'mr',
-            supabaseClient: this.supabase
+            supabaseClient: this.supabase,
+            // PHASE-4: variety-aware ranking
+            variety_id: varietyProfileForClarif?.variety_id ?? null,
+            variety_resistance: varietyProfileForClarif?.resistance ?? undefined,
           };
           
           ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);
