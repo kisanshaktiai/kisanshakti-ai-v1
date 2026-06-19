@@ -4430,6 +4430,7 @@ export class AIAgentOrchestrator {
           console.log(`   📊 DAS resolved: ${resolvedDAS} (canonical=${canonicalContext?.days_since_sowing}, land=${landContext?.days_since_sowing}, locked=${lockedCropContext?.days_since_sowing})`);
           console.log(`   📊 Observations (${currentObservations.length}): ${currentObservations.slice(0, 5).join(', ') || 'none'}`);
           
+          const varietyProfileForHypo = (landContext as any)?.variety_profile || null;
           const hypothesisResult = await evaluateCandidateHypotheses({
             crop_code: cropCode,
             growth_stage: growthStage,
@@ -4439,7 +4440,10 @@ export class AIAgentOrchestrator {
             known_observations: currentObservations,
             user_query: farmerMessage,
             supabaseClient: this.supabase,
-            trace_id: traceId
+            trace_id: traceId,
+            // PHASE-4: variety-aware confidence modifier
+            variety_id: varietyProfileForHypo?.variety_id ?? null,
+            variety_resistance: varietyProfileForHypo?.resistance ?? undefined,
           });
           
           agentsUsed.push('HYPOTHESIS_EVALUATOR');
@@ -5203,12 +5207,16 @@ export class AIAgentOrchestrator {
         // ═══════════════════════════════════════════════════════════════════════════
         let ruleDrivenClarification = null;
         if (lockedStage && this.supabase) {
+          const varietyProfileForClarif = (landContext as any)?.variety_profile || null;
           const ruleDrivenInput: RuleDrivenClarificationInput = {
             crop_code: lockedStage.crop_code,
             stage: lockedStage.growth_stage,
             current_symptoms: inductionResult.symptoms.map(s => s.symbol),
             language: options.language || 'mr',
-            supabaseClient: this.supabase
+            supabaseClient: this.supabase,
+            // PHASE-4: variety-aware ranking
+            variety_id: varietyProfileForClarif?.variety_id ?? null,
+            variety_resistance: varietyProfileForClarif?.resistance ?? undefined,
           };
           
           ruleDrivenClarification = await fetchRuleDrivenClarificationOptions(ruleDrivenInput);

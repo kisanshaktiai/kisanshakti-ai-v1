@@ -111,6 +111,9 @@ export interface RuleDrivenClarificationInput {
   // New: NDVI context for intelligent option ranking
   ndvi_level?: string;
   ndvi_trend?: string;
+  // PHASE-4: planted-variety resistance profile for variety-aware hypothesis ranking
+  variety_id?: string | null;
+  variety_resistance?: any[];
   weather?: {
     temp?: number;
     humidity?: number;
@@ -440,7 +443,10 @@ export async function fetchRuleDrivenClarificationOptions(
     known_observations: current_symptoms,
     user_query: input.user_query || '',
     supabaseClient,
-    trace_id: traceId
+    trace_id: traceId,
+    // PHASE-4: forward variety-resistance for variety-aware ranking
+    variety_id: input.variety_id ?? null,
+    variety_resistance: input.variety_resistance,
   });
   
   const candidates = hypothesisResult.candidates;

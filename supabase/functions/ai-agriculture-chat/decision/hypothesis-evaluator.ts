@@ -26,7 +26,7 @@
 
 // Supabase client is passed via input, no import needed
 
-export const HYPOTHESIS_EVALUATOR_VERSION = '1.2.0'; // Added temporal constraint filtering
+export const HYPOTHESIS_EVALUATOR_VERSION = '1.3.0'; // PHASE-4: variety-resistance confidence modifier
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-17: TEMPORAL CONSTRAINT VALIDATOR IMPORT
@@ -43,6 +43,14 @@ import {
 // TYPE DEFINITIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
+export interface VarietyResistanceEntry {
+  pathogen: string;
+  threat_type?: string | null;
+  level: string;            // HR | R | MR | MS | S | unknown
+  observation_code?: string | null;
+  canonical_observation_code?: string | null;
+}
+
 export interface HypothesisEvaluationInput {
   crop_code: string;
   growth_stage: string;
@@ -58,6 +66,10 @@ export interface HypothesisEvaluationInput {
   user_query: string;
   supabaseClient: any;
   trace_id?: string;
+  // PHASE-4: Variety-aware reasoning — adjusts candidate confidence based on
+  // the planted variety's catalogued resistance/susceptibility profile.
+  variety_id?: string | null;
+  variety_resistance?: VarietyResistanceEntry[];
 }
 
 export interface CandidateHypothesis {
@@ -72,6 +84,10 @@ export interface CandidateHypothesis {
   differentiating_questions: any[];
   matched_conditions: string[];
   conditions_json: any;
+  // PHASE-4: Variety resistance influence on score
+  variety_modifier?: number;            // multiplicative factor actually applied
+  variety_resistance_level?: string;    // matched level (HR/R/MR/MS/S)
+  variety_resistance_match?: string;    // pathogen / observation that matched
 }
 
 export interface ObservableCharacteristic {
@@ -205,6 +221,106 @@ function normalizeCauseForDedup(cause: string): string {
   
   return normalized;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PHASE-4: VARIETY-RESISTANCE CONFIDENCE MODIFIER
+// Adjusts a candidate hypothesis score using the planted variety's catalogued
+// resistance/susceptibility profile (from variety_resistance table).
+//
+//   HR / R   → cause is unlikely → lower score (variety is resistant)
+//   MR       → mild down-weight
+//   MS / S   → variety is susceptible → boost score
+//
+// SAFETY: This NEVER hard-filters a candidate. Treatment safety gates and
+// downstream prescription rules remain authoritative. The modifier only
+// re-ranks hypotheses so the most plausible biology surfaces first.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const VARIETY_RESISTANCE_MULTIPLIER: Record<string, number> = {
+  HR: 0.55,    // highly resistant — strong down-weight
+  R: 0.70,     // resistant
+  MR: 0.88,    // moderately resistant — mild down-weight
+  MS: 1.10,    // moderately susceptible — mild boost
+  S: 1.25,     // susceptible — boost
+};
+
+function normalizeForVarietyMatch(s: string | null | undefined): string {
+  if (!s) return '';
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+interface VarietyMatchResult {
+  multiplier: number;
+  level: string;
+  matchedOn: string;
+}
+
+function computeVarietyResistanceMatch(
+  candidate: { cause: string; canonical_group: string; observable_characteristics: ObservableCharacteristic[]; matched_conditions: string[] },
+  resistance: VarietyResistanceEntry[] | undefined,
+): VarietyMatchResult | null {
+  if (!resistance || resistance.length === 0) return null;
+
+  // Build candidate fingerprint
+  const upperCodes = new Set<string>();
+  const normalizedTokens = new Set<string>();
+
+  upperCodes.add(String(candidate.cause || '').toUpperCase());
+  upperCodes.add(String(candidate.canonical_group || '').toUpperCase());
+  for (const oc of candidate.observable_characteristics || []) {
+    if (oc?.observation_key) upperCodes.add(String(oc.observation_key).toUpperCase());
+  }
+  for (const mc of candidate.matched_conditions || []) {
+    upperCodes.add(String(mc).toUpperCase());
+  }
+  normalizedTokens.add(normalizeForVarietyMatch(candidate.cause));
+  normalizedTokens.add(normalizeForVarietyMatch(candidate.canonical_group));
+  for (const oc of candidate.observable_characteristics || []) {
+    if (oc?.label_en) normalizedTokens.add(normalizeForVarietyMatch(oc.label_en));
+  }
+  const causeNorm = normalizeForVarietyMatch(candidate.cause);
+
+  let best: VarietyMatchResult | null = null;
+  for (const entry of resistance) {
+    const level = String(entry.level || '').toUpperCase();
+    const mult = VARIETY_RESISTANCE_MULTIPLIER[level];
+    if (!mult || mult === 1) continue;
+
+    const codeKeys = [entry.observation_code, entry.canonical_observation_code]
+      .filter(Boolean)
+      .map((c) => String(c).toUpperCase());
+
+    let matchedOn: string | null = null;
+
+    for (const ck of codeKeys) {
+      if (upperCodes.has(ck)) { matchedOn = ck; break; }
+    }
+
+    if (!matchedOn) {
+      const pathNorm = normalizeForVarietyMatch(entry.pathogen);
+      if (pathNorm && pathNorm.length >= 4) {
+        if (causeNorm.includes(pathNorm) || pathNorm.includes(causeNorm)) {
+          matchedOn = entry.pathogen;
+        } else {
+          for (const tok of normalizedTokens) {
+            if (tok && (tok.includes(pathNorm) || pathNorm.includes(tok)) && tok.length >= 4) {
+              matchedOn = entry.pathogen;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (matchedOn) {
+      // Keep the entry with the strongest effect (max distance from 1.0)
+      if (!best || Math.abs(mult - 1) > Math.abs(best.multiplier - 1)) {
+        best = { multiplier: mult, level, matchedOn };
+      }
+    }
+  }
+
+  return best;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PARTIAL CONDITION MATCHING
@@ -860,8 +976,36 @@ export async function evaluateCandidateHypotheses(
       
       // Calculate total score
       const priorityScore = (rule.priority || 50) / 100;
-      const totalScore = (stageRelevance * 0.4) + (partialScore * 0.4) + (priorityScore * 0.2);
-      
+      let totalScore = (stageRelevance * 0.4) + (partialScore * 0.4) + (priorityScore * 0.2);
+
+      // PHASE-4: Apply variety-resistance modifier (post-base scoring).
+      // Down-weights causes the planted variety resists; up-weights
+      // susceptibility. No-op when no variety_resistance was supplied.
+      const varietyMatch = computeVarietyResistanceMatch(
+        {
+          cause: rule.cause || 'unknown',
+          canonical_group: rule.canonical_group || rule.category || 'general',
+          observable_characteristics: effectiveObsChars,
+          matched_conditions: matchedConditions,
+        },
+        input.variety_resistance,
+      );
+      let varietyModifier: number | undefined;
+      let varietyLevel: string | undefined;
+      let varietyMatchedOn: string | undefined;
+      if (varietyMatch) {
+        const before = totalScore;
+        totalScore = Math.max(0, Math.min(1, totalScore * varietyMatch.multiplier));
+        varietyModifier = varietyMatch.multiplier;
+        varietyLevel = varietyMatch.level;
+        varietyMatchedOn = varietyMatch.matchedOn;
+        console.log(
+          `   🧬 [VarietyResistance] ${rule.rule_id} (${rule.cause}) matched ${varietyMatch.matchedOn} ` +
+          `→ ${varietyMatch.level} ×${varietyMatch.multiplier.toFixed(2)} ` +
+          `score ${(before * 100).toFixed(0)}% → ${(totalScore * 100).toFixed(0)}%`
+        );
+      }
+
       scoredCandidates.push({
         rule_id: rule.rule_id,
         cause: rule.cause || 'unknown',
@@ -873,9 +1017,13 @@ export async function evaluateCandidateHypotheses(
         observable_characteristics: effectiveObsChars,
         differentiating_questions: rule.differentiating_questions || [],
         matched_conditions: matchedConditions,
-        conditions_json: rule.conditions_json || {}
+        conditions_json: rule.conditions_json || {},
+        variety_modifier: varietyModifier,
+        variety_resistance_level: varietyLevel,
+        variety_resistance_match: varietyMatchedOn,
       });
     }
+
     
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: DEDUPLICATE by normalized cause + Rank and return top 4 candidates
@@ -908,9 +1056,16 @@ export async function evaluateCandidateHypotheses(
     
     const topCandidates = deduplicatedCandidates.slice(0, 4);
     
+    const varietyAdjustedCount = scoredCandidates.filter((c) => c.variety_modifier !== undefined).length;
+    if (input.variety_resistance && input.variety_resistance.length > 0) {
+      console.log(`   🧬 [HypothesisEval] Variety profile applied: ${input.variety_resistance.length} resistance entries, ${varietyAdjustedCount}/${scoredCandidates.length} candidates re-weighted`);
+    }
     console.log(`   ✅ [HypothesisEval] Top ${topCandidates.length} unique candidates (from ${scoredCandidates.length} scored, ${rulesRaw.length} loaded):`);
     topCandidates.forEach((c, i) => {
-      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%`);
+      const varietyTag = c.variety_modifier
+        ? ` [variety ${c.variety_resistance_level}×${c.variety_modifier.toFixed(2)} via ${c.variety_resistance_match}]`
+        : '';
+      console.log(`      ${i + 1}. ${c.cause} (${c.canonical_group}) - score: ${(c.total_score * 100).toFixed(0)}%${varietyTag}`);
     });
     
     return {

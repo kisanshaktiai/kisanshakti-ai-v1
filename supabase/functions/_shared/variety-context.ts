@@ -30,7 +30,14 @@ export interface VarietyProfile {
   availability_status?: string | null;
   state_suitability?: string[] | null;
   state_suitability_ids?: string[] | null;
-  resistance?: Array<{ pathogen: string; level: string; notes?: string | null }>;
+  resistance?: Array<{
+    pathogen: string;
+    threat_type?: string | null;
+    level: string;
+    notes?: string | null;
+    observation_code?: string | null;
+    canonical_observation_code?: string | null;
+  }>;
   state_match: boolean;
   source: "exact" | "fuzzy" | "code" | "fallback_crop_default" | "none";
 }
@@ -118,13 +125,15 @@ export async function loadVarietyProfile(
   // Schema columns: threat_name, threat_type, resistance_level, notes
   const { data: resRaw } = await supabase
     .from("variety_resistance")
-    .select("threat_name, threat_type, resistance_level, notes, observation_code")
+    .select("threat_name, threat_type, resistance_level, notes, observation_code, canonical_observation_code")
     .eq("variety_id", row.id);
   const res = (resRaw || []).map((r: any) => ({
     pathogen: r.threat_name || r.threat_type || "unknown",
+    threat_type: r.threat_type ?? null,
     level: r.resistance_level || "unknown",
     notes: r.notes ?? null,
     observation_code: r.observation_code ?? null,
+    canonical_observation_code: r.canonical_observation_code ?? null,
   }));
 
 
