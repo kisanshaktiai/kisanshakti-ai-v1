@@ -23,6 +23,8 @@ export const INTENT_CLASSIFIER_VERSION = '4.0.0';
 // edge runtime is serving a stale bundle and needs a forced redeploy.
 console.log(`[IntentClassifier] MODULE_LOAD version=${INTENT_CLASSIFIER_VERSION}`);
 
+const ESTABLISHMENT_FAILURE_RE = /उगव(?:ले|त|ण|णी)?\s*(नाही|कमी)|अजून\s*उगवले\s*नाही|germin(?:ation|ate|ated).*\b(poor|fail|failed|not|no)\b|\b(poor|failed|no)\s+germin|emerg(?:ence|ed|e).*\b(poor|fail|failed|not|no)\b|अंकुरण\s*(नहीं|कम)|धान\s*(नहीं\s*उगा|कम\s*उगा)/i;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // CANONICAL INTENT REGISTRY (Fix 1) — loaded once per cold start from DB
 // ═══════════════════════════════════════════════════════════════════════════
@@ -128,6 +130,7 @@ ROUTING HINTS:
 - "what fertilizer to apply", "खत", "खाद", "खते", "कोणते खत", "खत द्यावे" → FERTILIZER_SCHEDULE
 - "spray", "फवारणी", "छिड़काव", "spraying schedule" → SPRAY_TIMING_QUERY
 - "water", "पाणी", "पानी", "irrigation timing" → IRRIGATION_QUERY or IRRIGATION_SCHEDULING_QUERY
+- "did not germinate", "not emerging", "poor germination", Marathi "उगवले नाही / उगवत नाही / उगवण कमी", Hindi "अंकुरण नहीं / नहीं उगा" → EMERGENCE_FAILURE
 - "yellowing", "spots", "wilting", "borer", "insect visible" → diagnostic intents
   (COLOR_CHANGE, LEAF_MARKS_OR_SPOTS, WILTING_OR_DROOPING, STEM_DAMAGE, PEST_PRESENCE_VISIBLE, ...)
 - "when to harvest" → HARVEST_TIMING
@@ -240,6 +243,12 @@ export async function classifyFarmerIntent(
     return emergencyFallback(farmerMessage, new Set());
   }
 
+  const deterministic = deterministicSymptomIntent(farmerMessage, validCodes);
+  if (deterministic) {
+    console.log(`   ✅ Deterministic symptom intent: ${deterministic.intent_code} (${(deterministic.confidence * 100).toFixed(0)}%)`);
+    return deterministic;
+  }
+
   const prompt = buildConstrainedPrompt(farmerMessage, validCodes, landContext);
 
   try {
@@ -285,9 +294,20 @@ function emit(code: string, conf: number, validCodes: Set<string>): IntentClassi
   return { intent_code: 'UNKNOWN_OBSERVATION', confidence: 0.15 };
 }
 
+function deterministicSymptomIntent(message: string, validCodes: Set<string>): IntentClassification | null {
+  const original = message || '';
+  if (ESTABLISHMENT_FAILURE_RE.test(original)) {
+    return emit('EMERGENCE_FAILURE', 0.82, validCodes);
+  }
+  return null;
+}
+
 function emergencyFallback(message: string, validCodes: Set<string>): IntentClassification {
   const original = message || '';
   if (!original.trim()) return emit('UNKNOWN_OBSERVATION', 0.0, validCodes);
+
+  const deterministic = deterministicSymptomIntent(original, validCodes);
+  if (deterministic) return deterministic;
 
   // Next-crop recommendation (Phase 1 — P0). Must run BEFORE generic crop/fasal
   // matchers so "नवीन पीक घेवू" / "अगली फसल" don't fall to GENERAL_CROP_INFO.
