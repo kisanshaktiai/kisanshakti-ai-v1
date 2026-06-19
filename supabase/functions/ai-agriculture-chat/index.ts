@@ -2504,7 +2504,34 @@ serve(async (req) => {
     } else if (isClarificationResponse) {
       computedDecisionState = 'awaiting_clarification';
     } else {
-      computedDecisionState = 'no_action_needed';
+      // ─────────────────────────────────────────────────────────────────────
+      // SUPPRESSOR-5 FIX (2026-06-19): the bare catch-all used to emit
+      // `no_action_needed` whenever orchestrator returned `DECISION_PROVIDED`
+      // with zero actions. For a symptom-bearing query that left the farmer
+      // staring at a generic 277-char template every turn.
+      //
+      // If the brain produced no actions but the request clearly carried
+      // symptom evidence (intent flagged as symptomatic, or observation/
+      // induction set non-empty), surface `awaiting_clarification` so the
+      // session loop will ask one targeted clarifying question instead of
+      // closing the turn as resolved.
+      // ─────────────────────────────────────────────────────────────────────
+      const orchestratorMeta = orchestratorResponse?.metadata || {};
+      const decisionMeta = orchestratorResponse?.decision_output?.metadata || {};
+      const symptomEvidence = Boolean(
+        orchestratorMeta.symptom_evidence_present ||
+        decisionMeta.symptom_evidence_present ||
+        orchestratorMeta.induction_symptom_count > 0 ||
+        decisionMeta.induction_symptom_count > 0 ||
+        (Array.isArray(orchestratorMeta.observation_codes) && orchestratorMeta.observation_codes.length > 0) ||
+        (Array.isArray(decisionMeta.observation_codes) && decisionMeta.observation_codes.length > 0)
+      );
+      if (orchestratorResponse?.type === 'DECISION_PROVIDED' && (!actions_returned || actions_returned.length === 0) && symptomEvidence) {
+        computedDecisionState = 'awaiting_clarification';
+        console.warn(`⚠️ [Session] DECISION_PROVIDED with 0 actions + symptom evidence → forcing 'awaiting_clarification' (was 'no_action_needed')`);
+      } else {
+        computedDecisionState = 'no_action_needed';
+      }
     }
     
     // ═══════════════════════════════════════════════════════════════════════════

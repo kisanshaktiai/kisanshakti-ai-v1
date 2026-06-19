@@ -3402,12 +3402,24 @@ export class AIAgentOrchestrator {
         (canonicalContext as any)?.crop ||
         (landContext as any)?.crop_schedule?.crop_name ||
         (landContext as any)?.crop_name;
-      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
+      // SUPPRESSOR-1 FIX (2026-06-19): DIRECT_MODE must NOT pre-empt the brain when the
+      // farmer is reporting symptoms. A misclassified `GENERAL_CROP_INFO` (e.g. "rice hasn't
+      // germinated" → advisory route at 90%) would otherwise lock the pipeline into a generic
+      // advisory and skip every clarification, producing the same template response for every
+      // symptom-bearing query. Symptom evidence (induction or observation mapper) wins.
+      const symptomEvidencePresent =
+        (inductionResult?.symptoms?.length ?? 0) > 0 ||
+        hasMeaningfulCodes(mappedCodes) ||
+        isSymptomBasedIntent;
+      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer && !symptomEvidencePresent) {
         directModeBypass = true;
         bypassClarification = true;
         console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass})`);
         console.log(`   Crop: ${cropFromAnyLayer}, Stage: ${(landContext as any)?.growth_stage || (canonicalContext as any)?.stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
+      } else if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer && symptomEvidencePresent) {
+        console.log(`   🚧 [DIRECT_MODE BLOCKED] Intent ${intentCode} would bypass clarification, but symptom evidence is present — falling through to symbolic brain (symptoms=${inductionResult?.symptoms?.length ?? 0}, mappedCodes=${hasMeaningfulCodes(mappedCodes)}, symptomIntent=${isSymptomBasedIntent})`);
+        agentsUsed.push('DIRECT_MODE_BLOCKED_BY_SYMPTOMS');
       }
 
       
@@ -3421,7 +3433,16 @@ export class AIAgentOrchestrator {
         'PEST_OBSERVATION', 'DISEASE_OBSERVATION', 'REPORT_SYMPTOM',
         'GROWTH_ANOMALY', 'WILTING_DRYING', 'YELLOWING', 'NUTRIENT_DEFICIENCY',
         'BORER_DAMAGE', 'DEAD_HEART', 'INSECT_DAMAGE', 'FUNGAL_INFECTION',
-        'UNKNOWN_OBSERVATION'
+        'UNKNOWN_OBSERVATION',
+        // 2026-06-19: missing diagnostic intents that were forcing the stage-clarification path
+        // to a STAGE_CONTEXT_REQUIRED dead-end. These are symptom reports — proceed with default
+        // stage so symbolic brain can match rules.
+        'EMERGENCE_FAILURE', 'POOR_GERMINATION', 'CROP_PROBLEM_REPORT',
+        'COLOR_CHANGE', 'LEAF_DAMAGE_VISIBLE', 'LEAF_MARKS_OR_SPOTS',
+        'WATER_STRESS_SIGNAL', 'NUTRIENT_STRESS_SIGNAL',
+        'UNEVEN_FIELD_PATTERN', 'YIELD_OR_OUTPUT_ISSUE',
+        'PEST_PRESENCE_VISIBLE', 'DISEASE_LIKE_PATTERN', 'WILTING_OR_DROOPING',
+        'ROOT_OR_BASE_PROBLEM'
       ]);
       
       if (intentMetaFromDB?.requires_stage_context && !landContext?.growth_stage) {

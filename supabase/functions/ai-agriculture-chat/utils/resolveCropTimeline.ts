@@ -131,7 +131,14 @@ export async function resolveCropTimeline(args: {
   if (!args.landId) return empty;
 
   const cacheKey = `cropTimeline:${args.landId}`;
-  const cache = args.scope?.turnCache;
+  // 2026-06-19: harden against plain-object turnCache (caused
+  // `cache.has is not a function` crash that was silently swallowed → every
+  // turn did a full DB roundtrip with stale-context risk).
+  const rawCache = args.scope?.turnCache as unknown;
+  const cache: Map<string, CropTimeline> | null =
+    rawCache && typeof (rawCache as any).has === 'function' && typeof (rawCache as any).get === 'function' && typeof (rawCache as any).set === 'function'
+      ? (rawCache as Map<string, CropTimeline>)
+      : null;
   if (cache && cache.has(cacheKey)) return cache.get(cacheKey) as CropTimeline;
 
   try {
