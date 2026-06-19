@@ -976,8 +976,36 @@ export async function evaluateCandidateHypotheses(
       
       // Calculate total score
       const priorityScore = (rule.priority || 50) / 100;
-      const totalScore = (stageRelevance * 0.4) + (partialScore * 0.4) + (priorityScore * 0.2);
-      
+      let totalScore = (stageRelevance * 0.4) + (partialScore * 0.4) + (priorityScore * 0.2);
+
+      // PHASE-4: Apply variety-resistance modifier (post-base scoring).
+      // Down-weights causes the planted variety resists; up-weights
+      // susceptibility. No-op when no variety_resistance was supplied.
+      const varietyMatch = computeVarietyResistanceMatch(
+        {
+          cause: rule.cause || 'unknown',
+          canonical_group: rule.canonical_group || rule.category || 'general',
+          observable_characteristics: effectiveObsChars,
+          matched_conditions: matchedConditions,
+        },
+        input.variety_resistance,
+      );
+      let varietyModifier: number | undefined;
+      let varietyLevel: string | undefined;
+      let varietyMatchedOn: string | undefined;
+      if (varietyMatch) {
+        const before = totalScore;
+        totalScore = Math.max(0, Math.min(1, totalScore * varietyMatch.multiplier));
+        varietyModifier = varietyMatch.multiplier;
+        varietyLevel = varietyMatch.level;
+        varietyMatchedOn = varietyMatch.matchedOn;
+        console.log(
+          `   🧬 [VarietyResistance] ${rule.rule_id} (${rule.cause}) matched ${varietyMatch.matchedOn} ` +
+          `→ ${varietyMatch.level} ×${varietyMatch.multiplier.toFixed(2)} ` +
+          `score ${(before * 100).toFixed(0)}% → ${(totalScore * 100).toFixed(0)}%`
+        );
+      }
+
       scoredCandidates.push({
         rule_id: rule.rule_id,
         cause: rule.cause || 'unknown',
@@ -989,9 +1017,13 @@ export async function evaluateCandidateHypotheses(
         observable_characteristics: effectiveObsChars,
         differentiating_questions: rule.differentiating_questions || [],
         matched_conditions: matchedConditions,
-        conditions_json: rule.conditions_json || {}
+        conditions_json: rule.conditions_json || {},
+        variety_modifier: varietyModifier,
+        variety_resistance_level: varietyLevel,
+        variety_resistance_match: varietyMatchedOn,
       });
     }
+
     
     // ═══════════════════════════════════════════════════════════════════════
     // STEP 3: DEDUPLICATE by normalized cause + Rank and return top 4 candidates
