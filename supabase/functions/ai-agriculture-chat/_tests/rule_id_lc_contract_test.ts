@@ -15,7 +15,10 @@
  * and the symbolic brain will fall back to wrong/empty results.
  */
 
-import "https://deno.land/std@0.224.0/dotenv/load.ts";
+// NB (2026-06-19): replaced `std/dotenv/load` with direct Deno.env reads —
+// root .env.example declares VITE_DEFAULT_TENANT_ID which is not present in
+// the sandbox .env, and the strict loader throws on the mismatch. The Supabase
+// test runner already injects required vars into the process.
 import {
   assert,
   assertEquals,
@@ -24,8 +27,8 @@ import {
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { ruleIdLc } from "../utils/id-normalizer.ts";
 
-const SUPABASE_URL = Deno.env.get("VITE_SUPABASE_URL")!;
-const SUPABASE_ANON_KEY = Deno.env.get("VITE_SUPABASE_PUBLISHABLE_KEY")!;
+const SUPABASE_URL = Deno.env.get("VITE_SUPABASE_URL") ?? Deno.env.get("SUPABASE_URL")!;
+const SUPABASE_ANON_KEY = Deno.env.get("VITE_SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!;
 
 assertExists(SUPABASE_URL, "VITE_SUPABASE_URL missing");
 assertExists(SUPABASE_ANON_KEY, "VITE_SUPABASE_PUBLISHABLE_KEY missing");
