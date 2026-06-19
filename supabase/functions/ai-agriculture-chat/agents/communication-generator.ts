@@ -1311,9 +1311,9 @@ export class CommunicationGenerator {
       }
     });
     
-    // Build repeat application note if needed
+    // Build repeat application note if needed (extractor may return null for monitoring-only flows)
     let repeatNote: TrilingualText | undefined;
-    if (repeatInfo.may_need_repeat) {
+    if (repeatInfo && repeatInfo.may_need_repeat) {
       repeatNote = {
         mr: `📅 ${repeatInfo.interval_days} दिवसांनी पुन्हा फवारणी आवश्यक असू शकते`,
         hi: `📅 ${repeatInfo.interval_days} दिनों बाद फिर से छिड़काव जरूरी हो सकता है`,
