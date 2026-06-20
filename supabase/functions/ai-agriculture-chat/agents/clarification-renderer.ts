@@ -256,10 +256,10 @@ interface StageSpecificTemplates {
   [stage: string]: Partial<Record<ClarificationScope, Record<string, { question: string; options: string[] }>>>;
 }
 
-interface CropStageSpecificTemplate {
-  default: CropSpecificTemplate;
+type CropStageSpecificTemplate = CropSpecificTemplate & {
+  default?: CropSpecificTemplate;
   stages?: StageSpecificTemplates;
-}
+};
 
 const CROP_STAGE_SPECIFIC_TEMPLATES: Record<string, CropStageSpecificTemplate> = {
   'SUGARCANE': {
