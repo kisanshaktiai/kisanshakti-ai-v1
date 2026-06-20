@@ -34,16 +34,20 @@ const VOCAB_CACHE_TTL = 300_000; // 5 minutes
  * Returns empty array if no entries found or on error.
  */
 export async function getCropVocabulary(cropCodeRaw: string, supabase: any): Promise<VocabEntry[]> {
-  // Fix 3 (belt-and-suspenders): crop_code rows in DB are UPPER. Normalize the
-  // lookup key so title-case callers (e.g. "Sugarcane") don't silently return 0 rows.
-  const cropCode = (cropCodeRaw || '').toUpperCase();
+  // CASING FIX (2026-06-20): crop_vocabulary rows in live DB are LOWERCASE
+  // ('rice', 'all'). The previous code forced UPPER and returned 0 rows even
+  // though DB contains rice=89, all=522 active entries. Query BOTH variants
+  // so any historical UPPER rows continue to match as well.
+  const upperKey = (cropCodeRaw || '').toUpperCase();
+  const lowerKey = (cropCodeRaw || '').toLowerCase();
+  const cacheKey = upperKey; // stable canonical cache key
   const now = Date.now();
-  const cached = vocabCache.get(cropCode);
-  
+  const cached = vocabCache.get(cacheKey);
+
   if (cached && (now - cached.loadedAt) < VOCAB_CACHE_TTL) {
     return cached.entries;
   }
-  
+
   // Concurrency lock
   if (cached?.loadingPromise) {
     return cached.loadingPromise;
@@ -51,41 +55,42 @@ export async function getCropVocabulary(cropCodeRaw: string, supabase: any): Pro
 
   const loadPromise = (async () => {
     try {
+      const variants = Array.from(new Set([upperKey, lowerKey].filter(Boolean)));
       const { data, error } = await supabase
         .from('crop_vocabulary')
         .select('phrase_pattern, semantic_hint, recommended_intent_bias, recommended_observation_bias')
-        .eq('crop_code', cropCode)
+        .in('crop_code', variants)
         .eq('is_active', true);
-      
+
       if (error) {
-        console.error(`[CROP_VOCAB] Failed to load vocabulary for ${cropCode}: ${error.message}`);
+        console.error(`[CROP_VOCAB] Failed to load vocabulary for ${cacheKey}: ${error.message}`);
         return cached?.entries || [];
       }
-      
+
       const entries: VocabEntry[] = (data || []).map((r: any) => ({
         phrase_pattern: r.phrase_pattern,
         semantic_hint: r.semantic_hint,
         recommended_intent_bias: r.recommended_intent_bias,
         recommended_observation_bias: r.recommended_observation_bias
       }));
-      
-      console.log(`[CROP_VOCAB] Loaded ${entries.length} vocabulary entries for ${cropCode}`);
-      vocabCache.set(cropCode, { entries, loadedAt: Date.now() });
+
+      console.log(`[CROP_VOCAB] Loaded ${entries.length} vocabulary entries for ${cacheKey} (variants=${variants.join(',')})`);
+      vocabCache.set(cacheKey, { entries, loadedAt: Date.now() });
       return entries;
     } catch (e) {
-      console.error(`[CROP_VOCAB] Cache load error for ${cropCode}: ${e}`);
+      console.error(`[CROP_VOCAB] Cache load error for ${cacheKey}: ${e}`);
       return cached?.entries || [];
     }
   })();
-  
-  vocabCache.set(cropCode, {
+
+  vocabCache.set(cacheKey, {
     entries: cached?.entries || [],
     loadedAt: cached?.loadedAt || 0,
     loadingPromise: loadPromise
   });
-  
+
   const result = await loadPromise;
-  const entry = vocabCache.get(cropCode);
+  const entry = vocabCache.get(cacheKey);
   if (entry) delete entry.loadingPromise;
   return result;
 }
