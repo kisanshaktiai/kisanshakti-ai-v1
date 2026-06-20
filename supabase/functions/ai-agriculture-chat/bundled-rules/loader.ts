@@ -892,9 +892,19 @@ export function evaluateConditionsJson(
         // v7.8 FIX: Default/generic stages should not block rules
         const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
         const isDefault = !inputStage || DEFAULT_STAGES.has(inputStage);
+        // ESTABLISHMENT_STAGE_EQUIVALENCE (2026-06-20): rules authored against
+        // 'germination' must also match when the live crop_stage_master returns
+        // 'nursery', 'seedling', 'emergence', or 'establishment' for the same
+        // DAS window. Without this, every rice DAS≤25 emergence/germination
+        // rule was being stage-gated out.
+        const ESTABLISHMENT_FAMILY = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
+        const inputIsEstablishment = ESTABLISHMENT_FAMILY.has(inputStage);
         const stageMatch = stages.some((s: any) => {
           const upper = String(s).toUpperCase();
-          return upper === inputStage || upper === '*' || upper === 'ALL' || upper === 'ANY' || inputStage.includes(upper);
+          if (upper === inputStage || upper === '*' || upper === 'ALL' || upper === 'ANY') return true;
+          if (inputStage.includes(upper)) return true;
+          if (inputIsEstablishment && ESTABLISHMENT_FAMILY.has(upper)) return true;
+          return false;
         });
         ledger.push({
           key, status: stageMatch || isDefault ? ConditionStatus.PASSED : ConditionStatus.FAILED,
