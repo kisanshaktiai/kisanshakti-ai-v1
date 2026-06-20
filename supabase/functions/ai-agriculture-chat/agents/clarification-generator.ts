@@ -104,19 +104,17 @@ export interface ScopedClarificationInput {
   
   // ═══════════════════════════════════════════════════════════════════════════
   // v6.0: SINGLE CANONICAL CONTEXT (IMMUTABLE, BUILT IN PHASE-1)
-  // This replaces: hasLandContext, landContext, hasCropContext, cropContext
   // ═══════════════════════════════════════════════════════════════════════════
-  /** 
-   * The SINGLE canonical context object built in orchestrator Phase-1.
-   * This is IMMUTABLE and passed by reference. Do NOT rebuild or infer.
-   * If null, this is a general chat without land context.
-   */
   canonicalContext: CanonicalContext | null;
   
   /** PHASE-8.1: Crop context for stage-aware framing (DEPRECATED - use canonicalContext) */
   cropContext?: CropContextAuthority | null;
   /** PHASE-15: Farmer message for LLM context */
   farmerMessage?: string;
+  /** v3.1: Resolved intent code from intent classifier (for INTENT_DRIVEN scope) */
+  intentCode?: string | null;
+  /** v3.1: Confidence (0..1) of the resolved intent */
+  intentConfidence?: number | null;
 }
 
 /**
