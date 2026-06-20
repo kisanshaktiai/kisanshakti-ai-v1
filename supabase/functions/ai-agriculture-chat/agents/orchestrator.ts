@@ -4437,11 +4437,20 @@ export class AIAgentOrchestrator {
         const realDamageObs = (cropDamageResult.damage_observations || []).filter(
           (c: string) => !SENTINEL_RE.test(c)
         );
+        const isRiceEmergenceFailure =
+          String(intentCode || '').toUpperCase() === 'EMERGENCE_FAILURE' &&
+          String(canonicalContext?.crop_code || landContext?.current_crop || '').toUpperCase() === 'RICE' &&
+          realConfirmedSymptoms.some((c: string) => ['OBS_RICE_NO_EMERGENCE', 'POOR_GERMINATION'].includes(String(c).toUpperCase()));
+        if (isRiceEmergenceFailure) {
+          console.log(`\n🌾 [DIAGNOSIS-FIRST OVERRIDE] Rice no-emergence is pathognomonic enough for hypothesis/rule evaluation`);
+          agentsUsed.push('RICE_EMERGENCE_DIAGNOSIS_OVERRIDE');
+        }
         const evidenceInsufficient =
           understandingResult.clarification_required === true &&
           realConfirmedSymptoms.length < 2 &&
           realDamageObs.length < 2 &&
-          !photoForcedDiagnosis;
+          !photoForcedDiagnosis &&
+          !isRiceEmergenceFailure;
 
         if (evidenceInsufficient) {
           console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence for hypothesis-driven options`);
