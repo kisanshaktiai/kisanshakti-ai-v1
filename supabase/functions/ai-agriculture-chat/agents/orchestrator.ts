@@ -3005,6 +3005,23 @@ export class AIAgentOrchestrator {
               `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
             );
           }
+
+          if (_intentForDb === 'EMERGENCE_FAILURE' && String(_cropForDb).toLowerCase() === 'rice') {
+            const nurseryNoEmergenceCodes = [
+              'OBS_RICE_NO_EMERGENCE',
+              'OBS_RICE_PATCHY_EMERGENCE',
+              'POOR_GERMINATION',
+              'POOR_GERMINATION_PERCENT',
+              'GAPS_IN_FIELD',
+              'SEEDLING_DIED'
+            ];
+            const before = expandedObservationCodes.length;
+            const merged = new Set(expandedObservationCodes);
+            for (const code of nurseryNoEmergenceCodes) merged.add(code);
+            expandedObservationCodes = Array.from(merged);
+            console.log(`      🌾 [RICE_EMERGENCE_GUARD] ensured no-emergence observations +${expandedObservationCodes.length - before} (total ${expandedObservationCodes.length})`);
+            agentsUsed.push('RICE_EMERGENCE_OBSERVATION_GUARD');
+          }
         }
       } catch (intentResolverErr) {
         // Fail-soft: advisory observation-code enrichment must never block the

@@ -189,7 +189,13 @@ export async function getValidObservationCodes(
 
   if (stageLc && stageLc !== 'unknown') {
     // 'all' is the wildcard convention used in this table (post lower-case migration).
-    query = query.in('growth_stage', [stageLc, 'all']);
+    // Early rice establishment can be labelled nursery/germination/seedling by
+    // different authoritative tables; treat those labels as one family.
+    const establishmentFamily = ['germination', 'nursery', 'seedling', 'emergence', 'establishment'];
+    const stageCandidates = establishmentFamily.includes(stageLc)
+      ? [...establishmentFamily, 'all']
+      : [stageLc, 'all'];
+    query = query.in('growth_stage', Array.from(new Set(stageCandidates)));
   }
 
   const { data: mappings, error: mapError } = await query.order('confidence_rank', {
@@ -402,6 +408,31 @@ export async function isObservationValidForCropStage(
 
   if (data && data.length > 0) {
     return { valid: true, reason_code: 'VALID_FOR_OBSERVATION' };
+  }
+
+  const establishmentFamily = ['germination', 'nursery', 'seedling', 'emergence', 'establishment'];
+  const { data: familyData, error: familyError } = await supabase
+    .from('intent_observation_mapping')
+    .select('id')
+    .eq('observation_code', obsLc)
+    .eq('is_active', true)
+    .in('crop_code', [cropLc, 'all'])
+    .in('growth_stage', establishmentFamily)
+    .lte('das_min', das)
+    .gte('das_max', das)
+    .limit(1);
+
+  if (familyError) {
+    throw new IntentResolutionError('VALIDATION_DB_ERROR', {
+      observationCode,
+      cropCode: cropLc,
+      das,
+      dbError: familyError.message,
+    });
+  }
+
+  if (familyData && familyData.length > 0) {
+    return { valid: true, reason_code: 'VALID_FOR_ESTABLISHMENT_STAGE_FAMILY' };
   }
 
   return { valid: false, reason_code: 'OBSERVATION_NOT_MAPPED' };
