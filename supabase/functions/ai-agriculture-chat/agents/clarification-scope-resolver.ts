@@ -108,24 +108,54 @@ export const MIN_DIMENSIONS_FOR_DIAGNOSIS = 2; // crop + affected_part minimum
  */
 const SCOPE_PRIORITY: Record<ClarificationScope, number> = {
   [ClarificationScope.IDENTIFY_CROP]: 1,
+  // INTENT_DRIVEN (v3.1) wins over generic clarification when intent classifier
+  // has already resolved a high-confidence non-generic intent. It runs after
+  // crop identification but before any generic symptom-bucket questions.
+  [ClarificationScope.INTENT_DRIVEN]: 1.2,
   // ═══════════════════════════════════════════════════════════════════════════
-  // DIAGNOSTIC_CONFIRMATION has HIGHEST priority after crop
-  // When terminal damage is detected (SEEDLING_DIED, AFFECTED_PART_WHOLE),
-  // NEVER ask about location - go directly to cause confirmation
+  // DIAGNOSTIC_CONFIRMATION has high priority after crop + intent-driven
   // ═══════════════════════════════════════════════════════════════════════════
-  [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: 1.5,    // BEFORE location questions
+  [ClarificationScope.DIAGNOSTIC_CONFIRMATION]: 1.5,
   [ClarificationScope.IDENTIFY_LOCATION]: 2,
-  // PHASE-11: Insect-first clarification (before distribution)
-  [ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]: 2.5,   // Flying vs crawling
-  [ClarificationScope.IDENTIFY_PLANT_RESPONSE]: 2.6,    // Curling, yellowing, sticky, holes
-  [ClarificationScope.IDENTIFY_DISTRIBUTION]: 3,        // DEFERRED for insect-only observations
+  [ClarificationScope.IDENTIFY_INSECT_BEHAVIOR]: 2.5,
+  [ClarificationScope.IDENTIFY_PLANT_RESPONSE]: 2.6,
+  [ClarificationScope.IDENTIFY_DISTRIBUTION]: 3,
   [ClarificationScope.IDENTIFY_SEVERITY]: 4,
   [ClarificationScope.IDENTIFY_TIMING]: 5,
-  [ClarificationScope.IDENTIFY_INSECT_TYPE]: 5.5,       // After behavior/response confirmed
+  [ClarificationScope.IDENTIFY_INSECT_TYPE]: 5.5,
   [ClarificationScope.REFINE_OBSERVATION]: 6,
   [ClarificationScope.PHOTO_ONLY]: 7,
   [ClarificationScope.STOP_ESCALATE]: 8
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INTENT-DRIVEN GATING (v3.1)
+// ═══════════════════════════════════════════════════════════════════════════
+// Intents that are TOO GENERIC to drive a specific DB clarification. For these
+// the resolver MUST keep using the legacy observation-key clarification flow.
+const INTENT_DRIVEN_BLACKLIST = new Set<string>([
+  'GENERAL_CROP_INFO',
+  'UNKNOWN_OBSERVATION',
+  'UNKNOWN',
+  'GREETING',
+  'CHITCHAT'
+]);
+
+// Minimum classifier confidence required to switch to INTENT_DRIVEN clarification.
+const INTENT_DRIVEN_MIN_CONFIDENCE = 0.6;
+
+export interface IntentClarificationContext {
+  intent_code?: string | null;
+  intent_confidence?: number | null;
+}
+
+export function shouldUseIntentDriven(ctx?: IntentClarificationContext | null): boolean {
+  if (!ctx?.intent_code) return false;
+  const code = String(ctx.intent_code).toUpperCase();
+  if (INTENT_DRIVEN_BLACKLIST.has(code)) return false;
+  const conf = typeof ctx.intent_confidence === 'number' ? ctx.intent_confidence : 0;
+  return conf >= INTENT_DRIVEN_MIN_CONFIDENCE;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN RESOLUTION FUNCTION (PHASE-8 CORE)
