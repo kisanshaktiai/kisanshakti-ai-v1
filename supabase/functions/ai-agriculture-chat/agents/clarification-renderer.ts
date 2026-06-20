@@ -82,6 +82,8 @@ export interface ClarificationRenderInput {
   };
   /** PHASE-8.1: Optional crop context for stage-aware framing */
   cropContext?: CropContextAuthority | null;
+  /** v3.1: For INTENT_DRIVEN scope — resolved intent_code from intent classifier */
+  intentCode?: string | null;
 }
 
 /**
