@@ -9231,7 +9231,10 @@ export class AIAgentOrchestrator {
     }
     
     if (followUps.length > 0) {
-      await this.supabase.from('scheduled_followups').insert(followUps);
+      const { error: fuErr } = await this.supabase.from('scheduled_followups').insert(followUps);
+      if (fuErr) {
+        console.error('[Orchestrator] scheduled_followups insert failed:', fuErr.message, fuErr.code);
+      }
     }
   }
   

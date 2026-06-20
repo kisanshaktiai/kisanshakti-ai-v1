@@ -1252,6 +1252,60 @@ export type Database = {
         }
         Relationships: []
       }
+      agricultural_decisions: {
+        Row: {
+          action_type: string | null
+          confidence: number | null
+          created_at: string
+          decision_id: string
+          decision_output: Json | null
+          diagnostic_state: Json | null
+          farmer_id: string | null
+          fused_intelligence: Json | null
+          id: string
+          land_id: string | null
+          nlu_output: Json | null
+          safety_verification: Json | null
+          session_id: string | null
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action_type?: string | null
+          confidence?: number | null
+          created_at?: string
+          decision_id: string
+          decision_output?: Json | null
+          diagnostic_state?: Json | null
+          farmer_id?: string | null
+          fused_intelligence?: Json | null
+          id?: string
+          land_id?: string | null
+          nlu_output?: Json | null
+          safety_verification?: Json | null
+          session_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action_type?: string | null
+          confidence?: number | null
+          created_at?: string
+          decision_id?: string
+          decision_output?: Json | null
+          diagnostic_state?: Json | null
+          farmer_id?: string | null
+          fused_intelligence?: Json | null
+          id?: string
+          land_id?: string | null
+          nlu_output?: Json | null
+          safety_verification?: Json | null
+          session_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       agro_climatic_zones: {
         Row: {
           avg_rainfall_mm: number | null
@@ -4476,6 +4530,42 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      confidence_adjustments: {
+        Row: {
+          actual_accuracy: number | null
+          adjustment_direction: string | null
+          calibration_factor: number | null
+          created_at: string
+          effective_from: string
+          id: string
+          original_avg_confidence: number | null
+          pest_disease_code: string
+          sample_size: number | null
+        }
+        Insert: {
+          actual_accuracy?: number | null
+          adjustment_direction?: string | null
+          calibration_factor?: number | null
+          created_at?: string
+          effective_from?: string
+          id?: string
+          original_avg_confidence?: number | null
+          pest_disease_code: string
+          sample_size?: number | null
+        }
+        Update: {
+          actual_accuracy?: number | null
+          adjustment_direction?: string | null
+          calibration_factor?: number | null
+          created_at?: string
+          effective_from?: string
+          id?: string
+          original_avg_confidence?: number | null
+          pest_disease_code?: string
+          sample_size?: number | null
+        }
+        Relationships: []
       }
       content_moderation: {
         Row: {
@@ -9085,6 +9175,48 @@ export type Database = {
           invoked_at?: string | null
           payload?: Json | null
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      efficacy_updates: {
+        Row: {
+          confidence: string | null
+          created_at: string
+          crop_code: string | null
+          crop_stage: string | null
+          id: string
+          new_efficacy: number | null
+          pest_disease_code: string
+          previous_efficacy: number | null
+          sample_size: number | null
+          treatment_code: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: string | null
+          created_at?: string
+          crop_code?: string | null
+          crop_stage?: string | null
+          id?: string
+          new_efficacy?: number | null
+          pest_disease_code: string
+          previous_efficacy?: number | null
+          sample_size?: number | null
+          treatment_code: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: string | null
+          created_at?: string
+          crop_code?: string | null
+          crop_stage?: string | null
+          id?: string
+          new_efficacy?: number | null
+          pest_disease_code?: string
+          previous_efficacy?: number | null
+          sample_size?: number | null
+          treatment_code?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -23206,6 +23338,48 @@ export type Database = {
             referencedColumns: ["variety_id"]
           },
         ]
+      }
+      scheduled_followups: {
+        Row: {
+          created_at: string
+          day: number
+          decision_id: string | null
+          delivered_at: string | null
+          farmer_id: string | null
+          id: string
+          response_payload: Json | null
+          scheduled_for: string
+          session_id: string | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          day: number
+          decision_id?: string | null
+          delivered_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          response_payload?: Json | null
+          scheduled_for: string
+          session_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          day?: number
+          decision_id?: string | null
+          delivered_at?: string | null
+          farmer_id?: string | null
+          id?: string
+          response_payload?: Json | null
+          scheduled_for?: string
+          session_id?: string | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       scheduled_reports: {
         Row: {

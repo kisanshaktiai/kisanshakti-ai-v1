@@ -61,7 +61,7 @@ Deno.test('young-crop bypass: confirmed observation + safe rule → gate PASS, O
     result.reason.startsWith('bypass:confirmed_safe_rule_exists'),
     `expected bypass reason, got "${result.reason}"`,
   );
-  assertEquals(result.confirmed_observation_codes ?? undefined, undefined); // not echoed back
+  assertEquals((result as any).confirmed_observation_codes ?? undefined, undefined); // not echoed back
 });
 
 Deno.test('young-crop without bypass flag still hits the existing block', () => {
