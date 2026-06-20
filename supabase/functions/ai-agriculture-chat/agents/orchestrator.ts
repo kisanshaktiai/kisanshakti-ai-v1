@@ -24,6 +24,7 @@ import { CommunicationGenerator } from './communication-generator.ts';
 import { FeedbackLearningEngine } from './feedback-learning.ts';
 import { SafetyGuardian } from './safety-guardian.ts';
 import { recommendNextCrop, renderRecommendationMessage, cropLabel } from './next-crop-recommender.ts';
+import { ObservationSurvivalMatrix } from '../_telemetry/observation-survival.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-16: NEW SYMBOLIC DECISION BRAIN IMPORTS
@@ -1196,6 +1197,17 @@ export class AIAgentOrchestrator {
     const traceId = scope?.traceId || options.traceId || `trace_${Date.now().toString(36)}`;
     scope?.emit({ stage: 'orchestrator', kind: 'derive', payload: { event: 'orchestrate_start', traceId } });
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // OBSERVATION SURVIVAL MATRIX — one structured log line per request, emitted
+    // in the finally block below so every code path (success, early-return,
+    // throw) produces a matrix that pinpoints where observations died.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const survival = new ObservationSurvivalMatrix(traceId);
+    survival.record('raw_text', (farmerMessage || '').length);
+    survival.setMeta('session_id', sessionId);
+    survival.setMeta('has_photo', !!options.photoUrl);
+    survival.setMeta('language', options.language || null);
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
@@ -2297,6 +2309,7 @@ export class AIAgentOrchestrator {
             console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed (no static fallback): ${e}`);
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
+          survival.record('expanded', allObservations.length);
           
           const canonicalState = buildCanonicalState({
             // CRITICAL FIX: Pass landContext to preserve all land data
@@ -3911,6 +3924,7 @@ export class AIAgentOrchestrator {
         // STEP 1: Import and use the photo-to-ObservationKey mapper
         const { mapPhotoToObservationKeys, photoProvidesSufficientData } = await import('../photo/photo-observation-mapper.ts');
         photoMappedCodes = mapPhotoToObservationKeys(photoAnalysisResult);
+        survival.record('photo_observations', photoMappedCodes?.observation_codes?.length || 0);
         
         console.log(`   ✅ Mapped ${photoMappedCodes.observation_codes.length} ObservationKeys from photo`);
         console.log(`   Keys: ${photoMappedCodes.observation_codes.slice(0, 5).join(', ')}${photoMappedCodes.observation_codes.length > 5 ? '...' : ''}`);
@@ -4207,6 +4221,9 @@ export class AIAgentOrchestrator {
       
       // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
+      survival.record('pre_auth', allObservationsForPreAuth.size);
+      survival.setMeta('intent', intentCode);
+      survival.setMeta('intent_conf', intentConf);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
@@ -6115,6 +6132,22 @@ export class AIAgentOrchestrator {
             primary_action_type: layeredRuleResult?.primary_decision?.action_type || null,
           };
           console.log(`📊 [OBS_SURVIVAL] ${JSON.stringify(_obsSurvival)}`);
+
+          // Feed the survival matrix (emitted once per request in the finally block).
+          survival.record('semantic_mapped', _obsSurvival.mapped_codes);
+          survival.record('alias_resolved', _obsSurvival.expanded_codes);
+          survival.record('confirmed', _obsSurvival.confirmed_obs);
+          survival.record('synthetic', _obsSurvival.synthetic_obs);
+          survival.record('canonical_visual', _obsSurvival.canonical_visual);
+          survival.record('rules_evaluated', _obsSurvival.rules_evaluated);
+          survival.record('rules_matched', _obsSurvival.rules_matched);
+          survival.record('matched_responses', _obsSurvival.matched_responses);
+          survival.record('primary_decision', _obsSurvival.primary_rule_id ? 1 : 0);
+          survival.setMeta('crop', _obsSurvival.crop);
+          survival.setMeta('stage', _obsSurvival.stage);
+          survival.setMeta('das', _obsSurvival.das);
+          survival.setMeta('primary_rule_id', _obsSurvival.primary_rule_id);
+          survival.setMeta('primary_action_type', _obsSurvival.primary_action_type);
         } catch (_e) { /* trace must never throw */ }
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -7843,6 +7876,10 @@ export class AIAgentOrchestrator {
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
       const emergencyCodesMain = await loadEmergencyObservationCodes(this.supabase);
       const isEmergencyMain = obsArrayMain.some(code => emergencyCodesMain.has(code));
+      survival.record('response_obs', obsArrayMain.length);
+      survival.setMeta('is_emergency', isEmergencyMain);
+      survival.setMeta('response_type', 'DECISION_PROVIDED');
+
       
       return {
         type: 'DECISION_PROVIDED',
@@ -7877,6 +7914,10 @@ export class AIAgentOrchestrator {
         options.language || 'mr',
         landContext
       );
+    } finally {
+      // OBSERVATION SURVIVAL MATRIX — emit exactly once per request, on every
+      // path (success, early-return, exception). Idempotent.
+      survival.emit({ duration_total_ms: Date.now() - startTime });
     }
   }
   
