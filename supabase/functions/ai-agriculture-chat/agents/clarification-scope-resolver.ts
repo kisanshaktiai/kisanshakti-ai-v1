@@ -365,6 +365,27 @@ export function resolveClarificationPlan(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
+  // v3.1: INTENT_DRIVEN PREEMPTIVE PATH
+  // If the intent classifier already resolved a high-confidence, non-generic
+  // intent (e.g. EMERGENCE_FAILURE), use intent_translations.question_text +
+  // intent_observation_mapping options instead of guessing from generic
+  // symptom buckets. This fixes the "rice not germinated → COLOR_CHANGE /
+  // गड्डे / WILTING" bug. Skipped when crop is still unknown (need crop first).
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (shouldUseIntentDriven(intentContext) && (hasCropContext || hasContext)) {
+    console.log(`   🎯 [INTENT_DRIVEN] Using DB intent question + options`);
+    console.log(`      intent_code=${intentContext!.intent_code} confidence=${intentContext!.intent_confidence}`);
+    return {
+      scope: ClarificationScope.INTENT_DRIVEN,
+      target_keys: [],
+      turn_count: turnCount,
+      should_stop: false,
+      reason: `Intent already resolved (${intentContext!.intent_code}, conf=${intentContext!.intent_confidence}); use intent_translations + intent_observation_mapping`,
+      priority: SCOPE_PRIORITY[ClarificationScope.INTENT_DRIVEN]
+    };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // PRIORITY 1: Crop Unknown
   // PHASE-8.1: SKIP if hasCropContext (CropContextAuthority exists)
   // ═══════════════════════════════════════════════════════════════════════════
