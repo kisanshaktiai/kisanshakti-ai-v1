@@ -286,7 +286,8 @@ export function resolveClarificationPlan(
   turnCount: number,
   previousScopes: ClarificationScope[] = [],
   hasCropContext: boolean = false,
-  canonicalContext: CanonicalContext | null = null  // v6.0: Single immutable context
+  canonicalContext: CanonicalContext | null = null,  // v6.0: Single immutable context
+  intentContext: IntentClarificationContext | null = null  // v3.1: resolved intent (intent_code + confidence)
 ): ClarificationPlan {
   // ═══════════════════════════════════════════════════════════════════════════
   // HARD STOP: Maximum clarification turns reached
