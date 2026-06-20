@@ -6088,6 +6088,34 @@ export class AIAgentOrchestrator {
         console.log(`      Diagnoses: ${safeDiagnoses.map(d => `${d?.cause || 'unknown'}(${((d?.confidence || 0) * 100).toFixed(0)}%)`).join(', ') || 'none'}`);
         console.log(`      Final Diagnosis: ${layeredRuleResult.final_diagnosis?.cause || 'none'}`);
         console.log(`      Prescription Allowed: ${layeredRuleResult.prescription_allowed}`);
+
+        // ═══════════════════════════════════════════════════════════════════════════
+        // OBSERVATION SURVIVAL TRACE (2026-06-20) — single structured line per turn
+        // so the matrix (intent → mapped → alias → canonical → layered → primary)
+        // can be reconstructed from edge logs without code changes.
+        // ═══════════════════════════════════════════════════════════════════════════
+        try {
+          const _obsSurvival = {
+            trace_id: traceId,
+            intent: semanticExtraction?.intent_code,
+            intent_conf: semanticExtraction?.intent_confidence,
+            crop: canonicalState?.crop_type,
+            stage: canonicalState?.crop_stage,
+            das: (canonicalState as any)?.days_after_sowing_exact,
+            mapped_codes: (mappedCodes?.observation_codes || []).length,
+            expanded_codes: (expandedObservationCodes || []).length,
+            pre_auth_codes: allObservationsForPreAuth ? allObservationsForPreAuth.size : 0,
+            canonical_visual: (canonicalState as any)?.visual_symptoms?.length || 0,
+            confirmed_obs: confirmedObsCodes?.length || 0,
+            synthetic_obs: syntheticObsCodes?.length || 0,
+            rules_evaluated: layeredRuleResult?.rules_evaluated || 0,
+            rules_matched: layeredRuleResult?.rules_matched || 0,
+            matched_responses: layeredRuleResult?.matched_responses?.length || 0,
+            primary_rule_id: layeredRuleResult?.primary_decision?.rule_id || null,
+            primary_action_type: layeredRuleResult?.primary_decision?.action_type || null,
+          };
+          console.log(`📊 [OBS_SURVIVAL] ${JSON.stringify(_obsSurvival)}`);
+        } catch (_e) { /* trace must never throw */ }
         
         // ═══════════════════════════════════════════════════════════════════════════
         // AUDIT FIX: Pipeline health monitoring - detect rule match failures
