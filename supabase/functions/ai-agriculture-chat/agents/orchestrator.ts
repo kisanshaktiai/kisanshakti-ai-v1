@@ -6160,6 +6160,7 @@ export class AIAgentOrchestrator {
           console.log(`📊 [OBS_SURVIVAL] ${JSON.stringify(_obsSurvival)}`);
 
           // Feed the survival matrix (emitted once per request in the finally block).
+          survival.record('nlu_extracted', inductionResult?.symptoms?.length || 0);
           survival.record('semantic_mapped', _obsSurvival.mapped_codes);
           survival.record('alias_resolved', _obsSurvival.expanded_codes);
           survival.record('confirmed', _obsSurvival.confirmed_obs);
