@@ -957,7 +957,15 @@ export async function evaluateCandidateHypotheses(
         rule.conditions_json,
         input
       );
-      
+
+      // EVIDENCE GATE: if the rule declared observation conditions but none of
+      // them match the farmer's evidence, partialScore is 0 — skip it. This is
+      // the post lower_snake_case fix that prevents advisory/management rules
+      // (PPE / DSR / banned chemicals) from polluting DIAGNOSIS_FIRST options.
+      if (partialScore === 0) {
+        continue;
+      }
+
       // Extract observable characteristics
       const observableChars = extractObservableCharacteristics(rule.observable_characteristics, obsMetadataMap);
       
