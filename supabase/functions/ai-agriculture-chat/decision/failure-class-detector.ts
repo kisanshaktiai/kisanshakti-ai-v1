@@ -190,9 +190,9 @@ const VEGETATIVE_STRESS_OBSERVATIONS = new Set([
 // ═══════════════════════════════════════════════════════════════════════════
 
 const EARLY_STAGES = new Set([
-  'GERMINATION', 'ESTABLISHMENT', 'SEEDLING', 'TRANSPLANTING',
+  'GERMINATION', 'ESTABLISHMENT', 'SEEDLING', 'NURSERY', 'TRANSPLANTING',
   'EMERGENCE', 'BUD_SPROUTING', 'PLANTING', 'SPROUTING',
-  'germination', 'establishment', 'seedling', 'transplanting',
+  'germination', 'establishment', 'seedling', 'nursery', 'transplanting',
   'emergence', 'bud_sprouting', 'planting', 'sprouting'
 ]);
 

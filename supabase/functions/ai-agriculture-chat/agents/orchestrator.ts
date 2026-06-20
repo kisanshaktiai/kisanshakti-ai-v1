@@ -3005,6 +3005,23 @@ export class AIAgentOrchestrator {
               `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
             );
           }
+
+          if (_intentForDb === 'EMERGENCE_FAILURE' && String(_cropForDb).toLowerCase() === 'rice') {
+            const nurseryNoEmergenceCodes = [
+              'OBS_RICE_NO_EMERGENCE',
+              'OBS_RICE_PATCHY_EMERGENCE',
+              'POOR_GERMINATION',
+              'POOR_GERMINATION_PERCENT',
+              'GAPS_IN_FIELD',
+              'SEEDLING_DIED'
+            ];
+            const before = expandedObservationCodes.length;
+            const merged = new Set(expandedObservationCodes);
+            for (const code of nurseryNoEmergenceCodes) merged.add(code);
+            expandedObservationCodes = Array.from(merged);
+            console.log(`      🌾 [RICE_EMERGENCE_GUARD] ensured no-emergence observations +${expandedObservationCodes.length - before} (total ${expandedObservationCodes.length})`);
+            agentsUsed.push('RICE_EMERGENCE_OBSERVATION_GUARD');
+          }
         }
       } catch (intentResolverErr) {
         // Fail-soft: advisory observation-code enrichment must never block the
@@ -4420,11 +4437,20 @@ export class AIAgentOrchestrator {
         const realDamageObs = (cropDamageResult.damage_observations || []).filter(
           (c: string) => !SENTINEL_RE.test(c)
         );
+        const isRiceEmergenceFailure =
+          String(intentCode || '').toUpperCase() === 'EMERGENCE_FAILURE' &&
+          String(canonicalContext?.crop_code || landContext?.current_crop || '').toUpperCase() === 'RICE' &&
+          realConfirmedSymptoms.some((c: string) => ['OBS_RICE_NO_EMERGENCE', 'POOR_GERMINATION'].includes(String(c).toUpperCase()));
+        if (isRiceEmergenceFailure) {
+          console.log(`\n🌾 [DIAGNOSIS-FIRST OVERRIDE] Rice no-emergence is pathognomonic enough for hypothesis/rule evaluation`);
+          agentsUsed.push('RICE_EMERGENCE_DIAGNOSIS_OVERRIDE');
+        }
         const evidenceInsufficient =
           understandingResult.clarification_required === true &&
           realConfirmedSymptoms.length < 2 &&
           realDamageObs.length < 2 &&
-          !photoForcedDiagnosis;
+          !photoForcedDiagnosis &&
+          !isRiceEmergenceFailure;
 
         if (evidenceInsufficient) {
           console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence for hypothesis-driven options`);
@@ -6134,6 +6160,7 @@ export class AIAgentOrchestrator {
           console.log(`📊 [OBS_SURVIVAL] ${JSON.stringify(_obsSurvival)}`);
 
           // Feed the survival matrix (emitted once per request in the finally block).
+          survival.record('nlu_extracted', inductionResult?.symptoms?.length || 0);
           survival.record('semantic_mapped', _obsSurvival.mapped_codes);
           survival.record('alias_resolved', _obsSurvival.expanded_codes);
           survival.record('confirmed', _obsSurvival.confirmed_obs);

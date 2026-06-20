@@ -58,7 +58,12 @@ interface IntentMapping {
 const INTENT_TO_OBSERVATION_MAPPINGS: IntentMapping[] = [
   {
     intent_codes: ['EMERGENCE_FAILURE'],
-    observation_codes: [ObservationKey.SEEDLING_DIED, ObservationKey.STUNTED_PLANTS],
+    observation_codes: [
+      ObservationKey.SEED_NOT_GERMINATED,
+      ObservationKey.POOR_GERMINATION_PERCENT,
+      ObservationKey.GAPS_IN_FIELD,
+      ObservationKey.SEEDLING_DIED
+    ],
     default_part: ObservationKey.AFFECTED_PART_WHOLE,
     default_severity: ObservationKey.SEVERITY_HIGH
   },

@@ -63,6 +63,11 @@ export async function lookupSafeRuleForObservations(
   if (obsList.length === 0 || !args.cropCode) return null;
 
   const cropLc = args.cropCode.toLowerCase();
+  const stageLc = (args.growthStage || '').toLowerCase();
+  const establishmentFamily = ['germination', 'nursery', 'seedling', 'emergence', 'establishment'];
+  const stageCandidates = establishmentFamily.includes(stageLc)
+    ? establishmentFamily
+    : [stageLc].filter(Boolean);
 
   const { data, error } = await supabase
     .from('decision_rules')
@@ -110,7 +115,11 @@ export async function lookupSafeRuleForObservations(
     const cj = r.conditions_json as any;
     const dr = cj?.das_range;
     const hasDasRange = dr && typeof dr === 'object';
-    const stageLabelMatches = !r.growth_stage || r.growth_stage.toUpperCase() === stageU;
+    const rowStageLc = (r.growth_stage || '').toLowerCase();
+    const stageLabelMatches =
+      !r.growth_stage ||
+      r.growth_stage.toUpperCase() === stageU ||
+      (stageCandidates.length > 0 && stageCandidates.includes(rowStageLc));
 
     if (hasDasRange && das !== null) {
       const min = Number(dr.min ?? dr.from ?? Number.NEGATIVE_INFINITY);

@@ -952,13 +952,27 @@ export class SymbolicReasoner {
     if (stageValue) {
       totalConditions++;
       const stages = Array.isArray(stageValue) ? stageValue : [stageValue];
+      const establishmentFamily = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
       const stageMatch = stages.some((s: string) => {
         const upper = String(s).toUpperCase();
-        return upper === factStageUpper || upper === '*' || upper === 'ALL';
+        return upper === factStageUpper || upper === '*' || upper === 'ALL' ||
+          (establishmentFamily.has(upper) && establishmentFamily.has(factStageUpper));
       });
       if (stageMatch) {
         metConditions++;
         matchedConditions.push('crop_stage');
+      }
+    }
+
+    const dasRange = cond.das_range;
+    if (dasRange && typeof dasRange === 'object') {
+      totalConditions++;
+      const min = Number(dasRange.min ?? dasRange.from ?? Number.NEGATIVE_INFINITY);
+      const max = Number(dasRange.max ?? dasRange.to ?? Number.POSITIVE_INFINITY);
+      const das = Number(facts.dos);
+      if (Number.isFinite(das) && das >= min && das <= max) {
+        metConditions++;
+        matchedConditions.push('das_range');
       }
     }
     
@@ -1060,7 +1074,7 @@ export class SymbolicReasoner {
       'crop_stage', 'stage', 'growth_stage', 'observations', 'symptom', 'primary_symptom',
       'ndvi_level', 'ndvi_trend', 'severity', 'trigger_keywords',
       'all', 'any', 'fact', 'operator', 'value',
-      'crop_code', 'crop_type', // Already filtered at query level
+      'crop_code', 'crop_type', 'das_range', // Already filtered/evaluated elsewhere
       ...Object.keys(BOOLEAN_FLAG_MAP),
       // ═══════════════════════════════════════════════════════════════════
       // P1 Fix: ROI metadata keys — NOT matching conditions, just metadata
