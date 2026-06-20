@@ -24,6 +24,7 @@ import { CommunicationGenerator } from './communication-generator.ts';
 import { FeedbackLearningEngine } from './feedback-learning.ts';
 import { SafetyGuardian } from './safety-guardian.ts';
 import { recommendNextCrop, renderRecommendationMessage, cropLabel } from './next-crop-recommender.ts';
+import { ObservationSurvivalMatrix } from '../_telemetry/observation-survival.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PHASE-16: NEW SYMBOLIC DECISION BRAIN IMPORTS
