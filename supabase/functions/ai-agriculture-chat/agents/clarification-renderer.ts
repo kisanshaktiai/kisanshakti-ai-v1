@@ -45,17 +45,21 @@ export enum ClarificationScope {
   IDENTIFY_INSECT_TYPE = 'IDENTIFY_INSECT_TYPE',  // PHASE-10: Before distribution for insects
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE-11: Insect-First Clarification (Agronomically Correct Order)
-  // When farmer reports insect presence, ask about behavior and plant response
-  // BEFORE asking about field distribution (which is biologically premature)
   // ═══════════════════════════════════════════════════════════════════════════
   IDENTIFY_INSECT_BEHAVIOR = 'IDENTIFY_INSECT_BEHAVIOR',   // Flying vs crawling
   IDENTIFY_PLANT_RESPONSE = 'IDENTIFY_PLANT_RESPONSE',     // Curling, yellowing, sticky, holes
   // ═══════════════════════════════════════════════════════════════════════════
   // DIAGNOSTIC_CONFIRMATION (Trust-First Agronomist Mode)
-  // Activated when terminal/high-severity damage is reported (plant died, whole plant affected)
-  // Shows CAUSE-confirmation options (pest evidence, disease signs) NOT location questions
   // ═══════════════════════════════════════════════════════════════════════════
   DIAGNOSTIC_CONFIRMATION = 'DIAGNOSTIC_CONFIRMATION',
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INTENT_DRIVEN (v3.1) — DB intent question + intent_observation_mapping options
+  // Activated when the intent classifier already resolved a high-confidence,
+  // non-generic intent (e.g. EMERGENCE_FAILURE). The renderer pulls
+  // intent_translations.question_text and intent_observation_mapping options
+  // for the current crop+stage instead of guessing from generic symptom buckets.
+  // ═══════════════════════════════════════════════════════════════════════════
+  INTENT_DRIVEN = 'INTENT_DRIVEN',
   REFINE_OBSERVATION = 'REFINE_OBSERVATION',
   PHOTO_ONLY = 'PHOTO_ONLY',
   STOP_ESCALATE = 'STOP_ESCALATE'
