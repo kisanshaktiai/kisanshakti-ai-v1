@@ -1,125 +1,222 @@
+## Objective
 
-# AI Chat Symbolic Decision Brain — Full Pipeline Deep Audit & Production Fix
-
-You confirmed: audit is not 4 stages but the **entire 13-node symbolic decision brain graph**, every chat-touched table column-checked, code + DB migrations approved. The plan below treats every node as a first-class subsystem with its own input contract, output contract, validation, confidence, timing, failure mode, and fallback.
-
-## The contract we are restoring
+Find and fix the exact point where verified observations, such as `EMERGENCE_FAILURE → SEEDLING_DIED / STUNTED_PLANTS / rice emergence codes`, stop influencing the final farmer response.
 
 ```text
-Farmer Query (any language, any dialect, voice/text/photo)
-   │
-   ▼
-[N1]  Language Layer        — detect script/lang/dialect; normalize
-[N2]  Intent Layer          — classify intent + confidence (DB-driven)
-[N3]  Entity Extraction     — crop, stage, observations, modifiers, qty/units
-[N4]  Context Loader        — farmer, land, crop_history, subscription, locale
-[N5]  Land State Builder    — weather, soil, NDVI, GDD, phenology, irrigation
-[N6]  Symbolic Graph        — assemble canonical state + evidence graph
-[N7]  Rule Evaluation       — decision_rules + hypothesis_* deterministic match
-[N8]  Evidence Aggregation  — confirmed / extracted / inferred buckets + weights
-[N9]  Decision Selection    — arbitration, conflict resolution, safety gates
-[N10] Confidence Engine     — symbolic_confidence SSOT, clarification trigger
-[N11] Response Formatter    — deterministic 2030-Ready JSON (8/10 sections)
-[N12] LLM Explanation       — narrate ONLY (no new advice, no new products)
-[N13] Final Response        — validation gate, language SSOT, delivery
+Farmer message
+→ intent
+→ observations
+→ ontology / hypothesis
+→ layered rule evaluator
+→ rule executor
+→ gates
+→ primary decision
+→ response formatter
+→ final farmer response
 ```
 
-LLM is restricted to N1 (perceive) and N12 (narrate). Every agronomic fact in the final response MUST trace back to a DB row surfaced at N7–N9.
+## Preliminary verdict from code + DB evidence
 
-## Per-node audit matrix
+The logs prove observation extraction is not the primary failure. The most likely combined loss point is after observation mapping, at the symbolic/rule handoff:
 
-For each node we will document and fix:
+1. `crop_vocabulary` lookup is querying uppercase `RICE` / `ALL`, but live DB rows are lowercase `rice` / `all`, so vocabulary enrichment returns 0 despite DB containing `rice=89`, `all=522` active entries.
+2. `LayeredRuleEvaluator` receives observations, but its condition input does not pass `days_after_sowing_exact` as `days_since_sowing`; rules with `conditions_json.das_range` can fail as missing DAS.
+3. Rice emergence rules exist in DB, but stage semantics conflict: live stage rows for DAS=12 are `nursery` and `seedling`, while key emergence rules are `stage_applicable=['germination']` and `conditions_json.growth_stage='germination'`.
+4. The later `RuleEngineExecutor` does not carry observation arrays into its bridge context and calls `matchRulesByKeywords(..., [])`, so observation intelligence can be discarded after layered evaluation.
+5. Response formatting can suppress output when `actions_returned` is empty even if a `primary_decision` or `layered_rule_result` exists.
 
-| Field | What we verify |
-|---|---|
-| Input | Exact type/shape, required vs optional, source node |
-| Output | Exact type/shape, downstream consumers |
-| Validation | Schema check, DB existence check, range/enum check |
-| Confidence | Where it's produced, how it's combined, the threshold |
-| Execution time | Instrument with `performance.now()` boundaries; budget per node |
-| Failure mode | What breaks (timeout, missing col, empty result, LLM hallucination) |
-| Fallback path | Deterministic degraded path (never silent generic response) |
+## Plan
 
-Output artifact per node: a section in `_audit/NODE_FINDINGS.md` with file:line refs, before/after diffs, and trace samples.
+### 1. Add an observation survival trace
 
-## Scope of code under audit
+Add a per-turn diagnostic object in `ai-agriculture-chat` that records counts and codes at each stage:
 
-Grouped by graph node (every file walked line-by-line):
+```text
+MESSAGE_EXTRACTION
+INTENT_RESOLVER_DB
+ALIAS_EXPANSION
+PRE_AUTH_COLLECTION
+CANONICAL_STATE
+HYPOTHESIS_ENGINE
+LAYERED_RULE_EVALUATOR
+RULE_ENGINE_EXECUTOR
+UNIFIED_GATE
+PRIMARY_DECISION
+LLM_FORMATTER
+FINAL_RESPONSE
+```
 
-- **N1 Language:** `llm-understanding-layer.ts`, `agents/language-induction-layer.ts`, `language-normalizer.ts`, `dialect-normalizer.ts`, `rural-language-dictionary.ts`, `agents/language-quality-validator.ts`, `i18n/translation-loader.ts`, `i18n/observation-label-loader.ts`.
-- **N2 Intent:** `agents/intent-classifier.ts`, `intent-router.ts`, `intent-lock.ts`, `decision/intent-resolver.ts`, `query-router.ts`, `question-classifier.ts`, `agents/nlu-agent.ts`.
-- **N3 Entities/Observations:** `semantic-extractor.ts`, `observation-extractor.ts`, `entity-normalizer.ts`, `entity-code-mapper.ts`, `observation-key-mapper.ts`, `observation-cause-mapper.ts`, `agricultural-vocabulary.ts`, `cross-crop-symptom-mapper.ts`, `raw-observation-contract.ts`, `agronomic-validator.ts`, `nlp-agriculture-validator.ts`, `photo/*`, `visual-agent.ts`, `multimodal-fusion.ts`.
-- **N4 Context Loader:** `index.ts` (session + auth), `agents/context-manager.ts`, `context-manager-types.ts`, `decision/context-authority.ts`, `context-validator.ts`, `decision/canonical-context-contract.ts`, `utils/resolveCropTimeline.ts`, `utils/crop-*-cache.ts`, `utils/agro-zone-cache.ts`, `utils/baseline-guidelines-cache.ts`.
-- **N5 Land State:** `agents/soil-ndvi-state-calculator.ts`, `crop-stage-advisor.ts`, `gdd-phenology-engine.ts`, `photoperiod-calculator.ts`, `spray-window-calculator.ts`, `irrigation-decision-module.ts`, `decision/crop-calendar-lookup.ts`, `decision/disease_risk_model` reads.
-- **N6 Symbolic Graph / State Build:** `agents/canonical-state-builder.ts`, `canonical-advisory-schema.ts`, `decision/canonical-state-invariants.ts`, `decision/authoritative-state-loader.ts`, `decision/fact-extractor.ts`, `decision/induction-to-observation-mapper.ts`, `agents/decision-graph-bridge.ts`, `symbolic-rules-bridge.ts`, `decision-representation.ts`.
-- **N7 Rule Evaluation:** `agents/orchestrator.ts` (rule section), `rule-engine-executor.ts`, `layered-rule-evaluator.ts`, `rule-module-resolver.ts`, `decision/symbolic-reasoner.ts`, `hypothesis-evaluator.ts`, `causal-hypothesis-engine.ts`, `observation-rule-lookup.ts`, `observation-code-mapper.ts`, `bundled-rules/loader.ts`, `utils/id-normalizer.ts`.
-- **N8 Evidence Aggregation:** `decision/diagnostic-signal-detector.ts`, `failure-class-detector.ts`, `observation-ontology.ts`, `cross-crop-symptom-ontology.ts`, `agents/diagnostic-flow-controller.ts`, `clarification-strategy.ts`.
-- **N9 Decision Selection / Arbitration / Safety:** `decision/unified-decision-gate.ts`, `decision-readiness-gate.ts`, `prescription-gate-enforcer.ts`, `weather-safety-gate.ts`, `safety-gates.ts`, `safety-enhancement.ts`, `agents/conflict-resolver.ts`, `diagnosis-conflict-resolver.ts`, `nutrition-conflict-arbitrator.ts`, `agents/safety-guardian.ts`, `phi-enforcement-guardian.ts`, `pollinator-protection-rules.ts`, `static-data-gate.ts`, `decision/etl-gate.ts`, `decision/diagnosis-only-mode.ts`, `decision/diagnosis-first-generator.ts`.
-- **N10 Confidence Engine:** `decision/confidence-calculator.ts`, `confidence-thresholds.ts`, `decision/clarification-validator.ts`, `agents/canonical-observation-loader.ts`, `clarification-renderer.ts`, `clarification-scope-resolver.ts`, `clarification-generator.ts`, `dynamic-clarification-generator.ts`, `differential-diagnosis-clarifier.ts`, `services/observation-question-resolver.ts`, `diagnostic-options-i18n.ts`, `understanding-completeness-checker.ts`, `agents/feedback-learning.ts`.
-- **N11 Response Formatter:** `agents/deterministic-response-builder.ts`, `decision/response-generator.ts`, `agents/communication-data-extractors.ts`, `communication-types.ts`, `decision/explanation-chain-builder.ts`, `agents/llm-response-formatter.ts`, `next-crop-recommender.ts`, `economic-calculator.ts`, `market-product-lookup.ts`, `product-repository.ts`.
-- **N12 LLM Explanation:** `agents/communication-generator.ts`, `llm-response-generator.ts`, `communication-translation-dictionary.ts`, `agents/diagnostic-escalation-generator.ts`, `agents/follow-up-generator.ts`.
-- **N13 Final Response / Delivery:** `agents/response-validation-gate.ts`, `delivery-validator.ts`, `audit-logger.ts`, `index.ts` (response path), `runtime/*`.
+Each checkpoint will log:
 
-## DB tables column-verified (every `.from/.select/.eq/.in/.contains/.order` reference)
+- count
+- first 10 codes
+- confirmed vs synthetic split
+- intent code + confidence
+- crop, stage, DAS
+- rule IDs matched/applied
+- gate action and reason
 
-`decision_rules`, `decision_rules_history`, `decision_rules_translations_archive`, `hypothesis_master`, `hypothesis_conditions`, `hypothesis_rule_mapping`, `hypothesis_contradictions`, `hypothesis_metrics`, `hypothesis_versions`, `observation_master`, `observation_aliases`, `observation_translations`, `observation_versions`, `observation_differential_questions`, `observation_intent_master`, `intent_observation_mapping`, `intent_translations`, `intent_semantic_class_allowlist`, `emergency_observation_codes`, `cultural_strategies`, `direct_advisory_routes`, `crop_stage_master`, `crop_synonyms`, `crop_vocabulary`, `crop_baseline_guidelines_v2`, `crop_groups`, `crops`, `disease_risk_model`, `variety_resistance`, `master_products`, `master_product_variety_crops`, `chemical_regulatory_status`, `agro_climatic_zones`, `weather_current`, `weather_forecasts`, `weather_aggregates`, `weather_observations`, `land_weather_metrics`, `soil_health`, `soil_types`, `irrigation_types`, `water_sources`, `lands`, `land_crops`, `land_activities`, `farmers`, `crop_history`, `crop_schedules`, `schedule_tasks`, `ndvi_data`, `ndvi_micro_tiles`, `ai_chat_sessions`, `ai_chat_messages`, `ai_chat_audit_logs`, `ai_decision_log`, `ai_chat_analytics`, `hallucination_detection_logs`, `semantic_bridge_metrics`, `orchestrator_metrics`, `safety_verifications`, `treatment_outcomes`, `advisory_audit_log`, `advisory_feedback`, `feedback_learning_*`, `farmer_subscriptions`.
+### 2. Fix crop vocabulary lookup casing
 
-For each table, the live `information_schema.columns` is pulled and diffed against every column the chat function references; mismatches (wrong name, wrong case, wrong type) land in `_audit/SCHEMA_DRIFT.md`.
+Update `getCropVocabulary()` so it searches both canonical forms instead of assuming uppercase:
 
-## Execution phases
+- query `crop_code IN (upper, lower)`
+- normalize cache keys safely
+- preserve existing prompt behavior
 
-### Phase A — Schema truth & usage diff (read-only)
-1. Snapshot `information_schema.columns` + `pg_indexes` for all tables above.
-2. Build `column-usage.json` from grep of every Supabase query chain in the chat function.
-3. Emit `_audit/SCHEMA_DRIFT.md` (missing column, case drift, wrong join key, missing index causing slow path).
+This directly addresses the verified log: `Loaded 0 vocabulary entries for RICE / ALL` while DB has lowercase rows.
 
-### Phase B — Node-by-node audit + fix (N1 → N13)
-For each node:
-- Read every listed file.
-- Verify the per-node matrix (input/output/validation/confidence/timing/failure/fallback).
-- Apply minimal fixes (column rename, missing await, missing pagination past PostgREST 1000-row cap, missing null guards using `?.`, missing language SSOT injection, missing safety gate ordering, etc.).
-- Instrument structured trace: `[N{k}|{NodeName}] in=… out=… conf=… ms=… mode=…`.
-- Add a unit test covering the node's primary success path + its fallback path.
+### 3. Fix DAS propagation into layered rule conditions
 
-### Phase C — Cross-node invariants
-- LLM ⊂ {N1, N12}: static check + runtime guard — any DB call or advice token produced inside N12 fails the response-validation gate.
-- Symbolic confidence is computed only at N10 and is the SSOT (no node downstream may overwrite it).
-- Canonical-language SSOT (per existing memory) injected at N12 and re-validated at N13.
-- Snapshot triggers honor text-PK rule (`NEW.rule_id` / `NEW.hypothesis_id` / `NEW.observation_code`).
-- Every `decision_rules.category` is registered in `mapBundledCategory`; unknowns emit `SYMBOLIC_CONTRACT_VIOLATION`.
-- No `*_DEFICIENCY_*` / `*_TOXICITY_*` cause-named aliases reach the loader (already enforced; verified + DB CHECK added).
-- Safety gates (PHI, pollinator, weather, prescription) run AFTER every unified gate.
+Update the layered evaluator condition input so `conditions_json.das_range` receives the real DAS:
 
-### Phase D — DB migrations (only where Phase A proves drift)
-Single migration:
-- Lowercase any residual UPPER_CASE values in `observation_*`, `intent_*`, `hypothesis_*`, join columns of `decision_rules`; add CHECK constraints to prevent regression.
-- Add CHECK rejecting cause-named alias patterns on `observation_aliases.alias_code`.
-- Add missing FK indexes the audit identifies on hot rule-engine paths.
-- No table drops; no destructive renames; data-preserving only.
+- pass `days_since_sowing: state.days_after_sowing_exact ?? state.days_since_sowing`
+- also pass `days_after_sowing_exact` for fallback compatibility
 
-### Phase E — Regression & contract tests (`supabase/functions/ai-agriculture-chat/_tests/`)
-- `pipeline_contract_test.ts` — 8 representative queries (Hindi, Marathi, Punjabi, Telugu, Tamil, Bengali, Gujarati, English-romanized) covering biotic, abiotic, pre-emergence, post-harvest, irrigation, fertilizer, market, greeting. For each: assert N1..N13 traces present, advice fields byte-identical to rule payload, narration carries no DB-absent product/dose.
-- `node_fallback_test.ts` — force each node's failure mode (timeout / empty DB / malformed input) and assert the documented fallback fires (never the generic response).
-- `schema_contract_test.ts` — assert every column referenced in code exists in `information_schema.columns` (catches future drift).
-- Extend existing `rule_id_lc_contract_test.ts` to also assert every observation_code in `decision_rules.trigger_observations` exists in `observation_master`.
-- Extend `generic_response_regression_test.ts` to fail when generic template is emitted while symptom evidence is present.
+This prevents rice DAS=12 emergence rules from failing with `SKIPPED_NO_DATA`.
 
-### Phase F — Verification
-- Run `supabase--test_edge_functions` for `ai-agriculture-chat`.
-- Curl the function with the 8 representative queries; capture `[N1..N13]` traces; verify per-node ms budgets and final crop/stage-specific responses; cross-check `ai_decision_log` rows.
+### 4. Fix establishment-stage equivalence
 
-## Deliverables (single build-mode pass)
+Normalize early rice establishment stages consistently:
 
-1. `supabase/functions/ai-agriculture-chat/_audit/SCHEMA_DRIFT.md`
-2. `supabase/functions/ai-agriculture-chat/_audit/NODE_FINDINGS.md` (13 sections, file:line refs, before/after)
-3. Code fixes across the files listed above (no out-of-scope changes; no frontend changes)
-4. One migration under `supabase/migrations/` (only if Phase A produces drift)
-5. New/updated tests under `_tests/`
-6. Verification log proving the 13-node contract holds end-to-end
+```text
+NURSERY, GERMINATION, EMERGENCE, SEEDLING → establishment-compatible stage family
+```
 
-## Technical notes
+Apply this in:
 
-- All edits stay inside `supabase/functions/ai-agriculture-chat/**` plus one migration file.
-- LLM stays on `google/gemini-3-flash-preview` via the existing Lovable AI Gateway helper.
-- All existing memory rules (canonical-language SSOT, observation pagination past 1000 rows, snapshot trigger PKs, rule-category registration, cause-named alias ban, safety-gate ordering, Vite ui-vendor chunk, etc.) are enforced — any code violating them is treated as a finding.
-- No destructive DB operations; no schema drops; no auth-schema changes.
+- `mapStageToEnum()` so `nursery` is not lost as `UNKNOWN`
+- layered rule stage gate so `seedling/nursery` does not block germination/emergence diagnostic rules
+- condition JSON stage matching for establishment-stage aliases
+
+### 5. Patch rice emergence rule data if needed
+
+Use a data update, not schema migration, only after confirming exact rows:
+
+- `RICE_GERMINATION_DIAGNOSTIC_001`
+- `RICE_GERMINATION_RESOW_DECISION_001`
+- `RICE_SEED_ROT_REMEDIATION_001`
+- `RICE_SOIL_CRUST_BREAKING_001`
+
+Expected correction:
+
+- include `nursery` and `seedling` in `stage_applicable`
+- allow `growth_stage` array for establishment-compatible stages where agronomically valid
+
+No assumptions: update only rows proven by DB evidence.
+
+### 6. Carry observations into `RuleEngineExecutor`
+
+Extend `RuleExecutionInput` construction to include canonical observation arrays:
+
+- `confirmed_observations`
+- `synthetic_observations`
+- `visual_symptoms`
+- `observations`
+
+Then update `RuleEngineExecutor` / decision graph bridge to pass these observations instead of dropping them or using `[]`.
+
+### 7. Preserve layered primary decision through the final output
+
+Ensure `layered_rule_result.primary_decision` cannot be overwritten by generic `MONITOR_ONLY` or empty executor output:
+
+- treat layered primary decision as authoritative when it has `rule_id` + `action_type`
+- populate `actions_returned` from layered primary/matched responses
+- preserve `matched_responses`, `rules_fired`, `symptom_keys`, and observation evidence for formatter/gates
+
+### 8. Audit and harden gates
+
+Trace and patch only confirmed suppressions in:
+
+- Unified Decision Gate
+- Decision Readiness Gate
+- Prescription Gate
+- ETL Gate
+- Weather Gate
+- Safety Gate
+
+Special rule: if `EMERGENCE_FAILURE` at rice DAS=12 has observation-backed rules, the final response must not collapse to generic monitoring without a logged gate reason.
+
+### 9. Audit response builder loss
+
+Verify `llm-response-formatter.ts`, deterministic fallback, and template fallback receive:
+
+- observations
+- hypothesis result
+- primary decision
+- rule IDs
+- action text / reason text / knowledge text
+
+Fix any formatter path that returns generic text when symbolic output exists.
+
+### 10. Add regression tests
+
+Add targeted edge-function tests for the production case:
+
+```text
+Input: भात अजून उगवले नाही
+Crop: Rice
+DAS: 12
+Stage: NURSERY / SEEDLING
+Expected intent: EMERGENCE_FAILURE
+Expected observations include: POOR_GERMINATION, UNEVEN_EMERGENCE, GAPS_IN_FIELD, SEEDLING_DIED / OBS_RICE_NO_EMERGENCE where mapped
+Expected rule: rice emergence diagnostic/resow path
+Expected final response: observation-driven diagnosis or clarification, not generic monitoring
+```
+
+Also add contract tests for:
+
+- vocabulary casing lookup
+- DAS range evaluation
+- establishment-stage equivalence
+- observation survival matrix counts
+- `actions_returned` populated from layered decision
+
+## Deliverables after implementation
+
+### Executive summary
+
+A ranked root-cause report with the single most likely failure point.
+
+### Observation survival matrix
+
+```text
+Stage                 Count  Evidence
+Intent mapping         N     codes...
+Alias expansion        N     codes...
+Canonical state        N     codes...
+Hypothesis             N     hypotheses...
+Layered rules          N     rules...
+Rule executor          N     rules/actions...
+Gate                   N     pass/block reason...
+Primary decision       N     rule/action...
+Response               N     observations shown...
+```
+
+### File-level findings
+
+For every confirmed bug:
+
+- file
+- function
+- line
+- evidence
+- impact
+- fix
+
+### Database findings
+
+For every confirmed DB issue:
+
+- table
+- row/rule evidence
+- missing or mismatched data
+- exact fix applied
+
+### Final answer
+
+Answer clearly:
+
+> The observations were extracted and mapped, but they disappeared because downstream symbolic stages either failed to evaluate observation-backed rules due to casing/stage/DAS handoff bugs, or produced a decision that was later overwritten/suppressed before response formatting.
+
+The final report will support that verdict with code evidence, DB evidence, and edge-log evidence.
