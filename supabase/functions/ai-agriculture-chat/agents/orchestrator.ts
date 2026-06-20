@@ -1197,6 +1197,17 @@ export class AIAgentOrchestrator {
     const traceId = scope?.traceId || options.traceId || `trace_${Date.now().toString(36)}`;
     scope?.emit({ stage: 'orchestrator', kind: 'derive', payload: { event: 'orchestrate_start', traceId } });
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // OBSERVATION SURVIVAL MATRIX — one structured log line per request, emitted
+    // in the finally block below so every code path (success, early-return,
+    // throw) produces a matrix that pinpoints where observations died.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const survival = new ObservationSurvivalMatrix(traceId);
+    survival.record('raw_text', (farmerMessage || '').length);
+    survival.setMeta('session_id', sessionId);
+    survival.setMeta('has_photo', !!options.photoUrl);
+    survival.setMeta('language', options.language || null);
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // INVARIANT: Orchestrator must treat farmer text as OPTIONAL metadata.
