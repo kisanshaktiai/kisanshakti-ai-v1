@@ -17251,7 +17251,7 @@ export type Database = {
         Row: {
           affected_plant_part: string | null
           applicable_crop_groups: string[] | null
-          canonical_group: string | null
+          canonical_group: string
           clarity_score: number | null
           created_at: string | null
           crop_group: string | null
@@ -17275,7 +17275,7 @@ export type Database = {
         Insert: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
-          canonical_group?: string | null
+          canonical_group: string
           clarity_score?: number | null
           created_at?: string | null
           crop_group?: string | null
@@ -17299,7 +17299,7 @@ export type Database = {
         Update: {
           affected_plant_part?: string | null
           applicable_crop_groups?: string[] | null
-          canonical_group?: string | null
+          canonical_group?: string
           clarity_score?: number | null
           created_at?: string | null
           crop_group?: string | null
