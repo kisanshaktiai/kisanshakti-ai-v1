@@ -412,12 +412,165 @@ export async function getClarificationOptions(
   return getStageObservationKeys(stage, language, maxOptions);
 }
 
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * INTENT-DRIVEN CLARIFICATION LOADER (fix for "rice not germinated" bug)
+ * ═══════════════════════════════════════════════════════════════════════════
+ * When the intent classifier has already resolved a high-confidence intent
+ * (e.g. EMERGENCE_FAILURE), pull the clarification question + options DIRECTLY
+ * from the DB instead of falling back to generic symptom buckets like
+ * COLOR_CHANGE / DRYING / HOLES — agronomically nonsensical pre-emergence.
+ *
+ * Sources:
+ *   - Question: intent_translations.question_text (intent_code + language)
+ *   - Options:  intent_observation_mapping (intent_code, crop_code, growth_stage)
+ *               → observation_translations (observation_code, language)
+ *
+ * Crop & stage are matched permissively: rows where crop_code matches the
+ * current crop OR is 'all', AND growth_stage matches the current stage OR is 'all'.
+ * Results are sorted: crop-specific > all, stage-specific > all, then by confidence_rank.
+ */
+export interface IntentDrivenClarification {
+  question: string | null;
+  options: Array<{ observation_code: string; label: string }>;
+  loaded_from: 'DATABASE' | 'EMPTY';
+}
+
+export async function loadIntentDrivenClarification(
+  intentCode: string,
+  cropCode: string | null,
+  growthStage: string | null,
+  language: string,
+  maxOptions: number = 3
+): Promise<IntentDrivenClarification> {
+  const empty: IntentDrivenClarification = { question: null, options: [], loaded_from: 'EMPTY' };
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase || !intentCode) return empty;
+
+    const intent = String(intentCode).toUpperCase();
+    const crop = (cropCode || '').toLowerCase().trim();
+    const stage = (growthStage || '').toLowerCase().trim();
+
+    // 1) Question from intent_translations (language → en fallback)
+    let question: string | null = null;
+    try {
+      const { data: qrows } = await supabase
+        .from('intent_translations')
+        .select('language_code, question_text')
+        .eq('intent_code', intent)
+        .in('language_code', [language, 'en']);
+      if (qrows && qrows.length > 0) {
+        const primary = qrows.find((r: any) => r.language_code === language);
+        const fallback = qrows.find((r: any) => r.language_code === 'en');
+        question = (primary?.question_text || fallback?.question_text || null) as string | null;
+      }
+    } catch (e) {
+      console.warn(`[IntentDrivenClarification] intent_translations query failed: ${(e as Error).message}`);
+    }
+
+    // 2) Options from intent_observation_mapping (crop+stage permissive)
+    const cropList = crop ? [crop, 'all'] : ['all'];
+    const stageList = stage ? [stage, 'all'] : ['all'];
+
+    let mappingRows: any[] = [];
+    try {
+      const { data, error } = await supabase
+        .from('intent_observation_mapping')
+        .select('observation_code, crop_code, growth_stage, confidence_rank')
+        .eq('intent_code', intent)
+        .eq('is_active', true)
+        .in('crop_code', cropList)
+        .in('growth_stage', stageList)
+        .order('confidence_rank', { ascending: true, nullsFirst: false })
+        .limit(50);
+      if (error) {
+        console.warn(`[IntentDrivenClarification] mapping query error: ${error.message}`);
+      } else if (data) {
+        mappingRows = data;
+      }
+    } catch (e) {
+      console.warn(`[IntentDrivenClarification] mapping query exception: ${(e as Error).message}`);
+    }
+
+    // Rank: crop-specific > 'all', stage-specific > 'all', then confidence_rank
+    const rank = (r: any) => {
+      const cs = r.crop_code === crop ? 0 : 1;
+      const ss = r.growth_stage === stage ? 0 : 1;
+      const cr = typeof r.confidence_rank === 'number' ? r.confidence_rank : 999;
+      return cs * 10000 + ss * 1000 + cr;
+    };
+    mappingRows.sort((a, b) => rank(a) - rank(b));
+
+    // De-duplicate by observation_code, preserve order; gather buffer for label fallback
+    const seen = new Set<string>();
+    const orderedCodes: string[] = [];
+    for (const r of mappingRows) {
+      const code = r.observation_code;
+      if (typeof code === 'string' && !seen.has(code)) {
+        seen.add(code);
+        orderedCodes.push(code);
+        if (orderedCodes.length >= maxOptions * 4) break;
+      }
+    }
+
+    if (orderedCodes.length === 0) {
+      return { question, options: [], loaded_from: question ? 'DATABASE' : 'EMPTY' };
+    }
+
+    // 3) Labels from observation_translations (preferred language → en fallback)
+    const labelsPrimary = await loadObservationLabels(supabase, orderedCodes, language).catch(() => new Map());
+    const labelsFallback = language === 'en'
+      ? labelsPrimary
+      : await loadObservationLabels(supabase, orderedCodes, 'en').catch(() => new Map());
+
+    // loadObservationLabels keys may be uppercased; try both shapes for safety.
+    const pickLabel = (code: string): string | null => {
+      const up = code.toUpperCase();
+      return (
+        (labelsPrimary.get(up)?.display_text as string | undefined) ||
+        (labelsPrimary.get(code)?.display_text as string | undefined) ||
+        (labelsFallback.get(up)?.display_text as string | undefined) ||
+        (labelsFallback.get(code)?.display_text as string | undefined) ||
+        null
+      );
+    };
+
+    const options: Array<{ observation_code: string; label: string }> = [];
+    for (const code of orderedCodes) {
+      const label = pickLabel(code);
+      if (label) {
+        options.push({ observation_code: code, label });
+        if (options.length >= maxOptions) break;
+      }
+    }
+    // If labels missing in DB for both languages, fall back to formatted codes so UX never empties.
+    if (options.length === 0) {
+      for (const code of orderedCodes.slice(0, maxOptions)) {
+        options.push({ observation_code: code, label: formatCodeFallback(code, language) });
+      }
+    }
+
+    console.log(`[IntentDrivenClarification] intent=${intent} crop=${crop || '*'} stage=${stage || '*'} lang=${language} → question=${question ? 'YES' : 'NO'}, options=${options.length}`);
+
+    return {
+      question,
+      options,
+      loaded_from: 'DATABASE'
+    };
+  } catch (err) {
+    console.error(`[IntentDrivenClarification] fatal: ${(err as Error).message}`);
+    return empty;
+  }
+}
+
 export default {
   getObservationKeyLabel,
   getObservationKeyLabels,
   getStageObservationKeys,
   getCategoryObservationKeys,
   loadObservationKeysFromDB,
+  loadIntentDrivenClarification,
   getClarificationOptions,
   STAGE_KEY_PRIORITIES,
   CANONICAL_LOADER_VERSION

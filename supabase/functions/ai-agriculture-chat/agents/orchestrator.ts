@@ -4649,7 +4649,9 @@ export class AIAgentOrchestrator {
           understandingResult: understandingResult,
           canonicalContext: canonicalContext, // PHASE-21: Single canonical context (read-only)
           diagnosisRulesFired: false, // No diagnosis rules have fired yet
-          farmerMessage: farmerMessage // Farmer message for LLM context
+          farmerMessage: farmerMessage, // Farmer message for LLM context
+          intentCode: intentCode,            // v3.1: enable INTENT_DRIVEN scope
+          intentConfidence: intentConf       // v3.1
         };
         
         // P0 FIX: Properly await the async function (was causing Promise leak)

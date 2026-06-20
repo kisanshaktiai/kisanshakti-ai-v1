@@ -104,19 +104,17 @@ export interface ScopedClarificationInput {
   
   // ═══════════════════════════════════════════════════════════════════════════
   // v6.0: SINGLE CANONICAL CONTEXT (IMMUTABLE, BUILT IN PHASE-1)
-  // This replaces: hasLandContext, landContext, hasCropContext, cropContext
   // ═══════════════════════════════════════════════════════════════════════════
-  /** 
-   * The SINGLE canonical context object built in orchestrator Phase-1.
-   * This is IMMUTABLE and passed by reference. Do NOT rebuild or infer.
-   * If null, this is a general chat without land context.
-   */
   canonicalContext: CanonicalContext | null;
   
   /** PHASE-8.1: Crop context for stage-aware framing (DEPRECATED - use canonicalContext) */
   cropContext?: CropContextAuthority | null;
   /** PHASE-15: Farmer message for LLM context */
   farmerMessage?: string;
+  /** v3.1: Resolved intent code from intent classifier (for INTENT_DRIVEN scope) */
+  intentCode?: string | null;
+  /** v3.1: Confidence (0..1) of the resolved intent */
+  intentConfidence?: number | null;
 }
 
 /**
@@ -169,11 +167,10 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 export async function generateScopedClarification(
   input: ScopedClarificationInput
 ): Promise<ClarificationOutput> {
-  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage } = input;
+  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage, intentCode, intentConfidence } = input;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // v6.0: USE PASSED CANONICAL CONTEXT (NEVER REBUILD)
-  // The context was built in orchestrator Phase-1 and is IMMUTABLE
   // ═══════════════════════════════════════════════════════════════════════════
   
   // Determine effective context state
@@ -192,6 +189,7 @@ export async function generateScopedClarification(
   
   console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
   console.log(`   hasLandContext: ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
+  console.log(`   intentCode: ${intentCode || 'none'}, intentConfidence: ${intentConfidence ?? 'none'}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Map observations to ObservationKeys (with cropContext)
@@ -211,6 +209,7 @@ export async function generateScopedClarification(
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Resolve clarification plan (ObservationKey-based, deterministic)
   // v6.0: Pass canonicalContext directly to scope resolver
+  // v3.1: Pass intent context so INTENT_DRIVEN can preempt generic buckets
   // ═══════════════════════════════════════════════════════════════════════════
   
   const clarificationPlan = resolveClarificationPlan(
@@ -218,7 +217,8 @@ export async function generateScopedClarification(
     turnCount,
     clarificationState?.previous_scopes || [],
     hasCropContext,
-    canonicalContext // v6.0: Pass canonical context directly
+    canonicalContext, // v6.0: Pass canonical context directly
+    { intent_code: intentCode ?? null, intent_confidence: intentConfidence ?? null } // v3.1
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
@@ -344,7 +344,9 @@ export async function generateScopedClarification(
       no_treatment: true,
       no_assumptions: true
     },
-    cropContext: cropContext // PHASE-8.1: For stage-aware framing
+    cropContext: cropContext, // PHASE-8.1: For stage-aware framing
+    intentCode: intentCode ?? null // v3.1: INTENT_DRIVEN scope
+
   });
   
   console.log(`   Rendered: validation_passed=${renderResult.validation_passed}, source=DB+Template`);
