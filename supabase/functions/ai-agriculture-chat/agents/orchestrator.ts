@@ -3924,6 +3924,7 @@ export class AIAgentOrchestrator {
         // STEP 1: Import and use the photo-to-ObservationKey mapper
         const { mapPhotoToObservationKeys, photoProvidesSufficientData } = await import('../photo/photo-observation-mapper.ts');
         photoMappedCodes = mapPhotoToObservationKeys(photoAnalysisResult);
+        survival.record('photo_observations', photoMappedCodes?.observation_codes?.length || 0);
         
         console.log(`   ✅ Mapped ${photoMappedCodes.observation_codes.length} ObservationKeys from photo`);
         console.log(`   Keys: ${photoMappedCodes.observation_codes.slice(0, 5).join(', ')}${photoMappedCodes.observation_codes.length > 5 ? '...' : ''}`);
