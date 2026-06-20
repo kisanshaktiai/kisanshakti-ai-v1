@@ -7876,6 +7876,10 @@ export class AIAgentOrchestrator {
       const obsArrayMain = Array.from(allObservationsForPreAuth || []);
       const emergencyCodesMain = await loadEmergencyObservationCodes(this.supabase);
       const isEmergencyMain = obsArrayMain.some(code => emergencyCodesMain.has(code));
+      survival.record('response_obs', obsArrayMain.length);
+      survival.setMeta('is_emergency', isEmergencyMain);
+      survival.setMeta('response_type', 'DECISION_PROVIDED');
+
       
       return {
         type: 'DECISION_PROVIDED',
