@@ -116,10 +116,12 @@ export interface HypothesisEvaluationOutput {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const HYPOTHESIS_CANONICAL_GROUPS = [
-  'pest', 'disease', 'stress', 'germination', 'irrigation',
-  'nutrition', 'deficiency', 'insect', 'fungal', 'bacterial',
-  'viral', 'establishment', 'soil_borne', 'borer', 'mite',
-  'weed', '06_weed', 'harvest', '11_harvest', 'economics'
+  '01_physiology', '02_disease', '03_pest', '04_disease',
+  '04_irrigation', '05_nutrient', '05_nutrition', '05_soil',
+  '06_abiotic', '06_irrigation', '06_soil', '06_stress', '06_weed',
+  '07_diagnosis', '07_monitoring', '07_soil', '08_remote_sensing',
+  '08_stress', '08_weed', '10_stress_weather', '10_weather',
+  '13_diagnosis', '15_deficiency', '15_soil', '16_stress'
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -681,6 +683,7 @@ export async function evaluateCandidateHypotheses(
       .from('decision_rules')
       .select('rule_id', { count: 'exact', head: true })
       .eq('is_active', true)
+      .in('canonical_group', HYPOTHESIS_CANONICAL_GROUPS)
       .or(cropFilter);
     if (countErr) {
       console.warn(`   ⚠️ [HypothesisEval] Count query failed, using safety ceiling: ${countErr.message}`);
@@ -706,6 +709,7 @@ export async function evaluateCandidateHypotheses(
         required_plant_part
       `)
       .eq('is_active', true)
+      .in('canonical_group', HYPOTHESIS_CANONICAL_GROUPS)
       .or(cropFilter)
       .limit(dynamicLimit);
 
