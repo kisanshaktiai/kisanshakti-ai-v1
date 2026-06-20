@@ -344,7 +344,9 @@ export async function generateScopedClarification(
       no_treatment: true,
       no_assumptions: true
     },
-    cropContext: cropContext // PHASE-8.1: For stage-aware framing
+    cropContext: cropContext, // PHASE-8.1: For stage-aware framing
+    intentCode: intentCode ?? null // v3.1: INTENT_DRIVEN scope
+
   });
   
   console.log(`   Rendered: validation_passed=${renderResult.validation_passed}, source=DB+Template`);
