@@ -6132,6 +6132,22 @@ export class AIAgentOrchestrator {
             primary_action_type: layeredRuleResult?.primary_decision?.action_type || null,
           };
           console.log(`📊 [OBS_SURVIVAL] ${JSON.stringify(_obsSurvival)}`);
+
+          // Feed the survival matrix (emitted once per request in the finally block).
+          survival.record('semantic_mapped', _obsSurvival.mapped_codes);
+          survival.record('alias_resolved', _obsSurvival.expanded_codes);
+          survival.record('confirmed', _obsSurvival.confirmed_obs);
+          survival.record('synthetic', _obsSurvival.synthetic_obs);
+          survival.record('canonical_visual', _obsSurvival.canonical_visual);
+          survival.record('rules_evaluated', _obsSurvival.rules_evaluated);
+          survival.record('rules_matched', _obsSurvival.rules_matched);
+          survival.record('matched_responses', _obsSurvival.matched_responses);
+          survival.record('primary_decision', _obsSurvival.primary_rule_id ? 1 : 0);
+          survival.setMeta('crop', _obsSurvival.crop);
+          survival.setMeta('stage', _obsSurvival.stage);
+          survival.setMeta('das', _obsSurvival.das);
+          survival.setMeta('primary_rule_id', _obsSurvival.primary_rule_id);
+          survival.setMeta('primary_action_type', _obsSurvival.primary_action_type);
         } catch (_e) { /* trace must never throw */ }
         
         // ═══════════════════════════════════════════════════════════════════════════
