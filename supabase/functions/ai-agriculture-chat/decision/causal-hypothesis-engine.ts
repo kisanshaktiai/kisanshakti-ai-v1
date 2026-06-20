@@ -347,6 +347,8 @@ function evaluateCondition(
   observations: string[]
 ): HypothesisConditionStatus {
   const { condition_type, condition_key, operator, value_json } = condition;
+  const normalizeStageToken = (value: unknown) => String(value || '').toUpperCase().replace(/[\s-]+/g, '_');
+  const ESTABLISHMENT_STAGE_FAMILY = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
 
   switch (condition_type) {
     case 'OBSERVATION': {
@@ -449,11 +451,17 @@ function evaluateCondition(
       const currentStage = canonicalState.crop_stage || canonicalState.growth_stage;
       if (!currentStage) return HypothesisConditionStatus.SKIPPED_NO_DATA;
       
-      const stages = (value_json as any)?.stages;
+      const stages = Array.isArray(value_json) ? value_json : (value_json as any)?.stages;
       if (!Array.isArray(stages)) return HypothesisConditionStatus.FAILED;
       
-      const stageLower = currentStage.toLowerCase();
-      return stages.some((s: string) => s.toLowerCase() === stageLower)
+      const stageToken = normalizeStageToken(currentStage);
+      const currentIsEstablishment = ESTABLISHMENT_STAGE_FAMILY.has(stageToken);
+      return stages.some((s: string) => {
+        const expected = normalizeStageToken(s);
+        return expected === stageToken ||
+          stageToken.includes(expected) ||
+          (currentIsEstablishment && ESTABLISHMENT_STAGE_FAMILY.has(expected));
+      })
         ? HypothesisConditionStatus.PASSED
         : HypothesisConditionStatus.FAILED;
     }
