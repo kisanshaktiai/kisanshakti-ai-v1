@@ -4221,6 +4221,9 @@ export class AIAgentOrchestrator {
       
       // v5.1: OBSERVATION PIPELINE CHECKPOINT — trace observation count through pipeline
       console.log(`   📊 [OBSERVATION_CHECKPOINT] Stage=POST_COLLECTION, count=${allObservationsForPreAuth.size}, codes=[${[...allObservationsForPreAuth].slice(0, 10).join(',')}]`);
+      survival.record('pre_auth', allObservationsForPreAuth.size);
+      survival.setMeta('intent', intentCode);
+      survival.setMeta('intent_conf', intentConf);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // STABILIZATION v4.0 ISSUE 5: Authority-Based Coverage Calculation
