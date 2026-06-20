@@ -167,11 +167,10 @@ const ACKNOWLEDGMENT_TEMPLATES: Record<string, string> = {
 export async function generateScopedClarification(
   input: ScopedClarificationInput
 ): Promise<ClarificationOutput> {
-  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage } = input;
+  const { language, observations, understandingResult, clarificationState, cropContext, canonicalContext, farmerMessage, intentCode, intentConfidence } = input;
   
   // ═══════════════════════════════════════════════════════════════════════════
   // v6.0: USE PASSED CANONICAL CONTEXT (NEVER REBUILD)
-  // The context was built in orchestrator Phase-1 and is IMMUTABLE
   // ═══════════════════════════════════════════════════════════════════════════
   
   // Determine effective context state
@@ -190,6 +189,7 @@ export async function generateScopedClarification(
   
   console.log(`   hasCropContext: ${hasCropContext}, cropContext: ${cropContext ? cropContext.crop_name : 'none'}`);
   console.log(`   hasLandContext: ${hasLandContext}, effectiveContext: ${effectiveHasLandContext}`);
+  console.log(`   intentCode: ${intentCode || 'none'}, intentConfidence: ${intentConfidence ?? 'none'}`);
   
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 2: Map observations to ObservationKeys (with cropContext)
@@ -209,6 +209,7 @@ export async function generateScopedClarification(
   // ═══════════════════════════════════════════════════════════════════════════
   // STEP 3: Resolve clarification plan (ObservationKey-based, deterministic)
   // v6.0: Pass canonicalContext directly to scope resolver
+  // v3.1: Pass intent context so INTENT_DRIVEN can preempt generic buckets
   // ═══════════════════════════════════════════════════════════════════════════
   
   const clarificationPlan = resolveClarificationPlan(
@@ -216,7 +217,8 @@ export async function generateScopedClarification(
     turnCount,
     clarificationState?.previous_scopes || [],
     hasCropContext,
-    canonicalContext // v6.0: Pass canonical context directly
+    canonicalContext, // v6.0: Pass canonical context directly
+    { intent_code: intentCode ?? null, intent_confidence: intentConfidence ?? null } // v3.1
   );
   
   // ═══════════════════════════════════════════════════════════════════════════
