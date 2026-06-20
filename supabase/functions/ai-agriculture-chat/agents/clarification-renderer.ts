@@ -737,36 +737,94 @@ function getTemplateQuestion(
 /**
  * PHASE-18: Async render clarification with DB lookup first.
  * Priority: DB rules > Templates > Fallback
+ *
+ * v3.1: INTENT_DRIVEN scope short-circuits to intent_translations +
+ *       intent_observation_mapping for question and options.
  */
 export async function renderClarificationAsync(
   input: ClarificationRenderInput
 ): Promise<ClarificationRenderOutput> {
-  const { scope, language_code, max_options, cropContext } = input;
-  
+  const { scope, language_code, max_options, cropContext, intentCode } = input;
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // v3.1: INTENT_DRIVEN path — DB question + DB options for the resolved intent
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (scope === ClarificationScope.INTENT_DRIVEN && intentCode) {
+    try {
+      const intentClarification = await loadIntentDrivenClarification(
+        intentCode,
+        cropContext?.crop_name || null,
+        cropContext?.growth_stage || null,
+        language_code,
+        max_options
+      );
+
+      if (intentClarification.question || intentClarification.options.length > 0) {
+        const renderedOptions: RenderedClarificationOption[] = intentClarification.options
+          .slice(0, max_options)
+          .map(o => ({ label: o.label, observation_code: o.observation_code }));
+
+        let finalQuestion = intentClarification.question
+          || BASE_TEMPLATES[ClarificationScope.INTENT_DRIVEN]?.[language_code]?.question
+          || BASE_TEMPLATES[ClarificationScope.INTENT_DRIVEN]?.en?.question
+          || '🌾 Please confirm what you are observing:';
+
+        let cropFramingApplied = false;
+        if (cropContext?.crop_name) {
+          const cropFrame = formatCropContextFrame(cropContext, language_code as string);
+          finalQuestion = `${cropFrame}\n\n${finalQuestion}`;
+          cropFramingApplied = true;
+        }
+
+        const safetyResult = validateClarificationSafety({
+          question: finalQuestion,
+          options: renderedOptions
+        });
+
+        console.log(`   🎯 [Renderer Async] INTENT_DRIVEN intent=${intentCode} options=${renderedOptions.length} (source=intent_observation_mapping)`);
+
+        return {
+          question: finalQuestion,
+          options: renderedOptions,
+          photo_request: false,
+          validation_passed: safetyResult.valid,
+          violations: safetyResult.violations,
+          scope,
+          rendered_by: 'TEMPLATE',
+          crop_framing_applied: cropFramingApplied
+        };
+      }
+
+      console.warn(`   ⚠️ INTENT_DRIVEN: no DB clarification for intent=${intentCode} crop=${cropContext?.crop_name} — falling through to template path`);
+    } catch (e) {
+      console.error(`   ⚠️ INTENT_DRIVEN renderer failed: ${(e as Error).message} — falling through to template path`);
+    }
+  }
+
   // Get DB-driven options first, then fall back to templates
   const template = await getContextAwareTemplateFromDB(scope, language_code, cropContext);
-  
+
   console.log(`   🎯 [Renderer Async] Scope: ${scope}, Crop: ${cropContext?.crop_name || 'none'}, Options: ${template.options.length}`);
-  
+
   // Limit options to max_options
   const limitedOptions = template.options.slice(0, max_options);
-  
+
   // Stage-Aware Framing
   let finalQuestion = template.question;
   let cropFramingApplied = false;
-  
+
   if (cropContext && cropContext.crop_name && scope !== ClarificationScope.IDENTIFY_CROP) {
     const cropFrame = formatCropContextFrame(cropContext, language_code as string);
     finalQuestion = `${cropFrame}\n\n${template.question}`;
     cropFramingApplied = true;
   }
-  
+
   // Safety validation
   const safetyResult = validateClarificationSafety({
     question: finalQuestion,
     options: limitedOptions
   });
-  
+
   return {
     question: finalQuestion,
     options: limitedOptions,
