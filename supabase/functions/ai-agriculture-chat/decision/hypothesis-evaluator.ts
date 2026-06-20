@@ -355,24 +355,29 @@ function evaluatePartialConditionMatch(
     }
   }
   
-  // Check observations match
+  // Check observations match (CASE-NORMALIZED — DB stores lower_snake_case,
+  // in-memory symbolic contract is UPPER_SNAKE_CASE).
+  let observationsConditionPresent = false;
+  let observationsConditionMatched = false;
   if (conditionsJson.observations && Array.isArray(conditionsJson.observations)) {
     totalConditions++;
+    observationsConditionPresent = true;
+    const knownUpper = input.known_observations.map(k => String(k || '').toUpperCase());
     const obsMatch = conditionsJson.observations.some((obs: string) => {
-      const obsLower = obs.toLowerCase();
-      return input.known_observations.some(known => 
-        known.toLowerCase().includes(obsLower) || obsLower.includes(known.toLowerCase())
-      );
+      const obsUpper = String(obs || '').toUpperCase();
+      if (!obsUpper) return false;
+      return knownUpper.some(known => known === obsUpper);
     });
     if (obsMatch) {
       matchedCount++;
       matchedConditions.push('observations');
+      observationsConditionMatched = true;
     }
   }
-  
+
   // SSOT: trigger_keywords column was DROPPED per architecture audit
   // No keyword matching - conditions_json.observations is the sole source
-  
+
   // Check NDVI conditions if available
   if (conditionsJson.ndvi_level && input.ndvi_level) {
     totalConditions++;
@@ -381,10 +386,22 @@ function evaluatePartialConditionMatch(
       matchedConditions.push('ndvi_level');
     }
   }
-  
+
+  // EVIDENCE GATE (post lower_snake_case migration fix):
+  // If a rule declares `conditions_json.observations` but NONE of them match the
+  // farmer's known observations, the rule has no diagnostic evidence. Returning
+  // a positive base score here is what let advisory/safety rules like
+  // "Personal Protective Equipment for spraying" (condition_observations:
+  // [management_planning]) tie the real rice emergence rule on stage score
+  // alone and hijack DIAGNOSIS_FIRST options. Force score=0 so the candidate
+  // is dropped before deduplication / top-N selection.
+  if (observationsConditionPresent && !observationsConditionMatched) {
+    return { score: 0, matchedConditions };
+  }
+
   // Calculate score (0-1)
   const score = totalConditions > 0 ? matchedCount / (totalConditions + 1) : 0.3;
-  
+
   return { score: Math.min(1, score), matchedConditions };
 }
 
