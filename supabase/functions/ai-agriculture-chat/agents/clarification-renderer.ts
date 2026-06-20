@@ -26,10 +26,11 @@ import {
   getClarificationOptions, 
   loadObservationKeysFromDB,
   getObservationKeyLabels,
+  loadIntentDrivenClarification,
   type ClarificationOption 
 } from './canonical-observation-loader.ts';
 
-export const CLARIFICATION_RENDERER_VERSION = '3.0.0'; // Phase-18: DB-driven canonical observation keys
+export const CLARIFICATION_RENDERER_VERSION = '3.1.0'; // v3.1: INTENT_DRIVEN scope (DB intent question + options)
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CLARIFICATION SCOPE ENUM (PHASE-8)
