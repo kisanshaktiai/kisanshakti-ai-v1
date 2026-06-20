@@ -227,6 +227,15 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
         '📷 Take Photo (for accurate identification)'
       ]
     }
+  },
+
+  // INTENT_DRIVEN: a structural placeholder — real content always comes from
+  // intent_translations + intent_observation_mapping via renderClarificationAsync.
+  [ClarificationScope.INTENT_DRIVEN]: {
+    en: {
+      question: '🌾 To help you better, please confirm what you are observing:',
+      options: []
+    }
   }
 };
 
