@@ -527,7 +527,12 @@ export function mapStageToEnum(stage: string | undefined): CropStage {
   
   const normalized = stage.toLowerCase().trim();
   
-  if (normalized.includes('germin') || normalized.includes('उगवण') || normalized.includes('अंकुरण')) return CropStage.GERMINATION;
+  // NURSERY_STAGE_FIX (2026-06-20): live crop_stage_master rows for rice
+  // DAS≤25 return "nursery" / "seedling"; previously "nursery" fell through
+  // to UNKNOWN, breaking every establishment-stage rule. Map nursery to
+  // GERMINATION (the closest enum for the 0-25 DAS establishment window).
+  if (normalized.includes('nursery') || normalized.includes('रोपवाटिका')) return CropStage.GERMINATION;
+  if (normalized.includes('germin') || normalized.includes('emergence') || normalized.includes('उगवण') || normalized.includes('अंकुरण')) return CropStage.GERMINATION;
   if (normalized.includes('seedling') || normalized.includes('रोप')) return CropStage.SEEDLING;
   if (normalized.includes('tiller') || normalized.includes('फुटवा') || normalized.includes('कल्ले')) return CropStage.TILLERING;
   if (normalized.includes('grand') || normalized.includes('वाढ') || normalized.includes('बढ़वार')) return CropStage.GRAND_GROWTH;

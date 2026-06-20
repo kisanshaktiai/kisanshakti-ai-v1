@@ -1306,6 +1306,13 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
           const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
           const isAuthoritativeStage = currentStage && !DEFAULT_STAGES.has(currentStage);
           
+          // ESTABLISHMENT_STAGE_EQUIVALENCE (2026-06-20): mirror the loader fix —
+          // GERMINATION / NURSERY / SEEDLING / EMERGENCE / ESTABLISHMENT are
+          // interchangeable for early-DAS rules so the live crop_stage_master
+          // value ('nursery'/'seedling') doesn't block rules tagged 'germination'.
+          const ESTABLISHMENT_FAMILY = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
+          const currentIsEstablishment = ESTABLISHMENT_FAMILY.has(currentStage);
+          
           if (stageApplicable.length > 0 && isAuthoritativeStage) {
             // Normalize all stage values for comparison
             const normalizedApplicableStages = stageApplicable.map((s: string) => 
@@ -1318,8 +1325,9 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             );
             
             if (!hasWildcard) {
-              // Strict stage matching - rule MUST be applicable to current stage
-              const stageMatch = normalizedApplicableStages.includes(currentStage);
+              // Strict stage matching with establishment-family equivalence
+              const stageMatch = normalizedApplicableStages.includes(currentStage) ||
+                (currentIsEstablishment && normalizedApplicableStages.some((s: string) => ESTABLISHMENT_FAMILY.has(s)));
               
               if (!stageMatch) {
                 if (bundled.priority && bundled.priority > 70) {
@@ -1497,7 +1505,13 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             // Data confidence
             data_confidence: state.data_confidence || '',
             // Extended context for strict constraint evaluation
-            days_since_sowing: (state as any).days_since_sowing,
+            // DAS_HANDOFF_FIX (2026-06-20): canonical-state-builder emits
+            // `days_after_sowing_exact`; loader's evaluateConditionsJson reads
+            // `days_since_sowing` for `das_range`. Without this fallback, every
+            // emergence/germination/seedling rule with das_range was failing as
+            // SKIPPED_NO_DATA → no rules ever matched the EMERGENCE_FAILURE intent.
+            days_since_sowing: (state as any).days_since_sowing ?? (state as any).days_after_sowing_exact,
+            days_after_sowing_exact: (state as any).days_after_sowing_exact ?? (state as any).days_since_sowing,
             soil_ph: (state as any).soil_ph,
             soil_type_name: (state as any).soil_type_name,
             soil_moisture_status: (state as any).soil_moisture_status,
