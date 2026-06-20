@@ -243,10 +243,9 @@ const BASE_TEMPLATES: Record<ClarificationScope, Record<string, {
 // CROP-SPECIFIC TEMPLATES - Different options for different crops
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface CropSpecificTemplate {
-  [ClarificationScope.IDENTIFY_LOCATION]?: Record<string, { question: string; options: string[] }>;
-  [ClarificationScope.REFINE_OBSERVATION]?: Record<string, { question: string; options: string[] }>;
-}
+type CropSpecificTemplate = Partial<
+  Record<ClarificationScope, Record<string, { question: string; options: string[] }>>
+>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // CROP-STAGE-SPECIFIC TEMPLATES
