@@ -1,222 +1,99 @@
-## Objective
+## Updated root-cause hypothesis
 
-Find and fix the exact point where verified observations, such as `EMERGENCE_FAILURE → SEEDLING_DIED / STUNTED_PLANTS / rice emergence codes`, stop influencing the final farmer response.
+The first bottleneck to fix is the casing contract break introduced after table data was converted to `lower_snake_case`.
 
-```text
-Farmer message
-→ intent
-→ observations
-→ ontology / hypothesis
-→ layered rule evaluator
-→ rule executor
-→ gates
-→ primary decision
-→ response formatter
-→ final farmer response
-```
+The runtime symbolic brain still uses an in-memory contract of `UPPER_SNAKE_CASE`, while several DB tables now store codes as `lower_snake_case`:
 
-## Preliminary verdict from code + DB evidence
+- `observation_master.observation_code`
+- `intent_observation_mapping.observation_code`
+- `decision_rules.condition_code`
+- `decision_rules.conditions_json.observations`
+- `decision_rules.observable_characteristics`
 
-The logs prove observation extraction is not the primary failure. The most likely combined loss point is after observation mapping, at the symbolic/rule handoff:
-
-1. `crop_vocabulary` lookup is querying uppercase `RICE` / `ALL`, but live DB rows are lowercase `rice` / `all`, so vocabulary enrichment returns 0 despite DB containing `rice=89`, `all=522` active entries.
-2. `LayeredRuleEvaluator` receives observations, but its condition input does not pass `days_after_sowing_exact` as `days_since_sowing`; rules with `conditions_json.das_range` can fail as missing DAS.
-3. Rice emergence rules exist in DB, but stage semantics conflict: live stage rows for DAS=12 are `nursery` and `seedling`, while key emergence rules are `stage_applicable=['germination']` and `conditions_json.growth_stage='germination'`.
-4. The later `RuleEngineExecutor` does not carry observation arrays into its bridge context and calls `matchRulesByKeywords(..., [])`, so observation intelligence can be discarded after layered evaluation.
-5. Response formatting can suppress output when `actions_returned` is empty even if a `primary_decision` or `layered_rule_result` exists.
-
-## Plan
-
-### 1. Add an observation survival trace
-
-Add a per-turn diagnostic object in `ai-agriculture-chat` that records counts and codes at each stage:
+The latest trace already proves this mismatch is breaking the pipeline:
 
 ```text
-MESSAGE_EXTRACTION
-INTENT_RESOLVER_DB
-ALIAS_EXPANSION
-PRE_AUTH_COLLECTION
-CANONICAL_STATE
-HYPOTHESIS_ENGINE
-LAYERED_RULE_EVALUATOR
-RULE_ENGINE_EXECUTOR
-UNIFIED_GATE
-PRIMARY_DECISION
-LLM_FORMATTER
-FINAL_RESPONSE
+LLM_VALIDATOR rejected:
+OBS_RICE_NO_EMERGENCE not applicable to crop RICE
+OBS_RICE_PATCHY_EMERGENCE not applicable to crop RICE
+OBS_RICE_SEED_ROTTED not applicable to crop RICE
+OBS_SOIL_CRUST_FORMED not applicable to crop RICE
 ```
 
-Each checkpoint will log:
+But DB evidence shows those observations do exist and are valid for rice. So the issue is not intent detection; it is boundary normalization and downstream rule eligibility.
 
-- count
-- first 10 codes
-- confirmed vs synthetic split
-- intent code + confidence
-- crop, stage, DAS
-- rule IDs matched/applied
-- gate action and reason
+## Updated plan
 
-### 2. Fix crop vocabulary lookup casing
+### 1. Audit and fix the casing boundary first
+- Audit all code paths in `supabase/functions/ai-agriculture-chat` that compare observation, intent, crop, stage, rule, and condition codes.
+- Define one explicit contract:
+  - DB ingress: convert query values to `lower_snake_case` where DB data is lower-case.
+  - DB egress: convert symbolic codes back to `UPPER_SNAKE_CASE` before in-memory comparison.
+  - JSON arrays from DB (`conditions_json.observations`, `observable_characteristics`) must be normalized before scoring.
+- Fix any `.includes()`, `.in()`, `.eq()`, and Set membership checks that compare mixed-case codes directly.
+- Add targeted logs for casing mismatches so edge logs show both DB raw value and normalized symbolic value.
 
-Update `getCropVocabulary()` so it searches both canonical forms instead of assuming uppercase:
+### 2. Fix crop-applicability validation broken by lower-case data
+- Update `utils/llm-output-validator.ts` so `loadCropApplicableObservations()` collects valid crop observations from all DB sources, with casing normalized:
+  - `decision_rules.condition_code`
+  - `decision_rules.conditions_json.observations`
+  - `decision_rules.observable_characteristics`
+  - `intent_observation_mapping` rows for crop-specific and `all`
+  - `observation_master.crop_group` and `applicable_crop_groups`
+- Ensure rice-specific lower-case DB rows like `obs_rice_no_emergence` become `OBS_RICE_NO_EMERGENCE` in memory.
+- This should stop valid rice emergence observations from being rejected before the rule engine sees them.
 
-- query `crop_code IN (upper, lower)`
-- normalize cache keys safely
-- preserve existing prompt behavior
+### 3. Fix hypothesis scoring so advisory rules do not hijack diagnosis
+- Update `decision/hypothesis-evaluator.ts` so diagnostic hypothesis candidates must have normalized evidence overlap with the farmer’s known observations.
+- Normalize `known_observations`, `condition_code`, and `conditions_json.observations` before matching.
+- Prevent advisory-only/safety/management rules such as PPE, DSR protocol, banned chemicals, and generic seed treatment from becoming `DIAGNOSIS_FIRST` options for symptom intent `EMERGENCE_FAILURE` unless their exact evidence is present and the intent is advisory.
+- Boost exact matches to rice emergence evidence so `RICE_GERMINATION_RESOW_DECISION_001` outranks unrelated nursery-stage management rules.
 
-This directly addresses the verified log: `Loaded 0 vocabulary entries for RICE / ALL` while DB has lowercase rows.
+### 4. Fix rice emergence response path
+- In `agents/orchestrator.ts`, for rice + `EMERGENCE_FAILURE` + DAS 8–14/nursery/germination/seedling:
+  - preserve canonical rice emergence observations after validation
+  - look up the matching safe/caution DB rule
+  - return a decision/advisory response sourced from the DB rule text
+  - do not return the wrong `CLARIFICATION_QUESTION` with `MANAGEMENT_PLANNING`, PPE, or DSR options
+- No hardcoded agronomic advice; use `decision_rules` and translations where available.
 
-### 3. Fix DAS propagation into layered rule conditions
+### 5. Audit DB data that may still be semantically wrong
+Use read queries first, then data updates with the Supabase insert tool only if needed. Do not use migrations for data cleanup.
 
-Update the layered evaluator condition input so `conditions_json.das_range` receives the real DAS:
+Check:
+- `observation_master` rows for rice emergence observations are active, diagnostic, and rice-applicable.
+- `intent_observation_mapping` rows for `EMERGENCE_FAILURE` cover rice nursery/DAS 12.
+- `decision_rules` rows for rice emergence have lower-case condition codes/JSON observations that normalize correctly.
+- Advisory/safety rules using `management_planning` are not eligible as diagnostic hypotheses for emergence-failure symptoms.
 
-- pass `days_since_sowing: state.days_after_sowing_exact ?? state.days_since_sowing`
-- also pass `days_after_sowing_exact` for fallback compatibility
+If data updates are required:
+- Use the Supabase insert tool for `UPDATE`/`INSERT`/`DELETE` operations.
+- Use migrations only if a schema/column/index/function change is actually needed.
 
-This prevents rice DAS=12 emergence rules from failing with `SKIPPED_NO_DATA`.
+### 6. Improve survival-matrix logging around casing and validation
+Extend `[OBS_SURVIVAL_MATRIX]` to include counts for:
+- raw mapped observations
+- after casing normalization
+- rejected by LLM validator
+- crop-applicable accepted
+- hypothesis candidates before advisory filtering
+- diagnostic candidates after advisory filtering
+- rules matched
+- final response observations/actions
 
-### 4. Fix establishment-stage equivalence
-
-Normalize early rice establishment stages consistently:
+Also log a compact rejection sample such as:
 
 ```text
-NURSERY, GERMINATION, EMERGENCE, SEEDLING → establishment-compatible stage family
+[CASE_NORMALIZATION_AUDIT] raw=obs_rice_no_emergence normalized=OBS_RICE_NO_EMERGENCE source=decision_rules.conditions_json
+[VALIDATION_REJECTION_AUDIT] code=OBS_RICE_NO_EMERGENCE reason=crop_applicability_miss source_missing=conditions_json
 ```
 
-Apply this in:
-
-- `mapStageToEnum()` so `nursery` is not lost as `UNKNOWN`
-- layered rule stage gate so `seedling/nursery` does not block germination/emergence diagnostic rules
-- condition JSON stage matching for establishment-stage aliases
-
-### 5. Patch rice emergence rule data if needed
-
-Use a data update, not schema migration, only after confirming exact rows:
-
-- `RICE_GERMINATION_DIAGNOSTIC_001`
-- `RICE_GERMINATION_RESOW_DECISION_001`
-- `RICE_SEED_ROT_REMEDIATION_001`
-- `RICE_SOIL_CRUST_BREAKING_001`
-
-Expected correction:
-
-- include `nursery` and `seedling` in `stage_applicable`
-- allow `growth_stage` array for establishment-compatible stages where agronomically valid
-
-No assumptions: update only rows proven by DB evidence.
-
-### 6. Carry observations into `RuleEngineExecutor`
-
-Extend `RuleExecutionInput` construction to include canonical observation arrays:
-
-- `confirmed_observations`
-- `synthetic_observations`
-- `visual_symptoms`
-- `observations`
-
-Then update `RuleEngineExecutor` / decision graph bridge to pass these observations instead of dropping them or using `[]`.
-
-### 7. Preserve layered primary decision through the final output
-
-Ensure `layered_rule_result.primary_decision` cannot be overwritten by generic `MONITOR_ONLY` or empty executor output:
-
-- treat layered primary decision as authoritative when it has `rule_id` + `action_type`
-- populate `actions_returned` from layered primary/matched responses
-- preserve `matched_responses`, `rules_fired`, `symptom_keys`, and observation evidence for formatter/gates
-
-### 8. Audit and harden gates
-
-Trace and patch only confirmed suppressions in:
-
-- Unified Decision Gate
-- Decision Readiness Gate
-- Prescription Gate
-- ETL Gate
-- Weather Gate
-- Safety Gate
-
-Special rule: if `EMERGENCE_FAILURE` at rice DAS=12 has observation-backed rules, the final response must not collapse to generic monitoring without a logged gate reason.
-
-### 9. Audit response builder loss
-
-Verify `llm-response-formatter.ts`, deterministic fallback, and template fallback receive:
-
-- observations
-- hypothesis result
-- primary decision
-- rule IDs
-- action text / reason text / knowledge text
-
-Fix any formatter path that returns generic text when symbolic output exists.
-
-### 10. Add regression tests
-
-Add targeted edge-function tests for the production case:
-
-```text
-Input: भात अजून उगवले नाही
-Crop: Rice
-DAS: 12
-Stage: NURSERY / SEEDLING
-Expected intent: EMERGENCE_FAILURE
-Expected observations include: POOR_GERMINATION, UNEVEN_EMERGENCE, GAPS_IN_FIELD, SEEDLING_DIED / OBS_RICE_NO_EMERGENCE where mapped
-Expected rule: rice emergence diagnostic/resow path
-Expected final response: observation-driven diagnosis or clarification, not generic monitoring
-```
-
-Also add contract tests for:
-
-- vocabulary casing lookup
-- DAS range evaluation
-- establishment-stage equivalence
-- observation survival matrix counts
-- `actions_returned` populated from layered decision
-
-## Deliverables after implementation
-
-### Executive summary
-
-A ranked root-cause report with the single most likely failure point.
-
-### Observation survival matrix
-
-```text
-Stage                 Count  Evidence
-Intent mapping         N     codes...
-Alias expansion        N     codes...
-Canonical state        N     codes...
-Hypothesis             N     hypotheses...
-Layered rules          N     rules...
-Rule executor          N     rules/actions...
-Gate                   N     pass/block reason...
-Primary decision       N     rule/action...
-Response               N     observations shown...
-```
-
-### File-level findings
-
-For every confirmed bug:
-
-- file
-- function
-- line
-- evidence
-- impact
-- fix
-
-### Database findings
-
-For every confirmed DB issue:
-
-- table
-- row/rule evidence
-- missing or mismatched data
-- exact fix applied
-
-### Final answer
-
-Answer clearly:
-
-> The observations were extracted and mapped, but they disappeared because downstream symbolic stages either failed to evaluate observation-backed rules due to casing/stage/DAS handoff bugs, or produced a decision that was later overwritten/suppressed before response formatting.
-
-The final report will support that verdict with code evidence, DB evidence, and edge-log evidence.
+### 7. Verification
+- Test the deployed edge function with `भात अद्याप उगवले नाही` using rice nursery/DAS 12 context.
+- Confirm logs show:
+  - `EMERGENCE_FAILURE` intent survives
+  - rice emergence observations survive crop validation
+  - no valid rice observation is rejected due to casing
+  - `RICE_GERMINATION_RESOW_DECISION_001` or the correct rice emergence rule is selected
+  - response is not the wrong `CLARIFICATION_QUESTION` containing `MANAGEMENT_PLANNING`, PPE, DSR, or generic monitoring text
+- Re-check DB queries after fixes to confirm data and code contracts match.
