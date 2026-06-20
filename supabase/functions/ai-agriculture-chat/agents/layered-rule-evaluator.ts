@@ -1497,7 +1497,13 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
             // Data confidence
             data_confidence: state.data_confidence || '',
             // Extended context for strict constraint evaluation
-            days_since_sowing: (state as any).days_since_sowing,
+            // DAS_HANDOFF_FIX (2026-06-20): canonical-state-builder emits
+            // `days_after_sowing_exact`; loader's evaluateConditionsJson reads
+            // `days_since_sowing` for `das_range`. Without this fallback, every
+            // emergence/germination/seedling rule with das_range was failing as
+            // SKIPPED_NO_DATA → no rules ever matched the EMERGENCE_FAILURE intent.
+            days_since_sowing: (state as any).days_since_sowing ?? (state as any).days_after_sowing_exact,
+            days_after_sowing_exact: (state as any).days_after_sowing_exact ?? (state as any).days_since_sowing,
             soil_ph: (state as any).soil_ph,
             soil_type_name: (state as any).soil_type_name,
             soil_moisture_status: (state as any).soil_moisture_status,
