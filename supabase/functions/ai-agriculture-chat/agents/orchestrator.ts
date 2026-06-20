@@ -7889,6 +7889,10 @@ export class AIAgentOrchestrator {
         options.language || 'mr',
         landContext
       );
+    } finally {
+      // OBSERVATION SURVIVAL MATRIX — emit exactly once per request, on every
+      // path (success, early-return, exception). Idempotent.
+      survival.emit({ duration_total_ms: Date.now() - startTime });
     }
   }
   
