@@ -1333,7 +1333,7 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
             }
             const rows = page || [];
             for (const r of rows) {
-              if (r?.observation_code) allCodes.push(String(r.observation_code).toUpperCase());
+              if (r?.observation_code) allCodes.push(String(r.observation_code).toLowerCase().replace(/[\s-]+/g, '_'));
             }
             if (rows.length < PAGE) break;
             fromIdx += PAGE;
