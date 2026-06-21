@@ -514,7 +514,7 @@ export async function fetchRuleDrivenClarificationOptions(
       }
       
       // Skip if already known
-      if (current_symptoms.some(s => s.toUpperCase() === optionKey)) continue;
+      if (current_symptoms.some(s => String(s).toLowerCase().replace(/[\s-]+/g, '_') === optionKey)) continue;
       
       seenOptions.add(optionKey);
       
@@ -834,18 +834,20 @@ export function mapClarificationSelectionToSymbols(
   // MERGE: Start with ALL existing symbols (never discard)
   const mergedSymbols = [...existingSymbols];
   
-  // Add the observation key from the selected option if not already present
+  // Add the observation key from the selected option if not already present.
+  // CANONICAL CASE: push lower_snake_case so the rule engine and
+  // observation_aliases / hypothesis_conditions resolve on direct equality.
   if (selectedOption.observation_key) {
-    const normalizedKey = selectedOption.observation_key.toUpperCase().replace(/[\s-]/g, '_');
-    const alreadyExists = mergedSymbols.some(s => 
-      s.toUpperCase().replace(/[\s-]/g, '_') === normalizedKey
+    const normalizedKey = String(selectedOption.observation_key).toLowerCase().replace(/[\s-]+/g, '_');
+    const alreadyExists = mergedSymbols.some(s =>
+      String(s).toLowerCase().replace(/[\s-]+/g, '_') === normalizedKey
     );
-    
+
     if (!alreadyExists) {
-      mergedSymbols.push(selectedOption.observation_key);
-      console.log(`   ➕ [ClarificationMerge] Merged symbol: ${selectedOption.observation_key} (total: ${mergedSymbols.length})`);
+      mergedSymbols.push(normalizedKey);
+      console.log(`   ➕ [ClarificationMerge] Merged symbol: ${normalizedKey} (total: ${mergedSymbols.length})`);
     } else {
-      console.log(`   ℹ️ [ClarificationMerge] Symbol already exists: ${selectedOption.observation_key}`);
+      console.log(`   ℹ️ [ClarificationMerge] Symbol already exists: ${normalizedKey}`);
     }
   }
   
