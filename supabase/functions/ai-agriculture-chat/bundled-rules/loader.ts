@@ -832,24 +832,23 @@ export function evaluateConditionsJson(
   const conditionKeys = Object.keys(conditions);
 
   // Precompute input values
+  // CANONICAL CASE (post-2026-06-21 migration): observation/condition codes
+  // are lower_snake_case in DB (observation_master, observation_aliases,
+  // hypothesis_conditions, decision_rules). Stages stay UPPER.
   const inputStage = (input.crop_stage || '').toUpperCase();
-  const inputSymptoms = (input.visual_symptoms || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
-  const inputSymptom = ((input as any).primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
+  const inputSymptoms = (input.visual_symptoms || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
+  const inputSymptom = String((input as any).primary_symptom || '').toLowerCase().replace(/[\s-]+/g, '_');
   const inputQuery = ((input as any).user_query || '').toUpperCase();
-  const inputObservations = (input.observations || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
+  const inputObservations = (input.observations || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
 
-  // Combined observation set
+  // Combined observation set (all lower_snake_case)
   const allInputObs = new Set([...inputSymptoms, ...inputObservations]);
   if (inputSymptom) allInputObs.add(inputSymptom);
 
-  // Observation aliases
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
-  // Empty fallback is intentional - safer than hardcoded phantom matches
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Observation aliases (canonical lower SSOT — see loader cache build).
   const observationAliases: Record<string, string[]> = cachedObservationAliases || {};
 
-  // Expand with aliases
+  // Expand with aliases (lower → lower)
   const expandedObs = new Set(allInputObs);
   for (const obs of allInputObs) {
     if (observationAliases[obs]) {
