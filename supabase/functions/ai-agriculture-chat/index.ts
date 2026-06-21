@@ -1792,7 +1792,13 @@ serve(async (req) => {
 
           safetyGateResult = runSafetyGates(safetyInput, detectedLanguage);
 
-          if (safetyGateResult.override_mode !== 'NONE') {
+          // 2026-06-21 FIX: when unified gate has already approved a SAFE rule
+          // via the confirmed_safe_rule_exists bypass (e.g. YOUNG_CROP_RESOW),
+          // do NOT let the safety-gate's clarify override throw away that rule
+          // and bounce the farmer back into another question loop.
+          const safeBypassActive = safetyInput.confirmed_safe_rule_bypass === true;
+
+          if (safetyGateResult.override_mode !== 'NONE' && !safeBypassActive) {
             console.warn(`🛡️ [SafetyGates] OVERRIDE=${safetyGateResult.override_mode} - downgrading unified gate to CLARIFY`);
             unifiedGateResult.treatments_allowed = false;
             unifiedGateResult.response_mode = ResponseMode.CLARIFICATION;
@@ -1802,6 +1808,9 @@ serve(async (req) => {
                 .filter(([, v]) => !v.passed)
                 .map(([k, v]) => `${k}: ${v.reason}`)
                 .join(' | ');
+          } else if (safetyGateResult.override_mode !== 'NONE' && safeBypassActive) {
+            console.log(`🛡️ [SafetyGates] OVERRIDE=${safetyGateResult.override_mode} IGNORED — confirmed_safe_rule bypass active; preserving unified gate ALLOW path`);
+            safetyGateResult.override_mode = 'NONE';
           }
 
           // Persist gate_decisions into the audit row (best-effort, by trace_id)
