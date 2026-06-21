@@ -161,6 +161,36 @@ function getCauseLabelFromDB(cause: string, language: SupportedLanguage): string
   return translated;
 }
 
+/**
+ * 2026-06-21 FIX: DB-first cause label resolver.
+ * Prefer `decision_rules_translations_archive.response_{mr,hi}` keyed by rule_id
+ * (the SSOT translation table) before falling back to i18n-key cache.
+ */
+async function getCauseLabelFromArchive(
+  supabaseClient: any,
+  ruleId: string | null | undefined,
+  language: SupportedLanguage,
+): Promise<string> {
+  if (!supabaseClient || !ruleId) return '';
+  const lang = String(language || '').toLowerCase();
+  if (lang !== 'mr' && lang !== 'hi') return '';
+  try {
+    const { data, error } = await supabaseClient
+      .from('decision_rules_translations_archive')
+      .select('response_mr, response_hi')
+      .eq('rule_id', ruleId)
+      .maybeSingle();
+    if (error || !data) return '';
+    const candidate = lang === 'mr' ? data.response_mr : data.response_hi;
+    if (candidate && typeof candidate === 'string' && candidate.trim().length > 0) {
+      return candidate.trim();
+    }
+  } catch (e) {
+    console.warn(`   ⚠️ [getCauseLabelArchive] lookup failed for rule_id=${ruleId}: ${(e as Error).message}`);
+  }
+  return '';
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // v2.0.0: OBSERVATION LABELS - DB-DRIVEN via loadObservationLabels()
 // Replaces hardcoded OBSERVATION_LABELS dictionary (was ~45 entries, mr/hi/en only)
@@ -389,7 +419,10 @@ export async function generateDiagnosisFirstResponse(
       };
 
       // STEP 1: Try DB-driven labels FIRST (SSOT)
-      causeLabel = getCauseLabelFromDB(h.cause, language);
+      // 2026-06-21 FIX: prefer SSOT translation table (decision_rules_translations_archive)
+      // keyed on rule_id; fall back to i18n-key cache when no archive row exists.
+      const archiveLabel = await getCauseLabelFromArchive(supabaseClient, h.rule_id, language);
+      causeLabel = archiveLabel || getCauseLabelFromDB(h.cause, language);
       observationLabel = getObservationLabelFromMap(observationKey, observationLabelsMap, language);
       
       const dbCauseGood = !isUntranslated(causeLabel);

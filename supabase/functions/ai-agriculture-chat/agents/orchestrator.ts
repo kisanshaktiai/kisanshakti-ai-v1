@@ -2267,21 +2267,28 @@ export class AIAgentOrchestrator {
               );
               
               if (confirmedRule) {
+                // 2026-06-21 FIX: DB is lower_snake_case. Canonicalise to lower
+                // so set membership tests against decision_rules.conditions_json
+                // (also lower) match, instead of stale UPPER from legacy code.
+                const canonicalObs = (s: unknown): string =>
+                  String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
                 // Add ALL observable characteristics from the confirmed rule
                 const ruleObs = confirmedRule.observable_characteristics || [];
                 if (Array.isArray(ruleObs)) {
                   for (const obs of ruleObs) {
-                    const obsKey = typeof obs === 'string' ? obs : obs?.observation_key;
-                    if (obsKey && !allObservations.includes(obsKey.toUpperCase())) {
-                      allObservations.push(obsKey.toUpperCase());
+                    const raw = typeof obs === 'string' ? obs : obs?.observation_key;
+                    const obsKey = canonicalObs(raw);
+                    if (obsKey && !allObservations.includes(obsKey)) {
+                      allObservations.push(obsKey);
                     }
                   }
                 }
                 // Also add observations from conditions_json
                 const condObs = confirmedRule.conditions_json?.observations || [];
                 for (const obs of condObs) {
-                  if (typeof obs === 'string' && !allObservations.includes(obs.toUpperCase())) {
-                    allObservations.push(obs.toUpperCase());
+                  const obsKey = canonicalObs(obs);
+                  if (obsKey && !allObservations.includes(obsKey)) {
+                    allObservations.push(obsKey);
                   }
                 }
                 console.log(`   🎯 [FIX#1] Loaded ${allObservations.length} observations from confirmed rule ${confirmedRuleId}`);
@@ -2307,6 +2314,23 @@ export class AIAgentOrchestrator {
             // No hardcoded fallback — failing safe means the rule matcher
             // only sees the confirmed observations the farmer actually gave us.
             console.warn(`   ⚠️ [ObservationExpansion] DB alias expansion failed (no static fallback): ${e}`);
+          }
+          // 2026-06-21 FIX: canonicalise once more before rule matching.
+          // Any legacy UPPER code that slipped in from upstream merges or
+          // alias expansion is forced lower so set comparisons against the
+          // lower_snake_case DB succeed.
+          {
+            const seen = new Set<string>();
+            const canonicalised: string[] = [];
+            for (const c of allObservations) {
+              const lc = String(c ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+              if (lc && !seen.has(lc)) {
+                seen.add(lc);
+                canonicalised.push(lc);
+              }
+            }
+            allObservations.length = 0;
+            allObservations.push(...canonicalised);
           }
           console.log(`   🔍 [ObservationExpansion] Final observations for rule matching: [${allObservations.join(', ')}]`);
           survival.record('expanded', allObservations.length);

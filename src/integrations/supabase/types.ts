@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      _fa_canonical_hint_rice_backup_20260621: {
+        Row: {
+          canonical_hint: string | null
+          created_at: string | null
+          crop_code: string | null
+          id: string | null
+          is_active: boolean | null
+          observation_code: string | null
+          updated_at: string | null
+          version: string | null
+          weight_modifier: number | null
+        }
+        Insert: {
+          canonical_hint?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+          updated_at?: string | null
+          version?: string | null
+          weight_modifier?: number | null
+        }
+        Update: {
+          canonical_hint?: string | null
+          created_at?: string | null
+          crop_code?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          observation_code?: string | null
+          updated_at?: string | null
+          version?: string | null
+          weight_modifier?: number | null
+        }
+        Relationships: []
+      }
       _fa_content_gaps: {
         Row: {
           crop_code: string
