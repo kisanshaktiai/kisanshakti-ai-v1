@@ -129,9 +129,60 @@ if (isNativeApp()) {
 console.log('📱 [PWA] Using static manifest.json (no dynamic API calls)');
 
 // Explicit Service Worker Registration - Single source of truth
+// GUARDED: never register inside Lovable preview, iframe, dev, or ?sw=off.
+// In those contexts we proactively unregister any stale /sw.js so returning
+// visitors stop reloading. See mem://architecture/pwa-update-and-caching-strategy.
+const shouldSkipSWRegistration = (): { skip: boolean; reason: string } => {
+  try {
+    if (!import.meta.env.PROD) return { skip: true, reason: 'dev mode' };
+    if (window.self !== window.top) return { skip: true, reason: 'iframe (preview)' };
+    const host = window.location.hostname;
+    if (host.startsWith('id-preview--') || host.startsWith('preview--')) {
+      return { skip: true, reason: `preview host ${host}` };
+    }
+    if (host === 'lovableproject.com' || host.endsWith('.lovableproject.com')) {
+      return { skip: true, reason: `lovableproject host ${host}` };
+    }
+    if (host === 'lovableproject-dev.com' || host.endsWith('.lovableproject-dev.com')) {
+      return { skip: true, reason: `lovableproject-dev host ${host}` };
+    }
+    if (host === 'beta.lovable.dev' || host.endsWith('.beta.lovable.dev')) {
+      return { skip: true, reason: `beta lovable host ${host}` };
+    }
+    if (new URLSearchParams(window.location.search).get('sw') === 'off') {
+      return { skip: true, reason: '?sw=off kill switch' };
+    }
+  } catch {/* ignore */}
+  return { skip: false, reason: '' };
+};
+
+const unregisterAppSW = async () => {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    for (const reg of regs) {
+      const url = reg.active?.scriptURL || reg.installing?.scriptURL || reg.waiting?.scriptURL || '';
+      // Only touch our app SW; leave messaging workers (firebase-messaging-sw.js, OneSignal) alone.
+      if (url.endsWith('/sw.js') || url.endsWith('/service-worker.js')) {
+        console.log('🗑️ [PWA] Unregistering app SW in guarded context:', url);
+        await reg.unregister();
+      }
+    }
+  } catch (e) {
+    console.warn('[PWA] unregisterAppSW failed:', e);
+  }
+};
+
 const registerServiceWorker = async () => {
   if (!('serviceWorker' in navigator)) {
     console.warn('⚠️ [PWA] Service Worker not supported');
+    return;
+  }
+
+  const guard = shouldSkipSWRegistration();
+  if (guard.skip) {
+    console.log(`🛑 [PWA] Skipping SW registration — ${guard.reason}`);
+    await unregisterAppSW();
     return;
   }
 
@@ -186,6 +237,7 @@ console.log('🔧 [PWA] beforeinstallprompt supported:', 'onbeforeinstallprompt'
 window.addEventListener('load', () => {
   registerServiceWorker();
 });
+
 
 if (import.meta.env.DEV) {
   setTimeout(() => {
