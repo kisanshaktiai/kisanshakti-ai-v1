@@ -78,6 +78,16 @@ export interface AuthorityInput {
     soil_ec?: number;           // Electrical conductivity (dS/m)
     waterlogging?: boolean;
   };
+
+  /**
+   * Bug D fix: explicit hint when the active rule is a pre-vetted PROACTIVE_*
+   * rule (e.g. PROACTIVE_FLOOD_PREPAREDNESS_001, PROACTIVE_WEATHER_*,
+   * PROACTIVE_IRRIGATION_*, PROACTIVE_CLIMATE_*). These rules carry their own
+   * safety/agronomic vetting in the DB. Authority must be CLIMATE-CONFIRMED
+   * with treatments_allowed=true so the downstream Unified Gate does not
+   * collapse a valid URGENT_ACTION into NONE / DIAGNOSTIC_ESCALATION.
+   */
+  rule_category?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
