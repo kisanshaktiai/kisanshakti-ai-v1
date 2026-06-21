@@ -1077,20 +1077,66 @@ export function evaluateRulesLayered(
     
     // ═══════════════════════════════════════════════════════════════════════════
     // PRE-SELECTION CONFIDENCE GATE: If best rule score < threshold, trigger clarification
-    // PRODUCTION FIX: When PrescriptionGate overrides LOW confidence (strong symptom 
+    // PRODUCTION FIX: When PrescriptionGate overrides LOW confidence (strong symptom
     // evidence), relax threshold from 0.60 → 0.40 to allow rule selection.
+    //
+    // ROOT-CAUSE FIX (2026-06-21): Farmer-confirmed observation bypass.
+    // When the farmer EXPLICITLY selected an observation via clarification and
+    // the best candidate rule is keyed on that confirmed observation
+    // (condition_code or conditions_json.observations), the heuristic ledger
+    // ratio (passed_required / total_required) under-counts the farmer's
+    // authoritative evidence: das_range / soil_* / weather conditions with no
+    // runtime data resolve to SKIPPED_NO_DATA with required:true and drag the
+    // score below 0.60, collapsing primary_decision to NULL even though
+    // matched_responses and eligible_for_primary are both > 0. That mismatch
+    // is what surfaced as "Rules matched 0 / Primary decision NULL" →
+    // STAGE_FALLBACK → CLARIFICATION → Unified Gate Fallback. The farmer's
+    // selection IS the symbolic contract; skip the heuristic threshold for
+    // that rule and floor its weighted_confidence so safety-gates / unified-
+    // gate do not collapse it back to CLARIFY. Other competing rules still
+    // face the gate normally.
     // ═══════════════════════════════════════════════════════════════════════════
     const BASE_CONFIDENCE_GATE_THRESHOLD = 0.60;
     const OVERRIDE_CONFIDENCE_GATE_THRESHOLD = 0.40;
+    const FARMER_CONFIRMED_CONFIDENCE_FLOOR = 0.70;
     const hasOverride = !!options?.prescriptionGateOverride;
     const CONFIDENCE_GATE_THRESHOLD = hasOverride ? OVERRIDE_CONFIDENCE_GATE_THRESHOLD : BASE_CONFIDENCE_GATE_THRESHOLD;
     const computedConfidence = Math.min(1.0, scored[0].evidenceScore);
-    
+
     if (hasOverride) {
       console.log(`   🔓 [ConfidenceGate] PrescriptionGate override ACTIVE — threshold relaxed: ${(BASE_CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% → ${(OVERRIDE_CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}%`);
     }
-    
-    if (computedConfidence < CONFIDENCE_GATE_THRESHOLD) {
+
+    // Build canonical-lower set of farmer-confirmed observations and test
+    // whether the best rule is keyed on any of them.
+    const normalizeObsCode = (s: unknown): string =>
+      String(s ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+    const farmerConfirmedObs: string[] = (
+      Array.isArray((state as any).confirmed_observations)
+        ? (state as any).confirmed_observations
+        : []
+    ).map(normalizeObsCode).filter(Boolean);
+    const bestRuleObsSet = new Set<string>();
+    const bestCondCode = normalizeObsCode(
+      (best as any).condition_code
+      || (best as any).conditions_json?.condition_code,
+    );
+    if (bestCondCode) bestRuleObsSet.add(bestCondCode);
+    const bestCondObs = Array.isArray(best.conditions_json?.observations)
+      ? (best.conditions_json!.observations as unknown[])
+      : [];
+    for (const o of bestCondObs) {
+      const n = normalizeObsCode(o);
+      if (n) bestRuleObsSet.add(n);
+    }
+    const matchedConfirmedObs = farmerConfirmedObs.filter((o) => bestRuleObsSet.has(o));
+    const hasFarmerConfirmedEvidence = matchedConfirmedObs.length > 0;
+
+    if (hasFarmerConfirmedEvidence) {
+      console.log(`   🎯 [ConfidenceGate] FARMER-CONFIRMED BYPASS — rule=${best.rule_id} keyed on confirmed observation(s) [${matchedConfirmedObs.join(', ')}]; skipping ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% heuristic threshold (computed=${(computedConfidence * 100).toFixed(0)}%)`);
+    }
+
+    if (!hasFarmerConfirmedEvidence && computedConfidence < CONFIDENCE_GATE_THRESHOLD) {
       console.warn(`⚠️ [ConfidenceGate] Score ${(computedConfidence * 100).toFixed(0)}% < ${(CONFIDENCE_GATE_THRESHOLD * 100).toFixed(0)}% threshold${hasOverride ? ' (override active)' : ''}`);
       console.warn(`   Best candidate: ${best.rule_id} (score=${scored[0].evidenceScore.toFixed(3)}, matched=${scored[0].matchedConditions}/${scored[0].totalConditions})`);
       console.warn(`   ACTION: Skipping primary selection → triggering clarification`);
@@ -1106,7 +1152,13 @@ export function evaluateRulesLayered(
       const matchedConds = scored[0].matchedConditions;
       const baseScore = totalConds > 0 ? matchedConds / totalConds : (scored[0].response.confidence_score ?? 0.5);
       const densityWeight = totalConds > 0 ? Math.min(1.0, Math.log(totalConds + 1) / Math.log(10)) : 0.3;
-      const weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
+      let weightedConfidence = Math.min(1.0, baseScore * (0.5 + 0.5 * densityWeight));
+      // Floor confidence when the farmer's explicit selection drove this rule,
+      // so safety-gates / unified-gate do not collapse it back to CLARIFY.
+      if (hasFarmerConfirmedEvidence && weightedConfidence < FARMER_CONFIRMED_CONFIDENCE_FLOOR) {
+        console.log(`   🎯 [ConfidenceFloor] Farmer-confirmed evidence: lifting weighted_confidence ${(weightedConfidence * 100).toFixed(0)}% → ${(FARMER_CONFIRMED_CONFIDENCE_FLOOR * 100).toFixed(0)}%`);
+        weightedConfidence = FARMER_CONFIRMED_CONFIDENCE_FLOOR;
+      }
       
       result.primary_decision = {
         rule_id: best.rule_id,
