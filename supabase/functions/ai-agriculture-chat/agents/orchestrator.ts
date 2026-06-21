@@ -1309,6 +1309,9 @@ export class AIAgentOrchestrator {
               }
               if (timeline.growth_stage && timeline.growth_stage !== 'UNKNOWN') {
                 landContext.growth_stage = timeline.growth_stage;
+                // Persist SSOT origin so downstream advisors (GDD, calendar lookup)
+                // cannot silently overwrite the authoritative stage.
+                (landContext as any).stage_source = timeline.stage_source;
               }
               (landContext as any).sowing_date = timeline.sowing_date;
               (landContext as any).expected_harvest_date = timeline.expected_harvest_date;
