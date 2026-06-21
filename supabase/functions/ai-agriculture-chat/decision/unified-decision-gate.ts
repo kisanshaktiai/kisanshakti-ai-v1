@@ -604,12 +604,35 @@ export function evaluateUnifiedGate(input: UnifiedGateInput): UnifiedGateResult 
   const stageIsDefault = input.stage_source === 'DEFAULT';
   const hasConfirmedDiagnosis = hasConfirmedPestOrDisease(symbolic_decision);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PROACTIVE-URGENT BYPASS (Bug A fix)
+  // The Decision Brain may produce a complete URGENT_ACTION / IMMEDIATE_ACTION
+  // plan for a proactive rule (flood preparedness, drought, frost, irrigation,
+  // sowing window) on a young crop. Those rules are not "pest/disease
+  // diagnoses" so hasConfirmedPestOrDisease() is false, yet the action plan IS
+  // authoritative DB-driven advice. Suppressing it as DIAGNOSTIC_ESCALATION
+  // discards a valid URGENT_ACTION and collapses session state to
+  // 'no_action_needed'. Detect this case and let the gate fall through to the
+  // product/dosage validation + GATE PASSED branches instead.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const primaryActionType = (symbolic_decision?.primary_decision?.action_type || '').toUpperCase();
+  const primaryAppDetails = symbolic_decision?.primary_decision?.application_details as
+    | { action_text?: string; product_name?: string; dosage?: string; dosage_per_acre?: string }
+    | undefined;
+  const primaryRuleId = (symbolic_decision?.primary_decision as { rule_id?: string } | undefined)?.rule_id;
+  const isUrgentActionType = primaryActionType === 'URGENT_ACTION' || primaryActionType === 'IMMEDIATE_ACTION';
+  const hasActionablePayload = products.length > 0 || dosages.length > 0 || !!primaryAppDetails?.action_text;
+  const isProactiveUrgent = isUrgentActionType && hasTreatmentActions && hasActionablePayload;
+  
   console.log(`   Is Young Crop: ${isYoungCrop}`);
   console.log(`   Stage Source: ${input.stage_source}`);
   console.log(`   Has Confirmed Diagnosis: ${hasConfirmedDiagnosis}`);
+  console.log(`   Is Proactive Urgent: ${isProactiveUrgent} (action_type=${primaryActionType}, rule_id=${primaryRuleId || '?'})`);
   
   // If young crop without confirmed diagnosis → check for DIAGNOSTIC_ESCALATION
-  if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators) {
+  // PROACTIVE bypass: skip the young-crop suppression when an authoritative
+  // URGENT_ACTION plan with treatment payload is already in hand.
+  if (isYoungCrop && !hasConfirmedDiagnosis && !input.has_emergency_indicators && !isProactiveUrgent) {
     // ── BYPASS: confirmed observation has a SAFE/CAUTION rule for this stage.
     // The caller (index.ts) precomputes this via lookupSafeRuleForObservations.
     // The rule's farmer_safety_level + growth_stage match is a stronger signal

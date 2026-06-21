@@ -1309,6 +1309,9 @@ export class AIAgentOrchestrator {
               }
               if (timeline.growth_stage && timeline.growth_stage !== 'UNKNOWN') {
                 landContext.growth_stage = timeline.growth_stage;
+                // Persist SSOT origin so downstream advisors (GDD, calendar lookup)
+                // cannot silently overwrite the authoritative stage.
+                (landContext as any).stage_source = timeline.stage_source;
               }
               (landContext as any).sowing_date = timeline.sowing_date;
               (landContext as any).expected_harvest_date = timeline.expected_harvest_date;
@@ -5074,8 +5077,17 @@ export class AIAgentOrchestrator {
           console.log(`   Accumulated GDD: ${phenologyResult.accumulated_gdd.toFixed(0)} (source: ${phenologyResult.gdd_source})`);
           console.log(`   Critical irrigation: ${phenologyResult.critical_irrigation_needed}, Critical nutrition: ${phenologyResult.critical_nutrition_needed}`);
           
-          // Override growth_stage in landContext with GDD-calculated stage
-          landContext.growth_stage = phenologyResult.current_stage;
+          // STAGE AUTHORITY LOCK (Bug B fix):
+          // crop_stage_master via CropTimeline SSOT is the single source of truth.
+          // The GDD engine is advisory only — never overwrite SSOT stage.
+          const ssotStageSource = (landContext as any).stage_source;
+          const ssotLocked = ssotStageSource === 'crop_stage_master';
+          if (ssotLocked) {
+            console.log(`   🔒 [StageAuthority] LOCKED stage=${landContext.growth_stage} source=SSOT(crop_stage_master) — GDD result (${phenologyResult.current_stage}) kept as advisory only`);
+          } else {
+            landContext.growth_stage = phenologyResult.current_stage;
+            (landContext as any).stage_source = 'gdd';
+          }
           landContext.gdd_phenology = phenologyResult;
         } catch (gddError) {
           console.error('   ❌ GDD calculation failed, using DAS fallback:', gddError);

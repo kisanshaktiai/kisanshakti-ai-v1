@@ -1,102 +1,106 @@
-## Root cause (confirmed from DB + code + live logs)
 
-The user-visible bug — "shows direct reason instead of the observation, and it's unclear what the farmer actually selected" — is a **label-swap bug** in the observation label loader, amplified by inconsistent UPPER vs lower_snake_case handling left over from the DB migration to `lower_snake_case`.
+## Root cause map (from log + code trace)
 
-### 1. The headline bug — label swap in `i18n/observation-label-loader.ts`
+### Bug A — URGENT_ACTION → DIAGNOSTIC_ESCALATION → no_action_needed
+**File:** `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts`
+**Function:** `runUnifiedDecisionGate` — Gate 5 ("Young Crop Protection"), lines **595–696**
 
-DB row for `obs_soil_crust_formed` (mr):
-- `display_text` = "मातीवर कडक थर तयार झाला" ← the OBSERVATION (short, what farmer sees)
-- `description_text` = "मुसळधार पावसानंतर…कडक थर — रोपांना वर येण्यास अडथळा. कमी सेंद्रिय पदार्थ असलेल्या मातीत जास्त." ← the CAUSE/REASON (long, why it happens)
+Trace:
+1. `index.ts` runs Decision Brain → returns `PROACTIVE_FLOOD_PREPAREDNESS_001`, `URGENT_ACTION`, conf=74, treatments=true.
+2. Result is passed into `runUnifiedDecisionGate`. At L599 `checkIfYoungCrop(stage, DAS=13, rice)` returns **true** (NURSERY/13 DAS).
+3. At L605 `hasConfirmedPestOrDisease(symbolic_decision)` returns **false** — a *proactive flood* rule is not a pest/disease, so the gate treats it as "no diagnosis".
+4. `input.confirmed_observation_has_safe_rule` is false (orchestrator only precomputes this for pest/disease observation rules, not proactive weather rules), so bypass at L618 is skipped.
+5. L650–696: because `symptom_keys` exist ("not emerged"), gate forces `GateStatus.PARTIAL` + `ResponseMode.DIAGNOSTIC_ESCALATION`, throwing away the SUCCESS payload from the brain.
+6. `index.ts` L1843–1868 honors that mode and rewrites `orchestratorResponse.type = 'DIAGNOSTIC_ESCALATION'`.
+7. `index.ts` L2522–2546 then writes `session_decision_state = 'no_action_needed'` because the response now carries 0 actions.
 
-Lines 121-133 contain a "smart" swap:
-```ts
-const hasGoodDescription = translation.description_text &&
-  translation.description_text.length > 10 &&
-  translation.description_text.length > (translation.display_text?.length || 0);
-labelMap.set(upperCode, {
-  display_text: hasGoodDescription ? translation.description_text : translation.display_text,
-  description_text: hasGoodDescription ? translation.display_text : (translation.description_text || ''),
-  ...
-});
+**This is the suppression site.** Gate 5 was written for pest/disease young-crop protection but currently swallows *all* proactive rules (flood, drought, frost, irrigation, sowing) just because the brain's primary decision isn't a CONFIRMED_PEST/DISEASE.
+
+**Fix (production-safe):**
+- In `unified-decision-gate.ts` add an early bypass at the top of Gate 5 (before L612):
+  - If `symbolic_decision.primary_decision?.urgency_level === 'URGENT_ACTION'` **and** `hasTreatmentActions === true` **and** `symbolic_decision.primary_decision.decision_authority` is one of `WEATHER | CLIMATE | PROACTIVE | IRRIGATION | LAND` — return `GateStatus.PASS` / `ResponseMode.RECOMMENDATION` and forward the brain's products/dosages.
+  - Reason string: `bypass:proactive_urgent_rule rule=<rule_id>`.
+- Extend `hasConfirmedPestOrDisease` (or add `hasConfirmedActionableRule`) to also return true when `rule.category` starts with `PROACTIVE_` or `rule.farmer_safety_level === 'SAFE'` AND `confidence >= 70`.
+- In `index.ts` (≈L1843), guard the `DIAGNOSTIC_ESCALATION` rewrite with `if (unifiedGateResult.bypass_reason?.startsWith('bypass:') === false)` so future bypasses cannot be overwritten.
+- In `index.ts` (≈L2522–2546), do not coerce to `no_action_needed` when `rawDecisionOutput.primary_decision?.urgency_level === 'URGENT_ACTION'`; set `awaiting_clarification` only when symptoms exist *and* primary decision is null.
+
+### Bug B — Stage drift NURSERY → TILLERING → ACTIVE_TILLERING
+**Authority order today (wrong):**
 ```
-Because `description_text` is always longer than `display_text` in the canonical seed data, the loader hands the **cause** to the UI as the primary label, and the **observation** disappears into a secondary field the UI doesn't render. The live console log (`[ClarificationUI]`) shows this exactly: every option label is the long cause sentence, not the short observation name.
-
-### 2. The case-mismatch trail that the user asked about
-
-DB is now `lower_snake_case` for codes:
-- `observation_master.observation_code` → `obs_rice_no_emergence`, `poor_germination`
-- `observation_translations.observation_code` → `obs_rice_no_emergence`
-- `decision_rules.crop_code` / `crop_group` → `rice`, `sugarcane`
-- `hypothesis_conditions.condition_key` → `bph_hopper_burn`
-
-But code keeps force-uppercasing everywhere:
-- `bundled-rules/loader.ts`: 228, 240, 251, 253, 261, 757, 836-839, 939, 954, 1008, 1072, 1112, 1208, 1337 — uppercases crop_code, observations, condition keys, observable characteristics.
-- `agents/clarification-strategy.ts`: 221-222 uppercases `crop_code`/`growth_stage` in `lockStageForTurn`; 496, 514, 571, 590, 836 uppercase observation_key in dedupe + symbol merge.
-- `i18n/observation-label-loader.ts`: 88 uppercases the lookup keys, then 96-99 also tries lowercase as a back-compat hack.
-
-Today the internal pipeline survives because (a) the label loader queries both casings and (b) the rule loader normalises everything to UPPER before matching. But:
-- The **merged symbol set returned to the rule engine on the next turn** (`mapClarificationSelectionToSymbols`, line 836) emits whatever case `observation_key` had — usually UPPER from `observation_master`-derived options — which then no longer matches `observation_master.observation_code` (lower) on direct equality checks downstream (e.g., `db-observation-validator`, alias resolution against `observation_aliases.canonical_code` which is lower).
-- `observation_aliases.alias_code` is UPPER, `canonical_code` is lower — code uses the alias map as `{ UPPER: [UPPER,...] }` which can't resolve back to the canonical lower form used by `decision_rules` JSONB conditions and by `hypothesis_conditions.condition_key`.
-
-This is the structural drift that makes the symbolic brain occasionally pick the wrong rule / fail to recognise what the farmer selected on follow-up turns.
-
-## Fix (single phase)
-
-### A. Unswap the label loader (immediate user-visible fix)
-`supabase/functions/ai-agriculture-chat/i18n/observation-label-loader.ts`
-- Remove the `hasGoodDescription` swap. Always:
-  - `display_text` ← DB `display_text` (the observation, what farmer sees)
-  - `description_text` ← DB `description_text` (the cause/explanation, secondary)
-- Keep the dual-case `.in(...)` query for back-compat, but **store the labelMap keyed by canonical lower_snake_case** AND register an UPPER alias entry for legacy callers. Returned `ObservationLabel.observation_code` becomes the canonical lower code.
-
-### B. Canonicalise observation codes to lower_snake_case at the edges
-Add `utils/code-normalizer.ts` with:
-```ts
-export const toCanonicalCode = (s: string) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
-export const toCanonicalCrop  = (s: string) => String(s ?? '').trim().toLowerCase();
+resolveCropTimeline (NURSERY, DAS=13)   ← SSOT, stage_source='crop_stage_master'
+   ↓
+canonical-state-builder.ts L530-537     ← keyword regex still maps "tiller/फुटवा" → TILLERING
+   ↓
+gdd-phenology-engine.ts L141,247,428    ← hard-codes TILLERING / ACTIVE_TILLERING when GDD>threshold,
+                                          overwriting SSOT regardless of stage_source
+   ↓
+crop-calendar-lookup.ts L83/153/211/235 ← second lookup returns TILLERING for any rice rule scan
 ```
-Use it in:
-- `agents/clarification-strategy.ts`
-  - `lockStageForTurn` (221-222): stop uppercasing `crop_code` / `growth_stage`; store canonical lower for crop, keep stage normalisation through `stage-normalizer` (stages remain UPPER as a separate vocabulary — only crop/observation codes change).
-  - Dedupe sets (496, 514, 571, 590) use `toCanonicalCode` instead of `.toUpperCase()`.
-  - `mapClarificationSelectionToSymbols` (line 836): push `toCanonicalCode(selectedOption.observation_key)` into `mergedSymbols`, so symbols handed back to the rule engine match DB casing.
-- `bundled-rules/loader.ts`
-  - `normalizeObservableChars` (249-256) and the `observations` / `required_symptoms` matcher (923-960): compare with `toCanonicalCode` on both sides instead of `.toUpperCase()`. Keep stage matching upper (separate vocabulary).
-  - Validator log key (line 939-946) uses canonical lower.
-  - Observation-alias cache rebuilt as `Record<lower, lower[]>` (see C).
 
-### C. Fix the alias map to be canonical-lower SSOT
-Wherever `observation_aliases` is loaded into `cachedObservationAliases`, build the map as:
+**Fix:**
+- In `agents/canonical-state-builder.ts`: when incoming `timeline.stage_source === 'crop_stage_master'`, **skip** the keyword regex normalization block (L520–560) entirely and return `timeline.stage` verbatim. Add invariant log: `[StageAuthority] LOCKED stage=<x> source=SSOT`.
+- In `agents/gdd-phenology-engine.ts`: top of `inferStageFromGDD` (around L100), early-return the incoming SSOT stage when `stage_source === 'crop_stage_master'`. The GDD engine becomes advisory only — never overrides SSOT.
+- In `decision/crop-calendar-lookup.ts`: callers must pass `effective_stage` from SSOT; remove the implicit "TILLERING default" branches at L83/L153/L235 — replace with `stage ?? input.stage_from_ssot`.
+- In `decision/unified-decision-gate.ts` L599–608: pass `stage_source` through and refuse to call `checkIfYoungCrop` with a stage that disagrees with SSOT — throw `STAGE_AUTHORITY_VIOLATION` to logs and use SSOT value.
+
+### Bug C — Hypothesis fabricated without observation evidence
+"Hard soil crust formed after rain blocks seedling emergence" diagnosis appears with **0 semantic_mapped, 6 synthetic**.
+
+**Files:**
+- `agents/observation-extractor.ts` — synthetic-observation injector (search for `synthetic: true` / `source: 'synthetic'`).
+- `decision/hypothesis-evaluator.ts` — currently accepts synthetic obs as evidence.
+- `agents/observation-wiring.ts` (if present in repo) — wiring stage that turns ranked symptom keys into observation rows.
+
+**Fix:**
+- In `observation-extractor.ts`: gate synthetic injection behind `if (semantic_mapped.length === 0 && allow_synthetic_fallback === true)`; default `allow_synthetic_fallback = false`. Log every synthetic obs with `{code, source:'synthetic', reason, confidence}`.
+- In `hypothesis-evaluator.ts`: when evaluating hypothesis conditions, **require ≥1 non-synthetic observation** to mark a hypothesis CONFIRMED. Synthetic obs may only contribute to CANDIDATE list, never to CONFIRMED.
+- Add unit assertion in `decision/observation-rule-lookup.ts` that drops rule matches whose `required_observation_codes` are satisfied *only* by synthetic codes.
+
+### Bug D — Authority Resolver returns NONE for valid proactive rule
+**File:** `decision/authority-resolver.ts`
+The resolver only marks `authority` non-NONE when the symbolic decision has a confirmed pest/disease/nutrient code. Proactive weather rules (flood/drought) fall through to `DecisionAuthority.NONE`, which is why log shows `Authority Resolved=false` despite conf=74.
+
+**Fix:**
+- Add explicit case: if `rule.category` ∈ {`PROACTIVE_WEATHER`,`PROACTIVE_IRRIGATION`,`PROACTIVE_CLIMATE`} → `authority = DecisionAuthority.WEATHER`, `treatments_allowed = rule.has_treatment_actions`.
+- Re-export updated authority via Gate 2 so L439 sees `authority !== NONE`.
+
+## State-transition diagram (after fix)
+
+```text
+Brain.success (URGENT_ACTION, conf=74, actions=[...])
+   │
+   ├─► AuthorityResolver
+   │      old: NONE  →  new: WEATHER (rule.category=PROACTIVE_*)
+   │
+   ├─► UnifiedGate Gate2: authorityResolved=true, blocksCrop=false → continue
+   │
+   ├─► UnifiedGate Gate5 (Young Crop):
+   │      isYoungCrop=true, but NEW bypass:
+   │      urgency=URGENT_ACTION + actionable + authority=WEATHER  ⇒ PASS
+   │
+   ├─► Response builder: RECOMMENDATION (rule.action_text)
+   │
+   └─► session_decision_state = 'action_recommended'
 ```
-{ [canonical_code_lower]: [alias_code_lower, ...], [alias_code_lower]: [canonical_code_lower] }
-```
-so expansion works in both directions and always returns lower codes that match `decision_rules` and `hypothesis_conditions`.
-
-### D. Keep stages and severity in UPPER (intentional)
-Stages (`GERMINATION`, `NURSERY`, `VEGETATIVE`, …) and severity tokens (`HIGH`, `CRITICAL`, …) are a separate UPPER vocabulary defined by `stage-normalizer` and the safety gates. Do **not** lowercase those — only observation codes, crop codes, crop groups, categories, and condition keys.
-
-### E. Telemetry guard
-Add a one-shot warn in `loadObservationLabels` if `display_text.length > description_text.length` on >50% of rows — that's the signal the seed data was inverted again. Useful canary so a future migration doesn't silently re-swap.
-
-## Verification
-
-1. Re-run the same Marathi rice DAS-12 turn from the console log. Expect option labels:
-   - "🔍 मातीवर कडक थर तयार झाला" (was: long cause sentence)
-   - "🔍 भात अजून उगवले नाही" (was: long cause sentence)
-2. Tap the second option → confirm next request body contains `observations: ["obs_rice_no_emergence"]` (lower) and the rule engine fires `RICE_GERMINATION_RESOW_DECISION_001` instead of falling back to clarification.
-3. `ai_chat_audit_logs.gate_decisions` for the follow-up turn should show `symbols_merged` with the canonical lower code.
-4. Existing tests in `_tests/` still pass — they assert UPPER for stage only, not for observation codes (spot-checked `crop-code-normalizer_test.ts`, `lock_stage_for_turn_test.ts`).
 
 ## Files to change
 
-- `supabase/functions/ai-agriculture-chat/i18n/observation-label-loader.ts` — unswap, canonical-lower keys, telemetry.
-- `supabase/functions/ai-agriculture-chat/utils/code-normalizer.ts` — new helpers (or extend existing `crop-code-normalizer.ts`).
-- `supabase/functions/ai-agriculture-chat/agents/clarification-strategy.ts` — canonical-lower for crop_code and observation_key (stages untouched).
-- `supabase/functions/ai-agriculture-chat/bundled-rules/loader.ts` — observation/condition_key matching uses canonical-lower; alias map normalisation.
-- (If alias loader lives elsewhere) the one place that builds `cachedObservationAliases` from `observation_aliases`.
+1. `supabase/functions/ai-agriculture-chat/decision/unified-decision-gate.ts` — Gate 5 proactive bypass + `hasConfirmedActionableRule`.
+2. `supabase/functions/ai-agriculture-chat/decision/authority-resolver.ts` — PROACTIVE_* → WEATHER authority.
+3. `supabase/functions/ai-agriculture-chat/index.ts` — respect bypass; don't coerce `no_action_needed` when URGENT_ACTION.
+4. `supabase/functions/ai-agriculture-chat/agents/canonical-state-builder.ts` — SSOT lock, skip keyword regex when stage_source='crop_stage_master'.
+5. `supabase/functions/ai-agriculture-chat/agents/gdd-phenology-engine.ts` — SSOT short-circuit; GDD becomes advisory.
+6. `supabase/functions/ai-agriculture-chat/decision/crop-calendar-lookup.ts` — remove implicit TILLERING defaults; require stage param.
+7. `supabase/functions/ai-agriculture-chat/agents/observation-extractor.ts` — disable synthetic obs by default + structured log.
+8. `supabase/functions/ai-agriculture-chat/decision/hypothesis-evaluator.ts` — synthetic obs cannot CONFIRM a hypothesis.
+9. `supabase/functions/ai-agriculture-chat/decision/observation-rule-lookup.ts` — drop matches satisfied only by synthetic codes.
 
-## Out of scope (do NOT touch)
+## Out of scope / invariants kept
+- No DB schema changes. `crop_stage_master` remains sole stage authority.
+- Decision Brain output untouched; we only stop downstream layers from overwriting it.
+- No LLM-generated agronomy; synthetic-obs hypotheses are demoted, not deleted, so audit trail remains.
 
-- `decision/unified-decision-gate.ts`, `decision/safety-gates.ts`, hypothesis evaluator — already correct after previous patches; they consume whatever symbols the loader/clarifier hand them, so the fix flows through.
-- Stage vocabulary, severity vocabulary, intent codes (still UPPER).
-- DB schema — no migration needed; this is purely an application-side casing alignment.
+## Verification
+- Replay the failing session: expect `response_mode=RECOMMENDATION`, `session_decision_state=action_recommended`, stage rendered = NURSERY everywhere.
+- Add regression test in `_tests/`: rice DAS=13 + "not emerged" + proactive flood rule → asserts no DIAGNOSTIC_ESCALATION and stage===NURSERY across canonical context, survival matrix, and rule filtering.
+- Add log assertion: any `[StageAuthority] LOCKED` must precede every downstream `stage=` log line in the same request.
