@@ -218,7 +218,10 @@ export function lockStageForTurn(
   }
 
   const ctx: LockedStageContext = {
-    crop_code: cropCode.toUpperCase(),
+    // Crop codes are canonical lower_snake_case (DB SSOT). Stages are an
+    // intentionally separate UPPER vocabulary used by safety-gates and
+    // stage-normalizer — keep them UPPER.
+    crop_code: cropCode.toLowerCase(),
     growth_stage: growthStage.toUpperCase(),
     days_since_sowing: daysSinceSowing,
     locked_at: Date.now(),
