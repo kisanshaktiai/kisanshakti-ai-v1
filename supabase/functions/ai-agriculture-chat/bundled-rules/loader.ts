@@ -1290,19 +1290,22 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           const CAUSE_ENCODED = /(_DEFICIENCY_|_TOXICITY_|_POISONING_|^K_DEFICIENCY|^POTASH_DEFICIENCY|^N_DEFICIENCY|^P_DEFICIENCY)/i;
           const aliasMap: Record<string, string[]> = {};
           let skipped = 0;
+          const norm = (s: string) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
           for (const row of aliases) {
             if (CAUSE_ENCODED.test(row.alias_code)) {
               skipped++;
               console.warn(`🚫 [RuleLoader] Rejecting cause-named alias '${row.alias_code}' → '${row.canonical_code}' (use observable-sign aliases only)`);
               continue;
             }
-            if (!aliasMap[row.alias_code]) aliasMap[row.alias_code] = [];
-            aliasMap[row.alias_code].push(row.canonical_code);
-            // Also add reverse mapping
-            if (!aliasMap[row.canonical_code]) aliasMap[row.canonical_code] = [];
-            if (!aliasMap[row.canonical_code].includes(row.alias_code)) {
-              aliasMap[row.canonical_code].push(row.alias_code);
-            }
+            // CANONICAL LOWER SSOT: keys + values are lower_snake_case so
+            // alias expansion always returns codes that match
+            // decision_rules / hypothesis_conditions / observation_master.
+            const aliasLower = norm(row.alias_code);
+            const canonLower = norm(row.canonical_code);
+            if (!aliasMap[aliasLower]) aliasMap[aliasLower] = [];
+            if (!aliasMap[aliasLower].includes(canonLower)) aliasMap[aliasLower].push(canonLower);
+            if (!aliasMap[canonLower]) aliasMap[canonLower] = [];
+            if (!aliasMap[canonLower].includes(aliasLower)) aliasMap[canonLower].push(aliasLower);
           }
           cachedObservationAliases = aliasMap;
           aliasesCacheExpiry = now + CACHE_TTL;
