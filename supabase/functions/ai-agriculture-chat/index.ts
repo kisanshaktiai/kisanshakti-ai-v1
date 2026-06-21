@@ -1784,7 +1784,11 @@ serve(async (req) => {
             candidate_rules: candidateRulesForGate,
             current_confidence: symbolicConfidence,
             differential_questions: diffLookup,
+            confirmed_safe_rule_bypass: typeof (unifiedGateResult as any)?.reason === 'string'
+              && (unifiedGateResult as any).reason.startsWith('bypass:confirmed_safe_rule_exists'),
+            response_mode: unifiedGateResult?.response_mode,
           };
+
 
           safetyGateResult = runSafetyGates(safetyInput, detectedLanguage);
 
