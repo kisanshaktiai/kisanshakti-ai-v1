@@ -80,7 +80,16 @@ export interface SafetyGateInput {
   // public.observation_differential_questions for (language, crop_code) and
   // hands it to the gate.
   differential_questions?: Record<string, string>;
+
+  // BYPASS SIGNAL (2026-06-21): when the unified decision gate has already
+  // confirmed a SAFE OBSERVATION rule (e.g. young-crop monitoring/resow
+  // decision), safety-gates must NOT downgrade to CLARIFY purely on
+  // low-confidence caps. Hard safety triggers (foliar, contradiction,
+  // NDVI-vs-nutrient, low discriminator) still apply.
+  confirmed_safe_rule_bypass?: boolean;
+  response_mode?: string;
 }
+
 
 export interface GateDecisionEntry {
   passed: boolean;
@@ -292,13 +301,19 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
   // STAGE_ADVISORY_FALLBACK lane handles the response with crop + stage + DAS.
   const hasAnyReportedSymptom = (input.symptom_keys?.length ?? 0) > 0;
 
+  // BYPASS: unified gate already confirmed a SAFE rule (OBSERVATION mode).
+  // Suppress the low-confidence clarify trigger; keep hard safety triggers.
+  const isSafeBypass = input.confirmed_safe_rule_bypass === true
+    || input.response_mode === 'OBSERVATION';
+
   const mustClarify =
     hasAnyReportedSymptom && (
       contradicted ||
       ndviAnomalous ||
       !!lowSpecSymptom ||
-      cappedConf < 0.45
+      (!isSafeBypass && cappedConf < 0.45)
     );
+
 
   if (mustClarify) {
     const sym = lowSpecSymptom || input.symptom_keys[0]; // guaranteed non-empty by hasAnyReportedSymptom
@@ -333,9 +348,13 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
   } else {
     result.gate_decisions.CLARIFICATION_GATE = {
       passed: true,
-      reason: 'Specificity, NDVI, contradiction and confidence all OK'
+      reason: isSafeBypass && hasAnyReportedSymptom && cappedConf < 0.45
+        ? `Bypassed: unified gate confirmed SAFE rule (OBSERVATION mode), conf=${cappedConf.toFixed(2)} cap ignored`
+        : 'Specificity, NDVI, contradiction and confidence all OK',
+      data: { safe_bypass: isSafeBypass }
     };
   }
+
 
   // Final override: if foliar safety failed AND no surviving rule, force CLARIFY
   if (foliarRejects.length > 0 && result.override_mode === 'NONE') {
