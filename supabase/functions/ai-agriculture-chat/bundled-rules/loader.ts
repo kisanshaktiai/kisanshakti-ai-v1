@@ -245,12 +245,13 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         });
       };
       
-      // Normalize observable_characteristics to array
+      // Normalize observable_characteristics to canonical lower_snake_case array
       const normalizeObservableChars = (chars: unknown): string[] | null => {
         if (!chars) return null;
-        if (Array.isArray(chars)) return chars.map(c => String(c).toUpperCase());
+        const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+        if (Array.isArray(chars)) return chars.map(c => norm(c));
         if (typeof chars === 'object') {
-          return Object.keys(chars).map(k => k.toUpperCase());
+          return Object.keys(chars).map(k => norm(k));
         }
         return null;
       };
@@ -754,7 +755,7 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
   }
 
   // Generic observation-based boolean flags
-  const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+  const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
   if (expected) {
     const obsMatch = expandedObs.has(keySymbol) ||
       [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
@@ -832,24 +833,23 @@ export function evaluateConditionsJson(
   const conditionKeys = Object.keys(conditions);
 
   // Precompute input values
+  // CANONICAL CASE (post-2026-06-21 migration): observation/condition codes
+  // are lower_snake_case in DB (observation_master, observation_aliases,
+  // hypothesis_conditions, decision_rules). Stages stay UPPER.
   const inputStage = (input.crop_stage || '').toUpperCase();
-  const inputSymptoms = (input.visual_symptoms || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
-  const inputSymptom = ((input as any).primary_symptom || '').toUpperCase().replace(/[\s-]/g, '_');
-  const inputQuery = ((input as any).user_query || '').toUpperCase();
-  const inputObservations = (input.observations || []).map(s => s.toUpperCase().replace(/[\s-]/g, '_'));
+  const inputSymptoms = (input.visual_symptoms || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
+  const inputSymptom = String((input as any).primary_symptom || '').toLowerCase().replace(/[\s-]+/g, '_');
+  const inputQuery = String((input as any).user_query || '').toLowerCase();
+  const inputObservations = (input.observations || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
 
-  // Combined observation set
+  // Combined observation set (all lower_snake_case)
   const allInputObs = new Set([...inputSymptoms, ...inputObservations]);
   if (inputSymptom) allInputObs.add(inputSymptom);
 
-  // Observation aliases
-  // ═══════════════════════════════════════════════════════════════════════════
-  // PHASE 4: Use DB-sourced observation aliases (SSOT from observation_aliases table)
-  // Empty fallback is intentional - safer than hardcoded phantom matches
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Observation aliases (canonical lower SSOT — see loader cache build).
   const observationAliases: Record<string, string[]> = cachedObservationAliases || {};
 
-  // Expand with aliases
+  // Expand with aliases (lower → lower)
   const expandedObs = new Set(allInputObs);
   for (const obs of allInputObs) {
     if (observationAliases[obs]) {
@@ -936,14 +936,14 @@ export function evaluateConditionsJson(
           // logs at most once per process. The loader previously warned twice
           // per rule (once for `observations` and once for `required_symptoms`).
           for (const obs of obsList) {
-            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
-            if (!cachedObservationCodes.has(obsUpper)) {
-              const dedupKey = `${ruleId}|${obsUpper}`;
+            const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
+            if (!cachedObservationCodes.has(obsNorm)) {
+              const dedupKey = `${ruleId}|${obsNorm}`;
               if (!(globalThis as any).__obsValidationLogged) (globalThis as any).__obsValidationLogged = new Set<string>();
               const seen = (globalThis as any).__obsValidationLogged as Set<string>;
               if (!seen.has(dedupKey)) {
                 seen.add(dedupKey);
-                console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsUpper}`);
+                console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsNorm}`);
               }
             }
           }
@@ -951,15 +951,12 @@ export function evaluateConditionsJson(
         
         if (expandedObs.size > 0) {
           const obsMatch = obsList.some((obs: string) => {
-            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+            const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
             for (const inputObs of expandedObs) {
-              if (inputObs === obsUpper || inputObs.includes(obsUpper) || obsUpper.includes(inputObs)) return true;
-              // ═══════════════════════════════════════════════════════════════
-              // AUDIT FIX: Root-word matching for related codes
-              // STUNTED_PLANTS ↔ STUNTED_GROWTH (share root word 'STUNTED')
-              // POOR_TILLERING ↔ POOR_RATOONING (share root word 'POOR')
-              // ═══════════════════════════════════════════════════════════════
-              const obsWords = obsUpper.split('_');
+              if (inputObs === obsNorm || inputObs.includes(obsNorm) || obsNorm.includes(inputObs)) return true;
+              // Root-word matching for related codes
+              // stunted_plants ↔ stunted_growth (share 'stunted')
+              const obsWords = obsNorm.split('_');
               const inputWords = inputObs.split('_');
               const sharedWords = obsWords.filter(w => inputWords.includes(w) && w.length > 3);
               if (sharedWords.length > 0) return true;
@@ -1005,7 +1002,7 @@ export function evaluateConditionsJson(
     // ─── Category G: Informational/Context Keys (NOT required) ───
     if (CATEGORY_G_KEYS.has(key)) {
       if (typeof condValue === 'string') {
-        const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+        const valUpper = condValue.toLowerCase().replace(/[\s-]+/g, "_");
         const matches = inputQuery.includes(valUpper) || [...expandedObs].some(o => o.includes(valUpper));
         ledger.push({
           key, status: matches ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA,
@@ -1069,7 +1066,7 @@ export function evaluateConditionsJson(
     // Unknown boolean keys are treated as SOFT observation hints, not hard gates.
     // This prevents orphan/new DB keys from blocking entire rules.
     if (condValue === true || condValue === 'true') {
-      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
       const match = expandedObs.has(keySymbol) ||
         [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
         inputQuery.includes(keySymbol);
@@ -1101,7 +1098,7 @@ export function evaluateConditionsJson(
 
       // String match against observations/query
       // v7.6: Unknown string keys are soft — don't block rules
-      const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+      const valUpper = condValue.toLowerCase().replace(/[\s-]+/g, "_");
       const match = [...expandedObs].some(o => o.includes(valUpper) || valUpper.includes(o)) || inputQuery.includes(valUpper);
       ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       continue;
@@ -1109,7 +1106,7 @@ export function evaluateConditionsJson(
 
     if (condValue === false || condValue === 'false') {
       // Negative assertion - passes unless contradicted
-      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
       const present = expandedObs.has(keySymbol) || [...expandedObs].some(o => o.includes(keySymbol));
       ledger.push({ key, status: present ? ConditionStatus.FAILED : ConditionStatus.PASSED, required: false, ruleValue: condValue });
       continue;
@@ -1148,7 +1145,7 @@ export function evaluateConditionsJson(
       if (Array.isArray(condValue)) {
         // Treat unknown array keys as soft observation lists
         const arrMatch = condValue.some((v: any) => {
-          const vUpper = String(v).toUpperCase().replace(/[\s-]/g, '_');
+          const vUpper = String(v).toLowerCase().replace(/[\s-]+/g, "_");
           return expandedObs.has(vUpper) || [...expandedObs].some(o => o.includes(vUpper) || vUpper.includes(o));
         });
         ledger.push({ key, status: arrMatch ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
@@ -1205,10 +1202,10 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
       const obsChars = (rule as any).observable_characteristics;
       if (obsChars && Array.isArray(obsChars) && obsChars.length > 0) {
         const inputSymptoms = (input.visual_symptoms || []).map(s =>
-          s.toUpperCase().replace(/[\s-]/g, '_')
+          s.toLowerCase().replace(/[\s-]+/g, "_")
         );
         if (inputSymptoms.length > 0) {
-          const obsSet = new Set(obsChars.map((o: any) => String(o).toUpperCase().replace(/[\s-]/g, '_')));
+          const obsSet = new Set(obsChars.map((o: any) => String(o).toLowerCase().replace(/[\s-]+/g, "_")));
           const matched: string[] = [];
           for (const sym of inputSymptoms) {
             for (const obs of obsSet) {
@@ -1290,19 +1287,22 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
           const CAUSE_ENCODED = /(_DEFICIENCY_|_TOXICITY_|_POISONING_|^K_DEFICIENCY|^POTASH_DEFICIENCY|^N_DEFICIENCY|^P_DEFICIENCY)/i;
           const aliasMap: Record<string, string[]> = {};
           let skipped = 0;
+          const norm = (s: string) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
           for (const row of aliases) {
             if (CAUSE_ENCODED.test(row.alias_code)) {
               skipped++;
               console.warn(`🚫 [RuleLoader] Rejecting cause-named alias '${row.alias_code}' → '${row.canonical_code}' (use observable-sign aliases only)`);
               continue;
             }
-            if (!aliasMap[row.alias_code]) aliasMap[row.alias_code] = [];
-            aliasMap[row.alias_code].push(row.canonical_code);
-            // Also add reverse mapping
-            if (!aliasMap[row.canonical_code]) aliasMap[row.canonical_code] = [];
-            if (!aliasMap[row.canonical_code].includes(row.alias_code)) {
-              aliasMap[row.canonical_code].push(row.alias_code);
-            }
+            // CANONICAL LOWER SSOT: keys + values are lower_snake_case so
+            // alias expansion always returns codes that match
+            // decision_rules / hypothesis_conditions / observation_master.
+            const aliasLower = norm(row.alias_code);
+            const canonLower = norm(row.canonical_code);
+            if (!aliasMap[aliasLower]) aliasMap[aliasLower] = [];
+            if (!aliasMap[aliasLower].includes(canonLower)) aliasMap[aliasLower].push(canonLower);
+            if (!aliasMap[canonLower]) aliasMap[canonLower] = [];
+            if (!aliasMap[canonLower].includes(aliasLower)) aliasMap[canonLower].push(aliasLower);
           }
           cachedObservationAliases = aliasMap;
           aliasesCacheExpiry = now + CACHE_TTL;
@@ -1334,7 +1334,7 @@ export async function loadAllRules(): Promise<ExecutableRule[]> {
             }
             const rows = page || [];
             for (const r of rows) {
-              if (r?.observation_code) allCodes.push(String(r.observation_code).toUpperCase());
+              if (r?.observation_code) allCodes.push(String(r.observation_code).toLowerCase().replace(/[\s-]+/g, '_'));
             }
             if (rows.length < PAGE) break;
             fromIdx += PAGE;

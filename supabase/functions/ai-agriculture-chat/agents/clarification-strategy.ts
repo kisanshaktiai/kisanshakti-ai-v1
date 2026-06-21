@@ -218,7 +218,10 @@ export function lockStageForTurn(
   }
 
   const ctx: LockedStageContext = {
-    crop_code: cropCode.toUpperCase(),
+    // Crop codes are canonical lower_snake_case (DB SSOT). Stages are an
+    // intentionally separate UPPER vocabulary used by safety-gates and
+    // stage-normalizer — keep them UPPER.
+    crop_code: cropCode.toLowerCase(),
     growth_stage: growthStage.toUpperCase(),
     days_since_sowing: daysSinceSowing,
     locked_at: Date.now(),
@@ -493,7 +496,7 @@ export async function fetchRuleDrivenClarificationOptions(
   
   for (const candidate of candidates) {
     for (const char of candidate.observable_characteristics) {
-      const optionKey = char.observation_key.toUpperCase();
+      const optionKey = String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_");
       
       // Skip duplicates
       if (seenOptions.has(optionKey)) continue;
@@ -511,7 +514,7 @@ export async function fetchRuleDrivenClarificationOptions(
       }
       
       // Skip if already known
-      if (current_symptoms.some(s => s.toUpperCase() === optionKey)) continue;
+      if (current_symptoms.some(s => String(s).toLowerCase().replace(/[\s-]+/g, '_') === optionKey)) continue;
       
       seenOptions.add(optionKey);
       
@@ -568,8 +571,8 @@ export async function fetchRuleDrivenClarificationOptions(
       for (const char of candidate.observable_characteristics) {
         // Only apply stage filter (mandatory)
         if (!isObservationStageCompatible(char.observation_key, stage)) continue;
-        if (seenOptions.has(char.observation_key.toUpperCase())) continue;
-        if (current_symptoms.some(s => s.toUpperCase() === char.observation_key.toUpperCase())) continue;
+        if (seenOptions.has(String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_"))) continue;
+        if (current_symptoms.some(s => String(s).toLowerCase().replace(/[\s-]+/g, '_') === String(char.observation_key).toLowerCase().replace(/[\s-]+/g, '_'))) continue;
         
         const label = char[`label_${language}` as keyof typeof char] as string || 
                       char.label_en || 
@@ -587,7 +590,7 @@ export async function fetchRuleDrivenClarificationOptions(
           total_score: 0.5
         });
         
-        seenOptions.add(char.observation_key.toUpperCase());
+        seenOptions.add(String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_"));
         
         // Stop after getting 3 options
         if (allOptions.length >= 3) break;
@@ -831,18 +834,20 @@ export function mapClarificationSelectionToSymbols(
   // MERGE: Start with ALL existing symbols (never discard)
   const mergedSymbols = [...existingSymbols];
   
-  // Add the observation key from the selected option if not already present
+  // Add the observation key from the selected option if not already present.
+  // CANONICAL CASE: push lower_snake_case so the rule engine and
+  // observation_aliases / hypothesis_conditions resolve on direct equality.
   if (selectedOption.observation_key) {
-    const normalizedKey = selectedOption.observation_key.toUpperCase().replace(/[\s-]/g, '_');
-    const alreadyExists = mergedSymbols.some(s => 
-      s.toUpperCase().replace(/[\s-]/g, '_') === normalizedKey
+    const normalizedKey = String(selectedOption.observation_key).toLowerCase().replace(/[\s-]+/g, '_');
+    const alreadyExists = mergedSymbols.some(s =>
+      String(s).toLowerCase().replace(/[\s-]+/g, '_') === normalizedKey
     );
-    
+
     if (!alreadyExists) {
-      mergedSymbols.push(selectedOption.observation_key);
-      console.log(`   ➕ [ClarificationMerge] Merged symbol: ${selectedOption.observation_key} (total: ${mergedSymbols.length})`);
+      mergedSymbols.push(normalizedKey);
+      console.log(`   ➕ [ClarificationMerge] Merged symbol: ${normalizedKey} (total: ${mergedSymbols.length})`);
     } else {
-      console.log(`   ℹ️ [ClarificationMerge] Symbol already exists: ${selectedOption.observation_key}`);
+      console.log(`   ℹ️ [ClarificationMerge] Symbol already exists: ${normalizedKey}`);
     }
   }
   

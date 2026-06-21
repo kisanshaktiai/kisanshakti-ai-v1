@@ -67,9 +67,16 @@ export interface ObservationLabel {
   icon: string;
 }
 
+const toCanonical = (s: string): string =>
+  String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+
 /**
  * Load observation labels from database for given codes and language
- * SSOT: All display text comes from observation_translations table
+ * SSOT: All display text comes from observation_translations table.
+ *
+ * Map is keyed by BOTH canonical lower_snake_case and UPPER_SNAKE_CASE forms
+ * so legacy callers that still pass UPPER keys keep working while we migrate.
+ * Returned ObservationLabel.observation_code is the canonical lower form.
  */
 export async function loadObservationLabels(
   supabaseClient: any,
@@ -77,25 +84,22 @@ export async function loadObservationLabels(
   language: string
 ): Promise<Map<string, ObservationLabel>> {
   console.log(`📖 [ObservationLoader v${OBSERVATION_LOADER_VERSION}] Loading ${observationCodes.length} labels in ${language}`);
-  
+
   const labelMap = new Map<string, ObservationLabel>();
-  
+
   if (!observationCodes || observationCodes.length === 0) {
     return labelMap;
   }
-  
+
   try {
-    const upperCodes = observationCodes.map(c => c.toUpperCase());
+    const canonicalCodes = observationCodes.map(toCanonical);
     const normalizedLanguage = (language || 'en').toLowerCase();
 
-    // CASE-INSENSITIVE LOOKUP (2026-06-17 bug fix):
-    // observation_translations.observation_code is stored lowercase canonical;
-    // upstream pipelines emit UPPERCASE. Query both casings so the loader
-    // actually returns farmer-friendly text instead of falling back to the
-    // raw code label.
-    const dualCaseCodes = Array.from(new Set([
-      ...upperCodes,
-      ...upperCodes.map(c => c.toLowerCase()),
+    // Back-compat: observation_translations.observation_code is canonical lower,
+    // but some legacy seed rows may still be UPPER. Query both shapes.
+    const dualCaseCodes = Array.from(new Set<string>([
+      ...canonicalCodes,
+      ...canonicalCodes.map(c => c.toUpperCase()),
     ]));
 
     const { data: translations, error } = await supabaseClient
@@ -108,56 +112,80 @@ export async function loadObservationLabels(
       console.error(`   ❌ DB error: ${error.message}`);
     }
 
-    // Build map from database results
-    // CRITICAL FIX: Prefer description_text (farmer-friendly) over display_text (technical term)
-    // when description_text is available and substantive (>10 chars)
-    for (const code of observationCodes) {
-      const upperCode = code.toUpperCase();
-      const translation = translations?.find(
-        (t: any) => (t.observation_code || '').toUpperCase() === upperCode
-      );
-      const icon = OBSERVATION_ICONS[upperCode] || '❓';
-
-      if (translation) {
-        // Use description_text as display if it's more descriptive (farmer-friendly)
-        // description_text describes WHAT FARMER SEES, display_text is often a technical term
-        const hasGoodDescription = translation.description_text &&
-          translation.description_text.length > 10 &&
-          translation.description_text.length > (translation.display_text?.length || 0);
-
-        labelMap.set(upperCode, {
-          observation_code: upperCode,
-          display_text: hasGoodDescription ? translation.description_text : translation.display_text,
-          description_text: hasGoodDescription ? translation.display_text : (translation.description_text || ''),
-          icon
-        });
-      } else {
-        // Fallback: DO NOT generate English phrase for non-English UI.
-        // This avoids mixed-language symptom lists (e.g., Marathi UI + "Dead Heart").
-        labelMap.set(upperCode, {
-          observation_code: upperCode,
-          display_text: formatCodeAsLabel(upperCode, normalizedLanguage),
-          description_text: '',
-          icon
-        });
-        console.warn(`   ⚠️ No translation found for ${upperCode} in ${normalizedLanguage} - using code fallback`);
+    // Telemetry canary — if seed data ever inverts again (display longer than
+    // description across the board), warn so we catch a future migration drift.
+    if (translations && translations.length > 0) {
+      let invertedRows = 0;
+      for (const t of translations) {
+        const d = (t.display_text || '').length;
+        const r = (t.description_text || '').length;
+        if (d > 0 && r > 0 && d > r) invertedRows++;
+      }
+      if (invertedRows / translations.length > 0.5) {
+        console.warn(
+          `🚨 [ObservationLoader] Possible seed inversion: ${invertedRows}/${translations.length} rows have display_text longer than description_text`
+        );
       }
     }
 
-    console.log(`   ✅ Loaded ${labelMap.size} labels from database`);
+    for (let i = 0; i < observationCodes.length; i++) {
+      const originalCode = observationCodes[i];
+      const canonical = canonicalCodes[i];
+      const upper = canonical.toUpperCase();
+      const translation = translations?.find(
+        (t: any) => toCanonical(t.observation_code || '') === canonical
+      );
+      const icon = OBSERVATION_ICONS[upper] || '❓';
+
+      let label: ObservationLabel;
+      if (translation) {
+        // NO SWAP. display_text = the observation (short farmer-friendly noun
+        // phrase, what farmer actually sees in the field). description_text =
+        // the cause / explanatory context. The UI renders display_text as the
+        // primary clarification option; never invert them, or the farmer sees
+        // a sentence about WHY instead of WHAT to look at.
+        label = {
+          observation_code: canonical,
+          display_text: translation.display_text || translation.description_text || canonical,
+          description_text: translation.description_text || '',
+          icon,
+        };
+      } else {
+        // Fallback: DO NOT generate English phrase for non-English UI.
+        label = {
+          observation_code: canonical,
+          display_text: formatCodeAsLabel(upper, normalizedLanguage),
+          description_text: '',
+          icon,
+        };
+        console.warn(`   ⚠️ No translation found for ${canonical} in ${normalizedLanguage} - using code fallback`);
+      }
+
+      // Register under canonical lower, UPPER, and the original caller-supplied
+      // form so every existing lookup site resolves regardless of casing.
+      labelMap.set(canonical, label);
+      labelMap.set(upper, label);
+      if (originalCode && originalCode !== canonical && originalCode !== upper) {
+        labelMap.set(originalCode, label);
+      }
+    }
+
+    console.log(`   ✅ Loaded ${labelMap.size} label keys from database`);
 
   } catch (err) {
     console.error(`   ❌ Exception in loadObservationLabels: ${err}`);
 
-    // On error, still return a safe fallback so UI doesn't break
     for (const code of observationCodes) {
-      const upperCode = code.toUpperCase();
-      labelMap.set(upperCode, {
-        observation_code: upperCode,
-        display_text: formatCodeAsLabel(upperCode, (language || 'en').toLowerCase()),
+      const canonical = toCanonical(code);
+      const upper = canonical.toUpperCase();
+      const fallback: ObservationLabel = {
+        observation_code: canonical,
+        display_text: formatCodeAsLabel(upper, (language || 'en').toLowerCase()),
         description_text: '',
-        icon: OBSERVATION_ICONS[upperCode] || '❓'
-      });
+        icon: OBSERVATION_ICONS[upper] || '❓',
+      };
+      labelMap.set(canonical, fallback);
+      labelMap.set(upper, fallback);
     }
   }
 
