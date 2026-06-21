@@ -754,7 +754,7 @@ function evaluateBooleanGate(key: string, condValue: any, input: DecisionInput, 
   }
 
   // Generic observation-based boolean flags
-  const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+  const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
   if (expected) {
     const obsMatch = expandedObs.has(keySymbol) ||
       [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
@@ -1001,7 +1001,7 @@ export function evaluateConditionsJson(
     // ─── Category G: Informational/Context Keys (NOT required) ───
     if (CATEGORY_G_KEYS.has(key)) {
       if (typeof condValue === 'string') {
-        const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+        const valUpper = condValue.toLowerCase().replace(/[\s-]+/g, "_");
         const matches = inputQuery.includes(valUpper) || [...expandedObs].some(o => o.includes(valUpper));
         ledger.push({
           key, status: matches ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA,
@@ -1065,7 +1065,7 @@ export function evaluateConditionsJson(
     // Unknown boolean keys are treated as SOFT observation hints, not hard gates.
     // This prevents orphan/new DB keys from blocking entire rules.
     if (condValue === true || condValue === 'true') {
-      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
       const match = expandedObs.has(keySymbol) ||
         [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) ||
         inputQuery.includes(keySymbol);
@@ -1097,7 +1097,7 @@ export function evaluateConditionsJson(
 
       // String match against observations/query
       // v7.6: Unknown string keys are soft — don't block rules
-      const valUpper = condValue.toUpperCase().replace(/[\s-]/g, '_');
+      const valUpper = condValue.toLowerCase().replace(/[\s-]+/g, "_");
       const match = [...expandedObs].some(o => o.includes(valUpper) || valUpper.includes(o)) || inputQuery.includes(valUpper);
       ledger.push({ key, status: match ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
       continue;
@@ -1105,7 +1105,7 @@ export function evaluateConditionsJson(
 
     if (condValue === false || condValue === 'false') {
       // Negative assertion - passes unless contradicted
-      const keySymbol = key.toUpperCase().replace(/[\s-]/g, '_');
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
       const present = expandedObs.has(keySymbol) || [...expandedObs].some(o => o.includes(keySymbol));
       ledger.push({ key, status: present ? ConditionStatus.FAILED : ConditionStatus.PASSED, required: false, ruleValue: condValue });
       continue;
@@ -1144,7 +1144,7 @@ export function evaluateConditionsJson(
       if (Array.isArray(condValue)) {
         // Treat unknown array keys as soft observation lists
         const arrMatch = condValue.some((v: any) => {
-          const vUpper = String(v).toUpperCase().replace(/[\s-]/g, '_');
+          const vUpper = String(v).toLowerCase().replace(/[\s-]+/g, "_");
           return expandedObs.has(vUpper) || [...expandedObs].some(o => o.includes(vUpper) || vUpper.includes(o));
         });
         ledger.push({ key, status: arrMatch ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
@@ -1201,10 +1201,10 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
       const obsChars = (rule as any).observable_characteristics;
       if (obsChars && Array.isArray(obsChars) && obsChars.length > 0) {
         const inputSymptoms = (input.visual_symptoms || []).map(s =>
-          s.toUpperCase().replace(/[\s-]/g, '_')
+          s.toLowerCase().replace(/[\s-]+/g, "_")
         );
         if (inputSymptoms.length > 0) {
-          const obsSet = new Set(obsChars.map((o: any) => String(o).toUpperCase().replace(/[\s-]/g, '_')));
+          const obsSet = new Set(obsChars.map((o: any) => String(o).toLowerCase().replace(/[\s-]+/g, "_")));
           const matched: string[] = [];
           for (const sym of inputSymptoms) {
             for (const obs of obsSet) {
