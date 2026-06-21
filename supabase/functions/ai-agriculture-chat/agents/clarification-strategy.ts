@@ -572,7 +572,7 @@ export async function fetchRuleDrivenClarificationOptions(
         // Only apply stage filter (mandatory)
         if (!isObservationStageCompatible(char.observation_key, stage)) continue;
         if (seenOptions.has(char.observation_key.toUpperCase())) continue;
-        if (current_symptoms.some(s => s.toUpperCase() === char.observation_key.toUpperCase())) continue;
+        if (current_symptoms.some(s => String(s).toLowerCase().replace(/[\s-]+/g, '_') === String(char.observation_key).toLowerCase().replace(/[\s-]+/g, '_'))) continue;
         
         const label = char[`label_${language}` as keyof typeof char] as string || 
                       char.label_en || 
