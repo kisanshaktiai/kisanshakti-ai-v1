@@ -245,12 +245,13 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         });
       };
       
-      // Normalize observable_characteristics to array
+      // Normalize observable_characteristics to canonical lower_snake_case array
       const normalizeObservableChars = (chars: unknown): string[] | null => {
         if (!chars) return null;
-        if (Array.isArray(chars)) return chars.map(c => String(c).toUpperCase());
+        const norm = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+        if (Array.isArray(chars)) return chars.map(c => norm(c));
         if (typeof chars === 'object') {
-          return Object.keys(chars).map(k => k.toUpperCase());
+          return Object.keys(chars).map(k => norm(k));
         }
         return null;
       };
@@ -838,7 +839,7 @@ export function evaluateConditionsJson(
   const inputStage = (input.crop_stage || '').toUpperCase();
   const inputSymptoms = (input.visual_symptoms || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
   const inputSymptom = String((input as any).primary_symptom || '').toLowerCase().replace(/[\s-]+/g, '_');
-  const inputQuery = ((input as any).user_query || '').toUpperCase();
+  const inputQuery = String((input as any).user_query || '').toLowerCase();
   const inputObservations = (input.observations || []).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_'));
 
   // Combined observation set (all lower_snake_case)
