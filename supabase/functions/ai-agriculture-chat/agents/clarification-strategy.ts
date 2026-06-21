@@ -496,7 +496,7 @@ export async function fetchRuleDrivenClarificationOptions(
   
   for (const candidate of candidates) {
     for (const char of candidate.observable_characteristics) {
-      const optionKey = char.observation_key.toUpperCase();
+      const optionKey = String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_");
       
       // Skip duplicates
       if (seenOptions.has(optionKey)) continue;
@@ -571,7 +571,7 @@ export async function fetchRuleDrivenClarificationOptions(
       for (const char of candidate.observable_characteristics) {
         // Only apply stage filter (mandatory)
         if (!isObservationStageCompatible(char.observation_key, stage)) continue;
-        if (seenOptions.has(char.observation_key.toUpperCase())) continue;
+        if (seenOptions.has(String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_"))) continue;
         if (current_symptoms.some(s => String(s).toLowerCase().replace(/[\s-]+/g, '_') === String(char.observation_key).toLowerCase().replace(/[\s-]+/g, '_'))) continue;
         
         const label = char[`label_${language}` as keyof typeof char] as string || 
@@ -590,7 +590,7 @@ export async function fetchRuleDrivenClarificationOptions(
           total_score: 0.5
         });
         
-        seenOptions.add(char.observation_key.toUpperCase());
+        seenOptions.add(String(char.observation_key).toLowerCase().replace(/[\s-]+/g, "_"));
         
         // Stop after getting 3 options
         if (allOptions.length >= 3) break;
