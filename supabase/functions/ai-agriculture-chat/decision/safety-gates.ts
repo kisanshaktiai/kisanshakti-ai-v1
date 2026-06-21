@@ -348,9 +348,13 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
   } else {
     result.gate_decisions.CLARIFICATION_GATE = {
       passed: true,
-      reason: 'Specificity, NDVI, contradiction and confidence all OK'
+      reason: isSafeBypass && hasAnyReportedSymptom && cappedConf < 0.45
+        ? `Bypassed: unified gate confirmed SAFE rule (OBSERVATION mode), conf=${cappedConf.toFixed(2)} cap ignored`
+        : 'Specificity, NDVI, contradiction and confidence all OK',
+      data: { safe_bypass: isSafeBypass }
     };
   }
+
 
   // Final override: if foliar safety failed AND no surviving rule, force CLARIFY
   if (foliarRejects.length > 0 && result.override_mode === 'NONE') {
