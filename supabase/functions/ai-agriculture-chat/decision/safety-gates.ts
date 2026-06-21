@@ -80,7 +80,16 @@ export interface SafetyGateInput {
   // public.observation_differential_questions for (language, crop_code) and
   // hands it to the gate.
   differential_questions?: Record<string, string>;
+
+  // BYPASS SIGNAL (2026-06-21): when the unified decision gate has already
+  // confirmed a SAFE OBSERVATION rule (e.g. young-crop monitoring/resow
+  // decision), safety-gates must NOT downgrade to CLARIFY purely on
+  // low-confidence caps. Hard safety triggers (foliar, contradiction,
+  // NDVI-vs-nutrient, low discriminator) still apply.
+  confirmed_safe_rule_bypass?: boolean;
+  response_mode?: string;
 }
+
 
 export interface GateDecisionEntry {
   passed: boolean;
