@@ -301,13 +301,19 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
   // STAGE_ADVISORY_FALLBACK lane handles the response with crop + stage + DAS.
   const hasAnyReportedSymptom = (input.symptom_keys?.length ?? 0) > 0;
 
+  // BYPASS: unified gate already confirmed a SAFE rule (OBSERVATION mode).
+  // Suppress the low-confidence clarify trigger; keep hard safety triggers.
+  const isSafeBypass = input.confirmed_safe_rule_bypass === true
+    || input.response_mode === 'OBSERVATION';
+
   const mustClarify =
     hasAnyReportedSymptom && (
       contradicted ||
       ndviAnomalous ||
       !!lowSpecSymptom ||
-      cappedConf < 0.45
+      (!isSafeBypass && cappedConf < 0.45)
     );
+
 
   if (mustClarify) {
     const sym = lowSpecSymptom || input.symptom_keys[0]; // guaranteed non-empty by hasAnyReportedSymptom
