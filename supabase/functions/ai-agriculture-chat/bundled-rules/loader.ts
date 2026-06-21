@@ -935,14 +935,14 @@ export function evaluateConditionsJson(
           // logs at most once per process. The loader previously warned twice
           // per rule (once for `observations` and once for `required_symptoms`).
           for (const obs of obsList) {
-            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
-            if (!cachedObservationCodes.has(obsUpper)) {
-              const dedupKey = `${ruleId}|${obsUpper}`;
+            const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
+            if (!cachedObservationCodes.has(obsNorm)) {
+              const dedupKey = `${ruleId}|${obsNorm}`;
               if (!(globalThis as any).__obsValidationLogged) (globalThis as any).__obsValidationLogged = new Set<string>();
               const seen = (globalThis as any).__obsValidationLogged as Set<string>;
               if (!seen.has(dedupKey)) {
                 seen.add(dedupKey);
-                console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsUpper}`);
+                console.warn(`⚠️ [ObsValidation] Rule ${ruleId} references unknown observation: ${obsNorm}`);
               }
             }
           }
@@ -950,15 +950,12 @@ export function evaluateConditionsJson(
         
         if (expandedObs.size > 0) {
           const obsMatch = obsList.some((obs: string) => {
-            const obsUpper = String(obs).toUpperCase().replace(/[\s-]/g, '_');
+            const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
             for (const inputObs of expandedObs) {
-              if (inputObs === obsUpper || inputObs.includes(obsUpper) || obsUpper.includes(inputObs)) return true;
-              // ═══════════════════════════════════════════════════════════════
-              // AUDIT FIX: Root-word matching for related codes
-              // STUNTED_PLANTS ↔ STUNTED_GROWTH (share root word 'STUNTED')
-              // POOR_TILLERING ↔ POOR_RATOONING (share root word 'POOR')
-              // ═══════════════════════════════════════════════════════════════
-              const obsWords = obsUpper.split('_');
+              if (inputObs === obsNorm || inputObs.includes(obsNorm) || obsNorm.includes(inputObs)) return true;
+              // Root-word matching for related codes
+              // stunted_plants ↔ stunted_growth (share 'stunted')
+              const obsWords = obsNorm.split('_');
               const inputWords = inputObs.split('_');
               const sharedWords = obsWords.filter(w => inputWords.includes(w) && w.length > 3);
               if (sharedWords.length > 0) return true;
