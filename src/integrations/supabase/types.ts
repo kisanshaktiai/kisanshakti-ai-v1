@@ -29854,6 +29854,7 @@ export type Database = {
         Row: {
           avg_top_confidence: number | null
           clarification_origin: string | null
+          clarification_site: string | null
           crop_context: string | null
           first_seen: string | null
           last_seen: string | null
