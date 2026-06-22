@@ -72,6 +72,11 @@ export interface IntentResolverOutput {
   growth_stage: string;
   observation_codes: string[];
   confidence_ranks: number[];
+  // P1 SYSTEM-WIDE FIX (2026-06-22): parallel array to observation_codes;
+  // values are 'LITERAL' | 'STRONG_HYPOTHESIS' | 'DIFFERENTIAL'. The
+  // orchestrator uses this to route literal farmer assertions into the
+  // confirmed lane and the rest into the candidate lane.
+  assertion_strengths: string[];
   error?: string;
 }
 
@@ -141,6 +146,7 @@ export async function getStageFromDASDatabase(
 interface ObservationMapping {
   observation_code: string;
   confidence_rank: number;
+  assertion_strength?: string;
 }
 
 /**
@@ -180,7 +186,7 @@ export async function getValidObservationCodes(
 
   let query = supabase
     .from('intent_observation_mapping')
-    .select('observation_code, confidence_rank')
+    .select('observation_code, confidence_rank, assertion_strength')
     .eq('intent_code', intentCode)
     .eq('is_active', true)
     .in('crop_code', [cropLc, 'all'])
@@ -319,6 +325,7 @@ export async function resolveIntentToObservations(
         growth_stage: growthStage,
         observation_codes: [],
         confidence_ranks: [],
+        assertion_strengths: [],
         error: errorMsg,
       };
     }
@@ -328,6 +335,11 @@ export async function resolveIntentToObservations(
     // canonical post-migration; this is the case-translation egress boundary.
     const observation_codes = mappings.map((m) => String(m.observation_code).toUpperCase());
     const confidence_ranks = mappings.map((m) => m.confidence_rank);
+    // P1 SYSTEM-WIDE FIX (2026-06-22): parallel to observation_codes.
+    // RPC fallback rows may not include assertion_strength → safe default.
+    const assertion_strengths = mappings.map((m) =>
+      (m as ObservationMapping).assertion_strength || 'DIFFERENTIAL'
+    );
 
     console.log(`   Found: ${observation_codes.length} observation codes`);
 
@@ -338,6 +350,7 @@ export async function resolveIntentToObservations(
       growth_stage: String(growthStage || '').toUpperCase() || 'UNKNOWN',
       observation_codes,
       confidence_ranks,
+      assertion_strengths,
     };
   } catch (error) {
     // DB-fault path: re-throw typed errors so the orchestrator boundary

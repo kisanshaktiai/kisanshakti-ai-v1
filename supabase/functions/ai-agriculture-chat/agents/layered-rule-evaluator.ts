@@ -146,6 +146,11 @@ export interface Rule {
   scientific_basis?: string;
   requires_confirmation?: boolean;
   active: boolean;
+  // P1 SYSTEM-WIDE FIX (2026-06-22): preserved from bundled rule so that
+  // post-selection invariants (stage gate, completeness gate) can re-check
+  // without rebuilding the bundled-rule lookup.
+  stage_applicable?: string[];
+  min_data_completeness?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -490,6 +495,23 @@ export function evaluateRulesLayered(
   
   const diagnosisCandidates: Diagnosis[] = [];
   const rulesByCategory = groupRulesByCategory(safeRules);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1 SYSTEM-WIDE FIX (2026-06-22): per-rule metadata lookup used by the
+  // post-selection invariants (stage gate, completeness gate). Built once
+  // here from `safeRules` so the gates don't need to re-traverse bundled
+  // rules. Crop-agnostic; zero hardcoded lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ruleMetaById = new Map<string, { stage_applicable: string[]; min_data_completeness: number }>();
+  for (const r of safeRules) {
+    ruleMetaById.set(r.id, {
+      stage_applicable: Array.isArray((r as any).stage_applicable) ? (r as any).stage_applicable : [],
+      min_data_completeness: typeof (r as any).min_data_completeness === 'number'
+        ? (r as any).min_data_completeness
+        : 0.0,
+    });
+  }
+
   
   // PHASE 1: OBSERVATION
   for (const rule of rulesByCategory.get(RuleCategory.OBSERVATION) || []) {
@@ -911,7 +933,47 @@ export function evaluateRulesLayered(
     r.action_type && 
     (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text)
   );
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1 INVARIANT A (2026-06-22): EMPTY-CONFIRMED GATE — crop-agnostic.
+  // If the farmer has confirmed zero observations AND any eligible rule
+  // declares observation conditions, primary selection is structurally
+  // unsafe. The orchestrator must route to CLARIFY instead of letting the
+  // highest-priority context-only rule win by tiebreak. This invariant
+  // replaces every per-crop empty-evidence fallback (rice cyclone-recovery
+  // bug, sugarcane K-deficiency bug, etc.). No hardcoded crop lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    const confirmedForGate = (state as any).confirmed_observations as string[] | undefined;
+    const hasConfirmed = Array.isArray(confirmedForGate) && confirmedForGate.length > 0;
+    if (!hasConfirmed && eligibleResponses.length > 0) {
+      const requiresObservation = eligibleResponses.some(r => {
+        const obs = (r.conditions_json as any)?.observations;
+        return Array.isArray(obs) && obs.length > 0;
+      });
+      if (requiresObservation) {
+        const blockedIds = eligibleResponses.slice(0, 5).map(r => r.rule_id).join(', ');
+        console.warn(
+          `🚫 [EmptyConfirmedGate] No confirmed observations + ${eligibleResponses.length} ` +
+          `eligible rules require observations → forcing CLARIFY (sample: ${blockedIds})`
+        );
+        scope?.emit({
+          stage: 'rule-evaluator',
+          kind: 'block',
+          payload: {
+            event: 'empty_confirmed_gate',
+            eligible_count: eligibleResponses.length,
+            sample_rule_ids: eligibleResponses.slice(0, 5).map(r => r.rule_id),
+          },
+        });
+        // Preserve matched_responses for trace / clarification generator;
+        // collapse primary_decision so the orchestrator routes to CLARIFY.
+        result.primary_decision = null;
+        return result;
+      }
+    }
+  }
+
   if (eligibleResponses.length > 0) {
     // ═══════════════════════════════════════════════════════════════════════════
     // Fix 1: NUTRITION CONFLICT ARBITRATION before primary selection
@@ -1034,6 +1096,37 @@ export function evaluateRulesLayered(
       const finalScore = Math.min(1.0, normalizedScore + contentBonus);
       return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P1 INVARIANT C (2026-06-22): MIN_DATA_COMPLETENESS GATE — crop-agnostic.
+    // Reject scored candidates whose evidence ratio is below the rule's
+    // DB-curated `min_data_completeness`. Default is 0.0 (no behavior change);
+    // agronomy team raises per rule via the new `decision_rules.min_data_completeness`
+    // column. No hardcoded crop or rule lists.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const scoredBeforeCompletenessGate = scored.length;
+    const scoredFiltered = scored.filter(s => {
+      const meta = ruleMetaById.get(s.response.rule_id);
+      const mdc = meta?.min_data_completeness ?? 0;
+      if (mdc <= 0) return true;
+      const ratio = s.totalConditions > 0 ? (s.matchedConditions / s.totalConditions) : 0;
+      if (ratio + 1e-9 < mdc) {
+        console.log(
+          `🚫 [CompletenessGate] ${s.response.rule_id} blocked: ratio=${ratio.toFixed(2)} < min_data_completeness=${mdc.toFixed(2)}`
+        );
+        return false;
+      }
+      return true;
+    });
+    if (scoredFiltered.length < scoredBeforeCompletenessGate) {
+      console.log(
+        `🔬 [CompletenessGate] Filtered ${scoredBeforeCompletenessGate - scoredFiltered.length} rules below min_data_completeness`
+      );
+    }
+    // Replace `scored` in-place so the downstream sort/selection sees the filtered list.
+    scored.length = 0;
+    Array.prototype.push.apply(scored, scoredFiltered);
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // AUDIT FIX: Sort by data_authority_rank DESC first, then evidence score
@@ -1077,6 +1170,13 @@ export function evaluateRulesLayered(
       // P4: confidence_score
       return (b.response.confidence_score ?? 0) - (a.response.confidence_score ?? 0);
     });
+    // P1 SYSTEM-WIDE FIX (2026-06-22): completeness gate may have emptied `scored`.
+    // Bail out cleanly → primary_decision stays null, orchestrator routes to CLARIFY.
+    if (scored.length === 0) {
+      console.warn(`🚫 [CompletenessGate] All eligible rules filtered out by min_data_completeness → no primary decision`);
+      result.primary_decision = null;
+      return result;
+    }
     const best = scored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
@@ -1227,7 +1327,54 @@ export function evaluateRulesLayered(
         response_hi: best.response_hi || null,
         response_en: best.response_en || null,
       };
-      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // P1 INVARIANT B (2026-06-22): POST-SELECTION STAGE GATE — crop-agnostic.
+      // The pre-evaluator stage gate (inside rule.when.custom) is bypassed
+      // when crop_stage is one of DEFAULT_STAGES (UNKNOWN/VEGETATIVE/...).
+      // This invariant re-checks `stage_applicable` against the canonical
+      // state at selection time, but ONLY when the stage is authoritative —
+      // so we don't tighten behavior when stage data is missing. Uses the
+      // ESTABLISHMENT_FAMILY equivalence already used elsewhere; no new
+      // hardcoded lists.
+      // ═══════════════════════════════════════════════════════════════════════
+      {
+        const meta = ruleMetaById.get(best.rule_id);
+        const ruleStagesRaw = meta?.stage_applicable || [];
+        const currentStage = (state.crop_stage || '').toUpperCase().replace(/[\s-]/g, '_');
+        const STAGE_GATE_DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
+        const STAGE_GATE_ESTABLISHMENT_FAMILY = new Set([
+          'GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'
+        ]);
+        const isAuthoritative = !!currentStage && !STAGE_GATE_DEFAULT_STAGES.has(currentStage);
+        if (isAuthoritative && ruleStagesRaw.length > 0) {
+          const normalized = ruleStagesRaw.map(s => String(s).toUpperCase().replace(/[\s-]/g, '_'));
+          const hasWildcard = normalized.some(s => s === '*' || s === 'ALL' || s === 'UNIVERSAL' || s === 'ANY');
+          if (!hasWildcard) {
+            const currentInEstablishment = STAGE_GATE_ESTABLISHMENT_FAMILY.has(currentStage);
+            const stageMatch = normalized.includes(currentStage) ||
+              (currentInEstablishment && normalized.some(s => STAGE_GATE_ESTABLISHMENT_FAMILY.has(s)));
+            if (!stageMatch) {
+              console.error(
+                `🚨 [STAGE_GATE_VIOLATION] rule=${best.rule_id} stage_applicable=[${normalized.join(',')}] ` +
+                `vs canonical_stage=${currentStage} → collapsing primary_decision`
+              );
+              scope?.emit({
+                stage: 'rule-evaluator',
+                kind: 'block',
+                payload: {
+                  event: 'stage_gate_violation_post_selection',
+                  rule_id: best.rule_id,
+                  rule_stages: normalized,
+                  canonical_stage: currentStage,
+                },
+              });
+              result.primary_decision = null;
+            }
+          }
+        }
+      }
+
       console.log(`📊 Decision Authority:`);
       console.log(`   rule_id: ${best.rule_id}`);
       console.log(`   base_score: ${scored[0].evidenceScore.toFixed(3)}`);
@@ -1700,7 +1847,12 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       product_reference: bundled.rule_id
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
-    active: true
+    active: true,
+    // P1 SYSTEM-WIDE FIX (2026-06-22): expose for post-selection invariants
+    stage_applicable: Array.isArray(bundled.stage_applicable) ? bundled.stage_applicable : [],
+    min_data_completeness: typeof (bundled as any).min_data_completeness === 'number'
+      ? (bundled as any).min_data_completeness
+      : 0.0
   };
 }
 
