@@ -2142,9 +2142,22 @@ export class AIAgentOrchestrator {
               }
             }
             if (!mappedObservationKey) {
-              // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
-              mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
-              console.log(`   📋 Mapped to ObservationKey (label-fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+              // P0 FIX (system-audit 2026-06-22): Before falling back to the
+              // English-keyword label mapper (which fails on Marathi/Hindi/Tamil
+              // labels), try to extract [obs_keys:CANONICAL_CODE] from the
+              // matched pending option string itself. The clarification emitter
+              // and index.ts now persist options as "<label> [obs_keys:<code>]".
+              const matchedStr = String(matchResult.matched_option ?? '');
+              const embedInMatched = matchedStr.match(/\[obs_keys:([^\]]+)\]/i);
+              const codeFromMatchedOption = embedInMatched?.[1]?.trim();
+              if (codeFromMatchedOption && !/^\d+$/.test(codeFromMatchedOption)) {
+                mappedObservationKey = codeFromMatchedOption;
+                console.log(`   📋 Recovered ObservationKey from matched_option embed: "${mappedObservationKey}"`);
+              } else {
+                // PHASE-10 FIX: Map the option to observation using CORRECT parameters (option, scope)
+                mappedObservationKey = mapOptionToObservation(matchResult.matched_option, pendingScope);
+                console.log(`   📋 Mapped to ObservationKey (label-fallback): "${mappedObservationKey || 'UNKNOWN'}"`);
+              }
             }
           }
           // ═══════════════════════════════════════════════════════════════════
