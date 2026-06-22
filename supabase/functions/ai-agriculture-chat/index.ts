@@ -256,6 +256,7 @@ serve(async (req) => {
 
   const startTime = Date.now();
   const traceId = generateTraceId();
+  funnelStart(traceId); // Wave C — per-turn pipeline-drop attribution
   let dedupeKey: string | null = null;
   
   console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
