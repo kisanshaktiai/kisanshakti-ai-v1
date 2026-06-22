@@ -65,6 +65,8 @@ export interface SafetyGateInput {
   primary_decision_rule_id?: string | null;
   candidate_rules: Array<{
     rule_id: string;
+    category?: string | null;
+    canonical_group?: string | null;
     crop_age_days_max?: number | null;
     crop_age_days_min?: number | null;
     application_method?: string | null;
@@ -230,16 +232,25 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
   // ── NDVI_SANITY_GATE ──────────────────────────────────────────────────────
   const ndvi = input.ndvi;
   const ndviAnomalous = ndvi !== null && ndvi !== undefined && (ndvi < 0.2 || ndvi > 0.95);
-  if (ndviAnomalous) {
+  const isNutrientDecision = input.candidate_rules.some(r => {
+    const category = String(r.category || '').toLowerCase();
+    const group = String(r.canonical_group || '').toLowerCase();
+    return DEFICIENCY_CATEGORIES.has(category) || DEFICIENCY_CATEGORIES.has(group) || group.includes('nutri');
+  }) || /NUTRI|DEFIC|POTASSIUM|NITROGEN|PHOSPHORUS|ZINC|IRON|BORON|MAGNESIUM/i.test(input.primary_hypothesis_id || '');
+  if (ndviAnomalous && isNutrientDecision) {
     result.gate_decisions.NDVI_SANITY_GATE = {
       passed: false,
       reason: `NDVI_ANOMALOUS: value=${ndvi} outside [0.2, 0.95] — blocking nutrient-deficiency rules; photo required`,
-      data: { ndvi }
+      data: { ndvi, nutrient_decision: true }
     };
   } else {
     result.gate_decisions.NDVI_SANITY_GATE = {
       passed: true,
-      reason: ndvi === null || ndvi === undefined ? 'NDVI unavailable' : `NDVI=${ndvi} within sanity range`
+      reason: ndvi === null || ndvi === undefined
+        ? 'NDVI unavailable'
+        : ndviAnomalous
+          ? `NDVI=${ndvi} anomalous but current decision is not nutrient-deficiency scoped`
+          : `NDVI=${ndvi} within sanity range`
     };
   }
 
@@ -273,7 +284,7 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
     cappedConf = 0;
     caps.push('contradiction(K_HIGH)→0.00');
   }
-  if (ndviAnomalous && DEFICIENCY_CATEGORIES.size > 0) {
+  if (ndviAnomalous && isNutrientDecision) {
     cappedConf = Math.min(cappedConf, 0.40);
     caps.push('ndvi_anomaly→0.40');
   }
@@ -309,7 +320,7 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
   const mustClarify =
     hasAnyReportedSymptom && (
       contradicted ||
-      ndviAnomalous ||
+      (ndviAnomalous && isNutrientDecision) ||
       !!lowSpecSymptom ||
       (!isSafeBypass && cappedConf < 0.45)
     );
