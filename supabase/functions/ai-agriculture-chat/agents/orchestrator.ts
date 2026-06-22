@@ -7761,37 +7761,59 @@ export class AIAgentOrchestrator {
         // If ALL actions were filtered, return farmer-friendly clarification
         // CRITICAL FIX: Never expose internal intent names like "GENERAL_QUERY" to farmers
         if (lockValidation.filtered_actions.length === 0 && allActions.length > 0) {
-          console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning farmer-friendly clarification`);
-          
-          await auditLogger.completeTurn(Date.now() - startTime);
-          
-          // Use farmer-friendly clarification instead of exposing internal intent names
-          const clarification = this.generateIntentMismatchClarification(
-            options.language || 'mr',
-            landContext?.current_crop
-          );
-          
-          return {
-            type: 'CLARIFICATION_QUESTION',
-            session_id: sessionId,
-            question: {
-              question_id: `intent_mismatch_${Date.now()}`,
-              text_en: 'Could you describe your problem in more detail so I can help you better?',
-              i18n_key: clarification.i18n_key,
-              options: clarification.option_codes.map(code => ({ code, label: code }))
-            },
-            metadata: {
-              clarification_site: CLARIFICATION_SITES.INTENT_LOCK_ALL_FILTERED,
-              confidence: intentConfidence,
-              safety_status: 'PENDING',
-              rules_applied: decisionOutput.rules_applied?.length || 0,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed,
-              trace_id: traceId,
-              symptomKeys: Array.from(allObservationsForPreAuth || []),
-              isEmergency: false
-            }
-          };
+          // ═══════════════════════════════════════════════════════════════════
+          // WAVE J: PRE-BRAIN CLARIFICATION BYPASS
+          // ───────────────────────────────────────────────────────────────────
+          // Wave I audit attributed 42/42 surviving "matched-but-clarified"
+          // rice turns to this site (or peers): rules matched on observations,
+          // but the intent classifier disagreed and intent-lock blanked the
+          // decision before the brain could assemble it. When the intent
+          // classifier is uncertain (< 0.6) AND rules clearly matched on
+          // observation evidence, prefer the symbolic rule match — the
+          // intent classifier is the weaker signal here. Logged as
+          // WAVE_J_INTENT_LOCK_BYPASS for attribution in Wave I view.
+          const symbolicRuleCount = decisionOutput.rules_applied?.length || 0;
+          const intentConfNumber = typeof intentConfidence === 'number' ? intentConfidence : 0;
+          if (symbolicRuleCount > 0 && intentConfNumber < 0.6) {
+            console.warn(`   ✅ [WAVE_J_INTENT_LOCK_BYPASS] Intent classifier uncertain (${intentConfNumber.toFixed(2)}) but ${symbolicRuleCount} rule(s) matched on observation evidence — bypassing intent lock and forwarding to decision brain.`);
+            lockValidation.filtered_actions = allActions;
+            agentsUsed.push('WAVE_J_INTENT_LOCK_BYPASS');
+            // Fall through to the brain — do NOT return clarification here.
+          } else {
+            console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning farmer-friendly clarification`);
+
+            await auditLogger.completeTurn(Date.now() - startTime);
+
+            // Use farmer-friendly clarification instead of exposing internal intent names
+            const clarification = this.generateIntentMismatchClarification(
+              options.language || 'mr',
+              landContext?.current_crop
+            );
+
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              question: {
+                question_id: `intent_mismatch_${Date.now()}`,
+                text_en: 'Could you describe your problem in more detail so I can help you better?',
+                i18n_key: clarification.i18n_key,
+                options: clarification.option_codes.map(code => ({ code, label: code }))
+              },
+              metadata: {
+                clarification_site: CLARIFICATION_SITES.INTENT_LOCK_ALL_FILTERED,
+                confidence: intentConfidence,
+                safety_status: 'PENDING',
+                rules_applied: symbolicRuleCount,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed,
+                trace_id: traceId,
+                symptomKeys: Array.from(allObservationsForPreAuth || []),
+                isEmergency: false,
+                wave_j_bypass_eligible: false,
+                wave_j_intent_confidence: intentConfNumber
+              }
+            };
+          }
         }
       } else {
         console.log(`   ✅ P0-E: All ${allActions.length} actions passed intent lock filter`);
