@@ -29850,6 +29850,20 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ai_clarification_attribution_90d: {
+        Row: {
+          avg_top_confidence: number | null
+          clarification_origin: string | null
+          crop_context: string | null
+          first_seen: string | null
+          last_seen: string | null
+          reached_decision_brain: number | null
+          response_type: string | null
+          rules_matched_turns: number | null
+          turns: number | null
+        }
+        Relationships: []
+      }
       v_ai_drop_attribution_90d: {
         Row: {
           clarification_origin: string | null
