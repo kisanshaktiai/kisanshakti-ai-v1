@@ -330,17 +330,46 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
     const sym = lowSpecSymptom || input.symptom_keys[0]; // guaranteed non-empty by hasAnyReportedSymptom
     const diffText = diffQuestionForSymptom(sym, input.crop_name || '', language, input.differential_questions);
 
-    // RCA #18: if the DB has no localized differential question for this
-    // (symptom, language), DO NOT emit the English `"symptom"` template —
-    // it surfaces as the literal Devanagari token `लक्षण` after LLM
-    // narration. Skip CLARIFY entirely and let the orchestrator's
-    // STAGE_ADVISORY_FALLBACK produce a clean stage-aware reply.
+    // RCA #18 (original): if the DB has no localized differential question for
+    // this (symptom, language), we used to silently SKIP clarify so the literal
+    // English `"symptom"` template wouldn't surface. That silent-pass turned
+    // out to bypass CLARIFY for 99% of cases in production (forensic audit
+    // WS16, RC-22).
+    //
+    // WAVE A.5b FIX:
+    //   - ALWAYS emit a structured `MISSING_DIFFERENTIAL_QUESTION` log so
+    //     ops can populate the DB row.
+    //   - In `enforce` mode → fail-closed (force CLARIFY with a generic
+    //     non-template question), instead of silently passing.
+    //   - In `shadow` mode → preserve current behaviour (skip) but with
+    //     the loud log so dashboards can size the impact.
     if (!diffText) {
-      result.gate_decisions.CLARIFICATION_GATE = {
-        passed: true,
-        reason: `Would have clarified on '${sym}' but observation_differential_questions has no DB row for language='${language}'. Falling through to stage advisory.`,
-        data: { skipped_clarify: true, symptom: sym, language }
-      };
+      // Lazy-import to avoid circular deps
+      const { shouldEnforceClarificationFailClosed } = await import('../runtime/feature-flags.ts');
+      const enforce = shouldEnforceClarificationFailClosed();
+
+      console.warn(
+        `🚨 [SafetyGates:MISSING_DIFFERENTIAL_QUESTION] trace=${input.trace_id ?? 'n/a'} ` +
+        `symptom=${sym} crop=${input.crop_name ?? 'n/a'} lang=${language} ` +
+        `mode=${enforce ? 'enforce(fail-closed)' : 'shadow(legacy-skip)'} ` +
+        `→ populate observation_differential_questions.`
+      );
+
+      if (enforce) {
+        result.clarification_text = ''; // orchestrator generates a generic stage-aware question
+        result.override_mode = 'CLARIFY';
+        result.gate_decisions.CLARIFICATION_GATE = {
+          passed: false,
+          reason: `Fail-closed: no DB differential question for (symptom='${sym}', lang='${language}'). Forcing CLARIFY via stage-aware fallback.`,
+          data: { trigger_symptom: sym, missing_db_question: true, language, enforce: true }
+        };
+      } else {
+        result.gate_decisions.CLARIFICATION_GATE = {
+          passed: true,
+          reason: `[SHADOW] Would have clarified on '${sym}' but observation_differential_questions has no DB row for language='${language}'. Falling through to stage advisory.`,
+          data: { skipped_clarify: true, symptom: sym, language, shadow: true }
+        };
+      }
     } else {
       result.clarification_text = diffText;
       result.override_mode = 'CLARIFY';

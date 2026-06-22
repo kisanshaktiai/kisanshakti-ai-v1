@@ -4590,20 +4590,20 @@ export class AIAgentOrchestrator {
         const realDamageObs = (cropDamageResult.damage_observations || []).filter(
           (c: string) => !SENTINEL_RE.test(c)
         );
-        const isRiceEmergenceFailure =
-          String(intentCode || '').toUpperCase() === 'EMERGENCE_FAILURE' &&
-          String(canonicalContext?.crop_code || landContext?.current_crop || '').toUpperCase() === 'RICE' &&
-          realConfirmedSymptoms.some((c: string) => ['OBS_RICE_NO_EMERGENCE', 'POOR_GERMINATION'].includes(String(c).toUpperCase()));
-        if (isRiceEmergenceFailure) {
-          console.log(`\n🌾 [DIAGNOSIS-FIRST OVERRIDE] Rice no-emergence is pathognomonic enough for hypothesis/rule evaluation`);
-          agentsUsed.push('RICE_EMERGENCE_DIAGNOSIS_OVERRIDE');
-        }
+        // WAVE A.5d FIX (RC-26): removed `isRiceEmergenceFailure` per-crop
+        // carve-out. It violated the core memory rule "no per-crop intent
+        // guards or hardcoded observation lists" and was the direct cause
+        // of the reported emergence-failure clarification bypass.
+        //
+        // Authority to skip the evidence-insufficiency check now lives
+        // exclusively in DB-driven `intent_observation_mapping.assertion_strength`
+        // (PATHOGNOMONIC entries), which is crop-agnostic and curated.
+        const isRiceEmergenceFailure = false;
         const evidenceInsufficient =
           understandingResult.clarification_required === true &&
           realConfirmedSymptoms.length < 2 &&
           realDamageObs.length < 2 &&
-          !photoForcedDiagnosis &&
-          !isRiceEmergenceFailure;
+          !photoForcedDiagnosis;
 
         if (evidenceInsufficient) {
           console.log(`\n🛑 [DIAGNOSIS-FIRST SKIPPED] Insufficient evidence for hypothesis-driven options`);
