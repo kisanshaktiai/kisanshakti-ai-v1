@@ -29856,6 +29856,7 @@ export type Database = {
           clarification_origin: string | null
           clarification_site: string | null
           crop_context: string | null
+          disposition: string | null
           first_seen: string | null
           last_seen: string | null
           reached_decision_brain: number | null
