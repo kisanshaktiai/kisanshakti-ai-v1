@@ -2773,6 +2773,86 @@ serve(async (req) => {
       console.warn('⚠️ [Session] Failed to update session:', sessionUpdateError);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // WAVE A.5 / PHASE 2 — CLARIFICATION INVARIANT (final, defence-in-depth)
+    // If clarification_required is true anywhere in the payload, STRIP every
+    // treatment-carrying field. This is the production-bug fix for the
+    // reported emergence-failure flow where DiagnosisOnlyMode was bypassing
+    // clarification.
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const invariantResult = enforceClarificationInvariant(
+        responsePayload as Record<string, any>,
+        { trace_id: traceId, source: 'index.ts:final-response' }
+      );
+      if (invariantResult.invariant_violated) {
+        (responsePayload as any).metadata = (responsePayload as any).metadata || {};
+        (responsePayload as any).metadata.clarification_invariant = {
+          violated: true,
+          fields_stripped: invariantResult.fields_stripped,
+        };
+      }
+    } catch (invErr) {
+      console.warn('[ClarificationInvariant] gate threw — fail-open:', (invErr as Error).message);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WAVE A1 — ai_decision_log insert (fire-and-forget)
+    // ═══════════════════════════════════════════════════════════════════════
+    try {
+      const _resp: any = responsePayload;
+      const _meta: any = _resp?.metadata || {};
+      logDecisionTurn({
+        trace_id: traceId,
+        tenant_id: finalTenantId ?? null,
+        farmer_id: finalFarmerId ?? null,
+        land_id: _meta?.land_id ?? _resp?.land_id ?? null,
+        decision_type: String(_meta?.intent_code || _resp?.type || 'UNKNOWN'),
+        model_version: 'orchestrator-v1',
+        prompt_version: _meta?.prompt_version ?? null,
+        input_data: {
+          query: typeof _meta?.query === 'string' ? _meta.query.slice(0, 500) : undefined,
+          observations: Array.isArray(_meta?.observations) ? _meta.observations.slice(0, 30) : undefined,
+          intent: _meta?.intent_code,
+          language: _meta?.language,
+        },
+        output_data: {
+          response_type: _resp?.type,
+          clarification_required:
+            _resp?.clarification_required === true ||
+            _resp?.type === 'CLARIFICATION_QUESTION',
+          actions_count: Array.isArray(_resp?.actions) ? _resp.actions.length : 0,
+          recommendations_count: Array.isArray(_meta?.actions_returned)
+            ? _meta.actions_returned.length
+            : 0,
+          rules_fired_count: Array.isArray(_meta?.rules_applied)
+            ? _meta.rules_applied.length
+            : 0,
+          response_source: _meta?.source || _resp?.source,
+          clarification_invariant: _meta?.clarification_invariant,
+        },
+        reasoning: typeof _meta?.reasoning === 'string' ? _meta.reasoning.slice(0, 2000) : null,
+        confidence_score: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
+        execution_time_ms: typeof _meta?.processing_time_ms === 'number' ? _meta.processing_time_ms : null,
+        success: true,
+        evaluation_trace: _meta?.agents_used ? { agents_used: _meta.agents_used } : null,
+      }).catch(() => {});
+
+      logOrchestratorMetrics({
+        session_id: currentSessionId ?? null,
+        tenant_id: finalTenantId ?? null,
+        total_processing_time_ms: typeof _meta?.processing_time_ms === 'number' ? _meta.processing_time_ms : null,
+        success: true,
+        phase_timings: _meta?.phase_timings || {},
+        agent_performance: { agents_used: _meta?.agents_used || [] },
+        safety_status: _meta?.safety_status,
+        final_confidence: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
+        rules_applied_count: Array.isArray(_meta?.rules_applied) ? _meta.rules_applied.length : 0,
+      }).catch(() => {});
+    } catch (logErr) {
+      console.warn('[DecisionLog] insert failed — non-fatal:', (logErr as Error).message);
+    }
+
     return new Response(
       JSON.stringify(responsePayload),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
