@@ -98,6 +98,7 @@ import {
   type ObservationRuleHit
 } from './decision/observation-rule-lookup.ts';
 import { resolveCropTimeline } from './utils/resolveCropTimeline.ts';
+import { getSiteDisposition } from './utils/clarification-site-tag.ts';
 import {
   generateDiagnosticEscalationResponse,
   type DiagnosticEscalationInput
