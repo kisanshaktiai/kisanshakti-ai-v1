@@ -3032,17 +3032,20 @@ export class AIAgentOrchestrator {
 
 
           if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
-            const before = expandedObservationCodes.length;
-            const merged = new Set<string>(expandedObservationCodes);
-            // Cap injection to top-ranked codes to keep rule scoring useful;
-            // intent_observation_mapping is already ordered by confidence_rank ASC.
+            // CANDIDATE LANE ONLY. intent_observation_mapping rows are the
+            // hypothesis space for the intent — they are NOT farmer-asserted
+            // and must not enter expandedObservationCodes / confirmed lane.
+            // Cap to top-ranked codes (DB is already ordered by confidence_rank ASC).
+            let added = 0;
             for (const c of dbIntentResolution.observation_codes.slice(0, 25)) {
-              if (c) merged.add(c);
+              if (c && !candidateObservationCodes.has(c)) {
+                candidateObservationCodes.add(c);
+                added++;
+              }
             }
-            expandedObservationCodes = Array.from(merged);
             console.log(
-              `      🔗 [DB_INTENT_OBSERVATIONS] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
-              `→ +${expandedObservationCodes.length - before} codes (total ${expandedObservationCodes.length})`
+              `      🔗 [DB_INTENT_OBSERVATIONS→CANDIDATE] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
+              `→ +${added} candidate codes (candidate_total=${candidateObservationCodes.size}, confirmed_total=${expandedObservationCodes.length})`
             );
             agentsUsed.push('INTENT_OBSERVATION_RESOLVER_DB');
           } else {
@@ -3051,23 +3054,12 @@ export class AIAgentOrchestrator {
               `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
             );
           }
-
-          if (_intentForDb === 'EMERGENCE_FAILURE' && String(_cropForDb).toLowerCase() === 'rice') {
-            const nurseryNoEmergenceCodes = [
-              'OBS_RICE_NO_EMERGENCE',
-              'OBS_RICE_PATCHY_EMERGENCE',
-              'POOR_GERMINATION',
-              'POOR_GERMINATION_PERCENT',
-              'GAPS_IN_FIELD',
-              'SEEDLING_DIED'
-            ];
-            const before = expandedObservationCodes.length;
-            const merged = new Set(expandedObservationCodes);
-            for (const code of nurseryNoEmergenceCodes) merged.add(code);
-            expandedObservationCodes = Array.from(merged);
-            console.log(`      🌾 [RICE_EMERGENCE_GUARD] ensured no-emergence observations +${expandedObservationCodes.length - before} (total ${expandedObservationCodes.length})`);
-            agentsUsed.push('RICE_EMERGENCE_OBSERVATION_GUARD');
-          }
+          // NOTE: RICE_EMERGENCE_GUARD (hardcoded list of OBS_RICE_NO_EMERGENCE,
+          // OBS_RICE_PATCHY_EMERGENCE, POOR_GERMINATION, …) was removed 2026-06-22.
+          // It was forcing hypothesis-space codes into the confirmed lane and
+          // violated the "no hardcoded logic / DB-driven" contract. The same
+          // codes are now supplied by intent_observation_mapping above as
+          // candidates, gated by farmer clarification before promotion.
         }
       } catch (intentResolverErr) {
         // Fail-soft: advisory observation-code enrichment must never block the
