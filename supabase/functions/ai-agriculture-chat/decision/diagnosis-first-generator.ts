@@ -732,6 +732,7 @@ export function formatForClarificationUI(
   selectionType: 'single_choice';
   maxSelections: 1;
   metadata: {
+    clarification_site?: string;
     source: string;
     mode: string;
     crop_code: string;
