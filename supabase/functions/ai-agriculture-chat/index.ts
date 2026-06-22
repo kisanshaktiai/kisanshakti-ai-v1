@@ -84,6 +84,10 @@ import {
   generateObservationOnlyResponse,
   generateYoungCropMonitoringResponse
 } from './decision/prescription-gate-enforcer.ts';
+
+// WAVE A.5 / Phase 2: defence-in-depth gate + observability
+import { enforceClarificationInvariant } from './decision/clarification-invariant-gate.ts';
+import { logDecisionTurn, logOrchestratorMetrics } from './runtime/decision-logger.ts';
 import {
   lookupSafeRuleForObservations,
   extractObservationCodes,
