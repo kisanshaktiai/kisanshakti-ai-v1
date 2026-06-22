@@ -7632,6 +7632,14 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       if (hasNoRecommendations && !hasNoPhoto) {
         console.warn(`\n⚠️ [MANDATORY_FALLBACK] No rules matched with photo present - generating SSOT clarification`);
+        console.warn(
+          `🛰️ [WAVE_M_MANDATORY_FALLBACK_DIAG] ` +
+          `photo_success=${!!(photoAnalysisResult as any)?.success} ` +
+          `photo_conf=${(photoAnalysisResult as any)?.confidence ?? 'n/a'} ` +
+          `photo_obs_count=${Array.isArray((photoAnalysisResult as any)?.observations) ? (photoAnalysisResult as any).observations.length : 0} ` +
+          `expanded_obs=${Array.isArray(expandedObservationCodes) ? expandedObservationCodes.length : 0} ` +
+          `→ orch.mandatory_fallback_observations`
+        );
         
         const cropCode = landContext?.current_crop?.toUpperCase() || landContext?.crop_code?.toUpperCase() || 'SC';
         const growthStage = (landContext?.growth_stage || 'TILLERING').toUpperCase();
