@@ -2390,6 +2390,23 @@ serve(async (req) => {
                   selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
                 }
               : undefined,
+            // WAVE E: top-level attribution columns so SQL aggregation is trivial
+            // (no need to traverse decision_brain_data->funnel->largest_drop). These
+            // mirror values already present in nested brain data — adding them at
+            // the top level unblocks `GROUP BY crop_context, drop_stage` queries
+            // that the WS13 audit needs to localize the 73% match→decision drop.
+            crop_context: (
+              _meta?.crop_code
+              ?? orchestratorResponse.dataAudit?.land?.current_crop
+              ?? orchestratorResponse.decision_output?.input_context?.crop?.code
+              ?? orchestratorResponse.decision_output?.input_context?.crop?.name
+              ?? null
+            ),
+            growth_stage: _meta?.growth_stage ?? orchestratorResponse.dataAudit?.land?.growth_stage ?? null,
+            intent_code: _meta?.intent_code ?? null,
+            response_source: responseSource,
+            funnel_largest_drop: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.stage ?? null,
+            funnel_largest_drop_count: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.lost ?? null,
             // WAVE D: ALWAYS persist decision_brain_data regardless of response type.
             // Previously this was gated to type === 'DECISION_PROVIDED', which silently
             // dropped brain state for 73% (47/64) of matched turns — making the
