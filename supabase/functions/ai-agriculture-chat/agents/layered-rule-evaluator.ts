@@ -1096,6 +1096,37 @@ export function evaluateRulesLayered(
       const finalScore = Math.min(1.0, normalizedScore + contentBonus);
       return { response: r, evidenceScore: finalScore, matchedConditions, totalConditions };
     });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // P1 INVARIANT C (2026-06-22): MIN_DATA_COMPLETENESS GATE — crop-agnostic.
+    // Reject scored candidates whose evidence ratio is below the rule's
+    // DB-curated `min_data_completeness`. Default is 0.0 (no behavior change);
+    // agronomy team raises per rule via the new `decision_rules.min_data_completeness`
+    // column. No hardcoded crop or rule lists.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const scoredBeforeCompletenessGate = scored.length;
+    const scoredFiltered = scored.filter(s => {
+      const meta = ruleMetaById.get(s.response.rule_id);
+      const mdc = meta?.min_data_completeness ?? 0;
+      if (mdc <= 0) return true;
+      const ratio = s.totalConditions > 0 ? (s.matchedConditions / s.totalConditions) : 0;
+      if (ratio + 1e-9 < mdc) {
+        console.log(
+          `🚫 [CompletenessGate] ${s.response.rule_id} blocked: ratio=${ratio.toFixed(2)} < min_data_completeness=${mdc.toFixed(2)}`
+        );
+        return false;
+      }
+      return true;
+    });
+    if (scoredFiltered.length < scoredBeforeCompletenessGate) {
+      console.log(
+        `🔬 [CompletenessGate] Filtered ${scoredBeforeCompletenessGate - scoredFiltered.length} rules below min_data_completeness`
+      );
+    }
+    // Replace `scored` in-place so the downstream sort/selection sees the filtered list.
+    scored.length = 0;
+    Array.prototype.push.apply(scored, scoredFiltered);
+
     
     // ═══════════════════════════════════════════════════════════════════════════
     // AUDIT FIX: Sort by data_authority_rank DESC first, then evidence score
