@@ -16,7 +16,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CROP_SYNONYMS_VERSION = '1.1.0';
+export const CROP_SYNONYMS_VERSION = '1.2.0';
+
+import { normalizeCropCode } from './crop-code-normalizer.ts';
 
 interface CropSynonymRow {
   canonical_crop: string;
