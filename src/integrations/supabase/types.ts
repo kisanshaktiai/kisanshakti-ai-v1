@@ -29852,6 +29852,7 @@ export type Database = {
       }
       v_ai_drop_attribution_90d: {
         Row: {
+          clarification_origin: string | null
           crop_context: string | null
           drop_stage: string | null
           primary_decision_turns: number | null
