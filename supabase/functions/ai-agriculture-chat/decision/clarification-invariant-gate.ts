@@ -26,6 +26,7 @@
  */
 
 import { getClarificationInvariantEnabled } from '../runtime/feature-flags.ts';
+import { funnelRecord } from '../runtime/funnel-tracker.ts';
 
 export interface ClarificationInvariantResult {
   invariant_violated: boolean;
