@@ -130,34 +130,79 @@ export async function detectCompetingMatches(
   supabaseClient: any,
   confidenceThreshold: number = 0.15
 ): Promise<CompetingMatch[]> {
-  
+
   // Early exit for single match
   if (!firedRules || firedRules.length <= 1) {
     console.log('   ✅ [MultiMatch] Single or no match - no competition');
     return [];
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // WAVE G FIX — Three structural defects that caused this gate to absorb
+  // 89% (42/47) of silent match→decision drops in the WS13 audit:
+  //
+  //   1. NO TOP-CONFIDENCE ESCAPE: a top rule at 0.92 with a second at
+  //      0.78 would still trigger clarification, even though 0.92 is
+  //      decisively actionable. Real triage requires BOTH a margin AND a
+  //      top-confidence threshold.
+  //   2. SAME-CAUSE COUNTED AS COMPETITION: sugarcane carries 523 rules
+  //      with many redundant signal forms; multiple rules sharing the
+  //      same `cause_code` fire together and were being treated as
+  //      competing causes — asking the farmer to differentiate between
+  //      *identical* diagnoses.
+  //   3. NO NOISE FLOOR: rules at 0.04 vs 0.03 trivially pass the 15%
+  //      margin (0.03 ≥ 0.04 − 0.15) and forced clarification on noise.
+  // ─────────────────────────────────────────────────────────────────────
+  const MIN_RULE_CONFIDENCE_FOR_COMPETITION = 0.30; // noise floor
+  const TOP_CONF_AUTORESOLVE = 0.75;                // top is decisive
+  const MIN_MARGIN_FOR_AUTORESOLVE = 0.10;          // and clear of #2
+
   // Sort by confidence descending
-  const sorted = [...firedRules].sort((a, b) => 
+  const sorted = [...firedRules].sort((a, b) =>
     (b.confidence || 0) - (a.confidence || 0)
   );
   const topConfidence = sorted[0]?.confidence || 0;
+  const secondConfidence = sorted[1]?.confidence || 0;
 
-  console.log(`🔍 [MultiMatch] Top confidence: ${(topConfidence * 100).toFixed(0)}%, checking for competition...`);
+  console.log(`🔍 [MultiMatch] Top=${(topConfidence * 100).toFixed(0)}% Second=${(secondConfidence * 100).toFixed(0)}%, checking for competition...`);
 
-  // Find rules within threshold
-  const competing = sorted.filter(rule => 
-    (rule.confidence || 0) >= topConfidence - confidenceThreshold
-  );
-
-  if (competing.length <= 1) {
-    console.log(`   ✅ [MultiMatch] No competition (only ${competing.length} within ${(confidenceThreshold * 100).toFixed(0)}% threshold)`);
+  // (Bug 3) Drop rules below the noise floor before any further analysis
+  const aboveFloor = sorted.filter(r => (r.confidence || 0) >= MIN_RULE_CONFIDENCE_FOR_COMPETITION);
+  if (aboveFloor.length <= 1) {
+    console.log(`   ✅ [MultiMatch] After noise floor (${(MIN_RULE_CONFIDENCE_FOR_COMPETITION * 100).toFixed(0)}%): ${aboveFloor.length} rule(s) — no competition`);
     return [];
   }
 
-  console.log(`🚨 [MultiMatch] COMPETITION DETECTED: ${competing.length} rules within ${(confidenceThreshold * 100).toFixed(0)}% of top`);
-  console.log(`   📋 Competing rules: ${competing.map(r => 
-    `${r.rule_id || r.ruleId}(${((r.confidence || 0) * 100).toFixed(0)}%)`
+  // (Bug 1) Top-confidence escape hatch — let the symbolic primary resolve
+  if (topConfidence >= TOP_CONF_AUTORESOLVE &&
+      (topConfidence - secondConfidence) >= MIN_MARGIN_FOR_AUTORESOLVE) {
+    console.log(`   ✅ [MultiMatch] AUTORESOLVE: top=${(topConfidence * 100).toFixed(0)}% margin=${((topConfidence - secondConfidence) * 100).toFixed(0)}% — skipping clarification`);
+    return [];
+  }
+
+  // Find rules within margin of top
+  const withinMargin = aboveFloor.filter(rule =>
+    (rule.confidence || 0) >= topConfidence - confidenceThreshold
+  );
+
+  // (Bug 2) Dedupe by cause_code — same cause is NOT competition
+  const seenCauses = new Set<string>();
+  const competing = withinMargin.filter(rule => {
+    const cause = String(rule.cause || rule.cause_code || '').toUpperCase().trim();
+    if (!cause) return true; // can't dedupe unknown causes; treat as distinct
+    if (seenCauses.has(cause)) return false;
+    seenCauses.add(cause);
+    return true;
+  });
+
+  if (competing.length <= 1) {
+    console.log(`   ✅ [MultiMatch] After cause-dedupe: ${competing.length} distinct cause(s) within ${(confidenceThreshold * 100).toFixed(0)}% — no competition`);
+    return [];
+  }
+
+  console.log(`🚨 [MultiMatch] COMPETITION DETECTED: ${competing.length} distinct causes within ${(confidenceThreshold * 100).toFixed(0)}% of top`);
+  console.log(`   📋 Competing rules: ${competing.map(r =>
+    `${r.rule_id || r.ruleId}/${r.cause || r.cause_code}(${((r.confidence || 0) * 100).toFixed(0)}%)`
   ).join(', ')}`);
 
   // Fetch full rule details from database
@@ -203,9 +248,26 @@ export async function detectCompetingMatches(
     };
   });
 
-  console.log(`   ✅ [MultiMatch] Enriched ${enrichedMatches.length} competing matches from database`);
+  // (Bug 2 final guard) Dedupe enriched by DB-resolved cause_code — the
+  // pre-DB dedupe may have under-deduplicated when fired rules carried
+  // empty/UNKNOWN causes that the DB later resolved to the same cause.
+  const seenDbCauses = new Set<string>();
+  const dedupedEnriched = enrichedMatches.filter(m => {
+    const c = String(m.cause_code || '').toUpperCase().trim();
+    if (!c || c === 'UNKNOWN') return true;
+    if (seenDbCauses.has(c)) return false;
+    seenDbCauses.add(c);
+    return true;
+  });
 
-  return enrichedMatches;
+  if (dedupedEnriched.length <= 1) {
+    console.log(`   ✅ [MultiMatch] After DB-cause-dedupe: ${dedupedEnriched.length} distinct cause(s) — no competition`);
+    return [];
+  }
+
+  console.log(`   ✅ [MultiMatch] Enriched ${dedupedEnriched.length} competing matches from database`);
+
+  return dedupedEnriched;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
