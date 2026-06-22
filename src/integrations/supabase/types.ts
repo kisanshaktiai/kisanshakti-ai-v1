@@ -29850,6 +29850,19 @@ export type Database = {
         }
         Relationships: []
       }
+      v_ai_drop_attribution_90d: {
+        Row: {
+          crop_context: string | null
+          drop_stage: string | null
+          primary_decision_turns: number | null
+          response_source: string | null
+          response_type: string | null
+          rules_lost_at_drop_stage: number | null
+          rules_matched_turns: number | null
+          turns: number | null
+        }
+        Relationships: []
+      }
       v_crop_varieties: {
         Row: {
           company_id: string | null
