@@ -55,34 +55,34 @@ const suggestionOptions: {
   { 
     type: 'organic', 
     icon: <Leaf className="h-5 w-5" />, 
-    gradient: 'from-emerald-500/20 via-green-500/10 to-transparent',
-    iconBg: 'bg-gradient-to-br from-emerald-500 to-green-600',
-    borderColor: 'border-emerald-500/30 hover:border-emerald-500/60',
-    shadowColor: 'shadow-emerald-500/20'
+    gradient: 'from-success/20 via-success/10 to-transparent',
+    iconBg: 'bg-gradient-to-br from-success to-success',
+    borderColor: 'border-success/30 hover:border-success/60',
+    shadowColor: 'shadow-success/30/20'
   },
   { 
     type: 'fertilizer', 
     icon: <Beaker className="h-5 w-5" />, 
-    gradient: 'from-amber-500/20 via-yellow-500/10 to-transparent',
-    iconBg: 'bg-gradient-to-br from-amber-500 to-yellow-600',
-    borderColor: 'border-amber-500/30 hover:border-amber-500/60',
-    shadowColor: 'shadow-amber-500/20'
+    gradient: 'from-warning/20 via-warning/10 to-transparent',
+    iconBg: 'bg-gradient-to-br from-warning to-warning',
+    borderColor: 'border-warning/30 hover:border-warning/60',
+    shadowColor: 'shadow-warning/30/20'
   },
   { 
     type: 'pesticide', 
     icon: <Bug className="h-5 w-5" />, 
-    gradient: 'from-rose-500/20 via-red-500/10 to-transparent',
-    iconBg: 'bg-gradient-to-br from-rose-500 to-red-600',
-    borderColor: 'border-rose-500/30 hover:border-rose-500/60',
-    shadowColor: 'shadow-rose-500/20'
+    gradient: 'from-destructive/20 via-destructive/10 to-transparent',
+    iconBg: 'bg-gradient-to-br from-destructive to-destructive',
+    borderColor: 'border-destructive/30 hover:border-destructive/60',
+    shadowColor: 'shadow-destructive/30/20'
   },
   { 
     type: 'hybrid', 
     icon: <Sparkles className="h-5 w-5" />, 
-    gradient: 'from-violet-500/20 via-purple-500/10 to-transparent',
-    iconBg: 'bg-gradient-to-br from-violet-500 to-purple-600',
-    borderColor: 'border-violet-500/30 hover:border-violet-500/60',
-    shadowColor: 'shadow-violet-500/20'
+    gradient: 'from-primary/20 via-primary/10 to-transparent',
+    iconBg: 'bg-gradient-to-br from-primary to-primary',
+    borderColor: 'border-primary/30 hover:border-primary/60',
+    shadowColor: 'shadow-primary/30/20'
   }
 ];
 
@@ -100,7 +100,7 @@ export function SuggestionTypeSelector({ onSelect, isLoading, language = 'en' }:
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-background/95 via-background/90 to-muted/50 backdrop-blur-xl border border-border/50 shadow-xl">
         {/* Decorative gradient orb */}
         <div className="absolute -top-20 -right-20 w-40 h-40 bg-gradient-to-br from-primary/20 to-secondary/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-gradient-to-br from-emerald-500/10 to-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-10 -left-10 w-32 h-32 bg-gradient-to-br from-success/10 to-warning/10 rounded-full blur-2xl pointer-events-none" />
         
         {/* Header */}
         <div className="relative px-4 pt-4 pb-3">

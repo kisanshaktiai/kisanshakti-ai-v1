@@ -80,11 +80,13 @@ export function useSchedules(landId?: string) {
           // Use supabaseWithAuth to include custom headers for RLS
           const authClient = supabaseWithAuth(user.id, user.tenantId);
           
+          // SPRINT 3: bound payload — a farmer should never need more than 100 active schedules.
           let query = authClient
             .from('crop_schedules')
             .select('*')
             .eq('is_active', true)
-            .order('created_at', { ascending: false });
+            .order('created_at', { ascending: false })
+            .limit(100);
 
           if (landId) {
             console.log('🎯 [useSchedules] Filtering by land_id:', landId);
@@ -271,8 +273,10 @@ export function useSchedules(landId?: string) {
       return localData || [];
     },
     enabled: !!user?.id && headersReady, // Wait for user and headers only - no sync blocking
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
+    // PHASE 1A: Long stale window — realtime + manual refetch will invalidate when needed.
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     retry: 2, // Retry twice
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 3000), // Exponential backoff

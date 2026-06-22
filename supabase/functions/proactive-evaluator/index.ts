@@ -75,6 +75,12 @@ interface LandContext {
     rain_mm: number | null;
     wind_speed: number | null;
     description: string | null;
+    /** 'exact' = key match, 'proximity' = nearest within 55km, 'unavailable' = no data */
+    source: 'exact' | 'proximity' | 'unavailable';
+    /** Distance in km from land centroid to weather station (null if exact/unavailable) */
+    distance_km: number | null;
+    /** Age of observation in hours (null if unavailable) */
+    age_hours: number | null;
   };
   ndvi: number | null;
   ndvi_previous: number | null;
@@ -157,12 +163,14 @@ Deno.serve(async (req) => {
     let totalAlerts = 0;
     let totalLands = 0;
     let totalRulesFired = 0;
+    let totalRulesEvaluated = 0;
 
     for (const tenantId of tenantIds) {
       const tenantResult = await processOneTenant(supabase, tenantId, targetLandId, action);
       totalAlerts += tenantResult.alerts;
       totalLands += tenantResult.lands;
       totalRulesFired += tenantResult.rulesFired;
+      totalRulesEvaluated += tenantResult.rulesEvaluated;
     }
 
     const elapsed = Date.now() - startTime;
@@ -173,7 +181,7 @@ Deno.serve(async (req) => {
       tenant_id: tenantIds[0] || 'default',
       evaluation_type: action === 'scheduled' ? 'scheduled' : 'manual',
       lands_evaluated: totalLands,
-      rules_evaluated: totalRulesFired,
+      rules_evaluated: totalRulesEvaluated,
       rules_fired: totalRulesFired,
       alerts_generated: totalAlerts,
       execution_time_ms: elapsed,
@@ -198,7 +206,7 @@ Deno.serve(async (req) => {
 // PROCESS ONE TENANT (isolated)
 // =====================================================
 
-async function processOneTenant(supabase: any, tenantId: string, targetLandId: string | null, action: string): Promise<{ alerts: number; lands: number; rulesFired: number }> {
+async function processOneTenant(supabase: any, tenantId: string, targetLandId: string | null, action: string): Promise<{ alerts: number; lands: number; rulesFired: number; rulesEvaluated: number }> {
     // =========================================================
     // STEP 1: Load proactive rules + decision_rules (is_proactive_rule=true)
     // =========================================================
@@ -212,7 +220,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const decisionRules: DecisionRuleProactive[] = decisionRulesRes.data || [];
 
     if (rules.length === 0 && decisionRules.length === 0) {
-      return { alerts: 0, lands: 0, rulesFired: 0 };
+      return { alerts: 0, lands: 0, rulesFired: 0, rulesEvaluated: 0 };
     }
 
     console.log(`[ProactiveEvaluator][${tenantId.slice(0,8)}] Loaded ${rules.length} proactive rules, ${decisionRules.length} decision rules`);
@@ -222,7 +230,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     let landsQuery = supabase
       .from('lands')
-      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
+      .select('id, farmer_id, tenant_id, current_crop, name, last_sowing_date, cultivation_date, center_lat, center_lon, area_acres, soil_type, irrigation_type, water_source')
       .eq('is_active', true)
       .eq('tenant_id', tenantId);
 
@@ -231,7 +239,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const { data: lands, error: landsError } = await landsQuery.limit(500);
     if (landsError) throw new Error(`Lands load failed: ${landsError.message}`);
     if (!lands || lands.length === 0) {
-      return { alerts: 0, lands: 0, rulesFired: 0 };
+      return { alerts: 0, lands: 0, rulesFired: 0, rulesEvaluated: 0 };
     }
 
     const landIds = lands.map(l => l.id);
@@ -252,11 +260,11 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         .in('land_id', landIds)
         .eq('is_active', true)
         .order('created_at', { ascending: false }),
-      // Recent alerts for dedup/cooldown (72h)
+      // Recent alerts for dedup/cooldown (24h)
       supabase.from('proactive_alerts')
         .select('id, rule_id, land_id, farmer_id, dedup_key, created_at, status')
         .in('land_id', landIds)
-        .gte('created_at', new Date(Date.now() - 72 * 60 * 60 * 1000).toISOString()),
+        .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
       // Soil health per land
       supabase.from('soil_health')
         .select('land_id, nitrogen_kg_per_ha, phosphorus_kg_per_ha, potassium_kg_per_ha, ph_level, organic_carbon')
@@ -282,7 +290,9 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     const ndviMap = buildNdviMap(ndviRes.data);
     const stageMap = buildStageMap(stageMapRes.data);
 
-    // Batch-load weather: collect unique location keys + build land→locationKey mapping
+    // Batch-load weather: per-land via geo-proximity (≤55 km, ≤6 h freshness).
+    // Aligned with mem://weather/live-weather-context-resolution so AI Chat and
+    // proactive alerts see the same temperature/humidity for each land.
     const locationKeys = new Set<string>();
     const landToLocKey = new Map<string, string>();
     for (const land of lands) {
@@ -293,7 +303,10 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
       }
     }
     const locKeyArray = Array.from(locationKeys);
-    const weatherMap = await batchLoadWeather(supabase, locKeyArray);
+    const landWeatherMap = await batchLoadWeatherByLand(
+      supabase,
+      lands.map((l: any) => ({ id: l.id, center_lat: l.center_lat, center_lon: l.center_lon })),
+    );
     
     // Batch-load forecast rain probability (72h) and GDD (30d) — by location_key
     const [forecastLocMap, gddLocMap] = await Promise.all([
@@ -328,7 +341,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
 
     for (const land of lands) {
       const schedule = scheduleMap.get(land.id);
-      const sowingDate = schedule?.sowing_date || land.last_sowing_date;
+      const sowingDate = schedule?.sowing_date || land.last_sowing_date || land.cultivation_date;
       const cropSource = schedule?.crop_name || land.current_crop;
       const cropCode = normalizeCropCode(cropSource);
 
@@ -339,10 +352,10 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
       // Dynamic stage computation (G3) — DB-driven first, then fallback
       const currentStage = computeStageDynamic(cropCode, das, stageMap);
 
-      // Weather from batch map
+      // Weather: per-land geo-proximity result (exact / proximity / unavailable)
       const locKey = (land.center_lat != null && land.center_lon != null)
         ? makeLocationKey(land.center_lat, land.center_lon) : null;
-      const weather = locKey ? (weatherMap.get(locKey) || nullWeather()) : nullWeather();
+      const weather = landWeatherMap.get(land.id) || nullWeather();
 
       // NDVI from batch map
       const ndviArr = ndviMap.get(land.id) || [];
@@ -389,6 +402,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     let totalAlerts = 0;
     let totalRulesFired = 0;
+    let totalRulesEvaluated = 0;
     const alertsToInsert: any[] = [];
     const eventsToInsert: any[] = [];
 
@@ -401,6 +415,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         }
         return true;
       });
+      totalRulesEvaluated += applicableRules.length;
 
       for (const rule of applicableRules) {
         const result = evaluateRule(rule, ctx);
@@ -409,7 +424,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
 
         // In-memory dedup check
         const dedupKey = `${rule.rule_code}:${ctx.land_id}:${todayStr}`;
-        if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || 72, alertMap)) continue;
+        if (isDuplicate(dedupKey, rule.rule_code, ctx.land_id, rule.cooldown_hours || 24, alertMap)) continue;
 
         // Daily throttle check (in-memory)
         const dailyCount = farmerDailyCounts.get(ctx.farmer_id) || 0;
@@ -467,6 +482,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         }
         return true;
       });
+      totalRulesEvaluated += applicableDecisionRules.length;
 
       // Sort by priority (lower = higher priority)
       applicableDecisionRules.sort((a, b) => (a.priority || 99) - (b.priority || 99));
@@ -477,7 +493,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
         totalRulesFired++;
 
         const dedupKey = `DR:${dr.condition_code}:${ctx.land_id}:${todayStr}`;
-        if (isDuplicate(dedupKey, dr.condition_code, ctx.land_id, 72, alertMap)) continue;
+        if (isDuplicate(dedupKey, dr.condition_code, ctx.land_id, 24, alertMap)) continue;
 
         const dailyCount = farmerDailyCounts.get(ctx.farmer_id) || 0;
         if (dailyCount >= 5 && dr.priority > 1) continue;
@@ -565,7 +581,7 @@ async function processOneTenant(supabase: any, tenantId: string, targetLandId: s
     // =========================================================
     // STEP 7: Return tenant result
     // =========================================================
-    return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired };
+    return { alerts: totalAlerts, lands: landContexts.length, rulesFired: totalRulesFired, rulesEvaluated: totalRulesEvaluated };
 }
 
 // =====================================================
@@ -633,16 +649,154 @@ function makeLocationKey(lat: number, lon: number): string {
   return `${(Math.round(lat * 100) / 100)},${(Math.round(lon * 100) / 100)}`;
 }
 
+/**
+ * Haversine distance in kilometers between two lat/lon points.
+ */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371; // Earth radius km
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+/**
+ * Per-land weather lookup using exact location_key first, then geo-proximity within
+ * 55 km on observations newer than 6 hours. Returns a Map keyed by land_id.
+ *
+ * Aligned with the AI Chat policy in mem://weather/live-weather-context-resolution
+ * (proximity lookup) so all surfaces of the app see the same temperature/humidity.
+ */
+async function batchLoadWeatherByLand(
+  supabase: any,
+  lands: Array<{ id: string; center_lat: number | null; center_lon: number | null }>,
+): Promise<Map<string, { temp: number | null; humidity: number | null; rain_mm: number | null; wind_speed: number | null; description: string | null; source: 'exact' | 'proximity' | 'unavailable'; distance_km: number | null; age_hours: number | null }>> {
+  const result = new Map();
+  const FRESHNESS_HOURS = 6;
+  const MAX_KM = 55;
+  const BBOX_DEG = 0.5; // ≈ 55 km at this latitude band
+
+  // Collect candidate keys (exact-match fast path)
+  const exactKeys = new Set<string>();
+  for (const land of lands) {
+    if (land.center_lat != null && land.center_lon != null) {
+      exactKeys.add(makeLocationKey(land.center_lat, land.center_lon));
+    }
+  }
+
+  const freshCutoff = new Date(Date.now() - FRESHNESS_HOURS * 60 * 60 * 1000).toISOString();
+
+  // Pull all candidate observations once: by exact key OR by global lat/lon bbox of all lands.
+  // We build the bbox as the union of every land's ±0.5° window.
+  let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+  for (const land of lands) {
+    if (land.center_lat == null || land.center_lon == null) continue;
+    minLat = Math.min(minLat, land.center_lat - BBOX_DEG);
+    maxLat = Math.max(maxLat, land.center_lat + BBOX_DEG);
+    minLon = Math.min(minLon, land.center_lon - BBOX_DEG);
+    maxLon = Math.max(maxLon, land.center_lon + BBOX_DEG);
+  }
+
+  const obsRows: any[] = [];
+
+  // 1. Fresh observations within bounding box (proximity candidates)
+  if (Number.isFinite(minLat)) {
+    const { data: bboxData, error: bboxErr } = await supabase
+      .from('weather_current')
+      .select('location_key, latitude, longitude, temperature_celsius, humidity_percent, rain_1h_mm, wind_speed_kmh, weather_description, observation_time')
+      .gte('observation_time', freshCutoff)
+      .gte('latitude', minLat)
+      .lte('latitude', maxLat)
+      .gte('longitude', minLon)
+      .lte('longitude', maxLon)
+      .order('observation_time', { ascending: false })
+      .limit(500);
+    if (bboxErr) {
+      console.error('[batchLoadWeatherByLand] bbox query error:', bboxErr.message);
+    } else if (bboxData) {
+      obsRows.push(...bboxData);
+    }
+  }
+
+  // 2. If a row has no latitude/longitude column populated, fall back to parsing location_key
+  for (const r of obsRows) {
+    if ((r.latitude == null || r.longitude == null) && typeof r.location_key === 'string') {
+      const parts = r.location_key.split(',');
+      if (parts.length === 2) {
+        const lat = parseFloat(parts[0]);
+        const lon = parseFloat(parts[1]);
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          r.latitude = lat;
+          r.longitude = lon;
+        }
+      }
+    }
+  }
+
+  // 3. For each land, pick exact match (if fresh) else nearest fresh row within 55 km
+  const now = Date.now();
+  for (const land of lands) {
+    if (land.center_lat == null || land.center_lon == null) {
+      result.set(land.id, { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null, source: 'unavailable' as const, distance_km: null, age_hours: null });
+      continue;
+    }
+    const exactKey = makeLocationKey(land.center_lat, land.center_lon);
+
+    // Exact match (still must be fresh)
+    let best: { row: any; distKm: number; isExact: boolean } | null = null;
+    for (const row of obsRows) {
+      if (row.location_key === exactKey) {
+        best = { row, distKm: 0, isExact: true };
+        break;
+      }
+    }
+
+    // Nearest match within 55 km
+    if (!best) {
+      for (const row of obsRows) {
+        if (row.latitude == null || row.longitude == null) continue;
+        const d = haversineKm(land.center_lat, land.center_lon, row.latitude, row.longitude);
+        if (d > MAX_KM) continue;
+        if (!best || d < best.distKm) {
+          best = { row, distKm: d, isExact: false };
+        }
+      }
+    }
+
+    if (best) {
+      const ageHours = best.row.observation_time
+        ? (now - new Date(best.row.observation_time).getTime()) / (1000 * 60 * 60)
+        : null;
+      result.set(land.id, {
+        temp: best.row.temperature_celsius,
+        humidity: best.row.humidity_percent,
+        rain_mm: best.row.rain_1h_mm,
+        wind_speed: best.row.wind_speed_kmh,
+        description: best.row.weather_description,
+        source: best.isExact ? 'exact' : 'proximity',
+        distance_km: best.isExact ? 0 : Math.round(best.distKm * 10) / 10,
+        age_hours: ageHours == null ? null : Math.round(ageHours * 10) / 10,
+      });
+    } else {
+      result.set(land.id, { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null, source: 'unavailable' as const, distance_km: null, age_hours: null });
+    }
+  }
+
+  return result;
+}
+
+// Legacy key-only path retained for forecast/GDD code that already keys by location_key.
 async function batchLoadWeather(supabase: any, locationKeys: string[]): Promise<Map<string, any>> {
   const map = new Map();
   if (locationKeys.length === 0) return map;
-  
   const { data } = await supabase
     .from('weather_current')
     .select('location_key, temperature_celsius, humidity_percent, rain_1h_mm, wind_speed_kmh, weather_description, observation_time')
     .in('location_key', locationKeys)
     .order('observation_time', { ascending: false });
-
   if (data) {
     for (const w of data) {
       if (!map.has(w.location_key)) {
@@ -752,7 +906,7 @@ async function batchLoadGDD(supabase: any, locationKeys: string[]): Promise<Map<
 }
 
 function nullWeather() {
-  return { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null };
+  return { temp: null, humidity: null, rain_mm: null, wind_speed: null, description: null, source: 'unavailable' as const, distance_km: null, age_hours: null };
 }
 
 // =====================================================
@@ -839,14 +993,22 @@ function computeStageHardcoded(cropCode: string, das: number): string {
 function normalizeCropCode(crop: string | null): string | null {
   if (!crop) return null;
   const upper = crop.toUpperCase().trim();
-  if (upper.includes('SUGARCANE') || upper.includes('ऊस') || upper === 'SC') return 'SUGARCANE';
-  if (upper.includes('WHEAT') || upper.includes('गहू') || upper === 'WH') return 'WHEAT';
-  if (upper.includes('COTTON') || upper.includes('कापूस') || upper === 'CT') return 'COTTON';
-  if (upper.includes('RICE') || upper.includes('भात') || upper === 'RC') return 'RICE';
-  if (upper.includes('SOYBEAN') || upper.includes('सोयाबीन') || upper === 'SB') return 'SOYBEAN';
-  if (upper.includes('ONION') || upper.includes('कांदा') || upper === 'ON') return 'ONION';
-  if (upper.includes('TURMERIC') || upper.includes('हळद') || upper === 'TU') return 'TURMERIC';
-  if (upper.includes('GRAPE') || upper.includes('द्राक्ष') || upper === 'GR') return 'GRAPE';
+  if (upper.includes('SUGARCANE') || upper.includes('ऊस') || upper.includes('गन्ना') || upper.includes('ईख') || upper === 'SC') return 'SUGARCANE';
+  if (upper.includes('WHEAT') || upper.includes('गहू') || upper.includes('गेहूं') || upper.includes('गेहूँ') || upper === 'WH') return 'WHEAT';
+  if (upper.includes('COTTON') || upper.includes('कापूस') || upper.includes('कपास') || upper.includes('रुई') || upper === 'CT') return 'COTTON';
+  if (upper.includes('RICE') || upper.includes('भात') || upper.includes('तांदूळ') || upper.includes('धान') || upper.includes('चावल') || upper === 'RC') return 'RICE';
+  if (upper.includes('SOYBEAN') || upper.includes('सोयाबीन') || upper.includes('सोयाबिन') || upper === 'SB') return 'SOYBEAN';
+  if (upper.includes('ONION') || upper.includes('कांदा') || upper.includes('प्याज') || upper === 'ON') return 'ONION';
+  if (upper.includes('TURMERIC') || upper.includes('हळद') || upper.includes('हल्दी') || upper === 'TU') return 'TURMERIC';
+  if (upper.includes('GRAPE') || upper.includes('द्राक्ष') || upper.includes('अंगूर') || upper === 'GR') return 'GRAPE';
+  if (upper.includes('MAIZE') || upper.includes('CORN') || upper.includes('मका') || upper.includes('मक्का') || upper === 'MZ') return 'MAIZE';
+  if (upper.includes('GROUNDNUT') || upper.includes('PEANUT') || upper.includes('भुईमूग') || upper.includes('मूंगफली') || upper === 'GN') return 'GROUNDNUT';
+  if (upper.includes('BANANA') || upper.includes('केळी') || upper.includes('केला') || upper === 'BN') return 'BANANA';
+  if (upper.includes('POMEGRANATE') || upper.includes('डाळिंब') || upper.includes('अनार') || upper === 'PM') return 'POMEGRANATE';
+  if (upper.includes('CHILLI') || upper.includes('CHILI') || upper.includes('मिरची') || upper.includes('मिर्च') || upper === 'CH') return 'CHILLI';
+  if (upper.includes('TOMATO') || upper.includes('टोमॅटो') || upper.includes('टमाटर') || upper === 'TM') return 'TOMATO';
+  if (upper.includes('POTATO') || upper.includes('बटाटा') || upper.includes('आलू') || upper === 'PT') return 'POTATO';
+  if (upper.includes('MANGO') || upper.includes('आंबा') || upper.includes('आम') || upper === 'MG') return 'MANGO';
   return upper;
 }
 
@@ -1529,17 +1691,21 @@ function generateTrilingualMessage(category: string, messageEn: string, ctx: Lan
   if (irrigation && (mapDecisionCategory(category) === 'IRRIGATION' || mapDecisionCategory(category) === 'CROP_STRESS')) {
     const methodMr = IRRIGATION_METHOD_MR[irrigation.method] || irrigation.method;
     const methodHi = IRRIGATION_METHOD_HI[irrigation.method] || irrigation.method;
+    const wxMr = weatherEvidenceLine(ctx, 'mr');
+    const wxHi = weatherEvidenceLine(ctx, 'hi');
     return {
-      mr: `"${landMr}"${areaMr} शेतात ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास). तापमान: ${ctx.weather.temp ?? '--'}°C.`,
-      hi: `"${landHi}"${areaHi} खेत में ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे). तापमान: ${ctx.weather.temp ?? '--'}°C.`,
+      mr: `"${landMr}"${areaMr} शेतात ${methodMr}ने ${irrigation.water_liters_total.toLocaleString()} लिटर पाणी द्या (${irrigation.duration_hours} तास).${wxMr ? ' ' + wxMr : ''}`,
+      hi: `"${landHi}"${areaHi} खेत में ${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे).${wxHi ? ' ' + wxHi : ''}`,
     };
   }
   
   const catTitleMr = CATEGORY_TITLES[mapDecisionCategory(category)]?.mr || 'सूचना';
   const catTitleHi = CATEGORY_TITLES[mapDecisionCategory(category)]?.hi || 'सूचना';
+  const wxMr2 = weatherEvidenceLine(ctx, 'mr');
+  const wxHi2 = weatherEvidenceLine(ctx, 'hi');
   return {
-    mr: `"${landMr}"${areaMr} - ${catTitleMr}. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. शेताची तपासणी करा.`,
-    hi: `"${landHi}"${areaHi} - ${catTitleHi}. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. खेत की जांच करें.`,
+    mr: `"${landMr}"${areaMr} - ${catTitleMr}.${wxMr2 ? ' ' + wxMr2 : ''} शेताची तपासणी करा.`,
+    hi: `"${landHi}"${areaHi} - ${catTitleHi}.${wxHi2 ? ' ' + wxHi2 : ''} खेत की जांच करें.`,
   };
 }
 
@@ -1682,6 +1848,106 @@ function findBestMatchingDecisionRule(
   return candidates[0];
 }
 
+// =====================================================
+// CROP NAME LOCALIZATION (no ALL_CAPS in farmer text)
+// Per mem://architecture/canonical-language-governance and
+// mem://logic/multilingual-crop-synonym-detection
+// =====================================================
+const CROP_LABEL: Record<string, { mr: string; hi: string; en: string }> = {
+  SUGARCANE: { mr: 'ऊस', hi: 'गन्ना', en: 'sugarcane' },
+  RICE:      { mr: 'भात', hi: 'चावल', en: 'rice' },
+  WHEAT:     { mr: 'गहू', hi: 'गेहूं', en: 'wheat' },
+  COTTON:    { mr: 'कापूस', hi: 'कपास', en: 'cotton' },
+  MAIZE:     { mr: 'मका', hi: 'मक्का', en: 'maize' },
+  SOYBEAN:   { mr: 'सोयाबीन', hi: 'सोयाबीन', en: 'soybean' },
+  TOMATO:    { mr: 'टोमॅटो', hi: 'टमाटर', en: 'tomato' },
+  ONION:     { mr: 'कांदा', hi: 'प्याज', en: 'onion' },
+  POTATO:    { mr: 'बटाटा', hi: 'आलू', en: 'potato' },
+  GROUNDNUT: { mr: 'भुईमूग', hi: 'मूंगफली', en: 'groundnut' },
+  CHILLI:    { mr: 'मिरची', hi: 'मिर्च', en: 'chilli' },
+  TURMERIC:  { mr: 'हळद', hi: 'हल्दी', en: 'turmeric' },
+  BANANA:    { mr: 'केळी', hi: 'केला', en: 'banana' },
+  GRAPE:     { mr: 'द्राक्ष', hi: 'अंगूर', en: 'grape' },
+  PIGEONPEA: { mr: 'तूर', hi: 'अरहर', en: 'pigeonpea' },
+};
+
+function cropLabel(code: string | null | undefined, lang: 'mr' | 'hi' | 'en'): string {
+  if (!code) return lang === 'mr' ? 'पीक' : lang === 'hi' ? 'फसल' : 'crop';
+  const upper = code.toUpperCase().trim();
+  const entry = CROP_LABEL[upper];
+  if (entry) return entry[lang];
+  return code.charAt(0).toUpperCase() + code.slice(1).toLowerCase();
+}
+
+/** One-line weather evidence in the requested language. Returns '' if no live data. */
+function weatherEvidenceLine(ctx: LandContext, lang: 'mr' | 'hi' | 'en'): string {
+  const w = ctx.weather;
+  if (w.source === 'unavailable' || w.temp == null) return '';
+  const temp = Math.round(w.temp);
+  const hum = w.humidity != null ? Math.round(w.humidity) : null;
+  const distTag = w.source === 'proximity' && w.distance_km != null && w.distance_km > 1
+    ? (lang === 'mr' ? ` (≈ ${w.distance_km} किमी जवळचे केंद्र)` : lang === 'hi' ? ` (≈ ${w.distance_km} किमी नजदीकी केंद्र)` : ` (≈ ${w.distance_km} km nearby station)`)
+    : '';
+  if (lang === 'mr') return hum != null ? `आजचे हवामान: ${temp}°C, आर्द्रता ${hum}%${distTag}.` : `आजचे हवामान: ${temp}°C${distTag}.`;
+  if (lang === 'hi') return hum != null ? `आज का मौसम: ${temp}°C, नमी ${hum}%${distTag}.` : `आज का मौसम: ${temp}°C${distTag}.`;
+  return hum != null ? `Today's weather: ${temp}°C, humidity ${hum}%${distTag}.` : `Today's weather: ${temp}°C${distTag}.`;
+}
+
+function weatherUnavailableLine(lang: 'mr' | 'hi' | 'en'): string {
+  if (lang === 'mr') return 'आजची हवामान माहिती सध्या उपलब्ध नाही.';
+  if (lang === 'hi') return 'आज की मौसम जानकारी अभी उपलब्ध नहीं है.';
+  return 'Live weather data is currently unavailable for this field.';
+}
+
+const AGRO_TERM_MR: Record<string, string> = {
+  'irrigate': 'पाणी द्या', 'irrigation': 'सिंचन', 'spray': 'फवारणी करा',
+  'apply': 'द्या', 'inspect': 'तपासणी करा', 'inspection': 'तपासणी',
+  'check': 'तपासा', 'monitor': 'निरीक्षण करा', 'field': 'शेत',
+  'soil': 'माती', 'moisture': 'ओलावा', 'fertilizer': 'खत',
+  'nitrogen': 'नायट्रोजन', 'urea': 'युरिया', 'pest': 'कीड',
+  'disease': 'रोग', 'shoot borer': 'खोडकिडा', 'stem borer': 'खोडकिडा',
+  'root grub': 'मूळ अळी', 'wilt': 'मर रोग', 'red rot': 'लाल कूज',
+  'smut': 'काणी', 'leaf': 'पान',
+  'within 24 hours': '२४ तासांत', 'within 48 hours': '४८ तासांत',
+  'within 7 days': '७ दिवसांत',
+};
+
+const AGRO_TERM_HI: Record<string, string> = {
+  'irrigate': 'पानी दें', 'irrigation': 'सिंचाई', 'spray': 'छिड़काव करें',
+  'apply': 'डालें', 'inspect': 'जांच करें', 'inspection': 'जांच',
+  'check': 'देखें', 'monitor': 'निगरानी करें', 'field': 'खेत',
+  'soil': 'मिट्टी', 'moisture': 'नमी', 'fertilizer': 'खाद',
+  'nitrogen': 'नाइट्रोजन', 'urea': 'यूरिया', 'pest': 'कीट',
+  'disease': 'रोग', 'shoot borer': 'तना छेदक', 'stem borer': 'तना छेदक',
+  'root grub': 'जड़ की सुंडी', 'wilt': 'उकठा', 'red rot': 'लाल सड़न',
+  'smut': 'कण्डुआ', 'leaf': 'पत्ती',
+  'within 24 hours': '24 घंटों में', 'within 48 hours': '48 घंटों में',
+  'within 7 days': '7 दिनों में',
+};
+
+const IRRIGATION_METHOD_EN: Record<string, string> = {
+  DRIP: 'drip irrigation', SPRINKLER: 'sprinkler irrigation', FLOOD: 'flood irrigation',
+  FURROW: 'furrow irrigation', SURFACE: 'surface irrigation',
+};
+
+/**
+ * Deterministically localize ONE English step from `decision_rules.action_text`.
+ * No LLM — the brain is the SSOT (mem://architecture/symbolic-engine-strict-invariants).
+ */
+function localizeStep(stepEn: string, lang: 'mr' | 'hi'): string {
+  const dict = lang === 'mr' ? AGRO_TERM_MR : AGRO_TERM_HI;
+  let s = stepEn.replace(/^\s*\d+[.)]\s*/, '').trim();
+  const keys = Object.keys(dict).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    s = s.replace(new RegExp(`\\b${key}\\b`, 'gi'), dict[key]);
+  }
+  for (const [code] of Object.entries(IRRIGATION_METHOD_EN)) {
+    const replace = lang === 'mr' ? IRRIGATION_METHOD_MR[code] : IRRIGATION_METHOD_HI[code];
+    if (replace) s = s.replace(new RegExp(`\\b${code}\\b`, 'g'), replace);
+  }
+  return s;
+}
+
 function buildSolutionFromSymbolicData(
   dr: DecisionRuleProactive | null,
   ctx: LandContext,
@@ -1793,32 +2059,53 @@ function buildSolutionFromSymbolicData(
     irrigationStepHi = `${methodHi} से ${irrigation.water_liters_total.toLocaleString()} लीटर पानी दें (${irrigation.duration_hours} घंटे)`;
   }
 
+  // Localize crop name (no ALL_CAPS) and weather evidence (only when fresh data exists)
+  const cropMr = cropLabel(ctx.crop_code, 'mr');
+  const cropHi = cropLabel(ctx.crop_code, 'hi');
+  const cropEnLabel = cropLabel(ctx.crop_code, 'en');
+  const wxMr = weatherEvidenceLine(ctx, 'mr');
+  const wxHi = weatherEvidenceLine(ctx, 'hi');
+  const wxEn = weatherEvidenceLine(ctx, 'en');
+
+  // Cause = brain text (knowledge_text/reason_text), then weather as separate evidence line
+  const baseCauseMr = knowledgeText
+    ? localizeStep(knowledgeText.split('.').slice(0, 2).join('. '), 'mr')
+    : (reasonText ? localizeStep(reasonText.split('.').slice(0, 2).join('. '), 'mr') : `${dr.condition_code.replace(/_/g, ' ').toLowerCase()} - ${cropMr} पिकाची तपासणी आवश्यक.`);
+  const baseCauseHi = knowledgeText
+    ? localizeStep(knowledgeText.split('.').slice(0, 2).join('. '), 'hi')
+    : (reasonText ? localizeStep(reasonText.split('.').slice(0, 2).join('. '), 'hi') : `${dr.condition_code.replace(/_/g, ' ').toLowerCase()} - ${cropHi} फसल की जांच आवश्यक.`);
+
+  // Steps from action_text (decision-brain SSOT), localized deterministically
+  const stepsEnFinal = irrigationStepEn ? [...areaSpecificSteps, irrigationStepEn] : [...areaSpecificSteps];
+  const stepsMrFinal = areaSpecificSteps.map((s: string) => localizeStep(s, 'mr'));
+  const stepsHiFinal = areaSpecificSteps.map((s: string) => localizeStep(s, 'hi'));
+  if (irrigationStepMr) stepsMrFinal.push(irrigationStepMr);
+  if (irrigationStepHi) stepsHiFinal.push(irrigationStepHi);
+
   return {
     problem_en: problemEn,
-    problem_mr: `${landName} ${areaMr} शेतात ${catMr} आढळले. ${cropEn} पिकावर परिणाम होत आहे.`,
-    problem_hi: `${landName} ${areaHi} खेत में ${catHi} पाया गया. ${cropEn} फसल पर असर हो रहा है.`,
-    cause_en: causeEn,
-    cause_mr: `तापमान ${ctx.weather.temp ?? '--'}°C, आर्द्रता ${ctx.weather.humidity ?? '--'}% - या हवामानामुळे ही समस्या उद्भवली.`,
-    cause_hi: `तापमान ${ctx.weather.temp ?? '--'}°C, नमी ${ctx.weather.humidity ?? '--'}% - इस मौसम के कारण यह समस्या हुई.`,
-    steps_en: irrigationStepEn ? [...areaSpecificSteps, irrigationStepEn] : areaSpecificSteps,
-    steps_mr: irrigationStepMr
-      ? [`शेताची तपासणी करा आणि ${catMr} ओळखा`, `कृषी तज्ञांचा सल्ला घ्या`, irrigationStepMr]
-      : [`शेताची तपासणी करा आणि ${catMr} ओळखा`, `कृषी विभागाचा सल्ला घ्या`, `5-7 दिवसांनी पुन्हा तपासा`],
-    steps_hi: irrigationStepHi
-      ? [`खेत की जांच करें और ${catHi} की पहचान करें`, `कृषि विशेषज्ञ से सलाह लें`, irrigationStepHi]
-      : [`खेत की जांच करें और ${catHi} की पहचान करें`, `कृषि विभाग से सलाह लें`, `5-7 दिन बाद फिर जांचें`],
+    problem_mr: `${landName} ${areaMr} शेतात ${catMr} आढळले. ${cropMr} पिकावर परिणाम होत आहे.`,
+    problem_hi: `${landName} ${areaHi} खेत में ${catHi} पाया गया. ${cropHi} फसल पर असर हो रहा है.`,
+    cause_en: causeEn + (wxEn ? ` ${wxEn}` : ''),
+    cause_mr: baseCauseMr + (wxMr ? ` ${wxMr}` : ''),
+    cause_hi: baseCauseHi + (wxHi ? ` ${wxHi}` : ''),
+    steps_en: stepsEnFinal,
+    steps_mr: stepsMrFinal.length ? stepsMrFinal : [`${cropMr} पिकाची तपासणी करा`],
+    steps_hi: stepsHiFinal.length ? stepsHiFinal : [`${cropHi} फसल की जांच करें`],
     safety_en: safetyEn || 'Wear protective equipment when applying any chemical treatment.',
     safety_mr: 'फवारणी करताना हातमोजे, मास्क आणि पूर्ण बाह्यांचे कपडे घाला. फवारणी दरम्यान खाणे-पिणे टाळा.',
     safety_hi: 'छिड़काव करते समय दस्ताने, मास्क और पूरी बाजू के कपड़े पहनें. छिड़काव के दौरान खाना-पीना न करें.',
     organic_alt_en: organicAltEn,
-    organic_alt_mr: organicAltEn ? 'सेंद्रिय पर्याय उपलब्ध - कृषी तज्ञांचा सल्ला घ्या.' : '',
-    organic_alt_hi: organicAltEn ? 'जैविक विकल्प उपलब्ध - कृषि विशेषज्ञ से सलाह लें.' : '',
-    expected_benefit_en: benefitEn,
-    expected_benefit_mr: `या उपायांनी ${landName} शेतातील ${areaMr} ${cropEn} पिकाची स्थिती सुधारेल. 5-7 दिवसांनी तपासा.`,
-    expected_benefit_hi: `इन उपायों से ${landName} खेत के ${areaHi} ${cropEn} फसल की स्थिति सुधरेगी. 5-7 दिन बाद जांचें.`,
+    organic_alt_mr: organicAltEn ? localizeStep(organicAltEn, 'mr') : '',
+    organic_alt_hi: organicAltEn ? localizeStep(organicAltEn, 'hi') : '',
+    expected_benefit_en: `Following these steps should help on your ${areaStr} ${cropEnLabel} field. Monitor after 5-7 days.`,
+    expected_benefit_mr: `या उपायांनी ${landName} शेतातील ${areaMr} ${cropMr} पिकाची स्थिती सुधारेल. ५-७ दिवसांनी तपासा.`,
+    expected_benefit_hi: `इन उपायों से ${landName} खेत के ${areaHi} ${cropHi} फसल की स्थिति सुधरेगी. 5-7 दिन बाद जांचें.`,
     followup_en: followupEn,
-    followup_mr: `${landName} शेत 5-7 दिवसांनी तपासा. सुधारणा न झाल्यास स्थानिक कृषी अधिकाऱ्यांशी संपर्क करा.`,
+    followup_mr: `${landName} शेत ५-७ दिवसांनी तपासा. सुधारणा न झाल्यास स्थानिक कृषी अधिकाऱ्यांशी संपर्क करा.`,
     followup_hi: `${landName} खेत 5-7 दिन बाद जांचें. सुधार न हो तो स्थानीय कृषि अधिकारी से संपर्क करें.`,
+    weather_source: ctx.weather.source,
+    weather_distance_km: ctx.weather.distance_km,
   };
 }
 
@@ -1829,7 +2116,12 @@ function buildContextualSolution(
   const landName = ctx.land_name || 'your field';
   const areaMr = ctx.area_acres ? `${ctx.area_acres} एकर` : '';
   const areaHi = ctx.area_acres ? `${ctx.area_acres} एकड़` : '';
-  const cropEn = ctx.crop_code || 'crop';
+  const cropMrL = cropLabel(ctx.crop_code, 'mr');
+  const cropHiL = cropLabel(ctx.crop_code, 'hi');
+  const cropEnL = cropLabel(ctx.crop_code, 'en');
+  const wxEn = weatherEvidenceLine(ctx, 'en');
+  const wxMr = weatherEvidenceLine(ctx, 'mr');
+  const wxHi = weatherEvidenceLine(ctx, 'hi');
 
   const irrigation = triggerData.irrigation;
 
@@ -1865,9 +2157,9 @@ function buildContextualSolution(
       problem_en: `Satellite data shows crop health decline (NDVI: ${ndviVal}) on ${landName}. This indicates possible water stress, nutrient deficiency, or pest/disease damage.`,
       problem_mr: `${landName} ${areaMr} शेतातील पिकाचे उपग्रह आरोग्य (NDVI: ${ndviVal}) कमी झाले आहे. पाणी कमतरता, अन्नद्रव्य कमतरता किंवा कीड-रोगामुळे असू शकते.`,
       problem_hi: `${landName} ${areaHi} खेत में उपग्रह फसल स्वास्थ्य (NDVI: ${ndviVal}) कम हुआ है. पानी की कमी, पोषक तत्वों की कमी या कीट-रोग के कारण हो सकता है.`,
-      cause_en: `NDVI value ${ndviVal} indicates reduced photosynthetic activity. Weather: ${ctx.weather.temp ?? '--'}°C, humidity ${ctx.weather.humidity ?? '--'}%. Soil type: ${ctx.soil_type || 'unknown'}.`,
-      cause_mr: `NDVI ${ndviVal} म्हणजे पिकाची प्रकाशसंश्लेषण क्रिया कमी झाली. तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. माती: ${ctx.soil_type || '--'}.`,
-      cause_hi: `NDVI ${ndviVal} यानी फसल की प्रकाश संश्लेषण गतिविधि कम हुई. तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. मिट्टी: ${ctx.soil_type || '--'}.`,
+      cause_en: `Satellite shows the ${cropEnL} crop looks weak (NDVI ${ndviVal}). Soil: ${ctx.soil_type || 'unknown'}.${wxEn ? ' ' + wxEn : ''}`,
+      cause_mr: `उपग्रहावरून ${cropMrL} पीक कमजोर दिसत आहे (NDVI ${ndviVal}). माती: ${ctx.soil_type || '—'}.${wxMr ? ' ' + wxMr : ''}`,
+      cause_hi: `उपग्रह से ${cropHiL} फसल कमजोर दिख रही है (NDVI ${ndviVal}). मिट्टी: ${ctx.soil_type || '—'}.${wxHi ? ' ' + wxHi : ''}`,
       steps_en,
       steps_mr,
       steps_hi,
@@ -1891,9 +2183,9 @@ function buildContextualSolution(
     problem_en: `Alert condition detected on ${landName}. Immediate field inspection recommended.`,
     problem_mr: `${landName} ${areaMr} शेतात समस्या आढळली. शेताची तपासणी करा.`,
     problem_hi: `${landName} ${areaHi} खेत में समस्या पाई गई. खेत की जांच करें.`,
-    cause_en: `Weather: ${ctx.weather.temp ?? '--'}°C, humidity ${ctx.weather.humidity ?? '--'}%. Crop stage: ${ctx.current_stage || 'unknown'}.`,
-    cause_mr: `तापमान: ${ctx.weather.temp ?? '--'}°C, आर्द्रता: ${ctx.weather.humidity ?? '--'}%. पीक टप्पा: ${ctx.current_stage || '--'}.`,
-    cause_hi: `तापमान: ${ctx.weather.temp ?? '--'}°C, नमी: ${ctx.weather.humidity ?? '--'}%. फसल चरण: ${ctx.current_stage || '--'}.`,
+    cause_en: `Crop stage: ${ctx.current_stage || 'unknown'}.${wxEn ? ' ' + wxEn : ''}`,
+    cause_mr: `पीक टप्पा: ${ctx.current_stage || '—'}.${wxMr ? ' ' + wxMr : ''}`,
+    cause_hi: `फसल चरण: ${ctx.current_stage || '—'}.${wxHi ? ' ' + wxHi : ''}`,
     steps_en: ['Inspect the field thoroughly', 'Check for any visible damage or stress signs', 'Consult AI Chat with a photo for specific advice'],
     steps_mr: ['शेताची संपूर्ण तपासणी करा', 'कोणतेही नुकसान किंवा ताण चिन्हे तपासा', 'फोटो काढून AI चॅटवर विचारा'],
     steps_hi: ['खेत की पूरी जांच करें', 'किसी भी नुकसान या तनाव के संकेत देखें', 'फोटो लेकर AI चैट पर पूछें'],

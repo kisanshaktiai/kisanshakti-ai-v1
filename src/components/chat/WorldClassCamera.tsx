@@ -360,7 +360,7 @@ export function WorldClassCamera({
               animate={{ opacity: 1, y: 0 }}
               className="flex items-center justify-center gap-2 mt-4"
             >
-              <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse" />
+              <div className="w-3 h-3 bg-destructive rounded-full animate-pulse" />
               <span className="text-white font-medium">
                 {getText('recording')} {recordingDuration}s / {maxVideoDuration}s
               </span>
@@ -435,14 +435,14 @@ export function WorldClassCamera({
                       className={cn(
                         "w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-all active:scale-95 disabled:opacity-50",
                         isRecording 
-                          ? "bg-red-500" 
-                          : "bg-red-500/20 backdrop-blur-sm hover:bg-red-500/40"
+                          ? "bg-destructive" 
+                          : "bg-destructive/20 backdrop-blur-sm hover:bg-destructive/40"
                       )}
                     >
                       {isRecording ? (
                         <Square className="h-8 w-8 text-white" fill="white" />
                       ) : (
-                        <Circle className="h-16 w-16 text-red-500" fill="currentColor" />
+                        <Circle className="h-16 w-16 text-destructive" fill="currentColor" />
                       )}
                     </button>
                   )}

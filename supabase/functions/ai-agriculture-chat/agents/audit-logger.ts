@@ -22,6 +22,28 @@ import { NLUDecisionGraphInput, SymbolicDecisionOutput } from './decision-repres
 export const AUDIT_LOGGER_VERSION = '2.0.0';
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FIX 2: OBSERVATION CONTRACT — block raw vernacular text from leaking into
+// ai_chat_audit_logs.observations. Only canonical English codes allowed.
+// ═══════════════════════════════════════════════════════════════════════════
+function filterCanonicalForAudit(obs: any): string[] {
+  if (!Array.isArray(obs)) return [];
+  const out: string[] = [];
+  const blocked: string[] = [];
+  for (const o of obs) {
+    if (typeof o === 'string' && /^[A-Z][A-Z0-9_]+$/.test(o) && o.length <= 80) {
+      out.push(o);
+    } else if (o != null) {
+      blocked.push(String(o).substring(0, 60));
+    }
+  }
+  if (blocked.length > 0) {
+    console.error(`[ObservationContract] BLOCKED ${blocked.length} non-canonical entries at audit boundary: ${blocked.join(' | ')}`);
+  }
+  return out;
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS - Extended for Full Forensic Trail
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -565,7 +587,8 @@ export class AuditLogger {
       farmer_message: log.farmer_message,
       detected_language: log.detected_language as string,
       intent_label: log.nlu_output?.intent_label,
-      observations: log.nlu_output?.observations,
+      observations: filterCanonicalForAudit(log.nlu_output?.observations),
+
       nlu_confidence: log.nlu_output?.confidence,
       locked_intent: log.locked_intent,
       allowed_scopes: log.allowed_scopes,

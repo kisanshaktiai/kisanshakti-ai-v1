@@ -1,118 +1,95 @@
 {
-  "__meta": {
-    "page": "analytics",
-    "version": "1.0",
-    "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29"
-  },
+  "__meta": { "page": "analytics", "version": "2.0", "last_updated": "2026-06-01" },
   "analytics": {
     "title": "शेत विश्लेषण",
     "subtitle": "तुमची शेती कामगिरी ट्रॅक करा",
-    "tabs": {
-      "overview": "आढावा",
-      "crops": "पिके",
-      "weather": "हवामान",
-      "tasks": "कामे",
-      "financial": "आर्थिक"
+    "all_farm": "संपूर्ण शेत",
+    "no_crop": "सक्रिय पीक नाही",
+    "no_crop_short": "पडीक",
+    "no_weather": "हवामान डेटा नाही",
+    "completion": "कामे",
+    "on_time": "वेळेवर",
+    "delayed": "विलंबित",
+    "pending": "प्रलंबित",
+    "tested_on": "{{date}} रोजी चाचणी",
+    "tasks_total": "{{n}} कामे",
+    "tasks_empty": "अद्याप कोणतीही कामे नाहीत.",
+    "soil_empty": "माती चाचणी डेटा नाही. अचूक माहितीसाठी माती चाचणी करा.",
+    "finance_empty": "या कालावधीत कोणताही खर्च नोंदवलेला नाही.",
+    "market_empty": "या पिकाचा अलीकडील बाजारभाव उपलब्ध नाही.",
+    "market_source": "स्रोत",
+    "per_quintal": "क्विंटल",
+    "expected_yield": "अपेक्षित उत्पन्न",
+    "crop_stage_label": "टप्पा",
+    "harvest_in": "कापणी अवधी",
+    "water_need": "साप्ताहिक पाणी",
+    "rain_24h": "पाऊस (24 तास)",
+    "temp": "तापमान",
+    "humidity": "आर्द्रता",
+    "expenses": "खर्च",
+    "expenses_projected": "खर्च (अंदाजित)",
+    "actuals": "प्रत्यक्ष",
+    "projected_revenue": "अंदाजित उत्पन्न",
+    "projected_profit": "अंदाजित नफा",
+    "expense_source_actual": "प्रत्यक्ष",
+    "expense_source_mixed": "प्रत्यक्ष + मानक खर्च",
+    "expense_source_projected": "पीक मानक खर्च",
+    "financial_subtitle": "पीकनिहाय अंदाज · {{src}}",
+    "all_good": "तातडीची कृती नाही. निरीक्षण सुरू ठेवा.",
+    "range": { "7d": "7 दि", "30d": "30 दि", "season": "हंगाम", "year": "1 वर्ष" },
+    "kpi": {
+      "area": "एकूण क्षेत्र",
+      "crops": "सक्रिय पिके",
+      "revenue": "अंदाजित उत्पन्न",
+      "profit": "अंदाजित नफा",
+      "ndvi": "NDVI",
+      "yield": "उत्पन्न"
     },
-    "overview": {
-      "title": "कामगिरी आढावा",
-      "total_land": "एकूण जमीन",
-      "active_crops": "सक्रिय पिके",
-      "completed_tasks": "पूर्ण कामे",
-      "pending_tasks": "प्रलंबित कामे",
-      "this_month": "या महिन्यात",
-      "vs_last_month": "गेल्या महिन्याच्या तुलनेत"
-    },
-    "crops": {
-      "title": "पीक विश्लेषण",
-      "by_type": "प्रकारानुसार पिके",
-      "by_season": "हंगामानुसार पिके",
-      "yield_comparison": "उत्पन्न तुलना",
-      "expected_yield": "अपेक्षित उत्पन्न",
-      "actual_yield": "वास्तविक उत्पन्न",
-      "area_hectares": "क्षेत्र (हेक्टर)",
-      "avg_yield": "सरासरी उत्पन्न (क्विंटल/हेक्टर)"
-    },
-    "weather": {
-      "title": "हवामान पॅटर्न",
-      "rainfall_trend": "पाऊस प्रवृत्ती",
-      "temperature_trend": "तापमान प्रवृत्ती",
-      "humidity_avg": "सरासरी आर्द्रता",
-      "rainfall_total": "एकूण पाऊस",
-      "rainfall_unit": "मिमी",
-      "temp_unit": "°C",
-      "month": "महिना"
-    },
-    "tasks": {
-      "title": "काम कामगिरी",
-      "completion_rate": "पूर्णता दर",
-      "on_time": "वेळेवर",
-      "delayed": "विलंबित",
-      "pending": "प्रलंबित",
-      "by_stage": "टप्प्यानुसार कामे",
-      "stage": "टप्पा",
-      "count": "संख्या"
+    "sections": {
+      "crop_stage": "पीक व टप्पा",
+      "water_weather": "पाणी व हवामान",
+      "soil": "मातीचे आरोग्य",
+      "tasks": "काम कामगिरी",
+      "financial": "आर्थिक",
+      "market": "बाजार कल",
+      "recommendations": "स्मार्ट शिफारसी"
     },
     "financial": {
-      "title": "आर्थिक सारांश",
-      "total_revenue": "एकूण उत्पन्न",
-      "total_expenses": "एकूण खर्च",
-      "net_profit": "निव्वळ नफा",
-      "profit_margin": "नफा मार्जिन",
-      "by_category": "श्रेणीनुसार खर्च",
       "seeds": "बियाणे",
       "fertilizers": "खते",
       "pesticides": "कीटकनाशके",
-      "labor": "श्रम",
-      "equipment": "उपकरणे",
+      "labor": "मजुरी",
+      "irrigation": "सिंचन",
+      "machinery": "यंत्रसामग्री",
       "other": "इतर"
     },
-    "filters": {
-      "date_range": "तारीख श्रेणी",
-      "last_7_days": "गेले 7 दिवस",
-      "last_30_days": "गेले 30 दिवस",
-      "last_3_months": "गेले 3 महिने",
-      "last_6_months": "गेले 6 महिने",
-      "last_year": "गेले वर्ष",
-      "custom": "सानुकूल श्रेणी",
-      "apply": "लागू करा",
-      "reset": "रीसेट करा"
-    },
-    "export": {
-      "button": "निर्यात करा",
-      "pdf": "PDF म्हणून निर्यात करा",
-      "csv": "CSV म्हणून निर्यात करा",
-      "success": "विश्लेषण यशस्वीरित्या निर्यात केले",
-      "error": "विश्लेषण निर्यात करण्यात अयशस्वी"
+    "recommendations": {
+      "low_ndvi": "वनस्पती निर्देशांक कमी आहे — पोषण किंवा कीड तणावाची तपासणी करा.",
+      "irrigate_soon": "माती कोरडी असू शकते — 1–2 दिवसांत पाणी द्या.",
+      "low_nitrogen": "नायट्रोजन कमी आहे — युरियाची टॉप-ड्रेसिंग करा.",
+      "tasks_delayed": "विलंबित कामे आहेत. उत्पन्न नुकसान टाळण्यासाठी पूर्ण करा.",
+      "ph_out_of_range": "मातीचा pH योग्य मर्यादेबाहेर आहे. चुना किंवा जिप्सम विचारात घ्या.",
+      "no_market_price": "या पिकाचा अलीकडील बाजारभाव नाही — उत्पन्न अंदाज उपलब्ध नाही."
     },
     "empty": {
       "title": "डेटा उपलब्ध नाही",
-      "message": "विश्लेषण पाहण्यासाठी तुमच्या शेती क्रियाकलाप ट्रॅक करणे सुरू करा",
+      "message": "विश्लेषण पाहण्यासाठी जमीन जोडा आणि क्रियाकलाप ट्रॅक करा.",
       "cta": "जमीन जोडा"
     },
-    "loading": {
-      "message": "विश्लेषण लोड होत आहे..."
-    }
-  },
-  "__qa": {
-    "voice_examples_en": [
-      "Show farm analytics",
-      "View crop performance",
-      "Check task completion rate",
-      "Show financial summary"
-    ],
-    "voice_examples_hi": [
-      "खेत विश्लेषण दिखाओ",
-      "फसल प्रदर्शन देखें",
-      "कार्य पूर्णता दर जांचें",
-      "वित्तीय सारांश दिखाओ"
-    ],
-    "voice_examples_mr": [
-      "शेत विश्लेषण दाखवा",
-      "पीक कामगिरी पहा",
-      "कार्य पूर्णता दर तपासा",
-      "आर्थिक सारांश दाखवा"
-    ]
+    "disclaimer": {
+      "title": "अंदाज सूचना",
+      "body": "हे आकडे तुमच्या शेत डेटा, NDVI, हवामान आणि बाजारभावांवर आधारित अंदाज आहेत. मातीची स्थिती, पाण्याचा ताण, कीड/रोग हल्ला, पाऊस आणि मजुरी दरांनुसार प्रत्यक्ष परिणाम बदलू शकतात. हे केवळ मार्गदर्शन समजा — हमी नाही."
+    },
+    "forecast": {
+      "title": "6 महिन्यांचा अंदाज",
+      "subtitle": "AI-आधारित उत्पन्न विरुद्ध खर्च अंदाज — दर महिन्यात अद्यतनित",
+      "income": "उत्पन्न",
+      "expense": "खर्च",
+      "profit": "नफा",
+      "generate": "तयार करा",
+      "generating": "तयार होत आहे…",
+      "empty": "अद्याप AI अंदाज नाही. तयार करण्यासाठी टॅप करा."
+    },
+    "loading": { "message": "विश्लेषण लोड होत आहे..." }
   }
 }

@@ -17,10 +17,10 @@ export const WeatherMap: React.FC = () => {
   ];
 
   const legendItems = [
-    { label: 'Light', color: 'bg-blue-300/60', intensity: 'from-blue-200/20 to-blue-300/30' },
-    { label: 'Moderate', color: 'bg-blue-500/70', intensity: 'from-blue-400/30 to-blue-500/40' },
-    { label: 'Heavy', color: 'bg-blue-700', intensity: 'from-blue-600/40 to-blue-700/50' },
-    { label: 'Extreme', color: 'bg-purple-600', intensity: 'from-purple-500/50 to-purple-700/60' },
+    { label: 'Light', color: 'bg-info/20/60', intensity: 'from-info/20 to-info/30' },
+    { label: 'Moderate', color: 'bg-info/70', intensity: 'from-info/30 to-info/40' },
+    { label: 'Heavy', color: 'bg-info', intensity: 'from-info/40 to-info/50' },
+    { label: 'Extreme', color: 'bg-primary', intensity: 'from-primary/50 to-primary/60' },
   ];
 
   return (
@@ -57,7 +57,7 @@ export const WeatherMap: React.FC = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.5 }}
-          className="relative bg-gradient-to-br from-blue-100/30 to-green-100/30 h-[300px] flex items-center justify-center mx-3 rounded-lg overflow-hidden"
+          className="relative bg-gradient-to-br from-info/30 to-success/30 h-[300px] flex items-center justify-center mx-3 rounded-lg overflow-hidden"
         >
           <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-secondary/5" />
           

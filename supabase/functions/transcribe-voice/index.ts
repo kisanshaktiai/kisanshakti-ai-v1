@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
 
 serve(async (req) => {
   // Handle CORS preflight
@@ -7,7 +8,12 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Sprint 5: cost-control rate limit (Whisper API calls).
+  const rl = await rateGuard(req, { endpoint: 'transcribe-voice', maxRequests: 30, windowMs: 60_000 });
+  if (rl) return rl;
+
   try {
+
     const { audio, language } = await req.json();
 
     if (!audio) {

@@ -6,7 +6,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Job 1: Build and Deploy PWA to Hostinger
   deploy-pwa:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -19,14 +18,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20.x'
-          cache: 'npm'
-      
-      - name: Verify Node version
-        run: |
-          node --version
-          npm --version
+
+      - name: 🧹 Clean previous build
+        run: rm -rf node_modules dist package-lock.json
 
       - name: 📦 Install dependencies
+        run: npm install --no-audit
         run: |
           echo "Installing dependencies..."
       
@@ -49,30 +46,21 @@ jobs:
           npm run build
           echo "✅ Build completed successfully"
 
-      - name: ✅ Verify build output
+      - name: 🔍 Validate build output
         run: |
-          echo "🔍 Checking build output..."
-          
-          if [ ! -d ./dist ]; then 
+          if [ ! -d ./dist ]; then
             echo "❌ ERROR: dist folder not found!"
             exit 1
           fi
-          
           if [ ! -f ./dist/index.html ]; then
             echo "❌ ERROR: index.html not found!"
             exit 1
           fi
-          
-          echo "✅ index.html exists"
-          
-          if [ -f ./dist/.htaccess ]; then
-            echo "✅ .htaccess found"
+          if ls dist/assets/ui-forms-*.js 1>/dev/null 2>&1; then
+            echo "❌ ERROR: ui-forms chunk still exists"
+            exit 1
           fi
-          
-          if [ -f ./dist/manifest.json ]; then
-            echo "✅ manifest.json found"
-          fi
-          
+          echo "✅ Build validated"
           echo "📊 Build size: $(du -sh ./dist)"
 
       - name: 🔐 Setup SSH authentication
@@ -81,7 +69,6 @@ jobs:
           chmod 700 "$HOME/.ssh"
           echo "${{ secrets.SFTP_KEY_B64 }}" | tr -d '\r\n ' | base64 --decode > "$HOME/.ssh/deploy_key"
           chmod 600 "$HOME/.ssh/deploy_key"
-          
           if [ -n "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" ]; then
             echo "${{ secrets.HOST_SFTP_KNOWN_HOSTS }}" > "$HOME/.ssh/known_hosts"
           else
@@ -91,7 +78,6 @@ jobs:
 
       - name: 🚀 Deploy to Hostinger
         run: |
-          echo "🚀 Starting deployment..."
           rsync -avz --delete \
             -e "ssh -i $HOME/.ssh/deploy_key -p ${{ secrets.HOST_SFTP_PORT }} -o StrictHostKeyChecking=no" \
             --exclude='.git*' \
@@ -107,7 +93,6 @@ jobs:
           shred -u "$HOME/.ssh/deploy_key" 2>/dev/null || rm -f "$HOME/.ssh/deploy_key"
           rm -f "$HOME/.ssh/known_hosts" 2>/dev/null || true
 
-  # Job 2: Build Android APK
   build-android:
     runs-on: ubuntu-latest
     needs: deploy-pwa
@@ -129,7 +114,6 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-
       - name: 📦 Install dependencies
         run: npm ci
 
@@ -140,19 +124,12 @@ jobs:
         run: |
           set -euo pipefail
           npm install @capacitor/core @capacitor/cli @capacitor/android
-
-          # Backup any existing capacitor.config.* so Capacitor won't read it
           BACKUP_DIR="$(mktemp -d)"
           shopt -s nullglob
           CONFIG_FILES=(capacitor.config.*)
           if [ ${#CONFIG_FILES[@]} -gt 0 ]; then
-            echo "Backing up existing capacitor config files to $BACKUP_DIR"
             mv capacitor.config.* "$BACKUP_DIR"/ || true
-          else
-            echo "No existing capacitor.config.* files found"
           fi
-
-          # Create a temporary, valid capacitor.config.json for CI use
           cat > capacitor.config.json <<'EOF'
           {
             "appId": "com.kisanshakti.app",
@@ -160,28 +137,17 @@ jobs:
             "webDir": "dist"
           }
           EOF
-          echo "Wrote temporary capacitor.config.json for CI run."
-
-          # Only add android platform if not present
           if [ -d "android" ]; then
-            echo "android/ already exists — skipping npx cap add android"
+            echo "android/ already exists"
           else
-            echo "Adding android platform..."
             npx cap add android
           fi
-
-          # Always sync/copy to ensure native project has latest web assets
           npx cap sync android
           npx cap copy android
-
-          # Restore original capacitor config files (if any)
           if [ -d "$BACKUP_DIR" ] && [ "$(ls -A "$BACKUP_DIR")" ]; then
-            echo "Restoring original capacitor config files from $BACKUP_DIR"
             mv "$BACKUP_DIR"/capacitor.config.* . || true
           fi
           rm -rf "$BACKUP_DIR" || true
-
-
 
       - name: 🔨 Build Debug APK
         run: |
@@ -196,14 +162,6 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: ✅ Android Build Summary
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "📱 Android APK Build Complete!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ Debug APK: Available in Artifacts"
-
-  # Job 3: Build iOS IPA
   build-ios:
     runs-on: macos-latest
     needs: deploy-pwa
@@ -234,19 +192,12 @@ jobs:
         run: |
           set -euo pipefail
           npm install @capacitor/core @capacitor/cli @capacitor/ios
-
-          # Backup any existing capacitor.config.* so Capacitor won't read it
           BACKUP_DIR="$(mktemp -d)"
           shopt -s nullglob
           CONFIG_FILES=(capacitor.config.*)
           if [ ${#CONFIG_FILES[@]} -gt 0 ]; then
-            echo "Backing up existing capacitor config files to $BACKUP_DIR"
             mv capacitor.config.* "$BACKUP_DIR"/ || true
-          else
-            echo "No existing capacitor.config.* files found"
           fi
-
-          # Create a temporary, valid capacitor.config.json for CI use
           cat > capacitor.config.json <<'EOF'
           {
             "appId": "com.kisanshakti.app",
@@ -254,28 +205,17 @@ jobs:
             "webDir": "dist"
           }
           EOF
-          echo "Wrote temporary capacitor.config.json for CI run."
-
-          # Only add ios platform if not present
           if [ -d "ios" ] && [ -d "ios/App" ]; then
-            echo "ios/ already exists — skipping npx cap add ios"
+            echo "ios/ already exists"
           else
-            echo "Adding ios platform..."
             npx cap add ios
           fi
-
-          # Always sync/copy to ensure native project has latest web assets
           npx cap sync ios
           npx cap copy ios
-
-          # Restore original capacitor config files (if any)
           if [ -d "$BACKUP_DIR" ] && [ "$(ls -A "$BACKUP_DIR")" ]; then
-            echo "Restoring original capacitor config files from $BACKUP_DIR"
             mv "$BACKUP_DIR"/capacitor.config.* . || true
           fi
           rm -rf "$BACKUP_DIR" || true
-
-
 
       - name: 📦 Install CocoaPods dependencies
         run: |
@@ -295,8 +235,6 @@ jobs:
       - name: 📦 Export IPA (Debug)
         run: |
           cd ios/App
-          
-          # Create export options
           cat > ExportOptions.plist << EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -309,7 +247,6 @@ jobs:
           </dict>
           </plist>
           EOF
-          
           xcodebuild -exportArchive \
             -archivePath $PWD/build/KisanShakti.xcarchive \
             -exportOptionsPlist ExportOptions.plist \
@@ -322,31 +259,13 @@ jobs:
           path: ios/App/build/*.ipa
           retention-days: 30
 
-      - name: ✅ iOS Build Summary
-        run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🍎 iOS IPA Build Complete!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "✅ IPA: Available in Artifacts"
-
-  # Job 4: Build Summary
   summary:
     runs-on: ubuntu-latest
     needs: [deploy-pwa, build-android, build-ios]
     if: always()
-
     steps:
       - name: 🎉 Deployment Summary
         run: |
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo "🎉 BUILD & DEPLOYMENT COMPLETE!"
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          echo ""
           echo "✅ PWA: https://kisanshaktiai.in"
           echo "✅ Android APK: Check Artifacts tab"
           echo "✅ iOS IPA: Check Artifacts tab"
-          echo ""
-          echo "📱 Download apps from:"
-          echo "   Actions → Workflow run → Artifacts"
-          echo ""
-          echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

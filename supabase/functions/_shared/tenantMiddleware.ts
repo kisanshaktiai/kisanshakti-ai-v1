@@ -36,6 +36,19 @@ const CACHE_TTL = 60 * 60 * 1000; // 1 hour
  * Extract domain from request headers
  */
 export function extractDomain(req: Request): string {
+  // Priority 0: URL query parameter. This keeps browser calls "simple"
+  // and avoids CORS preflight failures caused by custom tenant headers.
+  try {
+    const url = new URL(req.url);
+    const queryDomain = url.searchParams.get('domain') || url.searchParams.get('tenant_domain');
+    if (queryDomain) {
+      console.log('🔍 [TenantMiddleware] Using query domain:', queryDomain);
+      return queryDomain;
+    }
+  } catch (_) {
+    // Ignore malformed request URLs and continue with header-based resolution.
+  }
+
   // Priority 0: Custom client domain header (most reliable for production)
   const clientDomain = req.headers.get('x-client-domain');
   if (clientDomain) {

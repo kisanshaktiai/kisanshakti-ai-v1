@@ -27,7 +27,12 @@
     "pending_changes": "{{count}} pending change",
     "pending_changes_plural": "{{count}} pending changes",
     "all_synced": "All data synced",
-    "last_synced": "Last synced: {{time}}"
+    "last_synced": "Last synced",
+    "syncing": "Syncing...",
+    "sync_data": "Sync data",
+    "never_synced": "Never synced",
+    "just_now": "Just now",
+    "pending": "Pending"
   },
   "__qa": {
     "voice_examples_en": [

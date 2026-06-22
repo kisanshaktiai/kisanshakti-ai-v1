@@ -5,167 +5,188 @@
     "updated_by": "AI Localization Engineer",
     "last_updated": "2026-01-03"
   },
-  "header": {
-    "title": "Farmer Community",
-    "subtitle": "{{count}} farmers online",
-    "search_placeholder": "Search posts, farmers..."
-  },
-  "tabs": {
-    "feed": "Feed",
-    "groups": "Groups",
-    "trending": "Trending",
-    "my_posts": "My Posts",
-    "saved": "Saved"
-  },
-  "search": {
-    "placeholder": "Search communities...",
-    "title": "Search",
-    "recent": "Recent Searches",
-    "results": "Search Results",
-    "no_results": "No results found"
-  },
-  "notifications": {
-    "title": "Notifications",
-    "empty": "No new notifications",
-    "mark_read": "Mark all as read",
-    "new_message": {
-      "title": "New Message",
-      "message": "You have received a new message"
+  "social": {
+    "header": {
+      "title": "Farmer Community",
+      "subtitle": "{{count}} farmers online",
+      "search_placeholder": "Search posts, farmers..."
     },
-    "post_liked": {
-      "title": "Post Liked",
-      "message": "Someone liked your post"
+    "tabs": {
+      "feed": "Feed",
+      "groups": "Groups",
+      "trending": "Trending",
+      "my_posts": "My Posts",
+      "saved": "Saved"
     },
-    "new_follower": {
-      "title": "New Follower",
-      "message": "{{name}} started following you"
+    "search": {
+      "placeholder": "Search communities...",
+      "title": "Search",
+      "recent": "Recent Searches",
+      "results": "Search Results",
+      "no_results": "No results found"
     },
-    "comment": {
-      "title": "New Comment",
-      "message": "{{name}} commented on your post"
+    "notifications": {
+      "title": "Notifications",
+      "empty": "No new notifications",
+      "mark_read": "Mark all as read",
+      "new_message": {
+        "title": "New Message",
+        "message": "You have received a new message"
+      },
+      "post_liked": {
+        "title": "Post Liked",
+        "message": "Someone liked your post"
+      },
+      "new_follower": {
+        "title": "New Follower",
+        "message": "{{name}} started following you"
+      },
+      "comment": {
+        "title": "New Comment",
+        "message": "{{name}} commented on your post"
+      }
+    },
+    "post": {
+      "created": {
+        "title": "Success! 🎉",
+        "message": "Your post has been shared with the community."
+      },
+      "create": "Create Post",
+      "whats_on_mind": "Share your farming tip...",
+      "tap_or_speak": "Tap to type or hold mic to speak...",
+      "add_photo": "Add Photo",
+      "publish": "Post",
+      "cancel": "Cancel",
+      "clear": "Clear",
+      "like": "Like",
+      "comment": "Comment",
+      "share": "Share",
+      "save": "Save",
+      "original": "Original",
+      "voice": "Voice",
+      "translating": "Translating...",
+      "show_translated": "Show translated",
+      "show_original": "Show original",
+      "show_less": "Show less",
+      "read_more": "Read more",
+      "share_copied": "Content copied to clipboard!",
+      "report": "Report post",
+      "liked_by": "Liked by {{count}} farmers",
+      "comments": "{{count}} comments",
+      "success": "Posted successfully! 🎉",
+      "empty_error": "Please write or speak something",
+      "recording_error": "Unable to access microphone",
+      "transcribed": "Voice converted to text!",
+      "transcription_error": "Failed to convert voice",
+      "tap_mic": "Tap mic to record voice",
+      "tap_to_stop": "Tap to stop",
+      "recording": "Recording",
+      "improve_ai": "Improve with AI",
+      "add_text_or_image": "Add text or an image first",
+      "hold_mic": "Hold 🎤 button to speak in your language",
+      "release_to_stop": "🎤 Recording... Release to stop",
+      "converting": "✨ Converting voice to text..."
+    },
+    "groups": {
+      "search": "Search groups...",
+      "create": "Create New Group",
+      "create_title": "Create Group",
+      "create_btn": "Create",
+      "crop_groups": "Crop Groups",
+      "community_groups": "Community Groups",
+      "discuss": "Discuss",
+      "join": "Join",
+      "leave": "Leave",
+      "members": "members",
+      "no_crop_groups": "No crop groups found",
+      "no_groups": "No groups yet",
+      "be_first": "Be the first to create a group!",
+      "opening_discussion": "Opening {{name}} discussion",
+      "discussion_title": "{{name}} Discussion",
+      "type_message": "Type your message...",
+      "send": "Send",
+      "you": "You",
+      "anonymous": "Anonymous Farmer",
+      "no_messages": "No messages yet. Start the conversation!",
+      "name_required": "Please enter a group name",
+      "select_icon": "Select Group Icon",
+      "name_label": "Group Name",
+      "name_placeholder": "e.g., Rice Farmers of Punjab",
+      "description_label": "Description (Optional)",
+      "description_placeholder": "What is this group about?",
+      "voice_hint": "Hold 🎤 button to speak group name or description"
+    },
+    "feed": {
+      "refreshing": "Refreshing...",
+      "refresh": "Refresh posts",
+      "loading": "Loading posts...",
+      "new_posts": "New posts available"
+    },
+    "empty": {
+      "feed": "No posts yet",
+      "feed_hint": "Be the first to share your farming knowledge!",
+      "my_posts": "You haven't posted yet",
+      "my_posts_hint": "Share your farming knowledge with the community!",
+      "saved": "Saved posts will appear here",
+      "saved_hint": "Swipe left on any post to save it",
+      "messages": "No conversations yet",
+      "communities": "No communities found"
+    },
+    "community": {
+      "join": "Join",
+      "joined": "Joined",
+      "members": "{{count}} members",
+      "posts": "{{count}} posts",
+      "about": "About",
+      "rules": "Community Rules",
+      "moderators": "Moderators"
+    },
+    "messages": {
+      "title": "Messages",
+      "new": "New Message",
+      "no_messages": "No messages yet",
+      "type_message": "Type a message...",
+      "send": "Send",
+      "online": "Online",
+      "offline": "Offline",
+      "typing": "typing..."
+    },
+    "leaderboard": {
+      "title": "Top Farmers",
+      "weekly": "This Week",
+      "monthly": "This Month",
+      "all_time": "All Time",
+      "rank": "Rank",
+      "points": "Points",
+      "badges": "Badges"
+    },
+    "trending": {
+      "title": "Trending Topics",
+      "subtitle": "What farmers are discussing",
+      "hashtag": "#{{tag}}",
+      "posts_count": "{{count}} posts",
+      "view_all": "View all trending topics"
+    },
+    "profile": {
+      "activity_feed_soon": "Activity feed coming soon"
+    },
+    "language": {
+      "auto_translate": "Posts auto-translate to your language",
+      "select_hint": "View posts in your language",
+      "listen_hint": "Tap 🔊 on any post to hear it"
+    },
+    "comments": {
+      "title": "Comments",
+      "empty": "Be the first to comment",
+      "placeholder": "Write a comment…"
+    },
+    "report": {
+      "title": "Why are you reporting this post?",
+      "spam": "Spam or scam",
+      "misinformation": "Wrong farming advice",
+      "abuse": "Abusive or unsafe",
+      "other": "Something else",
+      "thanks": "Reported. Thank you."
     }
-  },
-  "post": {
-    "created": {
-      "title": "Success! 🎉",
-      "message": "Your post has been shared with the community."
-    },
-    "create": "Create Post",
-    "whats_on_mind": "Share your farming tip...",
-    "tap_or_speak": "Tap to type or hold mic to speak...",
-    "add_photo": "Add Photo",
-    "publish": "Post",
-    "cancel": "Cancel",
-    "clear": "Clear",
-    "like": "Like",
-    "comment": "Comment",
-    "share": "Share",
-    "save": "Save",
-    "original": "Original",
-    "voice": "Voice",
-    "translating": "Translating...",
-    "show_translated": "Show translated",
-    "show_original": "Show original",
-    "show_less": "Show less",
-    "read_more": "Read more",
-    "share_copied": "Content copied to clipboard!",
-    "liked_by": "Liked by {{count}} farmers",
-    "comments": "{{count}} comments",
-    "success": "Posted successfully! 🎉",
-    "empty_error": "Please write or speak something",
-    "recording_error": "Unable to access microphone",
-    "transcribed": "Voice converted to text!",
-    "transcription_error": "Failed to convert voice",
-    "hold_mic": "Hold 🎤 button to speak in your language",
-    "release_to_stop": "🎤 Recording... Release to stop",
-    "converting": "✨ Converting voice to text..."
-  },
-  "groups": {
-    "search": "Search groups...",
-    "create": "Create New Group",
-    "create_title": "Create Group",
-    "create_btn": "Create",
-    "crop_groups": "Crop Groups",
-    "community_groups": "Community Groups",
-    "discuss": "Discuss",
-    "join": "Join",
-    "leave": "Leave",
-    "members": "members",
-    "no_crop_groups": "No crop groups found",
-    "no_groups": "No groups yet",
-    "be_first": "Be the first to create a group!",
-    "opening_discussion": "Opening {{name}} discussion",
-    "discussion_title": "{{name}} Discussion",
-    "type_message": "Type your message...",
-    "send": "Send",
-    "you": "You",
-    "anonymous": "Anonymous Farmer",
-    "no_messages": "No messages yet. Start the conversation!",
-    "name_required": "Please enter a group name",
-    "select_icon": "Select Group Icon",
-    "name_label": "Group Name",
-    "name_placeholder": "e.g., Rice Farmers of Punjab",
-    "description_label": "Description (Optional)",
-    "description_placeholder": "What is this group about?",
-    "voice_hint": "Hold 🎤 button to speak group name or description"
-  },
-  "feed": {
-    "refreshing": "Refreshing...",
-    "refresh": "Refresh posts",
-    "loading": "Loading posts...",
-    "new_posts": "New posts available"
-  },
-  "empty": {
-    "feed": "No posts yet",
-    "feed_hint": "Be the first to share your farming knowledge!",
-    "my_posts": "You haven't posted yet",
-    "my_posts_hint": "Share your farming knowledge with the community!",
-    "saved": "Saved posts will appear here",
-    "saved_hint": "Swipe left on any post to save it",
-    "messages": "No conversations yet",
-    "communities": "No communities found"
-  },
-  "community": {
-    "join": "Join",
-    "joined": "Joined",
-    "members": "{{count}} members",
-    "posts": "{{count}} posts",
-    "about": "About",
-    "rules": "Community Rules",
-    "moderators": "Moderators"
-  },
-  "messages": {
-    "title": "Messages",
-    "new": "New Message",
-    "no_messages": "No messages yet",
-    "type_message": "Type a message...",
-    "send": "Send",
-    "online": "Online",
-    "offline": "Offline",
-    "typing": "typing..."
-  },
-  "leaderboard": {
-    "title": "Top Farmers",
-    "weekly": "This Week",
-    "monthly": "This Month",
-    "all_time": "All Time",
-    "rank": "Rank",
-    "points": "Points",
-    "badges": "Badges"
-  },
-  "trending": {
-    "title": "Trending Topics",
-    "subtitle": "What farmers are discussing",
-    "hashtag": "#{{tag}}",
-    "posts_count": "{{count}} posts",
-    "view_all": "View all trending topics"
-  },
-  "profile": {
-    "activity_feed_soon": "Activity feed coming soon"
-  },
-  "language": {
-    "auto_translate": "Posts auto-translate to your language",
-    "select_hint": "View posts in your language",
-    "listen_hint": "Tap 🔊 on any post to hear it"
   }
 }

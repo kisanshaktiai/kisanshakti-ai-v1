@@ -10,6 +10,9 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useCreatePost } from '@/hooks/useCommunityPosts';
+import { useCaptionSuggest } from '@/hooks/useCaptionSuggest';
+import { FarmerAvatar } from './FarmerAvatar';
+import { useAuthStore } from '@/stores/authStore';
 
 interface QuickPostCreatorProps {
   language: string;
@@ -21,24 +24,45 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
   onExpandToFull
 }) => {
   const { t } = useTranslation();
+  const { user } = useAuthStore();
   const [content, setContent] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  
+  const [recordSeconds, setRecordSeconds] = useState(0);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  
+  const recordTimerRef = useRef<number | null>(null);
+
   const createPostMutation = useCreatePost();
+  const { suggest, isLoading: isSuggesting } = useCaptionSuggest();
+
+  const handleAISuggest = async () => {
+    let imageBase64: string | undefined;
+    if (selectedImage?.startsWith('data:')) {
+      imageBase64 = selectedImage.split(',')[1];
+    }
+    if (!content.trim() && !imageBase64) {
+      toast.info(t('social.post.add_text_or_image') || 'Add text or an image first');
+      return;
+    }
+    const result = await suggest({ text: content, imageBase64, language });
+    if (result) {
+      setContent(result.caption + (result.hashtags?.length ? '\n\n' + result.hashtags.map(h => `#${h}`).join(' ') : ''));
+    }
+  };
+
+  const MAX_RECORD_SEC = 60;
 
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: { echoCancellation: true, noiseSuppression: true } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
       });
-      
+
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
@@ -50,23 +74,43 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
         await transcribeAudio(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
+        stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
       setIsRecording(true);
       setIsExpanded(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(() => {
+        setRecordSeconds((s) => {
+          if (s + 1 >= MAX_RECORD_SEC) {
+            stopRecording();
+            return MAX_RECORD_SEC;
+          }
+          return s + 1;
+        });
+      }, 1000);
     } catch (err) {
       toast.error(t('social.post.recording_error'));
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
+    if (recordTimerRef.current) {
+      clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
     }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecording(false);
   };
+
+  const toggleRecording = () => {
+    if (isRecording) stopRecording();
+    else startRecording();
+  };
+
 
   const transcribeAudio = async (audioBlob: Blob) => {
     setIsTranscribing(true);
@@ -140,24 +184,21 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
     <motion.div
       layout
       className={cn(
-        "mx-4 mb-4 bg-card/80 backdrop-blur-xl rounded-3xl border border-border/50",
-        "shadow-lg shadow-black/5 overflow-hidden"
+        'mx-3 mb-4 bg-card rounded-3xl border border-border overflow-hidden shadow-sm'
       )}
     >
-      {/* Compact Mode - Voice First */}
       <div className="p-4">
         <div className="flex items-center gap-3">
-          {/* User Avatar */}
-          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center text-2xl flex-shrink-0">
-            👨‍🌾
-          </div>
+          <FarmerAvatar
+            name={user?.farmerName || user?.fullName || user?.name}
+            seed={user?.id}
+            imageUrl={user?.avatarUrl}
+            size="md"
+          />
 
-          {/* Input Area */}
-          <div 
+          <div
             className={cn(
-              "flex-1 min-h-[48px] px-4 py-3 bg-secondary/30 rounded-2xl",
-              "cursor-text transition-all",
-              isExpanded && "bg-secondary/50"
+              'flex-1 min-h-[44px] px-4 py-2.5 bg-muted rounded-2xl cursor-text transition-colors'
             )}
             onClick={() => setIsExpanded(true)}
           >
@@ -165,60 +206,54 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
-                placeholder={t('social.post.whats_on_mind')}
-                className="w-full bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground min-h-[60px]"
+                placeholder={t('social.post.whats_on_mind') || "What's on your mind?"}
+                className="w-full bg-transparent border-none outline-none resize-none text-foreground placeholder:text-muted-foreground min-h-[44px]"
                 autoFocus
               />
             ) : (
-              <p className="text-muted-foreground">
-                {t('social.post.tap_or_speak')}
+              <p className="text-muted-foreground text-sm">
+                {t('social.post.tap_or_speak') || 'Tap to write or speak'}
               </p>
             )}
           </div>
 
-          {/* Big Voice Button */}
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onTouchStart={startRecording}
-            onTouchEnd={stopRecording}
-            onMouseDown={startRecording}
-            onMouseUp={stopRecording}
-            onMouseLeave={() => isRecording && stopRecording()}
+            onClick={toggleRecording}
             disabled={isTranscribing}
+            aria-label={isRecording ? 'Stop recording' : 'Start recording'}
             className={cn(
-              "relative w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0",
-              "transition-all duration-200 shadow-lg",
-              isRecording 
-                ? "bg-destructive text-destructive-foreground scale-110" 
-                : "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground"
+              'relative w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0',
+              'transition-colors shadow-md',
+              isRecording
+                ? 'bg-destructive text-destructive-foreground'
+                : 'bg-primary text-primary-foreground'
             )}
           >
             {isTranscribing ? (
-              <Sparkles className="w-6 h-6 animate-spin" />
+              <Sparkles className="w-5 h-5 animate-spin" />
             ) : isRecording ? (
-              <StopCircle className="w-6 h-6" />
+              <StopCircle className="w-5 h-5" />
             ) : (
-              <Mic className="w-6 h-6" />
+              <Mic className="w-5 h-5" />
             )}
 
-            {/* Recording Pulse */}
             {isRecording && (
               <motion.div
-                className="absolute inset-0 rounded-full bg-destructive/30"
-                animate={{ scale: [1, 1.3, 1], opacity: [0.5, 0, 0.5] }}
-                transition={{ duration: 1, repeat: Infinity }}
+                className="absolute inset-0 rounded-full bg-destructive/30 -z-10"
+                animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0, 0.6] }}
+                transition={{ duration: 1.2, repeat: Infinity }}
               />
             )}
           </motion.button>
         </div>
 
-        {/* Voice Hint */}
         <p className="text-center text-xs text-muted-foreground mt-2">
-          {isRecording 
-            ? t('social.post.release_to_stop')
+          {isRecording
+            ? `${t('social.post.recording') || 'Recording'} ${recordSeconds}s · ${t('social.post.tap_to_stop') || 'Tap to stop'}`
             : isTranscribing
-            ? t('social.post.converting')
-            : t('social.post.hold_mic')}
+            ? t('social.post.converting') || 'Converting voice…'
+            : t('social.post.tap_mic') || 'Tap mic to record'}
         </p>
       </div>
 
@@ -239,7 +274,7 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
                   <img src={selectedImage} alt="Selected" className="w-full h-32 object-cover" />
                   <button 
                     onClick={() => setSelectedImage(null)} 
-                    className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white"
+                    className="absolute top-2 right-2 p-1.5 bg-overlay-dark/50 rounded-full text-overlay-light"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -247,54 +282,71 @@ export const QuickPostCreator: React.FC<QuickPostCreatorProps> = ({
               </div>
             )}
 
-            {/* Action Bar */}
-            <div className="flex items-center justify-between p-4 pt-0 border-t border-border/30 mt-2 pt-3">
-              <div className="flex items-center gap-2">
-                <input 
-                  ref={fileInputRef} 
-                  type="file" 
-                  accept="image/*" 
-                  onChange={handleImageSelect} 
-                  className="hidden" 
-                />
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  onClick={() => fileInputRef.current?.click()} 
-                  className="rounded-full h-10 w-10"
-                >
-                  <Image className="w-5 h-5" />
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="rounded-full h-10 w-10"
-                >
-                  <Camera className="w-5 h-5" />
-                </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={handleClear}
-                  className="text-muted-foreground"
-                >
-                  {t('social.post.clear')}
-                </Button>
-              </div>
-
+            {/* Action Bar - mobile-first 2-row layout to keep Post always visible */}
+            <div className="flex flex-col gap-2 px-3 py-3 border-t border-border mt-2">
               <Button
                 onClick={handleSubmit}
                 disabled={(!content.trim() && !selectedImage) || createPostMutation.isPending}
-                className="rounded-full gap-2 px-6"
+                className="w-full rounded-full gap-2 h-11 text-base font-semibold shadow-md"
               >
                 {createPostMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Send className="w-4 h-4" />
                 )}
-                {t('social.post.publish')}
+                {t('social.post.publish') || 'Post'}
               </Button>
+
+              <div className="flex items-center justify-between gap-1">
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageSelect}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-full h-9 w-9 text-muted-foreground"
+                    aria-label={t('social.post.add_photo') || 'Add photo'}
+                  >
+                    <Image className="w-5 h-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="rounded-full h-9 w-9 text-muted-foreground"
+                    aria-label="Camera"
+                  >
+                    <Camera className="w-5 h-5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleAISuggest}
+                    disabled={isSuggesting}
+                    className="rounded-full gap-1.5 text-primary h-9 px-2"
+                  >
+                    {isSuggesting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                    <span className="text-xs">{t('social.post.improve_ai') || 'AI'}</span>
+                  </Button>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleClear}
+                  className="text-muted-foreground h-9 px-3"
+                >
+                  {t('social.post.clear') || 'Clear'}
+                </Button>
+              </div>
             </div>
+
+
           </motion.div>
         )}
       </AnimatePresence>

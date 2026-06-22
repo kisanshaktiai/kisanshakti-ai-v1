@@ -26,226 +26,17 @@ interface FarmingStage {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// CROP NAME TRANSLATIONS - CRITICAL FOR CORRECT TASK NAMES
+// CROP NAME TRANSLATIONS - MINIMAL FALLBACK
+// Authoritative source is the `crops.label_*` columns in DB (queried at runtime).
+// This 5-row fallback only kicks in if the DB lookup fails for very common crops.
 // ═══════════════════════════════════════════════════════════════════════
 const CROP_TRANSLATIONS: Record<string, Record<string, string>> = {
-  en: {
-    wheat: "Wheat",
-    rice: "Rice",
-    cotton: "Cotton",
-    sugarcane: "Sugarcane",
-    soybean: "Soybean",
-    maize: "Maize",
-    groundnut: "Groundnut",
-    tomato: "Tomato",
-    onion: "Onion",
-    potato: "Potato",
-    chilli: "Chilli",
-    brinjal: "Brinjal",
-    okra: "Okra",
-    moong: "Moong",
-    urad: "Urad",
-    tur: "Tur/Pigeon Pea",
-    gram: "Gram/Chickpea",
-    mustard: "Mustard",
-    sunflower: "Sunflower",
-    jowar: "Sorghum",
-    bajra: "Pearl Millet",
-    banana: "Banana",
-    mango: "Mango",
-    grapes: "Grapes",
-    pomegranate: "Pomegranate",
-    orange: "Orange",
-    turmeric: "Turmeric",
-    ginger: "Ginger",
-    coriander: "Coriander",
-  },
-  hi: {
-    wheat: "गेहूं",
-    rice: "धान/चावल",
-    cotton: "कपास",
-    sugarcane: "गन्ना",
-    soybean: "सोयाबीन",
-    maize: "मक्का",
-    groundnut: "मूंगफली",
-    tomato: "टमाटर",
-    onion: "प्याज",
-    potato: "आलू",
-    chilli: "मिर्च",
-    brinjal: "बैंगन",
-    okra: "भिंडी",
-    moong: "मूंग",
-    urad: "उड़द",
-    tur: "अरहर/तुअर",
-    gram: "चना",
-    mustard: "सरसों",
-    sunflower: "सूरजमुखी",
-    jowar: "ज्वार",
-    bajra: "बाजरा",
-    banana: "केला",
-    mango: "आम",
-    grapes: "अंगूर",
-    pomegranate: "अनार",
-    orange: "संतरा",
-    turmeric: "हल्दी",
-    ginger: "अदरक",
-    coriander: "धनिया",
-  },
-  mr: {
-    wheat: "गहू",
-    rice: "भात/तांदूळ",
-    cotton: "कापूस",
-    sugarcane: "ऊस",
-    soybean: "सोयाबीन",
-    maize: "मका",
-    groundnut: "भुईमूग/शेंगदाणे",
-    tomato: "टोमॅटो",
-    onion: "कांदा",
-    potato: "बटाटा",
-    chilli: "मिरची",
-    brinjal: "वांगी",
-    okra: "भेंडी",
-    moong: "मूग",
-    urad: "उडीद",
-    tur: "तूर",
-    gram: "हरभरा",
-    mustard: "मोहरी",
-    sunflower: "सूर्यफूल",
-    jowar: "ज्वारी",
-    bajra: "बाजरी",
-    banana: "केळी",
-    mango: "आंबा",
-    grapes: "द्राक्षे",
-    pomegranate: "डाळिंब",
-    orange: "संत्री/मोसंबी",
-    turmeric: "हळद",
-    ginger: "आले",
-    coriander: "कोथिंबीर",
-  },
-  pa: {
-    wheat: "ਕਣਕ",
-    rice: "ਝੋਨਾ/ਚੌਲ",
-    cotton: "ਕਪਾਹ/ਨਰਮਾ",
-    sugarcane: "ਗੰਨਾ",
-    soybean: "ਸੋਇਆਬੀਨ",
-    maize: "ਮੱਕੀ",
-    groundnut: "ਮੂੰਗਫਲੀ",
-    tomato: "ਟਮਾਟਰ",
-    onion: "ਪਿਆਜ਼",
-    potato: "ਆਲੂ",
-    chilli: "ਮਿਰਚ",
-    brinjal: "ਬੈਂਗਣ",
-    okra: "ਭਿੰਡੀ",
-    moong: "ਮੂੰਗ",
-    urad: "ਉੜਦ",
-    tur: "ਅਰਹਰ",
-    gram: "ਛੋਲੇ",
-    mustard: "ਸਰ੍ਹੋਂ",
-    sunflower: "ਸੂਰਜਮੁਖੀ",
-    jowar: "ਜਵਾਰ",
-    bajra: "ਬਾਜਰਾ",
-    banana: "ਕੇਲਾ",
-    mango: "ਅੰਬ",
-  },
-  ta: {
-    wheat: "கோதுமை",
-    rice: "நெல்/அரிசி",
-    cotton: "பருத்தி",
-    sugarcane: "கரும்பு",
-    soybean: "சோயா",
-    maize: "மக்காச்சோளம்",
-    groundnut: "நிலக்கடலை",
-    tomato: "தக்காளி",
-    onion: "வெங்காயம்",
-    potato: "உருளைக்கிழங்கு",
-    chilli: "மிளகாய்",
-    brinjal: "கத்தரிக்காய்",
-    okra: "வெண்டைக்காய்",
-    moong: "பச்சைப்பயறு",
-    urad: "உளுந்து",
-    tur: "துவரை",
-    gram: "கொண்டக்கடலை",
-    mustard: "கடுகு",
-    sunflower: "சூரியகாந்தி",
-  },
-  te: {
-    wheat: "గోధుమ",
-    rice: "వరి/బియ్యం",
-    cotton: "పత్తి",
-    sugarcane: "చెరకు",
-    soybean: "సోయాబీన్",
-    maize: "మొక్కజొన్న",
-    groundnut: "వేరుశెనగ",
-    tomato: "టమాటా",
-    onion: "ఉల్లిపాయ",
-    potato: "బంగాళాదుంప",
-    chilli: "మిర్చి",
-    brinjal: "వంకాయ",
-    okra: "బెండకాయ",
-    moong: "పెసర",
-    urad: "మినప",
-    tur: "కందిపప్పు",
-    gram: "శెనగలు",
-    mustard: "ఆవాలు",
-    sunflower: "పొద్దుతిరుగుడు",
-  },
-  kn: {
-    wheat: "ಗೋಧಿ",
-    rice: "ಅಕ್ಕಿ/ಭತ್ತ",
-    cotton: "ಹತ್ತಿ",
-    sugarcane: "ಕಬ್ಬು",
-    soybean: "ಸೋಯಾಬೀನ್",
-    maize: "ಮೆಕ್ಕೆಜೋಳ",
-    groundnut: "ಕಡಲೆಕಾಯಿ",
-    tomato: "ಟೊಮ್ಯಾಟೊ",
-    onion: "ಈರುಳ್ಳಿ",
-    potato: "ಆಲೂಗಡ್ಡೆ",
-    chilli: "ಮೆಣಸಿನಕಾಯಿ",
-    brinjal: "ಬದನೆಕಾಯಿ",
-    okra: "ಬೆಂಡೆಕಾಯಿ",
-    moong: "ಹೆಸರು",
-    urad: "ಉದ್ದು",
-    tur: "ತೊಗರಿ",
-  },
-  gu: {
-    wheat: "ઘઉં",
-    rice: "ડાંગર/ચોખા",
-    cotton: "કપાસ",
-    sugarcane: "શેરડી",
-    soybean: "સોયાબીન",
-    maize: "મકાઈ",
-    groundnut: "મગફળી/સિંગ",
-    tomato: "ટામેટા",
-    onion: "ડુંગળી",
-    potato: "બટાટા",
-    chilli: "મરચાં",
-    brinjal: "રીંગણા",
-    okra: "ભીંડા",
-    moong: "મગ",
-    urad: "અડદ",
-    tur: "તુવેર",
-  },
-  bn: {
-    wheat: "গম",
-    rice: "ধান/চাল",
-    cotton: "তুলা",
-    sugarcane: "আখ",
-    soybean: "সয়াবিন",
-    maize: "ভুট্টা",
-    groundnut: "চিনাবাদাম",
-    tomato: "টমেটো",
-    onion: "পেঁয়াজ",
-    potato: "আলু",
-    chilli: "মরিচ",
-    brinjal: "বেগুন",
-    okra: "ঢেঁড়স",
-    moong: "মুগ",
-    urad: "কালো মাষকলাই",
-    tur: "অড়হর",
-  },
+  en: { wheat: "Wheat", rice: "Rice", cotton: "Cotton", sugarcane: "Sugarcane", maize: "Maize" },
+  hi: { wheat: "गेहूं", rice: "धान/चावल", cotton: "कपास", sugarcane: "गन्ना", maize: "मक्का" },
+  mr: { wheat: "गहू", rice: "भात/तांदूळ", cotton: "कापूस", sugarcane: "ऊस", maize: "मका" },
 };
 
-// Function to get translated crop name
+// Function to get translated crop name (DB lookup happens upstream; this is fallback only)
 function getTranslatedCropName(cropName: string, language: string): string {
   const cropKey = cropName.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
   const langDict = CROP_TRANSLATIONS[language] || CROP_TRANSLATIONS["en"];
@@ -3835,15 +3626,19 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       const tryParse = (raw: string) => {
         try {
           return JSON.parse(raw);
-        } catch {
-          // ignore
-        }
-        // Fix common Gemini issues: literal newlines/tabs inside JSON strings
+        } catch { /* ignore */ }
+        // Fix #1: literal newlines/tabs inside JSON strings
         try {
           return JSON.parse(raw.replace(/[\r\n\t]+/g, " "));
-        } catch {
-          // ignore
-        }
+        } catch { /* ignore */ }
+        // Fix #2: strip ALL control chars (0x00-0x1F except already-handled) + trailing commas
+        try {
+          const cleaned = raw
+            .replace(/[\u0000-\u001F\u007F]/g, " ")
+            .replace(/,\s*}/g, "}")
+            .replace(/,\s*]/g, "]");
+          return JSON.parse(cleaned);
+        } catch { /* ignore */ }
         return null;
       };
 
@@ -3855,11 +3650,12 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
       // First try: content is the JSON object
       scheduleData = tryParse(content);
 
-      // Second try: extract JSON object from surrounding text
+      // Second try: extract JSON object from surrounding text (greedy from first { to last })
       if (!scheduleData) {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
-        if (jsonMatch?.[0]) {
-          scheduleData = tryParse(jsonMatch[0]);
+        const firstBrace = content.indexOf("{");
+        const lastBrace = content.lastIndexOf("}");
+        if (firstBrace !== -1 && lastBrace > firstBrace) {
+          scheduleData = tryParse(content.substring(firstBrace, lastBrace + 1));
           if (scheduleData) console.log(`✅ [AI] Extracted JSON from text content`);
         }
       }
@@ -3873,6 +3669,7 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
         }
       }
     }
+
 
     // If still no schedule data, check for truncation and handle gracefully
     if (!scheduleData) {
@@ -3936,12 +3733,29 @@ OUTPUT: JSON only, no markdown. Start with { end with }`;
           console.log(`✅ [AI] Fallback schedule built with ${fallbackTasks.length} tasks`);
         }
       } else {
-        console.error("❌ [AI] No structured data found.", {
+        console.error("❌ [AI] No structured data found - using deterministic fallback.", {
           finishReason,
           snippet: JSON.stringify(aiData).substring(0, 800),
         });
-        throw new Error("AI did not return structured schedule. Please try again.");
+
+        // Do NOT throw — build deterministic fallback schedule so farmer always gets a result
+        const fallbackTasks = farmingStages.map((stage: FarmingStage) =>
+          generateFallbackTask(stage, translatedCropName, landAreaAcres, farmingType, language)
+        );
+
+        scheduleData = {
+          crop_name: translatedCropName,
+          total_duration_days: cropDurationDays,
+          expected_yield_quintals: 20,
+          yield_multiplier_target: 3,
+          stages_covered: allStageKeys,
+          tasks: fallbackTasks,
+          is_fallback_schedule: true,
+        };
+
+        console.log(`🛟 [AI] Deterministic fallback built with ${fallbackTasks.length} tasks (parse failed)`);
       }
+
     }
     
     console.log(`✅ [AI] Generated ${scheduleData.tasks?.length || 0} tasks`);

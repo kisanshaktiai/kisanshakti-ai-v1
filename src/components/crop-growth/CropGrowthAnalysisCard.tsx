@@ -112,9 +112,9 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
               {analysis.analysis_confidence != null && (
                 <Badge variant="outline" className={cn(
                   "text-xs",
-                  Math.round(analysis.analysis_confidence * 100) >= 80 ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600" :
-                  Math.round(analysis.analysis_confidence * 100) >= 60 ? "bg-amber-500/10 border-amber-500/30 text-amber-600" :
-                  "bg-red-500/10 border-red-500/30 text-red-600"
+                  Math.round(analysis.analysis_confidence * 100) >= 80 ? "bg-success/10 border-success/30 text-success" :
+                  Math.round(analysis.analysis_confidence * 100) >= 60 ? "bg-warning/10 border-warning/30 text-warning" :
+                  "bg-destructive/10 border-destructive/30 text-destructive"
                 )}>
                   {Math.round(analysis.analysis_confidence * 100)}% {t('cropGrowth.confident', 'confident')}
                 </Badge>
@@ -313,9 +313,9 @@ export function CropGrowthAnalysisCard({ analysis, onActionComplete }: CropGrowt
                         {action.confidence_score != null && (
                           <Badge variant="outline" className={cn(
                             "text-[10px]",
-                            Math.round(action.confidence_score * 100) >= 80 ? "bg-emerald-500/10 text-emerald-600" :
-                            Math.round(action.confidence_score * 100) >= 60 ? "bg-amber-500/10 text-amber-600" :
-                            "bg-red-500/10 text-red-600"
+                            Math.round(action.confidence_score * 100) >= 80 ? "bg-success/10 text-success" :
+                            Math.round(action.confidence_score * 100) >= 60 ? "bg-warning/10 text-warning" :
+                            "bg-destructive/10 text-destructive"
                           )}>
                             {Math.round(action.confidence_score * 100)}%
                           </Badge>

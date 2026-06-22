@@ -27,60 +27,60 @@ interface ProductCardProps {
 
 const PRODUCT_THEMES = {
   organic: {
-    gradient: 'from-emerald-500/20 via-green-500/10 to-teal-500/20',
-    border: 'border-emerald-500/30',
+    gradient: 'from-success/20 via-success/10 to-success/20',
+    border: 'border-success/30',
     icon: Leaf,
-    iconColor: 'text-emerald-500',
-    badge: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300',
-    glow: 'shadow-emerald-500/20'
+    iconColor: 'text-success',
+    badge: 'bg-success/20 text-success dark:text-success',
+    glow: 'shadow-success/30/20'
   },
   bio_input: {
-    gradient: 'from-green-500/20 via-emerald-500/10 to-lime-500/20',
-    border: 'border-green-500/30',
+    gradient: 'from-success/20 via-success/10 to-success/20',
+    border: 'border-success/30',
     icon: Leaf,
-    iconColor: 'text-green-500',
-    badge: 'bg-green-500/20 text-green-700 dark:text-green-300',
-    glow: 'shadow-green-500/20'
+    iconColor: 'text-success',
+    badge: 'bg-success/20 text-success dark:text-success',
+    glow: 'shadow-success/30/20'
   },
   fertilizer: {
-    gradient: 'from-amber-500/20 via-yellow-500/10 to-orange-500/20',
-    border: 'border-amber-500/30',
+    gradient: 'from-warning/20 via-warning/10 to-warning/20',
+    border: 'border-warning/30',
     icon: FlaskConical,
-    iconColor: 'text-amber-500',
-    badge: 'bg-amber-500/20 text-amber-700 dark:text-amber-300',
-    glow: 'shadow-amber-500/20'
+    iconColor: 'text-warning',
+    badge: 'bg-warning/20 text-warning dark:text-warning',
+    glow: 'shadow-warning/30/20'
   },
   pesticide: {
-    gradient: 'from-red-500/20 via-rose-500/10 to-pink-500/20',
-    border: 'border-red-500/30',
+    gradient: 'from-destructive/20 via-destructive/10 to-primary/20',
+    border: 'border-destructive/30',
     icon: Bug,
-    iconColor: 'text-red-500',
-    badge: 'bg-red-500/20 text-red-700 dark:text-red-300',
-    glow: 'shadow-red-500/20'
+    iconColor: 'text-destructive',
+    badge: 'bg-destructive/20 text-destructive dark:text-destructive',
+    glow: 'shadow-destructive/30/20'
   },
   fungicide: {
-    gradient: 'from-purple-500/20 via-violet-500/10 to-indigo-500/20',
-    border: 'border-purple-500/30',
+    gradient: 'from-primary/20 via-primary/10 to-info/20',
+    border: 'border-primary/30',
     icon: FlaskConical,
-    iconColor: 'text-purple-500',
-    badge: 'bg-purple-500/20 text-purple-700 dark:text-purple-300',
-    glow: 'shadow-purple-500/20'
+    iconColor: 'text-primary',
+    badge: 'bg-primary/20 text-primary dark:text-primary',
+    glow: 'shadow-primary/30/20'
   },
   herbicide: {
-    gradient: 'from-orange-500/20 via-amber-500/10 to-yellow-500/20',
-    border: 'border-orange-500/30',
+    gradient: 'from-warning/20 via-warning/10 to-warning/20',
+    border: 'border-warning/30',
     icon: Droplets,
-    iconColor: 'text-orange-500',
-    badge: 'bg-orange-500/20 text-orange-700 dark:text-orange-300',
-    glow: 'shadow-orange-500/20'
+    iconColor: 'text-warning',
+    badge: 'bg-warning/20 text-warning dark:text-warning',
+    glow: 'shadow-warning/30/20'
   },
   growth_regulator: {
-    gradient: 'from-cyan-500/20 via-blue-500/10 to-indigo-500/20',
-    border: 'border-cyan-500/30',
+    gradient: 'from-info/20 via-info/10 to-info/20',
+    border: 'border-info/30',
     icon: Droplets,
-    iconColor: 'text-cyan-500',
-    badge: 'bg-cyan-500/20 text-cyan-700 dark:text-cyan-300',
-    glow: 'shadow-cyan-500/20'
+    iconColor: 'text-info',
+    badge: 'bg-info/20 text-info dark:text-info',
+    glow: 'shadow-info/30/20'
   }
 };
 
@@ -142,7 +142,7 @@ export function ProductCard({ product, index, onBuyNow, language = 'en' }: Produ
                 {typeLabel}
               </Badge>
               {product.organic_certified && (
-                <Badge className="bg-green-500/20 text-green-700 dark:text-green-300 text-xs px-2 py-0.5 rounded-full">
+                <Badge className="bg-success/20 text-success dark:text-success text-xs px-2 py-0.5 rounded-full">
                   ✓ Certified
                 </Badge>
               )}
@@ -178,7 +178,7 @@ export function ProductCard({ product, index, onBuyNow, language = 'en' }: Produ
                     className={cn(
                       'h-3.5 w-3.5',
                       i < Math.round(product.effectiveness_rating!)
-                        ? 'fill-yellow-400 text-yellow-400'
+                        ? 'fill-warning text-warning'
                         : 'text-muted-foreground/30'
                     )}
                   />

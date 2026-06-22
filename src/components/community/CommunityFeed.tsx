@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { PostCard } from './PostCard';
+import { PostCardSkeletonList } from './PostCardSkeleton';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useCommunityPosts, useUserLikedPosts, useUserSavedPosts, SocialPost } from '@/hooks/useCommunityPosts';
@@ -27,7 +28,7 @@ const transformPost = (post: SocialPost): CommunityPost => {
     id: post.id,
     authorId: post.farmer_id,
     authorName: post.farmer?.farmer_name || 'Anonymous Farmer',
-    authorAvatar: '👨‍🌾', // Default avatar emoji
+    authorAvatar: '',
     authorLocation: post.farmer?.location || 'Unknown location',
     authorBadge: post.farmer?.is_verified ? 'verified' : null,
     originalLanguage: post.language_code || 'en',
@@ -75,49 +76,50 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
   // Transform posts to UI format
   const transformedPosts = (posts || []).map(transformPost);
 
+  if (isLoading) {
+    return (
+      <div className="px-3 py-2">
+        <PostCardSkeletonList count={3} />
+      </div>
+    );
+  }
+
   return (
-    <div className="px-4 space-y-4">
-      {/* Pull to Refresh Indicator */}
+    <div className="px-3 space-y-4">
       {isRefetching && (
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-center gap-2 py-4"
+          className="flex items-center justify-center gap-2 py-2"
         >
-          <Loader2 className="w-5 h-5 animate-spin text-primary" />
-          <span className="text-sm text-muted-foreground">
+          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          <span className="text-xs text-muted-foreground">
             {t('social.feed.refreshing')}
           </span>
         </motion.div>
       )}
 
-      {/* Refresh Button */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        className="flex justify-center"
-      >
+      <div className="flex justify-center">
         <Button
           variant="outline"
           size="sm"
           onClick={handleRefresh}
           disabled={isRefetching}
-          className="rounded-full gap-2 bg-card/50 backdrop-blur-sm"
+          className="rounded-full gap-2 bg-card h-8 text-xs"
         >
-          <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefetching ? 'animate-spin' : ''}`} />
           {t('social.feed.refresh')}
         </Button>
-      </motion.div>
+      </div>
 
-      {/* Posts */}
       {transformedPosts.map((post, index) => (
         <motion.div
           key={post.id}
-          initial={{ opacity: 0, y: 30 }}
+          initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.1 }}
+          transition={{ delay: Math.min(index * 0.05, 0.3) }}
         >
-          <PostCard 
+          <PostCard
             post={post}
             viewLanguage={viewLanguage}
             isLiked={likedPostIds.includes(post.id)}
@@ -126,39 +128,24 @@ export const CommunityFeed: React.FC<CommunityFeedProps> = ({
         </motion.div>
       ))}
 
-      {/* Loading State */}
-      {isLoading && (
-        <div className="flex justify-center py-8">
-          <div className="flex flex-col items-center gap-3">
-            <motion.div
-              animate={{ rotate: 360 }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="w-10 h-10 rounded-full border-3 border-primary/30 border-t-primary"
-            />
-            <span className="text-sm text-muted-foreground">
-              {t('social.feed.loading')}
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Empty State */}
-      {!isLoading && transformedPosts.length === 0 && (
+      {transformedPosts.length === 0 && (
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="text-center py-16"
+          className="text-center py-12"
         >
-          <div className="text-6xl mb-4">🌱</div>
+          <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-primary/10 flex items-center justify-center">
+            <span className="text-3xl">🌾</span>
+          </div>
           <h3 className="text-lg font-semibold text-foreground mb-2">
-            {filterByUser 
-              ? t('social.empty.my_posts')
-              : t('social.empty.feed')}
-          </h3>
-          <p className="text-muted-foreground text-sm max-w-xs mx-auto">
             {filterByUser
-              ? t('social.empty.my_posts_hint')
-              : t('social.empty.feed_hint')}
+              ? t('social.empty.my_posts') || 'No posts yet'
+              : t('social.empty.feed') || 'Be the first to share'}
+          </h3>
+          <p className="text-muted-foreground text-sm max-w-xs mx-auto mb-4">
+            {filterByUser
+              ? t('social.empty.my_posts_hint') || 'Share your first farming tip above'
+              : t('social.empty.feed_hint') || 'Tap the mic and share what you learned today'}
           </p>
         </motion.div>
       )}

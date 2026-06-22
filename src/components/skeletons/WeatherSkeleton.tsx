@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 
 export const WeatherSkeleton = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-primary/5 animate-fade-in overflow-hidden">
+    <div className="min-h-full bg-gradient-to-br from-background to-primary/5 animate-fade-in overflow-hidden">
       {/* Hero Section Skeleton - Matches WeatherHeroCard */}
       <div className="relative overflow-hidden bg-gradient-to-br from-primary/20 to-background rounded-b-3xl p-4 pb-6">
         <div className="relative z-10">

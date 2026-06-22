@@ -284,9 +284,9 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
             <div
               className={cn(
                 "absolute inset-0 rounded-3xl border-4 transition-colors duration-300",
-                qualityStatus === 'good' && "border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.5)]",
-                qualityStatus === 'acceptable' && "border-yellow-500 shadow-[0_0_30px_rgba(234,179,8,0.5)]",
-                qualityStatus === 'poor' && "border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.5)]"
+                qualityStatus === 'good' && "border-success shadow-[0_0_30px_rgba(34,197,94,0.5)]",
+                qualityStatus === 'acceptable' && "border-warning shadow-[0_0_30px_rgba(234,179,8,0.5)]",
+                qualityStatus === 'poor' && "border-destructive shadow-[0_0_30px_rgba(239,68,68,0.5)]"
               )}
             />
             
@@ -307,7 +307,7 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
                 >
                   {qualityStatus === 'poor' && (
                     <>
-                      <Sun className="w-5 h-5 text-yellow-400 animate-pulse" />
+                      <Sun className="w-5 h-5 text-warning animate-pulse" />
                       <span className="text-white text-sm font-medium">Better Light Needed</span>
                     </>
                   )}
@@ -323,13 +323,13 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
                     key={i}
                     className={cn(
                       "w-2 h-8 rounded-full transition-all duration-200",
-                      stabilityLevel > i * 20 ? "bg-green-500" : "bg-white/30"
+                      stabilityLevel > i * 20 ? "bg-success" : "bg-white/30"
                     )}
                   />
                 ))}
               </div>
               {stabilityLevel > 85 && (
-                <span className="text-green-400 text-xs font-medium">✓ Steady</span>
+                <span className="text-success text-xs font-medium">✓ Steady</span>
               )}
             </div>
             
@@ -399,7 +399,7 @@ export function InstaScanCamera({ onCapture, onClose }: InstaScanCameraProps) {
             
             {/* Auto-capture status */}
             {autoCapturing && !countdown && (
-              <span className="text-green-400 text-sm font-medium animate-pulse">
+              <span className="text-success text-sm font-medium animate-pulse">
                 ✨ Auto-capturing...
               </span>
             )}

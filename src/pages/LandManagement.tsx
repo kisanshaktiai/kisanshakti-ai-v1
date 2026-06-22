@@ -196,10 +196,10 @@ export default function LandManagement() {
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="pb-6">
       {/* Compact Stats Bar - Mobile optimized */}
       {showStats && (
-        <div className="flex-shrink-0 bg-gradient-to-r from-primary/5 to-primary/10 border-b border-primary/10 px-4 py-2">
+        <div className="bg-gradient-to-r from-primary/5 to-primary/10 border-b border-primary/10 px-4 py-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 overflow-x-auto">
               <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -233,8 +233,8 @@ export default function LandManagement() {
         </div>
       )}
 
-      {/* Scrollable Content Area */}
-      <div className="flex-1 overflow-y-auto">
+      {/* Page Content (scrolls with global <main>) */}
+      <div>
         {/* Offline Indicator */}
         {!isOnline && (
           <div className="mx-4 mt-2 mb-3 bg-warning/10 border-l-4 border-warning rounded-md p-2 flex items-center gap-2">
@@ -243,8 +243,8 @@ export default function LandManagement() {
           </div>
         )}
 
-        {/* Search and Actions Bar - Sticky */}
-        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-3 px-4">
+        {/* Search and Actions Bar - Sticky under global header */}
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-md py-3 px-4 border-b border-border/40">
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -362,8 +362,8 @@ export default function LandManagement() {
           </div>
         </div>
 
-        {/* Lands Display - Inside scrollable area */}
-        <div className="px-4 pb-24">
+        {/* Lands Display */}
+        <div className="px-4">
           {filteredLands.length === 0 ? (
             <Card className="border-dashed mx-auto mt-8">
               <CardContent className="p-8 text-center">
@@ -397,19 +397,21 @@ export default function LandManagement() {
               </AnimatePresence>
             </div>
           )}
-        </div>
-      </div>
 
-      {/* Add Land Button - Below Last Card */}
-      <div className="flex justify-center py-6 mb-20">
-        <Button
-          onClick={() => navigate('/app/lands/add')}
-          className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-8 py-6 flex items-center gap-3"
-          size="lg"
-        >
-          <Plus className="h-5 w-5" />
-          <span className="font-medium">{t('lands.cta.add')}</span>
-        </Button>
+          {/* Add Land Button - Inline, below last card (only when there are lands) */}
+          {filteredLands.length > 0 && (
+            <div className="flex justify-center pt-6">
+              <Button
+                onClick={() => navigate('/app/lands/add')}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-lg rounded-full px-8 py-6 flex items-center gap-3"
+                size="lg"
+              >
+                <Plus className="h-5 w-5" />
+                <span className="font-medium">{t('lands.cta.add')}</span>
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

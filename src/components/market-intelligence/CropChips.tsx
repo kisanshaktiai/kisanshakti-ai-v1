@@ -11,21 +11,20 @@ interface CropChipsProps {
   maxDisplay?: number;
 }
 
-export function CropChips({ 
-  crops = [], 
-  selectedCrop, 
+export function CropChips({
+  crops = [],
+  selectedCrop,
   onSelectCrop,
   isLoading = false,
-  maxDisplay = 12
+  maxDisplay = 20,
 }: CropChipsProps) {
   const { t } = useTranslation();
   const displayCrops = crops.slice(0, maxDisplay);
-  const remainingCount = crops.length - maxDisplay;
 
   if (displayCrops.length === 0) {
     return (
-      <div className="text-center py-4 text-muted-foreground text-sm">
-        <Wheat className="w-8 h-8 mx-auto mb-2 opacity-50" />
+      <div className="text-center py-4 text-muted-foreground text-xs">
+        <Wheat className="w-6 h-6 mx-auto mb-1 opacity-50" />
         {t('market.intelligence.selectCropType')}
       </div>
     );
@@ -33,58 +32,44 @@ export function CropChips({
 
   return (
     <div className="w-full">
-      <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-        <Wheat className="w-4 h-4 text-primary" />
-        {t('market.intelligence.selectCrop')}
-        <span className="text-xs bg-muted px-2 py-0.5 rounded-full">
-          {crops.length} {t('market.intelligence.crops')}
-        </span>
-      </h3>
-      
-      <div className="flex flex-wrap gap-2">
-        {displayCrops.map((crop, index) => (
-          <motion.button
-            key={crop}
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: index * 0.02 }}
-            onClick={() => onSelectCrop(crop)}
-            disabled={isLoading}
-            className={cn(
-              "px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200",
-              "border touch-manipulation active:scale-95",
-              "min-h-[40px]",
-              selectedCrop === crop
-                ? "bg-accent text-accent-foreground border-accent shadow-md"
-                : "bg-card/60 border-border/50 hover:border-accent/50 hover:bg-accent/10 text-foreground"
-            )}
+      <div className="flex items-center justify-between mb-2 px-1">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          पीक निवडा • {crops.length}
+        </h3>
+        {selectedCrop && (
+          <button
+            onClick={() => onSelectCrop('')}
+            className="text-[11px] text-primary font-medium"
           >
-            {crop}
-          </motion.button>
-        ))}
-        
-        {remainingCount > 0 && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="px-3 py-2 rounded-xl text-sm text-muted-foreground bg-muted/50 border border-dashed border-border flex items-center"
-          >
-            +{remainingCount} {t('market.intelligence.more')}
-          </motion.div>
+            साफ करा
+          </button>
         )}
       </div>
 
-      {/* Clear Selection */}
-      {selectedCrop && (
-        <motion.button
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          onClick={() => onSelectCrop('')}
-          className="mt-2 text-xs text-primary hover:text-primary/80 underline"
-        >
-          {t('market.intelligence.clearSelection')}
-        </motion.button>
-      )}
+      <div className="-mx-4 px-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory">
+        <div className="flex gap-2 pb-1 pr-4">
+          {displayCrops.map((crop, index) => (
+            <motion.button
+              key={crop}
+              type="button"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: index * 0.02 }}
+              onClick={() => onSelectCrop(crop)}
+              disabled={isLoading}
+              className={cn(
+                'px-4 h-10 rounded-2xl text-sm font-medium flex-shrink-0 snap-start',
+                'border touch-manipulation transition-colors',
+                selectedCrop === crop
+                  ? 'bg-accent text-accent-foreground border-accent shadow-sm'
+                  : 'bg-card text-foreground border-border/60 active:bg-muted',
+              )}
+            >
+              {crop}
+            </motion.button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

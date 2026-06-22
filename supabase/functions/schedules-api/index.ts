@@ -29,6 +29,37 @@ serve(async (req) => {
       );
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // Tenant-Farmer Association Guard (F7 hardening)
+    // Verify the claimed farmer actually belongs to the claimed tenant.
+    // Prevents anon-key holders from spoofing arbitrary farmer IDs.
+    // ─────────────────────────────────────────────────────────────────
+    const { data: farmerRow, error: farmerErr } = await supabase
+      .from('farmers')
+      .select('id, tenant_id')
+      .eq('id', farmerId)
+      .maybeSingle();
+
+    if (farmerErr || !farmerRow) {
+      console.warn('🚫 [SchedulesAPI] Farmer lookup failed:', { farmerId, error: farmerErr?.message });
+      return new Response(
+        JSON.stringify({ error: 'Forbidden', details: 'Invalid farmer context' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (farmerRow.tenant_id !== tenantId) {
+      console.warn('🚫 [SchedulesAPI] Tenant mismatch:', {
+        claimed_tenant: tenantId,
+        actual_tenant: farmerRow.tenant_id,
+        farmer_id: farmerId,
+      });
+      return new Response(
+        JSON.stringify({ error: 'Forbidden', details: 'Farmer does not belong to claimed tenant' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Parse URL to get path segments
     const url = new URL(req.url);
     const pathParts = url.pathname.split('/').filter(Boolean);
@@ -40,13 +71,22 @@ serve(async (req) => {
     const landIdParam = url.searchParams.get('land_id');
     const scheduleIdParam = url.searchParams.get('schedule_id');
 
+    // PHASE 3A: Optional incremental + pagination params (backward-compatible)
+    const sinceParam = url.searchParams.get('since'); // ISO8601 timestamp
+    const limitParam = url.searchParams.get('limit');
+    const cursorParam = url.searchParams.get('cursor'); // ISO8601 of last seen updated_at
+    const parsedLimit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 0, 1), 500) : null;
+
     console.log(`📅 [SchedulesAPI] ${req.method} request:`, { 
       isTasksRoute,
       scheduleId, 
       scheduleIdParam,
       landIdParam, 
       tenantId, 
-      farmerId 
+      farmerId,
+      sinceParam,
+      parsedLimit,
+      cursorParam,
     });
 
     // Try to set app session context
@@ -63,17 +103,28 @@ serve(async (req) => {
       case 'GET': {
         // Handle /tasks route
         if (isTasksRoute) {
-          console.log('📋 [SchedulesAPI] Fetching tasks:', { scheduleIdParam });
+          console.log('📋 [SchedulesAPI] Fetching tasks:', { scheduleIdParam, sinceParam, parsedLimit, cursorParam });
           
+          const isDeltaMode = Boolean(sinceParam || cursorParam || parsedLimit);
           let query = supabase
             .from('schedule_tasks')
             .select('*')
             .eq('tenant_id', tenantId)
             .eq('farmer_id', farmerId)
-            .order('task_date', { ascending: true });
+            // Delta/pagination requires updated_at ordering; legacy callers keep task_date order.
+            .order(isDeltaMode ? 'updated_at' : 'task_date', { ascending: true });
 
           if (scheduleIdParam) {
             query = query.eq('schedule_id', scheduleIdParam);
+          }
+          if (sinceParam) {
+            query = query.gt('updated_at', sinceParam);
+          }
+          if (cursorParam) {
+            query = query.gt('updated_at', cursorParam);
+          }
+          if (parsedLimit) {
+            query = query.limit(parsedLimit);
           }
 
           const { data, error } = await query;
@@ -86,9 +137,13 @@ serve(async (req) => {
             );
           }
 
-          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} tasks`);
+          const nextCursor = parsedLimit && data && data.length === parsedLimit
+            ? (data[data.length - 1] as any)?.updated_at ?? null
+            : null;
+
+          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} tasks (delta=${isDeltaMode})`);
           return new Response(
-            JSON.stringify({ data: data || [] }),
+            JSON.stringify({ data: data || [], next_cursor: nextCursor }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
@@ -118,7 +173,7 @@ serve(async (req) => {
           );
         } else {
           // List schedules
-          console.log('📅 [SchedulesAPI] Fetching schedules list');
+          console.log('📅 [SchedulesAPI] Fetching schedules list', { sinceParam, parsedLimit });
           let query = supabase
             .from('crop_schedules')
             .select('*')
@@ -129,6 +184,13 @@ serve(async (req) => {
 
           if (landIdParam) {
             query = query.eq('land_id', landIdParam);
+          }
+          // PHASE 3A: Optional incremental delta sync
+          if (sinceParam) {
+            query = query.gt('updated_at', sinceParam);
+          }
+          if (parsedLimit) {
+            query = query.limit(parsedLimit);
           }
 
           const { data, error } = await query;
@@ -141,7 +203,7 @@ serve(async (req) => {
             );
           }
 
-          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} schedules`);
+          console.log(`✅ [SchedulesAPI] Fetched ${data?.length || 0} schedules (since=${sinceParam || 'none'})`);
           return new Response(
             JSON.stringify({ data: data || [] }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

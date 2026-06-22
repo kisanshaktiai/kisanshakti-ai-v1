@@ -5,6 +5,66 @@ import { checkRateLimit } from '../_shared/rateLimiter.ts';
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+type ThemeSource = Record<string, any>;
+
+function firstThemeValue(source: ThemeSource, keys: string[]) {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+}
+
+function setThemeAlias(target: ThemeSource, group: string, key: string, source: ThemeSource, aliases: string[]) {
+  const value = firstThemeValue(source, aliases);
+  if (value === undefined) return;
+  const existing = target[group];
+  target[group] = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+  if (target[group][key] === undefined || target[group][key] === null || target[group][key] === '') {
+    target[group][key] = value;
+  }
+}
+
+function normalizeThemeConfig(theme?: ThemeSource | null) {
+  if (!theme) return {};
+  const out: ThemeSource = { ...theme };
+
+  setThemeAlias(out, 'core', 'primary', theme, ['primary', 'primary_color', 'primary_color_hex', 'brand_primary_color']);
+  setThemeAlias(out, 'core', 'primary_foreground', theme, ['primary_foreground', 'primary_foreground_color', 'on_primary', 'on_primary_color']);
+  setThemeAlias(out, 'core', 'secondary', theme, ['secondary', 'secondary_color', 'secondary_color_hex', 'brand_secondary_color']);
+  setThemeAlias(out, 'core', 'secondary_foreground', theme, ['secondary_foreground', 'secondary_foreground_color', 'on_secondary', 'on_secondary_color']);
+  setThemeAlias(out, 'core', 'accent', theme, ['accent', 'accent_color', 'accent_color_hex', 'brand_accent_color']);
+  setThemeAlias(out, 'core', 'accent_foreground', theme, ['accent_foreground', 'accent_foreground_color', 'on_accent', 'on_accent_color']);
+  setThemeAlias(out, 'core', 'ring', theme, ['ring', 'ring_color', 'focus_color']);
+
+  setThemeAlias(out, 'neutral', 'background', theme, ['background', 'background_color', 'background_color_hex', 'app_background_color']);
+  setThemeAlias(out, 'neutral', 'on_background', theme, ['on_background', 'on_background_color', 'foreground', 'foreground_color', 'text_color', 'text_color_hex']);
+  setThemeAlias(out, 'neutral', 'surface', theme, ['surface', 'surface_color', 'surface_color_hex', 'card', 'card_color', 'popover', 'panel_color']);
+  setThemeAlias(out, 'neutral', 'on_surface', theme, ['on_surface', 'on_surface_color', 'card_foreground', 'card_foreground_color', 'surface_text_color', 'text_color']);
+  setThemeAlias(out, 'neutral', 'border', theme, ['border', 'border_color', 'border_color_hex', 'input', 'input_color', 'divider_color']);
+
+  setThemeAlias(out, 'status', 'success', theme, ['success', 'success_color', 'success_color_hex']);
+  setThemeAlias(out, 'status', 'warning', theme, ['warning', 'warning_color', 'warning_color_hex']);
+  setThemeAlias(out, 'status', 'error', theme, ['error', 'error_color', 'error_color_hex', 'destructive', 'destructive_color']);
+  setThemeAlias(out, 'status', 'info', theme, ['info', 'info_color', 'info_color_hex']);
+
+  setThemeAlias(out, 'navigation', 'nav_background', theme, ['nav_background', 'nav_background_color', 'bottom_nav_background', 'bottom_nav_background_color', 'navigation_background_color']);
+  setThemeAlias(out, 'navigation', 'nav_active', theme, ['nav_active', 'nav_active_color', 'bottom_nav_active', 'bottom_nav_active_color', 'navigation_active_color']);
+  setThemeAlias(out, 'navigation', 'nav_inactive', theme, ['nav_inactive', 'nav_inactive_color', 'bottom_nav_inactive', 'bottom_nav_inactive_color', 'navigation_inactive_color']);
+  setThemeAlias(out, 'navigation', 'nav_border', theme, ['nav_border', 'nav_border_color', 'bottom_nav_border', 'bottom_nav_border_color', 'navigation_border_color']);
+
+  setThemeAlias(out, 'support', 'disabled', theme, ['disabled', 'disabled_color', 'disabled_text_color']);
+  setThemeAlias(out, 'support', 'overlay', theme, ['overlay', 'overlay_color']);
+
+  setThemeAlias(out, 'typography', 'font_family', theme, ['font_family', 'fontFamily']);
+  setThemeAlias(out, 'typography', 'font_size_base', theme, ['font_size_base', 'fontSizeBase', 'base_font_size']);
+  setThemeAlias(out, 'typography', 'font_weight_regular', theme, ['font_weight_regular', 'regular_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_medium', theme, ['font_weight_medium', 'medium_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_bold', theme, ['font_weight_bold', 'bold_font_weight']);
+
+  return out;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -206,35 +266,82 @@ Deno.serve(async (req) => {
       console.log('⚠️ No white_label_configs found for tenant')
     }
     
+    // Fetch latest tenant_branding row as a parallel fallback source for
+    // partner edits (tagline/description/logo) that bypass white_label_configs.
+    const { data: tenantBrandingRow } = await supabase
+      .from('tenant_branding')
+      .select('app_name, app_tagline, company_description, logo_url, favicon_url, primary_color, secondary_color, accent_color, background_color, text_color, font_family, updated_at')
+      .eq('tenant_id', tenant.id)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const pick = (...vals: any[]) => {
+      for (const v of vals) {
+        if (v !== undefined && v !== null && String(v).trim() !== '') return v
+      }
+      return undefined
+    }
+
     // Transform white label config if exists
-    let whiteLabelConfig = null
+    let whiteLabelConfig: any = null
     if (whiteLabelData) {
+      const lastDeployedAt = whiteLabelData.last_deployed_at || whiteLabelData.updated_at || tenant.updated_at || ''
+      const bi: any = whiteLabelData.brand_identity || {}
+      const tb: any = tenantBrandingRow || {}
+      // Coalesce per-field so empty values in brand_identity fall back to tenant_branding.
+      const mergedBrandIdentity: any = {
+        ...bi,
+        company_name: pick(bi.company_name, bi.app_name, tb.app_name, tenant.name),
+        app_name: pick(bi.app_name, tb.app_name, bi.company_name, tenant.name),
+        tagline: pick(bi.tagline, bi.app_tagline, tb.app_tagline),
+        logo_url: pick(bi.logo_url, tb.logo_url),
+        favicon_url: pick(bi.favicon_url, tb.favicon_url),
+        primary_color: pick(bi.primary_color, tb.primary_color),
+        secondary_color: pick(bi.secondary_color, tb.secondary_color),
+        accent_color: pick(bi.accent_color, tb.accent_color),
+        background_color: pick(bi.background_color, tb.background_color),
+        text_color: pick(bi.text_color, tb.text_color),
+        font_family: pick(bi.font_family, tb.font_family),
+        description: pick(bi.description, bi.company_description, tb.company_description),
+      }
       whiteLabelConfig = {
-        brand_identity: whiteLabelData.brand_identity || {},
+        brand_identity: mergedBrandIdentity,
         app_customization: whiteLabelData.app_customization || {},
         pwa_config: whiteLabelData.pwa_config || {},
-        theme_colors: whiteLabelData.theme_colors || {},
-        mobile_theme: whiteLabelData.mobile_theme || {},
+        theme_colors: normalizeThemeConfig(whiteLabelData.theme_colors),
+        mobile_theme: normalizeThemeConfig(whiteLabelData.mobile_theme),
         splash_screens: whiteLabelData.splash_screens || {},
         email_templates: whiteLabelData.email_templates || {},
-        domain_config: whiteLabelData.domain_config || {}
+        domain_config: whiteLabelData.domain_config || {},
+        last_deployed_at: lastDeployedAt
       }
-      console.log('✅ Transformed white label config with theme_colors')
-    } else if (tenant.tenant_branding) {
+      console.log('✅ Transformed white label config with theme_colors', {
+        tagline_source: bi.tagline ? 'brand_identity' : (tb.app_tagline ? 'tenant_branding' : 'none'),
+      })
+    } else if (tenantBrandingRow || tenant.tenant_branding) {
       console.log('⚠️ Falling back to tenant_branding')
-      // Fallback to tenant_branding if no white_label_configs
+      const tb: any = tenantBrandingRow || tenant.tenant_branding || {}
       whiteLabelConfig = {
         brand_identity: {
-          company_name: tenant.name,
-          logo_url: tenant.tenant_branding.logo_url,
-          ...tenant.tenant_branding
+          company_name: pick(tb.app_name, tenant.name),
+          app_name: pick(tb.app_name, tenant.name),
+          tagline: pick(tb.app_tagline),
+          description: pick(tb.company_description),
+          logo_url: tb.logo_url,
+          favicon_url: tb.favicon_url,
+          primary_color: tb.primary_color,
+          secondary_color: tb.secondary_color,
+          accent_color: tb.accent_color,
+          background_color: tb.background_color,
+          text_color: tb.text_color,
+          font_family: tb.font_family,
         },
         app_customization: {
-          theme_mode: tenant.tenant_branding.theme_mode || 'system',
-          primary_color: tenant.tenant_branding.primary_color,
-          secondary_color: tenant.tenant_branding.secondary_color,
-          accent_color: tenant.tenant_branding.accent_color,
-          ...tenant.tenant_branding
+          theme_mode: tb.theme_mode || 'system',
+          primary_color: tb.primary_color,
+          secondary_color: tb.secondary_color,
+          accent_color: tb.accent_color,
         },
         pwa_config: {},
         theme_colors: {},
@@ -259,7 +366,11 @@ Deno.serve(async (req) => {
       whiteLabelConfig,
       features: tenant.features || [],
       languages: tenant.supported_languages || ['en', 'hi', 'mr', 'pa', 'ta'],
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      metadata: {
+        last_deployed_at: whiteLabelData?.last_deployed_at || whiteLabelData?.updated_at || tenant.updated_at || null,
+        etag: `"${tenant.id}-${whiteLabelData?.last_deployed_at || whiteLabelData?.updated_at || tenant.updated_at || ''}"`
+      }
     }
     
     console.log('Sending white-label config for tenant:', tenant.name)
@@ -271,8 +382,11 @@ Deno.serve(async (req) => {
         headers: { 
           ...corsHeaders, 
           'Content-Type': 'application/json',
-          'Cache-Control': 'public, max-age=3600', // Cache for 1 hour
-          'ETag': `"${tenant.id}-${tenant.updated_at || ''}"` // For conditional requests
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'Surrogate-Control': 'no-store',
+          'ETag': response.metadata.etag
         }
       }
     )

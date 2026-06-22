@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { versionService } from '@/services/versionService';
+import { FarmingSplashAnimation } from '@/components/splash/FarmingSplashAnimation';
 
 export default function SplashScreen() {
   const navigate = useNavigate();
@@ -151,7 +152,7 @@ export default function SplashScreen() {
   // Get branding from TenantProvider - colors are already applied to DOM via CSS variables
   const logoUrl = branding?.logo_url;
   const companyName = branding?.company_name || tenant?.name || 'KisanShakti';
-  const tagline = branding?.tagline || 'Empowering Farmers with Technology';
+  const tagline = (branding?.tagline && branding.tagline.trim()) || 'Empowering Farmers with Technology';
   
   // Use tenant background color if available, otherwise use CSS variable
   const backgroundColor = branding?.background_color 
@@ -162,7 +163,7 @@ export default function SplashScreen() {
   
   return (
     <div 
-      className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
+      className="min-h-mobile-screen flex flex-col items-center justify-center p-4 relative overflow-hidden"
       style={{ 
         backgroundColor: backgroundColor || undefined,
         background: !backgroundColor ? 'hsl(var(--background))' : undefined
@@ -171,7 +172,10 @@ export default function SplashScreen() {
       onTouchEnd={handleTouchEnd}
     >
       {/* Subtle Grid Background */}
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,black_40%,transparent_100%)] opacity-20" />
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border))_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border))_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,black_40%,transparent_100%)] opacity-10" />
+
+      {/* Farming-themed ambient animation */}
+      <FarmingSplashAnimation />
       
       {/* Main Content */}
       <div className="flex flex-col items-center justify-center z-10 max-w-md mx-auto space-y-10">

@@ -95,7 +95,10 @@
       "task_unmarked": "कार्य अचिह्नित",
       "reverting": "पूर्णता वापस ले रहे हैं...",
       "unmark_failed": "अचिह्नित करने में विफल",
-      "try_again": "फिर से प्रयास करें।"
+      "try_again": "फिर से प्रयास करें।",
+      "task_updated": "कार्य सफलतापूर्वक अपडेट हुआ",
+      "changes_saved": "आपके बदलाव सहेज लिए गए हैं",
+      "update_failed": "कार्य अपडेट करने में विफल"
     },
     "main": {
       "ai_crop_schedule": "AI फसल अनुसूची",
@@ -181,7 +184,11 @@
       "medium": "मध्यम",
       "low": "कम",
       "hours": "घंटे",
-      "persons": "व्यक्ति"
+      "persons": "व्यक्ति",
+      "edit": "संपादित करें",
+      "edit_task": "कार्य संपादित करें",
+      "n_task": "कार्य",
+      "n": "n"
     },
     "land_selector": {
       "ai_schedule_ready": "AI अनुसूची तैयार",
@@ -246,7 +253,37 @@
     "listen": "सुनें",
     "close": "बंद करें",
     "done": "पूर्ण",
-    "skipped": "छोड़ा गया"
+    "skipped": "छोड़ा गया",
+    "schedule_view": {
+      "no_active_schedule": "कोई सक्रिय शेड्यूल नहीं",
+      "no_schedule_available": "कोई शेड्यूल उपलब्ध नहीं",
+      "no_schedule_description": "व्यक्तिगत खेती कार्य और सिफारिशें प्राप्त करने के लिए AI-संचालित फसल शेड्यूल बनाएं",
+      "generate_schedule": "शेड्यूल बनाएं",
+      "ai_schedule": "AI शेड्यूल",
+      "loading": "शेड्यूल डेटा लोड हो रहा है...",
+      "standard_variety": "मानक किस्म"
+    },
+    "farming_type": {
+      "organic": "जैविक",
+      "organic_chemical": "जैविक+रासा.",
+      "chemical": "रासायनिक"
+    },
+    "crop_input": {
+      "variety_label": "किस्म (वैकल्पिक)",
+      "variety_placeholder": "जैसे, IR-64, HD-2967, BT कपास",
+      "ready_made_plant": "तैयार नर्सरी पौधे उपयोग कर रहे हैं",
+      "ready_made_description": "चुनें यदि बीज बोने के बजाय पौध/रोपण लगा रहे हैं",
+      "sowing_date": "बुवाई की तारीख",
+      "planting_date": "रोपण की तारीख",
+      "pick_date": "तारीख चुनें",
+      "generate_ai_schedule": "AI शेड्यूल बनाएं",
+      "generating": "AI शेड्यूल बन रहा है...",
+      "select_crop": "फसल चुनें",
+      "please_select_crop": "कृपया फसल चुनें",
+      "select_date": "तारीख चुनें",
+      "please_select_date": "कृपया बुवाई की तारीख चुनें",
+      "water": "पानी"
+    }
   },
   "common": {
     "cancel": "रद्द करें",

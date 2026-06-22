@@ -45,12 +45,12 @@ export function FeedbackDialog({
           <DialogTitle className="flex items-center gap-2">
             {feedbackType === 'positive' ? (
               <>
-                <ThumbsUp className="w-5 h-5 text-green-500" />
+                <ThumbsUp className="w-5 h-5 text-success" />
                 <span>Thank you for your positive feedback!</span>
               </>
             ) : (
               <>
-                <ThumbsDown className="w-5 h-5 text-red-500" />
+                <ThumbsDown className="w-5 h-5 text-destructive" />
                 <span>Help us improve</span>
               </>
             )}
@@ -101,8 +101,8 @@ export function FeedbackDialog({
                 onClick={handleSubmit}
                 className={
                   feedbackType === 'positive'
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "bg-blue-600 hover:bg-blue-700"
+                    ? "bg-success hover:bg-success"
+                    : "bg-info hover:bg-info"
                 }
               >
                 <Send className="w-4 h-4 mr-2" />

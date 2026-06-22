@@ -34,12 +34,12 @@ const insightTypeLabels: Record<string, string> = {
 };
 
 const insightTypeColors: Record<string, string> = {
-  fertilizer_demand: 'bg-green-500/10 text-green-700',
-  seed_demand: 'bg-blue-500/10 text-blue-700',
-  pesticide_demand: 'bg-purple-500/10 text-purple-700',
-  equipment_rental: 'bg-orange-500/10 text-orange-700',
-  harvest_season: 'bg-yellow-500/10 text-yellow-700',
-  crop_trend: 'bg-pink-500/10 text-pink-700',
+  fertilizer_demand: 'bg-success/10 text-success',
+  seed_demand: 'bg-info/10 text-info',
+  pesticide_demand: 'bg-primary/10 text-primary',
+  equipment_rental: 'bg-warning/10 text-warning',
+  harvest_season: 'bg-warning/10 text-warning',
+  crop_trend: 'bg-primary/10 text-primary',
 };
 
 export function MarketingInsightsDashboard({ tenantId }: { tenantId: string }) {
@@ -160,7 +160,7 @@ export function MarketingInsightsDashboard({ tenantId }: { tenantId: string }) {
               <CardContent className="p-6">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
-                    <Badge className={insightTypeColors[insight.insight_type] || 'bg-gray-500/10'}>
+                    <Badge className={insightTypeColors[insight.insight_type] || 'bg-muted-foreground/40/10'}>
                       {insightTypeLabels[insight.insight_type] || insight.insight_type}
                     </Badge>
                     <Badge variant="outline">

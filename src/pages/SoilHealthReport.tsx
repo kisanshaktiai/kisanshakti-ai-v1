@@ -181,7 +181,7 @@ export default function SoilHealthReport() {
 
   if (!data) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
+      <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20 flex items-center justify-center p-4">
         <Card className="max-w-md w-full">
           <CardContent className="pt-6 text-center space-y-4">
             <h2 className="text-xl font-semibold">No Data Available</h2>
@@ -193,7 +193,7 @@ export default function SoilHealthReport() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+    <div className="min-h-full bg-gradient-to-br from-background via-background to-muted/20">
       <SoilReportHeader
         landName={data.lands?.name}
         exporting={exporting}
@@ -218,14 +218,14 @@ export default function SoilHealthReport() {
           <Card className="border-2 hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <div className="p-2 bg-blue-500/10 rounded-lg">
-                  <Droplets className="h-4 w-4 text-blue-500" />
+                <div className="p-2 bg-info/10 rounded-lg">
+                  <Droplets className="h-4 w-4 text-info" />
                 </div>
                 pH Level
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold mb-2 text-blue-600">
+              <div className="text-4xl font-bold mb-2 text-info">
                 {data.ph_level?.toFixed(1) || 'N/A'}
               </div>
               {data.ph_text && <p className="text-sm text-muted-foreground">{data.ph_text}</p>}
@@ -236,14 +236,14 @@ export default function SoilHealthReport() {
           <Card className="border-2 hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <div className="p-2 bg-green-500/10 rounded-lg">
-                  <Leaf className="h-4 w-4 text-green-500" />
+                <div className="p-2 bg-success/10 rounded-lg">
+                  <Leaf className="h-4 w-4 text-success" />
                 </div>
                 Organic Carbon
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold mb-2 text-green-600">
+              <div className="text-4xl font-bold mb-2 text-success">
                 {data.organic_carbon?.toFixed(2) || 'N/A'}%
               </div>
               {data.organic_carbon_text && <p className="text-sm text-muted-foreground">{data.organic_carbon_text}</p>}
@@ -265,7 +265,7 @@ export default function SoilHealthReport() {
               title="Nitrogen"
               description="Essential for leaf growth"
               letter="N"
-              letterColor="bg-blue-500/10 text-blue-600"
+              letterColor="bg-info/10 text-info"
               level={data.nitrogen_level}
               kgPerHa={data.nitrogen_kg_per_ha}
               totalKg={data.nitrogen_total_kg}
@@ -278,7 +278,7 @@ export default function SoilHealthReport() {
               title="Phosphorus"
               description="Important for root development"
               letter="P"
-              letterColor="bg-orange-500/10 text-orange-600"
+              letterColor="bg-warning/10 text-warning"
               level={data.phosphorus_level}
               kgPerHa={data.phosphorus_kg_per_ha}
               totalKg={data.phosphorus_total_kg}
@@ -291,7 +291,7 @@ export default function SoilHealthReport() {
               title="Potassium"
               description="Vital for overall plant health"
               letter="K"
-              letterColor="bg-purple-500/10 text-purple-600"
+              letterColor="bg-primary/10 text-primary"
               level={data.potassium_level}
               kgPerHa={data.potassium_kg_per_ha}
               totalKg={data.potassium_total_kg}
@@ -320,21 +320,21 @@ export default function SoilHealthReport() {
                 {data.sand_percent !== null && (
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Sand</p>
-                    <p className="text-2xl font-bold text-yellow-600">{data.sand_percent}%</p>
+                    <p className="text-2xl font-bold text-warning">{data.sand_percent}%</p>
                     <Progress value={data.sand_percent} className="mt-2 h-2" />
                   </div>
                 )}
                 {data.silt_percent !== null && (
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Silt</p>
-                    <p className="text-2xl font-bold text-amber-600">{data.silt_percent}%</p>
+                    <p className="text-2xl font-bold text-warning">{data.silt_percent}%</p>
                     <Progress value={data.silt_percent} className="mt-2 h-2" />
                   </div>
                 )}
                 {data.clay_percent !== null && (
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Clay</p>
-                    <p className="text-2xl font-bold text-red-600">{data.clay_percent}%</p>
+                    <p className="text-2xl font-bold text-destructive">{data.clay_percent}%</p>
                     <Progress value={data.clay_percent} className="mt-2 h-2" />
                   </div>
                 )}

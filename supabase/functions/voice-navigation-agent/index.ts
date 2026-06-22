@@ -1,5 +1,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { corsHeaders } from '../_shared/cors.ts';
+import { rateGuard } from '../_shared/rateGuard.ts';
+
 
 interface VoiceRequest {
   transcript: string;
@@ -25,6 +27,12 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
+
+  // Sprint 5: cost-control rate limit (intent classification per farmer).
+  const rl = await rateGuard(req, { endpoint: 'voice-navigation-agent', maxRequests: 60, windowMs: 60_000 });
+  if (rl) return rl;
+
+
 
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;

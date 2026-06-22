@@ -12,6 +12,8 @@ import { useTenant } from '@/contexts/TenantContext';
 import { useLanguageStore } from '@/stores/languageStore';
 import { landsApi } from '@/services/landsApi';
 import LandSelector from '@/components/schedule/LandSelector';
+import { PageShell } from '@/components/layout/PageShell';
+import { EmptyState } from '@/components/layout/EmptyState';
 import CropDateInput from '@/components/schedule/CropDateInput';
 import CropScheduleView from '@/components/schedule/CropScheduleView';
 import ScheduleLoadingOverlay from '@/components/schedule/ScheduleLoadingOverlay';
@@ -275,7 +277,7 @@ export default function Schedule() {
               handleCropDateSubmit(cropName, cropVariety, sowingDate, scheduleData?.isReadyMadePlant || false, scheduleData?.farmingType || 'organic_fertilizer');
             }}
           >
-            Try Again
+            {t('common.try_again')}
           </Button>
         ),
       });
@@ -296,219 +298,161 @@ export default function Schedule() {
 
   if (isLoadingLands) {
     return (
-      <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5">
-        {/* Header Skeleton */}
-        <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
-          <div className="px-3 py-2.5">
+      <PageShell variant="gradient-primary" padding="default" spacing="default">
+        <Card className="animate-pulse">
+          <CardContent className="p-6 space-y-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Skeleton className="h-9 w-9 rounded-xl" />
-                <div className="space-y-2">
-                  <Skeleton className="h-5 w-32" />
-                  <Skeleton className="h-3 w-24" />
-                </div>
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-64" />
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
-                  <Skeleton className="h-1.5 w-8 rounded-full" />
-                  <Skeleton className="h-1.5 w-6 rounded-full" />
-                  <Skeleton className="h-1.5 w-6 rounded-full" />
-                </div>
-                <Skeleton className="h-3 w-16" />
-              </div>
+              <Skeleton className="h-10 w-24 rounded-lg" />
             </div>
-          </div>
-        </div>
-
-        {/* Content Skeleton */}
-        <div className="fixed inset-0 pt-14 pb-16 overflow-y-auto">
-          <div className="min-h-full p-4 space-y-4">
-            <Card className="animate-pulse">
-              <CardContent className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-2">
-                    <Skeleton className="h-6 w-48" />
-                    <Skeleton className="h-4 w-64" />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-4 p-4 rounded-xl border border-border/50">
+                  <Skeleton className="h-16 w-16 rounded-xl" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-5 w-32" />
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-24" />
                   </div>
-                  <Skeleton className="h-10 w-24 rounded-lg" />
+                  <Skeleton className="h-10 w-20 rounded-lg" />
                 </div>
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="flex items-center gap-4 p-4 rounded-xl border border-border/50">
-                      <Skeleton className="h-16 w-16 rounded-xl" />
-                      <div className="flex-1 space-y-2">
-                        <Skeleton className="h-5 w-32" />
-                        <Skeleton className="h-4 w-48" />
-                        <Skeleton className="h-3 w-24" />
-                      </div>
-                      <Skeleton className="h-10 w-20 rounded-lg" />
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-            
-            {/* Syncing message */}
-            <div className="flex items-center justify-center gap-2 text-muted-foreground">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
-              <p className="text-sm font-medium">{t('schedule.loading.syncing')}</p>
+              ))}
             </div>
-          </div>
+          </CardContent>
+        </Card>
+        <div className="flex items-center justify-center gap-2 text-muted-foreground">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary" />
+          <p className="text-sm font-medium">{t('schedule.loading.syncing')}</p>
         </div>
-      </div>
+      </PageShell>
     );
   }
 
   if (lands.length === 0) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/app')}
-          >
+      <PageShell variant="gradient-primary">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={() => navigate('/app')}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <h1 className="text-2xl font-bold">AI Crop Schedule</h1>
+          <h1 className="text-xl font-bold">{t('schedule.main.ai_crop_schedule')}</h1>
         </div>
-
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Calendar className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">{t('schedule.empty.title')}</h3>
-            <p className="text-muted-foreground text-center mb-6">
-              {t('schedule.empty.message')}
-            </p>
-            <Button onClick={() => navigate('/app/lands/add')}>
-              <Plus className="h-4 w-4 mr-2" />
-              {t('schedule.main.add_land')}
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+        <EmptyState
+          icon={Calendar}
+          title={t('schedule.empty.title')}
+          description={t('schedule.empty.message')}
+          actionLabel={t('schedule.main.add_land')}
+          onAction={() => navigate('/app/lands/add')}
+        />
+      </PageShell>
     );
   }
 
+  const STEPS: FlowStep[] = ['land-selection', 'crop-input', 'schedule-view'];
+  const currentStepIndex = STEPS.indexOf(flowStep);
+
+  const stickyHeader = (
+    <div className="px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
+            className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all shrink-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="text-base font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent truncate">
+            {t('schedule.main.ai_crop_schedule')}
+          </h1>
+        </div>
+
+        <div className="flex items-center gap-2 shrink-0">
+          {flowStep === 'land-selection' && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                refetchLands();
+                toast({
+                  title: t('schedule.main.refreshing'),
+                  description: t('schedule.main.syncing_latest'),
+                  className: 'bg-accent/10 border-accent/20',
+                });
+              }}
+              className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          )}
+
+          {/* Compact step indicator dots only */}
+          <div className="flex items-center gap-1.5" aria-label={`Step ${currentStepIndex + 1} of ${STEPS.length}`}>
+            {STEPS.map((step, index) => (
+              <div
+                key={step}
+                className={`h-1.5 rounded-full transition-all duration-500 ${
+                  index === currentStepIndex
+                    ? 'w-6 bg-gradient-to-r from-primary to-accent shadow-sm shadow-primary/40'
+                    : index < currentStepIndex
+                    ? 'w-4 bg-primary/60'
+                    : 'w-4 bg-primary/20'
+                }`}
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-background via-accent/5 to-primary/5">
-      {/* Modern Glass Header */}
-      <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
-        <div className="px-3 py-2.5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => flowStep === 'land-selection' ? navigate('/app') : handleBack()}
-                className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
-              >
-                <ArrowLeft className="h-4 w-4" />
-              </Button>
-              <div>
-                <h1 className="text-lg font-bold bg-gradient-to-r from-primary via-primary/80 to-accent bg-clip-text text-transparent animate-gradient">
-                  {t('schedule.main.ai_crop_schedule')}
-                </h1>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {flowStep === 'land-selection' && t('schedule.steps.land_selection')}
-                  {flowStep === 'crop-input' && t('schedule.steps.crop_input')}
-                  {flowStep === 'schedule-view' && t('schedule.steps.schedule_view')}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              {/* Manual Refresh Button */}
-              {flowStep === 'land-selection' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    refetchLands();
-                    toast({
-                      title: t('schedule.main.refreshing'),
-                      description: t('schedule.main.syncing_latest'),
-                      className: 'bg-accent/10 border-accent/20',
-                    });
-                  }}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10 transition-all duration-300"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
-              )}
-              
-              {/* Modern Step Progress Bar */}
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
-                  {['land-selection', 'crop-input', 'schedule-view'].map((step, index) => (
-                    <div 
-                      key={step}
-                      className={`h-1.5 rounded-full transition-all duration-500 ${
-                        flowStep === step 
-                          ? 'w-8 bg-gradient-to-r from-primary to-accent shadow-lg shadow-primary/50' 
-                          : index < ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep)
-                          ? 'w-6 bg-primary/60'
-                          : 'w-6 bg-primary/20'
-                      }`} 
-                    />
-                  ))}
-                </div>
-                <span className="text-[10px] text-muted-foreground font-medium">
-                  {t('schedule.steps.of_total', { current: ['land-selection', 'crop-input', 'schedule-view'].indexOf(flowStep) + 1, total: 3 })}
-                </span>
-              </div>
-            </div>
+    <PageShell variant="gradient-primary" padding="none" spacing="none" stickyHeader={stickyHeader}>
+      <div className="relative">
+        {flowStep === 'land-selection' && (
+          <div className="animate-fade-in">
+            <LandSelector
+              lands={lands}
+              onSelectLand={handleLandSelect}
+              onViewSchedule={handleViewSchedule}
+              onEditSchedule={handleEditSchedule}
+            />
           </div>
-        </div>
+        )}
+
+        {flowStep === 'crop-input' && selectedLand && (
+          <div className="animate-slide-in-right">
+            <CropDateInput
+              land={selectedLand}
+              onSubmit={handleCropDateSubmit}
+              onBack={handleBack}
+              loading={generating}
+            />
+          </div>
+        )}
+
+        {flowStep === 'schedule-view' && selectedLand && (
+          <div className="animate-slide-in-right">
+            <CropScheduleView
+              landId={selectedLand.id}
+              landName={selectedLand.name}
+              currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
+              onBack={handleBack}
+            />
+          </div>
+        )}
       </div>
 
-      {/* Full Screen Content Area */}
-      <div className="fixed inset-0 pt-14 pb-16 overflow-y-auto">
-        <div className="min-h-full">
-          {/* Flow Steps with Enhanced Animations */}
-          <div className="relative">
-            {flowStep === 'land-selection' && (
-              <div className="animate-fade-in">
-                <LandSelector 
-                  lands={lands}
-                  onSelectLand={handleLandSelect}
-                  onViewSchedule={handleViewSchedule}
-                  onEditSchedule={handleEditSchedule}
-                />
-              </div>
-            )}
-
-            {flowStep === 'crop-input' && selectedLand && (
-              <div className="animate-slide-in-right">
-                <CropDateInput
-                  land={selectedLand}
-                  onSubmit={handleCropDateSubmit}
-                  onBack={handleBack}
-                  loading={generating}
-                />
-              </div>
-            )}
-
-            {flowStep === 'schedule-view' && selectedLand && (
-              <div className="animate-slide-in-right">
-                <CropScheduleView
-                  landId={selectedLand.id}
-                  landName={selectedLand.name}
-                  currentCrop={scheduleData?.cropName || selectedLand.current_crop || ''}
-                  onBack={handleBack}
-                />
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Global Loading Overlay - shows during API call */}
       <ScheduleLoadingOverlay
         isLoading={generating}
         cropName={generatingCropName || scheduleData?.cropName || ''}
         farmingType={generatingFarmingType || scheduleData?.farmingType || 'organic_fertilizer'}
       />
-    </div>
+    </PageShell>
   );
 }

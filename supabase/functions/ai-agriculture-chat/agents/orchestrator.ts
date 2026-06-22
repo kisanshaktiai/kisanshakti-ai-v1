@@ -58,6 +58,73 @@ import {
   type LLMResponseInput 
 } from './llm-response-generator.ts';
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SYMBOLIC ROUTING CONTRACT (Fix 2 + Fix 7 + Fix 8)
+// Canonical DIRECT-mode intents verified against observation_intent_master
+// where clarification_mode='DIRECT'. These intents MUST bypass symptom
+// clarification gates and go straight to the symbolic rule engine.
+// ═══════════════════════════════════════════════════════════════════════════
+export const ADVISORY_DIRECT_INTENTS = new Set<string>([
+  'FERTILIZER_SCHEDULE',
+  'IRRIGATION_QUERY',
+  'IRRIGATION_METHOD_SELECTION',
+  'IRRIGATION_SCHEDULING_QUERY',
+  'SPRAY_TIMING_QUERY',
+  'CROP_HEALTH_DASHBOARD',
+  'GENERAL_CROP_INFO',
+  'HARVEST_TIMING',
+  'BEST_PRACTICE_GENERAL',
+  'ORGANIC_FARMING_QUERY',
+  'INTERCROPPING_QUERY',
+  'IPM_STRATEGY_QUERY',
+  'PHI_SAFETY_QUERY',
+  'DOSAGE_CALCULATION_QUERY',
+  'RESISTANCE_MANAGEMENT_QUERY',
+  'SOIL_HEALTH_RESTORATION',
+  'SOIL_TESTING_QUERY',
+  'SOIL_TYPE_MANAGEMENT',
+  'PROACTIVE_SCHEDULE_QUERY',
+  'COST_ESTIMATION_QUERY',
+  'YIELD_FORECAST_QUERY',
+  'TREATMENT_ROI_QUERY',
+  'LABOR_PLANNING_QUERY',
+  'POST_HARVEST_HANDLING',
+  'CROP_ROTATION_QUERY',
+  'PLANTING_METHOD_QUERY',
+  'SEED_SELECTION',
+  'VARIETY_SELECTION_QUERY',
+  'SEASONAL_TRANSITION_ALERT',
+  'WEATHER_ADVISORY',
+]);
+
+export function isAdvisoryRoute(intentCode: string | null | undefined): boolean {
+  return !!intentCode && ADVISORY_DIRECT_INTENTS.has(intentCode);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// OBSERVATION CONTRACT GUARD (Fix 2)
+// Observations entering the symbolic engine MUST be canonical English codes
+// matching /^[A-Z][A-Z0-9_]+$/. Raw farmer text in any language is BLOCKED.
+// ═══════════════════════════════════════════════════════════════════════════
+export function isCanonicalObservationCode(s: any): boolean {
+  return typeof s === 'string' && /^[A-Z][A-Z0-9_]+$/.test(s) && s.length <= 80;
+}
+
+export function filterToCanonicalObservations(obs: any): string[] {
+  if (!Array.isArray(obs)) return [];
+  const filtered: string[] = [];
+  const rejected: string[] = [];
+  for (const o of obs) {
+    if (isCanonicalObservationCode(o)) filtered.push(o);
+    else if (o != null) rejected.push(String(o).substring(0, 60));
+  }
+  if (rejected.length > 0) {
+    console.error(`[ObservationContract] BLOCKED ${rejected.length} non-canonical entries: ${rejected.join(' | ')}`);
+  }
+  return filtered;
+}
+
+
 // Import question classifier for adaptive templates
 import { classifyQuestion, type QuestionClassification } from './question-classifier.ts';
 
@@ -2435,8 +2502,12 @@ export class AIAgentOrchestrator {
       ];
       const currentIntentForGate = semanticExtraction?.intent_code || 'UNKNOWN';
       const isSymptomBasedIntent = symptomBasedIntents.includes(currentIntentForGate);
+      const zeroCodeGateExemptRoutes = new Set(['FERTILIZER_NUTRITION', 'IRRIGATION_SCHEDULING', 'WEATHER_SPRAY_TIMING', 'CROP_HEALTH', 'GENERAL_INFO']);
+      // Fix 7: also exempt when the canonical intent code is advisory.
+      const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route) || isAdvisoryRoute(currentIntentForGate);
+
       
-      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent) {
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt) {
         console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
         console.log(`   → Forcing CLARIFICATION path, will NOT enter symbolic brain`);
         agentsUsed.push('ZERO_CODE_CLARIFICATION_GATE');
@@ -2458,6 +2529,9 @@ export class AIAgentOrchestrator {
         } else {
           clarificationMessage = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
         }
+        const clarificationMr = clarificationMessage;
+        const clarificationHi = clarificationMessage;
+        const clarificationEn = clarificationMessage;
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
@@ -2639,7 +2713,10 @@ export class AIAgentOrchestrator {
         }
         
         // Update symbol coverage based on merged symptoms
-        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8); // 8 is approx max symptoms
+        // SPRINT 3 FIX: Adaptive coverage denominator. Real-world farmer reports rarely exceed
+        // 3–5 symptoms per case, so 8 systematically under-rated single/double-symptom diagnoses.
+        // Cap denominator at max(4, len) so any single strong symptom yields ≥25% coverage.
+        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / Math.max(4, Math.min(8, inductionResult.symptoms.length)));
         inductionResult.aggregated_confidence = Math.max(
           inductionResult.aggregated_confidence,
           safeConfidence
@@ -2730,7 +2807,9 @@ export class AIAgentOrchestrator {
         }
         
         // Recalculate coverage
-        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / 8);
+        // SPRINT 3 FIX: see comment above — adaptive denominator (min 4) to avoid penalising
+        // legitimate single/double-symptom diagnoses coming from the router-entity fallback path.
+        inductionResult.symbol_coverage = Math.min(1.0, inductionResult.symptoms.length / Math.max(4, Math.min(8, inductionResult.symptoms.length)));
         inductionResult.aggregated_confidence = Math.max(inductionResult.aggregated_confidence, queryRoute.confidence);
         
         console.log(`   ✅ POST-ROUTER-FALLBACK: ${inductionResult.symptoms.length} symptoms, coverage=${(inductionResult.symbol_coverage * 100).toFixed(0)}%`);
@@ -2768,13 +2847,31 @@ export class AIAgentOrchestrator {
       // harvest) don't need symptom clarification — they go straight to the rule engine.
       // ═══════════════════════════════════════════════════════════════════════════
       let directModeBypass = false;
-      if (intentMetaFromDB?.clarification_mode === 'DIRECT' && landContext?.current_crop) {
+      // FIX (advisory routing): widen route set + multi-source crop check so DIRECT mode
+      // fires whenever any layer of context (canonical, land record, or crop schedule) knows the crop.
+      const ADVISORY_DIRECT_ROUTES = new Set([
+        'FERTILIZER_NUTRITION',
+        'IRRIGATION_SCHEDULING',
+        'WEATHER_SPRAY_TIMING',
+        'CROP_HEALTH',
+        'GENERAL_INFO'
+      ]);
+      const routeDirectModeBypass = ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string);
+      // Fix 7: ALSO bypass when LLM-emitted canonical intent code is advisory.
+      const intentAdvisoryBypass = isAdvisoryRoute(intentCode);
+      const cropFromAnyLayer =
+        (landContext as any)?.current_crop ||
+        (canonicalContext as any)?.crop ||
+        (landContext as any)?.crop_schedule?.crop_name ||
+        (landContext as any)?.crop_name;
+      if ((intentMetaFromDB?.clarification_mode === 'DIRECT' || routeDirectModeBypass || intentAdvisoryBypass) && cropFromAnyLayer) {
         directModeBypass = true;
         bypassClarification = true;
-        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} has clarification_mode=DIRECT, skipping symptom clarification`);
-        console.log(`   Crop: ${landContext.current_crop}, Stage: ${landContext.growth_stage || 'UNKNOWN'}`);
+        console.log(`   🎯 [DIRECT_MODE] Intent ${intentCode} / route ${queryRoute.route} skips symptom clarification (advisoryIntent=${intentAdvisoryBypass})`);
+        console.log(`   Crop: ${cropFromAnyLayer}, Stage: ${(landContext as any)?.growth_stage || (canonicalContext as any)?.stage || 'UNKNOWN'}`);
         agentsUsed.push('DIRECT_MODE_BYPASS');
       }
+
       
       // PATCH 2: Stage context guard - ask farmer for crop stage if required
       // v7.7 FIX: For DIAGNOSTIC intents (STEM_DAMAGE, LEAF_DAMAGE, PEST_OBSERVATION, etc.)
@@ -2982,11 +3079,11 @@ export class AIAgentOrchestrator {
       const hasSymptoms = inductionResult.symptoms.length > 0;
       
       // Routes that can run symbolic brain WITHOUT symptoms (they use crop/stage/NDVI rules)
-      const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'GENERAL_INFO', 'GREETING'];
+      const symptomFreeRoutes = ['IRRIGATION_SCHEDULING', 'CROP_HEALTH', 'WEATHER_SPRAY', 'WEATHER_SPRAY_TIMING', 'GENERAL_INFO', 'GREETING', 'FERTILIZER_NUTRITION'];
       const isSymptomFreeRoute = symptomFreeRoutes.includes(queryRoute.route);
       
       // FIX 4: LLM failsafe NO LONGER allows symbolic brain — clarification only
-      let shouldRunSymbolicBrain = (inductionCoverageSufficient || inductionConfidenceSufficient) && (hasSymptoms || isSymptomFreeRoute);
+      let shouldRunSymbolicBrain = isSymptomFreeRoute || ((inductionCoverageSufficient || inductionConfidenceSufficient) && hasSymptoms);
       
       // ═══════════════════════════════════════════════════════════════════════════
       // FIX 7: HARD INVARIANT — Block rule firing when zero observations + UNKNOWN intent
@@ -3551,8 +3648,9 @@ export class AIAgentOrchestrator {
       // Uses ONLY CONFIRMED + EXTRACTED observations for evidence coverage
       // ═══════════════════════════════════════════════════════════════════════════
       const authorityBasedCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      // SPRINT 3 FIX: Adaptive denominator — see comments at lines ~2647 / 2738.
       const evidenceCoverage = authorityBasedCodes.length > 0 
-        ? Math.min(1.0, authorityBasedCodes.length / 8) 
+        ? Math.min(1.0, authorityBasedCodes.length / Math.max(4, Math.min(8, authorityBasedCodes.length))) 
         : 0;
       console.log(`   📊 Evidence coverage (CONFIRMED+EXTRACTED only): ${(evidenceCoverage * 100).toFixed(0)}% (${authorityBasedCodes.length} codes)`);
       
@@ -3639,8 +3737,9 @@ export class AIAgentOrchestrator {
         }
       }
       
+      // v5.1: `preAuthorityResult.nlu_bypassed` removed — authority-aware crop damage detector is the SSOT.
+      // Defensive guard against any future scope drift.
       const shouldActivateDiagnosisMode = diagnosisOnlyCheck.activate || 
-        preAuthorityResult.nlu_bypassed || 
         cropDamageResult.requires_diagnosis ||
         photoForcedDiagnosis;
       
@@ -3921,7 +4020,19 @@ export class AIAgentOrchestrator {
       // If understanding is insufficient, ask clarification BEFORE NLU
       // (SKIPPED if Diagnosis-Only Mode is active)
       // ═══════════════════════════════════════════════════════════════════════════
-      if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage) {
+      // FIX (advisory routing): advisory routes (fertilizer / irrigation / spray-timing /
+      // crop-health / general-info) never need symptom clarification. Reuse the same exempt
+      // set as the Zero-Code Gate so the Understanding gate cannot ask "what are you observing?"
+      // for a scheduling / nutrition question.
+      const isAdvisoryRouteForGate =
+        ADVISORY_DIRECT_ROUTES.has(queryRoute.route as string) ||
+        intentMetaFromDB?.clarification_mode === 'DIRECT' ||
+        isAdvisoryRoute(intentCode); // Fix 7: canonical-intent bypass
+      if (isAdvisoryRouteForGate && understandingResult.clarification_required) {
+        console.log(`   ✅ [ADVISORY_ROUTE_BYPASS_UNDERSTANDING_GATE] route=${queryRoute.route} intent=${intentCode} — skipping symptom clarification (understanding=${understandingResult.understanding_confidence})`);
+      }
+
+      if (understandingResult.clarification_required && !bypassClarification && !bypassClarificationForTerminalDamage && !isAdvisoryRouteForGate) {
         console.log(`   ⚠️ Understanding insufficient (${understandingResult.understanding_confidence}) - generating scope-aware clarification`);
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -5937,8 +6048,8 @@ export class AIAgentOrchestrator {
       
       let diagnosticState: any;
       
-      if (symbolicAlreadyProduced) {
-        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic brain already produced ${totalRulesMatched} matched rules`);
+      if (symbolicAlreadyProduced || isSymptomFreeRoute || bypassClarification) {
+        console.log(`\n🧠 PHASE 3: SKIPPED — symbolic/advisory path active (rules=${totalRulesMatched}, symptom_free=${isSymptomFreeRoute}, bypass=${bypassClarification})`);
         diagnosticState = {
           mode: 'READY_FOR_DECISION',
           next_question: null,
@@ -6401,6 +6512,58 @@ export class AIAgentOrchestrator {
       const hasNoRecommendations = rulesAppliedCount === 0 || !decisionOutput.primary_decision;
       const isLowConfidence = (decisionOutput.confidence_score || 0) < 0.6;
       const hasNoPhoto = !options.photoUrl && !photoAnalysisResult;
+      const shouldUseStageAdvisoryFallback = hasNoRecommendations && hasNoPhoto && (isSymptomFreeRoute || bypassClarification) && !!landContext?.current_crop;
+      
+      if (shouldUseStageAdvisoryFallback) {
+        const cropName = landContext.current_crop || 'crop';
+        const stageName = landContext.growth_stage || 'current stage';
+        const dasText = landContext.days_since_sowing ? ` (${landContext.days_since_sowing} DAS)` : '';
+        const userLanguage = options.language || 'mr';
+        const stageFallback = this.generateStageAwareFallback(
+          cropName,
+          stageName,
+          'stage_advisory',
+          landContext.days_since_sowing || 0,
+          userLanguage
+        );
+        const fallbackMessage = userLanguage === 'mr'
+          ? `तुमच्या ${cropName} पिकाची अवस्था ${stageName}${dasText} आहे. सध्या खत/फवारणीचा निर्णय पिकाची अवस्था, माती परीक्षण, NDVI आणि हवामान पाहून घ्या. स्पष्ट कीड/रोगाची लक्षणे दिसत नसतील तर अनावश्यक रासायनिक फवारणी टाळा; नियोजित पोषण, पाणी व्यवस्थापन आणि निरीक्षण चालू ठेवा.`
+          : userLanguage === 'hi'
+            ? `आपकी ${cropName} फसल अभी ${stageName}${dasText} अवस्था में है। अभी खाद/स्प्रे का निर्णय फसल अवस्था, मिट्टी परीक्षण, NDVI और मौसम देखकर लें। कीट/रोग के स्पष्ट लक्षण न हों तो अनावश्यक रासायनिक स्प्रे टालें; नियोजित पोषण, पानी प्रबंधन और निगरानी जारी रखें।`
+            : `Your ${cropName} crop is at ${stageName}${dasText}. Use crop stage, soil test, NDVI and weather before deciding fertilizer or spray. If there are no clear pest/disease symptoms, avoid unnecessary chemical spray; continue scheduled nutrition, water management and monitoring.`;
+        agentsUsed.push('STAGE_ADVISORY_FALLBACK');
+        return {
+          type: 'DECISION_PROVIDED',
+          session_id: sessionId,
+          decision_output: {
+            decision_id: `stage_advisory_${Date.now()}`,
+            session_id: sessionId,
+            status: 'STAGE_FALLBACK',
+            decision_brain_source: true,
+            stage_fallback_message: fallbackMessage,
+            action_codes: stageFallback.action_codes,
+            rules_applied: [],
+            metadata: {
+              ...stageFallback.metadata,
+              route: queryRoute.route,
+              reason: 'ZERO_RULES_FOR_SYMPTOM_FREE_ADVISORY',
+              i18n_key: stageFallback.i18n_key
+            }
+          } as any,
+          dataAudit: landContext ? this.buildDataAudit(landContext, fusedIntelligence) : undefined,
+          metadata: {
+            confidence: 0.65,
+            safety_status: 'SAFE_STAGE_ADVISORY',
+            rules_applied: 0,
+            processing_time_ms: Date.now() - startTime,
+            agents_used: agentsUsed,
+            trace_id: traceId,
+            response_source: 'STAGE_ADVISORY_FALLBACK',
+            symptomKeys: Array.from(allObservationsForPreAuth || []),
+            isEmergency: false
+          }
+        } as any;
+      }
       
       if (hasNoRecommendations && isLowConfidence && hasNoPhoto) {
         console.log(`\n📸 [PHASE-19] Low confidence + no rules matched - requesting photo`);

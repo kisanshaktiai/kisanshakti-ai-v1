@@ -34,12 +34,22 @@ export interface ThemeConfig {
   core?: Record<string, string>;
   neutral?: Record<string, string>;
   status?: Record<string, string>;
-  typography?: { font_family?: string };
+  support?: Record<string, string>;
+  typography?: {
+    font_family?: string;
+    font_size_base?: string | number;
+    font_weight_regular?: string | number;
+    font_weight_medium?: string | number;
+    font_weight_bold?: string | number;
+  };
   navigation?: Record<string, string>;
   charts?: Record<string, string>;
   maps?: Record<string, string>;
   weather?: Record<string, string>;
   gradients?: Record<string, string>;
+  border_radius?: Record<string, string | number>;
+  shadows?: Record<string, string>;
+  spacing?: Record<string, string | number>;
   dark_mode?: {
     enabled: boolean;
     colors?: Record<string, string>;
@@ -101,6 +111,109 @@ export interface TenantContextValue {
 
 const TenantContext = createContext<TenantContextValue | undefined>(undefined);
 
+type ThemeSource = Record<string, any>;
+
+const firstThemeValue = (source: ThemeSource, keys: string[]) => {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== '') return value;
+  }
+  return undefined;
+};
+
+const setThemeAlias = (
+  target: ThemeSource,
+  group: string,
+  key: string,
+  source: ThemeSource,
+  aliases: string[]
+) => {
+  const value = firstThemeValue(source, aliases);
+  if (value === undefined) return;
+  const existing = target[group];
+  target[group] = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {};
+  if (target[group][key] === undefined || target[group][key] === null || target[group][key] === '') {
+    target[group][key] = value;
+  }
+};
+
+/**
+ * Normalize tenant portal theme payloads before applying them. Some tenants
+ * store nested semantic groups, while older portal saves use flat keys like
+ * `primary_color_hex`, `background_color`, and `surface_color`.
+ */
+export function normalizeThemeConfig(theme?: ThemeSource | null): ThemeConfig | undefined {
+  if (!theme) return undefined;
+  const out: ThemeSource = { ...theme };
+
+  setThemeAlias(out, 'core', 'primary', theme, ['primary', 'primary_color', 'primary_color_hex', 'brand_primary_color']);
+  setThemeAlias(out, 'core', 'primary_foreground', theme, ['primary_foreground', 'primary_foreground_color', 'on_primary', 'on_primary_color']);
+  setThemeAlias(out, 'core', 'secondary', theme, ['secondary', 'secondary_color', 'secondary_color_hex', 'brand_secondary_color']);
+  setThemeAlias(out, 'core', 'secondary_foreground', theme, ['secondary_foreground', 'secondary_foreground_color', 'on_secondary', 'on_secondary_color']);
+  setThemeAlias(out, 'core', 'accent', theme, ['accent', 'accent_color', 'accent_color_hex', 'brand_accent_color']);
+  setThemeAlias(out, 'core', 'accent_foreground', theme, ['accent_foreground', 'accent_foreground_color', 'on_accent', 'on_accent_color']);
+  setThemeAlias(out, 'core', 'ring', theme, ['ring', 'ring_color', 'focus_color']);
+
+  setThemeAlias(out, 'neutral', 'background', theme, ['background', 'background_color', 'background_color_hex', 'app_background_color']);
+  setThemeAlias(out, 'neutral', 'on_background', theme, ['on_background', 'on_background_color', 'foreground', 'foreground_color', 'text_color', 'text_color_hex']);
+  setThemeAlias(out, 'neutral', 'surface', theme, ['surface', 'surface_color', 'surface_color_hex', 'card', 'card_color', 'popover', 'panel_color']);
+  setThemeAlias(out, 'neutral', 'on_surface', theme, ['on_surface', 'on_surface_color', 'card_foreground', 'card_foreground_color', 'surface_text_color', 'text_color']);
+  setThemeAlias(out, 'neutral', 'border', theme, ['border', 'border_color', 'border_color_hex', 'input', 'input_color', 'divider_color']);
+
+  setThemeAlias(out, 'status', 'success', theme, ['success', 'success_color', 'success_color_hex']);
+  setThemeAlias(out, 'status', 'warning', theme, ['warning', 'warning_color', 'warning_color_hex']);
+  setThemeAlias(out, 'status', 'error', theme, ['error', 'error_color', 'error_color_hex', 'destructive', 'destructive_color']);
+  setThemeAlias(out, 'status', 'info', theme, ['info', 'info_color', 'info_color_hex']);
+
+  setThemeAlias(out, 'navigation', 'nav_background', theme, ['nav_background', 'nav_background_color', 'bottom_nav_background', 'bottom_nav_background_color', 'navigation_background_color']);
+  setThemeAlias(out, 'navigation', 'nav_active', theme, ['nav_active', 'nav_active_color', 'bottom_nav_active', 'bottom_nav_active_color', 'navigation_active_color']);
+  setThemeAlias(out, 'navigation', 'nav_inactive', theme, ['nav_inactive', 'nav_inactive_color', 'bottom_nav_inactive', 'bottom_nav_inactive_color', 'navigation_inactive_color']);
+  setThemeAlias(out, 'navigation', 'nav_border', theme, ['nav_border', 'nav_border_color', 'bottom_nav_border', 'bottom_nav_border_color', 'navigation_border_color']);
+
+  setThemeAlias(out, 'support', 'disabled', theme, ['disabled', 'disabled_color', 'disabled_text_color']);
+  setThemeAlias(out, 'support', 'overlay', theme, ['overlay', 'overlay_color']);
+
+  setThemeAlias(out, 'typography', 'font_family', theme, ['font_family', 'fontFamily']);
+  setThemeAlias(out, 'typography', 'font_size_base', theme, ['font_size_base', 'fontSizeBase', 'base_font_size']);
+  setThemeAlias(out, 'typography', 'font_weight_regular', theme, ['font_weight_regular', 'regular_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_medium', theme, ['font_weight_medium', 'medium_font_weight']);
+  setThemeAlias(out, 'typography', 'font_weight_bold', theme, ['font_weight_bold', 'bold_font_weight']);
+
+  return out as ThemeConfig;
+}
+
+/**
+ * Deep-merge the two theme JSONB groups stored in white_label_configs.
+ * - `theme_colors` carries: core, navigation, charts, maps, weather, gradients, dark_mode.
+ * - `mobile_theme`  carries: core, neutral, status, support, typography, border_radius, shadows, spacing.
+ * Both share `core` — mobile_theme wins so the partner's preset is authoritative.
+ * Without this merge, picking one column drops half the namespaces from the app.
+ */
+export function mergeThemeGroups(
+  themeColors?: Record<string, any> | null,
+  mobileTheme?: Record<string, any> | null
+): ThemeConfig | undefined {
+  const normalizedThemeColors = normalizeThemeConfig(themeColors);
+  const normalizedMobileTheme = normalizeThemeConfig(mobileTheme);
+  if (!normalizedThemeColors && !normalizedMobileTheme) return undefined;
+  const out: Record<string, any> = {};
+  const keys = new Set([
+    ...Object.keys(normalizedThemeColors || {}),
+    ...Object.keys(normalizedMobileTheme || {}),
+  ]);
+  for (const k of keys) {
+    const a = (normalizedThemeColors as any)?.[k];
+    const b = (normalizedMobileTheme as any)?.[k];
+    if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
+      out[k] = { ...a, ...b };
+    } else {
+      out[k] = b ?? a;
+    }
+  }
+  return out as ThemeConfig;
+}
+
+
 // ============= Provider =============
 
 export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -143,7 +256,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (cachedConfig.white_label_config?.brand_identity as BrandingConfig) || {
               company_name: cachedConfig.tenant_data.name,
             },
-            theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(cachedConfig.white_label_config?.theme_colors as any, cachedConfig.white_label_config?.mobile_theme as any),
             pwa: cachedConfig.white_label_config?.pwa_config as PWAConfig,
             features: [],
             settings: {
@@ -161,122 +274,318 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, []);
 
+  const buildConfigFromWhiteLabelPayload = useCallback((payload: any, domain: string): TenantConfig | null => {
+    const tenantData = payload?.tenant;
+    if (!tenantData?.id) return null;
+
+    const whiteLabelConfig = payload?.whiteLabelConfig || {};
+    const brandIdentity = whiteLabelConfig.brand_identity || {};
+    const tenantSettings = tenantData.settings || {};
+
+    return {
+      id: tenantData.id,
+      name: tenantData.name || brandIdentity.company_name || brandIdentity.app_name || 'Tenant',
+      slug: tenantData.slug || undefined,
+      domain,
+      subdomain: tenantData.subdomain || undefined,
+      custom_domain: tenantData.custom_domain || undefined,
+      status: tenantData.status || 'active',
+      branding: {
+        company_name: brandIdentity.company_name || brandIdentity.app_name || tenantData.name,
+        tagline: brandIdentity.tagline,
+        logo_url: brandIdentity.logo_url,
+        favicon_url: brandIdentity.favicon_url,
+        primary_color: brandIdentity.primary_color,
+        secondary_color: brandIdentity.secondary_color,
+        accent_color: brandIdentity.accent_color,
+        background_color: brandIdentity.background_color,
+        text_color: brandIdentity.text_color,
+        font_family: brandIdentity.font_family,
+        description: brandIdentity.description,
+      },
+      theme: mergeThemeGroups(whiteLabelConfig.theme_colors as any, whiteLabelConfig.mobile_theme as any),
+      pwa: whiteLabelConfig.pwa_config as PWAConfig,
+      splashScreens: whiteLabelConfig.splash_screens as SplashScreenConfig,
+      features: payload?.features || tenantSettings.features || [],
+      settings: {
+        languages: payload?.languages || tenantSettings.languages || ['en', 'hi'],
+        defaultLanguage: tenantSettings.defaultLanguage || 'hi',
+        timezone: tenantSettings.timezone || 'Asia/Kolkata',
+        currency: tenantSettings.currency || 'INR',
+      },
+    };
+  }, []);
+
+  // Track which CSS variables we've set, so we can clear them when switching tenants.
+  const appliedVarsRef = useRef<Set<string>>(new Set());
+
   const applyThemeToDOM = useCallback((branding: BrandingConfig, theme?: ThemeConfig) => {
     const root = document.documentElement;
 
-    // Helper to convert colors to HSL
+    // --- Color helpers ----------------------------------------------------
     const hexToHSL = (hex: string): string => {
       const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
       if (!result) return '';
-      
       const r = parseInt(result[1], 16) / 255;
       const g = parseInt(result[2], 16) / 255;
       const b = parseInt(result[3], 16) / 255;
-      
       const max = Math.max(r, g, b);
       const min = Math.min(r, g, b);
       let h = 0, s = 0;
       const l = (max + min) / 2;
-      
       if (max !== min) {
         const d = max - min;
         s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-        
         switch (max) {
           case r: h = ((g - b) / d + (g < b ? 6 : 0)) / 6; break;
           case g: h = ((b - r) / d + 2) / 6; break;
           case b: h = ((r - g) / d + 4) / 6; break;
         }
       }
-      
       return `${Math.round(h * 360)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
     };
 
+    /** Returns an HSL triplet ("H S% L%") for any color string. Pass-through if already triplet. */
     const ensureHSL = (color: string): string => {
       if (!color) return '';
-      if (color.includes('%')) return color;
-      if (color.startsWith('#')) return hexToHSL(color);
-      return color;
+      const trimmed = String(color).trim();
+      if (trimmed.includes('%')) return trimmed;            // already "H S% L%" or "hsl(...)"
+      if (trimmed.startsWith('#')) return hexToHSL(trimmed);
+      // hsl(...) or rgb(...) — leave as-is; CSS engine handles it (won't compose with hsl(var(--x)))
+      return trimmed;
     };
 
-    console.log('🎨 [TenantProvider] Applying theme to DOM');
-    console.log('🎨 [TenantProvider] Branding data:', {
-      company_name: branding.company_name,
-      logo_url: branding.logo_url,
-      favicon_url: branding.favicon_url,
-      primary_color: branding.primary_color,
-      secondary_color: branding.secondary_color,
-      accent_color: branding.accent_color,
-    });
-    console.log('🎨 [TenantProvider] Theme data:', theme ? Object.keys(theme) : 'No theme data');
+    /** Luminance-aware foreground (#fff or near-black) for a hex/HSL color. */
+    const contrastForegroundHSL = (color: string): string => {
+      const triplet = ensureHSL(color);
+      const m = /^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%$/.exec(triplet);
+      const L = m ? parseFloat(m[3]) : 50;
+      return L >= 60 ? '0 0% 10%' : '0 0% 100%';
+    };
 
-    // Apply theme colors if available
+    /** Track + set a CSS variable so we can later clear stale tenant overrides. */
+    const setVar = (name: string, value: string) => {
+      if (!value) return;
+      root.style.setProperty(name, value);
+      appliedVarsRef.current.add(name);
+    };
+
+    // --- Reset previously-applied tenant vars (so a sparser tenant theme
+    //     doesn't inherit the previous tenant's overrides). ---------------
+    appliedVarsRef.current.forEach((name) => root.style.removeProperty(name));
+    appliedVarsRef.current.clear();
+
+    console.log('🎨 [TenantProvider] Applying theme to DOM', {
+      hasTheme: !!theme,
+      themeNamespaces: theme ? Object.keys(theme) : [],
+      branding_primary: branding.primary_color,
+    });
+
+    // ---- core (primary, secondary, accent, foregrounds, muted, card…) --
     if (theme?.core) {
-      console.log('🎨 [TenantProvider] Applying core theme colors:', Object.keys(theme.core));
       Object.entries(theme.core).forEach(([key, value]) => {
-        if (value) {
-          const hslValue = ensureHSL(value);
-          root.style.setProperty(`--${key.replace(/_/g, '-')}`, hslValue);
-          console.log(`  ✓ Set --${key.replace(/_/g, '-')}: ${hslValue}`);
-        }
+        if (!value) return;
+        setVar(`--${key.replace(/_/g, '-')}`, ensureHSL(value));
       });
     }
 
+    // ---- neutral (background, surface→card/popover, border→border/input)
     if (theme?.neutral) {
-      if (theme.neutral.background) root.style.setProperty('--background', ensureHSL(theme.neutral.background));
-      if (theme.neutral.surface) {
-        root.style.setProperty('--card', ensureHSL(theme.neutral.surface));
-        root.style.setProperty('--popover', ensureHSL(theme.neutral.surface));
+      const n = theme.neutral;
+      if (n.background) setVar('--background', ensureHSL(n.background));
+      if (n.on_background) setVar('--foreground', ensureHSL(n.on_background));
+      if (n.surface) {
+        setVar('--card', ensureHSL(n.surface));
+        setVar('--popover', ensureHSL(n.surface));
       }
-      if (theme.neutral.border) {
-        root.style.setProperty('--border', ensureHSL(theme.neutral.border));
-        root.style.setProperty('--input', ensureHSL(theme.neutral.border));
+      if (n.on_surface) {
+        setVar('--card-foreground', ensureHSL(n.on_surface));
+        setVar('--popover-foreground', ensureHSL(n.on_surface));
+      }
+      if (n.border) {
+        setVar('--border', ensureHSL(n.border));
+        setVar('--input', ensureHSL(n.border));
       }
     }
 
+    // ---- status (success/warning/error→destructive/info) ----------------
     if (theme?.status) {
-      if (theme.status.success) root.style.setProperty('--success', ensureHSL(theme.status.success));
-      if (theme.status.error) root.style.setProperty('--destructive', ensureHSL(theme.status.error));
-      if (theme.status.warning) root.style.setProperty('--warning', ensureHSL(theme.status.warning));
-      if (theme.status.info) root.style.setProperty('--info', ensureHSL(theme.status.info));
+      const s = theme.status;
+      if (s.success) {
+        const v = ensureHSL(s.success);
+        setVar('--success', v);
+        setVar('--success-foreground', contrastForegroundHSL(s.success));
+        setVar('--success-soft', `${v.replace(/(\d+)%$/, '92%')}`);
+      }
+      if (s.warning) {
+        const v = ensureHSL(s.warning);
+        setVar('--warning', v);
+        setVar('--warning-foreground', contrastForegroundHSL(s.warning));
+        setVar('--warning-soft', `${v.replace(/(\d+)%$/, '92%')}`);
+      }
+      if (s.error) {
+        const v = ensureHSL(s.error);
+        setVar('--destructive', v);
+        setVar('--destructive-foreground', contrastForegroundHSL(s.error));
+        setVar('--destructive-soft', `${v.replace(/(\d+)%$/, '94%')}`);
+      }
+      if (s.info) {
+        const v = ensureHSL(s.info);
+        setVar('--info', v);
+        setVar('--info-foreground', contrastForegroundHSL(s.info));
+        setVar('--info-soft', `${v.replace(/(\d+)%$/, '94%')}`);
+      }
     }
 
+    // ---- support (disabled, overlay) -----------------------------------
+    if (theme?.support) {
+      if (theme.support.disabled) setVar('--muted-foreground', ensureHSL(theme.support.disabled));
+      if (theme.support.overlay)  setVar('--overlay-dark',     ensureHSL(theme.support.overlay));
+    }
+
+    // ---- navigation -----------------------------------------------------
+    if (theme?.navigation) {
+      const map: Record<string, string> = {
+        nav_active: '--nav-active',
+        nav_inactive: '--nav-inactive',
+        nav_background: '--nav-background',
+        nav_border: '--nav-border',
+      };
+      Object.entries(theme.navigation).forEach(([k, v]) => {
+        if (map[k] && v) setVar(map[k], ensureHSL(v));
+      });
+    }
+
+    // ---- charts (chart_1..5 → --chart-1..5) ----------------------------
+    if (theme?.charts) {
+      Object.entries(theme.charts).forEach(([k, v]) => {
+        if (v) setVar(`--${k.replace(/_/g, '-')}`, ensureHSL(v));
+      });
+    }
+
+    // ---- maps -----------------------------------------------------------
+    if (theme?.maps) {
+      const map: Record<string, string> = {
+        marker_color: '--marker-color',
+        polygon_fill: '--polygon-fill',
+        polygon_stroke: '--polygon-stroke',
+        tracking_fill: '--tracking-fill',
+        tracking_stroke: '--tracking-stroke',
+      };
+      Object.entries(theme.maps).forEach(([k, v]) => {
+        if (map[k] && v) setVar(map[k], ensureHSL(v));
+      });
+    }
+
+    // ---- weather --------------------------------------------------------
+    if (theme?.weather) {
+      Object.entries(theme.weather).forEach(([k, v]) => {
+        if (v) setVar(`--weather-${k.replace(/_/g, '-')}`, ensureHSL(v));
+      });
+    }
+
+    // ---- gradients (full CSS gradient strings) --------------------------
+    if (theme?.gradients) {
+      Object.entries(theme.gradients).forEach(([k, v]) => {
+        if (v) setVar(`--gradient-${k.replace(/_/g, '-')}`, String(v));
+      });
+    }
+
+    // ---- border radius --------------------------------------------------
+    if (theme?.border_radius) {
+      const br = theme.border_radius;
+      const toRem = (n: string | number) => {
+        const num = typeof n === 'number' ? n : parseFloat(String(n));
+        if (Number.isNaN(num)) return String(n);
+        if (String(n).endsWith('px') || String(n).endsWith('rem')) return String(n);
+        return `${num / 16}rem`;
+      };
+      if (br.sm)   setVar('--radius-sm',   toRem(br.sm));
+      if (br.md) { setVar('--radius',      toRem(br.md)); setVar('--radius-md', toRem(br.md)); }
+      if (br.lg)   setVar('--radius-lg',   toRem(br.lg));
+      if (br.full) setVar('--radius-full', String(br.full).includes('px') || String(br.full).includes('rem') ? String(br.full) : `${br.full}px`);
+    }
+
+    // ---- shadows --------------------------------------------------------
+    if (theme?.shadows) {
+      Object.entries(theme.shadows).forEach(([k, v]) => {
+        if (v) setVar(`--shadow-${k}`, String(v));
+      });
+    }
+
+    // ---- typography -----------------------------------------------------
     if (theme?.typography?.font_family) {
-      root.style.setProperty('--font-sans', theme.typography.font_family);
+      setVar('--font-sans', theme.typography.font_family);
       document.body.style.fontFamily = theme.typography.font_family;
     }
+    if (theme?.typography?.font_size_base) {
+      const v = typeof theme.typography.font_size_base === 'number'
+        ? `${theme.typography.font_size_base}px`
+        : String(theme.typography.font_size_base);
+      setVar('--font-size-base', v);
+    }
+    if (theme?.typography?.font_weight_regular) setVar('--font-weight-regular', String(theme.typography.font_weight_regular));
+    if (theme?.typography?.font_weight_medium)  setVar('--font-weight-medium',  String(theme.typography.font_weight_medium));
+    if (theme?.typography?.font_weight_bold)    setVar('--font-weight-bold',    String(theme.typography.font_weight_bold));
 
-    // Fallback to branding colors
-    if (branding.primary_color) {
+    // ---- dark-mode tokens (injected into a <style> scoped to .dark) ----
+    if (theme?.dark_mode?.colors) {
+      const lines: string[] = [];
+      Object.entries(theme.dark_mode.colors).forEach(([k, v]) => {
+        if (v) lines.push(`  --${k.replace(/_/g, '-')}: ${ensureHSL(v)};`);
+      });
+      let styleEl = document.getElementById('tenant-dark-tokens') as HTMLStyleElement | null;
+      if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'tenant-dark-tokens';
+        document.head.appendChild(styleEl);
+      }
+      styleEl.textContent = `.dark {\n${lines.join('\n')}\n}`;
+    } else {
+      // Remove stale dark overrides from a previous tenant
+      const styleEl = document.getElementById('tenant-dark-tokens');
+      if (styleEl) styleEl.remove();
+    }
+
+    // ---- Branding-color fallback (only fill what theme didn't cover) ---
+    if (branding.primary_color && !theme?.core?.primary) {
       const primaryHSL = ensureHSL(branding.primary_color);
-      root.style.setProperty('--primary', primaryHSL);
-      root.style.setProperty('--primary-foreground', '0 0% 100%');
-      
-      // Cache primary color in HSL format for loader (with version)
+      setVar('--primary', primaryHSL);
+      setVar('--primary-foreground', contrastForegroundHSL(branding.primary_color));
       localStorage.setItem('tenant_primary_color', `hsl(${primaryHSL})`);
+    } else if (branding.primary_color) {
+      // Still cache for the loader/PWA
+      localStorage.setItem('tenant_primary_color', `hsl(${ensureHSL(branding.primary_color)})`);
+    }
+    if (branding.secondary_color && !theme?.core?.secondary) {
+      setVar('--secondary', ensureHSL(branding.secondary_color));
+      setVar('--secondary-foreground', contrastForegroundHSL(branding.secondary_color));
+    }
+    if (branding.accent_color && !theme?.core?.accent) {
+      setVar('--accent', ensureHSL(branding.accent_color));
+      setVar('--accent-foreground', contrastForegroundHSL(branding.accent_color));
+    }
+    if (branding.background_color && !theme?.neutral?.background) {
+      setVar('--background', ensureHSL(branding.background_color));
+    }
+    if (branding.text_color && !theme?.neutral?.on_background) {
+      setVar('--foreground', ensureHSL(branding.text_color));
+    }
+    if (branding.font_family && !theme?.typography?.font_family) {
+      setVar('--font-sans', branding.font_family);
+      document.body.style.fontFamily = branding.font_family;
     }
 
-    if (branding.secondary_color) {
-      root.style.setProperty('--secondary', ensureHSL(branding.secondary_color));
-    }
-
-    if (branding.accent_color) {
-      root.style.setProperty('--accent', ensureHSL(branding.accent_color));
-    }
-
-    // Update favicon
+    // ---- Favicon + title -----------------------------------------------
     if (branding.favicon_url) {
       const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
       if (link) link.href = branding.favicon_url;
     }
+    if (branding.company_name) document.title = branding.company_name;
 
-    // Update page title
-    if (branding.company_name) {
-      document.title = branding.company_name;
-    }
-
-    console.log('✅ [TenantProvider] Theme applied successfully');
+    console.log('✅ [TenantProvider] Theme applied (', appliedVarsRef.current.size, 'tokens )');
   }, []);
+
 
   const fetchTenantConfig = useCallback(async () => {
     try {
@@ -341,14 +650,19 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       
       // PERFORMANCE FIX: Check cache FIRST before any API calls - CRITICAL FOR FAST STARTUP
       const cachedTenant = localStorage.getItem('tenant_config_cache');
+      let cachedEtag: string | null = null;
+      let cachedLastDeployedAt: string | null = null;
+      let usedCache = false;
       if (cachedTenant) {
         try {
           const parsed = JSON.parse(cachedTenant);
-          // PRODUCTION FIX: Accept cache up to 60 min online for fast startup (was 30 min)
-          const cacheValidity = isOnline ? 3600000 : 86400000; // 60 min online, 24h offline
-          
+          cachedEtag = parsed.etag || null;
+          cachedLastDeployedAt = parsed.last_deployed_at || null;
+          // Short TTL for fast paint; correctness comes from ETag/last_deployed_at revalidation below.
+          const cacheValidity = isOnline ? 300000 : 86400000; // 5 min online, 24h offline
+
           if (Date.now() - parsed.timestamp < cacheValidity) {
-            console.log('📦 [TenantProvider] Using cached tenant config (fast path)');
+            console.log('📦 [TenantProvider] Using cached tenant config (fast paint)');
             setTenant(parsed.data);
             tenantIsolationService.setTenantContext(parsed.data.id, domain);
             applyThemeToDOM(parsed.data.branding, parsed.data.theme);
@@ -356,17 +670,8 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             window.__TENANT_LOADED__ = true;
             window.__TENANT_BRANDING__ = parsed.data.branding;
             setIsLoading(false);
-            
-            // PRODUCTION FIX: Background refresh only after app is interactive
-            if (isOnline && Date.now() - parsed.timestamp > 300000) {
-              // If cache is older than 5 min, refresh in background (non-blocking)
-              requestIdleCallback ? requestIdleCallback(() => {
-                console.log('🔄 [TenantProvider] Background cache refresh queued');
-              }) : setTimeout(() => {
-                console.log('🔄 [TenantProvider] Background cache refresh queued');
-              }, 10000);
-            }
-            return;
+            usedCache = true;
+            // Fall through to revalidate against the edge function (won't re-paint unless ETag changed)
           } else {
             console.log('⏰ [TenantProvider] Cache expired, fetching fresh config');
           }
@@ -378,32 +683,43 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // OPTION 1: Try centralized API first (cleaner)
       try {
-        const response = await fetch(
-          getSupabaseFunctionUrl('tenant-config'),
-          {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Client-Domain': domain, // Pass actual client domain
-              'Origin': `https://${domain}`, // Helps with CORS and domain detection
-            },
-          }
-        );
+        const headers: Record<string, string> = { Accept: 'application/json' };
+        const tenantConfigParams = new URLSearchParams({ domain, t: Date.now().toString() });
+        const tenantConfigUrl = `${getSupabaseFunctionUrl('tenant-config')}?${tenantConfigParams.toString()}`;
+
+        const response = await fetch(tenantConfigUrl, {
+          method: 'GET',
+          headers,
+        });
+
+        if (response.status === 304 && usedCache) {
+          console.log('⚡ [TenantProvider] 304 Not Modified — keeping cached theme');
+          return;
+        }
 
         if (response.ok) {
           const apiConfig = await response.json();
-          
-          console.log('✅ [TenantProvider] Loaded config from centralized API');
-          console.log('📦 [TenantProvider] API Response:', {
+          const newLda = apiConfig?.metadata?.last_deployed_at || null;
+          const newEtag = apiConfig?.metadata?.etag || response.headers.get('etag') || null;
+
+          // If we already painted from cache and nothing changed, skip the re-apply.
+          if (
+            usedCache &&
+            newLda &&
+            cachedLastDeployedAt &&
+            newLda === cachedLastDeployedAt &&
+            newEtag === cachedEtag
+          ) {
+            console.log('⚡ [TenantProvider] last_deployed_at unchanged — cached theme is current');
+            return;
+          }
+
+          console.log('✅ [TenantProvider] Theme refresh from edge function', {
             tenant_name: apiConfig.tenant?.name,
-            tenant_id: apiConfig.tenant?.id,
-            has_branding: !!apiConfig.branding,
-            has_theme: !!apiConfig.theme,
-            branding_company: apiConfig.branding?.company_name,
-            branding_logo: apiConfig.branding?.logo_url,
-            branding_primary_color: apiConfig.branding?.primary_color,
+            last_deployed_at: newLda,
+            replaced_cache: usedCache,
           });
-          
+
           const config: TenantConfig = {
             id: apiConfig.tenant.id,
             name: apiConfig.tenant.name,
@@ -413,7 +729,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             custom_domain: apiConfig.tenant.custom_domain,
             status: apiConfig.tenant.status,
             branding: apiConfig.branding,
-            theme: apiConfig.theme,
+            theme: normalizeThemeConfig(apiConfig.theme),
             pwa: apiConfig.pwa,
             splashScreens: apiConfig.splash_screens,
             features: apiConfig.features,
@@ -421,42 +737,83 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           };
 
           setTenant(config);
-          console.log('✅ [TenantProvider] Tenant state updated:', config.name);
-          console.log('✅ [TenantProvider] Setting tenant context for isolation service');
           tenantIsolationService.setTenantContext(config.id, domain);
-          console.log('✅ [TenantProvider] Applying theme to DOM with branding and theme');
           applyThemeToDOM(config.branding, config.theme);
           setLastUpdated(new Date());
-          
-          // Signal to index.html loader that tenant is ready
+
           window.__TENANT_LOADED__ = true;
           window.__TENANT_BRANDING__ = config.branding;
-          console.log('🎯 [TenantProvider] Tenant loaded signal sent to loader');
 
-          // Cache for offline in IndexedDB
-          await localDB.saveTenantConfig(config.id, { 
+          await localDB.saveTenantConfig(config.id, {
             brand_identity: apiConfig.branding,
             mobile_theme: apiConfig.theme,
-            pwa_config: apiConfig.pwa
-          }, {
-            id: config.id,
-            name: config.name,
-            domain
-          });
+            pwa_config: apiConfig.pwa,
+          }, { id: config.id, name: config.name, domain });
 
-          // Cache in localStorage for fast access
           localStorage.setItem('tenant_config_cache', JSON.stringify({
             data: config,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            etag: newEtag,
+            last_deployed_at: newLda,
           }));
 
           console.log('✅ [TenantProvider] Config cached for offline use');
           return;
         }
       } catch (apiError) {
+
         console.error('❌ [TenantProvider] API failed, falling back to direct DB access');
         console.error('❌ [TenantProvider] API Error details:', apiError);
         console.error('❌ [TenantProvider] API Error message:', (apiError as Error)?.message);
+      }
+
+      // OPTION 1B: Public white-label endpoint fallback. This avoids direct `tenants`
+      // table reads from the mobile app, which are intentionally blocked by RLS.
+      try {
+        const params = new URLSearchParams({ domain, t: Date.now().toString() });
+        const response = await fetch(`${getSupabaseFunctionUrl('get-white-label-config')}?${params.toString()}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+        });
+
+        if (response.ok) {
+          const payload = await response.json();
+          const config = buildConfigFromWhiteLabelPayload(payload, domain);
+          if (config) {
+            const newLda = payload?.metadata?.last_deployed_at || payload?.whiteLabelConfig?.last_deployed_at || null;
+            const newEtag = payload?.metadata?.etag || response.headers.get('etag') || null;
+
+            console.log('✅ [TenantProvider] Theme refresh from white-label endpoint', {
+              tenant_name: config.name,
+              last_deployed_at: newLda,
+            });
+
+            setTenant(config);
+            tenantIsolationService.setTenantContext(config.id, domain);
+            applyThemeToDOM(config.branding, config.theme);
+            setLastUpdated(new Date());
+
+            window.__TENANT_LOADED__ = true;
+            window.__TENANT_BRANDING__ = config.branding;
+
+            await localDB.saveTenantConfig(config.id, payload.whiteLabelConfig, {
+              id: config.id,
+              name: config.name,
+              domain,
+            });
+
+            localStorage.setItem('tenant_config_cache', JSON.stringify({
+              data: config,
+              timestamp: Date.now(),
+              etag: newEtag,
+              last_deployed_at: newLda,
+            }));
+
+            return;
+          }
+        }
+      } catch (whiteLabelError) {
+        console.error('❌ [TenantProvider] White-label endpoint fallback failed:', whiteLabelError);
       }
 
       // OPTION 2: Fallback to direct database access (for development/testing)
@@ -505,7 +862,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (whiteLabel?.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
             },
-            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(whiteLabel?.theme_colors as any, whiteLabel?.mobile_theme as any),
             pwa: whiteLabel?.pwa_config as PWAConfig,
             splashScreens: (whiteLabel as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
@@ -569,7 +926,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             branding: (matchedConfig.brand_identity as BrandingConfig) || {
               company_name: tenantData.name,
             },
-            theme: (matchedConfig.mobile_theme || matchedConfig.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(matchedConfig.theme_colors as any, matchedConfig.mobile_theme as any),
             pwa: matchedConfig.pwa_config as PWAConfig,
             splashScreens: (matchedConfig as any)?.splash_screens as SplashScreenConfig,
             features: (tenantData.settings as any)?.features || [
@@ -658,7 +1015,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               company_name: defaultTenantData.name,
               // No fallback colors - let CSS defaults handle it until theme loads
             },
-            theme: (whiteLabel?.mobile_theme || whiteLabel?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(whiteLabel?.theme_colors as any, whiteLabel?.mobile_theme as any),
             pwa: whiteLabel?.pwa_config as PWAConfig,
             features: (defaultTenantData.settings as any)?.features || ['ai_chat', 'weather', 'marketplace', 'social', 'analytics']
           };
@@ -746,7 +1103,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               company_name: cachedConfig.tenant_data.name,
               // No fallback colors - let CSS defaults handle it
             },
-            theme: (cachedConfig.white_label_config?.mobile_theme || cachedConfig.white_label_config?.theme_colors) as ThemeConfig,
+            theme: mergeThemeGroups(cachedConfig.white_label_config?.theme_colors as any, cachedConfig.white_label_config?.mobile_theme as any),
             features: [],
             settings: {
               languages: ['en', 'hi'],
@@ -762,7 +1119,7 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } finally {
       setIsLoading(false);
     }
-  }, [getCurrentDomain, applyThemeToDOM]);
+  }, [getCurrentDomain, applyThemeToDOM, buildConfigFromWhiteLabelPayload, loadOfflineConfig]);
 
   // Clear cache and refetch (for theme updates)
   const clearCache = useCallback(() => {
@@ -784,10 +1141,12 @@ export const TenantProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     
     window.addEventListener('theme-updated', handleThemeUpdate);
+    window.addEventListener('themeUpdated', handleThemeUpdate);
     window.addEventListener('tenant-theme-update', handleSilentThemeUpdate);
     
     return () => {
       window.removeEventListener('theme-updated', handleThemeUpdate);
+      window.removeEventListener('themeUpdated', handleThemeUpdate);
       window.removeEventListener('tenant-theme-update', handleSilentThemeUpdate);
     };
   }, [clearCache]);

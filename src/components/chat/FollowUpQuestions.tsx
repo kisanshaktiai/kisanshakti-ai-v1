@@ -20,38 +20,38 @@ interface FollowUpQuestionsProps {
 const CATEGORY_STYLES = {
   income: {
     icon: Wallet,
-    gradient: 'from-emerald-500/20 to-green-500/20',
-    border: 'border-emerald-500/40',
-    iconColor: 'text-emerald-500',
-    hoverBg: 'hover:bg-emerald-500/10'
+    gradient: 'from-success/20 to-success/20',
+    border: 'border-success/40',
+    iconColor: 'text-success',
+    hoverBg: 'hover:bg-success/10'
   },
   yield: {
     icon: TrendingUp,
-    gradient: 'from-blue-500/20 to-cyan-500/20',
-    border: 'border-blue-500/40',
-    iconColor: 'text-blue-500',
-    hoverBg: 'hover:bg-blue-500/10'
+    gradient: 'from-info/20 to-info/20',
+    border: 'border-info/40',
+    iconColor: 'text-info',
+    hoverBg: 'hover:bg-info/10'
   },
   savings: {
     icon: Wallet,
-    gradient: 'from-amber-500/20 to-yellow-500/20',
-    border: 'border-amber-500/40',
-    iconColor: 'text-amber-500',
-    hoverBg: 'hover:bg-amber-500/10'
+    gradient: 'from-warning/20 to-warning/20',
+    border: 'border-warning/40',
+    iconColor: 'text-warning',
+    hoverBg: 'hover:bg-warning/10'
   },
   next_action: {
     icon: Target,
-    gradient: 'from-purple-500/20 to-violet-500/20',
-    border: 'border-purple-500/40',
-    iconColor: 'text-purple-500',
-    hoverBg: 'hover:bg-purple-500/10'
+    gradient: 'from-primary/20 to-primary/20',
+    border: 'border-primary/40',
+    iconColor: 'text-primary',
+    hoverBg: 'hover:bg-primary/10'
   },
   expert_tip: {
     icon: Award,
-    gradient: 'from-rose-500/20 to-pink-500/20',
-    border: 'border-rose-500/40',
-    iconColor: 'text-rose-500',
-    hoverBg: 'hover:bg-rose-500/10'
+    gradient: 'from-destructive/20 to-primary/20',
+    border: 'border-destructive/40',
+    iconColor: 'text-destructive',
+    hoverBg: 'hover:bg-destructive/10'
   }
 };
 
@@ -78,7 +78,7 @@ export function FollowUpQuestions({ questions, onQuestionClick, language = 'en' 
         transition={{ delay: 0.5 }}
         className="text-sm font-medium text-muted-foreground flex items-center gap-2"
       >
-        <Lightbulb className="h-4 w-4 text-amber-500" />
+        <Lightbulb className="h-4 w-4 text-warning" />
         {headerLabels[language as keyof typeof headerLabels] || headerLabels.en}
       </motion.p>
       

@@ -1,6 +1,4 @@
-import { supabase } from '@/utils/supabase';
-import { useAuthStore } from '@/stores/authStore';
-import { dataIsolation, isolatedSupabase } from './dataIsolationService';
+import { dataIsolation } from './dataIsolationService';
 import { SUPABASE_CONFIG, getSupabaseFunctionUrl } from '@/config/supabase';
 
 const LANDS_API_URL = getSupabaseFunctionUrl('lands-api');
@@ -9,69 +7,104 @@ const RETRY_DELAY = 1000;
 
 interface LandData {
   id?: string;
+  // Identity & ownership
   name: string;
   ownership_type: string;
   area_acres: number;
   survey_number?: string;
-  state?: string;
-  district?: string;
-  taluka?: string;
-  village?: string;
+  // Administrative location
+  country?: string;
+  country_code?: string;
+  state?: string; state_id?: string;
+  district?: string; district_id?: string;
+  taluka?: string; taluka_id?: string;
+  village?: string; village_id?: string;
+  location_context?: any;
+  // Land character
+  land_type?: string;
   soil_type?: string;
   water_source?: string;
   irrigation_type?: string;
+  irrigation_source?: string;
+  // Crop cycle (current + previous) — REQUIRED for downstream pipelines
   current_crop?: string;
-  previous_crop?: string;
+  current_crop_id?: string;
+  crop_stage?: string;
+  planting_date?: string;
   cultivation_date?: string;
+  last_sowing_date?: string;
+  expected_harvest_date?: string;
+  previous_crop?: string;
+  previous_crop_id?: string;
+  last_crop?: string;
   last_harvest_date?: string;
+  // Geometry / GPS
   area_guntas?: number;
   area_sqft?: number;
   boundary_polygon_old?: any;
   center_point_old?: any;
+  center_lat?: number;
+  center_lon?: number;
   boundary_method?: string;
   gps_accuracy_meters?: number;
   gps_recorded_at?: string;
+  elevation_meters?: number;
+  slope_percentage?: number;
+  // Misc
+  notes?: string;
+  land_documents?: any;
+  marketplace_enabled?: boolean;
   is_active?: boolean;
   deleted_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
 
+
 class LandsApiService {
+  /**
+   * Build the auth header set for an edge-function call.
+   *
+   * The farmer app uses CUSTOM auth via `x-farmer-id` / `x-tenant-id` headers
+   * (validated against the `farmers` table inside `tenantAccessGuard.ts`).
+   * The edge guard treats requests bearing the project's anon key as
+   * "custom-auth" and skips JWT validation. So we send:
+   *   - Authorization: Bearer <ANON_KEY>      → satisfies guard
+   *   - apikey:        <ANON_KEY>             → satisfies Supabase router
+   *   - x-tenant-id, x-farmer-id, x-session-token → set by dataIsolation
+   *
+   * We deliberately do NOT call `supabase.auth.getSession()` here — that path
+   * was the source of a TypeError after a previous refactor and gave us no
+   * benefit (the guard ignores session JWTs from this app).
+   *
+   * Mirrors `schedulesApi.getHeaders()` exactly so behaviour is identical.
+   */
   private async getHeaders(): Promise<HeadersInit> {
-    // Wait for context to be available (handles race condition during app init)
-    let attempts = 0;
-    const maxAttempts = 10; // Increased attempts
-    const baseDelay = 200;
-    
-    while (attempts < maxAttempts) {
-      try {
-        const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
-        
-        if (isValid && tenantId && farmerId) {
-          const headers = dataIsolation.getIsolationHeaders();
-          console.log('🌐 [LandsAPI] Headers ready:', { 
-            tenantId: headers['x-tenant-id']?.substring(0, 8) + '...', 
-            farmerId: headers['x-farmer-id']?.substring(0, 8) + '...'
-          });
-          return {
-            ...headers,
-            'apikey': SUPABASE_CONFIG.ANON_KEY,
-            'Content-Type': 'application/json'
-          };
-        }
-      } catch (contextError) {
-        console.warn(`🌐 [LandsAPI] Context error on attempt ${attempts + 1}:`, contextError);
+    const maxAttempts = 5;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const { tenantId, farmerId, isValid } = dataIsolation.getIsolationContext();
+
+      if (isValid && tenantId && farmerId) {
+        const headers = dataIsolation.getIsolationHeaders();
+        console.log('🌐 [LandsAPI] Headers ready:', {
+          tenantId: headers['x-tenant-id']?.substring(0, 8) + '…',
+          farmerId: headers['x-farmer-id']?.substring(0, 8) + '…',
+        });
+        return {
+          ...headers,
+          apikey: SUPABASE_CONFIG.ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_CONFIG.ANON_KEY}`,
+          'Content-Type': 'application/json',
+        };
       }
-      
-      const delay = baseDelay * Math.min(attempts + 1, 3); // Progressive delay, max 600ms
-      console.log(`🌐 [LandsAPI] Waiting for context (attempt ${attempts + 1}/${maxAttempts}, delay: ${delay}ms)...`);
-      await new Promise(resolve => setTimeout(resolve, delay));
-      attempts++;
+
+      console.log(`🌐 [LandsAPI] Waiting for auth context (attempt ${attempt}/${maxAttempts})…`);
+      await new Promise((resolve) => setTimeout(resolve, 300));
     }
-    
-    console.error('❌ [LandsAPI] Context never became valid after', maxAttempts, 'attempts');
-    throw new Error('Session expired. Please log in again to manage lands.');
+
+    console.error('❌ [LandsAPI] Auth context never became valid');
+    throw new Error('Please ensure you are logged in before accessing lands.');
   }
 
   private async fetchWithRetry(
@@ -98,10 +131,14 @@ class LandsApiService {
     throw lastError || new Error('Request failed after retries');
   }
 
-  async fetchLands(): Promise<LandData[]> {
+  async fetchLands(opts?: { since?: string | null }): Promise<LandData[]> {
     try {
       const headers = await this.getHeaders();
-      const response = await this.fetchWithRetry(LANDS_API_URL, {
+      const url = opts?.since
+        ? `${LANDS_API_URL}?since=${encodeURIComponent(opts.since)}`
+        : LANDS_API_URL;
+
+      const response = await this.fetchWithRetry(url, {
         method: 'GET',
         headers,
       });
@@ -288,6 +325,41 @@ class LandsApiService {
       console.error('❌ [LandsAPI] Error fetching land by ID:', error);
       return null;
     }
+  }
+
+  /**
+   * AI context inference for a brand-new land.
+   * Calls lands-api?action=infer-context with the polygon centroid and
+   * returns reverse-geocoded location, elevation and neighbour-mode
+   * suggestions for soil / water / irrigation / current crop.
+   */
+  async inferLandContext(
+    centroid: { lat: number; lng: number },
+    language: string = 'en',
+  ): Promise<any> {
+    if (!navigator.onLine) {
+      throw new Error('No internet connection. AI suggestions unavailable.');
+    }
+    const headers = await this.getHeaders();
+    const response = await this.fetchWithRetry(
+      `${LANDS_API_URL}?action=infer-context`,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ centroid, language }),
+      },
+    );
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || 'AI suggestion failed');
+    }
+    const result = await response.json();
+    return {
+      fields: result.fields || {},
+      confidence: result.confidence || {},
+      sources: result.sources || {},
+      crops: result.crops || [],
+    };
   }
 }
 

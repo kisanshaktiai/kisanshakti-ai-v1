@@ -75,11 +75,13 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     queryFn: async () => {
       if (!landId) return [];
       
+      // SPRINT 3: cap to last 50 uploads per land to keep payload small.
       const { data, error } = await supabase
         .from('crop_growth_uploads')
         .select('*')
         .eq('land_id', landId)
-        .order('upload_timestamp', { ascending: false });
+        .order('upload_timestamp', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
       return data as CropGrowthUpload[];
@@ -132,12 +134,14 @@ export function useCropGrowthTracking(landId?: string, farmerId?: string, tenant
     queryFn: async () => {
       if (!landId) return [];
       
+      // SPRINT 3: cap unread alerts to 50.
       const { data, error } = await supabase
         .from('crop_growth_alerts')
         .select('*')
         .eq('land_id', landId)
         .eq('is_read', false)
-        .order('created_at', { ascending: false });
+        .order('created_at', { ascending: false })
+        .limit(50);
 
       if (error) throw error;
       return data as CropGrowthAlert[];

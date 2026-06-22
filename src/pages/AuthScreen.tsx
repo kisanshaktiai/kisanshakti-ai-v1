@@ -86,7 +86,7 @@ export default function AuthScreen() {
       // Mobile numbers are stored as strings without country code
       const { data: farmer, error: fetchError } = await supabase
         .from('farmers')
-        .select('id, mobile_number, pin, pin_hash, tenant_id, farmer_code')
+        .select('id, mobile_number, pin_hash, tenant_id, farmer_code')
         .eq('mobile_number', cleanMobile)
         .eq('tenant_id', tenant.id)
         .maybeSingle();
@@ -130,7 +130,7 @@ export default function AuthScreen() {
   // Show loading state while tenant is loading
   if (tenantLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex items-center justify-center p-4">
+      <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex items-center justify-center p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -146,7 +146,7 @@ export default function AuthScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4 relative overflow-hidden">
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {[...Array(3)].map((_, i) => (

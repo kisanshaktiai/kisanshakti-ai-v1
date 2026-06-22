@@ -40,7 +40,8 @@ class SchedulesApiService {
         });
         return {
           ...headers,
-          'apikey': SUPABASE_CONFIG.ANON_KEY
+          apikey: SUPABASE_CONFIG.ANON_KEY,
+          Authorization: `Bearer ${SUPABASE_CONFIG.ANON_KEY}`,
         };
       }
       
@@ -77,10 +78,15 @@ class SchedulesApiService {
     throw lastError || new Error('Request failed after retries');
   }
 
-  async fetchSchedules(landId?: string): Promise<ScheduleData[]> {
+  async fetchSchedules(landId?: string, opts?: { since?: string | null; limit?: number }): Promise<ScheduleData[]> {
     try {
       const headers = await this.getHeaders();
-      const url = landId ? `${SCHEDULES_API_URL}?land_id=${landId}` : SCHEDULES_API_URL;
+      const params = new URLSearchParams();
+      if (landId) params.set('land_id', landId);
+      if (opts?.since) params.set('since', opts.since);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      const qs = params.toString();
+      const url = qs ? `${SCHEDULES_API_URL}?${qs}` : SCHEDULES_API_URL;
       
       const response = await this.fetchWithRetry(url, {
         method: 'GET',
@@ -143,11 +149,20 @@ class SchedulesApiService {
     }
   }
 
-  async fetchTasks(scheduleId?: string): Promise<any[]> {
+  async fetchTasks(
+    scheduleId?: string,
+    opts?: { since?: string | null; limit?: number; cursor?: string | null }
+  ): Promise<any[]> {
     try {
       const headers = await this.getHeaders();
-      const url = scheduleId 
-        ? `${SCHEDULES_API_URL}/tasks?schedule_id=${scheduleId}` 
+      const params = new URLSearchParams();
+      if (scheduleId) params.set('schedule_id', scheduleId);
+      if (opts?.since) params.set('since', opts.since);
+      if (opts?.limit) params.set('limit', String(opts.limit));
+      if (opts?.cursor) params.set('cursor', opts.cursor);
+      const qs = params.toString();
+      const url = qs
+        ? `${SCHEDULES_API_URL}/tasks?${qs}`
         : `${SCHEDULES_API_URL}/tasks`;
       
       const response = await this.fetchWithRetry(url, {

@@ -8,6 +8,9 @@
     "next": "Next",
     "previous": "Previous",
     "edit": "Edit",
+    "change": "Change",
+    "use": "Use",
+    "selectManually": "Select manually",
     "delete": "Delete",
     "share": "Share",
     "copy": "Copy",
@@ -15,6 +18,7 @@
     "download": "Download",
     "upload": "Upload",
     "loading": "Loading...",
+    "saving": "Saving…",
     "error": "Error",
     "success": "Success",
     "failed": "Failed",
@@ -57,6 +61,24 @@
     "noResults": "No results found",
     "pageNotFound": "Page not found",
     "returnToHome": "Return to Home",
-    "swipeLeft": "Swipe left to continue"
+    "swipeLeft": "Swipe left to continue",
+    "connection": "Connection",
+    "more": "More actions",
+    "quickActions": "Quick Actions",
+    "sync": "Sync data",
+    "language": "Language",
+    "speak_this_page": "Speak this page",
+    "stop_speaking": "Stop speaking",
+    "no_readable_text": "Nothing to read here",
+    "no_readable_text_hint": "Scroll to a section with text and try again.",
+    "tts_failed": "Could not read this page",
+    "subscription": {
+      "tap_to_manage": "Tap to manage plan",
+      "days_remaining": "{{d}} days remaining",
+      "grace_period": "Grace period · {{d}} days left",
+      "expired_tap_renew": "Tap to renew"
+    },
+    "undo": "Undo",
+    "try_again": "Try again"
   }
 }

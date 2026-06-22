@@ -4,15 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AIScheduleAlerts } from '@/components/schedule/AIScheduleAlerts';
 import { MarketingInsightsDashboard } from '@/components/schedule/MarketingInsightsDashboard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Brain, TrendingUp, Bell, RefreshCw, Database } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
+import { Brain, TrendingUp, Bell, Database } from 'lucide-react';
 import { tenantIsolationService } from '@/services/tenantIsolationService';
 
 export default function AIScheduleDashboard() {
   const { t } = useTranslation();
-  const [monitoring, setMonitoring] = useState(false);
   const [tenantId, setTenantId] = useState<string>('');
 
   useEffect(() => {
@@ -22,27 +18,8 @@ export default function AIScheduleDashboard() {
     }
   }, []);
 
-  const runMonitoring = async () => {
-    try {
-      setMonitoring(true);
-      toast.info('Starting AI monitoring of all active schedules...');
-      
-      // Use unified ai-schedule-ops function with action=monitor
-      const { data, error } = await supabase.functions.invoke('ai-schedule-ops?action=monitor');
-      
-      if (error) throw error;
-      
-      toast.success(`Monitoring complete! Analyzed ${data.monitored} schedules`);
-    } catch (error) {
-      console.error('Monitoring error:', error);
-      toast.error('Failed to run monitoring');
-    } finally {
-      setMonitoring(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-background p-4 md:p-8">
+    <div className="min-h-full bg-background p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
@@ -55,10 +32,6 @@ export default function AIScheduleDashboard() {
               Automated scheduling, real-time monitoring & predictive insights
             </p>
           </div>
-          <Button onClick={runMonitoring} disabled={monitoring} size="lg">
-            <RefreshCw className={`w-4 h-4 mr-2 ${monitoring ? 'animate-spin' : ''}`} />
-            Run Monitoring
-          </Button>
         </div>
 
         {/* System Info Cards */}
@@ -186,7 +159,7 @@ export default function AIScheduleDashboard() {
                   </ul>
                 </div>
 
-                <div className="mt-4 p-4 bg-green-500/5 rounded-lg border border-green-500/10">
+                <div className="mt-4 p-4 bg-success/5 rounded-lg border border-success/10">
                   <h4 className="font-semibold mb-2">2030-Ready Features:</h4>
                   <ul className="list-disc list-inside space-y-1">
                     <li>Climate-adaptive recommendations</li>

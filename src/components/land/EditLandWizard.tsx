@@ -254,7 +254,7 @@ export function EditLandWizard({
 
   return (
     <div className="fixed inset-0 bg-background z-50 overflow-y-auto">
-      <div className="min-h-screen p-4">
+      <div className="min-h-full p-4">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <Card className="mb-6">

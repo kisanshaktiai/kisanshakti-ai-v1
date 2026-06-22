@@ -8,6 +8,9 @@
     "next": "आगे",
     "previous": "पिछला",
     "edit": "संपादित करें",
+    "change": "बदलें",
+    "use": "इसी का उपयोग करें",
+    "selectManually": "खुद से चुनें",
     "delete": "हटाएं",
     "share": "साझा करें",
     "copy": "कॉपी करें",
@@ -15,6 +18,7 @@
     "download": "डाउनलोड करें",
     "upload": "अपलोड करें",
     "loading": "लोड हो रहा है...",
+    "saving": "सेव हो रहा है…",
     "error": "त्रुटि",
     "success": "सफल",
     "failed": "असफल",
@@ -57,6 +61,24 @@
     "noResults": "कोई परिणाम नहीं मिला",
     "pageNotFound": "पेज नहीं मिला",
     "returnToHome": "होम पर वापस जाएं",
-    "swipeLeft": "जारी रखने के लिए बाएं स्वाइप करें"
+    "swipeLeft": "जारी रखने के लिए बाएं स्वाइप करें",
+    "connection": "कनेक्शन",
+    "more": "अधिक क्रियाएँ",
+    "quickActions": "त्वरित क्रियाएँ",
+    "sync": "डेटा सिंक करें",
+    "language": "भाषा",
+    "speak_this_page": "यह पृष्ठ पढ़ें",
+    "stop_speaking": "पढ़ना बंद करें",
+    "no_readable_text": "यहाँ पढ़ने के लिए कुछ नहीं है",
+    "no_readable_text_hint": "किसी पाठ वाले भाग पर जाएँ और पुनः प्रयास करें।",
+    "tts_failed": "यह पृष्ठ पढ़ा नहीं जा सका",
+    "subscription": {
+      "tap_to_manage": "योजना प्रबंधित करें",
+      "days_remaining": "{{d}} दिन शेष",
+      "grace_period": "छूट अवधि · {{d}} दिन बचे",
+      "expired_tap_renew": "नवीनीकरण करें"
+    },
+    "undo": "वापस लें",
+    "try_again": "फिर से प्रयास करें"
   }
 }

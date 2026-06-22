@@ -23,7 +23,8 @@ export type QueryRoute =
   | 'GENERAL_INFO'
   | 'FOLLOW_UP'
   | 'GREETING'
-  | 'CROP_HEALTH';  // P1-A: New route for "how is my crop" queries
+  | 'CROP_HEALTH'   // P1-A: "how is my crop" queries
+  | 'FERTILIZER_NUTRITION';  // Stage-based fertilizer / preventive spray scheduling (no symptoms)
 
 export interface QueryRoutingResult {
   route: QueryRoute;
@@ -213,6 +214,57 @@ const CROP_HEALTH_PATTERNS = [
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
+// FERTILIZER / NUTRITION SCHEDULING PATTERNS
+// Pure scheduling questions ("which fertilizer / which spray now") — NOT
+// symptom reports. Must route to FERTILIZER_NUTRITION, not PEST_DISEASE.
+// ═══════════════════════════════════════════════════════════════════════════
+const FERTILIZER_NUTRITION_PATTERNS = [
+  // Devanagari (Marathi + Hindi)
+  /खत|खाद|उर्वरक|पोषण|पोषक|fertili[sz]er|nutrient/i,
+  /कोणते?\s*खत|कौन\s*सा\s*खाद|कोणत[ेी]\s*खाद/i,
+  /सध्या.*खत|आता.*खत|अभी.*खाद|now.*fertili[sz]er/i,
+  /खत\s*(देवू|द्या|द्यायचे|दूं|डालू|डालें|कधी|कब|कोणते|कौनसा)/i,
+  /(बेसल|बेसळ|basal|टॉप\s*ड्रेस|top\s*dress|युरिया|urea|डीएपी|DAP|पोटॅश|potash|MOP|एनपीके|NPK)/i,
+  // Romanized
+  /\bkhat\b|\bkhaad\b|\bkhad\b|\burvarak\b|\bposhan\b/i,
+  /khat\s*(devu|dya|kadhi|kab|kontya|kounsa)/i
+];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SYMPTOM TOKENS — actual disease/pest evidence (used to differentiate
+// "spray for treatment" from "preventive spray scheduling")
+// ═══════════════════════════════════════════════════════════════════════════
+const SYMPTOM_TOKENS = [
+  // Color / damage
+  /पिवळ|पीला|yellow|पान.*रंग|\bpival[ae]?\b|\bpivla\b|\bpila\b/i,
+  /डाग|धब्बे|spots?|patches?|lesion|dag\b|dhabbe/i,
+  /छिद्र|भोक|छेद|holes?|tunnel/i,
+  // Death / wilting
+  /मेला|मेले|मरत|मरून|मर\s*गय|मर\s*रह|dead|dying|died|kill/i,
+  /सुक|सुख|वाळ|wilt|droop|dried|drying|कोमेज/i,
+  /जळ|जळून|करपा|burn|scorched/i,
+  // Pests / diseases
+  /किडा|किडे|कीट|कीड़|pest|insect|bug|borer|अळी|whitefly|aphid|thrips|mealybug|jassid/i,
+  /रोग|बीमारी|disease|fungus|बुरशी|फफूंद|infection|करपा|तांबेरा|rust|mildew|blight|wilt/i,
+  /\bkidi\b|\bkida\b|\bali\b|\bmel[ae]\b|\bsukl[ae]\b|\brog\b|\btambera\b|\bkarpa\b/i
+];
+
+// Generic "treatment-action" tokens that, on their own (without SYMPTOM_TOKENS),
+// are NOT enough to declare a pest/disease problem. They often appear in
+// scheduling questions like "now which spray should I take".
+const GENERIC_ACTION_TOKENS = [
+  /फवारणी|स्प्रे|spray|छिड़काव|favarni/i,
+  /काय\s*करू|क्या\s*करूं|what\s*(should|can|to)\s*do/i,
+  /उपाय|इलाज|treatment|remedy|solution|upay/i,
+  /औषध|दवाई|medicine|chemical|pesticide/i
+];
+
+function hasAnySymptomToken(message: string): boolean {
+  return SYMPTOM_TOKENS.some(p => p.test(message));
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN ROUTING FUNCTION
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -290,18 +342,52 @@ export function routeQuery(
     return result;
   }
   
+  // Priority 3.7: FERTILIZER / NUTRITION scheduling (no symptoms)
+  // Farmer asks "what fertilizer/spray to take now" → stage-based plan,
+  // NOT a diagnostic pest/disease flow.
+  const fertilizerScore = countPatternMatches(message, FERTILIZER_NUTRITION_PATTERNS);
+  const hasSymptoms = hasAnySymptomToken(message);
+  if (fertilizerScore >= 1 && !hasSymptoms) {
+    result.route = 'FERTILIZER_NUTRITION';
+    result.confidence = Math.min(0.95, 0.75 + fertilizerScore * 0.1);
+    result.requires_decision_brain = true;   // Use symbolic rule engine (FERTILIZER_SCHEDULE rules)
+    result.requires_weather_api = true;      // Preventive spray window needs weather
+    result.context_hints.push('FERTILIZER_SCHEDULE', 'STAGE_BASED', 'NO_SYMPTOMS');
+    return result;
+  }
+
   // Priority 4: Pest/Disease treatment (needs full Decision Brain)
+  // GUARD: if the only PEST_DISEASE matches are generic action tokens
+  // (spray/उपाय/treatment) and there are NO actual symptom tokens, this is
+  // a scheduling request — fall through to fertilizer/general routes.
   const pestDiseaseScore = countPatternMatches(message, PEST_DISEASE_PATTERNS);
   if (pestDiseaseScore >= 1) {
-    result.route = 'PEST_DISEASE_TREATMENT';
-    result.confidence = Math.min(0.95, 0.6 + pestDiseaseScore * 0.1);
-    result.requires_decision_brain = true;
-    result.requires_weather_api = true; // For spray timing
-    
-    // Extract entities for context
-    result.detected_entities = extractPestDiseaseEntities(message);
-    result.context_hints.push('FULL_DECISION_BRAIN_REQUIRED');
-    return result;
+    const genericActionScore = countPatternMatches(message, GENERIC_ACTION_TOKENS);
+    const symptomDrivenScore = pestDiseaseScore - genericActionScore;
+    const onlyGenericAction = symptomDrivenScore <= 0 && !hasSymptoms;
+
+    if (onlyGenericAction) {
+      // Demote: treat as scheduling, not diagnostic.
+      if (fertilizerScore >= 1) {
+        result.route = 'FERTILIZER_NUTRITION';
+        result.confidence = 0.7;
+        result.requires_decision_brain = true;
+        result.requires_weather_api = true;
+        result.context_hints.push('FERTILIZER_SCHEDULE', 'DEMOTED_FROM_PEST_DISEASE');
+        return result;
+      }
+      // No fertilizer hint either — let downstream routes (weather/general) handle it.
+    } else {
+      result.route = 'PEST_DISEASE_TREATMENT';
+      result.confidence = Math.min(0.95, 0.6 + pestDiseaseScore * 0.1);
+      result.requires_decision_brain = true;
+      result.requires_weather_api = true; // For spray timing
+
+      // Extract entities for context
+      result.detected_entities = extractPestDiseaseEntities(message);
+      result.context_hints.push('FULL_DECISION_BRAIN_REQUIRED');
+      return result;
+    }
   }
   
   // Priority 5: Weather/Spray timing
@@ -545,6 +631,20 @@ export function getRouteRequirements(route: QueryRoute): {
         needs_llm: true,
         max_response_time_ms: 3000
       };
+
+    // FERTILIZER / NUTRITION: stage-based, uses crop_schedules + symbolic rules
+    case 'FERTILIZER_NUTRITION':
+      return {
+        needs_land_context: true,
+        needs_weather: true,
+        needs_soil_data: true,
+        needs_ndvi: false,
+        needs_market_data: false,
+        needs_decision_brain: true,
+        needs_llm: true,
+        max_response_time_ms: 6000
+      };
+
     
     case 'GENERAL_INFO':
     default:

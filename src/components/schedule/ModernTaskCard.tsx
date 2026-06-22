@@ -51,17 +51,17 @@ interface TaskCardProps {
 }
 
 const taskTypeConfig = {
-  irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'from-blue-500/20 to-blue-600/5', borderColor: 'border-blue-500/30', gradient: 'from-blue-500 to-cyan-500', emoji: '💧' },
-  fertilizer: { icon: Leaf, color: 'text-emerald-500', bg: 'from-emerald-500/20 to-green-600/5', borderColor: 'border-emerald-500/30', gradient: 'from-emerald-500 to-green-500', emoji: '🌿' },
-  pesticide: { icon: Bug, color: 'text-orange-500', bg: 'from-orange-500/20 to-amber-600/5', borderColor: 'border-orange-500/30', gradient: 'from-orange-500 to-amber-500', emoji: '🐛' },
-  pest_control: { icon: Bug, color: 'text-orange-500', bg: 'from-orange-500/20 to-amber-600/5', borderColor: 'border-orange-500/30', gradient: 'from-orange-500 to-red-500', emoji: '🛡️' },
-  weeding: { icon: Scissors, color: 'text-purple-500', bg: 'from-purple-500/20 to-pink-600/5', borderColor: 'border-purple-500/30', gradient: 'from-purple-500 to-pink-500', emoji: '✂️' },
-  weed_management: { icon: Scissors, color: 'text-purple-500', bg: 'from-purple-500/20 to-pink-600/5', borderColor: 'border-purple-500/30', gradient: 'from-purple-500 to-fuchsia-500', emoji: '🌾' },
-  harvest: { icon: Package, color: 'text-amber-500', bg: 'from-amber-500/20 to-yellow-600/5', borderColor: 'border-amber-500/30', gradient: 'from-amber-500 to-yellow-500', emoji: '📦' },
-  harvesting: { icon: Package, color: 'text-amber-500', bg: 'from-amber-500/20 to-yellow-600/5', borderColor: 'border-amber-500/30', gradient: 'from-amber-500 to-orange-500', emoji: '🌾' },
-  soil_preparation: { icon: Sprout, color: 'text-amber-700', bg: 'from-amber-700/20 to-orange-600/5', borderColor: 'border-amber-700/30', gradient: 'from-amber-700 to-orange-600', emoji: '🚜' },
-  sowing: { icon: Sprout, color: 'text-green-500', bg: 'from-green-500/20 to-emerald-600/5', borderColor: 'border-green-500/30', gradient: 'from-green-500 to-emerald-500', emoji: '🌱' },
-  other: { icon: AlertCircle, color: 'text-slate-500', bg: 'from-slate-500/20 to-gray-600/5', borderColor: 'border-slate-500/30', gradient: 'from-slate-500 to-gray-500', emoji: '📋' }
+  irrigation: { icon: Droplets, color: 'text-info', bg: 'from-info/20 to-info/5', borderColor: 'border-info/30', gradient: 'from-info to-info', emoji: '💧' },
+  fertilizer: { icon: Leaf, color: 'text-success', bg: 'from-success/20 to-success/5', borderColor: 'border-success/30', gradient: 'from-success to-success', emoji: '🌿' },
+  pesticide: { icon: Bug, color: 'text-warning', bg: 'from-warning/20 to-warning/5', borderColor: 'border-warning/30', gradient: 'from-warning to-warning', emoji: '🐛' },
+  pest_control: { icon: Bug, color: 'text-warning', bg: 'from-warning/20 to-warning/5', borderColor: 'border-warning/30', gradient: 'from-warning to-destructive', emoji: '🛡️' },
+  weeding: { icon: Scissors, color: 'text-primary', bg: 'from-primary/20 to-primary/5', borderColor: 'border-primary/30', gradient: 'from-primary to-primary', emoji: '✂️' },
+  weed_management: { icon: Scissors, color: 'text-primary', bg: 'from-primary/20 to-primary/5', borderColor: 'border-primary/30', gradient: 'from-primary to-primary', emoji: '🌾' },
+  harvest: { icon: Package, color: 'text-warning', bg: 'from-warning/20 to-warning/5', borderColor: 'border-warning/30', gradient: 'from-warning to-warning', emoji: '📦' },
+  harvesting: { icon: Package, color: 'text-warning', bg: 'from-warning/20 to-warning/5', borderColor: 'border-warning/30', gradient: 'from-warning to-warning', emoji: '🌾' },
+  soil_preparation: { icon: Sprout, color: 'text-warning', bg: 'from-warning/20 to-warning/5', borderColor: 'border-warning/30', gradient: 'from-warning to-warning', emoji: '🚜' },
+  sowing: { icon: Sprout, color: 'text-success', bg: 'from-success/20 to-success/5', borderColor: 'border-success/30', gradient: 'from-success to-success', emoji: '🌱' },
+  other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'from-muted to-muted/20', borderColor: 'border-border/30', gradient: 'from-muted-foreground to-muted-foreground/60', emoji: '📋' }
 };
 
 // Check if a value is valid
@@ -106,9 +106,9 @@ export default function ModernTaskCard({
 
   const getDateLabel = () => {
     if (isToday(taskDate)) return { text: t('schedule.task_card.today'), color: 'text-primary', badge: 'bg-primary/10 border-primary/30 text-primary' };
-    if (isTomorrow(taskDate)) return { text: t('schedule.task_card.tomorrow'), color: 'text-blue-500', badge: 'bg-blue-500/10 border-blue-500/30 text-blue-500' };
+    if (isTomorrow(taskDate)) return { text: t('schedule.task_card.tomorrow'), color: 'text-info', badge: 'bg-info/10 border-info/30 text-info' };
     if (isOverdue) return { text: t('schedule.task_card.overdue'), color: 'text-destructive', badge: 'bg-destructive/10 border-destructive/30 text-destructive' };
-    if (daysUntil <= 7) return { text: t('schedule.task_card.days_until', { days: daysUntil }), color: 'text-amber-500', badge: 'bg-amber-500/10 border-amber-500/30 text-amber-500' };
+    if (daysUntil <= 7) return { text: t('schedule.task_card.days_until', { days: daysUntil }), color: 'text-warning', badge: 'bg-warning/10 border-warning/30 text-warning' };
     return { text: format(taskDate, 'dd MMM'), color: 'text-muted-foreground', badge: 'bg-muted/50 border-border' };
   };
 
@@ -139,7 +139,7 @@ export default function ModernTaskCard({
             "absolute left-0 top-0 bottom-0 w-1.5",
             isOverdue && isPending && "bg-gradient-to-b from-destructive to-destructive/50",
             isToday(taskDate) && isPending && "bg-gradient-to-b from-primary via-accent to-primary animate-pulse",
-            isCompleted && "bg-gradient-to-b from-emerald-500 to-green-500"
+            isCompleted && "bg-gradient-to-b from-success to-success"
           )} />
 
           <div className="relative p-4 space-y-3">
@@ -163,7 +163,7 @@ export default function ModernTaskCard({
                       {dateLabel.text}
                     </Badge>
                     {task.priority === 'high' && (
-                      <Badge className="bg-gradient-to-r from-red-500 to-orange-500 text-white text-[10px] px-2 py-0.5 border-0">
+                      <Badge className="bg-gradient-to-r from-destructive to-warning text-white text-[10px] px-2 py-0.5 border-0">
                         🔥 {t('schedule.task_card.high_priority')}
                       </Badge>
                     )}
@@ -210,9 +210,9 @@ export default function ModernTaskCard({
               <div className="flex items-center gap-2">
                 <div className={cn(
                   "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-semibold",
-                  Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400" :
-                  Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400" :
-                  "bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400"
+                  Math.round(task.confidence_score * 100) >= 80 ? "bg-success/10 border border-success/30 text-success dark:text-success" :
+                  Math.round(task.confidence_score * 100) >= 60 ? "bg-warning/10 border border-warning/30 text-warning dark:text-warning" :
+                  "bg-destructive/10 border border-destructive/30 text-destructive dark:text-destructive"
                 )}>
                   <Sparkles className="h-3 w-3" />
                   {Math.round(task.confidence_score * 100)}% {t('schedule.task_card.confidence', 'confident')}
@@ -223,25 +223,25 @@ export default function ModernTaskCard({
             {/* Quick Info Pills */}
             <div className="flex flex-wrap gap-2">
               {task.weather_dependent && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/20">
-                  <CloudRain className="h-3.5 w-3.5 text-sky-500" />
-                  <span className="text-xs font-medium text-sky-600 dark:text-sky-400">{t('schedule.task_card.weather_dependent')}</span>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-info/10 border border-info/20">
+                  <CloudRain className="h-3.5 w-3.5 text-info" />
+                  <span className="text-xs font-medium text-info dark:text-info">{t('schedule.task_card.weather_dependent')}</span>
                 </div>
               )}
             </div>
 
             {/* First Precaution Preview */}
             {precautions.length > 0 && (
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/20">
-                <Shield className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                <span className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed line-clamp-2">{precautions[0]}</span>
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-gradient-to-r from-warning/5 to-warning/5 border border-warning/20">
+                <Shield className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                <span className="text-xs text-warning dark:text-warning leading-relaxed line-clamp-2">{precautions[0]}</span>
               </div>
             )}
 
             {/* Completed badge */}
             {isCompleted && (
               <div className="flex items-center gap-2">
-                <Badge className="bg-gradient-to-r from-emerald-500 to-green-500 text-white border-0">
+                <Badge className="bg-gradient-to-r from-success to-success text-white border-0">
                   <Check className="h-3 w-3 mr-1" />{t('schedule.task_card.completed')}
                 </Badge>
               </div>
@@ -294,9 +294,9 @@ export default function ModernTaskCard({
                     <span className="text-xs font-medium text-muted-foreground">{t('schedule.task_card.confidence_level', 'Confidence Level')}</span>
                     <Badge className={cn(
                       "text-xs",
-                      Math.round(task.confidence_score * 100) >= 80 ? "bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/30" :
-                      Math.round(task.confidence_score * 100) >= 60 ? "bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/30" :
-                      "bg-red-500/20 text-red-700 dark:text-red-300 border-red-500/30"
+                      Math.round(task.confidence_score * 100) >= 80 ? "bg-success/20 text-success dark:text-success border-success/30" :
+                      Math.round(task.confidence_score * 100) >= 60 ? "bg-warning/20 text-warning dark:text-warning border-warning/30" :
+                      "bg-destructive/20 text-destructive dark:text-destructive border-destructive/30"
                     )}>
                       {Math.round(task.confidence_score * 100)}%
                     </Badge>
@@ -355,10 +355,10 @@ export default function ModernTaskCard({
             {isValidValue(quantity) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Package className="h-4 w-4 text-blue-500" />
+                  <Package className="h-4 w-4 text-info" />
                   {t('schedule.task_card.quantity')}
                 </h4>
-                <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                <div className="p-3 rounded-xl bg-info/5 border border-info/20">
                   <p className="text-sm font-medium text-foreground">{quantity}</p>
                 </div>
               </div>
@@ -368,10 +368,10 @@ export default function ModernTaskCard({
             {isValidValue(productDetails) && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Leaf className="h-4 w-4 text-emerald-500" />
+                  <Leaf className="h-4 w-4 text-success" />
                   {t('schedule.task_card.product_details')}
                 </h4>
-                <div className="p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
+                <div className="p-3 rounded-xl bg-success/5 border border-success/20">
                   <p className="text-sm text-muted-foreground leading-relaxed">{productDetails}</p>
                 </div>
               </div>
@@ -380,11 +380,11 @@ export default function ModernTaskCard({
             {/* ICAR Guideline */}
             {isValidValue(icarGuideline) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-info dark:text-info">
                   <BookOpen className="h-4 w-4" />
                   {t('schedule.task_card.icar_guideline')}
                 </h4>
-                <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20">
+                <div className="p-3 rounded-xl bg-info/5 border border-info/20">
                   <p className="text-sm text-muted-foreground leading-relaxed">{icarGuideline}</p>
                 </div>
               </div>
@@ -393,12 +393,12 @@ export default function ModernTaskCard({
             {/* Climate Risk */}
             {isValidValue(climateRisk) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-orange-600 dark:text-orange-400">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-warning dark:text-warning">
                   <AlertTriangle className="h-4 w-4" />
                   {t('schedule.task_card.climate_risk')}
                 </h4>
-                <div className="p-3 rounded-xl bg-gradient-to-r from-orange-500/10 to-red-500/5 border border-orange-500/20">
-                  <p className="text-sm text-orange-700 dark:text-orange-300 leading-relaxed">{climateRisk}</p>
+                <div className="p-3 rounded-xl bg-gradient-to-r from-warning/10 to-destructive/5 border border-warning/20">
+                  <p className="text-sm text-warning dark:text-warning leading-relaxed">{climateRisk}</p>
                 </div>
               </div>
             )}
@@ -431,7 +431,7 @@ export default function ModernTaskCard({
             {/* Precautions */}
             {precautions.length > 0 && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-warning dark:text-warning">
                   <Shield className="h-4 w-4" />
                   {t('schedule.task_card.precautions')}
                 </h4>
@@ -442,10 +442,10 @@ export default function ModernTaskCard({
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.05 }}
-                      className="flex items-start gap-3 text-sm p-3 rounded-xl bg-gradient-to-r from-amber-500/5 to-orange-500/5 border border-amber-500/20"
+                      className="flex items-start gap-3 text-sm p-3 rounded-xl bg-gradient-to-r from-warning/5 to-warning/5 border border-warning/20"
                     >
-                      <span className="text-amber-500 shrink-0 text-base">⚠️</span>
-                      <span className="text-amber-700 dark:text-amber-300 leading-relaxed">{precaution}</span>
+                      <span className="text-warning shrink-0 text-base">⚠️</span>
+                      <span className="text-warning dark:text-warning leading-relaxed">{precaution}</span>
                     </motion.div>
                   ))}
                 </div>
@@ -455,12 +455,12 @@ export default function ModernTaskCard({
             {/* Yield Impact */}
             {isValidValue(task.yield_impact) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-green-600 dark:text-green-400">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-success dark:text-success">
                   <TrendingUp className="h-4 w-4" />
                   {t('schedule.task_card.yield_impact') || 'Yield Impact'}
                 </h4>
-                <div className="p-3 rounded-xl bg-gradient-to-r from-green-500/10 to-emerald-500/5 border border-green-500/20">
-                  <p className="text-sm text-green-700 dark:text-green-300 leading-relaxed">{task.yield_impact}</p>
+                <div className="p-3 rounded-xl bg-gradient-to-r from-success/10 to-success/5 border border-success/20">
+                  <p className="text-sm text-success dark:text-success leading-relaxed">{task.yield_impact}</p>
                 </div>
               </div>
             )}
@@ -468,12 +468,12 @@ export default function ModernTaskCard({
             {/* Skip Penalty */}
             {isValidValue(task.skip_penalty) && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-red-600 dark:text-red-400">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-destructive dark:text-destructive">
                   <TrendingDown className="h-4 w-4" />
                   {t('schedule.task_card.skip_penalty') || 'If Skipped'}
                 </h4>
-                <div className="p-3 rounded-xl bg-gradient-to-r from-red-500/10 to-orange-500/5 border border-red-500/20">
-                  <p className="text-sm text-red-700 dark:text-red-300 leading-relaxed">{task.skip_penalty}</p>
+                <div className="p-3 rounded-xl bg-gradient-to-r from-destructive/10 to-warning/5 border border-destructive/20">
+                  <p className="text-sm text-destructive dark:text-destructive leading-relaxed">{task.skip_penalty}</p>
                 </div>
               </div>
             )}
@@ -496,28 +496,28 @@ export default function ModernTaskCard({
             {/* Ideal Weather */}
             {isValidValue(idealWeather) && typeof idealWeather === 'object' && (
               <div className="space-y-2">
-                <h4 className="text-sm font-semibold flex items-center gap-2 text-sky-600 dark:text-sky-400">
+                <h4 className="text-sm font-semibold flex items-center gap-2 text-info dark:text-info">
                   <Sun className="h-4 w-4" />
                   {t('schedule.task_card.ideal_weather')}
                 </h4>
                 <div className="grid gap-2">
                   {isValidValue(idealWeather.temperature) && (
-                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-sky-500/5 border border-sky-500/20">
-                      <Thermometer className="h-4 w-4 text-sky-500 shrink-0" />
+                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-info/5 border border-info/20">
+                      <Thermometer className="h-4 w-4 text-info shrink-0" />
                       <span className="text-muted-foreground">{t('schedule.task_card.temperature')}:</span>
                       <span className="font-semibold ml-auto">{idealWeather.temperature}°C</span>
                     </div>
                   )}
                   {isValidValue(idealWeather.humidity) && (
-                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-sky-500/5 border border-sky-500/20">
-                      <Droplet className="h-4 w-4 text-sky-500 shrink-0" />
+                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-info/5 border border-info/20">
+                      <Droplet className="h-4 w-4 text-info shrink-0" />
                       <span className="text-muted-foreground">{t('schedule.task_card.humidity')}:</span>
                       <span className="font-semibold ml-auto">{idealWeather.humidity}%</span>
                     </div>
                   )}
                   {isValidValue(idealWeather.conditions) && (
-                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-sky-500/5 border border-sky-500/20">
-                      <CloudRain className="h-4 w-4 text-sky-500 shrink-0" />
+                    <div className="flex items-center gap-3 text-sm p-3 rounded-xl bg-info/5 border border-info/20">
+                      <CloudRain className="h-4 w-4 text-info shrink-0" />
                       <span className="text-muted-foreground">{t('schedule.task_card.conditions')}:</span>
                       <span className="font-semibold ml-auto">{idealWeather.conditions}</span>
                     </div>

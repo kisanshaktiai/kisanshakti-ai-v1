@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 
 export const HomeSkeleton = () => {
   return (
-    <div className="min-h-screen bg-background animate-fade-in">
+    <div className="min-h-full bg-background animate-fade-in">
       {/* Floating Weather Card Skeleton */}
       <motion.div 
         initial={{ opacity: 0, y: -20 }}

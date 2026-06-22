@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
+import { useAuthReady } from '@/hooks/useAuthReady';
 import { offlineDataService } from '@/services/offlineDataService';
 import { landsApi } from '@/services/landsApi';
 import { localDB } from '@/services/localDB';
@@ -11,10 +12,11 @@ import { useToast } from '@/hooks/use-toast';
  * - Offline support
  * - Automatic refetching
  * - Real-time updates integration
- * - Waits for initial sync to complete
+ * - Auth-readiness gating (waits for global headers to propagate)
  */
 export function useLands() {
   const { user } = useAuthStore();
+  const { isReady: authReady } = useAuthReady();
   const tenantId = user?.tenantId;
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -161,9 +163,11 @@ export function useLands() {
       console.log(`📦 [useLands] Local DB has ${localData?.length || 0} lands for farmer ${user.id}`);
       return localData || [];
     },
-    enabled: !!(user?.id && tenantId), // Wait for both user and tenant
-    staleTime: 30000, // 30 seconds
-    refetchOnWindowFocus: true,
+    enabled: authReady, // Gate on full auth-readiness (user + tenant + headers)
+    // PHASE 1A: Long stale window — realtime + manual refetch will invalidate when needed.
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 30 * 60 * 1000, // 30 minutes
+    refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     retry: 1, // Reduced retry for faster fallback
     retryDelay: 1000, // Quick retry

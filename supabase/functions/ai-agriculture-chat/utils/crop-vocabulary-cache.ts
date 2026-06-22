@@ -33,7 +33,10 @@ const VOCAB_CACHE_TTL = 300_000; // 5 minutes
  * Get crop-specific vocabulary entries with caching.
  * Returns empty array if no entries found or on error.
  */
-export async function getCropVocabulary(cropCode: string, supabase: any): Promise<VocabEntry[]> {
+export async function getCropVocabulary(cropCodeRaw: string, supabase: any): Promise<VocabEntry[]> {
+  // Fix 3 (belt-and-suspenders): crop_code rows in DB are UPPER. Normalize the
+  // lookup key so title-case callers (e.g. "Sugarcane") don't silently return 0 rows.
+  const cropCode = (cropCodeRaw || '').toUpperCase();
   const now = Date.now();
   const cached = vocabCache.get(cropCode);
   

@@ -146,13 +146,13 @@ export function LandContextSummaryCard({ context, language }: LandContextCardPro
       <div className="grid grid-cols-2 gap-2 text-xs">
         {/* Crop Info */}
         <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5 min-w-0">
-          <Wheat className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+          <Wheat className="h-3.5 w-3.5 text-warning shrink-0" />
           <span className="font-medium truncate">{context.cropName}</span>
         </div>
         
         {/* Stage */}
         <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5 min-w-0">
-          <Sprout className="h-3.5 w-3.5 text-green-600 shrink-0" />
+          <Sprout className="h-3.5 w-3.5 text-success shrink-0" />
           <span className="font-medium truncate">{context.growthStage}</span>
         </div>
         
@@ -167,7 +167,7 @@ export function LandContextSummaryCard({ context, language }: LandContextCardPro
         {/* NDVI Health */}
         {context.ndviState && (
           <div className="flex items-center gap-1.5 bg-background/50 rounded-lg px-2 py-1.5 min-w-0">
-            <Gauge className="h-3.5 w-3.5 text-green-500 shrink-0" />
+            <Gauge className="h-3.5 w-3.5 text-success shrink-0" />
             <Badge variant="secondary" className={cn("text-xs py-0 truncate", getNdviColor(context.ndviState))}>
               {context.ndviValue ? `${Math.round(context.ndviValue * 100)}%` : context.ndviState.replace(/_/g, ' ')}
               {context.ndviTrend === 'DECLINING' && <TrendingDown className="h-3 w-3 ml-1 shrink-0" />}
@@ -179,14 +179,14 @@ export function LandContextSummaryCard({ context, language }: LandContextCardPro
         {/* Weather */}
         {context.weather && (
           <div className="flex items-center gap-1.5 col-span-2 bg-background/50 rounded-lg px-2 py-1.5">
-            <Thermometer className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+            <Thermometer className="h-3.5 w-3.5 text-warning shrink-0" />
             <span className="font-medium">{context.weather.temperature}°C</span>
             <span className="text-muted-foreground">•</span>
             <span className="font-medium">{context.weather.humidity}%</span>
             {context.weather.rainExpected && (
               <>
                 <span className="text-muted-foreground">•</span>
-                <CloudRain className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                <CloudRain className="h-3.5 w-3.5 text-info shrink-0" />
               </>
             )}
           </div>
@@ -338,7 +338,7 @@ export function ConfidenceIndicator({ confidence, language }: ConfidenceIndicato
     switch (level) {
       case 'LOW': return 'bg-success text-success-foreground';
       case 'MEDIUM': return 'bg-warning text-warning-foreground';
-      case 'HIGH': return 'bg-orange-500 text-white';
+      case 'HIGH': return 'bg-warning text-white';
       case 'CRITICAL': return 'bg-destructive text-destructive-foreground';
       default: return 'bg-muted text-muted-foreground';
     }

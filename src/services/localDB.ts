@@ -22,7 +22,7 @@ export interface FarmerData {
   location: string | null;
   
   // Authentication
-  pin: string | null;
+  pin?: string | null;
   pin_hash: string | null;
   pin_updated_at: string | null;
   failed_login_attempts: number | null;
@@ -676,6 +676,110 @@ export interface FarmerAlertData {
 }
 
 /**
+ * Farmer Subscription - mirrors Supabase farmer_subscriptions table
+ */
+export interface FarmerSubscriptionData {
+  id: string;
+  farmer_id: string;
+  tenant_id: string;
+  tenant_subscription_id: string | null;
+  plan_id: string;
+  billing_interval: string | null;
+  status: string;
+  start_date: string | null;
+  end_date: string | null;
+  trial_end_date: string | null;
+  auto_renew: boolean | null;
+  payment_method: any;
+  metadata: any;
+  stripe_subscription_id: string | null;
+  stripe_customer_id: string | null;
+  paid_by_tenant: boolean | null;
+  paying_tenant_id: string | null;
+  grace_period_ends_at: string | null;
+  next_billing_date: string | null;
+  last_payment_date: string | null;
+  last_payment_amount: number | null;
+  payment_method_id: string | null;
+  cancellation_reason: string | null;
+  trial_days: number | null;
+  payment_provider: string | null;
+  payment_order_id: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lastModified: number;
+  syncStatus: 'synced' | 'pending' | 'conflict';
+}
+
+/**
+ * Subscription Plan - mirrors Supabase subscription_plans table
+ */
+export interface SubscriptionPlanData {
+  id: string;
+  name: string;
+  description: string | null;
+  plan_type: string;
+  price_monthly: number | null;
+  price_quarterly: number | null;
+  price_annually: number | null;
+  features: any;
+  limits: any;
+  is_active: boolean | null;
+  is_custom: boolean | null;
+  is_public: boolean | null;
+  tenant_id: string | null;
+  stripe_product_id: string | null;
+  stripe_price_id_monthly: string | null;
+  stripe_price_id_annually: string | null;
+  plan_category: string | null;
+  billing_interval: string | null;
+  trial_days: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+  lastModified: number;
+}
+
+/**
+ * Subscription Usage Log - mirrors Supabase subscription_usage_logs table
+ */
+export interface SubscriptionUsageLogData {
+  id: string;
+  tenant_id: string;
+  farmer_id: string | null;
+  subscription_id: string;
+  metric_name: string;
+  quantity: number;
+  unit: string | null;
+  usage_date: string | null;
+  billing_period_start: string | null;
+  billing_period_end: string | null;
+  metadata: any;
+  created_at: string | null;
+  lastModified: number;
+}
+
+/**
+ * Payment Record - mirrors Supabase payment_records table
+ */
+export interface PaymentRecordData {
+  id: string;
+  tenant_id: string;
+  invoice_id: string | null;
+  amount: number;
+  currency: string | null;
+  payment_method: string | null;
+  transaction_id: string | null;
+  gateway_response: any;
+  status: string;
+  processed_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  // Locally derived (joined via invoice → subscription → farmer)
+  farmer_id: string | null;
+  lastModified: number;
+}
+
+/**
  * Tenant Configuration (local cache only)
  */
 export interface TenantConfigData {
@@ -696,6 +800,14 @@ export interface SyncMetadata {
   pendingChanges: number;
   syncInProgress: boolean;
   schemaVersion: number;
+  // PHASE 3C: Per-entity incremental sync timestamps (ISO8601). Optional/additive.
+  // When present, the next sync sends `?since=<value>` and only downloads delta rows.
+  entityLastSync?: {
+    lands?: string | null;
+    schedules?: string | null;
+    tasks?: string | null;
+    proactive_alerts?: string | null;
+  };
 }
 
 // ============================================================================
@@ -808,6 +920,50 @@ interface KisanDB extends DBSchema {
     };
   };
   
+  // farmerSubscriptions table (maps to farmer_subscriptions in Supabase)
+  farmerSubscriptions: {
+    key: string;
+    value: FarmerSubscriptionData;
+    indexes: {
+      'by-farmer': string;
+      'by-tenant': string;
+      'by-status': string;
+      'by-sync-status': string;
+    };
+  };
+
+  // subscriptionPlans table (reference data)
+  subscriptionPlans: {
+    key: string;
+    value: SubscriptionPlanData;
+    indexes: {
+      'by-plan-type': string;
+      'by-active': string;
+    };
+  };
+
+  // subscriptionUsageLogs table
+  subscriptionUsageLogs: {
+    key: string;
+    value: SubscriptionUsageLogData;
+    indexes: {
+      'by-farmer': string;
+      'by-subscription': string;
+      'by-metric': string;
+    };
+  };
+
+  // paymentRecords table
+  paymentRecords: {
+    key: string;
+    value: PaymentRecordData;
+    indexes: {
+      'by-farmer': string;
+      'by-tenant': string;
+      'by-status': string;
+    };
+  };
+
   // tenantConfig table (local cache only)
   tenantConfig: {
     key: string;
@@ -817,6 +973,17 @@ interface KisanDB extends DBSchema {
     };
   };
   
+  // proactiveAlerts table (maps to proactive_alerts in Supabase)
+  proactiveAlerts: {
+    key: string;
+    value: ProactiveAlertData;
+    indexes: {
+      'by-farmer': string;
+      'by-status': string;
+      'by-created': string;
+    };
+  };
+
   // syncMetadata table (local only)
   syncMetadata: {
     key: string;
@@ -824,13 +991,41 @@ interface KisanDB extends DBSchema {
   };
 }
 
+/**
+ * Proactive Alerts - mirrors Supabase proactive_alerts table (subset, last 100 per farmer).
+ */
+export interface ProactiveAlertData {
+  id: string;
+  farmer_id: string;
+  tenant_id: string | null;
+  land_id: string | null;
+  alert_category: string;
+  priority: string;
+  title_mr: string | null;
+  title_hi: string | null;
+  title_en: string;
+  message_mr: string | null;
+  message_hi: string | null;
+  message_en: string;
+  action_text_mr: string | null;
+  action_text_hi: string | null;
+  action_text_en: string | null;
+  risk_score: number;
+  status: string;
+  created_at: string;
+  rule_id: string | null;
+  trigger_data: any;
+  decision_reasoning: string | null;
+  lastModified: number;
+}
+
 // ============================================================================
 // LOCAL DATABASE CLASS
 // ============================================================================
 
 const DB_NAME = 'KisanDB';
-const DB_VERSION = 10; // Bumped for land/schedule/crop schema parity + crops/alerts sync (2026-03-11)
-const SCHEMA_VERSION = 8; // Bumped for full offline schema parity with Supabase
+const DB_VERSION = 12; // Bumped for proactive_alerts offline mirror (2026-04-20)
+const SCHEMA_VERSION = 10; // Bumped for proactive alerts parity
 
 class LocalDatabase {
   private db: IDBPDatabase<KisanDB> | null = null;
@@ -994,6 +1189,51 @@ class LocalDatabase {
           const configStore = db.createObjectStore('tenantConfig', { keyPath: 'tenant_id' });
           configStore.createIndex('by-tenant', 'tenant_id');
           console.log('✅ [LocalDB] Created tenantConfig store for offline theme support');
+        }
+
+        // Create farmerSubscriptions store (offline subscription mirror)
+        if (!db.objectStoreNames.contains('farmerSubscriptions')) {
+          const subStore = db.createObjectStore('farmerSubscriptions', { keyPath: 'id' });
+          subStore.createIndex('by-farmer', 'farmer_id');
+          subStore.createIndex('by-tenant', 'tenant_id');
+          subStore.createIndex('by-status', 'status');
+          subStore.createIndex('by-sync-status', 'syncStatus');
+          console.log('✅ [LocalDB] Created farmerSubscriptions store');
+        }
+
+        // Create subscriptionPlans store (reference data)
+        if (!db.objectStoreNames.contains('subscriptionPlans')) {
+          const planStore = db.createObjectStore('subscriptionPlans', { keyPath: 'id' });
+          planStore.createIndex('by-plan-type', 'plan_type');
+          planStore.createIndex('by-active', 'is_active');
+          console.log('✅ [LocalDB] Created subscriptionPlans store');
+        }
+
+        // Create subscriptionUsageLogs store
+        if (!db.objectStoreNames.contains('subscriptionUsageLogs')) {
+          const usageStore = db.createObjectStore('subscriptionUsageLogs', { keyPath: 'id' });
+          usageStore.createIndex('by-farmer', 'farmer_id');
+          usageStore.createIndex('by-subscription', 'subscription_id');
+          usageStore.createIndex('by-metric', 'metric_name');
+          console.log('✅ [LocalDB] Created subscriptionUsageLogs store');
+        }
+
+        // Create paymentRecords store
+        if (!db.objectStoreNames.contains('paymentRecords')) {
+          const payStore = db.createObjectStore('paymentRecords', { keyPath: 'id' });
+          payStore.createIndex('by-farmer', 'farmer_id');
+          payStore.createIndex('by-tenant', 'tenant_id');
+          payStore.createIndex('by-status', 'status');
+          console.log('✅ [LocalDB] Created paymentRecords store');
+        }
+
+        // Create proactiveAlerts store (offline alerts mirror)
+        if (!db.objectStoreNames.contains('proactiveAlerts')) {
+          const paStore = db.createObjectStore('proactiveAlerts', { keyPath: 'id' });
+          paStore.createIndex('by-farmer', 'farmer_id');
+          paStore.createIndex('by-status', 'status');
+          paStore.createIndex('by-created', 'created_at');
+          console.log('✅ [LocalDB] Created proactiveAlerts store');
         }
 
         // Create syncMetadata store
@@ -1653,10 +1893,11 @@ class LocalDatabase {
     console.log('🗑️ [LocalDB] Clearing all data stores...');
     
     // List of all object stores that may exist
-    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig'> = [
+    const storeNames: Array<'farmers' | 'lands' | 'cropSchedules' | 'scheduleTasks' | 'aiChatSessions' | 'aiChatMessages' | 'crops' | 'weather' | 'farmerAlerts' | 'tenantConfig' | 'farmerSubscriptions' | 'subscriptionPlans' | 'subscriptionUsageLogs' | 'paymentRecords'> = [
       'farmers', 'lands', 'cropSchedules', 'scheduleTasks', 
       'aiChatSessions', 'aiChatMessages', 'crops', 'weather', 
-      'farmerAlerts', 'tenantConfig'
+      'farmerAlerts', 'tenantConfig',
+      'farmerSubscriptions', 'subscriptionPlans', 'subscriptionUsageLogs', 'paymentRecords'
     ];
     
     // Get list of existing stores from the database
@@ -1772,6 +2013,108 @@ class LocalDatabase {
       await tx.done;
       console.log('🗑️ [LocalDB] Cleared all tenant config caches');
     }
+  }
+
+  // ========== SUBSCRIPTION OPERATIONS ==========
+
+  async saveFarmerSubscriptions(subs: Omit<FarmerSubscriptionData, 'lastModified' | 'syncStatus'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('farmerSubscriptions', 'readwrite');
+    for (const s of subs) {
+      await tx.objectStore('farmerSubscriptions').put({
+        ...s,
+        lastModified: Date.now(),
+        syncStatus: 'synced',
+      });
+    }
+    await tx.done;
+  }
+
+  async getActiveSubscription(farmerId: string): Promise<FarmerSubscriptionData | undefined> {
+    if (!this.db) await this.initialize();
+    const all = await this.db!.getAllFromIndex('farmerSubscriptions', 'by-farmer', farmerId);
+    // Prefer 'active', then 'trial', then 'grace_period'
+    const priority = ['active', 'trial', 'grace_period'];
+    for (const status of priority) {
+      const match = all.find(s => s.status === status);
+      if (match) return match;
+    }
+    return all[0];
+  }
+
+  async getFarmerSubscriptions(farmerId: string): Promise<FarmerSubscriptionData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('farmerSubscriptions', 'by-farmer', farmerId);
+  }
+
+  async saveSubscriptionPlans(plans: Omit<SubscriptionPlanData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('subscriptionPlans', 'readwrite');
+    for (const p of plans) {
+      await tx.objectStore('subscriptionPlans').put({ ...p, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getPlans(): Promise<SubscriptionPlanData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAll('subscriptionPlans');
+  }
+
+  async getPlanById(planId: string): Promise<SubscriptionPlanData | undefined> {
+    if (!this.db) await this.initialize();
+    return await this.db!.get('subscriptionPlans', planId);
+  }
+
+  async saveUsageLogs(logs: Omit<SubscriptionUsageLogData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('subscriptionUsageLogs', 'readwrite');
+    for (const l of logs) {
+      await tx.objectStore('subscriptionUsageLogs').put({ ...l, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getUsageLogs(farmerId: string): Promise<SubscriptionUsageLogData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('subscriptionUsageLogs', 'by-farmer', farmerId);
+  }
+
+  async savePaymentRecords(records: Omit<PaymentRecordData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('paymentRecords', 'readwrite');
+    for (const r of records) {
+      await tx.objectStore('paymentRecords').put({ ...r, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getPaymentRecords(farmerId: string): Promise<PaymentRecordData[]> {
+    if (!this.db) await this.initialize();
+    return await this.db!.getAllFromIndex('paymentRecords', 'by-farmer', farmerId);
+  }
+
+  // ========== PROACTIVE ALERTS OPERATIONS ==========
+
+  async saveProactiveAlerts(alerts: Omit<ProactiveAlertData, 'lastModified'>[]): Promise<void> {
+    if (!this.db) await this.initialize();
+    const tx = this.db!.transaction('proactiveAlerts', 'readwrite');
+    for (const a of alerts) {
+      await tx.objectStore('proactiveAlerts').put({ ...a, lastModified: Date.now() });
+    }
+    await tx.done;
+  }
+
+  async getProactiveAlerts(farmerId: string, includeHistory = false): Promise<ProactiveAlertData[]> {
+    if (!this.db) await this.initialize();
+    const all = await this.db!.getAllFromIndex('proactiveAlerts', 'by-farmer', farmerId);
+    const filtered = includeHistory
+      ? all
+      : all.filter(a => ['PENDING', 'DELIVERED', 'SEEN'].includes(a.status));
+    // Sort newest first
+    return filtered.sort((a, b) =>
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }
 }
 

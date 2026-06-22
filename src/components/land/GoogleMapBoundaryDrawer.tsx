@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from 'react';
 import { GoogleMap, Marker, Polygon, Polyline } from '@react-google-maps/api';
 import * as turf from '@turf/turf';
+import { Capacitor } from '@capacitor/core';
+import { Geolocation } from '@capacitor/geolocation';
 import { MapControls } from './MapControls';
 import { AreaDisplay } from './AreaDisplay';
 import { useToast } from '@/components/ui/use-toast';
@@ -10,6 +12,9 @@ import { Loader2, AlertCircle, WifiOff, RefreshCw } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { useGoogleMapsScript } from '@/components/maps/GoogleMapsScriptProvider';
 import { Button } from '@/components/ui/button';
+
+const IS_NATIVE = Capacitor.isNativePlatform();
+const IS_IOS = Capacitor.getPlatform() === 'ios';
 
 interface LatLng {
   lat: number;
@@ -23,10 +28,16 @@ interface GoogleMapBoundaryDrawerProps {
   initialBoundary?: LatLng[];
 }
 
-const mapContainerStyle = {
+const mapContainerStyle: React.CSSProperties = {
   width: '100%',
   height: '100%',
+  // iOS Safari/WKWebView swallows two-finger gestures (rotate/tilt) by routing
+  // them to page-zoom. `touch-action: none` hands every gesture to Google Maps.
+  touchAction: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
 };
+
 
 export function GoogleMapBoundaryDrawer({ 
   onSave, 
@@ -53,6 +64,8 @@ export function GoogleMapBoundaryDrawer({
   const [locationSource, setLocationSource] = useState<string>('gps');
   const [locationAccuracy, setLocationAccuracy] = useState<number>(0);
   const watchIdRef = useRef<number | null>(null);
+  const nativeWatchIdRef = useRef<string | null>(null);
+
   const [isMapInitialized, setIsMapInitialized] = useState(false);
   const [userHasInteracted, setUserHasInteracted] = useState(false);
   const initialZoomSet = useRef(false);
@@ -116,9 +129,18 @@ export function GoogleMapBoundaryDrawer({
       zoomControlOptions: {
         position: google.maps.ControlPosition.RIGHT_CENTER,
       },
+      // 'greedy' is required so Google Maps captures every touch on iOS
+      // instead of letting WKWebView treat the second finger as page-zoom.
       gestureHandling: 'greedy',
-      tilt: 0,
+      // Allow tilt+rotation on raster (satellite/hybrid) maps. Setting tilt:0
+      // (the previous value) globally disabled the two-finger rotate gesture.
+      tilt: 45,
+      heading: 0,
       rotateControl: true,
+      rotateControlOptions: {
+        position: google.maps.ControlPosition.RIGHT_TOP,
+      },
+      isFractionalZoomEnabled: true,
       mapTypeControl: true,
       mapTypeControlOptions: {
         mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
@@ -139,6 +161,24 @@ export function GoogleMapBoundaryDrawer({
       ],
     };
   }, [isGoogleReady]);
+
+  // iOS WKWebView merges two-finger gestures into page zoom unless we
+  // temporarily disable user-scalable while the map is mounted. Restore on unmount.
+  useEffect(() => {
+    if (!IS_IOS) return;
+    const viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    const previous = viewport?.getAttribute('content') ?? null;
+    if (viewport) {
+      viewport.setAttribute(
+        'content',
+        'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover'
+      );
+    }
+    return () => {
+      if (viewport && previous) viewport.setAttribute('content', previous);
+    };
+  }, []);
+
 
   // Get user's current location on mount
   useEffect(() => {
@@ -302,48 +342,106 @@ export function GoogleMapBoundaryDrawer({
     setBoundary([]);
   }, []);
 
-  // GPS tracking
-  const startTracking = useCallback(() => {
+  // Drag a numbered point to a new position — live area recalculation
+  const handleMarkerDragEnd = useCallback((index: number, e: google.maps.MapMouseEvent) => {
+    if (!e.latLng) return;
+    const next: LatLng = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+    setBoundary(prev => prev.map((p, i) => (i === index ? next : p)));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(10);
+  }, []);
+
+  // Long-press / right-click on a vertex removes it
+  const handleMarkerRightClick = useCallback((index: number) => {
+    setBoundary(prev => prev.filter((_, i) => i !== index));
+    if (typeof navigator !== 'undefined') navigator.vibrate?.(20);
+  }, []);
+
+  // Sync polygon path back to state after the user drags a vertex/midpoint
+  // via Google's native editable-polygon UI
+  const handlePolygonEdit = useCallback((polygon: google.maps.Polygon) => {
+    const path = polygon.getPath();
+    const next: LatLng[] = [];
+    for (let i = 0; i < path.getLength(); i++) {
+      const ll = path.getAt(i);
+      next.push({ lat: ll.lat(), lng: ll.lng() });
+    }
+    setBoundary(next);
+  }, []);
+
+  // GPS tracking - uses Capacitor on native (CoreLocation on iOS / FusedLocation on Android)
+  const startTracking = useCallback(async () => {
+    setIsTracking(true);
+
+    const handlePoint = (lat: number, lng: number, accuracy: number) => {
+      const newPoint: LatLng = { lat, lng };
+      setCurrentPosition(newPoint);
+      setGpsAccuracy(accuracy);
+      setBoundary(prev => [...prev, newPoint]);
+      if (map) map.panTo(newPoint);
+    };
+
+    if (IS_NATIVE) {
+      try {
+        const perm = await Geolocation.checkPermissions();
+        if (perm.location !== 'granted') {
+          const req = await Geolocation.requestPermissions({ permissions: ['location'] });
+          if (req.location !== 'granted') {
+            toast({ title: t('lands.add_land.error.gps_not_available'), variant: 'destructive' });
+            setIsTracking(false);
+            return;
+          }
+        }
+        const id = await Geolocation.watchPosition(
+          { enableHighAccuracy: true, timeout: 10000 },
+          (position, err) => {
+            if (err || !position) {
+              console.error('Native GPS error:', err);
+              return;
+            }
+            handlePoint(
+              position.coords.latitude,
+              position.coords.longitude,
+              position.coords.accuracy ?? 50,
+            );
+          }
+        );
+        nativeWatchIdRef.current = id;
+        return;
+      } catch (err) {
+        console.error('Native watchPosition failed:', err);
+        toast({ title: t('lands.add_land.error.gps_error'), variant: 'destructive' });
+        setIsTracking(false);
+        return;
+      }
+    }
+
     if (!navigator.geolocation) {
-      toast({
-        title: t('lands.add_land.error.gps_not_available'),
-        variant: "destructive",
-      });
+      toast({ title: t('lands.add_land.error.gps_not_available'), variant: 'destructive' });
+      setIsTracking(false);
       return;
     }
 
-    setIsTracking(true);
-    
     const id = navigator.geolocation.watchPosition(
-      (position) => {
-        const newPoint: LatLng = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
-        };
-        
-        setCurrentPosition(newPoint);
-        setGpsAccuracy(position.coords.accuracy);
-        setBoundary(prev => [...prev, newPoint]);
-        
-        if (map) {
-          map.panTo(newPoint);
-        }
-      },
+      (position) => handlePoint(
+        position.coords.latitude,
+        position.coords.longitude,
+        position.coords.accuracy,
+      ),
       (error) => {
         console.error('GPS error:', error);
-        toast({
-          title: t('lands.add_land.error.gps_error'),
-          variant: "destructive",
-        });
+        toast({ title: t('lands.add_land.error.gps_error'), variant: 'destructive' });
         setIsTracking(false);
       },
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-    
     watchIdRef.current = id;
   }, [map, toast, t]);
 
   const stopTracking = useCallback(() => {
+    if (nativeWatchIdRef.current !== null) {
+      Geolocation.clearWatch({ id: nativeWatchIdRef.current }).catch(() => {});
+      nativeWatchIdRef.current = null;
+    }
     if (watchIdRef.current !== null) {
       navigator.geolocation.clearWatch(watchIdRef.current);
       watchIdRef.current = null;
@@ -353,11 +451,15 @@ export function GoogleMapBoundaryDrawer({
 
   useEffect(() => {
     return () => {
+      if (nativeWatchIdRef.current !== null) {
+        Geolocation.clearWatch({ id: nativeWatchIdRef.current }).catch(() => {});
+      }
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
       }
     };
   }, []);
+
 
   const handleToggleTracking = useCallback(() => {
     if (isTracking) {
@@ -431,19 +533,19 @@ export function GoogleMapBoundaryDrawer({
     return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   };
 
-  // Memoized polygon/polyline options
+  // Memoized polygon options — editable when 3+ points so users can drag vertices/midpoints
   const polygonOptions = useMemo(() => ({
     fillColor: getThemeColor('--primary', '#22c55e'),
-    fillOpacity: 0.35,
+    fillOpacity: 0.3,
     strokeColor: getThemeColor('--primary', '#22c55e'),
     strokeOpacity: 1,
-    strokeWeight: 2,
-    clickable: false,
+    strokeWeight: 2.5,
+    clickable: true,
     draggable: false,
-    editable: false,
+    editable: mode === 'draw' && boundary.length >= 3,
     geodesic: false,
     zIndex: 1,
-  }), []);
+  }), [mode, boundary.length]);
 
   const polylineOptions = useMemo(() => ({
     strokeColor: getThemeColor('--primary', '#22c55e'),
@@ -472,14 +574,14 @@ export function GoogleMapBoundaryDrawer({
 
   const getMarkerIcon = useCallback(() => {
     if (!isGoogleReady) return undefined;
-    
+
     return {
       path: google.maps.SymbolPath.CIRCLE,
-      scale: 6,
+      scale: 11, // ~22px diameter, large finger target
       fillColor: getThemeColor('--destructive', '#ef4444'),
       fillOpacity: 1,
       strokeColor: getThemeColor('--background', '#ffffff'),
-      strokeWeight: 2,
+      strokeWeight: 3,
     };
   }, [isGoogleReady]);
 
@@ -602,20 +704,22 @@ export function GoogleMapBoundaryDrawer({
         </div>
       )}
 
-      {/* Location center button */}
+      {/* Location center button — sits above the bottom action sheet, safe-area aware */}
       <button
         onClick={handleCenterOnLocation}
-        className="absolute bottom-24 right-3 h-10 w-10 bg-background/95 backdrop-blur-sm shadow-lg z-10 rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border"
+        aria-label="Center on my location"
+        className="absolute right-3 z-20 h-12 w-12 bg-background/95 backdrop-blur-md shadow-xl rounded-full flex items-center justify-center hover:bg-accent/10 transition-colors border border-border/60"
+        style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 220px)' }}
         disabled={isCentering}
       >
         {isCentering ? (
           <div className="animate-spin h-5 w-5 border-2 border-primary border-t-transparent rounded-full" />
         ) : (
-          <svg 
-            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`} 
-            viewBox="0 0 24 24" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className={`h-5 w-5 ${locationSource === 'gps' && locationAccuracy < 20 ? 'text-primary' : 'text-muted-foreground'}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
             strokeWidth="2"
           >
             <circle cx="12" cy="12" r="10" />
@@ -640,26 +744,45 @@ export function GoogleMapBoundaryDrawer({
           />
         )}
 
-        {/* Boundary markers */}
+        {/* Boundary markers — draggable in draw mode, long-press to delete */}
         {isGoogleReady && boundary.map((point, index) => (
           <Marker
             key={`marker-${index}`}
             position={point}
+            draggable={mode === 'draw'}
+            onDragEnd={(e) => handleMarkerDragEnd(index, e)}
+            onRightClick={() => handleMarkerRightClick(index)}
             label={{
               text: (index + 1).toString(),
               color: 'white',
-              fontSize: '12px',
+              fontSize: '13px',
               fontWeight: 'bold',
             }}
             icon={getMarkerIcon()}
+            zIndex={10}
           />
         ))}
 
-        {/* Polygon or Polyline */}
+        {/* Polygon (editable) or Polyline preview */}
         {isGoogleReady && boundary.length >= 3 ? (
           <Polygon
             paths={boundary}
             options={polygonOptions}
+            onMouseUp={(e) => {
+              // After dragging a vertex/midpoint, sync the path back to state
+              const target = (e as unknown as { overlay?: google.maps.Polygon }).overlay;
+              if (target && typeof target.getPath === 'function') {
+                handlePolygonEdit(target);
+              }
+            }}
+            onLoad={(polygon) => {
+              // Listen to native edit events on the polygon path
+              const path = polygon.getPath();
+              const sync = () => handlePolygonEdit(polygon);
+              path.addListener('set_at', sync);
+              path.addListener('insert_at', sync);
+              path.addListener('remove_at', sync);
+            }}
           />
         ) : boundary.length >= 2 && isGoogleReady ? (
           <Polyline

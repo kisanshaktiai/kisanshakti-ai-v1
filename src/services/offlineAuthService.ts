@@ -1,5 +1,5 @@
 import { localDB } from './localDB';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, supabaseWithAuth, updateSupabaseHeaders } from '@/integrations/supabase/client';
 import CryptoJS from 'crypto-js';
 
 interface OfflineAuthData {
@@ -248,16 +248,37 @@ class OfflineAuthService {
     profileData?: any;
     error?: string;
   }> {
-    // Fetch farmer data
-    const { data: farmer, error: fetchError } = await supabase
+    // CRITICAL: RLS on `farmers` requires the `x-tenant-id` header (and ideally
+    // `x-farmer-id`) to be set so `get_current_tenant_id()` resolves. When the
+    // user lands directly on /pin from a restored session they skip /auth where
+    // headers would normally be set, so we set them here and use an auth-scoped
+    // client to guarantee they ride along on this request.
+    updateSupabaseHeaders(farmerId, tenantId);
+    const authedClient = supabaseWithAuth(farmerId, tenantId);
+
+    // Fetch farmer data in array mode. PostgREST object mode (`single` / `maybeSingle`)
+    // can still surface PGRST116 in production bundles when no rows are visible via RLS.
+    const { data: farmerRows, error: fetchError } = await authedClient
       .from('farmers')
       .select('*')
       .eq('id', farmerId)
       .eq('tenant_id', tenantId)
-      .single();
+      .limit(2);
 
     if (fetchError) {
       throw fetchError;
+    }
+
+    const farmer = farmerRows?.[0] ?? null;
+
+    if (!farmer) {
+      // No farmer row for this (id, tenant) pair — let caller fall back to
+      // offline validation rather than surfacing a Postgres error to the UI.
+      return {
+        success: false,
+        isOffline: false,
+        error: 'Account not found for this tenant. Please re-register or try offline.',
+      };
     }
 
     // Validate PIN - compare hashed versions
@@ -272,25 +293,24 @@ class OfflineAuthService {
       });
 
     if (validationError || !isValid) {
-      // Fallback to direct comparison of hashed PINs
+      // Fallback: compare salted hash directly (matches SetPin.tsx hashing scheme)
       if (farmer.pin_hash !== pinHash) {
-        // Also check plain PIN for backward compatibility during migration
-        if (farmer.pin !== pin) {
-          return {
-            success: false,
-            isOffline: false,
-            error: 'Incorrect PIN'
-          };
-        }
+        return {
+          success: false,
+          isOffline: false,
+          error: 'Incorrect PIN'
+        };
       }
     }
 
     // Fetch profile data
-    const { data: profileData } = await supabase
+    const { data: profileRows } = await authedClient
       .from('user_profiles')
       .select('*')
       .eq('farmer_id', farmerId)
-      .maybeSingle();
+      .limit(1);
+
+    const profileData = profileRows?.[0] ?? null;
 
     return {
       success: true,

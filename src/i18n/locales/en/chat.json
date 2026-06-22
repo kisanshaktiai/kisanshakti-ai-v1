@@ -145,6 +145,14 @@
       "network": "Network error. Please check your connection.",
       "server": "Server error. Please try again later.",
       "unknown": "Something went wrong. Please retry."
+    },
+    "general": {
+      "pick_land_title": "Pick a land for context",
+      "pick_land_subtitle": "Attach a land so the agronomist tailors advice to your crop & stage.",
+      "no_specific_land": "No specific land — general question",
+      "no_specific_land_hint": "Best for season planning, scheme info, market trends.",
+      "or_pick_land": "Or pick a land",
+      "no_lands_yet": "No lands added yet — continuing as general question."
     }
   },
   "__qa": {

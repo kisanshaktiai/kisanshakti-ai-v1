@@ -142,7 +142,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={handleClose}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60]"
+            className="fixed inset-0 bg-overlay-dark/60 backdrop-blur-sm z-[60]"
           />
 
           <motion.div
@@ -191,7 +191,7 @@ export const CreateGroupModal: React.FC<CreateGroupModalProps> = ({
                         "transition-all duration-200",
                         selectedEmoji === emoji
                           ? "bg-primary/20 ring-2 ring-primary scale-110"
-                          : "bg-secondary/50 hover:bg-secondary"
+                          : "bg-muted/50 hover:bg-muted"
                       )}
                     >
                       {emoji}

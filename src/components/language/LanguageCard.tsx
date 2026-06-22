@@ -31,6 +31,10 @@ export function LanguageCard({
     >
       <Label
         htmlFor={`lang-${code}`}
+        onClick={(e) => {
+          e.preventDefault();
+          onSelect(code);
+        }}
         className={`
           flex items-center justify-between w-full p-4 rounded-2xl border-2 cursor-pointer
           transition-all duration-300 hover:scale-[1.02] hover:shadow-md
@@ -46,6 +50,10 @@ export function LanguageCard({
             id={`lang-${code}`}
             className="border-2"
             aria-label={`Select ${nativeName} - ${englishName}`}
+            onClick={(e) => {
+              e.preventDefault();
+              onSelect(code);
+            }}
           />
           <div className="flex flex-col">
             <span className={`text-xl font-bold ${isSelected ? 'text-primary' : 'text-foreground'}`}>

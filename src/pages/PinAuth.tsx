@@ -13,12 +13,14 @@ import { useTenant } from '@/contexts/TenantContext';
 import { offlineAuthService } from '@/services/offlineAuthService';
 import { useOfflineStatus } from '@/hooks/useOfflineStatus';
 import { toast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 
 export default function PinAuth() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { setUser, setSession, session } = useAuthStore();
   const { setStep } = useAuthFlowStore();
+  const queryClient = useQueryClient();
   const { tenant } = useTenant();
   const [pin, setPin] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -197,15 +199,17 @@ export default function PinAuth() {
       // Clear temp storage but keep session data
       localStorage.removeItem('authMobile');
       localStorage.removeItem('farmerId');
-      
-      // Set step and force navigation
+
+      // CRITICAL: nuke any stale React Query cache from a previous user/session.
+      // Without this, the home screen briefly renders the previous user's data
+      // (the "old view" the user reported).
+      queryClient.clear();
+
+      // Set step and navigate synchronously — headers are already awaited above,
+      // so the next render of <Home/> will see authReady === true on first try.
       setStep('dashboard');
-      console.log('Navigating to dashboard...');
-      
-      // Use setTimeout to ensure state updates are processed
-      setTimeout(() => {
-        navigate('/app', { replace: true });
-      }, 100);
+      console.log('🚀 [PinAuth] Navigating to dashboard');
+      navigate('/app', { replace: true });
     } catch (err: any) {
       console.error('Error verifying PIN:', err);
       setError(err.message || 'Authentication failed. Please try again.');
@@ -225,7 +229,7 @@ export default function PinAuth() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/10 via-background to-accent/10 flex flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6 space-y-6 shadow-xl">
         {/* Header */}
         <div className="space-y-4">
@@ -284,10 +288,10 @@ export default function PinAuth() {
               autoFocus
             >
               <InputOTPGroup>
-                <InputOTPSlot index={0} />
-                <InputOTPSlot index={1} />
-                <InputOTPSlot index={2} />
-                <InputOTPSlot index={3} />
+                <InputOTPSlot index={0} mask />
+                <InputOTPSlot index={1} mask />
+                <InputOTPSlot index={2} mask />
+                <InputOTPSlot index={3} mask />
               </InputOTPGroup>
             </InputOTP>
           </div>

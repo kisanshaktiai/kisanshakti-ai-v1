@@ -4,11 +4,19 @@
  * v7.0.1 - Romanized language detection + app language enforcement
  */
 
+// BUILD_TAG bumps force the edge runtime to pick up dependent module changes
+// (e.g. intent-classifier v4 canonical-intent whitelist). Visible in cold-start logs.
+const BUILD_TAG = 'ai-agri-chat::classifier-v4-canonical::2026-05-31T16:45Z';
+console.log(`[ai-agriculture-chat] BOOT ${BUILD_TAG}`);
+
+
 // XHR polyfill removed to reduce bundle size - Deno fetch is used everywhere
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { checkRateLimit } from '../_shared/rateLimiter.ts';
+import { guardTenantAccess } from '../_shared/tenantAccessGuard.ts';
 import { getLanguageName, getScriptRegex, isDevanagariLanguage } from './utils/language-utils.ts';
+import { loadFarmerProfileLite, getFarmerAddressing, type FarmerAddressing } from '../_shared/farmerAddressing.ts';
 
 // Import orchestrator
 import { AIAgentOrchestrator } from './agents/orchestrator.ts';
@@ -24,6 +32,9 @@ import { formatRecommendationsWithLLM, sanitizeFarmerResponse } from './agents/l
 import type { LLMFormatterInput, LLMFormatterOutput } from './agents/llm-response-formatter.ts';
 
 // Legacy helpers removed - dead code cleanup
+
+// NOTE: General chat is handled by a separate edge function (`ai-general-chat`).
+// This function is now strictly the symbolic-decision-brain endpoint.
 
 // CRITICAL FIX: Import translation functions for farmer-friendly product names
 import { 
@@ -260,52 +271,38 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // SECURITY: Extract and validate tenant and farmer IDs
+    // PHASE 5 SECURITY GUARD: JWT + tenant + farmer-spoof check (one call)
+    //   - Validates Bearer token via getUser()
+    //   - Asserts x-tenant-id / x-farmer-id are valid UUIDs
+    //   - Verifies farmer.tenant_id === x-tenant-id
+    //   - Verifies jwt.sub === x-farmer-id (service-role bypass for cron)
     // ═══════════════════════════════════════════════════════════════════════════
-    const tenantId = req.headers.get('x-tenant-id');
-    const farmerId = req.headers.get('x-farmer-id');
+    const guard = await guardTenantAccess(req);
+    if (guard instanceof Response) return guard;
 
-    if (!tenantId || !farmerId) {
-      console.error('🚨 [Security] Missing required headers:', { tenantId, farmerId });
+    // metadata.* overrides are still honored, but only after the guard has
+    // validated the *header* identity. If metadata disagrees, the override
+    // must still belong to the same authenticated farmer.
+    const finalTenantId = metadata.tenantId || guard.tenantId;
+    const finalFarmerId = metadata.farmerId || guard.farmerId;
+
+    if (
+      !guard.isServiceRole &&
+      (finalTenantId !== guard.tenantId || finalFarmerId !== guard.farmerId)
+    ) {
+      console.error('🚨 [Security] metadata.* override mismatch with guarded identity');
       return new Response(
-        JSON.stringify({ 
-          error: 'Authentication required',
-          details: 'x-tenant-id and x-farmer-id headers are required'
+        JSON.stringify({
+          error: 'Forbidden',
+          details: 'metadata.tenantId / metadata.farmerId must match authenticated identity',
+          code: 'METADATA_IDENTITY_MISMATCH',
         }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
       );
     }
 
-    const finalTenantId = metadata.tenantId || tenantId;
-    const finalFarmerId = metadata.farmerId || farmerId;
-
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // ═══════════════════════════════════════════════════════════════════════════
-    // SECURITY: Validate tenant-farmer association
-    // ═══════════════════════════════════════════════════════════════════════════
-    const { data: farmer, error: farmerError } = await supabase
-      .from('farmers')
-      .select('id, tenant_id, farmer_name')
-      .eq('id', finalFarmerId)
-      .eq('tenant_id', finalTenantId)
-      .single();
-
-    if (farmerError || !farmer) {
-      console.error('🚨 [Security] INVALID TENANT-FARMER ASSOCIATION');
-      return new Response(
-        JSON.stringify({ 
-          error: 'Unauthorized: Invalid tenant-farmer association',
-          details: 'Security validation failed'
-        }),
-        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log('✅ [Security] Tenant-farmer validated:', farmer.farmer_name);
+    const supabase = guard.supabase;
+    console.log('✅ [Security] Phase-5 guard passed for farmer:', finalFarmerId);
 
     // ═══════════════════════════════════════════════════════════════════════════
     // RATE LIMITING
@@ -345,6 +342,42 @@ serve(async (req) => {
     
     // Mark this request as in-flight
     inFlightRequests.set(dedupeKey, { promise: Promise.resolve(new Response()), expiresAt: Date.now() + DEDUP_WINDOW_MS });
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // SUBSCRIPTION QUOTA — atomic 20-per-day check (IST-aware via DB function)
+    // Uses `check_farmer_quota('ai_chat', 1, commit:true)` which locks the
+    // usage row, validates the per-tenant plan limit, and increments. A 402
+    // response tells the client to render the upgrade banner.
+    // ═══════════════════════════════════════════════════════════════════════════
+    try {
+      const { data: quotaResult, error: quotaErr } = await supabase.rpc('check_farmer_quota', {
+        _farmer: finalFarmerId,
+        _feature: 'ai_chat',
+        _delta: 1,
+        _tokens: 0,
+        _commit: true,
+      });
+      if (quotaErr) {
+        console.warn(`⚠️ [Quota] RPC error (allow-on-error):`, quotaErr.message);
+      } else if (quotaResult && (quotaResult as any).allowed === false) {
+        const reason = (quotaResult as any).reason || 'quota_exceeded';
+        const status = reason === 'feature_disabled' ? 403 : 402;
+        inFlightRequests.delete(dedupeKey);
+        return new Response(
+          JSON.stringify({
+            error: 'subscription_quota',
+            code: reason,
+            quota: (quotaResult as any).quota,
+            used: (quotaResult as any).used,
+            remaining: (quotaResult as any).remaining,
+            resets_at: (quotaResult as any).period,
+          }),
+          { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+    } catch (e) {
+      console.warn('⚠️ [Quota] guard threw, allowing request:', (e as Error).message);
+    }
 
     //
     // CRITICAL: Enforce sessionId ↔ landId binding to prevent cross-land contamination
@@ -566,6 +599,11 @@ serve(async (req) => {
       );
     }
 
+    // NOTE: General-chat requests are routed to the separate `ai-general-chat`
+    // edge function by the client. This function is symbolic-brain only.
+
+
+
     // ═══════════════════════════════════════════════════════════════════════════
     // LANGUAGE DETECTION & CONSISTENCY CHECK
     // Detect user's language and prepare for translation pipeline
@@ -619,9 +657,191 @@ serve(async (req) => {
     });
 
     // ═══════════════════════════════════════════════════════════════════════════
+    // PROACTIVE-ALERT NARRATION SHORT-CIRCUIT (v1)
+    // ─────────────────────────────────────────────────────────────────────────
+    // When the user opened the chat from a proactive alert AND this is their
+    // first message in the session, the alert payload is attached to
+    // `metadata.proactiveAlert`. The Decision-Brain has ALREADY produced the
+    // authoritative agronomic answer (action_text_<lang>, decision_reasoning,
+    // trigger_data). We narrate that answer directly — LLM is restricted to
+    // translation/simplification. This avoids the orchestrator re-diagnosing
+    // from a vague seeded question and falling back to generic monitoring.
+    //
+    // Honors the SSOT invariant: 100% of agronomic advice comes from the DB.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const proactiveAlert = metadata?.proactiveAlert;
+    const isFirstTurnFromAlert =
+      !!proactiveAlert &&
+      conversationHistory.length === 0 && // truly first turn in this session
+      !!(proactiveAlert.action_text_en || proactiveAlert.action_text_hi || proactiveAlert.action_text_mr);
+
+    if (isFirstTurnFromAlert) {
+      console.log(`🔔 [${traceId}] PROACTIVE_ALERT_NARRATION: Bypassing orchestrator for first-turn alert response`, {
+        alert_id: proactiveAlert.id,
+        category: proactiveAlert.alert_category,
+        priority: proactiveAlert.priority,
+        condition_code: proactiveAlert.trigger_data?.condition_code,
+      });
+
+      try {
+        const lang = (detectedLanguage || language || 'en').toString().slice(0, 2);
+        const langName: Record<string, string> = {
+          en: 'English', hi: 'Hindi (Devanagari)', mr: 'Marathi (Devanagari)',
+          pa: 'Punjabi (Gurmukhi)', ta: 'Tamil', te: 'Telugu', kn: 'Kannada',
+          gu: 'Gujarati', bn: 'Bengali', or: 'Odia', ml: 'Malayalam',
+        };
+        const pickLocalized = (field: string) =>
+          (proactiveAlert[`${field}_${lang}`] ||
+            proactiveAlert[`${field}_en`] ||
+            proactiveAlert[`${field}_mr`] ||
+            proactiveAlert[`${field}_hi`] ||
+            '').toString();
+
+        const td = proactiveAlert.trigger_data || {};
+        const sol = td.solution || {};
+        const pickSol = (field: string) =>
+          (sol[`${field}_${lang}`] || sol[`${field}_en`] || sol[`${field}_mr`] || sol[`${field}_hi`] || '').toString();
+
+        // Authoritative facts block (Decision-Brain SSOT)
+        const facts = {
+          land_name: proactiveAlert.land_name || null,
+          alert_category: proactiveAlert.alert_category,
+          priority: proactiveAlert.priority,
+          condition_code: td.condition_code || null,
+          ndvi: typeof td.ndvi === 'number' ? td.ndvi : null,
+          title: pickLocalized('title'),
+          message: pickLocalized('message'),
+          // The Decision-Brain's explicit instruction set — must be narrated verbatim in spirit
+          authoritative_action_text: pickLocalized('action_text'),
+          decision_reasoning: proactiveAlert.decision_reasoning || null,
+          problem: pickSol('problem'),
+          cause: pickSol('cause'),
+          steps: sol[`steps_${lang}`] || sol.steps_en || sol.steps_mr || [],
+          followup: pickSol('followup'),
+          safety: pickSol('safety'),
+          expected_benefit: pickSol('expected_benefit'),
+        };
+
+        const lovableKey = Deno.env.get('LOVABLE_API_KEY');
+        let narratedResponse = facts.authoritative_action_text || facts.message || facts.title;
+
+        if (lovableKey && facts.authoritative_action_text) {
+          const sys = [
+            'You are a NARRATOR for an agronomic advisory system. You DO NOT invent agronomy.',
+            'A symbolic Decision-Brain has already produced the authoritative answer below.',
+            'Your job is ONLY to translate, simplify, and structure it for a rural Indian farmer.',
+            '',
+            'STRICT RULES:',
+            `1. Output the FULL response in ${langName[lang] || 'English'}. No English fallback unless lang=en.`,
+            '2. Preserve EVERY action item, every checklist item, every number, every product, and every timing from the authoritative_action_text. Do NOT drop or invent any.',
+            '3. Use simple rural farmer vocabulary. Short sentences.',
+            '4. Structure with clear sections: 🌾 स्थिती (Situation) → ⚠️ कारण (Cause) → ✅ काय करावे (What to do) → 📅 पुढील पाऊल (Next step).',
+            '5. If condition_code is NDVI_NON_RECOVERY, you MUST explicitly state that water stress is ruled out (rain happened but crop did not recover) and emphasize pest/disease/nutrient inspection.',
+            '6. Never recommend irrigation when the authoritative_action_text says diagnostic investigation.',
+            '7. Mention the land name, NDVI value, and priority if available.',
+            '8. End with a clear 48-hour or follow-up action if the alert provides one.',
+            '9. Use plain text with emojis — NO markdown headers (#, ##), NO code blocks.',
+          ].join('\n');
+
+          const usr = `Authoritative Decision-Brain facts (do not contradict, do not omit):\n${JSON.stringify(facts, null, 2)}\n\nFarmer's question: ${userMessageContent}\n\nNarrate the authoritative answer now.`;
+
+          try {
+            const aiResp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${lovableKey}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                model: 'google/gemini-3-flash-preview',
+                messages: [
+                  { role: 'system', content: sys },
+                  { role: 'user', content: usr },
+                ],
+              }),
+            });
+            if (aiResp.ok) {
+              const j = await aiResp.json();
+              const txt = j?.choices?.[0]?.message?.content?.toString().trim();
+              if (txt && txt.length > 30) narratedResponse = txt;
+            } else {
+              console.warn(`[${traceId}] PROACTIVE_NARRATION: gateway ${aiResp.status} — using raw action_text`);
+            }
+          } catch (e) {
+            console.error(`[${traceId}] PROACTIVE_NARRATION LLM error`, e);
+          }
+        }
+
+        // Persist user + assistant messages so the conversation continues normally afterward.
+        try {
+          await supabase.from('ai_chat_messages').insert([
+            {
+              tenant_id: finalTenantId,
+              farmer_id: finalFarmerId,
+              session_id: currentSessionId,
+              role: 'user',
+              content: userMessageContent,
+              language: lang,
+              status: 'sent',
+              decision_brain_source: true,
+              metadata: { proactive_alert_id: proactiveAlert.id, source: 'proactive_alert_entry' },
+            },
+            {
+              tenant_id: finalTenantId,
+              farmer_id: finalFarmerId,
+              session_id: currentSessionId,
+              role: 'assistant',
+              content: narratedResponse,
+              language: lang,
+              status: 'sent',
+              decision_brain_source: true,
+              ai_model: 'proactive-narration',
+              actions_returned: 1,
+              metadata: {
+                proactive_alert_id: proactiveAlert.id,
+                alert_category: proactiveAlert.alert_category,
+                condition_code: td.condition_code,
+                priority: proactiveAlert.priority,
+                source: 'PROACTIVE_ALERT_NARRATION',
+              },
+            },
+          ]);
+        } catch (persistErr) {
+          console.error(`[${traceId}] PROACTIVE_NARRATION persist error`, persistErr);
+        }
+
+        return new Response(
+          JSON.stringify({
+            response: narratedResponse,
+            sessionId: currentSessionId,
+            responseTime: Date.now() - startTime,
+            metadata: {
+              type: 'DECISION_PROVIDED',
+              orchestrator_type: 'PROACTIVE_ALERT_NARRATION',
+              decision_brain_source: true,
+              source: 'PROACTIVE_ALERT_NARRATION',
+              alert_id: proactiveAlert.id,
+              alert_category: proactiveAlert.alert_category,
+              condition_code: td.condition_code,
+              priority: proactiveAlert.priority,
+              trace_id: traceId,
+              language: lang,
+            },
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 },
+        );
+      } catch (alertErr) {
+        console.error(`[${traceId}] PROACTIVE_NARRATION fatal — falling through to orchestrator`, alertErr);
+        // Fall through: the regular orchestrator path runs as a safety net.
+      }
+    }
+
+    // (General-chat path removed — handled by dedicated `ai-general-chat` function.)
+
+
+
+    // ═══════════════════════════════════════════════════════════════════════════
     // CALL ORCHESTRATOR - THE NEW 9-AGENT FLOW WITH TRACE_ID AND SESSION STATE
     // ═══════════════════════════════════════════════════════════════════════════
     const orch = getOrchestrator();
+    
     
     const orchestratorResponse: OrchestratorResponse = await orch.orchestrate(
       userMessageContent,
@@ -1291,6 +1511,21 @@ serve(async (req) => {
           const decisionOutputForFormatting = orchestratorResponse.decision_output;
           hydrateDecisionOutputRichText(decisionOutputForFormatting);
 
+          // ── Load farmer profile + respectful addressing (presentation-only)
+          let farmerAddressing: FarmerAddressing | undefined;
+          try {
+            const profile = await loadFarmerProfileLite(supabase, finalFarmerId, detectedLanguage);
+            farmerAddressing = getFarmerAddressing({
+              language: profile.language || detectedLanguage,
+              state: profile.state,
+              gender: profile.gender,
+              farmer_name: profile.farmer_name,
+            });
+            console.log(`👤 [Addressing] ${farmerAddressing.primary} (${farmerAddressing.gender}/${profile.state || 'no-state'}) for lang=${detectedLanguage}`);
+          } catch (e) {
+            console.warn('[Addressing] load failed:', (e as Error).message);
+          }
+
           const formatterInput: LLMFormatterInput = {
             farmer_message: userMessageContent,
             language: detectedLanguage,
@@ -1298,7 +1533,8 @@ serve(async (req) => {
             land_context: landContext,
             data_audit: orchestratorResponse.dataAudit,
             trace_id: traceId,
-            supabase_client: supabase
+            supabase_client: supabase,
+            farmer_addressing: farmerAddressing,
           };
           
           // Call LLM formatter with timeout protection

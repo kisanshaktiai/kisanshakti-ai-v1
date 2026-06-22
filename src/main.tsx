@@ -2,9 +2,69 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 
-// Import debug utilities (makes window.__debugAuth available)
-import "@/utils/debugAuth";
-import { getSupabaseFunctionUrl } from "@/config/supabase";
+// =============================================================================
+// Global chunk-load error recovery — fixes "Importing a module script failed"
+// after a new deploy (stale index.html referencing missing hashed chunks).
+// One-shot reload guarded by sessionStorage so we never enter a loop.
+// =============================================================================
+(() => {
+  const RELOAD_KEY = '__chunk_reload_attempted__';
+  const isChunkErr = (msg: string) =>
+    /Importing a module script failed/i.test(msg) ||
+    /Failed to fetch dynamically imported module/i.test(msg) ||
+    /Loading chunk [^\s]+ failed/i.test(msg) ||
+    /Loading CSS chunk/i.test(msg) ||
+    /ChunkLoadError/i.test(msg);
+
+  const recover = async (reason: string) => {
+    console.warn('🔄 [ChunkRecovery] Triggered by:', reason);
+    if (sessionStorage.getItem(RELOAD_KEY)) return;
+    sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+    try {
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map((n) => caches.delete(n)));
+      }
+      if (navigator.serviceWorker?.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' });
+      }
+    } catch {/* ignore */}
+    const url = new URL(window.location.href);
+    url.searchParams.set('_v', Date.now().toString(36));
+    window.location.replace(url.toString());
+  };
+
+  window.addEventListener('error', (event) => {
+    const msg = event?.message || (event?.error && (event.error.message || String(event.error))) || '';
+    if (isChunkErr(msg)) {
+      recover(msg);
+    } else {
+      // Sprint 6: forward non-chunk runtime errors to telemetry (best-effort)
+      import('@/lib/observability')
+        .then(({ reportError }) => reportError(event?.error ?? msg, { source: 'window.onerror' }))
+        .catch(() => {});
+    }
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    const reason: any = event?.reason;
+    const msg = (reason && (reason.message || String(reason))) || '';
+    if (isChunkErr(msg)) {
+      recover(msg);
+    } else {
+      import('@/lib/observability')
+        .then(({ reportError }) => reportError(reason ?? msg, { source: 'unhandledrejection' }))
+        .catch(() => {});
+    }
+  });
+
+  // After a successful page-load that wasn't itself a chunk-error reload, clear guard.
+  window.addEventListener('load', () => {
+    setTimeout(() => sessionStorage.removeItem(RELOAD_KEY), 5000);
+    // Initialize telemetry batching
+    import('@/lib/observability').then(({ initObservability }) => initObservability()).catch(() => {});
+  });
+})();
+
 
 // Import Capacitor initialization
 import { initializeCapacitor, isNativeApp, getPlatform } from "@/utils/capacitorInit";
@@ -127,7 +187,19 @@ window.addEventListener('load', () => {
   registerServiceWorker();
 });
 
+if (import.meta.env.DEV) {
+  setTimeout(() => {
+    import("@/utils/debugAuth").catch(() => null);
+  }, 4000);
+}
+
 const rootElement = document.getElementById("root")!;
 
-// Signal that React is mounting (loader removal is handled by index.html event listener)
-createRoot(rootElement).render(<App />);
+// Wait for the initial language's page-bundles (home/weather/common/...) to load
+// BEFORE first paint. This prevents the "translation key flash" where users
+// momentarily see raw keys like `home.welcome` until the JSON chunk arrives.
+import("@/i18n/config").then(({ i18nReady }) => {
+  i18nReady.finally(() => {
+    createRoot(rootElement).render(<App />);
+  });
+});

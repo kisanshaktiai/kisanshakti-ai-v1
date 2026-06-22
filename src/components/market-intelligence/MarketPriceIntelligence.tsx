@@ -12,37 +12,38 @@ import { MarketLocationButtons } from './MarketLocationButtons';
 import { CropChips } from './CropChips';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { 
-  Search, 
-  MapPin, 
-  TrendingUp, 
-  Brain, 
+import {
+  Search,
+  MapPin,
+  TrendingUp,
+  Brain,
   CalendarIcon,
   RefreshCw,
   Loader2,
   Wheat,
   BarChart3,
-  Store,
   ChevronDown,
-  ChevronUp
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
+type Section = 'today' | 'nearby' | 'trend' | 'ai';
+
 export function MarketPriceIntelligence() {
   const { t } = useTranslation();
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState('prices');
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<string>('all');
   const [selectedCrop, setSelectedCrop] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>(undefined);
-  const [showFilters, setShowFilters] = useState(true);
-  
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [openSections, setOpenSections] = useState<Record<Section, boolean>>({
+    today: true,
+    nearby: true,
+    trend: false,
+    ai: false,
+  });
+
   const {
     prices,
     groupedPrices,
@@ -64,404 +65,381 @@ export function MarketPriceIntelligence() {
     getAIAnalysis,
   } = useMarketPriceIntelligence(user?.id);
 
-  // Initialize data on mount
   useEffect(() => {
     const init = async () => {
-      console.log('[MarketPriceIntelligence] Initializing...');
-      
-      await Promise.all([
-        fetchCropGroups(),
-        fetchTopMarkets(20), // Fetch more markets to show all
-        fetchCrops(),
-      ]);
-      
+      await Promise.all([fetchCropGroups(), fetchTopMarkets(20), fetchCrops()]);
       const location = await fetchFarmerLocation();
-      
-      console.log('[MarketPriceIntelligence] Fetching initial prices...');
       await fetchPrices({ limit: 100 });
-      
       if (location?.lat && location?.lon) {
-        console.log('[MarketPriceIntelligence] Fetching nearby markets for location:', location);
-        await fetchNearbyMarkets({ 
-          lat: location.lat, 
-          lon: location.lon, 
-          radiusKm: 50 
-        });
+        await fetchNearbyMarkets({ lat: location.lat, lon: location.lon, radiusKm: 50 });
       }
     };
-    
     init();
   }, [user?.id]);
 
   const handleGroupChange = async (group: string) => {
     setSelectedGroup(group === 'all' ? null : group);
     setSelectedCrop('');
-    
     await fetchCrops(group === 'all' ? undefined : group);
-    
-    await fetchPrices({ 
+    await fetchPrices({
       market: selectedMarket === 'all' ? undefined : selectedMarket,
-      date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined,
-      limit: 100
+      limit: 100,
     });
   };
 
   const handleMarketChange = async (market: string) => {
     setSelectedMarket(market);
-    await fetchPrices({ 
+    await fetchPrices({
       market: market === 'all' ? undefined : market,
       crop: selectedCrop || undefined,
-      date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined 
     });
   };
 
   const handleCropChange = async (crop: string) => {
     setSelectedCrop(crop);
-    await fetchPrices({ 
+    await fetchPrices({
       market: selectedMarket === 'all' ? undefined : selectedMarket,
       crop: crop || undefined,
-      date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined 
     });
-    
     if (crop) {
       await getHistoricalComparison({ crop });
+      setOpenSections((s) => ({ ...s, trend: true, ai: true }));
     }
   };
 
-  const handleDateChange = async (date: Date | undefined) => {
-    setSelectedDate(date);
-    await fetchPrices({ 
-      market: selectedMarket === 'all' ? undefined : selectedMarket,
-      crop: selectedCrop || undefined,
-      date: date ? format(date, 'yyyy-MM-dd') : undefined 
-    });
-  };
-
   const handleRefresh = async () => {
-    await fetchPrices({ 
+    await fetchPrices({
       market: selectedMarket === 'all' ? undefined : selectedMarket,
       crop: selectedCrop || undefined,
-      date: selectedDate ? format(selectedDate, 'yyyy-MM-dd') : undefined 
     });
   };
 
   const handleGetAIAdvice = async () => {
     if (!selectedCrop) return;
-    
-    const avgPrice = prices.length > 0 
-      ? prices.reduce((sum, p) => sum + (p.modal_price || p.price_per_unit || 0), 0) / prices.length 
+    const avgPrice = prices.length > 0
+      ? prices.reduce((s, p) => s + (p.modal_price || p.price_per_unit || 0), 0) / prices.length
       : undefined;
-      
     await getAIAnalysis({
       crop: selectedCrop,
       market: selectedMarket === 'all' ? undefined : selectedMarket,
       currentPrice: avgPrice,
-      historicalData
+      historicalData,
     });
   };
 
-  const filteredPrices = searchQuery 
-    ? prices.filter(p => 
-        p.crop_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.market_location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.district?.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredGroupedPrices = searchQuery
+    ? Object.fromEntries(
+        Object.entries(groupedPrices).map(([d, list]) => [
+          d,
+          list.filter(
+            (p) =>
+              p.crop_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              p.market_location?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              p.district?.toLowerCase().includes(searchQuery.toLowerCase()),
+          ),
+        ]),
       )
-    : prices;
+    : groupedPrices;
 
-  const dateKeys = Object.keys(groupedPrices).sort().reverse();
+  const dateKeys = Object.keys(filteredGroupedPrices)
+    .filter((d) => (filteredGroupedPrices[d] || []).length > 0)
+    .sort()
+    .reverse();
+
+  const toggle = (s: Section) =>
+    setOpenSections((prev) => ({ ...prev, [s]: !prev[s] }));
 
   return (
-    <div className="min-h-screen pb-20">
-      {/* Hero Header - Compact & Informative */}
-      <motion.div 
-        initial={{ opacity: 0, y: -20 }}
+    <div className="space-y-4 pb-6">
+      {/* Quick stats strip */}
+      <motion.div
+        initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
-        className={cn(
-          "relative overflow-hidden rounded-2xl p-4 mb-3",
-          "bg-gradient-to-r from-primary/10 via-primary/5 to-accent/10",
-          "border border-primary/20"
-        )}
+        className="grid grid-cols-3 gap-2"
       >
-        <div className="absolute inset-0 bg-grid-pattern opacity-5" />
-        <div className="relative z-10 flex items-center justify-between">
-          <div>
-            <h1 className="text-lg md:text-2xl font-bold bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-              {t('market.intelligence.title')}
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {t('market.intelligence.subtitle')}
-            </p>
-          </div>
-          
-          <div className="flex items-center gap-2 text-xs">
-            <div className="flex items-center gap-1 bg-primary/10 px-2 py-1 rounded-full">
-              <Store className="w-3 h-3 text-primary" />
-              <span className="font-medium hidden sm:inline">MSAMB</span>
-            </div>
-            <div className="flex items-center gap-1 bg-success/10 px-2 py-1 rounded-full">
-              <TrendingUp className="w-3 h-3 text-success" />
-              <span className="font-medium">{prices.length}</span>
-            </div>
-          </div>
-        </div>
+        <StatPill
+          icon={<TrendingUp className="w-4 h-4 text-success" />}
+          value={prices.length}
+          label="भाव"
+        />
+        <StatPill
+          icon={<MapPin className="w-4 h-4 text-primary" />}
+          value={nearbyMarkets.length}
+          label="जवळचे"
+        />
+        <StatPill
+          icon={<Wheat className="w-4 h-4 text-accent" />}
+          value={crops.length}
+          label="पिके"
+        />
       </motion.div>
 
-      {/* Collapsible Filters Section */}
-      <div className="mb-3">
+      {/* Filter rails */}
+      <CropGroupButtons
+        groups={cropGroups}
+        selectedGroup={selectedGroup}
+        onSelectGroup={handleGroupChange}
+        isLoading={isLoading}
+      />
+
+      <MarketLocationButtons
+        markets={topMarkets}
+        selectedMarket={selectedMarket}
+        onSelectMarket={handleMarketChange}
+        isLoading={isLoading}
+      />
+
+      {crops.length > 0 && (
+        <CropChips
+          crops={crops}
+          selectedCrop={selectedCrop}
+          onSelectCrop={handleCropChange}
+          isLoading={isLoading}
+          maxDisplay={20}
+        />
+      )}
+
+      {/* Search + refresh row */}
+      <div className="flex gap-2 items-center">
+        {searchOpen ? (
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              autoFocus
+              placeholder={t('market.intelligence.search')}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onBlur={() => !searchQuery && setSearchOpen(false)}
+              className="h-11 pl-9 rounded-2xl bg-card border-border/60 text-sm"
+            />
+          </div>
+        ) : (
+          <Button
+            variant="outline"
+            onClick={() => setSearchOpen(true)}
+            className="flex-1 h-11 rounded-2xl bg-card border-border/60 justify-start text-muted-foreground font-normal"
+          >
+            <Search className="w-4 h-4 mr-2" />
+            {t('market.intelligence.search')}
+          </Button>
+        )}
+
         <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowFilters(!showFilters)}
-          className="w-full justify-between h-10 rounded-xl bg-card/50 border border-border/50 mb-2"
+          onClick={handleRefresh}
+          variant="outline"
+          size="icon"
+          className="h-11 w-11 rounded-2xl bg-card border-border/60 flex-shrink-0"
+          disabled={isLoading}
+          aria-label="Refresh"
         >
-          <span className="flex items-center gap-2 text-sm">
-            <Wheat className="w-4 h-4 text-primary" />
-            {selectedGroup || selectedCrop || selectedMarket !== 'all' ? (
-              <span className="text-foreground">
-                {selectedGroup && <span className="text-primary">{selectedGroup}</span>}
-                {selectedCrop && <span className="ml-1">• {selectedCrop}</span>}
-                {selectedMarket !== 'all' && <span className="ml-1">• {selectedMarket}</span>}
-              </span>
-            ) : (
-              <span className="text-muted-foreground">{t('market.intelligence.selectFilters')}</span>
-            )}
-          </span>
-          {showFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4" />
+          )}
         </Button>
+      </div>
 
-        <AnimatePresence>
-          {showFilters && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden space-y-3"
-            >
-              {/* Crop Group Buttons */}
-              <CropGroupButtons
-                groups={cropGroups}
-                selectedGroup={selectedGroup}
-                onSelectGroup={handleGroupChange}
-                isLoading={isLoading}
-              />
-
-              {/* Market Location Buttons */}
-              <MarketLocationButtons
-                markets={topMarkets}
-                selectedMarket={selectedMarket}
-                onSelectMarket={handleMarketChange}
-                isLoading={isLoading}
-              />
-
-              {/* Crop Chips */}
-              {(selectedGroup || crops.length > 0) && (
-                <div className="p-3 bg-card/50 rounded-xl border border-border/50">
-                  <CropChips
-                    crops={crops}
-                    selectedCrop={selectedCrop}
-                    onSelectCrop={handleCropChange}
-                    isLoading={isLoading}
-                    maxDisplay={15}
-                  />
-                </div>
-              )}
-
-              {/* Date & Search Row */}
-              <div className="grid grid-cols-2 gap-2">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      className={cn(
-                        "h-10 rounded-xl bg-card/50 border-border/50 justify-start text-left font-normal text-sm",
-                        !selectedDate && "text-muted-foreground"
-                      )}
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {selectedDate ? format(selectedDate, 'dd/MM') : t('market.intelligence.date')}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={selectedDate}
-                      onSelect={handleDateChange}
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    placeholder={t('market.intelligence.search')}
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-10 pl-9 rounded-xl bg-card/50 border-border/50 text-sm"
-                  />
+      {/* Section: Today's prices */}
+      <Section
+        title="आजचे भाव"
+        subtitle="Today's mandi prices"
+        icon={<TrendingUp className="w-4 h-4 text-primary" />}
+        open={openSections.today}
+        onToggle={() => toggle('today')}
+        count={prices.length}
+      >
+        {isLoading && prices.length === 0 ? (
+          <Loading />
+        ) : dateKeys.length === 0 ? (
+          <Empty icon={Wheat} text={t('market.intelligence.noPrices')} />
+        ) : (
+          <div className="space-y-4">
+            {dateKeys.map((date) => (
+              <div key={date}>
+                <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground mb-2 px-1 flex items-center gap-1.5">
+                  <CalendarIcon className="w-3 h-3" />
+                  {date}
+                </h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {(filteredGroupedPrices[date] || []).slice(0, 20).map((p, i) => (
+                    <MarketPriceCard key={p.id || i} price={p} />
+                  ))}
                 </div>
               </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+            ))}
+          </div>
+        )}
+      </Section>
 
-      {/* Action Buttons */}
-      <div className="flex gap-2 mb-3">
-        <Button 
-          onClick={handleRefresh} 
-          variant="outline" 
-          size="sm"
-          className="rounded-xl flex-1 h-10"
-          disabled={isLoading}
-        >
-          {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
-          {t('market.intelligence.refresh')}
-        </Button>
-        
-        <Button 
-          onClick={handleGetAIAdvice}
-          size="sm"
-          className="rounded-xl bg-gradient-to-r from-primary to-accent hover:opacity-90 flex-1 h-10"
-          disabled={isLoading || !selectedCrop}
-        >
-          <Brain className="w-4 h-4 mr-2" />
-          {t('market.intelligence.aiAdvice')}
-        </Button>
-      </div>
+      {/* Section: Nearby */}
+      <Section
+        title="जवळचे बाजार"
+        subtitle="Markets within 50km"
+        icon={<MapPin className="w-4 h-4 text-primary" />}
+        open={openSections.nearby}
+        onToggle={() => toggle('nearby')}
+        count={nearbyMarkets.length}
+      >
+        <NearbyMarketsSection
+          markets={nearbyMarkets}
+          isLoading={isLoading}
+          farmerLocation={farmerLocation}
+          embedded
+          onRefresh={() => {
+            if (farmerLocation?.lat && farmerLocation?.lon) {
+              fetchNearbyMarkets({
+                lat: farmerLocation.lat,
+                lon: farmerLocation.lon,
+                radiusKm: 50,
+                crop: selectedCrop || undefined,
+              });
+            }
+          }}
+        />
+      </Section>
 
-      {/* Main Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className={cn(
-          "grid w-full grid-cols-4 h-11 rounded-xl p-1 mb-3",
-          "bg-card/80 backdrop-blur-xl border border-border/50"
-        )}>
-          <TabsTrigger 
-            value="prices" 
-            className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <TrendingUp className="w-3.5 h-3.5 mr-1" />
-            {t('market.intelligence.prices')}
-          </TabsTrigger>
-          <TabsTrigger 
-            value="nearby"
-            className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <MapPin className="w-3.5 h-3.5 mr-1" />
-            {t('market.intelligence.nearby')}
-          </TabsTrigger>
-          <TabsTrigger 
-            value="comparison"
-            className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <BarChart3 className="w-3.5 h-3.5 mr-1" />
-            {t('market.intelligence.comparison')}
-          </TabsTrigger>
-          <TabsTrigger 
-            value="ai"
-            className="rounded-lg text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-          >
-            <Brain className="w-3.5 h-3.5 mr-1" />
-            {t('market.intelligence.ai')}
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="prices" className="mt-0">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-8 h-8 animate-spin text-primary" />
-            </div>
-          ) : filteredPrices.length === 0 ? (
-            <EmptyPricesState />
-          ) : (
-            <div className="space-y-4">
-              {dateKeys.map((date) => (
-                <motion.div 
-                  key={date}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                >
-                  <h3 className="text-sm font-semibold mb-2 flex items-center gap-2 text-muted-foreground">
-                    <CalendarIcon className="w-4 h-4 text-primary" />
-                    {date}
-                  </h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {(groupedPrices[date] || [])
-                      .filter(p => !searchQuery || 
-                        p.crop_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        p.market_location?.toLowerCase().includes(searchQuery.toLowerCase())
-                      )
-                      .slice(0, 15)
-                      .map((price, index) => (
-                        <MarketPriceCard key={price.id || index} price={price} />
-                      ))}
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="nearby" className="mt-0">
-          <NearbyMarketsSection
-            markets={nearbyMarkets}
-            isLoading={isLoading}
-            farmerLocation={farmerLocation}
-            onRefresh={() => {
-              if (farmerLocation?.lat && farmerLocation?.lon) {
-                fetchNearbyMarkets({ 
-                  lat: farmerLocation.lat, 
-                  lon: farmerLocation.lon, 
-                  radiusKm: 50,
-                  crop: selectedCrop || undefined
-                });
-              }
-            }}
-          />
-        </TabsContent>
-
-        <TabsContent value="comparison" className="mt-0">
-          <PriceComparisonChart
-            historicalData={historicalData}
-            selectedCrop={selectedCrop}
-            isLoading={isLoading}
-            onFetchComparison={() => getHistoricalComparison({ 
+      {/* Section: Trend */}
+      <Section
+        title="किंमत प्रवृत्ती"
+        subtitle="Price trend"
+        icon={<BarChart3 className="w-4 h-4 text-primary" />}
+        open={openSections.trend}
+        onToggle={() => toggle('trend')}
+      >
+        <PriceComparisonChart
+          historicalData={historicalData}
+          selectedCrop={selectedCrop}
+          isLoading={isLoading}
+          embedded
+          onFetchComparison={() =>
+            getHistoricalComparison({
               crop: selectedCrop || undefined,
-              market: selectedMarket === 'all' ? undefined : selectedMarket
-            })}
-          />
-        </TabsContent>
+              market: selectedMarket === 'all' ? undefined : selectedMarket,
+            })
+          }
+        />
+      </Section>
 
-        <TabsContent value="ai" className="mt-0">
-          <AISellingAdvisor
-            analysis={aiAnalysis}
-            selectedCrop={selectedCrop}
-            isLoading={isLoading}
-            onGetAdvice={handleGetAIAdvice}
-          />
-        </TabsContent>
-      </Tabs>
+      {/* Section: AI advice */}
+      <Section
+        title="AI विक्री सल्ला"
+        subtitle="AI selling advice"
+        icon={<Brain className="w-4 h-4 text-accent" />}
+        open={openSections.ai}
+        onToggle={() => toggle('ai')}
+      >
+        <AISellingAdvisor
+          analysis={aiAnalysis}
+          selectedCrop={selectedCrop}
+          isLoading={isLoading}
+          onGetAdvice={handleGetAIAdvice}
+          embedded
+        />
+      </Section>
     </div>
   );
 }
 
-function EmptyPricesState() {
-  const { t } = useTranslation();
-  
+function StatPill({
+  icon,
+  value,
+  label,
+}: {
+  icon: React.ReactNode;
+  value: number | string;
+  label: string;
+}) {
   return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className={cn(
-        "text-center py-12 rounded-2xl",
-        "bg-gradient-to-br from-card/50 to-muted/30",
-        "border border-border/50"
-      )}
-    >
-      <Wheat className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-      <p className="text-muted-foreground text-sm font-medium">
-        {t('market.intelligence.noPrices')}
-      </p>
-    </motion.div>
+    <div className="flex items-center gap-2 px-3 py-2 rounded-2xl bg-card border border-border/60">
+      <div className="flex-shrink-0">{icon}</div>
+      <div className="min-w-0">
+        <div className="text-sm font-bold text-foreground leading-tight tabular-nums">
+          {value}
+        </div>
+        <div className="text-[10px] text-muted-foreground leading-tight truncate">
+          {label}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  subtitle,
+  icon,
+  open,
+  onToggle,
+  count,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  icon: React.ReactNode;
+  open: boolean;
+  onToggle: () => void;
+  count?: number;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl bg-card border border-border/60 overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center gap-3 px-4 py-3 active:bg-muted/40 transition-colors"
+      >
+        <div className="p-2 rounded-xl bg-muted flex-shrink-0">{icon}</div>
+        <div className="flex-1 text-left min-w-0">
+          <div className="text-sm font-bold text-foreground leading-tight truncate">
+            {title}
+          </div>
+          <div className="text-[11px] text-muted-foreground leading-tight truncate">
+            {subtitle}
+          </div>
+        </div>
+        {count !== undefined && count > 0 && (
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-primary/10 text-primary">
+            {count}
+          </span>
+        )}
+        <ChevronDown
+          className={cn(
+            'w-4 h-4 text-muted-foreground transition-transform flex-shrink-0',
+            open && 'rotate-180',
+          )}
+        />
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="p-4 pt-1">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+}
+
+function Loading() {
+  return (
+    <div className="flex items-center justify-center py-8">
+      <Loader2 className="w-6 h-6 animate-spin text-primary" />
+    </div>
+  );
+}
+
+function Empty({ icon: Icon, text }: { icon: React.ElementType; text: string }) {
+  return (
+    <div className="text-center py-8">
+      <Icon className="w-10 h-10 mx-auto text-muted-foreground/40 mb-2" />
+      <p className="text-sm text-muted-foreground">{text}</p>
+    </div>
   );
 }

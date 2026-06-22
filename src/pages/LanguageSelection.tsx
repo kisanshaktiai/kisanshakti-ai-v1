@@ -11,6 +11,7 @@ import { motion } from 'framer-motion';
 import { AppHeader } from '@/components/language/AppHeader';
 import { LocationDetector } from '@/components/language/LocationDetector';
 import { LanguageCard } from '@/components/language/LanguageCard';
+import { LanguageConfirmDialog } from '@/components/language/LanguageConfirmDialog';
 
 const stateLanguages: Record<string, string[]> = {
   'Andhra Pradesh': ['te', 'hi', 'en'],
@@ -54,6 +55,7 @@ export default function LanguageSelection() {
   const [userState, setUserState] = useState<string>('');
   const [sortedLanguages, setSortedLanguages] = useState(availableLanguages);
   const [hasDetectedLocation, setHasDetectedLocation] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -84,6 +86,14 @@ export default function LanguageSelection() {
 
   const { markLanguageSelected, setStep } = useAuthFlowStore();
   
+  const openConfirm = (code?: string) => {
+    const target = code ?? selectedLanguage;
+    if (target) {
+      setSelectedLanguage(target);
+      setConfirmOpen(true);
+    }
+  };
+
   const handleContinue = () => {
     if (selectedLanguage) {
       setLanguage(selectedLanguage);
@@ -91,12 +101,15 @@ export default function LanguageSelection() {
       localStorage.setItem('hasSelectedLanguage', 'true');
       markLanguageSelected();
       setStep('mobile');
-      navigate('/auth');
+      setConfirmOpen(false);
+      // First-run: send through the standard permission onboarding before auth.
+      const permsDone = localStorage.getItem('ks_permissions_onboarded') === 'true';
+      navigate(permsDone ? '/auth' : '/permissions');
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-accent/5 flex flex-col">
+    <div className="min-h-mobile-screen bg-gradient-to-br from-primary/5 via-background to-accent/5 flex flex-col">
       <AppHeader />
 
       <main className="flex-1 overflow-y-auto px-4 py-6">
@@ -107,7 +120,7 @@ export default function LanguageSelection() {
 
           <RadioGroup 
             value={selectedLanguage} 
-            onValueChange={setSelectedLanguage}
+            onValueChange={(code) => openConfirm(code)}
             className="space-y-3"
             aria-label="Select your preferred language"
           >
@@ -120,7 +133,7 @@ export default function LanguageSelection() {
                 isSelected={selectedLanguage === lang.code}
                 isRecommended={index === 0 && hasDetectedLocation && userState && userState !== 'default'}
                 index={index}
-                onSelect={setSelectedLanguage}
+                onSelect={(code) => openConfirm(code)}
               />
             ))}
           </RadioGroup>
@@ -130,7 +143,7 @@ export default function LanguageSelection() {
       <footer className="sticky bottom-0 glassmorphism-strong border-t border-border/30 shadow-float">
         <div className="max-w-md mx-auto p-4">
           <Button
-            onClick={handleContinue}
+            onClick={() => openConfirm()}
             disabled={!selectedLanguage}
             variant="pill-gradient"
             size="lg"
@@ -151,6 +164,15 @@ export default function LanguageSelection() {
           </Button>
         </div>
       </footer>
+
+      <LanguageConfirmDialog
+        open={confirmOpen && !!selectedLanguage}
+        onOpenChange={setConfirmOpen}
+        langCode={selectedLanguage}
+        nativeName={sortedLanguages.find(l => l.code === selectedLanguage)?.nativeName || ''}
+        englishName={sortedLanguages.find(l => l.code === selectedLanguage)?.name || ''}
+        onConfirm={handleContinue}
+      />
     </div>
   );
 }

@@ -69,13 +69,13 @@ export default function WeatherScheduleAlerts({ className, maxAlerts = 3 }: Weat
     switch (condition) {
       case 'heavy_rain':
       case 'continuous_rain':
-        return <CloudRain className="h-4 w-4 text-blue-500" />;
+        return <CloudRain className="h-4 w-4 text-info" />;
       case 'extreme_heat':
-        return <AlertTriangle className="h-4 w-4 text-orange-500" />;
+        return <AlertTriangle className="h-4 w-4 text-warning" />;
       case 'frost':
-        return <AlertTriangle className="h-4 w-4 text-cyan-500" />;
+        return <AlertTriangle className="h-4 w-4 text-info" />;
       case 'high_wind':
-        return <AlertTriangle className="h-4 w-4 text-purple-500" />;
+        return <AlertTriangle className="h-4 w-4 text-primary" />;
       default:
         return <CloudRain className="h-4 w-4 text-primary" />;
     }
@@ -124,7 +124,7 @@ export default function WeatherScheduleAlerts({ className, maxAlerts = 3 }: Weat
           <CloudRain className="h-4 w-4 text-primary" />
           {lang === 'hi' ? 'मौसम अलर्ट' : lang === 'mr' ? 'हवामान अलर्ट' : 'Weather Alerts'}
         </h3>
-        <Badge variant="outline" className="text-[10px] bg-amber-500/10 text-amber-600 border-amber-500/30">
+        <Badge variant="outline" className="text-[10px] bg-warning/10 text-warning border-warning/30">
           {alerts.length} {lang === 'hi' ? 'नए' : lang === 'mr' ? 'नवीन' : 'new'}
         </Badge>
       </div>
@@ -139,13 +139,13 @@ export default function WeatherScheduleAlerts({ className, maxAlerts = 3 }: Weat
             transition={{ delay: index * 0.1 }}
           >
             <Card 
-              className="relative overflow-hidden border-2 border-amber-500/30 bg-amber-500/5 cursor-pointer hover:bg-amber-500/10 transition-colors"
+              className="relative overflow-hidden border-2 border-warning/30 bg-warning/5 cursor-pointer hover:bg-warning/10 transition-colors"
               onClick={() => markAsRead(alert.id)}
             >
               {/* Priority indicator */}
               <div className={cn(
                 "absolute left-0 top-0 bottom-0 w-1.5",
-                alert.priority === 'high' ? "bg-gradient-to-b from-red-500 to-orange-500" : "bg-gradient-to-b from-amber-500 to-yellow-500"
+                alert.priority === 'high' ? "bg-gradient-to-b from-destructive to-warning" : "bg-gradient-to-b from-warning to-warning"
               )} />
 
               <div className="p-3 pl-4 space-y-2">
@@ -159,7 +159,7 @@ export default function WeatherScheduleAlerts({ className, maxAlerts = 3 }: Weat
                   </div>
                   <Badge 
                     variant="outline" 
-                    className="text-[9px] px-1.5 py-0 bg-blue-500/10 text-blue-600 border-blue-500/30 shrink-0"
+                    className="text-[9px] px-1.5 py-0 bg-info/10 text-info border-info/30 shrink-0"
                   >
                     {getConditionLabel(alert.data?.weather_condition)}
                   </Badge>
@@ -176,7 +176,7 @@ export default function WeatherScheduleAlerts({ className, maxAlerts = 3 }: Weat
                     <span className="text-primary font-medium">
                       {formatDate(alert.data.new_date)}
                     </span>
-                    <span className="text-[10px] text-amber-600">
+                    <span className="text-[10px] text-warning">
                       ({lang === 'hi' ? 'पुनर्निर्धारित' : lang === 'mr' ? 'पुन्हा निश्चित' : 'rescheduled'})
                     </span>
                   </div>

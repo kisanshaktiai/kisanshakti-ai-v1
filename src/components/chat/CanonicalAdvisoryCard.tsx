@@ -185,9 +185,9 @@ function AdvisorySection({
 function ConfidenceBadge({ score, decision }: { score: number; decision: string }) {
   const { t } = useTranslation();
   const pct = Math.round(score * 100);
-  const color = pct >= 75 ? 'bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/30' :
-                pct >= 50 ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border-yellow-500/30' :
-                'bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/30';
+  const color = pct >= 75 ? 'bg-success/15 text-success dark:text-success border-success/30' :
+                pct >= 50 ? 'bg-warning/15 text-warning dark:text-warning border-warning/30' :
+                'bg-destructive/15 text-destructive dark:text-destructive border-destructive/30';
   
   const decisionLabel = decision === 'TREAT' ? `💊 ${t('chatCards.cards.treatment')}` : 
                         decision === 'MONITOR' ? `👁️ ${t('chatCards.cards.monitoring')}` : `❓ ${t('chatCards.cards.confirmDiagnosis')}`;
@@ -249,7 +249,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           <ul className="space-y-1">
             {advisory.symptoms_to_confirm.map((s, i) => (
               <li key={i} className="flex items-start gap-2 text-muted-foreground">
-                <span className="text-yellow-500 mt-0.5">•</span>
+                <span className="text-warning mt-0.5">•</span>
                 <span>{s}</span>
               </li>
             ))}
@@ -301,10 +301,10 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
         
         {/* Organic alternative */}
         {treatment.organic_solution && (
-          <div className="mt-2 p-2 bg-green-500/10 rounded-md">
+          <div className="mt-2 p-2 bg-success/10 rounded-md">
             <div className="flex items-center gap-1 mb-1">
-              <Leaf className="h-3 w-3 text-green-600" />
-              <span className="text-xs font-medium text-green-700 dark:text-green-400">{t('chatCards.cards.organicAlternative')}</span>
+              <Leaf className="h-3 w-3 text-success" />
+              <span className="text-xs font-medium text-success dark:text-success">{t('chatCards.cards.organicAlternative')}</span>
             </div>
             <p className="text-xs text-muted-foreground">{treatment.organic_solution}</p>
           </div>
@@ -327,7 +327,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
               </div>
             )}
             {safety.bee_toxicity && safety.bee_toxicity !== 'SAFE' && (
-              <div className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
+              <div className="flex items-center gap-1 text-xs text-warning dark:text-warning">
                 <span>🐝</span>
                 <span>{safety.bee_warning || `Bee toxicity: ${safety.bee_toxicity}`}</span>
                 {safety.bee_spray_time && <span className="font-medium">→ Spray {safety.bee_spray_time}</span>}
@@ -364,7 +364,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
             {economics.cost_estimate && <p>💰 Estimated Cost: <span className="font-medium text-foreground">₹{economics.cost_estimate}</span></p>}
             {economics.material_cost && <p>📦 Material: ₹{economics.material_cost}</p>}
             {economics.labor_cost && <p>👷 Labor: ₹{economics.labor_cost}</p>}
-            {economics.roi_yield_gain && <p>📈 Expected Yield Gain: <span className="text-green-600 font-medium">{economics.roi_yield_gain}</span></p>}
+            {economics.roi_yield_gain && <p>📈 Expected Yield Gain: <span className="text-success font-medium">{economics.roi_yield_gain}</span></p>}
             {economics.cost_saved_range && <p>💵 Cost Saved: ₹{economics.cost_saved_range}</p>}
           </div>
         </AdvisorySection>
@@ -375,7 +375,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
         <AdvisorySection icon={Activity} title={t('chatCards.cards.monitoring')} variant="green" defaultExpanded={false}>
           {monitoring.success_indicators.length > 0 && (
             <div className="mb-2">
-              <p className="text-xs font-medium text-green-600 dark:text-green-400 mb-1 flex items-center gap-1">
+              <p className="text-xs font-medium text-success dark:text-success mb-1 flex items-center gap-1">
                 <CheckCircle2 className="h-3 w-3" /> {t('chatCards.cards.successSigns')}
               </p>
               <ul className="space-y-0.5">
@@ -387,7 +387,7 @@ export const CanonicalAdvisoryCard: React.FC<CanonicalAdvisoryCardProps> = ({ ad
           )}
           {monitoring.failure_indicators.length > 0 && (
             <div>
-              <p className="text-xs font-medium text-red-600 dark:text-red-400 mb-1 flex items-center gap-1">
+              <p className="text-xs font-medium text-destructive dark:text-destructive mb-1 flex items-center gap-1">
                 <XCircle className="h-3 w-3" /> {t('chatCards.cards.warningSigns')}
               </p>
               <ul className="space-y-0.5">

@@ -23,9 +23,9 @@ interface AlertSummary {
 
 const priorityConfig: Record<string, { color: string; label: string }> = {
   CRITICAL: { color: 'bg-destructive text-destructive-foreground', label: '🔴' },
-  HIGH: { color: 'bg-orange-500 text-white', label: '🟠' },
-  MEDIUM: { color: 'bg-yellow-500 text-white', label: '🟡' },
-  LOW: { color: 'bg-green-500 text-white', label: '🟢' },
+  HIGH: { color: 'bg-warning text-warning-foreground', label: '🟠' },
+  MEDIUM: { color: 'bg-warning-soft text-warning', label: '🟡' },
+  LOW: { color: 'bg-success text-success-foreground', label: '🟢' },
 };
 
 export function AlertsSummaryCard() {
@@ -39,6 +39,8 @@ export function AlertsSummaryCard() {
     if (!user?.id) return;
 
     const fetchRecentAlerts = async () => {
+      console.log('[AlertsSummaryCard] Fetching alerts for farmer:', user.id);
+      
       const { data, error } = await supabase
         .from('proactive_alerts')
         .select('id, title_en, title_mr, title_hi, priority, alert_category, created_at, land_id')
@@ -47,7 +49,15 @@ export function AlertsSummaryCard() {
         .order('created_at', { ascending: false })
         .limit(3);
 
-      if (error || !data) return;
+      if (error) {
+        console.error('[AlertsSummaryCard] Query error:', error);
+        return;
+      }
+      if (!data || data.length === 0) {
+        console.log('[AlertsSummaryCard] No alerts found for this farmer');
+        return;
+      }
+      console.log('[AlertsSummaryCard] Found', data.length, 'alerts');
 
       // Count total unread
       const { count } = await supabase
@@ -124,7 +134,7 @@ export function AlertsSummaryCard() {
               return (
                 <Link 
                   key={alert.id} 
-                  to="/app/proactive-alerts"
+                  to={alert.land_id ? `/app/proactive-alerts?landId=${alert.land_id}` : '/app/proactive-alerts'}
                   className="flex items-center gap-2 p-2 rounded-lg bg-background/60 hover:bg-background/80 transition-colors"
                 >
                   <span className="text-sm">{config.label}</span>

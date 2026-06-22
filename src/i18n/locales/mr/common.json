@@ -8,6 +8,9 @@
     "next": "पुढे",
     "previous": "मागील",
     "edit": "संपादित करा",
+    "change": "बदला",
+    "use": "हेच वापरा",
+    "selectManually": "स्वतः निवडा",
     "delete": "हटवा",
     "share": "शेअर करा",
     "copy": "कॉपी करा",
@@ -15,6 +18,7 @@
     "download": "डाउनलोड करा",
     "upload": "अपलोड करा",
     "loading": "लोड होत आहे...",
+    "saving": "साठवत आहे…",
     "error": "त्रुटी",
     "success": "यशस्वी",
     "failed": "अयशस्वी",
@@ -56,6 +60,25 @@
     "optional": "पर्यायी",
     "noResults": "कोणतेही परिणाम सापडले नाहीत",
     "pageNotFound": "पृष्ठ सापडले नाही",
-    "returnToHome": "होम वर परत जा"
+    "returnToHome": "होम वर परत जा",
+    "swipeLeft": "पुढे जाण्यासाठी डावीकडे सरकवा",
+    "connection": "कनेक्शन",
+    "more": "अधिक क्रिया",
+    "quickActions": "त्वरित क्रिया",
+    "sync": "डेटा सिंक करा",
+    "language": "भाषा",
+    "speak_this_page": "हे पान वाचून दाखव",
+    "stop_speaking": "वाचन थांबवा",
+    "no_readable_text": "वाचण्यासारखे काही नाही",
+    "no_readable_text_hint": "मजकूर असलेल्या भागावर जा आणि पुन्हा प्रयत्न करा.",
+    "tts_failed": "हे पान वाचता आले नाही",
+    "subscription": {
+      "tap_to_manage": "योजना व्यवस्थापित करा",
+      "days_remaining": "{{d}} दिवस शिल्लक",
+      "grace_period": "सूट कालावधी · {{d}} दिवस शिल्लक",
+      "expired_tap_renew": "नूतनीकरण करा"
+    },
+    "undo": "पूर्ववत करा",
+    "try_again": "पुन्हा प्रयत्न करा"
   }
 }

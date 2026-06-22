@@ -57,6 +57,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========================================
+   2030-Ready Touch Foundation
+   ======================================== */
+html, body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Eliminate 300ms tap delay on all interactive elements */
+button, a, [role="button"], input, select, textarea, label,
+[tabindex], summary {
+  touch-action: manipulation;
+}
+
+/* Universal scroll container pattern */
+.scroll-container {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  will-change: scroll-position;
+}
+
 /* Hide scrollbar for horizontal scrolling weather cards */
 .scrollbar-hide {
   -ms-overflow-style: none;
@@ -112,15 +142,20 @@
     /* Status Colors */
     --success: 142 76% 45%;
     --success-foreground: 0 0% 100%;
+    --success-soft: 142 76% 92%;
     
     --warning: 38 95% 58%;
     --warning-foreground: 38 10% 15%;
+    --warning-soft: 38 95% 92%;
     
     --destructive: 0 85% 60%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 85% 94%;
     
     --info: 210 100% 56%;
     --info-foreground: 0 0% 100%;
+    --info-soft: 210 100% 94%;
+    
     
     /* Muted - Subtle Intelligence */
     --muted: 220 15% 95%;
@@ -182,6 +217,14 @@
     --gradient-soil: linear-gradient(180deg, hsl(30 45% 45%), hsl(25 50% 40%));
     --gradient-crop: linear-gradient(135deg, hsl(100 70% 50%), hsl(142 76% 45%));
     --gradient-sky: linear-gradient(180deg, hsl(210 100% 56%), hsl(200 85% 65%));
+
+    /* Theme-token gradients (resolve via semantic tokens, white-label safe) */
+    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary) / 0.7));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent) / 0.7));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.5));
+
+    /* Soft shadow (referenced by Home feature cards) */
+    --shadow-soft: 0 2px 8px 0 hsl(220 15% 12% / 0.06), 0 1px 3px 0 hsl(220 15% 12% / 0.04);
     
     /* Advanced Shadows - Multi-layer Depth */
     --shadow-sm: 0 1px 3px 0 hsl(220 15% 12% / 0.08), 0 1px 2px 0 hsl(220 15% 12% / 0.06);
@@ -317,15 +360,20 @@
     
     --success: 142 76% 50%;
     --success-foreground: 0 0% 100%;
+    --success-soft: 142 40% 20%;
     
     --warning: 38 95% 62%;
     --warning-foreground: 38 10% 15%;
+    --warning-soft: 38 50% 20%;
     
     --destructive: 0 85% 65%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 0 50% 22%;
     
     --info: 210 100% 60%;
     --info-foreground: 0 0% 100%;
+    --info-soft: 210 50% 20%;
+    
     
     --muted: 220 20% 18%;
     --muted-foreground: 220 10% 65%;
@@ -356,6 +404,13 @@
     --gradient-soil: linear-gradient(180deg, hsl(30 45% 50%), hsl(25 50% 45%));
     --gradient-crop: linear-gradient(135deg, hsl(100 70% 55%), hsl(142 76% 50%));
     --gradient-sky: linear-gradient(180deg, hsl(210 100% 60%), hsl(200 85% 70%));
+
+    /* Theme-token gradients (dark) */
+    --gradient-secondary: linear-gradient(135deg, hsl(var(--secondary)), hsl(var(--secondary) / 0.7));
+    --gradient-accent: linear-gradient(135deg, hsl(var(--accent)), hsl(var(--accent) / 0.7));
+    --gradient-subtle: linear-gradient(180deg, hsl(var(--background)), hsl(var(--muted) / 0.4));
+
+    --shadow-soft: 0 2px 8px 0 hsl(0 0% 0% / 0.35), 0 1px 3px 0 hsl(0 0% 0% / 0.25);
     
     --shadow-sm: 0 1px 3px 0 hsl(0 0% 0% / 0.3), 0 1px 2px 0 hsl(0 0% 0% / 0.2);
     --shadow-md: 0 4px 12px 0 hsl(0 0% 0% / 0.4), 0 2px 6px 0 hsl(0 0% 0% / 0.3);
@@ -613,7 +668,7 @@
   
   /* Bottom Navigation Glassmorphism */
   .glassmorphism-nav {
-    @apply bg-background/85 backdrop-blur-2xl;
+    @apply bg-background/95;
     background: linear-gradient(
       to top,
       hsl(var(--background) / 0.95),
@@ -762,7 +817,7 @@
   
   /* Mobile Scroll Containers */
   .mobile-scroll-container {
-    height: 100%;
+    flex: 1;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     overscroll-behavior-y: contain;
@@ -852,4 +907,44 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* 2030 Glass Header — opaque fallback for low-end Android, blur upgrade where supported */
+  .glass-header {
+    background-color: hsl(var(--card) / 0.95);
+    border-bottom: 1px solid hsl(var(--border) / 0.5);
+    box-shadow: 0 1px 0 0 hsl(var(--primary) / 0.06), 0 4px 20px -8px hsl(var(--foreground) / 0.06);
+  }
+
+  @supports (backdrop-filter: blur(12px)) or (-webkit-backdrop-filter: blur(12px)) {
+    .glass-header {
+      background-color: hsl(var(--card) / 0.7);
+      backdrop-filter: blur(12px) saturate(140%);
+      -webkit-backdrop-filter: blur(12px) saturate(140%);
+    }
+  }
+
+  /* 2030 a11y: prevent iOS auto-zoom on input focus (font-size must be ≥16px) */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: max(16px, 1rem);
+  }
+
+  /* Universal focus-visible ring for keyboard / accessibility users */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--primary) / 0.6);
+    border-radius: inherit;
+  }
+
+  /* Multi-tenant auth gradient — single source for tenant theming */
+  .bg-auth-gradient {
+    background: linear-gradient(135deg,
+      hsl(var(--primary) / 0.10),
+      hsl(var(--background)),
+      hsl(var(--accent) / 0.10));
+  }
 }
+

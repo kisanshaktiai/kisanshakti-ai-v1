@@ -201,7 +201,7 @@ const TaskEditDialog: React.FC<TaskEditDialogProps> = ({ task, open, onOpenChang
           <Button
             onClick={handleSave}
             disabled={isLoading || !taskName.trim()}
-            className="bg-gradient-to-r from-primary to-accent text-white"
+            className="bg-gradient-to-r from-primary to-accent text-primary-foreground"
           >
             {isLoading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />

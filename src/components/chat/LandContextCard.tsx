@@ -19,9 +19,9 @@ export function LandContextCard({ land, weather = { temperature: 28, humidity: 6
   const { t } = useTranslation();
   
   const getNDVIStatus = (score: number) => {
-    if (score > 0.7) return { label: t('chat.healthy'), color: 'bg-green-500' };
-    if (score > 0.4) return { label: t('chat.moderate'), color: 'bg-yellow-500' };
-    return { label: t('chat.needsAttention'), color: 'bg-red-500' };
+    if (score > 0.7) return { label: t('chat.healthy'), color: 'bg-success' };
+    if (score > 0.4) return { label: t('chat.moderate'), color: 'bg-warning' };
+    return { label: t('chat.needsAttention'), color: 'bg-destructive' };
   };
   
   const ndviStatus = getNDVIStatus(ndviScore);
@@ -48,21 +48,21 @@ export function LandContextCard({ land, weather = { temperature: 28, humidity: 6
       {/* Compact Info Grid */}
       <div className="grid grid-cols-2 gap-1.5">
         {land.current_crop && (
-          <div className="flex items-center gap-1 p-1.5 rounded bg-green-100/50 dark:bg-green-900/20">
-            <Sprout className="w-3 h-3 text-green-600" />
+          <div className="flex items-center gap-1 p-1.5 rounded bg-success-soft/50 dark:bg-success/20">
+            <Sprout className="w-3 h-3 text-success" />
             <span className="text-xs truncate">{land.current_crop}</span>
           </div>
         )}
-        <div className="flex items-center gap-1 p-1.5 rounded bg-orange-100/50 dark:bg-orange-900/20">
-          <Thermometer className="w-3 h-3 text-orange-600" />
+        <div className="flex items-center gap-1 p-1.5 rounded bg-warning-soft/50 dark:bg-warning/20">
+          <Thermometer className="w-3 h-3 text-warning" />
           <span className="text-xs">{weather.temperature}°C</span>
         </div>
-        <div className="flex items-center gap-1 p-1.5 rounded bg-blue-100/50 dark:bg-blue-900/20">
-          <Droplets className="w-3 h-3 text-blue-600" />
+        <div className="flex items-center gap-1 p-1.5 rounded bg-info-soft/50 dark:bg-info/20">
+          <Droplets className="w-3 h-3 text-info" />
           <span className="text-xs">{weather.humidity}%</span>
         </div>
-        <div className="flex items-center gap-1 p-1.5 rounded bg-cyan-100/50 dark:bg-cyan-900/20">
-          <Cloud className="w-3 h-3 text-cyan-600" />
+        <div className="flex items-center gap-1 p-1.5 rounded bg-info-soft/50 dark:bg-info/20">
+          <Cloud className="w-3 h-3 text-info" />
           <span className="text-xs">{weather.rainfall}mm</span>
         </div>
       </div>
@@ -72,19 +72,19 @@ export function LandContextCard({ land, weather = { temperature: 28, humidity: 6
         <div className="flex gap-1 mt-2 flex-wrap">
           <button
             onClick={() => onQuickAction('irrigation')}
-            className="px-2 py-0.5 text-xs font-medium rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors"
+            className="px-2 py-0.5 text-xs font-medium rounded-full bg-info-soft dark:bg-info/30 text-info dark:text-info hover:bg-info/20 dark:hover:bg-info/50 transition-colors"
           >
             💧 {t('chat.irrigationTip')}
           </button>
           <button
             onClick={() => onQuickAction('fertilizer')}
-            className="px-2 py-0.5 text-xs font-medium rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors"
+            className="px-2 py-0.5 text-xs font-medium rounded-full bg-success-soft dark:bg-success/30 text-success dark:text-success hover:bg-success/20 dark:hover:bg-success/50 transition-colors"
           >
             🌱 {t('chat.fertilizerAdvice')}
           </button>
           <button
             onClick={() => onQuickAction('pest')}
-            className="px-2 py-0.5 text-xs font-medium rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+            className="px-2 py-0.5 text-xs font-medium rounded-full bg-destructive-soft dark:bg-destructive/30 text-destructive dark:text-destructive hover:bg-destructive/20 dark:hover:bg-destructive/50 transition-colors"
           >
             🐛 {t('chat.pestRisk')}
           </button>

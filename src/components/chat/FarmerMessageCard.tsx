@@ -100,12 +100,12 @@ interface FarmerMessageCardProps {
 const SeverityBadge: React.FC<{ severity: string; language: string }> = ({ severity, language }) => {
   const severityColors: Record<string, string> = {
     'अत्यंत गंभीर': 'bg-destructive/20 text-destructive border-destructive/30',
-    'गंभीर': 'bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30',
-    'मध्यम': 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
+    'गंभीर': 'bg-warning/20 text-warning dark:text-warning border-warning/30',
+    'मध्यम': 'bg-warning/20 text-warning dark:text-warning border-warning/30',
     'कमी': 'bg-success/20 text-success border-success/30',
     'critical': 'bg-destructive/20 text-destructive border-destructive/30',
-    'serious': 'bg-orange-500/20 text-orange-700 dark:text-orange-400 border-orange-500/30',
-    'moderate': 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
+    'serious': 'bg-warning/20 text-warning dark:text-warning border-warning/30',
+    'moderate': 'bg-warning/20 text-warning dark:text-warning border-warning/30',
     'minor': 'bg-success/20 text-success border-success/30',
   };
   
@@ -124,7 +124,7 @@ const ConfidenceBadge: React.FC<{ label: FarmerMessage['confidence_disclosure'][
   const colors: Record<string, string> = {
     'HIGH_CONFIDENCE': 'bg-success/20 text-success border-success/30',
     'GOOD_CONFIDENCE': 'bg-primary/20 text-primary border-primary/30',
-    'MODERATE_CONFIDENCE': 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30',
+    'MODERATE_CONFIDENCE': 'bg-warning/20 text-warning dark:text-warning border-warning/30',
     'LOW_CONFIDENCE': 'bg-muted text-muted-foreground border-muted',
   };
   

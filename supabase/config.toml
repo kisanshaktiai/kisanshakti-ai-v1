@@ -31,9 +31,6 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.ai-smart-schedule]
-verify_jwt = true
-
-[functions.ai-schedule-ops]
 verify_jwt = false
 
 [functions.ai-marketing-insights]
@@ -45,7 +42,7 @@ verify_jwt = true
 [functions.text-to-speech]
 verify_jwt = false
 
-[functions.mcp-handler]
+[functions.ai-general-chat]
 verify_jwt = false
 
 [functions.translate-text]
@@ -70,4 +67,19 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.proactive-evaluator]
+verify_jwt = false
+
+[functions.proactive-question-seed]
+verify_jwt = false
+
+[functions.community-translate]
+verify_jwt = false
+
+[functions.community-caption-suggest]
+verify_jwt = false
+
+[functions.community-moderate]
+verify_jwt = false
+
+[functions.youtube-channel-feed]
 verify_jwt = false

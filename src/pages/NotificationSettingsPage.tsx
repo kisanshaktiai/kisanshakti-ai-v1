@@ -7,7 +7,7 @@ export default function NotificationSettingsPage() {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-accent/5 to-primary/5">
+    <div className="min-h-full bg-gradient-to-br from-background via-accent/5 to-primary/5">
       <div className="fixed top-0 left-0 right-0 z-40 bg-background/60 backdrop-blur-2xl border-b border-border/50">
         <div className="px-3 py-3">
           <div className="flex items-center gap-3">

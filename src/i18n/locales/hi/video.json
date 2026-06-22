@@ -1,15 +1,14 @@
 {
   "__meta": {
     "page": "video",
-    "version": "1.0",
-    "updated_by": "AI Localization Engineer",
-    "last_updated": "2025-11-29",
-    "translation_status": "MACHINE_ASSISTED"
+    "version": "2.0",
+    "last_updated": "2026-05-06"
   },
   "video": {
     "title": "वीडियो ट्यूटोरियल",
     "subtitle": "खेती तकनीक सीखें",
     "no_videos_available": "कोई वीडियो उपलब्ध नहीं",
+    "no_videos": "कोई वीडियो उपलब्ध नहीं",
     "check_back_later": "नई सामग्री के लिए बाद में देखें",
     "loading_videos": "वीडियो लोड हो रहे हैं...",
     "watch_now": "अभी देखें",
@@ -17,21 +16,40 @@
     "views": "दृश्य",
     "category": "श्रेणी"
   },
-  "__qa": {
-    "voice_examples_en": [
-      "Show videos",
-      "Watch tutorials",
-      "Video reels"
-    ],
-    "voice_examples_hi": [
-      "वीडियो दिखाएं",
-      "ट्यूटोरियल देखें",
-      "वीडियो रील्स"
-    ],
-    "voice_examples_mr": [
-      "व्हिडिओ दाखवा",
-      "ट्यूटोरियल पहा",
-      "व्हिडिओ रील्स"
-    ]
+  "reels": {
+    "featured": "विशेष",
+    "from_org": "आपकी संस्था से",
+    "shared": "साझा किया",
+    "category": {
+      "all": "सभी"
+    },
+    "empty": {
+      "title": "अभी कोई वीडियो नहीं",
+      "hint": "नई खेती वीडियो के लिए बाद में आएं"
+    },
+    "comments": {
+      "title": "टिप्पणियाँ",
+      "empty": "पहली टिप्पणी करें",
+      "placeholder": "टिप्पणी लिखें…",
+      "failed": "टिप्पणी पोस्ट नहीं हुई"
+    },
+    "report": {
+      "title": "आप इसकी रिपोर्ट क्यों कर रहे हैं?",
+      "spam": "स्पैम या धोखा",
+      "misinformation": "गलत खेती सलाह",
+      "abuse": "अपमानजनक या असुरक्षित",
+      "unsafe": "खतरनाक सामग्री",
+      "copyright": "कॉपीराइट उल्लंघन",
+      "other": "कुछ और",
+      "thanks": "रिपोर्ट दर्ज की गई। धन्यवाद।",
+      "failed": "रिपोर्ट नहीं भेजी जा सकी"
+    },
+    "comment": {
+      "failed": "टिप्पणी पोस्ट नहीं हुई"
+    },
+    "home": {
+      "title": "खेती रील्स",
+      "subtitle": "आधुनिक खेती सीखने के लिए छोटे वीडियो"
+    }
   }
 }

@@ -28,6 +28,7 @@ import { WeatherMap } from '@/components/weather/WeatherMap';
 import { VoiceWeatherSummary } from '@/components/weather/VoiceWeatherSummary';
 import { WeatherHeroCard } from '@/components/weather/WeatherHeroCard';
 import { FarmingRecommendations } from '@/components/weather/FarmingRecommendations';
+import { PageShell } from '@/components/layout/PageShell';
 import { HourlyTimeline } from '@/components/weather/HourlyTimeline';
 import { useWeather } from '@/hooks/useWeather';
 // Weather sync now handled by backend edge function
@@ -98,13 +99,13 @@ export default function Weather() {
   const getWeatherGradient = () => {
     const condition = getWeatherCondition();
     const gradients = {
-      sun: 'from-yellow-400/20 via-orange-300/10 to-background',
-      rain: 'from-blue-500/20 via-blue-400/10 to-background',
+      sun: 'from-warning/20 via-warning/10 to-background',
+      rain: 'from-info/20 via-info/10 to-background',
       clouds: 'from-gray-400/20 via-gray-300/10 to-background',
-      storm: 'from-purple-600/20 via-purple-500/10 to-background',
-      snow: 'from-cyan-300/20 via-blue-200/10 to-background',
+      storm: 'from-primary/20 via-primary/10 to-background',
+      snow: 'from-info/20 via-info/10 to-background',
       fog: 'from-gray-500/20 via-gray-400/10 to-background',
-      night: 'from-indigo-900/20 via-blue-900/10 to-background'
+      night: 'from-info/20 via-info/10 to-background'
     };
     return gradients[condition] || gradients.clouds;
   };
@@ -112,13 +113,13 @@ export default function Weather() {
   const getStatColor = (type: string, value: number) => {
     switch(type) {
       case 'humidity':
-        return value > 70 ? 'text-blue-500' : value > 40 ? 'text-cyan-500' : 'text-gray-500';
+        return value > 70 ? 'text-info' : value > 40 ? 'text-info' : 'text-foreground/80';
       case 'wind':
-        return value > 20 ? 'text-orange-500' : value > 10 ? 'text-yellow-500' : 'text-green-500';
+        return value > 20 ? 'text-warning' : value > 10 ? 'text-warning' : 'text-success';
       case 'visibility':
-        return value < 2 ? 'text-red-500' : value < 5 ? 'text-yellow-500' : 'text-green-500';
+        return value < 2 ? 'text-destructive' : value < 5 ? 'text-warning' : 'text-success';
       case 'pressure':
-        return value < 1000 ? 'text-blue-500' : value > 1020 ? 'text-red-500' : 'text-green-500';
+        return value < 1000 ? 'text-info' : value > 1020 ? 'text-destructive' : 'text-success';
       default:
         return 'text-muted-foreground';
     }
@@ -130,7 +131,7 @@ export default function Weather() {
 
   if (error || !currentWeather) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-destructive/5">
+      <PageShell variant="gradient-soft" className="flex items-center justify-center">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <Card className="max-w-md w-full bg-background/60 backdrop-blur-xl border-border/50 shadow-2xl">
             <CardHeader>
@@ -150,7 +151,7 @@ export default function Weather() {
             </CardContent>
           </Card>
         </motion.div>
-      </div>
+      </PageShell>
     );
   }
 
@@ -178,12 +179,12 @@ export default function Weather() {
   };
 
   return (
-    <div className="h-screen relative bg-gradient-to-br from-background to-background/95 flex flex-col overflow-hidden">
-      <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30" />
-      
-      {/* FIX: PullRefreshController wraps everything with proper scroll */}
+    <PageShell variant="plain" padding="none" spacing="none" className="relative">
+      <AnimatedWeatherBackground condition={currentWeather.main || 'clear'} className="opacity-30 fixed inset-0 pointer-events-none" />
+
+      {/* PullRefreshController inherits the global scroll container — no nested scroller. */}
       <PullRefreshController onRefresh={handleManualSync} threshold={80}>
-        <div className="relative z-10 min-h-full">
+        <div className="relative z-10">
           {/* Hero Section with Weather Info */}
           <WeatherHeroCard
             currentWeather={currentWeather}
@@ -208,16 +209,16 @@ export default function Weather() {
             >
               <div className="flex justify-center gap-6">
                 {currentWeather.sunrise && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20">
-                    <Sunrise className="h-4 w-4 text-amber-500" />
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-warning/10 to-warning/10 border border-warning/20">
+                    <Sunrise className="h-4 w-4 text-warning" />
                     <span className="text-xs font-medium">
                       {format(new Date(currentWeather.sunrise * 1000), 'h:mm a')}
                     </span>
                   </div>
                 )}
                 {currentWeather.sunset && (
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-purple-500/10 to-indigo-500/10 border border-purple-500/20">
-                    <Sunset className="h-4 w-4 text-purple-500" />
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-gradient-to-r from-primary/10 to-info/10 border border-primary/20">
+                    <Sunset className="h-4 w-4 text-primary" />
                     <span className="text-xs font-medium">
                       {format(new Date(currentWeather.sunset * 1000), 'h:mm a')}
                     </span>
@@ -238,9 +239,9 @@ export default function Weather() {
             >
               {/* Row 1: Primary Stats */}
               {[
-                { icon: Wind, label: 'Wind', value: Math.round(currentWeather.wind_speed * 3.6), unit: 'km/h', type: 'wind', gradient: 'from-cyan-500/10 to-blue-500/10' },
-                { icon: Droplets, label: 'Humidity', value: currentWeather.humidity, unit: '%', type: 'humidity', gradient: 'from-blue-500/10 to-indigo-500/10' },
-                { icon: Eye, label: 'Visibility', value: (currentWeather.visibility / 1000).toFixed(1), unit: 'km', type: 'visibility', gradient: 'from-emerald-500/10 to-teal-500/10' }
+                { icon: Wind, label: 'Wind', value: Math.round(currentWeather.wind_speed * 3.6), unit: 'km/h', type: 'wind', gradient: 'from-info/10 to-info/10' },
+                { icon: Droplets, label: 'Humidity', value: currentWeather.humidity, unit: '%', type: 'humidity', gradient: 'from-info/10 to-info/10' },
+                { icon: Eye, label: 'Visibility', value: (currentWeather.visibility / 1000).toFixed(1), unit: 'km', type: 'visibility', gradient: 'from-success/10 to-success/10' }
               ].map((stat, index) => (
                 <motion.div
                   key={stat.label}
@@ -298,7 +299,7 @@ export default function Weather() {
                 className="bg-gradient-to-br from-gray-500/10 to-slate-500/10 backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm"
               >
                 <div className="flex flex-col items-center text-center gap-0.5">
-                  <Gauge className="h-4 w-4 text-slate-500" />
+                  <Gauge className="h-4 w-4 text-foreground/80" />
                   <span className="text-sm font-bold">{currentWeather.pressure}</span>
                   <span className="text-[9px] text-muted-foreground">hPa</span>
                 </div>
@@ -313,20 +314,20 @@ export default function Weather() {
                 className={cn(
                   "bg-gradient-to-br backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm",
                   currentWeather.uv_index !== undefined && currentWeather.uv_index > 7 
-                    ? "from-red-500/10 to-orange-500/10" 
+                    ? "from-destructive/10 to-warning/10" 
                     : currentWeather.uv_index !== undefined && currentWeather.uv_index > 3 
-                      ? "from-yellow-500/10 to-amber-500/10"
-                      : "from-green-500/10 to-emerald-500/10"
+                      ? "from-warning/10 to-warning/10"
+                      : "from-success/10 to-success/10"
                 )}
               >
                 <div className="flex flex-col items-center text-center gap-0.5">
                   <Sun className={cn(
                     "h-4 w-4",
                     currentWeather.uv_index !== undefined && currentWeather.uv_index > 7 
-                      ? "text-red-500" 
+                      ? "text-destructive" 
                       : currentWeather.uv_index !== undefined && currentWeather.uv_index > 3 
-                        ? "text-yellow-500"
-                        : "text-green-500"
+                        ? "text-warning"
+                        : "text-success"
                   )} />
                   <span className="text-sm font-bold">
                     {currentWeather.uv_index !== undefined ? currentWeather.uv_index.toFixed(1) : '--'}
@@ -341,10 +342,10 @@ export default function Weather() {
                 initial="hidden"
                 animate="visible"
                 transition={{ delay: 0.45 }}
-                className="bg-gradient-to-br from-teal-500/10 to-cyan-500/10 backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm"
+                className="bg-gradient-to-br from-success/10 to-info/10 backdrop-blur-xl rounded-2xl p-2 border border-white/10 shadow-sm"
               >
                 <div className="flex flex-col items-center text-center gap-0.5">
-                  <Thermometer className="h-4 w-4 text-teal-500" />
+                  <Thermometer className="h-4 w-4 text-success" />
                   <span className="text-sm font-bold">
                     {currentWeather.dew_point !== undefined ? Math.round(currentWeather.dew_point) : '--'}°
                   </span>
@@ -413,6 +414,6 @@ export default function Weather() {
           </div>
         </div>
       </PullRefreshController>
-    </div>
+    </PageShell>
   );
 };

@@ -42,7 +42,7 @@ export function VideoHelpButton({
         onClick={handleClick}
         className={cn("gap-2 pointer-events-auto", className)}
       >
-        <PlayCircle className="h-4 w-4 text-blue-500" />
+        <PlayCircle className="h-4 w-4 text-primary" />
         <span>See Video</span>
       </Button>
       

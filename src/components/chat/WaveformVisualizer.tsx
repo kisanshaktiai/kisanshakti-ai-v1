@@ -99,7 +99,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
       exit={{ opacity: 0, scale: 0.8, y: 20 }}
       className="absolute bottom-24 left-1/2 -translate-x-1/2 w-[90%] max-w-md z-50"
     >
-      <div className="bg-gradient-to-r from-emerald-500/20 to-green-500/20 backdrop-blur-xl rounded-2xl border border-emerald-500/30 p-4 shadow-2xl">
+      <div className="bg-gradient-to-r from-success/20 to-success/20 backdrop-blur-xl rounded-2xl border border-success/30 p-4 shadow-2xl">
         <div className="flex items-center gap-3 mb-3">
           <div className="flex gap-1">
             {[0, 0.1, 0.2].map((delay, i) => (
@@ -118,7 +118,7 @@ export const WaveformVisualizer: React.FC<WaveformVisualizerProps> = ({
               />
             ))}
           </div>
-          <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+          <span className="text-sm font-semibold text-success dark:text-success">
             Listening...
           </span>
         </div>

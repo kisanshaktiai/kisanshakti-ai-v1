@@ -55,14 +55,14 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
 
   const getWeatherIcon = (main: string) => {
     const iconConfig: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-      'Clear': { icon: Sun, color: 'text-amber-500', bg: 'bg-amber-500/20' },
-      'Clouds': { icon: Cloud, color: 'text-slate-400', bg: 'bg-slate-400/20' },
-      'Rain': { icon: CloudRain, color: 'text-blue-500', bg: 'bg-blue-500/20' },
-      'Drizzle': { icon: CloudDrizzle, color: 'text-blue-400', bg: 'bg-blue-400/20' },
-      'Thunderstorm': { icon: CloudLightning, color: 'text-purple-500', bg: 'bg-purple-500/20' },
-      'Snow': { icon: CloudSnow, color: 'text-cyan-400', bg: 'bg-cyan-400/20' },
+      'Clear': { icon: Sun, color: 'text-warning', bg: 'bg-warning/20' },
+      'Clouds': { icon: Cloud, color: 'text-muted-foreground', bg: 'bg-muted-foreground/40/20' },
+      'Rain': { icon: CloudRain, color: 'text-info', bg: 'bg-info/20' },
+      'Drizzle': { icon: CloudDrizzle, color: 'text-info', bg: 'bg-info/20' },
+      'Thunderstorm': { icon: CloudLightning, color: 'text-primary', bg: 'bg-primary/20' },
+      'Snow': { icon: CloudSnow, color: 'text-info', bg: 'bg-info/20' },
     };
-    return iconConfig[main] || { icon: Cloud, color: 'text-slate-400', bg: 'bg-slate-400/20' };
+    return iconConfig[main] || { icon: Cloud, color: 'text-muted-foreground', bg: 'bg-muted-foreground/40/20' };
   };
 
   const getDayLabel = (timestamp: number, index: number): string => {
@@ -73,23 +73,23 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
   };
 
   const getTemperatureColor = (temp: number): string => {
-    if (temp >= 40) return 'text-red-600';
-    if (temp >= 35) return 'text-orange-500';
-    if (temp >= 30) return 'text-amber-500';
-    if (temp >= 25) return 'text-yellow-500';
-    if (temp >= 20) return 'text-green-500';
-    if (temp >= 15) return 'text-teal-500';
-    return 'text-blue-500';
+    if (temp >= 40) return 'text-destructive';
+    if (temp >= 35) return 'text-warning';
+    if (temp >= 30) return 'text-warning';
+    if (temp >= 25) return 'text-warning';
+    if (temp >= 20) return 'text-success';
+    if (temp >= 15) return 'text-success';
+    return 'text-info';
   };
 
   const getTemperatureBarGradient = (min: number, max: number): string => {
     const avgTemp = (min + max) / 2;
-    if (avgTemp >= 35) return 'from-orange-400 to-red-500';
-    if (avgTemp >= 30) return 'from-amber-400 to-orange-500';
-    if (avgTemp >= 25) return 'from-yellow-400 to-amber-500';
-    if (avgTemp >= 20) return 'from-green-400 to-yellow-500';
-    if (avgTemp >= 15) return 'from-teal-400 to-green-500';
-    return 'from-blue-400 to-teal-500';
+    if (avgTemp >= 35) return 'from-warning to-destructive';
+    if (avgTemp >= 30) return 'from-warning to-warning';
+    if (avgTemp >= 25) return 'from-warning to-warning';
+    if (avgTemp >= 20) return 'from-success to-warning';
+    if (avgTemp >= 15) return 'from-success to-success';
+    return 'from-info to-success';
   };
 
   // Calculate bar position for temperature visualization
@@ -194,18 +194,18 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
                       <div className="relative">
                         <Droplets className={cn(
                           "h-4 w-4",
-                          day.pop > 0.6 ? "text-blue-500" : 
-                          day.pop > 0.3 ? "text-blue-400" : "text-blue-300"
+                          day.pop > 0.6 ? "text-info" : 
+                          day.pop > 0.3 ? "text-info" : "text-info"
                         )} />
                         {/* Fill indicator based on probability */}
                         <div 
-                          className="absolute bottom-0 left-0 right-0 bg-blue-500/30 rounded-b"
+                          className="absolute bottom-0 left-0 right-0 bg-info/30 rounded-b"
                           style={{ height: `${day.pop * 100}%` }}
                         />
                       </div>
                       <span className={cn(
                         "text-[10px] font-semibold mt-0.5",
-                        day.pop > 0.6 ? "text-blue-500" : "text-blue-400"
+                        day.pop > 0.6 ? "text-info" : "text-info"
                       )}>
                         {Math.round(day.pop * 100)}%
                       </span>
@@ -217,8 +217,8 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
                 {(day.pop > 0.7 || day.temp.max >= 40 || day.weather[0]?.main === 'Thunderstorm') && (
                   <div className={cn(
                     "absolute top-0 right-0 w-1 h-full",
-                    day.weather[0]?.main === 'Thunderstorm' ? "bg-purple-500" :
-                    day.pop > 0.7 ? "bg-blue-500" : "bg-orange-500"
+                    day.weather[0]?.main === 'Thunderstorm' ? "bg-primary" :
+                    day.pop > 0.7 ? "bg-info" : "bg-warning"
                   )} />
                 )}
               </Card>
@@ -236,16 +236,16 @@ export const SevenDayForecast: React.FC<SevenDayForecastProps> = ({ forecast }) 
       >
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
-            <TrendingDown className="h-3 w-3 text-blue-400" />
+            <TrendingDown className="h-3 w-3 text-info" />
             <span>Low: {Math.round(minTemp)}°</span>
           </div>
           <div className="flex items-center gap-1">
-            <TrendingUp className="h-3 w-3 text-orange-400" />
+            <TrendingUp className="h-3 w-3 text-warning" />
             <span>High: {Math.round(maxTemp)}°</span>
           </div>
         </div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Droplets className="h-3 w-3 text-blue-400" />
+          <Droplets className="h-3 w-3 text-info" />
           <span>
             {forecast.slice(0, 7).filter(d => d.pop > 0.3).length} rainy days
           </span>

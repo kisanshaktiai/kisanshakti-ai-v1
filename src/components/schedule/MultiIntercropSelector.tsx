@@ -80,9 +80,9 @@ const translations = {
 
 const INTERCROP_ICONS = [Sprout, TreeDeciduous, Flower2];
 const INTERCROP_COLORS = [
-  { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-600 dark:text-emerald-400', icon: 'text-emerald-500' },
-  { bg: 'bg-teal-500/10', border: 'border-teal-500/30', text: 'text-teal-600 dark:text-teal-400', icon: 'text-teal-500' },
-  { bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', text: 'text-cyan-600 dark:text-cyan-400', icon: 'text-cyan-500' },
+  { bg: 'bg-success/10', border: 'border-success/30', text: 'text-success dark:text-success', icon: 'text-success' },
+  { bg: 'bg-success/10', border: 'border-success/30', text: 'text-success dark:text-success', icon: 'text-success' },
+  { bg: 'bg-info/10', border: 'border-info/30', text: 'text-info dark:text-info', icon: 'text-info' },
 ];
 
 export default function MultiIntercropSelector({
@@ -153,7 +153,7 @@ export default function MultiIntercropSelector({
             <span className="text-muted-foreground font-medium">{t.totalArea}</span>
             <span className={cn(
               "font-semibold",
-              totalAreaUsed > 50 ? "text-amber-500" : "text-emerald-500"
+              totalAreaUsed > 50 ? "text-warning" : "text-success"
             )}>
               {totalAreaUsed}% • {remainingArea}% {t.remaining}
             </span>
@@ -237,8 +237,8 @@ export default function MultiIntercropSelector({
             onClick={() => setShowDialog(true)}
             className={cn(
               "w-full h-12 border-dashed rounded-xl transition-all duration-300",
-              "border-emerald-500/50 text-emerald-600 dark:text-emerald-400",
-              "hover:bg-emerald-500/10 hover:border-emerald-500",
+              "border-success/50 text-success dark:text-success",
+              "hover:bg-success/10 hover:border-success",
               "active:scale-[0.98]"
             )}
           >
@@ -256,10 +256,10 @@ export default function MultiIntercropSelector({
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-md w-[calc(100vw-2rem)] max-h-[80vh] p-0 gap-0 rounded-2xl overflow-hidden border-0 shadow-2xl flex flex-col bg-background/95 backdrop-blur-xl">
           {/* Header - Fixed */}
-          <DialogHeader className="px-5 pt-5 pb-3 shrink-0 bg-gradient-to-b from-emerald-500/10 to-transparent">
+          <DialogHeader className="px-5 pt-5 pb-3 shrink-0 bg-gradient-to-b from-success/10 to-transparent">
             <DialogTitle className="text-base font-semibold text-foreground flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-emerald-500/20">
-                <Leaf className="h-5 w-5 text-emerald-500" />
+              <div className="p-2 rounded-xl bg-success/20">
+                <Leaf className="h-5 w-5 text-success" />
               </div>
               {t.intercropTitle}
             </DialogTitle>
@@ -289,11 +289,11 @@ export default function MultiIntercropSelector({
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: 'auto', opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  className="px-5 py-4 border-t border-border/50 space-y-4 bg-gradient-to-t from-emerald-500/5 to-transparent"
+                  className="px-5 py-4 border-t border-border/50 space-y-4 bg-gradient-to-t from-success/5 to-transparent"
                 >
-                  <div className="flex items-center gap-2 p-2.5 bg-emerald-500/15 rounded-xl border border-emerald-500/30">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 truncate">
+                  <div className="flex items-center gap-2 p-2.5 bg-success/15 rounded-xl border border-success/30">
+                    <Check className="h-4 w-4 text-success shrink-0" />
+                    <span className="text-sm font-semibold text-success dark:text-success truncate">
                       {selectedLocalizedName || selectedCropName}
                     </span>
                   </div>
@@ -305,7 +305,7 @@ export default function MultiIntercropSelector({
                         placeholder={t.varietyPlaceholder}
                         value={variety}
                         onChange={(e) => setVariety(e.target.value)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-emerald-500/50"
+                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -317,7 +317,7 @@ export default function MultiIntercropSelector({
                         placeholder={t.areaPlaceholder}
                         value={areaPercent}
                         onChange={(e) => setAreaPercent(parseInt(e.target.value) || 15)}
-                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-emerald-500/50"
+                        className="h-11 text-sm rounded-xl bg-background/50 border-border/50 focus:border-success/50"
                       />
                     </div>
                   </div>
@@ -339,7 +339,7 @@ export default function MultiIntercropSelector({
               className={cn(
                 "w-full h-12 rounded-xl font-semibold transition-all duration-300",
                 selectedCropName && areaPercent > 0
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white shadow-lg shadow-emerald-500/25"
+                  ? "bg-gradient-to-r from-success to-success hover:from-success hover:to-success text-white shadow-lg shadow-success/30/25"
                   : "bg-muted text-muted-foreground"
               )}
             >

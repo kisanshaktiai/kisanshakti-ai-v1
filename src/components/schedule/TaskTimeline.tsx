@@ -230,39 +230,39 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
   const taskTypeConfig = {
     irrigation: { 
       icon: Droplets, 
-      color: 'from-blue-500 to-cyan-500',
-      lightBg: 'bg-blue-50 dark:bg-blue-950/20',
-      border: 'border-blue-200 dark:border-blue-800'
+      color: 'from-info to-info',
+      lightBg: 'bg-info-soft dark:bg-info/20',
+      border: 'border-info/30 dark:border-info'
     },
     fertilizer: { 
       icon: Leaf, 
-      color: 'from-green-500 to-emerald-500',
-      lightBg: 'bg-green-50 dark:bg-green-950/20',
-      border: 'border-green-200 dark:border-green-800'
+      color: 'from-success to-success',
+      lightBg: 'bg-success-soft dark:bg-success/20',
+      border: 'border-success/30 dark:border-success'
     },
     pesticide: { 
       icon: Bug, 
-      color: 'from-orange-500 to-amber-500',
-      lightBg: 'bg-orange-50 dark:bg-orange-950/20',
-      border: 'border-orange-200 dark:border-orange-800'
+      color: 'from-warning to-warning',
+      lightBg: 'bg-warning-soft dark:bg-warning/20',
+      border: 'border-warning/30 dark:border-warning'
     },
     weeding: { 
       icon: Scissors, 
-      color: 'from-purple-500 to-pink-500',
-      lightBg: 'bg-purple-50 dark:bg-purple-950/20',
-      border: 'border-purple-200 dark:border-purple-800'
+      color: 'from-primary to-primary',
+      lightBg: 'bg-primary-soft dark:bg-primary/20',
+      border: 'border-primary/30 dark:border-primary'
     },
     harvest: { 
       icon: Package, 
-      color: 'from-amber-500 to-yellow-500',
-      lightBg: 'bg-amber-50 dark:bg-amber-950/20',
-      border: 'border-amber-200 dark:border-amber-800'
+      color: 'from-warning to-warning',
+      lightBg: 'bg-warning-soft dark:bg-warning/20',
+      border: 'border-warning/30 dark:border-warning'
     },
     other: { 
       icon: AlertCircle, 
-      color: 'from-gray-500 to-slate-500',
-      lightBg: 'bg-gray-50 dark:bg-gray-950/20',
-      border: 'border-gray-200 dark:border-gray-800'
+      color: 'from-muted-foreground to-muted-foreground/60',
+      lightBg: 'bg-muted dark:bg-muted/40',
+      border: 'border-border dark:border-border'
     }
   };
 
@@ -489,7 +489,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                         <CollapsibleContent className="relative z-10">
                           <div className="px-4 pb-4 space-y-4" onClick={(e) => e.stopPropagation()}>
                             {/* Action Buttons */}
-                            <div className="flex justify-end gap-2 relative z-20">
+                            <div className="flex flex-wrap justify-end gap-2 relative z-20 w-full">
                               {/* Camera Button for Photo Upload - PROMINENT & BLINKING */}
                               {onTakePhoto && (
                                 <Button
@@ -500,7 +500,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                     e.preventDefault();
                                     onTakePhoto(task);
                                   }}
-                                  className="gap-2 pointer-events-auto bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/40 hover:shadow-xl hover:shadow-primary/50 hover:scale-105 transition-all duration-300 animate-pulse hover:animate-none font-semibold px-4"
+                                  className="gap-2 pointer-events-auto bg-gradient-to-r from-primary to-accent text-primary-foreground shadow-lg shadow-primary/40 hover:shadow-xl hover:shadow-primary/50 hover:scale-105 transition-all duration-300 animate-pulse hover:animate-none font-semibold px-4"
                                 >
                                   <Camera className="h-5 w-5" />
                                   <span className="font-bold">{t('cropGrowth.takePhoto') || 'Photo'}</span>
@@ -609,10 +609,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                 {task.resources.quantity && task.resources.quantity !== 'null' && (
                                   <div>
                                     <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                      <Package className="h-4 w-4 text-blue-500" />
+                                      <Package className="h-4 w-4 text-info" />
                                       {t('schedule.task_card.quantity')}
                                     </h5>
-                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-info/5 border border-info/20">
                                       {task.resources.quantity}
                                     </p>
                                   </div>
@@ -621,10 +621,10 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                 {task.resources.product_details && task.resources.product_details !== 'null' && (
                                   <div>
                                     <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                      <Leaf className="h-4 w-4 text-emerald-500" />
+                                      <Leaf className="h-4 w-4 text-success" />
                                       {t('schedule.task_card.product_details')}
                                     </h5>
-                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-success/5 border border-success/20">
                                       {task.resources.product_details}
                                     </p>
                                   </div>
@@ -632,11 +632,11 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                 {/* ICAR Guideline */}
                                 {task.resources.icar_guideline && task.resources.icar_guideline !== 'null' && (
                                   <div>
-                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-blue-600">
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-info">
                                       <BookOpen className="h-4 w-4" />
                                       {t('schedule.task_card.icar_guideline')}
                                     </h5>
-                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-blue-500/5 border border-blue-500/20">
+                                    <p className="text-sm text-muted-foreground p-2 rounded-lg bg-info/5 border border-info/20">
                                       {task.resources.icar_guideline}
                                     </p>
                                   </div>
@@ -644,11 +644,11 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                                 {/* Climate Risk */}
                                 {task.resources.climate_risk && task.resources.climate_risk !== 'null' && (
                                   <div>
-                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-orange-600">
+                                    <h5 className="text-sm font-medium mb-2 flex items-center gap-2 text-warning">
                                       <AlertTriangle className="h-4 w-4" />
                                       {t('schedule.task_card.climate_risk')}
                                     </h5>
-                                    <p className="text-sm text-orange-700 dark:text-orange-300 p-2 rounded-lg bg-orange-500/5 border border-orange-500/20">
+                                    <p className="text-sm text-warning dark:text-warning p-2 rounded-lg bg-warning/5 border border-warning/20">
                                       {task.resources.climate_risk}
                                     </p>
                                   </div>
@@ -692,7 +692,7 @@ const TaskTimeline: React.FC<TaskTimelineProps> = ({ tasks, onTaskClick, onTaskC
                             {task.ideal_weather && (
                               <div>
                                 <h5 className="text-sm font-medium mb-2 flex items-center gap-2">
-                                  <Thermometer className="h-4 w-4 text-sky-500" />
+                                  <Thermometer className="h-4 w-4 text-info" />
                                   {t('schedule.task_card.ideal_weather')}
                                 </h5>
                                 <div className="grid grid-cols-2 gap-2 text-sm">

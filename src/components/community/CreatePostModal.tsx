@@ -155,7 +155,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+            className="fixed inset-0 z-50 bg-overlay-dark/60 backdrop-blur-sm"
           />
 
           <motion.div
@@ -191,7 +191,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                       "px-3 py-1.5 rounded-full text-sm whitespace-nowrap transition-all",
                       selectedLanguage === lang.code
                         ? "bg-primary text-primary-foreground"
-                        : "bg-secondary/50 text-muted-foreground hover:bg-secondary"
+                        : "bg-muted/50 text-muted-foreground hover:bg-muted"
                     )}
                   >
                     {lang.name}
@@ -218,24 +218,24 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               {selectedImage && (
                 <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="relative mt-4 rounded-2xl overflow-hidden">
                   <img src={selectedImage} alt="Selected" className="w-full h-48 object-cover" />
-                  <button onClick={() => setSelectedImage(null)} className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white">
+                  <button onClick={() => setSelectedImage(null)} className="absolute top-2 right-2 p-1.5 bg-overlay-dark/50 rounded-full text-overlay-light">
                     <X className="w-4 h-4" />
                   </button>
                 </motion.div>
               )}
 
               {voiceNoteUrl && (
-                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-3 bg-secondary/50 rounded-xl flex items-center gap-3">
+                <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 p-3 bg-muted/50 rounded-xl flex items-center gap-3">
                   <div className="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center"><Mic className="w-5 h-5 text-primary" /></div>
                   <div className="flex-1">
                     <p className="text-sm font-medium">{t('social.post.voice')}</p>
                   </div>
-                  <button onClick={() => setVoiceNoteUrl(null)} className="p-1.5 hover:bg-secondary rounded-full"><X className="w-4 h-4 text-muted-foreground" /></button>
+                  <button onClick={() => setVoiceNoteUrl(null)} className="p-1.5 hover:bg-muted rounded-full"><X className="w-4 h-4 text-muted-foreground" /></button>
                 </motion.div>
               )}
             </div>
 
-            <div className="p-4 border-t border-border bg-secondary/30">
+            <div className="p-4 border-t border-border bg-muted/30">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageSelect} className="hidden" />

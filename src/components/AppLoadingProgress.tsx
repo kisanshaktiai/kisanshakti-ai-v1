@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Progress } from '@/components/ui/progress';
 import { Loader2, Sparkles } from 'lucide-react';
-import { motion } from 'framer-motion';
 
 interface AppLoadingProgressProps {
   isLoading: boolean;
@@ -47,21 +46,10 @@ export function AppLoadingProgress({ isLoading, currentStep }: AppLoadingProgres
   if (!isLoading) return null;
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.2 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-primary/5 via-background to-accent/5 backdrop-blur-sm"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background animate-in fade-in duration-200">
       <div className="w-full max-w-md px-6 space-y-6">
         {/* App branding with animation */}
-        <motion.div 
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.1, duration: 0.3 }}
-          className="text-center space-y-4"
-        >
+        <div className="text-center space-y-4 animate-in zoom-in-95 fade-in duration-300">
           <div className="flex justify-center relative">
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="w-16 h-16 bg-primary/20 rounded-full animate-ping" />
@@ -75,37 +63,29 @@ export function AppLoadingProgress({ isLoading, currentStep }: AppLoadingProgres
               </h2>
               <Sparkles className="h-5 w-5 text-primary animate-pulse" />
             </div>
-            <motion.p 
+            <p 
               key={displayStep}
-              initial={{ opacity: 0, y: 5 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-sm text-muted-foreground"
+              className="text-sm text-muted-foreground animate-in slide-in-from-bottom-1 fade-in duration-200"
             >
               {displayStep}
-            </motion.p>
+            </p>
           </div>
-        </motion.div>
+        </div>
 
         {/* Enhanced progress bar */}
-        <motion.div 
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.3 }}
-          className="space-y-2"
-        >
+        <div className="space-y-2 animate-in slide-in-from-bottom-2 fade-in duration-300">
           <div className="relative">
             <Progress value={progress} className="h-2 bg-primary/10" />
-            <motion.div
+            <div
               className="absolute top-0 left-0 h-2 bg-primary/20 rounded-full blur-sm"
-              animate={{ width: `${progress}%` }}
-              transition={{ duration: 0.3 }}
+              style={{ width: `${progress}%`, transition: 'width 300ms ease' }}
             />
           </div>
           <p className="text-xs text-center text-muted-foreground font-medium">
             {Math.round(progress)}% complete
           </p>
-        </motion.div>
+        </div>
       </div>
-    </motion.div>
+    </div>
   );
 }

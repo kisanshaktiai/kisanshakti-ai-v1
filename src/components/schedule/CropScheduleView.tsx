@@ -106,12 +106,12 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   // Task type icons and colors
   const taskTypeConfig = {
-    irrigation: { icon: Droplets, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-950/30' },
-    fertilizer: { icon: Leaf, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-950/30' },
-    pesticide: { icon: Bug, color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-950/30' },
-    weeding: { icon: Scissors, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-950/30' },
-    harvest: { icon: Package, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/30' },
-    other: { icon: AlertCircle, color: 'text-gray-500', bg: 'bg-gray-50 dark:bg-gray-950/30' }
+    irrigation: { icon: Droplets, color: 'text-info', bg: 'bg-info-soft dark:bg-info/30' },
+    fertilizer: { icon: Leaf, color: 'text-success', bg: 'bg-success-soft dark:bg-success/30' },
+    pesticide: { icon: Bug, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
+    weeding: { icon: Scissors, color: 'text-primary', bg: 'bg-primary-soft dark:bg-primary/30' },
+    harvest: { icon: Package, color: 'text-warning', bg: 'bg-warning-soft dark:bg-warning/30' },
+    other: { icon: AlertCircle, color: 'text-foreground/80', bg: 'bg-muted dark:bg-foreground/80/30' }
   };
 
   // Update schedule when schedules data changes from React Query
@@ -302,7 +302,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
+      <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
         {/* Header Skeleton */}
         <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
           <div className="px-4 py-3">
@@ -370,31 +370,15 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
 
   if (!schedule) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
-        {/* Header */}
-        <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
-          <div className="px-4 py-3">
-            <div className="flex items-center gap-3">
-              {onBack && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onBack}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <h2 className="text-lg font-bold text-foreground">
-                  {landName}
-                </h2>
-                <p className="text-xs text-muted-foreground font-medium">
-                  {t('schedule.schedule_view.no_active_schedule')}
-                </p>
-              </div>
-            </div>
-          </div>
+      <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
+        {/* Compact inline summary (no sticky — parent provides header) */}
+        <div className="px-4 pt-3 pb-1">
+          <h2 className="text-base font-bold text-foreground leading-tight">
+            {landName}
+          </h2>
+          <p className="text-xs text-muted-foreground font-medium mt-0.5">
+            {t('schedule.schedule_view.no_active_schedule')}
+          </p>
         </div>
 
         {/* Empty State */}
@@ -409,7 +393,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
               {t('schedule.schedule_view.no_schedule_description')}
             </p>
             <div className="pt-4">
-              <Button 
+              <Button
                 onClick={onBack}
                 className="bg-gradient-to-r from-primary to-accent hover:shadow-lg hover:shadow-primary/30 transition-all"
               >
@@ -422,6 +406,7 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
       </div>
     );
   }
+
 
   const filteredTasks = getFilteredTasks();
   const pendingTasks = filteredTasks.filter(t => t.status === 'pending');
@@ -439,93 +424,86 @@ const CropScheduleView: React.FC<CropScheduleViewProps> = ({ landId, landName, c
   const realHarvestDate = harvestTask?.task_date || schedule.expected_harvest_date;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-accent/5 to-primary/5">
-      {/* Modern Mobile-First Header - 2025 Design */}
-      <div className="sticky top-0 z-30 bg-background/80 backdrop-blur-2xl border-b border-border/50">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 flex-1">
-              {onBack && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={onBack}
-                  className="h-9 w-9 rounded-xl bg-background/50 hover:bg-primary/10"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              )}
-              <div>
-                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary animate-pulse" />
-                  {(schedule as any).metadata?.translated_crop_name || schedule.crop_name}
-                </h2>
-                <p className="text-xs text-muted-foreground font-medium">
-                  <MapPin className="h-3 w-3 inline mr-1" />
-                  {landName} • {schedule.crop_variety || t('schedule.schedule_view.standard_variety')}
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-col items-end gap-1">
-              <Badge className="bg-primary/10 text-primary border-primary/20">
-                {t('schedule.schedule_view.ai_schedule')}
+    <div className="min-h-full bg-gradient-to-b from-background via-accent/5 to-primary/5">
+      {/* Compact inline crop summary (non-sticky — parent header handles back/nav) */}
+      <div className="px-4 pt-3 pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold text-foreground flex items-center gap-1.5 leading-tight truncate">
+              <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+              <span className="truncate">{(schedule as any).metadata?.translated_crop_name || schedule.crop_name}</span>
+            </h2>
+            <p className="text-[11px] text-muted-foreground font-medium mt-0.5 flex items-center gap-1 truncate">
+              <MapPin className="h-3 w-3 shrink-0" />
+              <span className="truncate">{landName} • {schedule.crop_variety || t('schedule.schedule_view.standard_variety')}</span>
+            </p>
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <Badge className="bg-primary/10 text-primary border-primary/20 text-[10px] px-2 py-0.5 h-5">
+              {t('schedule.schedule_view.ai_schedule')}
+            </Badge>
+            {schedule.farming_type && (
+              <Badge
+                className={cn(
+                  "text-[10px] border px-2 py-0.5 h-5",
+                  schedule.farming_type === 'organic_only' && "bg-success/10 text-success border-success/30",
+                  schedule.farming_type === 'organic_fertilizer' && "bg-info/10 text-info border-info/30",
+                  schedule.farming_type === 'fertilizer_pesticide' && "bg-warning/10 text-warning border-warning/30"
+                )}
+              >
+                {schedule.farming_type === 'organic_only' && (
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic')}</>
+                )}
+                {schedule.farming_type === 'organic_fertilizer' && (
+                  <><Leaf className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.organic_chemical')}</>
+                )}
+                {schedule.farming_type === 'fertilizer_pesticide' && (
+                  <><FlaskConical className="h-2.5 w-2.5 mr-0.5" />{t('schedule.farming_type.chemical')}</>
+                )}
               </Badge>
-              {schedule.farming_type && (
-                <Badge 
-                  className={cn(
-                    "text-xs border",
-                    schedule.farming_type === 'organic_only' && "bg-green-500/10 text-green-700 border-green-500/30",
-                    schedule.farming_type === 'organic_fertilizer' && "bg-blue-500/10 text-blue-700 border-blue-500/30",
-                    schedule.farming_type === 'fertilizer_pesticide' && "bg-orange-500/10 text-orange-700 border-orange-500/30"
-                  )}
-                >
-                  {schedule.farming_type === 'organic_only' && (
-                    <><Leaf className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक' : i18n.language === 'mr' ? 'सेंद्रिय' : 'Organic'}</>
-                  )}
-                  {schedule.farming_type === 'organic_fertilizer' && (
-                    <><Leaf className="h-3 w-3 mr-1" /><FlaskConical className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'जैविक+रासा.' : i18n.language === 'mr' ? 'सेंद्रिय+रासा.' : 'Organic+Chem'}</>
-                  )}
-                  {schedule.farming_type === 'fertilizer_pesticide' && (
-                    <><FlaskConical className="h-3 w-3 mr-1" /><Bug className="h-3 w-3 mr-1" />{i18n.language === 'hi' ? 'रासायनिक' : i18n.language === 'mr' ? 'रासायनिक' : 'Chemical'}</>
-                  )}
-                </Badge>
-              )}
-            </div>
+            )}
           </div>
         </div>
       </div>
 
+
       {/* Quick Stats Cards - Mobile Optimized */}
       <div className="px-4 pt-4 pb-2">
         <div className="grid grid-cols-2 gap-3 mb-3">
-          <Card className="bg-gradient-to-br from-green-50 to-green-100/50 dark:from-green-950/20 dark:to-green-900/10 border-green-200 dark:border-green-800">
-            <div className="p-3 space-y-1">
+          <Card className="relative overflow-hidden bg-success-soft border-success/30">
+            <div className="absolute inset-y-0 left-0 w-1 bg-success" aria-hidden />
+            <div className="p-3 pl-4 space-y-1">
               <div className="flex items-center justify-between">
-                <Calendar className="h-4 w-4 text-green-600 dark:text-green-400" />
-                <span className="text-[10px] font-medium text-green-700 dark:text-green-300 uppercase tracking-wider">{t('schedule.sowing')}</span>
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-success/15">
+                  <Calendar className="h-3.5 w-3.5 text-success" />
+                </div>
+                <span className="text-[10px] font-semibold text-success uppercase tracking-wider">{t('schedule.sowing')}</span>
               </div>
-              <p className="text-base font-bold text-green-900 dark:text-green-100">
+              <p className="text-base font-bold text-foreground leading-tight">
                 {format(new Date(schedule.sowing_date), 'dd MMM')}
               </p>
-              <p className="text-[10px] text-green-700 dark:text-green-300">
+              <p className="text-[10px] text-muted-foreground font-medium">
                 {differenceInDays(new Date(), new Date(schedule.sowing_date))} {t('schedule.days_ago')}
               </p>
             </div>
           </Card>
-          
-          <Card className="bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-950/20 dark:to-amber-900/10 border-amber-200 dark:border-amber-800">
-            <div className="p-3 space-y-1">
+
+          <Card className="relative overflow-hidden bg-warning-soft border-warning/30">
+            <div className="absolute inset-y-0 left-0 w-1 bg-warning" aria-hidden />
+            <div className="p-3 pl-4 space-y-1">
               <div className="flex items-center justify-between">
-                <Package className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300 uppercase tracking-wider">{t('schedule.harvest')}</span>
+                <div className="flex items-center justify-center h-6 w-6 rounded-full bg-warning/15">
+                  <Package className="h-3.5 w-3.5 text-warning" />
+                </div>
+                <span className="text-[10px] font-semibold text-warning uppercase tracking-wider">{t('schedule.harvest')}</span>
               </div>
-              <p className="text-base font-bold text-amber-900 dark:text-amber-100">
-                {realHarvestDate 
+              <p className="text-base font-bold text-foreground leading-tight">
+                {realHarvestDate
                   ? format(new Date(realHarvestDate), 'dd MMM yyyy')
                   : t('schedule.schedule_card.tbd')}
               </p>
-              <p className="text-[10px] text-amber-700 dark:text-amber-300">
-                {realHarvestDate 
+              <p className="text-[10px] text-muted-foreground font-medium">
+                {realHarvestDate
                   ? `${Math.max(0, differenceInDays(new Date(realHarvestDate), new Date()))} ${t('schedule.days_remaining')}`
                   : ''}
               </p>

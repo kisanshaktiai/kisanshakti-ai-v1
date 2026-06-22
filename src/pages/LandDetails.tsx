@@ -313,7 +313,7 @@ export default function LandDetails() {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20 md:pb-6">
+    <div className="min-h-full bg-background pb-20 md:pb-6">
       {/* Modern Mobile-First Header */}
       <div className="sticky top-0 z-20 glassmorphism-strong border-b">
         <div className="container max-w-7xl">

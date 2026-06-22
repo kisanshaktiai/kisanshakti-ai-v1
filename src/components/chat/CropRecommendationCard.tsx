@@ -137,9 +137,9 @@ function SingleCropCard({ crop, language, isPrimary = false }: SingleCropCardPro
   
   const getWaterNeedColor = (need: string) => {
     switch (need) {
-      case 'LOW': return 'text-green-600 bg-green-100';
-      case 'MEDIUM': return 'text-amber-600 bg-amber-100';
-      case 'HIGH': return 'text-blue-600 bg-blue-100';
+      case 'LOW': return 'text-success bg-success-soft';
+      case 'MEDIUM': return 'text-warning bg-warning-soft';
+      case 'HIGH': return 'text-info bg-info-soft';
       default: return 'text-muted-foreground bg-muted';
     }
   };
@@ -207,7 +207,7 @@ function SingleCropCard({ crop, language, isPrimary = false }: SingleCropCardPro
         
         {/* Duration */}
         <div className="flex items-center gap-2 bg-background/50 rounded-lg p-2">
-          <Clock className="h-4 w-4 text-amber-500 shrink-0" />
+          <Clock className="h-4 w-4 text-warning shrink-0" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{labels.duration}</p>
             <p className="font-medium">{crop.expected_duration_days} {labels.days}</p>
@@ -216,7 +216,7 @@ function SingleCropCard({ crop, language, isPrimary = false }: SingleCropCardPro
         
         {/* Expected Yield */}
         <div className="flex items-center gap-2 bg-background/50 rounded-lg p-2">
-          <TrendingUp className="h-4 w-4 text-green-500 shrink-0" />
+          <TrendingUp className="h-4 w-4 text-success shrink-0" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{labels.yield}</p>
             <p className="font-medium truncate">{crop.estimated_yield_per_acre}</p>
@@ -225,7 +225,7 @@ function SingleCropCard({ crop, language, isPrimary = false }: SingleCropCardPro
         
         {/* Water Need */}
         <div className="flex items-center gap-2 bg-background/50 rounded-lg p-2">
-          <Droplet className="h-4 w-4 text-blue-500 shrink-0" />
+          <Droplet className="h-4 w-4 text-info shrink-0" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{labels.waterNeed}</p>
             <Badge variant="secondary" className={cn("text-xs", getWaterNeedColor(crop.water_requirement))}>
@@ -236,7 +236,7 @@ function SingleCropCard({ crop, language, isPrimary = false }: SingleCropCardPro
         
         {/* Cost */}
         <div className="flex items-center gap-2 bg-background/50 rounded-lg p-2">
-          <IndianRupee className="h-4 w-4 text-red-500 shrink-0" />
+          <IndianRupee className="h-4 w-4 text-destructive shrink-0" />
           <div className="min-w-0">
             <p className="text-xs text-muted-foreground">{labels.cost}</p>
             <p className="font-medium">₹{crop.estimated_cost_per_acre.toLocaleString()}{labels.perAcre}</p>

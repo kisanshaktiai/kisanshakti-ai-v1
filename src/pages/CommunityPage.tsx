@@ -10,11 +10,11 @@ import { CommunityTabs } from '@/components/community/CommunityTabs';
 import { TrendingTopics } from '@/components/community/TrendingTopics';
 import { CommunityGroups } from '@/components/community/CommunityGroups';
 import { QuickPostCreator } from '@/components/community/QuickPostCreator';
-import { LanguageSelector } from '@/components/community/LanguageSelector';
 import { BottomNavigation } from '@/components/BottomNavigation';
 import { CommunityTab } from '@/types/community';
 import { useSavedPostsFull } from '@/hooks/useCommunityPosts';
 import { PostCard } from '@/components/community/PostCard';
+import { PostCardSkeletonList } from '@/components/community/PostCardSkeleton';
 import { formatDistanceToNow } from 'date-fns';
 import { Bookmark } from 'lucide-react';
 
@@ -39,7 +39,7 @@ const CommunityPage: React.FC = () => {
     id: post.id,
     authorId: post.farmer_id,
     authorName: post.farmer?.farmer_name || 'Anonymous Farmer',
-    authorAvatar: '👨‍🌾',
+    authorAvatar: '',
     authorLocation: post.farmer?.location || 'Unknown location',
     authorBadge: post.farmer?.is_verified ? 'verified' : null,
     originalLanguage: post.language_code || 'en',
@@ -47,9 +47,9 @@ const CommunityPage: React.FC = () => {
     imageUrl: post.media_urls?.images?.[0],
     mediaUrls: post.media_urls?.images || [],
     reactions: {
-      helpful: Math.floor((post.likes_count || 0) * 0.5),
-      tried: Math.floor((post.likes_count || 0) * 0.3),
-      thanks: Math.floor((post.likes_count || 0) * 0.2),
+      helpful: (post as any).helpful_count || 0,
+      tried: (post as any).tried_count || 0,
+      thanks: (post as any).thanks_count || 0,
     },
     likesCount: post.likes_count || 0,
     commentCount: post.comments_count || 0,
@@ -65,23 +65,13 @@ const CommunityPage: React.FC = () => {
   }));
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/20">
-      {/* Glassmorphism Header */}
-      <CommunityHeader 
+    <div className="min-h-full bg-background pb-nav-safe">
+      <CommunityHeader
         viewLanguage={viewLanguage}
         onLanguageChange={setViewLanguage}
       />
 
-      {/* Language Selector Pill */}
-      <div className="sticky top-16 z-40 px-4 py-2 bg-background/80 backdrop-blur-2xl border-b border-border/20">
-        <LanguageSelector 
-          selectedLanguage={viewLanguage}
-          onLanguageChange={setViewLanguage}
-        />
-      </div>
-
-      {/* Navigation Tabs */}
-      <CommunityTabs 
+      <CommunityTabs
         activeTab={activeTab}
         onTabChange={setActiveTab}
       />
@@ -143,9 +133,7 @@ const CommunityPage: React.FC = () => {
               className="px-4 py-4"
             >
               {savedLoading ? (
-                <div className="flex justify-center py-16">
-                  <div className="w-8 h-8 border-3 border-primary/30 border-t-primary rounded-full animate-spin" />
-                </div>
+                <PostCardSkeletonList count={3} />
               ) : transformedSavedPosts.length > 0 ? (
                 <div className="space-y-4">
                   {transformedSavedPosts.map((post: any) => (
@@ -159,14 +147,14 @@ const CommunityPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="text-center py-16">
-                  <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-secondary/50 flex items-center justify-center">
+                  <div className="w-20 h-20 mx-auto mb-4 rounded-3xl bg-muted/50 flex items-center justify-center">
                     <Bookmark className="w-10 h-10 text-muted-foreground" />
                   </div>
                   <h3 className="text-lg font-semibold text-foreground mb-2">
-                    {t('empty.saved')}
+                    {t('social.empty.saved')}
                   </h3>
                   <p className="text-muted-foreground text-sm">
-                    {t('empty.saved_hint')}
+                    {t('social.empty.saved_hint')}
                   </p>
                 </div>
               )}
@@ -191,10 +179,11 @@ const CommunityPage: React.FC = () => {
         </AnimatePresence>
       </main>
 
-      {/* Floating Create Post Button - Hide when modals are open */}
-      {!isCreatePostOpen && !isGroupModalOpen && (
-        <CreatePostFAB onClick={() => setIsCreatePostOpen(true)} />
-      )}
+      {/* FAB only on tabs that don't already show QuickPostCreator inline */}
+      {!isCreatePostOpen && !isGroupModalOpen &&
+        activeTab !== 'feed' && activeTab !== 'my-posts' && (
+          <CreatePostFAB onClick={() => setIsCreatePostOpen(true)} />
+        )}
 
       {/* Create Post Modal */}
       <CreatePostModal 

@@ -288,13 +288,7 @@ export function CentralizedCropSelector({
       )}
 
       <ScrollArea className="flex-1 h-full">
-        <AnimatePresence mode="wait">
-          <motion.div 
-            className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 sm:p-4"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
+        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 p-3 sm:p-4">
             {filteredCrops.map((crop, index) => {
               const isSelected = selectedCrop?.id === crop.id || selectedCropId === crop.id;
               
@@ -377,9 +371,9 @@ export function CentralizedCropSelector({
                       {(crop.is_popular || crop.season) && (
                         <div className="flex flex-wrap gap-1 justify-center">
                           {crop.is_popular && (
-                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-yellow-500/20 to-orange-500/20 border border-yellow-500/30">
-                              <Sparkles className="h-2 w-2 text-yellow-600 dark:text-yellow-400" />
-                              <span className="text-[9px] font-medium text-yellow-700 dark:text-yellow-300">{t('schedule.crop_selector.hot')}</span>
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-warning/20 to-warning/20 border border-warning/30">
+                              <Sparkles className="h-2 w-2 text-warning dark:text-warning" />
+                              <span className="text-[9px] font-medium text-warning dark:text-warning">{t('schedule.crop_selector.hot')}</span>
                             </span>
                           )}
                           {crop.season && (
@@ -408,8 +402,7 @@ export function CentralizedCropSelector({
                 </motion.div>
               );
             })}
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </ScrollArea>
     </div>
   );

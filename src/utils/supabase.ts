@@ -1,45 +1,28 @@
-import { createClient } from '@supabase/supabase-js';
+/**
+ * Compatibility re-export.
+ *
+ * Historically this file created a *second* Supabase client using
+ * `VITE_SUPABASE_ANON_KEY`. That env var name no longer exists in this
+ * project (we use `VITE_SUPABASE_PUBLISHABLE_KEY`), so the old client
+ * silently became `null` — which then caused `landsApi.getHeaders()` to
+ * crash with `TypeError: Cannot read property 'auth' of null` after every
+ * fresh login, leaving the home screen empty.
+ *
+ * Fix: re-export the canonical singleton from
+ * `@/integrations/supabase/client`. This eliminates the null failure mode
+ * AND prevents the "Multiple GoTrueClient instances" warning by ensuring
+ * the entire app shares one client.
+ *
+ * Existing imports `import { supabase } from '@/utils/supabase'` continue
+ * to work unchanged.
+ */
+export { supabase } from '@/integrations/supabase/client';
 
-// These will be populated when you connect to Supabase
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+import { supabase as canonicalClient } from '@/integrations/supabase/client';
 
-export const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
+/** Always true now — kept for API compatibility with old callers. */
+export const isSupabaseConfigured = () => !!canonicalClient;
 
-// Helper to check if Supabase is configured
-export const isSupabaseConfigured = () => {
-  return !!supabaseUrl && !!supabaseAnonKey;
-};
-
-// Database types will be generated when connected to Supabase
-export type Database = {
-  public: {
-    Tables: {
-      tenants: {
-        Row: {
-          id: string;
-          domain: string;
-          name: string;
-          theme: any;
-          settings: any;
-          created_at: string;
-          updated_at: string;
-        };
-      };
-      users: {
-        Row: {
-          id: string;
-          tenant_id: string;
-          phone: string;
-          name: string;
-          language: string;
-          role: string;
-          metadata: any;
-          created_at: string;
-        };
-      };
-    };
-  };
-};
+// Legacy hand-rolled Database typing — kept as a no-op type so old imports
+// don't break. Real types live in `@/integrations/supabase/types`.
+export type Database = unknown;
