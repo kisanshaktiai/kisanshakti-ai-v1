@@ -1712,6 +1712,8 @@ serve(async (req) => {
             []
           ).map((c: any) => ({
             rule_id: c.rule_id || c.rule?.rule_id,
+            category: c.category ?? c.rule?.category ?? null,
+            canonical_group: c.canonical_group ?? c.rule?.canonical_group ?? null,
             crop_age_days_max: c.crop_age_days_max ?? c.rule?.crop_age_days_max ?? null,
             crop_age_days_min: c.crop_age_days_min ?? c.rule?.crop_age_days_min ?? null,
             application_method: c.application_method ?? c.rule?.application_method ?? null,
@@ -1728,6 +1730,8 @@ serve(async (req) => {
           if (pd?.rule_id && !candidateRulesForGate.some((c: any) => c.rule_id === pd.rule_id)) {
             candidateRulesForGate.unshift({
               rule_id: pd.rule_id,
+              category: pd.category ?? null,
+              canonical_group: pd.canonical_group ?? null,
               crop_age_days_max: pd.crop_age_days_max ?? null,
               crop_age_days_min: pd.crop_age_days_min ?? null,
               application_method: pd.application_method ?? pd.application_details?.application_method ?? null,
