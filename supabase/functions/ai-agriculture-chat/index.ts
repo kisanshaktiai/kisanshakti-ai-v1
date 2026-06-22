@@ -2445,6 +2445,7 @@ serve(async (req) => {
             response_source: responseSource,
             funnel_largest_drop: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.stage ?? null,
             funnel_largest_drop_count: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.lost ?? null,
+            clarification_origin: clarificationOrigin,
             // WAVE D: ALWAYS persist decision_brain_data regardless of response type.
             // Previously this was gated to type === 'DECISION_PROVIDED', which silently
             // dropped brain state for 73% (47/64) of matched turns — making the
