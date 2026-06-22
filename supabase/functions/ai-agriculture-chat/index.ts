@@ -2870,6 +2870,7 @@ serve(async (req) => {
             : 0,
           response_source: _meta?.source || _resp?.source,
           clarification_invariant: _meta?.clarification_invariant,
+          rule_source_diff: _ruleSourceDiff,
         },
         reasoning: typeof _meta?.reasoning === 'string' ? _meta.reasoning.slice(0, 2000) : null,
         confidence_score: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
