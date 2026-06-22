@@ -803,6 +803,7 @@ export function formatForClarificationUI(
     selectionType: 'single_choice',
     maxSelections: 1,
     metadata: {
+      clarification_site: CLARIFICATION_SITES.DIAGNOSIS_FIRST_GENERATOR,
       source: output.source,
       mode: output.mode,
       crop_code: output.crop_code,
