@@ -2899,7 +2899,7 @@ export class AIAgentOrchestrator {
           
           // PHASE-9.1-FIX: HARD RETURN - Return clarification reminder and STOP
           // This is the CRITICAL gate that prevents NLU from running
-          return {
+          return tagClarificationSite(CLARIFICATION_SITES.HARD_GATE_OPTION_REMINDER, {
             type: 'CLARIFICATION_QUESTION',
             session_id: sessionId,
             question: {
