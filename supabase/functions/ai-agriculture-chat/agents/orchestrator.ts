@@ -7188,15 +7188,24 @@ export class AIAgentOrchestrator {
         
         // Wire symptomKeys + isEmergency into IMMEDIATE return path.
         // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
-        const obsArray = Array.from(allObservationsForPreAuth || []);
+        // CONTAMINATION FIX (2026-06-22): symptom_keys / symptomKeys downstream are
+        // interpreted as CONFIRMED observations by index.ts and the rule-lookup
+        // bypass. Use authority-filtered confirmed+extracted lane only.
+        const confirmedForReturn = authoredObservations.getConfirmedAndExtractedCodes();
+        const candidateForReturn = authoredObservations.getCandidateCodes();
+        const obsArray = confirmedForReturn;
         const emergencyCodesImmediate = await loadEmergencyObservationCodes(this.supabase);
         const isEmergencyImmediate = obsArray.some(code => emergencyCodesImmediate.has(code));
-        
+
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         decisionOutput.symptom_keys = obsArray;
+        decisionOutput.confirmed_observation_codes = obsArray;
+        decisionOutput.candidate_observation_codes = candidateForReturn;
         if (!decisionOutput.metadata) decisionOutput.metadata = {};
         decisionOutput.metadata.has_symptoms = obsArray.length > 0;
         decisionOutput.metadata.symptomKeys = obsArray;
+        decisionOutput.metadata.confirmed_observation_codes = obsArray;
+        decisionOutput.metadata.candidate_observation_codes = candidateForReturn;
         decisionOutput.metadata.decision_confidence = layeredRuleResult?.primary_decision?.weighted_confidence || 0;
         decisionOutput.metadata.isEmergency = isEmergencyImmediate;
         
