@@ -3032,20 +3032,52 @@ export class AIAgentOrchestrator {
 
 
           if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
-            // CANDIDATE LANE ONLY. intent_observation_mapping rows are the
-            // hypothesis space for the intent — they are NOT farmer-asserted
-            // and must not enter expandedObservationCodes / confirmed lane.
-            // Cap to top-ranked codes (DB is already ordered by confidence_rank ASC).
-            let added = 0;
-            for (const c of dbIntentResolution.observation_codes.slice(0, 25)) {
-              if (c && !candidateObservationCodes.has(c)) {
+            // ═════════════════════════════════════════════════════════════════
+            // P1 SYSTEM-WIDE FIX (2026-06-22): assertion-strength-driven lane
+            // routing. Cross-crop, DB-curated via `intent_assertion_pattern` →
+            // `intent_observation_mapping.assertion_strength`. No hardcoded
+            // per-crop lists, no rice-specific guard.
+            //   LITERAL           → confirmed lane (farmer literally said this)
+            //   STRONG_HYPOTHESIS → confirmed only when intent_confidence ≥ 0.85
+            //   DIFFERENTIAL      → candidate lane (current default behavior)
+            // ═════════════════════════════════════════════════════════════════
+            const codes = dbIntentResolution.observation_codes;
+            const strengths = (dbIntentResolution as any).assertion_strengths || [];
+            const intentConfidence = Number(
+              (semanticExtraction as any)?.intent_confidence ??
+              (semanticExtraction as any)?.confidence ??
+              0
+            );
+            const STRONG_HYPOTHESIS_PROMOTION_THRESHOLD = 0.85;
+
+            let promotedLiteral = 0;
+            let promotedStrong = 0;
+            let addedCandidate = 0;
+            const cap = Math.min(codes.length, 25);
+            for (let i = 0; i < cap; i++) {
+              const c = codes[i];
+              if (!c) continue;
+              const strength = String(strengths[i] || 'DIFFERENTIAL').toUpperCase();
+              const shouldPromote =
+                strength === 'LITERAL' ||
+                (strength === 'STRONG_HYPOTHESIS' && intentConfidence >= STRONG_HYPOTHESIS_PROMOTION_THRESHOLD);
+
+              if (shouldPromote) {
+                if (!expandedObservationCodes.includes(c)) {
+                  expandedObservationCodes.push(c);
+                  if (strength === 'LITERAL') promotedLiteral++;
+                  else promotedStrong++;
+                }
+              } else if (!candidateObservationCodes.has(c)) {
                 candidateObservationCodes.add(c);
-                added++;
+                addedCandidate++;
               }
             }
             console.log(
-              `      🔗 [DB_INTENT_OBSERVATIONS→CANDIDATE] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
-              `→ +${added} candidate codes (candidate_total=${candidateObservationCodes.size}, confirmed_total=${expandedObservationCodes.length})`
+              `      🔗 [DB_INTENT_OBSERVATIONS] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
+              `→ +${promotedLiteral} LITERAL +${promotedStrong} STRONG_HYPOTHESIS(@conf=${intentConfidence.toFixed(2)}) → confirmed; ` +
+              `+${addedCandidate} → candidate ` +
+              `(confirmed_total=${expandedObservationCodes.length}, candidate_total=${candidateObservationCodes.size})`
             );
             agentsUsed.push('INTENT_OBSERVATION_RESOLVER_DB');
           } else {
@@ -3054,12 +3086,9 @@ export class AIAgentOrchestrator {
               `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
             );
           }
-          // NOTE: RICE_EMERGENCE_GUARD (hardcoded list of OBS_RICE_NO_EMERGENCE,
-          // OBS_RICE_PATCHY_EMERGENCE, POOR_GERMINATION, …) was removed 2026-06-22.
-          // It was forcing hypothesis-space codes into the confirmed lane and
-          // violated the "no hardcoded logic / DB-driven" contract. The same
-          // codes are now supplied by intent_observation_mapping above as
-          // candidates, gated by farmer clarification before promotion.
+          // NOTE: RICE_EMERGENCE_GUARD removed 2026-06-22. Cross-crop literal
+          // promotion now driven by DB column `assertion_strength` (curated
+          // via the agronomist-editable `intent_assertion_pattern` table).
         }
       } catch (intentResolverErr) {
         // Fail-soft: advisory observation-code enrichment must never block the
