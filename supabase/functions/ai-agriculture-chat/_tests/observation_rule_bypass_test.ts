@@ -82,12 +82,13 @@ Deno.test('young-crop without bypass flag still hits the existing block', () => 
 Deno.test('extractObservationCodes filters OBS_* prefixed keys', () => {
   const codes = extractObservationCodes([
     'OBS_RICE_NO_EMERGENCE',
+    'obs_rice_patchy_emergence',
     'SOMETHING_ELSE',
     'OBS_LEAF_YELLOWING',
     null as any,
     '',
   ]);
-  assertEquals(codes, ['OBS_RICE_NO_EMERGENCE', 'OBS_LEAF_YELLOWING']);
+  assertEquals(codes, ['OBS_RICE_NO_EMERGENCE', 'obs_rice_patchy_emergence', 'OBS_LEAF_YELLOWING']);
 });
 
 Deno.test('lookupSafeRuleForObservations returns null when no observations', async () => {

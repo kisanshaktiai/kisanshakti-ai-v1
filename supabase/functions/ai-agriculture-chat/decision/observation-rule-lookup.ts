@@ -189,5 +189,5 @@ export async function lookupSafeRuleForObservations(
  */
 export function extractObservationCodes(symptomKeys: string[] | undefined | null): string[] {
   if (!Array.isArray(symptomKeys)) return [];
-  return symptomKeys.filter((s) => typeof s === 'string' && s.startsWith('OBS_'));
+  return symptomKeys.filter((s) => typeof s === 'string' && s.trim().toUpperCase().startsWith('OBS_'));
 }

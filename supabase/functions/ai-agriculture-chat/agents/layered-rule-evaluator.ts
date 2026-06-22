@@ -793,10 +793,12 @@ export function evaluateRulesLayered(
         });
       } else if (prescriptionActionType) {
         // Rules with action_type but minimal content - still eligible
+        const prescriptionActionDetails = rule.then.action_details || {};
         result.matched_responses.push({
           rule_id: rule.id,
           cause: rule.then.possible_cause || 'TREATMENT',
-          action_type: prescriptionActionType
+          action_type: prescriptionActionType,
+          conditions_json: prescriptionActionDetails.conditions_json || null,
         });
       }
     }
@@ -806,6 +808,8 @@ export function evaluateRulesLayered(
     for (const rule of rulesByCategory.get(RuleCategory.PRESCRIPTION) || []) {
       result.rules_evaluated++;
       if (matchesConditions(rule, state)) {
+        result.rules_matched++;
+        result.rules_applied.push(rule.id);
         // Don't add to prescriptions (blocked), but collect responses for display
         // SSOT ARCHITECTURE: action_text + i18n_key only (response_mr/hi/en dropped)
         const blockedActionDetails = rule.then.action_details || {};
@@ -1064,12 +1068,12 @@ export function evaluateRulesLayered(
       const rankA = (a.response as any).data_authority_rank ?? 50;
       const rankB = (b.response as any).data_authority_rank ?? 50;
       if (rankA !== rankB) return rankB - rankA;
-      // P2: evidence score
+      // P2: evidence score from actual DB condition ledger
       if (a.evidenceScore !== b.evidenceScore) return b.evidenceScore - a.evidenceScore;
-      // P3: priority field from rule
+      // P3: priority field from rule (lower number = higher urgency in decision_rules)
       const priA = a.response.priority ?? 50;
       const priB = b.response.priority ?? 50;
-      if (priA !== priB) return priB - priA;
+      if (priA !== priB) return priA - priB;
       // P4: confidence_score
       return (b.response.confidence_score ?? 0) - (a.response.confidence_score ?? 0);
     });

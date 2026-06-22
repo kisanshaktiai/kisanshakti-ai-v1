@@ -121,7 +121,12 @@ const HYPOTHESIS_CANONICAL_GROUPS = [
   '06_abiotic', '06_irrigation', '06_soil', '06_stress', '06_weed',
   '07_diagnosis', '07_monitoring', '07_soil', '08_remote_sensing',
   '08_stress', '08_weed', '10_stress_weather', '10_weather',
-  '13_diagnosis', '15_deficiency', '15_soil', '16_stress'
+  '13_diagnosis', '15_deficiency', '15_soil', '16_stress',
+  '00_decision_gate', '01_crop_identity', '01_safety', '01_seed_quality',
+  '02_land', '02_stage_awareness', '03_observation', '07_climate_water',
+  '07_organic', '08_recommendation', '09_best_practice', '10_stress',
+  '11_economics', '11_harvest', '12_safety', '13_system',
+  '17_management', '18_gate', '19_economics'
 ];
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -641,6 +646,8 @@ export async function evaluateCandidateHypotheses(
 ): Promise<HypothesisEvaluationOutput> {
   const traceId = input.trace_id || `hyp_${Date.now()}`;
   const { crop_code, growth_stage, supabaseClient } = input;
+  const normalizeObs = (code: string) => String(code || '').toLowerCase().replace(/[\s-]+/g, '_').trim();
+  let expandedKnownObservations = Array.from(new Set(input.known_observations.map(normalizeObs).filter(Boolean)));
   
   console.log(`🎯 [HypothesisEval v1.3] Pre-evaluating rules for ${crop_code}/${growth_stage}`);
   console.log(`   Known observations: ${input.known_observations.join(', ') || 'none'}`);
@@ -653,6 +660,26 @@ export async function evaluateCandidateHypotheses(
     // CRITICAL FIX: Use crop code variants (SC, SUGARCANE, etc.)
     // ═══════════════════════════════════════════════════════════════════════
     
+    if (expandedKnownObservations.length > 0) {
+      const originalObservationCount = expandedKnownObservations.length;
+      const { data: aliasRows, error: aliasErr } = await supabaseClient
+        .from('observation_aliases')
+        .select('alias_code, canonical_code')
+        .in('alias_code', expandedKnownObservations);
+      if (aliasErr) {
+        console.warn(`   ⚠️ [HypothesisEval] Alias expansion failed: ${aliasErr.message}`);
+      } else if (Array.isArray(aliasRows) && aliasRows.length > 0) {
+        const expanded = new Set(expandedKnownObservations);
+        for (const row of aliasRows) {
+          const canonical = normalizeObs(row.canonical_code);
+          if (canonical) expanded.add(canonical);
+        }
+        expandedKnownObservations = Array.from(expanded);
+        input.known_observations = expandedKnownObservations;
+        console.log(`   🔁 [HypothesisEval] DB alias expansion: ${originalObservationCount} → ${expandedKnownObservations.length}`);
+      }
+    }
+
     const cropVariants = getCropCodeVariantsForDB(crop_code);
     const stageVariants = getStageQueryVariants(growth_stage);
     const dbStage = normalizeStageForDB(growth_stage);
@@ -820,11 +847,7 @@ export async function evaluateCandidateHypotheses(
         // DB ingress (.in() filter) and egress (map key) boundaries so that the
         // diagnostic-power lookup in extractObservableCharacteristics() actually
         // matches observation_master metadata.
-        const obsLcArray = Array.from(
-          new Set(
-            input.known_observations.map((c: string) => String(c || '').toLowerCase()).filter(Boolean)
-          )
-        );
+        const obsLcArray = expandedKnownObservations;
 
         // Load observation metadata
         const { data: obsMetaData } = await supabaseClient
@@ -929,7 +952,7 @@ export async function evaluateCandidateHypotheses(
       'PINK_LARVAE_VISIBLE', 'PLANT_DEATH', 'SUDDEN_WILT'
     ]);
     
-    const hasStrongSignal = input.known_observations.some(obs => 
+    const hasStrongSignal = expandedKnownObservations.some(obs => 
       STRONG_SIGNALS.has(obs.toUpperCase().replace(/[\s-]/g, '_'))
     );
     

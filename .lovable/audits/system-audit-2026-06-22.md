@@ -174,6 +174,32 @@ Deferred to a follow-up turn. **Recommendation:** after deploying the P0-1 fix, 
 
 ---
 
+## 11. Forensic Re-audit Addendum — trace `trace_mqotnztd_y4si6j`
+
+### New source-of-truth finding
+The P0 code-preservation fix worked: the log now shows `Using EMBEDDED ObservationKey: "OBS_RICE_NO_EMERGENCE"` and final rule input `[obs_rice_no_emergence]`. The remaining suppression was **inside rule evaluation and bypass propagation**, not label mapping.
+
+### Root cause chain
+1. In the prescription-blocked branch, matching DB rules produced `matched_responses=2` but `rules_matched` and `rules_applied` stayed `0`, causing the decision gate to log `NO_RULES_MATCHED` even when DB rules had matched.
+2. Primary arbitration then selected unrelated universal crop-rotation rule `CROT_AFTER_RICE_CHICKPEA_007` because priority sorting used higher numeric priority first; `decision_rules.priority=1` must outrank `9`.
+3. `index.ts` only looked for uppercase `OBS_`, so lowercase canonical codes from the 2026-06-21 migration skipped the safe-rule bypass.
+4. Safety bypass depended on a free-text `reason` prefix instead of structured gate fields, making confirmed observation bypass fragile.
+
+### Fixes applied in this addendum
+- `layered-rule-evaluator.ts` — increments `rules_matched/rules_applied` when prescription rules match while prescriptions are blocked, preserves `conditions_json`, and sorts lower `priority` as higher urgency.
+- `observation-rule-lookup.ts` — extracts `OBS_` codes case-insensitively, preserving lower_snake_case canonical codes.
+- `index.ts` — includes `confirmed_observations` / `confirmed_observation_codes` in gate symptom keys and uses structured `gate_action + response_mode` for safety bypass.
+
+### DB verification
+- `decision_rules` contains 2 active rice rules for `obs_rice_no_emergence`.
+- At DAS 14, `RICE_GERMINATION_RESOW_DECISION_001` is valid (`das_range 8–14`, `urgent_action`, priority `1`, farmer safety `caution`).
+- `crop_stage_master` has authoritative rice `nursery` window `DAS 0–25`; no code may overwrite it.
+
+### Validation note
+Edge-function deployment succeeded. The focused Deno test runner is currently blocked by pre-existing unrelated TypeScript errors in `clarification-strategy.ts` and `diagnostic-escalation-generator.ts`; those failures occur before the changed regression test executes.
+
+---
+
 ## Next steps (proposed for follow-up turns)
 
 1. Deploy + live-verify P0-1 against the failing Marathi rice scenario, capture survival matrix.
