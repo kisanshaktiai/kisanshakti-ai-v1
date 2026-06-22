@@ -2376,8 +2376,25 @@ serve(async (req) => {
           const threshold = Number(meta.confidence_threshold ?? 0.5);
           return conf < threshold ? 'post_match_low_confidence' : 'post_match_clarification';
         }
+        // WAVE J: distinguish pre_brain (rules matched, brain never assembled
+        // primary_decision) from pre_rule (no rules ever matched). The Wave I
+        // attribution view uses this bucket to surface the orchestrator paths
+        // that strand matched rules. Without this split, both fall under
+        // pre_rule_clarification and the real defect (matched-but-clarified)
+        // stays invisible.
+        if (_rulesFired > 0) return 'pre_brain_clarification';
         return 'pre_rule_clarification';
       })();
+
+      // WAVE J: structured warning so log scans can surface the exact emission
+      // site of every pre_brain_clarification turn (paired with metadata.
+      // clarification_site set at the emission). The Wave I dashboard is
+      // queryable post-hoc; this is the real-time signal.
+      if (clarificationOrigin === 'pre_brain_clarification') {
+        console.warn(
+          `[WAVE_J_PRE_BRAIN_CLARIFICATION] site=${(orchestratorResponse as any).metadata?.clarification_site ?? 'unknown'} rules_fired=${_rulesFired} agents=${JSON.stringify((orchestratorResponse as any).metadata?.agents_used ?? [])}`
+        );
+      }
 
       const { data: assistantRow, error: assistantErr } = await supabase
         .from('ai_chat_messages')
