@@ -1046,7 +1046,14 @@ export function evaluateConditionsJson(
     }
 
     // ─── Category D: Boolean Gate Keys (severity, stress, leaf_n_status, etc.) ───
-    if (typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false' ||
+    if ((typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false') && CATEGORY_G_KEYS.has(key)) {
+      const keySymbol = key.toLowerCase().replace(/[\s-]+/g, "_");
+      const matched = expandedObs.has(keySymbol) || [...expandedObs].some(o => o.includes(keySymbol) || keySymbol.includes(o)) || inputQuery.includes(keySymbol);
+      ledger.push({ key, status: matched ? ConditionStatus.PASSED : ConditionStatus.SKIPPED_NO_DATA, required: false, ruleValue: condValue });
+      continue;
+    }
+
+    if ((typeof condValue === 'boolean' || condValue === 'true' || condValue === 'false') ||
         key === 'severity' || key === 'stress' || key === 'leaf_n_status' ||
         key === 'disease_confirmed' || key === 'pest_present' || key === 'etl_exceeded' || key === 'etl_below' ||
         key === 'lodging_risk' || key === 'soil_moisture_low' || key === 'soil_moisture_high' ||

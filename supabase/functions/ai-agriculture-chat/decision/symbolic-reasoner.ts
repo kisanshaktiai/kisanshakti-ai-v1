@@ -18,6 +18,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
 import type { CanonicalState } from '../agents/canonical-state-builder.ts';
+import { getStageCategory, getStageQueryVariants } from '../utils/stage-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // NUTRITION CONFLICT ARBITRATION
@@ -859,12 +860,20 @@ export class SymbolicReasoner {
    * Filter rules by growth stage
    */
   private filterByStage(rules: any[], stage: string): any[] {
+    const stageKey = String(stage || '').toLowerCase().replace(/[\s-]+/g, '_');
+    const variants = new Set(getStageQueryVariants(stageKey).map(s => String(s).toLowerCase()));
+    const currentCategory = getStageCategory(stageKey);
+
     return rules.filter(rule => {
       const stageApplicable = rule.stage_applicable || [];
       if (stageApplicable.length === 0) return true;
-      return stageApplicable.some((s: string) => 
-        s.toLowerCase() === stage || s === '*' || s === 'all'
-      );
+      return stageApplicable.some((s: string) => {
+        const ruleStage = String(s || '').toLowerCase().replace(/[\s-]+/g, '_');
+        if (ruleStage === '*' || ruleStage === 'all' || ruleStage === 'any') return true;
+        if (ruleStage === stageKey || variants.has(ruleStage)) return true;
+        const ruleCategory = getStageCategory(ruleStage);
+        return currentCategory !== 'UNKNOWN' && ruleCategory === currentCategory;
+      });
     });
   }
   

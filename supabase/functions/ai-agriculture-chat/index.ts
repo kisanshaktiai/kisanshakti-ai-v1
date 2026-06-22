@@ -1548,11 +1548,18 @@ serve(async (req) => {
         // The orchestrator stores symptom info in decision_output, not just metadata
         // ═══════════════════════════════════════════════════════════════════════════
         const decisionOutput = orchestratorResponse.decision_output as Record<string, any> || {};
-        const symptomKeysFromDecision = decisionOutput.symptom_keys || 
-                                        decisionOutput.observation_keys ||
-                                        decisionOutput.canonical_observations ||
-                                        [];
-        const symptomKeysFromMetadata = orchestratorResponse.metadata?.symptomKeys || [];
+        const symptomKeysFromDecision = [
+          ...(Array.isArray(decisionOutput.symptom_keys) ? decisionOutput.symptom_keys : []),
+          ...(Array.isArray(decisionOutput.observation_keys) ? decisionOutput.observation_keys : []),
+          ...(Array.isArray(decisionOutput.canonical_observations) ? decisionOutput.canonical_observations : []),
+          ...(Array.isArray(decisionOutput.confirmed_observations) ? decisionOutput.confirmed_observations : []),
+          ...(Array.isArray(decisionOutput.confirmed_observation_codes) ? decisionOutput.confirmed_observation_codes : []),
+        ];
+        const symptomKeysFromMetadata = [
+          ...(Array.isArray(orchestratorResponse.metadata?.symptomKeys) ? orchestratorResponse.metadata.symptomKeys : []),
+          ...(Array.isArray(orchestratorResponse.metadata?.confirmed_observations) ? orchestratorResponse.metadata.confirmed_observations : []),
+          ...(Array.isArray(orchestratorResponse.metadata?.confirmed_observation_codes) ? orchestratorResponse.metadata.confirmed_observation_codes : []),
+        ];
         const mergedSymptomKeys = [...new Set([...symptomKeysFromDecision, ...symptomKeysFromMetadata])];
         
         // ═══════════════════════════════════════════════════════════════════════════
@@ -1784,8 +1791,8 @@ serve(async (req) => {
             candidate_rules: candidateRulesForGate,
             current_confidence: symbolicConfidence,
             differential_questions: diffLookup,
-            confirmed_safe_rule_bypass: typeof (unifiedGateResult as any)?.reason === 'string'
-              && (unifiedGateResult as any).reason.startsWith('bypass:confirmed_safe_rule_exists'),
+            confirmed_safe_rule_bypass: unifiedGateResult?.gate_action === GateAction.PROVIDE_OBSERVATION_ONLY
+              && unifiedGateResult?.response_mode === ResponseMode.OBSERVATION,
             response_mode: unifiedGateResult?.response_mode,
           };
 

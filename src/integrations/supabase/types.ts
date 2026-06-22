@@ -14,6 +14,57 @@ export type Database = {
   }
   public: {
     Tables: {
+      _audit_manual_review: {
+        Row: {
+          audit_batch: string
+          category: string | null
+          created_at: string
+          crop_code: string | null
+          evidence: string | null
+          field_targeted: string
+          id: string
+          proposed_value: string | null
+          rejection_reason: string
+          resolution_notes: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_id: string
+          status: string
+        }
+        Insert: {
+          audit_batch: string
+          category?: string | null
+          created_at?: string
+          crop_code?: string | null
+          evidence?: string | null
+          field_targeted: string
+          id?: string
+          proposed_value?: string | null
+          rejection_reason: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id: string
+          status?: string
+        }
+        Update: {
+          audit_batch?: string
+          category?: string | null
+          created_at?: string
+          crop_code?: string | null
+          evidence?: string | null
+          field_targeted?: string
+          id?: string
+          proposed_value?: string | null
+          rejection_reason?: string
+          resolution_notes?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
       _fa_canonical_hint_rice_backup_20260621: {
         Row: {
           canonical_hint: string | null
