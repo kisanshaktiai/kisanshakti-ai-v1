@@ -3201,11 +3201,35 @@ export class AIAgentOrchestrator {
       // Fix 7: also exempt when the canonical intent code is advisory.
       const isZeroCodeGateExempt = zeroCodeGateExemptRoutes.has(queryRoute.route) || isAdvisoryRoute(currentIntentForGate);
 
-      
-      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt) {
+      // ─────────────────────────────────────────────────────────────────────
+      // WAVE M BYPASS (NLU_LOW_CONFIDENCE / ZERO_CODE_GATE):
+      //   The zero-code gate originally only inspected `mappedCodes`. When
+      //   DB intent resolution had already promoted observation codes into
+      //   `expandedObservationCodes` (LITERAL / STRONG_HYPOTHESIS lanes),
+      //   forcing clarification here threw away real symbolic evidence and
+      //   produced an `orch.nlu_low_confidence` DEFECT_SUSPECT drop. Skip
+      //   the gate whenever ≥1 expanded/candidate observation code exists.
+      // ─────────────────────────────────────────────────────────────────────
+      const waveM_hasExpandedEvidence =
+        (Array.isArray(expandedObservationCodes) && expandedObservationCodes.length > 0) ||
+        (candidateObservationCodes && candidateObservationCodes.size > 0);
+
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && !waveM_hasExpandedEvidence) {
         console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
         console.log(`   → Forcing CLARIFICATION path, will NOT enter symbolic brain`);
         agentsUsed.push('ZERO_CODE_CLARIFICATION_GATE');
+      } else if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && waveM_hasExpandedEvidence) {
+        console.warn(
+          `\n✅ [WAVE_M_ZERO_CODE_BYPASS] intent=${currentIntentForGate} ` +
+          `mappedCodes=0 BUT expanded=${expandedObservationCodes.length} ` +
+          `candidate=${candidateObservationCodes.size} → entering symbolic brain ` +
+          `(would have dropped to orch.nlu_low_confidence pre-Wave-M)`
+        );
+        agentsUsed.push('WAVE_M_ZERO_CODE_BYPASS');
+      }
+
+      if (false) {
+        // legacy block below — guarded above so it only runs when no evidence
         
         // Generate clarification using crop/stage context
         const clarificationLandCtx = landContext ? {
