@@ -114,6 +114,11 @@ export class AuthoredObservationSet {
     return this.getConfirmedAndExtractedCodes();
   }
 
+  /** Get hypothesis-only candidates (never confirmed). */
+  getCandidateCodes(): string[] {
+    return this.getCodesByAuthority(ObservationAuthority.HYPOTHESIS_CANDIDATE);
+  }
+
   /** Get all codes regardless of authority (for rule evaluation). */
   getAllCodes(): string[] {
     return [...this.observations.keys()];
