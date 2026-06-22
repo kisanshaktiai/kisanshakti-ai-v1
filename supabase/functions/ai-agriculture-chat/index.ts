@@ -88,6 +88,9 @@ import {
 // WAVE A.5 / Phase 2: defence-in-depth gate + observability
 import { enforceClarificationInvariant } from './decision/clarification-invariant-gate.ts';
 import { logDecisionTurn, logOrchestratorMetrics } from './runtime/decision-logger.ts';
+import { getRuleSource } from './runtime/feature-flags.ts';
+import { selectCandidateRuleIdsFromDb } from './bundled-rules/db-rule-executor.ts';
+import { computeRuleSourceDiff, type RuleSourceDiff } from './bundled-rules/rule-source-diff.ts';
 import {
   lookupSafeRuleForObservations,
   extractObservationCodes,
