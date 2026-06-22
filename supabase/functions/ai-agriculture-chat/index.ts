@@ -2902,7 +2902,14 @@ serve(async (req) => {
         confidence_score: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
         execution_time_ms: typeof _meta?.processing_time_ms === 'number' ? _meta.processing_time_ms : null,
         success: true,
-        evaluation_trace: _meta?.agents_used ? { agents_used: _meta.agents_used } : null,
+        evaluation_trace: {
+          agents_used: _meta?.agents_used ?? null,
+          funnel: _funnelSnapshot ? {
+            counters: _funnelSnapshot.counters,
+            largest_drop: _funnelSnapshot.largest_drop ?? null,
+            event_count: _funnelSnapshot.events.length,
+          } : null,
+        },
       }).catch(() => {});
 
       logOrchestratorMetrics({
