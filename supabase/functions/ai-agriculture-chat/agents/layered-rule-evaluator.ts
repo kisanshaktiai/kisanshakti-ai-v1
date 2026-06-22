@@ -40,6 +40,7 @@ import {
 } from '../bundled-rules/loader.ts';
 
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import { funnelRecord } from '../runtime/funnel-tracker.ts';
 
 // PHASE-16: Import SymbolicReasoner for proper JSON condition evaluation
 import {
@@ -1432,6 +1433,27 @@ export function evaluateRulesLayered(
       duration_ms: Date.now() - phase3Start,
     },
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // WAVE C — Funnel counters (per-trace, snapshot in index.ts on return)
+  // Surfaces the exact pipeline stage where rule matches die.
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    funnelRecord(traceId, 'rules_loaded', safeRules.length);
+    funnelRecord(traceId, 'rules_evaluated', result.rules_evaluated);
+    funnelRecord(traceId, 'rules_matched', result.rules_matched);
+    funnelRecord(traceId, 'matched_responses', result.matched_responses.length);
+    funnelRecord(traceId, 'eligible_for_primary', eligibleResponses.length);
+    funnelRecord(traceId, 'blocked_by_graph', result.rules_blocked_by_graph.length);
+    funnelRecord(traceId, 'blocked_by_etl', result.rules_blocked_by_etl.length);
+    if (result.primary_decision) {
+      funnelRecord(traceId, 'primary_built', 1, { rule_id: result.primary_decision.rule_id });
+    } else {
+      funnelRecord(traceId, 'primary_built', 0);
+    }
+  } catch (_funnelErr) {
+    // never block evaluation on instrumentation
+  }
 
   return result;
 }

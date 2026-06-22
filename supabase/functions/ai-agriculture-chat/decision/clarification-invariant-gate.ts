@@ -26,6 +26,7 @@
  */
 
 import { getClarificationInvariantEnabled } from '../runtime/feature-flags.ts';
+import { funnelRecord } from '../runtime/funnel-tracker.ts';
 
 export interface ClarificationInvariantResult {
   invariant_violated: boolean;
@@ -143,6 +144,12 @@ export function enforceClarificationInvariant(
       `🚨 [ClarificationInvariant] VIOLATION DETECTED (trace=${ctx.trace_id ?? 'n/a'} source=${ctx.source ?? 'n/a'}) — stripped: ${stripped.join(', ')}`
     );
   }
+  try {
+    if (ctx.trace_id) {
+      funnelRecord(ctx.trace_id, 'invariant_stripped', stripped.length);
+      if (violated) funnelRecord(ctx.trace_id, 'clarification_forced', 1);
+    }
+  } catch { /* never block on instrumentation */ }
 
   return {
     invariant_violated: violated,

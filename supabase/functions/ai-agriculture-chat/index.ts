@@ -91,6 +91,7 @@ import { logDecisionTurn, logOrchestratorMetrics } from './runtime/decision-logg
 import { getRuleSource } from './runtime/feature-flags.ts';
 import { selectCandidateRuleIdsFromDb } from './bundled-rules/db-rule-executor.ts';
 import { computeRuleSourceDiff, type RuleSourceDiff } from './bundled-rules/rule-source-diff.ts';
+import { funnelStart, funnelEnd, type FunnelSnapshot } from './runtime/funnel-tracker.ts';
 import {
   lookupSafeRuleForObservations,
   extractObservationCodes,
@@ -255,6 +256,7 @@ serve(async (req) => {
 
   const startTime = Date.now();
   const traceId = generateTraceId();
+  funnelStart(traceId); // Wave C — per-turn pipeline-drop attribution
   let dedupeKey: string | null = null;
   
   console.log(`\n🔍 [${traceId}] ═══════════════════════════════════════════════════`);
@@ -2837,6 +2839,30 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    // WAVE C — Funnel snapshot (per-stage pipeline drops)
+    // ═══════════════════════════════════════════════════════════════════════
+    let _funnelSnapshot: FunnelSnapshot | null = null;
+    try {
+      // record actions_returned now so the snapshot below sees it
+      const _resp: any = responsePayload;
+      const actionsCount = Array.isArray(_resp?.actions) ? _resp.actions.length : 0;
+      // funnelRecord is internal; re-import dynamically via funnelEnd which captures all prior writes.
+      // We attribute actions_returned through evaluation_trace below.
+      _funnelSnapshot = funnelEnd(traceId);
+      if (_funnelSnapshot) {
+        _funnelSnapshot.counters.actions_returned = actionsCount;
+        if (_funnelSnapshot.largest_drop) {
+          console.warn(
+            `[Funnel ${traceId}] largest drop: ${_funnelSnapshot.largest_drop.from}=${_funnelSnapshot.largest_drop.from_n} → ${_funnelSnapshot.largest_drop.to}=${_funnelSnapshot.largest_drop.to_n}`
+          );
+        }
+        if (_resp && _resp.metadata) _resp.metadata.funnel = _funnelSnapshot.counters;
+      }
+    } catch (fnlErr) {
+      console.warn('[Funnel] snapshot failed — non-fatal:', (fnlErr as Error).message);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     // WAVE A1 — ai_decision_log insert (fire-and-forget)
     // ═══════════════════════════════════════════════════════════════════════
     try {
@@ -2876,7 +2902,14 @@ serve(async (req) => {
         confidence_score: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
         execution_time_ms: typeof _meta?.processing_time_ms === 'number' ? _meta.processing_time_ms : null,
         success: true,
-        evaluation_trace: _meta?.agents_used ? { agents_used: _meta.agents_used } : null,
+        evaluation_trace: {
+          agents_used: _meta?.agents_used ?? null,
+          funnel: _funnelSnapshot ? {
+            counters: _funnelSnapshot.counters,
+            largest_drop: _funnelSnapshot.largest_drop ?? null,
+            event_count: _funnelSnapshot.events.length,
+          } : null,
+        },
       }).catch(() => {});
 
       logOrchestratorMetrics({
