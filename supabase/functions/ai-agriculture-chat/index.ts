@@ -2446,6 +2446,11 @@ serve(async (req) => {
             funnel_largest_drop: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.stage ?? null,
             funnel_largest_drop_count: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.lost ?? null,
             clarification_origin: clarificationOrigin,
+            // WAVE J: per-emission-site identifier so dashboards can attribute
+            // the surviving pre_brain_clarification drops to the precise code
+            // path that produced them. Set inside metadata at every CLARIFICATION
+            // return site by `tagClarificationSite` / `CLARIFICATION_SITES`.
+            clarification_site: (orchestratorResponse as any).metadata?.clarification_site ?? null,
             // WAVE D: ALWAYS persist decision_brain_data regardless of response type.
             // Previously this was gated to type === 'DECISION_PROVIDED', which silently
             // dropped brain state for 73% (47/64) of matched turns — making the
