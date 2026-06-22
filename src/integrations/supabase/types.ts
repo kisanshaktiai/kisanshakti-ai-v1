@@ -7826,6 +7826,7 @@ export type Database = {
           max_temperature: number | null
           max_wind_speed: number | null
           measurement_method: string | null
+          min_data_completeness: number
           min_temperature: number | null
           mode_of_action: string | null
           mutually_exclusive_with: string[] | null
@@ -7990,6 +7991,7 @@ export type Database = {
           max_temperature?: number | null
           max_wind_speed?: number | null
           measurement_method?: string | null
+          min_data_completeness?: number
           min_temperature?: number | null
           mode_of_action?: string | null
           mutually_exclusive_with?: string[] | null
@@ -8154,6 +8156,7 @@ export type Database = {
           max_temperature?: number | null
           max_wind_speed?: number | null
           measurement_method?: string | null
+          min_data_completeness?: number
           min_temperature?: number | null
           mode_of_action?: string | null
           mutually_exclusive_with?: string[] | null
@@ -12670,8 +12673,42 @@ export type Database = {
         }
         Relationships: []
       }
+      intent_assertion_pattern: {
+        Row: {
+          assertion_strength: string
+          created_at: string
+          id: string
+          intent_code: string
+          is_active: boolean
+          notes: string | null
+          obs_code_regex: string
+          updated_at: string
+        }
+        Insert: {
+          assertion_strength: string
+          created_at?: string
+          id?: string
+          intent_code: string
+          is_active?: boolean
+          notes?: string | null
+          obs_code_regex: string
+          updated_at?: string
+        }
+        Update: {
+          assertion_strength?: string
+          created_at?: string
+          id?: string
+          intent_code?: string
+          is_active?: boolean
+          notes?: string | null
+          obs_code_regex?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       intent_observation_mapping: {
         Row: {
+          assertion_strength: string
           confidence_rank: number | null
           created_at: string | null
           crop_code: string
@@ -12685,6 +12722,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          assertion_strength?: string
           confidence_rank?: number | null
           created_at?: string | null
           crop_code: string
@@ -12698,6 +12736,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          assertion_strength?: string
           confidence_rank?: number | null
           created_at?: string | null
           crop_code?: string
