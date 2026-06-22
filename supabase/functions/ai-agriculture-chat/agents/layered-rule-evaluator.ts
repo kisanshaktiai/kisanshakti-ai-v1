@@ -1170,6 +1170,13 @@ export function evaluateRulesLayered(
       // P4: confidence_score
       return (b.response.confidence_score ?? 0) - (a.response.confidence_score ?? 0);
     });
+    // P1 SYSTEM-WIDE FIX (2026-06-22): completeness gate may have emptied `scored`.
+    // Bail out cleanly → primary_decision stays null, orchestrator routes to CLARIFY.
+    if (scored.length === 0) {
+      console.warn(`🚫 [CompletenessGate] All eligible rules filtered out by min_data_completeness → no primary decision`);
+      result.primary_decision = null;
+      return result;
+    }
     const best = scored[0].response;
     
     // ═══════════════════════════════════════════════════════════════════════════
