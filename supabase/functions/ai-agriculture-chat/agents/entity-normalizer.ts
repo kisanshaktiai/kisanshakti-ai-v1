@@ -1151,4 +1151,47 @@ export function validateEntityConsistency(
   };
 }
 
-export const ENTITY_NORMALIZER_VERSION = '1.0.0';
+export const ENTITY_NORMALIZER_VERSION = '1.1.0'; // Wave A.5e: crop-aware pest guard
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WAVE A.5e (RC-29) — Crop-aware pest normalization wrapper
+// ═══════════════════════════════════════════════════════════════════════════
+// PEST_MASTER_TABLE is dominated by SUGARCANE-specific aliases. When a
+// query about a non-sugarcane crop hits these, the legacy normalizer can
+// return e.g. `SUGARCANE_SHOOT_BORER` for a rice/cotton query, polluting
+// downstream rule matching.
+//
+// Strategy without rewriting the 1100-line static table:
+//   - Wrap `normalizePestEntity` with a `cropCode` argument.
+//   - If the canonical code returned begins with a crop prefix that does
+//     NOT match the active crop, log a structured warning and reject the
+//     mapping (return original UPPER+underscore form).
+//   - Existing callers that still call `normalizePestEntity(name)` without
+//     a crop are unchanged.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const CROP_PREFIX_RE = /^(SUGARCANE|RICE|WHEAT|COTTON|MAIZE|SOYBEAN|GROUNDNUT|TOMATO|ONION|POTATO|CHILLI|TURMERIC|BANANA)_/;
+
+export function normalizePestEntityForCrop(
+  pestName: string | undefined | null,
+  cropCode: string | undefined | null
+): string {
+  const normalized = normalizePestEntity(pestName);
+  if (!cropCode) return normalized;
+
+  const expectedCrop = String(cropCode).toUpperCase();
+  const m = normalized.match(CROP_PREFIX_RE);
+  if (!m) return normalized; // crop-agnostic entry — fine
+
+  const mappedCrop = m[1];
+  if (mappedCrop === expectedCrop) return normalized;
+
+  console.warn(
+    `🚨 [EntityNormalizer:CROP_MISMATCH] pest input='${pestName}' mapped='${normalized}' ` +
+    `but active crop='${expectedCrop}'. Rejecting cross-crop mapping.`
+  );
+
+  // Fall back to original literal (UPPER + underscores), no cross-crop bleed.
+  return String(pestName ?? 'UNKNOWN').toUpperCase().trim().replace(/[\s-]+/g, '_');
+}
+

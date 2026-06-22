@@ -15,6 +15,7 @@
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
+import { shouldEnforceWeatherFailClosed } from '../runtime/feature-flags.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
@@ -272,6 +273,36 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
                          weatherData.temperature_c !== null;
   
   if (!hasWeatherData) {
+    // WAVE A.5c FIX (RC-23): historically we returned status=UNKNOWN +
+    // spray_allowed=true, which let the orchestrator prescribe spray
+    // recommendations with NO weather signal at all. That violates the
+    // agronomic safety contract — we cannot endorse spraying blind.
+    //
+    // In `enforce` mode → fail-closed: block spray and tell the farmer to
+    // wait for a forecast.
+    // In `shadow` mode → preserve current behaviour but log so dashboards
+    // can size the impact.
+    // WAVE A.5c FIX (RC-23): see header import; fail-closed when no weather signal.
+    const enforce = shouldEnforceWeatherFailClosed();
+
+    console.warn(
+      `🚨 [WeatherSafetyGate:NO_WEATHER_DATA] mode=${enforce ? 'enforce(fail-closed)' : 'shadow(legacy-permit)'}`
+    );
+
+    if (enforce) {
+      result.status = 'UNSAFE';
+      result.spray_allowed = false;
+      result.rain_check.passed = false;
+      result.rain_check.message = 'No weather data — cannot confirm safe spray conditions';
+      result.wind_check.passed = false;
+      result.wind_check.message = 'No weather data — cannot confirm safe spray conditions';
+      result.temperature_check.passed = false;
+      result.temperature_check.message = 'No weather data — cannot confirm safe spray conditions';
+      result.alternative_actions.push('Wait for local weather forecast before spraying');
+      result.alternative_actions.push('Use IPM/cultural controls in the interim');
+      return result;
+    }
+
     result.status = 'UNKNOWN';
     result.rain_check.message = 'No weather data available';
     result.wind_check.message = 'No weather data available';

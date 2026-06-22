@@ -122,10 +122,43 @@ export function validateRecommendationSuppression(
 
 /**
  * applySuppressionGuard
- * 
+ *
  * Applies the suppression guard to a gate result, potentially upgrading
  * the response mode if silent suppression is detected.
+ *
+ * WAVE A.5a HARDENING (Phase 2 / RC-21):
+ * The unconditional FAIL→PASS reversal is the biggest gate-integrity defect
+ * in the system (forensic audit WS16). It silently overrides every gate
+ * decision the moment any symbolic rule "fired", even when downstream gates
+ * (safety, clarification, weather) have legitimate FAIL reasons.
+ *
+ * New contract:
+ *   - `override_token` MUST be provided to actually reverse a FAIL.
+ *     The only legitimate caller path that should mint a token is the
+ *     symbolic decision layer when it has explicitly verified that NO
+ *     downstream safety gate has yet fired.
+ *   - In `shadow` mode (default) we preserve current behaviour for backward
+ *     compatibility but emit a loud audit log on every reversal so the
+ *     dashboard surface the impact.
+ *   - In `enforce` mode and no token → reversal refused, FAIL preserved.
  */
+import { shouldEnforceSuppressionGuardLockdown } from '../runtime/feature-flags.ts';
+
+export interface SuppressionGuardOptions {
+  /**
+   * Opaque token issued by an upstream layer that explicitly authorises
+   * a FAIL→PASS reversal. Without this token, in `enforce` mode the
+   * reversal is refused.
+   */
+  override_token?: string;
+  trace_id?: string;
+  source?: string;
+}
+
+const VALID_OVERRIDE_TOKENS = new Set<string>([
+  'SYMBOLIC_DECISION_PRE_SAFETY_v1',
+]);
+
 export function applySuppressionGuard(
   gateResult: UnifiedGateResult,
   symbolicDecision: {
@@ -133,35 +166,54 @@ export function applySuppressionGuard(
     rules_fired?: string[];
     actions_returned?: Array<{ action_type?: string; product_name?: string }>;
     matched_responses?: string[];
-  } | null
+  } | null,
+  opts: SuppressionGuardOptions = {}
 ): UnifiedGateResult {
   const guardResult = validateRecommendationSuppression(gateResult, symbolicDecision);
-  
-  if (guardResult.suppression_prevented) {
-    // Upgrade the gate result to allow treatments
-    const products = (symbolicDecision?.actions_returned ?? [])
-      .filter(a => a.product_name)
-      .map(a => a.product_name!.toLowerCase());
-    
+
+  if (!guardResult.suppression_prevented) {
+    return gateResult;
+  }
+
+  const enforce = shouldEnforceSuppressionGuardLockdown();
+  const tokenValid = !!opts.override_token && VALID_OVERRIDE_TOKENS.has(opts.override_token);
+
+  // AUDIT LOG — always emit so dashboards can count reversals
+  console.warn(
+    `🚦 [SuppressionGuard:Audit] trace=${opts.trace_id ?? 'n/a'} source=${opts.source ?? 'n/a'} ` +
+    `rules=${guardResult.rules_fired_count} reversal_requested=true ` +
+    `mode=${enforce ? 'enforce' : 'shadow'} token_valid=${tokenValid}`
+  );
+
+  if (enforce && !tokenValid) {
+    // Lockdown: keep the gate's original FAIL, do NOT reverse.
     return {
       ...gateResult,
-      gate_status: GateStatus.PASS,
-      gate_action: GateAction.ALLOW_TREATMENT,
-      treatments_allowed: true,
-      allowed_products: products.length > 0 ? products : gateResult.allowed_products,
-      response_mode: ResponseMode.TREATMENT,
-      reason: `Suppression guard: ${guardResult.rules_fired_count} rules fired with valid treatments - gate upgraded`,
-      criteria_results: {
-        ...gateResult.criteria_results,
-        symbolic_decision_valid: { 
-          passed: true, 
-          reason: `Suppression guard: ${guardResult.rules_fired_count} rules with treatments` 
-        }
-      }
+      reason: `${gateResult.reason} | SUPPRESSION_GUARD_LOCKDOWN: reversal refused (no override_token)`,
     };
   }
-  
-  return gateResult;
+
+  // Shadow OR enforce-with-token → perform the legacy reversal.
+  const products = (symbolicDecision?.actions_returned ?? [])
+    .filter(a => a.product_name)
+    .map(a => a.product_name!.toLowerCase());
+
+  return {
+    ...gateResult,
+    gate_status: GateStatus.PASS,
+    gate_action: GateAction.ALLOW_TREATMENT,
+    treatments_allowed: true,
+    allowed_products: products.length > 0 ? products : gateResult.allowed_products,
+    response_mode: ResponseMode.TREATMENT,
+    reason: `Suppression guard (${enforce ? 'enforce+token' : 'shadow'}): ${guardResult.rules_fired_count} rules fired with valid treatments - gate upgraded`,
+    criteria_results: {
+      ...gateResult.criteria_results,
+      symbolic_decision_valid: {
+        passed: true,
+        reason: `Suppression guard (${enforce ? 'enforce+token' : 'shadow'}): ${guardResult.rules_fired_count} rules with treatments`
+      }
+    }
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

@@ -1409,17 +1409,39 @@ export function loadRulesByCategory(category: string): ExecutableRule[] {
 
 export function evaluateRules(rules: ExecutableRule[], input: DecisionInput): ExecutableRule[] {
   const matched: ExecutableRule[] = [];
-  
+  const filteredOut: Array<{ rule_id: string; reason: string }> = [];
+
   for (const rule of rules) {
     try {
       if (rule.conditions(input)) {
         matched.push(rule);
+      } else {
+        // WAVE A3 — observability: track which rules were considered but
+        // rejected so we can size DB-vs-bundled drift later.
+        filteredOut.push({
+          rule_id: String((rule as any).rule_id || (rule as any).id || 'unknown'),
+          reason: 'conditions_returned_false',
+        });
       }
-    } catch {
-      // Skip rule on error
+    } catch (e) {
+      filteredOut.push({
+        rule_id: String((rule as any).rule_id || (rule as any).id || 'unknown'),
+        reason: `conditions_threw: ${(e as Error).message?.slice(0, 80) ?? 'unknown'}`,
+      });
     }
   }
-  
+
+  // Single line summary — full per-rule detail behind LOADER_VERBOSE flag
+  if (rules.length > 0) {
+    console.log(
+      `📊 [RuleLoader:evaluateRules] considered=${rules.length} matched=${matched.length} ` +
+      `filtered=${filteredOut.length} crop=${(input.crop_code || '?').toString().toLowerCase()}`
+    );
+    if (Deno.env.get('LOADER_VERBOSE') === '1' && filteredOut.length > 0) {
+      console.log(`   filtered rules: ${filteredOut.slice(0, 20).map(r => `${r.rule_id}(${r.reason})`).join(', ')}${filteredOut.length > 20 ? '...' : ''}`);
+    }
+  }
+
   return matched.sort((a, b) => (b.priority || 0) - (a.priority || 0));
 }
 
