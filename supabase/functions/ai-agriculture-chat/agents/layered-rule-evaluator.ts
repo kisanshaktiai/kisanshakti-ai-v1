@@ -916,7 +916,47 @@ export function evaluateRulesLayered(
     r.action_type && 
     (r.action_text || r.i18n_key || r.reason_text || r.knowledge_text)
   );
-  
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1 INVARIANT A (2026-06-22): EMPTY-CONFIRMED GATE — crop-agnostic.
+  // If the farmer has confirmed zero observations AND any eligible rule
+  // declares observation conditions, primary selection is structurally
+  // unsafe. The orchestrator must route to CLARIFY instead of letting the
+  // highest-priority context-only rule win by tiebreak. This invariant
+  // replaces every per-crop empty-evidence fallback (rice cyclone-recovery
+  // bug, sugarcane K-deficiency bug, etc.). No hardcoded crop lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    const confirmedForGate = (state as any).confirmed_observations as string[] | undefined;
+    const hasConfirmed = Array.isArray(confirmedForGate) && confirmedForGate.length > 0;
+    if (!hasConfirmed && eligibleResponses.length > 0) {
+      const requiresObservation = eligibleResponses.some(r => {
+        const obs = (r.conditions_json as any)?.observations;
+        return Array.isArray(obs) && obs.length > 0;
+      });
+      if (requiresObservation) {
+        const blockedIds = eligibleResponses.slice(0, 5).map(r => r.rule_id).join(', ');
+        console.warn(
+          `🚫 [EmptyConfirmedGate] No confirmed observations + ${eligibleResponses.length} ` +
+          `eligible rules require observations → forcing CLARIFY (sample: ${blockedIds})`
+        );
+        scope?.emit({
+          stage: 'rule-evaluator',
+          kind: 'block',
+          payload: {
+            event: 'empty_confirmed_gate',
+            eligible_count: eligibleResponses.length,
+            sample_rule_ids: eligibleResponses.slice(0, 5).map(r => r.rule_id),
+          },
+        });
+        // Preserve matched_responses for trace / clarification generator;
+        // collapse primary_decision so the orchestrator routes to CLARIFY.
+        result.primary_decision = null;
+        return result;
+      }
+    }
+  }
+
   if (eligibleResponses.length > 0) {
     // ═══════════════════════════════════════════════════════════════════════════
     // Fix 1: NUTRITION CONFLICT ARBITRATION before primary selection
