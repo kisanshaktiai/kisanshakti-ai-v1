@@ -495,6 +495,23 @@ export function evaluateRulesLayered(
   
   const diagnosisCandidates: Diagnosis[] = [];
   const rulesByCategory = groupRulesByCategory(safeRules);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // P1 SYSTEM-WIDE FIX (2026-06-22): per-rule metadata lookup used by the
+  // post-selection invariants (stage gate, completeness gate). Built once
+  // here from `safeRules` so the gates don't need to re-traverse bundled
+  // rules. Crop-agnostic; zero hardcoded lists.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const ruleMetaById = new Map<string, { stage_applicable: string[]; min_data_completeness: number }>();
+  for (const r of safeRules) {
+    ruleMetaById.set(r.id, {
+      stage_applicable: Array.isArray((r as any).stage_applicable) ? (r as any).stage_applicable : [],
+      min_data_completeness: typeof (r as any).min_data_completeness === 'number'
+        ? (r as any).min_data_completeness
+        : 0.0,
+    });
+  }
+
   
   // PHASE 1: OBSERVATION
   for (const rule of rulesByCategory.get(RuleCategory.OBSERVATION) || []) {
