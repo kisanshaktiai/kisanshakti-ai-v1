@@ -29,6 +29,7 @@
  */
 
 import type { CandidateHypothesis, HypothesisEvaluationOutput } from './hypothesis-evaluator.ts';
+import { tagClarificationSite, CLARIFICATION_SITES } from '../utils/clarification-site-tag.ts';
 // STATIC IMPORT: Required for Edge Functions (no dynamic imports allowed)
 import { translateToRegionalTerms, type FarmerLocation, type RegionalTranslation } from '../services/regional-translator.ts';
 // PHASE 4: DB-driven i18n - replaces hardcoded CAUSE_TRANSLATIONS dictionary
