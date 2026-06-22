@@ -2914,6 +2914,7 @@ export class AIAgentOrchestrator {
               }))
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.HARD_GATE_OPTION_REMINDER,
               confidence: 0.5,
               safety_status: 'CLARIFICATION_PENDING',
               rules_applied: 0,
@@ -3278,6 +3279,7 @@ export class AIAgentOrchestrator {
             actions_returned: [],
             quick_actions: [],
             metadata: {
+              clarification_site: CLARIFICATION_SITES.NLU_LOW_CONFIDENCE,
               confidence: 0.3,
               trace_id: traceId,
               processing_time_ms: Date.now() - startTime,
@@ -3655,6 +3657,7 @@ export class AIAgentOrchestrator {
               reason: 'STAGE_CONTEXT_REQUIRED'
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.STAGE_CLARIFICATION,
               confidence: intentConf,
               safety_status: 'SAFE',
               rules_applied: 0,
@@ -4797,6 +4800,7 @@ export class AIAgentOrchestrator {
                 // CRITICAL: Also add options here for fallback extraction
                 options: diagnosisOptions,
                 metadata: {
+                  clarification_site: CLARIFICATION_SITES.DIAGNOSIS_FIRST_OPTIONS,
                   word_count: diagnosisFirstOutput.question_text.split(/\s+/).length,
                   reading_time_seconds: 5,
                   complexity_score: 0.5,
@@ -5064,6 +5068,7 @@ export class AIAgentOrchestrator {
             options: safeOptions
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.IDENTIFY_LOCATION_INVARIANT,
             confidence: understandingResult.completeness_score / 100,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -6012,6 +6017,7 @@ export class AIAgentOrchestrator {
               })()
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.G2_CONTEXT_COMPLETENESS,
               confidence: 0.5,
               safety_status: 'CONTEXT_VALIDATION_REQUIRED',
               rules_applied: 0,
@@ -6870,6 +6876,7 @@ export class AIAgentOrchestrator {
                         )
                       },
                       metadata: {
+                        clarification_site: CLARIFICATION_SITES.MULTIMATCH_COMPETITION,
                         confidence: multiMatchResult.competing_matches[0]?.confidence || 0,
                         safety_status: 'DIFFERENTIAL_DIAGNOSIS_REQUIRED',
                         reason: 'MULTIPLE_COMPETING_DIAGNOSES',
@@ -6976,6 +6983,7 @@ export class AIAgentOrchestrator {
             }))
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.DYNAMIC_OPTIONS,
             confidence: intentConfidence,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -7071,6 +7079,7 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             question: diagnosticState.next_question,
           metadata: {
+            clarification_site: CLARIFICATION_SITES.DIAGNOSTIC_STATE_NEXT_QUESTION,
             confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
             safety_status: 'PENDING',
             rules_applied: 0,
@@ -7659,6 +7668,7 @@ export class AIAgentOrchestrator {
             source: 'DECISION_RULES_SSOT'
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.MANDATORY_FALLBACK_OBS,
             confidence: 0.3,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -7771,6 +7781,7 @@ export class AIAgentOrchestrator {
               options: clarification.option_codes.map(code => ({ code, label: code }))
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.INTENT_LOCK_ALL_FILTERED,
               confidence: intentConfidence,
               safety_status: 'PENDING',
               rules_applied: decisionOutput.rules_applied?.length || 0,
