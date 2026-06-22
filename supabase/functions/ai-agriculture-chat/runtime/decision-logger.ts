@@ -91,7 +91,7 @@ export async function logDecisionTurn(turn: DecisionLogTurn): Promise<void> {
       variety_resistance_applied: turn.variety_resistance_applied ?? null,
     };
 
-    const { error } = await client.from('ai_decision_log').insert(row);
+    const { error } = await (client.from('ai_decision_log') as any).insert(row);
     if (error) {
       console.warn(`[DecisionLogger] Insert failed: ${error.message}`);
     }
@@ -121,7 +121,7 @@ export async function logOrchestratorMetrics(metrics: {
   const client = getClient();
   if (!client) return;
   try {
-    await client.from('orchestrator_metrics').insert({
+    await (client.from('orchestrator_metrics') as any).insert({
       session_id: metrics.session_id ?? null,
       tenant_id: metrics.tenant_id ?? null,
       total_processing_time_ms: metrics.total_processing_time_ms ?? null,
