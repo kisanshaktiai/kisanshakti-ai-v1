@@ -2591,8 +2591,82 @@ export class AIAgentOrchestrator {
               
               console.log(`   ✅ PRIMARY_DECISION built from layered_rule_result: rule_id=${layeredPrimaryDecision.rule_id}, action_type=${layeredPrimaryDecision.action_type}`);
             } else if (safeMatchedResponses.length > 0) {
-              // Fallback: Build from first eligible matched response
-              const firstMatch = safeMatchedResponses.find(r => r.rule_id && r.action_type);
+              // ═══════════════════════════════════════════════════════════════════════════
+              // P0 SAFETY FIX (2026-06-22): Crop-agnostic fallback selection.
+              // Previously picked the FIRST matched_response regardless of whether it
+              // pertained to the farmer's CONFIRMED observation or the current crop
+              // stage. That allowed off-topic rules (e.g., post-harvest crop-rotation
+              // rules) to fire during NURSERY emergence emergencies.
+              //
+              // New selection hierarchy (all DB-driven, no hardcoded crop lists):
+              //   1) Rules whose condition_code / conditions_json.observations
+              //      overlap with farmer-confirmed observations (`allObservations`).
+              //   2) Among those, rules whose `stage_applicable` includes the
+              //      current canonical `growthStage` (or is empty/wildcard).
+              //   3) Sort by priority (lower number = higher urgency).
+              //   4) Only fall back to first-match if NOTHING aligns — and even then,
+              //      block crop-rotation / post-harvest categories from firing during
+              //      vegetative/nursery stages (stage_applicable mismatch).
+              // ═══════════════════════════════════════════════════════════════════════════
+              const normObs = (s: unknown) =>
+                String(s ?? '').toLowerCase().trim().replace(/[\s-]+/g, '_');
+              const confirmedSet = new Set(
+                (Array.isArray(allObservations) ? allObservations : []).map(normObs).filter(Boolean)
+              );
+              const currentStageNorm = String(growthStage || '').toUpperCase().trim();
+
+              const ruleMatchesConfirmed = (r: any): boolean => {
+                if (confirmedSet.size === 0) return false;
+                const codes = new Set<string>();
+                const cc = normObs((r as any).condition_code || r.conditions_json?.condition_code);
+                if (cc) codes.add(cc);
+                const obs = Array.isArray(r.conditions_json?.observations) ? r.conditions_json.observations : [];
+                for (const o of obs) { const n = normObs(o); if (n) codes.add(n); }
+                for (const c of codes) if (confirmedSet.has(c)) return true;
+                return false;
+              };
+
+              const ruleStageOk = (r: any): boolean => {
+                if (!currentStageNorm) return true;
+                const sa = (r as any).stage_applicable || r.conditions_json?.stage_applicable;
+                if (!sa) return true;
+                const arr = Array.isArray(sa) ? sa : [sa];
+                if (arr.length === 0) return true;
+                const stages = arr.map((s: unknown) => String(s).toUpperCase().trim());
+                if (stages.includes('ALL') || stages.includes('*') || stages.includes('ANY')) return true;
+                // Equivalence family for early-season stages
+                const family: Record<string, string[]> = {
+                  GERMINATION: ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
+                  NURSERY: ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
+                  SEEDLING: ['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'],
+                };
+                const expected = family[currentStageNorm] || [currentStageNorm];
+                return stages.some((s: string) => expected.includes(s));
+              };
+
+              const eligible = safeMatchedResponses.filter(r => r && r.rule_id && r.action_type);
+              const tier1 = eligible.filter(r => ruleMatchesConfirmed(r) && ruleStageOk(r));
+              const tier2 = tier1.length > 0 ? tier1 : eligible.filter(r => ruleMatchesConfirmed(r));
+              const tier3 = tier2.length > 0 ? tier2 : eligible.filter(r => ruleStageOk(r));
+              const ranked = (tier3.length > 0 ? tier3 : eligible).slice().sort(
+                (a, b) => (a.priority ?? 50) - (b.priority ?? 50)
+              );
+              const firstMatch = ranked[0];
+
+              const selectionTier = tier1.length > 0
+                ? 'confirmed_obs+stage'
+                : tier2.length > 0
+                  ? 'confirmed_obs_only'
+                  : tier3.length > 0
+                    ? 'stage_only'
+                    : 'first_match_unsafe';
+
+              if (selectionTier === 'first_match_unsafe') {
+                console.warn(`   ⚠️ [FallbackSelection] No matched_response aligns with confirmed observation OR current stage (${currentStageNorm}). Picking first match unsafely: ${firstMatch?.rule_id}. Confirmed obs: [${Array.from(confirmedSet).join(', ')}]`);
+              } else {
+                console.log(`   🎯 [FallbackSelection] tier=${selectionTier} selected=${firstMatch?.rule_id} stage=${currentStageNorm} confirmed=[${Array.from(confirmedSet).join(', ')}] candidates=${eligible.length}`);
+              }
+
               if (firstMatch) {
                 primaryDecisionObject = {
                   action_type: firstMatch.action_type,
@@ -2605,7 +2679,7 @@ export class AIAgentOrchestrator {
                     recommended_start: new Date().toISOString(),
                     recommended_end: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(),
                     weather_dependency: false,
-                    reason: 'Built from matched_responses fallback in OPTION_SELECTED path'
+                    reason: `Built from matched_responses fallback (tier=${selectionTier}) in OPTION_SELECTED path`
                   },
                   application_details: {
                     product_name: (firstMatch as any).active_ingredient || (firstMatch.action_text?.split(' ').slice(1, 3).join(' ')) || 'IPM',
@@ -2622,8 +2696,8 @@ export class AIAgentOrchestrator {
                     success_indicators: []
                   }
                 };
-                
-                console.log(`   ✅ PRIMARY_DECISION built from matched_responses: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}`);
+
+                console.log(`   ✅ PRIMARY_DECISION built from matched_responses: rule_id=${firstMatch.rule_id}, action_type=${firstMatch.action_type}, tier=${selectionTier}`);
               }
             }
             
