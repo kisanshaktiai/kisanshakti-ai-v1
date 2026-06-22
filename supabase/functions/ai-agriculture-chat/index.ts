@@ -88,6 +88,9 @@ import {
 // WAVE A.5 / Phase 2: defence-in-depth gate + observability
 import { enforceClarificationInvariant } from './decision/clarification-invariant-gate.ts';
 import { logDecisionTurn, logOrchestratorMetrics } from './runtime/decision-logger.ts';
+import { getRuleSource } from './runtime/feature-flags.ts';
+import { selectCandidateRuleIdsFromDb } from './bundled-rules/db-rule-executor.ts';
+import { computeRuleSourceDiff, type RuleSourceDiff } from './bundled-rules/rule-source-diff.ts';
 import {
   lookupSafeRuleForObservations,
   extractObservationCodes,
@@ -2797,6 +2800,43 @@ serve(async (req) => {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
+    // WAVE B1 — Rule-source shadow diff (RULE_SOURCE=shadow, default)
+    //   Compare the rule_ids that actually fired (in-memory bundled path)
+    //   against the candidate set a SQL-pushdown query would have offered.
+    //   Logged into ai_decision_log.output_data.rule_source_diff for forensic
+    //   review. NO behavior change — pure observability.
+    // ═══════════════════════════════════════════════════════════════════════
+    let _ruleSourceDiff: RuleSourceDiff | null = null;
+    try {
+      if (getRuleSource() === 'shadow') {
+        const _resp: any = responsePayload;
+        const _meta: any = _resp?.metadata || {};
+        const bundledFired: string[] = Array.isArray(_meta?.rules_applied)
+          ? _meta.rules_applied.map((r: any) => (typeof r === 'string' ? r : r?.rule_id)).filter(Boolean)
+          : Array.isArray(_meta?.matchedRules)
+            ? _meta.matchedRules.map((r: any) => (typeof r === 'string' ? r : r?.rule_id)).filter(Boolean)
+            : [];
+        const dbSelection = await selectCandidateRuleIdsFromDb({
+          crop_code: _meta?.crop_code || _resp?.crop_code,
+          crop_stage: _meta?.crop_stage || _meta?.stage,
+          observations: Array.isArray(_meta?.observations) ? _meta.observations : [],
+        }, { timeout_ms: 2000 });
+        _ruleSourceDiff = computeRuleSourceDiff(bundledFired, dbSelection.rule_ids, {
+          db_elapsed_ms: dbSelection.elapsed_ms,
+          db_error: dbSelection.error,
+        });
+        if (_ruleSourceDiff.divergence_alert) {
+          console.warn(
+            `[RuleSourceShadow] divergence: bundled=${_ruleSourceDiff.bundled_count} db=${_ruleSourceDiff.db_candidate_count} ` +
+            `ratio=${_ruleSourceDiff.bundled_in_db_ratio} only_bundled=${_ruleSourceDiff.only_bundled_count} only_db=${_ruleSourceDiff.only_db_count}`
+          );
+        }
+      }
+    } catch (diffErr) {
+      console.warn('[RuleSourceShadow] diff failed — non-fatal:', (diffErr as Error).message);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
     // WAVE A1 — ai_decision_log insert (fire-and-forget)
     // ═══════════════════════════════════════════════════════════════════════
     try {
@@ -2830,6 +2870,7 @@ serve(async (req) => {
             : 0,
           response_source: _meta?.source || _resp?.source,
           clarification_invariant: _meta?.clarification_invariant,
+          rule_source_diff: _ruleSourceDiff,
         },
         reasoning: typeof _meta?.reasoning === 'string' ? _meta.reasoning.slice(0, 2000) : null,
         confidence_score: typeof _meta?.confidence === 'number' ? _meta.confidence : null,
