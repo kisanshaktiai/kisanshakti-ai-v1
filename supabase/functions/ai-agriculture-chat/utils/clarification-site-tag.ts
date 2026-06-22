@@ -40,7 +40,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const CLARIFICATION_SITE_TAG_VERSION = '1.1.0';
+export const CLARIFICATION_SITE_TAG_VERSION = '1.2.0';
 
 /** Canonical list of every emission-site identifier. Keep in sync with
  *  docs/ws13-wave-j-site-catalog.md and the SITE_DISPOSITIONS map below. */
@@ -72,6 +72,15 @@ export type ClarificationSiteDisposition =
  * persistence layer (index.ts) and the SQL attribution view. When a new
  * emission site is added, append it here AND extend the CASE expression
  * in v_ai_clarification_attribution_90d.
+ *
+ * WAVE M reclassifications:
+ *   - DYNAMIC_OPTIONS    DEFECT_SUSPECT → INTENTIONAL_FOLLOWUP
+ *     Only fires when the symbolic brain ran AND returned 0 rules.
+ *     Asking the farmer to refine after the brain truly produced
+ *     nothing is the correct symbolic behaviour, not a defect.
+ *   - NLU_LOW_CONFIDENCE remains DEFECT_SUSPECT but is now bypassed
+ *     when DB intent resolution promoted ≥1 observation code into
+ *     `expandedObservationCodes` (WAVE_M_ZERO_CODE_BYPASS).
  */
 export const SITE_DISPOSITIONS: Record<string, ClarificationSiteDisposition> = {
   [CLARIFICATION_SITES.HARD_GATE_OPTION_REMINDER]:      'INTENTIONAL_FOLLOWUP',
@@ -82,7 +91,7 @@ export const SITE_DISPOSITIONS: Record<string, ClarificationSiteDisposition> = {
   [CLARIFICATION_SITES.DIAGNOSIS_FIRST_GENERATOR]:      'INTENTIONAL_DIFFERENTIAL',
   [CLARIFICATION_SITES.MULTIMATCH_COMPETITION]:         'INTENTIONAL_DIFFERENTIAL',
   [CLARIFICATION_SITES.DIAGNOSTIC_STATE_NEXT_QUESTION]: 'INTENTIONAL_DIFFERENTIAL',
-  [CLARIFICATION_SITES.DYNAMIC_OPTIONS]:                'DEFECT_SUSPECT',
+  [CLARIFICATION_SITES.DYNAMIC_OPTIONS]:                'INTENTIONAL_FOLLOWUP',   // Wave M
   [CLARIFICATION_SITES.MANDATORY_FALLBACK_OBS]:         'DEFECT_SUSPECT',
   [CLARIFICATION_SITES.NLU_LOW_CONFIDENCE]:             'DEFECT_SUSPECT',
   [CLARIFICATION_SITES.INTENT_LOCK_ALL_FILTERED]:       'DEFECT_SUSPECT',
