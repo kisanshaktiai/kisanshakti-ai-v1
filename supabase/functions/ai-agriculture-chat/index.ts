@@ -91,6 +91,7 @@ import { logDecisionTurn, logOrchestratorMetrics } from './runtime/decision-logg
 import { getRuleSource } from './runtime/feature-flags.ts';
 import { selectCandidateRuleIdsFromDb } from './bundled-rules/db-rule-executor.ts';
 import { computeRuleSourceDiff, type RuleSourceDiff } from './bundled-rules/rule-source-diff.ts';
+import { funnelStart, funnelEnd, type FunnelSnapshot } from './runtime/funnel-tracker.ts';
 import {
   lookupSafeRuleForObservations,
   extractObservationCodes,
