@@ -2473,8 +2473,23 @@ serve(async (req) => {
     // CRITICAL FIX 1: Store pending clarification options for next turn's option selection
     const isClarificationResponse = orchestratorResponse.type === 'CLARIFICATION_QUESTION' || 
                                     orchestratorResponse.type === 'CLARIFICATION_NEEDED';
-    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => o.label) || 
-                                  orchestratorResponse.metadata?.pendingClarificationOptions || [];
+    // P0 FIX (system-audit 2026-06-22): Preserve canonical observation_code on each
+    // pending option so the next-turn option-selected path can map the farmer's
+    // selection back to a real symbolic code. Previously we persisted o.label only,
+    // which dropped the per-option observation_code — on multilingual labels
+    // (Marathi/Hindi/Tamil) the label-keyword fallback in mapOptionToObservation()
+    // returned null/default, no observation reached the rule engine, 0 rules fired,
+    // and the response collapsed to DIAGNOSTIC_ESCALATION → no_action_needed.
+    // Format: "<label> [obs_keys:<CANONICAL_CODE>]" — matchFarmerResponseToOption
+    // and the orchestrator already parse [obs_keys:...] from pending options.
+    const clarificationOptions = orchestratorResponse.question?.options?.map((o: any) => {
+      const label = String(o?.label ?? '').trim();
+      const code = (o?.observation_code || o?.observation_key || '').toString().trim();
+      // Don't double-embed if label already carries [obs_keys:...]
+      if (!label) return label;
+      if (/\[obs_keys:[^\]]+\]/i.test(label)) return label;
+      return code ? `${label} [obs_keys:${code}]` : label;
+    }) || orchestratorResponse.metadata?.pendingClarificationOptions || [];
     
     // ═══════════════════════════════════════════════════════════════════════════
     // CRITICAL FIX: SESSION STATE TRANSITION FROM ORCHESTRATOR
