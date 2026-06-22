@@ -2390,16 +2390,27 @@ serve(async (req) => {
                   selectionType: orchestratorResponse.metadata?.selectionType || 'SINGLE_CHOICE'
                 }
               : undefined,
-            decision_brain_data: orchestratorResponse.type === 'DECISION_PROVIDED' && orchestratorResponse.decision_output
-              ? {
-                  primary_decision: orchestratorResponse.decision_output.primary_decision,
-                  secondary_decisions: orchestratorResponse.decision_output.secondary_decisions,
-                  blocked_actions: orchestratorResponse.decision_output.blocked_actions,
-                  land_context: orchestratorResponse.dataAudit?.land,
-                  confidence: orchestratorResponse.metadata?.confidence,
-                  risk_level: orchestratorResponse.decision_output.risk_level
-                }
-              : undefined,
+            // WAVE D: ALWAYS persist decision_brain_data regardless of response type.
+            // Previously this was gated to type === 'DECISION_PROVIDED', which silently
+            // dropped brain state for 73% (47/64) of matched turns — making the
+            // match→decision attribution impossible. Now every turn carries the
+            // brain snapshot (primary if available, plus gate/clarification/funnel
+            // attribution so drop points are queryable post-hoc).
+            decision_brain_data: {
+              response_type: orchestratorResponse.type,
+              primary_decision: orchestratorResponse.decision_output?.primary_decision ?? null,
+              secondary_decisions: orchestratorResponse.decision_output?.secondary_decisions ?? null,
+              blocked_actions: orchestratorResponse.decision_output?.blocked_actions ?? null,
+              land_context: orchestratorResponse.dataAudit?.land ?? null,
+              confidence: orchestratorResponse.metadata?.confidence ?? null,
+              risk_level: orchestratorResponse.decision_output?.risk_level ?? null,
+              // Drop-point attribution surface (Wave C/D)
+              gate_decision: (orchestratorResponse as any).metadata?.gate_decision ?? null,
+              clarification: (orchestratorResponse as any).metadata?.clarification ?? null,
+              funnel: (orchestratorResponse as any).metadata?.funnel ?? null,
+              rule_source_diff: (orchestratorResponse as any).metadata?.rule_source_diff ?? null,
+              dropped_reason: (orchestratorResponse as any).metadata?.dropped_reason ?? null
+            },
             diagnostic_escalation_data: orchestratorResponse.metadata?.diagnostic_escalation_data || undefined
           }
         })
