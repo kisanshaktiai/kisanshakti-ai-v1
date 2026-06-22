@@ -19,7 +19,9 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-export const SAFETY_GATES_VERSION = '1.2.0'; // DB-strict diff questions; no English template leak
+import { shouldEnforceClarificationFailClosed } from '../runtime/feature-flags.ts';
+
+export const SAFETY_GATES_VERSION = '1.3.0'; // Wave A.5b: fail-closed CLARIFICATION_GATE behind feature flag
 
 // Symptoms specific enough to NOT require clarification.
 // LEAF_TIP_BURN_YOUNG, WILTING, LEAF_YELLOWING are deliberately low-specificity.

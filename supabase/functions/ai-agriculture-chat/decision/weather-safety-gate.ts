@@ -15,6 +15,7 @@
  */
 
 import type { AuthoritativeLandState } from './authoritative-state-loader.ts';
+import { shouldEnforceWeatherFailClosed } from '../runtime/feature-flags.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPE DEFINITIONS
