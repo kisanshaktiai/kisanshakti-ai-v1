@@ -282,7 +282,7 @@ export function checkWeatherSafety(input: WeatherSafetyInput): WeatherSafetyResu
     // wait for a forecast.
     // In `shadow` mode → preserve current behaviour but log so dashboards
     // can size the impact.
-    const { shouldEnforceWeatherFailClosed } = await import('../../runtime/feature-flags.ts');
+    // WAVE A.5c FIX (RC-23): see header import; fail-closed when no weather signal.
     const enforce = shouldEnforceWeatherFailClosed();
 
     console.warn(

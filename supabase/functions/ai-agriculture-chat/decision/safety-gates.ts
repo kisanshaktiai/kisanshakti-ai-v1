@@ -346,8 +346,6 @@ export function runSafetyGates(input: SafetyGateInput, language: string = 'en'):
     //   - In `shadow` mode → preserve current behaviour (skip) but with
     //     the loud log so dashboards can size the impact.
     if (!diffText) {
-      // Lazy-import to avoid circular deps
-      const { shouldEnforceClarificationFailClosed } = await import('../runtime/feature-flags.ts');
       const enforce = shouldEnforceClarificationFailClosed();
 
       console.warn(
