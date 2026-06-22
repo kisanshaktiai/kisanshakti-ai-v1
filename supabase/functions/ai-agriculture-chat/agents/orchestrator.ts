@@ -4300,14 +4300,26 @@ export class AIAgentOrchestrator {
       
       // BUG 5 FIX: Pass authority metadata into canonical state for rule evaluator
       // Separate confirmed/extracted observations from inferred/synthetic
+      // CONTAMINATION FIX (2026-06-22): register candidate observations from
+      // intent_observation_mapping into authoredObservations as HYPOTHESIS_CANDIDATE.
+      // These are kept OUT of allObservationsForPreAuth so they never reach
+      // confirmedObsCodes / terminal-gate / decision_output.symptom_keys.
+      if (candidateObservationCodes && candidateObservationCodes.size > 0) {
+        for (const code of candidateObservationCodes) {
+          authoredObservations.add(code, ObservationAuthority.HYPOTHESIS_CANDIDATE, 'INTENT_OBSERVATION_MAPPING_DB');
+        }
+        console.log(`   🧪 [HYPOTHESIS_CANDIDATES] Registered ${candidateObservationCodes.size} candidate observations (lane=candidate, NOT confirmed)`);
+      }
       const confirmedObsCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      const candidateObsCodes = authoredObservations.getCandidateCodes();
       const syntheticObsCodes = [...allObservationsForPreAuth].filter(
-        code => !confirmedObsCodes.includes(code)
+        code => !confirmedObsCodes.includes(code) && !candidateObsCodes.includes(code)
       );
-      console.log(`   📊 [AuthoritySplit] Confirmed+Extracted: ${confirmedObsCodes.length}, Synthetic: ${syntheticObsCodes.length}`);
-      
+      console.log(`   📊 [AuthoritySplit] Confirmed+Extracted: ${confirmedObsCodes.length}, Candidates: ${candidateObsCodes.length}, Synthetic: ${syntheticObsCodes.length}`);
+
       // Log authority breakdown
       console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
+
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
       const cropDamageResult = detectCropDamageWithAuthority(
