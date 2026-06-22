@@ -24,6 +24,18 @@ jobs:
 
       - name: 📦 Install dependencies
         run: npm install --no-audit
+        run: |
+          echo "Installing dependencies..."
+      
+          if [ -f package-lock.json ]; then
+            npm ci --prefer-offline --no-audit || (
+              echo "⚠️ npm ci failed, attempting recovery..."
+              rm -rf node_modules package-lock.json
+              npm install --no-audit
+            )
+          else
+            npm install --no-audit
+          fi
 
       - name: 🏗️ Build production bundle
         env:
