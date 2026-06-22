@@ -1327,7 +1327,54 @@ export function evaluateRulesLayered(
         response_hi: best.response_hi || null,
         response_en: best.response_en || null,
       };
-      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // P1 INVARIANT B (2026-06-22): POST-SELECTION STAGE GATE — crop-agnostic.
+      // The pre-evaluator stage gate (inside rule.when.custom) is bypassed
+      // when crop_stage is one of DEFAULT_STAGES (UNKNOWN/VEGETATIVE/...).
+      // This invariant re-checks `stage_applicable` against the canonical
+      // state at selection time, but ONLY when the stage is authoritative —
+      // so we don't tighten behavior when stage data is missing. Uses the
+      // ESTABLISHMENT_FAMILY equivalence already used elsewhere; no new
+      // hardcoded lists.
+      // ═══════════════════════════════════════════════════════════════════════
+      {
+        const meta = ruleMetaById.get(best.rule_id);
+        const ruleStagesRaw = meta?.stage_applicable || [];
+        const currentStage = (state.crop_stage || '').toUpperCase().replace(/[\s-]/g, '_');
+        const STAGE_GATE_DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
+        const STAGE_GATE_ESTABLISHMENT_FAMILY = new Set([
+          'GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT'
+        ]);
+        const isAuthoritative = !!currentStage && !STAGE_GATE_DEFAULT_STAGES.has(currentStage);
+        if (isAuthoritative && ruleStagesRaw.length > 0) {
+          const normalized = ruleStagesRaw.map(s => String(s).toUpperCase().replace(/[\s-]/g, '_'));
+          const hasWildcard = normalized.some(s => s === '*' || s === 'ALL' || s === 'UNIVERSAL' || s === 'ANY');
+          if (!hasWildcard) {
+            const currentInEstablishment = STAGE_GATE_ESTABLISHMENT_FAMILY.has(currentStage);
+            const stageMatch = normalized.includes(currentStage) ||
+              (currentInEstablishment && normalized.some(s => STAGE_GATE_ESTABLISHMENT_FAMILY.has(s)));
+            if (!stageMatch) {
+              console.error(
+                `🚨 [STAGE_GATE_VIOLATION] rule=${best.rule_id} stage_applicable=[${normalized.join(',')}] ` +
+                `vs canonical_stage=${currentStage} → collapsing primary_decision`
+              );
+              scope?.emit({
+                stage: 'rule-evaluator',
+                kind: 'block',
+                payload: {
+                  event: 'stage_gate_violation_post_selection',
+                  rule_id: best.rule_id,
+                  rule_stages: normalized,
+                  canonical_stage: currentStage,
+                },
+              });
+              result.primary_decision = null;
+            }
+          }
+        }
+      }
+
       console.log(`📊 Decision Authority:`);
       console.log(`   rule_id: ${best.rule_id}`);
       console.log(`   base_score: ${scored[0].evidenceScore.toFixed(3)}`);
