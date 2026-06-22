@@ -1,108 +1,179 @@
-# Observation Contamination — Forensic Fix Plan
 
-## Phase 1 — Forensic Trace (root cause, file + line)
+# P1 Symbolic Decision Brain — System-Wide Fix (All Crops)
 
-Input `भात अद्याप उगवले नाही` → intent `EMERGENCE_FAILURE`, single farmer symptom `OBS_RICE_NO_EMERGENCE`. The pool then grows to 12 because **three independent sources merge candidates into the confirmed lane**:
+## Why a rice-only patch was wrong
 
-| # | Source | File | Line | Defect |
-|---|---|---|---|---|
-| C1 | DB intent→observation injector | `agents/orchestrator.ts` | 3017–3041 | `resolveIntentToObservations()` returns up to **25** rows from `intent_observation_mapping` (hypothesis space for the intent) and unions them directly into `expandedObservationCodes`. These are candidates, never farmer-asserted. |
-| C2 | Hardcoded "RICE_EMERGENCE_GUARD" | `agents/orchestrator.ts` | 3049–3064 | Hardcoded array (`OBS_RICE_NO_EMERGENCE`, `PATCHY_EMERGENCE`, `POOR_GERMINATION`, `GAPS_IN_FIELD`, `SEEDLING_DIED`) merged into the same confirmed list. Violates "no hardcoded logic". |
-| C3 | Bidirectional alias expander | `decision/observation-code-mapper.ts` 541–589 | `expandObservationVocabularyViaAliases()` is symmetric (alias↔canonical). When used on hypothesis codes it expands the candidate space further into confirmed. |
-| C4 | Single-bucket merge into `inductionResult.symptoms` | `agents/orchestrator.ts` 3256–3322 | All `expandedObservationCodes` are pushed as `{symbol, confidence: intent_confidence, source: 'LLM_SEMANTIC_EXTRACTOR'}` regardless of origin — provenance is lost and confidence is inherited from intent, not evidence. |
-| C5 | No `confirmed/candidate` split in canonical state | `agents/canonical-state-builder.ts`, `decision/observation-rule-lookup.ts` 52 | Downstream consumers read a single `confirmedObservations[]`; clarification + rule lookup + hypothesis evaluator treat the whole list as evidence. |
+The failing query "भात अद्याप उगवले नाही" exposed **structural** defects, not rice-specific data gaps. Database state confirms it:
 
-Resulting violation: candidate (`OBS_RICE_SEED_ROTTED`, `OBS_SOIL_CRUST_FORMED`, `OBS_RICE_SEEDLING_DAMPING_OFF`, …) reach `confirmedObservations` → clarification generator builds questions out of *causes*, not *observables*.
+| Signal | Value |
+|---|---|
+| `intent_observation_mapping` active rows | 13,521 across 12 crops |
+| Rows at confidence_rank = 1 | 11,753 (87%) — rank is not selective |
+| Distinct intents | 86 |
+| Active `decision_rules` | 1,846 |
+| Rules with `stage_applicable` set | 1,846 (100%) — gate exists but isn't enforced post-selection |
+| Rules with `conditions_json.observations` | 1,822 (98%) |
+| `observation_master` rows | 2,540 |
+| `observation_aliases` | 2,919 |
+| `observation_translations` | 5,145 |
+| `hypothesis_master` | 346 |
 
-## Phase 2 — Architectural fix (evidence separation)
+The same three defects fire for tomato, onion, cotton, sugarcane, etc. Any rule whose `data_authority_rank` is high and whose conditions are mostly contextual (weather/soil) can win against an empty confirmed lane — regardless of crop.
 
-Introduce a strict two-lane contract everywhere observations flow.
+## Root causes (crop-agnostic)
 
-```text
-RAW_USER_MESSAGE
-  │
-  ▼
-semanticExtraction.observation_codes        ──► CONFIRMED  (farmer-asserted only)
-                                                  │
-intent_observation_mapping (DB)             ──► CANDIDATE  (provenance=INTENT_MAP)
-observation_aliases (canonical-only side)   ──► applied per-lane, never cross-lane
-hypothesis_master expansion (DB)            ──► CANDIDATE  (provenance=HYPOTHESIS)
-land/sensor/photo-vision verified facts     ──► CONFIRMED  (provenance=SENSOR|VISION_VERIFIED)
-                                                  │
-                                                  ▼
-                                       EvidenceGraph { confirmed, candidate }
-                                                  │
-                          ┌───────────────────────┼───────────────────────┐
-                          ▼                       ▼                       ▼
-                  HypothesisEvaluator    ClarificationGenerator   RuleEngine
-                  (reads candidate+      (asks observables to     (fires only on
-                   confirmed)             promote candidate→       confirmed)
-                                          confirmed)
+**RC-1 — Lane collapse.** `orchestrator.ts` sends **all** `intent_observation_mapping` rows to the *candidate* lane. There is no DB-curated field telling the system which rows are the farmer's *literal* assertion vs. a differential hypothesis, so the confirmed lane stays empty even when the farmer plainly stated the observation. The evaluator then scores rules against an empty symptom set and the highest-authority rule wins by tiebreak.
+
+**RC-2 — Empty-confirmed fallthrough.** `layered-rule-evaluator.ts` at line ~992 falls back to `visual_symptoms` and silently allows primary selection when both lanes are empty. There is no invariant: *"if a rule's `conditions_json.observations` is non-empty and the farmer has confirmed zero observations, the rule cannot be primary."*
+
+**RC-3 — Stage gate bypassed post-selection.** The stage gate lives inside `rule.when.custom` (line ~1372) and only filters rules during PHASE 2 (DIAGNOSIS). Rules already in `matched_responses` are re-ranked in `selectPrimaryDecision` without re-checking `stage_applicable` against `state.crop_stage`. When `state.crop_stage` is UNKNOWN at PHASE 2 (land context still loading) the gate is skipped entirely.
+
+**RC-4 — Context-completeness silently treated as "no opinion".** `condition_ledger` already marks NDVI/soil/weather as `SKIPPED_NO_DATA` when absent, but `decision_rules` has no field declaring *how much* required context a rule needs to fire. Rules requiring 5 contextual inputs and rules requiring 0 compete on the same evidence ratio.
+
+**RC-5 — Land context loader fan-in is implicit.** `lands`, `soil_health`, `ndvi_data`, `weather_current/forecast`, `crop_schedules` are pulled by different agents with no shared completeness ledger, so the evaluator cannot tell "data missing" from "data present and negative".
+
+## Solution architecture — fully DB-driven, no hardcoded crop lists
+
+### Layer 1 — Schema (one structural column per defect, all default-safe)
+
+```sql
+-- 1.1 IOM: declare how strongly each mapping asserts the farmer's literal claim
+ALTER TABLE intent_observation_mapping
+  ADD COLUMN assertion_strength text NOT NULL DEFAULT 'DIFFERENTIAL'
+  CHECK (assertion_strength IN ('LITERAL','STRONG_HYPOTHESIS','DIFFERENTIAL'));
+-- DEFAULT 'DIFFERENTIAL' = today's behavior, zero regression.
+
+-- 1.2 decision_rules: min context completeness a rule needs to be eligible
+ALTER TABLE decision_rules
+  ADD COLUMN min_data_completeness numeric NOT NULL DEFAULT 0.0
+  CHECK (min_data_completeness BETWEEN 0 AND 1);
+-- DEFAULT 0.0 = today's behavior, zero regression.
+
+-- 1.3 Tiny lookup that drives the agronomist-editable backfill
+CREATE TABLE intent_assertion_pattern (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  intent_code     text NOT NULL,
+  obs_code_regex  text NOT NULL,        -- matched against observation_master.observation_code
+  assertion_strength text NOT NULL CHECK (assertion_strength IN ('LITERAL','STRONG_HYPOTHESIS')),
+  notes           text,
+  created_at      timestamptz DEFAULT now(),
+  UNIQUE (intent_code, obs_code_regex)
+);
+-- Seeded with ~20 generic patterns (EMERGENCE_FAILURE → '_no_emergence|_poor_germination',
+-- LODGING → '_lodging', WILTING → '_wilt|_wilting', etc.). Cross-crop by construction.
+-- Agronomists edit this table; no code changes to add crops.
 ```
 
-### Files to change
+Plus the required `GRANT` block and standard RLS (read-only for `authenticated`, full for `service_role`).
 
-1. **New** `decision/evidence-graph.ts`
-   - Types: `ObservationProvenance = 'FARMER_ASSERTED'|'SENSOR'|'VISION_VERIFIED'|'INTENT_MAP'|'ALIAS_EXPAND'|'HYPOTHESIS'|'CLARIFICATION_CONFIRMED'`
-   - `EvidenceGraph { confirmed: Map<code, EvidenceNode>, candidate: Map<code, EvidenceNode> }`
-   - `addConfirmed()` rejects provenance ∈ {INTENT_MAP, ALIAS_EXPAND, HYPOTHESIS} → throws `ObservationIntegrityViolation` (caught + logged `OBSERVATION_CONTAMINATION_ERROR`, stripped before promotion).
-   - `promoteToConfirmed(code, reason)` — only call site is clarification answer handler.
+### Layer 2 — DB-driven backfill (no per-crop SQL)
 
-2. **Edit** `agents/orchestrator.ts`
-   - L2975–3036: keep only `semanticExtraction.observation_codes` in `confirmedCodes`. Move DB-intent injection (L3017–3041) into `candidateCodes` with provenance `INTENT_MAP`.
-   - L3049–3064: **delete** the hardcoded `RICE_EMERGENCE_GUARD` array. Replace with DB lookup of `intent_observation_mapping` filtered by `intent_code='EMERGENCE_FAILURE'` + crop — those rows go to the candidate lane like any other intent.
-   - L3256–3322: split merge — confirmed codes → `inductionResult.symptoms` with their real source; candidate codes go to a new `inductionResult.candidate_symptoms` field. Update `symbol_coverage` to use only confirmed.
+A single regex-driven UPDATE walks all 13,521 IOM rows once, joins each row's `observation_code` against `observation_master` and against `intent_assertion_pattern`, and writes the curated `assertion_strength`. The agronomy team can then re-run it after editing the pattern table — never touching code.
 
-3. **Edit** `decision/observation-code-mapper.ts` 541–589
-   - Add `direction: 'alias→canonical'|'canonical→alias'|'both'` param (default `'alias→canonical'` for confirmed lane: only normalization, no candidate fan-out).
-   - Confirmed lane calls it with `alias→canonical`. Candidate-lane expansion (if used) calls with `both` and tags results `ALIAS_EXPAND`.
+```sql
+UPDATE intent_observation_mapping iom
+SET assertion_strength = p.assertion_strength
+FROM intent_assertion_pattern p
+WHERE iom.intent_code = p.intent_code
+  AND iom.observation_code ~ p.obs_code_regex
+  AND iom.is_active = true
+  AND iom.assertion_strength = 'DIFFERENTIAL';
+```
 
-4. **Edit** `agents/canonical-state-builder.ts`
-   - Add `confirmedObservations` + `candidateObservations` to canonical state. Existing single field becomes a derived getter that returns confirmed only (back-compat for consumers we don't touch this PR).
+Plus one universal hygiene pass: deactivate IOM rows where the observation is **biologically incompatible** with the intent stage (e.g., any `*_lodging` mapped to `EMERGENCE_FAILURE`, any `*_harvest_*` mapped to germination intents). The compatibility rule lives in the same `intent_assertion_pattern` table as `STRONG_NEGATIVE` entries — DB-driven, cross-crop.
 
-5. **Edit** `decision/observation-rule-lookup.ts` 52
-   - Accept `{ confirmedObservations, candidateObservations }`. Rule firing uses confirmed only; candidate codes contribute to hypothesis scoring but cannot trigger a prescription.
+### Layer 3 — Code invariants (crop-agnostic, zero hardcoded lists)
 
-6. **Edit** `decision/hypothesis-evaluator.ts`
-   - Read both lanes; weight candidate evidence at ≤ 0.3× confirmed weight (DB-driven via existing `confidence_calculator` weights, no new magic numbers).
+**`decision/intent-resolver.ts`**
+- Select and return `assertion_strength` and `confidence_rank` per row. No semantic decisions here.
 
-7. **Edit** `agents/clarification-generator.ts` + `agents/dynamic-clarification-generator.ts`
-   - Source of clarification options = `candidateObservations` ∪ `hypothesis_master.differentiating_observations` (DB), restricted to rows where `observation_master.is_farmer_observable = true`. Order by `observation_master.evidence_rank ASC` (DB-driven). This produces observable questions ("water standing after sowing?") instead of cause questions ("seed rotted?").
-   - If `observation_master.is_farmer_observable` / `evidence_rank` columns don't exist, plan adds a read-only **DB integrity report** in `.lovable/audits/` listing what's missing — no schema change in this PR. Coverage gaps for rice emergence (`OBS_DEEP_SOWING`, `OBS_EXCESS_WATER`, `OBS_WATERLOGGING_AFTER_SOWING`, `OBS_DRY_SEEDBED`, `OBS_POOR_SEED_VIGOR`, `OBS_SEED_WASHED_AWAY`, `OBS_BIRD_DAMAGE`, `OBS_RODENT_DAMAGE`, `OBS_TERMITE_SEED_DAMAGE`, `OBS_SOIL_HARDPAN`, `OBS_SALINITY_IN_SEEDBED`) reported as content tickets, not hardcoded.
+**`agents/orchestrator.ts`** (lines ~3022–3063)
+- Iterate `dbIntentResolution.rows`:
+  - `assertion_strength = 'LITERAL'` → push into `expandedObservationCodes` (confirmed lane) with provenance `INTENT_LITERAL_ASSERTION`.
+  - `'STRONG_HYPOTHESIS'` → confirmed lane only when **intent_confidence ≥ 0.85** (DB-configurable via `intent_classifier_config`), else candidate.
+  - `'DIFFERENTIAL'` (default) → candidate lane (current behavior).
+- Provenance is recorded in `evidence-graph.ts`; the contamination invariant already added earlier blocks any candidate-to-confirmed promotion that bypasses this path.
 
-8. **Edit** `index.ts` L1563–1598
-   - Replace single `mergedSymptomKeys` with `{confirmed, candidate}`. `confirmedObservations` passed to bypass/safety only contains confirmed.
+**`agents/layered-rule-evaluator.ts`**
+- **Invariant A (empty-confirmed gate)** — after `eligibleResponses` is computed (line ~913):
+  ```ts
+  const confirmed = (state as any).confirmed_observations ?? [];
+  if (confirmed.length === 0) {
+    const requiresObservation = eligibleResponses.some(
+      r => Array.isArray(r.conditions_json?.observations) && r.conditions_json.observations.length > 0
+    );
+    if (requiresObservation) {
+      console.warn('🚫 [EmptyConfirmedGate] No confirmed observations; forcing CLARIFY.');
+      result.primary_decision = null;
+      result.matched_responses = [];
+      return result;
+    }
+  }
+  ```
+  Crop-agnostic. Fires for any crop, any intent.
 
-9. **Edit** `decision/safety-gates.ts`, `decision/unified-decision-gate.ts`
-   - Decisions cannot be suppressed/escalated based on a candidate-only observation; logged with `bypass_reason='CANDIDATE_ONLY'` if attempted.
+- **Invariant B (post-selection stage re-check)** — after `result.primary_decision` is built (line ~1229):
+  ```ts
+  const ruleStages = (best.stage_applicable || []).map(normalizeStage);
+  const currentStage = normalizeStage(state.crop_stage);
+  const isAuthoritative = currentStage && !DEFAULT_STAGES.has(currentStage);
+  if (isAuthoritative && ruleStages.length && !ruleStages.includes(currentStage)
+      && !establishmentFamilyMatch(currentStage, ruleStages)) {
+    console.error('🚨 [STAGE_GATE_VIOLATION]', { rule: best.rule_id, ruleStages, currentStage });
+    result.primary_decision = null;
+  }
+  ```
+  Uses the same `ESTABLISHMENT_FAMILY` set already defined in the file — no new hardcoded data.
 
-## Phase 3 — Runtime invariants
+- **Invariant C (min_data_completeness)** — in the per-rule scoring block (line ~1004), reject any candidate where `passedRequired / totalRequired < rule.min_data_completeness`. Default 0.0 = no change; agronomy team raises it per rule as curation proceeds.
 
-- `canonical-state-invariants.ts`: assert `confirmed ∩ candidate = ∅`; assert every code in `confirmed` has provenance ∈ {FARMER_ASSERTED, SENSOR, VISION_VERIFIED, CLARIFICATION_CONFIRMED}; on violation emit `OBSERVATION_CONTAMINATION_ERROR` (structured log) and **drop the offending code from confirmed** rather than crash.
-- Add scope.emit event `evidence_lane_assignment` with `{code, lane, provenance, source_module}` for every add.
+**`agents/canonical-state-builder.ts`**
+- Add a `ContextLedger` field to `CanonicalState`: `{ land: 'present|missing', soil: ..., ndvi: ..., weather: ..., schedule: ... }`. Populated once from the existing loaders (`lands`, `soil_health`, `ndvi_data`, `weather_current`, `crop_schedules`). Surfaced in traces. No behavior change unless a rule's required column references one of these — then the existing `isDataPresent` check uses the ledger as SSOT.
 
-## Phase 4 — Regression tests
+### Layer 4 — Land context loading integrity (read-only audit + fail-loud)
 
-New `_tests/observation_integrity_test.ts`:
-1. `भात अद्याप उगवले नाही` (rice, DAS 14) → `confirmed = ['OBS_RICE_NO_EMERGENCE']`; candidate ⊇ {`OBS_RICE_SEED_ROTTED`, `OBS_SOIL_CRUST_FORMED`, `OBS_RICE_SEEDLING_DAMPING_OFF`} and disjoint from confirmed.
-2. Property: for 50 sampled intents from `intent_observation_mapping`, no row reaches `confirmedObservations` without a clarification-confirmed event.
-3. Hardcoded-list scan: `rg "OBS_RICE_NO_EMERGENCE|OBS_RICE_PATCHY_EMERGENCE" supabase/functions/ai-agriculture-chat/agents/` must return zero matches (guard against re-introduction).
-4. Clarification generator must not surface any option whose canonical code is in `confirmedObservations`.
+No data migration. Three small code asserts:
 
-## Phase 5 — Deploy + live verification
+1. **`lands` loader** — if `lands.crop_stage` is NULL but `lands.sowing_date` is set, derive stage from `crop_stage_master.lookup(crop_code, DAS)` and emit `LAND_STAGE_DERIVED` trace. Today this silently passes UNKNOWN to the evaluator.
+2. **`soil_health` / `ndvi_data` / `weather_current`** — each loader writes its presence flag to `ContextLedger`. Already-present nulls become `missing` not `false`.
+3. **`crop_schedules`** — when intent matches a schedule task within ±3 days, attach `schedule_context` to canonical state so the proactive lane and reactive lane share the same time-anchored truth.
 
-1. Deploy `ai-agriculture-chat`.
-2. Re-run the Marathi rice emergence scenario, capture `evidence_lane_assignment` events + final canonical state.
-3. Append findings + before/after lane tables to `.lovable/audits/system-audit-2026-06-22.md`.
+### Layer 5 — Regression tests (crop-agnostic)
 
-## Out of scope (handed off as content tickets)
+`_tests/symbolic_brain_invariants_test.ts`:
+- Empty confirmed → primary_decision is null for sugarcane, cotton, tomato, onion, wheat, rice (parameterised).
+- Stage mismatch → primary_decision is null for a rule tagged TILLERING when state is GERMINATION (parameterised across 6 crops).
+- LITERAL IOM row → lands in confirmed lane.
+- DIFFERENTIAL IOM row → lands in candidate lane.
+- `min_data_completeness = 0.7` rule with 50% ledger → rejected.
 
-- Adding missing observation rows (`OBS_DEEP_SOWING`, `OBS_WATERLOGGING_AFTER_SOWING`, etc.) and missing `intent_observation_mapping` rows — DB content work, not code.
-- Adding `is_farmer_observable` / `evidence_rank` columns if absent — separate migration PR.
-- Frontend changes — none.
+## Rollout sequence
 
-## Technical guarantees
+1. **Migration** (Layer 1 + Layer 2 backfill + RLS/grants). All defaults preserve current behavior, so nothing breaks on deploy.
+2. **Code invariants** (Layer 3) deployed to `ai-agriculture-chat` edge function.
+3. **Land-context asserts** (Layer 4).
+4. **Tests** (Layer 5) executed; production curl smoke for one query per crop (12 calls) captured in `.lovable/audits/`.
+5. **Agronomy curation** — agronomy team edits `intent_assertion_pattern` rows in Supabase dashboard; backfill is re-run on demand. No code deploy required.
 
-- Zero new hardcoded observation lists. The deleted `RICE_EMERGENCE_GUARD` is replaced by `intent_observation_mapping` lookup.
-- All ranking driven by DB columns (`confidence_rank`, `evidence_rank`); no inline magic numbers added.
-- Backward-compatible: legacy single-field readers receive `confirmedObservations` only, so they cannot accidentally consume candidates.
+## What this is NOT
+
+- Not a rice patch. Not a per-crop UPDATE script.
+- No hardcoded synonym lists, no `RICE_EMERGENCE_GUARD`-style arrays.
+- No LLM-side patches — narration layer is untouched.
+- No schema change to `observation_translations` (unique constraint preserved).
+- No deletion of rows — only `is_active=false` on the patterns the agronomy team approves.
+
+## Files to change
+
+```
+supabase/migrations/<new>.sql                                       (Layer 1 + 2)
+supabase/functions/ai-agriculture-chat/decision/intent-resolver.ts
+supabase/functions/ai-agriculture-chat/agents/orchestrator.ts
+supabase/functions/ai-agriculture-chat/agents/layered-rule-evaluator.ts
+supabase/functions/ai-agriculture-chat/agents/canonical-state-builder.ts
+supabase/functions/ai-agriculture-chat/decision/evidence-graph.ts   (provenance enum extension)
+supabase/functions/ai-agriculture-chat/_tests/symbolic_brain_invariants_test.ts  (new)
+.lovable/audits/system-audit-2026-06-22.md                          (append P1-system results)
+```
+
+Approve and I will execute in the order above.
