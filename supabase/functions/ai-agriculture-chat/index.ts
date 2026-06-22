@@ -2341,6 +2341,44 @@ serve(async (req) => {
         return 'llm_general_knowledge';
       })();
 
+      // WAVE F: Clarification-origin classifier.
+      // Wave E telemetry showed 42/47 silent matches (89%) were
+      // CLARIFICATION_QUESTION — rules matched but the orchestrator forced a
+      // clarification instead of returning the decision. Bucketing by
+      // *whether rules matched before clarification was forced* tells us
+      // whether to fix the pre-rule clarifier (no symptoms yet) or the
+      // post-match clarifier (matched rules suppressed = real defect).
+      //
+      // Buckets:
+      //   post_match_clarification  : rules fired AND confidence ≥ threshold
+      //                               yet clarification was forced → WS13 bug
+      //   post_match_low_confidence : rules fired but confidence < threshold
+      //                               (expected; not a defect)
+      //   hypothesis_differential   : multiple equally-likely hypotheses
+      //   pre_rule_clarification    : no rules fired (legitimate symptom
+      //                               collection)
+      //   emergency_triage          : emergency observation path
+      //   non_clarification         : not a clarification response
+      const clarificationOrigin: string = (() => {
+        if (!_oType.includes('CLARIFICATION')) return 'non_clarification';
+        const meta: any = _meta;
+        const isEmergency =
+          String(meta.escalation_reason || '').toLowerCase().includes('emergency') ||
+          String(meta.diagnostic_escalation_data?.escalation_type || '').toLowerCase().includes('emergency');
+        if (isEmergency) return 'emergency_triage';
+        const isDifferential =
+          meta.differential_diagnosis === true ||
+          (Array.isArray(meta.competing_hypotheses) && meta.competing_hypotheses.length > 1) ||
+          String(meta.clarification_strategy || '').toLowerCase().includes('differential');
+        if (isDifferential) return 'hypothesis_differential';
+        if (_rulesFired > 0) {
+          const conf = Number(meta.confidence ?? 0);
+          const threshold = Number(meta.confidence_threshold ?? 0.5);
+          return conf < threshold ? 'post_match_low_confidence' : 'post_match_clarification';
+        }
+        return 'pre_rule_clarification';
+      })();
+
       const { data: assistantRow, error: assistantErr } = await supabase
         .from('ai_chat_messages')
         .insert({
@@ -2407,6 +2445,7 @@ serve(async (req) => {
             response_source: responseSource,
             funnel_largest_drop: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.stage ?? null,
             funnel_largest_drop_count: (orchestratorResponse as any).metadata?.funnel?.largest_drop?.lost ?? null,
+            clarification_origin: clarificationOrigin,
             // WAVE D: ALWAYS persist decision_brain_data regardless of response type.
             // Previously this was gated to type === 'DECISION_PROVIDED', which silently
             // dropped brain state for 73% (47/64) of matched turns — making the
