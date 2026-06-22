@@ -3214,11 +3214,7 @@ export class AIAgentOrchestrator {
         (Array.isArray(expandedObservationCodes) && expandedObservationCodes.length > 0) ||
         (candidateObservationCodes && candidateObservationCodes.size > 0);
 
-      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && !waveM_hasExpandedEvidence) {
-        console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
-        console.log(`   → Forcing CLARIFICATION path, will NOT enter symbolic brain`);
-        agentsUsed.push('ZERO_CODE_CLARIFICATION_GATE');
-      } else if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && waveM_hasExpandedEvidence) {
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && waveM_hasExpandedEvidence) {
         console.warn(
           `\n✅ [WAVE_M_ZERO_CODE_BYPASS] intent=${currentIntentForGate} ` +
           `mappedCodes=0 BUT expanded=${expandedObservationCodes.length} ` +
@@ -3228,9 +3224,11 @@ export class AIAgentOrchestrator {
         agentsUsed.push('WAVE_M_ZERO_CODE_BYPASS');
       }
 
-      if (false) {
-        // legacy block below — guarded above so it only runs when no evidence
-        
+      if (!hasMeaningfulCodes(mappedCodes) && isSymptomBasedIntent && !isZeroCodeGateExempt && !waveM_hasExpandedEvidence) {
+        console.log(`\n🚫 [ZERO_CODE_GATE] ObservationCodeMapper returned zero codes for symptom intent ${currentIntentForGate}`);
+        console.log(`   → Forcing CLARIFICATION path, will NOT enter symbolic brain`);
+        agentsUsed.push('ZERO_CODE_CLARIFICATION_GATE');
+
         // Generate clarification using crop/stage context
         const clarificationLandCtx = landContext ? {
           crop: landContext.current_crop || landContext.crop,
