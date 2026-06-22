@@ -2467,8 +2467,16 @@ serve(async (req) => {
             // WAVE J: per-emission-site identifier so dashboards can attribute
             // the surviving pre_brain_clarification drops to the precise code
             // path that produced them. Set inside metadata at every CLARIFICATION
-            // return site by `tagClarificationSite` / `CLARIFICATION_SITES`.
+            // return site by `CLARIFICATION_SITES`.
             clarification_site: (orchestratorResponse as any).metadata?.clarification_site ?? null,
+            // WAVE K: disposition (INTENTIONAL_DIFFERENTIAL / INTENTIONAL_FOLLOWUP /
+            // INTENTIONAL_GATE / DEFECT_SUSPECT) so the attribution view can
+            // separate by-design clarifications from real defects. Resolved from
+            // SITE_DISPOSITIONS in utils/clarification-site-tag.ts so the SQL
+            // view and runtime stay in sync from a single source of truth.
+            clarification_site_disposition: getSiteDisposition(
+              (orchestratorResponse as any).metadata?.clarification_site ?? null
+            ),
             // WAVE D: ALWAYS persist decision_brain_data regardless of response type.
             // Previously this was gated to type === 'DECISION_PROVIDED', which silently
             // dropped brain state for 73% (47/64) of matched turns — making the
