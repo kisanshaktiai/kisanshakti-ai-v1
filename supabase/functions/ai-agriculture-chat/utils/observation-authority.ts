@@ -30,15 +30,23 @@ export enum ObservationAuthority {
   /** Alias expansion, LLM semantic extraction, intent-to-observation mapping */
   INFERRED = 'INFERRED',
   /** Cross-crop injection, obsKeyExpansion, router fallback injection */
-  SYNTHETIC = 'SYNTHETIC'
+  SYNTHETIC = 'SYNTHETIC',
+  /**
+   * Hypothesis-only candidate. Sourced from intent_observation_mapping,
+   * hypothesis_master differentiating observations, or canonical→alias fan-out.
+   * MUST NEVER reach confirmedObservations, terminal gates, or rule firing.
+   * Used only to seed clarification questions and weight hypothesis scoring.
+   */
+  HYPOTHESIS_CANDIDATE = 'HYPOTHESIS_CANDIDATE'
 }
 
 /** Numeric rank for authority comparison (higher = more authoritative) */
 const AUTHORITY_RANK: Record<ObservationAuthority, number> = {
-  [ObservationAuthority.CONFIRMED]: 4,
-  [ObservationAuthority.EXTRACTED]: 3,
-  [ObservationAuthority.INFERRED]: 2,
-  [ObservationAuthority.SYNTHETIC]: 1
+  [ObservationAuthority.CONFIRMED]: 5,
+  [ObservationAuthority.EXTRACTED]: 4,
+  [ObservationAuthority.INFERRED]: 3,
+  [ObservationAuthority.SYNTHETIC]: 2,
+  [ObservationAuthority.HYPOTHESIS_CANDIDATE]: 1
 };
 
 /**
@@ -104,6 +112,11 @@ export class AuthoredObservationSet {
   /** Get codes suitable for the Terminal Damage Gate (CONFIRMED + EXTRACTED only). */
   getCodesForTerminalGate(): string[] {
     return this.getConfirmedAndExtractedCodes();
+  }
+
+  /** Get hypothesis-only candidates (never confirmed). */
+  getCandidateCodes(): string[] {
+    return this.getCodesByAuthority(ObservationAuthority.HYPOTHESIS_CANDIDATE);
   }
 
   /** Get all codes regardless of authority (for rule evaluation). */

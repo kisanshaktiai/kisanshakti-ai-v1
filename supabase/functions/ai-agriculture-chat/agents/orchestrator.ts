@@ -2970,17 +2970,23 @@ export class AIAgentOrchestrator {
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
 
-      // STEP 2a: Vocabulary bridge expansion (generic ↔ specific)
-      // Adds canonical codes for any aliases and also adds aliases for any canonical codes.
+      // STEP 2a: Vocabulary normalization (alias → canonical ONLY).
+      // CRITICAL: the confirmed-observation lane must never trigger canonical→alias
+      // fan-out because that promotes hypothesis-space codes into confirmed.
+      // Bidirectional expansion is reserved for the candidate lane below.
       let expandedObservationCodes: string[] = (mappedCodes?.observation_codes || []) as unknown as string[];
+      // CANDIDATE LANE — observations sourced from DB intent_observation_mapping,
+      // hypothesis fan-out, or canonical→alias expansion. NEVER merged into
+      // expandedObservationCodes / inductionResult.symptoms / confirmedObservations.
+      const candidateObservationCodes: Set<string> = new Set<string>();
       try {
-        const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase);
+        const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase, 'alias_to_canonical');
         if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
-          console.log(`      🔁 Alias expansion: ${expandedObservationCodes.length} → ${expanded.expanded_codes.length} codes`);
+          console.log(`      🔁 Alias normalization (alias→canonical): ${expandedObservationCodes.length} → ${expanded.expanded_codes.length} codes`);
         }
         expandedObservationCodes = expanded.expanded_codes;
         if (expanded.trace.length > 0) {
-          agentsUsed.push('OBSERVATION_ALIAS_EXPANDER');
+          agentsUsed.push('OBSERVATION_ALIAS_NORMALIZER');
         }
       } catch (e) {
         console.warn(`      ⚠️ Alias expansion failed, continuing without it: ${(e as Error)?.message || String(e)}`);
@@ -3026,17 +3032,20 @@ export class AIAgentOrchestrator {
 
 
           if (dbIntentResolution?.success && dbIntentResolution.observation_codes.length > 0) {
-            const before = expandedObservationCodes.length;
-            const merged = new Set<string>(expandedObservationCodes);
-            // Cap injection to top-ranked codes to keep rule scoring useful;
-            // intent_observation_mapping is already ordered by confidence_rank ASC.
+            // CANDIDATE LANE ONLY. intent_observation_mapping rows are the
+            // hypothesis space for the intent — they are NOT farmer-asserted
+            // and must not enter expandedObservationCodes / confirmed lane.
+            // Cap to top-ranked codes (DB is already ordered by confidence_rank ASC).
+            let added = 0;
             for (const c of dbIntentResolution.observation_codes.slice(0, 25)) {
-              if (c) merged.add(c);
+              if (c && !candidateObservationCodes.has(c)) {
+                candidateObservationCodes.add(c);
+                added++;
+              }
             }
-            expandedObservationCodes = Array.from(merged);
             console.log(
-              `      🔗 [DB_INTENT_OBSERVATIONS] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
-              `→ +${expandedObservationCodes.length - before} codes (total ${expandedObservationCodes.length})`
+              `      🔗 [DB_INTENT_OBSERVATIONS→CANDIDATE] intent=${_intentForDb} crop=${_cropForDb} DAS=${_dasForDb} ` +
+              `→ +${added} candidate codes (candidate_total=${candidateObservationCodes.size}, confirmed_total=${expandedObservationCodes.length})`
             );
             agentsUsed.push('INTENT_OBSERVATION_RESOLVER_DB');
           } else {
@@ -3045,23 +3054,12 @@ export class AIAgentOrchestrator {
               `(success=${dbIntentResolution?.success}, error=${dbIntentResolution?.error || 'none'})`
             );
           }
-
-          if (_intentForDb === 'EMERGENCE_FAILURE' && String(_cropForDb).toLowerCase() === 'rice') {
-            const nurseryNoEmergenceCodes = [
-              'OBS_RICE_NO_EMERGENCE',
-              'OBS_RICE_PATCHY_EMERGENCE',
-              'POOR_GERMINATION',
-              'POOR_GERMINATION_PERCENT',
-              'GAPS_IN_FIELD',
-              'SEEDLING_DIED'
-            ];
-            const before = expandedObservationCodes.length;
-            const merged = new Set(expandedObservationCodes);
-            for (const code of nurseryNoEmergenceCodes) merged.add(code);
-            expandedObservationCodes = Array.from(merged);
-            console.log(`      🌾 [RICE_EMERGENCE_GUARD] ensured no-emergence observations +${expandedObservationCodes.length - before} (total ${expandedObservationCodes.length})`);
-            agentsUsed.push('RICE_EMERGENCE_OBSERVATION_GUARD');
-          }
+          // NOTE: RICE_EMERGENCE_GUARD (hardcoded list of OBS_RICE_NO_EMERGENCE,
+          // OBS_RICE_PATCHY_EMERGENCE, POOR_GERMINATION, …) was removed 2026-06-22.
+          // It was forcing hypothesis-space codes into the confirmed lane and
+          // violated the "no hardcoded logic / DB-driven" contract. The same
+          // codes are now supplied by intent_observation_mapping above as
+          // candidates, gated by farmer clarification before promotion.
         }
       } catch (intentResolverErr) {
         // Fail-soft: advisory observation-code enrichment must never block the
@@ -4302,14 +4300,26 @@ export class AIAgentOrchestrator {
       
       // BUG 5 FIX: Pass authority metadata into canonical state for rule evaluator
       // Separate confirmed/extracted observations from inferred/synthetic
+      // CONTAMINATION FIX (2026-06-22): register candidate observations from
+      // intent_observation_mapping into authoredObservations as HYPOTHESIS_CANDIDATE.
+      // These are kept OUT of allObservationsForPreAuth so they never reach
+      // confirmedObsCodes / terminal-gate / decision_output.symptom_keys.
+      if (candidateObservationCodes && candidateObservationCodes.size > 0) {
+        for (const code of candidateObservationCodes) {
+          authoredObservations.add(code, ObservationAuthority.HYPOTHESIS_CANDIDATE, 'INTENT_OBSERVATION_MAPPING_DB');
+        }
+        console.log(`   🧪 [HYPOTHESIS_CANDIDATES] Registered ${candidateObservationCodes.size} candidate observations (lane=candidate, NOT confirmed)`);
+      }
       const confirmedObsCodes = authoredObservations.getConfirmedAndExtractedCodes();
+      const candidateObsCodes = authoredObservations.getCandidateCodes();
       const syntheticObsCodes = [...allObservationsForPreAuth].filter(
-        code => !confirmedObsCodes.includes(code)
+        code => !confirmedObsCodes.includes(code) && !candidateObsCodes.includes(code)
       );
-      console.log(`   📊 [AuthoritySplit] Confirmed+Extracted: ${confirmedObsCodes.length}, Synthetic: ${syntheticObsCodes.length}`);
-      
+      console.log(`   📊 [AuthoritySplit] Confirmed+Extracted: ${confirmedObsCodes.length}, Candidates: ${candidateObsCodes.length}, Synthetic: ${syntheticObsCodes.length}`);
+
       // Log authority breakdown
       console.log(`   📊 [ObservationAuthority] ${authoredObservations.toSummary()}`);
+
       
       // v5.0: Use AUTHORITY-AWARE crop damage detection (only CONFIRMED+EXTRACTED trigger terminal gate)
       const cropDamageResult = detectCropDamageWithAuthority(
@@ -6125,6 +6135,10 @@ export class AIAgentOrchestrator {
           user_query: queryForRuleEngine,
           // BUG 5 FIX: Pass authority-separated observations for rule evaluator
           confirmed_observations: confirmedObsCodes,
+          // CONTAMINATION FIX (2026-06-22): expose candidate lane separately so
+          // hypothesis evaluator / clarification generator can read it without
+          // it ever entering the confirmed/rule-firing path.
+          candidate_observations: candidateObsCodes,
           synthetic_observations: syntheticObsCodes
         };
         
@@ -7174,15 +7188,24 @@ export class AIAgentOrchestrator {
         
         // Wire symptomKeys + isEmergency into IMMEDIATE return path.
         // Phase 3 SSOT: emergency codes from public.emergency_observation_codes.
-        const obsArray = Array.from(allObservationsForPreAuth || []);
+        // CONTAMINATION FIX (2026-06-22): symptom_keys / symptomKeys downstream are
+        // interpreted as CONFIRMED observations by index.ts and the rule-lookup
+        // bypass. Use authority-filtered confirmed+extracted lane only.
+        const confirmedForReturn = authoredObservations.getConfirmedAndExtractedCodes();
+        const candidateForReturn = authoredObservations.getCandidateCodes();
+        const obsArray = confirmedForReturn;
         const emergencyCodesImmediate = await loadEmergencyObservationCodes(this.supabase);
         const isEmergencyImmediate = obsArray.some(code => emergencyCodesImmediate.has(code));
-        
+
         // Wire symptom_keys, has_symptoms, decision_confidence onto decisionOutput
         decisionOutput.symptom_keys = obsArray;
+        decisionOutput.confirmed_observation_codes = obsArray;
+        decisionOutput.candidate_observation_codes = candidateForReturn;
         if (!decisionOutput.metadata) decisionOutput.metadata = {};
         decisionOutput.metadata.has_symptoms = obsArray.length > 0;
         decisionOutput.metadata.symptomKeys = obsArray;
+        decisionOutput.metadata.confirmed_observation_codes = obsArray;
+        decisionOutput.metadata.candidate_observation_codes = candidateForReturn;
         decisionOutput.metadata.decision_confidence = layeredRuleResult?.primary_decision?.weighted_confidence || 0;
         decisionOutput.metadata.isEmergency = isEmergencyImmediate;
         

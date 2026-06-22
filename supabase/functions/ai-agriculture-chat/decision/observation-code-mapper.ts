@@ -533,14 +533,22 @@ async function loadObservationAliases(supabaseClient?: any): Promise<Observation
 }
 
 /**
- * Expand observation vocabulary so the rule engine sees BOTH generic + specific codes.
+ * Expand observation vocabulary via observation_aliases.
  *
- * - If a code is an alias_code: add its canonical_code(s)
- * - If a code is a canonical_code: add all alias_code(s)
+ * direction:
+ *   - 'alias_to_canonical' (DEFAULT, SAFE for CONFIRMED lane): if a code is an alias, add its
+ *     canonical(s). Pure normalization, no candidate fan-out.
+ *   - 'canonical_to_alias': if a code is canonical, add all aliases (legacy expansion).
+ *   - 'both': bidirectional. ONLY safe for the candidate/hypothesis lane — never call from the
+ *     confirmed-observation pipeline, because canonical→alias fans out hypothesis space into
+ *     the confirmed set (observation contamination).
  */
+export type AliasExpansionDirection = 'alias_to_canonical' | 'canonical_to_alias' | 'both';
+
 export async function expandObservationVocabularyViaAliases(
   inputCodes: string[],
-  supabaseClient?: any
+  supabaseClient?: any,
+  direction: AliasExpansionDirection = 'alias_to_canonical'
 ): Promise<{ expanded_codes: string[]; trace: string[] }> {
   const normalized = inputCodes.map(normalizeObsCode).filter(Boolean);
   const base = new Set<string>(normalized);
@@ -563,24 +571,30 @@ export async function expandObservationVocabularyViaAliases(
 
   const expanded = new Set<string>(base);
   const trace: string[] = [];
+  const allowAliasToCanonical = direction === 'alias_to_canonical' || direction === 'both';
+  const allowCanonicalToAlias = direction === 'canonical_to_alias' || direction === 'both';
 
   for (const code of base) {
-    const canonicals = aliasToCanonical.get(code);
-    if (canonicals) {
-      for (const c of canonicals) {
-        if (!expanded.has(c)) {
-          expanded.add(c);
-          trace.push(`alias:${code}→${c}`);
+    if (allowAliasToCanonical) {
+      const canonicals = aliasToCanonical.get(code);
+      if (canonicals) {
+        for (const c of canonicals) {
+          if (!expanded.has(c)) {
+            expanded.add(c);
+            trace.push(`alias:${code}→${c}`);
+          }
         }
       }
     }
 
-    const aliases = canonicalToAlias.get(code);
-    if (aliases) {
-      for (const a of aliases) {
-        if (!expanded.has(a)) {
-          expanded.add(a);
-          trace.push(`canonical:${code}→${a}`);
+    if (allowCanonicalToAlias) {
+      const aliases = canonicalToAlias.get(code);
+      if (aliases) {
+        for (const a of aliases) {
+          if (!expanded.has(a)) {
+            expanded.add(a);
+            trace.push(`canonical:${code}→${a}`);
+          }
         }
       }
     }
@@ -588,6 +602,7 @@ export async function expandObservationVocabularyViaAliases(
 
   return { expanded_codes: Array.from(expanded), trace };
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // UTILITY FUNCTIONS
