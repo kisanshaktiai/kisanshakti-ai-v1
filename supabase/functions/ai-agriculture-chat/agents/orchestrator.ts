@@ -10,6 +10,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2.57.2";
 import { getLanguageName } from '../utils/language-utils.ts';
 import { resolveCropTimeline } from '../utils/resolveCropTimeline.ts';
+import { tagClarificationSite, CLARIFICATION_SITES } from '../utils/clarification-site-tag.ts';
 import { loadVarietyProfile, formatVarietyProfileForPrompt, type VarietyProfile } from '../../_shared/variety-context.ts';
 
 
@@ -2913,6 +2914,7 @@ export class AIAgentOrchestrator {
               }))
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.HARD_GATE_OPTION_REMINDER,
               confidence: 0.5,
               safety_status: 'CLARIFICATION_PENDING',
               rules_applied: 0,
@@ -3277,6 +3279,7 @@ export class AIAgentOrchestrator {
             actions_returned: [],
             quick_actions: [],
             metadata: {
+              clarification_site: CLARIFICATION_SITES.NLU_LOW_CONFIDENCE,
               confidence: 0.3,
               trace_id: traceId,
               processing_time_ms: Date.now() - startTime,
@@ -3654,6 +3657,7 @@ export class AIAgentOrchestrator {
               reason: 'STAGE_CONTEXT_REQUIRED'
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.STAGE_CLARIFICATION,
               confidence: intentConf,
               safety_status: 'SAFE',
               rules_applied: 0,
@@ -4796,6 +4800,7 @@ export class AIAgentOrchestrator {
                 // CRITICAL: Also add options here for fallback extraction
                 options: diagnosisOptions,
                 metadata: {
+                  clarification_site: CLARIFICATION_SITES.DIAGNOSIS_FIRST_OPTIONS,
                   word_count: diagnosisFirstOutput.question_text.split(/\s+/).length,
                   reading_time_seconds: 5,
                   complexity_score: 0.5,
@@ -5063,6 +5068,7 @@ export class AIAgentOrchestrator {
             options: safeOptions
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.IDENTIFY_LOCATION_INVARIANT,
             confidence: understandingResult.completeness_score / 100,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -6011,6 +6017,7 @@ export class AIAgentOrchestrator {
               })()
             },
             metadata: {
+              clarification_site: CLARIFICATION_SITES.G2_CONTEXT_COMPLETENESS,
               confidence: 0.5,
               safety_status: 'CONTEXT_VALIDATION_REQUIRED',
               rules_applied: 0,
@@ -6869,6 +6876,7 @@ export class AIAgentOrchestrator {
                         )
                       },
                       metadata: {
+                        clarification_site: CLARIFICATION_SITES.MULTIMATCH_COMPETITION,
                         confidence: multiMatchResult.competing_matches[0]?.confidence || 0,
                         safety_status: 'DIFFERENTIAL_DIAGNOSIS_REQUIRED',
                         reason: 'MULTIPLE_COMPETING_DIAGNOSES',
@@ -6975,6 +6983,7 @@ export class AIAgentOrchestrator {
             }))
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.DYNAMIC_OPTIONS,
             confidence: intentConfidence,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -7070,6 +7079,7 @@ export class AIAgentOrchestrator {
             session_id: sessionId,
             question: diagnosticState.next_question,
           metadata: {
+            clarification_site: CLARIFICATION_SITES.DIAGNOSTIC_STATE_NEXT_QUESTION,
             confidence: diagnosticState.hypotheses?.[0]?.confidence || 0,
             safety_status: 'PENDING',
             rules_applied: 0,
@@ -7658,6 +7668,7 @@ export class AIAgentOrchestrator {
             source: 'DECISION_RULES_SSOT'
           },
           metadata: {
+            clarification_site: CLARIFICATION_SITES.MANDATORY_FALLBACK_OBS,
             confidence: 0.3,
             safety_status: 'NEEDS_CLARIFICATION',
             rules_applied: 0,
@@ -7750,36 +7761,59 @@ export class AIAgentOrchestrator {
         // If ALL actions were filtered, return farmer-friendly clarification
         // CRITICAL FIX: Never expose internal intent names like "GENERAL_QUERY" to farmers
         if (lockValidation.filtered_actions.length === 0 && allActions.length > 0) {
-          console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning farmer-friendly clarification`);
-          
-          await auditLogger.completeTurn(Date.now() - startTime);
-          
-          // Use farmer-friendly clarification instead of exposing internal intent names
-          const clarification = this.generateIntentMismatchClarification(
-            options.language || 'mr',
-            landContext?.current_crop
-          );
-          
-          return {
-            type: 'CLARIFICATION_QUESTION',
-            session_id: sessionId,
-            question: {
-              question_id: `intent_mismatch_${Date.now()}`,
-              text_en: 'Could you describe your problem in more detail so I can help you better?',
-              i18n_key: clarification.i18n_key,
-              options: clarification.option_codes.map(code => ({ code, label: code }))
-            },
-            metadata: {
-              confidence: intentConfidence,
-              safety_status: 'PENDING',
-              rules_applied: decisionOutput.rules_applied?.length || 0,
-              processing_time_ms: Date.now() - startTime,
-              agents_used: agentsUsed,
-              trace_id: traceId,
-              symptomKeys: Array.from(allObservationsForPreAuth || []),
-              isEmergency: false
-            }
-          };
+          // ═══════════════════════════════════════════════════════════════════
+          // WAVE J: PRE-BRAIN CLARIFICATION BYPASS
+          // ───────────────────────────────────────────────────────────────────
+          // Wave I audit attributed 42/42 surviving "matched-but-clarified"
+          // rice turns to this site (or peers): rules matched on observations,
+          // but the intent classifier disagreed and intent-lock blanked the
+          // decision before the brain could assemble it. When the intent
+          // classifier is uncertain (< 0.6) AND rules clearly matched on
+          // observation evidence, prefer the symbolic rule match — the
+          // intent classifier is the weaker signal here. Logged as
+          // WAVE_J_INTENT_LOCK_BYPASS for attribution in Wave I view.
+          const symbolicRuleCount = decisionOutput.rules_applied?.length || 0;
+          const intentConfNumber = typeof intentConfidence === 'number' ? intentConfidence : 0;
+          if (symbolicRuleCount > 0 && intentConfNumber < 0.6) {
+            console.warn(`   ✅ [WAVE_J_INTENT_LOCK_BYPASS] Intent classifier uncertain (${intentConfNumber.toFixed(2)}) but ${symbolicRuleCount} rule(s) matched on observation evidence — bypassing intent lock and forwarding to decision brain.`);
+            lockValidation.filtered_actions = allActions;
+            agentsUsed.push('WAVE_J_INTENT_LOCK_BYPASS');
+            // Fall through to the brain — do NOT return clarification here.
+          } else {
+            console.warn(`   🚫 P0-E: ALL actions filtered by intent lock - returning farmer-friendly clarification`);
+
+            await auditLogger.completeTurn(Date.now() - startTime);
+
+            // Use farmer-friendly clarification instead of exposing internal intent names
+            const clarification = this.generateIntentMismatchClarification(
+              options.language || 'mr',
+              landContext?.current_crop
+            );
+
+            return {
+              type: 'CLARIFICATION_QUESTION',
+              session_id: sessionId,
+              question: {
+                question_id: `intent_mismatch_${Date.now()}`,
+                text_en: 'Could you describe your problem in more detail so I can help you better?',
+                i18n_key: clarification.i18n_key,
+                options: clarification.option_codes.map(code => ({ code, label: code }))
+              },
+              metadata: {
+                clarification_site: CLARIFICATION_SITES.INTENT_LOCK_ALL_FILTERED,
+                confidence: intentConfidence,
+                safety_status: 'PENDING',
+                rules_applied: symbolicRuleCount,
+                processing_time_ms: Date.now() - startTime,
+                agents_used: agentsUsed,
+                trace_id: traceId,
+                symptomKeys: Array.from(allObservationsForPreAuth || []),
+                isEmergency: false,
+                wave_j_bypass_eligible: false,
+                wave_j_intent_confidence: intentConfNumber
+              }
+            };
+          }
         }
       } else {
         console.log(`   ✅ P0-E: All ${allActions.length} actions passed intent lock filter`);
