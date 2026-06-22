@@ -401,6 +401,11 @@ async function loadRulesFromDatabase(): Promise<BundledRule[]> {
         required_observation_category: row.required_observation_category || null,
         required_plant_part: row.required_plant_part || null,
         
+        // P1 SYSTEM-WIDE FIX (2026-06-22): cross-crop context-completeness gate
+        min_data_completeness: typeof row.min_data_completeness === 'number'
+          ? row.min_data_completeness
+          : 0.0,
+
         is_active: row.is_active
       };
     });

@@ -146,6 +146,11 @@ export interface Rule {
   scientific_basis?: string;
   requires_confirmation?: boolean;
   active: boolean;
+  // P1 SYSTEM-WIDE FIX (2026-06-22): preserved from bundled rule so that
+  // post-selection invariants (stage gate, completeness gate) can re-check
+  // without rebuilding the bundled-rule lookup.
+  stage_applicable?: string[];
+  min_data_completeness?: number;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1700,7 +1705,12 @@ function convertBundledToRule(bundled: ExecutableRule): Rule {
       product_reference: bundled.rule_id
     },
     scientific_basis: bundled.scientific_basis || bundled.scientific_source,
-    active: true
+    active: true,
+    // P1 SYSTEM-WIDE FIX (2026-06-22): expose for post-selection invariants
+    stage_applicable: Array.isArray(bundled.stage_applicable) ? bundled.stage_applicable : [],
+    min_data_completeness: typeof (bundled as any).min_data_completeness === 'number'
+      ? (bundled as any).min_data_completeness
+      : 0.0
   };
 }
 
