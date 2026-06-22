@@ -6135,6 +6135,10 @@ export class AIAgentOrchestrator {
           user_query: queryForRuleEngine,
           // BUG 5 FIX: Pass authority-separated observations for rule evaluator
           confirmed_observations: confirmedObsCodes,
+          // CONTAMINATION FIX (2026-06-22): expose candidate lane separately so
+          // hypothesis evaluator / clarification generator can read it without
+          // it ever entering the confirmed/rule-firing path.
+          candidate_observations: candidateObsCodes,
           synthetic_observations: syntheticObsCodes
         };
         
