@@ -65,12 +65,25 @@ export async function loadCropSynonyms(supabase: any): Promise<Map<string, strin
         return cache?.synonymMap || new Map();
       }
       
+      // WAVE H: Always re-normalize canonical_crop through the static
+      // normalizer before caching. crop_synonyms is the NLU SSOT for
+      // multilingual variant → canonical, but its canonical values have
+      // historically diverged from decision_rules.crop_code (e.g. synonyms
+      // returned "chili" while 120 active rules were stored under "chilli"
+      // — every chilli farmer query missed the entire rule corpus). The
+      // normalizer collapses both spellings, so passing canonical_crop
+      // through it makes this defense idempotent and immunises every
+      // downstream lookup against new canonical drift.
       const map = new Map<string, string>();
+      let normalizedDelta = 0;
       for (const row of (data || []) as CropSynonymRow[]) {
-        map.set(row.variant_name.toLowerCase(), row.canonical_crop);
+        const original = row.canonical_crop;
+        const normalized = normalizeCropCode(original) || original;
+        if (normalized !== original) normalizedDelta++;
+        map.set(row.variant_name.toLowerCase(), normalized);
       }
-      
-      console.log(`[CROP_SYNONYMS] ✅ Loaded ${map.size} synonyms from DB`);
+
+      console.log(`[CROP_SYNONYMS] ✅ Loaded ${map.size} synonyms from DB (re-normalized ${normalizedDelta} canonical values)`);
       cache = { synonymMap: map, loadedAt: Date.now() };
       return map;
     } catch (e) {
