@@ -40,6 +40,7 @@ import {
 } from '../bundled-rules/loader.ts';
 
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import { funnelRecord } from '../runtime/funnel-tracker.ts';
 
 // PHASE-16: Import SymbolicReasoner for proper JSON condition evaluation
 import {
