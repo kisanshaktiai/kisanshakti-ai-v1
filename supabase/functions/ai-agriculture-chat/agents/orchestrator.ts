@@ -2970,17 +2970,23 @@ export class AIAgentOrchestrator {
       const mappedCodes: MappedObservationCodes = mapToObservationCodes(semanticExtraction);
       agentsUsed.push('OBSERVATION_CODE_MAPPER');
 
-      // STEP 2a: Vocabulary bridge expansion (generic ↔ specific)
-      // Adds canonical codes for any aliases and also adds aliases for any canonical codes.
+      // STEP 2a: Vocabulary normalization (alias → canonical ONLY).
+      // CRITICAL: the confirmed-observation lane must never trigger canonical→alias
+      // fan-out because that promotes hypothesis-space codes into confirmed.
+      // Bidirectional expansion is reserved for the candidate lane below.
       let expandedObservationCodes: string[] = (mappedCodes?.observation_codes || []) as unknown as string[];
+      // CANDIDATE LANE — observations sourced from DB intent_observation_mapping,
+      // hypothesis fan-out, or canonical→alias expansion. NEVER merged into
+      // expandedObservationCodes / inductionResult.symptoms / confirmedObservations.
+      const candidateObservationCodes: Set<string> = new Set<string>();
       try {
-        const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase);
+        const expanded = await expandObservationVocabularyViaAliases(expandedObservationCodes, this.supabase, 'alias_to_canonical');
         if (expanded.expanded_codes.length !== expandedObservationCodes.length) {
-          console.log(`      🔁 Alias expansion: ${expandedObservationCodes.length} → ${expanded.expanded_codes.length} codes`);
+          console.log(`      🔁 Alias normalization (alias→canonical): ${expandedObservationCodes.length} → ${expanded.expanded_codes.length} codes`);
         }
         expandedObservationCodes = expanded.expanded_codes;
         if (expanded.trace.length > 0) {
-          agentsUsed.push('OBSERVATION_ALIAS_EXPANDER');
+          agentsUsed.push('OBSERVATION_ALIAS_NORMALIZER');
         }
       } catch (e) {
         console.warn(`      ⚠️ Alias expansion failed, continuing without it: ${(e as Error)?.message || String(e)}`);
