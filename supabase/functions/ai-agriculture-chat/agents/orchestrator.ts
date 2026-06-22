@@ -3212,19 +3212,34 @@ export class AIAgentOrchestrator {
           das: landContext.days_since_sowing
         } : null;
         
-        // English-only clarification — LLM narration layer translates at runtime
+        // WAVE A.5g FIX (RC-30): provide Marathi + Hindi alongside English instead
+        // of relying on downstream LLM translation, which historically dropped the
+        // structured bullet list and surfaced English-only text to farmers.
+        // The three languages are stage-aware; the orchestrator's downstream
+        // narration layer still has the final translation pass for any other lang.
         let clarificationMessage: string;
-        
+        let clarificationMr: string;
+        let clarificationHi: string;
+        let clarificationEn: string;
+
         if (clarificationLandCtx) {
           const cropName = clarificationLandCtx.crop || 'crop';
           const dasStr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} days)` : '';
-          clarificationMessage = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
+          const dasMr = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिवस)` : '';
+          const dasHi = clarificationLandCtx.das ? ` (${clarificationLandCtx.das} दिन)` : '';
+          clarificationEn = `I understand you're reporting an issue with your ${cropName} crop${dasStr}. Could you describe the specific symptoms?\n• Leaf color changes?\n• Spots/holes on leaves?\n• Insects visible?\n• Stem/root problems?\n• Growth stunted?`;
+          clarificationMr = `तुमच्या ${cropName} पिकात${dasMr} अडचण आहे असे कळते. कृपया लक्षणे सांगा:\n• पानांचा रंग बदलला आहे का?\n• पानांवर डाग किंवा भोक आहेत का?\n• कीड दिसते का?\n• खोड किंवा मुळांची समस्या?\n• वाढ खुंटली आहे का?`;
+          clarificationHi = `आपकी ${cropName} फसल${dasHi} में समस्या के बारे में बताइए। कृपया लक्षण बताएं:\n• पत्तों का रंग बदला है?\n• पत्तों पर धब्बे या छेद हैं?\n• कीड़े दिख रहे हैं?\n• तने या जड़ की समस्या?\n• विकास रुक गया है?`;
         } else {
-          clarificationMessage = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          clarificationEn = `Could you describe the specific symptoms you're observing? For example: leaf color changes, holes in leaves/stem, wilting, spots, or insect presence.`;
+          clarificationMr = `कृपया तुम्ही पाहत असलेली लक्षणे सांगा? उदा. पानांचा रंग बदलणे, पानांवर/खोडावर भोक, सुकणे, डाग, किंवा कीड दिसणे.`;
+          clarificationHi = `कृपया आप जो लक्षण देख रहे हैं वो बताएं? जैसे: पत्तों का रंग बदलना, पत्तों/तने में छेद, मुरझाना, धब्बे, या कीड़े दिखना.`;
         }
-        const clarificationMr = clarificationMessage;
-        const clarificationHi = clarificationMessage;
-        const clarificationEn = clarificationMessage;
+        // Pick the user's language for the top-level `response` string
+        const _lang = String(userLang || 'en').toLowerCase();
+        clarificationMessage = _lang.startsWith('mr') ? clarificationMr
+          : _lang.startsWith('hi') ? clarificationHi
+          : clarificationEn;
         
         // CRITICAL FIX: Return proper OrchestratorResponse with required `type` field
         // and correct `communication.main_message.full_text` structure
@@ -3656,7 +3671,9 @@ export class AIAgentOrchestrator {
       // ═══════════════════════════════════════════════════════════════════════════
       if (intentMetaFromDB?.routing_target === 'INFO_MODULE') {
         console.log(`   📚 [PATCH 6] INFO_MODULE route: Intent ${intentCode} → LLM direct response (no rule engine)`);
+        // WAVE A.5f (RC-24): mark bypass for observability — ai_decision_log will record bypass_reason
         agentsUsed.push('INFO_MODULE_ROUTE');
+        agentsUsed.push('BYPASS_SYMBOLIC:INFO_MODULE');
         
         // Generate direct LLM response for info-only queries
         scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'INFO_MODULE', intent: intentCode } });
@@ -3727,6 +3744,7 @@ export class AIAgentOrchestrator {
         } else {
           console.log(`   🔀 [PATCH 6] HYBRID route without crop → routing to LLM info response`);
           agentsUsed.push('HYBRID_ROUTE_INFO');
+          agentsUsed.push('BYPASS_SYMBOLIC:HYBRID_NO_CROP'); // Wave A.5f observability
           
           scope?.emit({ stage: 'response', kind: 'derive', payload: { event: 'llm_response_start', path: 'HYBRID_INFO', intent: intentCode } });
           const _hybridStart = Date.now();
