@@ -32390,6 +32390,7 @@ export type Database = {
         Args: { p_community_id: string; p_farmer_id: string }
         Returns: Json
       }
+      jsonb_normalize_upper_tokens: { Args: { data: Json }; Returns: Json }
       leave_community: {
         Args: { p_community_id: string; p_farmer_id: string }
         Returns: Json
