@@ -2050,10 +2050,19 @@ export class AIAgentOrchestrator {
         //   - does NOT match any option (via improved matcher)
         // Then: CLEAR stale clarification and proceed to NLU pipeline
         // ========================================
-        const isLikelyNewQuery = !isNumericOnly && 
-                                  !hasEmbeddedObsKeys && 
-                                  !matchResult.matched && 
-                                  safeFarmerMessage.length > 10; // Minimum length for a real question
+        // P0 FIX (2026-06-23): Treat the farmer's text as a NEW query only when
+        // it carries a clear problem / negation / damage / emergence predicate.
+        // Plain selection labels like "पाणी कमी आहे" or short echoes of an
+        // option must NOT re-enter NLU (which mis-routes "पाणी"/"water" tokens
+        // to IRRIGATION instead of resolving the open diagnosis). Keep the
+        // existing structural checks (numeric / obs_keys / matcher), but also
+        // require a problem predicate AND a longer free-text length.
+        const NEW_QUERY_PROBLEM_RE = /(नाही|नही|नहीं|सुकल|सुकली|मेली|मरत|खराब|पिवळ|पीला|जळ|करपल|कुजल|रोग|कीड|डाग|नुकसान|उगवले\s*नाही|उगाव|अंकुर|\b(not|no|fail|failed|dying|damage|poor|wilt|yellow|stunt|rot|disease|pest|attack|burn|missing|empty|gap|sparse|emerge|emergence|germinat)\b)/i;
+        const isLikelyNewQuery = !isNumericOnly &&
+                                  !hasEmbeddedObsKeys &&
+                                  !matchResult.matched &&
+                                  safeFarmerMessage.length > 30 &&
+                                  NEW_QUERY_PROBLEM_RE.test(safeFarmerMessage);
         
         if (isLikelyNewQuery) {
           console.log('🆕 [NewQueryDetector v2] FREE TEXT detected - clearing stale clarification (FAIL-OPEN)');
