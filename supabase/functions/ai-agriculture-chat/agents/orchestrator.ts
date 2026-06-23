@@ -4315,20 +4315,36 @@ export class AIAgentOrchestrator {
       const authoredObservations = new AuthoredObservationSet();
       const allObservationsForPreAuth = new Set<string>(); // backward-compat flat set
       
-      // BUG-3 FIX: Canonical code filter - only UPPERCASE_CODE symbols enter rule engine
+      // BUG-3 FIX + WAVE-S CASING CONTRACT (2026-06-23):
+      // Canonical observation codes are stored LOWERCASE in observation_master,
+      // observation_aliases, decision_rules.conditions_json, hypothesis_conditions.
+      // The orchestrator/LLM/induction layers may emit either case — accept BOTH
+      // and normalize to lowercase canonical on entry so downstream evaluators
+      // (which compare against lowercase DB rows) match consistently.
+      //
+      // Old gate: /^[A-Z][A-Z0-9_]+$/ — REJECTED every DB-canonical lowercase
+      // observation (obs_rice_no_emergence, plant_death, etc.) as "non-canonical",
+      // and silently let UPPERCASE through unchanged so it bypassed lowercase rule
+      // conditions. That mismatch is what produced "Rules matched: 0 / leaked
+      // rule_action_text" on emergence/germination intents.
       function isCanonicalCode(s: string): boolean {
-        return /^[A-Z][A-Z0-9_]+$/.test(s);
+        return typeof s === 'string' && /^[A-Za-z][A-Za-z0-9_]+$/.test(s.trim());
+      }
+      function canonicalize(s: string): string {
+        return String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
       }
       
       let filteredOutCount = 0;
       
       // Add from observation keys - tagged as EXTRACTED (pattern-matched from farmer text)
+      // WAVE-S CASING CONTRACT: store lowercase canonical so DB-condition compare matches.
       if (observationKeys) {
         observationKeys.forEach(key => {
           const strKey = String(key);
           if (isCanonicalCode(strKey)) {
-            allObservationsForPreAuth.add(strKey);
-            authoredObservations.add(strKey, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
+            const c = canonicalize(strKey);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.EXTRACTED, 'OBSERVATION_KEYS_INDUCTION');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical observation key: "${strKey.substring(0, 30)}"`);
@@ -4340,8 +4356,9 @@ export class AIAgentOrchestrator {
       if (mappedCodes?.observation_codes) {
         mappedCodes.observation_codes.forEach((code: string) => {
           if (isCanonicalCode(code)) {
-            allObservationsForPreAuth.add(code);
-            authoredObservations.add(code, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
+            const c = canonicalize(code);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.INFERRED, 'LLM_SEMANTIC_EXTRACTOR');
           } else {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical mapped code: "${code.substring(0, 30)}"`);
@@ -4353,12 +4370,13 @@ export class AIAgentOrchestrator {
       if (inductionResult?.symptoms) {
         inductionResult.symptoms.forEach((s: any) => {
           if (s.symbol && isCanonicalCode(s.symbol)) {
-            allObservationsForPreAuth.add(s.symbol);
+            const c = canonicalize(s.symbol);
+            allObservationsForPreAuth.add(c);
             // Tag based on induction source
             const inductionAuthority = s.source === 'LLM_SEMANTIC_EXTRACTOR' 
               ? ObservationAuthority.INFERRED 
               : ObservationAuthority.EXTRACTED; // LANGUAGE_INDUCTION = pattern match
-            authoredObservations.add(s.symbol, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
+            authoredObservations.add(c, inductionAuthority, s.source || 'LANGUAGE_INDUCTION');
           } else if (s.symbol) {
             filteredOutCount++;
             console.log(`   🔇 [CANONICAL FILTER] Excluded non-canonical symptom: "${String(s.symbol).substring(0, 30)}"`);
@@ -4376,8 +4394,9 @@ export class AIAgentOrchestrator {
         photoMappedCodes.observation_codes.forEach((code: any) => {
           const strCode = String(code);
           if (isCanonicalCode(strCode)) {
-            allObservationsForPreAuth.add(strCode);
-            authoredObservations.add(strCode, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
+            const c = canonicalize(strCode);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.CONFIRMED, 'PHOTO_ANALYSIS');
           }
         });
       }
@@ -4461,7 +4480,7 @@ export class AIAgentOrchestrator {
             'WEED_PROBLEM': 'WEED_PRESENT'
           };
           
-          const fallbackSymptom = intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM';
+          const fallbackSymptom = canonicalize(intentToSymptom[intentCode] || 'UNKNOWN_SYMPTOM');
           allObservationsForPreAuth.add(fallbackSymptom);
           authoredObservations.add(fallbackSymptom, ObservationAuthority.INFERRED, 'LLM_INTENT_FALLBACK');
           agentsUsed.push('LLM_INTENT_FALLBACK');
@@ -4469,8 +4488,9 @@ export class AIAgentOrchestrator {
         } else if (advisoryIntents.includes(intentCode) && directModeBypass) {
           // FIX 3: For advisory intents with DIRECT mode, inject the INTENT CODE itself
           console.log(`\n🎯 [ADVISORY DIRECT] Intent ${intentCode} is advisory — injecting intent as observation for rule engine`);
-          allObservationsForPreAuth.add(intentCode);
-          authoredObservations.add(intentCode, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
+          const cIntent = canonicalize(intentCode);
+          allObservationsForPreAuth.add(cIntent);
+          authoredObservations.add(cIntent, ObservationAuthority.INFERRED, 'ADVISORY_DIRECT_ROUTE');
           agentsUsed.push('ADVISORY_DIRECT_ROUTE');
         }
       }
@@ -4487,13 +4507,16 @@ export class AIAgentOrchestrator {
         const injected: string[] = [];
         const blocked: string[] = [];
         crossCropSymptomsList.forEach(sym => {
-          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(sym)) {
+          // Terminal guard set is UPPER snake. Compare case-insensitively.
+          const symU = String(sym).toUpperCase().replace(/[\s-]+/g, '_');
+          if (TERMINAL_CODES_BLOCKED_FROM_INJECTION.has(symU)) {
             blocked.push(sym);
             console.log(`   🛡️ [TERMINAL GUARD] Blocked cross-crop terminal code: ${sym}`);
           } else {
-            allObservationsForPreAuth.add(sym);
-            authoredObservations.add(sym, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
-            injected.push(sym);
+            const c = canonicalize(sym);
+            allObservationsForPreAuth.add(c);
+            authoredObservations.add(c, ObservationAuthority.SYNTHETIC, 'CROSS_CROP_MAPPER');
+            injected.push(c);
           }
         });
         if (injected.length > 0) {
@@ -4546,7 +4569,7 @@ export class AIAgentOrchestrator {
       // confirmedObsCodes / terminal-gate / decision_output.symptom_keys.
       if (candidateObservationCodes && candidateObservationCodes.size > 0) {
         for (const code of candidateObservationCodes) {
-          authoredObservations.add(code, ObservationAuthority.HYPOTHESIS_CANDIDATE, 'INTENT_OBSERVATION_MAPPING_DB');
+          authoredObservations.add(canonicalize(code), ObservationAuthority.HYPOTHESIS_CANDIDATE, 'INTENT_OBSERVATION_MAPPING_DB');
         }
         console.log(`   🧪 [HYPOTHESIS_CANDIDATES] Registered ${candidateObservationCodes.size} candidate observations (lane=candidate, NOT confirmed)`);
       }
@@ -6408,16 +6431,20 @@ export class AIAgentOrchestrator {
         const queryForRuleEngine = directModeBypass 
           ? `[INTENT:${intentCode}] ${farmerMessage}` 
           : farmerMessage;
+        // WAVE-S CASING CONTRACT: ensure observations passed to the rule
+        // evaluator are lowercase canonical (defense in depth — already
+        // canonicalized at ingestion above).
+        const _lc = (xs: string[]) => xs.map(c => String(c).toLowerCase().replace(/[\s-]+/g, '_'));
         const canonicalStateWithQuery = {
           ...canonicalState,
           user_query: queryForRuleEngine,
           // BUG 5 FIX: Pass authority-separated observations for rule evaluator
-          confirmed_observations: confirmedObsCodes,
+          confirmed_observations: _lc(confirmedObsCodes),
           // CONTAMINATION FIX (2026-06-22): expose candidate lane separately so
           // hypothesis evaluator / clarification generator can read it without
           // it ever entering the confirmed/rule-firing path.
-          candidate_observations: candidateObsCodes,
-          synthetic_observations: syntheticObsCodes
+          candidate_observations: _lc(candidateObsCodes),
+          synthetic_observations: _lc(syntheticObsCodes)
         };
         
         // PRODUCTION FIX: Pass PrescriptionGate override signal to confidence gate
