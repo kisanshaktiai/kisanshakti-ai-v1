@@ -2006,8 +2006,9 @@ serve(async (req) => {
                 finalDaysSinceSowing
               );
             }
-          } else {
+          } else if (unifiedGateResult.response_mode !== ResponseMode.DIAGNOSTIC_ESCALATION) {
             // No confirmed diagnosis or authority block - use observation response
+            // (Wave-P guard: never overwrite a successfully built DIAGNOSTIC_ESCALATION response)
             responseContent = generateObservationOnlyResponse(
               detectedLanguage,
               finalCropName,
