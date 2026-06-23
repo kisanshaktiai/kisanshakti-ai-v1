@@ -1686,18 +1686,24 @@ serve(async (req) => {
           // decision_output contains the actual rules/actions from symbolic brain
           // ═══════════════════════════════════════════════════════════════════════════
           const decisionOutputSsot = orchestratorResponse.decision_output as Record<string, any> || {};
+          // ───────────────────────────────────────────────────────────────
+          // WAVE-R: SSOT counter is `firedRuleIds()` ONLY. matched_responses
+          // and candidate_rules are NOT fired rules; using them inflated the
+          // counter and re-opened the suppression gate. Identity-verified.
+          // ───────────────────────────────────────────────────────────────
+          const _firedRids = firedRuleIds(decisionOutputSsot);
           const symbolicDecisionForGuard = {
             decision_brain_source: orchestratorResponse.decision_brain_source || decisionOutputSsot.decision_brain_source,
-            // SSOT: Use decision_output fields first, fallback to metadata
-            rules_fired: decisionOutputSsot.rules_applied || 
-                         decisionOutputSsot.layered_rule_result?.rules_applied || 
-                         orchestratorResponse.metadata?.rulesFired || [],
-            actions_returned: decisionOutputSsot.actions_returned || 
+            rules_fired: _firedRids,
+            actions_returned: decisionOutputSsot.actions_returned ||
                               orchestratorResponse.metadata?.actionsReturned || [],
-            matched_responses: decisionOutputSsot.matched_responses || 
-                               orchestratorResponse.metadata?.matchedResponses || []
+            // Filter matched_responses to only entries whose rule_id actually fired.
+            matched_responses: (Array.isArray(decisionOutputSsot.matched_responses)
+              ? decisionOutputSsot.matched_responses
+              : []
+            ).filter((r: any) => r?.rule_id && _firedRids.includes(r.rule_id))
           };
-          
+
           console.log(`   🔍 [SuppressionGuard] SSOT check: rules=${symbolicDecisionForGuard.rules_fired?.length || 0}, actions=${symbolicDecisionForGuard.actions_returned?.length || 0}, responses=${symbolicDecisionForGuard.matched_responses?.length || 0}`);
           
           unifiedGateResult = applySuppressionGuard(rawGateResult, symbolicDecisionForGuard);
@@ -3338,9 +3344,30 @@ ${content}`;
 function hydrateDecisionOutputRichText(decisionOutput: any): void {
   if (!decisionOutput?.primary_decision) return;
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // WAVE-R SYMBOLIC INVARIANT: hydration of treatment text (action_text /
+  // reason_text / knowledge_text) is allowed ONLY when at least one rule
+  // actually fired AND the primary_decision's rule_id is in the fired set.
+  // Without this guard, candidates surfaced in `matched_responses` (e.g. by
+  // observation-rule-lookup or hypothesis enrichers) are narrated as if they
+  // had been validated by the symbolic engine — the very leak Wave-R seals.
+  // ─────────────────────────────────────────────────────────────────────────
+  const fired = firedRuleIds(decisionOutput);
+  if (fired.length === 0) {
+    console.log('🚫 [SymbolicInvariant] hydrate skipped — rules_fired=0');
+    return;
+  }
+  const firedSet = new Set(fired);
   const primary = decisionOutput.primary_decision;
-  primary.application_details = primary.application_details || {};
+  const primaryRid = (primary as any)?.rule_id ?? null;
+  if (!primaryRid || !firedSet.has(primaryRid)) {
+    console.log(
+      `🚫 [SymbolicInvariant] hydrate skipped — primary rule_id=${primaryRid} not in fired=[${fired.join(',')}]`,
+    );
+    return;
+  }
 
+  primary.application_details = primary.application_details || {};
   const app = primary.application_details as Record<string, any>;
 
   // 1) Prefer direct fields on primary_decision (some executors place them here)
@@ -3350,10 +3377,13 @@ function hydrateDecisionOutputRichText(decisionOutput: any): void {
   app.i18n_key ??= (primary as any).i18n_key;
   app.rule_id ??= primary.rule_id;
 
-  // 2) If still missing, hydrate from matched_responses by rule_id
+  // 2) If still missing, hydrate from matched_responses BUT only entries whose
+  //    rule_id is in the fired set (Wave-R rule-identity verification).
   const ruleId = primary.rule_id || app.rule_id;
-  if (ruleId && Array.isArray(decisionOutput.matched_responses)) {
-    const resp = decisionOutput.matched_responses.find((r: any) => r?.rule_id === ruleId);
+  if (ruleId && firedSet.has(ruleId) && Array.isArray(decisionOutput.matched_responses)) {
+    const resp = decisionOutput.matched_responses.find(
+      (r: any) => r?.rule_id === ruleId && firedSet.has(r.rule_id),
+    );
     if (resp) {
       app.action_text ??= resp.action_text;
       app.reason_text ??= resp.reason_text;
