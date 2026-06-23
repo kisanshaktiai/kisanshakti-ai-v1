@@ -2859,7 +2859,6 @@ serve(async (req) => {
           // block is defensive in case the RPC path failed silently.
           recordVocabularyGap(userMessageContent, lang, 'farmer_utterance', {
             decision_state: computedDecisionState,
-            intent_code: currentIntentCode || undefined,
           }).catch(() => {});
         }
       }
