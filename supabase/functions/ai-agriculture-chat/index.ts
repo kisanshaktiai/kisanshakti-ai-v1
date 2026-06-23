@@ -1986,18 +1986,10 @@ serve(async (req) => {
             }
           }
 
-          // Re-evaluate response_mode after possible Wave-P downgrade
-          if (unifiedGateResult.response_mode !== ResponseMode.DIAGNOSTIC_ESCALATION
-              && responseContent === '' /* not yet set */) {
-            // continue to the OBSERVATION / fallback branches below
-          }
-
-          if (unifiedGateResult.response_mode !== ResponseMode.DIAGNOSTIC_ESCALATION) {
-            // intentional fall-through marker — handled by the next else-if blocks
-          } else if (false) {
-            // (the DIAGNOSTIC_ESCALATION branch above already ran)
-          }
-          } else if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
+          // After the DIAGNOSTIC_ESCALATION block above, response_mode may
+          // have been downgraded to OBSERVATION by the Wave-P invariant.
+          // Fall through to the OBSERVATION / fallback branches below.
+          if (unifiedGateResult.response_mode === ResponseMode.OBSERVATION) {
             // OBSERVATION mode: prefer the action_text of a SAFE rule keyed on
             // a confirmed observation. Only fall back to the generic monitoring
             // template when no such rule exists.
