@@ -2271,6 +2271,37 @@ export class AIAgentOrchestrator {
           if (visualSymptom && visualSymptom !== 'UNKNOWN' && visualSymptom !== mappedObservationKey) {
             allObservations.push(visualSymptom);
           }
+
+          // ─── P0 EVIDENCE MERGE (2026-06-23) ─────────────────────────────────
+          // Carry the prior turn's confirmed observations forward instead of
+          // rebuilding canonical state from only the selected option. This
+          // preserves the EMERGENCE_FAILURE diagnosis evidence the farmer
+          // already provided and prevents the "primary_decision exists but
+          // symbolic_confidence=0" invariant from tripping after an answer.
+          try {
+            const priorSymbols: any[] = Array.isArray(existingSymbols) ? existingSymbols : [];
+            const priorObsArr: any[] = Array.isArray((options.sessionState as any)?.confirmed_observations)
+              ? (options.sessionState as any).confirmed_observations
+              : Array.isArray((options.sessionState as any)?.confirmedObservations)
+                ? (options.sessionState as any).confirmedObservations
+                : [];
+            const canon = (s: unknown) => String(s ?? '').trim().toLowerCase().replace(/[\s-]+/g, '_');
+            const carried: string[] = [];
+            for (const sym of priorSymbols) {
+              const k = canon((sym as any)?.observation_key || (sym as any)?.id || sym);
+              if (k && !allObservations.includes(k)) { allObservations.push(k); carried.push(k); }
+            }
+            for (const o of priorObsArr) {
+              const k = canon(o);
+              if (k && !allObservations.includes(k)) { allObservations.push(k); carried.push(k); }
+            }
+            if (carried.length > 0) {
+              console.log(`   🧬 [EvidenceMerge] Carried ${carried.length} prior-turn observation(s) into selection state: [${carried.join(', ')}]`);
+            }
+          } catch (e) {
+            console.warn(`   ⚠️ [EvidenceMerge] failed: ${(e as Error).message}`);
+          }
+          // ────────────────────────────────────────────────────────────────────
           
           // ═══════════════════════════════════════════════════════════════════════════
           // FIX #3: OBSERVATION KEY EXPANSION - DB-DRIVEN via observation_aliases
