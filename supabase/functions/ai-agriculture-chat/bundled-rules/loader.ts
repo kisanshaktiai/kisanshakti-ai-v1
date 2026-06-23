@@ -10,6 +10,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { type BundledRule, type BundleMetadata, BUNDLE_METADATA } from './all-rules.ts';
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import { areStagesCompatible, getStageQueryVariants } from '../utils/stage-normalizer.ts';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TYPES
@@ -486,7 +487,7 @@ export function clearLedgerCache(): void {
 // KEY CATEGORY CLASSIFICATION
 // ═══════════════════════════════════════════════════════════════════════════
 
-const STRUCTURAL_KEYS = new Set(['all', 'any', 'fact', 'operator', 'value']);
+const STRUCTURAL_KEYS = new Set(['all', 'any', 'fact', 'operator', 'value', 'match_all', 'observation_match']);
 
 // Category C: Numeric threshold (required)
 const CATEGORY_C_KEYS = new Set([
@@ -896,7 +897,13 @@ export function evaluateConditionsJson(
 
     // ─── Category A: Stage Keys ───
     if (key === 'crop_stage' || key === 'stage' || key === 'growth_stage') {
-      const stages = Array.isArray(condValue) ? condValue : [condValue];
+      const ruleStageApplicable = Array.isArray((input as any).rule_stage_applicable)
+        ? (input as any).rule_stage_applicable
+        : [];
+      const stages = [
+        ...(Array.isArray(condValue) ? condValue : [condValue]),
+        ...ruleStageApplicable,
+      ].filter((s) => s !== undefined && s !== null && String(s).trim() !== '');
       if (stages.length > 0) {
         // v7.8 FIX: Default/generic stages should not block rules
         const DEFAULT_STAGES = new Set(['VEGETATIVE', 'UNKNOWN', 'DEFAULT', '']);
@@ -906,13 +913,14 @@ export function evaluateConditionsJson(
         // 'nursery', 'seedling', 'emergence', or 'establishment' for the same
         // DAS window. Without this, every rice DAS≤25 emergence/germination
         // rule was being stage-gated out.
-        const ESTABLISHMENT_FAMILY = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
-        const inputIsEstablishment = ESTABLISHMENT_FAMILY.has(inputStage);
+        const inputStageForCompare = String(input.crop_stage || '').trim();
+        const stageVariants = new Set(getStageQueryVariants(inputStageForCompare).map(s => String(s).toUpperCase().replace(/[\s-]+/g, '_')));
         const stageMatch = stages.some((s: any) => {
           const upper = String(s).toUpperCase();
           if (upper === inputStage || upper === '*' || upper === 'ALL' || upper === 'ANY') return true;
           if (inputStage.includes(upper)) return true;
-          if (inputIsEstablishment && ESTABLISHMENT_FAMILY.has(upper)) return true;
+          if (stageVariants.has(upper.replace(/[\s-]+/g, '_'))) return true;
+          if (areStagesCompatible(String(s), inputStageForCompare)) return true;
           return false;
         });
         ledger.push({
@@ -932,6 +940,8 @@ export function evaluateConditionsJson(
       const isRequiredSymptoms = key === 'required_symptoms';
       const obsList = Array.isArray(condValue) ? condValue : [condValue];
       if (obsList.length > 0) {
+        const requiresAllObservations = conditions.match_all === true ||
+          String(conditions.observation_match || '').toLowerCase() === 'all';
         // ═══════════════════════════════════════════════════════════════════
         // PHASE 7: Validate observation codes against observation_master cache
         // Log warnings for invalid codes that may indicate stale rule data
@@ -955,7 +965,7 @@ export function evaluateConditionsJson(
         }
         
         if (expandedObs.size > 0) {
-          const obsMatch = obsList.some((obs: string) => {
+          const matchesOneObservation = (obs: string) => {
             const obsNorm = String(obs).toLowerCase().replace(/[\s-]+/g, '_');
             for (const inputObs of expandedObs) {
               if (inputObs === obsNorm || inputObs.includes(obsNorm) || obsNorm.includes(inputObs)) return true;
@@ -967,7 +977,10 @@ export function evaluateConditionsJson(
               if (sharedWords.length > 0) return true;
             }
             return false;
-          });
+          };
+          const obsMatch = requiresAllObservations
+            ? obsList.every((obs: string) => matchesOneObservation(obs))
+            : obsList.some((obs: string) => matchesOneObservation(obs));
           ledger.push({
             key, status: obsMatch ? ConditionStatus.PASSED : ConditionStatus.FAILED,
             // FORENSIC FIX 1A: required_symptoms is soft (required: false) since farmers
@@ -1197,7 +1210,11 @@ function makeExecutable(rule: BundledRule): ExecutableRule {
     conditions: (input: DecisionInput) => {
       // Primary path: evaluate conditions_json
       if (rule.conditions_json && Object.keys(rule.conditions_json).length > 0) {
-        const result = evaluateConditionsJson(rule.conditions_json, input, rule.rule_id);
+        const result = evaluateConditionsJson(
+          rule.conditions_json,
+          { ...input, rule_stage_applicable: rule.stage_applicable },
+          rule.rule_id,
+        );
         if (result) return true;
       }
 

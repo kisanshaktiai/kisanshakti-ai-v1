@@ -960,12 +960,15 @@ export class SymbolicReasoner {
     const stageValue = cond.crop_stage || cond.stage || cond.growth_stage;
     if (stageValue) {
       totalConditions++;
-      const stages = Array.isArray(stageValue) ? stageValue : [stageValue];
-      const establishmentFamily = new Set(['GERMINATION', 'NURSERY', 'SEEDLING', 'EMERGENCE', 'ESTABLISHMENT']);
+      const stages = [
+        ...(Array.isArray(stageValue) ? stageValue : [stageValue]),
+        ...(Array.isArray((cond as any).stage_applicable) ? (cond as any).stage_applicable : []),
+      ];
+      const stageVariants = new Set(getStageQueryVariants(factStageUpper).map(s => String(s).toUpperCase().replace(/[\s-]+/g, '_')));
       const stageMatch = stages.some((s: string) => {
         const upper = String(s).toUpperCase();
         return upper === factStageUpper || upper === '*' || upper === 'ALL' ||
-          (establishmentFamily.has(upper) && establishmentFamily.has(factStageUpper));
+          stageVariants.has(upper.replace(/[\s-]+/g, '_'));
       });
       if (stageMatch) {
         metConditions++;
@@ -993,8 +996,10 @@ export class SymbolicReasoner {
       totalConditions++;
       const obsList = Array.isArray(obsValue) ? obsValue : [obsValue];
       if (obsList.length > 0) {
+        const requiresAllObservations = (cond as any).match_all === true ||
+          String((cond as any).observation_match || '').toLowerCase() === 'all';
         // P1-3 Fix: Exact token match instead of substring containment
-        const obsMatch = obsList.some((obs: string) => {
+        const matchesOneObservation = (obs: string) => {
           const upperObs = String(obs).toUpperCase().replace(/[\s-]/g, '_');
           // Exact match OR token-boundary match (not substring containment)
           const exactMatch = (s: string) => s === upperObs;
@@ -1012,7 +1017,10 @@ export class SymbolicReasoner {
           return exactMatch(factSymptom) || tokenMatch(factSymptom) ||
                  exactMatch(factQuery) || tokenMatch(factQuery) ||
                  allObsUpper.some(ao => exactMatch(ao) || tokenMatch(ao));
-        });
+        };
+        const obsMatch = requiresAllObservations
+          ? obsList.every((obs: string) => matchesOneObservation(obs))
+          : obsList.some((obs: string) => matchesOneObservation(obs));
         if (obsMatch) {
           metConditions++;
           matchedConditions.push('observations');

@@ -23,6 +23,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.2';
 import { getCropCodeVariants } from '../utils/crop-code-normalizer.ts';
+import { areStagesCompatible, getStageQueryVariants } from '../utils/stage-normalizer.ts';
 import type { DecisionInput } from './loader.ts';
 
 export interface DbRuleSelection {
@@ -104,13 +105,17 @@ export async function selectCandidateRuleIdsFromDb(
 
     // Stage filter applied in JS so we honour both array and null stage_applicable
     // (null/empty means "any stage").
+    const stageVariants = new Set(getStageQueryVariants(stage).map(s => String(s).toLowerCase().replace(/[\s-]+/g, '_')));
     const filtered = stage
       ? rows.filter(r => {
           const arr = r.stage_applicable;
           if (!arr || (Array.isArray(arr) && arr.length === 0)) return true;
           return Array.isArray(arr)
-            ? arr.some(s => String(s).toLowerCase() === stage)
-            : String(arr).toLowerCase() === stage;
+            ? arr.some(s => {
+                const ruleStage = String(s).toLowerCase().replace(/[\s-]+/g, '_');
+                return ruleStage === stage || stageVariants.has(ruleStage) || areStagesCompatible(String(s), stage);
+              })
+            : String(arr).toLowerCase() === stage || areStagesCompatible(String(arr), stage);
         })
       : rows;
 
