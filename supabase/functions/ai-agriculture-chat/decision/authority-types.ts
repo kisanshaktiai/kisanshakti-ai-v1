@@ -337,9 +337,30 @@ export interface DiagnosticEscalationData {
   
   /** Whether photo is the primary next step */
   photo_recommended: boolean;
-  
+
   /** Timestamp */
   created_at: string;
+
+  /**
+   * Wave-P (Stage 2): selectable observation chips rendered alongside the
+   * markdown response. When the farmer taps a chip the value (observation
+   * code) is posted back to the orchestrator; the orchestrator asserts it as
+   * a USER_CONFIRMED observation and re-runs the symbolic brain with the
+   * boosted confidence (Stage 3 — see docs/ws13/wave-p-...).
+   */
+  clarification_chips?: Array<{
+    label: string;
+    value: string;
+    description?: string;
+    observation_key: string;
+    cause_code: string;
+    confidence_lift: number;
+  }>;
+
+  /**
+   * Localized question rendered above the chip group.
+   */
+  clarification_question?: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
